@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}AGV — manual{% endblock %}
+{% block body %}
+
+<div class="bar">
+  <button id="arm"    class="big go">ARM</button>
+  <button id="disarm" class="big off">DISARM</button>
+  <span class="hint">Hold a button or key to drive. Release to stop.
+        Released for {{ watchdog_ms }} ms &rarr; the AGV stops itself.</span>
+</div>
+
+<section class="sensor pad-width">
+  <h2>Magnetic tape <small>SICK MLS node 10 &middot; TPDO1 0x18A</small></h2>
+
+  <div class="track" id="track">
+    <div class="track-rule"></div>
+    <div class="track-zero"></div>
+    <div class="lcp" id="lcp1" data-n="1"></div>
+    <div class="lcp" id="lcp2" data-n="2"></div>
+    <div class="lcp" id="lcp3" data-n="3"></div>
+    <div class="track-empty" id="track-empty">not armed</div>
+  </div>
+
+  <div class="tel-grid">
+    <div class="tel"><span>#LCP</span><b id="s-nlcp">&ndash;</b><i id="s-label">&mdash;</i></div>
+    <div class="tel"><span>Position</span><b id="s-pos">&ndash;</b><i>mm (LCP2)</i></div>
+    <div class="tel"><span>Field</span><b id="s-field">&ndash;</b><i id="s-min">digits</i></div>
+    <div class="tel"><span>Level</span><b id="s-level">&ndash;</b><i id="s-pol">&mdash;</i></div>
+  </div>
+</section>
+
+<div class="pad" id="pad">
+{% for d in pad %}
+  <button class="dir {{ 'stopbtn' if d == 'stop' }}" data-dir="{{ d }}"
+          title="{{ labels[d] }} — {{ keymap[d] }}">
+    <span class="glyph">{{ glyphs[d] }}</span>
+    <span class="name">{{ labels[d] }}</span>
+    {% if d != 'stop' %}
+      <span class="rpm">{{ table[d][0] }} / {{ table[d][1] }}</span>
+    {% else %}
+      <span class="rpm">release</span>
+    {% endif %}
+    <span class="key">{{ keymap[d] }}</span>
+  </button>
+{% endfor %}
+</div>
+
+<p class="legend">
+  Straight and the outer wheel of a curve run {{ full }} r/min; the inner wheel
+  of a curve and both wheels of an on-axis spin run {{ half }} r/min.
+  Numbers under each button are the actual 60FFh setpoints (left / right).
+</p>
+<p class="legend keys">
+  <b>Arrows</b> (or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>) —
+  <kbd>&uarr;</kbd> forward · <kbd>&darr;</kbd> reverse ·
+  <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> spin on the spot.
+  Hold <b>two</b> for an in-between: <kbd>&uarr;</kbd>+<kbd>&larr;</kbd> fwd-left,
+  <kbd>&uarr;</kbd>+<kbd>&rarr;</kbd> fwd-right,
+  <kbd>&darr;</kbd>+<kbd>&larr;</kbd> rev-left,
+  <kbd>&darr;</kbd>+<kbd>&rarr;</kbd> rev-right.
+  <kbd>Q</kbd><kbd>E</kbd><kbd>Z</kbd><kbd>C</kbd> reach the same four with one key.
+  Opposites cancel (<kbd>&uarr;</kbd>+<kbd>&darr;</kbd> = stop);
+  <kbd>Space</kbd> stops everything.
+</p>
+{% endblock %}
+
+{% block script %}
+<script>window.WATCHDOG_MS = {{ watchdog_ms }};</script>
+<script src="{{ url_for('static', filename='manual.js') }}"></script>
+{% endblock %}

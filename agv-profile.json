@@ -1,0 +1,88 @@
+{
+  "profile_name": "agv-01",
+  "vehicle": {
+    "track_m": 0.486,
+    "wheel_dia_m": 0.18,
+    "gear_ratio": 30.0,
+    "motor_max_rpm": 4000.0,
+    "sensor_lookahead_m": 0.1,
+    "invert_left": false,
+    "invert_right": false
+  },
+  "autopilot": {
+    "dry_run": false,
+    "invert_error": true,
+    "k_ratio": 11.3,
+    "kd": 0.94,
+    "ki": 0.0,
+    "tau_d_s": 0.05,
+    "ti_deadband_mm": 20.0,
+    "i_clamp": 2.0,
+    "sr_pos_frac": 0.0075,
+    "sr_rate_frac": 0.001875,
+    "sr_cap": 0.45,
+    "sr_tau_s": 0.12,
+    "auto_rpm": 1600.0,
+    "ramp_accel_rpm_s": 1000.0,
+    "ramp_jerk_rpm_s2": 4000.0,
+    "sensor_max_mm": 100.0,
+    "sensor_max_step_mm": 40.0,
+    "line_loss_grace_m": 0.075,
+    "sensor_timeout_s": 0.1,
+    "dt_nominal_s": 0.02,
+    "inner_wheel_min_rpm": 0.0
+  },
+  "manual": {
+    "full_rpm": 1200,
+    "half_ratio": 0.6
+  },
+  "drivers": {
+    "ramp": {
+      "manual": {
+        "accel": 400,
+        "decel": 800
+      },
+      "auto": {
+        "accel": 2000,
+        "decel": 3000
+      }
+    },
+    "target_deadband_rpm": 5
+  },
+  "plot": {
+    "err_range_mm": 100.0,
+    "rpm_max": 2500.0
+  },
+  "rfid": {
+    "enabled": true,
+    "ip": "192.168.1.200",
+    "port": 2022,
+    "interface": "enp2s0",
+    "init_hex": "CFFF0070002415",
+    "frame_len": 17,
+    "tag_offset": 13,
+    "tag_len": 2,
+    "ignore_tags": [
+      "3130"
+    ],
+    "recv_timeout_s": 1.0,
+    "banner_wait_s": 0.6,
+    "silent_warn_s": 60.0,
+    "reconnect_period_s": 2.0,
+    "tag_hold_s": 2.0
+  },
+  "can": {
+    "bitrate": 125000,
+    "left_node": 1,
+    "right_node": 2,
+    "sensor_node": 10
+  },
+  "timing": {
+    "loop_period_s": 0.02,
+    "telemetry_period_s": 0.2,
+    "field_period_s": 0.5,
+    "manual_watchdog_s": 0.4,
+    "auto_watchdog_s": 1.5,
+    "log_tail_s": 2.0
+  }
+}

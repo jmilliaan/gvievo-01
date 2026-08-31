@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}AGV — auto{% endblock %}
+{% block body %}
+
+<div class="bar">
+  <button id="arm"    class="big go">ARM</button>
+  <button id="run"    class="big run" disabled>START</button>
+  <button id="disarm" class="big off">DISARM</button>
+  <span class="hint">Line following at {{ auto_rpm }} r/min ·
+        K={{ k_ratio }} Kd={{ kd }} ζ={{ zeta }}</span>
+</div>
+
+{% if dry_run %}
+<div class="warn">
+  DRY RUN — the drivers are left <b>de-energised</b> and never armed; only the
+  sensor is running. Nothing can move. Slide a magnet strip under the sensor and
+  check that <b>Error</b> below has the sign you expect, then set
+  <code>autopilot.dry_run</code> to <code>false</code> in
+  <code>agv-profile.json</code> and restart the service.
+</div>
+{% else %}
+<div class="warn">
+  Live. A wrong error sign steers the AGV <em>off</em> the tape and accelerates.
+  Stay on the STOP button.
+</div>
+{% endif %}
+
+<section class="sensor">
+  <h2>Control loop</h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Error</span><b id="p-err">–</b><i>mm cross-track</i></div>
+    <div class="tel"><span>Correction</span><b id="p-omega">–</b><i>rad/s yaw</i></div>
+    <div class="tel"><span>Base</span><b id="p-base">–</b><i id="p-red">r/min</i></div>
+    <div class="tel"><span>Command</span><b id="p-cmd">–</b><i>L / R r/min</i></div>
+    <div class="tel"><span>State</span><b id="p-state">idle</b><i id="p-guard">—</i></div>
+    <div class="tel"><span>P / I / D</span><b id="p-terms">–</b><i id="p-sat">—</i></div>
+  </div>
+</section>
+
+<section class="sensor">
+  <h2>SICK MLS <small>node 10 · TPDO1 0x18A</small></h2>
+
+  <div class="track" id="track">
+    <div class="track-rule"></div>
+    <div class="track-zero"></div>
+    <div class="lcp" id="lcp1" data-n="1"></div>
+    <div class="lcp" id="lcp2" data-n="2"></div>
+    <div class="lcp" id="lcp3" data-n="3"></div>
+    <div class="track-empty" id="track-empty">no track</div>
+  </div>
+
+  <div class="tel-grid">
+    <div class="tel"><span>#LCP</span><b id="s-nlcp">–</b><i id="s-label">—</i></div>
+    <div class="tel"><span>Position</span><b id="s-pos">–</b><i>mm (LCP2)</i></div>
+    <div class="tel"><span>Field</span><b id="s-field">–</b><i id="s-min">digits</i></div>
+    <div class="tel"><span>Level</span><b id="s-level">–</b><i id="s-pol">—</i></div>
+    <div class="tel"><span>Frames</span><b id="s-frames">0</b><i id="s-age">—</i></div>
+    <div class="tel"><span>Marker</span><b id="s-marker">–</b><i>code</i></div>
+  </div>
+</section>
+
+<section class="sensor">
+  <h2>Station tag <small>Chafon CF821 &middot; 192.168.1.200:2022</small></h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Tag</span><b id="r-tag">–</b><i id="r-age">—</i></div>
+    <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">—</i></div>
+    <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>window.AUTO_RPM = {{ auto_rpm }};</script>
+<script src="{{ url_for('static', filename='auto.js') }}"></script>
+{% endblock %}

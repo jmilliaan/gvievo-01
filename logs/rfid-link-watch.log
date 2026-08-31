@@ -1,0 +1,6 @@
+=== rfid-link-watch started 2026-08-31T18:49:54+07:00 boot=f07fd787-1570-4327-a081-0d84fd52eaea ===
+2026-08-31T18:49:54+07:00 up=14651 carrier=1 speed=100 rtt_ms=0.068 tcp=ok errs=0 
+2026-08-31T18:49:55+07:00 up=14652 carrier=1 speed=100 rtt_ms=0.068 tcp=ok errs=0 
+2026-08-31T18:49:56+07:00 up=14653 carrier=1 speed=100 rtt_ms=0.072 tcp=ok errs=0 
+2026-08-31T18:49:57+07:00 up=14654 carrier=1 speed=100 rtt_ms=0.071 tcp=ok errs=0 
+2026-08-31T18:49:58+07:00 up=14655 carrier=1 speed=100 rtt_ms=0.058 tcp=ok errs=0 <<< SIGTERM - watcher stopping >>>

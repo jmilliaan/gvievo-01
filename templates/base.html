@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>{% block title %}AGV{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header>
+  <h1>AGV control</h1>
+  <nav>
+    <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
+    <a href="/auto"   class="{{ 'on' if page == 'auto' }}">Auto</a>
+  </nav>
+  <div id="link" class="pill">connecting…</div>
+</header>
+
+<div class="shell">
+  <aside id="telemetry">
+    <div class="tel-grid">
+      <div class="tel"><span>Left</span><b id="rpm-1">–</b><i>r/min</i></div>
+      <div class="tel"><span>Right</span><b id="rpm-2">–</b><i>r/min</i></div>
+      <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i>L / R</i></div>
+      <div class="tel"><span>Watchdog</span><b id="wd">–</b><i>s left</i></div>
+      <div class="tel"><span>Loop</span><b id="loop-work">–</b><i id="loop-period">ms work</i></div>
+      <div class="tel"><span>Frames</span><b id="loop-frames">–</b><i id="loop-starved">per tick</i></div>
+    </div>
+    <div class="states">
+      <div id="st-1" class="st">node 1 –</div>
+      <div id="st-2" class="st">node 2 –</div>
+    </div>
+    <pre id="log"></pre>
+  </aside>
+
+  <main>{% block body %}{% endblock %}</main>
+</div>
+
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

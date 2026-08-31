@@ -1,0 +1,5 @@
+LR wheel center distance (track length) : 486mm
+line sensor width: 200mm
+sensor position: 100mm ahead of wheel. assume centered. 
+wheel diameter: 180mm
+motor: 0-4000rpm. 1:30 reduction to the wheels. 
