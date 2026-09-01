@@ -13,6 +13,7 @@ transfers; a per-row write would put filesystem latency straight into that path.
 Nothing here may raise: a logging problem must never stop the vehicle.
 """
 import os
+import re
 import threading
 import time
 
@@ -22,6 +23,38 @@ LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 FLUSH_PERIOD_S = 1.0
 CSV_NAME = "run.csv"
 PNG_NAME = "run.png"
+
+# Run directories are NNNN-auto_YYYYmmdd_HHMMSS. The sequence number is what
+# a human cites ("run 17"); the timestamp is what makes it findable.
+SEQ_RE = re.compile(r"^(\d{4,})-")
+STAMP_FMT = "auto_%Y%m%d_%H%M%S"
+
+
+def next_seq(directory=None):
+    """Highest NNNN- prefix already in the log directory, plus one.
+
+    Derived from what is on disk rather than held in a counter file: there is
+    no separate state to fall out of step with the directory, and an archived
+    or deleted run leaves a gap rather than making the next run collide with a
+    name that still exists.
+
+    Never raises. A missing log directory is the first-run case and yields 1.
+
+    LOG_DIR is read at CALL time, not bound as a default argument - a default
+    would freeze the module constant at import and silently ignore any later
+    reassignment, which is exactly what a test that redirects the log directory
+    does.
+    """
+    directory = LOG_DIR if directory is None else directory
+    highest = 0
+    try:
+        for name in os.listdir(directory):
+            m = SEQ_RE.match(name)
+            if m:
+                highest = max(highest, int(m.group(1)))
+    except OSError:                             # no logs/ yet, or unreadable
+        pass
+    return highest + 1
 
 COLUMNS = [
     "t", "dt", "state",
@@ -48,6 +81,7 @@ class RunLog:
     def __init__(self, enabled=True):
         self.enabled = enabled
         self.dir = None
+        self.seq = None           # run number, assigned at open()
         self.path = None          # the CSV; the UI links this
         self.plot_path = None
         self.note = ""
@@ -61,7 +95,9 @@ class RunLog:
         if not self.enabled:
             return
         try:
-            self.dir = os.path.join(LOG_DIR, time.strftime("auto_%Y%m%d_%H%M%S"))
+            self.seq = next_seq()
+            self.dir = os.path.join(
+                LOG_DIR, f"{self.seq:04d}-" + time.strftime(STAMP_FMT))
             os.makedirs(self.dir, exist_ok=True)
             self.path = os.path.join(self.dir, CSV_NAME)
             self.plot_path = os.path.join(self.dir, PNG_NAME)

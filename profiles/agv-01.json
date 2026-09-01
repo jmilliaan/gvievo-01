@@ -73,9 +73,22 @@
   },
   "can": {
     "bitrate": 125000,
+    "channel": "can0",
+    "adapter_serial": "2087327F5548",
     "left_node": 1,
     "right_node": 2,
-    "sensor_node": 10
+    "sensor_node": 10,
+    "heartbeat_ms": 200
+  },
+  "monitor": {
+    "enabled": true,
+    "poll_period_s": 0.1,
+    "driver_temp_warn_c": 70.0,
+    "driver_temp_trip_c": 85.0,
+    "motor_temp_warn_c": 80.0,
+    "motor_temp_trip_c": 95.0,
+    "bus_v_warn_low": 42.0,
+    "bus_v_warn_high": 56.0
   },
   "timing": {
     "loop_period_s": 0.02,
@@ -83,6 +96,7 @@
     "field_period_s": 0.5,
     "manual_watchdog_s": 0.4,
     "auto_watchdog_s": 1.5,
+    "driver_timeout_s": 0.6,
     "log_tail_s": 2.0
   }
 }

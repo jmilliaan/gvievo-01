@@ -1,11 +1,11 @@
 """Differential-drive geometry: the conversion between body motion and wheels.
 
-Deliberately separate from the control law (draft_pid_design.md section 6): a
-SLAM pose controller producing (linear velocity, angular velocity) can replace
-autopilot.py without touching this file or the motor interface under it. Nothing
-here knows what a line sensor is.
+Deliberately separate from the control law: a SLAM pose controller producing
+(linear velocity, angular velocity) can replace autopilot.py without touching
+this file or the motor interface under it. Nothing here knows what a line
+sensor is.
 
-The dimensions themselves live in agv-profile.json (vehicle section) and reach
+The dimensions themselves live in the profile (vehicle section) and reach
 here through config, which also does the deriving - MPS_PER_RPM and friends are
 computed from wheel diameter, gearing and track so the profile cannot hold a
 conversion factor that disagrees with the geometry it came from.

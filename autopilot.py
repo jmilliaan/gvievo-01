@@ -1,6 +1,6 @@
 """Line-following controller. Pure computation - no CAN, no Flask, no file I/O.
 
-Control law (draft_pid_design.md section 2):
+Control law:
 
     omega_cmd  = -(Kp*e + Ki*integral + Kd*d_filt)      Kp = K_RATIO * v
     v_cmd      = v_base - speed_reduction
@@ -21,12 +21,12 @@ roughly linearly with target speed").
 The wheel difference cannot slew faster than the drivers ramp, which caps yaw
 acceleration at 2*ACCEL*RAD_S_PER_RPM_DIFF = 2.59 rad/s^2 at the present 2000
 (r/min)/s. An ideal-plant model says K_RATIO = 100 is optimal; with the real
-slew limit that diverges at 0.8 m/s. Raising K_RATIO requires raising 6083h with
-it - see the plan, and re-check traction before doing so.
+slew limit that diverges at 0.8 m/s. Raising K_RATIO far requires raising 6083h
+with it, and re-checking traction before doing so.
 
-Every constant this file reads comes from config (agv-profile.json). Values are
-read at call time, not bound at import, so a test can retarget a gain and the
-next tick picks it up.
+Every constant this file reads comes from config (the vehicle profile). Values
+are read at call time, not bound at import, so a test can retarget a gain and
+the next tick picks it up.
 """
 import math
 
@@ -60,9 +60,8 @@ class LineFollower:
         self._speed_red = 0.0
         self._omega = 0.0            # last commanded yaw, held while coasting
         # None, not 0.0: priming from the first live sample avoids the
-        # derivative kick KIM2A documents in its section 9.1, where reset()
-        # zeroes last_pv and the next tick differentiates the full standing
-        # error over one period.
+        # derivative kick KIM2A documents, where reset() zeroes last_pv and the
+        # next tick differentiates the full standing error over one period.
         self._last_e_m = None
         self._last_valid_mm = None
         self._track_gap_m = 0.0      # distance travelled since the track was seen
@@ -184,7 +183,7 @@ class LineFollower:
         diff = omega / config.RAD_S_PER_RPM_DIFF
 
         # Floor the inner wheel by limiting the DIFFERENTIAL, not by clipping one
-        # wheel - clipping one alters the effective turn ratio (draft 4.2).
+        # wheel - clipping one alters the effective turn ratio.
         head = base - config.INNER_WHEEL_MIN_RPM
         if head <= 0:
             diff = 0.0

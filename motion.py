@@ -6,7 +6,7 @@ or the drivers already have their rotation direction reversed in MEXE02.
 
 *** If you swap a motor, re-flash a driver, or remount a wheel, re-verify this
 on blocks before trusting any button. *** Set vehicle.invert_left /
-invert_right in agv-profile.json rather than editing the table - the table
+invert_right in the vehicle profile rather than editing the table - the table
 stays in vehicle terms.
 
 Speeds and the invert flags live in the profile (config.MANUAL_FULL_RPM,

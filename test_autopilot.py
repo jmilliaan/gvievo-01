@@ -351,6 +351,7 @@ def test_arm_does_not_deadlock():
     """
     print("\ncanworker: arming must not deadlock on the sensor stream")
     import canworker
+    import events
 
     ctl = canworker.Controller()
     ctl.bus = canworker.TpdoTap(_FakeRaw(), ctl._on_pdo)
@@ -386,11 +387,52 @@ def test_arm_does_not_deadlock():
             cur = len(line) - len(line.lstrip())
             if body and cur <= indent:
                 inlock = False
-            elif re.search(r"self\._read|self\._write|sdo_read|sdo_write"
-                           r"|self\._nmt|bus\.", body):
+            elif re.search(r"self\._read\(|self\._write\(|sdo_read\("
+                           r"|sdo_write\(|self\._nmt\(|bus\.(send|recv)\(",
+                           body):
                 bad.append(f"{i}: {body}")
     check("no bus I/O inside any locked section", not bad,
           "; ".join(bad) if bad else "")
+
+    # -- the health wiring, end to end on the fake bus -----------------------
+    # health.py is unit-tested above; this proves the Controller actually feeds
+    # it and acts on it, which a source scan alone cannot show.
+    ctl._armed = True
+    ctl._auto_running = True
+    ctl._target = (800, 800)
+    events.clear()
+
+    for nid in config.NODES:                    # both drivers answered once
+        ctl._src_node[nid].mark_rx(now=0.0)
+    hw = ctl._hw.evaluate(now=0.0)
+    check("healthy drivers raise no critical fault", not hw["system_error"])
+
+    hw = ctl._hw.evaluate(now=config.DRIVER_TIMEOUT_S + 1.0)
+    check("a silent driver trips the critical tier", hw["system_error"],
+          hw["system_detail"])
+    target = ctl._apply_health(hw, armed=True, target=(800, 800))
+    check("a critical fault zeroes the setpoint", target == (0, 0), str(target))
+    check("a critical fault clears the auto latch", not ctl._auto_running)
+    check("a critical fault names itself in stop_reason",
+          "silent" in (ctl._last_stop_reason or ""), str(ctl._last_stop_reason))
+
+    n_after_first = len(events.since(0)[1])
+    for i in range(50):                         # a second of ticks, still dead
+        hw2 = ctl._hw.evaluate(now=config.DRIVER_TIMEOUT_S + 2.0 + i * 0.02)
+        if hw2["changed"] or hw2["system_edge"] is not None:
+            ctl._apply_health(hw2, armed=True, target=(0, 0))
+    check("a standing fault does not re-emit every tick",
+          len(events.since(0)[1]) == n_after_first,
+          f"{len(events.since(0)[1]) - n_after_first} extra event(s)")
+
+    ctl._health = hw
+    try:
+        ctl._do_arm("manual")
+        check("arming is refused while a driver is silent", False, "accepted!")
+    except RuntimeError as e:
+        check("arming is refused while a driver is silent",
+              "not answering" in str(e), str(e)[:60])
+    events.clear()
 
 
 def test_config_profile():
@@ -398,24 +440,30 @@ def test_config_profile():
     loudly at boot rather than showing up as odd behaviour on a length of tape."""
     import copy
     import json
+    import shutil
     import tempfile
     print("\nvehicle profile loading")
 
-    base = json.load(open(config.PROFILE_PATH))
+    base = json.load(open(config.profile_path()))
 
-    def load_with(mutate):
+    def load_with(mutate, name="agv-01"):
         d = copy.deepcopy(base)
         mutate(d)
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+        # Written under its profile NAME, not a random temp name: the loader
+        # requires profile_name to match the filename, so a tmpXXXX.json would
+        # be refused for the wrong reason and every check below would pass
+        # vacuously.
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, f"{name}.json")
+        with open(path, "w") as fh:
             json.dump(d, fh)
-            path = fh.name
         try:
             config.load(path)
             return None
         except config.ConfigError as e:
             return str(e)
         finally:
-            os.unlink(path)
+            shutil.rmtree(tmp, ignore_errors=True)
             config.load()          # always restore the real profile
 
     def refuses(name, mutate, expect=""):
@@ -453,6 +501,41 @@ def test_config_profile():
             lambda d: d["autopilot"].update(
                 sr_pos_coef=d["autopilot"].pop("sr_pos_frac")),
             "unknown key")
+
+    refuses("a driver timeout inside the telemetry period is refused",
+            lambda d: d["timing"].update(driver_timeout_s=0.1),
+            "driver_timeout_s")
+    refuses("an empty can.channel is refused",
+            lambda d: d["can"].update(channel=""), "can.channel")
+
+    # The name in the file must match the file. A profile copied for a second
+    # vehicle and not renamed would report the old identity in the event log
+    # and in every run CSV header.
+    msg = load_with(lambda d: None, name="agv-99")
+    check("profile_name must match the filename", msg is not None
+          and "agv-99" in (msg or ""), msg or "accepted!")
+
+    # -- which vehicle this process is --------------------------------------
+    check("the default profile resolves into profiles/",
+          config.profile_path().endswith(os.path.join("profiles", "agv-01.json")),
+          config.profile_path())
+    os.environ[config.PROFILE_ENV_VAR] = "agv-02"
+    try:
+        check("AGV_PROFILE selects the profile",
+              config.profile_path().endswith("agv-02.json"),
+              config.profile_path())
+        check("an explicit path still wins over the env var",
+              config.profile_path("agv-03").endswith("agv-03.json"))
+        try:
+            config.load()
+            check("a missing profile is fatal", False, "accepted!")
+        except config.ConfigError as e:
+            check("a missing profile names the env var and what exists",
+                  config.PROFILE_ENV_VAR in str(e) and "agv-01" in str(e),
+                  str(e)[:80])
+    finally:
+        del os.environ[config.PROFILE_ENV_VAR]
+        config.load()
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
@@ -505,6 +588,117 @@ def test_derived_constants():
           and motion.velocities("forward") == (full, full)
           and motion.velocities("stop") == (0, 0),
           f"fwd-left {motion.velocities('forward_left')}")
+
+
+def test_health():
+    """Hardware liveness: the two-tier watchdog and its edge reporting.
+
+    The hole this closes: _poll_telemetry() keeps the last statusword when an
+    SDO read returns None, so before health.py a driver that stopped answering
+    looked alive for as long as the process ran.
+    """
+    import health
+    print("\nhardware health")
+
+    # -- a source is not a fault until it has been seen once -----------------
+    src = health.HealthSource("mls")
+    mon = health.HealthMonitor([(src, 1.0)])
+    r = mon.evaluate(now=100.0)
+    check("a never-seen source is not reported lost",
+          not r["sensor_error"] and not r["system_error"])
+    check("a never-seen source reports seen=False",
+          r["sources"]["mls"]["seen"] is False)
+
+    src.mark_rx(now=100.0)
+    r = mon.evaluate(now=100.5)
+    check("a fresh source is healthy", r["sources"]["mls"]["ok"] is True)
+    r = mon.evaluate(now=101.5)
+    check("a source past its timeout is lost", r["sensor_error"] is True,
+          r["sensor_detail"])
+    src.mark_rx(now=101.6)
+    r = mon.evaluate(now=101.7)
+    check("a source recovers on the next read", r["sensor_error"] is False)
+
+    # -- the two tiers route differently -------------------------------------
+    drv = health.HealthSource("driver:1", critical=True, detail="node 1 (left)")
+    mls = health.HealthSource("mls")
+    mon = health.HealthMonitor([(drv, 0.5), (mls, 0.5)])
+    drv.mark_rx(now=0.0)
+    mls.mark_rx(now=0.0)
+    mon.evaluate(now=0.1)
+    mls.mark_rx(now=1.0)                 # sensor alive, driver silent
+    r = mon.evaluate(now=1.0)
+    check("a silent driver raises the CRITICAL tier",
+          r["system_error"] is True and r["sensor_error"] is False,
+          r["system_detail"])
+    drv.mark_rx(now=2.0)                 # driver back, sensor now silent
+    r = mon.evaluate(now=2.0)
+    check("a silent sensor raises the AUTO-ONLY tier",
+          r["sensor_error"] is True and r["system_error"] is False,
+          r["sensor_detail"])
+
+    # -- edges fire ONCE, not once per tick ----------------------------------
+    # This is the events.py trap: at 50 Hz a per-tick emit empties the whole
+    # 200-entry ring in about four seconds.
+    s = health.HealthSource("x", critical=True)
+    mon = health.HealthMonitor([(s, 0.5)])
+    s.mark_rx(now=0.0)
+    mon.evaluate(now=0.0)
+    edges = tier_edges = 0
+    for i in range(100):                 # 2 s of ticks with the source dead
+        r = mon.evaluate(now=1.0 + i * 0.02)
+        edges += len(r["changed"])
+        tier_edges += r["system_edge"] is not None
+    check("a source transition is reported once, not per tick", edges == 1,
+          f"{edges} edge(s) over 100 ticks")
+    check("a tier transition is reported once, not per tick", tier_edges == 1,
+          f"{tier_edges} edge(s) over 100 ticks")
+
+    # -- PullSource wraps an existing snapshot -------------------------------
+    snap = {"comms_ok": True, "rx_age_s": 0.2, "detail": "reader"}
+    pull = health.PullSource("rfid", lambda: snap)
+    mon = health.HealthMonitor([(pull, 5.0)])
+    check("a pull source reports its snapshot verdict",
+          mon.evaluate(now=0.0)["sources"]["rfid"]["ok"] is True)
+    snap["comms_ok"] = False
+    check("a pull source fault reaches the auto-only tier",
+          mon.evaluate(now=0.0)["sensor_error"] is True)
+    # rfid.enabled false -> comms_ok is None -> not in use, never a fault.
+    snap["comms_ok"] = None
+    r = mon.evaluate(now=0.0)
+    check("a disabled pull source never blocks a mode",
+          r["sensor_error"] is False and r["sources"]["rfid"]["in_use"] is False)
+    pull_raises = health.PullSource("boom", lambda: 1 / 0)
+    check("a raising snapshot is absorbed, never propagated",
+          health.HealthMonitor([(pull_raises, 1.0)]).evaluate(now=0.0)
+          ["sensor_error"] is False)
+
+    # -- reset clears history across a bus reopen ----------------------------
+    s = health.HealthSource("y")
+    s.mark_rx(now=0.0)
+    mon = health.HealthMonitor([(s, 0.5)])
+    mon.reset()
+    check("reset() forgets a stale timestamp",
+          mon.evaluate(now=999.0)["sensor_error"] is False)
+
+    # -- health.py stays dependency-free -------------------------------------
+    head = pathlib.Path("health.py").read_text()
+    head = head[head.index('"""', head.index('"""') + 3):]
+    imports = {ln.split()[1].split(".")[0] for ln in head.splitlines()
+               if ln.startswith(("import ", "from "))}
+    check("health.py imports only the standard library",
+          imports <= {"time"}, str(sorted(imports)))
+
+    # -- wired into the vehicle, on the paths that prove liveness ------------
+    cw = pathlib.Path("canworker.py").read_text()
+    check("the sensor marks health on every decoded frame",
+          "self._src_mls.mark_rx(" in cw)
+    check("each driver marks health on a telemetry answer",
+          "self._src_node[nid].mark_rx()" in cw)
+    check("health is evaluated outside the lock",
+          "hw = self._hw.evaluate(now)" in cw)
+    check("a critical fault refuses an arm", "system_error" in
+          cw[cw.index("def _do_arm"):cw.index("def _do_disarm")])
 
 
 def test_sensor_starts_in_every_mode():
@@ -677,8 +871,20 @@ def test_event_log():
     # The 50 Hz paths must never emit - one chatty call site empties the whole
     # buffer of anything meaningful in about four seconds.
     src = pathlib.Path("canworker.py").read_text()
-    body = src[src.index("def _run_autopilot"):src.index("def _end_auto_run")]
-    check("_run_autopilot() never emits", "events." not in body)
+
+    def method_body(name, text=src):
+        """Source of one method, ending at the NEXT def rather than a named one.
+
+        Slicing to a named successor silently widens the window when someone
+        inserts a method between the two, which turns this check into a false
+        positive against a method it was never meant to cover.
+        """
+        start = text.index(f"def {name}")
+        nxt = text.find("\n    def ", start + 1)
+        return text[start:nxt if nxt != -1 else len(text)]
+
+    check("_run_autopilot() never emits",
+          "events." not in method_body("_run_autopilot"))
     win = src[src.index("class _LoopHealth"):src.index("class Controller")]
     check("_LoopHealth never emits", "events." not in win)
     check("driver faults are edge-tracked, not polled",
@@ -853,21 +1059,25 @@ def test_rfid():
     check("silence is not a fault while connected",
           snap["silent"] is False, str(snap["silent"]))
 
-    base = json.load(open(config.PROFILE_PATH))
+    base = json.load(open(config.profile_path()))
 
     def refuses(name, mutate, expect):
+        import shutil
         d = copy.deepcopy(base)
         mutate(d)
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+        # Under its profile name - the loader checks the stem, so a temp name
+        # would be refused for the wrong reason. See test_config_profile().
+        tmp = tempfile.mkdtemp()
+        p = os.path.join(tmp, "agv-01.json")
+        with open(p, "w") as fh:
             json.dump(d, fh)
-            p = fh.name
         try:
             config.load(p)
             check(name, False, "accepted!")
         except config.ConfigError as e:
             check(name, expect in str(e), str(e)[:70])
         finally:
-            os.unlink(p)
+            shutil.rmtree(tmp, ignore_errors=True)
             config.load()
 
     refuses("a tag slice outside the frame is refused",
@@ -880,6 +1090,337 @@ def test_rfid():
             lambda d: d["rfid"].update(ignore_tags=["31"]), "hex chars")
     refuses("silent_warn below recv_timeout is refused",
             lambda d: d["rfid"].update(silent_warn_s=0.5), "silent_warn_s")
+
+
+def test_run_numbering():
+    """Run directories are NNNN-auto_<stamp>, numbered from what is on disk.
+
+    The sequence is the thing a human cites ("run 17"), so it has to be
+    monotonic, gap-tolerant, and immune to two runs landing in the same second -
+    which the bare timestamp scheme was not.
+    """
+    import shutil
+    import tempfile
+    import runlog
+    print("\nrun log numbering")
+
+    saved = runlog.LOG_DIR
+    tmp = tempfile.mkdtemp()
+    try:
+        runlog.LOG_DIR = tmp
+        check("an empty log directory starts at 1", runlog.next_seq(tmp) == 1)
+        check("a missing log directory starts at 1",
+              runlog.next_seq(os.path.join(tmp, "nope")) == 1)
+
+        for n in (1, 7, 17):
+            os.makedirs(os.path.join(tmp, f"{n:04d}-auto_20260901_120000"))
+        check("numbering continues from the highest prefix present",
+              runlog.next_seq(tmp) == 18, "0001/0007/0017 -> 18")
+
+        os.makedirs(os.path.join(tmp, "auto_20260901_130000"))
+        os.makedirs(os.path.join(tmp, "notes"))
+        check("unprefixed entries are ignored", runlog.next_seq(tmp) == 18)
+
+        os.makedirs(os.path.join(tmp, "10000-auto_20260901_120000"))
+        check("the prefix survives passing 9999", runlog.next_seq(tmp) == 10001)
+
+        shutil.rmtree(tmp)
+        os.makedirs(tmp)
+        dirs = []
+        for _ in range(3):
+            lg = runlog.RunLog()
+            lg.open("numbering")
+            lg.write({"state": "run", "e_mm": 1.0, "dt": 0.02}, {"loop_ms": 20.0})
+            lg.close(plot=False)
+            dirs.append(os.path.basename(lg.dir))
+        check("consecutive runs number 1, 2, 3",
+              [d[:4] for d in dirs] == ["0001", "0002", "0003"], " ".join(dirs))
+        # The old bare-timestamp name collided here and the second run silently
+        # overwrote the first one's CSV.
+        check("runs in the same second get distinct directories",
+              len(set(dirs)) == 3)
+
+        shutil.rmtree(os.path.join(tmp, dirs[1]))
+        lg = runlog.RunLog()
+        lg.open()
+        lg.close(plot=False)
+        check("a deleted run leaves a gap, never a collision",
+              os.path.basename(lg.dir).startswith("0004"),
+              os.path.basename(lg.dir))
+
+        # LOG_DIR must be read at call time; as a default argument it would
+        # freeze at import and this redirect would be silently ignored.
+        check("next_seq() honours a reassigned LOG_DIR",
+              runlog.next_seq() == 5, str(runlog.next_seq()))
+    finally:
+        runlog.LOG_DIR = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _why(g, index):
+    """The refusal message, so a test can assert it explains itself."""
+    try:
+        g.check(index, 0x40)
+        return ""
+    except g.ForbiddenWrite as e:
+        return str(e)
+
+
+def test_can_monitoring():
+    """Alarm decode, the write deny-list, and the round-robin poller.
+
+    All pure tables and bookkeeping, so all testable without a bus. The wiring
+    that puts them on the bus is checked in the two tests below.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "canbus"))
+    import alarms
+    import canmon
+    import guard
+    print("\nCAN monitoring: alarms, deny-list, poller")
+
+    # -- EMCY decode -------------------------------------------------------
+    a = alarms.decode_emcy(bytes([0x53, 0xFF, 0x81, 0, 0, 0, 0, 0]))
+    check("the top-priority HWTO alarm decodes",
+          a["name"] == "HWTO input circuit error" and a["level"] == "error"
+          and a["tier"] == alarms.MUST, a["name"])
+    check("the error register is decoded from byte 2",
+          a["register_bits"] == ["generic", "manufacturer"],
+          str(a["register_bits"]))
+    # 0000h is the drive saying everything cleared, not a fault.
+    clr = alarms.decode_emcy(bytes(8))
+    check("0000h is a clear, not an alarm",
+          clr["cleared"] and clr["level"] == "info")
+    unk = alarms.decode_emcy(bytes([0x99, 0x99, 0, 0, 0, 0, 0, 0]))
+    check("an unlisted code still reports as an error",
+          not unk["cleared"] and unk["level"] == "error"
+          and "9999" in unk["hex"], unk["name"])
+    check("a short frame decodes rather than raising",
+          alarms.decode_emcy(b"\x22\xff")["code"] == 0xFF22)
+    check("decode_emcy never raises on random bytes",
+          all(alarms.decode_emcy(bytes([i, i, i])) for i in range(0, 256, 17)))
+    missing = [c for c in (0xFF53, 0xFF68, 0xFF50, 0xFF55, 0xFF22, 0xFF25,
+                           0xFF21, 0xFF26, 0x8120, 0x8130, 0x8140, 0xFF31,
+                           0xFF45, 0xFF41, 0xFFF0)
+               if c not in alarms.EMCY_CODES]
+    check("every MUST alarm from the plan is in the table", not missing,
+          f"{len(alarms.EMCY_CODES)} codes"
+          + (f", missing {[hex(c) for c in missing]}" if missing else ""))
+
+    # -- statusword flags: ILA is how the FX3 quick stop becomes visible ----
+    flags = {f["name"] for f in alarms.decode_statusword_flags(0x0800)}
+    check("ILA decodes from statusword bit 11", flags == {"ILA"}, str(flags))
+    check("a clear statusword yields no flags",
+          alarms.decode_statusword_flags(0x0027) == [])
+    check("decode_statusword_flags tolerates None",
+          alarms.decode_statusword_flags(None) == [])
+    check("NMT state decodes from the heartbeat byte",
+          alarms.decode_nmt(0x05) == "Operational"
+          and alarms.decode_nmt(0x7F) == "Pre-operational")
+
+    # -- the write deny-list (monitoring plan section 8) --------------------
+    check("the setpoint is writable", guard.is_allowed(0x60FF, 800))
+    check("the controlword is writable", guard.is_allowed(0x6040, 0x000F))
+    check("the heartbeat interval is writable", guard.is_allowed(0x1017, 200))
+    # 403Eh bit 6 is FREE: it releases the holding brake on BOTH drive wheels.
+    check("403Eh (FREE / brake release) is refused",
+          not guard.is_allowed(0x403E, 0x40))
+    check("40D0h (clear ETO / automatic restart) is refused",
+          not guard.is_allowed(0x40D0, 1))
+    check("40C0h (alarm reset) is refused", not guard.is_allowed(0x40C0, 1))
+    check("1011h (restore defaults) is refused", not guard.is_allowed(0x1011, 1))
+    check("1010h (store parameters) is refused", not guard.is_allowed(0x1010, 1))
+    check("the whole 4xxxh parameter block is refused",
+          not any(guard.is_allowed(i) for i in (0x4000, 0x40C6, 0x4123, 0x4FFF)))
+    # 6040h is allowed, but bit 7 of it is fault reset by another name.
+    check("controlword bit 7 (fault reset) is refused",
+          not guard.is_allowed(0x6040, 0x0080))
+    check("a refusal explains itself", "FREE" in _why(guard, 0x403E),
+          _why(guard, 0x403E)[:60])
+    check("an unlisted index is refused by default",
+          not guard.is_allowed(0x1000, 1))
+
+    # Every write in canworker must go through the guard, not around it.
+    cw = pathlib.Path("canworker.py").read_text()
+    check("_write() calls the guard", "guard_write(index, value)" in cw)
+    direct = [ln.strip() for ln in cw.splitlines()
+              if "sdo_write(" in ln and "def " not in ln and "guard" not in ln
+              and not ln.strip().startswith(("#", "*", '"'))
+              and "only ever call" not in ln]
+    # _do_disarm calls sdo_write directly on the shutdown path, where raising
+    # would leave the motors energised. Those are 6040h/60FFh only; the count
+    # is pinned so a new bypass cannot slip in unnoticed.
+    check("direct sdo_write calls are only the disarm path",
+          len(direct) == 3, f"{len(direct)}: " + "; ".join(direct)[:110])
+    check("no direct write targets a forbidden index",
+          not any(f"0x{i:04X}" in "".join(direct) for i in guard.FORBIDDEN))
+
+    # -- round-robin poller -------------------------------------------------
+    pol = canmon.MonitorPoller([1, 2])
+    seen = [pol.next_object()[1] for _ in range(len(canmon.OBJECTS))]
+    check("a sweep visits every object exactly once",
+          sorted(seen) == sorted(o[1] for o in canmon.OBJECTS),
+          f"{len(seen)} objects")
+    check("the cursor wraps and counts sweeps", pol.sweeps == 1)
+
+    # Types come from the MANUAL, not the plan - the plan guessed 40A4h as
+    # INT32 when it is INT16, and a 16-bit signed value read as 32-bit is
+    # plausible-looking garbage rather than an error.
+    check("40A4h is decoded as INT16 per the manual",
+          canmon.OBJECT_BY_KEY["bus_v"][3] == "i16")
+    check("409Bh is decoded as INT32 per the manual",
+          canmon.OBJECT_BY_KEY["cur_a"][3] == "i32")
+    check("a negative current decodes as regeneration",
+          canmon._decode("i32", struct.pack("<i", -2500)) == -2500)
+    check("an i16 sign bit is honoured",
+          canmon._decode("i16", struct.pack("<h", -55)) == -55)
+    check("a short payload decodes rather than raising",
+          canmon._decode("i32", b"\x01") == 1)
+    check("a None payload yields None", canmon._decode("i16", None) is None)
+
+    pol.store(1, "bus_v", 482)
+    pol.store(1, "drv_c", 723)
+    pol.store(1, "mtr_c", 400)
+    pol.store(2, "bus_v", 375)
+    snap = pol.snapshot(config.MONITOR_THRESHOLDS)
+    check("a raw reading is scaled to its unit",
+          snap["nodes"]["1"]["bus_v"]["value"] == 48.2,
+          str(snap["nodes"]["1"]["bus_v"]["value"]))
+    check("a temperature over its warn threshold is flagged",
+          snap["nodes"]["1"]["drv_c"]["state"] == "warn")
+    check("a temperature under its warn threshold is not",
+          snap["nodes"]["1"]["mtr_c"]["state"] == "ok")
+    # Two-sided: low bus voltage is battery sag, and stopping distance was
+    # already degraded before anything alarmed.
+    check("bus voltage is flagged at the LOW end too",
+          snap["nodes"]["2"]["bus_v"]["state"] == "warn",
+          str(snap["nodes"]["2"]["bus_v"]["value"]))
+    pol.store(1, "info", None)
+    check("an unanswered read stores as blank, not zero",
+          pol.snapshot()["nodes"]["1"]["info"]["value"] is None)
+
+
+def test_unsolicited_frames_survive_sdo():
+    """EMCY and heartbeat must reach their handlers even mid-SDO.
+
+    This is the whole reason TpdoTap exists and the reason it had to grow.
+    sdo_read() opens by draining the RX queue and then keeps only frames
+    matching 0x580+node, discarding the rest - so any pushed frame class not
+    routed by the tap is silently lost for as long as a transfer is in flight,
+    which with a setpoint write most ticks is most of the time.
+    """
+    import canworker
+    from verify_drivers import sdo_read
+    print("\nunsolicited frames survive an SDO transfer")
+
+    emcy, beats, pdos = [], [], []
+
+    class _Bus:
+        """Replays a fixed frame sequence, pushed frames mixed into the stream."""
+
+        def __init__(self, frames):
+            self._frames = list(frames)
+            self.sent = []
+
+        def send(self, msg):
+            self.sent.append(msg)
+
+        def recv(self, timeout=None):
+            # sdo_read() drains with timeout=0 before transmitting. Returning
+            # nothing then models an idle bus, so the scripted frames land
+            # AFTER the request - which is the case under test.
+            if not timeout:
+                return None
+            return self._frames.pop(0) if self._frames else None
+
+        def shutdown(self):
+            pass
+
+    def msg(cob, data):
+        return canworker.can.Message(arbitration_id=cob, data=bytes(data),
+                                     is_extended_id=False)
+
+    reply = [0x4B, 0x41, 0x60, 0, 0x27, 0x06, 0, 0]     # 6041h = 0x0627
+    raw = _Bus([
+        msg(0x080 + 1, [0x22, 0xFF, 0x81, 0, 0, 0, 0, 0]),   # EMCY, node 1
+        msg(0x700 + 2, [0x05]),                              # heartbeat, node 2
+        msg(config.TPDO1_COB, [0] * 8),                      # the MLS stream
+        msg(0x580 + 1, reply),                               # the SDO reply
+    ])
+    tap = canworker.TpdoTap(raw, on_pdo=lambda m: pdos.append(m),
+                            on_emcy=lambda n, d: emcy.append((n, d)),
+                            on_heartbeat=lambda n, b: beats.append((n, b)),
+                            nodes=[1, 2])
+
+    st, val, _, _ = sdo_read(tap, 1, 0x6041, 0, collision_window=0.0)
+    check("the SDO reply still gets through", st is True and val is not None)
+    check("an EMCY mid-transfer reaches its handler",
+          len(emcy) == 1 and emcy[0][0] == 1, str(emcy)[:60])
+    check("a heartbeat mid-transfer reaches its handler",
+          beats == [(2, 0x05)], str(beats))
+    check("the sensor stream is still routed", len(pdos) == 1)
+
+    # A handler that throws must not break the bus thread - these run inside
+    # somebody else's SDO transfer.
+    boom = canworker.TpdoTap(
+        _Bus([msg(0x080 + 1, [0] * 8), msg(0x580 + 1, reply)]),
+        on_pdo=lambda m: None, on_emcy=lambda n, d: 1 / 0,
+        on_heartbeat=lambda n, b: None, nodes=[1])
+    st, _, _, _ = sdo_read(boom, 1, 0x6041, 0, collision_window=0.0)
+    check("a throwing handler cannot break the transfer", st is True)
+
+    # A frame we do not route must be handed back, not swallowed.
+    passthru = canworker.TpdoTap(_Bus([msg(0x580 + 1, reply)]),
+                                 on_pdo=lambda m: None, nodes=[])
+    check("an unrouted frame is returned to the caller",
+          passthru.recv(timeout=0.1) is not None)
+
+
+def test_monitor_page_does_not_feed_the_watchdog():
+    """A read-only page must not hold an auto run alive.
+
+    /api/state used to call keepalive() unconditionally, so ANY page polling it
+    fed the auto watchdog - meaning a monitoring page open on a second screen
+    would keep a run going after the auto page had been closed. The heartbeat is
+    now opt-in, and forgetting the flag stops the run rather than extending it.
+    """
+    import app as webapp
+    print("\nthe monitoring page cannot hold a run alive")
+
+    seen = []
+    real = webapp.ctl.keepalive
+    webapp.ctl.keepalive = lambda: seen.append(1)
+    try:
+        c = webapp.app.test_client()
+        c.get("/api/state")
+        check("/api/state alone does NOT refresh the watchdog", not seen,
+              f"{len(seen)} refresh(es)")
+        c.get("/api/can")
+        check("/api/can does NOT refresh the watchdog", not seen)
+        c.get("/api/state?hb=1")
+        check("/api/state?hb=1 DOES refresh the watchdog", len(seen) == 1)
+    finally:
+        webapp.ctl.keepalive = real
+
+    # Only the page that drives the vehicle may claim it.
+    auto = pathlib.Path("templates/auto.html").read_text()
+    mon = pathlib.Path("templates/monitor.html").read_text()
+    common = pathlib.Path("static/common.js").read_text()
+    check("the auto page claims the heartbeat", "CLAIM_HEARTBEAT = true" in auto)
+    check("the monitor page does not", "CLAIM_HEARTBEAT" not in mon)
+    check("the claim is declared before common.js polls",
+          "prescript" in auto and "prescript" in
+          pathlib.Path("templates/base.html").read_text())
+    check("common.js only sends hb=1 when the page claims it",
+          "CLAIM_HEARTBEAT ? '/api/state?hb=1'" in common)
+
+    # The page itself must render and be read-only.
+    c = webapp.app.test_client()
+    body = c.get("/monitor").get_data(as_text=True)
+    check("the monitor page renders", "Diagnostic only" in body)
+    check("it states the golden rule", "not a safety path" in body)
+    check("it publishes the write deny-list", "403Eh" in body and "40D0h" in body)
+    check("it has no controls", "<button" not in body)
 
 
 def main():
@@ -898,6 +1439,7 @@ def main():
     test_divergence_is_detectable()
     test_config_profile()
     test_derived_constants()
+    test_health()
     test_sensor_starts_in_every_mode()
     test_grace_is_a_distance_not_a_time()
     test_speed_reduction_is_a_fraction()
@@ -905,7 +1447,11 @@ def main():
     test_event_log()
     test_arm_does_not_deadlock()
     test_run_plot()
+    test_run_numbering()
     test_rfid()
+    test_can_monitoring()
+    test_unsolicited_frames_survive_sdo()
+    test_monitor_page_does_not_feed_the_watchdog()
 
     print()
     if FAIL:

@@ -158,27 +158,45 @@ function renderLoopHealth(lp) {
   }
 }
 
-// Every page polls this; on the auto page it doubles as the watchdog heartbeat.
+// Every page polls this. A page that is DRIVING the vehicle must also claim the
+// auto watchdog, by setting window.CLAIM_HEARTBEAT before this script runs; the
+// poll then adds ?hb=1 and the server refreshes the deadline.
+//
+// Opt-in, not automatic: it used to be unconditional, which meant the monitor
+// page open on a second screen would hold an auto run alive after the auto page
+// was closed. Forgetting the flag stops the run, which is the safe direction.
 const listeners = [];
 function onState(fn) { listeners.push(fn); }
 
 async function poll() {
   try {
-    const s = await apiGet('/api/state');
-    setPill(s.connected ? (s.how + (s.armed ? ' · ARMED' : ' · idle'))
-                        : (s.error || 'no bus'),
-            s.connected ? (s.armed ? 'ok' : '') : 'bad');
+    const s = await apiGet(window.CLAIM_HEARTBEAT ? '/api/state?hb=1'
+                                                  : '/api/state');
+    // A device that has stopped answering outranks the bus state in the pill:
+    // "socketcan:can0 · ARMED" is true but useless when a driver is gone.
+    const hw = s.health || {};
+    if (hw.system_error) {
+      setPill('DRIVER SILENT · ' + hw.system_detail, 'bad');
+    } else {
+      setPill(s.connected ? (s.how + (s.armed ? ' · ARMED' : ' · idle'))
+                          : (s.error || 'no bus'),
+              s.connected ? (s.armed ? 'ok' : '') : 'bad');
+    }
 
     for (const id of ['1', '2']) {
       const n = s.nodes[id];
+      // Stale telemetry looks identical to live telemetry, so say so rather
+      // than showing the last statusword as though it were current.
+      const silent = ((hw.sources || {})['driver:' + id] || {}).ok === false;
       document.getElementById('rpm-' + id).textContent =
         n.rpm === null ? '–' : n.rpm;
       const st = document.getElementById('st-' + id);
       st.textContent = `node ${id} ${n.label}  `
-        + (n.statusword === null ? '—'
+        + (silent ? 'NOT ANSWERING'
+           : n.statusword === null ? '—'
            : `0x${n.statusword.toString(16).toUpperCase().padStart(4, '0')} ${n.state}`)
         + (n.error_reg ? `  ERR 0x${n.error_reg.toString(16).padStart(2, '0')}` : '');
-      st.className = 'st' + ((n.error_reg || n.fault) ? ' bad' : '');
+      st.className = 'st' + ((silent || n.error_reg || n.fault) ? ' bad' : '');
     }
     document.getElementById('setpoint').textContent =
       `${s.target.left} / ${s.target.right}`;

@@ -12,6 +12,7 @@
   <nav>
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/auto"   class="{{ 'on' if page == 'auto' }}">Auto</a>
+    <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
   </nav>
   <div id="link" class="pill">connecting…</div>
 </header>
@@ -36,6 +37,9 @@
   <main>{% block body %}{% endblock %}</main>
 </div>
 
+{# Runs BEFORE common.js, which polls immediately on load. A page that claims
+   the auto watchdog has to declare it here, not in the script block below. #}
+{% block prescript %}{% endblock %}
 <script src="{{ url_for('static', filename='common.js') }}"></script>
 {% block script %}{% endblock %}
 </body>

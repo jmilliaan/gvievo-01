@@ -12,7 +12,7 @@ provides a manual jog pad and an automatic line-following mode.
 | Control loop | 50 Hz, telemetry 5 Hz, sensor field 2 Hz |
 | Nodes | 1 left driver, 2 right driver, 10 MLS sensor (TPDO1 `0x18A`) |
 | `dry_run` | **false** — motors are live |
-| Tests | 117 offline checks, all passing |
+| Tests | 215 offline checks, all passing |
 
 ---
 
@@ -35,7 +35,10 @@ AGV, which is the point.
 
 **Auto is latched but still watchdogged.** The auto page's telemetry poll
 doubles as its heartbeat (`auto_watchdog_s` = 1.5 s), so a dead page stops the
-run.
+run. The heartbeat is **opt-in**: only a page that sets `window.CLAIM_HEARTBEAT`
+polls `/api/state?hb=1` and refreshes the deadline. A read-only page such as
+`/monitor` therefore cannot hold a run alive after the auto page is closed, and
+a page that forgets the flag stops the run rather than extending it.
 
 **`dry_run` does not free the motors.** CiA 402 "Operation enabled" *excites*
 the motor and the velocity loop then holds zero — a servo lock, not a free
@@ -49,14 +52,24 @@ under a **stationary** AGV, never by pushing it.
 ## Running
 
 ```bash
-python3 app.py                    # 0.0.0.0:5000 — /manual and /auto
+python3 app.py                          # 0.0.0.0:5000 — /manual and /auto
 python3 app.py --port 5001
 python3 app.py --host 127.0.0.1
+AGV_PROFILE=agv-02 python3 app.py       # a different vehicle
 ```
+
+**Which vehicle** comes from the `AGV_PROFILE` environment variable, which names
+a file in `profiles/`. Unset means `agv-01`. There is no CLI flag and no
+fallback: a name with no matching file is fatal at boot and the error lists the
+profiles that do exist.
 
 In production this runs as the `agv_controller` systemd unit, which sends
 SIGINT rather than SIGTERM so the `KeyboardInterrupt` path de-energises the
-motors on the way out.
+motors on the way out. The unit carries the vehicle identity:
+
+```ini
+Environment=AGV_PROFILE=agv-01
+```
 
 `--debug` enables Flask autoreload and is **off by default**: a reload would
 open `can0` twice and orphan an armed driver.
@@ -84,7 +97,7 @@ is unaffected; the failure is captured in `RunLog.error`, never raised.
 ## Layout
 
 ```
-agv-profile.json   Every tunable parameter. Edit this, restart the service.
+profiles/          One JSON per vehicle. Every tunable parameter lives here.
 config.py          Loads and validates the profile. Everything imports this.
 
 app.py             Flask routes. Entry point.
@@ -92,17 +105,20 @@ canworker.py       Bus thread: NMT, SDO, 50 Hz loop, arm/disarm, telemetry.
 autopilot.py       LineFollower — the PID. Pure computation, no I/O.
 kinematics.py      body <-> wheels. No control logic, no sensor knowledge.
 motion.py          Manual jog pad table, labels, key bindings.
+health.py          Hardware liveness: the two-tier watchdog table.
+canmon.py          Drive monitoring: the round-robin SDO object table.
 events.py          Operator event ring buffer (200). Survives a page reload.
 rfid.py            Chafon CF821 station-tag reader. Own thread, own socket.
-runlog.py          Per-run CSV + PNG into logs/auto_<timestamp>/
+runlog.py          Per-run CSV + PNG into logs/NNNN-auto_<timestamp>/
 plotrun.py         Per-run PNG. matplotlib, imported lazily.
-test_autopilot.py  117 offline checks. No hardware needed.
+test_autopilot.py  215 offline checks. No hardware needed.
 
 templates/ static/ Web UI. base.html is the shared shell.
-debug_commands/    Bus layer + standalone hardware tools. See Invariants.
+canbus/            CAN layer: SDO, bus discovery, CiA 402, MLS decode,
+                   alarm tables, and the write deny-list. Runtime
+                   dependency, and standalone on a bench.
 manuals/           Driver, sensor and RFID documentation, searchable.
 logs/              One directory per auto run.
-_obsolete/         Superseded design notes. Historical only — do not trust.
 ```
 
 **Dependency graph:** `config` imports only the standard library; everything
@@ -122,10 +138,12 @@ This is not stylistic. An SDO transfer is a send/recv **pair** that must not
 interleave with another, and `sdo_read()` drains the RX queue before
 transmitting — two threads doing SDO at once read each other's replies.
 
-`TpdoTap` wraps the bus and siphons sensor TPDO1 frames off before the SDO
-helpers can discard them. That is what lets `sdo_read`/`sdo_write` be reused
-verbatim from `debug_commands/` while the sensor's stream still reaches the
-decoder.
+`TpdoTap` wraps the bus and routes every **unsolicited** frame — the MLS stream,
+EMCY alarms, drive heartbeats — before the SDO helpers can discard them. That is
+what lets `sdo_read`/`sdo_write` be reused verbatim from `canbus/` while the
+pushed traffic still reaches its decoder. It is the only thing standing between
+a pushed frame and the bin: both helpers keep only frames matching
+`0x580+node` and drop the rest.
 
 ### The control law
 
@@ -152,11 +170,11 @@ from `logs/`, all at `K_RATIO 11.3 / KD 0.94`:
 
 | run | r/min | m/s | RMS | range | loop avg / max |
 |---|---|---|---|---|---|
-| `auto_20260831_095403` | 800 | 0.251 | 7.17 mm | −12 … +3 | 20.4 / 29.3 ms |
-| `auto_20260831_102222` | 1500 | 0.471 | 1.98 mm | −4 … +3 | 20.4 / 29.0 ms |
-| `auto_20260831_102448` | 2000 | 0.628 | 2.28 mm | −4 … +5 | 20.4 / 30.8 ms |
-| `auto_20260831_111800` | 2000 | 0.628 | 1.52 mm | −4 … +6 | 20.5 / 29.8 ms |
-| `auto_20260831_182323` | 1600 | 0.503 | 1.51 mm | −3 … +5 | 20.4 / 29.4 ms |
+| `0001-auto_20260831_095403` | 800 | 0.251 | 7.17 mm | −12 … +3 | 20.4 / 29.3 ms |
+| `0003-auto_20260831_102222` | 1500 | 0.471 | 1.98 mm | −4 … +3 | 20.4 / 29.0 ms |
+| `0004-auto_20260831_102448` | 2000 | 0.628 | 2.28 mm | −4 … +5 | 20.4 / 30.8 ms |
+| `0005-auto_20260831_111800` | 2000 | 0.628 | 1.52 mm | −4 … +6 | 20.5 / 29.8 ms |
+| `0007-auto_20260831_182323` | 1600 | 0.503 | 1.51 mm | −3 … +5 | 20.4 / 29.4 ms |
 
 No re-tune was needed at any step, and tracking got *better* with speed. Loop
 timing is healthy throughout against a 20 ms budget.
@@ -187,13 +205,95 @@ The inner-wheel floor is enforced by limiting the **differential**, not by
 clipping one wheel — clipping one alters the effective turn ratio. The ceiling
 scales **both** wheels by the same factor, so the commanded arc is preserved.
 
+### Hardware health
+
+Separate from the browser watchdogs above, and deliberately so: those cover an
+absent **operator**, this covers an absent **device**. [health.py](health.py)
+holds one table, one row per supervised device, and each row declares its own
+tier:
+
+| device | fed by | timeout | losing it stops |
+|---|---|---|---|
+| `driver:1`, `driver:2` | a telemetry read that answered | `driver_timeout_s` 0.6 s | **everything** |
+| `mls` | a decoded TPDO1 frame | `sensor_timeout_s` 0.1 s | auto only |
+| `rfid` | the link's own `snapshot()` | `silent_warn_s` | auto only |
+
+Losing a driver means the wheels can be neither commanded nor observed, so every
+mode stops and an arm is refused. Losing the MLS or the reader means the tape or
+the stations are unknown — auto stops, manual keeps working, because manual
+never needed them.
+
+A source that has **never** answered is not a fault: the drivers are silent
+until the bus is up and the sensor until it is NMT-started, and reporting that at
+boot would cry wolf before anything is connected. Only a device that answered
+once and then stopped counts as lost.
+
+This closes a real hole. `_poll_telemetry()` keeps the last statusword when an
+SDO read returns `None`, so before this a driver that stopped answering looked
+healthy for as long as the process ran.
+
+### Drive monitoring
+
+**Diagnostic only — not a safety path.** The safety chain is
+lidar/encoders → FX3 → HWTO1/HWTO2 → STO, wired in hardware with EDM returned to
+the FX3. Nothing read over CAN is rated, redundant or certified, and nothing
+here may decide whether it is safe to move. See
+[manuals/can-monitoring-plan.txt](manuals/can-monitoring-plan.txt).
+
+`/monitor` shows both drives side by side, so a left/right divergence is visible
+at a glance. Three channels feed it:
+
+| channel | how | what |
+|---|---|---|
+| **EMCY** | pushed on `0x080+n` | alarms, decoded by name and severity |
+| **heartbeat** | pushed on `0x700+n` | liveness and NMT state |
+| **analogue** | SDO, round-robin | voltage, current, temperature, load, deviation |
+
+**Pushed frames are routed by `TpdoTap`, and that is not optional.** Both SDO
+helpers open by draining the RX queue and then keep only frames matching
+`0x580+node`, discarding the rest — so any frame class not routed by the tap is
+silently lost for as long as a transfer is in flight, which is most of the time.
+
+**The analogue objects are polled one per node, round-robin, every 0.1 s.** At
+tick rate that would be two SDO round-trips out of every 20 ms budget — ~4 ms of
+tick and a fifth of the bus — for values that move on a thermal timescale.
+Paced, it costs ~0.8 ms of average tick and ~4 % of a 125 kbps bus, sweeping all
+eleven objects in about a second. A late tick is a steering update the vehicle
+does not get, and that matters more than sampling a temperature faster.
+
+Data types come from the manual, not the monitoring plan: the plan guesses
+`40A4h` and `40A3h` as INT32 when both are **INT16**, and a 16-bit signed value
+read as 32-bit is plausible-looking garbage rather than an error. Statusword
+bit 5 (QS) is likewise **active-low** — `decode_state()` already reports quick
+stop correctly, so it is deliberately not exposed as a flag.
+
+Tier 1 (`403Fh`: EDM-MON, HWTOIN-MON, ETO-MON, MBC) is **not implemented**. It
+needs the drives reconfigured through MEXE02 and the bit positions verified on
+the bench first.
+
+### What the vehicle may write over CAN
+
+CANopen is bidirectional, and several objects can defeat safety behaviour from a
+single stray frame. [canbus/guard.py](canbus/guard.py) enforces a deny-list on
+every write path, and `/monitor` publishes it:
+
+| | |
+|---|---|
+| **permitted** | `6040h` controlword, `6060h` modes, `6083h`/`6084h` ramps, `60FFh` target velocity, `1017h` heartbeat |
+| **refused** | `403Eh` (bit 6 is **FREE** — releases the holding brake on *both* drive wheels), `40D0h` clear ETO, `40C0h` alarm reset, `6040h` bit 7 fault reset, `1010h`/`1011h` store/restore, `40C6h` and all `4xxxh` parameters |
+
+A denied write raises rather than being silently dropped: a command a caller
+believed had landed is its own hazard. Clearing ETO or resetting an alarm
+automatically would be an automatic restart, which ISO 3691-4 prohibits.
+
 ---
 
 ## Configuration
 
-Everything tunable lives in `agv-profile.json`. **`config.py`'s docstring is the
-manual** — it carries a TUNING NOTES section explaining every non-obvious
-setting, because JSON cannot hold comments. Read it before editing.
+Everything tunable lives in `profiles/<name>.json`, selected by `AGV_PROFILE`.
+**`config.py`'s docstring is the manual** — it carries a TUNING NOTES section
+explaining every non-obvious setting, because JSON cannot hold comments. Read it
+before editing.
 
 The loader is deliberately strict, and this is the main thing the JSON buys over
 Python constants:
@@ -206,11 +306,15 @@ Python constants:
 3. **Validation runs before anything is published.** `load()` parses and
    validates into a fresh namespace and publishes only on success, so nothing
    ever observes a half-applied profile.
+4. **`profile_name` must match the filename.** A profile copied for a second
+   vehicle and not renamed would report the old identity in the event log and in
+   every run CSV header — silent, and only noticed when comparing runs later.
 
 Cross-cutting checks that neither module could make alone are enforced here —
 for example `autopilot.ramp_accel_rpm_s` **must** stay below
 `drivers.ramp.auto.accel`, or the driver becomes the limiter and the software
-S-curve is lost.
+S-curve is lost, and `timing.driver_timeout_s` **must** exceed
+`telemetry_period_s`, or the gap between two normal polls reads as a dead driver.
 
 Derived from the profile, never stored:
 
@@ -290,10 +394,18 @@ curve radius that no gain can lift. At 100 mm, gain still buys tighter curves.
 
 ## Logs
 
-Each START/STOP cycle produces `logs/auto_YYYYmmdd_HHMMSS/` containing `run.csv`
-and `run.png`, so a run is one self-contained thing to copy, attach or delete.
-The header line records the full gain set, so a plot is never ambiguous about
-which tune produced it.
+Each START/STOP cycle produces `logs/NNNN-auto_YYYYmmdd_HHMMSS/` containing
+`run.csv` and `run.png`, so a run is one self-contained thing to copy, attach or
+delete. The header line records the full gain set, so a plot is never ambiguous
+about which tune produced it.
+
+`NNNN` is a zero-padded run number, derived at START from the highest prefix
+already in `logs/` — there is no counter file to fall out of step with the
+directory. It is the handle a human cites ("run 17"), it appears as the plot
+title, and it makes two runs started in the same second distinct; under the
+bare-timestamp scheme they collided and the second silently overwrote the
+first. Archiving or deleting a run leaves a gap in the sequence rather than
+causing the next run to reuse a name.
 
 Rows are buffered and flushed about once a second — the control loop runs on the
 bus thread, and a per-row write would put filesystem latency straight into the
@@ -313,7 +425,7 @@ the sampling.
 ## Testing
 
 ```bash
-python3 test_autopilot.py     # 117 checks, no hardware
+python3 test_autopilot.py     # 215 checks, no hardware
 python3 -c "import app"       # exits 1 with a named check on a bad profile
 ```
 
@@ -329,7 +441,8 @@ The suite also contains a **source scan** that fails the build if any
 
 After a hardware change: `/manual` → ARM → the tape strip should populate and
 track a magnet moved under the sensor. `/auto` → ARM → START → STOP, and confirm
-a new `logs/auto_<timestamp>/` appears containing both `run.csv` and `run.png`.
+a new `logs/NNNN-auto_<timestamp>/` appears containing both `run.csv` and
+`run.png`.
 
 ---
 
@@ -357,11 +470,17 @@ call site flushes the entire 200-entry ring within four seconds. Nothing on a
 per-tick path emits, and anything edge-triggered (a driver fault, a lost tape)
 fires once per **edge**, not once per poll.
 
-**`debug_commands/` is a runtime dependency, not a scratch directory.**
-`canworker` imports `open_bus`, `sdo_read`, `sdo_write`, `decode_state` and
-`decode_tpdo1` from it. Moving or renaming that directory breaks the server. Do
-**not** make those modules import `config` — they must stay runnable standalone
-on a bench.
+**`canbus/` is a runtime dependency, not a scratch directory.** `canworker`
+imports `open_bus`, `sdo_read`, `sdo_write`, `decode_state` and `decode_tpdo1`
+from it. Moving or renaming that directory breaks the server. Do **not** make
+those modules import `config` — they must stay runnable standalone on a bench;
+where they need a vehicle-specific value, take it as a parameter defaulting to
+the module constant, the way `open_bus()` already does.
+
+It is also deliberately **not** a package. Its modules import each other by bare
+name so they run standalone, and adding `__init__.py` would resolve them twice —
+once as `verify_drivers`, once as `canbus.verify_drivers` — defining `open_bus`
+in two places depending on the entry point.
 
 **Wheel sign convention:** both drivers take a **positive** `60FFh` to travel
 forward. If you swap a motor, re-flash a driver or remount a wheel, re-verify on

@@ -15,8 +15,8 @@
   DRY RUN — the drivers are left <b>de-energised</b> and never armed; only the
   sensor is running. Nothing can move. Slide a magnet strip under the sensor and
   check that <b>Error</b> below has the sign you expect, then set
-  <code>autopilot.dry_run</code> to <code>false</code> in
-  <code>agv-profile.json</code> and restart the service.
+  <code>autopilot.dry_run</code> to <code>false</code> in the vehicle profile
+  and restart the service.
 </div>
 {% else %}
 <div class="warn">
@@ -67,6 +67,14 @@
     <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
   </div>
 </section>
+{% endblock %}
+
+{% block prescript %}
+<script>
+  // This page drives the vehicle, so its poll is also the auto watchdog
+  // heartbeat. Set before common.js, which polls the moment it loads.
+  window.CLAIM_HEARTBEAT = true;
+</script>
 {% endblock %}
 
 {% block script %}

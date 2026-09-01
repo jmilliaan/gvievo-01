@@ -1,11 +1,23 @@
 """The vehicle profile. Every tunable parameter in the system lives here.
 
-Reads agv-profile.json and publishes it as flat module-level constants, so call
-sites read `config.K_RATIO` rather than digging through nested dicts. Everything
-else imports this; this imports nothing but the standard library, which is what
-keeps the dependency graph acyclic.
+Reads profiles/<name>.json and publishes it as flat module-level constants, so
+call sites read `config.K_RATIO` rather than digging through nested dicts.
+Everything else imports this; this imports nothing but the standard library,
+which is what keeps the dependency graph acyclic.
 
-Three rules the loader enforces, in order of how much trouble they save:
+WHICH VEHICLE
+=============
+The profile is chosen by the AGV_PROFILE environment variable, falling back to
+DEFAULT_PROFILE:
+
+    python3 app.py                      # profiles/agv-01.json
+    AGV_PROFILE=agv-02 python3 app.py   # profiles/agv-02.json
+
+and in the systemd unit, Environment=AGV_PROFILE=agv-01. There is no CLI flag
+and no fallback to a profile that does not exist - a missing file is fatal and
+lists the names that ARE present.
+
+Four rules the loader enforces, in order of how much trouble they save:
 
   1. Unknown and missing keys are BOTH fatal. A profile with "k_rato" would
      otherwise leave the gain at whatever the code last defaulted to, and the
@@ -17,6 +29,10 @@ Three rules the loader enforces, in order of how much trouble they save:
   3. Validation runs before anything is published. A bad profile stops the
      process at import with the failing check named, rather than surfacing as
      strange behaviour halfway down a length of tape.
+  4. profile_name must match the filename. A profile copied for a second
+     vehicle and not renamed would report the old identity in the event log and
+     in every run CSV header, and nothing would look wrong until two runs were
+     compared weeks later.
 
 load() is written as an atomic swap - parse and validate into a fresh namespace,
 publish only on success - so nothing observes a half-applied profile. Only
@@ -26,7 +42,7 @@ called once today; a reload endpoint would be a caller, not a rewrite.
 TUNING NOTES
 ============
 JSON cannot carry comments, so the reasoning behind the settings that are not
-self-evident lives here. Read this before editing agv-profile.json.
+self-evident lives here. Read this before editing a profile.
 
 autopilot.dry_run
     *** Set false only after the sign has been confirmed by a dry run. ***
@@ -41,10 +57,14 @@ autopilot.dry_run
 autopilot.invert_error
     True if a positive reported track position means the line is to the LEFT.
     Not derivable from the manual - established on the machine by dry run on
-    2026-08-31 (logs/auto_20260831_092454.csv and _092528.csv):
+    2026-08-31:
         tape to the RIGHT of the sensor -> reported -53 mm
         tape to the LEFT  of the sensor -> reported +20 mm
     so positive does mean LEFT, and the raw reading has to be negated.
+
+    Those two readings ARE the evidence - the run CSVs they came from are no
+    longer kept. If a sensor is remounted, re-measure the same way (dry run,
+    magnet under a STATIONARY AGV) rather than trusting this line.
 
 autopilot.k_ratio / kd / ki
     Steering gains. k_ratio is in 1/m^2 (Kp = k_ratio*v has units rad/s per m).
@@ -59,12 +79,12 @@ autopilot.tau_d_s
     the 25/5 point above needs the heavier 50 ms.
 
 autopilot.ti_deadband_mm / i_clamp
-    Conditional integration (KIM2A section 2.1): integrate only while the error
+    Conditional integration: integrate only while the error
     is SMALL, freeze outside. This is anti-windup, not a conventional deadband -
     large excursions must contribute nothing. Do not invert this.
 
 autopilot.sr_pos_frac / sr_rate_frac
-    Speed reduction - draft section 5 error_cons. Responds to error magnitude AND
+    Speed reduction (error_cons). Responds to error magnitude AND
     rate, so it slows on approach to a curve rather than after deviating.
 
     These are FRACTIONS OF BASE SPEED per mm (and per mm/s), not absolute r/min.
@@ -96,7 +116,7 @@ autopilot.ramp_accel_rpm_s / ramp_jerk_rpm_s2
     S-curve shape is lost. _validate() enforces the ordering.
 
 autopilot.sensor_max_mm / sensor_max_step_mm
-    Sensor guards (KIM2A section 7.8). A single glitch frame would otherwise jerk
+    Sensor guards. A single glitch frame would otherwise jerk
     the steering hard through the derivative term. Beyond max_mm the frame is
     DISCARDED; a jump bigger than max_step_mm is CLAMPED toward the last accepted.
 
@@ -189,6 +209,57 @@ rfid.*  (Chafon CF821, UHF EPC Gen2, TCP 2022)
     normal silence of an empty antenna field reads as a comms fault. _validate()
     enforces that.
 
+timing.driver_timeout_s
+    How long a driver may go without answering a telemetry read before it is
+    declared silent and the vehicle is stopped. This is HARDWARE health and has
+    nothing to do with the browser watchdogs above - those cover an absent
+    operator, this covers an absent driver.
+
+    Must sit above telemetry_period_s or the ordinary gap between two polls
+    reads as a dead driver; _validate() enforces that. 0.6 s is three normal
+    polls, which is deliberately generous: the 5 Hz telemetry poll shares the
+    bus with setpoint writes, so an occasional late read is expected. Tighten it
+    only after watching the event log across several runs.
+
+can.heartbeat_ms
+    Producer heartbeat time (1017h), written to each drive at bus-up. The
+    driver default is 0 = OFF, and with it off a drive that has stopped
+    responding looks identical to one that is simply idle - which is exactly
+    the hole health.py was working around by inferring liveness from whether an
+    SDO happened to answer. 200 ms is the plan's recommendation.
+
+    Must be under half timing.driver_timeout_s or one missed heartbeat reads as
+    a dead driver; _validate() enforces that. 0 leaves the drive's own setting
+    alone.
+
+monitor.*
+    Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+    *** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+    The safety chain is lidar/encoders -> FX3 -> HWTO1/HWTO2 -> STO, in
+    hardware. CAN is the channel beside it that records what happened and warns
+    before a trip.
+
+    The analogue objects are polled ONE PER NODE per poll, round-robin, and
+    poll_period_s paces it. At tick rate that would be two SDO round-trips out
+    of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+    for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+    average tick and ~4% of the bus, sweeping the whole table in about a
+    second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+    leaves the control loop alone, which matters more.
+
+    Temperature warns are the plan's: driver trips at 85 C so warn at 70, motor
+    trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+    with stopping distance already degraded, high is regen the battery is
+    refusing to take, and the high warn wants to sit well below the drive's
+    own 63 V overvoltage trip.
+
+can.channel / can.adapter_serial
+    The SocketCAN interface to prefer, and which CANable2 to accept on the USB
+    fallback. Per-vehicle hardware identity, so it belongs in the profile rather
+    than in canbus/verify_drivers.py where it used to live. adapter_serial ""
+    accepts any matching adapter, which is what a bench with one wants.
+
 timing.log_tail_s
     How long to keep logging after a stop. The deceleration is the part worth
     seeing afterwards, and it happens entirely inside the drivers.
@@ -197,12 +268,32 @@ import json
 import math
 import os
 
-PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "agv-profile.json")
+PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "profiles")
+DEFAULT_PROFILE = "agv-01"
+
+# Which vehicle this process is. Deliberately NOT named AGV_ID: the sibling
+# KIM2A checkout uses that name, both are worked on from the same shell, and an
+# export meant for one vehicle silently retargeting the other is the kind of
+# mistake that only shows up as strange behaviour on a length of tape.
+PROFILE_ENV_VAR = "AGV_PROFILE"
 
 
 class ConfigError(Exception):
     """Raised for a malformed or physically nonsensical profile."""
+
+
+def profile_path(name=None):
+    """Resolve a profile name to a path. name > $AGV_PROFILE > DEFAULT_PROFILE.
+
+    There is no fallback to a profile that does not exist: a missing file is
+    fatal and says which name it looked for, in the same spirit as the key
+    checks below. A silent fallback would let a typo'd AGV_PROFILE boot the
+    wrong vehicle's geometry, which is exactly the failure this loader exists
+    to prevent.
+    """
+    name = name or os.environ.get(PROFILE_ENV_VAR) or DEFAULT_PROFILE
+    return os.path.join(PROFILE_DIR, f"{name}.json")
 
 
 # section -> json key -> (exported name, type). The exported names match the
@@ -269,10 +360,23 @@ _SCHEMA = {
         "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
     },
     "can": {
-        "bitrate":     ("CAN_BITRATE", int),
-        "left_node":   ("LEFT", int),
-        "right_node":  ("RIGHT", int),
-        "sensor_node": ("SENSOR_NODE", int),
+        "bitrate":        ("CAN_BITRATE", int),
+        "channel":        ("CAN_CHANNEL", str),
+        "adapter_serial": ("CAN_ADAPTER_SERIAL", str),
+        "heartbeat_ms":   ("CAN_HEARTBEAT_MS", int),
+        "left_node":      ("LEFT", int),
+        "right_node":     ("RIGHT", int),
+        "sensor_node":    ("SENSOR_NODE", int),
+    },
+    "monitor": {
+        "enabled":            ("MONITOR_ENABLED", bool),
+        "poll_period_s":      ("MONITOR_PERIOD_S", float),
+        "driver_temp_warn_c": ("MON_DRV_WARN_C", float),
+        "driver_temp_trip_c": ("MON_DRV_TRIP_C", float),
+        "motor_temp_warn_c":  ("MON_MTR_WARN_C", float),
+        "motor_temp_trip_c":  ("MON_MTR_TRIP_C", float),
+        "bus_v_warn_low":     ("MON_BUS_V_WARN_LOW", float),
+        "bus_v_warn_high":    ("MON_BUS_V_WARN_HIGH", float),
     },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
@@ -280,6 +384,7 @@ _SCHEMA = {
         "field_period_s":     ("FIELD_PERIOD_S", float),
         "manual_watchdog_s":  ("MANUAL_WATCHDOG_S", float),
         "auto_watchdog_s":    ("AUTO_WATCHDOG_S", float),
+        "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "log_tail_s":         ("LOG_TAIL_S", float),
     },
 }
@@ -414,6 +519,16 @@ def _derive(ns):
     ns["ACCEL_RPM_S"] = ns["RAMP"]["auto"]["accel"]
     ns["DECEL_RPM_S"] = ns["RAMP"]["auto"]["decel"]
 
+    # Threshold table for canmon.MonitorPoller.snapshot(). Two-sided on bus
+    # voltage: low is battery sag (stopping distance already degraded), high is
+    # regen the battery is refusing to take.
+    ns["MONITOR_THRESHOLDS"] = {
+        "drv_c": {"warn": ns["MON_DRV_WARN_C"], "trip": ns["MON_DRV_TRIP_C"]},
+        "mtr_c": {"warn": ns["MON_MTR_WARN_C"], "trip": ns["MON_MTR_TRIP_C"]},
+        "bus_v": {"warn_low": ns["MON_BUS_V_WARN_LOW"],
+                  "warn": ns["MON_BUS_V_WARN_HIGH"]},
+    }
+
     ns["NODES"] = {ns["LEFT"]: "left", ns["RIGHT"]: "right"}
     ns["TPDO1_COB"] = 0x180 + ns["SENSOR_NODE"]
     return ns
@@ -485,6 +600,8 @@ def _validate(ns):
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
+    check(bool(g("CAN_CHANNEL")), "can.channel must be a SocketCAN interface "
+                                  "name such as \"can0\"")
     ids = [g("LEFT"), g("RIGHT"), g("SENSOR_NODE")]
     check(all(1 <= n <= 127 for n in ids),
           "CAN node IDs must be in 1..127")
@@ -498,7 +615,41 @@ def _validate(ns):
           "timing.field_period_s must be >= loop_period_s")
     check(g("MANUAL_WATCHDOG_S") > 0 and g("AUTO_WATCHDOG_S") > 0,
           "watchdog deadlines must be > 0")
+    # A driver is declared silent when its telemetry stops answering. The
+    # deadline has to sit ABOVE the poll period or the normal gap between two
+    # polls reads as a fault - the same pairing check as loop/telemetry above,
+    # and one neither module could make alone.
+    check(g("DRIVER_TIMEOUT_S") > g("TELEMETRY_PERIOD_S"),
+          f"timing.driver_timeout_s ({g('DRIVER_TIMEOUT_S')}) must exceed "
+          f"telemetry_period_s ({g('TELEMETRY_PERIOD_S')}), or the gap between "
+          f"two normal polls is reported as a dead driver")
     check(g("LOG_TAIL_S") >= 0, "timing.log_tail_s must be >= 0")
+
+    # -- drive monitoring --------------------------------------------------
+    # Heartbeat is what makes a dead driver distinguishable from an idle one,
+    # so it has to arrive comfortably inside the window that declares the
+    # driver silent, or the health monitor trips on ordinary jitter.
+    check(g("CAN_HEARTBEAT_MS") >= 0, "can.heartbeat_ms must be >= 0")
+    check(g("CAN_HEARTBEAT_MS") == 0
+          or g("CAN_HEARTBEAT_MS") / 1000.0 < g("DRIVER_TIMEOUT_S") / 2.0,
+          f"can.heartbeat_ms ({g('CAN_HEARTBEAT_MS')}) must be under half "
+          f"timing.driver_timeout_s ({g('DRIVER_TIMEOUT_S')} s), or a single "
+          f"missed heartbeat reads as a dead driver")
+    # One object per node per poll. At the 20 ms tick this would be two SDO
+    # round-trips EVERY tick - about 4 ms of a 20 ms budget and a fifth of the
+    # bus - for values that move on a thermal timescale. Pacing it to 0.1 s
+    # sweeps the whole table in about a second, which is inside the 1-5 Hz the
+    # monitoring plan asks for and leaves the control loop alone.
+    check(g("MONITOR_PERIOD_S") >= g("LOOP_PERIOD_S"),
+          f"monitor.poll_period_s ({g('MONITOR_PERIOD_S')}) must be >= "
+          f"loop_period_s ({g('LOOP_PERIOD_S')})")
+    check(g("MON_DRV_WARN_C") < g("MON_DRV_TRIP_C"),
+          "monitor.driver_temp_warn_c must be below driver_temp_trip_c")
+    check(g("MON_MTR_WARN_C") < g("MON_MTR_TRIP_C"),
+          "monitor.motor_temp_warn_c must be below motor_temp_trip_c")
+    check(g("MON_BUS_V_WARN_LOW") < g("MON_BUS_V_WARN_HIGH"),
+          f"monitor.bus_v_warn_low ({g('MON_BUS_V_WARN_LOW')}) must be below "
+          f"bus_v_warn_high ({g('MON_BUS_V_WARN_HIGH')})")
 
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
@@ -539,19 +690,40 @@ def _validate(ns):
 
 def load(path=None):
     """Parse, derive, validate, then publish. Nothing is published on failure."""
-    path = path or PROFILE_PATH
+    path = path or profile_path()
     try:
         with open(path) as fh:
             doc = json.load(fh)
     except FileNotFoundError:
-        raise ConfigError(f"no vehicle profile at {path}")
+        raise ConfigError(
+            f"no vehicle profile at {path}. Set {PROFILE_ENV_VAR} to one of "
+            f"{_available() or ['(none found)']}, or add the file.")
     except json.JSONDecodeError as e:
         raise ConfigError(f"{os.path.basename(path)} is not valid JSON: {e}")
 
-    ns = _validate(_derive(_parse(doc)))
+    # The name inside the file has to agree with the file it came from. A
+    # profile copied for a second vehicle and not renamed would otherwise
+    # report the old identity in the event log and in every run CSV header -
+    # silent, and only noticed when comparing runs weeks later.
+    stem = os.path.splitext(os.path.basename(path))[0]
+    ns = _parse(doc)
+    if ns["PROFILE_NAME"] != stem:
+        raise ConfigError(f"profile_name is {ns['PROFILE_NAME']!r} but the file "
+                          f"is {stem}.json - rename one to match the other")
+
+    ns = _validate(_derive(ns))
     ns["PROFILE_PATH_LOADED"] = path
     globals().update(ns)
     return ns
+
+
+def _available():
+    """Profile names on disk, for the error message. Never raises."""
+    try:
+        return sorted(f[:-5] for f in os.listdir(PROFILE_DIR)
+                      if f.endswith(".json"))
+    except OSError:
+        return []
 
 
 load()

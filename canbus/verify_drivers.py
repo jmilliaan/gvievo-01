@@ -89,34 +89,46 @@ def socketcan_ready(iface):
         return False
 
 
-def find_adapter():
-    """Locate the CANable by USB VID/PID/serial - immune to ttyACM renumbering."""
+def find_adapter(serial=None):
+    """Locate the CANable by USB VID/PID/serial - immune to ttyACM renumbering.
+
+    serial defaults to this module's ADAPTER_SERIAL. Empty string or None means
+    accept any matching CANable2, which is what a bench with one adapter wants.
+    """
+    serial = ADAPTER_SERIAL if serial is None else (serial or None)
     from serial.tools import list_ports
     return [p for p in list_ports.comports()
             if p.vid == ADAPTER_VID and p.pid == ADAPTER_PID
-            and (ADAPTER_SERIAL is None or p.serial_number == ADAPTER_SERIAL)]
+            and (serial is None or p.serial_number == serial)]
 
 
-def open_bus(bitrate=None):
+def open_bus(bitrate=None, channel=None, adapter_serial=None):
     """Prefer SocketCAN; fall back to slcan on the auto-discovered port.
 
-    bitrate defaults to this module's BITRATE so the debug scripts here stay
-    standalone and never import the vehicle profile; canworker passes
-    config.CAN_BITRATE so the running system has a single source for it.
+    Every argument defaults to this module's own constant, so the scripts here
+    stay standalone and never import the vehicle profile. canworker passes
+    config.CAN_BITRATE / CAN_CHANNEL / CAN_ADAPTER_SERIAL, so the running system
+    has a single source for all three and a second vehicle with a different
+    adapter is a profile edit rather than a code edit.
+
+    adapter_serial="" means accept any matching CANable2.
     """
     bitrate = BITRATE if bitrate is None else bitrate
-    if socketcan_ready(CHANNEL):
-        return can.Bus(interface="socketcan", channel=CHANNEL), f"socketcan:{CHANNEL}"
+    channel = CHANNEL if channel is None else channel
+    if socketcan_ready(channel):
+        return can.Bus(interface="socketcan", channel=channel), f"socketcan:{channel}"
 
-    ports = find_adapter()
+    ports = find_adapter(adapter_serial)
     if not ports:
+        want = ADAPTER_SERIAL if adapter_serial is None else adapter_serial
         raise RuntimeError(
             f"no CANable ({ADAPTER_VID:#06x}:{ADAPTER_PID:#06x}"
-            f"{'/' + ADAPTER_SERIAL if ADAPTER_SERIAL else ''}) found on USB, "
-            f"and {CHANNEL} is not up")
+            f"{'/' + want if want else ''}) found on USB, "
+            f"and {channel} is not up")
     if len(ports) > 1:
         raise RuntimeError(f"ambiguous: {len(ports)} matching adapters "
-                           f"({[p.device for p in ports]}) - set ADAPTER_SERIAL")
+                           f"({[p.device for p in ports]}) - set "
+                           f"can.adapter_serial in the profile")
     dev = ports[0].device
     return can.Bus(interface="slcan", channel=dev, bitrate=bitrate), f"slcan:{dev}"
 

@@ -29,6 +29,11 @@ import events  # noqa: E402
 import motion  # noqa: E402
 from canworker import Controller  # noqa: E402
 
+# canworker puts canbus/ on sys.path, so this has to follow it. guard holds the
+# permitted/forbidden write lists from the monitoring plan's section 8; the
+# monitor page displays them because an assessor will ask to see them.
+import guard  # noqa: E402
+
 app = Flask(__name__)
 ctl = Controller()
 
@@ -54,6 +59,17 @@ def manual():
         watchdog_ms=int(config.MANUAL_WATCHDOG_S * 1000))
 
 
+@app.get("/monitor")
+def monitor():
+    return render_template(
+        "monitor.html", page="monitor",
+        heartbeat_ms=config.CAN_HEARTBEAT_MS,
+        bitrate_kbps=config.CAN_BITRATE // 1000,
+        nodes={str(n): config.NODES[n] for n in config.NODES},
+        allowed=sorted(f"{i:04X}h" for i in guard.ALLOWED),
+        forbidden=sorted(f"{i:04X}h" for i in guard.FORBIDDEN))
+
+
 @app.get("/auto")
 def auto():
     return render_template("auto.html", page="auto",
@@ -68,7 +84,19 @@ def auto():
 
 @app.get("/api/state")
 def api_state():
-    ctl.keepalive()          # the auto page's poll is also its heartbeat
+    """Vehicle state. ?hb=1 ALSO refreshes the auto watchdog.
+
+    The heartbeat is opt-in, and that is the safety-relevant part. It used to
+    be unconditional, which meant any page polling this fed the watchdog - so a
+    monitoring page open on a second screen would hold an auto run alive after
+    the auto page had been closed. Now only the page driving the run claims it.
+
+    Fail-safe in the right direction: a page that forgets the flag loses its
+    heartbeat and the run stops, rather than a bystander silently holding it
+    open.
+    """
+    if request.args.get("hb") == "1":
+        ctl.keepalive()
     return jsonify(ctl.snapshot())
 
 
@@ -137,6 +165,24 @@ def api_events():
         since = 0
     latest, items = events.since(since)
     return jsonify({"seq": latest, "events": items})
+
+
+@app.get("/api/can")
+def api_can():
+    """Drive monitoring detail. Read-only, and deliberately does NOT keepalive.
+
+    Split from /api/state so a monitoring page can poll as often as it likes
+    without touching the auto watchdog.
+    """
+    snap = ctl.snapshot()
+    return jsonify({
+        "can": snap.get("can"),
+        "nodes": snap.get("nodes"),
+        "health": snap.get("health"),
+        "connected": snap.get("connected"),
+        "how": snap.get("how"),
+        "error": snap.get("error"),
+    })
 
 
 @app.get("/api/config")
