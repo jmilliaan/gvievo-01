@@ -189,29 +189,6 @@ rfid.*  (Chafon CF821, UHF EPC Gen2, TCP 2022)
     normal silence of an empty antenna field reads as a comms fault. _validate()
     enforces that.
 
-rfid.*  (Chafon CF821, UHF EPC Gen2, TCP 2022)
-    enabled ships FALSE. The link layer is commissioned and reboot-safe
-    (manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
-    reader, so the driver must not be trusted to produce real tags until it is.
-
-    inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
-    here precisely so they can be corrected from a packet capture without a code
-    change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two's
-    complement checksum) is the documented Chafon family layout.
-
-    poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
-    streams on its own. Any positive value is command mode. The CF821 datasheet
-    lists "active mode / command mode / trigger mode", and which one this unit is
-    in has not been read yet; both are supported without a code change.
-
-    poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
-    100 ms poll means a tag's position is known to about 50 mm.
-
-    comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
-    normal silence of an empty antenna field reads as a comms fault. _validate()
-    enforces that.
-
-
 timing.log_tail_s
     How long to keep logging after a stop. The deceleration is the part worth
     seeing afterwards, and it happens entirely inside the drivers.
