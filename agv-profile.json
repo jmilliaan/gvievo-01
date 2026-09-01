@@ -22,7 +22,7 @@
     "sr_rate_frac": 0.001875,
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
-    "auto_rpm": 1600.0,
+    "auto_rpm": 2400.0,
     "ramp_accel_rpm_s": 1000.0,
     "ramp_jerk_rpm_s2": 4000.0,
     "sensor_max_mm": 100.0,
