@@ -1,3 +1,12 @@
+# Another repo, kept locally for reference only. It has its own .git, so without
+# this git would store a confusing gitlink instead of either the files or nothing.
 agv-kim2a-controller/
-**/__pycache__/
-*.py[cod]
+
+# Soak-monitor output and the watcher scripts that produce it. Runtime artifacts
+# and host-specific helpers, not source.
+logs/*.log
+logs/*.sh
+
+# Compiled bytecode.
+__pycache__/
+*.pyc

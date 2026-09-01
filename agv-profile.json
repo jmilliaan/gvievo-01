@@ -33,7 +33,7 @@
     "inner_wheel_min_rpm": 0.0
   },
   "manual": {
-    "full_rpm": 1200,
+    "full_rpm": 800,
     "half_ratio": 0.6
   },
   "drivers": {
