@@ -1,3 +1,5 @@
 agv-kim2a-controller/
 **/__pycache__/
 *.py[cod]
+*.log
+*.sh
