@@ -30,6 +30,7 @@ the next tick picks it up.
 """
 import math
 
+import branch
 import config
 import kinematics
 
@@ -84,19 +85,24 @@ class LineFollower:
 
     # ---- pieces ----------------------------------------------------------
 
-    def _read_error(self, sensor):
+    def _read_error(self, sensor, choice=branch.STRAIGHT):
         """Sensor dict -> (error_m, n_tracks, guard) with guard = why it changed.
 
         Returns error_m None when there is no usable track this tick.
+
+        `choice` is the standing branch order. STRAIGHT holds the main track,
+        which the sensor keeps on LCP2, so the default behaves as it always did
+        on plain tape. See branch.select_track for why this needs no case
+        analysis on #LCP.
         """
         tracks = (sensor or {}).get("tracks") or []
         if not tracks:
             return None, 0, ""
 
-        # Nearest valid LCP to the sensor centre. Behaves sensibly when a second
-        # line enters the field of view at a junction.
-        pos_mm = min(tracks, key=lambda t: abs(t.get("pos_mm", 0)))["pos_mm"]
-        pos_mm = float(pos_mm)
+        picked = branch.select_track(tracks, choice, config.BRANCH_POSITIVE_IS_LEFT)
+        if picked is None:
+            return None, len(tracks), ""
+        pos_mm = float(picked["pos_mm"])
         guard = ""
 
         if abs(pos_mm) > config.SENSOR_MAX_MM:
@@ -208,13 +214,14 @@ class LineFollower:
 
     # ---- the tick --------------------------------------------------------
 
-    def update(self, sensor, sensor_age_s, dt, running):
+    def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
         sensor_age_s : seconds since the last TPDO1 frame, None if never
         dt           : measured seconds since the previous update()
         running      : False ramps down but keeps steering while it decelerates
+        choice       : standing branch order (branch.STRAIGHT/LEFT/RIGHT)
 
         Returns (left_rpm, right_rpm, diag).
         """
@@ -223,7 +230,7 @@ class LineFollower:
 
         stale = sensor_age_s is None or sensor_age_s > config.SENSOR_TIMEOUT_S
         e_m, n_tracks, guard = (None, 0, "stale") if stale else \
-            self._read_error(sensor)
+            self._read_error(sensor, choice)
 
         p = i = d = 0.0
         if stale:
@@ -276,4 +283,5 @@ class LineFollower:
             "has_track": e_m is not None,
             "n_tracks": n_tracks,
             "guard": guard,
+            "branch": choice,
         }

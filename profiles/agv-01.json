@@ -30,7 +30,8 @@
     "line_loss_grace_m": 0.075,
     "sensor_timeout_s": 0.1,
     "dt_nominal_s": 0.02,
-    "inner_wheel_min_rpm": 0.0
+    "inner_wheel_min_rpm": 0.0,
+    "branch_positive_is_left": true
   },
   "manual": {
     "full_rpm": 1200,
@@ -71,6 +72,23 @@
     "reconnect_period_s": 2.0,
     "tag_hold_s": 2.0
   },
+  "dio": {
+    "enabled": true,
+    "ip": "192.168.1.30",
+    "port": 502,
+    "device_id": 1,
+    "scan_period_s": 0.05,
+    "timeout_s": 0.02,
+    "reconnect_period_s": 0.5,
+    "silent_warn_s": 2.0,
+    "di_base": 0,
+    "do_base": 0,
+    "num_di": 16,
+    "num_do": 16,
+    "di_flipped": false,
+    "di_names": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    "do_names": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+  },
   "can": {
     "bitrate": 125000,
     "channel": "can0",
@@ -98,5 +116,6 @@
     "auto_watchdog_s": 1.5,
     "driver_timeout_s": 0.6,
     "log_tail_s": 2.0
-  }
+  },
+  "branch_latch": []
 }

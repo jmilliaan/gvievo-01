@@ -72,6 +72,16 @@ def monitor():
         forbidden=sorted(f"{i:04X}h" for i in guard.FORBIDDEN))
 
 
+@app.get("/io")
+def io():
+    """Digital I/O lamps. Read-only: nothing here can energise an output."""
+    return render_template(
+        "io.html", page="io",
+        di_names=config.DIO_DI_NAMES, do_names=config.DIO_DO_NAMES,
+        dio_ip=f"{config.DIO_IP}:{config.DIO_PORT}",
+        scan_hz=round(1.0 / config.DIO_SCAN_PERIOD_S))
+
+
 @app.get("/auto")
 def auto():
     return render_template("auto.html", page="auto",

@@ -62,13 +62,26 @@ function showPid(p) {
 }
 
 // The reader is on its own thread; this only ever renders what it published.
-function showRfid(r) {
+function showRfid(r, b) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   if (!r) return;
   set('r-tag', r.tag || (r.last_tag ? r.last_tag : '–'));
   set('r-age', r.tag_age_s === null || r.tag_age_s === undefined
                ? 'no tag yet' : r.tag_age_s.toFixed(1) + ' s ago');
   set('r-count', r.tags_seen);
+
+  // The standing junction order. `straight` is the resting state, not a
+  // fault, so only a live order or an unhonoured one is coloured.
+  b = b || {};
+  set('r-branch', b.intent || 'straight');
+  set('r-branch-by',
+      b.unhonoured ? 'side not in this diverter'
+      : b.set_by ? 'tag ' + b.set_by
+      : b.junctions ? b.junctions + ' junction(s) configured'
+      : 'no junctions configured');
+  const br = document.getElementById('r-branch');
+  if (br) br.style.color = b.unhonoured ? 'var(--bad)'
+                         : (b.intent && b.intent !== 'straight') ? 'var(--warn)' : '';
 
   // Three states worth distinguishing, because they need different actions:
   // disabled (nothing to do), carrier down (physical), connected but silent
@@ -88,7 +101,7 @@ function showRfid(r) {
 }
 
 onState(s => {
-  showRfid(s.rfid);
+  showRfid(s.rfid, s.branch);
   armed = s.armed && s.mode === 'auto';
   running = s.auto_running;
   showPid(s.pid);

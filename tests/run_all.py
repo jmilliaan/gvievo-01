@@ -28,11 +28,13 @@ MODULES = [
     "test_canmon",
     "test_logging",
     "test_rfid",
+    "test_dio",
+    "test_branch",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 228
+EXPECTED_CHECKS = 341
 
 
 def main():

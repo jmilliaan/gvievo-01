@@ -53,6 +53,8 @@ import config  # noqa: E402
 import events  # noqa: E402
 import health  # noqa: E402
 import motion  # noqa: E402
+import branch  # noqa: E402
+import dio  # noqa: E402
 import rfid  # noqa: E402
 import runlog  # noqa: E402
 
@@ -284,6 +286,11 @@ class Controller:
         # Station tags. Its own thread and its own socket - the control tick
         # only ever reads rfid.snapshot(), never touches the network.
         self._rfid = rfid.RfidLink()
+        # The junction ladder. Scanned once per auto tick from the frozen RFID
+        # snapshot - see _branch_scan() for why the input image matters.
+        self._branch = branch.BranchEngine(
+            config.BRANCH_LATCH, config.BRANCH_POSITIVE_IS_LEFT)
+        self._branch_seen = 0
         # Pulled rather than pushed: the link already tracks its own health on
         # its own thread, and copying that verdict beats defining "healthy" for
         # the reader twice. Registered unconditionally - snapshot() reports a
@@ -291,6 +298,18 @@ class Controller:
         # "not in use" and never counts against a mode.
         self._hw.add(health.PullSource("rfid", self._rfid.snapshot),
                      config.RFID_SILENT_WARN_S)
+
+        # Digital I/O, same arrangement: its own thread, its own socket, pulled
+        # for health. Non-critical, so a dead module stops auto but never holds
+        # manual jogging hostage to a device manual does not use.
+        #
+        # Note the shared cable: the RFID reader is daisy-chained through this
+        # module, so losing it reports BOTH sources at once. That pairing is
+        # the signature of a cable or a power fault rather than two devices
+        # failing together, and it is only visible because both are registered.
+        self._dio = dio.DioLink()
+        self._hw.add(health.PullSource("dio", self._dio.snapshot),
+                     config.DIO_SILENT_WARN_S)
 
     # ---- lifecycle ------------------------------------------------------
 
@@ -301,10 +320,12 @@ class Controller:
         self._thread = threading.Thread(target=self._run, name="can", daemon=True)
         self._thread.start()
         self._rfid.start()          # no-op while rfid.enabled is false
+        self._dio.start()           # likewise while dio.enabled is false
 
     def shutdown(self):
         self._stop_evt.set()
         self._rfid.stop()
+        self._dio.stop()
         if self._thread:
             self._thread.join(timeout=6.0)
 
@@ -373,6 +394,12 @@ class Controller:
                 # Just the high-water mark. The UI fetches /api/events only when
                 # this moves, so a quiet vehicle costs no extra requests.
                 "rfid": self._rfid.snapshot(),
+                "dio": self._dio.snapshot(),
+                "branch": {"intent": self._branch.ladder.intent(),
+                           "set_by": self._branch.set_by,
+                           "unhonoured": self._branch.unhonoured,
+                           "unmatched": self._branch.unmatched,
+                           "junctions": len(config.BRANCH_LATCH)},
                 "health": self._health,
                 "can": {
                     "alarms": {str(n): self._alarms[n] for n in config.NODES},
@@ -570,6 +597,49 @@ class Controller:
 
     # ---- autopilot -------------------------------------------------------
 
+    def _branch_scan(self, sensor):
+        """One ladder scan against the RFID input image. Returns the choice.
+
+        Takes ONE snapshot and derives the pulse from it, PLC-style: RfidLink
+        runs on its own thread, so a tag landing between two reads would let
+        the rungs disagree about the same scan.
+
+        The pulse is a rise in tags_seen, not the `tag` field - `tag` is held
+        live for RFID_TAG_HOLD_S so a 5 Hz UI poll cannot miss it, and a held
+        tag would re-trigger its rung on every tick for two seconds. On a clear
+        contact that would pin the latch off.
+
+        Called from _run_autopilot AFTER its "no new TPDO1" early return, so the
+        ladder is scanned on the sensor's clock rather than the reader's. No tag
+        is lost by that - tags_seen is cumulative and last_tag persists, so the
+        read is merely deferred to the next frame, at most one 10 ms TPDO1
+        period. Only two tags arriving inside that window would drop one, which
+        no station layout can produce.
+        """
+        snap = self._rfid.snapshot()
+        seen = snap.get("tags_seen") or 0
+        tag = snap.get("last_tag") if seen > self._branch_seen else None
+        self._branch_seen = seen
+
+        was = self._branch.ladder.intent()
+        intent = self._branch.scan(tag)
+        # Edge only. This runs at 50 Hz and the event ring buffer would flush
+        # itself of everything meaningful within seconds otherwise.
+        if intent != was:
+            events.info(f"branch {intent} (tag {tag})" if intent != branch.STRAIGHT
+                        else f"branch cleared (tag {tag})")
+
+        # choose() applies the crossing rule and sets .unhonoured. The follower
+        # re-selects from the same choice and the same tracks, so it lands on
+        # the same one - the rule lives in branch.py rather than in both.
+        was_unhonoured = self._branch.unhonoured
+        _, choice = self._branch.choose((sensor or {}).get("nlcp"),
+                                        (sensor or {}).get("tracks"))
+        if self._branch.unhonoured and not was_unhonoured:
+            events.warn(f"branch {choice} ordered, but that side is not in this "
+                        f"diverter - carrying straight on")
+        return choice
+
     def _run_autopilot(self):
         """One PID tick. Returns the setpoint to write this pass."""
         tick = time.perf_counter()
@@ -589,7 +659,8 @@ class Controller:
         dt = (tick - self._auto_tick) if self._auto_tick else config.DT_NOMINAL_S
         self._auto_seen, self._auto_tick = seen, tick
 
-        left, right, diag = self._follower.update(sensor, age, dt, running)
+        choice = self._branch_scan(sensor)
+        left, right, diag = self._follower.update(sensor, age, dt, running, choice)
         commanded = (int(round(left)), int(round(right)))
         # DRY_RUN still computes and logs everything; only the wheels go quiet.
         target = (0, 0) if config.DRY_RUN else commanded
@@ -952,6 +1023,9 @@ class Controller:
         if not sensor_ok:
             report.append(SENSOR_SILENT_MSG)
             events.warn(SENSOR_SILENT_MSG)
+        # Intent must not survive a manual intervention: the AGV would take a
+        # junction on an order given before whatever made the operator stop it.
+        self._branch.reset()
         events.info(f"armed in {mode} mode")
         return {"ok": True, "report": report, "sensor_ok": sensor_ok}
 
@@ -967,6 +1041,7 @@ class Controller:
             self._target = (0, 0)
         if not was_armed:
             return {"ok": True}
+        self._branch.reset()
         events.info("disarmed")
 
         for nid in config.NODES:

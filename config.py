@@ -311,6 +311,7 @@ _SCHEMA = {
     "autopilot": {
         "dry_run":             ("DRY_RUN", bool),
         "invert_error":        ("INVERT_ERROR", bool),
+        "branch_positive_is_left": ("BRANCH_POSITIVE_IS_LEFT", bool),
         "k_ratio":             ("K_RATIO", float),
         "kd":                  ("KD", float),
         "ki":                  ("KI", float),
@@ -358,6 +359,25 @@ _SCHEMA = {
         "silent_warn_s":      ("RFID_SILENT_WARN_S", float),
         "reconnect_period_s": ("RFID_RECONNECT_PERIOD_S", float),
         "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
+    },
+    "dio": {
+        "enabled":            ("DIO_ENABLED", bool),
+        "ip":                 ("DIO_IP", str),
+        "port":               ("DIO_PORT", int),
+        # The module answers to any unit id; this is documentation, and the
+        # value the requests carry.
+        "device_id":          ("DIO_DEVICE_ID", int),
+        "scan_period_s":      ("DIO_SCAN_PERIOD_S", float),
+        "timeout_s":          ("DIO_TIMEOUT_S", float),
+        "reconnect_period_s": ("DIO_RECONNECT_PERIOD_S", float),
+        "silent_warn_s":      ("DIO_SILENT_WARN_S", float),
+        "di_base":            ("DIO_DI_BASE", int),
+        "do_base":            ("DIO_DO_BASE", int),
+        "num_di":             ("DIO_NUM_DI", int),
+        "num_do":             ("DIO_NUM_DO", int),
+        "di_flipped":         ("DIO_DI_FLIPPED", bool),
+        # "di_names"/"do_names" are lists sized against num_di/num_do;
+        # handled separately in _read_io_names().
     },
     "can": {
         "bitrate":        ("CAN_BITRATE", int),
@@ -421,6 +441,22 @@ def _coerce(value, want, where):
     raise ConfigError(f"{where}: unsupported schema type {want!r}")
 
 
+def _read_io_names(raw, count, where):
+    """dio.di_names / do_names -> exactly `count` strings.
+
+    _SCHEMA's flat table can say "a list of strings" but not "as many as
+    num_di", and that is the check worth having: a 16-lamp page fed 12 labels
+    would silently mislabel channels 12-15 or blank them, which is worse than
+    no names at all.
+    """
+    if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
+        raise ConfigError(f"{where}: expected a list of strings")
+    if len(raw) != count:
+        raise ConfigError(f"{where}: has {len(raw)} name(s) but there are "
+                          f"{count} channel(s) - they must match")
+    return [v.strip() for v in raw]
+
+
 def _read_ramp(raw):
     """drivers.ramp -> {"manual": {...}, "auto": {...}} of ints."""
     ramp = raw.get("ramp")
@@ -447,12 +483,77 @@ def _read_ramp(raw):
     return out
 
 
+def _read_branch_latch(rows, tag_len, ignore_tags):
+    """branch_latch -> validated rows, or [] when there are no junctions yet.
+
+    An entry tag sets a direction and an exit tag clears it (branch.Ladder).
+    Every check here exists to stop a rung being silently DEAD, which is the
+    only failure mode this table has: a tag that never matches produces no
+    error, no log line and no motion - the AGV simply drives past the junction.
+    """
+    if not isinstance(rows, list):
+        raise ConfigError("branch_latch: expected a list")
+    want = {"entry_tag", "exit_tag", "branch"}
+    width = tag_len * 2
+    seen = {}
+    out = []
+    for i, row in enumerate(rows):
+        where = f"branch_latch[{i}]"
+        if not isinstance(row, dict):
+            raise ConfigError(f"{where}: expected an object")
+        unknown = set(row) - want
+        if unknown:
+            raise ConfigError(f"{where}: unknown key(s) {sorted(unknown)}")
+        missing = want - set(row)
+        if missing:
+            raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
+
+        side = _coerce(row["branch"], str, f"{where}.branch")
+        if side not in ("left", "right"):
+            raise ConfigError(f"{where}.branch: expected 'left' or 'right', "
+                              f"got {side!r}")
+
+        tags = {}
+        for key in ("entry_tag", "exit_tag"):
+            raw = row[key]
+            # The reader hands tags over as hex text (rfid.tag_of), so a JSON
+            # number here can never match one - and would fail silently.
+            if not isinstance(raw, str):
+                raise ConfigError(
+                    f"{where}.{key}: expected a {width}-character hex string "
+                    f"like \"000A\", got {raw!r}. Tag ids come from "
+                    f"rfid.tag_of() as hex text, so a number never matches.")
+            tag = raw.upper()
+            if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
+                raise ConfigError(f"{where}.{key}: expected {width} hex "
+                                  f"characters, got {raw!r}")
+            if tag in ignore_tags:
+                raise ConfigError(f"{where}.{key}: {tag} is also in "
+                                  f"rfid.ignore_tags, so it is discarded before "
+                                  f"the ladder can see it")
+            tags[key] = tag
+
+        if tags["entry_tag"] == tags["exit_tag"]:
+            raise ConfigError(f"{where}: entry_tag and exit_tag are both "
+                              f"{tags['entry_tag']} - the same read cannot both "
+                              f"set and clear the latch")
+        for key, tag in tags.items():
+            if tag in seen:
+                raise ConfigError(f"{where}.{key}: tag {tag} is already used by "
+                                  f"{seen[tag]} - one tag cannot mean two things")
+            seen[tag] = f"{where}.{key}"
+        out.append({"entry_tag": tags["entry_tag"],
+                    "exit_tag": tags["exit_tag"], "branch": side})
+    return out
+
+
 def _parse(doc):
     """Raw JSON document -> flat namespace of primitives. Strict both ways."""
     if not isinstance(doc, dict):
         raise ConfigError("profile must be a JSON object")
 
-    expected_sections = set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
+    expected_sections = (set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
+                         | {"branch_latch"})
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -471,6 +572,8 @@ def _parse(doc):
         allowed = set(fields)
         if section == "drivers":
             allowed.add("ramp")
+        if section == "dio":
+            allowed |= {"di_names", "do_names"}
         unknown = set(block) - allowed
         if unknown:
             raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}")
@@ -481,6 +584,18 @@ def _parse(doc):
             ns[name] = _coerce(block[key], want, f"{section}.{key}")
 
     ns["RAMP"] = _read_ramp(doc["drivers"])
+    # Sanity-check the counts BEFORE the name lists are sized against them, or
+    # "num_di": 0 gets reported as a problem with di_names, which sends the
+    # reader to fix the wrong key.
+    for key, name in (("num_di", "DIO_NUM_DI"), ("num_do", "DIO_NUM_DO")):
+        if not 1 <= ns[name] <= 256:
+            raise ConfigError(f"dio.{key}: expected 1..256, got {ns[name]}")
+    ns["DIO_DI_NAMES"] = _read_io_names(
+        doc["dio"]["di_names"], ns["DIO_NUM_DI"], "dio.di_names")
+    ns["DIO_DO_NAMES"] = _read_io_names(
+        doc["dio"]["do_names"], ns["DIO_NUM_DO"], "dio.do_names")
+    ns["BRANCH_LATCH"] = _read_branch_latch(
+        doc["branch_latch"], ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]))
     return ns
 
 
@@ -650,6 +765,33 @@ def _validate(ns):
     check(g("MON_BUS_V_WARN_LOW") < g("MON_BUS_V_WARN_HIGH"),
           f"monitor.bus_v_warn_low ({g('MON_BUS_V_WARN_LOW')}) must be below "
           f"bus_v_warn_high ({g('MON_BUS_V_WARN_HIGH')})")
+
+    # -- dio --------------------------------------------------------------
+    check(1 <= g("DIO_PORT") <= 65535, "dio.port must be in 1..65535")
+    check(0 <= g("DIO_DEVICE_ID") <= 255, "dio.device_id must be in 0..255")
+    # num_di/num_do ranges are checked in _parse(), before the name lists are
+    # sized against them.
+    check(g("DIO_DI_BASE") >= 0, "dio.di_base must be >= 0")
+    check(g("DIO_DO_BASE") >= 0, "dio.do_base must be >= 0")
+    check(g("DIO_SCAN_PERIOD_S") > 0, "dio.scan_period_s must be > 0")
+    check(g("DIO_TIMEOUT_S") > 0, "dio.timeout_s must be > 0")
+    check(g("DIO_RECONNECT_PERIOD_S") > 0, "dio.reconnect_period_s must be > 0")
+    # A scan cannot outlast its own period, or the loop falls permanently
+    # behind and every snapshot is older than it looks.
+    check(g("DIO_TIMEOUT_S") < g("DIO_SCAN_PERIOD_S"),
+          f"dio.timeout_s ({g('DIO_TIMEOUT_S')}) must be below scan_period_s "
+          f"({g('DIO_SCAN_PERIOD_S')}) - two reads must fit inside one scan")
+    # Otherwise a single late scan reads as a fault and the module flaps.
+    check(g("DIO_SILENT_WARN_S") > g("DIO_SCAN_PERIOD_S"),
+          f"dio.silent_warn_s ({g('DIO_SILENT_WARN_S')}) must exceed "
+          f"scan_period_s ({g('DIO_SCAN_PERIOD_S')})")
+    # The retry wait has to fit inside the health window, or a single transient
+    # error is enough to declare the module dead - the reconnect sleep alone
+    # would age the last good scan past silent_warn_s and stop auto.
+    check(g("DIO_RECONNECT_PERIOD_S") < g("DIO_SILENT_WARN_S"),
+          f"dio.reconnect_period_s ({g('DIO_RECONNECT_PERIOD_S')}) must be "
+          f"below silent_warn_s ({g('DIO_SILENT_WARN_S')}) - otherwise one "
+          f"retry always trips the health timeout")
 
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")

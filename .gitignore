@@ -3,3 +3,8 @@ agv-kim2a-controller/
 *.py[cod]
 *.log
 *.sh
+
+# ...but these are documentation, not runtime artifacts: rfid-setup.md calls them
+# "the four files" and step 1/2 of the guide is running them. Without this negation
+# they survive only by already being staged, which a re-add would silently undo.
+!manuals/rfid-setup/*.sh

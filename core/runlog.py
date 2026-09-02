@@ -66,7 +66,7 @@ COLUMNS = [
     "e_mm", "e_used", "p", "i", "d", "omega_cmd",
     "speed_red", "v_base", "n_l", "n_r", "sat_scale",
     "rpm_l", "rpm_r", "has_track", "n_tracks", "guard",
-    "sw_l", "sw_r", "loop_ms",
+    "sw_l", "sw_r", "loop_ms", "branch",
 ]
 
 
