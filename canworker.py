@@ -23,15 +23,18 @@ import threading
 import time
 from concurrent.futures import Future
 
+# The layer directories are put on sys.path rather than made into packages, so
+# every module keeps importing its neighbours by bare name. That is what lets
+# drivers/canbus/ still run standalone on a bench: its modules import each other
+# as `verify_drivers`, not `drivers.canbus.verify_drivers`, and as a package
+# they would resolve twice under two different names.
+#
+# The cost is that module BASENAMES are one flat namespace across these
+# directories. Two modules may never share a name and none may shadow a stdlib
+# module; tests/test_layout.py enforces it.
 _ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _ROOT)
-# canbus/ is the CAN layer: SDO transfers, bus discovery, CiA 402 words and the
-# MLS frame decoder. It is a RUNTIME dependency of the web app - moving or
-# renaming that directory breaks the server. It stays a plain directory on
-# sys.path rather than a package, because its modules import each other by bare
-# name so they also run standalone on a bench; as a package they would resolve
-# twice, once as `verify_drivers` and once as `canbus.verify_drivers`.
-sys.path.insert(0, os.path.join(_ROOT, "canbus"))
+for _d in ("", "core", "drivers", os.path.join("drivers", "canbus")):
+    sys.path.insert(0, os.path.join(_ROOT, _d) if _d else _ROOT)
 
 import can  # noqa: E402
 from alarms import (decode_emcy, decode_nmt,  # noqa: E402

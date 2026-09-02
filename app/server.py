@@ -16,22 +16,24 @@ import sys
 
 from flask import Flask, jsonify, render_template, request
 
-# This file lives at the repo root, so this puts the repo root itself on the
-# path. That makes `python3 app.py`, `python3 /home/.../agv_can/app.py` from a
-# systemd unit, and an import from any cwd all resolve the same modules.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# This file lives in app/, so the repo root is its PARENT. Anchoring to the root
+# rather than to this file is what makes `python3 main.py`, a systemd unit with
+# an absolute path, and an import from any cwd all resolve the same modules.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _d in ("", "core", "drivers", os.path.join("drivers", "canbus")):
+    sys.path.insert(0, os.path.join(_ROOT, _d) if _d else _ROOT)
 
-# Flat imports: motion.py and canworker.py are siblings of this file. templates/
-# and static/ are siblings too, which is exactly where Flask looks by default.
+# Bare imports throughout - see the note in canworker.py on why the layer
+# directories go on sys.path instead of becoming packages. templates/ and
+# static/ are siblings of THIS file, which is exactly where Flask looks.
 import autopilot  # noqa: E402
 import config  # noqa: E402
 import events  # noqa: E402
 import motion  # noqa: E402
 from canworker import Controller  # noqa: E402
 
-# canworker puts canbus/ on sys.path, so this has to follow it. guard holds the
-# permitted/forbidden write lists from the monitoring plan's section 8; the
-# monitor page displays them because an assessor will ask to see them.
+# guard holds the permitted/forbidden write lists from the monitoring plan's
+# section 8; the monitor page displays them because an assessor will ask.
 import guard  # noqa: E402
 
 app = Flask(__name__)

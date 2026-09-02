@@ -19,7 +19,12 @@ import time
 
 import plotrun
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+# Anchored to the REPO ROOT, not to this file. runlog.py lives in core/, so
+# dirname(__file__) would be core/ and every run would quietly land in
+# core/logs/ - no error, just numbering restarting at 0001 beside the real runs.
+# If this module ever moves again, this line moves with it.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(_ROOT, "logs")
 FLUSH_PERIOD_S = 1.0
 CSV_NAME = "run.csv"
 PNG_NAME = "run.png"

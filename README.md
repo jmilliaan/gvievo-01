@@ -12,7 +12,7 @@ provides a manual jog pad and an automatic line-following mode.
 | Control loop | 50 Hz, telemetry 5 Hz, sensor field 2 Hz |
 | Nodes | 1 left driver, 2 right driver, 10 MLS sensor (TPDO1 `0x18A`) |
 | `dry_run` | **false** — motors are live |
-| Tests | 215 offline checks, all passing |
+| Tests | 228 offline checks, all passing |
 
 ---
 
@@ -52,10 +52,10 @@ under a **stationary** AGV, never by pushing it.
 ## Running
 
 ```bash
-python3 app.py                          # 0.0.0.0:5000 — /manual and /auto
-python3 app.py --port 5001
-python3 app.py --host 127.0.0.1
-AGV_PROFILE=agv-02 python3 app.py       # a different vehicle
+python3 main.py                         # 0.0.0.0:5000 — /manual and /auto
+python3 main.py --port 5001
+python3 main.py --host 127.0.0.1
+AGV_PROFILE=agv-02 python3 main.py      # a different vehicle
 ```
 
 **Which vehicle** comes from the `AGV_PROFILE` environment variable, which names
@@ -68,8 +68,12 @@ SIGINT rather than SIGTERM so the `KeyboardInterrupt` path de-energises the
 motors on the way out. The unit carries the vehicle identity:
 
 ```ini
+ExecStart=/usr/bin/python3 /home/gvipc-evo-01/agv_can/main.py
 Environment=AGV_PROFILE=agv-01
 ```
+
+`main.py` is thin and sits at the repo root precisely so `ExecStart` names a path
+that will not move again when the tree below it is reorganised.
 
 `--debug` enables Flask autoreload and is **off by default**: a reload would
 open `can0` twice and orphan an armed driver.
@@ -97,29 +101,48 @@ is unaffected; the failure is captured in `RunLog.error`, never raised.
 ## Layout
 
 ```
-profiles/          One JSON per vehicle. Every tunable parameter lives here.
+main.py            Entry point. Thin: sets up sys.path, calls the server.
 config.py          Loads and validates the profile. Everything imports this.
-
-app.py             Flask routes. Entry point.
 canworker.py       Bus thread: NMT, SDO, 50 Hz loop, arm/disarm, telemetry.
-autopilot.py       LineFollower — the PID. Pure computation, no I/O.
-kinematics.py      body <-> wheels. No control logic, no sensor knowledge.
-motion.py          Manual jog pad table, labels, key bindings.
-health.py          Hardware liveness: the two-tier watchdog table.
-canmon.py          Drive monitoring: the round-robin SDO object table.
-events.py          Operator event ring buffer (200). Survives a page reload.
-rfid.py            Chafon CF821 station-tag reader. Own thread, own socket.
-runlog.py          Per-run CSV + PNG into logs/NNNN-auto_<timestamp>/
-plotrun.py         Per-run PNG. matplotlib, imported lazily.
-test_autopilot.py  215 offline checks. No hardware needed.
 
-templates/ static/ Web UI. base.html is the shared shell.
-canbus/            CAN layer: SDO, bus discovery, CiA 402, MLS decode,
-                   alarm tables, and the write deny-list. Runtime
-                   dependency, and standalone on a bench.
+core/              No hardware, no Flask. Computation and record-keeping.
+  autopilot.py       LineFollower — the PID.
+  kinematics.py      body <-> wheels. No control logic, no sensor knowledge.
+  motion.py          Manual jog pad table, labels, key bindings.
+  health.py          Hardware liveness: the two-tier watchdog table.
+  canmon.py          Drive monitoring: the round-robin SDO object table.
+  events.py          Operator event ring buffer (200). Survives a reload.
+  runlog.py          Per-run CSV + PNG into logs/NNNN-auto_<timestamp>/
+  plotrun.py         Per-run PNG. matplotlib, imported lazily.
+
+drivers/           Everything that talks to a device.
+  rfid.py            Chafon CF821 station-tag reader. Own thread and socket.
+  canbus/            CAN layer: SDO, bus discovery, CiA 402, MLS decode,
+                     alarm tables, the write deny-list. Runtime dependency,
+                     and standalone on a bench.
+
+app/               The web tier.
+  server.py          Flask routes.
+  templates/         base.html is the shared shell.
+  static/            app.css and the per-page scripts.
+
+tests/             228 offline checks. run_all.py runs them. No hardware.
+profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Driver, sensor and RFID documentation, searchable.
 logs/              One directory per auto run.
 ```
+
+**Layers say what a module may touch.** `core/` reaches neither the bus nor the
+browser, `drivers/` owns every device conversation, `app/` only serves. The three
+files left at the root are the ones you open first: the profile loader everything
+imports, the orchestrator that runs the vehicle, and the entry point.
+
+**The layer directories go on `sys.path`; they are not packages.** Every module
+imports its neighbours by bare name, which is what lets `drivers/canbus/` still
+run standalone on a bench. The cost is that module *basenames* are one flat
+namespace — two modules may never share a name, and none may shadow a stdlib
+module. `tests/test_layout.py` enforces both, along with the filesystem anchors
+that would otherwise follow a module into its new directory.
 
 **Dependency graph:** `config` imports only the standard library; everything
 else imports `config`. No cycles.
@@ -140,7 +163,7 @@ transmitting — two threads doing SDO at once read each other's replies.
 
 `TpdoTap` wraps the bus and routes every **unsolicited** frame — the MLS stream,
 EMCY alarms, drive heartbeats — before the SDO helpers can discard them. That is
-what lets `sdo_read`/`sdo_write` be reused verbatim from `canbus/` while the
+what lets `sdo_read`/`sdo_write` be reused verbatim from `drivers/canbus/` while the
 pushed traffic still reaches its decoder. It is the only thing standing between
 a pushed frame and the bin: both helpers keep only frames matching
 `0x580+node` and drop the rest.
@@ -208,7 +231,7 @@ scales **both** wheels by the same factor, so the commanded arc is preserved.
 ### Hardware health
 
 Separate from the browser watchdogs above, and deliberately so: those cover an
-absent **operator**, this covers an absent **device**. [health.py](health.py)
+absent **operator**, this covers an absent **device**. [core/health.py](core/health.py)
 holds one table, one row per supervised device, and each row declares its own
 tier:
 
@@ -274,7 +297,7 @@ the bench first.
 ### What the vehicle may write over CAN
 
 CANopen is bidirectional, and several objects can defeat safety behaviour from a
-single stray frame. [canbus/guard.py](canbus/guard.py) enforces a deny-list on
+single stray frame. [drivers/canbus/guard.py](drivers/canbus/guard.py) enforces a deny-list on
 every write path, and `/monitor` publishes it:
 
 | | |
@@ -425,8 +448,8 @@ the sampling.
 ## Testing
 
 ```bash
-python3 test_autopilot.py     # 215 checks, no hardware
-python3 -c "import app"       # exits 1 with a named check on a bad profile
+python3 tests/run_all.py      # 228 checks, no hardware
+python3 -c "import main"      # exits 1 with a named check on a bad profile
 ```
 
 Two kinds of test: a plant simulation that integrates
@@ -435,9 +458,17 @@ Two kinds of test: a plant simulation that integrates
 asserts the rig can actually *see* instability (`K_RATIO = 100` must diverge),
 without which the passes would mean nothing.
 
-The suite also contains a **source scan** that fails the build if any
-`self._read` / `_write` / `_nmt` / `bus.` call appears inside a
-`with self._lock:` block. Keep it — see below.
+The suite is split by subject under `tests/`, and `run_all.py` **pins both the
+module list and the total check count**. Splitting the safety net has one silent
+failure mode — a module that stops being imported costs coverage while the run
+still ends in "all checks passed" — so a dropped module fails the run instead.
+Raise `EXPECTED_CHECKS` deliberately when adding checks; never lower it to get a
+green run.
+
+It also contains **source scans** that fail the build on structural regressions:
+any `self._read` / `_write` / `_nmt` / `bus.` call inside a `with self._lock:`
+block, a module whose filesystem anchor followed it into a new directory, and a
+basename collision on the flat `sys.path`. Keep them — see below.
 
 After a hardware change: `/manual` → ARM → the tape strip should populate and
 track a magnet moved under the sensor. `/auto` → ARM → START → STOP, and confirm
@@ -470,7 +501,7 @@ call site flushes the entire 200-entry ring within four seconds. Nothing on a
 per-tick path emits, and anything edge-triggered (a driver fault, a lost tape)
 fires once per **edge**, not once per poll.
 
-**`canbus/` is a runtime dependency, not a scratch directory.** `canworker`
+**`drivers/canbus/` is a runtime dependency, not a scratch directory.** `canworker`
 imports `open_bus`, `sdo_read`, `sdo_write`, `decode_state` and `decode_tpdo1`
 from it. Moving or renaming that directory breaks the server. Do **not** make
 those modules import `config` — they must stay runnable standalone on a bench;
