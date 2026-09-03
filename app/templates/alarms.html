@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}AGV — alarms{% endblock %}
+{% block body %}
+
+<div class="warn">
+  <b>A record, not a safety function.</b>
+  Nothing here can stop the vehicle and nothing here clears a fault — a latched
+  fault is cleared at the panel with <b>Reset</b>. The log is a ring buffer of
+  the last {{ max_events }} events held on the controller, so it survives a page
+  reload and a second browser but not a restart of the service.
+</div>
+
+<section class="sensor">
+  <h2>Standing <small>what is wrong right now</small></h2>
+  <div id="al-standing" class="mon-alarms">
+    <div class="mon-none">nothing outstanding</div>
+  </div>
+</section>
+
+<section class="sensor">
+  <h2>Log <small>newest first · {{ max_events }} retained</small></h2>
+
+  {# Filters, not controls: they change what this page shows and touch nothing
+     on the vehicle. Errors cannot be filtered out - hiding the reason the AGV
+     stopped is the one thing this page must never help you do. #}
+  <div class="al-filters">
+    <label><input type="checkbox" id="f-info" checked> info</label>
+    <label><input type="checkbox" id="f-warn" checked> warn</label>
+    <label class="fixed"><input type="checkbox" checked disabled> error
+      <i>always shown</i></label>
+    <span class="al-count" id="al-count">—</span>
+  </div>
+
+  <div id="al-log" class="al-log">
+    <div class="mon-none">waiting for the first poll…</div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block script %}
+<script src="{{ url_for('static', filename='alarms.js') }}"></script>
+{% endblock %}

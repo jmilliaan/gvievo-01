@@ -88,7 +88,7 @@ def test_dio_scan():
     s["di_names"][0] = "clobbered"
     check("snapshot returns copies, not the live image",
           link.snapshot()["di"][0] is False)
-    check("names are copied too", link.snapshot()["di_names"][0] == "")
+    check("names are copied too", link.snapshot()["di_names"][0] != "clobbered")
 
 
 def test_dio_flipped():
@@ -272,8 +272,13 @@ def test_dio_profile():
     ns = config._parse(d)
     check("names are stripped, so stray spaces cannot misalign the column",
           ns["DIO_DI_NAMES"][0] == "estop")
-    check("the profile ships every name blank, to be filled in as the harness "
-          "is mapped", all(n == "" for n in config.DIO_DI_NAMES))
+    # The panel channels are mapped, so they must be labelled - an unnamed
+    # lamp on /io next to a button that arms the vehicle is a trap.
+    for ch, what in ((config.PANEL_DI_RESET, "reset"),
+                     (config.PANEL_DI_START, "start"),
+                     (config.PANEL_DI_AUTO, "auto selector")):
+        check(f"DI{ch:02d} ({what}) is named on the /io page",
+              config.DIO_DI_NAMES[ch] != "", config.DIO_DI_NAMES[ch])
 
 
 TESTS = [

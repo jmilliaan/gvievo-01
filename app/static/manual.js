@@ -149,14 +149,6 @@ addEventListener('pagehide', panic);
 document.addEventListener('visibilitychange', () => { if (document.hidden) panic(); });
 
 // --- arm / disarm --------------------------------------------------------
-document.getElementById('arm').addEventListener('click', async () => {
-  try {
-    const r = await api('/api/arm', {mode: 'manual'});
-    (r.report || []).forEach(l => log(l));
-    log('armed — hold a direction to drive');
-  } catch (e) { log('ARM FAILED: ' + e.message); }
-});
-
 document.getElementById('disarm').addEventListener('click', async () => {
   panic();
   try { await api('/api/disarm'); log('disarmed — motors de-energised'); }

@@ -168,7 +168,120 @@ def test_derived_constants():
           f"fwd-left {motion.velocities('forward_left')}")
 
 
+def test_params_view():
+    """describe() is what /params renders, and it is generated from _SCHEMA.
+
+    The failure this guards is silent and specific to a display page: a
+    parameter the vehicle is running on that nobody can see. A hand-written
+    page drifts the moment a key is added - so the page is generated, and this
+    checks the generator covers the schema rather than checking a list.
+    """
+    print("\nthe parameters view covers the whole profile")
+
+    sections = config.describe()
+    rows = {(s["name"], r["key"]): r for s in sections for r in s["rows"]}
+
+    missing = [f"{sec}.{key}" for sec, fields in config._SCHEMA.items()
+               for key in fields if (sec, key) not in rows]
+    check("every schema key is displayed", not missing, str(missing))
+
+    # The three the flat schema cannot express, and the one top-level list.
+    for sec, key in (("drivers", "ramp.auto.accel"), ("dio", "di_names"),
+                     ("lidar", "zone_bytes")):
+        check(f"the nested {sec}.{key} is displayed", (sec, key) in rows)
+    check("branch_latch is displayed",
+          any(s["name"] == "branch_latch" for s in sections))
+
+    derived = {r["key"] for s in sections if s["name"] == "derived"
+               for r in s["rows"]}
+    for const in ("MPS_PER_RPM", "MAX_SPEED_MPS", "MANUAL_HALF_RPM",
+                  "LINE_LOSS_GRACE_MAX_S", "TPDO1_COB"):
+        check(f"{const} is shown as derived", const in derived)
+    # Derived values cannot be edited, so they must not be offered as if they
+    # could: no JSON key, and the relation that produced them instead.
+    check("a derived row names its relation, not a JSON key",
+          all(r.get("from") and not r["const"]
+              for s in sections if s["name"] == "derived" for r in s["rows"]))
+
+    check("the profile's own values are shown",
+          rows[("autopilot", "k_ratio")]["value"] == config._fmt(config.K_RATIO)
+          and rows[("can", "channel")]["value"] == config.CAN_CHANNEL,
+          rows[("autopilot", "k_ratio")]["value"])
+
+    # Units are read off the exported name's suffix. The ones worth pinning are
+    # the ones a naive suffix rule gets wrong.
+    units = {r["const"]: r["unit"] for s in sections for r in s["rows"]}
+    units.update({r["key"]: r["unit"] for s in sections
+                  if s["name"] == "derived" for r in s["rows"]})
+    for const, want in (("LOOP_PERIOD_S", "s"), ("CAN_HEARTBEAT_MS", "ms"),
+                        ("TI_DEADBAND_MM", "mm"), ("TRACK_M", "m"),
+                        ("RAMP_JERK_RPM_S2", "r/min/s\u00b2"),
+                        ("MON_DRV_WARN_C", "\u00b0C"),
+                        ("MON_BUS_V_WARN_LOW", "V"),
+                        ("MPS_PER_RPM", "m/s per r/min")):
+        check(f"{const} reads as {want}", units.get(const) == want,
+              repr(units.get(const)))
+
+    # true/false, not Python's True/False - the page is read next to the JSON
+    # file it describes, and the two must be the same word.
+    check("booleans render as JSON does",
+          rows[("autopilot", "dry_run")]["value"] in ("true", "false"),
+          rows[("autopilot", "dry_run")]["value"])
+    check("a whole float drops its .0",
+          rows[("vehicle", "motor_max_rpm")]["value"] == "4000",
+          rows[("vehicle", "motor_max_rpm")]["value"])
+    # An empty string is a SETTING here (rfid.init_hex empty means the reader is
+    # never told to start), so it must never render as a blank cell.
+    check("no cell is blank", all(r["value"] for s in sections
+                                  for r in s["rows"]))
+
+
+def test_tuning_notes_are_parsed_not_restated():
+    """The prose on /params is config.py's own docstring, parsed out of it.
+
+    Every setting that is not self-evident is already explained at the top of
+    this module - it is written there BECAUSE JSON cannot carry comments.
+    Copying those paragraphs into a template makes two versions of one
+    explanation, and the one that goes stale is the one on the screen.
+    """
+    print("\ntuning notes are parsed from the module docstring")
+
+    notes = config.tuning_notes()
+    check("the notes parse at all", len(notes) > 20, f"{len(notes)} note(s)")
+    check("no note is empty", all(v.strip() for v in notes.values()))
+
+    # A heading naming several keys has to reach all of them, or the second and
+    # third key look undocumented while their paragraph exists.
+    for key in ("autopilot.k_ratio", "autopilot.kd", "autopilot.ki"):
+        check(f"{key} carries the shared gains note", key in notes)
+    check("a key named without its section still resolves",
+          "vehicle.invert_right" in notes)
+    check("a section-wide note is kept as such", "rfid.*" in notes)
+
+    # Attachment, not just parsing: the note has to land on the row.
+    rows = {(s["name"], r["key"]): r for s in config.describe()
+            for r in s["rows"]}
+    check("the dry-run note reaches its row",
+          "dry run" in (rows[("autopilot", "dry_run")]["note"] or "").lower())
+    check("a nested ramp row inherits the drivers.ramp note",
+          "6083h" in (rows[("drivers", "ramp.auto.accel")]["note"] or ""))
+    check("a section note reaches a row that has none of its own",
+          "CF821" in (rows[("rfid", "ip")]["note"] or ""))
+
+    # Parsing must never be able to take the page down: a docstring rewritten
+    # into prose yields no notes, not an exception.
+    doc, config.__doc__ = config.__doc__, "no headings here at all"
+    try:
+        check("a docstring with no notes yields none, quietly",
+              config.tuning_notes() == {})
+    finally:
+        config.__doc__ = doc
+    check("...and the notes come back", len(config.tuning_notes()) > 20)
+
+
 TESTS = [
     test_config_profile,
     test_derived_constants,
+    test_params_view,
+    test_tuning_notes_are_parsed_not_restated,
 ]

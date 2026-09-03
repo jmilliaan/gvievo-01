@@ -267,6 +267,8 @@ timing.log_tail_s
 import json
 import math
 import os
+import re
+import textwrap
 
 PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "profiles")
@@ -379,6 +381,38 @@ _SCHEMA = {
         # "di_names"/"do_names" are lists sized against num_di/num_do;
         # handled separately in _read_io_names().
     },
+    "lidar": {
+        # SICK nanoScan3, streaming UDP to this host. READ-ONLY: we bind a
+        # socket and listen. Nothing here opens a CoLa 2 session or writes to
+        # the device - see drivers/lidar.py.
+        "enabled":               ("LIDAR_ENABLED", bool),
+        "host_ip":               ("LIDAR_HOST_IP", str),
+        "sensor_ip":             ("LIDAR_SENSOR_IP", str),
+        "port":                  ("LIDAR_PORT", int),
+        "silent_warn_s":         ("LIDAR_SILENT_WARN_S", float),
+        "reassembly_timeout_s":  ("LIDAR_REASSEMBLY_TIMEOUT_S", float),
+        "reconnect_period_s":    ("LIDAR_RECONNECT_PERIOD_S", float),
+        "decimate":              ("LIDAR_DECIMATE", int),
+        # Identity and configuration checksum, compared at runtime so a swapped
+        # scanner or an altered configuration is visible. Empty disables the
+        # comparison rather than failing it.
+        "expected_identity":     ("LIDAR_EXPECTED_IDENTITY", str),
+        "expected_checksum":     ("LIDAR_EXPECTED_CHECKSUM", str),
+        # Provisional cut-off-path mapping. The status block's layout is not in
+        # this repo, so the bytes it reads are configuration rather than code
+        # until a human has walked the rings and confirmed them.
+        "zone_block":            ("LIDAR_ZONE_BLOCK", int),
+        "zone_active_low":       ("LIDAR_ZONE_ACTIVE_LOW", bool),
+        "zones_validated":       ("LIDAR_ZONES_VALIDATED", bool),
+        # "zone_bytes" is a list of ints; handled separately in _read_zone_bytes().
+    },
+    "panel": {
+        "enabled":        ("PANEL_ENABLED", bool),
+        "di_reset":       ("PANEL_DI_RESET", int),
+        "di_start":       ("PANEL_DI_START", int),
+        "di_auto":        ("PANEL_DI_AUTO", int),
+        "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
+    },
     "can": {
         "bitrate":        ("CAN_BITRATE", int),
         "channel":        ("CAN_CHANNEL", str),
@@ -410,6 +444,15 @@ _SCHEMA = {
 }
 
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str)}
+
+# The nanoScan3's scan cycle, from its datasheet: 30 ms, i.e. 33 Hz. A device
+# constant, not a tunable - it is here so the lidar timing checks below have
+# something to measure the profile against, and it is the ONE nanoScan3 number
+# taken from paper rather than from the telegram. Everything about the scan
+# ITSELF - beam count, start angle, angular resolution - is read off the wire,
+# because sec 2.4 of lidar_brief.md says the device may not do what the
+# datasheet says.
+LIDAR_SCAN_CYCLE_S = 0.030
 
 
 def _coerce(value, want, where):
@@ -455,6 +498,27 @@ def _read_io_names(raw, count, where):
         raise ConfigError(f"{where}: has {len(raw)} name(s) but there are "
                           f"{count} channel(s) - they must match")
     return [v.strip() for v in raw]
+
+
+def _read_zone_bytes(raw, where):
+    """lidar.zone_bytes -> one byte offset per cut-off path, in path order.
+
+    A list of ints, which _SCHEMA's flat table cannot express (its `list` means
+    a list of strings, for the I/O names). Three entries, because the device's
+    verification report defines paths 1-3 as stop, slow and warn - and the
+    ORDER is the thing lidar_brief.md sec 2.5 insists must be confirmed rather
+    than assumed, which is exactly why it lives in the profile.
+    """
+    if not isinstance(raw, list) or not all(isinstance(v, int)
+                                            and not isinstance(v, bool)
+                                            for v in raw):
+        raise ConfigError(f"{where}: expected a list of integers")
+    if len(raw) != 3:
+        raise ConfigError(f"{where}: expected 3 offsets (stop, slow, warn), "
+                          f"got {len(raw)}")
+    if any(v < 0 for v in raw):
+        raise ConfigError(f"{where}: byte offsets must be >= 0, got {raw}")
+    return list(raw)
 
 
 def _read_ramp(raw):
@@ -574,6 +638,8 @@ def _parse(doc):
             allowed.add("ramp")
         if section == "dio":
             allowed |= {"di_names", "do_names"}
+        if section == "lidar":
+            allowed |= {"zone_bytes"}
         unknown = set(block) - allowed
         if unknown:
             raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}")
@@ -594,6 +660,8 @@ def _parse(doc):
         doc["dio"]["di_names"], ns["DIO_NUM_DI"], "dio.di_names")
     ns["DIO_DO_NAMES"] = _read_io_names(
         doc["dio"]["do_names"], ns["DIO_NUM_DO"], "dio.do_names")
+    ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
+        doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
     ns["BRANCH_LATCH"] = _read_branch_latch(
         doc["branch_latch"], ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]))
     return ns
@@ -793,6 +861,49 @@ def _validate(ns):
           f"below silent_warn_s ({g('DIO_SILENT_WARN_S')}) - otherwise one "
           f"retry always trips the health timeout")
 
+    # -- lidar ------------------------------------------------------------
+    check(1 <= g("LIDAR_PORT") <= 65535, "lidar.port must be in 1..65535")
+    check(g("LIDAR_SILENT_WARN_S") > 0, "lidar.silent_warn_s must be > 0")
+    check(g("LIDAR_REASSEMBLY_TIMEOUT_S") > 0,
+          "lidar.reassembly_timeout_s must be > 0")
+    check(g("LIDAR_RECONNECT_PERIOD_S") > 0,
+          "lidar.reconnect_period_s must be > 0")
+    check(g("LIDAR_DECIMATE") >= 1, "lidar.decimate must be >= 1")
+    # The scanner streams every 30 ms. A window under that declares the link
+    # dead between two consecutive good telegrams, and the page flaps at 34 Hz.
+    check(g("LIDAR_SILENT_WARN_S") > LIDAR_SCAN_CYCLE_S,
+          f"lidar.silent_warn_s ({g('LIDAR_SILENT_WARN_S')}) must exceed the "
+          f"{LIDAR_SCAN_CYCLE_S * 1000:.0f} ms scan cycle")
+    # A telegram is five datagrams arriving inside one cycle. Holding fragments
+    # for longer than a cycle risks pairing a fragment with a same-offset
+    # fragment from the NEXT scan and emitting a stitched-together picture.
+    check(g("LIDAR_REASSEMBLY_TIMEOUT_S") < g("LIDAR_SILENT_WARN_S"),
+          f"lidar.reassembly_timeout_s ({g('LIDAR_REASSEMBLY_TIMEOUT_S')}) must "
+          f"be below silent_warn_s ({g('LIDAR_SILENT_WARN_S')})")
+    check(0 <= g("LIDAR_ZONE_BLOCK") < 7,
+          f"lidar.zone_block ({g('LIDAR_ZONE_BLOCK')}) must be a block slot 0..6")
+    check(g("LIDAR_HOST_IP") != g("LIDAR_SENSOR_IP"),
+          "lidar.host_ip and lidar.sensor_ip must differ - host_ip is the "
+          "address we bind, sensor_ip is the scanner we accept datagrams from")
+
+    # -- panel ------------------------------------------------------------
+    chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
+             "di_auto": g("PANEL_DI_AUTO")}
+    for key, ch in chans.items():
+        check(0 <= ch < g("DIO_NUM_DI"),
+              f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
+    # Two functions on one channel is a wiring or config error that would
+    # otherwise present as phantom presses - a Reset edge every time Start is
+    # pushed - which is a miserable thing to debug from the vehicle.
+    check(len(set(chans.values())) == 3,
+          f"panel channels must be distinct, got {chans}")
+    check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
+    # The panel is read out of the DI image; without the scan there is nothing
+    # to read, and the buttons would be silently dead.
+    check(not g("PANEL_ENABLED") or g("DIO_ENABLED"),
+          "panel.enabled is true while dio.enabled is false - the panel is read "
+          "from the DI image, so the buttons would never respond")
+
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
     check(g("RFID_FRAME_LEN") > 0, "rfid.frame_len must be > 0")
@@ -866,6 +977,213 @@ def _available():
                       if f.endswith(".json"))
     except OSError:
         return []
+
+
+# ---------------------------------------------------------------------------
+# introspection, for the /params page
+# ---------------------------------------------------------------------------
+# The page is generated FROM _SCHEMA rather than from a list of its own. A
+# hand-written parameters page is a second copy of the schema, and a second copy
+# is one that silently stops matching - which on THIS page means a value the
+# vehicle is running on that nobody can see. Add a key to a profile and it
+# appears; there is nothing to remember.
+
+# Units are read off the exported name's suffix for the same reason: the names
+# already carry them, so there is nothing extra to keep in step. Longest first,
+# because _MS and _MM would otherwise be eaten by _S and _M.
+_UNIT_SUFFIX = (
+    ("_RPM_S2", "r/min/s\u00b2"), ("_RPM_S", "r/min/s"), ("_RPM", "r/min"),
+    ("_MM", "mm"), ("_MS", "ms"), ("_HZ", "Hz"),
+    ("_S", "s"), ("_M", "m"), ("_C", "\u00b0C"),
+)
+# The ones a suffix cannot know: a bare voltage limit, a bitrate, and the
+# derived conversions whose names END in something that reads as a unit but is
+# not one (MPS_PER_RPM is metres per second per r/min, not r/min).
+_UNIT_EXACT = {
+    "CAN_BITRATE": "bit/s", "PLOT_RPM_MAX": "r/min",
+    "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V",
+    "K_RATIO": "1/m\u00b2",
+    "MPS_PER_RPM": "m/s per r/min", "RPM_PER_MPS": "r/min per m/s",
+    "RAD_S_PER_RPM_DIFF": "rad/s per r/min diff", "MAX_SPEED_MPS": "m/s",
+}
+
+# Everything _derive() computes, with the relation that produced it - which is
+# the whole reason these are shown apart from the profile: they cannot be
+# edited, and a page that listed them alongside the tunables would invite
+# somebody to try. See _derive() for the arithmetic itself.
+_DERIVED = (
+    ("MPS_PER_RPM", "\u03c0\u00b7wheel_dia_m / (gear_ratio \u00b7 60)"),
+    ("RPM_PER_MPS", "1 / MPS_PER_RPM"),
+    ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
+    ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
+    ("MANUAL_HALF_RPM", "manual.full_rpm \u00b7 manual.half_ratio"),
+    ("DT_MIN_S", "0.2 \u00b7 dt_nominal_s"),
+    ("DT_MAX_S", "5 \u00b7 dt_nominal_s"),
+    ("LINE_LOSS_GRACE_MAX_S",
+     "5 \u00b7 line_loss_grace_m / cruise speed - the standstill backstop"),
+    ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
+    ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
+    ("TPDO1_COB", "0x180 + can.sensor_node"),
+    ("LIDAR_SCAN_CYCLE_S",
+     "nanoScan3 datasheet - a device constant, not a tunable"),
+)
+
+# A tuning note heads a paragraph and starts at column 0 as section.key.
+_NOTE_HEAD = re.compile(r"^[a-z_]+\.[a-z_0-9*]")
+
+
+def _unit(const):
+    if const in _UNIT_EXACT:
+        return _UNIT_EXACT[const]
+    for suffix, unit in _UNIT_SUFFIX:
+        if const.endswith(suffix):
+            return unit
+    return ""
+
+
+def _fmt(value):
+    """A value as it should read on screen. Never returns an empty string - a
+    blank cell reads as "not set" when the setting is genuinely an empty
+    string, which for rfid.init_hex is the difference between a reader that
+    streams and one that never says anything."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return f"{value:.10g}"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_fmt(v) for v in value) if value else "(empty list)"
+    return value if value else "(empty)"
+
+
+def tuning_notes():
+    """section.key -> the paragraph about it in this module's docstring.
+
+    PARSED, not restated. The reasoning behind every setting that is not
+    self-evident is already written down at the top of this file, and it is
+    written there because JSON cannot carry comments. Copying it into a
+    template would produce two versions of the same explanation, one of which
+    would go stale - and the stale one would be the one on the screen.
+
+    A heading is a column-0 `section.key`, optionally naming several keys
+    separated by "/" and optionally `section.*` for a whole section. Anything
+    that does not parse simply yields no note, so the page degrades to a plain
+    table rather than failing.
+    """
+    doc = __doc__ or ""
+    at = doc.find("TUNING NOTES")
+    if at < 0:
+        return {}
+
+    out = {}
+    heading = None
+    body = []
+
+    def flush():
+        if not heading:
+            return
+        text = textwrap.dedent("\n".join(body)).strip()
+        if not text:
+            return
+        section = heading[0].split(".")[0]
+        for token in heading:
+            out[token if "." in token else f"{section}.{token}"] = text
+
+    for line in doc[at:].splitlines():
+        if line and not line[0].isspace():
+            if not _NOTE_HEAD.match(line):
+                continue                      # prose between the notes
+            flush()
+            heading = [t.strip() for t in line.split("(")[0].split("/")]
+            body = []
+        elif heading is not None:
+            body.append(line)
+    flush()
+    return out
+
+
+def _row(section, key, const, value, notes, text=None, unit=None):
+    """One displayed parameter. `key` is what to edit in the JSON, `const` is
+    what the code calls it - both, because the two audiences for this page are
+    somebody editing a profile and somebody reading a traceback."""
+    # A note may be attached to the nested key it heads (drivers.ramp covers
+    # ramp.auto.accel), so fall back to the first segment before giving up.
+    note = (notes.get(f"{section}.{key}")
+            or notes.get(f"{section}.{key.split('.')[0]}")
+            or notes.get(f"{section}.*"))
+    return {"key": key, "const": const,
+            "value": _fmt(value) if text is None else text,
+            "unit": _unit(const) if unit is None else unit, "note": note}
+
+
+def describe():
+    """The loaded profile as ordered sections of displayable rows.
+
+    Read-only by construction: this returns text, and there is no counterpart
+    that writes. A profile is changed by editing the JSON and restarting the
+    service, which is what makes the value on the screen the value the bus
+    thread is actually using.
+    """
+    g = globals()
+    notes = tuning_notes()
+    out = []
+
+    for section, fields in _SCHEMA.items():
+        rows = [_row(section, key, const, g.get(const), notes)
+                for key, (const, _want) in fields.items()]
+
+        # The three things _SCHEMA's flat table cannot express, in the same
+        # order the profile writes them.
+        if section == "drivers":
+            for mode in ("manual", "auto"):
+                for k in ("accel", "decel"):
+                    rows.append(_row(section, f"ramp.{mode}.{k}",
+                                     f'RAMP["{mode}"]["{k}"]',
+                                     g["RAMP"][mode][k], notes,
+                                     unit="r/min/s"))
+        if section == "dio":
+            for key, const in (("di_names", "DIO_DI_NAMES"),
+                               ("do_names", "DIO_DO_NAMES")):
+                names = g[const]
+                named = [f"{i:02d} {n}" for i, n in enumerate(names) if n]
+                rows.append(_row(
+                    section, key, const, names, notes,
+                    text=(f"{len(named)} of {len(names)} named \u00b7 "
+                          + " \u00b7 ".join(named)) if named
+                         else f"none of {len(names)} named",
+                    unit=""))
+        if section == "lidar":
+            rows.append(_row(section, "zone_bytes", "LIDAR_ZONE_BYTES",
+                             g["LIDAR_ZONE_BYTES"], notes,
+                             text="stop {}, slow {}, warn {}".format(
+                                 *g["LIDAR_ZONE_BYTES"]),
+                             unit="byte offset"))
+        out.append({"name": section, "note": notes.get(f"{section}.*"),
+                    "rows": rows})
+
+    # The junction table. Empty is the normal state on a vehicle with no
+    # diverters, and it says so rather than showing an empty section.
+    ladder = g["BRANCH_LATCH"]
+    out.append({"name": "branch_latch", "note": None, "rows": [
+        {"key": f"[{i}]", "const": f'BRANCH_LATCH[{i}]',
+         "value": f"entry {r['entry_tag']} \u2192 {r['branch']}, "
+                  f"exit {r['exit_tag']}", "unit": "", "note": None}
+        for i, r in enumerate(ladder)] or [
+        {"key": "branch_latch", "const": "BRANCH_LATCH",
+         "value": "(no junctions configured)", "unit": "", "note": None}]})
+
+    # `from` rather than a note: the relation is the point of the row, so it is
+    # always on screen, and there is no JSON key to edit because there is no
+    # JSON key at all.
+    out.append({"name": "derived", "note": None, "rows": [
+        # TPDO1_COB is a CAN identifier and is unreadable in decimal.
+        {"key": const, "const": "", "from": why,
+         "value": f"0x{g[const]:03X}" if const == "TPDO1_COB"
+                  else _fmt(g[const]),
+         "unit": _unit(const), "note": None}
+        for const, why in _DERIVED]})
+    return out
 
 
 load()

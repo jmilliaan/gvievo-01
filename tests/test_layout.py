@@ -102,8 +102,46 @@ def test_entry_point():
           and (ROOT / "app" / "static" / "common.js").exists())
 
 
+def test_assets_are_offline():
+    """Nothing the UI needs may be fetched over the network.
+
+    The vehicle has no internet on the floor. A CDN font link renders correctly
+    at a desk and silently falls back to system fonts on the AGV - the page
+    still WORKS, so nobody notices until they are standing next to it, which is
+    exactly the kind of regression worth a source scan.
+    """
+    import re
+    print("\nweb assets are self-contained")
+
+    static = ROOT / "app" / "static"
+    tpl = ROOT / "app" / "templates"
+    remote = re.compile(
+        r'(<link[^>]*https?:)|(<script[^>]*src=["\']https?:)'
+        r'|(@import[^;]*https?:)|(url\(\s*["\']?https?:)', re.I)
+
+    for f in sorted(list(tpl.glob("*.html")) + list(static.glob("*.css"))
+                    + list(static.glob("*.js"))):
+        hits = remote.findall(f.read_text())
+        check(f"{f.name} loads nothing remotely", not hits, str(hits[:1]))
+
+    css = (static / "app.css").read_text()
+    faces = re.findall(r'src:\s*url\(["\']?([^"\')]+)', css)
+    check("app.css declares the self-hosted faces", len(faces) >= 8, str(len(faces)))
+    for rel in faces:
+        check(f"{rel} is present", (static / rel).is_file())
+
+    # The families named in the stack must be the ones actually shipped, or the
+    # @font-face block is decoration and the browser silently uses the fallback.
+    for fam in ("Archivo", "IBM Plex Sans", "IBM Plex Mono"):
+        # Tolerate whitespace after the colon rather than stripping it out of
+        # the whole file - the family names contain spaces themselves.
+        check(f"{fam} is declared and bundled",
+              re.search(rf'font-family:\s*"{re.escape(fam)}"', css) is not None)
+
+
 TESTS = [
     test_path_anchors,
     test_flat_namespace_is_unambiguous,
     test_entry_point,
+    test_assets_are_offline,
 ]

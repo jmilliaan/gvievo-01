@@ -33,8 +33,8 @@ onState(s => {
   // connected-but-stale (module wedged, or the switch dropped it).
   let text, colour;
   if (!d.enabled)            { text = 'off';       colour = ''; }
-  else if (!d.connected)     { text = 'down';      colour = 'var(--bad)'; }
-  else if (!d.comms_ok)      { text = 'stale';     colour = 'var(--warn)'; }
+  else if (!d.connected)     { text = 'down';      colour = 'var(--stop)'; }
+  else if (!d.comms_ok)      { text = 'stale';     colour = 'var(--hazard-ink)'; }
   else                       { text = 'ok';        colour = ''; }
   const link = document.getElementById('io-link');
   if (link) { link.textContent = text; link.style.color = colour; }
@@ -44,7 +44,7 @@ onState(s => {
   set('io-age', d.rx_age_s === null || d.rx_age_s === undefined
                 ? 'never scanned' : (d.rx_age_s * 1000).toFixed(0) + ' ms ago');
   const err = document.getElementById('io-errors');
-  if (err) { err.textContent = d.errors; err.style.color = d.errors ? 'var(--warn)' : ''; }
+  if (err) { err.textContent = d.errors; err.style.color = d.errors ? 'var(--hazard-ink)' : ''; }
 
   // Stale must not look like off. Dimming the whole grid is the point: a dead
   // module otherwise renders as 32 contentedly dark lamps.

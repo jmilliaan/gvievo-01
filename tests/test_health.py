@@ -124,6 +124,91 @@ def test_health():
           cw[cw.index("def _do_arm"):cw.index("def _do_disarm")])
 
 
+
+
+def test_blocking_action_does_not_fake_a_fault():
+    """The regression: arming used to report both drives silent.
+
+    Liveness was marked ONLY from the 5 Hz telemetry poll and from a producer
+    heartbeat that was never actually enabled. A real arm blocks the single bus
+    thread for 700-900 ms against a 0.6 s driver timeout, so the evaluate()
+    immediately after the drain saw both drives stale and emitted
+    "driver silent - node 1 (left), node 2 (right), stopping" - while manual
+    jogging kept working, because they were never silent at all.
+
+    Three things now prevent it, and each is checked here.
+    """
+    import canworker
+    import health
+    print("\nfalse 'driver silent' on a blocking action")
+
+    src = (ROOT / "canworker.py").read_text()
+
+    # 1. The producer heartbeat is actually turned on. It was dead code: defined
+    #    and never called, which left 1017h at its factory default of 0 = OFF
+    #    and can.heartbeat_ms inert.
+    body = src[src.index("def _run(self)"):]
+    body = body[:body.find("\n    def ", 1)]
+    check("_enable_heartbeat() is called from the bus-open path",
+          "self._enable_heartbeat()" in body)
+    check("...and it is not called from _do_arm, so liveness does not depend "
+          "on having armed",
+          "_enable_heartbeat" not in src[src.index("def _do_arm"):])
+
+    # 2. Every successful driver SDO transfer counts as evidence.
+    for fn in ("_read", "_read_i32", "_write"):
+        seg = src[src.index(f"def {fn}(self"):]
+        seg = seg[:seg.find("\n    def ", 1)]
+        check(f"{fn}() marks the node alive on success",
+              "self._mark_alive(" in seg)
+    check("_mark_alive uses .get(), so the MLS is not mistaken for a drive",
+          "self._src_node.get(node)" in src)
+
+    # 3. A window we could not observe is not judged.
+    check("a long queue drain resets the monitor instead of failing it",
+          "self._hw.min_timeout()" in src and "self._hw.reset()" in src)
+
+    # --- and the behaviour those three produce ---------------------------
+    mon = health.HealthMonitor()
+    drv1 = health.HealthSource("driver:1", critical=True, detail="node 1 (left)")
+    drv2 = health.HealthSource("driver:2", critical=True, detail="node 2 (right)")
+    mon.add(drv1, 0.6)
+    mon.add(drv2, 0.6)
+    check("min_timeout is the tightest deadline in the table",
+          mon.min_timeout() == 0.6)
+
+    t = 100.0
+    drv1.mark_rx(now=t); drv2.mark_rx(now=t)
+    check("both drives healthy to start",
+          mon.evaluate(now=t)["system_error"] is False)
+
+    # An 850 ms arm during which the drives answered every SDO: with
+    # _mark_alive the gap between marks is one 50 ms sleep, never the whole arm.
+    for step in range(1, 18):
+        drv1.mark_rx(now=t + step * 0.05); drv2.mark_rx(now=t + step * 0.05)
+    r = mon.evaluate(now=t + 0.85)
+    check("an arm that talks to the drives throughout raises no fault",
+          r["system_error"] is False and r["system_edge"] is None,
+          f"{r['system_error']} {r['system_edge']}")
+
+    # The other half: a stall with NO marks at all must still not fault, because
+    # the loop resets the monitor first. Without the reset this is the bug.
+    mon.reset()
+    r = mon.evaluate(now=t + 99.0)
+    check("after reset an unobserved window reads as not-seen, not as lost",
+          r["system_error"] is False, str(r["system_error"]))
+
+    # ...and a genuinely dead drive must still be caught. The fix removes false
+    # positives; it must not remove true ones.
+    drv1.mark_rx(now=t + 99.0); drv2.mark_rx(now=t + 99.0)
+    mon.evaluate(now=t + 99.0)
+    r = mon.evaluate(now=t + 100.0)
+    check("a drive that really stops answering still faults",
+          r["system_error"] is True and r["system_edge"] is True,
+          f"{r['system_error']} {r['system_edge']}")
+
+
 TESTS = [
     test_health,
+    test_blocking_action_does_not_fake_a_fault,
 ]

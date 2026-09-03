@@ -2,14 +2,19 @@
 
 Read the safety model before changing anything here:
 
-  * Nothing moves until the page POSTs /api/arm, which runs the same preflight
-    drive_forward.py does (error register clear, Remote bit set, no FAULT).
+  * THE WEB APP CANNOT START THE VEHICLE. There is no /api/arm and no
+    /api/auto/run: the physical panel owns entering every state (PB Reset arms
+    in the selected mode, PB Start runs auto). The only thing here that can
+    produce motion is /api/drive, and only while the vehicle is already armed
+    in MANUAL - which only the panel can bring about.
   * A manual direction is HELD, not latched. The browser re-POSTs /api/drive
     about every 100 ms while the button or key is down; the bus thread zeros
     the setpoint if it misses three in a row. Closing the tab, losing Wi-Fi and
     letting go all look the same to the AGV, which is the point.
-  * Auto is latched but still watchdogged - the page's telemetry poll doubles
-    as its heartbeat, so a dead page stops the run.
+  * Everything else here only ever stops: /api/disarm de-energises and
+    /api/stop zeroes the setpoint.
+  * Auto is latched and watchdogged, but a panel-started run is held up by the
+    DI scan rather than by this page's poll - see canworker._panel_scan().
 """
 import os
 import sys
@@ -58,6 +63,7 @@ def manual():
         glyphs=motion.GLYPHS, keymap=motion.KEYMAP,
         table={d: motion.velocities(d) for d in motion.PAD},
         full=config.MANUAL_FULL_RPM, half=config.MANUAL_HALF_RPM,
+        rfid_ip=f"{config.RFID_IP}:{config.RFID_PORT}",
         watchdog_ms=int(config.MANUAL_WATCHDOG_S * 1000))
 
 
@@ -69,6 +75,7 @@ def monitor():
         bitrate_kbps=config.CAN_BITRATE // 1000,
         nodes={str(n): config.NODES[n] for n in config.NODES},
         allowed=sorted(f"{i:04X}h" for i in guard.ALLOWED),
+        scan_period_s=config.LOOP_PERIOD_S,
         forbidden=sorted(f"{i:04X}h" for i in guard.FORBIDDEN))
 
 
@@ -80,6 +87,54 @@ def io():
         di_names=config.DIO_DI_NAMES, do_names=config.DIO_DO_NAMES,
         dio_ip=f"{config.DIO_IP}:{config.DIO_PORT}",
         scan_hz=round(1.0 / config.DIO_SCAN_PERIOD_S))
+
+
+@app.get("/lidar")
+def lidar():
+    """Safety-lidar data output. Read-only, and explicitly NOT a safety path."""
+    return render_template(
+        "lidar.html", page="lidar",
+        sensor_ip=config.LIDAR_SENSOR_IP, host_ip=config.LIDAR_HOST_IP,
+        port=config.LIDAR_PORT,
+        scan_hz=round(1.0 / config.LIDAR_SCAN_CYCLE_S),
+        decimate=config.LIDAR_DECIMATE,
+        zones_validated=config.LIDAR_ZONES_VALIDATED,
+        protective_m=2.15, warning_m=10.0, range_m=40.0)
+
+
+@app.get("/alarms")
+def alarms():
+    """The event log and everything standing against the vehicle right now.
+
+    Read-only. Notably it cannot CLEAR anything: a latched fault is cleared at
+    the panel with Reset, by somebody who can see the vehicle.
+    """
+    return render_template("alarms.html", page="alarms",
+                           max_events=events.MAX_EVENTS)
+
+
+@app.get("/params")
+def params():
+    """Every tunable the vehicle is running on. Read-only, and unavoidably so:
+    there is no endpoint here that writes a profile, because a parameter that
+    can be changed from a browser is a parameter that can be changed while
+    somebody is standing next to the vehicle. A profile is edited in the JSON
+    and the service is restarted, which is also what makes the value on this
+    page the value the bus thread is actually using.
+
+    The content is generated from config's schema rather than listed here - see
+    config.describe(). A hand-written list would be a second copy of the
+    profile format, and the copy that goes stale is the one on the screen.
+    """
+    return render_template(
+        "params.html", page="params",
+        sections=config.describe(),
+        profile=config.PROFILE_NAME, path=config.PROFILE_PATH_LOADED,
+        env_var=config.PROFILE_ENV_VAR,
+        zeta=f"{autopilot.predicted_zeta():.2f}",
+        enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])
+                 for name in ("dio", "panel", "rfid", "lidar", "monitor")],
+        dry_run=config.DRY_RUN)
 
 
 @app.get("/auto")
@@ -120,17 +175,15 @@ def api_preflight():
         return _fail(e)
 
 
-@app.post("/api/arm")
-def api_arm():
-    mode = (request.json or {}).get("mode", "manual")
-    if mode not in ("manual", "auto"):
-        return _fail(f"bad mode {mode!r}", 400)
-    try:
-        return jsonify(ctl.submit("arm", mode))
-    except Exception as e:
-        return _fail(e)
-
-
+# There is deliberately no /api/arm and no /api/auto/run.
+#
+# The web app may not put the vehicle into motion by any route except the manual
+# jog arrows below, and only while it is already armed in manual. Arming and
+# starting an auto run belong to the physical panel - PB Reset arms, PB Start
+# runs - so a browser left open on a bench cannot move a 150 kg vehicle.
+#
+# What remains here only ever STOPS: disarm de-energises, stop zeroes the
+# setpoint, and drive is a dead-man that the operator must keep holding.
 @app.post("/api/disarm")
 def api_disarm():
     try:
@@ -153,15 +206,6 @@ def api_drive():
 def api_stop():
     ctl.halt()
     return jsonify({"ok": True})
-
-
-@app.post("/api/auto/run")
-def api_auto_run():
-    running = bool((request.json or {}).get("run", False))
-    try:
-        return jsonify(ctl.submit("auto_run", running))
-    except Exception as e:
-        return _fail(e)
 
 
 @app.get("/api/events")
@@ -195,6 +239,20 @@ def api_can():
         "how": snap.get("how"),
         "error": snap.get("error"),
     })
+
+
+@app.get("/api/lidar")
+def api_lidar():
+    """The decimated point cloud. Read-only, and deliberately does NOT keepalive.
+
+    Split from /api/state for the same reason /api/can is: this is polled by one
+    page several times a second and carries far more than a status line, and no
+    amount of looking at a picture should hold an auto run alive.
+
+    GET only, and there is no counterpart that writes. The scanner is read-only
+    business - see drivers/lidar.py.
+    """
+    return jsonify(ctl.lidar_cloud())
 
 
 @app.get("/api/config")

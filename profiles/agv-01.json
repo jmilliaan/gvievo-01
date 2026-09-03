@@ -22,7 +22,7 @@
     "sr_rate_frac": 0.001875,
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
-    "auto_rpm": 1600.0,
+    "auto_rpm": 1200.0,
     "ramp_accel_rpm_s": 1000.0,
     "ramp_jerk_rpm_s2": 4000.0,
     "sensor_max_mm": 100.0,
@@ -86,8 +86,65 @@
     "num_di": 16,
     "num_do": 16,
     "di_flipped": false,
-    "di_names": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
-    "do_names": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+    "di_names": [
+      "PB Reset",
+      "PB Start",
+      "SS Auto/Manual",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "do_names": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  },
+  "lidar": {
+    "enabled": true,
+    "host_ip": "192.168.3.2",
+    "sensor_ip": "192.168.3.10",
+    "port": 6060,
+    "silent_warn_s": 0.15,
+    "reassembly_timeout_s": 0.06,
+    "reconnect_period_s": 1.0,
+    "decimate": 4,
+    "expected_identity": "",
+    "expected_checksum": "",
+    "zone_block": 0,
+    "zone_bytes": [6, 12, 13],
+    "zone_active_low": false,
+    "zones_validated": false
+  },
+  "panel": {
+    "enabled": true,
+    "di_reset": 0,
+    "di_start": 1,
+    "di_auto": 2,
+    "debounce_scans": 2
   },
   "can": {
     "bitrate": 125000,
@@ -117,5 +174,7 @@
     "driver_timeout_s": 0.6,
     "log_tail_s": 2.0
   },
-  "branch_latch": []
+  "branch_latch": [
+    { "entry_tag": "0002", "exit_tag": "0001", "branch": "left" }
+  ]
 }

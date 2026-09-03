@@ -10,6 +10,26 @@
   safe to move. CAN is for knowing what happened.
 </div>
 
+{# Moved off the shared rail: loop timing, frames per tick and the watchdog
+   countdown are for somebody tuning the control loop, not for an operator, and
+   they were taking four of the six rail slots on every page. This is the page
+   that page exists for. #}
+<section class="sensor">
+  <h2>Control loop <small>bus thread · target {{ (1000 * scan_period_s) | round(0) | int }} ms tick</small></h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Loop</span><b id="loop-work">–</b><i id="loop-period">ms work</i></div>
+    <div class="tel"><span>Frames</span><b id="loop-frames">–</b><i id="loop-starved">per tick</i></div>
+    <div class="tel"><span>Watchdog</span><b id="wd">–</b><i>s left</i></div>
+  </div>
+  <p class="mon-note">
+    <b>Work</b> is time the bus thread spent doing things; <b>period</b> is the
+    interval it actually achieved. Splitting them says whether a late tick is
+    the controller or the bus. A <b>starved</b> tick is one where the loop was
+    armed but no new TPDO1 had arrived, so the PID would be acting on a frame it
+    has already used.
+  </p>
+</section>
+
 <section class="sensor">
   <h2>Drives <small>{{ bitrate_kbps }} kbps · heartbeat
       {% if heartbeat_ms %}{{ heartbeat_ms }} ms{% else %}off{% endif %}</small></h2>

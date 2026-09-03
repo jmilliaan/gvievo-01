@@ -1,0 +1,929 @@
+<title>EVOTY Safety Chain Bring-Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#EFF1F5;
+  --surface:#FFFFFF;
+  --surface-2:#E4E8EF;
+  --ink:#14171D;
+  --ink-2:#3D4553;
+  --ink-3:#6B7486;
+  --rule:#CBD2DE;
+  --rule-soft:#DDE2EB;
+  --accent:#1B3A5C;
+  --accent-2:#2F5F94;
+  --accent-wash:#DFE7F1;
+  --hazard:#E8B900;
+  --hazard-wash:#FBF2D2;
+  --hazard-ink:#5E4A00;
+  --ok:#186E42;
+  --ok-wash:#DDEEE4;
+  --stop:#A32218;
+  --stop-wash:#F6DEDB;
+  --mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+  --disp:"Archivo","IBM Plex Sans",-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101318;
+    --surface:#181C23;
+    --surface-2:#20262F;
+    --ink:#E7EAF0;
+    --ink-2:#B4BCCA;
+    --ink-3:#828C9E;
+    --rule:#2C3440;
+    --rule-soft:#232A34;
+    --accent:#8FB6E0;
+    --accent-2:#6E9CCE;
+    --accent-wash:#1B2634;
+    --hazard:#E8B900;
+    --hazard-wash:#2E2708;
+    --hazard-ink:#F0D060;
+    --ok:#5BC08C;
+    --ok-wash:#132318;
+    --stop:#E8776B;
+    --stop-wash:#2B1512;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101318;
+  --surface:#181C23;
+  --surface-2:#20262F;
+  --ink:#E7EAF0;
+  --ink-2:#B4BCCA;
+  --ink-3:#828C9E;
+  --rule:#2C3440;
+  --rule-soft:#232A34;
+  --accent:#8FB6E0;
+  --accent-2:#6E9CCE;
+  --accent-wash:#1B2634;
+  --hazard:#E8B900;
+  --hazard-wash:#2E2708;
+  --hazard-ink:#F0D060;
+  --ok:#5BC08C;
+  --ok-wash:#132318;
+  --stop:#E8776B;
+  --stop-wash:#2B1512;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:15.5px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:2px solid var(--ink);
+  padding:40px 0 20px;
+  margin-bottom:34px;
+}
+.mast-grid{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between}
+.eyebrow{
+  font-family:var(--mono);
+  font-size:11.5px;
+  font-weight:500;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+h1{
+  font-family:var(--disp);
+  font-weight:700;
+  font-size:clamp(30px,5vw,44px);
+  line-height:1.06;
+  letter-spacing:-.022em;
+  margin:.28em 0 0;
+  text-wrap:balance;
+  max-width:15ch;
+}
+.mast-meta{
+  font-family:var(--mono);
+  font-size:11.5px;
+  line-height:1.85;
+  color:var(--ink-3);
+  text-align:right;
+}
+.mast-meta b{color:var(--ink-2);font-weight:500}
+.standfirst{
+  margin:22px 0 0;
+  max-width:66ch;
+  font-size:16.5px;
+  color:var(--ink-2);
+}
+
+/* ---------- progress ---------- */
+.progress{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  background:var(--surface);
+  border:1px solid var(--rule);
+  padding:12px 16px;
+  margin-bottom:34px;
+}
+.progress-bar{flex:1 1 200px;height:6px;background:var(--surface-2);overflow:hidden}
+.progress-fill{height:100%;background:var(--accent-2);width:0%;transition:width .25s ease}
+.progress-txt{font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.btn-reset{
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  background:none;border:1px solid var(--rule);color:var(--ink-3);
+  padding:5px 11px;cursor:pointer;
+}
+.btn-reset:hover{border-color:var(--accent-2);color:var(--accent-2)}
+.btn-reset:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+
+/* ---------- scope banner ---------- */
+.scope{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-left:4px solid var(--hazard);
+  padding:16px 20px;
+  margin-bottom:40px;
+}
+.scope h3{
+  font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--hazard-ink);margin:0 0 7px;
+}
+.scope p{margin:0;font-size:14.5px;color:var(--ink-2);max-width:74ch}
+.scope p + p{margin-top:8px}
+
+/* ---------- phase ---------- */
+.phase{margin:0 0 8px;padding-top:44px}
+.phase-head{
+  display:flex;align-items:baseline;gap:14px;
+  border-bottom:1px solid var(--ink);
+  padding-bottom:9px;margin-bottom:8px;
+}
+.phase-id{
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  color:var(--surface);background:var(--accent);
+  padding:3px 9px;letter-spacing:.06em;flex:none;
+}
+:root[data-theme="dark"] .phase-id,
+.phase-id{color:var(--paper)}
+h2{
+  font-family:var(--disp);font-weight:600;font-size:22px;letter-spacing:-.012em;
+  margin:0;flex:1 1 auto;text-wrap:balance;
+}
+.phase-note{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  letter-spacing:.05em;text-transform:uppercase;
+}
+.phase-intro{color:var(--ink-2);max-width:70ch;margin:16px 0 4px;font-size:15px}
+
+/* ---------- steps ---------- */
+.step{
+  display:grid;
+  grid-template-columns:56px 1fr;
+  gap:0 16px;
+  padding:20px 0;
+  border-bottom:1px solid var(--rule-soft);
+  align-items:start;
+}
+.step-gutter{display:flex;flex-direction:column;align-items:center;gap:9px;padding-top:1px}
+.step-no{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;
+  color:var(--accent-2);font-variant-numeric:tabular-nums;
+}
+.chk{
+  appearance:none;-webkit-appearance:none;
+  width:19px;height:19px;flex:none;margin:0;cursor:pointer;
+  border:1.5px solid var(--rule);background:var(--surface);
+  display:grid;place-content:center;
+}
+.chk:hover{border-color:var(--accent-2)}
+.chk:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+.chk::after{
+  content:"";width:10px;height:10px;transform:scale(0);
+  background:var(--ok);
+  clip-path:polygon(14% 46%,0 60%,40% 100%,100% 18%,86% 4%,38% 70%);
+  transition:transform .12s ease;
+}
+.chk:checked{border-color:var(--ok)}
+.chk:checked::after{transform:scale(1)}
+.step-body h4{
+  font-family:var(--disp);font-weight:600;font-size:16.5px;
+  margin:0 0 5px;letter-spacing:-.006em;text-wrap:balance;
+}
+.step-body p{margin:0 0 9px;max-width:68ch;color:var(--ink-2)}
+.step-body p:last-child{margin-bottom:0}
+.step-body ul{margin:0 0 9px;padding-left:18px;max-width:68ch;color:var(--ink-2)}
+.step-body li{margin-bottom:4px}
+.step:has(.chk:checked) .step-body h4{color:var(--ink-3)}
+
+/* ---------- inline atoms ---------- */
+code,.pin{
+  font-family:var(--mono);font-size:.885em;
+  background:var(--surface-2);color:var(--ink);
+  padding:1px 5px;border-radius:2px;white-space:nowrap;
+}
+.ui{
+  font-family:var(--mono);font-size:.87em;font-weight:500;
+  color:var(--accent-2);white-space:nowrap;
+}
+.ui::before{content:"\2039\2009"}
+.ui::after{content:"\2009\203A"}
+strong{font-weight:600;color:var(--ink)}
+a{color:var(--accent-2)}
+
+/* ---------- callouts ---------- */
+.note{
+  border-left:3px solid var(--rule);
+  background:var(--surface);
+  padding:11px 15px;margin:11px 0;
+  font-size:14px;color:var(--ink-2);max-width:70ch;
+}
+.note.warn{border-left-color:var(--hazard);background:var(--hazard-wash);color:var(--hazard-ink)}
+.note.warn strong{color:var(--hazard-ink)}
+.note.stop{border-left-color:var(--stop);background:var(--stop-wash);color:var(--ink)}
+.note.stop strong{color:var(--stop)}
+.note.src{
+  border-left-color:var(--accent-2);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.01em;
+  color:var(--ink-3);background:transparent;padding-left:12px;
+}
+
+/* ---------- tables ---------- */
+.tbl-scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+caption{
+  text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3);
+  padding:10px 14px;border-bottom:1px solid var(--rule);background:var(--surface-2);
+}
+th{
+  text-align:left;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+  padding:9px 14px;border-bottom:1px solid var(--rule);white-space:nowrap;
+}
+td{padding:9px 14px;border-bottom:1px solid var(--rule-soft);color:var(--ink-2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.m,th.m{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+tr.hi td{background:var(--accent-wash)}
+tr.dim td{color:var(--ink-3)}
+
+/* ---------- signal chain diagram ---------- */
+.chain{
+  background:var(--surface);border:1px solid var(--rule);
+  padding:22px 18px 18px;margin:22px 0 6px;overflow-x:auto;
+}
+.chain-inner{min-width:640px}
+.chain-row{display:grid;grid-template-columns:1fr 26px 1fr 26px 1fr;align-items:center;gap:0}
+.node{
+  border:1.5px solid var(--rule);background:var(--paper);
+  padding:10px 12px;text-align:center;
+}
+.node.src-node{border-color:var(--accent-2)}
+.node.out-node{border-color:var(--ok)}
+.node .n-t{font-family:var(--disp);font-weight:600;font-size:13.5px;display:block;color:var(--ink)}
+.node .n-s{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);display:block;margin-top:2px}
+.arrow{text-align:center;font-family:var(--mono);color:var(--ink-3);font-size:15px}
+.chain-stack{display:flex;flex-direction:column;gap:8px}
+.chain-fb{
+  margin-top:12px;padding-top:11px;border-top:1px dashed var(--rule);
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:center;
+}
+.chain-fb b{color:var(--ok);font-weight:500}
+
+/* ---------- reference card ---------- */
+.refcard{
+  background:var(--surface);border:1px solid var(--rule);
+  padding:0;margin:26px 0 0;
+}
+.refcard h3{
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  margin:0;padding:12px 18px;border-bottom:1px solid var(--rule);
+  background:var(--surface-2);color:var(--ink-3);font-weight:600;
+}
+.ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:0}
+.ref-col{padding:16px 18px;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)}
+.ref-col h5{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent-2);margin:0 0 9px;font-weight:600;
+}
+.ref-col dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:5px 12px;font-size:12.5px}
+.ref-col dt{color:var(--ink-2)}
+.ref-col dd{
+  margin:0;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--ink);text-align:right;white-space:nowrap;
+}
+
+/* ---------- don't list ---------- */
+.dont{margin:26px 0 0;border:1px solid var(--stop);background:var(--stop-wash)}
+.dont h3{
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  margin:0;padding:12px 18px;border-bottom:1px solid var(--stop);color:var(--stop);font-weight:600;
+}
+.dont ul{margin:0;padding:14px 18px 16px 36px}
+.dont li{margin-bottom:8px;color:var(--ink-2);font-size:14px;max-width:72ch}
+.dont li:last-child{margin-bottom:0}
+.dont li b{color:var(--ink)}
+
+footer{
+  margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;line-height:1.9;color:var(--ink-3);
+}
+
+@media (max-width:620px){
+  .step{grid-template-columns:38px 1fr;gap:0 12px}
+  .step-gutter{flex-direction:column}
+  .mast-meta{text-align:left}
+  h1{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="mast-grid">
+    <div>
+      <div class="eyebrow">EVOTY tow-tractor AGV &middot; Safety controller commissioning</div>
+      <h1>Safety Chain Bring-Up</h1>
+    </div>
+    <div class="mast-meta">
+      <b>FX3-CPU00000</b> + <b>FX3-XTIO84002</b><br>
+      nanoScan3 <b>NANS3-AAAZ30AN1</b><br>
+      2 &times; <b>BLVD-KRD</b> drivers<br>
+      Tool: <b>Flexi Soft Designer</b><br>
+      Rev 2 &middot; 2026-09-03
+    </div>
+  </div>
+  <p class="standfirst">Wiring and Safety Designer configuration for the two-source stop chain: emergency stop and lidar OSSD into the FX3, dual-channel STO out to both drive amplifiers, with EDM confirmation returning. Work top to bottom; tick as you go.</p>
+</header>
+
+<div class="progress">
+  <span class="progress-txt" id="ptxt">0 / 0 steps</span>
+  <div class="progress-bar"><div class="progress-fill" id="pfill"></div></div>
+  <button class="btn-reset" id="reset" type="button">Reset checklist</button>
+</div>
+
+<div class="scope">
+  <h3>Scope &mdash; read before starting</h3>
+  <p>This builds the <strong>Category&nbsp;0 stop chain only</strong>: a demand from either source removes torque from both drives immediately. It is the correct foundation and it is <em>not</em> the shippable ISO&nbsp;3691-4 configuration. Still absent: the SS1 delayed-off timer driving <code>QSTOP</code>, safe speed monitoring from the DFS60S encoders via the FX3-MOC0, speed-dependent protective field switching, and a safety-switched brake circuit.</p>
+  <p>Two blocking findings in <strong>bldc-compliance.md</strong> (F-01 prohibited dynamic braking, F-13 single brake serving two duties) remain open and gate the protective field geometry. Nothing here closes them.</p>
+</div>
+
+<!-- ============ SIGNAL CHAIN ============ -->
+<section class="phase" style="padding-top:8px">
+  <div class="phase-head">
+    <span class="phase-id">CHAIN</span>
+    <h2>What you are building</h2>
+  </div>
+  <div class="chain">
+    <div class="chain-inner">
+      <div class="chain-row">
+        <div class="chain-stack">
+          <div class="node src-node">
+            <span class="n-t">E-stop, 2&nbsp;&times;&nbsp;NC</span>
+            <span class="n-s">X1&rarr;I1 &nbsp; X2&rarr;I2</span>
+          </div>
+          <div class="node src-node">
+            <span class="n-t">nanoScan3 OSSD</span>
+            <span class="n-s">1.A&rarr;I3 &nbsp; 1.B&rarr;I4</span>
+          </div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="node">
+          <span class="n-t">FX3 logic</span>
+          <span class="n-s">AND &rarr; EDM block</span>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="chain-stack">
+          <div class="node out-node">
+            <span class="n-t">Q1 &rarr; HWTO1+</span>
+            <span class="n-s">pin 11, both drives</span>
+          </div>
+          <div class="node out-node">
+            <span class="n-t">Q2 &rarr; HWTO2+</span>
+            <span class="n-s">pin 26, both drives</span>
+          </div>
+        </div>
+      </div>
+      <div class="chain-fb">
+        <b>&uarr; feedback</b> &nbsp; EDM&minus; (pin 14) of drive L &rarr; I5 &nbsp;&middot;&nbsp; drive R &rarr; I6 &nbsp;&mdash;&nbsp; both HIGH confirms torque removed
+      </div>
+    </div>
+  </div>
+  <p class="phase-intro">Q3 and Q4 stay unallocated. Keep them that way &mdash; they are the outputs a safety-switched brake circuit will need when F-13 is resolved.</p>
+</section>
+
+<!-- ============ PHASE A ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">A</span>
+    <h2>Wire it</h2>
+    <span class="phase-note">Power off &middot; 6 steps</span>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A1</span><input class="chk" type="checkbox" data-k="a1" aria-label="Step A1 complete"></div>
+    <div class="step-body">
+      <h4>Remove all three factory jumpers &mdash; on both drivers</h4>
+      <p>Out of the box each BLVD-KRD ships with <code>25&ndash;11</code>, <code>12&ndash;26</code> and <code>13&ndash;27</code> linked, putting both HWTO photocouplers in series across the drive's own rail. STO is defeated and the drive behaves perfectly, which is exactly why this gets missed.</p>
+      <p>Pull all six jumpers. <code>25</code> (+V) and <code>13</code> (0V) then stay unconnected for good &mdash; the manual's host-controller diagram feeds the HWTO inputs entirely from your 24&nbsp;V and 0&nbsp;V.</p>
+      <div class="note warn"><strong>Witness this step and record it.</strong> It is the single most common BLV-R commissioning failure and it is invisible afterwards. Finding F-09.</div>
+      <div class="note src">blvr_operatingmanual_installation.pdf p.19 note &middot; p.23 diagram &middot; opman_fun p.212</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A2</span><input class="chk" type="checkbox" data-k="a2" aria-label="Step A2 complete"></div>
+    <div class="step-body">
+      <h4>Supply both modules and bond the grounds</h4>
+      <p><code>A1</code> = +24&nbsp;V, <code>A2</code> = 0&nbsp;V on the CPU <em>and</em> separately on the XTIO. The CPU's A1/A2 feeds logic and test outputs across the station via FLEXBUS+; the XTIO's own A1/A2 carries the Q1&ndash;Q4 load current and is not bussed.</p>
+      <p>Tie the nanoScan3's 0&nbsp;V to the same star point as <code>A2</code>. Without a common reference the OSSD signal floats and the inputs read nonsense.</p>
+      <div class="note">Limit the XTIO supply to <strong>4&nbsp;A</strong> externally &mdash; power supply or a 4&nbsp;A gG fuse, characteristic B or C.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A3</span><input class="chk" type="checkbox" data-k="a3" aria-label="Step A3 complete"></div>
+    <div class="step-body">
+      <h4>Emergency stop &rarr; I1 / I2, fed from the test outputs</h4>
+      <p>Both NC contacts now go to the controller instead of breaking motor current directly.</p>
+      <div class="tbl-scroll"><table>
+        <caption>E-stop, dual-channel with cross-circuit detection</caption>
+        <tr><th>From</th><th>Through</th><th>To</th><th>Why</th></tr>
+        <tr><td class="m">X1</td><td>NC contact 1</td><td class="m">I1</td><td>Odd input takes pulse generator 1</td></tr>
+        <tr><td class="m">X2</td><td>NC contact 2</td><td class="m">I2</td><td>Even input takes pulse generator 2</td></tr>
+      </table></div>
+      <p>The odd/even rule is not cosmetic: it guarantees the two channels carry <em>different</em> pulse patterns, which is what lets the module catch a cross-circuit between them. Loop resistance must stay under <code>100&nbsp;&Omega;</code>.</p>
+      <div class="note src">Flexi Soft hardware OI &sect;5.2.4 &middot; &sect;5.4.1.1</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A4</span><input class="chk" type="checkbox" data-k="a4" aria-label="Step A4 complete"></div>
+    <div class="step-body">
+      <h4>Lidar OSSD &rarr; I3 / I4, with no test outputs</h4>
+      <p>Scanner <code>pin&nbsp;2</code> (OSSD&nbsp;1.A) to <code>I3</code>, scanner <code>pin&nbsp;4</code> (OSSD&nbsp;1.B) to <code>I4</code>. Nothing from <code>X1</code>/<code>X2</code> touches these.</p>
+      <p>The nanoScan3 already pulses its own outputs at roughly 300&nbsp;&micro;s and reports a fault itself if the pulse doesn't return. Adding XTIO test pulses would put two sources on one wire. The XTIO input filter ignores pulses under 0.9&nbsp;ms anyway, so the scanner's self-test passes through invisibly.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A5</span><input class="chk" type="checkbox" data-k="a5" aria-label="Step A5 complete"></div>
+    <div class="step-body">
+      <h4>STO out &mdash; Q1 and Q2, paralleled by channel</h4>
+      <div class="tbl-scroll"><table>
+        <caption>CN4 power removal &mdash; identical on both drivers</caption>
+        <tr><th>XTIO</th><th class="m">Drive pin</th><th>Signal</th><th>Note</th></tr>
+        <tr class="hi"><td class="m">Q1</td><td class="m">11</td><td>HWTO1+</td><td>Same output feeds drive L and drive R</td></tr>
+        <tr class="hi"><td class="m">Q2</td><td class="m">26</td><td>HWTO2+</td><td>Second, independent channel</td></tr>
+        <tr><td class="m">A2 (0&nbsp;V)</td><td class="m">12</td><td>HWTO1&minus;</td><td>Return</td></tr>
+        <tr><td class="m">A2 (0&nbsp;V)</td><td class="m">27</td><td>HWTO2&minus;</td><td>Return</td></tr>
+        <tr class="dim"><td>&mdash;</td><td class="m">25</td><td>+V</td><td>Not connected</td></tr>
+        <tr class="dim"><td>&mdash;</td><td class="m">13</td><td>0V internal</td><td>Not connected</td></tr>
+      </table></div>
+      <p>Each HWTO input draws about 3.6&nbsp;mA through its 6.6&nbsp;k&Omega; series resistor, so two in parallel is roughly 7&nbsp;mA against the output's 2&nbsp;A rating.</p>
+      <p>Paralleling by channel rather than dedicating Q1/Q2 to the left drive and Q3/Q4 to the right does two things: both drives receive bit-identical commands with identical timing, which is the symmetry requirement that keeps a differential tugger from yawing under braking; and it leaves two outputs free.</p>
+      <div class="note warn"><strong>Two independent outputs, not one output split.</strong> One contact interrupting both channels &mdash; which is what a single NC button in the <code>13&ndash;27</code> link gives you &mdash; is a single point of failure and caps the architecture at Category&nbsp;1.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">A6</span><input class="chk" type="checkbox" data-k="a6" aria-label="Step A6 complete"></div>
+    <div class="step-body">
+      <h4>EDM back in &mdash; one input per drive</h4>
+      <div class="tbl-scroll"><table>
+        <caption>Power removal failure monitoring</caption>
+        <tr><th class="m">Drive pin</th><th>Signal</th><th>Goes to</th></tr>
+        <tr><td class="m">28</td><td>EDM+</td><td class="m">+24 V (A1)</td></tr>
+        <tr><td class="m">14</td><td>EDM&minus; &mdash; drive L</td><td class="m">I5</td></tr>
+        <tr><td class="m">14</td><td>EDM&minus; &mdash; drive R</td><td class="m">I6</td></tr>
+      </table></div>
+      <p>No test output on these &mdash; EDM is a powered transistor output, not a dry contact. The electrical fit works without a dropper: the drive sources up to 10&nbsp;mA with 2.0&nbsp;V saturation, the XTIO input draws 2.4&ndash;3.8&nbsp;mA, and 22&nbsp;V clears the 13&nbsp;V HIGH threshold comfortably.</p>
+      <div class="note stop"><strong>Without EDM monitored the TÜV certificate does not apply.</strong> The PL&nbsp;d / SIL&nbsp;2 claim on opman_fun p.210 carries an asterisk: <em>"It is necessary to monitor the EDM output using an external device."</em> This is the single biggest upgrade over the current bench wiring.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PHASE B ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">B</span>
+    <h2>Project and hardware configuration</h2>
+    <span class="phase-note">Flexi Soft Designer &middot; 4 steps</span>
+  </div>
+
+  <div class="note stop" style="max-width:none;margin:16px 0 4px">
+    <strong>Use Flexi Soft Designer for the FX3, not Safety Designer.</strong> Safety Designer handles FX3-CPU0 and FX3-XTIO perfectly well, but <strong>FX3-MOC0 is listed as <em>N.&nbsp;a.</em> &mdash; not available &mdash; in Safety Designer</strong> (Designer OI &sect;3 Table&nbsp;1). Your MOC0 and the DFS60S safe-speed chain are a planned addition, and projects do not migrate between the two tools: <em>"Partial applications that have been created using Safety Designer and partial applications that have been created using Flexi Soft Designer are not compatible with one another."</em> Building here in Safety Designer means rebuilding the whole station later.
+  </div>
+  <p class="phase-intro">So the scanner stays in Safety Designer with its own verification report, and the FX3 station lives in Flexi Soft Designer with its own. They connect over hardwired OSSDs, not over a configuration link, so they never needed to share a project &mdash; two device reports in the technical file is normal. Minimum versions for your hardware: Flexi Soft Designer <code>V1.7.1</code>, CPU firmware <code>&ge;&nbsp;V2.50.0</code> for the MOC0 (yours is V4.05.0).</p>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">B1</span><input class="chk" type="checkbox" data-k="b1" aria-label="Step B1 complete"></div>
+    <div class="step-body">
+      <h4>Add the modules in the right order</h4>
+      <p>New project in Flexi Soft Designer. Drag <span class="ui">FX3-CPU0</span> from the <span class="ui">Modules</span> window into the configuration area, then add <span class="ui">FX3-XTIO</span> to its right &mdash; module order in the software must match the physical order on the DIN rail. Leave a slot in your thinking for the MOC0; it goes on the same rail later.</p>
+      <p>Set the <strong>Step version</strong> on the XTIO to match your hardware. Yours is <code>FX3-XTIO84002</code>; check the Step marking on the module label. Step 2.xx needs firmware &ge;&nbsp;V2.00.0, Step 3.xx needs &ge;&nbsp;V3.00.0. Choosing a Step the module can't run is the usual cause of a refused transfer.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">B2</span><input class="chk" type="checkbox" data-k="b2" aria-label="Step B2 complete"></div>
+    <div class="step-body">
+      <h4>Connect and log in</h4>
+      <p>Connect to the CPU over USB or RS-232, then <span class="ui">Device &rsaquo; Detect project</span> &mdash; it reads the physical station, loads the module layout into the hardware configuration and offers to pull the existing configuration. Useful for confirming what is actually on the rail, but note it closes whatever project is open first.</p>
+      <p>Log in as <strong>Authorized client</strong>, default password <code>SICKSAFE</code>. Machine operator cannot transfer; Maintenance personnel can only push already-verified configurations.</p>
+      <div class="note">On a virgin system plug the first Authorized-client login forces a new password. It is stored in the <em>system plug</em>, so it survives a CPU swap. Record it in the project file &mdash; there is no recovery.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">B3</span><input class="chk" type="checkbox" data-k="b3" aria-label="Step B3 complete"></div>
+    <div class="step-body">
+      <h4>Name everything before you wire the logic</h4>
+      <p>Use <span class="ui">Edit tag names</span> in the hardware configuration. Tag names propagate into the logic editor, the report and the diagnostics view, and retro-fitting them after the logic is drawn is tedious.</p>
+      <p>Suggested: <code>ESTOP_PANEL</code>, <code>LIDAR_FRONT_OSSD</code>, <code>EDM_DRIVE_L</code>, <code>EDM_DRIVE_R</code>, <code>STO_CH1</code>, <code>STO_CH2</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">B4</span><input class="chk" type="checkbox" data-k="b4" aria-label="Step B4 complete"></div>
+    <div class="step-body">
+      <h4>Enter the project identification</h4>
+      <p>Project name, application name, user name and a description. These land in the report header, which is the document that goes into the technical file. An unnamed report is an auditor's first question.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PHASE C ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">C</span>
+    <h2>Elements &mdash; where the real work happens</h2>
+    <span class="phase-note">5 steps</span>
+  </div>
+  <p class="phase-intro">This is the part worth understanding rather than clicking through. When you drop a <strong>predefined dual-channel input element</strong> onto a pair of XTIO inputs, the module itself performs the dual-channel evaluation &mdash; equivalence, sequence and discrepancy timing all happen in hardware, before the signal reaches the logic. You then do <em>not</em> need an Emergency stop or Light curtain function block in the logic editor at all, and the logic stays short, which keeps the logic execution time down.</p>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">C1</span><input class="chk" type="checkbox" data-k="c1" aria-label="Step C1 complete"></div>
+    <div class="step-body">
+      <h4>Emergency stop element onto I1 / I2</h4>
+      <p>From the <span class="ui">Elements</span> window drag the emergency-stop pushbutton element onto <code>I1</code>. It claims <code>I1</code>+<code>I2</code> as a pair. Double-click it to open <span class="ui">Element settings</span>:</p>
+      <ul>
+        <li><strong>Evaluation:</strong> dual-channel equivalent (your button is 2&nbsp;&times;&nbsp;NC, so both channels open together)</li>
+        <li><strong>Test pulses:</strong> <code>X1</code> on channel A, <code>X2</code> on channel B</li>
+        <li><strong>Discrepancy time:</strong> enabled</li>
+        <li><strong>ON-OFF filter:</strong> leave off unless contact bounce causes nuisance faults</li>
+      </ul>
+      <div class="note warn"><strong>Sizing the discrepancy time.</strong> It must exceed <em>test gap + max OFF-ON delay</em> of the test output in use, or a normal test pulse looks like a channel discrepancy. Both figures appear in the report under <span class="ui">Configuration &rsaquo; I/O module &rsaquo; Test pulse parameters</span> &mdash; generate the report, read them, then set the time. Start from the element default and only raise it if you get nuisance trips; a longer time also lengthens fault detection.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">C2</span><input class="chk" type="checkbox" data-k="c2" aria-label="Step C2 complete"></div>
+    <div class="step-body">
+      <h4>ESPE / OSSD element onto I3 / I4</h4>
+      <p>Drag the safety-laser-scanner or OSSD-type element onto <code>I3</code>. Settings:</p>
+      <ul>
+        <li><strong>Evaluation:</strong> dual-channel equivalent</li>
+        <li><strong>Test pulses:</strong> <strong>none</strong> &mdash; explicitly not X1 or X2</li>
+        <li><strong>Discrepancy time:</strong> enabled, short. The scanner switches both OSSDs together within microseconds, so a genuine discrepancy here means a real wiring fault, not a timing artefact.</li>
+      </ul>
+      <p>If the element list has a nanoScan3 or microScan3 entry, take it &mdash; it arrives pre-set for OSSD behaviour. A generic ESPE element configured as above is equivalent.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">C3</span><input class="chk" type="checkbox" data-k="c3" aria-label="Step C3 complete"></div>
+    <div class="step-body">
+      <h4>Two single-channel elements onto I5 and I6</h4>
+      <p>One per drive, for the EDM feedback. Single-channel, <strong>no test pulses</strong>. These are not a safety-sensing pair &mdash; they are two independent status signals that the logic will combine.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">C4</span><input class="chk" type="checkbox" data-k="c4" aria-label="Step C4 complete"></div>
+    <div class="step-body">
+      <h4>Output elements onto Q1 and Q2 &mdash; leave test pulses ON</h4>
+      <p>Drop an output element on each. In its settings you will find <span class="ui">Enable the test pulses of this output</span>. <strong>Leave it checked.</strong></p>
+      <p>This resolves the open F-09 concern rather than working around it. The XTIO's output test gap is <strong>under 650&nbsp;&micro;s</strong> at a minimum 200&nbsp;ms interval; the BLVD-KRD ignores HWTO dropouts shorter than 1&nbsp;ms by design. No spurious power removal, and you keep full cross-circuit and short-to-24&nbsp;V detection on the outputs.</p>
+      <div class="note stop"><strong>Do not deactivate them.</strong> Unchecking that box degrades the safety parameters of <em>all four</em> outputs on the module &mdash; not just the one &mdash; and obliges you to use protected or separate cabling plus an annual simultaneous all-off test.</div>
+      <div class="note src">Flexi Soft hardware OI &sect;3.4.6.2, &sect;12 Table 130 &middot; Designer OI &sect;8.3 &middot; opman_fun p.212</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">C5</span><input class="chk" type="checkbox" data-k="c5" aria-label="Step C5 complete"></div>
+    <div class="step-body">
+      <h4>Consider fast shut-off</h4>
+      <p>Routing the E-stop through the controller adds logic and FLEXBUS+ latency that direct contact-breaking did not have. The XTIO's <strong>fast shut-off</strong> function bypasses logic processing and bus transit to drop the outputs directly, at the cost of extending input and output device response times by 8&nbsp;ms.</p>
+      <p>Whether it is worth it depends on your stopping-distance budget. Prove the plain chain first, then decide with numbers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PHASE D ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">D</span>
+    <h2>Logic</h2>
+    <span class="phase-note">4 steps</span>
+  </div>
+  <p class="phase-intro">Double-click the main module in the hardware configuration to open the logic editor. Because the XTIO pre-evaluated both dual-channel pairs in Phase C, the whole program is four blocks.</p>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">D1</span><input class="chk" type="checkbox" data-k="d1" aria-label="Step D1 complete"></div>
+    <div class="step-body">
+      <h4>AND the two stop sources</h4>
+      <p>Drag the <code>ESTOP_PANEL</code> input (the evaluated I1/I2 pair, which appears as one signal) and <code>LIDAR_FRONT_OSSD</code> (the I3/I4 pair) into an <span class="ui">AND</span> block. Output is 1 only when the button is released and the protective field is clear.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">D2</span><input class="chk" type="checkbox" data-k="d2" aria-label="Step D2 complete"></div>
+    <div class="step-body">
+      <h4>AND the two EDM feedbacks</h4>
+      <p>A second <span class="ui">AND</span> block taking <code>EDM_DRIVE_L</code> (I5) and <code>EDM_DRIVE_R</code> (I6). This single signal now means <em>both</em> drives confirm power removed. If either drive fails to confirm, the combined signal stays 0 and the monitoring block below will catch it.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">D3</span><input class="chk" type="checkbox" data-k="d3" aria-label="Step D3 complete"></div>
+    <div class="step-body">
+      <h4>External device monitoring block &rarr; Q1, Q2</h4>
+      <div class="tbl-scroll"><table>
+        <caption>External device monitoring &mdash; connections</caption>
+        <tr><th>Block terminal</th><th>Connect to</th></tr>
+        <tr><td>Control</td><td>Output of the D1 AND block</td></tr>
+        <tr><td>EDM feedback signal</td><td>Output of the D2 AND block</td></tr>
+        <tr><td class="m">Output 1</td><td class="m">Q1 &mdash; STO_CH1</td></tr>
+        <tr><td class="m">Output 2</td><td class="m">Q2 &mdash; STO_CH2</td></tr>
+      </table></div>
+      <p>Set <strong>Max. feedback delay</strong> to <code>100&nbsp;ms</code>. It must exceed the logic execution time, and the drive answers within 15&nbsp;ms, so 100&nbsp;ms is comfortable without being slack. Enable <span class="ui">Use Fault present</span>.</p>
+      <div class="note"><strong>The polarity works out with no inversion.</strong> The block expects the feedback to be the <em>inverted</em> value of Control. The BLVD-KRD asserts EDM only when both HWTO are OFF. So Control&nbsp;=&nbsp;0 (outputs dropped, power removed) &rarr; EDM&nbsp;=&nbsp;1 as expected, and Control&nbsp;=&nbsp;1 (motor excited) &rarr; EDM&nbsp;=&nbsp;0. The two devices agree natively.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">D4</span><input class="chk" type="checkbox" data-k="d4" aria-label="Step D4 complete"></div>
+    <div class="step-body">
+      <h4>Decide the restart behaviour</h4>
+      <p>As drawn, the chain re-enables the moment both sources clear. Fine for a bench rig. For the vehicle, ISO&nbsp;3691-4 requires that a truck does not restart automatically after a protective stop without a deliberate condition &mdash; finding F-17.</p>
+      <p>To add it, insert a <span class="ui">Restart</span> block between D1 and D3: safety chain into <em>Release&nbsp;1</em>, an acknowledge pushbutton into <em>Restart</em>, block output into the EDM block's <em>Control</em>. Minimum restart pulse 100&nbsp;ms or 350&nbsp;ms; the <em>Restart required</em> output pulses at 1&nbsp;Hz and drives an indicator lamp.</p>
+      <div class="note warn">The acknowledge input must be laid with protection and must <strong>not</strong> reference a test output &mdash; a short to 24&nbsp;V on that line can produce a restart pulse when short-circuit detection resets the signal.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">D5</span><input class="chk" type="checkbox" data-k="d5" aria-label="Step D5 complete"></div>
+    <div class="step-body">
+      <h4>Read the logic execution time</h4>
+      <p>Open the <span class="ui">FB group info</span> tab. Every timing value you set &mdash; discrepancy times in Phase C, the 100&nbsp;ms feedback delay in D3 &mdash; must exceed this number, and each carries &plusmn;10&nbsp;ms plus one execution time of accuracy. With five blocks it will be small, but check rather than assume, and re-check if you add the Restart block or fast shut-off.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PHASE E ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">E</span>
+    <h2>Transfer, verify, report</h2>
+    <span class="phase-note">4 steps</span>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">E1</span><input class="chk" type="checkbox" data-k="e1" aria-label="Step E1 complete"></div>
+    <div class="step-body">
+      <h4>Validate, then transfer</h4>
+      <p>Run the configuration validation in the logic editor and clear every message before transferring. Then transfer to the device &mdash; you must be logged in as Authorized client for an unverified configuration.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">E2</span><input class="chk" type="checkbox" data-k="e2" aria-label="Step E2 complete"></div>
+    <div class="step-body">
+      <h4>Verify</h4>
+      <p><span class="ui">Verify</span> in the hardware configuration reads the configuration back from the device and compares it against the project. Confirm the result. Until you do, the device reports as unverified and the configuration has no standing in the safety file.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">E3</span><input class="chk" type="checkbox" data-k="e3" aria-label="Step E3 complete"></div>
+    <div class="step-body">
+      <h4>Start the main module</h4>
+      <p>The station sits in Stop after a transfer. Use <span class="ui">Start</span>. Nothing switches until you do &mdash; the same trap as the scanner's "device was stopped" task.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">E4</span><input class="chk" type="checkbox" data-k="e4" aria-label="Step E4 complete"></div>
+    <div class="step-body">
+      <h4>Generate and archive the report</h4>
+      <p>Create the report and save it as PDF. Check that it contains the test pulse parameters you needed in C1, the logic execution time, the I/O matrix and both checksums. File it alongside the nanoScan3 verification report &mdash; together they document the whole stop chain.</p>
+      <div class="note">Before you walk away from the laptop, switch back to the <strong>Machine operator</strong> user group so an unattended session cannot transfer a configuration.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PHASE F ============ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="phase-id">F</span>
+    <h2>Commissioning tests</h2>
+    <span class="phase-note">Witness and record &middot; 7 steps</span>
+  </div>
+  <p class="phase-intro">Each test proves one fault is actually detected, not merely that the machine stops. A chain that stops correctly but detects nothing is Category&nbsp;1 wearing Category&nbsp;3 clothing &mdash; and it will pass a casual demonstration.</p>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F1</span><input class="chk" type="checkbox" data-k="f1" aria-label="Step F1 complete"></div>
+    <div class="step-body">
+      <h4>Jumpers confirmed removed, both drivers</h4>
+      <p>Visual, witnessed, recorded with the driver serial numbers. Everything below is meaningless if a jumper remains.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F2</span><input class="chk" type="checkbox" data-k="f2" aria-label="Step F2 complete"></div>
+    <div class="step-body">
+      <h4>Normal stop &mdash; both channels drop</h4>
+      <p>Command a stop. Expect: both drives non-excited, both EDM inputs go HIGH, the FX3 shows no fault, and the chain re-enables when the demand clears.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F3</span><input class="chk" type="checkbox" data-k="f3" aria-label="Step F3 complete"></div>
+    <div class="step-body">
+      <h4>Fault injection &mdash; Q1 open</h4>
+      <p>Disconnect Q1 only. Expect: drives still de-energise (per the drive's own table, ON/OFF on the two channels gives non-excitation), <strong>but EDM stays LOW</strong> because it asserts only when both HWTO are off &mdash; so the EDM block must raise <em>EDM error</em> and <em>Fault present</em>, and the FX3 must latch.</p>
+      <p>A chain that quietly keeps working here is not Category&nbsp;3.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F4</span><input class="chk" type="checkbox" data-k="f4" aria-label="Step F4 complete"></div>
+    <div class="step-body">
+      <h4>Fault injection &mdash; Q2 open</h4>
+      <p>Repeat F3 on the other channel. Then repeat both with each drive individually, so you prove the left and right EDM paths independently rather than trusting the AND.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F5</span><input class="chk" type="checkbox" data-k="f5" aria-label="Step F5 complete"></div>
+    <div class="step-body">
+      <h4>E-stop, one channel at a time</h4>
+      <p>Open contact 1 only, leave it open past the discrepancy time. Expect a <strong>discrepancy error</strong> &mdash; the MS LED flashing red/green at 1&nbsp;Hz and the affected input LEDs flashing green &mdash; not merely a stop. Repeat for contact 2.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F6</span><input class="chk" type="checkbox" data-k="f6" aria-label="Step F6 complete"></div>
+    <div class="step-body">
+      <h4>Cross-circuit between E-stop channels</h4>
+      <p>Bridge the two channels. The pulse patterns from X1 and X2 now arrive on the wrong inputs and the module must report a cross-circuit. This is the test that proves the odd/even test-output rule was applied correctly in C1.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-gutter"><span class="step-no">F7</span><input class="chk" type="checkbox" data-k="f7" aria-label="Step F7 complete"></div>
+    <div class="step-body">
+      <h4>Lidar demand, end to end</h4>
+      <p>Walk the protective field. Expect the same chain to run: OSSD drops, FX3 drops Q1/Q2, both drives de-energise, both EDM confirm. Time it if you can &mdash; the scanner alone contributes 130&nbsp;ms before the FX3 and the drives add theirs.</p>
+      <div class="note">Then diarise the recurring obligations: <strong>STO verification test every 3 months</strong> with results recorded, or the PL&nbsp;d claim lapses.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DON'T ============ -->
+<div class="dont">
+  <h3>Do not</h3>
+  <ul>
+    <li><b>Deactivate the Q1&ndash;Q4 test pulses.</b> Unnecessary here, and it degrades all four outputs on the module.</li>
+    <li><b>Reference the OSSD or EDM inputs to a test output.</b> One is already self-tested, the other is a powered transistor output.</li>
+    <li><b>Reference the restart-acknowledge input to a test output.</b> Short-circuit detection can synthesise a restart pulse.</li>
+    <li><b>Assign <code>FREE</code> to any direct input on the drivers,</b> and block it in the fieldbus command map. It releases both holding brakes from an ordinary, non-safety-rated input &mdash; finding F-03.</li>
+    <li><b>Leave <code>ETO reset action</code> at level mode.</b> Lock it to <code>1 &mdash; ON edge</code> so a controller holding ETO-CLR asserted cannot auto-restart the drive &mdash; finding F-17.</li>
+    <li><b>Treat this chain as complete.</b> It is Category&nbsp;0 power removal. SS1, safe speed and field switching are still to come.</li>
+  </ul>
+</div>
+
+<!-- ============ REFERENCE ============ -->
+<div class="refcard">
+  <h3>Numbers you will need at the bench</h3>
+  <div class="ref-grid">
+    <div class="ref-col">
+      <h5>XTIO outputs Q1&ndash;Q4</h5>
+      <dl>
+        <dt>Test gap</dt><dd>&lt; 650 µs</dd>
+        <dt>Test interval</dt><dd>&ge; 200 ms</dd>
+        <dt>Output HIGH</dt><dd>16–30 V</dd>
+        <dt>Output current</dt><dd>max 2.0 A</dd>
+      </dl>
+    </div>
+    <div class="ref-col">
+      <h5>XTIO inputs I1&ndash;I8</h5>
+      <dl>
+        <dt>Input HIGH</dt><dd>13–30 V</dd>
+        <dt>Input current</dt><dd>2.4–3.8 mA</dd>
+        <dt>Pulse filter</dt><dd>ignores ≤ 0.9 ms</dd>
+        <dt>Discrepancy range</dt><dd>4 ms – 30 s</dd>
+      </dl>
+    </div>
+    <div class="ref-col">
+      <h5>XTIO test outputs X1 / X2</h5>
+      <dl>
+        <dt>Output HIGH</dt><dd>15–30 V</dd>
+        <dt>Current each</dt><dd>max 120 mA</dd>
+        <dt>Loop resistance</dt><dd>&lt; 100 Ω</dd>
+        <dt>Generators</dt><dd>2</dd>
+      </dl>
+    </div>
+    <div class="ref-col">
+      <h5>BLVD-KRD power removal</h5>
+      <dl>
+        <dt>HWTO input</dt><dd>12–30 V</dd>
+        <dt>Ignores pulses</dt><dd>&lt; 1 ms</dd>
+        <dt>OFF to act on</dt><dd>&ge; 15 ms</dd>
+        <dt>STO response</dt><dd>≤ 15 ms</dd>
+        <dt>Brake to hold</dt><dd>≤ 35 ms</dd>
+      </dl>
+    </div>
+    <div class="ref-col">
+      <h5>BLVD-KRD EDM output</h5>
+      <dl>
+        <dt>Voltage</dt><dd>12–30 V</dd>
+        <dt>Current</dt><dd>≤ 10 mA</dd>
+        <dt>Saturation</dt><dd>≤ 2.0 V</dd>
+        <dt>Asserts when</dt><dd>both HWTO off</dd>
+      </dl>
+    </div>
+    <div class="ref-col">
+      <h5>nanoScan3 front scanner</h5>
+      <dl>
+        <dt>Response time</dt><dd>130 ms</dd>
+        <dt>Scan cycle</dt><dd>30 ms</dd>
+        <dt>Protective field</dt><dd>2.15 m max</dd>
+        <dt>Object resolution</dt><dd>50 mm</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Sources &mdash; Flexi Soft Modular Safety Controller Hardware OI (8012478) &sect;3.4.6, &sect;5.2.4, &sect;5.4.1.1, &sect;12 &middot;
+  Flexi Soft in Flexi Soft Designer OI (8012480) &sect;5.5, &sect;6.5, &sect;7.7.2, &sect;7.7.7, &sect;7.8, &sect;8.1&ndash;8.3 &middot;
+  BLV Series R Type Installation and Connection Edition (HP-5140-8) p.18&ndash;23 &middot;
+  BLV Series R Type Function Edition (HP-5142-6) Part 4, p.209&ndash;220 &middot;
+  nanoScan3 I/O OI (8024596) &middot; project documents agv-motor-stop-requirements.md, bldc-compliance.md, enc_map.md.<br><br>
+  Clause references are by topic and edition-dependent. Confirm against controlled copies before anything here enters a technical file.
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var KEY="evoty-fx3-bringup-v1";
+  var boxes=[].slice.call(document.querySelectorAll(".chk"));
+  var fill=document.getElementById("pfill");
+  var txt=document.getElementById("ptxt");
+
+  function load(){
+    try{
+      var raw=localStorage.getItem(KEY);
+      if(!raw) return {};
+      var v=JSON.parse(raw);
+      return (v && typeof v==="object")?v:{};
+    }catch(e){ return {}; }
+  }
+  function save(state){
+    try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+  }
+  function paint(){
+    var done=boxes.filter(function(b){return b.checked;}).length;
+    var pct=boxes.length?Math.round(done/boxes.length*100):0;
+    fill.style.width=pct+"%";
+    txt.textContent=done+" / "+boxes.length+" steps";
+  }
+
+  var state=load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.k]) b.checked=true;
+    b.addEventListener("change",function(){
+      var s=load();
+      if(b.checked){ s[b.dataset.k]=1; } else { delete s[b.dataset.k]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  document.getElementById("reset").addEventListener("click",function(){
+    boxes.forEach(function(b){ b.checked=false; });
+    save({});
+    paint();
+  });
+})();
+</script>

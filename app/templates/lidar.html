@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}AGV — lidar{% endblock %}
+{% block body %}
+
+<div class="warn">
+  <b>Not a safety path.</b>
+  The stop comes from the scanner's OSSD pair, hardwired into the FX3, which
+  drops STO at the drives. This page shows the scanner's <i>Ethernet data
+  output</i>, which the manual states must not be used for safety-related
+  applications. Nothing here can stop the vehicle, and nothing here can change
+  the scanner — the controller only listens on {{ host_ip }}:{{ port }}.
+</div>
+
+{% if not zones_validated %}
+{# Shown until a human has done the sec 2.5 walk-through. The lamps below are
+   driven by a byte mapping nobody has confirmed, so they are rendered as
+   "unknown" rather than as "clear" - see lidarframe.zones(). #}
+<div class="warn hazard">
+  <b>Cut-off paths are unvalidated.</b>
+  The byte offsets these lamps read come from <code>lidar.zone_bytes</code> in
+  the profile and have not been confirmed against the device's verification
+  report. Walk an object inward through <b>warn → slow → stop</b>, confirm each
+  index changes in the order expected, then set
+  <code>lidar.zones_validated</code>. Until then they read <b>?</b>, never
+  <i>clear</i>.
+</div>
+{% endif %}
+
+<section class="sensor">
+  <h2>Cut-off paths <small>protective field {{ protective_m }} m · warning field {{ warning_m }} m</small></h2>
+  <div class="io-list zone-list" id="zone-list">
+    <div class="io-row">
+      <span class="io-ch">1</span>
+      <span class="lamp zone" id="z-0"></span>
+      <span class="io-name">stop <i>— protective, also drops the OSSD</i></span>
+      <span class="zone-state" id="z-s-0">–</span>
+    </div>
+    <div class="io-row">
+      <span class="io-ch">2</span>
+      <span class="lamp zone" id="z-1"></span>
+      <span class="io-name">slow <i>— warning, middle</i></span>
+      <span class="zone-state" id="z-s-1">–</span>
+    </div>
+    <div class="io-row">
+      <span class="io-ch">3</span>
+      <span class="lamp zone" id="z-2"></span>
+      <span class="io-name">warn <i>— warning, outer</i></span>
+      <span class="zone-state" id="z-s-2">–</span>
+    </div>
+  </div>
+</section>
+
+<section class="sensor">
+  <h2>Scan <small>nanoScan3 · {{ sensor_ip }} · {{ scan_hz }} Hz · every {{ decimate }}th point drawn</small></h2>
+
+  <div class="bar">
+    <button id="scan-toggle" class="big">Start scan</button>
+    <span class="hint" id="scan-off">
+      <b>The scan is off by default.</b> Decoding a full scan costs real
+      CPU on the controller, so the picture is drawn only while you are looking
+      at it. Leaving this page stops it again. The lamps above and the stream
+      figures below keep updating either way — they ride on the state poll every
+      page makes.
+    </span>
+  </div>
+
+  <div class="scan-wrap">
+    <canvas id="scan" width="640" height="640"></canvas>
+    <div class="scan-stale" id="scan-stale">STALE — assumed occupied</div>
+    <label class="scan-range">
+      view
+      <select id="scan-view">
+        <option value="3">3 m</option>
+        <option value="6">6 m</option>
+        <option value="12" selected>12 m</option>
+        <option value="40">40 m</option>
+      </select>
+    </label>
+  </div>
+
+  <p class="legend">
+    Top-down, scanner at the centre, <b>0°</b> drawn straight up along the marked
+    axis. Rings are {{ protective_m }} m (protective) and {{ warning_m }} m
+    (warning); the scanner measures to {{ range_m }} m.
+    <b>The bearing convention is not yet verified</b> — put a target at a known
+    bearing and confirm it lands where you expect before trusting any transform
+    built on this.
+  </p>
+  <p class="legend">
+    Design planner behaviour around <b>{{ protective_m }} m</b>, not 3 m: that is
+    where the protective field actually ends, and the vehicle still needs its
+    braking distance on top of the 130 ms response time.
+  </p>
+</section>
+
+<section class="sensor">
+  <h2>Stream <small>UDP data output</small></h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Link</span><b id="l-link">–</b><i id="l-detail">—</i></div>
+    <div class="tel"><span>Rate</span><b id="l-rate">–</b><i id="l-age">—</i></div>
+    <div class="tel"><span>Telegrams</span><b id="l-count">–</b><i id="l-gaps">—</i></div>
+    <div class="tel"><span>Beams</span><b id="l-beams">–</b><i id="l-span">—</i></div>
+  </div>
+</section>
+
+<section class="sensor">
+  <h2>Device <small>from the telegram's status block</small></h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Contamination</span><b id="l-cont">–</b><i id="l-cont-d">not decoded yet</i></div>
+    <div class="tel"><span>Device error</span><b id="l-dev">–</b><i>needs a full restart</i></div>
+    <div class="tel"><span>Application error</span><b id="l-app">–</b><i>safety function restart</i></div>
+    <div class="tel"><span>Monitoring case</span><b id="l-case">–</b><i>active</i></div>
+  </div>
+  <p class="legend">
+    Device error and application error are kept apart on purpose: a device error
+    puts the scanner into a locking state and needs a complete restart, while an
+    application error only needs the safety function restarted. Collapsing them
+    into one “lidar fault” loses the operator's next action.
+    These four are <b>not decoded yet</b> — the status block's layout is not in
+    this repo. Confirm it against SICK document 8022706 with
+    <code>drivers/lidar_scan.py raw</code>, then promote the fields.
+  </p>
+</section>
+
+{% endblock %}
+
+{% block script %}
+<script>
+  window.LIDAR = {
+    protective_m: {{ protective_m }}, warning_m: {{ warning_m }},
+    range_m: {{ range_m }}, validated: {{ 'true' if zones_validated else 'false' }}
+  };
+</script>
+<script src="{{ url_for('static', filename='lidar.js') }}"></script>
+{% endblock %}

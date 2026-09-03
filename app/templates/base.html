@@ -13,20 +13,41 @@
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/auto"   class="{{ 'on' if page == 'auto' }}">Auto</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
+    <a href="/lidar"  class="{{ 'on' if page == 'lidar' }}">Lidar</a>
+    <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
+    <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
   </nav>
   <div id="link" class="pill">connecting…</div>
 </header>
 
 <div class="shell">
   <aside id="telemetry">
+    {# The shared rail. Loop timing, frames-per-tick and the watchdog countdown
+       used to live here; they are diagnostics for someone tuning the control
+       loop, not facts an operator acts on, so they moved to /monitor. What is
+       here is what somebody standing next to the vehicle needs. #}
     <div class="tel-grid">
+      <div class="tel"><span>Battery</span><b id="batt">–</b><i id="batt-note">V</i></div>
+      <div class="tel"><span>State</span><b id="vstate">–</b><i id="vstate-note">—</i></div>
       <div class="tel"><span>Left</span><b id="rpm-1">–</b><i>r/min</i></div>
       <div class="tel"><span>Right</span><b id="rpm-2">–</b><i>r/min</i></div>
       <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i>L / R</i></div>
-      <div class="tel"><span>Watchdog</span><b id="wd">–</b><i>s left</i></div>
-      <div class="tel"><span>Loop</span><b id="loop-work">–</b><i id="loop-period">ms work</i></div>
-      <div class="tel"><span>Frames</span><b id="loop-frames">–</b><i id="loop-starved">per tick</i></div>
+      <div class="tel"><span>Alarm</span><b id="alarm">–</b><i id="alarm-note">—</i></div>
+    </div>
+
+    {# Lidar zones, on every page. Three lamps and nothing else: the scan
+       picture belongs on /lidar, but "is something in the protective field"
+       is a fact you want without changing page.
+
+       Renders as ? or STALE rather than as clear whenever it does not know -
+       see zoneState() in common.js, and sec 4 of lidar_brief.md. #}
+    <div class="zone-rail" id="zone-rail" hidden>
+      <span class="zone-rail-label">Lidar</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-0"></i>stop</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-1"></i>slow</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-2"></i>warn</span>
+      <span class="zone-rail-state" id="rail-z-note">—</span>
     </div>
     <div class="states">
       <div id="st-1" class="st">node 1 –</div>

@@ -55,6 +55,8 @@ import health  # noqa: E402
 import motion  # noqa: E402
 import branch  # noqa: E402
 import dio  # noqa: E402
+import lidar  # noqa: E402
+import panel  # noqa: E402
 import rfid  # noqa: E402
 import runlog  # noqa: E402
 
@@ -69,6 +71,31 @@ SENSOR_PROBE_TIMEOUT_S = 0.15
 SENSOR_SILENT_MSG = (f"MLS (node {config.SENSOR_NODE}) is not responding - auto "
                      f"mode is unavailable. Manual jogging still works, without "
                      f"the tape display.")
+
+
+def _battery(mon):
+    """Pack voltage for the shared rail: the WORST of the two drives.
+
+    Both amplifiers sit on the same battery, so the two readings are the same
+    quantity measured twice. Showing the lower one is the honest summary - and
+    showing an average would let a drive reading 38 V hide behind one reading 49.
+
+    canmon already applies the profile's two-sided thresholds, so the state comes
+    from there rather than being re-derived against a second copy of the limits.
+    """
+    worst_v, state, warn_low = None, "ok", None
+    rank = {"ok": 0, "warn": 1, "trip": 2}
+    for node in (mon.get("nodes") or {}).values():
+        bv = node.get("bus_v") or {}
+        v = bv.get("value")
+        if v is None:
+            continue
+        warn_low = bv.get("warn_low") if warn_low is None else warn_low
+        if worst_v is None or v < worst_v:
+            worst_v = v
+        if rank.get(bv.get("state"), 0) > rank.get(state, 0):
+            state = bv.get("state")
+    return {"volts": worst_v, "state": state, "warn_low": warn_low}
 
 
 class TpdoTap:
@@ -311,6 +338,38 @@ class Controller:
         self._hw.add(health.PullSource("dio", self._dio.snapshot),
                      config.DIO_SILENT_WARN_S)
 
+        # Safety lidar, data output only. Same arrangement again: own thread,
+        # own socket, pulled for health.
+        #
+        # NON-CRITICAL, and more than that: nothing consumes it. The scanner
+        # stops the vehicle through its OSSD pair into the FX3, in hardware,
+        # and the manual is explicit that this Ethernet data must not be used
+        # for safety. So a dead scanner here is a display fault - it must not
+        # stop the vehicle, and must not block arming either, because doing so
+        # would put a non-safety data path in the way of manual recovery.
+        #
+        # The sec 4 rule ("absence of data is never clear") is therefore
+        # enforced at the CONSUMERS - today only the /lidar page, which renders
+        # a stale stream as occupied rather than as clear.
+        self._lidar = lidar.LidarLink()
+        self._hw.add(health.PullSource("lidar", self._lidar.snapshot),
+                     config.LIDAR_SILENT_WARN_S)
+
+        # Operator panel. Scanned from the DI image every tick in _run() - NOT
+        # inside _run_autopilot(), which only runs while armed in auto. The
+        # panel is what ENTERS every state, so it has to be read while idle.
+        self._panel = panel.PanelScan(
+            config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO,
+            config.PANEL_DEBOUNCE_SCANS)
+        # A latched involuntary stop. Start is refused until Reset clears it, so
+        # a vehicle that stopped itself cannot be restarted by somebody who did
+        # not see why. A DELIBERATE stop is not a fault and does not latch.
+        self._fault = None
+        # Which control path owns the running latch, so the watchdog knows what
+        # counts as proof the operator is still there. See _panel_scan().
+        self._run_source = None
+        self._last_action = None        # (what, source) for the UI
+
     # ---- lifecycle ------------------------------------------------------
 
     def start(self):
@@ -321,11 +380,13 @@ class Controller:
         self._thread.start()
         self._rfid.start()          # no-op while rfid.enabled is false
         self._dio.start()           # likewise while dio.enabled is false
+        self._lidar.start()         # likewise while lidar.enabled is false
 
     def shutdown(self):
         self._stop_evt.set()
         self._rfid.stop()
         self._dio.stop()
+        self._lidar.stop()
         if self._thread:
             self._thread.join(timeout=6.0)
 
@@ -364,9 +425,84 @@ class Controller:
             if self._mode == "auto" and self._armed:
                 self._deadline = time.monotonic() + config.AUTO_WATCHDOG_S
 
+    def lidar_cloud(self, step=None):
+        """The decimated point cloud, decoded on the CALLING (Flask) thread.
+
+        Deliberately not part of snapshot() and deliberately not held under this
+        object's lock: decoding 1652 points costs ~250 us, and doing that on the
+        bus thread - or while holding the lock the bus thread needs - would put a
+        browser refresh inside the control tick's 20 ms budget.
+        """
+        return self._lidar.cloud(step)
+
+    def _alarm(self, mon, flags):
+        """The one-line verdict every page shows. Caller holds the lock.
+
+        Ranked, because "something is wrong" is useless if it cannot say how
+        wrong. The order is the order an operator acts in:
+
+          error  a latched fault, a lost critical device, an EMCY alarm still
+                 standing, or a monitored value past its TRIP limit. The vehicle
+                 has stopped or should.
+          warn   a non-critical device lost (auto unavailable, manual fine), a
+                 statusword warning flag, or a value past its WARN limit.
+          ok     nothing outstanding.
+
+        Deliberately reports the FIRST reason at each level rather than all of
+        them: the rail is one line, and the alarms page carries the full list.
+        """
+        hw = self._health or {}
+
+        if self._fault:
+            return {"level": "error", "active": True, "detail": self._fault,
+                    "source": "fault"}
+        if hw.get("system_error"):
+            return {"level": "error", "active": True,
+                    "detail": hw.get("system_detail") or "critical device lost",
+                    "source": "health"}
+        for nid in config.NODES:
+            al = self._alarms.get(nid)
+            if al and al.get("level") == "error":
+                return {"level": "error", "active": True,
+                        "detail": f"node {nid} {al.get('name') or al.get('hex')}",
+                        "source": "emcy"}
+        for node_id, vals in (mon.get("nodes") or {}).items():
+            for key, v in vals.items():
+                if v.get("state") == "trip":
+                    return {"level": "error", "active": True,
+                            "detail": f"node {node_id} {v.get('label')} "
+                                      f"{v.get('value')}{v.get('unit')}",
+                            "source": "monitor"}
+
+        if hw.get("sensor_error"):
+            return {"level": "warn", "active": True,
+                    "detail": hw.get("sensor_detail") or "sensor lost",
+                    "source": "health"}
+        for node_id, vals in (mon.get("nodes") or {}).items():
+            for key, v in vals.items():
+                if v.get("state") == "warn":
+                    return {"level": "warn", "active": True,
+                            "detail": f"node {node_id} {v.get('label')} "
+                                      f"{v.get('value')}{v.get('unit')}",
+                            "source": "monitor"}
+        for node_id, fl in (flags or {}).items():
+            for f in fl:
+                if f.get("level") in ("warn", "error"):
+                    return {"level": "warn", "active": True,
+                            "detail": f"node {node_id} {f.get('name')}",
+                            "source": "statusword"}
+
+        return {"level": "ok", "active": False, "detail": "", "source": None}
+
     def snapshot(self):
         with self._lock:
             now = time.monotonic()
+            # Built once and shared: the rail below and the /monitor detail read
+            # the same sweep, so they can never disagree about a voltage.
+            mon = self._mon.snapshot(config.MONITOR_THRESHOLDS)
+            flags = {str(n): decode_statusword_flags(
+                         self._telemetry[n].get("statusword"))
+                     for n in config.NODES}
             return {
                 "connected": self.bus is not None,
                 "how": self.how,
@@ -395,22 +531,34 @@ class Controller:
                 # this moves, so a quiet vehicle costs no extra requests.
                 "rfid": self._rfid.snapshot(),
                 "dio": self._dio.snapshot(),
+                # Summary only - never the 1652-point cloud. Every page polls
+                # /api/state five times a second; the cloud goes out on
+                # /api/lidar, which only the lidar page asks for.
+                "lidar": self._lidar.snapshot(),
+                "panel": {"enabled": config.PANEL_ENABLED,
+                          "selector": self._panel.mode(),
+                          "fault": self._fault,
+                          "run_source": self._run_source,
+                          "last_action": self._last_action},
                 "branch": {"intent": self._branch.ladder.intent(),
                            "set_by": self._branch.set_by,
                            "unhonoured": self._branch.unhonoured,
                            "unmatched": self._branch.unmatched,
                            "junctions": len(config.BRANCH_LATCH)},
                 "health": self._health,
+                # The shared rail every page shows. Derived here rather than in
+                # the browser so all four pages agree on what "alarm" means -
+                # three pages computing it three ways is three chances to have
+                # one of them quietly say everything is fine.
+                "battery": _battery(mon),
+                "alarm": self._alarm(mon, flags),
                 "can": {
                     "alarms": {str(n): self._alarms[n] for n in config.NODES},
                     "nmt": {str(n): self._nmt_state[n] for n in config.NODES},
                     "emcy_seen": self._emcy_seen,
                     "heartbeat_ms": config.CAN_HEARTBEAT_MS,
-                    "monitor": self._mon.snapshot(config.MONITOR_THRESHOLDS),
-                    "flags": {
-                        str(n): decode_statusword_flags(
-                            self._telemetry[n].get("statusword"))
-                        for n in config.NODES},
+                    "monitor": mon,
+                    "flags": flags,
                 },
                 "event_seq": events.latest_seq(),
                 "log_path": self._log.path,
@@ -436,6 +584,11 @@ class Controller:
             self.error = None
         events.info(f"bus up on {how} at {config.CAN_BITRATE // 1000} kbps · "
                     f"profile {config.PROFILE_NAME}")
+        # Here, not at arm time: liveness has to work before, during and after
+        # arming, and must not depend on having armed. Without this call 1017h
+        # keeps its factory default of 0 = OFF, can.heartbeat_ms is inert, and
+        # the only evidence a drive is alive is the 5 Hz telemetry poll.
+        self._enable_heartbeat()
 
         t_tel = t_field = t_mon = 0.0
         # loop_health, not health: `health` is the hardware-health module. Loop
@@ -446,6 +599,15 @@ class Controller:
             while not self._stop_evt.is_set():
                 t_iter = time.perf_counter()
                 self._drain_queue()
+                # A queued action runs on THIS thread, so a long one is a window
+                # in which nothing polled and nothing could have marked
+                # liveness. Judging it would report every source as lost.
+                # reset() makes them "never seen" instead, which evaluate()
+                # already treats as not-a-fault.
+                if 0 < self._hw.min_timeout() < time.perf_counter() - t_iter:
+                    self._hw.reset()
+
+                self._panel_scan()
 
                 now = time.monotonic()
                 with self._lock:
@@ -454,14 +616,21 @@ class Controller:
 
                 if armed and now > deadline and (target != (0, 0)
                                                  or self._auto_running):
-                    reason = ("watchdog: no keepalive from the browser"
-                              if mode == "manual" else
-                              "watchdog: auto page stopped polling")
+                    # Name the control path that actually went quiet. A
+                    # panel-started run is not held up by a browser, so blaming
+                    # one would send the operator to the wrong place.
+                    if mode == "manual":
+                        reason = "watchdog: no keepalive from the browser"
+                    elif self._run_source == "panel":
+                        reason = "watchdog: panel scan stopped - DI link lost"
+                    else:
+                        reason = "watchdog: auto page stopped polling"
                     # A watchdog is a safety stop, so it zeroes outright rather
                     # than running the profile down - and it has to clear both
                     # the latch and the ramp, or the PID would re-command on the
                     # very next tick.
                     self._end_auto_run(reason, hard=True)
+                    self._set_fault(reason)
                     with self._lock:
                         self._direction = "stop"
                         self._target = target = (0, 0)
@@ -543,6 +712,22 @@ class Controller:
 
     # ---- primitives ------------------------------------------------------
 
+    def _mark_alive(self, node):
+        """A completed SDO transfer proves that node is on the bus.
+
+        Liveness used to be marked ONLY from _poll_telemetry and the heartbeat,
+        so the ~20 round-trips inside _do_arm counted for nothing: the monitor
+        declared both drives silent while we were mid-conversation with them,
+        and an arm - 700-900 ms of blocking work against a 0.6 s timeout -
+        reliably produced a false "driver silent" fault the moment it returned.
+
+        .get() rather than [] on purpose: the MLS is node 10 and has no entry
+        here, and its liveness is TPDO1 frames, not SDO replies.
+        """
+        src = self._src_node.get(node)
+        if src is not None:
+            src.mark_rx()
+
     def _read(self, node, index, sub=0, fast=False, timeout=None):
         """fast=True skips sdo_read's post-reply collision window.
 
@@ -559,12 +744,16 @@ class Controller:
         kw = {} if timeout is None else {"timeout": timeout}
         st, val, _, _ = sdo_read(self.bus, node, index, sub,
                                  collision_window=0.0 if fast else 0.01, **kw)
+        if st:
+            self._mark_alive(node)
         return u32(val) if st else None
 
     def _read_i32(self, node, index, sub=0, fast=False, timeout=None):
         kw = {} if timeout is None else {"timeout": timeout}
         st, val, _, _ = sdo_read(self.bus, node, index, sub,
                                  collision_window=0.0 if fast else 0.01, **kw)
+        if st:
+            self._mark_alive(node)
         return struct.unpack("<i", val.ljust(4, b"\0"))[0] if st else None
 
     def _write(self, node, index, sub, value, size, what):
@@ -575,6 +764,7 @@ class Controller:
         ok, detail = sdo_write(self.bus, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
+        self._mark_alive(node)
 
     def _nmt(self, command, node):
         self.bus.send(can.Message(arbitration_id=0x000, data=[command, node],
@@ -680,11 +870,13 @@ class Controller:
         if running and diag["state"] in ("line_lost", "sensor_lost"):
             # A fault stops as hard as a STOP does - there is no reason to
             # coast gently toward whatever the AGV has just lost sight of.
-            self._end_auto_run(
-                f"line lost - no track for "
-                f"{config.LINE_LOSS_GRACE_M * 1000:.0f} mm of travel, stopping"
-                if diag["state"] == "line_lost" else
-                "sensor silent - no TPDO1, stopping", hard=True)
+            reason = (f"line lost - no track for "
+                      f"{config.LINE_LOSS_GRACE_M * 1000:.0f} mm of travel, "
+                      f"stopping"
+                      if diag["state"] == "line_lost" else
+                      "sensor silent - no TPDO1, stopping")
+            self._end_auto_run(reason, hard=True)
+            self._set_fault(reason)
         elif (not running and self._log_close_at
                 and time.monotonic() >= self._log_close_at):
             self._log.close()
@@ -712,6 +904,7 @@ class Controller:
         if hw["system_edge"] is True:
             reason = f"driver silent - {hw['system_detail']}, stopping"
             self._end_auto_run(reason, hard=True)
+            self._set_fault(reason)
             with self._lock:
                 self._direction = "stop"
                 self._target = target = (0, 0)
@@ -720,6 +913,128 @@ class Controller:
         elif hw["system_edge"] is False:
             events.info("drivers answering again - re-arm to continue")
         return target
+
+    # ---- operator panel --------------------------------------------------
+
+    def _set_fault(self, reason):
+        """Latch an INVOLUNTARY stop.
+
+        Deliberate stops - Reset, web STOP, the selector - never come through
+        here. Only things the vehicle decided for itself: a failed arm, a silent
+        driver, a lost line, a dead DI link, a watchdog trip. Start stays
+        refused until Reset acknowledges it, so a vehicle that stopped itself
+        cannot be restarted with one press by somebody who did not see why.
+        """
+        with self._lock:
+            first = self._fault is None
+            self._fault = reason
+        if first:                       # edge only; this is reachable at 50 Hz
+            events.error(f"FAULT: {reason} - press Reset to clear")
+
+    def _clear_fault(self):
+        with self._lock:
+            was, self._fault = self._fault, None
+        if was:
+            events.info(f"fault cleared: {was}")
+        return was
+
+    def _note_action(self, what, source):
+        with self._lock:
+            self._last_action = {"what": what, "source": source}
+
+    def _panel_scan(self):
+        """One panel scan. Called every tick from _run(), in every state."""
+        if not config.PANEL_ENABLED:
+            return
+        snap = self._dio.snapshot()
+        intent = self._panel.scan(snap.get("di"), bool(snap.get("comms_ok")))
+        if not intent.valid:
+            return
+
+        with self._lock:
+            running, source = self._auto_running, self._run_source
+        # The watchdog asks "is the operator's control path still alive?". For a
+        # web run that is the browser poll; for a panel run it is THIS scan. Same
+        # watchdog, different evidence - without this a panel-started run would
+        # stop 1.5 s after the last browser closed.
+        if running and source == "panel" and intent.mode == panel.AUTO:
+            self.keepalive()
+
+        # Order matters: a selector move disarms, so evaluate it before the
+        # buttons decide what to do about the new mode.
+        if intent.mode_changed:
+            self._panel_mode_changed(intent.mode)
+        if intent.reset:
+            self._panel_reset(intent.mode)
+        if intent.start:
+            self._panel_start(intent.mode)
+
+    def _panel_mode_changed(self, mode):
+        events.info(f"selector -> {mode.upper()}")
+        with self._lock:
+            armed = self._armed
+        if not armed:
+            return
+        # Mode is fixed at arm time - auto energises differently and starts the
+        # sensor - so a selector move has to go back to idle. It is a deliberate
+        # operator action, so it stops without latching a fault.
+        self._end_auto_run(f"selector moved to {mode.upper()}", hard=True)
+        self._do_disarm()
+        self._note_action(f"disarmed (selector -> {mode})", "panel")
+
+    def _panel_reset(self, mode):
+        """Reset means GO TO READY, from wherever we are.
+
+        idle    -> arm in the selected mode
+        running -> stop, stay armed so Start can go again
+        fault   -> clear the latch, then arm
+        """
+        with self._lock:
+            armed, running, cur = self._armed, self._auto_running, self._mode
+
+        if running:
+            self._end_auto_run("stopped from panel (Reset)", hard=True)
+            with self._lock:
+                self._direction = "stop"
+                self._target = (0, 0)
+                self._run_source = None
+            self._note_action("stopped", "panel")
+            return
+
+        self._clear_fault()
+        if armed and cur == mode:
+            events.info(f"Reset - already armed in {mode}")
+            return
+        if armed:
+            self._do_disarm()           # armed in the other mode
+        try:
+            self._do_arm(mode)
+            self._note_action(f"armed in {mode}", "panel")
+        except Exception as e:          # noqa: BLE001 - the panel has no 409
+            self._set_fault(str(e))
+
+    def _panel_start(self, mode):
+        with self._lock:
+            fault, armed, cur, running = (self._fault, self._armed,
+                                          self._mode, self._auto_running)
+        if fault:
+            events.warn(f"Start ignored - fault latched: {fault}. Press Reset.")
+            return
+        if mode != panel.AUTO:
+            # Manual has no run latch. Jogging is per-direction from the web
+            # pad, which has no equivalent on this panel.
+            events.info("Start ignored - selector is in MANUAL")
+            return
+        if not armed or cur != "auto":
+            events.warn("Start ignored - not armed. Press Reset first.")
+            return
+        if running:
+            return
+        try:
+            self._do_auto_run(True, source="panel")
+            self._note_action("auto run START", "panel")
+        except Exception as e:          # noqa: BLE001
+            self._set_fault(str(e))
 
     def _end_auto_run(self, reason=None, hard=False, close_log_now=False):
         """Clear the START latch. Safe to call repeatedly.
@@ -1042,6 +1357,9 @@ class Controller:
         if not was_armed:
             return {"ok": True}
         self._branch.reset()
+        self._clear_fault()             # web disarm is an acknowledgement too
+        with self._lock:
+            self._run_source = None
         events.info("disarmed")
 
         for nid in config.NODES:
@@ -1073,7 +1391,7 @@ class Controller:
             self._sensor = None
         return {"ok": True}
 
-    def _do_auto_run(self, running):
+    def _do_auto_run(self, running, source="web"):
         with self._lock:
             if self._mode != "auto" or not self._armed:
                 raise RuntimeError("auto mode is not armed")
@@ -1100,6 +1418,7 @@ class Controller:
                         f"{os.path.basename(self._log.dir or '?')}")
             with self._lock:
                 self._auto_running = True
+                self._run_source = source
                 self._direction = "forward"
                 self._deadline = time.monotonic() + config.AUTO_WATCHDOG_S
                 self._last_stop_reason = None

@@ -29,12 +29,14 @@ MODULES = [
     "test_logging",
     "test_rfid",
     "test_dio",
+    "test_lidar",
+    "test_panel",
     "test_branch",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 341
+EXPECTED_CHECKS = 689
 
 
 def main():

@@ -19,17 +19,22 @@ thing being tuned.
 """
 import io
 
-# Material 500, so the traces read the same as the reference plots from the
-# sibling AGV. Commanded is saturated, actual is the same hue washed out, so a
-# glance separates "what we asked for" from "what the wheels did".
-C_CMD_L = "#1976D2"
-C_CMD_R = "#388E3C"
-C_ACT_L = "#90CAF9"
-C_ACT_R = "#A5D6A7"
-C_ERR = "#F44336"
-C_TEXT = "#222222"
-C_DIM = "#7a828c"
-C_SHADE = "#f3ede1"
+# The web UI's palette, so a plot pasted beside the interface reads as the same
+# system. Commanded is the saturated hue, actual is the same hue washed out, so
+# a glance separates "what we asked for" from "what the wheels did".
+#
+# The FONT deliberately stays matplotlib's default. font_manager reads ttf/otf
+# /afm only - it cannot load the woff2 files in app/static/fonts - so matching
+# the UI's IBM Plex would mean committing a second copy of the same typeface in
+# another format for this one consumer. Not worth it; see fonts/LICENSE.md.
+C_CMD_L = "#2F5F94"        # --accent-2
+C_CMD_R = "#186E42"        # --ok
+C_ACT_L = "#A8C2DC"        # washed --accent-2
+C_ACT_R = "#9CC7B0"        # washed --ok
+C_ERR = "#A32218"          # --stop
+C_TEXT = "#14171D"         # --ink
+C_DIM = "#6B7486"          # --ink-3
+C_SHADE = "#FBF2D2"        # --hazard-wash
 
 _STYLE_DONE = False
 
@@ -44,7 +49,7 @@ def _pyplot():
         plt.rcParams.update({
             "figure.facecolor": "white",
             "axes.facecolor": "white",
-            "axes.edgecolor": "#cccccc",
+            "axes.edgecolor": "#CBD2DE",      # --rule
             "axes.labelcolor": C_TEXT,
             "text.color": C_TEXT,
             "xtick.color": C_DIM,
@@ -140,7 +145,7 @@ def _shade_states(ax, rows):
         if rows[j]["t"] - rows[i]["t"] > (rows[-1]["t"] - rows[0]["t"]) * 0.02:
             ax.annotate(st, xy=(rows[i]["t"], 1.0), xycoords=("data", "axes fraction"),
                         xytext=(3, -12), textcoords="offset points",
-                        fontsize=8, color="#a08a5a")
+                        fontsize=8, color="#5E4A00")   # --hazard-ink
         i = j + 1
 
 

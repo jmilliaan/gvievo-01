@@ -135,6 +135,14 @@ class HealthMonitor:
         self._table.append((source, timeout_s))
         return source
 
+    def min_timeout(self):
+        """The tightest deadline in the table.
+
+        Used by the caller to decide whether a stall it just suffered was long
+        enough to invalidate every source's evidence - see canworker._run().
+        """
+        return min((t for _s, t in self._table), default=0.0)
+
     def reset(self):
         for source, _ in self._table:
             if hasattr(source, "reset"):

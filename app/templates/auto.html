@@ -2,10 +2,17 @@
 {% block title %}AGV — auto{% endblock %}
 {% block body %}
 
+<div id="panel-strip" class="panel-strip" hidden>
+  <b>Panel</b>
+  <span>selector <b id="pn-sel">–</b></span>
+  <span>last <b id="pn-act">–</b></span>
+  <span id="pn-fault" class="pn-fault" hidden></span>
+</div>
+
 <div class="bar">
-  <button id="arm"    class="big go">ARM</button>
-  <button id="run"    class="big run" disabled>START</button>
-  <button id="disarm" class="big off">DISARM</button>
+  <span class="hint"><b>Auto is armed and started from the panel</b> —
+        selector to AUTO, press Reset to arm, Start to run. Reset or the
+        selector stops it. This page has no controls.</span>
   <span class="hint">Line following at {{ auto_rpm }} r/min ·
         K={{ k_ratio }} Kd={{ kd }} ζ={{ zeta }}</span>
 </div>
@@ -21,7 +28,7 @@
 {% else %}
 <div class="warn">
   Live. A wrong error sign steers the AGV <em>off</em> the tape and accelerates.
-  Stay on the STOP button.
+  Keep a hand on the panel — Reset stops the run.
 </div>
 {% endif %}
 

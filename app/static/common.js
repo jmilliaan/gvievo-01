@@ -118,11 +118,142 @@ function renderSensor(s) {
   if (s.field_level !== null && s.min_level !== null) {
     const weak = s.field_level < s.min_level;
     min.textContent = weak ? `below min ${s.min_level}` : `min ${s.min_level}`;
-    f.style.color = weak ? 'var(--warn)' : '';
+    f.style.color = weak ? 'var(--hazard-ink)' : '';
   } else {
     min.textContent = 'digits';
     f.style.color = '';
   }
+}
+
+// ---- RFID station tags ----------------------------------------------------
+// Lives here rather than in auto.js for the same reason renderSensor does: both
+// pages show it. Auto needs the standing junction order; MANUAL needs the tag
+// itself, because reading a tag's four-hex value means jogging the vehicle over
+// it by hand, and that is done on the page with the arrows.
+//
+// Every lookup is guarded, so a page showing three tiles and a page showing four
+// run the same code. No-ops entirely on a page with no #r-tag.
+//
+// The reader is on its own thread; this only ever renders what it published.
+function showRfid(r, b) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  if (!r || !document.getElementById('r-tag')) return;
+  // last_tag, not just tag: the live value clears as soon as the vehicle rolls
+  // off the tag, which is precisely when somebody is looking down to write the
+  // number on a piece of paper.
+  set('r-tag', r.tag || (r.last_tag ? r.last_tag : '–'));
+  set('r-age', r.tag_age_s === null || r.tag_age_s === undefined
+               ? 'no tag yet' : r.tag_age_s.toFixed(1) + ' s ago');
+  set('r-count', r.tags_seen);
+
+  // The standing junction order. `straight` is the resting state, not a
+  // fault, so only a live order or an unhonoured one is coloured.
+  b = b || {};
+  set('r-branch', b.intent || 'straight');
+  set('r-branch-by',
+      b.unhonoured ? 'side not in this diverter'
+      : b.set_by ? 'tag ' + b.set_by
+      : b.junctions ? b.junctions + ' junction(s) configured'
+      : 'no junctions configured');
+  const br = document.getElementById('r-branch');
+  if (br) br.style.color = b.unhonoured ? 'var(--stop)'
+                         : (b.intent && b.intent !== 'straight') ? 'var(--hazard-ink)' : '';
+
+  // Three states worth distinguishing, because they need different actions:
+  // disabled (nothing to do), carrier down (physical), connected but silent
+  // (reader wedged, or the protocol is still wrong).
+  const link = document.getElementById('r-link');
+  if (!link) return;
+  let text, colour;
+  if (!r.enabled)            { text = 'off';      colour = ''; }
+  else if (r.carrier === false) { text = 'NO CABLE'; colour = 'var(--stop)'; }
+  else if (!r.connected)     { text = 'down';     colour = 'var(--stop)'; }
+  else if (!r.comms_ok)      { text = 'silent';   colour = 'var(--hazard-ink)'; }
+  else                       { text = 'ok';       colour = ''; }
+  link.textContent = text;
+  link.style.color = colour;
+  set('r-detail', r.silent ? 'silent — check antenna'
+                          : (r.identity || r.detail || '—'));
+}
+
+// ---- the shared rail ------------------------------------------------------
+// Battery, state, alarm and the lidar zones, on every page. Rendered here for
+// the same reason the verdicts are COMPUTED on the server: four pages deciding
+// separately what counts as an alarm is four chances for one of them to say
+// everything is fine while the vehicle is stopped.
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v;
+  return el;
+}
+
+// One definition of what a zone lamp is showing, shared by the rail and by the
+// full lamps on /lidar. Order matters and is the safety-relevant part: stale
+// outranks everything, because a dead stream must never render as "clear"
+// whatever the last telegram happened to say. See sec 4 of lidar_brief.md.
+function zoneState(z, i) {
+  const paths = (z && z.paths) || [];
+  if (!z || z.stale)   return {on: true,  text: 'STALE',    cls: 'stale'};
+  if (!z.validated)    return {on: true,  text: '?',        cls: 'unknown'};
+  if (paths[i] === null || paths[i] === undefined)
+                       return {on: true,  text: 'UNREAD',   cls: 'stale'};
+  if (paths[i])        return {on: true,  text: 'OCCUPIED', cls: ''};
+  return {on: false, text: 'clear', cls: ''};
+}
+
+function renderRail(s) {
+  // Battery: the lower of the two drives. canmon already applied the profile's
+  // thresholds, so the colour comes from its verdict rather than from a second
+  // copy of the limits living in the browser.
+  const b = s.battery || {};
+  const bv = setText('batt', b.volts === null || b.volts === undefined
+                             ? '–' : b.volts.toFixed(1));
+  if (bv) bv.style.color = b.state === 'trip' ? 'var(--stop)'
+                         : b.state === 'warn' ? 'var(--hazard-ink)' : '';
+  setText('batt-note', b.warn_low ? `V · low at ${b.warn_low}` : 'V');
+
+  // State. `mode` is what the vehicle is armed AS; armed is whether it is
+  // energised at all. Both, because "AUTO" while disarmed is not the same
+  // thing as "AUTO" while running and must not read as it.
+  const mode = (s.mode || '—').toUpperCase();
+  const st = setText('vstate', s.armed ? mode : 'IDLE');
+  if (st) st.style.color = s.armed ? 'var(--ok)' : '';
+  setText('vstate-note', s.armed
+    ? (s.auto_running ? 'armed · RUNNING' : 'armed')
+    : (s.mode ? `${mode.toLowerCase()} selected` : 'not armed'));
+
+  // Alarm. One line; the full list is on /alarms.
+  const a = s.alarm || {};
+  const al = setText('alarm', a.level === 'error' ? 'ALARM'
+                            : a.level === 'warn' ? 'WARN' : 'none');
+  if (al) al.style.color = a.level === 'error' ? 'var(--stop)'
+                         : a.level === 'warn' ? 'var(--hazard-ink)' : '';
+  setText('alarm-note', a.detail || 'nothing outstanding');
+
+  // Lidar zones. Hidden entirely when the scanner is not in use - three
+  // permanent "?" lamps on a vehicle without one is noise, not information.
+  const rail = document.getElementById('zone-rail');
+  const l = s.lidar;
+  if (!rail) return;
+  rail.hidden = !(l && l.enabled);
+  if (rail.hidden) return;
+  let worst = '';
+  for (let i = 0; i < 3; i++) {
+    const z = zoneState(l.zones, i);
+    const lamp = document.getElementById(`rail-z-${i}`);
+    if (!lamp) continue;
+    lamp.classList.toggle('on', z.on);
+    lamp.classList.toggle('unknown', z.cls === 'unknown');
+    lamp.classList.toggle('stale', z.cls === 'stale');
+    if (z.cls === 'stale') worst = 'STALE';
+    else if (z.cls === 'unknown' && !worst) worst = 'unvalidated';
+    else if (z.text === 'OCCUPIED' && worst !== 'STALE') worst = 'OCCUPIED';
+  }
+  const note = setText('rail-z-note', worst || 'clear');
+  if (note) note.style.color = worst === 'STALE' || worst === 'OCCUPIED'
+                             ? 'var(--stop)'
+                             : worst ? 'var(--hazard-ink)' : '';
 }
 
 // ---- loop health ----------------------------------------------------------
@@ -142,7 +273,7 @@ function renderLoopHealth(lp) {
   } else {
     work.textContent = `${lp.work_avg_ms.toFixed(1)}/${lp.work_max_ms.toFixed(0)}`;
     period.textContent = `ms avg/max · ${lp.target_ms.toFixed(0)} target`;
-    work.style.color = lp.work_max_ms > 1.5 * lp.target_ms ? 'var(--warn)' : '';
+    work.style.color = lp.work_max_ms > 1.5 * lp.target_ms ? 'var(--hazard-ink)' : '';
   }
 
   if (lp.frames_per_tick === null || lp.frames_per_tick === undefined) {
@@ -154,7 +285,7 @@ function renderLoopHealth(lp) {
     // had arrived - the PID would be looking at a frame it already used.
     starved.textContent = lp.starved ? `per tick · ${lp.starved} starved`
                                      : 'per tick';
-    frames.style.color = lp.starved > 5 ? 'var(--warn)' : '';
+    frames.style.color = lp.starved > 5 ? 'var(--hazard-ink)' : '';
   }
 }
 
@@ -198,17 +329,20 @@ async function poll() {
         + (n.error_reg ? `  ERR 0x${n.error_reg.toString(16).padStart(2, '0')}` : '');
       st.className = 'st' + ((silent || n.error_reg || n.fault) ? ' bad' : '');
     }
-    document.getElementById('setpoint').textContent =
-      `${s.target.left} / ${s.target.right}`;
-    document.getElementById('wd').textContent =
-      s.armed ? s.watchdog_s.toFixed(1) : '–';
+    setText('setpoint', `${s.target.left} / ${s.target.right}`);
+    // Watchdog and loop health live on /monitor only now. Both are guarded,
+    // because an unguarded lookup for a tile that moved throws inside poll()
+    // and silently freezes EVERY page's telemetry.
+    setText('wd', s.armed ? s.watchdog_s.toFixed(1) : '–');
     renderLoopHealth(s.loop);
+    renderRail(s);
 
     // Stop reasons now arrive through the server event log, which survives a
     // reload; logging them here too would just double every line.
     syncEvents(s.event_seq);
 
     renderSensor(s);
+    showRfid(s.rfid, s.branch);
     listeners.forEach(fn => fn(s));
   } catch (e) {
     setPill('server unreachable', 'bad');
@@ -217,3 +351,28 @@ async function poll() {
 
 setInterval(poll, 200);
 poll();
+
+
+// Operator panel state. Shared by /manual and /auto: both need to show that the
+// vehicle can be armed and started from the physical buttons, and above all
+// that a latched fault is why nothing is happening.
+onState(s => {
+  const strip = document.getElementById('panel-strip');
+  if (!strip) return;
+  const p = s.panel || {};
+  strip.hidden = !p.enabled;
+  if (!p.enabled) return;
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  // null selector = the DI scan has not produced a trusted image yet, which is
+  // not the same as MANUAL and must not be shown as it.
+  set('pn-sel', p.selector ? p.selector.toUpperCase() : 'unknown');
+  const a = p.last_action;
+  set('pn-act', a ? `${a.what} (${a.source})` : '–');
+
+  const f = document.getElementById('pn-fault');
+  if (f) {
+    f.hidden = !p.fault;
+    f.textContent = p.fault ? `FAULT — ${p.fault} · press Reset` : '';
+  }
+});

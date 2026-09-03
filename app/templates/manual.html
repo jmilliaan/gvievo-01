@@ -2,9 +2,17 @@
 {% block title %}AGV — manual{% endblock %}
 {% block body %}
 
+<div id="panel-strip" class="panel-strip" hidden>
+  <b>Panel</b>
+  <span>selector <b id="pn-sel">–</b></span>
+  <span>last <b id="pn-act">–</b></span>
+  <span id="pn-fault" class="pn-fault" hidden></span>
+</div>
+
 <div class="bar">
-  <button id="arm"    class="big go">ARM</button>
   <button id="disarm" class="big off">DISARM</button>
+  <span class="hint"><b>Arm at the panel</b> — selector to MANUAL, press Reset.
+        The arrows stay greyed until then.</span>
   <span class="hint">Hold a button or key to drive. Release to stop.
         Released for {{ watchdog_ms }} ms &rarr; the AGV stops itself.</span>
 </div>
@@ -26,6 +34,22 @@
     <div class="tel"><span>Position</span><b id="s-pos">&ndash;</b><i>mm (LCP2)</i></div>
     <div class="tel"><span>Field</span><b id="s-field">&ndash;</b><i id="s-min">digits</i></div>
     <div class="tel"><span>Level</span><b id="s-level">&ndash;</b><i id="s-pol">&mdash;</i></div>
+  </div>
+</section>
+
+{# Its own section rather than extra tiles in the tape grid above: the MLS and
+   the RFID reader are different sensors on different buses, and one readout
+   blending them invites reading a tape figure as a station figure.
+
+   Here because recording a junction's tag means jogging the AGV over it by
+   hand, which happens on the page with the arrows. The value persists after
+   the vehicle has rolled past - see showRfid() in common.js. #}
+<section class="sensor pad-width">
+  <h2>Station tags <small>RFID reader &middot; {{ rfid_ip }}</small></h2>
+  <div class="tel-grid">
+    <div class="tel"><span>Tag</span><b id="r-tag">&ndash;</b><i id="r-age">&mdash;</i></div>
+    <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">&mdash;</i></div>
+    <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
   </div>
 </section>
 
