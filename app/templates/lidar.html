@@ -2,29 +2,12 @@
 {% block title %}AGV — lidar{% endblock %}
 {% block body %}
 
-<div class="warn">
-  <b>Not a safety path.</b>
-  The stop comes from the scanner's OSSD pair, hardwired into the FX3, which
-  drops STO at the drives. This page shows the scanner's <i>Ethernet data
-  output</i>, which the manual states must not be used for safety-related
-  applications. Nothing here can stop the vehicle, and nothing here can change
-  the scanner — the controller only listens on {{ host_ip }}:{{ port }}.
-</div>
-
-{% if not zones_validated %}
-{# Shown until a human has done the sec 2.5 walk-through. The lamps below are
-   driven by a byte mapping nobody has confirmed, so they are rendered as
-   "unknown" rather than as "clear" - see lidarframe.zones(). #}
-<div class="warn hazard">
-  <b>Cut-off paths are unvalidated.</b>
-  The byte offsets these lamps read come from <code>lidar.zone_bytes</code> in
-  the profile and have not been confirmed against the device's verification
-  report. Walk an object inward through <b>warn → slow → stop</b>, confirm each
-  index changes in the order expected, then set
-  <code>lidar.zones_validated</code>. Until then they read <b>?</b>, never
-  <i>clear</i>.
-</div>
-{% endif %}
+{# The banners that used to head this page are gone by request. The BEHAVIOUR
+   they described is unchanged and lives in code, not in prose: an unvalidated
+   byte mapping still renders as "?" and a stale stream still renders as
+   "STALE", never as clear - see zoneState() in common.js and
+   lidarframe.zones(). This page still cannot stop the vehicle or write to the
+   scanner; there is no endpoint for either. #}
 
 <section class="sensor">
   <h2>Cut-off paths <small>protective field {{ protective_m }} m · warning field {{ warning_m }} m</small></h2>

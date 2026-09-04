@@ -59,6 +59,18 @@ function renderState(can, nodes, health) {
   document.getElementById('mon-state').innerHTML = html;
 }
 
+// The bus identity, which used to live in the header pill on every page. Which
+// adapter can0 actually resolved to only matters when something is wrong with
+// it, and this is the page you are on when that is true.
+function renderBus(d) {
+  const how = document.getElementById('bus-how');
+  const st = document.getElementById('bus-state');
+  if (!how || !st) return;
+  how.textContent = d.connected ? (d.how || 'up') : 'DOWN';
+  how.style.color = d.connected ? '' : 'var(--stop)';
+  st.textContent = d.connected ? (d.error || 'open') : (d.error || 'no bus');
+}
+
 function renderAlarms(can) {
   const rows = NODE_ORDER
     .map(n => [n, (can.alarms || {})[n]])
@@ -86,6 +98,7 @@ async function pollCan() {
     const d = await apiGet('/api/can');
     const can = d.can || {};
     const mon = can.monitor || {nodes: {}};
+    renderBus(d);
     renderState(can, d.nodes, d.health || {});
     renderAlarms(can);
     group('mon-power', mon, [

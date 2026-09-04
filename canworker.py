@@ -68,6 +68,14 @@ import runlog  # noqa: E402
 # enough that a healthy sensor always replies", and it is short because a manual
 # arm pays it too and a missing sensor must not tax a mode that does not need one.
 SENSOR_PROBE_TIMEOUT_S = 0.15
+
+# How long to wait before retrying an auto-arm that failed. Not a vehicle
+# parameter: it is "slow enough not to hammer the bus". An arm attempt is
+# ~20 blocking SDO round-trips, and the common reason for failing one is a
+# safety chain holding the drives in ETO - a condition that lasts as long as
+# it lasts, so retrying it at tick rate would spend the whole bus thread on
+# a question whose answer cannot change quickly.
+ARM_RETRY_S = 2.0
 SENSOR_SILENT_MSG = (f"MLS (node {config.SENSOR_NODE}) is not responding - auto "
                      f"mode is unavailable. Manual jogging still works, without "
                      f"the tape display.")
@@ -365,6 +373,29 @@ class Controller:
         # a vehicle that stopped itself cannot be restarted by somebody who did
         # not see why. A DELIBERATE stop is not a fault and does not latch.
         self._fault = None
+        # A lost line HOLDS the run instead of ending it, when
+        # autopilot.auto_resume_hold_s is set. The START latch stays claimed,
+        # the wheels go to zero, and the run resumes on its own once the tape
+        # has been continuously in view for that long. `_auto_hold` is the
+        # reason it is standing still; `_auto_ok_since` is when the tape came
+        # back, reset to None by ANY dropout so an intermittent read can never
+        # accumulate its way to a resume.
+        self._auto_hold = None
+        self._auto_ok_since = None
+        # MANUAL is an armed state (panel.manual_auto_arm): the selector sitting
+        # there is the arm command, so arming is a level to be maintained rather
+        # than an edge somebody presses. _arm_retry_at backs off a failed attempt
+        # - see ARM_RETRY_S - and _arm_fail carries the last reason for the UI.
+        self._arm_retry_at = 0.0
+        self._arm_fail = None
+        # Parked at a station tag (config.STOP_TAGS). A PAUSE in the run, not the
+        # end of one: the START latch is kept, so the log stays open across the
+        # dwell, the PID and branch state survive, and _hold_arm_state leaves the
+        # vehicle armed because the run is still running. Start resumes it.
+        self._stop_hold = None
+        # Start ARMS and then, after timing.auto_start_delay_s, goes. This is
+        # when the wheels are due to be commanded; 0 means nothing pending.
+        self._auto_start_at = 0.0
         # Which control path owns the running latch, so the watchdog knows what
         # counts as proof the operator is still there. See _panel_scan().
         self._run_source = None
@@ -517,13 +548,22 @@ class Controller:
                     str(n): dict(self._telemetry[n], label=config.NODES[n]) for n in config.NODES
                 },
                 "sensor": self._sensor,
+                # Full-scale for the tape strip. Served rather than hardcoded in
+                # the browser: it has to be the SAME number the follower discards
+                # against, or the bar saturates somewhere the control law is
+                # still working and a reading about to be thrown away looks
+                # identical to one comfortably in range.
+                "sensor_range_mm": config.SENSOR_MAX_MM,
                 "sensor_frames": self._sensor_seen,
                 "sensor_age_s": (now - self._sensor_last) if self._sensor_last else None,
                 "field_level": self._field_level,
                 "min_level": self._min_level,
                 "rpm_profile": {"full": config.MANUAL_FULL_RPM, "half": config.MANUAL_HALF_RPM,
-                                "auto": config.AUTO_RPM},
+                                "auto": config.AUTO_RPM,
+                                "auto_slow": config.AUTO_SLOW_RPM},
                 "auto_running": self._auto_running,
+                "auto_hold": self._auto_hold,
+                "stop_hold": self._stop_hold,
                 "pid": self._pid,
                 "dry_run": config.DRY_RUN,
                 "loop": dict(self._loop),
@@ -539,9 +579,16 @@ class Controller:
                           "selector": self._panel.mode(),
                           "fault": self._fault,
                           "run_source": self._run_source,
+                          "auto_arm": config.PANEL_MANUAL_AUTO_ARM,
+                          "arm_fail": self._arm_fail,
+                          # Seconds until a pressed Start reaches the wheels.
+                          "starting_in": (max(0.0, self._auto_start_at - now)
+                                          if self._auto_start_at else None),
                           "last_action": self._last_action},
                 "branch": {"intent": self._branch.ladder.intent(),
                            "set_by": self._branch.set_by,
+                           "slow": self._branch.slow,
+                           "forks": self._branch.forks,
                            "unhonoured": self._branch.unhonoured,
                            "unmatched": self._branch.unmatched,
                            "junctions": len(config.BRANCH_LATCH)},
@@ -630,7 +677,29 @@ class Controller:
                     # the latch and the ramp, or the PID would re-command on the
                     # very next tick.
                     self._end_auto_run(reason, hard=True)
-                    self._set_fault(reason)
+                    if mode == "manual":
+                        # A manual watchdog stop does NOT latch, and that is the
+                        # difference between the two modes rather than an
+                        # oversight. The setpoint is already zero, and going
+                        # again means HOLDING a control that re-POSTs every
+                        # 100 ms with the operator's hand on it - so there is no
+                        # "restarted by somebody who did not see why", which is
+                        # the hazard _set_fault() exists for. Latching a dropped
+                        # packet costs a walk to the panel, and under
+                        # panel.manual_auto_arm it would block re-arming too.
+                        #
+                        # An auto run is the opposite case and still latches: it
+                        # is latched motion that would otherwise resume on its
+                        # own.
+                        #
+                        # Emitted here rather than through _set_fault, which is
+                        # safe on this 50 Hz path only because the branch is
+                        # self-clearing - it zeroes the target below, which
+                        # makes its own condition false on the very next tick.
+                        events.warn(f"{reason} - setpoint zeroed, "
+                                    f"hold again to drive")
+                    else:
+                        self._set_fault(reason)
                     with self._lock:
                         self._direction = "stop"
                         self._target = target = (0, 0)
@@ -788,7 +857,11 @@ class Controller:
     # ---- autopilot -------------------------------------------------------
 
     def _branch_scan(self, sensor):
-        """One ladder scan against the RFID input image. Returns the choice.
+        """One ladder scan against the RFID input image.
+
+        Returns (choice, slow, tag) - the steering answer, the speed answer, and
+        the one-shot tag itself, because the station-stop table reads the same
+        pulse and must not derive a second one.
 
         Takes ONE snapshot and derives the pulse from it, PLC-style: RfidLink
         runs on its own thread, so a tag landing between two reads would let
@@ -812,23 +885,40 @@ class Controller:
         self._branch_seen = seen
 
         was = self._branch.ladder.intent()
-        intent = self._branch.scan(tag)
+        was_slow = self._branch.slow
+        was_forks = self._branch.forks
+        # #LCP goes in with the tag: the order is consumed by the FORK, which is
+        # a sensor event, so the steering latch no longer depends on reaching an
+        # exit tag - see branch.BranchEngine._fork_passed().
+        intent = self._branch.scan(tag, (sensor or {}).get("nlcp"))
+        slow = self._branch.slow
         # Edge only. This runs at 50 Hz and the event ring buffer would flush
         # itself of everything meaningful within seconds otherwise.
         if intent != was:
-            events.info(f"branch {intent} (tag {tag})" if intent != branch.STRAIGHT
-                        else f"branch cleared (tag {tag})")
+            if intent != branch.STRAIGHT:
+                events.info(f"branch {intent} (tag {tag})")
+            elif self._branch.forks != was_forks:
+                # Names the fork rather than a tag, because there is no tag -
+                # and "cleared (tag None)" reads like a bug.
+                events.info(f"branch {was} taken - order consumed at the fork")
+            else:
+                events.info(f"branch cleared (tag {tag})")
+        if slow != was_slow:
+            events.info(f"slow zone {'entered' if slow else 'left'} (tag {tag}) "
+                        f"- {config.AUTO_SLOW_RPM if slow else config.AUTO_RPM:.0f}"
+                        f" r/min")
 
         # choose() applies the crossing rule and sets .unhonoured. The follower
         # re-selects from the same choice and the same tracks, so it lands on
         # the same one - the rule lives in branch.py rather than in both.
         was_unhonoured = self._branch.unhonoured
         _, choice = self._branch.choose((sensor or {}).get("nlcp"),
-                                        (sensor or {}).get("tracks"))
+                                        (sensor or {}).get("tracks"),
+                                        self._follower.followed_mm)
         if self._branch.unhonoured and not was_unhonoured:
             events.warn(f"branch {choice} ordered, but that side is not in this "
                         f"diverter - carrying straight on")
-        return choice
+        return choice, slow, tag
 
     def _run_autopilot(self):
         """One PID tick. Returns the setpoint to write this pass."""
@@ -839,18 +929,32 @@ class Controller:
             age = ((time.monotonic() - self._sensor_last)
                    if self._sensor_last else None)
 
+        # The START latch says the operator wants a run; `driving` says whether
+        # the wheels are allowed to turn right now. They differ while a lost
+        # line is being held - see the hold below.
+        driving = (running and self._auto_hold is None
+                   and self._stop_hold is None)
+
         # Never act twice on the same frame. While driving, a tick with no new
         # TPDO1 holds the previous command and lets the elapsed time roll into
         # the next real tick, where the clamped dt absorbs it. While stopping we
-        # keep ticking regardless, so the ramp-down still completes.
-        if running and seen == self._auto_seen:
+        # keep ticking regardless, so the ramp-down still completes - and while
+        # HOLDING we must keep ticking too, or a sensor that went silent would
+        # never deliver the frame that proves it came back.
+        if driving and seen == self._auto_seen:
             return self._target
 
         dt = (tick - self._auto_tick) if self._auto_tick else config.DT_NOMINAL_S
         self._auto_seen, self._auto_tick = seen, tick
 
-        choice = self._branch_scan(sensor)
-        left, right, diag = self._follower.update(sensor, age, dt, running, choice)
+        choice, slow, tag = self._branch_scan(sensor)
+        # A station tag stops THIS tick, so the ramp down starts on the frame the
+        # tag was read rather than one later.
+        if driving and tag is not None and tag in config.STOP_TAGS:
+            self._begin_station_stop(tag)
+            driving = False
+        left, right, diag = self._follower.update(sensor, age, dt, driving,
+                                                  choice, slow)
         commanded = (int(round(left)), int(round(right)))
         # DRY_RUN still computes and logs everything; only the wheels go quiet.
         target = (0, 0) if config.DRY_RUN else commanded
@@ -867,7 +971,7 @@ class Controller:
         tel["loop_ms"] = dt * 1000.0
         self._log.write(diag, tel)
 
-        if running and diag["state"] in ("line_lost", "sensor_lost"):
+        if driving and diag["state"] in ("line_lost", "sensor_lost"):
             # A fault stops as hard as a STOP does - there is no reason to
             # coast gently toward whatever the AGV has just lost sight of.
             reason = (f"line lost - no track for "
@@ -875,9 +979,14 @@ class Controller:
                       f"stopping"
                       if diag["state"] == "line_lost" else
                       "sensor silent - no TPDO1, stopping")
-            self._end_auto_run(reason, hard=True)
-            self._set_fault(reason)
-        elif (not running and self._log_close_at
+            if config.AUTO_RESUME_HOLD_S > 0:
+                target = self._hold_auto_run(reason)
+            else:
+                self._end_auto_run(reason, hard=True)
+                self._set_fault(reason)
+        elif self._auto_hold is not None:
+            self._resume_scan(diag["has_track"])
+        elif (not driving and self._log_close_at
                 and time.monotonic() >= self._log_close_at):
             self._log.close()
             self._log_close_at = 0.0
@@ -949,6 +1058,11 @@ class Controller:
         snap = self._dio.snapshot()
         intent = self._panel.scan(snap.get("di"), bool(snap.get("comms_ok")))
         if not intent.valid:
+            # No trusted image, so no decisions - and a pending start is
+            # abandoned rather than carried across the gap. The operator's panel
+            # is the thing that just went away; going anyway is the wrong way to
+            # resolve that.
+            self._cancel_pending_start("panel image lost")
             return
 
         with self._lock:
@@ -969,8 +1083,20 @@ class Controller:
         if intent.start:
             self._panel_start(intent.mode)
 
+        # Both of these are LEVELS, not edges: what the selector is resting on
+        # decides whether the vehicle should be energised, so they are evaluated
+        # every scan rather than only when something is pressed.
+        self._pending_start()
+        self._hold_arm_state(intent.mode)
+
     def _panel_mode_changed(self, mode):
         events.info(f"selector -> {mode.upper()}")
+        # Whatever the selector was doing, it is not that any more.
+        self._cancel_pending_start(f"selector moved to {mode.upper()}")
+        # A move INTO manual re-arms through _hold_arm_state on this same scan,
+        # so the disarm below is not a round trip to idle and back - it is the
+        # mode change itself, which _do_arm cannot do in place.
+        self._arm_retry_at = 0.0
         with self._lock:
             armed = self._armed
         if not armed:
@@ -983,16 +1109,24 @@ class Controller:
         self._note_action(f"disarmed (selector -> {mode})", "panel")
 
     def _panel_reset(self, mode):
-        """Reset means GO TO READY, from wherever we are.
+        """Reset now only ever STOPS and ACKNOWLEDGES.
 
-        idle    -> arm in the selected mode
-        running -> stop, stay armed so Start can go again
-        fault   -> clear the latch, then arm
+        It used to arm as well, which is why it was being pressed before every
+        jog - and a button pressed by reflex has stopped being a decision.
+        Arming is a consequence of the selector (MANUAL) or of Start (AUTO), so
+        what is left here is the two things a button by the vehicle should do:
+
+        running or about to -> stop
+        otherwise           -> clear the latched fault
+
+        Clearing the fault is what lets MANUAL arm itself again, so Reset is
+        still the way back from anything the vehicle latched.
         """
         with self._lock:
-            armed, running, cur = self._armed, self._auto_running, self._mode
+            running = self._auto_running
 
-        if running:
+        if running or self._auto_start_at:
+            self._cancel_pending_start("Reset")
             self._end_auto_run("stopped from panel (Reset)", hard=True)
             with self._lock:
                 self._direction = "stop"
@@ -1001,22 +1135,21 @@ class Controller:
             self._note_action("stopped", "panel")
             return
 
-        self._clear_fault()
-        if armed and cur == mode:
-            events.info(f"Reset - already armed in {mode}")
-            return
-        if armed:
-            self._do_disarm()           # armed in the other mode
-        try:
-            self._do_arm(mode)
-            self._note_action(f"armed in {mode}", "panel")
-        except Exception as e:          # noqa: BLE001 - the panel has no 409
-            self._set_fault(str(e))
+        was = self._clear_fault()
+        # The backoff is cleared with the fault so the next scan retries at
+        # once: somebody has just pressed the button that means "try again".
+        self._arm_retry_at = 0.0
+        self._note_action("fault cleared" if was else "reset", "panel")
 
     def _panel_start(self, mode):
+        """Start ARMS and then goes, after timing.auto_start_delay_s.
+
+        Arming used to be Reset's job and Start's precondition, which made two
+        presses out of one intention. Now the press that means "run" is the
+        press that energises, and the delay is the gap between the two halves.
+        """
         with self._lock:
-            fault, armed, cur, running = (self._fault, self._armed,
-                                          self._mode, self._auto_running)
+            fault, running = self._fault, self._auto_running
         if fault:
             events.warn(f"Start ignored - fault latched: {fault}. Press Reset.")
             return
@@ -1025,16 +1158,227 @@ class Controller:
             # pad, which has no equivalent on this panel.
             events.info("Start ignored - selector is in MANUAL")
             return
-        if not armed or cur != "auto":
-            events.warn("Start ignored - not armed. Press Reset first.")
+        if self._stop_hold is not None:
+            # Parked at a station. The latch is still claimed, so this is not
+            # "already running" - Start here means RESUME, and it takes the same
+            # delay as any other start because a station is exactly where
+            # somebody is likely to be standing.
+            if not self._auto_start_at:
+                self._auto_start_at = (time.monotonic()
+                                       + config.AUTO_START_DELAY_S)
+                events.info(f"START pressed at station {self._stop_hold} - "
+                            f"moving in {config.AUTO_START_DELAY_S:.1f} s")
             return
-        if running:
+        if running or self._auto_start_at:
+            return                      # already going, or already about to
+        try:
+            with self._lock:
+                armed, cur = self._armed, self._mode
+            if armed and cur != "auto":
+                self._do_disarm()       # armed in the other mode
+                armed = False
+            if not armed:
+                self._do_arm("auto")
+            self._auto_start_at = time.monotonic() + config.AUTO_START_DELAY_S
+            events.info(f"START pressed - armed, moving in "
+                        f"{config.AUTO_START_DELAY_S:.1f} s")
+            self._note_action("auto run START", "panel")
+        except Exception as e:          # noqa: BLE001 - the panel has no 409
+            self._auto_start_at = 0.0
+            self._set_fault(str(e))
+
+    def _cancel_pending_start(self, why):
+        """Abandon a Start that has not yet reached the wheels. Safe to call
+        every tick; only says anything on the edge."""
+        if not self._auto_start_at:
+            return
+        self._auto_start_at = 0.0
+        events.warn(f"start cancelled during the {config.AUTO_START_DELAY_S:.1f} s "
+                    f"delay - {why}")
+
+    def _pending_start(self):
+        """Turn an armed, delayed Start into an actual run once the delay is up."""
+        if not self._auto_start_at:
+            return
+        if time.monotonic() < self._auto_start_at:
+            return
+        self._auto_start_at = 0.0
+        if self._stop_hold is not None:
+            # Resuming a run that never ended - not starting a new one, which
+            # would reset the follower and open a second log for one lap.
+            self._resume_from_stop()
             return
         try:
             self._do_auto_run(True, source="panel")
-            self._note_action("auto run START", "panel")
         except Exception as e:          # noqa: BLE001
             self._set_fault(str(e))
+
+    def _hold_arm_state(self, mode):
+        """Keep the vehicle energised iff the selector says it should be.
+
+        MANUAL is an armed state and AUTO is a disarmed one, so this is a level
+        held every scan rather than an edge somebody presses:
+
+          MANUAL  arm, and re-arm if anything de-energised the drives
+          AUTO    disarm once a run is over and its log tail has been written
+
+        Blocking work - an arm is ~20 SDO round-trips - but it runs on the bus
+        thread from the panel scan, which is where every other arm has always
+        happened.
+        """
+        if not config.PANEL_MANUAL_AUTO_ARM:
+            return
+        with self._lock:
+            armed, cur, fault = self._armed, self._mode, self._fault
+            running = self._auto_running
+
+        if mode == panel.AUTO:
+            # Disarm back to the resting state, but not until the run really is
+            # over: _log_close_at is still set while the deceleration is being
+            # written, and disarming closes the log early.
+            if armed and not running and not self._auto_start_at \
+                    and not self._log_close_at:
+                self._do_disarm()
+                self._note_action("disarmed (auto is idle)", "panel")
+            return
+
+        # MANUAL from here on.
+        if fault:
+            return                      # a latched fault is cleared by a human
+        now = time.monotonic()
+        if now < self._arm_retry_at:
+            return
+
+        if armed and cur == "manual":
+            # Armed in software is not the same as torque at the wheels. If the
+            # safety chain took the drives out from under us they are sitting in
+            # ETO, and re-arming is how the vehicle comes back on its own once
+            # the chain is restored - see _drives_ready().
+            if self._drives_ready() is False:
+                self._arm_retry_at = now + ARM_RETRY_S
+                events.warn("drives are no longer enabled - re-arming")
+                self._do_disarm()
+                self._try_arm("manual")
+            return
+
+        if armed:
+            self._do_disarm()           # armed in the other mode
+        self._try_arm("manual")
+
+    def _drives_ready(self):
+        """Are both drives in Operation enabled? None while it cannot be known.
+
+        Read from the 5 Hz telemetry rather than asking the bus, so this costs
+        nothing on a path that runs every tick. None - not False - when a
+        statusword has not been read yet, because "unknown" must not be allowed
+        to trigger a re-arm.
+        """
+        with self._lock:
+            words = [self._telemetry[n].get("statusword") for n in config.NODES]
+        if any(w is None for w in words):
+            return None
+        return all((w & 0x6F) == 0x27 for w in words)
+
+    def _try_arm(self, mode):
+        """One auto-arm attempt, with backoff. Never latches a fault.
+
+        A failed arm here is usually the safety chain holding the drives in ETO,
+        which is a condition rather than a mistake: latching it would demand a
+        Reset for something no operator did, and this whole change exists to
+        stop asking for that. So it backs off and tries again, and the vehicle
+        re-arms by itself once the chain is restored.
+        """
+        self._arm_retry_at = time.monotonic() + ARM_RETRY_S
+        try:
+            self._do_arm(mode)
+            if self._arm_fail:
+                self._arm_fail = None
+            self._note_action(f"armed in {mode}", "panel")
+        except Exception as e:          # noqa: BLE001 - a condition, not a fault
+            why = str(e)
+            if why != self._arm_fail:   # edge only; this retries every 2 s
+                self._arm_fail = why
+                events.warn(f"cannot arm in {mode}: {why} - retrying")
+
+    def _begin_station_stop(self, tag):
+        """Come to rest over the tag's distance and wait for Start.
+
+        Deliberately NOT _end_auto_run(): the run is pausing, not finishing. The
+        latch is kept, so the log stays open across the dwell, the PID and branch
+        state survive into the next leg, and the AUTO idle rule leaves the
+        vehicle armed - it only disarms a run that is not running.
+
+        Steering stays live the whole way down; the follower has always kept
+        correcting in its "stopping" state, which is why these tags belong on
+        track that has been straight for a metre or so.
+        """
+        dist = config.STOP_TAGS[tag]
+        rate = self._follower.begin_measured_stop(dist)
+        self._stop_hold = tag
+        with self._lock:
+            self._last_stop_reason = (f"station tag {tag} - stopping over "
+                                      f"{dist:.2f} m")
+        events.info(f"station tag {tag} - stopping over {dist:.2f} m"
+                    + (f" ({rate:.0f} r/min/s)" if rate else "")
+                    + ", press Start to go on")
+
+    def _resume_from_stop(self):
+        """Let the held run carry on. The SAME run - nothing is reset."""
+        tag, self._stop_hold = self._stop_hold, None
+        with self._lock:
+            self._last_stop_reason = None
+            self._deadline = time.monotonic() + config.AUTO_WATCHDOG_S
+        events.info(f"resuming from station tag {tag}")
+        self._note_action("resumed from station", "panel")
+
+    def _hold_auto_run(self, reason):
+        """Stop the wheels but KEEP the START latch, pending a resume.
+
+        Distinct from _end_auto_run(): the operator never stopped this run, the
+        vehicle lost sight of the tape. hard_stop() collapses the ramp so the
+        wheels go to zero now rather than easing the profile down toward
+        whatever was just lost, and logging deliberately carries on - the
+        approach to a lost line is the part of the CSV worth having.
+
+        Returns the setpoint to write. Emits once, on the edge into the hold:
+        this is reached from a 50 Hz path, which is why it is a method here
+        rather than an events call inside the tick.
+        """
+        first = self._auto_hold is None
+        self._auto_hold = reason
+        self._auto_ok_since = None
+        self._follower.hard_stop()
+        with self._lock:
+            self._target = (0, 0)
+            self._last_stop_reason = reason
+        if first:
+            events.warn(f"{reason} - holding, will resume after "
+                        f"{config.AUTO_RESUME_HOLD_S:.1f} s of tape")
+        return (0, 0)
+
+    def _resume_scan(self, has_track):
+        """One tick of the resume timer. Called only while holding.
+
+        has_track is false when the frame is stale as well as when there is
+        simply no tape under the sensor, so one test covers both ways of having
+        lost it. ANY dropout restarts the window rather than pausing it - an
+        intermittent read must never be able to accumulate its way to a resume.
+        """
+        if not has_track:
+            self._auto_ok_since = None
+            return
+        now = time.monotonic()
+        if self._auto_ok_since is None:
+            self._auto_ok_since = now
+            return
+        if now - self._auto_ok_since < config.AUTO_RESUME_HOLD_S:
+            return
+        held, self._auto_hold = self._auto_hold, None
+        self._auto_ok_since = None
+        with self._lock:
+            self._last_stop_reason = None
+        events.info(f"tape held for {config.AUTO_RESUME_HOLD_S:.1f} s - "
+                    f"resuming auto run (was: {held})")
 
     def _end_auto_run(self, reason=None, hard=False, close_log_now=False):
         """Clear the START latch. Safe to call repeatedly.
@@ -1051,6 +1395,12 @@ class Controller:
             self._auto_running = False
             if reason:
                 self._last_stop_reason = reason
+        # The hold belongs to a live run. Every route into here - STOP, the
+        # watchdog, a silent driver, the selector, disarm - ends that run, so a
+        # held resume must not survive to restart a vehicle nobody is running.
+        self._auto_hold = None
+        self._auto_ok_since = None
+        self._stop_hold = None
         # Emit on the EDGE only. This is reachable from _run_autopilot(), which
         # is a 50 Hz path - without the was_running guard a fault would refill
         # the whole ring buffer with copies of itself in four seconds.
@@ -1349,6 +1699,7 @@ class Controller:
         # close_log_now: disarm clears _armed, so _run_autopilot stops being
         # called and nothing would ever flush the deferred close.
         self._end_auto_run(hard=True, close_log_now=True)
+        self._auto_start_at = 0.0
         with self._lock:
             was_armed = self._armed
             self._armed = False
@@ -1402,14 +1753,20 @@ class Controller:
             self._follower.reset()
             self._auto_tick = 0.0
             self._auto_seen = -1
+            self._auto_hold = None
+            self._auto_ok_since = None
             self._log.close()            # a restart abandons any pending tail
             self._log_close_at = 0.0
             self._log = runlog.RunLog()
             self._log.open(
                 f"profile={config.PROFILE_NAME} "
                 f"K_RATIO={config.K_RATIO} KD={config.KD} "
+                f"SLOW_K_RATIO={config.SLOW_K_RATIO} "
+                f"SLOW_KD={config.SLOW_KD} "
                 f"KI={config.KI} TAU_D={config.TAU_D_S} "
-                f"AUTO_RPM={config.AUTO_RPM} zeta={autopilot.predicted_zeta():.3f} "
+                f"AUTO_RPM={config.AUTO_RPM} "
+                f"AUTO_SLOW_RPM={config.AUTO_SLOW_RPM} "
+                f"zeta={autopilot.predicted_zeta():.3f} "
                 f"6083h={config.ACCEL_RPM_S} 6084h={config.DECEL_RPM_S} "
                 f"sw_ramp={config.RAMP_ACCEL_RPM_S} "
                 f"DRY_RUN={config.DRY_RUN}")

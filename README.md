@@ -12,7 +12,7 @@ provides a manual jog pad and an automatic line-following mode.
 | Control loop | 50 Hz, telemetry 5 Hz, sensor field 2 Hz |
 | Nodes | 1 left driver, 2 right driver, 10 MLS sensor (TPDO1 `0x18A`) |
 | `dry_run` | **false** — motors are live |
-| Tests | 228 offline checks, all passing |
+| Tests | 689 offline checks, all passing |
 
 ---
 
@@ -107,9 +107,12 @@ canworker.py       Bus thread: NMT, SDO, 50 Hz loop, arm/disarm, telemetry.
 
 core/              No hardware, no Flask. Computation and record-keeping.
   autopilot.py       LineFollower — the PID.
+  branch.py          Which track to follow at a diverter. The seal-in latch.
   kinematics.py      body <-> wheels. No control logic, no sensor knowledge.
   motion.py          Manual jog pad table, labels, key bindings.
   health.py          Hardware liveness: the two-tier watchdog table.
+  panel.py           Operator panel: debounced edges over the DI image.
+  lidarframe.py      nanoScan3 UDP telegram decode. Not a safety function.
   canmon.py          Drive monitoring: the round-robin SDO object table.
   events.py          Operator event ring buffer (200). Survives a reload.
   runlog.py          Per-run CSV + PNG into logs/NNNN-auto_<timestamp>/
@@ -117,6 +120,8 @@ core/              No hardware, no Flask. Computation and record-keeping.
 
 drivers/           Everything that talks to a device.
   rfid.py            Chafon CF821 station-tag reader. Own thread and socket.
+  dio.py             16-in/16-out digital I/O over Modbus TCP. Own thread.
+  lidar.py           nanoScan3 UDP stream. Own thread. Not a safety path.
   canbus/            CAN layer: SDO, bus discovery, CiA 402, MLS decode,
                      alarm tables, the write deny-list. Runtime dependency,
                      and standalone on a bench.
@@ -126,7 +131,7 @@ app/               The web tier.
   templates/         base.html is the shared shell.
   static/            app.css and the per-page scripts.
 
-tests/             228 offline checks. run_all.py runs them. No hardware.
+tests/             689 offline checks. run_all.py runs them. No hardware.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Driver, sensor and RFID documentation, searchable.
 logs/              One directory per auto run.
@@ -202,6 +207,45 @@ from `logs/`, all at `K_RATIO 11.3 / KD 0.94`:
 No re-tune was needed at any step, and tracking got *better* with speed. Loop
 timing is healthy throughout against a 20 ms budget.
 
+### Branching at a junction
+
+The MLS reports up to three line centre points and always keeps the **main**
+track on `LCP2`, putting a diverter's branch beside it as `LCP1` or `LCP3`
+(sensor manual 8.4.1, table 17). Which of them the PID follows is decided by
+`core/branch.py` from RFID station tags, held in a PLC seal-in latch transcribed
+rung for rung from the drawn design:
+
+```
+Branch_right = (SetRight OR Branch_right) AND NOT ClearRight AND NOT Branch_left
+Branch_left  = (SetLeft  OR Branch_left ) AND NOT ClearLeft  AND NOT Branch_right
+```
+
+Seal-in, explicit reset, mutual interlock. **The seal-in is the whole point.** A
+tag read is a one-scan pulse — the tag is past the reader a tick later — so
+without it the order would evaporate long before the junction arrived. The latch
+is cleared only by an exit tag placed *after* the junction, so no input can
+change while a diverter is actually in view; that is why this needs no second
+"commit" latch to hold the choice steady mid-junction.
+
+The pulse is a rise in `tags_seen`, **not** the `tag` field. `tag` is held live
+for `rfid.tag_hold_s` so a 5 Hz UI poll cannot miss one, and a held tag would
+re-trigger its rung on every tick — harmless on a set contact, but it would pin
+the latch off on a clear one. The ladder is scanned on the *sensor's* clock,
+after the "no new TPDO1" early return, so a read is at worst deferred by one
+10 ms frame.
+
+Track selection needs **no case analysis on `#LCP`**: an order takes the extreme
+position on the wanted side, so asking for a side that is not there yields
+`LCP2`, the straight-through track. The safe answer falls out rather than being
+special-cased — and it is not silent: `unhonoured` is set, and an event logged,
+when a real diverter was in view and the ordered side was not one of its tracks.
+A `#LCP 7` crossing is not a diverter and ignores intent entirely, following the
+manual's own advice to navigate intersections by markers.
+
+Disarm resets the latch. An order that survived a manual intervention would take
+a junction on an intent given before whatever made the operator stop the
+vehicle.
+
 ### Guards on the tick
 
 | guard | behaviour |
@@ -209,7 +253,7 @@ timing is healthy throughout against a 20 ms budget.
 | `sensor_max_mm` 100 | a reading beyond the sensor's range is **discarded** |
 | `sensor_max_step_mm` 40 | a jump larger than this is **clamped** toward the last accepted |
 | `sensor_timeout_s` 0.1 | no TPDO1 → `sensor_lost` → hold straight and stop |
-| `line_loss_grace_m` 0.075 | tape gap budgeted as **distance**; 0.746 s standstill backstop (derived) |
+| `line_loss_grace_m` 0.075 | tape gap budgeted as **distance**; 1.49 s standstill backstop (derived from the *slowest* cruise, `auto_slow_rpm`) |
 | `ti_deadband_mm` 20 | conditional integration — integrate only inside, freeze outside |
 | dt clamp | measured dt clamped to 0.004 … 0.1 s so a scheduling hiccup cannot blow up I and D |
 
@@ -339,12 +383,25 @@ for example `autopilot.ramp_accel_rpm_s` **must** stay below
 S-curve is lost, and `timing.driver_timeout_s` **must** exceed
 `telemetry_period_s`, or the gap between two normal polls reads as a dead driver.
 
+**Junctions are data, not code.** `branch_latch` is the one list in the profile —
+one row per junction, `{"entry_tag", "exit_tag", "branch"}` — and it has its own
+reader rather than a `_SCHEMA` entry, so adding a junction stays a profile edit
+and never a code change. Every check in that reader exists to stop a rung being
+silently **dead**, which is the only failure mode this table has: a tag that
+never matches produces no error, no log line and no motion — the AGV simply
+drives past its junction. So ids must be hex text exactly as `rfid.tag_of()`
+emits them (`"0002"`, never `2`, which could never match), an entry and its exit
+may not be the same tag, no tag may mean two things, and none may also sit in
+`rfid.ignore_tags` where it would be discarded before the ladder saw it. The one
+thing the loader cannot check is whether an id is what the reader actually sends
+— jog over each tag and confirm the station tile names it.
+
 Derived from the profile, never stored:
 
 ```
 MPS_PER_RPM         3.1416e-4      RAD_S_PER_RPM_DIFF     6.4642e-4
 RPM_PER_MPS         3183.1         MAX_SPEED_MPS          1.2566
-MANUAL_HALF_RPM     720            LINE_LOSS_GRACE_MAX_S  0.746
+MANUAL_HALF_RPM     720            LINE_LOSS_GRACE_MAX_S  1.492
 DT band             0.004 .. 0.1   TPDO1_COB              0x18A
 ```
 
@@ -448,7 +505,7 @@ the sampling.
 ## Testing
 
 ```bash
-python3 tests/run_all.py      # 228 checks, no hardware
+python3 tests/run_all.py      # 689 checks, no hardware
 python3 -c "import main"      # exits 1 with a named check on a bad profile
 ```
 
@@ -534,6 +591,10 @@ point-to-point with no switch so a parted cable drops carrier in milliseconds.
 
 - **No curve has been driven.** The section above is simulation. Measure the
   tightest radius on the actual track before trusting any of it.
+- **No junction has been driven.** `branch_latch` carries one left-hand junction
+  (`0002` in, `0001` out) for the U-turn on the test track. The ladder and the
+  track selection are covered by tests, but nothing has been run on the vehicle,
+  and the two tag ids were read off the manual-jog display rather than a capture.
 - **`config.py`'s `rfid.*` docstring is out of date.** The whole block is
   duplicated, it documents keys that are not in `_SCHEMA` (`inventory_cmd`,
   `epc_offset`, `handshake_hex`, `poll_period_s`, `comms_timeout_s`), it omits

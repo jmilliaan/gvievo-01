@@ -35,12 +35,36 @@ import config
 import kinematics
 
 
-def predicted_zeta(k_ratio=None, kd=None):
-    """Closed-loop damping for the current gains. Speed-independent by design."""
-    k = config.K_RATIO if k_ratio is None else k_ratio
-    d = config.KD if kd is None else kd
+def predicted_zeta(k_ratio=None, kd=None, slow=False):
+    """Closed-loop damping for the current gains. Speed-independent by design.
+
+    slow=True reports the slow-zone pair instead, which is a different operating
+    point and wants its own number rather than being assumed to match.
+    """
+    if k_ratio is None:
+        k_ratio = config.SLOW_K_RATIO if slow else config.K_RATIO
+    if kd is None:
+        kd = config.SLOW_KD if slow else config.KD
+    k = k_ratio
+    d = kd
     ls = config.SENSOR_LOOKAHEAD_M
     return (d + ls * k) / (2.0 * math.sqrt(k * (1.0 + ls * d)))
+
+
+# How much faster than the vehicle's own forward speed the tape may appear to
+# move sideways before the reading is treated as an artefact rather than motion.
+#
+# The geometry is de/dt = v*sin(theta) + Ls*omega, so the lateral rate the sensor
+# can legitimately see is of the order of v. A factor of two is generous for real
+# steering and still an order of magnitude below what a track SWAP produces: at
+# 0.25 m/s this admits 10 mm per tick, where a swap arrives as the full
+# sensor_max_step_mm - 40 mm, or 2 m/s, which no 0.25 m/s vehicle can do.
+#
+# Clamping the RATE rather than the position is what makes this robust. The
+# position clamp cannot help: it turns one impossible jump into a run of
+# impossible steps, and the last of them lands under the clamp threshold and
+# reaches the derivative anyway.
+LATERAL_RATE_FACTOR = 2.0
 
 
 def _clamp(x, lo, hi):
@@ -65,10 +89,44 @@ class LineFollower:
         # next tick differentiates the full standing error over one period.
         self._last_e_m = None
         self._last_valid_mm = None
+        # Was the PREVIOUS tick a usable, continuous sample of the same track?
+        # The derivative is only meaningful between two such samples - see the
+        # discontinuity handling in update().
+        self._track_continuous = False
+        # Live gains, blended toward whichever set the zone calls for. None
+        # means "not primed yet" - the first tick snaps to the target rather
+        # than sliding up to it from nowhere.
+        self._k_now = None
+        self._kd_now = None
+        # Deceleration rate for a station stop, r/min per second, or None for
+        # the ordinary profile ramp. Set once at the tag - see begin_measured_stop.
+        self._stop_rate = None
         self._track_gap_m = 0.0      # distance travelled since the track was seen
         self._track_age_s = 0.0      # standstill backstop for the same
         self._saturated = False
         self.state = "idle"
+
+    def begin_measured_stop(self, distance_m):
+        """Decelerate to rest over `distance_m`, from whatever speed we are at.
+
+        Solved once, here, rather than tracked as the vehicle slows: constant
+        deceleration from v to rest covers v^2/2a, so a = v^2/2d. Recomputing it
+        every tick against the falling speed would shrink the rate as fast as
+        the speed and the vehicle would asymptote toward the tag instead of
+        stopping at it.
+
+        Distance rather than time because the resting point is what matters at a
+        station. The same 2 s ramp stops 0.25 m past the tag at 800 r/min and
+        0.38 m at 1200; this stops at d from either.
+
+        Returns the rate, so a caller can log what it committed to.
+        """
+        v = self._v_rpm
+        if distance_m > 0 and v > 0:
+            self._stop_rate = v * v * config.MPS_PER_RPM / (2.0 * distance_m)
+        else:
+            self._stop_rate = None
+        return self._stop_rate
 
     def hard_stop(self):
         """Collapse the profile to zero with no ramp - watchdog and fault path.
@@ -81,9 +139,20 @@ class LineFollower:
         self._a_rpm_s = 0.0
         self._speed_red = 0.0
         self._omega = 0.0
+        self._stop_rate = None
         self.state = "halted"
 
     # ---- pieces ----------------------------------------------------------
+
+    @property
+    def followed_mm(self):
+        """The position of the track being followed, or None before the first.
+
+        Public because BranchEngine.choose() has to re-select from the same
+        anchor this does - the two are only guaranteed to land on the same track
+        because they are handed identical inputs.
+        """
+        return self._last_valid_mm
 
     def _read_error(self, sensor, choice=branch.STRAIGHT):
         """Sensor dict -> (error_m, n_tracks, guard) with guard = why it changed.
@@ -99,7 +168,12 @@ class LineFollower:
         if not tracks:
             return None, 0, ""
 
-        picked = branch.select_track(tracks, choice, config.BRANCH_POSITIVE_IS_LEFT)
+        # last_mm is what makes STRAIGHT follow the same TAPE rather than the
+        # same LCP index - see select_track(). A branch order ignores it, which
+        # is the one moment changing tape is intended.
+        picked = branch.select_track(tracks, choice,
+                                     config.BRANCH_POSITIVE_IS_LEFT,
+                                     self._last_valid_mm)
         if picked is None:
             return None, len(tracks), ""
         pos_mm = float(picked["pos_mm"])
@@ -119,8 +193,16 @@ class LineFollower:
         e_mm = -pos_mm if config.INVERT_ERROR else pos_mm
         return e_mm / 1000.0, len(tracks), guard
 
-    def _pid(self, e_m, v_mps, dt):
-        kp = config.K_RATIO * v_mps
+    def _pid(self, e_m, v_mps, dt, k_ratio=None, kd=None):
+        """One PID evaluation at the gains handed in.
+
+        k_ratio/kd are arguments rather than reads of config, because they now
+        differ between a straight and a slow zone - see update(). None keeps the
+        profile's ordinary gains, so every existing caller is unaffected.
+        """
+        k_ratio = config.K_RATIO if k_ratio is None else k_ratio
+        kd = config.KD if kd is None else kd
+        kp = k_ratio * v_mps
         p = kp * e_m
 
         # Conditional integration: only inside the deadband, and never while the
@@ -136,19 +218,51 @@ class LineFollower:
             d_raw = 0.0
         else:
             d_raw = (e_m - self._last_e_m) / dt
+            # A rate no vehicle at this speed could produce did not come from
+            # the vehicle. Clamped, not discarded: a genuine fast correction
+            # still gets through at the physical limit. See LATERAL_RATE_FACTOR.
+            lim = LATERAL_RATE_FACTOR * abs(v_mps) + 0.01
+            d_raw = _clamp(d_raw, -lim, lim)
         tau_d = config.TAU_D_S
         alpha = dt / (tau_d + dt) if tau_d > 0 else 1.0
         self._d_filt += alpha * (d_raw - self._d_filt)
         self._last_e_m = e_m
-        d = config.KD * self._d_filt
+        d = kd * self._d_filt
 
         return -(p + i + d), p, i, d
 
-    def _ramp(self, target_rpm, dt):
-        """Jerk-limited approach to target_rpm. This is the whole S-curve."""
+    def _blend_gains(self, slow, dt):
+        """The gains for this tick, eased toward the zone's pair.
+
+        A zone boundary is a tag, and a tag is wherever somebody stuck it - not
+        necessarily where the vehicle has finished converging. Stepping the gain
+        there changes steering authority in one tick, which is the second of the
+        two breaks visible in run 0020. The speed change across the same
+        boundary is already shaped by the ramp; this gives the gains the same
+        treatment, with the same first-order form used for the D filter and the
+        speed reduction.
+        """
+        k_t = config.SLOW_K_RATIO if slow else config.K_RATIO
+        kd_t = config.SLOW_KD if slow else config.KD
+        tau = config.GAIN_BLEND_S
+        if self._k_now is None or tau <= 0:
+            self._k_now, self._kd_now = k_t, kd_t
+            return k_t, kd_t
+        alpha = dt / (tau + dt)
+        self._k_now += alpha * (k_t - self._k_now)
+        self._kd_now += alpha * (kd_t - self._kd_now)
+        return self._k_now, self._kd_now
+
+    def _ramp(self, target_rpm, dt, accel_limit=None):
+        """Jerk-limited approach to target_rpm. This is the whole S-curve.
+
+        accel_limit overrides the profile's ramp for one caller only: a station
+        stop, which has to arrive at rest after a set distance rather than at the
+        profile's usual rate.
+        """
+        limit = config.RAMP_ACCEL_RPM_S if accel_limit is None else accel_limit
         err = target_rpm - self._v_rpm
-        a_want = _clamp(err / dt, -config.RAMP_ACCEL_RPM_S,
-                        config.RAMP_ACCEL_RPM_S)
+        a_want = _clamp(err / dt, -limit, limit)
         step = config.RAMP_JERK_RPM_S2 * dt
         self._a_rpm_s += _clamp(a_want - self._a_rpm_s, -step, step)
         self._v_rpm += self._a_rpm_s * dt
@@ -214,7 +328,8 @@ class LineFollower:
 
     # ---- the tick --------------------------------------------------------
 
-    def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT):
+    def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT,
+               slow=False):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
@@ -222,9 +337,36 @@ class LineFollower:
         dt           : measured seconds since the previous update()
         running      : False ramps down but keeps steering while it decelerates
         choice       : standing branch order (branch.STRAIGHT/LEFT/RIGHT)
+        slow         : a slow zone is latched (branch.BranchEngine.slow)
 
         Returns (left_rpm, right_rpm, diag).
         """
+        # A slow zone changes two things: the speed the ramp is aimed at, and
+        # the steering gains.
+        #
+        # The speed is the obvious one and the gains are the one that actually
+        # makes a corner. Cross-track error on a curve settles at
+        #
+        #     e_ss = kappa / K_RATIO
+        #
+        # in which SPEED DOES NOT APPEAR - it cancels, because Kp = K_RATIO*v
+        # and holding a curve needs omega = v*kappa. Slowing down therefore buys
+        # nothing at all for cornering; it only makes the error develop more
+        # slowly. Run 0018 is the evidence: it lost the tape on a ~0.5 m U-turn
+        # while already down at 441 r/min, because 0.5 m at K_RATIO 11.3 needs
+        # 177 mm of error to hold and the sensor stops at 100 mm.
+        #
+        # So the zone carries its own K_RATIO/KD. This is also the right place
+        # for a high gain: the binding limit on K_RATIO is how fast 6083h will
+        # slew the wheel DIFFERENCE, and a lower speed needs proportionally less
+        # yaw rate for the same curvature, so the headroom is largest exactly
+        # where the tight corners are.
+        #
+        # The switch is a step, not a ramp. It lands at the entry tag, which is
+        # on the straight before a diverter where the error is small, so the
+        # step in Kp*e is small with it - a few hundredths of a rad/s.
+        cruise = config.AUTO_SLOW_RPM if slow else config.AUTO_RPM
+        k_ratio, kd = self._blend_gains(slow, dt)
         dt = _clamp(dt if dt and dt > 0 else config.DT_NOMINAL_S,
                     config.DT_MIN_S, config.DT_MAX_S)
 
@@ -251,7 +393,7 @@ class LineFollower:
                       and self._track_age_s <= config.LINE_LOSS_GRACE_MAX_S)
             if within and running:
                 self.state = "coast"      # bridge a gap on the last correction
-                target = config.AUTO_RPM
+                target = cruise
             else:
                 self.state = "line_lost"
                 self._omega = 0.0
@@ -260,12 +402,46 @@ class LineFollower:
             self._track_gap_m = 0.0
             self._track_age_s = 0.0
             self.state = "run" if running else "stopping"
-            target = config.AUTO_RPM if running else 0.0
+            target = cruise if running else 0.0
+
+            # *** NEVER DIFFERENTIATE ACROSS A DISCONTINUITY. ***
+            #
+            # Two cases, and both used to reach the D term as though they were
+            # motion. A slew clamp means the reading jumped further than the
+            # guard allows, so what is fed forward is the CLAMP, not the track -
+            # and the clamp is SENSOR_MAX_STEP_MM per tick, which at 50 Hz is
+            # 2 m/s of apparent lateral velocity, eight times what this vehicle
+            # can do. A gap means the last usable sample is several ticks old,
+            # so dividing by one tick's dt inflates it by the length of the gap.
+            #
+            # Run 0020 at t=31.08 is what this costs: the followed position
+            # jumped ~120 mm at the merge, the guard turned it into three 40 mm
+            # steps, and the D term turned those into 6.66 rad/s of commanded
+            # yaw - wheels to 0 and 1177 r/min, then the mirror image 0.4 s
+            # later. The P term was 0.26 of that. It was all derivative.
+            #
+            # Re-priming through _last_e_m = None reuses exactly what reset()
+            # relies on: _pid() takes d_raw = 0 for one tick and starts
+            # differentiating again from the new sample.
+            if guard == "slew" or not self._track_continuous:
+                self._last_e_m = None
+                # The filter state describes a track we are no longer following.
+                self._d_filt = 0.0
+
             # Steering stays live while stopping so it tracks as it slows.
             v_now = kinematics.rpm_to_mps(max(self._v_rpm, 1.0))
-            self._omega, p, i, d = self._pid(e_m, v_now, dt)
+            self._omega, p, i, d = self._pid(e_m, v_now, dt, k_ratio, kd)
 
-        v_base = self._ramp(target, dt)
+        # For the next tick's discontinuity test. A tick with no usable reading
+        # breaks the chain, whatever the reason - stale, no tape, discarded.
+        self._track_continuous = e_m is not None
+
+        # A station stop owns the ramp down; anything else uses the profile's.
+        # Cleared the moment the vehicle is driving again, so the rate can never
+        # outlive the stop it was computed for.
+        if running:
+            self._stop_rate = None
+        v_base = self._ramp(target, dt, None if running else self._stop_rate)
         red = self._reduce_speed(e_m if e_m is not None else 0.0, dt)
         left, right, scale = self._to_wheels(max(v_base - red, 0.0), self._omega)
 
@@ -284,4 +460,8 @@ class LineFollower:
             "n_tracks": n_tracks,
             "guard": guard,
             "branch": choice,
+            "slow": bool(slow),
+            # Which gain set produced this row. The header line records both
+            # sets, but they now vary WITHIN a run, so the row has to say.
+            "k_used": k_ratio,
         }

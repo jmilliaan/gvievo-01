@@ -23,12 +23,17 @@
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
     "auto_rpm": 1200.0,
+    "auto_slow_rpm": 800.0,
+    "slow_k_ratio": 25.0,
+    "slow_kd": 5.0,
+    "gain_blend_s": 0.4,
     "ramp_accel_rpm_s": 1000.0,
     "ramp_jerk_rpm_s2": 4000.0,
     "sensor_max_mm": 100.0,
     "sensor_max_step_mm": 40.0,
     "line_loss_grace_m": 0.075,
     "sensor_timeout_s": 0.1,
+    "auto_resume_hold_s": 2.0,
     "dt_nominal_s": 0.02,
     "inner_wheel_min_rpm": 0.0,
     "branch_positive_is_left": true
@@ -40,12 +45,12 @@
   "drivers": {
     "ramp": {
       "manual": {
-        "accel": 400,
-        "decel": 800
+        "accel": 800,
+        "decel": 1600
       },
       "auto": {
-        "accel": 2000,
-        "decel": 3000
+        "accel": 2400,
+        "decel": 3200
       }
     },
     "target_deadband_rpm": 5
@@ -90,37 +95,37 @@
       "PB Reset",
       "PB Start",
       "SS Auto/Manual",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      ""
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "EDM BLDC L",
+      "EDM BLDC R",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]"
     ],
     "do_names": [
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      ""
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]"
     ]
   },
   "lidar": {
@@ -144,7 +149,8 @@
     "di_reset": 0,
     "di_start": 1,
     "di_auto": 2,
-    "debounce_scans": 2
+    "debounce_scans": 2,
+    "manual_auto_arm": true
   },
   "can": {
     "bitrate": 125000,
@@ -169,12 +175,17 @@
     "loop_period_s": 0.02,
     "telemetry_period_s": 0.2,
     "field_period_s": 0.5,
-    "manual_watchdog_s": 0.4,
+    "manual_watchdog_s": 0.6,
     "auto_watchdog_s": 1.5,
     "driver_timeout_s": 0.6,
-    "log_tail_s": 2.0
+    "log_tail_s": 2.0,
+    "auto_start_delay_s": 0.6
   },
   "branch_latch": [
-    { "entry_tag": "0002", "exit_tag": "0001", "branch": "left" }
+    { "entry_tag": "0002", "exit_tag": "0001", "branch": "left", "slow_speed": true }
+  ],
+  "stop_until_start_button": [
+    { "tag": "0010", "stop_distance_m": 0.4 },
+    { "tag": "0011", "stop_distance_m": 0.4 }
   ]
 }

@@ -28,6 +28,14 @@ Values 1/5/6/7 select "Combi", which repacks each 16-bit field as a 10-bit
 signed position plus a 6-bit track width. This script reads 2006h:01 and
 decodes accordingly rather than assuming. This unit ships set to 3 (Standard
 enhanced), i.e. plain INT16.
+
+*** Commissioned to 0 (Standard), NOT the factory 3. *** The "enhanced" values
+are the improved diverter detection, and p.49 table 21 / p.50 recommend that
+ON for FLUSH diverters and OFF for NON-FLUSH ones - a separate tape running
+parallel to the main track and then curving away, which is how this route is
+laid. Both 0 and 3 are Standard packing, so the decode below is the same
+either way; what changes is how the sensor behaves where two tapes are in the
+window at once. Set with `tune_mls.py variant 0 --go`.
 """
 import argparse
 import os

@@ -14,7 +14,9 @@
         selector to AUTO, press Reset to arm, Start to run. Reset or the
         selector stops it. This page has no controls.</span>
   <span class="hint">Line following at {{ auto_rpm }} r/min ·
-        K={{ k_ratio }} Kd={{ kd }} ζ={{ zeta }}</span>
+        K={{ k_ratio }} Kd={{ kd }} ζ={{ zeta }}<br>
+        Slow zone {{ auto_slow_rpm }} r/min ·
+        K={{ slow_k_ratio }} Kd={{ slow_kd }} ζ={{ slow_zeta }}</span>
 </div>
 
 {% if dry_run %}
@@ -24,11 +26,6 @@
   check that <b>Error</b> below has the sign you expect, then set
   <code>autopilot.dry_run</code> to <code>false</code> in the vehicle profile
   and restart the service.
-</div>
-{% else %}
-<div class="warn">
-  Live. A wrong error sign steers the AGV <em>off</em> the tape and accelerates.
-  Keep a hand on the panel — Reset stops the run.
 </div>
 {% endif %}
 
@@ -50,6 +47,8 @@
   <div class="track" id="track">
     <div class="track-rule"></div>
     <div class="track-zero"></div>
+    <span class="track-end track-lo" id="track-min"></span>
+    <span class="track-end track-hi" id="track-max"></span>
     <div class="lcp" id="lcp1" data-n="1"></div>
     <div class="lcp" id="lcp2" data-n="2"></div>
     <div class="lcp" id="lcp3" data-n="3"></div>
@@ -57,8 +56,8 @@
   </div>
 
   <div class="tel-grid">
-    <div class="tel"><span>#LCP</span><b id="s-nlcp">–</b><i id="s-label">—</i></div>
-    <div class="tel"><span>Position</span><b id="s-pos">–</b><i>mm (LCP2)</i></div>
+    <div class="tel key"><span>#LCP</span><b id="s-nlcp">–</b><i id="s-label">—</i></div>
+    <div class="tel key"><span>Position</span><b id="s-pos">–</b><i>mm (LCP2)</i></div>
     <div class="tel"><span>Field</span><b id="s-field">–</b><i id="s-min">digits</i></div>
     <div class="tel"><span>Level</span><b id="s-level">–</b><i id="s-pol">—</i></div>
     <div class="tel"><span>Frames</span><b id="s-frames">0</b><i id="s-age">—</i></div>
@@ -68,11 +67,17 @@
 
 <section class="sensor">
   <h2>Station tag <small>Chafon CF821 &middot; 192.168.1.200:2022</small></h2>
-  <div class="tel-grid">
-    <div class="tel"><span>Tag</span><b id="r-tag">–</b><i id="r-age">—</i></div>
-    <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">—</i></div>
-    <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
-    <div class="tel"><span>Branch</span><b id="r-branch">straight</b><i id="r-branch-by">no order</i></div>
+  {# Same shape as /manual: the tag is the fact worth a glance, so it takes the
+     left column at full height and the context tiles stack beside it. Branch
+     joins them here because an auto run has a standing junction order to show
+     and the jog page does not. #}
+  <div class="rfid-grid">
+    <div class="tel tag"><span>RFID tag</span><b id="r-tag">–</b><i id="r-age">—</i></div>
+    <div class="rfid-side">
+      <div class="tel"><span>Branch</span><b id="r-branch">straight</b><i id="r-branch-by">no order</i></div>
+      <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">—</i></div>
+      <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
+    </div>
   </div>
 </section>
 {% endblock %}

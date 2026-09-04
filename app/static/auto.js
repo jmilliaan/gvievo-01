@@ -42,4 +42,20 @@ function showPid(p) {
 
 // showRfid moved to common.js - the manual page shows the tag too, and one copy
 // of it in two files is one copy that gets fixed in only one of them.
-onState(s => showPid(s.pid));
+// A held run is standing still with the START latch still claimed, waiting for
+// the tape to stay in view. Without a word on screen that is indistinguishable
+// from a vehicle that has simply died.
+function showHold(s) {
+  const el = document.getElementById('p-guard');
+  if (!el) return;
+  // A station stop is a planned pause and reads as one; a lost line is not.
+  if (s.stop_hold) {
+    el.textContent = 'AT STATION ' + s.stop_hold + ' — press Start';
+    el.style.color = 'var(--accent-2)';
+  } else if (s.auto_hold) {
+    el.textContent = 'HOLDING — ' + s.auto_hold;
+    el.style.color = 'var(--hazard-ink)';
+  }
+}
+
+onState(s => { showPid(s.pid); showHold(s); });

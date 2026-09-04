@@ -68,12 +68,20 @@ function setPill(text, cls) {
 // the PID is reacting to, manual to line the AGV up on the tape before handing
 // over. No-ops on any page without a #track element.
 
-const TRACK_HALF_MM = 65;   // MLS sensing width is ~130 mm, so +/-65 mm full scale
+// Full scale of the strip, in mm either side of centre. Comes from the server
+// (autopilot.sensor_max_mm) rather than being a constant here, because it must
+// match what the follower discards against.
+//
+// It was hardcoded at 65, from an assumed ~130 mm sensing width. The MLS 200 in
+// this vehicle measures +/-100 mm, so everything between 65 and 100 mm pinned at
+// the edge of the bar and read as the same value - over exactly the range that
+// matters at a diverter, where the second tape sits.
+const TRACK_HALF_FALLBACK = 100;
 
-function placeLcp(el, track) {
+function placeLcp(el, track, halfMm) {
   if (!el) return;
   if (!track) { el.style.display = 'none'; return; }
-  const pct = 50 + 50 * Math.max(-1, Math.min(1, track.pos_mm / TRACK_HALF_MM));
+  const pct = 50 + 50 * Math.max(-1, Math.min(1, track.pos_mm / halfMm));
   el.style.display = 'block';
   el.style.left = pct + '%';
   el.dataset.mm = (track.pos_mm > 0 ? '+' : '') + track.pos_mm
@@ -87,11 +95,16 @@ function renderSensor(s) {
     if (el) el.textContent = v;
   };
   const sen = s.sensor;
+  const half = s.sensor_range_mm || TRACK_HALF_FALLBACK;
   const byIndex = {};
   if (sen) for (const t of sen.tracks) byIndex[t.index] = t;
-  placeLcp(document.getElementById('lcp1'), byIndex[1]);
-  placeLcp(document.getElementById('lcp2'), byIndex[2]);
-  placeLcp(document.getElementById('lcp3'), byIndex[3]);
+  placeLcp(document.getElementById('lcp1'), byIndex[1], half);
+  placeLcp(document.getElementById('lcp2'), byIndex[2], half);
+  placeLcp(document.getElementById('lcp3'), byIndex[3], half);
+  // The ends, labelled. Without them the strip's range is invisible, which is
+  // how a bar reading +/-65 went unnoticed against a +/-100 mm sensor.
+  txt('track-min', '\u2212' + half);
+  txt('track-max', '+' + half);
 
   const empty = document.getElementById('track-empty');
   if (empty) {
@@ -138,26 +151,32 @@ function renderSensor(s) {
 function showRfid(r, b) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   if (!r || !document.getElementById('r-tag')) return;
-  // last_tag, not just tag: the live value clears as soon as the vehicle rolls
-  // off the tag, which is precisely when somebody is looking down to write the
-  // number on a piece of paper.
-  set('r-tag', r.tag || (r.last_tag ? r.last_tag : '–'));
-  set('r-age', r.tag_age_s === null || r.tag_age_s === undefined
-               ? 'no tag yet' : r.tag_age_s.toFixed(1) + ' s ago');
+  // Live only. The tag shows while it is being READ and clears when the vehicle
+  // rolls off it - no last_tag fallback and no age counting up, because a
+  // four-hex value sitting on screen with "31.4 s ago" beside it reads as a
+  // tag that is still there. The reader holds `tag` for rfid.tag_hold_s, so
+  // this is still on screen long enough to write down.
+  set('r-tag', r.tag || '–');
+  set('r-age', r.tag ? 'reading' : '—');
   set('r-count', r.tags_seen);
 
   // The standing junction order. `straight` is the resting state, not a
   // fault, so only a live order or an unhonoured one is coloured.
   b = b || {};
   set('r-branch', b.intent || 'straight');
-  set('r-branch-by',
-      b.unhonoured ? 'side not in this diverter'
-      : b.set_by ? 'tag ' + b.set_by
-      : b.junctions ? b.junctions + ' junction(s) configured'
-      : 'no junctions configured');
+  // The slow zone is the same entry-to-exit interval as the order, so it is
+  // shown on the same tile rather than earning one of its own. It is appended
+  // because it is orthogonal to the order: a zone can be latched while the
+  // vehicle carries straight on through it.
+  const why = b.unhonoured ? 'side not in this diverter'
+            : b.set_by ? 'tag ' + b.set_by
+            : b.junctions ? b.junctions + ' junction(s) configured'
+            : 'no junctions configured';
+  set('r-branch-by', b.slow ? why + ' · SLOW' : why);
   const br = document.getElementById('r-branch');
   if (br) br.style.color = b.unhonoured ? 'var(--stop)'
-                         : (b.intent && b.intent !== 'straight') ? 'var(--hazard-ink)' : '';
+                         : (b.slow || (b.intent && b.intent !== 'straight'))
+                           ? 'var(--hazard-ink)' : '';
 
   // Three states worth distinguishing, because they need different actions:
   // disabled (nothing to do), carrier down (physical), connected but silent
@@ -172,8 +191,13 @@ function showRfid(r, b) {
   else                       { text = 'ok';       colour = ''; }
   link.textContent = text;
   link.style.color = colour;
-  set('r-detail', r.silent ? 'silent — check antenna'
-                          : (r.identity || r.detail || '—'));
+  const detail = r.silent ? 'silent — check antenna'
+                          : (r.identity || r.detail || '—');
+  set('r-detail', detail);
+  // Clamped to two lines in CSS, so the full banner lives in the tooltip
+  // rather than being lost.
+  const dEl = document.getElementById('r-detail');
+  if (dEl) dEl.title = detail;
 }
 
 // ---- the shared rail ------------------------------------------------------
@@ -303,15 +327,20 @@ async function poll() {
   try {
     const s = await apiGet(window.CLAIM_HEARTBEAT ? '/api/state?hb=1'
                                                   : '/api/state');
-    // A device that has stopped answering outranks the bus state in the pill:
-    // "socketcan:can0 · ARMED" is true but useless when a driver is gone.
+    // The pill answers the one question worth having on every page: is this
+    // vehicle energised? The bus identity that used to be here ("socketcan:can0")
+    // is a commissioning fact, not an operating one, and it moved to /monitor.
+    //
+    // Both failure states still OUTRANK it and still render red. A dead driver
+    // or a missing bus would otherwise be invisible on six of the seven pages,
+    // and "DISARMED" is a reassuring word to show while the bus is gone.
     const hw = s.health || {};
     if (hw.system_error) {
       setPill('DRIVER SILENT · ' + hw.system_detail, 'bad');
+    } else if (!s.connected) {
+      setPill(s.error || 'NO BUS', 'bad');
     } else {
-      setPill(s.connected ? (s.how + (s.armed ? ' · ARMED' : ' · idle'))
-                          : (s.error || 'no bus'),
-              s.connected ? (s.armed ? 'ok' : '') : 'bad');
+      setPill(s.armed ? 'ARMED' : 'DISARMED', s.armed ? 'ok' : '');
     }
 
     for (const id of ['1', '2']) {

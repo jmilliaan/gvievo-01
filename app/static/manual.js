@@ -13,8 +13,9 @@
 //       ArrowDown                Down        = REV        Down+Left  = REV-L
 //                                Right       = SPIN-R     Down+Right = REV-R
 //
-// WASD mirrors the arrows exactly. Q/E/Z/C stay as one-key shortcuts straight
-// to a diagonal, for when you would rather not hold two keys.
+// ARROWS ONLY. WASD used to mirror them and Q/E/Z/C were one-key shortcuts to
+// the diagonals; both are gone. Space is kept, because it only ever STOPS -
+// removing a stop is the one change to a jog control worth refusing.
 
 const REPEAT_MS = 100;
 const pad = document.getElementById('pad');
@@ -23,16 +24,10 @@ const byDir = new Map(buttons.map(b => [b.dataset.dir, b]));
 
 // Axis contributions. fwd: +1 forward, -1 reverse. turn: -1 left, +1 right.
 const AXIS = {
-  ArrowUp:    {fwd:  1}, KeyW: {fwd:  1},
-  ArrowDown:  {fwd: -1}, KeyS: {fwd: -1},
-  ArrowLeft:  {turn: -1}, KeyA: {turn: -1},
-  ArrowRight: {turn:  1}, KeyD: {turn:  1},
-};
-
-// One-key shortcuts to a diagonal.
-const DIRECT = {
-  KeyQ: 'forward_left',  KeyE: 'forward_right',
-  KeyZ: 'reverse_left',  KeyC: 'reverse_right',
+  ArrowUp:    {fwd:  1},
+  ArrowDown:  {fwd: -1},
+  ArrowLeft:  {turn: -1},
+  ArrowRight: {turn:  1},
 };
 
 // (fwd, turn) -> direction. A turn with no forward/reverse component is an
@@ -58,9 +53,6 @@ function paint() {
 
 // --- what the operator is currently asking for ---------------------------
 function keyDirection() {
-  // A direct diagonal key wins outright.
-  for (const code of down) if (DIRECT[code]) return DIRECT[code];
-
   let fwd = 0, turn = 0, nf = 0, nt = 0;
   for (const code of down) {
     const a = AXIS[code];
@@ -129,7 +121,7 @@ for (const b of buttons) {
 addEventListener('keydown', e => {
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.code === 'Space') { e.preventDefault(); panic(); return; }
-  if (!AXIS[e.code] && !DIRECT[e.code]) return;
+  if (!AXIS[e.code]) return;
   e.preventDefault();          // stop arrow keys scrolling the page
   down.add(e.code);
   refresh();

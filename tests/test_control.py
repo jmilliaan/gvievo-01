@@ -49,6 +49,137 @@ def test_divergence_is_detectable():
 # guards
 # ---------------------------------------------------------------------------
 
+def test_a_track_swap_cannot_become_a_yaw_spike():
+    """A jump in the reported position is not motion, and must not reach the
+    derivative as though it were.
+
+    Run 0020, t=31.08: at the merge after the U-turn the followed position
+    jumped ~120 mm between two tapes. The slew guard turned that into three
+    consecutive 40 mm steps - 2 m/s of apparent lateral velocity, eight times
+    what this vehicle can do - and the D term turned THAT into 6.66 rad/s of
+    commanded yaw, slamming the wheels to 0 and 1177 r/min. Then the mirror
+    image 0.4 s later. The P term was 0.26 of it; the rest was all derivative.
+    """
+    import autopilot
+    import config
+    print("\na track swap must not become a yaw spike")
+
+    def sensor(mm):
+        return {"tracks": [{"index": 2, "pos_mm": mm, "width": 10}],
+                "has_track": True}
+
+    # The measured shape: settled on one tape, five ticks with the leftmost
+    # track off-sensor, then the other tape ~120 mm away.
+    seq = [39.0] * 10 + [None] * 5 + [-81.0] * 14
+
+    f = autopilot.LineFollower()
+    f.reset()
+    f._v_rpm = config.AUTO_SLOW_RPM
+    peak_omega = 0.0
+    peak_d = 0.0
+    for mm in seq:
+        # 300 mm is beyond sensor_max_mm, which is how the real frames read.
+        _, _, d = f.update(sensor(300.0 if mm is None else mm), 0.0, 0.02,
+                           True, "left", True)
+        peak_omega = max(peak_omega, abs(d["omega_cmd"]))
+        peak_d = max(peak_d, abs(d["d"]))
+
+    check("the 120 mm swap does not produce the logged 6.66 rad/s",
+          peak_omega < 2.0, f"peak |omega| {peak_omega:.2f} rad/s")
+    check("...and the derivative is no longer what drives it",
+          peak_d < 1.5, f"peak |d| {peak_d:.2f}")
+
+    # The mechanism, asserted directly: a rate the vehicle cannot produce is
+    # clamped to one it can.
+    f2 = autopilot.LineFollower()
+    f2.reset()
+    f2._last_e_m = 0.0
+    v = 0.25
+    _, _, _, d_big = f2._pid(0.040, v, 0.02)      # 40 mm in one tick = 2 m/s
+    lim = autopilot.LATERAL_RATE_FACTOR * v + 0.01
+    check("an impossible lateral rate is clamped to a possible one",
+          abs(d_big) <= config.KD * lim + 1e-9,
+          f"d {d_big:.3f} vs limit {config.KD * lim:.3f}")
+
+    # Real steering must still get through untouched.
+    f3 = autopilot.LineFollower()
+    f3.reset()
+    f3._last_e_m = 0.0
+    slow_mm = v * 0.02 * 0.3 * 1000.0             # 30% of the physical limit
+    _, _, _, d_ok = f3._pid(slow_mm / 1000.0, v, 0.02)
+    expect = config.KD * (0.02 / (config.TAU_D_S + 0.02)) * (slow_mm / 1000.0 / 0.02)
+    check("a genuine correction is not clamped",
+          abs(d_ok - expect) < 1e-6, f"{d_ok:.5f} vs {expect:.5f}")
+
+    # And a gap must not be differentiated over one tick's dt either.
+    f4 = autopilot.LineFollower()
+    f4.reset()
+    f4._v_rpm = config.AUTO_SLOW_RPM
+    for _ in range(6):
+        f4.update(sensor(10.0), 0.0, 0.02, True)
+    for _ in range(5):
+        f4.update({"tracks": [], "has_track": False}, 0.0, 0.02, True)
+    _, _, d_after = f4.update(sensor(30.0), 0.0, 0.02, True)
+    check("the first sample after a gap primes instead of differentiating",
+          d_after["d"] == 0.0, f"d {d_after['d']:.4f}")
+
+
+def test_gains_blend_across_a_zone_boundary():
+    """A tag lands where somebody stuck it, not where the vehicle has settled.
+
+    Run 0020 read its exit tag while still 44 mm off line: k_ratio fell
+    25 -> 11.3 in one tick, halving steering authority exactly as the vehicle
+    began accelerating 800 -> 1200 r/min.
+    """
+    import autopilot
+    import config
+    print("\ngains blend across a zone boundary")
+
+    on_tape = {"tracks": [{"index": 2, "pos_mm": 5.0, "width": 10}],
+               "has_track": True}
+    f = autopilot.LineFollower()
+    f.reset()
+    f._v_rpm = config.AUTO_SLOW_RPM
+
+    f.update(on_tape, 0.0, 0.02, True, "left", True)
+    check("the first tick snaps to the zone's gains rather than sliding up "
+          "from nothing", abs(f._k_now - config.SLOW_K_RATIO) < 1e-9,
+          f"{f._k_now}")
+
+    # Leaving the zone: the gain must move, but not in one tick.
+    _, _, d1 = f.update(on_tape, 0.0, 0.02, True, "left", False)
+    check("leaving a zone does not step the gain",
+          config.K_RATIO < d1["k_used"] < config.SLOW_K_RATIO,
+          f"k_used {d1['k_used']:.2f} between {config.K_RATIO} and "
+          f"{config.SLOW_K_RATIO}")
+
+    for _ in range(int(6 * config.GAIN_BLEND_S / 0.02)):
+        _, _, d2 = f.update(on_tape, 0.0, 0.02, True, "left", False)
+    check("...and it does arrive", abs(d2["k_used"] - config.K_RATIO) < 0.1,
+          f"k_used {d2['k_used']:.3f}")
+
+    check("gain_blend_s = 0 keeps the old instant switch",
+          _snap_with_zero_blend() is True)
+
+
+def _snap_with_zero_blend():
+    import autopilot
+    import config
+    saved = config.GAIN_BLEND_S
+    config.GAIN_BLEND_S = 0.0
+    try:
+        on_tape = {"tracks": [{"index": 2, "pos_mm": 5.0, "width": 10}],
+                   "has_track": True}
+        f = autopilot.LineFollower()
+        f.reset()
+        f._v_rpm = config.AUTO_SLOW_RPM
+        f.update(on_tape, 0.0, 0.02, True, "left", True)
+        _, _, d = f.update(on_tape, 0.0, 0.02, True, "left", False)
+        return d["k_used"] == config.K_RATIO
+    finally:
+        config.GAIN_BLEND_S = saved
+
+
 def test_no_derivative_kick_on_reset():
     print("\nreset() must not differentiate a standing error against a fake zero")
     f = autopilot.LineFollower()
@@ -282,6 +413,8 @@ def test_speed_reduction_is_a_fraction():
 TESTS = [
     test_step_response,
     test_divergence_is_detectable,
+    test_a_track_swap_cannot_become_a_yaw_spike,
+    test_gains_blend_across_a_zone_boundary,
     test_no_derivative_kick_on_reset,
     test_sensor_slew_guard,
     test_conditional_integration,

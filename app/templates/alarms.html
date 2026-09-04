@@ -2,14 +2,6 @@
 {% block title %}AGV — alarms{% endblock %}
 {% block body %}
 
-<div class="warn">
-  <b>A record, not a safety function.</b>
-  Nothing here can stop the vehicle and nothing here clears a fault — a latched
-  fault is cleared at the panel with <b>Reset</b>. The log is a ring buffer of
-  the last {{ max_events }} events held on the controller, so it survives a page
-  reload and a second browser but not a restart of the service.
-</div>
-
 <section class="sensor">
   <h2>Standing <small>what is wrong right now</small></h2>
   <div id="al-standing" class="mon-alarms">
@@ -33,6 +25,25 @@
 
   <div id="al-log" class="al-log">
     <div class="mon-none">waiting for the first poll…</div>
+  </div>
+</section>
+
+{# Deliberately the LAST section, and deliberately not next to the log. This is
+   the one control on an otherwise read-only page, and it does not touch an
+   alarm: it restarts the controller process. Reloading a changed profile is
+   what it is for - a parameter is edited in the JSON and picked up on the next
+   start, and until now that meant a shell. #}
+<section class="sensor">
+  <h2>Service <small>{{ unit }}</small></h2>
+  <p class="mon-note">
+    Restarting <b>de-energises the drives</b> and drops the event log above —
+    the ring buffer lives in the process. It is refused while the vehicle is
+    armed. Allow about 15 seconds: the controller waits for the wheels to reach
+    zero, disarms, exits, and systemd starts it again.
+  </p>
+  <div class="al-filters">
+    <button id="rs-btn" class="danger">Restart controller</button>
+    <span class="al-count" id="rs-note">reloads the profile from disk</span>
   </div>
 </section>
 

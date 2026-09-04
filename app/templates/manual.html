@@ -23,6 +23,8 @@
   <div class="track" id="track">
     <div class="track-rule"></div>
     <div class="track-zero"></div>
+    <span class="track-end track-lo" id="track-min"></span>
+    <span class="track-end track-hi" id="track-max"></span>
     <div class="lcp" id="lcp1" data-n="1"></div>
     <div class="lcp" id="lcp2" data-n="2"></div>
     <div class="lcp" id="lcp3" data-n="3"></div>
@@ -30,8 +32,8 @@
   </div>
 
   <div class="tel-grid">
-    <div class="tel"><span>#LCP</span><b id="s-nlcp">&ndash;</b><i id="s-label">&mdash;</i></div>
-    <div class="tel"><span>Position</span><b id="s-pos">&ndash;</b><i>mm (LCP2)</i></div>
+    <div class="tel key"><span>#LCP</span><b id="s-nlcp">&ndash;</b><i id="s-label">&mdash;</i></div>
+    <div class="tel key"><span>Position</span><b id="s-pos">&ndash;</b><i>mm (LCP2)</i></div>
     <div class="tel"><span>Field</span><b id="s-field">&ndash;</b><i id="s-min">digits</i></div>
     <div class="tel"><span>Level</span><b id="s-level">&ndash;</b><i id="s-pol">&mdash;</i></div>
   </div>
@@ -46,10 +48,12 @@
    the vehicle has rolled past - see showRfid() in common.js. #}
 <section class="sensor pad-width">
   <h2>Station tags <small>RFID reader &middot; {{ rfid_ip }}</small></h2>
-  <div class="tel-grid">
-    <div class="tel"><span>Tag</span><b id="r-tag">&ndash;</b><i id="r-age">&mdash;</i></div>
-    <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">&mdash;</i></div>
-    <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
+  <div class="rfid-grid">
+    <div class="tel tag"><span>RFID tag</span><b id="r-tag">&ndash;</b><i id="r-age">&mdash;</i></div>
+    <div class="rfid-side">
+      <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">&mdash;</i></div>
+      <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
+    </div>
   </div>
 </section>
 
@@ -59,30 +63,18 @@
           title="{{ labels[d] }} — {{ keymap[d] }}">
     <span class="glyph">{{ glyphs[d] }}</span>
     <span class="name">{{ labels[d] }}</span>
-    {% if d != 'stop' %}
-      <span class="rpm">{{ table[d][0] }} / {{ table[d][1] }}</span>
-    {% else %}
-      <span class="rpm">release</span>
-    {% endif %}
     <span class="key">{{ keymap[d] }}</span>
   </button>
 {% endfor %}
 </div>
 
-<p class="legend">
-  Straight and the outer wheel of a curve run {{ full }} r/min; the inner wheel
-  of a curve and both wheels of an on-axis spin run {{ half }} r/min.
-  Numbers under each button are the actual 60FFh setpoints (left / right).
-</p>
 <p class="legend keys">
-  <b>Arrows</b> (or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>) —
-  <kbd>&uarr;</kbd> forward · <kbd>&darr;</kbd> reverse ·
+  <b>Arrows</b> — <kbd>&uarr;</kbd> forward · <kbd>&darr;</kbd> reverse ·
   <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> spin on the spot.
   Hold <b>two</b> for an in-between: <kbd>&uarr;</kbd>+<kbd>&larr;</kbd> fwd-left,
   <kbd>&uarr;</kbd>+<kbd>&rarr;</kbd> fwd-right,
   <kbd>&darr;</kbd>+<kbd>&larr;</kbd> rev-left,
   <kbd>&darr;</kbd>+<kbd>&rarr;</kbd> rev-right.
-  <kbd>Q</kbd><kbd>E</kbd><kbd>Z</kbd><kbd>C</kbd> reach the same four with one key.
   Opposites cancel (<kbd>&uarr;</kbd>+<kbd>&darr;</kbd> = stop);
   <kbd>Space</kbd> stops everything.
 </p>

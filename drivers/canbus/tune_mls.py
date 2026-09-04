@@ -17,6 +17,7 @@ they cover the commissioning procedure:
     tune_mls.py minlevel N --go      2025h detection threshold, digits
     tune_mls.py offset N --go        2026h zero point, mm
     tune_mls.py zero --go            202Ch teach current position as zero
+    tune_mls.py variant N --go       2006h:01 TPDO1 layout / diverter detection
 
 Object references (MLS operating instructions 8021642, section 8.1.1):
   2021h:04 #LCP                 how many tracks are seen      p.31
@@ -29,6 +30,7 @@ Object references (MLS operating instructions 8021642, section 8.1.1):
   202Dh:3  Averaging magnetic   UINT8, default 1               p.33 / p.48
   2080h:1  Reset event flag     WO                             p.34 / p.57
   2080h:2  Event source         RO, table 22                   p.57
+  2006h:1  Variant TPDO1        UINT8, table on p.36           p.36 / p.49-50
 
 Writes persist without a save command: 1010h:01 defaults to 2, which per
 CiA 301 is "save autonomously on modification" - the same behaviour the BLVD
@@ -338,6 +340,64 @@ def set_filter(bus, node, value):
     return 0 if now == value else 1
 
 
+# 2006h:01 values that select the packed Combi track-data format (table 10).
+COMBI = {1, 5, 6, 7}
+
+VARIANT_NAMES = {
+    0: "Standard", 1: "Combi",
+    2: "Standard compensated", 3: "Standard enhanced",
+    4: "Standard enhanced compensated", 5: "Combi compensated",
+    6: "Combi enhanced", 7: "Combi enhanced compensated",
+}
+# "enhanced" IS the improved diverter detection - p.49 table 21 and p.50.
+ENHANCED = {3, 4, 6, 7}
+
+
+def set_variant(bus, node, value):
+    """2006h:01 - TPDO1 layout, and with it the diverter-detection behaviour.
+
+    The manual splits this by how the diverters are LAID, and the two cases want
+    opposite settings (p.49 table 21, p.50):
+
+      flush      the branch comes straight out of the main tape. Soft transition,
+                 "more susceptible to misinterpretation" - improved detection ON.
+      non-flush  a separate tape running parallel, then curving away. Reliable,
+                 "rough track change: track is detected abruptly" - and p.50 is
+                 explicit that deactivating improved detection "is recommended
+                 with non-flush diverters".
+
+    Changing this changes how TPDO1 UNPACKS (Combi repacks each 16-bit field as
+    a 10-bit position plus a 6-bit width), which is why canworker resolves
+    _combi from this object on every arm rather than assuming it.
+    """
+    if value not in VARIANT_NAMES:
+        print(f"{BAD} variant must be 0-7 (p.36); got {value}")
+        return 1
+    was = rd(bus, node, 0x2006, 1)
+    print(f"[1] 2006h:01 variant TPDO1: {was} "
+          f"({VARIANT_NAMES.get(was, '?')}) -> {value} ({VARIANT_NAMES[value]})")
+    if was in ENHANCED and value not in ENHANCED:
+        print("    improved diverter detection OFF - the p.50 recommendation")
+        print("    for NON-FLUSH diverters (a separate tape running parallel,")
+        print("    then curving away).")
+    elif value in ENHANCED and was not in ENHANCED:
+        print("    improved diverter detection ON - the recommendation for")
+        print("    FLUSH diverters, where the branch leaves the main tape.")
+    if (value in COMBI) != (was in COMBI):
+        print(f"    {WARN} this also changes the TPDO1 PACKING (Combi <-> "
+              f"Standard).")
+    if not wr(bus, node, 0x2006, 1, value, 1, "variant TPDO1"):
+        return 1
+    print("\n[2] verify")
+    now = rd(bus, node, 0x2006, 1)
+    print(f"    reads back {now} ({VARIANT_NAMES.get(now, '?')}) "
+          f"{OK if now == value else BAD}")
+    print("\n    Roll the vehicle over a diverter with `read_mls.py stream` and")
+    print("    watch #LCP and LCP2. The track should change once, cleanly - not")
+    print("    swap back and forth while both tapes are in the window.")
+    return 0 if now == value else 1
+
+
 def set_minlevel(bus, node, value):
     if not 0 <= value <= 0xFFFF:
         print(f"{BAD} min. level must be 0-65535; got {value}")
@@ -399,7 +459,8 @@ def teach_zero(bus, node):
     return 0
 
 
-WRITE_MODES = {"reset-event", "calibrate", "filter", "minlevel", "offset", "zero"}
+WRITE_MODES = {"reset-event", "calibrate", "filter", "minlevel", "offset",
+               "zero", "variant"}
 
 
 def main():
@@ -407,15 +468,17 @@ def main():
         description="Tune the SICK MLS magnetic line sensor. Writes need --go.")
     ap.add_argument("mode", nargs="?", default="show",
                     choices=("show", "events", "reset-event", "calibrate",
-                             "filter", "minlevel", "offset", "zero"))
+                             "filter", "minlevel", "offset", "zero",
+                             "variant"))
     ap.add_argument("value", nargs="?", type=int,
-                    help="for filter (0-4), minlevel (digits), offset (mm)")
+                    help="for filter (0-4), minlevel (digits), offset (mm), "
+                         "variant (0-7)")
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--go", action="store_true",
                     help="required for anything that writes to the sensor")
     args = ap.parse_args()
 
-    needs_value = args.mode in ("filter", "minlevel", "offset")
+    needs_value = args.mode in ("filter", "minlevel", "offset", "variant")
     if needs_value and args.value is None:
         print(f"{BAD}: `{args.mode}` needs a value, e.g. "
               f"`tune_mls.py {args.mode} 0 --go`")
@@ -425,7 +488,8 @@ def main():
     # and a typo should not need the sensor powered to be told about.
     limits = {"filter": (0, 4, "table 18 defines 0-4"),
               "minlevel": (0, 0xFFFF, "UINT16"),
-              "offset": (-32768, 32767, "INT16")}
+              "offset": (-32768, 32767, "INT16"),
+              "variant": (0, 7, "table on p.36 defines 0-7")}
     if needs_value:
         lo, hi, why = limits[args.mode]
         if not lo <= args.value <= hi:
@@ -467,6 +531,8 @@ def main():
             return set_offset(bus, args.node, args.value)
         if args.mode == "zero":
             return teach_zero(bus, args.node)
+        if args.mode == "variant":
+            return set_variant(bus, args.node, args.value)
     except KeyboardInterrupt:
         print("\ninterrupted")
         return 130

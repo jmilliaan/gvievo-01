@@ -13,6 +13,28 @@ import config
 import kinematics
 import motion
 
+
+def rows_by_path(sections):
+    """describe() rows addressed by their JSON path, not by where they display.
+
+    describe() gathers the speed keys out of three sections into one at the top
+    of the page, so a row's SECTION is a presentation choice while its path is
+    the fact. Keying on the path lets these tests assert what they actually mean
+    - this value reaches the page, with its note attached - without pinning the
+    layout, which is free to change again.
+
+    A gathered row already carries its full path; a row shown in its own section
+    carries a bare key and gets the section prefixed back on.
+    """
+    out = {}
+    for s in sections:
+        for r in s["rows"]:
+            key = r["key"]
+            out[key if key.split(".")[0] in config._SCHEMA
+                else f"{s['name']}.{key}"] = r
+    return out
+
+
 def test_config_profile():
     """The profile is the whole tuning surface, so a bad one must be refused
     loudly at boot rather than showing up as odd behaviour on a length of tape."""
@@ -66,8 +88,13 @@ def test_config_profile():
     refuses("duplicate CAN node IDs are refused",
             lambda d: d["can"].update(sensor_node=2), "distinct")
     # The pairing neither module could check alone before config existed.
+    # Read 6083h out of the doc rather than hardcoding it. This used to say
+    # 2000.0, which stopped testing anything the day the driver ramp was raised
+    # to 2400 - the value was still refused-looking but was legitimately below
+    # the new limit, so the check passed for the wrong reason.
     refuses("a software ramp at or above 6083h is refused",
-            lambda d: d["autopilot"].update(ramp_accel_rpm_s=2000.0),
+            lambda d: d["autopilot"].update(
+                ramp_accel_rpm_s=float(d["drivers"]["ramp"]["auto"]["accel"])),
             "must stay below")
     # A profile written before the units changed must not run silently on a
     # stale key - the loader rejects unknowns, which is what catches it.
@@ -179,18 +206,22 @@ def test_params_view():
     print("\nthe parameters view covers the whole profile")
 
     sections = config.describe()
-    rows = {(s["name"], r["key"]): r for s in sections for r in s["rows"]}
+    rows = rows_by_path(sections)
 
     missing = [f"{sec}.{key}" for sec, fields in config._SCHEMA.items()
-               for key in fields if (sec, key) not in rows]
+               for key in fields if f"{sec}.{key}" not in rows]
     check("every schema key is displayed", not missing, str(missing))
 
     # The three the flat schema cannot express, and the one top-level list.
     for sec, key in (("drivers", "ramp.auto.accel"), ("dio", "di_names"),
                      ("lidar", "zone_bytes")):
-        check(f"the nested {sec}.{key} is displayed", (sec, key) in rows)
-    check("branch_latch is displayed",
-          any(s["name"] == "branch_latch" for s in sections))
+        check(f"the nested {sec}.{key} is displayed", f"{sec}.{key}" in rows)
+    # The junction table moved into the "rfid rules" block, grouped with every
+    # other kind of thing a tag can mean rather than standing on its own.
+    rules = next((s for s in sections if s["name"] == "rfid rules"), None)
+    check("the junction table is displayed under the RFID rules",
+          rules is not None
+          and any("branch latch" in r["key"] for r in rules["rows"]))
 
     derived = {r["key"] for s in sections if s["name"] == "derived"
                for r in s["rows"]}
@@ -204,9 +235,9 @@ def test_params_view():
               for s in sections if s["name"] == "derived" for r in s["rows"]))
 
     check("the profile's own values are shown",
-          rows[("autopilot", "k_ratio")]["value"] == config._fmt(config.K_RATIO)
-          and rows[("can", "channel")]["value"] == config.CAN_CHANNEL,
-          rows[("autopilot", "k_ratio")]["value"])
+          rows["autopilot.k_ratio"]["value"] == config._fmt(config.K_RATIO)
+          and rows["can.channel"]["value"] == config.CAN_CHANNEL,
+          rows["autopilot.k_ratio"]["value"])
 
     # Units are read off the exported name's suffix. The ones worth pinning are
     # the ones a naive suffix rule gets wrong.
@@ -225,11 +256,11 @@ def test_params_view():
     # true/false, not Python's True/False - the page is read next to the JSON
     # file it describes, and the two must be the same word.
     check("booleans render as JSON does",
-          rows[("autopilot", "dry_run")]["value"] in ("true", "false"),
-          rows[("autopilot", "dry_run")]["value"])
+          rows["autopilot.dry_run"]["value"] in ("true", "false"),
+          rows["autopilot.dry_run"]["value"])
     check("a whole float drops its .0",
-          rows[("vehicle", "motor_max_rpm")]["value"] == "4000",
-          rows[("vehicle", "motor_max_rpm")]["value"])
+          rows["vehicle.motor_max_rpm"]["value"] == "4000",
+          rows["vehicle.motor_max_rpm"]["value"])
     # An empty string is a SETTING here (rfid.init_hex empty means the reader is
     # never told to start), so it must never render as a blank cell.
     check("no cell is blank", all(r["value"] for s in sections
@@ -259,14 +290,13 @@ def test_tuning_notes_are_parsed_not_restated():
     check("a section-wide note is kept as such", "rfid.*" in notes)
 
     # Attachment, not just parsing: the note has to land on the row.
-    rows = {(s["name"], r["key"]): r for s in config.describe()
-            for r in s["rows"]}
+    rows = rows_by_path(config.describe())
     check("the dry-run note reaches its row",
-          "dry run" in (rows[("autopilot", "dry_run")]["note"] or "").lower())
+          "dry run" in (rows["autopilot.dry_run"]["note"] or "").lower())
     check("a nested ramp row inherits the drivers.ramp note",
-          "6083h" in (rows[("drivers", "ramp.auto.accel")]["note"] or ""))
+          "6083h" in (rows["drivers.ramp.auto.accel"]["note"] or ""))
     check("a section note reaches a row that has none of its own",
-          "CF821" in (rows[("rfid", "ip")]["note"] or ""))
+          "CF821" in (rows["rfid.ip"]["note"] or ""))
 
     # Parsing must never be able to take the page down: a docstring rewritten
     # into prose yields no notes, not an exception.

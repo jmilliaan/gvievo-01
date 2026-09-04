@@ -49,8 +49,17 @@ html, body { height:100%; overflow:hidden; }
 body {
   margin:0; background:var(--paper); color:var(--ink);
   font:15.5px/1.62 var(--sans); -webkit-font-smoothing:antialiased;
-  -webkit-user-select:none; user-select:none; touch-action:manipulation;
+  touch-action:manipulation;
   display:flex; flex-direction:column;
+}
+
+/* Selection is off on the CONTROLS only - a long press on the jog pad must not
+   pop a selection callout, and a repeated tap must not select the label under
+   it. Everywhere else it stays on: log paths, statusword hex, alarm codes and
+   IP addresses are read off these pages to be pasted somewhere, and a page you
+   cannot copy a fault code out of is a page somebody retypes it from. */
+button, nav a, .pad, .lamp, .pill, kbd, .zone-pip {
+  -webkit-user-select:none; user-select:none;
 }
 
 /* Square corners, 1px rules and no shadows throughout. Emphasis is carried by a
@@ -107,6 +116,21 @@ button.big.run:hover:not(:disabled),
 button.big.off:hover:not(:disabled) { color:#fff; filter:brightness(1.12); }
 button.big:disabled { opacity:.32; cursor:not-allowed; }
 button.big:focus-visible { outline:2px solid var(--accent-2); outline-offset:2px; }
+
+/* The service restart on /alarms. Quiet until armed, then it takes the stop
+   colour - a control that de-energises the vehicle should not look the same
+   before and after the press that means it. */
+button.danger {
+  font:600 11.5px var(--mono); letter-spacing:.08em; text-transform:uppercase;
+  padding:8px 16px; border:1px solid var(--rule);
+  background:var(--surface); color:var(--ink-2); cursor:pointer;
+}
+button.danger:hover:not(:disabled) { border-color:var(--stop); color:var(--stop); }
+button.danger.armed {
+  background:var(--stop); border-color:var(--stop); color:#fff;
+}
+button.danger:disabled { opacity:.32; cursor:not-allowed; }
+button.danger:focus-visible { outline:2px solid var(--stop); outline-offset:2px; }
 .hint { color:var(--ink-2); font-size:13px; flex:1 1 240px; }
 
 /* ---- manual pad ---- */
@@ -126,7 +150,6 @@ button.dir {
 }
 button.dir .glyph { font-size:30px; line-height:1; }
 button.dir .name  { font:600 11px var(--mono); letter-spacing:.09em; text-transform:uppercase; }
-button.dir .rpm   { font:400 11px var(--mono); color:var(--ink-2); font-variant-numeric:tabular-nums; }
 button.dir .key {
   font:500 10px var(--mono); color:var(--ink-2); margin-top:3px;
   letter-spacing:.04em; white-space:nowrap;
@@ -138,7 +161,7 @@ button.dir.active:not(:disabled) {
   background:var(--accent-2); border-color:var(--accent-2); color:#fff;
   transform:scale(.97);
 }
-button.dir.active .rpm, button.dir.active .name,
+button.dir.active .name,
 button.dir.active .key { color:#fff; }
 button.dir.stopbtn { background:var(--surface-2); border-color:var(--rule); }
 button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); color:#fff; }
@@ -188,6 +211,14 @@ h2 small, h3 small {
   transform:translateX(-50%); font:500 10px var(--mono);
   color:var(--ink-3); white-space:nowrap;
 }
+/* Full-scale marks. Small and low-contrast - they are a reference the eye
+   checks once, not a value it reads. */
+.track-end {
+  position:absolute; bottom:3px; font:500 10px var(--mono); color:var(--ink-3);
+  font-variant-numeric:tabular-nums; pointer-events:none;
+}
+.track-lo { left:5px; }
+.track-hi { right:5px; }
 .track-empty {
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   color:var(--ink-3); font:500 11px var(--mono);
@@ -219,6 +250,51 @@ h2 small, h3 small {
 }
 .tel b { font:600 19px var(--mono); color:var(--ink); font-variant-numeric:tabular-nums; }
 .tel i { font:400 11px var(--mono); color:var(--ink-3); font-style:normal; }
+
+/* ---- reading order on the sensor pages -----------------------------------
+   These tiles are read at arm's length, in motion, by somebody who also has a
+   hand on the vehicle. They are NOT equally important and were being rendered
+   as though they were: #LCP, the tape position and the station tag are the
+   three facts worth a glance, and field/level/link/count are context that only
+   matters when something is already wrong.
+
+   So the first group is enlarged and washed, the rest is left exactly as it
+   was. Emphasis by size and ground rather than by colour alone - the same rule
+   the alarm rows follow, and for the same reason. */
+.tel.key {
+  background:var(--accent-wash); border-color:var(--accent-2);
+}
+.tel.key b { font-size:34px; line-height:1.1; }
+
+/* The station tag is the one an operator copies down off the screen, so it is
+   the largest thing on the page - ~2.3x the ordinary tile. */
+.tel.tag b { font-size:44px; line-height:1.06; }
+
+/* Tag left and full height, link above count on the right: the tag earns the
+   space, and the two context tiles stack beside it instead of shrinking it to
+   a third of the row. */
+.rfid-grid {
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+  gap:8px; max-width:900px; margin:0 auto;
+}
+/* The side tiles are a nested column rather than more grid cells, so the tag
+   stays full height whether there are two of them (/manual) or three (/auto).
+   Row spanning would have to be told how many. */
+.rfid-side { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.rfid-side .tel { flex:1 1 0; }
+.rfid-grid .tel.tag { justify-content:center; }
+/* The reader identity is ~100 characters of firmware banner. It is genuinely
+   context - read once at commissioning - but unclamped it sets the row height
+   and shoulders the tag aside, which is most of why this row was unreadable.
+   Two lines then ellipsis; the whole string stays in the tooltip. */
+.rfid-grid .tel { min-width:0; }
+#r-detail {
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; overflow-wrap:anywhere;
+}
+@media (max-width:560px) {
+  .rfid-grid { grid-template-columns:minmax(0,1fr); }
+}
 .states { display:flex; gap:8px; max-width:900px; margin:10px auto 0; flex-wrap:wrap; }
 .st {
   font:400 12px var(--mono); color:var(--ink-2); background:var(--surface-2);

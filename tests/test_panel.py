@@ -2,6 +2,8 @@
 import copy
 import json
 
+import time
+
 from helpers import ROOT, check
 
 import config
@@ -121,10 +123,16 @@ def test_comms_loss_cannot_synthesise_a_press():
 
 
 def test_reset_means_ready():
-    """The controller's state machine, driven through its own handlers."""
+    """The controller's state machine, driven through its own handlers.
+
+    The shape changed: MANUAL is an armed state the selector holds, AUTO is a
+    disarmed one that Start energises. Reset no longer arms anything - it was
+    being pressed reflexively before every jog, which is what this is fixing.
+    """
     import canworker
+    import config
     import events
-    print("\npanel: Reset means READY")
+    print("\npanel: MANUAL is armed, AUTO is armed by Start")
 
     calls = []
 
@@ -143,6 +151,12 @@ def test_reset_means_ready():
             self._last_action = None
             self._last_stop_reason = None
             self._panel = scanner()
+            self._arm_retry_at = 0.0
+            self._arm_fail = None
+            self._auto_start_at = 0.0
+            self._stop_hold = None
+            self._log_close_at = 0.0
+            self._telemetry = {n: {"statusword": 0x0027} for n in config.NODES}
             self.arm_fails = None
 
         def _do_arm(self, mode):
@@ -154,6 +168,7 @@ def test_reset_means_ready():
         def _do_disarm(self):
             calls.append(("disarm",))
             self._armed, self._mode = False, "idle"
+            self._auto_start_at = 0.0
 
         def _do_auto_run(self, running, source="web"):
             calls.append(("run", running, source))
@@ -166,58 +181,146 @@ def test_reset_means_ready():
     events.clear()
     c = Ctl()
 
-    # IDLE -> Reset -> READY
-    c._panel_reset(AUTO)
-    check("Reset from idle arms in the selected mode",
-          c._armed and c._mode == "auto", str(calls))
+    # ---- MANUAL: the selector is the arm command --------------------------
+    c._hold_arm_state(MANUAL)
+    check("the selector resting in MANUAL arms it, with nothing pressed",
+          c._armed and c._mode == "manual", str(calls))
+    n = len(calls)
+    for _ in range(20):
+        c._hold_arm_state(MANUAL)
+    check("...and holding it there does not re-arm every scan",
+          len(calls) == n, f"{len(calls) - n} extra call(s)")
 
-    # READY -> Start -> RUNNING
-    c._panel_start(AUTO)
-    check("Start runs it", c._auto_running is True)
-    check("and the run is owned by the panel, which is what the watchdog "
-          "keys on", c._run_source == "panel")
-
-    # RUNNING -> Reset -> READY (stopped, still armed)
-    c._panel_reset(AUTO)
-    check("Reset from running stops it", c._auto_running is False)
-    check("but leaves it ARMED, so Start goes again without a second Reset",
-          c._armed is True)
-    c._panel_start(AUTO)
-    check("Start restarts it", c._auto_running is True)
-
-    # FAULT -> Start refused -> Reset -> READY
-    c._set_fault("line lost")
-    c._end_auto_run()
-    c._panel_start(AUTO)
-    check("Start is refused while a fault is latched", c._auto_running is False)
-    c._panel_reset(AUTO)
-    check("Reset clears the fault", c._fault is None)
-    c._panel_start(AUTO)
-    check("and Start works again", c._auto_running is True)
-
-    # Selector out of AUTO stops AND disarms
-    c._panel_mode_changed(MANUAL)
-    check("the selector stops the run", c._auto_running is False)
-    check("and disarms, because mode is fixed at arm time",
-          c._armed is False and c._mode == "idle")
-
-    # Start in manual is a no-op
-    c._panel_reset(MANUAL)
-    check("Reset arms in manual", c._armed and c._mode == "manual")
     c._panel_start(MANUAL)
     check("Start in manual does nothing - jogging is per-direction from the "
           "web pad", c._auto_running is False)
 
-    # A failed arm latches, rather than vanishing the way a 409 would
-    c2 = Ctl()
-    c2.arm_fails = "preflight failed: driver 2 not answering"
-    c2._panel_reset(AUTO)
-    check("an arm that raises latches a fault - the panel has no 409",
-          c2._fault is not None and not c2._armed, str(c2._fault))
-    c2.arm_fails = None
-    c2._panel_reset(AUTO)
-    check("and Reset retries it once the cause is gone",
-          c2._armed and c2._fault is None)
+    # ---- AUTO: disarmed until Start ---------------------------------------
+    c._panel_mode_changed(AUTO)
+    check("the selector moving to AUTO disarms", not c._armed)
+    c._hold_arm_state(AUTO)
+    check("...and AUTO does not arm itself", not c._armed, str(c._mode))
+
+    c._panel_start(AUTO)
+    check("Start arms", c._armed and c._mode == "auto")
+    check("...but does NOT move yet", c._auto_running is False)
+    check("...it is pending, with the delay running", c._auto_start_at > 0)
+
+    c._pending_start()
+    check("and nothing moves while the delay is still running",
+          c._auto_running is False)
+    c._auto_start_at = time.monotonic() - 0.001      # delay expired
+    c._pending_start()
+    check(f"after auto_start_delay_s it runs", c._auto_running is True)
+    check("the run is owned by the panel, which is what the watchdog keys on",
+          c._run_source == "panel")
+
+    # ---- Reset only stops and acknowledges --------------------------------
+    c._panel_reset(AUTO)
+    check("Reset from running stops it", c._auto_running is False)
+    c._hold_arm_state(AUTO)
+    check("...and AUTO returns to disarmed once the run is over",
+          not c._armed, str(c._mode))
+
+    # A pending start is abandoned by Reset rather than arriving late.
+    c._panel_start(AUTO)
+    check("Start arms again", c._armed and c._auto_start_at > 0)
+    c._panel_reset(AUTO)
+    check("Reset cancels a start that has not reached the wheels yet",
+          c._auto_start_at == 0.0)
+    c._pending_start()
+    check("...so the delay expiring afterwards moves nothing",
+          c._auto_running is False)
+
+    # A selector move cancels one too.
+    c._panel_start(AUTO)
+    c._panel_mode_changed(MANUAL)
+    check("a selector move cancels a pending start", c._auto_start_at == 0.0)
+
+    # ---- faults still need a human ----------------------------------------
+    c3 = Ctl()
+    c3._set_fault("line lost")
+    c3._hold_arm_state(MANUAL)
+    check("a latched fault stops MANUAL arming itself", not c3._armed)
+    c3._panel_start(AUTO)
+    check("...and Start is refused too", c3._auto_running is False)
+    c3._panel_reset(MANUAL)
+    check("Reset clears the fault", c3._fault is None)
+    c3._hold_arm_state(MANUAL)
+    check("...and the selector arms it again with no second press", c3._armed)
+
+    # ---- a failed arm is a condition, not a fault -------------------------
+    c4 = Ctl()
+    c4.arm_fails = "preflight failed: driver 2 not answering"
+    c4._hold_arm_state(MANUAL)
+    check("an auto-arm that fails does NOT latch a fault - nobody did anything "
+          "wrong", c4._fault is None and not c4._armed, str(c4._fault))
+    check("...it records why", c4._arm_fail is not None, str(c4._arm_fail))
+    n = len(calls)
+    for _ in range(50):
+        c4._hold_arm_state(MANUAL)
+    check("...and backs off rather than hammering the bus at tick rate",
+          len(calls) == n, f"{len(calls) - n} attempt(s) in 50 scans")
+    c4.arm_fails = None
+    c4._arm_retry_at = 0.0
+    c4._hold_arm_state(MANUAL)
+    check("...then arms by itself once the cause is gone, with no Reset",
+          c4._armed and c4._fault is None)
+
+    # ---- torque taken away underneath it ----------------------------------
+    c5 = Ctl()
+    c5._hold_arm_state(MANUAL)
+    check("armed in manual", c5._armed)
+    # 0x1270 = Switch on disabled: what the drives report in ETO, which is what
+    # the safety chain leaves behind.
+    c5._telemetry = {n: {"statusword": 0x1270} for n in config.NODES}
+    c5._arm_retry_at = 0.0
+    c5._hold_arm_state(MANUAL)
+    check("drives dropping out of Operation enabled triggers a re-arm",
+          ("disarm",) in calls[-3:] or c5._armed, str(calls[-3:]))
+    c6 = Ctl()
+    c6._telemetry = {n: {"statusword": None} for n in config.NODES}
+    check("an unread statusword is 'unknown', never 'not ready'",
+          c6._drives_ready() is None)
+    events.clear()
+
+
+def test_the_manual_watchdog_does_not_latch():
+    """Both modes zero the setpoint; only AUTO latches a fault.
+
+    A manual watchdog trip is self-correcting - the setpoint is already zero and
+    recovery is to hold the button again, with a hand on the control. Latching
+    it made a dropped Wi-Fi packet cost a walk to the panel, and under
+    panel.manual_auto_arm it would block re-arming as well. An auto run is the
+    opposite: latched motion that would otherwise resume on its own.
+    """
+    import canworker
+    import events
+    print("\npanel: the manual watchdog stops without latching")
+
+    src = (ROOT / "canworker.py").read_text()
+    block = src[src.index("watchdog: no keepalive"):]
+    block = block[:block.index("# Device liveness")]
+
+    check("manual warns instead of latching",
+          "events.warn" in block and 'if mode == "manual":' in block)
+    check("...and auto still latches",
+          "self._set_fault(reason)" in block)
+    check("both zero the setpoint outright",
+          "self._target = target = (0, 0)" in block)
+    check("both clear the ramp, or the PID re-commands on the next tick",
+          "self._end_auto_run(reason, hard=True)" in block)
+
+    # The emit sits on a 50 Hz path, so it is only safe because the branch
+    # clears its own condition. Pin that the zeroing is still there to do it.
+    warn_at = block.index("events.warn")
+    zero_at = block.index("self._target = target = (0, 0)")
+    check("the branch self-clears after warning, so it cannot repeat at 50 Hz",
+          zero_at > warn_at)
+
+    # And the reason still reaches the operator either way.
+    check("the stop reason is recorded for the UI in both modes",
+          "self._last_stop_reason = reason" in block)
     events.clear()
 
 
@@ -286,6 +389,7 @@ TESTS = [
     test_debounce,
     test_comms_loss_cannot_synthesise_a_press,
     test_reset_means_ready,
+    test_the_manual_watchdog_does_not_latch,
     test_panel_events_are_edge_only,
     test_panel_profile,
 ]

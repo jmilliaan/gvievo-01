@@ -2,14 +2,6 @@
 {% block title %}AGV — I/O{% endblock %}
 {% block body %}
 
-<div class="warn">
-  <b>Read-only, and not a safety path.</b>
-  Nothing on this page can energise an output, and no input here acts on the
-  vehicle — these lamps are a view of the module, not a control over it. The
-  channels are not mapped yet, so a lit input means only that the module reports
-  it high.
-</div>
-
 <section class="sensor">
   <h2>Digital I/O <small>Modbus TCP · {{ dio_ip }} · {{ scan_hz }} Hz scan</small></h2>
   <div class="tel-grid">

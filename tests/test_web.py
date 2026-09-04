@@ -52,11 +52,14 @@ def test_monitor_page_does_not_feed_the_watchdog():
     check("common.js only sends hb=1 when the page claims it",
           "CLAIM_HEARTBEAT ? '/api/state?hb=1'" in common)
 
-    # The page itself must render and be read-only.
+    # The page itself must render and be read-only. The "diagnostic only, not a
+    # safety path" banner that used to head it was removed by request, so what
+    # is asserted here is the PROPERTY rather than the prose: no controls, no
+    # way to write, and the deny-list on screen.
     c = webapp.app.test_client()
     body = c.get("/monitor").get_data(as_text=True)
-    check("the monitor page renders", "Diagnostic only" in body)
-    check("it states the golden rule", "not a safety path" in body)
+    check("the monitor page renders",
+          'id="mon-state"' in body and "Control loop" in body)
     check("it publishes the write deny-list", "403Eh" in body and "40D0h" in body)
     check("it has no controls", "<button" not in body)
 
@@ -81,6 +84,16 @@ def test_web_cannot_start_the_vehicle():
     for route in ("/api/disarm", "/api/stop", "/api/drive"):
         check(f"POST {route} still resolves",
               c.post(route, json={"dir": "stop"}).status_code != 404)
+
+    # /api/restart belongs in that group - it de-energises and ends the process,
+    # so the worst it can do is stop the vehicle - but it is checked through the
+    # URL map rather than by calling it. On a machine where the unit exists and
+    # nothing is armed, both guards pass and the handler does exactly what it
+    # says: os._exit(1), taking this test run with it.
+    rules = {r.rule: r.methods for r in webapp.app.url_map.iter_rules()}
+    check("POST /api/restart is registered", "POST" in rules.get("/api/restart", set()))
+    check("...and is POST-only, so a link cannot trigger it",
+          "GET" not in rules.get("/api/restart", set()))
 
     src = (ROOT / "app" / "server.py").read_text()
     check("no arm route is defined at all", '"/api/arm"' not in src)
@@ -113,9 +126,10 @@ def test_lidar_page_is_read_only_and_never_reads_clear():
 
     body = c.get("/lidar").get_data(as_text=True)
     check("the lidar page renders", "Cut-off paths" in body)
-    check("it says it is not a safety path", "Not a safety path" in body)
-    check("it names the OSSD chain rather than implying this one stops",
-          "OSSD" in body and "FX3" in body)
+    # The "not a safety path" and "cut-off paths are unvalidated" banners were
+    # removed from this page by request. Neither was doing the work: the rule
+    # they described is enforced in zoneState() below, which is asserted here
+    # and is what actually keeps an unknown or dead stream off "clear".
     # There IS a button now - the scan toggle - so the assertion has to be
     # about what a control can DO, not whether one exists. The page has no POST
     # endpoint to call and no handler that calls one.
@@ -281,17 +295,40 @@ def test_alarms_page_records_but_cannot_clear():
     check("the alarms page renders", "Standing" in body and "Log" in body)
     check("it is reachable from every page",
           'href="/alarms"' in c.get("/manual").get_data(as_text=True))
-    check("it says a fault is cleared at the panel", "panel" in body
-          and "Reset" in body)
+    # Said on the standing-fault row itself rather than in a banner at the top -
+    # the banner was removed by request, and the row is where somebody reading
+    # about a live fault is actually looking.
+    check("a latched fault says it is cleared at the panel",
+          "clear with panel Reset"
+          in (ROOT / "app" / "static" / "alarms.js").read_text())
 
     # The one thing this page must never do. An acknowledge button on a browser
     # silences an alarm for somebody standing somewhere else.
+    #
+    # This used to be asserted as "no <button> anywhere on the page", which was
+    # broader than the rule it was protecting - the page now carries a service
+    # restart, which is the opposite of silencing: it de-energises the drives
+    # and throws the log away rather than tidying it. So the checks name the
+    # forbidden thing instead of forbidding all controls.
     js = (ROOT / "app" / "static" / "alarms.js").read_text()
-    check("there is no acknowledge or clear control",
-          "<button" not in body)
-    check("...and no POST from the page", "api(" not in js)
+    srv = (ROOT / "app" / "server.py").read_text()
+    for banned in ("id=\"ack\"", "id=\"clear\"", "acknowledge", "Acknowledge"):
+        check(f"no {banned} control on the page", banned not in body)
+    check("the only endpoint the page POSTs to is the restart",
+          [c for c in re.findall(r"api\('([^']+)'", js)] == ["/api/restart"],
+          str(re.findall(r"api\('([^']+)'", js)))
+    check("there is no endpoint that clears a fault or an alarm",
+          "/api/clear" not in srv and "/api/ack" not in srv)
     check("events.clear is not reachable from the web",
-          "clear" not in (ROOT / "app" / "server.py").read_text().split("def api_events")[1][:400])
+          "clear" not in srv.split("def api_events")[1][:400])
+    # The restart is a stop, so it must be refused while the vehicle is armed -
+    # a control that de-energises on a whim is the hazard, not the button.
+    check("the restart is refused while armed",
+          'snap.get("armed")' in srv and "disarm before restarting" in srv)
+    check("...and refuses when nothing would restart the process",
+          '("on-failure", "always")' in srv)
+    check("the page says it de-energises the drives",
+          "de-energises the drives" in body)
 
     # Three levels, three colours, and the level is never carried by colour
     # alone - a colour-only scheme vanishes in a photograph of the screen,
@@ -332,11 +369,12 @@ def test_params_page_displays_and_cannot_edit():
     c = webapp.app.test_client()
 
     body = c.get("/params").get_data(as_text=True)
-    check("the params page renders", "Display only" in body)
+    # The "display only" banner was removed by request. Read-onlyness is a fact
+    # about the endpoints, not about a paragraph, and it is asserted as such a
+    # few lines down - there is nothing to press and nothing to POST to.
+    check("the params page renders", "Profile" in body and "pm-list" in body)
     check("it names the profile and the file it came from",
           config.PROFILE_NAME in body and config.PROFILE_PATH_LOADED in body)
-    check("...and says how a parameter IS changed",
-          "restarting the service" in body)
     check("it is reachable from every page",
           'href="/params"' in c.get("/manual").get_data(as_text=True))
 
@@ -371,8 +409,160 @@ def test_params_page_displays_and_cannot_edit():
           note in (ROOT / "config.py").read_text() and note not in tpl)
 
 
+def test_params_page_reads_speed_first():
+    """Speed is the most-consulted and most-edited part of the profile, and it
+    was spread across three sections. It is gathered into one at the top.
+
+    The invariant that matters is not the order - it is that gathering a row
+    MOVES it rather than copying it. A parameter printed in two places is a
+    parameter that can be read as two parameters, and the one somebody edits
+    will be the one the vehicle is not using.
+    """
+    import server as webapp   # app/server.py; see the note on the rename
+    print("\nthe parameters page reads speed first")
+    c = webapp.app.test_client()
+
+    secs = config.describe()
+    names = [s["name"] for s in secs]
+    # The synthetic blocks lead; the schema's own sections follow in the order
+    # _SECTION_ORDER names. Asserted separately so adding another synthetic
+    # block does not look like the schema order breaking.
+    check("the gathered blocks lead", names[0] == "speed", str(names[:3]))
+    schema_order = [n for n in names if n in config._SCHEMA]
+    check("then the control law, then the geometry",
+          schema_order[:2] == ["autopilot", "vehicle"], str(schema_order[:3]))
+
+    speed = next(s for s in secs if s["name"] == "speed")
+    keys = [r["key"] for r in speed["rows"]]
+    check("both manual jog speeds are there",
+          "manual.full_rpm" in keys and "manual.half_ratio" in keys, str(keys))
+    check("both auto speeds are there, slow included",
+          "autopilot.auto_rpm" in keys and "autopilot.auto_slow_rpm" in keys)
+    check("and the driver ramps that shape them",
+          len([k for k in keys if k.startswith("drivers.ramp.")]) == 4)
+    check("every gathered row names the section it lives in, so it can be found "
+          "in the JSON", all("." in k for k in keys), str(keys))
+
+    # The real guard. Not order - duplication.
+    consts = [r["const"] for s in secs for r in s["rows"] if r["const"]]
+    dupes = sorted({c for c in consts if consts.count(c) > 1})
+    check("no parameter is printed twice", not dupes, str(dupes))
+
+    # And the mirror of it: nothing may be lost on the way. Suppressing a row
+    # from its home section and forgetting to gather it would be silent.
+    shown = set(consts)
+    missing = [f"{sec}.{key}" for sec, fields in config._SCHEMA.items()
+               for key, (const, _t) in fields.items() if const not in shown]
+    check("...and none is lost by being moved", not missing, str(missing))
+
+    # A section emptied by the gathering must not leave a bare heading behind.
+    check("an emptied section is dropped, not shown blank",
+          all(s["rows"] for s in secs) and "manual" not in names, str(names))
+
+    body = c.get("/params").get_data(as_text=True)
+    check("the page renders the gathered section first",
+          body.index("speed") < body.index("autopilot"))
+    check("...and says where those keys actually live",
+          "autopilot.auto_slow_rpm" in body)
+
+
+def test_params_lists_the_rfid_rules():
+    """Every kind of thing a station tag can mean, grouped by function, with the
+    free slots shown rather than omitted.
+
+    A page listing only the two implemented rules looks complete, and the next
+    person needs to see there is room for more before inventing a ninth
+    mechanism somewhere else.
+    """
+    import server as webapp   # app/server.py; see the note on the rename
+    print("\nthe parameters page lists the RFID rules")
+    c = webapp.app.test_client()
+
+    secs = config.describe()
+    names = [s["name"] for s in secs]
+    check("the block sits directly after speed",
+          names[:2] == ["speed", "rfid rules"], str(names[:3]))
+
+    rules = next(s for s in secs if s["name"] == "rfid rules")
+    keys = [r["key"] for r in rules["rows"]]
+    heads = [k for k in keys if "\u00b7" in k]
+    check(f"there are {config.RFID_RULE_SLOTS} rule types",
+          len(heads) == config.RFID_RULE_SLOTS, str(heads))
+    check("the implemented ones are named first",
+          "branch latch" in heads[0] and "stop until start button" in heads[1],
+          str(heads[:2]))
+    check("the rest are numbered free slots",
+          all("undefined rule" in h for h in heads[2:]), str(heads[2:]))
+
+    # Loaded rules appear under their own type, not in a flat list.
+    for r in config.BRANCH_LATCH:
+        check(f"junction {r['entry_tag']} is listed",
+              any(r["entry_tag"] in k for k in keys), str(keys))
+    for tag in config.STOP_TAGS:
+        check(f"station tag {tag} is listed",
+              any(tag in k for k in keys), str(keys))
+
+    # The old standalone branch_latch section is gone, not duplicated - the
+    # no-duplicates invariant in test_params_page_reads_speed_first would catch
+    # it, but say so here too since removing it was the point.
+    check("the junction table is not also listed on its own",
+          "branch_latch" not in names, str(names))
+
+    body = c.get("/params").get_data(as_text=True)
+    check("it renders", "rfid rules" in body and "undefined rule 6" in body)
+    check("...and says a tag may mean exactly one thing",
+          "exactly one thing" in body)
+    check("...and counts the tags in use",
+          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | set(config.STOP_TAGS))} tag id(s)"
+          in body)
+
+
+def test_landing_page_is_auto_and_the_pill_says_armed():
+    """The bare address lands on /auto, and the header pill answers "is this
+    vehicle energised?" rather than naming the CAN adapter.
+
+    The pill is the only always-visible indicator on seven pages, so the two
+    failure states have to outrank the armed state in it. "DISARMED" is a
+    reassuring word, and showing it while the bus is missing would be a lie of
+    exactly the kind this codebase keeps out of the rail.
+    """
+    import server as webapp   # app/server.py; see the note on the rename
+    print("\nthe landing page is /auto and the pill says armed")
+    c = webapp.app.test_client()
+
+    r = c.get("/")
+    check("the bare address redirects", r.status_code in (301, 302),
+          str(r.status_code))
+    check("...to /auto", r.headers.get("Location", "").endswith("/auto"),
+          r.headers.get("Location"))
+
+    common = (ROOT / "app" / "static" / "common.js").read_text()
+    check("the pill shows armed state", "'ARMED' : 'DISARMED'" in common)
+    check("a silent driver still outranks it",
+          "DRIVER SILENT" in common
+          and common.index("DRIVER SILENT") < common.index("'ARMED' : 'DISARMED'"))
+    check("...and so does a missing bus",
+          "!s.connected" in common
+          and common.index("!s.connected") < common.index("'ARMED' : 'DISARMED'"))
+    check("the bus identity is no longer in the pill",
+          "s.how + (s.armed" not in common)
+
+    # It moved rather than being deleted: which adapter can0 resolved to is a
+    # fault-finding fact, and /monitor is the fault-finding page.
+    mon = c.get("/monitor").get_data(as_text=True)
+    check("/monitor carries the bus identity instead", 'id="bus-how"' in mon)
+    check("...fed from /api/can, which does not claim the watchdog",
+          "renderBus" in (ROOT / "app" / "static" / "monitor.js").read_text())
+    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/params"):
+        check(f"{page} does not carry the bus tile",
+              'id="bus-how"' not in c.get(page).get_data(as_text=True))
+
+
 TESTS = [
     test_params_page_displays_and_cannot_edit,
+    test_params_page_reads_speed_first,
+    test_params_lists_the_rfid_rules,
+    test_landing_page_is_auto_and_the_pill_says_armed,
     test_web_cannot_start_the_vehicle,
     test_monitor_page_does_not_feed_the_watchdog,
     test_lidar_page_is_read_only_and_never_reads_clear,

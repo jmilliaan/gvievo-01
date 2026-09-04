@@ -73,6 +73,63 @@ autopilot.k_ratio / kd / ki
         k_ratio 25.0, kd 5.0  -> zeta 0.61, ~2.6 mm overshoot, ~1.2 s settle
     ki starts at 0; add it only to null a standing offset.
 
+autopilot.slow_k_ratio / slow_kd
+    The steering gains used while a SLOW ZONE is latched, in place of k_ratio and
+    kd. This is the pair that decides how tight a corner the vehicle can hold.
+
+    *** Slowing down does not help a corner. Raising k_ratio does. ***
+    Cross-track error on a curve settles at
+
+        e_ss = kappa / k_ratio          (kappa = 1/radius)
+
+    and speed does not appear in it - it cancels, because Kp = k_ratio*v while
+    holding a curve needs omega = v*kappa. That is the same cancellation that
+    makes damping speed-independent, and it means halving the speed leaves the
+    steady-state cornering error exactly where it was.
+
+    Run 0018 is the evidence. It lost the tape on the ~0.5 m U-turn while already
+    slowed to 441 r/min, with sat_scale at 1.00 throughout - so it never ran out
+    of wheel authority, it simply could not point tightly enough. At k_ratio 11.3
+    a 0.5 m radius needs 177 mm of standing error to hold, and the sensor stops
+    at 100 mm, so the tape was always going to leave the window.
+
+    What each gain buys, simulated against the real 6083h slew limit at 800 r/min:
+
+        k_ratio / kd    R=1.0 m   R=0.7 m   R=0.5 m
+          11.3 / 0.94     54 mm     71 mm    OFF THE SENSOR
+          25   / 5.0      30 mm     39 mm     49 mm
+          40   / 6.0      21 mm     28 mm     36 mm
+          50   / 8.0      17 mm     23 mm     30 mm
+
+    A slow zone is the right home for a high gain, and not only because that is
+    where the corners are: the binding limit on k_ratio is how fast 6083h slews
+    the wheel DIFFERENCE (2.59 rad/s^2 at 2000 r/min/s), and a lower speed needs
+    proportionally less yaw rate for the same curvature. The headroom is largest
+    exactly where it is wanted.
+
+    kd has to rise with k_ratio or damping collapses - zeta is
+    (kd + Ls*k)/(2*sqrt(k*(1 + Ls*kd))), which _validate() holds inside a sane
+    band. Commission by working UP: 25/5.0 first, and only go further if the
+    tightest corner on the route still runs wide.
+
+    The changeover is a step, not a ramp. It lands at the entry tag, on the
+    straight before the diverter, where the error is small - so the step in Kp*e
+    is a few hundredths of a rad/s and is not worth ramping out.
+
+autopilot.gain_blend_s
+    Time constant for moving between the ordinary gains and the slow-zone pair.
+    0 switches them instantly.
+
+    The zone boundary is a tag, and a tag lands wherever it was stuck down - not
+    necessarily where the vehicle has finished converging. Run 0020 read its exit
+    tag while still 44 mm off the line, and k_ratio fell 25 -> 11.3 in one tick:
+    steering authority more than halved at the moment the vehicle also began
+    accelerating 800 -> 1200 r/min. The speed change was already shaped by
+    ramp_accel_rpm_s; this gives the gain change the same courtesy.
+
+    Short. It is smoothing a step, not filtering a signal - too long and the
+    vehicle carries the wrong gains into the corner the zone exists for.
+
 autopilot.tau_d_s
     Derivative low-pass. The sensor quantises to 1 mm, so a raw derivative sees
     100 mm/s steps on every bit flip. KIM2A pairs a light kd with a 13 ms filter;
@@ -94,6 +151,25 @@ autopilot.sr_pos_frac / sr_rate_frac
     to speed, or it will be missed at the next speed change. 0.0075 per mm means
     a 20 mm error always sheds 15% of whatever the base currently is.
 
+autopilot.auto_slow_rpm
+    Cruise speed while a SLOW ZONE is latched - the stretch between the entry and
+    exit tags of any branch_latch row carrying slow_speed true. Off the zone the
+    vehicle runs at auto_rpm; the transition either way goes through the ordinary
+    software ramp, so it is shaped by ramp_accel_rpm_s and ramp_jerk_rpm_s2 like
+    any other change of target and needs no separate profile.
+
+    The zone is the whole entry-to-exit interval rather than the diverter itself,
+    which is what gives the ramp room to act: the entry tag sits before the
+    junction precisely so the branch order arrives in time, and the slowdown
+    wants exactly the same lead. At 1200 -> 800 r/min with ramp_accel_rpm_s 1000
+    that is 0.4 s, about 150 mm of travel.
+
+    Must be in (0, auto_rpm]; _validate() enforces it, because a "slow" speed
+    above cruise would speed the vehicle UP at a junction. Two derived values key
+    off the SLOWER of the two - the line-loss time ceiling and the
+    inner_wheel_min_rpm headroom check - since normal travel through a slow zone
+    is the case they have to tolerate.
+
 autopilot.sr_cap / sr_tau_s
     Ceiling on the reduction, as a fraction of base, and the lag on the reduction
     itself. sr_tau_s is a TIME, not a per-tick coefficient: KIM2A uses a fixed
@@ -109,6 +185,31 @@ autopilot.line_loss_grace_m
     and it rescales itself - it even adapts within a run as the ramp changes
     speed. config derives LINE_LOSS_GRACE_MAX_S from this as a standstill
     backstop, since a stationary AGV accrues no distance.
+
+autopilot.auto_resume_hold_s
+    How long the tape must be CONTINUOUSLY in view before an auto run that
+    stopped itself on a lost line resumes on its own. 0 disables the resume
+    entirely, and the run then behaves as it always did: a latched fault that
+    only panel Reset clears.
+
+    The stop is unchanged and still immediate - this only governs going again
+    afterwards. A gap in the tape stops the vehicle within line_loss_grace_m of
+    travel; if the tape comes back and STAYS back for this long, the run picks
+    up where it left off and accelerates through the ordinary software ramp.
+    Any dropout inside the window restarts the window, so an intermittent read
+    can never accumulate its way to a resume.
+
+    2 s is deliberately far longer than the 100 ms sensor_timeout_s that
+    declares the loss: the question being answered is not "is there a frame"
+    but "is this vehicle genuinely back on the tape", and a marginal sensor
+    sitting at the edge of the tape will flicker for longer than a few frames.
+
+    *** This is an automatic restart of MOTION, so it is worth being clear
+    about what it is not. *** It cannot restart anything the safety chain
+    stopped: an FX3 demand removes torque at the drives, and no value here
+    brings that back. A lost tape is a navigation failure, not a protective
+    stop. Every other involuntary stop - watchdog, silent driver, panel Reset,
+    selector - still latches a fault and still needs a human.
 
 autopilot.ramp_accel_rpm_s / ramp_jerk_rpm_s2
     The software motion profile, and it must stay meaningfully BELOW the driver's
@@ -160,10 +261,88 @@ drivers.target_deadband_rpm
     A target of exactly (0, 0) is never deadbanded away.
 
 timing.manual_watchdog_s / auto_watchdog_s
-    A held button re-POSTs every ~100 ms. Miss three in a row and the setpoint is
+    A held button re-POSTs every ~100 ms. Miss six in a row and the setpoint is
     zeroed - covers a closed tab, a dropped Wi-Fi link and a wedged browser. Auto
     is fed by the telemetry poll rather than a held button, so it gets a looser
     deadline; it still stops if the page goes away.
+
+    0.6 s rather than the original 0.4: three missed POSTs is tight over Wi-Fi,
+    and the trips it produced were the link hiccuping rather than the operator
+    letting go. It does not change how fast the vehicle stops when they DO let
+    go - the browser sends /api/stop on release and that is immediate; this
+    deadline only covers the case where nothing arrives at all.
+
+    *** The two modes do different things when it expires. *** Both zero the
+    setpoint. Manual stops there and logs a warning: recovery is to hold the
+    button again, which is a deliberate act with a hand on the control, so
+    there is nothing for an acknowledgment to add. Auto latches a fault, because
+    an auto run is latched motion that would otherwise resume on its own.
+
+branch_latch.*
+    The junction table. An entry tag latches a steering order, the fork consumes
+    it, and the exit tag ends the slow zone that ran alongside it - three coils
+    off one tag pair, see core/branch.py.
+
+    A tag id may appear once across the WHOLE rule set. The loader refuses a
+    repeat inside this table and refuses one shared with
+    stop_until_start_button, because a tag that means two things is a tag whose
+    meaning depends on which rung reads it first.
+
+stop_until_start_button.*
+    Station tags. A running auto vehicle that reads one of these comes to rest
+    over stop_distance_m and STAYS there until Start is pressed.
+
+    It is a pause in the run, not the end of one. The START latch is kept, so the
+    run log stays open across the dwell, the PID and branch state survive, and
+    the vehicle stays armed rather than being disarmed by the ordinary AUTO idle
+    rule. Start resumes the same run - after timing.auto_start_delay_s, because a
+    station is exactly where somebody is likely to be standing.
+
+    *** Distance, not time. *** A timed ramp stops wherever the approach speed
+    puts it - 0.25 m past the tag at 800 r/min but 0.38 m at 1200. A distance is
+    the same from any speed, because the deceleration is computed once, at the
+    tag, from the speed the vehicle is actually doing: a = v^2 / 2d.
+
+    Steering stays live all the way down - the follower keeps correcting while
+    it decelerates, which is what "stopping" state has always done. Place these
+    tags only where the track has been straight for a metre or so, so the
+    vehicle has settled before it starts to slow.
+
+    A tag may not be both a station stop and a branch_latch tag; _parse()
+    refuses it, because one tag cannot both steer and stop.
+
+panel.manual_auto_arm
+    MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
+    itself the arm command: the drives energise without anyone pressing Reset,
+    and re-energise on their own if something de-energised them.
+
+    The point is the operator's hands. Reset had become a button pressed
+    reflexively before every jog, and a control pressed by reflex is a control
+    that has stopped being a decision.
+
+    *** Arming is not motion. *** An armed manual vehicle is excited and holding
+    zero; every millimetre of travel still needs a jog button HELD, re-POSTed
+    every ~100 ms, with manual_watchdog_s to stop it the moment they are
+    released. What this changes is that the vehicle is live whenever the
+    selector says MANUAL - including at power-up with the selector already
+    there, which is a level, not an edge, and so is not covered by the panel's
+    anti-tie-down rule.
+
+    It cannot arm through the safety chain. An FX3 demand leaves the drives in
+    ETO and the arm attempt simply fails; it is retried on a slow backoff rather
+    than latched, so the vehicle comes back on its own once the chain is
+    restored and acknowledged. No latched fault is cleared this way - a fault
+    still blocks arming until somebody presses Reset.
+
+timing.auto_start_delay_s
+    The pause between AUTO arming and the wheels being commanded, after Start is
+    pressed. The drives energise, the brake releases and the sensor comes up
+    during it, so the vehicle is fully awake before the first setpoint rather
+    than during it - and it gives whoever pressed the button a beat to step back.
+
+    Start does the arming now, so the whole press-to-motion time is the arm
+    sequence (~0.8 s of SDO) plus this. Cancelled by a selector move, by Reset,
+    or by losing the panel image inside the window.
 
 timing.loop_period_s / telemetry_period_s / field_period_s
     50 Hz control loop; 5 Hz statusword + rpm + error register (6 fast reads);
@@ -325,12 +504,17 @@ _SCHEMA = {
         "sr_cap":              ("SR_CAP", float),
         "sr_tau_s":            ("SR_TAU_S", float),
         "auto_rpm":            ("AUTO_RPM", float),
+        "auto_slow_rpm":       ("AUTO_SLOW_RPM", float),
+        "slow_k_ratio":        ("SLOW_K_RATIO", float),
+        "slow_kd":             ("SLOW_KD", float),
+        "gain_blend_s":        ("GAIN_BLEND_S", float),
         "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
         "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
         "sensor_max_mm":       ("SENSOR_MAX_MM", float),
         "sensor_max_step_mm":  ("SENSOR_MAX_STEP_MM", float),
         "line_loss_grace_m":   ("LINE_LOSS_GRACE_M", float),
         "sensor_timeout_s":    ("SENSOR_TIMEOUT_S", float),
+        "auto_resume_hold_s":  ("AUTO_RESUME_HOLD_S", float),
         "dt_nominal_s":        ("DT_NOMINAL_S", float),
         "inner_wheel_min_rpm": ("INNER_WHEEL_MIN_RPM", float),
     },
@@ -411,6 +595,7 @@ _SCHEMA = {
         "di_reset":       ("PANEL_DI_RESET", int),
         "di_start":       ("PANEL_DI_START", int),
         "di_auto":        ("PANEL_DI_AUTO", int),
+        "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
     },
     "can": {
@@ -440,6 +625,7 @@ _SCHEMA = {
         "auto_watchdog_s":    ("AUTO_WATCHDOG_S", float),
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "log_tail_s":         ("LOG_TAIL_S", float),
+        "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
     },
 }
 
@@ -554,10 +740,17 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
     Every check here exists to stop a rung being silently DEAD, which is the
     only failure mode this table has: a tag that never matches produces no
     error, no log line and no motion - the AGV simply drives past the junction.
+
+    slow_speed is OPTIONAL and defaults to false, because most junctions do not
+    need it and a table of diverters written before the flag existed must keep
+    loading. It is the one key here that changes how fast the vehicle arrives at
+    the diverter, so it is still type-checked like everything else: the string
+    "True" is refused, not silently accepted as truthy.
     """
     if not isinstance(rows, list):
         raise ConfigError("branch_latch: expected a list")
     want = {"entry_tag", "exit_tag", "branch"}
+    optional = {"slow_speed"}
     width = tag_len * 2
     seen = {}
     out = []
@@ -565,12 +758,15 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
         where = f"branch_latch[{i}]"
         if not isinstance(row, dict):
             raise ConfigError(f"{where}: expected an object")
-        unknown = set(row) - want
+        unknown = set(row) - want - optional
         if unknown:
             raise ConfigError(f"{where}: unknown key(s) {sorted(unknown)}")
         missing = want - set(row)
         if missing:
             raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
+
+        slow = _coerce(row.get("slow_speed", False), bool,
+                       f"{where}.slow_speed")
 
         side = _coerce(row["branch"], str, f"{where}.branch")
         if side not in ("left", "right"):
@@ -607,7 +803,64 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
                                   f"{seen[tag]} - one tag cannot mean two things")
             seen[tag] = f"{where}.{key}"
         out.append({"entry_tag": tags["entry_tag"],
-                    "exit_tag": tags["exit_tag"], "branch": side})
+                    "exit_tag": tags["exit_tag"], "branch": side,
+                    "slow_speed": slow})
+    return out
+
+
+def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
+    """stop_until_start_button -> {tag: stopping distance in m}.
+
+    A tag here brings a running auto vehicle to rest over stop_distance_m and
+    holds it there until Start is pressed. Distance rather than time because the
+    resting point is the thing that matters at a station: a timed ramp stops
+    0.25 m past the tag at 800 r/min and 0.38 m past it at 1200, while a
+    distance is the same from any approach speed.
+
+    Same strictness as branch_latch, and for the same reason: a tag that never
+    matches produces no error and no symptom, just a vehicle that sails past the
+    station.
+    """
+    if not isinstance(rows, list):
+        raise ConfigError("stop_until_start_button: expected a list")
+    want = {"tag", "stop_distance_m"}
+    width = tag_len * 2
+    out = {}
+    for i, row in enumerate(rows):
+        where = f"stop_until_start_button[{i}]"
+        if not isinstance(row, dict):
+            raise ConfigError(f"{where}: expected an object")
+        unknown = set(row) - want
+        if unknown:
+            raise ConfigError(f"{where}: unknown key(s) {sorted(unknown)}")
+        missing = want - set(row)
+        if missing:
+            raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
+
+        raw = row["tag"]
+        if not isinstance(raw, str):
+            raise ConfigError(
+                f"{where}.tag: expected a {width}-character hex string like "
+                f'"000A", got {raw!r}. Tag ids come from rfid.tag_of() as hex '
+                f"text, so a number never matches.")
+        tag = raw.upper()
+        if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
+            raise ConfigError(f"{where}.tag: expected {width} hex characters, "
+                              f"got {raw!r}")
+        if tag in ignore_tags:
+            raise ConfigError(f"{where}.tag: {tag} is also in rfid.ignore_tags, "
+                              f"so it is discarded before anything can see it")
+        if tag in branch_tags:
+            raise ConfigError(f"{where}.tag: {tag} is already a branch_latch "
+                              f"tag - one tag cannot both steer and stop")
+        if tag in out:
+            raise ConfigError(f"{where}.tag: {tag} is listed twice")
+
+        dist = _coerce(row["stop_distance_m"], float, f"{where}.stop_distance_m")
+        if not 0 < dist <= 5.0:
+            raise ConfigError(f"{where}.stop_distance_m: expected a distance in "
+                              f"(0, 5] m, got {dist}")
+        out[tag] = dist
     return out
 
 
@@ -617,7 +870,7 @@ def _parse(doc):
         raise ConfigError("profile must be a JSON object")
 
     expected_sections = (set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
-                         | {"branch_latch"})
+                         | {"branch_latch", "stop_until_start_button"})
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -664,6 +917,11 @@ def _parse(doc):
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
     ns["BRANCH_LATCH"] = _read_branch_latch(
         doc["branch_latch"], ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]))
+    _branch_tags = {r[k] for r in ns["BRANCH_LATCH"]
+                    for k in ("entry_tag", "exit_tag")}
+    ns["STOP_TAGS"] = _read_stop_tags(
+        doc["stop_until_start_button"], ns["RFID_TAG_LEN"],
+        set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
     return ns
 
 
@@ -692,9 +950,16 @@ def _derive(ns):
     # time ceiling too. Five times the nominal grace at cruise: generous enough
     # never to fire during normal travel, finite enough to bound the standstill
     # case. Derived, so it is not one more thing to forget when speed changes.
+    #
+    # Taken at the SLOWEST speed the autopilot commands, not at cruise: the
+    # ceiling must never fire during normal travel, and normal travel through a
+    # slow zone covers the same distance in more time. At the present 800 r/min
+    # the 75 mm budget takes 0.30 s against a ~1.5 s ceiling, so this does not
+    # bite today - but it should hold by construction, not by luck.
     ns["LINE_LOSS_GRACE_MAX_S"] = (
         5.0 * ns["LINE_LOSS_GRACE_M"]
-        / max(ns["AUTO_RPM"] * ns["MPS_PER_RPM"], 1e-6))
+        / max(min(ns["AUTO_RPM"], ns["AUTO_SLOW_RPM"]) * ns["MPS_PER_RPM"],
+              1e-6))
 
     # The autopilot is tuned against the AUTO ramp specifically: 6083h caps both
     # the forward ramp and the rate at which the wheel DIFFERENCE can slew,
@@ -743,6 +1008,23 @@ def _validate(ns):
           "SR fractions must be >= 0")
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           f"AUTO_RPM must be in (0, {g('MOTOR_MAX_RPM')}]")
+    check(g("SLOW_K_RATIO") > 0, "slow_k_ratio must be > 0")
+    check(g("SLOW_KD") >= 0, "slow_kd must be >= 0")
+    check(g("GAIN_BLEND_S") >= 0, "gain_blend_s must be >= 0")
+    # A gain pair that cannot damp itself is the one way this feature bites
+    # back: too little kd for the k_ratio and the vehicle weaves through every
+    # junction it was meant to corner better.
+    _z = (g("SLOW_KD") + g("SENSOR_LOOKAHEAD_M") * g("SLOW_K_RATIO")) / (
+        2.0 * math.sqrt(g("SLOW_K_RATIO")
+                        * (1.0 + g("SENSOR_LOOKAHEAD_M") * g("SLOW_KD"))))
+    check(0.2 <= _z <= 1.5,
+          f"slow_k_ratio {g('SLOW_K_RATIO')} with slow_kd {g('SLOW_KD')} gives "
+          f"predicted zeta {_z:.2f}, outside 0.2..1.5 - raise slow_kd with "
+          f"slow_k_ratio or the vehicle weaves through every junction")
+    check(0 < g("AUTO_SLOW_RPM") <= g("AUTO_RPM"),
+          f"auto_slow_rpm ({g('AUTO_SLOW_RPM')}) must be in (0, auto_rpm "
+          f"({g('AUTO_RPM')})] - a slow speed above cruise is a typo, and the "
+          f"vehicle would speed UP at a junction")
     check(g("RAMP_ACCEL_RPM_S") > 0 and g("RAMP_JERK_RPM_S2") > 0,
           "ramp accel and jerk must be > 0")
     check(g("SENSOR_MAX_MM") > 0 and g("SENSOR_MAX_STEP_MM") > 0,
@@ -755,10 +1037,19 @@ def _validate(ns):
     check(g("PLOT_ERR_RANGE_MM") > 0 and g("PLOT_RPM_MAX") > 0,
           "plot ranges must be > 0")
     check(g("SENSOR_TIMEOUT_S") > 0, "SENSOR_TIMEOUT_S must be > 0")
+    check(g("AUTO_RESUME_HOLD_S") >= 0,
+          "auto_resume_hold_s must be >= 0 (0 disables the resume)")
+    check(not (0 < g("AUTO_RESUME_HOLD_S") < g("SENSOR_TIMEOUT_S")),
+          f"auto_resume_hold_s ({g('AUTO_RESUME_HOLD_S')}) is below "
+          f"sensor_timeout_s ({g('SENSOR_TIMEOUT_S')}) - it would resume "
+          f"before the sensor has been believed once")
     check(g("DT_NOMINAL_S") > 0 and g("DT_MIN_S") > 0
           and g("DT_MAX_S") > g("DT_MIN_S"), "dt band is inconsistent")
-    check(g("INNER_WHEEL_MIN_RPM") < g("AUTO_RPM"),
-          "INNER_WHEEL_MIN_RPM must leave room to steer at AUTO_RPM")
+    # Against the SLOWER of the two: the floor has to leave steering headroom at
+    # the speed the vehicle actually takes a junction at, which is the one place
+    # it is asked to steer hardest.
+    check(g("INNER_WHEEL_MIN_RPM") < min(g("AUTO_RPM"), g("AUTO_SLOW_RPM")),
+          "INNER_WHEEL_MIN_RPM must leave room to steer at AUTO_SLOW_RPM")
 
     # -- manual jog -------------------------------------------------------
     check(0 < g("MANUAL_FULL_RPM") <= g("MOTOR_MAX_RPM"),
@@ -807,6 +1098,12 @@ def _validate(ns):
           f"telemetry_period_s ({g('TELEMETRY_PERIOD_S')}), or the gap between "
           f"two normal polls is reported as a dead driver")
     check(g("LOG_TAIL_S") >= 0, "timing.log_tail_s must be >= 0")
+    check(g("AUTO_START_DELAY_S") >= 0,
+          "timing.auto_start_delay_s must be >= 0")
+    check(g("AUTO_START_DELAY_S") <= 10.0,
+          f"timing.auto_start_delay_s ({g('AUTO_START_DELAY_S')} s) is a long "
+          f"time to stand still after a button press - an operator will press "
+          f"it again")
 
     # -- drive monitoring --------------------------------------------------
     # Heartbeat is what makes a dead driver distinguishable from an idle one,
@@ -1103,6 +1400,45 @@ def tuning_notes():
     return out
 
 
+# How fast the vehicle goes, gathered from the three sections that happen to
+# hold it, and shown FIRST. Speed is the thing looked up most often and the
+# thing most often changed, and it was previously spread across `manual`,
+# `autopilot` and `drivers` - three scrolls apart on the page for one question.
+#
+# Display only. The JSON keeps its existing shape, so these rows carry their
+# full dotted path rather than a bare key: this page's other audience is
+# somebody about to edit the profile, and "auto_slow_rpm" alone would not say
+# which section to put it in.
+#
+# (section, key) pairs, in the order they should read.
+_SPEED_ROWS = [
+    ("manual", "full_rpm"),
+    ("manual", "half_ratio"),
+    ("autopilot", "auto_rpm"),
+    ("autopilot", "auto_slow_rpm"),
+    ("drivers", "ramp.manual.accel"),
+    ("drivers", "ramp.manual.decel"),
+    ("drivers", "ramp.auto.accel"),
+    ("drivers", "ramp.auto.decel"),
+]
+
+# Everything in _SPEED_ROWS is suppressed where it would otherwise appear, so no
+# value is ever printed twice - a page showing one parameter in two places is a
+# page where the two can be read as two parameters.
+_MOVED = set(_SPEED_ROWS)
+
+# Section order on the page. Speed first, then the control law, then the
+# geometry it runs on; everything after is in schema order. Named here rather
+# than by reordering _SCHEMA, because _SCHEMA's order is the profile's order and
+# those are two different jobs.
+_SECTION_ORDER = ["autopilot", "vehicle"]
+
+# How many kinds of thing an RFID tag is allowed to mean. Two are implemented;
+# the rest are named on the page rather than left out, so the budget is visible
+# and adding the third is an obvious edit rather than an archaeology exercise.
+RFID_RULE_SLOTS = 8
+
+
 def _row(section, key, const, value, notes, text=None, unit=None):
     """One displayed parameter. `key` is what to edit in the JSON, `const` is
     what the code calls it - both, because the two audiences for this page are
@@ -1129,19 +1465,100 @@ def describe():
     notes = tuning_notes()
     out = []
 
-    for section, fields in _SCHEMA.items():
+    def ramp_row(section, key):
+        """A drivers.ramp.<mode>.<accel|decel> row. Nested, so _SCHEMA's flat
+        table cannot express it and both call sites build it here."""
+        _, mode, k = key.split(".")
+        return _row(section, key, f'RAMP["{mode}"]["{k}"]',
+                    g["RAMP"][mode][k], notes, unit="r/min/s")
+
+    def build(section, key):
+        if key.startswith("ramp."):
+            return ramp_row(section, key)
+        const, _want = _SCHEMA[section][key]
+        return _row(section, key, const, g.get(const), notes)
+
+    # Speed first. Gathered from three sections, so each row is labelled with
+    # the path it actually lives at - see _SPEED_ROWS.
+    speed = []
+    for section, key in _SPEED_ROWS:
+        row = build(section, key)
+        row["key"] = f"{section}.{key}"
+        speed.append(row)
+    out.append({
+        "name": "speed", "rows": speed,
+        "note": "How fast the vehicle goes, in one place. These keys live in "
+                "the manual, autopilot and drivers sections of the JSON - each "
+                "row is labelled with the path to edit. auto_slow_rpm applies "
+                "only between the entry and exit tags of a junction that asked "
+                "for it; everywhere else an auto run uses auto_rpm."})
+
+    # Every kind of thing a station tag can mean, in slot order, with what is
+    # actually loaded under each. Grouped by FUNCTION rather than listed as one
+    # flat table because the question this answers is "what will the vehicle do
+    # when it reads a tag", and that is decided by which rule owns it.
+    #
+    # The undefined slots are shown rather than omitted: a page that lists two
+    # rules looks complete, and the next person needs to see there is room for
+    # six more before they invent a ninth mechanism somewhere else.
+    rules = []
+
+    def rule(slot, name, const, loaded, note=None):
+        rules.append({
+            "key": f"{slot} \u00b7 {name}", "const": const,
+            "value": (f"{loaded} rule{'' if loaded == 1 else 's'} loaded"
+                      if loaded else "none loaded"),
+            "unit": "", "note": note})
+
+    ladder = g["BRANCH_LATCH"]
+    rule(1, "branch latch", "BRANCH_LATCH", len(ladder),
+         notes.get("branch_latch.*"))
+    for r in ladder:
+        rules.append({
+            "key": f"\u2514 {r['entry_tag']} \u2192 {r['exit_tag']}", "const": "",
+            "value": f"branch {r['branch']}"
+                     + (" \u00b7 slow zone" if r["slow_speed"] else ""),
+            "unit": "", "note": None})
+
+    stops = g["STOP_TAGS"]
+    rule(2, "stop until start button", "STOP_TAGS", len(stops),
+         notes.get("stop_until_start_button.*"))
+    for tag, dist in sorted(stops.items()):
+        rules.append({"key": f"\u2514 {tag}", "const": "",
+                      "value": f"stop over {dist:.2f} m, hold for Start",
+                      "unit": "", "note": None})
+
+    for n in range(1, RFID_RULE_SLOTS - 1):
+        rules.append({"key": f"{n + 2} \u00b7 undefined rule {n}", "const": "",
+                      "value": "free slot", "unit": "", "note": None})
+
+    tags = ({t for r in ladder for t in (r["entry_tag"], r["exit_tag"])}
+            | set(stops))
+    out.append({
+        "name": "rfid rules", "rows": rules,
+        "note": f"{len(tags)} tag id(s) in use across "
+                f"{RFID_RULE_SLOTS} rule types. A tag may mean exactly one "
+                f"thing: the loader refuses a repeat within a table and one "
+                f"shared between tables, because a tag that means two things "
+                f"is a tag whose meaning depends on which rung reads it first."})
+
+    # Then the schema's own sections: the named ones in the order above, then
+    # whatever is left in the order the profile writes it.
+    ordered = _SECTION_ORDER + [s for s in _SCHEMA if s not in _SECTION_ORDER]
+    for section in ordered:
+        fields = _SCHEMA[section]
         rows = [_row(section, key, const, g.get(const), notes)
-                for key, (const, _want) in fields.items()]
+                for key, (const, _want) in fields.items()
+                if (section, key) not in _MOVED]
 
         # The three things _SCHEMA's flat table cannot express, in the same
         # order the profile writes them.
         if section == "drivers":
             for mode in ("manual", "auto"):
                 for k in ("accel", "decel"):
-                    rows.append(_row(section, f"ramp.{mode}.{k}",
-                                     f'RAMP["{mode}"]["{k}"]',
-                                     g["RAMP"][mode][k], notes,
-                                     unit="r/min/s"))
+                    key = f"ramp.{mode}.{k}"
+                    if (section, key) not in _MOVED:
+                        rows.append(ramp_row(section, key))
         if section == "dio":
             for key, const in (("di_names", "DIO_DI_NAMES"),
                                ("do_names", "DIO_DO_NAMES")):
@@ -1159,19 +1576,12 @@ def describe():
                              text="stop {}, slow {}, warn {}".format(
                                  *g["LIDAR_ZONE_BYTES"]),
                              unit="byte offset"))
-        out.append({"name": section, "note": notes.get(f"{section}.*"),
-                    "rows": rows})
-
-    # The junction table. Empty is the normal state on a vehicle with no
-    # diverters, and it says so rather than showing an empty section.
-    ladder = g["BRANCH_LATCH"]
-    out.append({"name": "branch_latch", "note": None, "rows": [
-        {"key": f"[{i}]", "const": f'BRANCH_LATCH[{i}]',
-         "value": f"entry {r['entry_tag']} \u2192 {r['branch']}, "
-                  f"exit {r['exit_tag']}", "unit": "", "note": None}
-        for i, r in enumerate(ladder)] or [
-        {"key": "branch_latch", "const": "BRANCH_LATCH",
-         "value": "(no junctions configured)", "unit": "", "note": None}]})
+        # A section whose every key was gathered into `speed` above has nothing
+        # left to show - `manual` is exactly that - and a bare heading over
+        # nothing reads as a section that failed to load.
+        if rows:
+            out.append({"name": section, "note": notes.get(f"{section}.*"),
+                        "rows": rows})
 
     # `from` rather than a note: the relation is the point of the row, so it is
     # always on screen, and there is no JSON key to edit because there is no

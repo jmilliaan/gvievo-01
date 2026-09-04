@@ -2,14 +2,6 @@
 {% block title %}AGV — monitor{% endblock %}
 {% block body %}
 
-<div class="warn">
-  <b>Diagnostic only — not a safety path.</b>
-  The safety chain is lidar/encoders → FX3 → HWTO1/HWTO2 → STO, with EDM wired
-  back to the FX3 as a hardware signal. Nothing on this page is rated,
-  redundant or certified, and nothing here may be used to decide whether it is
-  safe to move. CAN is for knowing what happened.
-</div>
-
 {# Moved off the shared rail: loop timing, frames per tick and the watchdog
    countdown are for somebody tuning the control loop, not for an operator, and
    they were taking four of the six rail slots on every page. This is the page
@@ -33,6 +25,13 @@
 <section class="sensor">
   <h2>Drives <small>{{ bitrate_kbps }} kbps · heartbeat
       {% if heartbeat_ms %}{{ heartbeat_ms }} ms{% else %}off{% endif %}</small></h2>
+  {# The bus identity, moved off the header pill on every page: which adapter
+     can0 resolved to is a commissioning and fault-finding fact, and this is the
+     fault-finding page. The pill now carries armed state, which is what an
+     operator reads it for. #}
+  <div class="tel-grid">
+    <div class="tel"><span>Bus</span><b id="bus-how">–</b><i id="bus-state">—</i></div>
+  </div>
   <div class="mon-grid" id="mon-state"></div>
 </section>
 

@@ -64,12 +64,16 @@ GLYPHS = {
 
 # Human-readable key hints shown on each button. The browser does the actual
 # matching from two axes (see static/manual.js), so the in-between directions
-# come from holding two arrows at once; the single letters are shortcuts to the
-# same place. Display only - nothing parses these.
+# come from holding two arrows at once. Display only - nothing parses these.
+#
+# ARROWS ONLY. The letter shortcuts (WASD, and Q/E/Z/C for the diagonals) were
+# removed from the page and from manual.js together; a hint here for a key that
+# no longer does anything is worse than no hint. Space stays because it is the
+# stop, and it is the one key binding on this page that only ever stops.
 KEYMAP = {
-    "forward_left":  "Q  or  ↑+←",   "forward":  "W  or  ↑",   "forward_right": "E  or  ↑+→",
-    "left":          "A  or  ←",     "stop":     "Space",      "right":         "D  or  →",
-    "reverse_left":  "Z  or  ↓+←",   "reverse":  "S  or  ↓",   "reverse_right": "C  or  ↓+→",
+    "forward_left":  "↑ + ←",   "forward":  "↑",       "forward_right": "↑ + →",
+    "left":          "←",       "stop":     "Space",   "right":         "→",
+    "reverse_left":  "↓ + ←",   "reverse":  "↓",       "reverse_right": "↓ + →",
 }
 
 

@@ -153,3 +153,75 @@ onState(s => {
 // Pull the whole ring once on load - seq starts at 0, so the first sync gets
 // everything the controller still holds rather than only what happens next.
 syncLog(Infinity);
+
+// ---- service restart -----------------------------------------------------
+// The one control on this page, and it does not touch an alarm - it restarts
+// the controller so an edited profile is picked up. Two presses, because a
+// misclick here de-energises the vehicle: the first press arms the button and
+// says what will happen, the second does it. A native confirm() would be
+// dismissed by a stray Return on a touch panel.
+//
+// The server refuses while armed and refuses if the unit has no restart policy,
+// so this is a convenience, not the guard. Its errors are SHOWN rather than
+// swallowed: a refusal here is the answer, not a failure.
+
+const rsBtn = el('rs-btn');
+const rsNote = el('rs-note');
+let rsArmed = false;
+let rsTimer = null;
+
+function rsReset() {
+  rsArmed = false;
+  clearTimeout(rsTimer);
+  rsBtn.textContent = 'Restart controller';
+  rsBtn.classList.remove('armed');
+  rsNote.textContent = 'reloads the profile from disk';
+  rsNote.style.color = '';
+}
+
+// Once the process goes, /api/state stops answering and common.js's poll starts
+// throwing. Say so, and let the page recover by itself when it comes back -
+// there is nothing for the operator to do but wait.
+async function rsWaitForReturn() {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      await apiGet('/api/state');
+      rsNote.textContent = 'back up — reloading the page';
+      location.reload();
+      return;
+    } catch (e) { /* still down, which is expected */ }
+    rsNote.textContent = `restarting… ${i + 1}s`;
+  }
+  rsNote.textContent = 'still down after 60 s — check the service';
+  rsNote.style.color = 'var(--stop)';
+}
+
+if (rsBtn) {
+  rsBtn.addEventListener('click', async () => {
+    if (!rsArmed) {
+      rsArmed = true;
+      rsBtn.textContent = 'Press again to restart';
+      rsBtn.classList.add('armed');
+      rsNote.textContent = 'de-energises the drives and clears this log';
+      rsNote.style.color = 'var(--stop)';
+      // Disarms itself, so a button left armed on an unattended screen is not
+      // one press away from stopping the vehicle.
+      rsTimer = setTimeout(rsReset, 5000);
+      return;
+    }
+    clearTimeout(rsTimer);
+    rsBtn.disabled = true;
+    rsBtn.textContent = 'restarting…';
+    try {
+      await api('/api/restart');
+      rsNote.textContent = 'restarting…';
+      rsWaitForReturn();
+    } catch (e) {
+      rsBtn.disabled = false;
+      rsReset();
+      rsNote.textContent = e.message;
+      rsNote.style.color = 'var(--stop)';
+    }
+  });
+}

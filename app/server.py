@@ -11,15 +11,19 @@ Read the safety model before changing anything here:
     about every 100 ms while the button or key is down; the bus thread zeros
     the setpoint if it misses three in a row. Closing the tab, losing Wi-Fi and
     letting go all look the same to the AGV, which is the point.
-  * Everything else here only ever stops: /api/disarm de-energises and
-    /api/stop zeroes the setpoint.
+  * Everything else here only ever stops: /api/disarm de-energises, /api/stop
+    zeroes the setpoint, and /api/restart de-energises and then ends the
+    process. None of them can produce motion, and the last is refused outright
+    while the vehicle is armed.
   * Auto is latched and watchdogged, but a panel-started run is held up by the
     DI scan rather than by this page's poll - see canworker._panel_scan().
 """
 import os
+import subprocess
 import sys
+import threading
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 # This file lives in app/, so the repo root is its PARENT. Anchoring to the root
 # rather than to this file is what makes `python3 main.py`, a systemd unit with
@@ -53,16 +57,27 @@ def _fail(msg, code=409):
 
 @app.get("/")
 def index():
-    return manual()
+    """The bare address lands on /auto, which is the page a run is watched from.
+
+    A redirect rather than rendering /auto here, so the address bar names the
+    page it is showing and a bookmark of the landing page is a bookmark of /auto.
+
+    *** /auto claims the auto watchdog *** (window.CLAIM_HEARTBEAT), so this
+    also means a browser left on the bare address feeds it. That is deliberate -
+    the landing page is the operator's page - but it is the reason a second
+    screen should be parked on /monitor or /alarms, neither of which claims.
+    """
+    return redirect("/auto")
 
 
 @app.get("/manual")
 def manual():
+    # No `table`, `full` or `half`: the pad no longer prints the 60FFh setpoints
+    # under each arrow. They are still reported by /api/config, which is where
+    # something reading them programmatically should look.
     return render_template(
         "manual.html", page="manual", pad=motion.PAD, labels=motion.LABELS,
         glyphs=motion.GLYPHS, keymap=motion.KEYMAP,
-        table={d: motion.velocities(d) for d in motion.PAD},
-        full=config.MANUAL_FULL_RPM, half=config.MANUAL_HALF_RPM,
         rfid_ip=f"{config.RFID_IP}:{config.RFID_PORT}",
         watchdog_ms=int(config.MANUAL_WATCHDOG_S * 1000))
 
@@ -94,8 +109,7 @@ def lidar():
     """Safety-lidar data output. Read-only, and explicitly NOT a safety path."""
     return render_template(
         "lidar.html", page="lidar",
-        sensor_ip=config.LIDAR_SENSOR_IP, host_ip=config.LIDAR_HOST_IP,
-        port=config.LIDAR_PORT,
+        sensor_ip=config.LIDAR_SENSOR_IP,
         scan_hz=round(1.0 / config.LIDAR_SCAN_CYCLE_S),
         decimate=config.LIDAR_DECIMATE,
         zones_validated=config.LIDAR_ZONES_VALIDATED,
@@ -106,11 +120,14 @@ def lidar():
 def alarms():
     """The event log and everything standing against the vehicle right now.
 
-    Read-only. Notably it cannot CLEAR anything: a latched fault is cleared at
-    the panel with Reset, by somebody who can see the vehicle.
+    Notably it cannot CLEAR anything: a latched fault is cleared at the panel
+    with Reset, by somebody who can see the vehicle. The one control on the page
+    is the service restart, which is the opposite of silencing an alarm - it
+    de-energises the drives, is refused while armed, and throws the log away
+    rather than tidying it.
     """
     return render_template("alarms.html", page="alarms",
-                           max_events=events.MAX_EVENTS)
+                           max_events=events.MAX_EVENTS, unit=SERVICE_UNIT)
 
 
 @app.get("/params")
@@ -141,8 +158,12 @@ def params():
 def auto():
     return render_template("auto.html", page="auto",
                            auto_rpm=int(config.AUTO_RPM),
+                           auto_slow_rpm=int(config.AUTO_SLOW_RPM),
                            k_ratio=config.K_RATIO, kd=config.KD,
                            zeta=f"{autopilot.predicted_zeta():.2f}",
+                           slow_k_ratio=config.SLOW_K_RATIO,
+                           slow_kd=config.SLOW_KD,
+                           slow_zeta=f"{autopilot.predicted_zeta(slow=True):.2f}",
                            dry_run=config.DRY_RUN,
                            watchdog_ms=int(config.AUTO_WATCHDOG_S * 1000))
 
@@ -190,6 +211,90 @@ def api_disarm():
         return jsonify(ctl.submit("disarm"))
     except Exception as e:
         return _fail(e)
+
+
+# ---- restarting this service ----------------------------------------------
+#
+# The controller restarts itself by DYING, not by asking systemd to restart it.
+# `systemctl restart` is not available: this process runs as an unprivileged
+# user, `sudo -n` wants a password and polkit answers "authorization requires
+# authentication" for org.freedesktop.systemd1.manage-units. A web request has
+# no terminal to answer either with.
+#
+# So it de-energises the drives and exits non-zero, and the unit's own
+# Restart=on-failure brings it back after RestartSec. That inverts the usual
+# reading of an exit code - a deliberate restart is recorded in the journal as a
+# failure - and it is the price of needing no privilege at all.
+#
+# *** THIS DEPENDS ON THE UNIT'S RESTART POLICY. *** Without it, exiting is not
+# a restart, it is a shutdown of the only thing that can stop the vehicle. So
+# the policy is READ at request time rather than assumed: a unit edited to
+# Restart=no, or a process started by hand from a shell, refuses instead.
+SERVICE_UNIT = "agv_controller.service"
+
+
+def _restart_policy():
+    """(policy, seconds) from systemd, or (None, None) if it cannot be known.
+
+    `systemctl show` is a read and needs no privilege - unlike `systemctl
+    restart`, which is the whole reason this route works the way it does.
+    """
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", "-p", "Restart", "-p", "RestartUSec",
+             SERVICE_UNIT],
+            capture_output=True, text=True, timeout=4.0)
+    except Exception:                       # noqa: BLE001 - no systemd, no policy
+        return None, None
+    if out.returncode != 0:
+        return None, None
+    fields = dict(line.split("=", 1) for line in out.stdout.splitlines()
+                  if "=" in line)
+    return fields.get("Restart"), fields.get("RestartUSec")
+
+
+@app.post("/api/restart")
+def api_restart():
+    """Restart the controller process. De-energises the drives on the way out.
+
+    Refused while armed: this is a stop, and a stop the operator did not ask for
+    is exactly what the panel's Reset exists to make deliberate. Disarm first,
+    which is itself a de-energise, and then the restart costs nothing that was
+    not already given up.
+    """
+    snap = ctl.snapshot()
+    if snap.get("armed"):
+        return _fail("the vehicle is armed - disarm before restarting the "
+                     "controller, so the stop is deliberate rather than a "
+                     "side effect")
+
+    policy, usec = _restart_policy()
+    if policy not in ("on-failure", "always"):
+        return _fail(
+            f"this process would not come back: {SERVICE_UNIT} reports "
+            f"Restart={policy or 'unknown'}. The restart button relies on "
+            f"systemd restarting a process that exits non-zero, because it "
+            f"cannot call systemctl itself.")
+
+    events.warn("controller restart requested from /alarms - de-energising")
+
+    def _bye():
+        # Off the request thread, so the response reaches the browser before the
+        # process stops answering. shutdown() joins the bus thread, whose finally
+        # runs _do_disarm() - that is what actually de-energises.
+        import time
+        time.sleep(0.4)
+        try:
+            ctl.shutdown()
+        finally:
+            # _exit, not sys.exit: this is not the main thread, so an exception
+            # would simply end this thread and leave the process running with a
+            # shut-down controller - the one outcome worse than either restarting
+            # or not.
+            os._exit(1)
+
+    threading.Thread(target=_bye, name="restart", daemon=True).start()
+    return jsonify({"ok": True, "restart_usec": usec, "policy": policy})
 
 
 @app.post("/api/drive")
@@ -262,6 +367,7 @@ def api_config():
         "profile_path": config.PROFILE_PATH_LOADED,
         "full_rpm": config.MANUAL_FULL_RPM, "half_rpm": config.MANUAL_HALF_RPM,
         "auto_rpm": config.AUTO_RPM,
+        "auto_slow_rpm": config.AUTO_SLOW_RPM,
         "driver_ramp": config.RAMP,   # 6083h/6084h, per mode
         "manual_watchdog_ms": int(config.MANUAL_WATCHDOG_S * 1000),
         "auto_watchdog_ms": int(config.AUTO_WATCHDOG_S * 1000),
@@ -271,6 +377,9 @@ def api_config():
             "dry_run": config.DRY_RUN, "invert_error": config.INVERT_ERROR,
             "k_ratio": config.K_RATIO, "kd": config.KD, "ki": config.KI,
             "tau_d_s": config.TAU_D_S, "auto_rpm": config.AUTO_RPM,
+            "auto_slow_rpm": config.AUTO_SLOW_RPM,
+            "slow_k_ratio": config.SLOW_K_RATIO, "slow_kd": config.SLOW_KD,
+            "slow_zeta": round(autopilot.predicted_zeta(slow=True), 4),
             "zeta": round(autopilot.predicted_zeta(), 4),
             "ramp_accel": config.RAMP_ACCEL_RPM_S,
             "line_loss_grace_m": config.LINE_LOSS_GRACE_M,

@@ -2,16 +2,6 @@
 {% block title %}AGV — parameters{% endblock %}
 {% block body %}
 
-<div class="warn">
-  <b>Display only — nothing on this page can be edited.</b>
-  There is no endpoint here that writes a profile, because a value that can be
-  changed from a browser is a value that can be changed while somebody is
-  standing next to the vehicle. A parameter is changed by editing
-  <code>{{ path }}</code> and restarting the service — which is also what makes
-  the numbers below the ones the bus thread is <i>actually</i> running on
-  rather than a copy of them.
-</div>
-
 {# Identity first. Two vehicles are worked on from the same shell and the
    profile is chosen by an environment variable, so "which vehicle is this"
    is the first question this page has to answer. #}
