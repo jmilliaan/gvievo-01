@@ -86,9 +86,46 @@ def test_can_monitoring():
     check("an unlisted index is refused by default",
           not guard.is_allowed(0x1000, 1))
 
+    # -- PDO configuration -------------------------------------------------
+    # An RPDO mapping is a WRITE PATH: map a forbidden object into one and a
+    # plain CAN frame does what a direct SDO write is refused. So the mapping
+    # ranges are admitted by rule, and the deny-list is applied recursively to
+    # the object each entry names.
+    MAP_60FF = (0x60FF << 16) | 0x0020        # target velocity, 32 bits
+    MAP_6040 = (0x6040 << 16) | 0x0010        # controlword, 16 bits
+    MAP_403E = (0x403E << 16) | 0x0010        # FREE / brake release
+    check("an RPDO may map the setpoint",
+          guard.is_allowed(0x1600, MAP_60FF, sub=1))
+    check("an RPDO may map the controlword",
+          guard.is_allowed(0x1600, MAP_6040, sub=1))
+    check("*** an RPDO may NOT map 403Eh behind the deny-list ***",
+          not guard.is_allowed(0x1600, MAP_403E, sub=1))
+    check("the smuggled object is named in the refusal",
+          "403E" in _why(guard, 0x1600, MAP_403E, sub=1),
+          _why(guard, 0x1600, MAP_403E, sub=1)[:70])
+    check("no 4xxxh parameter can be mapped into an RPDO",
+          not any(guard.is_allowed(0x1600, (i << 16) | 0x0010, sub=1)
+                  for i in (0x4000, 0x40C0, 0x40D0, 0x40C6, 0x4FFF)))
+    check("sub 0 is the entry count, not an object reference",
+          guard.is_allowed(0x1600, 2, sub=0))
+    check("an empty mapping slot maps nothing and is permitted",
+          guard.is_allowed(0x1600, 0, sub=3))
+    check("an RPDO mapping without a subindex is refused, not guessed",
+          not guard.is_allowed(0x1600, MAP_60FF))
+    # A TPDO is a READ path - the device transmits. Refusing these would forbid
+    # reading a temperature by PDO while permitting it by SDO.
+    check("a TPDO may map any object, including a forbidden one",
+          guard.is_allowed(0x1A00, MAP_403E, sub=1)
+          and guard.is_allowed(0x1A03, (0x2034 << 16) | 0x0010, sub=1))
+    check("PDO communication parameters are writable",
+          all(guard.is_allowed(i, 0x40000180, sub=1)
+              for i in (0x1400, 0x1800, 0x1803, 0x1806)))
+    check("the PDO ranges stop where CiA 301 says they do",
+          not any(guard.is_allowed(i) for i in (0x13FF, 0x1C00)))
+
     # Every write in canworker must go through the guard, not around it.
     cw = (ROOT / "canworker.py").read_text()
-    check("_write() calls the guard", "guard_write(index, value)" in cw)
+    check("_write() calls the guard", "guard_write(index, value, sub)" in cw)
     direct = [ln.strip() for ln in cw.splitlines()
               if "sdo_write(" in ln and "def " not in ln and "guard" not in ln
               and not ln.strip().startswith(("#", "*", '"'))

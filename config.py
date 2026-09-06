@@ -400,6 +400,30 @@ timing.driver_timeout_s
     bus with setpoint writes, so an occasional late read is expected. Tighten it
     only after watching the event log across several runs.
 
+can.use_rpdo
+    Send the controlword and 60FFh as ONE RPDO1 frame per tick instead of a
+    blocking SDO write per node. *** Ships FALSE - turn it on only after the
+    bench checklist. ***
+
+    60FFh is currently written by a blocking SDO transfer twice a tick, about
+    1.8 ms each, against a 20 ms budget the loop already overruns (20.4 ms
+    average, 31 ms peak). An RPDO is a bare CAN frame with nothing to wait for,
+    so this returns ~3.6 ms of every tick. It is the largest available win on
+    the control loop and it is a prerequisite for the ROS drive node, not an
+    optimisation - see manuals/slam-generalized-plan/hardware-reconciliation.md
+    D-8 and manuals/potential-ros-migration.md section 9.
+
+    An RPDO is not acknowledged, and that is deliberately not a loss: nothing
+    ever checked the acknowledgement on the per-tick path, a failed setpoint is
+    corrected 20 ms later by the next tick, and what actually detects a drive
+    that has gone quiet is health.py fed by the 1017h heartbeat - untouched by
+    this. A late tick, by contrast, IS a steering update the vehicle does not
+    get.
+
+    A flag rather than a straight replacement because it changes the motion
+    path: if the bench finds the drives unhappy with an async RPDO, backing out
+    is a profile edit rather than a revert. Both paths stay tested.
+
 can.heartbeat_ms
     Producer heartbeat time (1017h), written to each drive at bus-up. The
     driver default is 0 = OFF, and with it off a drive that has stopped
@@ -606,6 +630,7 @@ _SCHEMA = {
         "left_node":      ("LEFT", int),
         "right_node":     ("RIGHT", int),
         "sensor_node":    ("SENSOR_NODE", int),
+        "use_rpdo":       ("CAN_USE_RPDO", bool),
     },
     "monitor": {
         "enabled":            ("MONITOR_ENABLED", bool),

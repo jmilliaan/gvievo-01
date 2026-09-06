@@ -64,13 +64,95 @@ FORBIDDEN = {
 # arm sequence performs are unaffected.
 CONTROLWORD_FAULT_RESET = 1 << 7
 
+# ---------------------------------------------------------------------------
+# PDO CONFIGURATION (CiA 301), and the asymmetry that matters
+# ---------------------------------------------------------------------------
+# Migrating 60FFh from a blocking SDO write to RPDO1, and enabling the MLS's
+# yaw-rate TPDO, both need these ranges. They were refused by the "not on the
+# permitted-write list" branch, which is correct-by-default but too blunt to
+# build on.
+#
+# *** AN RPDO MAPPING IS A WRITE PATH BY ANOTHER NAME. *** Map 403Eh into an
+# RPDO and a two-byte CAN frame releases the holding brake on both drive
+# wheels - with no SDO write anywhere, and every deny-list check above passed.
+# That is not a hypothetical hole; it is the same hazard 403Eh is on the list
+# for, reachable by a route the list did not cover.
+#
+# So the ranges are NOT simply added to ALLOWED. Each is admitted on its own
+# terms:
+#
+#   RPDO mapping   permitted only when the MAPPED OBJECT is itself writable.
+#                  The deny-list is applied recursively to index (value >> 16),
+#                  so a forbidden object cannot be smuggled in behind a PDO.
+#   TPDO mapping   permitted for any object. A TPDO is a READ path - the device
+#                  transmits, we receive - and the posture has always been
+#                  read-mostly, not read-nothing. Refusing these would forbid
+#                  reading a temperature by PDO while permitting it by SDO.
+#   comm params    permitted. COB-ID and transmission type decide WHERE and WHEN
+#                  a PDO goes, never WHAT it carries, so they cannot reach an
+#                  object the mapping rules above have not already cleared.
+PDO_RANGES = (
+    (0x1400, 0x15FF, "rpdo_comm"),
+    (0x1600, 0x17FF, "rpdo_map"),
+    (0x1800, 0x19FF, "tpdo_comm"),
+    (0x1A00, 0x1BFF, "tpdo_map"),
+)
 
-def check(index, value=None):
+# Sub 0 of a mapping object is the ENTRY COUNT (0-8), not an object reference.
+# Writing 0 to it is how a mapping is disabled before being rewritten, which is
+# the first step of every remap - so it must not be decoded as a mapping entry,
+# where the count 2 would read as index 0000h and be refused.
+MAPPING_COUNT_SUB = 0
+
+
+def _pdo_kind(index):
+    for lo, hi, kind in PDO_RANGES:
+        if lo <= index <= hi:
+            return kind
+    return None
+
+
+def _check_rpdo_mapping(index, value, sub):
+    """An RPDO mapping entry, validated against the deny-list it would bypass.
+
+    A mapping entry is a u32: index << 16 | subindex << 8 | bit length. Zero is
+    an empty slot, which is how a mapping is shortened, and carries no object.
+    """
+    if sub == MAPPING_COUNT_SUB:
+        return None                     # the entry count, not an object
+    if sub is None:
+        raise ForbiddenWrite(
+            f"write to {index:04X}h refused: an RPDO mapping needs its "
+            f"subindex to be checked - sub 0 is the entry count, sub 1-8 are "
+            f"object references, and they cannot be told apart from the value")
+    if value is None:
+        raise ForbiddenWrite(
+            f"write to {index:04X}h:{sub:02X} refused: an RPDO mapping entry "
+            f"cannot be checked without its value")
+    if value == 0:
+        return None                     # empty slot; maps nothing
+    mapped = (value >> 16) & 0xFFFF
+    try:
+        check(mapped)
+    except ForbiddenWrite as e:
+        raise ForbiddenWrite(
+            f"RPDO mapping {index:04X}h:{sub:02X} would map {mapped:04X}h, "
+            f"which is not writable: {e}. An RPDO is a write path - mapping a "
+            f"forbidden object into one would let a plain CAN frame do what a "
+            f"direct SDO write is refused (can-monitoring-plan.txt section 8)"
+        ) from None
+    return None
+
+
+def check(index, value=None, sub=None):
     """Raise ForbiddenWrite unless this object may be written. Else return None.
 
     Called on EVERY write path. A denied write raises rather than being quietly
     dropped: silently ignoring a command that a caller believed had landed is
     its own hazard.
+
+    `sub` is required for RPDO mapping objects and ignored everywhere else - see
+    PDO_RANGES for why a mapping entry cannot be judged without it.
     """
     if index in FORBIDDEN:
         raise ForbiddenWrite(
@@ -84,6 +166,14 @@ def check(index, value=None):
             f"write to {index:04X}h refused: driver parameters are changed by a "
             f"controlled maintenance procedure, not by the vehicle controller "
             f"(can-monitoring-plan.txt section 8)")
+    # PDO configuration, admitted per-range on its own terms. Placed BEFORE the
+    # ALLOWED check because these ranges are permitted by rule rather than by
+    # being listed - ALLOWED stays the set of objects motion writes directly.
+    kind = _pdo_kind(index)
+    if kind == "rpdo_map":
+        return _check_rpdo_mapping(index, value, sub)
+    if kind is not None:
+        return None                     # comm params and TPDO mappings
     if index not in ALLOWED:
         raise ForbiddenWrite(
             f"write to {index:04X}h refused: not on the permitted-write list "
@@ -96,10 +186,10 @@ def check(index, value=None):
     return None
 
 
-def is_allowed(index, value=None):
+def is_allowed(index, value=None, sub=None):
     """Boolean form, for tests and for reporting the list in the UI."""
     try:
-        check(index, value)
+        check(index, value, sub)
         return True
     except ForbiddenWrite:
         return False

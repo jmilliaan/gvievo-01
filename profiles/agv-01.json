@@ -159,7 +159,8 @@
     "left_node": 1,
     "right_node": 2,
     "sensor_node": 10,
-    "heartbeat_ms": 200
+    "heartbeat_ms": 200,
+    "use_rpdo": false
   },
   "monitor": {
     "enabled": true,

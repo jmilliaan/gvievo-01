@@ -45,6 +45,7 @@ from drive_forward import (CW_DISABLE_VOLTAGE, CW_ENABLE, CW_SHUTDOWN,  # noqa: 
                            CW_SWITCH_ON, SW_FAULT, SW_REMOTE,
                            SW_SPEED_IS_ZERO, sdo_write)
 from read_mls import COMBI_VARIANTS, decode_tpdo1  # noqa: E402
+import rpdo  # noqa: E402
 from verify_drivers import open_bus, sdo_read, u32  # noqa: E402
 
 import autopilot  # noqa: E402
@@ -829,7 +830,11 @@ class Controller:
         # Section 8 of the monitoring plan: the nav stack is READ-MOSTLY. A
         # denied index raises rather than being silently dropped - a command a
         # caller believed had landed is its own hazard.
-        guard_write(index, value)
+        #
+        # `sub` is passed because an RPDO mapping entry cannot be judged without
+        # it: sub 0 is the entry count, sub 1-8 are object references, and the
+        # guard applies the deny-list recursively to the object being mapped.
+        guard_write(index, value, sub)
         ok, detail = sdo_write(self.bus, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
@@ -841,9 +846,41 @@ class Controller:
         time.sleep(0.05)
 
     def _write_target(self, target):
-        for nid, rpm in zip((config.LEFT, config.RIGHT), target):
-            self._write(nid, 0x60FF, 0, int(rpm), 4, "target velocity")
+        """Push the setpoint to both drives. The hot path of the whole loop.
+
+        Two routes, chosen by can.use_rpdo:
+
+          RPDO1  one 6-byte frame per node, unacknowledged. A queue append.
+          SDO    a blocking round trip per node, ~1.8 ms each.
+
+        The SDO path is what shipped and stays the default until the RPDO path
+        has been through the bench checklist - see config.py's can.use_rpdo. The
+        cost of keeping both is one branch on a path that is about to get 3.6 ms
+        cheaper, which is not a trade worth agonising over.
+
+        rpdo.pack() puts the controlword through the same deny-list the SDO path
+        uses, so bit 7 cannot reach a drive by this route either.
+        """
+        if config.CAN_USE_RPDO:
+            for nid, rpm in zip((config.LEFT, config.RIGHT), target):
+                rpdo.send(self.bus, nid, rpdo.CW_OPERATION_ENABLED, int(rpm))
+        else:
+            for nid, rpm in zip((config.LEFT, config.RIGHT), target):
+                self._write(nid, 0x60FF, 0, int(rpm), 4, "target velocity")
         self._applied = target
+
+    def _sdo_write_for_rpdo(self, bus, node, index, sub, value, size):
+        """The SDO writer rpdo.configure() drives. Guarded, like every other write.
+
+        Adapts _write()'s raise-on-failure style to the (ok, detail) tuple
+        rpdo.configure() understands, so that module stays free of this class's
+        conventions - it has to serve the ROS drive node too.
+        """
+        try:
+            self._write(node, index, sub, value, size, "RPDO1 setup")
+        except Exception as e:                  # noqa: BLE001
+            return False, str(e)
+        return True, ""
 
     def _target_moved(self, target):
         """Deadband the setpoint writes - see config.TARGET_DEADBAND_RPM."""
@@ -1643,6 +1680,14 @@ class Controller:
                 report.append("(preflight issues above are not blocking a dry run)")
             events.warn("armed DRY RUN - drivers de-energised, sensor only")
             return {"ok": True, "report": report, "dry_run": True}
+
+        # PDO mapping belongs in PRE-OPERATIONAL (CiA 301), so this runs before
+        # the NMT start below rather than beside the 6060h/6083h writes further
+        # down. The sequence disables the PDO before remapping it, so a drive
+        # that tolerates a live remap is not relied on to.
+        if config.CAN_USE_RPDO:
+            for nid in config.NODES:
+                rpdo.configure(self.bus, nid, self._sdo_write_for_rpdo)
 
         for nid in config.NODES:
             self._nmt(0x01, nid)          # per-node; the sensor starts separately

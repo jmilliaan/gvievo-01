@@ -29,14 +29,14 @@ open in the meantime.
 |---|---|
 | Guidance | SICK MLS magnetic tape, lateral error in mm, TPDO1 `0x18A` at ~50 Hz |
 | Localisation | none — position is an RFID station tag identity |
-| Path | the tape. Branch choice by PLC-style seal-in latch, [`core/branch.py`](core/branch.py) |
+| Path | the tape. Branch choice by PLC-style seal-in latch, [`core/branch.py`](../core/branch.py) |
 | Actuation | two Oriental Motor BLV-R, CiA 402 Profile Velocity, nodes 1 and 2 |
 | Bus | one `can0` at **125 kbps**, shared with the sensor |
 | Control | 50 Hz tick, **20 ms budget**, measured 20.4 ms avg / 29–31 ms max |
 | I/O | Modbus TCP 16-DI/16-DO and a Chafon CF821 reader, each on its own thread |
 | UI | Flask, two operator pages plus `/monitor` and `/io` |
 | Size | ~7 k lines Python + JS, one process, one operator, one vehicle profile |
-| Tests | 228 checks, **no hardware, no daemon** |
+| Tests | 341 checks, **no hardware, no daemon** |
 | Safety | lidar/encoders → FX3 → HWTO1/HWTO2 → STO, in hardware, EDM returned |
 
 The last line is the one that governs everything else: **no software in this
@@ -50,13 +50,13 @@ diagnostic only.
 | ROS 2 offers | Used here? |
 |---|---|
 | Nav2 — planners, controllers, costmaps, recoveries | **No.** There is no map and no planner. The path is physical. |
-| tf2 transform tree | **No.** One sensor, one fixed offset `Ls`, a scalar in [`core/autopilot.py`](core/autopilot.py). |
+| tf2 transform tree | **No.** One sensor, one fixed offset `Ls`, a scalar in [`core/autopilot.py`](../core/autopilot.py). |
 | SLAM / AMCL | **No.** No odometry-based localisation anywhere. |
-| ros2_control + hardware interfaces | **Marginal.** [`canworker.py`](canworker.py) already speaks CiA 402 with per-mode ramp writes. |
-| `ros2_canopen` / `cia402_driver` | **Marginal, and the weakest fit.** It supplies less than what exists and none of the deny-list in [`drivers/canbus/guard.py`](drivers/canbus/guard.py). |
+| ros2_control + hardware interfaces | **Marginal.** [`canworker.py`](../canworker.py) already speaks CiA 402 with per-mode ramp writes. |
+| `ros2_canopen` / `cia402_driver` | **Marginal, and the weakest fit.** It supplies less than what exists and none of the deny-list in [`drivers/canbus/guard.py`](../drivers/canbus/guard.py). |
 | Driver ecosystem | **No.** SICK MLS, BLV-R, Chafon CF821 and the Modbus island all had to be written here regardless. |
 | Node isolation / multi-process supervision | **No.** One process, one operator. Isolation would buy fault containment nobody has asked for. |
-| rosbag2 + rviz + PlotJuggler | **Partially replaced.** Per-run CSV+PNG in [`core/runlog.py`](core/runlog.py) and the `/monitor` page cover the questions actually asked. |
+| rosbag2 + rviz + PlotJuggler | **Partially replaced.** Per-run CSV+PNG in [`core/runlog.py`](../core/runlog.py) and the `/monitor` page cover the questions actually asked. |
 | Fleet / multi-robot | **Not by ROS.** Fleet managers speak VDA5050 over MQTT — see §6. |
 
 Roughly: of the reasons teams adopt ROS 2, exactly one — Nav2 — would ever
@@ -68,7 +68,7 @@ apply to this vehicle, and only under a change of guidance principle.
 
 ### 4.1 The strict profile loader has no ROS equivalent
 
-[`config.py`](config.py) makes **unknown and missing keys both fatal**, stores
+[`config.py`](../config.py) makes **unknown and missing keys both fatal**, stores
 only primitives, validates into a fresh namespace and publishes only on success,
 and enforces cross-field constraints no single module could check —
 `autopilot.ramp_accel_rpm_s` must stay below `drivers.ramp.auto.accel`, and
@@ -100,7 +100,7 @@ inside a `with self._lock:` block no longer maps onto the resulting shape.
 Note also the reason that scan exists: this bug **shipped once** and presented as
 409s on arm *and* disarm with `/api/state` hanging. It is not hypothetical.
 
-### 4.3 The 228 offline checks become integration tests
+### 4.3 The 341 offline checks become integration tests
 
 This is the single largest regression in the trade, and the one most likely to be
 underestimated.
@@ -115,7 +115,7 @@ more to this project than anything ROS would supply in exchange.
 
 ### 4.4 The bench scripts stop being standalone
 
-[`drivers/canbus/`](drivers/canbus/) is deliberately *not* a package: its modules
+[`drivers/canbus/`](../drivers/canbus/) is deliberately *not* a package: its modules
 import each other by bare name so they run on a laptop against a live bus during
 commissioning. Inside a ROS package that becomes "source the workspace, then run
 a node" — and the commissioning workflow that verified the wheel sign convention
@@ -124,7 +124,7 @@ more expensive.
 
 ### 4.5 The branch ladder loses its reviewability
 
-[`core/branch.py`](core/branch.py) is transcribed rung for rung from a drawn
+[`core/branch.py`](../core/branch.py) is transcribed rung for rung from a drawn
 ladder, deliberately, so the code can be **diffed against the drawing** rather
 than merely computing the same answer — including the scan-order semantics that
 decide a simultaneous set-left/set-right. Re-expressing that as a lifecycle node
@@ -150,7 +150,7 @@ ROS 2 is not safety-certified either, and that is irrelevant when the software i
 outside the safety boundary in both cases.
 
 **The caveat:** the ISO 3691-4 / EN 1175 work in
-[`manuals/motor-drive-compliance-assessment.md`](manuals/motor-drive-compliance-assessment.md)
+[`manuals/motor-drive-compliance-assessment.md`](motor-drive-compliance-assessment.md)
 notes that under Track B the vehicle boundary widens. Migrating pulls several
 hundred thousand lines of third-party middleware inside the vehicle, all of it
 subject to whatever software-lifecycle argument the technical file eventually
@@ -203,7 +203,7 @@ is and putting ROS above the boundary:
 
 Two facts make this the natural seam rather than a compromise:
 
-1. **[`core/kinematics.py`](core/kinematics.py) is already written for it.** Its
+1. **[`core/kinematics.py`](../core/kinematics.py) is already written for it.** Its
    docstring states the separation explicitly — a SLAM pose controller producing
    (v, ω) converts through the same `body_to_wheels()` the line follower uses. The
    control law is what is line-specific; the kinematics are not.
@@ -212,7 +212,7 @@ Two facts make this the natural seam rather than a compromise:
    inside a DDS callback under any architecture.
 
 Under that shape the migration is additive: `core/autopilot.py` is bypassed in
-nav mode, everything below the seam is untouched, and the 228 checks keep
+nav mode, everything below the seam is untouched, and the 341 checks keep
 running.
 
 **Rough effort.** The boundary approach is weeks. A full port is a rewrite of
@@ -226,10 +226,10 @@ interval, not the total, is the real risk on a vehicle that currently works.
 
 None of these are ROS work; all are worth doing on their own merits.
 
-- **Keep [`core/kinematics.py`](core/kinematics.py) free of control logic and
+- **Keep [`core/kinematics.py`](../core/kinematics.py) free of control logic and
   sensor knowledge.** It is the documented seam. A shortcut through it is the one
   change that would make a later ROS boundary expensive.
-- **Keep the `/api/*` surface in [`app/server.py`](app/server.py) stable and
+- **Keep the `/api/*` surface in [`app/server.py`](../app/server.py) stable and
   complete.** It is the bridge interface, whether the client is a browser, a
   VDA5050 adapter or a ROS node.
 - **Keep `drivers/canbus/` free of `config` imports.** Already an invariant;

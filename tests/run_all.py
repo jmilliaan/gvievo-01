@@ -26,6 +26,9 @@ MODULES = [
     "test_canworker",
     "test_health",
     "test_canmon",
+    "test_lss",
+    "test_imu",
+    "test_rpdo",
     "test_logging",
     "test_rfid",
     "test_dio",
@@ -36,7 +39,7 @@ MODULES = [
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 866
+EXPECTED_CHECKS = 1007
 
 
 def main():

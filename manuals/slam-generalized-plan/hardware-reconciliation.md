@@ -10,7 +10,8 @@ no certification scope; no fleet integration; MLS *hardware stays installed* —
 only the magnetic-tape-following feature is retired.
 
 Read the architecture doc first. Where this document contradicts it, the hardware
-wins.
+wins. Hardware steps that follow from it are written up in
+[`bench-checklists.md`](bench-checklists.md).
 
 ---
 
@@ -49,7 +50,7 @@ is no DEC unit, no encoder-resolution term, and no conversion class. Kill the
 is arithmetic.
 
 The CiA-402 sequence in spec §3.1–3.2 is already implemented and tested in
-[`canworker.py`](../canworker.py) against these exact drives, including the
+[`canworker.py`](../../canworker.py) against these exact drives, including the
 statusword masks, the 3-attempt fault policy, and a never-auto-reset rule.
 
 **One hardware fact the generic plan does not contain, and it constrains §3.7.**
@@ -177,7 +178,7 @@ existing `branch_latch` convention in the profile).
 ### D-5 — There is a Modbus I/O island the plan does not know about
 
 16 DI / 16 DO at **192.168.1.30:502**, already implemented in
-[`drivers/dio.py`](../drivers/dio.py): own thread, 20 Hz scan, 2.0 ms per read,
+[`drivers/dio.py`](../../drivers/dio.py): own thread, 20 Hz scan, 2.0 ms per read,
 health-monitored, with a `/io` lamp page. It belongs in **Layer 1** as a node
 publishing DI state, and it is where the safety-PLC handshake and E-stop status
 will land when that arrives.
@@ -252,11 +253,11 @@ below the old seam is not a *framework*, it is a set of **plain Python libraries
 
 | Module | Framework-agnostic? | Disposition |
 |---|---|---|
-| [`config.py`](../config.py) | yes — stdlib only | **Import it from the ROS node.** ROS parameters silently ignore undeclared YAML keys; this loader makes unknown *and* missing keys fatal. Keep it and let ROS params carry only what launch needs. |
-| [`core/kinematics.py`](../core/kinematics.py) | yes — its docstring already names this exact seam | Becomes the mux node's inverse kinematics. |
-| [`drivers/canbus/guard.py`](../drivers/canbus/guard.py) | yes | Keep the write deny-list. Nothing in ROS supplies it. |
-| [`core/health.py`](../core/health.py) | yes | Maps onto `diagnostic_updater`; port the two-tier policy, not the code. |
-| [`drivers/dio.py`](../drivers/dio.py), [`drivers/rfid.py`](../drivers/rfid.py) | yes | Wrap each in a thin node; the thread + `snapshot()` shape survives. |
+| [`config.py`](../../config.py) | yes — stdlib only | **Import it from the ROS node.** ROS parameters silently ignore undeclared YAML keys; this loader makes unknown *and* missing keys fatal. Keep it and let ROS params carry only what launch needs. |
+| [`core/kinematics.py`](../../core/kinematics.py) | yes — its docstring already names this exact seam | Becomes the mux node's inverse kinematics. |
+| [`drivers/canbus/guard.py`](../../drivers/canbus/guard.py) | yes | Keep the write deny-list. Nothing in ROS supplies it. |
+| [`core/health.py`](../../core/health.py) | yes | Maps onto `diagnostic_updater`; port the two-tier policy, not the code. |
+| [`drivers/dio.py`](../../drivers/dio.py), [`drivers/rfid.py`](../../drivers/rfid.py) | yes | Wrap each in a thin node; the thread + `snapshot()` shape survives. |
 | `canworker.py` CiA-402 sequence | partly | Extract the arm/disarm/fault state machine as a library; discard the Flask-facing queue. |
 | `core/autopilot.py`, `core/branch.py` | n/a | **Retired with tape following.** |
 
@@ -274,6 +275,42 @@ go with the features they cover.
 against a 20 ms budget, peaking near 31 ms, largely because `60FFh` is a blocking
 SDO write per tick. Spec §3.3 already specifies RPDO1 for the controlword +
 target velocity, which fixes this. It is a prerequisite, not an optimisation.
+
+### D-9 — the write deny-list blocked PDO configuration, and fixing it found a hole
+
+*Added 2026-09-06, from reading the code against this plan.*
+
+Spec §3.3 (RPDO1 for controlword + `60FFh`) and §5's MLS IMU TPDO enable both
+need SDO writes to the CiA 301 PDO configuration ranges — `1400h`/`1600h` for
+an RPDO, `1800h`/`1A00h` for a TPDO. Every one of them was refused by
+[`guard.py`](../../drivers/canbus/guard.py)'s "not on the permitted-write list"
+branch. Two of the plan's tasks were blocked on a file neither document
+mentions.
+
+The naive fix — add the ranges to `ALLOWED` — **would have opened the exact hole
+the deny-list exists to close.** An RPDO mapping is a write path by another
+name: map `403Eh` into an RPDO and a two-byte CAN frame releases the holding
+brake on both drive wheels, with no SDO write anywhere and every existing check
+passed. Bit 6 of `403Eh` is on the forbidden list precisely because a single
+stray frame can do this; mapping it into a PDO reaches it by a route the list
+did not cover.
+
+So the ranges are admitted per-range, on their own terms:
+
+| range | rule | why |
+|---|---|---|
+| `1600h`–`17FFh` RPDO mapping | permitted **only if the mapped object is itself writable** — the deny-list is applied recursively to `value >> 16` | it is a write path; see above |
+| `1A00h`–`1BFFh` TPDO mapping | permitted for any object | it is a **read** path — the device transmits. The posture is read-mostly, not read-nothing; refusing these would forbid reading a temperature by PDO while permitting it by SDO |
+| `1400h`/`1800h` comm params | permitted | COB-ID and transmission type decide *where* and *when* a PDO goes, never *what* it carries |
+
+Sub 0 of a mapping object is the entry count (0–8), not an object reference, so
+`check()` now takes the subindex — a mapping entry cannot be judged without it,
+and guessing would refuse the `count = 0` write that begins every remap.
+
+**Carry this into the ROS drive node.** The recursive-mapping rule is not a
+quirk of the current process; it is a property of CANopen, and `ros2_canopen`
+supplies no equivalent. It is one more entry on D-8's list of things that
+survive the migration as a library.
 
 ---
 
@@ -310,6 +347,7 @@ Deltas against spec §10 only:
 | T10 | **Halves.** No IMU serial driver (D-3), no camera calibration (D-4). Add: MLS IMU TPDO configuration. |
 | — | **New T12:** Modbus DIO node from `drivers/dio.py` (D-5). |
 | — | **New T0:** CAN bitrate migration to 1 Mbps (§5). Blocks T9. |
+| — | **New T0b:** PDO configuration through the write deny-list (D-9). **Done 2026-09-06** — `guard.py` admits the CiA 301 PDO ranges per-range, with RPDO mapping entries validated recursively. Blocks T9 and the MLS IMU TPDO work in T10. |
 
 ---
 

@@ -5,14 +5,28 @@ magnetic tape. Two Oriental Motor BLV-R drivers in CiA 402 Profile Velocity mode
 and a SICK MLS magnetic line sensor share one 125 kbps `can0`. A Flask web UI
 provides a manual jog pad and an automatic line-following mode.
 
+> **Status: line-following is being retired.** The vehicle is migrating to
+> lidar SLAM navigation — see [manuals/slam-generalized-plan/](manuals/slam-generalized-plan/),
+> and read `hardware-reconciliation.md` there first: it records where this
+> vehicle's actual hardware diverges from the generic plan, and it wins over
+> the other two documents wherever they disagree.
+>
+> `core/autopilot.py` and `core/branch.py` retire with the tape, along with
+> their tests and the `/auto` page. Everything else — the strict profile
+> loader, the CAN write deny-list, the kinematics, the health table, the
+> device drivers — is framework-agnostic and carries forward as libraries the
+> ROS nodes import. Sections below describing the tape-following control law,
+> curve capability and junction handling are the record of a working vehicle
+> and are accurate as written; they document a feature on its way out.
+
 | | |
 |---|---|
-| Cruise | 1600 r/min = **0.503 m/s** (mechanical ceiling 4000 r/min = 1.257 m/s) |
+| Cruise | 1200 r/min = **0.377 m/s** (slow zone 800 = 0.251; ceiling 4000 = 1.257 m/s) |
 | Gains | `K_RATIO 11.3`, `KD 0.94`, `KI 0` → ζ = 0.294 |
 | Control loop | 50 Hz, telemetry 5 Hz, sensor field 2 Hz |
 | Nodes | 1 left driver, 2 right driver, 10 MLS sensor (TPDO1 `0x18A`) |
 | `dry_run` | **false** — motors are live |
-| Tests | 689 offline checks, all passing |
+| Tests | 866 offline checks, all passing |
 
 ---
 
@@ -131,7 +145,7 @@ app/               The web tier.
   templates/         base.html is the shared shell.
   static/            app.css and the per-page scripts.
 
-tests/             689 offline checks. run_all.py runs them. No hardware.
+tests/             866 offline checks. run_all.py runs them. No hardware.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Driver, sensor and RFID documentation, searchable.
 logs/              One directory per auto run.
@@ -505,7 +519,7 @@ the sampling.
 ## Testing
 
 ```bash
-python3 tests/run_all.py      # 689 checks, no hardware
+python3 tests/run_all.py      # 866 checks, no hardware
 python3 -c "import main"      # exits 1 with a named check on a bad profile
 ```
 
