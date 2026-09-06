@@ -6,7 +6,6 @@
 // imports - so what is on the screen is what the vehicle is running on, not a
 // copy that has to be kept in step.
 //
-// This page does NOT set window.CLAIM_HEARTBEAT, so leaving it open on a second
 // screen cannot hold an auto run alive. See api_state() in server.py.
 
 const find = document.getElementById('pm-find');

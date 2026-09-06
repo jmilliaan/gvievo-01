@@ -142,20 +142,15 @@ def test_reset_means_ready():
             self._lock = __import__("threading").Lock()
             self._armed = False
             self._mode = "idle"
-            self._auto_running = False
             self._direction = "stop"
             self._target = (0, 0)
             self._deadline = 0.0
             self._fault = None
-            self._run_source = None
             self._last_action = None
             self._last_stop_reason = None
             self._panel = scanner()
             self._arm_retry_at = 0.0
             self._arm_fail = None
-            self._auto_start_at = 0.0
-            self._stop_hold = None
-            self._log_close_at = 0.0
             self._telemetry = {n: {"statusword": 0x0027} for n in config.NODES}
             self.arm_fails = None
 
@@ -168,15 +163,6 @@ def test_reset_means_ready():
         def _do_disarm(self):
             calls.append(("disarm",))
             self._armed, self._mode = False, "idle"
-            self._auto_start_at = 0.0
-
-        def _do_auto_run(self, running, source="web"):
-            calls.append(("run", running, source))
-            self._auto_running = running
-            self._run_source = source if running else None
-
-        def _end_auto_run(self, reason=None, hard=False, close_log_now=False):
-            self._auto_running = False
 
     events.clear()
     c = Ctl()
@@ -192,50 +178,34 @@ def test_reset_means_ready():
           len(calls) == n, f"{len(calls) - n} extra call(s)")
 
     c._panel_start(MANUAL)
-    check("Start in manual does nothing - jogging is per-direction from the "
-          "web pad", c._auto_running is False)
+    check("Start in MANUAL does nothing - jogging is per-direction from the "
+          "web pad", ("run", True, "panel") not in calls)
 
-    # ---- AUTO: disarmed until Start ---------------------------------------
+    # ---- AUTO is the resting state now ------------------------------------
+    # *** There is nothing autonomous to start. *** Tape following was the only
+    # thing Start ever launched. The button, its debounced edge and the
+    # anti-tie-down rule are all still live and still tested above; what is gone
+    # is the run. Start says so rather than silently doing nothing.
     c._panel_mode_changed(AUTO)
     check("the selector moving to AUTO disarms", not c._armed)
     c._hold_arm_state(AUTO)
     check("...and AUTO does not arm itself", not c._armed, str(c._mode))
 
+    events.clear()
     c._panel_start(AUTO)
-    check("Start arms", c._armed and c._mode == "auto")
-    check("...but does NOT move yet", c._auto_running is False)
-    check("...it is pending, with the delay running", c._auto_start_at > 0)
-
-    c._pending_start()
-    check("and nothing moves while the delay is still running",
-          c._auto_running is False)
-    c._auto_start_at = time.monotonic() - 0.001      # delay expired
-    c._pending_start()
-    check(f"after auto_start_delay_s it runs", c._auto_running is True)
-    check("the run is owned by the panel, which is what the watchdog keys on",
-          c._run_source == "panel")
+    check("Start in AUTO cannot arm anything", not c._armed)
+    check("...and cannot produce motion", c._target == (0, 0), str(c._target))
+    msgs = " ".join(e["msg"] for e in events.since(0)[1])
+    check("...and says why, rather than being silently inert",
+          "no autonomous mode" in msgs, msgs[:70])
 
     # ---- Reset only stops and acknowledges --------------------------------
+    c._armed = True
+    c._target = (500, 500)
     c._panel_reset(AUTO)
-    check("Reset from running stops it", c._auto_running is False)
+    check("Reset zeroes the setpoint", c._target == (0, 0), str(c._target))
     c._hold_arm_state(AUTO)
-    check("...and AUTO returns to disarmed once the run is over",
-          not c._armed, str(c._mode))
-
-    # A pending start is abandoned by Reset rather than arriving late.
-    c._panel_start(AUTO)
-    check("Start arms again", c._armed and c._auto_start_at > 0)
-    c._panel_reset(AUTO)
-    check("Reset cancels a start that has not reached the wheels yet",
-          c._auto_start_at == 0.0)
-    c._pending_start()
-    check("...so the delay expiring afterwards moves nothing",
-          c._auto_running is False)
-
-    # A selector move cancels one too.
-    c._panel_start(AUTO)
-    c._panel_mode_changed(MANUAL)
-    check("a selector move cancels a pending start", c._auto_start_at == 0.0)
+    check("...and AUTO returns to disarmed", not c._armed, str(c._mode))
 
     # ---- faults still need a human ----------------------------------------
     c3 = Ctl()
@@ -243,7 +213,7 @@ def test_reset_means_ready():
     c3._hold_arm_state(MANUAL)
     check("a latched fault stops MANUAL arming itself", not c3._armed)
     c3._panel_start(AUTO)
-    check("...and Start is refused too", c3._auto_running is False)
+    check("...and Start is refused too", not c3._armed)
     c3._panel_reset(MANUAL)
     check("Reset clears the fault", c3._fault is None)
     c3._hold_arm_state(MANUAL)
@@ -286,30 +256,32 @@ def test_reset_means_ready():
 
 
 def test_the_manual_watchdog_does_not_latch():
-    """Both modes zero the setpoint; only AUTO latches a fault.
+    """The manual watchdog zeroes the setpoint without latching a fault.
 
     A manual watchdog trip is self-correcting - the setpoint is already zero and
     recovery is to hold the button again, with a hand on the control. Latching
     it made a dropped Wi-Fi packet cost a walk to the panel, and under
-    panel.manual_auto_arm it would block re-arming as well. An auto run is the
-    opposite: latched motion that would otherwise resume on its own.
+    panel.manual_auto_arm it would block re-arming as well.
     """
-    import canworker
     import events
     print("\npanel: the manual watchdog stops without latching")
 
-    src = (ROOT / "canworker.py").read_text()
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8")
     block = src[src.index("watchdog: no keepalive"):]
     block = block[:block.index("# Device liveness")]
 
-    check("manual warns instead of latching",
-          "events.warn" in block and 'if mode == "manual":' in block)
-    check("...and auto still latches",
-          "self._set_fault(reason)" in block)
-    check("both zero the setpoint outright",
+    # A CALL, not a mention - the comment names _set_fault() to explain why it
+    # is deliberately not used here, and that comment is worth keeping.
+    check("it warns instead of latching",
+          "events.warn" in block and "self._set_fault(" not in block)
+    check("it zeroes the setpoint outright",
           "self._target = target = (0, 0)" in block)
-    check("both clear the ramp, or the PID re-commands on the next tick",
-          "self._end_auto_run(reason, hard=True)" in block)
+    # *** The latching case is not gone, only unreachable. *** Latched motion
+    # that would resume on its own MUST latch a fault, and tape following did.
+    # The source comment is what carries that to whoever adds navigation; this
+    # pins it so it cannot be deleted as noise.
+    check("the latching case is recorded for whatever navigates next",
+          "autonomous mode returns" in block)
 
     # The emit sits on a 50 Hz path, so it is only safe because the branch
     # clears its own condition. Pin that the zeroing is still there to do it.
@@ -329,10 +301,13 @@ def test_panel_events_are_edge_only():
     import events
     print("\npanel: event discipline")
 
-    src = (ROOT / "canworker.py").read_text()
-    check("the panel is scanned from _run(), not from _run_autopilot() - it is "
-          "what ENTERS every state", "self._panel_scan()" in src
-          and src.index("self._panel_scan()") < src.index("def _run_autopilot"))
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8")
+    # The panel is what ENTERS every state, so it has to be scanned while idle
+    # - from the bus loop itself, not from anything gated on being armed.
+    loop = src[src.index("while not self._stop_evt.is_set():"):]
+    check("the panel is scanned from the bus loop, in every state",
+          "self._panel_scan()" in loop
+          and loop.index("self._panel_scan()") < loop.index("if armed"))
 
     class C:
         _lock = __import__("threading").Lock()

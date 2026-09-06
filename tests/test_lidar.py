@@ -37,7 +37,7 @@ def code(path):
     they deliberately do NOT do - open port 2122, use the vendor library - and a
     naive substring search would fail on the prose forbidding the thing.
     """
-    src = (ROOT / path).read_text()
+    src = (ROOT / path).read_text(encoding="utf-8")
     src = re.sub(r'"""(?:.|\n)*?"""', '""', src)
     src = re.sub(r"'''(?:.|\n)*?'''", "''", src)
     return "\n".join(line.split("#")[0] for line in src.splitlines())
@@ -398,7 +398,7 @@ def test_lidar_cannot_stop_the_vehicle():
           "critical" not in src[i:i + 200])
 
     # And nothing that produces motion may consult it.
-    for fn in ("_do_arm", "_do_auto_run", "drive"):
+    for fn in ("_do_arm", "_write_target", "drive"):
         check(f"{fn}() does not consult the lidar",
               "_lidar" not in method(src, fn))
 

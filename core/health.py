@@ -1,8 +1,8 @@
 """Hardware health: is each device still talking to us, and what does it cost?
 
-*** This is NOT the browser watchdog. *** config.MANUAL_WATCHDOG_S and
-AUTO_WATCHDOG_S cover an absent OPERATOR - a closed tab, a dropped Wi-Fi link.
-What lives here covers an absent DEVICE. They fail for different reasons, they
+*** This is NOT the browser watchdog. *** config.MANUAL_WATCHDOG_S covers an
+absent OPERATOR - a closed tab, a dropped Wi-Fi link, a released button. What
+lives here covers an absent DEVICE. They fail for different reasons, they
 stop the vehicle for different reasons, and merging them would mean a browser
 refresh could paper over a dead driver. Keep them apart.
 

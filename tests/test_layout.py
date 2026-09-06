@@ -18,7 +18,6 @@ import sys
 from helpers import ROOT, check
 
 import config
-import runlog
 
 # Every directory the app puts on sys.path. Keep in step with the loops in
 # main.py, canworker.py, app/server.py and helpers.py.
@@ -30,17 +29,9 @@ def test_path_anchors():
     directory the module happens to live in today."""
     print("\nfilesystem anchors survive the move")
 
-    check("runlog.LOG_DIR points at the repo root, not core/logs",
-          pathlib.Path(runlog.LOG_DIR).resolve() == (ROOT / "logs").resolve(),
-          runlog.LOG_DIR)
     check("config.PROFILE_DIR points at the repo root",
           pathlib.Path(config.PROFILE_DIR).resolve()
           == (ROOT / "profiles").resolve(), config.PROFILE_DIR)
-
-    # The real runs are 0001..0010. A LOG_DIR pointing at an empty directory
-    # would hand out 1 again and quietly interleave with them.
-    check("run numbering continues from the real logs", runlog.next_seq() > 10,
-          f"next_seq() == {runlog.next_seq()}")
 
     check("the profile resolves under profiles/",
           pathlib.Path(config.profile_path()).parent.resolve()
@@ -85,7 +76,7 @@ def test_entry_point():
     carry no logic of its own."""
     print("\nthe entry point resolves")
 
-    src = (ROOT / "main.py").read_text()
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
     check("main.py imports the server", "from server import main" in src)
     check("main.py stays thin", len(src.splitlines()) < 40,
           f"{len(src.splitlines())} lines")
@@ -121,10 +112,10 @@ def test_assets_are_offline():
 
     for f in sorted(list(tpl.glob("*.html")) + list(static.glob("*.css"))
                     + list(static.glob("*.js"))):
-        hits = remote.findall(f.read_text())
+        hits = remote.findall(f.read_text(encoding="utf-8"))
         check(f"{f.name} loads nothing remotely", not hits, str(hits[:1]))
 
-    css = (static / "app.css").read_text()
+    css = (static / "app.css").read_text(encoding="utf-8")
     faces = re.findall(r'src:\s*url\(["\']?([^"\')]+)', css)
     check("app.css declares the self-hosted faces", len(faces) >= 8, str(len(faces)))
     for rel in faces:

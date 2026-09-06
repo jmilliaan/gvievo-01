@@ -4,7 +4,6 @@
 // file deliberately contains no click handlers. Adding one would need an
 // arm-state interlock and event logging on the server side first.
 //
-// This page does NOT set window.CLAIM_HEARTBEAT, so leaving it open on a second
 // screen cannot hold an auto run alive. See api_state() in server.py.
 
 const grid = document.getElementById('io-grid');

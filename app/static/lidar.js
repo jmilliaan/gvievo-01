@@ -4,7 +4,6 @@
 // contains no handler that touches the vehicle - the only control on the page
 // changes how far out the picture is drawn.
 //
-// This page does NOT set window.CLAIM_HEARTBEAT, so leaving it open on a second
 // screen cannot hold an auto run alive. See api_state() in server.py.
 //
 // THE RULE THIS FILE EXISTS TO ENFORCE

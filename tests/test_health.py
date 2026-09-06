@@ -6,9 +6,8 @@ import struct
 import sys
 import threading
 
-from helpers import FAIL, ROOT, check, sensor
+from helpers import FAIL, ROOT, check
 
-import autopilot
 import config
 import kinematics
 import motion
@@ -24,17 +23,17 @@ def test_health():
     print("\nhardware health")
 
     # -- a source is not a fault until it has been seen once -----------------
-    src = health.HealthSource("mls")
+    src = health.HealthSource("lidar")
     mon = health.HealthMonitor([(src, 1.0)])
     r = mon.evaluate(now=100.0)
     check("a never-seen source is not reported lost",
           not r["sensor_error"] and not r["system_error"])
     check("a never-seen source reports seen=False",
-          r["sources"]["mls"]["seen"] is False)
+          r["sources"]["lidar"]["seen"] is False)
 
     src.mark_rx(now=100.0)
     r = mon.evaluate(now=100.5)
-    check("a fresh source is healthy", r["sources"]["mls"]["ok"] is True)
+    check("a fresh source is healthy", r["sources"]["lidar"]["ok"] is True)
     r = mon.evaluate(now=101.5)
     check("a source past its timeout is lost", r["sensor_error"] is True,
           r["sensor_detail"])
@@ -44,19 +43,19 @@ def test_health():
 
     # -- the two tiers route differently -------------------------------------
     drv = health.HealthSource("driver:1", critical=True, detail="node 1 (left)")
-    mls = health.HealthSource("mls")
-    mon = health.HealthMonitor([(drv, 0.5), (mls, 0.5)])
+    aux = health.HealthSource("lidar")
+    mon = health.HealthMonitor([(drv, 0.5), (aux, 0.5)])
     drv.mark_rx(now=0.0)
-    mls.mark_rx(now=0.0)
+    aux.mark_rx(now=0.0)
     mon.evaluate(now=0.1)
-    mls.mark_rx(now=1.0)                 # sensor alive, driver silent
+    aux.mark_rx(now=1.0)                 # aux alive, driver silent
     r = mon.evaluate(now=1.0)
     check("a silent driver raises the CRITICAL tier",
           r["system_error"] is True and r["sensor_error"] is False,
           r["system_detail"])
-    drv.mark_rx(now=2.0)                 # driver back, sensor now silent
+    drv.mark_rx(now=2.0)                 # driver back, aux now silent
     r = mon.evaluate(now=2.0)
-    check("a silent sensor raises the AUTO-ONLY tier",
+    check("a silent non-critical source raises the SENSOR tier only",
           r["sensor_error"] is True and r["system_error"] is False,
           r["sensor_detail"])
 
@@ -105,7 +104,7 @@ def test_health():
           mon.evaluate(now=999.0)["sensor_error"] is False)
 
     # -- health.py stays dependency-free -------------------------------------
-    head = (ROOT / "core" / "health.py").read_text()
+    head = (ROOT / "core" / "health.py").read_text(encoding="utf-8")
     head = head[head.index('"""', head.index('"""') + 3):]
     imports = {ln.split()[1].split(".")[0] for ln in head.splitlines()
                if ln.startswith(("import ", "from "))}
@@ -113,11 +112,17 @@ def test_health():
           imports <= {"time"}, str(sorted(imports)))
 
     # -- wired into the vehicle, on the paths that prove liveness ------------
-    cw = (ROOT / "canworker.py").read_text()
-    check("the sensor marks health on every decoded frame",
-          "self._src_mls.mark_rx(" in cw)
+    cw = (ROOT / "canworker.py").read_text(encoding="utf-8")
+    # The MLS used to be a supervised source, fed by every decoded TPDO1 frame.
+    # It went with tape following; what proves a drive alive now is its producer
+    # heartbeat and its telemetry replies, which is the arrangement health.py
+    # was built around in the first place.
+    check("a producer heartbeat marks the driver alive",
+          "src.mark_rx()" in cw[cw.index("def _on_heartbeat"):])
     check("each driver marks health on a telemetry answer",
           "self._src_node[nid].mark_rx()" in cw)
+    check("a completed SDO transfer also counts as liveness",
+          "src.mark_rx()" in cw[cw.index("def _mark_alive"):cw.index("def _read")])
     check("health is evaluated outside the lock",
           "hw = self._hw.evaluate(now)" in cw)
     check("a critical fault refuses an arm", "system_error" in
@@ -142,7 +147,7 @@ def test_blocking_action_does_not_fake_a_fault():
     import health
     print("\nfalse 'driver silent' on a blocking action")
 
-    src = (ROOT / "canworker.py").read_text()
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8")
 
     # 1. The producer heartbeat is actually turned on. It was dead code: defined
     #    and never called, which left 1017h at its factory default of 0 = OFF

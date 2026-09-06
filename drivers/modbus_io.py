@@ -4,7 +4,7 @@
     modbus_io.py            one scan, printed as a table
     modbus_io.py watch      re-scan until Ctrl-C, printing only on CHANGE
 
-Deliberately read-only, the same split read_mls.py takes against the MLS: on a
+Deliberately read-only, the same split the other bench tools here take: on a
 150 kg vehicle a script that can energise an output is a different kind of tool
 and belongs behind its own --go flag, if it is ever wanted at all.
 

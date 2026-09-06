@@ -6,9 +6,8 @@ import struct
 import sys
 import threading
 
-from helpers import FAIL, ROOT, check, sensor
+from helpers import FAIL, ROOT, check
 
-import autopilot
 import config
 import kinematics
 import motion
@@ -73,39 +72,34 @@ def test_config_profile():
     check("the real profile loads", config.PROFILE_NAME == "agv-01",
           config.PROFILE_NAME)
     refuses("a typo'd key is refused",
-            lambda d: d["autopilot"].update({"k_rato": d["autopilot"].pop("k_ratio")}),
+            lambda d: d["manual"].update({"full_rmp": d["manual"].pop("full_rpm")}),
             "unknown key")
     refuses("a missing key is refused",
-            lambda d: d["autopilot"].pop("kd"), "missing key")
+            lambda d: d["manual"].pop("half_ratio"), "missing key")
     refuses("an unknown section is refused",
             lambda d: d.update({"extra": {}}), "unknown top-level")
-    refuses("a negative gain is refused, by name",
-            lambda d: d["autopilot"].update(k_ratio=-1.0), "K_RATIO")
-    refuses("auto_rpm above the motor limit is refused",
-            lambda d: d["autopilot"].update(auto_rpm=9000.0), "AUTO_RPM")
+    # *** A whole retired section must not come back by accident. *** The
+    # autopilot block was deleted with tape following; a profile still carrying
+    # it is a profile from before the retirement, and running it would mean
+    # loading gains nothing reads.
+    refuses("a leftover autopilot section is refused",
+            lambda d: d.update({"autopilot": {"k_ratio": 11.3}}),
+            "unknown top-level")
+    refuses("a leftover branch_latch table is refused",
+            lambda d: d.update({"branch_latch": []}), "unknown top-level")
+    refuses("a leftover stop_until_start_button table is refused",
+            lambda d: d.update({"stop_until_start_button": []}),
+            "unknown top-level")
+    refuses("a leftover auto watchdog is refused",
+            lambda d: d["timing"].update(auto_watchdog_s=1.5), "unknown key")
+    refuses("a jog speed above the motor limit is refused",
+            lambda d: d["manual"].update(full_rpm=9000), "manual.full_rpm")
     refuses("a bool where a number belongs is refused",
-            lambda d: d["autopilot"].update(kd=True), "expected a number")
+            lambda d: d["manual"].update(half_ratio=True), "expected a number")
     refuses("duplicate CAN node IDs are refused",
             lambda d: d["can"].update(sensor_node=2), "distinct")
-    # The pairing neither module could check alone before config existed.
-    # Read 6083h out of the doc rather than hardcoding it. This used to say
-    # 2000.0, which stopped testing anything the day the driver ramp was raised
-    # to 2400 - the value was still refused-looking but was legitimately below
-    # the new limit, so the check passed for the wrong reason.
-    refuses("a software ramp at or above 6083h is refused",
-            lambda d: d["autopilot"].update(
-                ramp_accel_rpm_s=float(d["drivers"]["ramp"]["auto"]["accel"])),
-            "must stay below")
-    # A profile written before the units changed must not run silently on a
-    # stale key - the loader rejects unknowns, which is what catches it.
-    refuses("a pre-rename profile (line_loss_grace_s) is refused",
-            lambda d: d["autopilot"].update(
-                line_loss_grace_s=d["autopilot"].pop("line_loss_grace_m")),
-            "unknown key")
-    refuses("a pre-rename profile (sr_pos_coef) is refused",
-            lambda d: d["autopilot"].update(
-                sr_pos_coef=d["autopilot"].pop("sr_pos_frac")),
-            "unknown key")
+    refuses("a non-boolean can.use_rpdo is refused",
+            lambda d: d["can"].update(use_rpdo=1), "true/false")
 
     refuses("a driver timeout inside the telemetry period is refused",
             lambda d: d["timing"].update(driver_timeout_s=0.1),
@@ -144,9 +138,10 @@ def test_config_profile():
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
-    load_with(lambda d: d["autopilot"].update(k_ratio=-1.0))
+    load_with(lambda d: d["manual"].update(full_rpm=9000))
     check("a rejected profile leaves the live one intact",
-          config.K_RATIO == 11.3, f"K_RATIO={config.K_RATIO}")
+          config.MANUAL_FULL_RPM == 1200,
+          f"MANUAL_FULL_RPM={config.MANUAL_FULL_RPM}")
 
 
 def test_derived_constants():
@@ -173,16 +168,17 @@ def test_derived_constants():
           == round(config.MANUAL_FULL_RPM * config.MANUAL_HALF_RATIO),
           f"{config.MANUAL_FULL_RPM} x {config.MANUAL_HALF_RATIO} "
           f"-> {config.MANUAL_HALF_RPM}")
-    check("DT band is 0.2x .. 5x nominal",
-          close(config.DT_MIN_S, 0.2 * config.DT_NOMINAL_S)
-          and close(config.DT_MAX_S, 5.0 * config.DT_NOMINAL_S),
-          f"{config.DT_MIN_S} .. {config.DT_MAX_S}")
     check("ACCEL/DECEL track the auto ramp block",
           config.ACCEL_RPM_S == config.RAMP["auto"]["accel"]
           and config.DECEL_RPM_S == config.RAMP["auto"]["decel"],
           f"{config.ACCEL_RPM_S} / {config.DECEL_RPM_S}")
-    check("TPDO1_COB is 0x180 + sensor node",
-          config.TPDO1_COB == 0x180 + config.SENSOR_NODE, hex(config.TPDO1_COB))
+    # *** 6083h is the ceiling on yaw acceleration, not just on forward ramp. ***
+    # It caps how fast the wheel DIFFERENCE slews, so whatever produces
+    # (v, omega) next must derive its limit from here rather than hardcode one.
+    check("max yaw acceleration is derived from 6083h, not hardcoded",
+          abs(kinematics.max_yaw_accel(config.ACCEL_RPM_S)
+              - 2.0 * config.ACCEL_RPM_S * config.RAD_S_PER_RPM_DIFF) < 1e-12,
+          f"{kinematics.max_yaw_accel(config.ACCEL_RPM_S):.3f} rad/s2")
     check("NODES maps the configured driver IDs",
           config.NODES == {config.LEFT: "left", config.RIGHT: "right"},
           str(config.NODES))
@@ -218,15 +214,14 @@ def test_params_view():
         check(f"the nested {sec}.{key} is displayed", f"{sec}.{key}" in rows)
     # The junction table moved into the "rfid rules" block, grouped with every
     # other kind of thing a tag can mean rather than standing on its own.
-    rules = next((s for s in sections if s["name"] == "rfid rules"), None)
-    check("the junction table is displayed under the RFID rules",
-          rules is not None
-          and any("branch latch" in r["key"] for r in rules["rows"]))
+    # The RFID rule table went with tape following - see config.describe().
+    check("no retired rule table is still rendered",
+          not any(s["name"] == "rfid rules" for s in sections))
 
     derived = {r["key"] for s in sections if s["name"] == "derived"
                for r in s["rows"]}
     for const in ("MPS_PER_RPM", "MAX_SPEED_MPS", "MANUAL_HALF_RPM",
-                  "LINE_LOSS_GRACE_MAX_S", "TPDO1_COB"):
+                  "ACCEL_RPM_S", "RAD_S_PER_RPM_DIFF"):
         check(f"{const} is shown as derived", const in derived)
     # Derived values cannot be edited, so they must not be offered as if they
     # could: no JSON key, and the relation that produced them instead.
@@ -235,9 +230,9 @@ def test_params_view():
               for s in sections if s["name"] == "derived" for r in s["rows"]))
 
     check("the profile's own values are shown",
-          rows["autopilot.k_ratio"]["value"] == config._fmt(config.K_RATIO)
+          rows["manual.full_rpm"]["value"] == config._fmt(config.MANUAL_FULL_RPM)
           and rows["can.channel"]["value"] == config.CAN_CHANNEL,
-          rows["autopilot.k_ratio"]["value"])
+          rows["manual.full_rpm"]["value"])
 
     # Units are read off the exported name's suffix. The ones worth pinning are
     # the ones a naive suffix rule gets wrong.
@@ -245,8 +240,7 @@ def test_params_view():
     units.update({r["key"]: r["unit"] for s in sections
                   if s["name"] == "derived" for r in s["rows"]})
     for const, want in (("LOOP_PERIOD_S", "s"), ("CAN_HEARTBEAT_MS", "ms"),
-                        ("TI_DEADBAND_MM", "mm"), ("TRACK_M", "m"),
-                        ("RAMP_JERK_RPM_S2", "r/min/s\u00b2"),
+                        ("TRACK_M", "m"),
                         ("MON_DRV_WARN_C", "\u00b0C"),
                         ("MON_BUS_V_WARN_LOW", "V"),
                         ("MPS_PER_RPM", "m/s per r/min")):
@@ -256,8 +250,8 @@ def test_params_view():
     # true/false, not Python's True/False - the page is read next to the JSON
     # file it describes, and the two must be the same word.
     check("booleans render as JSON does",
-          rows["autopilot.dry_run"]["value"] in ("true", "false"),
-          rows["autopilot.dry_run"]["value"])
+          rows["can.use_rpdo"]["value"] in ("true", "false"),
+          rows["can.use_rpdo"]["value"])
     check("a whole float drops its .0",
           rows["vehicle.motor_max_rpm"]["value"] == "4000",
           rows["vehicle.motor_max_rpm"]["value"])
@@ -278,21 +272,24 @@ def test_tuning_notes_are_parsed_not_restated():
     print("\ntuning notes are parsed from the module docstring")
 
     notes = config.tuning_notes()
-    check("the notes parse at all", len(notes) > 20, f"{len(notes)} note(s)")
+    # Was > 20 while the autopilot block was documented here. The threshold
+    # tracks the docstring rather than being a round number, so it still fails
+    # if the parser breaks - which is the only thing it is for.
+    check("the notes parse at all", len(notes) > 12, f"{len(notes)} note(s)")
     check("no note is empty", all(v.strip() for v in notes.values()))
 
     # A heading naming several keys has to reach all of them, or the second and
     # third key look undocumented while their paragraph exists.
-    for key in ("autopilot.k_ratio", "autopilot.kd", "autopilot.ki"):
-        check(f"{key} carries the shared gains note", key in notes)
+    for key in ("timing.loop_period_s", "timing.telemetry_period_s"):
+        check(f"{key} carries the shared timing note", key in notes)
     check("a key named without its section still resolves",
           "vehicle.invert_right" in notes)
     check("a section-wide note is kept as such", "rfid.*" in notes)
 
     # Attachment, not just parsing: the note has to land on the row.
     rows = rows_by_path(config.describe())
-    check("the dry-run note reaches its row",
-          "dry run" in (rows["autopilot.dry_run"]["note"] or "").lower())
+    check("the use_rpdo note reaches its row",
+          "rpdo" in (rows["can.use_rpdo"]["note"] or "").lower())
     check("a nested ramp row inherits the drivers.ramp note",
           "6083h" in (rows["drivers.ramp.auto.accel"]["note"] or ""))
     check("a section note reaches a row that has none of its own",
@@ -306,7 +303,7 @@ def test_tuning_notes_are_parsed_not_restated():
               config.tuning_notes() == {})
     finally:
         config.__doc__ = doc
-    check("...and the notes come back", len(config.tuning_notes()) > 20)
+    check("...and the notes come back", len(config.tuning_notes()) > 12)
 
 
 TESTS = [

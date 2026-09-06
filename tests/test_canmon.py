@@ -8,7 +8,6 @@ import threading
 
 from helpers import FAIL, ROOT, check, _why
 
-import autopilot
 import config
 import kinematics
 import motion
@@ -124,7 +123,7 @@ def test_can_monitoring():
           not any(guard.is_allowed(i) for i in (0x13FF, 0x1C00)))
 
     # Every write in canworker must go through the guard, not around it.
-    cw = (ROOT / "canworker.py").read_text()
+    cw = (ROOT / "canworker.py").read_text(encoding="utf-8")
     check("_write() calls the guard", "guard_write(index, value, sub)" in cw)
     direct = [ln.strip() for ln in cw.splitlines()
               if "sdo_write(" in ln and "def " not in ln and "guard" not in ln

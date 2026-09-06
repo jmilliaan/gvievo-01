@@ -6,9 +6,8 @@ import struct
 import sys
 import threading
 
-from helpers import FAIL, ROOT, check, _FakeRaw, sensor
+from helpers import FAIL, ROOT, check, _FakeRaw
 
-import autopilot
 import config
 import kinematics
 import motion
@@ -16,8 +15,8 @@ import motion
 def test_arm_does_not_deadlock():
     """Arming must not self-deadlock the bus thread.
 
-    sdo_read() drains the RX queue before transmitting, TpdoTap routes sensor
-    frames to Controller._on_pdo(), and _on_pdo() takes Controller._lock. Any
+    sdo_read() drains the RX queue before transmitting, TpdoTap routes pushed
+    frames to Controller._on_heartbeat(), and that takes Controller._lock. Any
     bus I/O performed while already holding that lock therefore deadlocks the
     bus thread against itself - and because snapshot() and keepalive() take the
     same lock, every Flask request wedges with it. That is not hypothetical: it
@@ -29,19 +28,22 @@ def test_arm_does_not_deadlock():
     import events
 
     ctl = canworker.Controller()
-    ctl.bus = canworker.TpdoTap(_FakeRaw(), ctl._on_pdo)
+    ctl.bus = canworker.TpdoTap(_FakeRaw(), on_heartbeat=ctl._on_heartbeat,
+                                nodes=(1,))
     ctl._do_preflight = lambda: {"ok": True, "report": []}
     ctl._nmt = lambda cmd, node: None
 
-    t = threading.Thread(target=lambda: ctl._do_arm("auto"), daemon=True)
+    t = threading.Thread(target=lambda: ctl._do_arm("manual"), daemon=True)
     t.start()
     t.join(timeout=10.0)
     check("_do_arm completes (no deadlock)", not t.is_alive(),
           "still blocked after 10 s" if t.is_alive() else "")
     if t.is_alive():
         return
-    check("the re-entrant path was actually exercised", ctl._sensor_seen > 0,
-          f"{ctl._sensor_seen} sensor frames absorbed during the arm")
+    check("the re-entrant path was actually exercised",
+          ctl._nmt_state.get(1) is not None,
+          f"node 1 NMT state {ctl._nmt_state.get(1)!r} - set from a heartbeat "
+          f"routed mid-arm")
 
     done = threading.Event()
     threading.Thread(target=lambda: (ctl.snapshot(), done.set()),
@@ -51,7 +53,7 @@ def test_arm_does_not_deadlock():
     # No bus call may sit inside a locked section - the RLock is a backstop,
     # not a licence. This is the invariant that actually keeps it fixed.
     import re
-    src = (ROOT / "canworker.py").read_text().split("\n")
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8").split("\n")
     inlock, indent, bad = False, 0, []
     for i, line in enumerate(src, 1):
         body = line.strip()
@@ -73,7 +75,6 @@ def test_arm_does_not_deadlock():
     # health.py is unit-tested above; this proves the Controller actually feeds
     # it and acts on it, which a source scan alone cannot show.
     ctl._armed = True
-    ctl._auto_running = True
     ctl._target = (800, 800)
     events.clear()
 
@@ -87,7 +88,8 @@ def test_arm_does_not_deadlock():
           hw["system_detail"])
     target = ctl._apply_health(hw, armed=True, target=(800, 800))
     check("a critical fault zeroes the setpoint", target == (0, 0), str(target))
-    check("a critical fault clears the auto latch", not ctl._auto_running)
+    check("a critical fault latches, so it needs an acknowledgment",
+          ctl._fault is not None, str(ctl._fault))
     check("a critical fault names itself in stop_reason",
           "silent" in (ctl._last_stop_reason or ""), str(ctl._last_stop_reason))
 
@@ -110,19 +112,26 @@ def test_arm_does_not_deadlock():
     events.clear()
 
 
-def test_sensor_starts_in_every_mode():
-    """The tape strip is shown on the manual page too, which only works if the
-    sensor is NMT-started on a manual arm - it used to be auto-only."""
-    print("\nsensor bring-up is mode-independent")
-    src = (ROOT / "canworker.py").read_text()
-    check("_start_sensor() exists", "def _start_sensor(self):" in src)
-    check("no sensor NMT start left behind a mode test",
-          'if mode == "auto":\n            self._nmt(0x01, config.SENSOR_NODE)'
-          not in src)
-    check("both arm paths call it", src.count("self._start_sensor()") == 2,
-          f"{src.count('self._start_sensor()')} call sites")
-    check("field level polls whenever armed, not only in auto",
-          "if armed and now - t_field" in src)
+def test_arm_no_longer_touches_the_sensor():
+    """The MLS bring-up is gone from the arm path, and must not creep back.
+
+    Arming used to NMT-start node 10 and resolve its TPDO1 layout on EVERY arm,
+    manual included, because the manual page showed the tape strip. That cost a
+    sensor probe on a path that had nothing to do with the sensor, and it made a
+    silent MLS able to refuse an arm.
+
+    The sensor hardware is still installed - the IMU lives inside it - but it is
+    read by drivers/canbus/read_imu.py on a bench, not by the arm.
+    """
+    print("\narming is independent of the MLS")
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8")
+    check("no sensor bring-up on the arm path",
+          "_start_sensor" not in src)
+    check("no TPDO1 track decode remains", "decode_tpdo1" not in src)
+    check("the arm cannot be refused by a silent sensor",
+          "SENSOR_SILENT_MSG" not in src)
+    check("the sensor node is still known, for the IMU that lives in it",
+          "SENSOR_NODE" in (ROOT / "config.py").read_text(encoding="utf-8"))
 
 
 def test_loop_health():
@@ -132,23 +141,30 @@ def test_loop_health():
     import canworker
 
     h = canworker._LoopHealth(window=4)
-    seen, out = 0, None
-    for i, (new, armed) in enumerate([(2, True), (0, True), (2, True), (0, True)]):
-        seen += new
-        out = h.tick(i * 0.02, 0.009, seen, armed)
+    out = None
+    for i in range(4):
+        out = h.tick(i * 0.02, 0.009)
     check("emits once the window fills", out is not None)
+    # *** The two numbers must stay distinct. *** work_ms is what the tick SPENT
+    # and is what shrinks when SDO leaves the loop; period_ms is what the tick
+    # ACHIEVED. Collapsing them hides exactly the case worth seeing: work
+    # climbing while the period is still being met by a shrinking pump.
     check("work and period are separate numbers",
           abs(out["work_avg_ms"] - 9.0) < 0.01
           and abs(out["period_avg_ms"] - 20.0) < 0.01,
           f"work {out['work_avg_ms']:.1f} ms, period {out['period_avg_ms']:.1f} ms")
-    check("counts starved ticks while armed", out["starved"] == 2,
-          str(out["starved"]))
-    check("window resets after emitting", h.tick(0.1, 0.009, seen, True) is None)
+    check("the max is kept, not just the mean - the tail is the problem",
+          "work_max_ms" in out and "period_max_ms" in out)
+    check("window resets after emitting", h.tick(0.1, 0.009) is None)
 
+    # A tick that overruns shows up in work, not in a smoothed average: runs
+    # 0023-0025 held a p50 of 20.1 ms with a max of 37.9, and it is the max that
+    # names the telemetry burst.
     h2 = canworker._LoopHealth(window=4)
-    for i in range(4):
-        out2 = h2.tick(i * 0.02, 0.009, 0, False)
-    check("no frames while DISARMED is not starvation", out2["starved"] == 0)
+    for i, spent in enumerate((0.009, 0.031, 0.009, 0.009)):
+        out2 = h2.tick(i * 0.02, spent)
+    check("a single overrun survives into work_max_ms",
+          abs(out2["work_max_ms"] - 31.0) < 0.01, f"{out2['work_max_ms']:.1f} ms")
 
 
 def test_unsolicited_frames_survive_sdo():
@@ -164,7 +180,7 @@ def test_unsolicited_frames_survive_sdo():
     from verify_drivers import sdo_read
     print("\nunsolicited frames survive an SDO transfer")
 
-    emcy, beats, pdos = [], [], []
+    emcy, beats = [], []
 
     class _Bus:
         """Replays a fixed frame sequence, pushed frames mixed into the stream."""
@@ -195,10 +211,9 @@ def test_unsolicited_frames_survive_sdo():
     raw = _Bus([
         msg(0x080 + 1, [0x22, 0xFF, 0x81, 0, 0, 0, 0, 0]),   # EMCY, node 1
         msg(0x700 + 2, [0x05]),                              # heartbeat, node 2
-        msg(config.TPDO1_COB, [0] * 8),                      # the MLS stream
         msg(0x580 + 1, reply),                               # the SDO reply
     ])
-    tap = canworker.TpdoTap(raw, on_pdo=lambda m: pdos.append(m),
+    tap = canworker.TpdoTap(raw,
                             on_emcy=lambda n, d: emcy.append((n, d)),
                             on_heartbeat=lambda n, b: beats.append((n, b)),
                             nodes=[1, 2])
@@ -209,27 +224,25 @@ def test_unsolicited_frames_survive_sdo():
           len(emcy) == 1 and emcy[0][0] == 1, str(emcy)[:60])
     check("a heartbeat mid-transfer reaches its handler",
           beats == [(2, 0x05)], str(beats))
-    check("the sensor stream is still routed", len(pdos) == 1)
 
     # A handler that throws must not break the bus thread - these run inside
     # somebody else's SDO transfer.
     boom = canworker.TpdoTap(
         _Bus([msg(0x080 + 1, [0] * 8), msg(0x580 + 1, reply)]),
-        on_pdo=lambda m: None, on_emcy=lambda n, d: 1 / 0,
+        on_emcy=lambda n, d: 1 / 0,
         on_heartbeat=lambda n, b: None, nodes=[1])
     st, _, _, _ = sdo_read(boom, 1, 0x6041, 0, collision_window=0.0)
     check("a throwing handler cannot break the transfer", st is True)
 
     # A frame we do not route must be handed back, not swallowed.
-    passthru = canworker.TpdoTap(_Bus([msg(0x580 + 1, reply)]),
-                                 on_pdo=lambda m: None, nodes=[])
+    passthru = canworker.TpdoTap(_Bus([msg(0x580 + 1, reply)]), nodes=[])
     check("an unrouted frame is returned to the caller",
           passthru.recv(timeout=0.1) is not None)
 
 
 TESTS = [
     test_arm_does_not_deadlock,
-    test_sensor_starts_in_every_mode,
+    test_arm_no_longer_touches_the_sensor,
     test_loop_health,
     test_unsolicited_frames_survive_sdo,
 ]

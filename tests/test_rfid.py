@@ -8,7 +8,6 @@ import threading
 
 from helpers import FAIL, ROOT, check
 
-import autopilot
 import config
 import kinematics
 import motion

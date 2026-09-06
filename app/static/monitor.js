@@ -1,8 +1,7 @@
 // Drive monitoring page. READ-ONLY: it has no controls and, deliberately, it
-// does not claim the auto watchdog (no window.CLAIM_HEARTBEAT here). Leaving
 // this page open on a second screen must never hold a run alive.
 //
-// Detail comes from /api/can, which never calls keepalive(). The shared rail at
+// Detail comes from /api/can. The shared rail at
 // the left still comes from common.js's /api/state poll, without hb=1.
 
 const NODE_ORDER = ['1', '2'];

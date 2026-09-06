@@ -5,7 +5,6 @@
 // vehicle. A web button that silences an alarm is a web button that silences an
 // alarm for a person standing somewhere else.
 //
-// This page does NOT set window.CLAIM_HEARTBEAT, so leaving it open on a wall
 // display cannot hold an auto run alive. See api_state() in server.py.
 
 // info / warn / error map to white, orange, red. The colour is carried by a

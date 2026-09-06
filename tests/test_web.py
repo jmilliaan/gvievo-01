@@ -9,61 +9,41 @@ import threading
 
 from helpers import FAIL, ROOT, check
 
-import autopilot
 import config
 import kinematics
 import motion
 
-def test_monitor_page_does_not_feed_the_watchdog():
-    """A read-only page must not hold an auto run alive.
+def test_no_page_can_hold_the_vehicle_alive():
+    """*** Polling /api/state must not keep anything running. ***
 
-    /api/state used to call keepalive() unconditionally, so ANY page polling it
-    fed the auto watchdog - meaning a monitoring page open on a second screen
-    would keep a run going after the auto page had been closed. The heartbeat is
-    now opt-in, and forgetting the flag stops the run rather than extending it.
+    It used to carry an opt-in heartbeat (?hb=1) feeding the auto watchdog,
+    because a tape-following run was LATCHED motion and something had to prove
+    an operator was still watching. Only the page driving the run was allowed to
+    claim it - a monitor page on a second screen holding a run open was a real
+    bug that was fixed once.
+
+    Nothing is latched now. Manual jogging is HELD, by the /api/drive re-POST,
+    which carries its own liveness. So the heartbeat is gone entirely - and this
+    pins that it did not come back as an unconditional one, which is the shape
+    the original bug had.
     """
     import server as webapp   # app/server.py; see the note on the rename
-    print("\nthe monitoring page cannot hold a run alive")
+    print("\nno page can hold the vehicle alive")
 
-    seen = []
-    real = webapp.ctl.keepalive
-    webapp.ctl.keepalive = lambda: seen.append(1)
-    try:
-        c = webapp.app.test_client()
-        c.get("/api/state")
-        check("/api/state alone does NOT refresh the watchdog", not seen,
-              f"{len(seen)} refresh(es)")
-        c.get("/api/can")
-        check("/api/can does NOT refresh the watchdog", not seen)
-        c.get("/api/state?hb=1")
-        check("/api/state?hb=1 DOES refresh the watchdog", len(seen) == 1)
-    finally:
-        webapp.ctl.keepalive = real
-
-    # Only the page that drives the vehicle may claim it.
-    auto = (ROOT / "app" / "templates" / "auto.html").read_text()
-    mon = (ROOT / "app" / "templates" / "monitor.html").read_text()
-    common = (ROOT / "app" / "static" / "common.js").read_text()
-    check("the auto page claims the heartbeat", "CLAIM_HEARTBEAT = true" in auto)
-    check("the monitor page does not", "CLAIM_HEARTBEAT" not in mon)
-    check("the claim is declared before common.js polls",
-          "prescript" in auto and "prescript" in
-          (ROOT / "app" / "templates" / "base.html").read_text())
-    check("common.js only sends hb=1 when the page claims it",
-          "CLAIM_HEARTBEAT ? '/api/state?hb=1'" in common)
-
-    # The page itself must render and be read-only. The "diagnostic only, not a
-    # safety path" banner that used to head it was removed by request, so what
-    # is asserted here is the PROPERTY rather than the prose: no controls, no
-    # way to write, and the deny-list on screen.
-    c = webapp.app.test_client()
-    body = c.get("/monitor").get_data(as_text=True)
-    check("the monitor page renders",
-          'id="mon-state"' in body and "Control loop" in body)
-    check("it publishes the write deny-list", "403Eh" in body and "40D0h" in body)
-    check("it has no controls", "<button" not in body)
-
-
+    check("the Controller has no keepalive to call",
+          not hasattr(webapp.ctl, "keepalive"))
+    src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+    # The CODE, not the prose - the docstring names ?hb=1 to explain what was
+    # removed and why the opt-in property mattered, and that is worth keeping.
+    body = src[src.index("def api_state"):src.index("def api_preflight")]
+    check("/api/state reads no heartbeat argument",
+          "request.args" not in body and "ctl.keepalive" not in body)
+    check("no page claims a heartbeat any more",
+          not any("CLAIM_HEARTBEAT" in (ROOT / "app" / "static" / f).read_text(encoding="utf-8")
+                  for f in ("common.js", "monitor.js", "manual.js")))
+    # The property that must survive if an autonomous mode returns.
+    check("the opt-in rule is recorded for whoever adds navigation",
+          "opt-in" in src[src.index("def api_state"):src.index("def api_preflight")])
 
 def test_web_cannot_start_the_vehicle():
     """The web app may produce motion by exactly one route: the manual arrows.
@@ -95,14 +75,11 @@ def test_web_cannot_start_the_vehicle():
     check("...and is POST-only, so a link cannot trigger it",
           "GET" not in rules.get("/api/restart", set()))
 
-    src = (ROOT / "app" / "server.py").read_text()
+    src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     check("no arm route is defined at all", '"/api/arm"' not in src)
     check("no auto-run route is defined at all", '"/api/auto/run"' not in src)
 
-    # The auto page is display-only, so it must offer nothing to press.
-    auto = c.get("/auto").data.decode()
-    check("the auto page has no controls", "<button" not in auto)
-    check("...and says where they went", "from the panel" in auto)
+    check("the retired auto page is not served", c.get("/auto").status_code == 404)
 
     # The manual page keeps DISARM - removing a stop path is the wrong
     # direction - but must not offer ARM.
@@ -112,10 +89,12 @@ def test_web_cannot_start_the_vehicle():
     check("...and says arming happens at the panel", "Arm at the panel" in man)
 
     # A dangling handler for a deleted button is a ReferenceError that kills the
-    # whole onState callback and silently freezes the page's telemetry.
-    js = (ROOT / "app" / "static" / "auto.js").read_text()
-    for dead in ("runBtn", "armBtn", "/api/arm", "/api/auto/run"):
-        check(f"auto.js has no reference to {dead}", dead not in js)
+    # whole onState callback and silently freezes the page's telemetry. The auto
+    # page it used to guard is gone, so the surviving scripts carry the rule.
+    for name in ("manual.js", "common.js"):
+        js = (ROOT / "app" / "static" / name).read_text(encoding="utf-8")
+        for dead in ("runBtn", "armBtn", "/api/arm", "/api/auto/run"):
+            check(f"{name} has no reference to {dead}", dead not in js)
 
 
 def test_lidar_page_is_read_only_and_never_reads_clear():
@@ -136,32 +115,23 @@ def test_lidar_page_is_read_only_and_never_reads_clear():
     ids = re.findall(r'<button[^>]*id="([^"]+)"', body)
     check("the only control is the scan toggle", ids == ["scan-toggle"], str(ids))
     check("...and it moves nothing", "api(" not in
-          (ROOT / "app" / "static" / "lidar.js").read_text())
+          (ROOT / "app" / "static" / "lidar.js").read_text(encoding="utf-8"))
     # sec 5: the protective field ends at 2.15 m, not the 3 m on the datasheet
     # headline, and planner behaviour designed around 3 m would be wrong.
     check("it publishes the real protective range", "2.15" in body)
 
     # The cloud is a separate GET, for the same reason /api/can is: a picture
     # polled several times a second must not touch the auto watchdog.
-    seen = []
-    real = webapp.ctl.keepalive
-    webapp.ctl.keepalive = lambda: seen.append(1)
-    try:
-        check("/api/lidar resolves", c.get("/api/lidar").status_code == 200)
-        check("/api/lidar does NOT refresh the watchdog", not seen)
-    finally:
-        webapp.ctl.keepalive = real
+    check("/api/lidar resolves", c.get("/api/lidar").status_code == 200)
     check("there is no POST counterpart",
           c.post("/api/lidar", json={}).status_code == 405)
-    check("the lidar page does not claim the heartbeat",
-          "CLAIM_HEARTBEAT" not in body)
 
     # The rule the page exists to enforce. Dimming is what io.js does for the
     # DIO grid; here a dim lamp would still read as "path clear", so staleness
     # has to LIGHT the lamps instead.
     # The rule now lives in common.js's zoneState, shared with the rail every
     # page shows - so it is asserted there, once, where it is defined.
-    js = (ROOT / "app" / "static" / "common.js").read_text()
+    js = (ROOT / "app" / "static" / "common.js").read_text(encoding="utf-8")
     zs = js[js.index("function zoneState"):js.index("function renderRail")]
     check("staleness lights the zone lamps rather than dimming them",
           "z.stale)   return {on: true" in zs)
@@ -187,23 +157,15 @@ def test_manual_page_shows_the_rfid_tag():
     check("...and says what it is", "Station tags" in man)
 
     # One definition, not two. A copy in both files is a copy that gets fixed
-    # in one of them - which is the whole reason renderSensor lives in
-    # common.js rather than being duplicated per page.
-    common = (ROOT / "app" / "static" / "common.js").read_text()
-    auto = (ROOT / "app" / "static" / "auto.js").read_text()
+    # in one of them - which is the whole reason showRfid lives in common.js
+    # rather than being duplicated per page.
+    common = (ROOT / "app" / "static" / "common.js").read_text(encoding="utf-8")
     check("showRfid is defined in common.js", "function showRfid" in common)
-    check("...and not in auto.js", "function showRfid" not in auto)
     check("common.js calls it from the shared poll", "showRfid(s.rfid" in common)
+    check("...and nothing references the retired branch readout",
+          not any("r-branch" in (ROOT / "app" / "static" / f).read_text(encoding="utf-8")
+                  for f in ("common.js", "manual.js", "monitor.js")))
 
-    # Removing the handler from auto.js must not have left a dangling reference:
-    # that is a ReferenceError inside onState, which silently freezes the whole
-    # page's telemetry. Same failure that the arm/run removal nearly shipped.
-    for dead in ("runBtn", "armBtn", "/api/arm", "/api/auto/run", "r-branch"):
-        check(f"auto.js has no reference to {dead}", dead not in auto)
-
-    # Adding a section must not have turned /manual into a watchdog claimant.
-    check("/manual still does not claim the heartbeat",
-          "CLAIM_HEARTBEAT" not in man)
     check("/manual still cannot arm", 'id="arm"' not in man)
     check("/manual still keeps DISARM", 'id="disarm"' in man)
 
@@ -223,7 +185,7 @@ def test_the_shared_rail_is_on_every_page():
     OPERATOR = ('id="batt"', 'id="vstate"', 'id="alarm"', 'id="zone-rail"')
     DIAGNOSTIC = ('id="loop-work"', 'id="loop-frames"', 'id="wd"')
 
-    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/params"):
+    for page in ("/manual", "/io", "/lidar", "/alarms", "/params"):
         body = c.get(page).get_data(as_text=True)
         for el in OPERATOR:
             check(f"{page} carries {el}", el in body)
@@ -237,7 +199,7 @@ def test_the_shared_rail_is_on_every_page():
     # The tiles moved, so every write to them has to be guarded. An unguarded
     # getElementById(...).textContent for a tile that is not on this page throws
     # inside poll() and silently freezes ALL of the page's telemetry.
-    common = (ROOT / "app" / "static" / "common.js").read_text()
+    common = (ROOT / "app" / "static" / "common.js").read_text(encoding="utf-8")
     check("common.js writes the watchdog through a guarded setter",
           "setText('wd'" in common
           and "document.getElementById('wd').textContent" not in common)
@@ -247,7 +209,7 @@ def test_the_shared_rail_is_on_every_page():
 
     # The verdicts are computed once, on the server. Four pages each deciding
     # what "alarm" means is four chances for one of them to say all is well.
-    worker = (ROOT / "canworker.py").read_text()
+    worker = (ROOT / "canworker.py").read_text(encoding="utf-8")
     check("the alarm verdict is computed server-side", "def _alarm(" in worker)
     check("the battery summary is computed server-side", "def _battery(" in worker)
     check("both reach the browser through the state snapshot",
@@ -264,7 +226,7 @@ def test_the_scan_is_off_until_asked_for():
     check("the toggle starts in the off state", ">Start scan<" in body)
     check("...and says so", "off by default" in body)
 
-    js = (ROOT / "app" / "static" / "lidar.js").read_text()
+    js = (ROOT / "app" / "static" / "lidar.js").read_text(encoding="utf-8")
     check("scanOn starts false", "let scanOn = false;" in js)
     check("the page initialises through setScan(false), not a bare poll",
           "setScan(false);" in js and "\npollCloud();" not in js)
@@ -300,7 +262,7 @@ def test_alarms_page_records_but_cannot_clear():
     # about a live fault is actually looking.
     check("a latched fault says it is cleared at the panel",
           "clear with panel Reset"
-          in (ROOT / "app" / "static" / "alarms.js").read_text())
+          in (ROOT / "app" / "static" / "alarms.js").read_text(encoding="utf-8"))
 
     # The one thing this page must never do. An acknowledge button on a browser
     # silences an alarm for somebody standing somewhere else.
@@ -310,8 +272,8 @@ def test_alarms_page_records_but_cannot_clear():
     # restart, which is the opposite of silencing: it de-energises the drives
     # and throws the log away rather than tidying it. So the checks name the
     # forbidden thing instead of forbidding all controls.
-    js = (ROOT / "app" / "static" / "alarms.js").read_text()
-    srv = (ROOT / "app" / "server.py").read_text()
+    js = (ROOT / "app" / "static" / "alarms.js").read_text(encoding="utf-8")
+    srv = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     for banned in ("id=\"ack\"", "id=\"clear\"", "acknowledge", "Acknowledge"):
         check(f"no {banned} control on the page", banned not in body)
     check("the only endpoint the page POSTs to is the restart",
@@ -333,7 +295,7 @@ def test_alarms_page_records_but_cannot_clear():
     # Three levels, three colours, and the level is never carried by colour
     # alone - a colour-only scheme vanishes in a photograph of the screen,
     # which is how a fault usually reaches somebody who was not there.
-    css = (ROOT / "app" / "static" / "app.css").read_text()
+    css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
     for cls in ("lv-info", "lv-warn", "lv-error"):
         check(f"{cls} is styled", f".{cls}" in css)
     check("the level is also printed as text", 'class="al-lv"' in js)
@@ -380,15 +342,13 @@ def test_params_page_displays_and_cannot_edit():
 
     # Nothing to press, nothing to POST, and no route that writes a profile.
     check("there are no controls", "<button" not in body)
-    js = (ROOT / "app" / "static" / "params.js").read_text()
+    js = (ROOT / "app" / "static" / "params.js").read_text(encoding="utf-8")
     check("the page makes no POST", "api(" not in js)
     check("...and no request of any kind", "fetch(" not in js
           and "apiGet(" not in js)
-    src = (ROOT / "app" / "server.py").read_text()
+    src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     check("there is no endpoint that writes a profile",
           "/api/params" not in src and "config.load(" not in src)
-    check("the params page does not claim the heartbeat",
-          "CLAIM_HEARTBEAT" not in body)
 
     # The whole profile reaches the screen. Generated, so this cannot pass by
     # somebody having remembered to add a row.
@@ -402,11 +362,11 @@ def test_params_page_displays_and_cannot_edit():
 
     # The prose is config.py's, parsed out of it. If it were copied into the
     # template there would be two of every explanation and one would rot.
-    note = "tape to the RIGHT of the sensor"
-    tpl = (ROOT / "app" / "templates" / "params.html").read_text()
+    note = "Both drivers take a POSITIVE 60FFh to travel forward"
+    tpl = (ROOT / "app" / "templates" / "params.html").read_text(encoding="utf-8")
     check("a tuning note reaches the page", note in body)
     check("...from config.py, not from the template",
-          note in (ROOT / "config.py").read_text() and note not in tpl)
+          note in (ROOT / "config.py").read_text(encoding="utf-8") and note not in tpl)
 
 
 def test_params_page_reads_speed_first():
@@ -429,15 +389,13 @@ def test_params_page_reads_speed_first():
     # block does not look like the schema order breaking.
     check("the gathered blocks lead", names[0] == "speed", str(names[:3]))
     schema_order = [n for n in names if n in config._SCHEMA]
-    check("then the control law, then the geometry",
-          schema_order[:2] == ["autopilot", "vehicle"], str(schema_order[:3]))
+    check("then the geometry it runs on",
+          schema_order[0] == "vehicle", str(schema_order[:3]))
 
     speed = next(s for s in secs if s["name"] == "speed")
     keys = [r["key"] for r in speed["rows"]]
     check("both manual jog speeds are there",
           "manual.full_rpm" in keys and "manual.half_ratio" in keys, str(keys))
-    check("both auto speeds are there, slow included",
-          "autopilot.auto_rpm" in keys and "autopilot.auto_slow_rpm" in keys)
     check("and the driver ramps that shape them",
           len([k for k in keys if k.startswith("drivers.ramp.")]) == 4)
     check("every gathered row names the section it lives in, so it can be found "
@@ -460,111 +418,65 @@ def test_params_page_reads_speed_first():
           all(s["rows"] for s in secs) and "manual" not in names, str(names))
 
     body = c.get("/params").get_data(as_text=True)
+    # Headings, not bare words - "vehicle" appears in the intro prose above
+    # every section, so a plain index() comparison passes for the wrong reason.
+    import re as _re
+    heads = _re.findall(r"<h2[^>]*>\s*([a-z ]+)", body)
     check("the page renders the gathered section first",
-          body.index("speed") < body.index("autopilot"))
+          heads and heads[0].strip() == "speed", str(heads[:3]))
     check("...and says where those keys actually live",
-          "autopilot.auto_slow_rpm" in body)
+          "drivers.ramp.auto.accel" in body)
 
 
-def test_params_lists_the_rfid_rules():
-    """Every kind of thing a station tag can mean, grouped by function, with the
-    free slots shown rather than omitted.
+def test_params_does_not_list_retired_rules():
+    """The station-tag rule table went with tape following.
 
-    A page listing only the two implemented rules looks complete, and the next
-    person needs to see there is room for more before inventing a ninth
-    mechanism somewhere else.
+    Two rules were loaded from the profile - the branch latch and the
+    stop-until-Start tags - and both were route features on a fixed tape path.
+    The RFID reader itself is NOT gone; what is gone is anything consuming a tag.
     """
     import server as webapp   # app/server.py; see the note on the rename
-    print("\nthe parameters page lists the RFID rules")
-    c = webapp.app.test_client()
+    print("\n/params no longer lists retired tag rules")
 
-    secs = config.describe()
-    names = [s["name"] for s in secs]
-    check("the block sits directly after speed",
-          names[:2] == ["speed", "rfid rules"], str(names[:3]))
+    body = webapp.app.test_client().get("/params").get_data(as_text=True)
+    for gone in ("branch latch", "stop until start button", "auto_rpm",
+                 "k_ratio", "line_loss_grace"):
+        check(f"/params does not mention {gone}", gone not in body)
+    check("the RFID section itself is still shown", "RFID_IP" in body)
+    check("...and the profile still carries the reader",
+          "192.168.1.200" in body)
 
-    rules = next(s for s in secs if s["name"] == "rfid rules")
-    keys = [r["key"] for r in rules["rows"]]
-    heads = [k for k in keys if "\u00b7" in k]
-    check(f"there are {config.RFID_RULE_SLOTS} rule types",
-          len(heads) == config.RFID_RULE_SLOTS, str(heads))
-    check("the implemented ones are named first",
-          "branch latch" in heads[0] and "stop until start button" in heads[1],
-          str(heads[:2]))
-    check("the rest are numbered free slots",
-          all("undefined rule" in h for h in heads[2:]), str(heads[2:]))
+def test_landing_page_is_manual_and_the_pill_says_armed():
+    """The bare address lands on the only page that can drive.
 
-    # Loaded rules appear under their own type, not in a flat list.
-    for r in config.BRANCH_LATCH:
-        check(f"junction {r['entry_tag']} is listed",
-              any(r["entry_tag"] in k for k in keys), str(keys))
-    for tag in config.STOP_TAGS:
-        check(f"station tag {tag} is listed",
-              any(tag in k for k in keys), str(keys))
-
-    # The old standalone branch_latch section is gone, not duplicated - the
-    # no-duplicates invariant in test_params_page_reads_speed_first would catch
-    # it, but say so here too since removing it was the point.
-    check("the junction table is not also listed on its own",
-          "branch_latch" not in names, str(names))
-
-    body = c.get("/params").get_data(as_text=True)
-    check("it renders", "rfid rules" in body and "undefined rule 6" in body)
-    check("...and says a tag may mean exactly one thing",
-          "exactly one thing" in body)
-    check("...and counts the tags in use",
-          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | set(config.STOP_TAGS))} tag id(s)"
-          in body)
-
-
-def test_landing_page_is_auto_and_the_pill_says_armed():
-    """The bare address lands on /auto, and the header pill answers "is this
-    vehicle energised?" rather than naming the CAN adapter.
-
-    The pill is the only always-visible indicator on seven pages, so the two
-    failure states have to outrank the armed state in it. "DISARMED" is a
-    reassuring word, and showing it while the bus is missing would be a lie of
-    exactly the kind this codebase keeps out of the rail.
+    It used to land on /auto, which watched a tape-following run and claimed
+    that run's heartbeat. Both are gone, so the landing page is /manual - and a
+    redirect rather than a render, so the address bar names the page it shows.
     """
     import server as webapp   # app/server.py; see the note on the rename
-    print("\nthe landing page is /auto and the pill says armed")
-    c = webapp.app.test_client()
+    print("\nthe landing page and the armed pill")
 
+    c = webapp.app.test_client()
     r = c.get("/")
-    check("the bare address redirects", r.status_code in (301, 302),
+    check("/ redirects rather than rendering", r.status_code in (301, 302),
           str(r.status_code))
-    check("...to /auto", r.headers.get("Location", "").endswith("/auto"),
-          r.headers.get("Location"))
-
-    common = (ROOT / "app" / "static" / "common.js").read_text()
-    check("the pill shows armed state", "'ARMED' : 'DISARMED'" in common)
-    check("a silent driver still outranks it",
-          "DRIVER SILENT" in common
-          and common.index("DRIVER SILENT") < common.index("'ARMED' : 'DISARMED'"))
-    check("...and so does a missing bus",
-          "!s.connected" in common
-          and common.index("!s.connected") < common.index("'ARMED' : 'DISARMED'"))
-    check("the bus identity is no longer in the pill",
-          "s.how + (s.armed" not in common)
-
-    # It moved rather than being deleted: which adapter can0 resolved to is a
-    # fault-finding fact, and /monitor is the fault-finding page.
-    mon = c.get("/monitor").get_data(as_text=True)
-    check("/monitor carries the bus identity instead", 'id="bus-how"' in mon)
-    check("...fed from /api/can, which does not claim the watchdog",
-          "renderBus" in (ROOT / "app" / "static" / "monitor.js").read_text())
-    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/params"):
-        check(f"{page} does not carry the bus tile",
-              'id="bus-how"' not in c.get(page).get_data(as_text=True))
-
+    check("...to /manual", "/manual" in r.headers.get("Location", ""),
+          r.headers.get("Location", ""))
+    check("the retired auto page is gone", c.get("/auto").status_code == 404)
+    check("...and so is its script",
+          not (ROOT / "app" / "static" / "auto.js").exists())
+    check("...and its template",
+          not (ROOT / "app" / "templates" / "auto.html").exists())
+    check("the nav no longer offers it",
+          '/auto' not in (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8"))
 
 TESTS = [
     test_params_page_displays_and_cannot_edit,
     test_params_page_reads_speed_first,
-    test_params_lists_the_rfid_rules,
-    test_landing_page_is_auto_and_the_pill_says_armed,
+    test_params_does_not_list_retired_rules,
+    test_landing_page_is_manual_and_the_pill_says_armed,
     test_web_cannot_start_the_vehicle,
-    test_monitor_page_does_not_feed_the_watchdog,
+    test_no_page_can_hold_the_vehicle_alive,
     test_lidar_page_is_read_only_and_never_reads_clear,
     test_manual_page_shows_the_rfid_tag,
     test_the_shared_rail_is_on_every_page,

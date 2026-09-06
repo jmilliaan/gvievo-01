@@ -17,33 +17,11 @@
         Released for {{ watchdog_ms }} ms &rarr; the AGV stops itself.</span>
 </div>
 
-<section class="sensor pad-width">
-  <h2>Magnetic tape <small>SICK MLS node 10 &middot; TPDO1 0x18A</small></h2>
+{# The magnetic-tape strip used to sit above this. It went with tape following;
+   the MLS hardware stays installed because the IMU lives inside it, and that is
+   read on a bench by drivers/canbus/read_imu.py rather than by this page.
 
-  <div class="track" id="track">
-    <div class="track-rule"></div>
-    <div class="track-zero"></div>
-    <span class="track-end track-lo" id="track-min"></span>
-    <span class="track-end track-hi" id="track-max"></span>
-    <div class="lcp" id="lcp1" data-n="1"></div>
-    <div class="lcp" id="lcp2" data-n="2"></div>
-    <div class="lcp" id="lcp3" data-n="3"></div>
-    <div class="track-empty" id="track-empty">not armed</div>
-  </div>
-
-  <div class="tel-grid">
-    <div class="tel key"><span>#LCP</span><b id="s-nlcp">&ndash;</b><i id="s-label">&mdash;</i></div>
-    <div class="tel key"><span>Position</span><b id="s-pos">&ndash;</b><i>mm (LCP2)</i></div>
-    <div class="tel"><span>Field</span><b id="s-field">&ndash;</b><i id="s-min">digits</i></div>
-    <div class="tel"><span>Level</span><b id="s-level">&ndash;</b><i id="s-pol">&mdash;</i></div>
-  </div>
-</section>
-
-{# Its own section rather than extra tiles in the tape grid above: the MLS and
-   the RFID reader are different sensors on different buses, and one readout
-   blending them invites reading a tape figure as a station figure.
-
-   Here because recording a junction's tag means jogging the AGV over it by
+   The reader is here because recording a tag means jogging the AGV over it by
    hand, which happens on the page with the arrows. The value persists after
    the vehicle has rolled past - see showRfid() in common.js. #}
 <section class="sensor pad-width">

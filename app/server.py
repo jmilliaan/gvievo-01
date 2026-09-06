@@ -1,10 +1,10 @@
-"""Flask front end for the AGV: a manual jog pad and an auto (line-follow) page.
+"""Flask front end for the AGV: a manual jog pad and diagnostic pages.
 
 Read the safety model before changing anything here:
 
   * THE WEB APP CANNOT START THE VEHICLE. There is no /api/arm and no
-    /api/auto/run: the physical panel owns entering every state (PB Reset arms
-    in the selected mode, PB Start runs auto). The only thing here that can
+    /api/arm: the physical panel owns entering every state - the selector
+    sitting in MANUAL is the arm command. The only thing here that can
     produce motion is /api/drive, and only while the vehicle is already armed
     in MANUAL - which only the panel can bring about.
   * A manual direction is HELD, not latched. The browser re-POSTs /api/drive
@@ -35,7 +35,6 @@ for _d in ("", "core", "drivers", os.path.join("drivers", "canbus")):
 # Bare imports throughout - see the note in canworker.py on why the layer
 # directories go on sys.path instead of becoming packages. templates/ and
 # static/ are siblings of THIS file, which is exactly where Flask looks.
-import autopilot  # noqa: E402
 import config  # noqa: E402
 import events  # noqa: E402
 import motion  # noqa: E402
@@ -57,17 +56,16 @@ def _fail(msg, code=409):
 
 @app.get("/")
 def index():
-    """The bare address lands on /auto, which is the page a run is watched from.
+    """The bare address lands on /manual, which is the only page that drives.
 
-    A redirect rather than rendering /auto here, so the address bar names the
-    page it is showing and a bookmark of the landing page is a bookmark of /auto.
+    A redirect rather than rendering it here, so the address bar names the page
+    it is showing and a bookmark of the landing page is a bookmark of /manual.
 
-    *** /auto claims the auto watchdog *** (window.CLAIM_HEARTBEAT), so this
-    also means a browser left on the bare address feeds it. That is deliberate -
-    the landing page is the operator's page - but it is the reason a second
-    screen should be parked on /monitor or /alarms, neither of which claims.
+    It used to land on /auto, which watched a tape-following run. That page is
+    gone with the feature; when navigation lands, its page becomes the natural
+    landing target again.
     """
-    return redirect("/auto")
+    return redirect("/manual")
 
 
 @app.get("/manual")
@@ -148,43 +146,31 @@ def params():
         sections=config.describe(),
         profile=config.PROFILE_NAME, path=config.PROFILE_PATH_LOADED,
         env_var=config.PROFILE_ENV_VAR,
-        zeta=f"{autopilot.predicted_zeta():.2f}",
         enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])
-                 for name in ("dio", "panel", "rfid", "lidar", "monitor")],
-        dry_run=config.DRY_RUN)
-
-
-@app.get("/auto")
-def auto():
-    return render_template("auto.html", page="auto",
-                           auto_rpm=int(config.AUTO_RPM),
-                           auto_slow_rpm=int(config.AUTO_SLOW_RPM),
-                           k_ratio=config.K_RATIO, kd=config.KD,
-                           zeta=f"{autopilot.predicted_zeta():.2f}",
-                           slow_k_ratio=config.SLOW_K_RATIO,
-                           slow_kd=config.SLOW_KD,
-                           slow_zeta=f"{autopilot.predicted_zeta(slow=True):.2f}",
-                           dry_run=config.DRY_RUN,
-                           watchdog_ms=int(config.AUTO_WATCHDOG_S * 1000))
+                 for name in ("dio", "panel", "rfid", "lidar", "monitor")])
 
 
 # ---- api ------------------------------------------------------------------
 
 @app.get("/api/state")
 def api_state():
-    """Vehicle state. ?hb=1 ALSO refreshes the auto watchdog.
+    """Vehicle state. Read-only - polling this cannot keep anything alive.
 
-    The heartbeat is opt-in, and that is the safety-relevant part. It used to
-    be unconditional, which meant any page polling this fed the watchdog - so a
-    monitoring page open on a second screen would hold an auto run alive after
-    the auto page had been closed. Now only the page driving the run claims it.
+    *** It used to carry an opt-in heartbeat (?hb=1) that fed the auto
+    watchdog. *** That existed because a tape-following run was LATCHED motion:
+    something had to prove an operator was still watching, and only the page
+    driving the run was allowed to claim it.
 
-    Fail-safe in the right direction: a page that forgets the flag loses its
-    heartbeat and the run stops, rather than a bystander silently holding it
-    open.
+    Nothing here is latched any more. Manual jogging is HELD - the browser
+    re-POSTs /api/drive about every 100 ms and the bus thread zeroes the
+    setpoint if it misses several - so the drive path carries its own liveness
+    and this endpoint needs none.
+
+    *** When an autonomous mode returns, the opt-in property has to come back
+    with it. *** Making the heartbeat unconditional is the tempting shortcut and
+    it is the bug that was already fixed once: a monitoring page on a second
+    screen then holds a run alive after the driving page is closed.
     """
-    if request.args.get("hb") == "1":
-        ctl.keepalive()
     return jsonify(ctl.snapshot())
 
 
@@ -196,12 +182,16 @@ def api_preflight():
         return _fail(e)
 
 
-# There is deliberately no /api/arm and no /api/auto/run.
+# There is deliberately no /api/arm.
 #
 # The web app may not put the vehicle into motion by any route except the manual
-# jog arrows below, and only while it is already armed in manual. Arming and
-# starting an auto run belong to the physical panel - PB Reset arms, PB Start
-# runs - so a browser left open on a bench cannot move a 150 kg vehicle.
+# jog arrows below, and only while it is already armed in manual. Arming belongs
+# to the physical panel - the selector resting in MANUAL is the arm command - so
+# a browser left open on a bench cannot move a 150 kg vehicle.
+#
+# *** Keep this property when navigation lands. *** The temptation will be a
+# "go" button on a page; the panel owning every entry into motion is what makes
+# a browser incapable of starting the vehicle.
 #
 # What remains here only ever STOPS: disarm de-energises, stop zeroes the
 # setpoint, and drive is a dead-man that the operator must keep holding.
@@ -330,10 +320,10 @@ def api_events():
 
 @app.get("/api/can")
 def api_can():
-    """Drive monitoring detail. Read-only, and deliberately does NOT keepalive.
+    """Drive monitoring detail. Read-only.
 
     Split from /api/state so a monitoring page can poll as often as it likes
-    without touching the auto watchdog.
+    and carry far more detail than a status line.
     """
     snap = ctl.snapshot()
     return jsonify({
@@ -348,11 +338,10 @@ def api_can():
 
 @app.get("/api/lidar")
 def api_lidar():
-    """The decimated point cloud. Read-only, and deliberately does NOT keepalive.
+    """The decimated point cloud. Read-only.
 
     Split from /api/state for the same reason /api/can is: this is polled by one
-    page several times a second and carries far more than a status line, and no
-    amount of looking at a picture should hold an auto run alive.
+    page several times a second and carries far more than a status line.
 
     GET only, and there is no counterpart that writes. The scanner is read-only
     business - see drivers/lidar.py.
@@ -366,24 +355,11 @@ def api_config():
         "profile": config.PROFILE_NAME,
         "profile_path": config.PROFILE_PATH_LOADED,
         "full_rpm": config.MANUAL_FULL_RPM, "half_rpm": config.MANUAL_HALF_RPM,
-        "auto_rpm": config.AUTO_RPM,
-        "auto_slow_rpm": config.AUTO_SLOW_RPM,
         "driver_ramp": config.RAMP,   # 6083h/6084h, per mode
         "manual_watchdog_ms": int(config.MANUAL_WATCHDOG_S * 1000),
-        "auto_watchdog_ms": int(config.AUTO_WATCHDOG_S * 1000),
         "invert_left": config.INVERT_LEFT, "invert_right": config.INVERT_RIGHT,
+        "use_rpdo": config.CAN_USE_RPDO,
         "table": {d: motion.velocities(d) for d in motion.PAD},
-        "autopilot": {
-            "dry_run": config.DRY_RUN, "invert_error": config.INVERT_ERROR,
-            "k_ratio": config.K_RATIO, "kd": config.KD, "ki": config.KI,
-            "tau_d_s": config.TAU_D_S, "auto_rpm": config.AUTO_RPM,
-            "auto_slow_rpm": config.AUTO_SLOW_RPM,
-            "slow_k_ratio": config.SLOW_K_RATIO, "slow_kd": config.SLOW_KD,
-            "slow_zeta": round(autopilot.predicted_zeta(slow=True), 4),
-            "zeta": round(autopilot.predicted_zeta(), 4),
-            "ramp_accel": config.RAMP_ACCEL_RPM_S,
-            "line_loss_grace_m": config.LINE_LOSS_GRACE_M,
-        },
     })
 
 
@@ -410,7 +386,7 @@ def main():
 
     ctl.start()
     print(f"AGV web UI on http://{args.host}:{args.port}/  "
-          f"(manual: /manual, auto: /auto)")
+          f"(manual: /manual)")
     try:
         app.run(host=args.host, port=args.port, debug=args.debug,
                 use_reloader=args.debug, threaded=True)

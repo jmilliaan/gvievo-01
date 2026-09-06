@@ -63,92 +63,16 @@ function setPill(text, cls) {
   p.className = 'pill' + (cls ? ' ' + cls : '');
 }
 
-// ---- MLS tape strip -------------------------------------------------------
-// Lives here rather than in auto.js because both pages show it: auto to see what
-// the PID is reacting to, manual to line the AGV up on the tape before handing
-// over. No-ops on any page without a #track element.
-
-// Full scale of the strip, in mm either side of centre. Comes from the server
-// (autopilot.sensor_max_mm) rather than being a constant here, because it must
-// match what the follower discards against.
-//
-// It was hardcoded at 65, from an assumed ~130 mm sensing width. The MLS 200 in
-// this vehicle measures +/-100 mm, so everything between 65 and 100 mm pinned at
-// the edge of the bar and read as the same value - over exactly the range that
-// matters at a diverter, where the second tape sits.
-const TRACK_HALF_FALLBACK = 100;
-
-function placeLcp(el, track, halfMm) {
-  if (!el) return;
-  if (!track) { el.style.display = 'none'; return; }
-  const pct = 50 + 50 * Math.max(-1, Math.min(1, track.pos_mm / halfMm));
-  el.style.display = 'block';
-  el.style.left = pct + '%';
-  el.dataset.mm = (track.pos_mm > 0 ? '+' : '') + track.pos_mm
-                  + (track.width !== null ? ` w${track.width}` : '');
-}
-
-function renderSensor(s) {
-  if (!document.getElementById('track')) return;
-  const txt = (id, v) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = v;
-  };
-  const sen = s.sensor;
-  const half = s.sensor_range_mm || TRACK_HALF_FALLBACK;
-  const byIndex = {};
-  if (sen) for (const t of sen.tracks) byIndex[t.index] = t;
-  placeLcp(document.getElementById('lcp1'), byIndex[1], half);
-  placeLcp(document.getElementById('lcp2'), byIndex[2], half);
-  placeLcp(document.getElementById('lcp3'), byIndex[3], half);
-  // The ends, labelled. Without them the strip's range is invisible, which is
-  // how a bar reading +/-65 went unnoticed against a +/-100 mm sensor.
-  txt('track-min', '\u2212' + half);
-  txt('track-max', '+' + half);
-
-  const empty = document.getElementById('track-empty');
-  if (empty) {
-    empty.style.display = (sen && sen.has_track) ? 'none' : 'flex';
-    // s.armed, not a per-page notion of armed: the sensor now streams on any
-    // arm, so "not armed" is the honest reason on both pages.
-    empty.textContent = sen ? 'no track'
-                            : (s.armed ? 'waiting for TPDO1…' : 'not armed');
-  }
-
-  txt('s-nlcp',  sen ? sen.nlcp : '–');
-  txt('s-label', sen ? sen.label : '—');
-  txt('s-pos', byIndex[2] ? (byIndex[2].pos_mm > 0 ? '+' : '') + byIndex[2].pos_mm : '–');
-  txt('s-level', sen ? sen.track_level : '–');
-  txt('s-pol',   sen ? sen.polarity : '—');
-  txt('s-frames', s.sensor_frames);
-  txt('s-age', s.sensor_age_s === null ? '—' : s.sensor_age_s.toFixed(1) + ' s ago');
-  txt('s-marker', sen && (sen.marker.intro || sen.marker.code) ? sen.marker.code : '–');
-
-  const f = document.getElementById('s-field');
-  const min = document.getElementById('s-min');
-  if (!f || !min) return;
-  f.textContent = s.field_level === null ? '–' : s.field_level;
-  if (s.field_level !== null && s.min_level !== null) {
-    const weak = s.field_level < s.min_level;
-    min.textContent = weak ? `below min ${s.min_level}` : `min ${s.min_level}`;
-    f.style.color = weak ? 'var(--hazard-ink)' : '';
-  } else {
-    min.textContent = 'digits';
-    f.style.color = '';
-  }
-}
-
 // ---- RFID station tags ----------------------------------------------------
-// Lives here rather than in auto.js for the same reason renderSensor does: both
-// pages show it. Auto needs the standing junction order; MANUAL needs the tag
-// itself, because reading a tag's four-hex value means jogging the vehicle over
-// it by hand, and that is done on the page with the arrows.
+// Lives here rather than on one page: reading a tag's four-hex value means
+// jogging the vehicle over it by hand, so it belongs on the page with the
+// arrows - and every page benefits from seeing the reader is alive.
 //
 // Every lookup is guarded, so a page showing three tiles and a page showing four
 // run the same code. No-ops entirely on a page with no #r-tag.
 //
 // The reader is on its own thread; this only ever renders what it published.
-function showRfid(r, b) {
+function showRfid(r) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   if (!r || !document.getElementById('r-tag')) return;
   // Live only. The tag shows while it is being READ and clears when the vehicle
@@ -160,23 +84,9 @@ function showRfid(r, b) {
   set('r-age', r.tag ? 'reading' : '—');
   set('r-count', r.tags_seen);
 
-  // The standing junction order. `straight` is the resting state, not a
-  // fault, so only a live order or an unhonoured one is coloured.
-  b = b || {};
-  set('r-branch', b.intent || 'straight');
-  // The slow zone is the same entry-to-exit interval as the order, so it is
-  // shown on the same tile rather than earning one of its own. It is appended
-  // because it is orthogonal to the order: a zone can be latched while the
-  // vehicle carries straight on through it.
-  const why = b.unhonoured ? 'side not in this diverter'
-            : b.set_by ? 'tag ' + b.set_by
-            : b.junctions ? b.junctions + ' junction(s) configured'
-            : 'no junctions configured';
-  set('r-branch-by', b.slow ? why + ' · SLOW' : why);
-  const br = document.getElementById('r-branch');
-  if (br) br.style.color = b.unhonoured ? 'var(--stop)'
-                         : (b.slow || (b.intent && b.intent !== 'straight'))
-                           ? 'var(--hazard-ink)' : '';
+  // The standing junction order used to be shown here. It went with tape
+  // following - nothing consumes a tag today. The reader itself is still live
+  // above, because station identity is what a localiser will want from it.
 
   // Three states worth distinguishing, because they need different actions:
   // disabled (nothing to do), carrier down (physical), connected but silent
@@ -313,20 +223,20 @@ function renderLoopHealth(lp) {
   }
 }
 
-// Every page polls this. A page that is DRIVING the vehicle must also claim the
-// auto watchdog, by setting window.CLAIM_HEARTBEAT before this script runs; the
-// poll then adds ?hb=1 and the server refreshes the deadline.
+// Every page polls this. Polling is READ-ONLY - it cannot keep the vehicle
+// alive, because nothing here is latched: manual jogging is held by the
+// /api/drive re-POST, which carries its own liveness.
 //
-// Opt-in, not automatic: it used to be unconditional, which meant the monitor
-// page open on a second screen would hold an auto run alive after the auto page
-// was closed. Forgetting the flag stops the run, which is the safe direction.
+// This used to add ?hb=1 on the page driving an auto run, opt-in so that a
+// monitor page on a second screen could not hold a run open after the driving
+// page was closed. If an autonomous mode returns, that opt-in property has to
+// return with it rather than the heartbeat being made unconditional.
 const listeners = [];
 function onState(fn) { listeners.push(fn); }
 
 async function poll() {
   try {
-    const s = await apiGet(window.CLAIM_HEARTBEAT ? '/api/state?hb=1'
-                                                  : '/api/state');
+    const s = await apiGet('/api/state');
     // The pill answers the one question worth having on every page: is this
     // vehicle energised? The bus identity that used to be here ("socketcan:can0")
     // is a commissioning fact, not an operating one, and it moved to /monitor.
@@ -370,8 +280,7 @@ async function poll() {
     // reload; logging them here too would just double every line.
     syncEvents(s.event_seq);
 
-    renderSensor(s);
-    showRfid(s.rfid, s.branch);
+    showRfid(s.rfid);
     listeners.forEach(fn => fn(s));
   } catch (e) {
     setPill('server unreachable', 'bad');

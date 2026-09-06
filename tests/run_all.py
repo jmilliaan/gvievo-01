@@ -21,7 +21,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import helpers  # noqa: E402
 
 MODULES = [
-    "test_control",
     "test_config",
     "test_canworker",
     "test_health",
@@ -29,24 +28,23 @@ MODULES = [
     "test_lss",
     "test_imu",
     "test_rpdo",
-    "test_logging",
     "test_rfid",
     "test_dio",
     "test_lidar",
     "test_panel",
-    "test_branch",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 1007
+EXPECTED_CHECKS = 696
 
 
 def main():
-    print(f"autopilot config: K_RATIO={helpers.config.K_RATIO} "
-          f"KD={helpers.config.KD} KI={helpers.config.KI} "
-          f"zeta={helpers.autopilot.predicted_zeta():.3f} "
-          f"DRY_RUN={helpers.config.DRY_RUN}")
+    print(f"profile {helpers.config.PROFILE_NAME}: "
+          f"can {helpers.config.CAN_BITRATE // 1000} kbps "
+          f"use_rpdo={helpers.config.CAN_USE_RPDO} "
+          f"jog {helpers.config.MANUAL_FULL_RPM} r/min "
+          f"6083h={helpers.config.ACCEL_RPM_S}")
 
     ran = 0
     for name in MODULES:
