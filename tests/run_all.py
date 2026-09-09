@@ -36,7 +36,7 @@ MODULES = [
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 884
+EXPECTED_CHECKS = 1085
 
 
 def main():

@@ -227,9 +227,268 @@ def test_unsolicited_frames_survive_sdo():
           passthru.recv(timeout=0.1) is not None)
 
 
+def test_horn_follows_commanded_motion():
+    """DO high whenever motion is commanded, in either mode, and never else."""
+    print("\ncanworker: the horn")
+    import canworker
+
+    class FakeDio:
+        def __init__(self):
+            self.calls = []
+
+        def set_coil(self, ch, value, hold_s):
+            self.calls.append((ch, value, hold_s))
+
+    ctl = canworker.Controller()
+    fake = FakeDio()
+    ctl._dio = fake
+
+    def horn(armed, target):
+        fake.calls.clear()
+        ctl._update_horn(armed, target)
+        check_ch = [c for c in fake.calls if c[0] == config.HORN_DO_CHANNEL]
+        return check_ch[-1][1] if check_ch else None
+
+    check("a jog sounds it", horn(True, (600, 600)) is True)
+    check("so does a spin, where the wheels oppose each other and the vehicle "
+          "does not go anywhere a bystander expects",
+          horn(True, (600, -600)) is True)
+    check("an auto run sounds it - the same vehicle, so the same warning",
+          horn(True, (800, 810)) is True)
+    check("a single creeping wheel still counts as motion",
+          horn(True, (0, 40)) is True)
+
+    check("armed and holding zero is silent - arming is not motion",
+          horn(True, (0, 0)) is False)
+    check("a disarmed vehicle is silent", horn(False, (0, 0)) is False)
+    # The interlock, stated rather than implied. A setpoint left standing from
+    # before a disarm must not sound the horn on a vehicle that cannot move.
+    check("...even if a setpoint is somehow still standing",
+          horn(False, (600, 600)) is False)
+
+    check("the command carries the renewal deadline, so a dead tick drops it",
+          fake.calls[-1][2] == config.HORN_HOLD_S, str(fake.calls[-1]))
+
+    # Renewed every tick, not written on the edge - that is what makes the
+    # deadline in dio.set_coil() a live watchdog rather than a formality.
+    fake.calls.clear()
+    for _ in range(5):
+        ctl._update_horn(True, (600, 600))
+    check("a held jog renews the claim every tick", len(fake.calls) == 5)
+
+    # And the policy has to be ON the tick, not merely available to it.
+    src = (ROOT / "canworker.py").read_text()
+    body = src[src.index("def _run(self)"):src.index("def _update_horn")]
+    check("_run() calls it on every tick, outside any armed-only branch",
+          "self._update_horn(armed, target)" in body)
+
+    horn_at = src.index("self._update_horn(armed, target)")
+    check("and does so BEFORE the setpoint reaches the wheels",
+          horn_at < src.index("self._write_target(target)", horn_at))
+
+
+def test_a_safety_stop_is_logged_even_though_it_is_not_a_fault():
+    """An HWTO/STO stop must leave a trace, and the fault edge cannot provide one.
+
+    The BLVD-KRD manual lists "HWTO signal input is active" as the cause of
+    CiA 402 transitions 7, 9, 10 and 12 - ordinary moves out of Operation
+    enabled. A fault is transition 13, a separate path. So the safety chain
+    removing torque leaves the FAULT bit clear and 1001h at zero, and the
+    existing fault-edge logger stays silent: the vehicle stops and the event
+    log shows nothing, which reads as a vehicle that stopped for no reason.
+
+    This is the regression that matters, so it is driven through the real
+    _poll_telemetry() with the statusword a stopped drive actually reports.
+    """
+    import canworker
+    import config
+    import events
+    print("\nan STO stop is logged even though the drive calls it no fault")
+
+    ctl = canworker.Controller()
+    words = {}
+
+    def fake_read(nid, index, sub=0, **kw):
+        if index == 0x6041:
+            return words[nid]
+        if index == 0x1001:
+            return 0            # error register CLEAR - this is not a fault
+        if index == 0x603F:
+            return 0            # no alarm code either: plain loss of torque
+        return 0
+
+    ctl._read = fake_read
+    ctl._read_i32 = lambda nid, index, sub=0, **kw: 0
+
+    # Running normally.
+    for n in config.NODES:
+        words[n] = 0x1737
+    ctl._poll_telemetry()
+    check("a drive in Operation enabled decodes as such",
+          all(ctl._telemetry[n]["state"] == "Operation enabled"
+              for n in config.NODES))
+    events.clear()
+    ctl._poll_telemetry()
+    check("a steady state logs nothing - the edge really is an edge",
+          not events.since(0)[1], str(events.since(0)[1]))
+
+    # The safety chain takes torque away.
+    events.clear()
+    for n in config.NODES:
+        words[n] = 0x0040                       # Switch on disabled
+    ctl._poll_telemetry()
+    msgs = [e["msg"] for e in events.since(0)[1]]
+
+    check("*** the drive does NOT call this a fault ***",
+          all(not ctl._telemetry[n]["fault"] for n in config.NODES)
+          and all(not ctl._telemetry[n]["error_reg"] for n in config.NODES),
+          "so the FAULT-bit logger has nothing to report")
+    check("...and indeed no FAULT event is emitted",
+          not any("FAULT" in m for m in msgs), str(msgs))
+    check("*** but the state transition IS logged, per node ***",
+          sum("Operation enabled -> Switch on disabled" in m for m in msgs)
+          == len(config.NODES), str(msgs))
+    check("...as a warning, because leaving Operation enabled while armed is "
+          "something this software did not do",
+          all(e["level"] == "warn" for e in events.since(0)[1]
+              if "Operation enabled ->" in e["msg"]))
+    check("...naming the statusword and the error code, which is what tells a "
+          "plain loss of torque from an HWTO alarm",
+          all("statusword 0x0040" in m and "error code 0x0000" in m
+              for m in msgs if "Operation enabled ->" in m), str(msgs))
+
+    # Coming back is worth a line too, and a quieter one.
+    events.clear()
+    for n in config.NODES:
+        words[n] = 0x1737
+    ctl._poll_telemetry()
+    back = [e for e in events.since(0)[1] if "-> Operation enabled" in e["msg"]]
+    check("the drives coming back is logged as well",
+          len(back) == len(config.NODES), str(back))
+    check("...at info, because that direction is the recovery",
+          all(e["level"] == "info" for e in back))
+    events.clear()
+
+
+def test_a_safety_stop_holds_the_run_and_resumes_itself():
+    """*** This vehicle RESUMES BY ITSELF after a protective-field stop. ***
+
+    That is a deliberate policy choice and the opposite of what every other
+    involuntary stop here does, so the properties are pinned rather than left
+    to read off the code: the run is HELD and not ended, the wheels are at zero
+    for the whole hold, the resume waits auto_start_delay_s, and a latched
+    fault stops the whole thing dead.
+
+    The detection matters as much as the resume. An HWTO stop keeps answering
+    CAN, keeps the FAULT bit clear and keeps 1001h at zero, so nothing else in
+    this file can see it - runs 0048/0049 sat commanding ~950 r/min into
+    de-energised drives for 9 and 19 seconds because of exactly that.
+    """
+    import time
+    import canworker
+    import config
+    import events
+    print("\na safety stop holds the run, then resumes it by itself")
+
+    ctl = canworker.Controller()
+    ctl._armed, ctl._mode = True, "auto"
+    ctl._auto_running = True
+    ctl._follower._v_rpm = config.AUTO_RPM
+
+    ok = {"enable": False}
+    ctl._reenable_drives = lambda: ok["enable"]
+
+    def drives(state):
+        """0x1737 = Operation enabled, 0x1270 = the HWTO signature."""
+        for n in config.NODES:
+            ctl._telemetry[n]["statusword"] = state
+
+    # -- running normally --------------------------------------------------
+    drives(0x1737)
+    ctl._eto_scan()
+    check("a healthy run is not held", ctl._eto_hold is None)
+
+    # -- the chain takes torque away --------------------------------------
+    events.clear()
+    drives(0x1270)
+    ctl._eto_scan()
+    check("*** the run NOTICES - this is what runs 0048/0049 could not do ***",
+          ctl._eto_hold is not None, str(ctl._eto_hold))
+    check("*** and it is a HOLD, not the end of the run ***",
+          ctl._auto_running is True,
+          "ending it would close the log and lose the lap")
+    check("the wheels go to zero", ctl._target == (0, 0), str(ctl._target))
+    check("...and the ramp is collapsed, so the resume starts from rest "
+          "rather than from the setpoint it was carrying",
+          ctl._follower._v_rpm == 0, f"{ctl._follower._v_rpm}")
+    check("the reason names the chain", "safety chain" in ctl._eto_hold)
+    check("it says so once, on the edge", len(events.since(0)[1]) == 1,
+          str(events.since(0)[1]))
+    ctl._eto_scan()
+    check("...and holding is silent after that", len(events.since(0)[1]) == 1)
+
+    # -- a chain that stays open just keeps retrying -----------------------
+    ctl._arm_retry_at = 0.0
+    ctl._eto_scan()
+    check("a failed re-enable does not end the run",
+          ctl._auto_running is True and ctl._eto_hold is not None)
+    check("...and schedules no resume", ctl._eto_resume_at == 0.0)
+
+    # -- a latched fault outranks the whole mechanism ----------------------
+    ctl._fault = "somebody pressed something"
+    ctl._arm_retry_at = 0.0
+    ok["enable"] = True
+    ctl._eto_scan()
+    check("*** a latched fault blocks the automatic resume ***",
+          ctl._eto_resume_at == 0.0,
+          "anything that latched a fault wanted a human, and this must not "
+          "talk it round")
+    ctl._fault = None
+
+    # -- torque comes back -------------------------------------------------
+    events.clear()
+    ctl._arm_retry_at = 0.0
+    ctl._eto_scan()
+    check("torque restored schedules a resume", ctl._eto_resume_at > 0)
+    check("...after the same delay a Start press gets, not instantly",
+          ctl._eto_resume_at - time.monotonic()
+          > config.AUTO_START_DELAY_S - 0.05,
+          f"{config.AUTO_START_DELAY_S} s")
+    check("...and warns that it is about to move on its own",
+          any("BY ITSELF" in e["msg"] for e in events.since(0)[1]),
+          str([e["msg"] for e in events.since(0)[1]]))
+    check("still held until the delay is up", ctl._eto_hold is not None)
+
+    ctl._eto_resume_at = time.monotonic() - 0.001
+    ctl._eto_scan()
+    check("*** then the run carries on, with no button pressed ***",
+          ctl._eto_hold is None and ctl._auto_running is True)
+    check("the watchdog deadline is refreshed on the way out, or the resume "
+          "would trip it immediately", ctl._deadline > time.monotonic())
+
+    # -- a hold cannot outlive its run -------------------------------------
+    drives(0x1270)
+    ctl._eto_scan()
+    check("it can hold again later in the same run", ctl._eto_hold is not None)
+    ctl._end_auto_run("auto run STOP (operator)", hard=True)
+    check("ending the run drops the hold", ctl._eto_hold is None
+          and ctl._eto_resume_at == 0.0)
+
+    # -- and it only ever applies to an auto run ---------------------------
+    ctl._mode, ctl._auto_running = "manual", False
+    drives(0x1270)
+    ctl._eto_scan()
+    check("a manual jog is not held by this - manual has its own re-arm",
+          ctl._eto_hold is None)
+    events.clear()
+
+
 TESTS = [
     test_arm_does_not_deadlock,
     test_sensor_starts_in_every_mode,
     test_loop_health,
     test_unsolicited_frames_survive_sdo,
+    test_horn_follows_commanded_motion,
+    test_a_safety_stop_is_logged_even_though_it_is_not_a_fault,
+    test_a_safety_stop_holds_the_run_and_resumes_itself,
 ]

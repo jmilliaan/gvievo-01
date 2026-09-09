@@ -19,6 +19,17 @@
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
   </nav>
   <div id="link" class="pill">connecting…</div>
+
+  {# The operator's own link to the vehicle, beside the state pill. It reports
+     and never acts: a jog button that stops being re-POSTed is already covered
+     by MANUAL_WATCHDOG_S, whatever the reason. This says why, before it
+     happens. Hidden entirely on a vehicle with no radio - see core/wifi.py. #}
+  <div id="wifi" class="wifi" hidden title="Wi-Fi signal">
+    <span class="wifi-bars" id="wifi-bars" aria-hidden="true">
+      <i></i><i></i><i></i><i></i>
+    </span>
+    <span class="wifi-dbm" id="wifi-dbm">–</span>
+  </div>
 </header>
 
 <div class="shell">
@@ -32,7 +43,7 @@
       <div class="tel"><span>State</span><b id="vstate">–</b><i id="vstate-note">—</i></div>
       <div class="tel"><span>Left</span><b id="rpm-1">–</b><i>r/min</i></div>
       <div class="tel"><span>Right</span><b id="rpm-2">–</b><i>r/min</i></div>
-      <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i>L / R</i></div>
+      <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i id="setpoint-mps">L / R</i></div>
       <div class="tel"><span>Alarm</span><b id="alarm">–</b><i id="alarm-note">—</i></div>
     </div>
 

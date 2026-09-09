@@ -38,6 +38,10 @@
     <div class="tel"><span>Command</span><b id="p-cmd">–</b><i>L / R r/min</i></div>
     <div class="tel"><span>State</span><b id="p-state">idle</b><i id="p-guard">—</i></div>
     <div class="tel"><span>P / I / D</span><b id="p-terms">–</b><i id="p-sat">—</i></div>
+    {# Its own tile rather than another message in the State tile's guard line:
+       a station stop and a PID guard can be true at the same moment, and the
+       one that lost the race would simply not be on screen. #}
+    <div class="tel"><span>Station</span><b id="p-stn">–</b><i id="p-stn-note">stop tags</i></div>
   </div>
 </section>
 

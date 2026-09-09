@@ -435,7 +435,8 @@ def test_params_page_reads_speed_first():
     speed = next(s for s in secs if s["name"] == "speed")
     keys = [r["key"] for r in speed["rows"]]
     check("both manual jog speeds are there",
-          "manual.full_rpm" in keys and "manual.half_ratio" in keys, str(keys))
+          "manual.full_rpm" in keys and "manual.half_ratio" in keys
+          and "manual.spin_ratio" in keys, str(keys))
     check("both auto speeds are there, slow included",
           "autopilot.auto_rpm" in keys and "autopilot.auto_slow_rpm" in keys)
     check("and the driver ramps that shape them",
@@ -502,6 +503,18 @@ def test_params_lists_the_rfid_rules():
         check(f"station tag {tag} is listed",
               any(tag in k for k in keys), str(keys))
 
+    # With no junction tags loaded, the branch-latch slot reads "none loaded" -
+    # which on its own says the vehicle carries straight on, and it no longer
+    # does. The standing default has to appear in the block that answers "what
+    # happens at a junction", not only in the autopilot section.
+    if config.BRANCH_DEFAULT != "straight":
+        side = "rightmost" if config.BRANCH_DEFAULT == "right" else "leftmost"
+        check("the standing branch default is listed with the junction rules",
+              any(f"take the {side} tape" in str(r.get("value"))
+                  for r in rules["rows"]), str(keys))
+        check("...and is on the page, not just in the model",
+              f"take the {side} tape" in c.get("/params").get_data(as_text=True))
+
     # The old standalone branch_latch section is gone, not duplicated - the
     # no-duplicates invariant in test_params_page_reads_speed_first would catch
     # it, but say so here too since removing it was the point.
@@ -558,6 +571,267 @@ def test_landing_page_is_auto_and_the_pill_says_armed():
               'id="bus-how"' not in c.get(page).get_data(as_text=True))
 
 
+def test_wifi_indicator_reports_but_never_acts():
+    """Bars and dBm in the header. It must stay a readout and nothing else.
+
+    The temptation with a link-quality number is to make something depend on
+    it - refuse to arm below two bars, stop on a drop. That would be a second,
+    softer watchdog competing with the real one: MANUAL_WATCHDOG_S already
+    zeroes the setpoint when the browser stops re-POSTing, and it does so for
+    a flat battery and a closed tab as well as a weak link. This only explains
+    what is about to happen.
+    """
+    import server as webapp   # app/server.py; see the note on the rename
+    import wifi
+    print("\nthe wifi indicator reports and does not act")
+
+    # -- the mapping -------------------------------------------------------
+    check("a strong link is four bars", wifi.bars_for(-40) == 4)
+    check("the -67 dBm voice/video floor is inside two bars",
+          wifi.bars_for(-67) == 2)
+    check("a marginal link is one bar", wifi.bars_for(-78) == 1)
+    check("below -80 dBm is none", wifi.bars_for(-85) == 0)
+    check("not associated is none", wifi.bars_for(None) == 0)
+    prev = [wifi.bars_for(d) for d in range(-30, -95, -5)]
+    check("bars never rise as the signal falls",
+          all(a >= b for a, b in zip(prev, prev[1:])), str(prev))
+
+    # -- parsing -----------------------------------------------------------
+    HEAD = ("Inter-| sta-|   Quality        |   Discarded packets\n"
+            " face | tus | link level noise |  nwid  crypt   frag\n")
+    rows = wifi._parse(HEAD + "wlp1s0: 0000   70.  -39.  -256   0  0  0\n")
+    check("a normal row parses", rows and rows[0]["dbm"] == -39.0
+          and rows[0]["iface"] == "wlp1s0", str(rows))
+    check("the trailing dot is not read as a decimal point",
+          rows[0]["quality"] == 70.0)
+
+    # An idle card reports level 0. Four bars for that is the one genuinely
+    # misleading thing this module could draw.
+    idle = wifi._parse(HEAD + "wlan9: 0000    0.    0.  -256   0  0  0\n")
+    check("an unassociated interface reports no dBm rather than 0",
+          idle and idle[0]["dbm"] is None, str(idle))
+    check("...and therefore no bars", wifi.bars_for(idle[0]["dbm"]) == 0)
+    check("a truncated line is skipped, not raised on",
+          wifi._parse(HEAD + "broken:\n") == [])
+
+    # -- absent radio ------------------------------------------------------
+    real, wifi.PROC = wifi.PROC, str(ROOT / "does-not-exist")
+    wifi.reset()
+    try:
+        gone = wifi.snapshot()
+    finally:
+        wifi.PROC = real
+        wifi.reset()
+    check("a machine with no radio reports present=False",
+          gone["present"] is False)
+    check("...so the indicator hides rather than showing zero bars",
+          gone["bars"] == 0 and gone["dbm"] is None)
+
+    # -- the endpoint ------------------------------------------------------
+    c = webapp.app.test_client()
+    body = c.get("/api/state").get_json()
+    check("/api/state carries the wifi block", "wifi" in body)
+    for key in ("present", "bars", "dbm", "weak"):
+        check(f"...with {key}", key in body["wifi"])
+
+    # Reading the header must not have turned the state poll into a heartbeat.
+    seen = []
+    realka, webapp.ctl.keepalive = webapp.ctl.keepalive, lambda: seen.append(1)
+    try:
+        c.get("/api/state")
+        check("the wifi merge did not make /api/state feed the watchdog",
+              not seen)
+    finally:
+        webapp.ctl.keepalive = realka
+
+    # -- it is a readout --------------------------------------------------
+    # Not a health source: health.py's table is what stops modes, and a link
+    # to the OPERATOR does not belong in a table about devices on the vehicle.
+    worker = (ROOT / "canworker.py").read_text()
+    check("the bus thread knows nothing about wifi", "wifi" not in worker)
+    src = (ROOT / "core" / "wifi.py").read_text()
+    # Imports, not prose: the docstring explains why netlink and a subprocess
+    # were rejected, so a bare substring search finds the words that forbid it.
+    check("the module opens nothing but /proc",
+          "import subprocess" not in src and "import socket" not in src)
+    check("...and cannot write anywhere", "open(" in src
+          and '"w"' not in src and "'w'" not in src)
+
+    # It rides on the poll every page already makes, so it must be guarded the
+    # way every other shared-rail tile is - an unguarded write for an element
+    # a page lacks throws inside poll() and freezes ALL telemetry.
+    common = (ROOT / "app" / "static" / "common.js").read_text()
+    check("renderWifi returns early when the header element is absent",
+          "if (!box) return;" in common)
+    check("...and is called from the shared poll", "renderWifi(s.wifi)" in common)
+
+    # On every page, since the header is in base.html.
+    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/monitor"):
+        page_body = c.get(page).get_data(as_text=True)
+        check(f"{page} carries the indicator", 'id="wifi-bars"' in page_body)
+        check(f"{page} starts it hidden", 'id="wifi"' in page_body
+              and "hidden" in page_body)
+
+
+def test_outputs_are_not_commandable_from_a_browser():
+    """dio now WRITES a coil. That must not become a button.
+
+    The horn is the first output this software energises, and the risk of a
+    write path is not the write - it is that the next person adds an endpoint
+    to exercise it, one click away from a coil on a vehicle somebody is
+    standing next to. The DIO driver's own docstring named that hazard before
+    there was any write phase at all; this is the check that keeps it named.
+    """
+    import server as webapp
+    print("\nthe I/O page cannot command an output")
+    c = webapp.app.test_client()
+
+    src = (ROOT / "app" / "server.py").read_text()
+    check("no coil route is defined", "set_coil" not in src)
+    check("no output route is defined", '"/api/do' not in src and
+          '"/api/io' not in src)
+
+    for route in ("/api/do", "/api/coil", "/api/horn", "/api/output"):
+        check(f"POST {route} is not a route",
+              c.post(route, json={}).status_code == 404)
+
+    js = (ROOT / "app" / "static" / "io.js").read_text()
+    check("io.js posts nothing", "fetch(" not in js and "post" not in js.lower())
+    check("...and binds no handler", "addEventListener" not in js
+          and "onclick" not in js)
+
+    html = c.get("/io").data.decode()
+    check("the I/O page has no controls", "<button" not in html)
+    check("...and says who does command the outputs",
+          "commanded by the vehicle" in html)
+
+    # The page must be able to tell a coil being HELD low from one nothing is
+    # driving. On an output those look identical and mean opposite things.
+    check("the page renders which coils are claimed", "do-c-" in html)
+    check("io.js reads the claim out of the snapshot", "commanded" in js)
+
+
+def test_the_horn_is_reported_but_gates_nothing():
+    """A horn is a warning, not an interlock. Nothing may depend on it."""
+    import server as webapp
+    print("\nthe horn warns and nothing waits for it")
+
+    check("the horn is on a real coil",
+          0 <= config.HORN_DO_CHANNEL < config.DIO_NUM_DO)
+    check("...and that channel is labelled on the /io page - an unnamed lamp "
+          "beside a device that makes noise is a trap",
+          config.DIO_DO_NAMES[config.HORN_DO_CHANNEL] != "",
+          config.DIO_DO_NAMES[config.HORN_DO_CHANNEL])
+
+    # The vehicle must still move with the horn broken, disabled, or on a dead
+    # module. If anything ever reads HORN_* to decide whether to drive, a blown
+    # bulb becomes a stranded AGV.
+    worker = (ROOT / "canworker.py").read_text()
+    body = worker[worker.index("def _update_horn"):]
+    body = body[:body.index("def _write_target")]
+    elsewhere = worker.replace(body, "")
+    check("the horn is written in one place and never read back into a "
+          "decision", "HORN_" not in elsewhere,
+          "HORN_ appears outside _update_horn" if "HORN_" in elsewhere
+          else "only _update_horn touches it")
+
+    def method(name):
+        """The source of one method, up to the next def at the same indent."""
+        seg = worker[worker.index(f"    def {name}("):]
+        nxt = re.search(r"\n    (?:def |# ---)", seg[10:])
+        return seg[:10 + nxt.start()] if nxt else seg
+
+    for name in ("_do_arm", "drive", "_do_auto_run", "_do_disarm"):
+        check(f"{name}() does not consult the horn",
+              "horn" not in method(name).lower())
+
+    # It is also not a health source: a horn that stopped answering must not
+    # stop the vehicle, for the same reason.
+    check("the horn is not registered with health",
+          'health.PullSource("horn"' not in worker
+          and 'HealthSource("horn"' not in worker)
+
+    st = webapp.app.test_client().get("/api/state")
+    if st.status_code == 200:
+        dio = (st.get_json() or {}).get("dio") or {}
+        check("the snapshot carries the claimed coils for the page",
+              "commanded" in dio, str(sorted(dio))[:80])
+
+
+def test_setpoint_shows_body_speed_and_the_station_window():
+    """Two readouts added for the operator: how fast the vehicle is being told
+    to go, and why a station just went past without stopping it.
+
+    Both are DERIVED displays of numbers already on the page, which is the risk
+    worth testing: a derived number that is computed in the browser from a
+    constant typed into JS goes on looking plausible after the profile changes.
+    """
+    import server as webapp   # app/server.py; see the note on the rename
+    print("\nthe setpoint tile shows m/s, and the station window is visible")
+
+    c = webapp.app.test_client()
+    common = (ROOT / "app" / "static" / "common.js").read_text()
+    autojs = (ROOT / "app" / "static" / "auto.js").read_text()
+
+    # -- the conversion is served, not hardcoded ---------------------------
+    st = c.get("/api/state").get_json()
+    check("the state carries the r/min -> m/s conversion",
+          st.get("mps_per_rpm") == config.MPS_PER_RPM, str(st.get("mps_per_rpm")))
+    check("...and it is the SAME constant the vehicle runs on, not a literal "
+          "typed into JS",
+          "mps_per_rpm" in common
+          and not re.search(r"0\.000?31", common), "a hardcoded ratio would go "
+          "stale the moment wheel_dia_m or gear_ratio changed")
+
+    # -- the arithmetic ----------------------------------------------------
+    # For a differential drive the body's forward speed IS the mean of the two
+    # wheel speeds, so "average them on a corner" is exact rather than an
+    # approximation. Checked here in Python against the same constant the
+    # browser is handed.
+    def mps(l, r):
+        return (l + r) / 2 * config.MPS_PER_RPM
+
+    straight = mps(config.AUTO_RPM, config.AUTO_RPM)
+    check("straight ahead converts the commanded r/min",
+          abs(straight - config.AUTO_RPM * config.MPS_PER_RPM) < 1e-9,
+          f"{straight:.2f} m/s")
+    corner = mps(config.MANUAL_HALF_RPM, config.MANUAL_FULL_RPM)
+    check("a corner averages the pair, and lands between the two wheels",
+          mps(config.MANUAL_HALF_RPM, config.MANUAL_HALF_RPM) < corner
+          < mps(config.MANUAL_FULL_RPM, config.MANUAL_FULL_RPM),
+          f"{corner:.2f} m/s")
+    check("*** a spin on the spot is 0.00 m/s, not half of full ***",
+          abs(mps(-config.MANUAL_FULL_RPM, config.MANUAL_FULL_RPM)) < 1e-9,
+          "the vehicle turns but does not travel, and the mean says so")
+    check("a stopped vehicle reads zero", abs(mps(0, 0)) < 1e-9)
+
+    # -- and it is on both pages, because the tile is shared ---------------
+    for page in ("/auto", "/manual"):
+        body = c.get(page).get_data(as_text=True)
+        check(f"{page} carries the setpoint tile's m/s slot",
+              'id="setpoint-mps"' in body)
+    check("two decimal places, as asked", "toFixed(2)" in common)
+
+    # -- the station window ------------------------------------------------
+    check("the state reports the resume window", "stop_ignore_s" in st)
+    check("a vehicle that is not in one reports None rather than 0 - 0 s left "
+          "and no window running are different facts",
+          st["stop_ignore_s"] is None, str(st["stop_ignore_s"]))
+
+    body = c.get("/auto").get_data(as_text=True)
+    check("the auto page has a station tile", 'id="p-stn"' in body)
+    check("...and it shows both states", "stop_hold" in autojs
+          and "stop_ignore_s" in autojs)
+    check("...on its own tile, so a PID guard and a station stop cannot "
+          "displace each other",
+          "p-stn" in autojs and "AT STATION" not in
+          autojs[autojs.index("function showHold"):autojs.index("function showStation")])
+
+    # Still a readout. The page has no way to end the window or skip a station.
+    check("the station readout gates nothing and posts nothing",
+          "/api/" not in autojs, "the auto page is display-only")
+
+
 TESTS = [
     test_params_page_displays_and_cannot_edit,
     test_params_page_reads_speed_first,
@@ -570,4 +844,8 @@ TESTS = [
     test_the_shared_rail_is_on_every_page,
     test_the_scan_is_off_until_asked_for,
     test_alarms_page_records_but_cannot_clear,
+    test_wifi_indicator_reports_but_never_acts,
+    test_outputs_are_not_commandable_from_a_browser,
+    test_the_horn_is_reported_but_gates_nothing,
+    test_setpoint_shows_body_speed_and_the_station_window,
 ]

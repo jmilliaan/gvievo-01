@@ -25,13 +25,17 @@ def rows_by_path(sections):
 
     A gathered row already carries its full path; a row shown in its own section
     carries a bare key and gets the section prefixed back on.
+
+    The tree marker on a nested row is stripped first. It says the row sits
+    UNDER the rule slot above it - branch_default belongs with the junction
+    rules it governs - and that is layout, not part of the path.
     """
     out = {}
     for s in sections:
         for r in s["rows"]:
-            key = r["key"]
+            key = r["key"].lstrip("\u2514 ")
             out[key if key.split(".")[0] in config._SCHEMA
-                else f"{s['name']}.{key}"] = r
+                else f"{s['name']}.{r['key']}"] = r
     return out
 
 
@@ -113,6 +117,54 @@ def test_config_profile():
     refuses("an empty can.channel is refused",
             lambda d: d["can"].update(channel=""), "can.channel")
 
+    # The standing branch default is a string from a closed set, and a typo in
+    # it steers the vehicle: an unrecognised value that fell through to STRAIGHT
+    # would silently stop taking the U-turn.
+    refuses("a spin_ratio above 1 is refused",
+            lambda d: d["manual"].update(spin_ratio=1.5), "spin_ratio")
+    refuses("a zero spin_ratio is refused",
+            lambda d: d["manual"].update(spin_ratio=0.0), "spin_ratio")
+    # Rounding, not the fraction, is what makes this dead: 0.001 is a legal
+    # fraction that still commands 0 r/min against a small full_rpm.
+    refuses("a spin_ratio that rounds to 0 r/min is refused",
+            lambda d: d["manual"].update(full_rpm=100, spin_ratio=0.001),
+            "rounds to 0")
+
+    # The resume window: a missing key is as fatal as an unknown one, and the
+    # ceiling is what catches a value typed in milliseconds - which would
+    # switch the stations off for the rest of the run without a symptom.
+    refuses("a station row missing ignore_t is refused",
+            lambda d: d["stop_until_start_button"][0].pop("ignore_t"),
+            "ignore_t")
+    refuses("a negative ignore_t is refused",
+            lambda d: d["stop_until_start_button"][0].update(ignore_t=-1),
+            "ignore_t")
+    refuses("an ignore_t entered in milliseconds is refused",
+            lambda d: d["stop_until_start_button"][0].update(ignore_t=30000),
+            "ignore_t")
+
+    refuses("an unknown branch_default is refused",
+            lambda d: d["autopilot"].update(branch_default="rightmost"),
+            "branch_default")
+    refuses("a capitalised branch_default is refused rather than folded",
+            lambda d: d["autopilot"].update(branch_default="Right"),
+            "branch_default")
+
+    # The horn is the only output this software energises, and both ways of
+    # getting it wrong are silent: a channel off the end of the module writes
+    # nothing, and a horn enabled without the DIO scan has nobody to write it.
+    # Neither shows up as an error at run time - both show up as a vehicle that
+    # drives off without sounding.
+    refuses("a horn channel past the end of the module is refused",
+            lambda d: d["horn"].update(do_channel=d["dio"]["num_do"]),
+            "horn.do_channel")
+    refuses("a negative horn channel is refused",
+            lambda d: d["horn"].update(do_channel=-1), "horn.do_channel")
+    refuses("a horn without the DIO scan that writes it is refused",
+            lambda d: (d["dio"].update(enabled=False),
+                       d["panel"].update(enabled=False)),
+            "horn.enabled")
+
     # The name in the file must match the file. A profile copied for a second
     # vehicle and not renamed would report the old identity in the event log
     # and in every run CSV header.
@@ -173,6 +225,11 @@ def test_derived_constants():
           == round(config.MANUAL_FULL_RPM * config.MANUAL_HALF_RATIO),
           f"{config.MANUAL_FULL_RPM} x {config.MANUAL_HALF_RATIO} "
           f"-> {config.MANUAL_HALF_RPM}")
+    check("MANUAL_SPIN_RPM is full_rpm * spin_ratio, rounded",
+          config.MANUAL_SPIN_RPM
+          == round(config.MANUAL_FULL_RPM * config.MANUAL_SPIN_RATIO),
+          f"{config.MANUAL_FULL_RPM} x {config.MANUAL_SPIN_RATIO} "
+          f"-> {config.MANUAL_SPIN_RPM}")
     check("DT band is 0.2x .. 5x nominal",
           close(config.DT_MIN_S, 0.2 * config.DT_NOMINAL_S)
           and close(config.DT_MAX_S, 5.0 * config.DT_NOMINAL_S),
@@ -188,11 +245,38 @@ def test_derived_constants():
           str(config.NODES))
     # motion's table is built from the profile now, not from module literals.
     full, half = config.MANUAL_FULL_RPM, config.MANUAL_HALF_RPM
+    spin = config.MANUAL_SPIN_RPM
     check("manual jog table is built from the profile",
           motion.velocities("forward_left") == (half, full)
           and motion.velocities("forward") == (full, full)
           and motion.velocities("stop") == (0, 0),
           f"fwd-left {motion.velocities('forward_left')}")
+
+    # A spin takes spin_ratio, NOT half_ratio. These shared one number until
+    # now, and sharing it tied the turn radius of a curve to the yaw rate of a
+    # spin - so raising full_rpm for open-floor travel sped up the manoeuvre
+    # done in a confined space. Asserted per-direction because the pad has two
+    # spin buttons and only one of them being converted is a live hazard that
+    # the aggregate would hide.
+    check("*** a spin takes spin_ratio, not the curve's half_ratio ***",
+          motion.velocities("left") == (-spin, spin)
+          and motion.velocities("right") == (spin, -spin),
+          f"left {motion.velocities('left')} right {motion.velocities('right')}")
+    check("...both wheels equal and opposite, so it turns on its axis and "
+          "travels nowhere",
+          sum(motion.velocities("left")) == 0
+          and sum(motion.velocities("right")) == 0)
+    check("...and the two spins are mirror images",
+          motion.velocities("left") == tuple(
+              -v for v in motion.velocities("right")))
+    check("the curves are untouched by the spin speed - they still take the "
+          "inner wheel to half and leave the outer at full",
+          {motion.velocities(d) for d in ("forward_left", "forward_right",
+                                          "reverse_left", "reverse_right")}
+          == {(half, full), (full, half), (-half, -full), (-full, -half)})
+    check("a spin commands something - a ratio that rounded to zero would be "
+          "a dead button, and _validate() refuses it",
+          spin > 0, f"{spin} r/min")
 
 
 def test_params_view():
@@ -226,6 +310,7 @@ def test_params_view():
     derived = {r["key"] for s in sections if s["name"] == "derived"
                for r in s["rows"]}
     for const in ("MPS_PER_RPM", "MAX_SPEED_MPS", "MANUAL_HALF_RPM",
+                  "MANUAL_SPIN_RPM",
                   "LINE_LOSS_GRACE_MAX_S", "TPDO1_COB"):
         check(f"{const} is shown as derived", const in derived)
     # Derived values cannot be edited, so they must not be offered as if they

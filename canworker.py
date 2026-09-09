@@ -270,6 +270,15 @@ class Controller:
         # per edge rather than one per 5 Hz poll. This is the driver's OWN fault
         # bit; whether the driver is still answering at all is health.py's job.
         self._fault_seen = {n: False for n in config.NODES}
+        # The safety chain took torque away mid-run. A HOLD, not a stop: the
+        # START latch is kept and the run resumes on its own once torque comes
+        # back - see _eto_scan() for what that costs.
+        self._eto_hold = None
+        self._eto_resume_at = 0.0
+        # Previous CiA 402 state name per node, for the transition log in
+        # _poll_telemetry(). Separate from _fault_seen because an HWTO/STO stop
+        # is NOT a fault on this drive, so the fault edge never fires for one.
+        self._state_seen = {}
 
         # Hardware health. One table, one place to add the next device - see
         # health.py for why this is not three more if-statements, and for why it
@@ -323,8 +332,14 @@ class Controller:
         self._rfid = rfid.RfidLink()
         # The junction ladder. Scanned once per auto tick from the frozen RFID
         # snapshot - see _branch_scan() for why the input image matters.
+        #
+        # BRANCH_DEFAULT is the answer when nothing is latched, which with an
+        # empty BRANCH_LATCH is every tick: the U-turn has no RFID tag, so it
+        # is taken by standing preference rather than by order. See the
+        # autopilot.branch_default tuning note for what that costs.
         self._branch = branch.BranchEngine(
-            config.BRANCH_LATCH, config.BRANCH_POSITIVE_IS_LEFT)
+            config.BRANCH_LATCH, config.BRANCH_POSITIVE_IS_LEFT,
+            config.BRANCH_DEFAULT)
         self._branch_seen = 0
         # Pulled rather than pushed: the link already tracks its own health on
         # its own thread, and copying that verdict beats defining "healthy" for
@@ -393,6 +408,12 @@ class Controller:
         # dwell, the PID and branch state survive, and _hold_arm_state leaves the
         # vehicle armed because the run is still running. Start resumes it.
         self._stop_hold = None
+        # Monotonic deadline until which NO station tag may stop the vehicle.
+        # Set when a held run resumes, from the departed tag's ignore_t: the
+        # vehicle is standing on the tag that stopped it, and without this the
+        # first scan after Start would stop it again on the spot. 0 means no
+        # window is running. See the stop_until_start_button tuning note.
+        self._stop_ignore_until = 0.0
         # Start ARMS and then, after timing.auto_start_delay_s, goes. This is
         # when the wheels are due to be commanded; 0 means nothing pending.
         self._auto_start_at = 0.0
@@ -559,11 +580,29 @@ class Controller:
                 "field_level": self._field_level,
                 "min_level": self._min_level,
                 "rpm_profile": {"full": config.MANUAL_FULL_RPM, "half": config.MANUAL_HALF_RPM,
+                                "spin": config.MANUAL_SPIN_RPM,
                                 "auto": config.AUTO_RPM,
                                 "auto_slow": config.AUTO_SLOW_RPM},
+                # Wheel r/min -> m/s, for the setpoint tile. Served rather than
+                # hardcoded in the browser for the same reason sensor_range_mm
+                # is: it is derived from wheel_dia_m and gear_ratio, and a copy
+                # in JS would go on showing the old vehicle's speed after the
+                # profile changed - a wrong number that still looks plausible.
+                "mps_per_rpm": config.MPS_PER_RPM,
                 "auto_running": self._auto_running,
                 "auto_hold": self._auto_hold,
                 "stop_hold": self._stop_hold,
+                # Torque removed by the safety chain, mid-run. Distinct from
+                # auto_hold (lost tape) because the operator's question is
+                # different: nothing here is wrong with the vehicle.
+                "eto_hold": self._eto_hold,
+                "eto_resume_s": (self._eto_resume_at - now
+                                 if self._eto_resume_at > now else None),
+                # Seconds of station-blindness left after a resume, or None.
+                # Reported so the page can say WHY a station went by, which is
+                # otherwise indistinguishable from a tag that failed to read.
+                "stop_ignore_s": (self._stop_ignore_until - now
+                                  if self._stop_ignore_until > now else None),
                 "pid": self._pid,
                 "dry_run": config.DRY_RUN,
                 "loop": dict(self._loop),
@@ -655,6 +694,7 @@ class Controller:
                     self._hw.reset()
 
                 self._panel_scan()
+                self._eto_scan()
 
                 now = time.monotonic()
                 with self._lock:
@@ -716,6 +756,12 @@ class Controller:
 
                 if armed and mode == "auto":
                     target = self._run_autopilot()
+
+                # Horn before wheels. Both are only intents at this point -
+                # one crosses to the DIO thread, the other goes out as an SDO -
+                # but the order says which is meant to lead, and a warning that
+                # follows the motion it warns about is decoration.
+                self._update_horn(armed, target)
 
                 if armed and self._target_moved(target):
                     self._write_target(target)
@@ -840,6 +886,34 @@ class Controller:
                                   is_extended_id=False))
         time.sleep(0.05)
 
+    def _update_horn(self, armed, target):
+        """Sound the horn while motion is COMMANDED. Manual and auto alike.
+
+        No distinction between the modes, because the hazard does not make one:
+        a jogged vehicle and a running one are the same 150 kg, and a horn that
+        meant two different things would mean neither.
+
+        It follows the SETPOINT, not measured rpm. That puts the sound at the
+        moment motion is asked for rather than once the wheels are already
+        turning, which is the whole point of a warning - and it accepts the
+        other end, where the horn stops while the drives are still ramping
+        down. Ending the warning when the vehicle stops being commanded to move
+        is the right way round; what is left is a coast that is already over.
+
+        `armed` is redundant against a zero setpoint today, and is stated
+        anyway. It is the interlock, and an interlock that is only implied is
+        one a later edit removes without noticing.
+
+        Renewed every tick rather than written on the edge: the deadline is
+        what drops the coil if this loop dies, so a horn cannot outlive the
+        thread that was sounding it. See dio.set_coil().
+        """
+        if not config.HORN_ENABLED:
+            return
+        self._dio.set_coil(config.HORN_DO_CHANNEL,
+                           bool(armed) and tuple(target) != (0, 0),
+                           config.HORN_HOLD_S)
+
     def _write_target(self, target):
         for nid, rpm in zip((config.LEFT, config.RIGHT), target):
             self._write(nid, 0x60FF, 0, int(rpm), 4, "target velocity")
@@ -933,7 +1007,8 @@ class Controller:
         # the wheels are allowed to turn right now. They differ while a lost
         # line is being held - see the hold below.
         driving = (running and self._auto_hold is None
-                   and self._stop_hold is None)
+                   and self._stop_hold is None
+                   and self._eto_hold is None)
 
         # Never act twice on the same frame. While driving, a tick with no new
         # TPDO1 holds the previous command and lets the elapsed time roll into
@@ -950,7 +1025,13 @@ class Controller:
         choice, slow, tag = self._branch_scan(sensor)
         # A station tag stops THIS tick, so the ramp down starts on the frame the
         # tag was read rather than one later.
-        if driving and tag is not None and tag in config.STOP_TAGS:
+        #
+        # Only the STOP is suppressed by the ignore window, never the read
+        # itself: the tag still reaches the branch ladder above, because a
+        # window that exists to stop a station re-triggering has no business
+        # deciding which way the vehicle steers on the way out of it.
+        if (driving and tag is not None and tag in config.STOP_TAGS
+                and not self._stop_ignored(tag)):
             self._begin_station_stop(tag)
             driving = False
         left, right, diag = self._follower.update(sensor, age, dt, driving,
@@ -1312,7 +1393,7 @@ class Controller:
         correcting in its "stopping" state, which is why these tags belong on
         track that has been straight for a metre or so.
         """
-        dist = config.STOP_TAGS[tag]
+        dist = config.STOP_TAGS[tag]["stop_distance_m"]
         rate = self._follower.begin_measured_stop(dist)
         self._stop_hold = tag
         with self._lock:
@@ -1322,14 +1403,178 @@ class Controller:
                     + (f" ({rate:.0f} r/min/s)" if rate else "")
                     + ", press Start to go on")
 
+    def _stop_ignored(self, tag):
+        """Is this station read being suppressed by the resume window?
+
+        The emit lives HERE rather than in _run_autopilot, whose body must not
+        contain an events call at all - test_logging pins that, because it is
+        the 50 Hz path and one chatty call site empties the ring in about four
+        seconds. Reaching this needs a genuine tag PULSE, so it is edge-driven
+        in exactly the way _branch_scan's events already are.
+        """
+        left = self._stop_ignore_left()
+        if left <= 0:
+            return False
+        events.info(f"station tag {tag} ignored - {left:.0f} s left of the "
+                    f"resume window")
+        return True
+
+    def _stop_ignore_left(self):
+        """Seconds left of the resume window, 0 when none is running.
+
+        Read rather than tested for truth, so the caller can say how long is
+        left instead of only that something was suppressed - "ignored, 24 s
+        left" is a sentence somebody can act on at the vehicle.
+        """
+        if not self._stop_ignore_until:
+            return 0.0
+        left = self._stop_ignore_until - time.monotonic()
+        if left <= 0:
+            self._stop_ignore_until = 0.0       # self-clearing, so it cannot leak
+            return 0.0
+        return left
+
     def _resume_from_stop(self):
         """Let the held run carry on. The SAME run - nothing is reset."""
         tag, self._stop_hold = self._stop_hold, None
+        # The departed tag sets the window, and it starts HERE rather than at
+        # the button press: auto_start_delay_s is spent standing still on top
+        # of the tag, so a window opened at the press would spend part of
+        # itself before the vehicle had moved at all.
+        ign = config.STOP_TAGS.get(tag, {}).get("ignore_s", 0.0)
+        self._stop_ignore_until = (time.monotonic() + ign) if ign else 0.0
         with self._lock:
             self._last_stop_reason = None
             self._deadline = time.monotonic() + config.AUTO_WATCHDOG_S
-        events.info(f"resuming from station tag {tag}")
+        events.info(f"resuming from station tag {tag}"
+                    + (f" - stations ignored for {ign:.0f} s" if ign else ""))
         self._note_action("resumed from station", "panel")
+
+    def _eto_scan(self):
+        """The safety chain taking torque away mid-run, and giving it back.
+
+        *** THIS RESUMES THE RUN BY ITSELF. *** After a protective-field stop,
+        once the FX3 restores torque, the vehicle re-enables its own drives and
+        drives on with nobody pressing anything. That is a deliberate choice
+        and it is the opposite of what the rest of this file does with an
+        involuntary stop - _set_fault() exists precisely so a vehicle that
+        stopped itself cannot be restarted by somebody who did not see why.
+        It is also the F-17 "no automatic restart" item that safety-chain.md
+        lists as addressed by the FX3 Restart block, so this needs revisiting
+        before an ISO 3691-4 review.
+
+        WHY IT IS NEEDED AT ALL
+        -----------------------
+        An HWTO stop is invisible to every other detector here. The drives keep
+        answering CAN, because STO cuts the power stage and not the logic
+        supply, so health sees nothing; the FAULT bit stays clear and 1001h
+        stays zero, because the BLVD-KRD calls this a state transition rather
+        than a fault; and the auto watchdog keeps being fed by the page. Runs
+        0048 and 0049 are what that costs: the vehicle sat with the START latch
+        claimed, commanding ~950 r/min into de-energised drives, reporting
+        state "run", for 9 and 19 seconds until a human moved the selector.
+
+        So the run has to notice, whatever it then does about it.
+
+        WHAT MAKES THE RESUME SURVIVABLE
+        --------------------------------
+          * The wheels are at zero for the whole hold, and the ramp is
+            collapsed, so the resume accelerates from rest rather than picking
+            up the setpoint it was carrying when torque went away.
+          * It waits auto_start_delay_s before moving - the same beat a Start
+            press gets, and for the same reason.
+          * A latched fault blocks it outright. Anything that called
+            _set_fault() wanted a human, and this must not talk it round.
+          * The re-enable is retried on the ARM_RETRY_S backoff, so a chain
+            that stays open costs one attempt every 2 s and not a busy loop.
+        """
+        with self._lock:
+            armed, mode = self._armed, self._mode
+            running, fault = self._auto_running, self._fault
+
+        if not (armed and mode == "auto" and running):
+            # A hold cannot outlive the run it belongs to. _end_auto_run()
+            # clears it too; this covers the paths that end a run without
+            # going through it.
+            if self._eto_hold is not None:
+                self._eto_hold = None
+                self._eto_resume_at = 0.0
+            return
+
+        now = time.monotonic()
+
+        if self._eto_hold is None:
+            # None means "not known yet" and must not trigger anything - see
+            # _drives_ready().
+            if self._drives_ready() is False:
+                self._eto_hold = "drives de-energised - safety chain"
+                self._eto_resume_at = 0.0
+                self._arm_retry_at = now + ARM_RETRY_S
+                self._follower.hard_stop()
+                with self._lock:
+                    self._direction = "stop"
+                    self._target = (0, 0)
+                    self._last_stop_reason = self._eto_hold
+                events.warn(f"{self._eto_hold} - wheels held at zero, the run "
+                            f"is kept and will resume on its own when torque "
+                            f"returns")
+            return
+
+        # --- holding ------------------------------------------------------
+        if self._eto_resume_at:
+            if now >= self._eto_resume_at:
+                held, self._eto_hold = self._eto_hold, None
+                self._eto_resume_at = 0.0
+                with self._lock:
+                    self._last_stop_reason = None
+                    self._deadline = now + config.AUTO_WATCHDOG_S
+                events.warn(f"auto run RESUMING - {held} - cleared")
+            return
+
+        if fault:
+            return          # a human is wanted; Reset is the way out
+        if now < self._arm_retry_at:
+            return
+        self._arm_retry_at = now + ARM_RETRY_S
+        if self._reenable_drives():
+            self._eto_resume_at = now + config.AUTO_START_DELAY_S
+            events.warn(f"torque restored - the auto run resumes BY ITSELF in "
+                        f"{config.AUTO_START_DELAY_S:.1f} s, stand clear")
+
+    def _reenable_drives(self):
+        """Walk both drives back up to Operation enabled. True when both made it.
+
+        Deliberately NOT _do_arm(). That runs a preflight, restarts the sensor,
+        resets the branch ladder, and - the part that rules it out here - calls
+        _do_disarm() when a node does not come up, which ENDS the run this is
+        trying to preserve. A failed attempt is the expected case while the
+        chain is still open, so it has to cost nothing but the attempt.
+
+        Blocking: ~8 SDO writes and 150 ms of settling per node. That is a long
+        time to hold the tick, and it is only acceptable because the wheels are
+        already at zero and it runs on a 2 s backoff.
+        """
+        ramp = config.RAMP["auto"]
+        for nid in config.NODES:
+            try:
+                self._write(nid, 0x6060, 0, 3, 1, "modes of operation = pv")
+                self._write(nid, 0x6083, 0, ramp["accel"], 4, "profile acceleration")
+                self._write(nid, 0x6084, 0, ramp["decel"], 4, "profile deceleration")
+                self._write(nid, 0x60FF, 0, 0, 4, "target velocity = 0")
+                for cw, name in ((CW_SHUTDOWN, "Shutdown"),
+                                 (CW_SWITCH_ON, "Switch On"),
+                                 (CW_ENABLE, "Enable Operation")):
+                    self._write(nid, 0x6040, 0, cw, 2, name)
+                    time.sleep(0.05)
+                sw = self._read(nid, 0x6041) or 0
+                if (sw & 0x6F) != 0x27:
+                    return False
+            except Exception:       # noqa: BLE001 - the chain is still open
+                return False
+        # The drives have forgotten what was last written to 60FFh, so the
+        # deadband must not decide the next setpoint is "no change".
+        self._applied = None
+        return True
 
     def _hold_auto_run(self, reason):
         """Stop the wheels but KEEP the START latch, pending a resume.
@@ -1401,6 +1646,12 @@ class Controller:
         self._auto_hold = None
         self._auto_ok_since = None
         self._stop_hold = None
+        self._eto_hold = None
+        self._eto_resume_at = 0.0
+        # The window belongs to the run that opened it. Carrying it into the
+        # next run would let a station be skipped by a resume that happened
+        # before the operator stopped the vehicle and started again.
+        self._stop_ignore_until = 0.0
         # Emit on the EDGE only. This is reachable from _run_autopilot(), which
         # is a 50 Hz path - without the was_running guard a fault would refill
         # the whole ring buffer with copies of itself in four seconds.
@@ -1501,6 +1752,7 @@ class Controller:
                 faulted = bool(t.get("fault")) or bool(t.get("error_reg"))
                 sw_now = t.get("statusword") or 0
                 err_now = t.get("error_reg") or 0
+                state_now = t.get("state")
             # Edge only. This runs at 5 Hz, so reporting a standing fault every
             # poll would bury every other event within a minute.
             if faulted != self._fault_seen.get(nid, False):
@@ -1510,6 +1762,38 @@ class Controller:
                                  f"0x{sw_now:04X}, error reg 0x{err_now:02X}")
                 else:
                     events.info(f"node {nid} ({label}) fault cleared")
+
+            # *** The CiA 402 state, which the fault edge above cannot see. ***
+            #
+            # An HWTO/STO stop is not a fault on this drive. The BLVD-KRD
+            # manual lists "HWTO signal input is active" as the cause of state
+            # transitions 7, 9, 10 and 12 - ordinary moves OUT of Operation
+            # enabled - while a fault is transition 13, a different path
+            # entirely. So the safety chain removing torque leaves the FAULT
+            # bit clear and 1001h at zero, and every edge above stays silent:
+            # the vehicle stops and the log shows nothing at all, which reads
+            # as a vehicle that stopped for no reason.
+            #
+            # The state name is the signal that survives that, so it gets its
+            # own edge. 603Fh is read only ON the edge - it names the alarm
+            # when there is one (FF53h and FF68h are the two HWTO codes) and
+            # reads 0 for a plain loss of torque, which is itself what tells
+            # those two cases apart.
+            prev = self._state_seen.get(nid)
+            if state_now != prev:
+                self._state_seen[nid] = state_now
+                if prev is not None:
+                    code = self._read(nid, 0x603F, fast=True)
+                    line = (f"node {nid} ({label}) {prev} -> {state_now} "
+                            f"(statusword 0x{sw_now:04X}, error code "
+                            f"0x{(code or 0):04X})")
+                    # Leaving Operation enabled is the interesting direction:
+                    # something took the drive down, and while armed that
+                    # something was not this software.
+                    if prev == "Operation enabled":
+                        events.warn(line)
+                    else:
+                        events.info(line)
 
     def _poll_field(self):
         field = self._read(config.SENSOR_NODE, 0x2024, fast=True)

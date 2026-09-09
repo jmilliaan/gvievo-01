@@ -399,7 +399,7 @@ code, .mon-policy code {
   border:1px solid var(--rule); background:var(--surface);
 }
 .io-row {
-  display:grid; grid-template-columns:48px 18px 1fr; align-items:center;
+  display:grid; grid-template-columns:48px 18px 1fr auto; align-items:center;
   gap:10px; padding:4px 10px; border-bottom:1px solid var(--rule-soft);
 }
 .io-row:last-child { border-bottom:none; }
@@ -413,6 +413,17 @@ code, .mon-policy code {
   font-size:12.5px; color:var(--ink-2); min-height:1.2em;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+
+/* Whether this software is holding an output, and which way. Set in the same
+   muted ink as a unit rather than a state colour: it says who is driving the
+   channel, and the lamp beside it already says what the channel is doing. Only
+   "held on" is coloured, and it borrows the DO lamp's hazard ink so the row
+   reads as one statement. */
+.io-cmd {
+  font:600 10px var(--mono); color:var(--ink-3);
+  letter-spacing:.06em; text-transform:uppercase; white-space:nowrap;
+}
+.io-cmd.on { color:var(--hazard-ink); }
 
 /* The one deliberate exception to square corners: a round indicator is the
    convention for a lamp, and a square one would read as a button. The dark
@@ -659,3 +670,43 @@ code, .mon-policy code {
 @media (max-width:820px) {
   .pm-row { grid-template-columns:minmax(0,1fr) minmax(0,8em) 3.6em; }
 }
+
+/* ---- Wi-Fi indicator ----------------------------------------------------
+   Header, beside the state pill. Bars AND the dBm number, deliberately: bars
+   are read at a glance from across a workshop, the number is what somebody
+   says out loud while walking the vehicle to find where the link dies.
+
+   Not a safety indicator, and styled so it cannot be mistaken for one - no
+   fill, no lamp. A weak link colours the digits and the bars; it never turns
+   into a red block, because the thing that actually stops the vehicle on a
+   lost link is the manual watchdog, not this. */
+.wifi {
+  display:flex; align-items:center; gap:7px;
+  padding:4px 2px 4px 10px; color:var(--ink-2);
+}
+.wifi-bars { display:flex; align-items:flex-end; gap:2px; height:14px; }
+/* Four rising bars. Unfilled bars stay visible as outlines rather than being
+   hidden - "one bar out of four" and "one bar, total" are different facts. */
+.wifi-bars i {
+  width:3px; background:var(--surface-2); border:1px solid var(--rule);
+  display:block;
+}
+.wifi-bars i:nth-child(1) { height:5px; }
+.wifi-bars i:nth-child(2) { height:8px; }
+.wifi-bars i:nth-child(3) { height:11px; }
+.wifi-bars i:nth-child(4) { height:14px; }
+.wifi-bars i.on { background:var(--ink-2); border-color:var(--ink-2); }
+.wifi-dbm {
+  font:500 11.5px var(--mono); letter-spacing:.04em;
+  font-variant-numeric:tabular-nums; color:var(--ink-2);
+}
+/* Faint but associated. Amber, matching every other "worth knowing, not yet
+   wrong" state on these pages. */
+.wifi.weak .wifi-bars i.on { background:var(--hazard-ink); border-color:var(--hazard-ink); }
+.wifi.weak .wifi-dbm { color:var(--hazard-ink); }
+/* Associated with nothing. The number is meaningless, so it is not shown as
+   one - "no link" is the honest string. */
+.wifi.down .wifi-bars i.on { background:var(--stop); border-color:var(--stop); }
+.wifi.down .wifi-dbm { color:var(--stop); }
+
+@media (max-width:820px) { .wifi { padding-left:6px; } }

@@ -29,13 +29,18 @@
   </section>
 
   <section class="sensor">
-    <h2>Outputs <small>coil readback · not commanded here</small></h2>
+    <h2>Outputs <small>coil readback · commanded by the vehicle, never
+        from this page</small></h2>
     <div class="io-list">
       {% for name in do_names %}
       <div class="io-row">
         <span class="io-ch">DO{{ '%02d' % loop.index0 }}</span>
         <span class="lamp do" id="do-{{ loop.index0 }}"></span>
         <span class="io-name" id="do-n-{{ loop.index0 }}">{{ name }}</span>
+        {# Filled in from the snapshot: a coil this software holds says so,
+           because an unclaimed dark lamp and a lamp being held dark are the
+           same picture and opposite facts. #}
+        <span class="io-cmd" id="do-c-{{ loop.index0 }}"></span>
       </div>
       {% endfor %}
     </div>

@@ -22,7 +22,7 @@
     "sr_rate_frac": 0.001875,
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
-    "auto_rpm": 1200.0,
+    "auto_rpm": 1000.0,
     "auto_slow_rpm": 800.0,
     "slow_k_ratio": 25.0,
     "slow_kd": 5.0,
@@ -36,17 +36,19 @@
     "auto_resume_hold_s": 2.0,
     "dt_nominal_s": 0.02,
     "inner_wheel_min_rpm": 0.0,
-    "branch_positive_is_left": true
+    "branch_positive_is_left": true,
+    "branch_default": "left"
   },
   "manual": {
-    "full_rpm": 1200,
-    "half_ratio": 0.6
+    "full_rpm": 2000,
+    "half_ratio": 0.6,
+    "spin_ratio": 0.15
   },
   "drivers": {
     "ramp": {
       "manual": {
-        "accel": 800,
-        "decel": 1600
+        "accel": 1000,
+        "decel": 2000
       },
       "auto": {
         "accel": 2400,
@@ -100,8 +102,8 @@
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
-      "EDM BLDC L",
-      "EDM BLDC R",
+      "[SPARE]",
+      "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -110,7 +112,7 @@
       "[SPARE]"
     ],
     "do_names": [
-      "[SPARE]",
+      "Horn",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -152,6 +154,10 @@
     "debounce_scans": 2,
     "manual_auto_arm": true
   },
+  "horn": {
+    "enabled": true,
+    "do_channel": 0
+  },
   "can": {
     "bitrate": 125000,
     "channel": "can0",
@@ -181,11 +187,9 @@
     "log_tail_s": 2.0,
     "auto_start_delay_s": 0.6
   },
-  "branch_latch": [
-    { "entry_tag": "0002", "exit_tag": "0001", "branch": "left", "slow_speed": true }
-  ],
+  "branch_latch": [],
   "stop_until_start_button": [
-    { "tag": "0010", "stop_distance_m": 0.4 },
-    { "tag": "0011", "stop_distance_m": 0.4 }
+    { "tag": "0010", "stop_distance_m": 0.4, "ignore_t": 20 },
+    { "tag": "0011", "stop_distance_m": 0.4, "ignore_t": 20 }
   ]
 }

@@ -151,6 +151,44 @@ autopilot.sr_pos_frac / sr_rate_frac
     to speed, or it will be missed at the next speed change. 0.0075 per mm means
     a 20 mm error always sheds 15% of whatever the base currently is.
 
+autopilot.branch_default
+    Which track to follow when NO branch order is latched. "straight", "left"
+    or "right".
+
+    *** This is how the U-turn is taken now. *** It used to be a branch_latch
+    row - tag 0002 in, 0001 out, ordering LEFT - but the track has no RFID tag
+    at that junction any more, so there is no pulse to seal in. The vehicle
+    takes the extreme tape on the named side wherever a diverter appears, and
+    the U-turn is selected by the junction's geometry instead of by being told
+    about it beforehand.
+
+    *** The side was measured, not guessed. *** It shipped as "right" and runs
+    0048/0049 refused it: "branch right ordered, but that side is not in this
+    diverter - carrying straight on", twice, with the sensor reporting two
+    tracks and the follower still on LCP2. RIGHT takes the LOWEST position, so
+    landing on LCP2 means the second tape was above it - the positive side,
+    which with branch_positive_is_left true is LEFT. Hence "left". If the
+    vehicle ever carries straight on through that junction again, this is the
+    first line to re-read, and that same warning is the evidence.
+
+    *** It is a standing rule, and the ForkPassed contact cannot end it. ***
+    That contact exists to stop a latched order outliving its fork, after run
+    0023/0024 - and a default outlives every fork by definition, because there
+    is no pulse that could consume it. It is only consulted where there is a
+    choice: on plain tape the extreme track in any direction is the only track,
+    and a #LCP 7 crossing overrides it to straight. The exposure is a MERGE,
+    where two tapes converge in the sensor window and the continuity rule that
+    keeps STRAIGHT on the tape it was already following does not apply. Whether
+    that is safe is a property of the LAYOUT: every merge on the track has to
+    be right-handed, or the vehicle will change tape at the ones that are not.
+
+    *** Setting this does not slow the junction down. *** The slow zone and the
+    high-gain pair it carries come from a branch_latch row's tags, and a
+    junction with no tags has neither. See auto_slow_rpm and slow_k_ratio: run
+    0018 lost the tape on a 0.5 m U-turn at k_ratio 11.3, so if the new
+    junction turns that tightly it needs either those gains everywhere or a tag
+    pair to switch them in. "straight" restores the previous behaviour exactly.
+
 autopilot.auto_slow_rpm
     Cruise speed while a SLOW ZONE is latched - the stretch between the entry and
     exit tags of any branch_latch row carrying slow_speed true. Off the zone the
@@ -230,6 +268,33 @@ autopilot.inner_wheel_min_rpm
     but never reverses; the differential is limited to respect it rather than the
     wheel being clipped, which would alter the turn ratio. Set negative to permit
     pivoting. KIM2A gets this for free (negative rpm -> 0 V); our 60FFh is signed.
+
+manual.half_ratio / spin_ratio
+    Two fractions of full_rpm, for two different manoeuvres.
+
+    half_ratio is the INNER WHEEL of a curve. The outer wheel stays at
+    full_rpm, so the ratio between them is what sets the turn radius: the
+    vehicle still travels forward and the fraction only decides how sharply.
+
+    spin_ratio is BOTH WHEELS of a spin, equal and opposite. It sets no radius
+    at all - the vehicle turns on its axis and goes nowhere - so what this
+    fraction actually chooses is how fast it rotates.
+
+    *** They were one number and that was the bug. *** Sharing half_ratio tied
+    the turn radius of a curve to the yaw rate of a spin, and those want
+    opposite things: a curve wants a big difference between the wheels to turn
+    tightly, while a spin wants a SMALL common speed, because a spin is the
+    manoeuvre done in a confined space with somebody standing close enough to
+    have chosen it over driving round. Raising full_rpm for open-floor travel
+    sped up the spin in exactly the place that wanted it slowest.
+
+    The spin also loads the drivetrain differently. Both wheels are fighting
+    the floor sideways for the whole manoeuvre rather than rolling, so it is
+    the one jog that is scrubbing the tyres the entire time it is held.
+
+    _validate() refuses a spin_ratio that rounds to 0 r/min against full_rpm:
+    that is a spin button which commands nothing, and a dead control reads as
+    broken hardware rather than as a profile that asked for it.
 
 vehicle.invert_left / invert_right
     Both drivers take a POSITIVE 60FFh to travel forward on this AGV. If you swap
@@ -311,6 +376,32 @@ stop_until_start_button.*
     A tag may not be both a station stop and a branch_latch tag; _parse()
     refuses it, because one tag cannot both steer and stop.
 
+    *** ignore_t: why a resume needs a blind window. *** The vehicle comes to
+    rest ON or just past the tag that stopped it, and the reader goes on seeing
+    it. Without this, Start would resume the run straight into another read of
+    the same tag and stop again on the spot - a station the vehicle can never
+    leave, which looks like a broken Start button rather than a tag it keeps
+    re-reading.
+
+    So the tag that was just resumed FROM contributes its ignore_t, and for
+    that long no station tag can stop the vehicle. The clock starts when the
+    wheels actually move, not when Start is pressed: auto_start_delay_s is
+    spent standing still, and a window that began at the press would hand part
+    of itself back before the vehicle had travelled a millimetre.
+
+    *** It suppresses ALL stations, not just the one departed. *** That is the
+    literal thing asked for and it is the simpler rule to reason about at the
+    vehicle, but it has a cost worth doing the arithmetic on: at auto_rpm the
+    window is a DISTANCE the vehicle is blind for. 30 s at 1000 r/min is 9.4 m.
+    If two stations are closer together than that, the second one is skipped -
+    silently, as far as the track is concerned. It is not silent in the log:
+    every suppressed read is an event naming the tag and the time left, which
+    is what turns "the AGV ignored my station" into something readable.
+
+    Set it to 0 to switch the window off for a tag; the tag then re-arms as
+    soon as the vehicle moves, which is correct only if it clears the reader
+    before the first scan.
+
 panel.manual_auto_arm
     MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
     itself the arm command: the drives energise without anyone pressing Reset,
@@ -333,6 +424,29 @@ panel.manual_auto_arm
     than latched, so the vehicle comes back on its own once the chain is
     restored and acknowledged. No latched fault is cleared this way - a fault
     still blocks arming until somebody presses Reset.
+
+horn.*
+    The only output this software energises. DO goes high whenever motion is
+    COMMANDED - manual jog or auto run, no distinction, because the hazard is
+    the same 150 kg either way and a horn that means two different things means
+    neither.
+
+    *** It follows the setpoint, not the wheels. *** The coil is raised from the
+    commanded target, so it sounds at the instant motion is asked for rather
+    than once the vehicle is already rolling - which is the whole point of a
+    warning device. It also means the horn goes quiet while the drives are
+    still decelerating, and that is the right way round: the warning ends when
+    the vehicle stops being commanded to move, and what remains is a coast that
+    is already ending.
+
+    *** Not a safety function. *** The stop is the OSSD chain into the FX3, in
+    hardware. This is an audible warning and nothing gates on it: a horn that
+    failed to sound must not be able to prevent a jog, or a broken lamp becomes
+    a stranded vehicle.
+
+    Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
+    it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
+    rather than leaving it energised. See the derived value.
 
 timing.auto_start_delay_s
     The pause between AUTO arming and the wheels being commanded, after Start is
@@ -493,6 +607,10 @@ _SCHEMA = {
         "dry_run":             ("DRY_RUN", bool),
         "invert_error":        ("INVERT_ERROR", bool),
         "branch_positive_is_left": ("BRANCH_POSITIVE_IS_LEFT", bool),
+        # The intent with no latch set - "straight", "left" or "right". A
+        # junction with no RFID tag has nothing to seal in, so this is how it
+        # gets an answer. See the tuning note.
+        "branch_default":      ("BRANCH_DEFAULT", str),
         "k_ratio":             ("K_RATIO", float),
         "kd":                  ("KD", float),
         "ki":                  ("KI", float),
@@ -521,6 +639,9 @@ _SCHEMA = {
     "manual": {
         "full_rpm":   ("MANUAL_FULL_RPM", int),
         "half_ratio": ("MANUAL_HALF_RATIO", float),
+        # The spin pair gets its own fraction. See the tuning note: a spin is a
+        # different manoeuvre from a curve, not a slower version of one.
+        "spin_ratio": ("MANUAL_SPIN_RATIO", float),
     },
     "plot": {
         "err_range_mm": ("PLOT_ERR_RANGE_MM", float),
@@ -597,6 +718,13 @@ _SCHEMA = {
         "di_auto":        ("PANEL_DI_AUTO", int),
         "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
+    },
+    # The panel's mirror image: that section READS the DI image, this one
+    # WRITES a coil. Kept apart from "dio" for the same reason "panel" is - dio
+    # owns the socket and the scan, and these say what a channel MEANS.
+    "horn": {
+        "enabled":    ("HORN_ENABLED", bool),
+        "do_channel": ("HORN_DO_CHANNEL", int),
     },
     "can": {
         "bitrate":        ("CAN_BITRATE", int),
@@ -811,11 +939,19 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
 def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
     """stop_until_start_button -> {tag: stopping distance in m}.
 
+    Returns {tag: {"stop_distance_m": float, "ignore_s": float}}.
+
     A tag here brings a running auto vehicle to rest over stop_distance_m and
     holds it there until Start is pressed. Distance rather than time because the
     resting point is the thing that matters at a station: a timed ramp stops
     0.25 m past the tag at 800 r/min and 0.38 m past it at 1200, while a
     distance is the same from any approach speed.
+
+    ignore_t is the opposite units for the opposite reason - see the tuning
+    note. It is a TIME because what it has to outlast is the vehicle sitting
+    still on top of the tag it just stopped for, and a distance cannot measure
+    that: the vehicle covers no distance at all while it waits for Start, so a
+    distance budget would still be full at the moment it is needed.
 
     Same strictness as branch_latch, and for the same reason: a tag that never
     matches produces no error and no symptom, just a vehicle that sails past the
@@ -823,7 +959,7 @@ def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
     """
     if not isinstance(rows, list):
         raise ConfigError("stop_until_start_button: expected a list")
-    want = {"tag", "stop_distance_m"}
+    want = {"tag", "stop_distance_m", "ignore_t"}
     width = tag_len * 2
     out = {}
     for i, row in enumerate(rows):
@@ -860,7 +996,17 @@ def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
         if not 0 < dist <= 5.0:
             raise ConfigError(f"{where}.stop_distance_m: expected a distance in "
                               f"(0, 5] m, got {dist}")
-        out[tag] = dist
+
+        # 0 is legal and means "no window" - the tag re-arms the moment the
+        # vehicle moves. The ceiling is a typo guard rather than a policy: this
+        # window SUPPRESSES stations, so a value entered in milliseconds by
+        # mistake would quietly turn the whole station system off for the rest
+        # of the run, which is the one failure that produces no symptom.
+        ign = _coerce(row["ignore_t"], float, f"{where}.ignore_t")
+        if not 0 <= ign <= 300.0:
+            raise ConfigError(f"{where}.ignore_t: expected a time in [0, 300] "
+                              f"s, got {ign}")
+        out[tag] = {"stop_distance_m": dist, "ignore_s": ign}
     return out
 
 
@@ -937,8 +1083,10 @@ def _derive(ns):
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
 
-    # Inner wheel of a curve, and both wheels of a spin.
+    # Inner wheel of a curve...
     ns["MANUAL_HALF_RPM"] = round(ns["MANUAL_FULL_RPM"] * ns["MANUAL_HALF_RATIO"])
+    # ...and both wheels of a spin, which is no longer the same number.
+    ns["MANUAL_SPIN_RPM"] = round(ns["MANUAL_FULL_RPM"] * ns["MANUAL_SPIN_RATIO"])
 
     # A scheduling hiccup or a resume-after-stop gap must not blow up I and D,
     # so the measured dt is clamped to this band.
@@ -960,6 +1108,18 @@ def _derive(ns):
         5.0 * ns["LINE_LOSS_GRACE_M"]
         / max(min(ns["AUTO_RPM"], ns["AUTO_SLOW_RPM"]) * ns["MPS_PER_RPM"],
               1e-6))
+
+    # How long a coil command stays valid without being renewed. The horn is
+    # commanded from the CAN tick and written by the DIO thread, so the two run
+    # at different rates and the command has to survive the gap between them -
+    # but only the gap. If the tick stops renewing it, the coil must fall low on
+    # its own rather than sound until somebody kills the process, which is the
+    # one failure a horn can have that trains operators to ignore it.
+    #
+    # Five ticks or two scans, whichever is longer, so neither thread's normal
+    # jitter can expire a command that is still being renewed.
+    ns["HORN_HOLD_S"] = max(5.0 * ns["LOOP_PERIOD_S"],
+                            2.0 * ns["DIO_SCAN_PERIOD_S"])
 
     # The autopilot is tuned against the AUTO ramp specifically: 6083h caps both
     # the forward ramp and the rate at which the wheel DIFFERENCE can slew,
@@ -995,6 +1155,13 @@ def _validate(ns):
     check(g("GEAR_RATIO") > 0, "vehicle.gear_ratio must be > 0")
     check(g("MOTOR_MAX_RPM") > 0, "vehicle.motor_max_rpm must be > 0")
     check(g("SENSOR_LOOKAHEAD_M") > 0, "vehicle.sensor_lookahead_m must be > 0")
+
+    # -- branch selection --------------------------------------------------
+    # Spelled out rather than taken from branch.py: config imports nothing from
+    # the layers it configures, so a typo here has to be caught here.
+    check(g("BRANCH_DEFAULT") in ("straight", "left", "right"),
+          f"autopilot.branch_default ({g('BRANCH_DEFAULT')!r}) must be "
+          f"'straight', 'left' or 'right'")
 
     # -- control law ------------------------------------------------------
     check(g("K_RATIO") > 0, "K_RATIO must be > 0")
@@ -1056,6 +1223,15 @@ def _validate(ns):
           f"manual.full_rpm must be in (0, {g('MOTOR_MAX_RPM')}]")
     check(0.0 < g("MANUAL_HALF_RATIO") <= 1.0,
           "manual.half_ratio must be a fraction in (0, 1]")
+    check(0.0 < g("MANUAL_SPIN_RATIO") <= 1.0,
+          "manual.spin_ratio must be a fraction in (0, 1]")
+    # Rounding a small fraction of a small full_rpm can reach 0, and a spin
+    # button that commands zero is a button that does nothing - which reads as
+    # a broken control rather than as a profile that asked for it.
+    check(g("MANUAL_SPIN_RPM") > 0,
+          f"manual.spin_ratio ({g('MANUAL_SPIN_RATIO')}) x full_rpm "
+          f"({g('MANUAL_FULL_RPM')}) rounds to 0 r/min - the spin buttons "
+          f"would be dead")
 
     # -- drivers ----------------------------------------------------------
     for mode, block in g("RAMP").items():
@@ -1143,9 +1319,14 @@ def _validate(ns):
     check(g("DIO_RECONNECT_PERIOD_S") > 0, "dio.reconnect_period_s must be > 0")
     # A scan cannot outlast its own period, or the loop falls permanently
     # behind and every snapshot is older than it looks.
+    # A scan is two reads and, when a coil is being corrected, a write. Only
+    # the first operation to go quiet costs the whole timeout - the rest never
+    # run, because a failure raises out of the scan - so this bounds the scan
+    # even though three timeouts would not fit inside one period.
     check(g("DIO_TIMEOUT_S") < g("DIO_SCAN_PERIOD_S"),
           f"dio.timeout_s ({g('DIO_TIMEOUT_S')}) must be below scan_period_s "
-          f"({g('DIO_SCAN_PERIOD_S')}) - two reads must fit inside one scan")
+          f"({g('DIO_SCAN_PERIOD_S')}) - one stalled operation must not "
+          f"outlast the scan that issued it")
     # Otherwise a single late scan reads as a fault and the module flaps.
     check(g("DIO_SILENT_WARN_S") > g("DIO_SCAN_PERIOD_S"),
           f"dio.silent_warn_s ({g('DIO_SILENT_WARN_S')}) must exceed "
@@ -1200,6 +1381,16 @@ def _validate(ns):
     check(not g("PANEL_ENABLED") or g("DIO_ENABLED"),
           "panel.enabled is true while dio.enabled is false - the panel is read "
           "from the DI image, so the buttons would never respond")
+
+    # -- horn -------------------------------------------------------------
+    check(0 <= g("HORN_DO_CHANNEL") < g("DIO_NUM_DO"),
+          f"horn.do_channel ({g('HORN_DO_CHANNEL')}) must be a channel in "
+          f"0..{g('DIO_NUM_DO') - 1}")
+    # Same reasoning as panel.enabled above: the coil is written by the DIO
+    # scan, so without it the horn is silently dead rather than merely off.
+    check(not g("HORN_ENABLED") or g("DIO_ENABLED"),
+          "horn.enabled is true while dio.enabled is false - the coil is "
+          "written by the DIO scan, so the horn would never sound")
 
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
@@ -1314,12 +1505,15 @@ _DERIVED = (
     ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
     ("MANUAL_HALF_RPM", "manual.full_rpm \u00b7 manual.half_ratio"),
+    ("MANUAL_SPIN_RPM", "manual.full_rpm \u00b7 manual.spin_ratio"),
     ("DT_MIN_S", "0.2 \u00b7 dt_nominal_s"),
     ("DT_MAX_S", "5 \u00b7 dt_nominal_s"),
     ("LINE_LOSS_GRACE_MAX_S",
      "5 \u00b7 line_loss_grace_m / cruise speed - the standstill backstop"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
+    ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "
+     "how long a coil command survives unrenewed"),
     ("TPDO1_COB", "0x180 + can.sensor_node"),
     ("LIDAR_SCAN_CYCLE_S",
      "nanoScan3 datasheet - a device constant, not a tunable"),
@@ -1414,6 +1608,7 @@ def tuning_notes():
 _SPEED_ROWS = [
     ("manual", "full_rpm"),
     ("manual", "half_ratio"),
+    ("manual", "spin_ratio"),
     ("autopilot", "auto_rpm"),
     ("autopilot", "auto_slow_rpm"),
     ("drivers", "ramp.manual.accel"),
@@ -1425,7 +1620,12 @@ _SPEED_ROWS = [
 # Everything in _SPEED_ROWS is suppressed where it would otherwise appear, so no
 # value is ever printed twice - a page showing one parameter in two places is a
 # page where the two can be read as two parameters.
-_MOVED = set(_SPEED_ROWS)
+#
+# branch_default moves for the same reason and to the same effect: the question
+# it answers is "what will the vehicle do at a junction", and that is the RFID
+# rules block. Left in autopilot as well it would be the one parameter on the
+# page appearing twice, which is exactly what this set exists to prevent.
+_MOVED = set(_SPEED_ROWS) | {("autopilot", "branch_default")}
 
 # Section order on the page. Speed first, then the control law, then the
 # geometry it runs on; everything after is in schema order. Named here rather
@@ -1519,14 +1719,28 @@ def describe():
             "value": f"branch {r['branch']}"
                      + (" \u00b7 slow zone" if r["slow_speed"] else ""),
             "unit": "", "note": None})
+    # The standing default belongs HERE, not only in the autopilot section.
+    # This block answers "what will the vehicle do at a junction", and with an
+    # empty ladder it would otherwise read "none loaded" - which says the
+    # vehicle carries straight on, the one thing it no longer does.
+    if g["BRANCH_DEFAULT"] != "straight":
+        side = "rightmost" if g["BRANCH_DEFAULT"] == "right" else "leftmost"
+        rules.append({
+            "key": "\u2514 autopilot.branch_default", "const": "BRANCH_DEFAULT",
+            "value": f"take the {side} tape", "unit": "",
+            "note": notes.get("autopilot.branch_default")})
 
     stops = g["STOP_TAGS"]
     rule(2, "stop until start button", "STOP_TAGS", len(stops),
          notes.get("stop_until_start_button.*"))
-    for tag, dist in sorted(stops.items()):
-        rules.append({"key": f"\u2514 {tag}", "const": "",
-                      "value": f"stop over {dist:.2f} m, hold for Start",
-                      "unit": "", "note": None})
+    for tag, row in sorted(stops.items()):
+        ign = row["ignore_s"]
+        rules.append({
+            "key": f"\u2514 {tag}", "const": "",
+            "value": f"stop over {row['stop_distance_m']:.2f} m, hold for Start"
+                     + (f" \u00b7 then ignore stations {ign:.0f} s"
+                        if ign else " \u00b7 no ignore window"),
+            "unit": "", "note": None})
 
     for n in range(1, RFID_RULE_SLOTS - 1):
         rules.append({"key": f"{n + 2} \u00b7 undefined rule {n}", "const": "",

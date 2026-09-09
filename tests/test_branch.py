@@ -382,7 +382,10 @@ def test_station_stop_pauses_the_run():
 
     check("the profile carries station tags", bool(config.STOP_TAGS),
           str(config.STOP_TAGS))
-    tag, dist = sorted(config.STOP_TAGS.items())[0]
+    tag, row = sorted(config.STOP_TAGS.items())[0]
+    dist = row["stop_distance_m"]
+    check("a station row carries both a distance and a resume window",
+          set(row) == {"stop_distance_m", "ignore_s"}, str(row))
 
     # --- the ramp lands at the distance, from any speed --------------------
     for v in (config.AUTO_SLOW_RPM, config.AUTO_RPM):
@@ -410,6 +413,7 @@ def test_station_stop_pauses_the_run():
             self._auto_running = True
             self._auto_hold = self._stop_hold = None
             self._auto_ok_since = None
+            self._stop_ignore_until = 0.0
             self._auto_start_at = 0.0
             self._auto_seen, self._auto_tick = -1, 0.0
             self._log_close_at = 0.0
@@ -905,13 +909,21 @@ def test_auto_resumes_after_the_tape_comes_back():
               any("resuming" in e["msg"] for e in events.since(0)[1]))
 
         # The whole point: it has to get going again, not sit at zero.
-        for _ in range(60):
+        #
+        # Sampled at HALF the ramp time, computed from the profile rather than
+        # fixed at 60 ticks. A fixed window silently becomes a saturated one
+        # the moment auto_rpm is lowered - at 1000 r/min the ramp completes in
+        # 50 ticks, so a 60-tick sample tests nothing about ramping and fails
+        # for the wrong reason.
+        half = int(0.5 * config.AUTO_RPM / config.RAMP_ACCEL_RPM_S / 0.02)
+        for _ in range(half):
             tick(tape)
         check("the wheels accelerate again", ctl._follower._v_rpm > 100.0,
               f"v_base {ctl._follower._v_rpm:.0f} r/min")
         check("...through the ramp rather than in one step",
               ctl._follower._v_rpm < config.AUTO_RPM,
-              f"{ctl._follower._v_rpm:.0f} r/min after 1.2 s")
+              f"{ctl._follower._v_rpm:.0f} r/min at half the ramp "
+              f"({half} ticks)")
 
         # A run that was ENDED is not a run that can resume itself.
         ctl._auto_hold = "line lost - holding"
@@ -1017,6 +1029,254 @@ def test_branch_events_are_edge_only():
     events.clear()
 
 
+def test_standing_default_replaces_the_tag_pair():
+    """The U-turn has no RFID tag, so the intent comes from a standing default.
+
+    The tag pair that used to order it (0002 in, 0001 out) is gone from the
+    profile. What replaces it is autopilot.branch_default: the answer the
+    ladder gives when no coil is sealed in. Everything here is about keeping
+    that distinct from an ORDER - a default must not look like one to the
+    ForkPassed contact, or the fork it never took gets consumed anyway.
+    """
+    print("\nbranch: the standing default")
+
+    lad = branch.Ladder(RIGHT)
+    check("with nothing latched the default IS the intent",
+          lad.intent() == RIGHT)
+    check("...but nothing is actually sealed in", lad.latched() is False)
+    lad.scan()
+    check("a scan with no pulses leaves it there", lad.intent() == RIGHT)
+
+    # A default is not a coil: it cannot be cleared, and a clear contact that
+    # appeared to work on it would be a latch nobody could reason about.
+    lad.scan(clear_right=True, clear_left=True)
+    check("a clear contact cannot clear a default", lad.intent() == RIGHT)
+
+    lad.scan(set_left=True)
+    check("an order still overrides the default", lad.intent() == LEFT)
+    check("...and that one IS latched", lad.latched() is True)
+    lad.scan(clear_left=True)
+    check("clearing the order falls back to the default, not to straight",
+          lad.intent() == RIGHT)
+
+    lad.reset()
+    check("reset() drops orders but keeps the default - disarming does not "
+          "rebuild the track", lad.intent() == RIGHT and lad.latched() is False)
+
+    try:
+        branch.Ladder("rightmost")
+        check("an unknown default is refused", False, "accepted!")
+    except ValueError:
+        check("an unknown default is refused", True)
+
+    check("straight is still the drawn behaviour, and still the fallback",
+          branch.Ladder().intent() == STRAIGHT)
+
+    # -- the fork must not eat what was never an order ---------------------
+    e = branch.BranchEngine([], positive_is_left=True, default=RIGHT)
+    check("the engine carries the default through", e.ladder.intent() == RIGHT)
+
+    # Drive a whole diverter: multi-track, then back to one. With a latched
+    # order this is the ForkPassed pulse; with only a default there is nothing
+    # to consume and the pulse must never fire.
+    for nlcp in (2, 3, 3, 2, 2):
+        e.scan(None, nlcp)
+    check("a diverter driven on the default alone consumes no order",
+          e.forks == 0, f"{e.forks} fork(s)")
+    check("...and the intent is unchanged by it", e.ladder.intent() == RIGHT)
+    check("...and no tag is credited for it", e.set_by is None)
+
+    # A real order on top of a default still ends at its fork, and lands back
+    # on the default rather than on straight.
+    rows = [{"entry_tag": "000A", "exit_tag": "000B", "branch": LEFT,
+             "slow_speed": False}]
+    e2 = branch.BranchEngine(rows, positive_is_left=True, default=RIGHT)
+    check("the tag still orders the other side", e2.scan("000A", 2) == LEFT)
+    e2.scan(None, 3)
+    check("the order stands through the diverter", e2.ladder.intent() == LEFT)
+    check("coming out of it consumes the order", e2.scan(None, 2) == RIGHT)
+    check("...exactly once", e2.forks == 1, f"{e2.forks}")
+
+    # -- what the vehicle actually follows ---------------------------------
+    e3 = branch.BranchEngine([], positive_is_left=True, default=RIGHT)
+    e3.scan(None, 2)
+    t, choice = e3.choose(2, PLAIN, last_mm=0.0)
+    check("on plain tape the default changes nothing - the extreme track in "
+          "any direction is the only track",
+          choice == RIGHT and t["index"] == 2)
+    check("...and that is not reported as unhonoured", e3.unhonoured is False)
+
+    t, _ = e3.choose(3, DIV_NEG, last_mm=0.0)
+    check("at a right-hand diverter it takes the branch - this is the U-turn",
+          t["index"] == 1 and t["pos_mm"] == -38, str(t))
+
+    t, _ = e3.choose(6, DIV_POS, last_mm=0.0)
+    check("at a left-hand diverter it degrades to the main track, not the "
+          "branch", t["index"] == 2)
+    check("...and says the order was not honoured, because a standing default "
+          "is still an intent somebody should hear about",
+          e3.unhonoured is True)
+
+    _, choice = e3.choose(7, CROSSING, last_mm=0.0)
+    check("a crossing overrides the default to straight, per the manual",
+          choice == STRAIGHT)
+
+    # The live profile, which is what the vehicle will actually run on.
+    import config
+    check("the profile no longer carries the U-turn tag pair",
+          config.BRANCH_LATCH == [], str(config.BRANCH_LATCH))
+    check("...and takes the U-turn by standing preference instead",
+          config.BRANCH_DEFAULT in ("left", "right"), config.BRANCH_DEFAULT)
+    # Which SIDE is a measured fact about the track, not a constant this test
+    # gets to pin - runs 0048/0049 logged "that side is not in this diverter"
+    # against the shipped value and it was changed. What must hold is that the
+    # profile and the handedness agree on what the word means.
+    check("the standing side maps to an extreme position through the "
+          "profile's handedness, whichever side it names",
+          branch.select_track(DIV_POS, config.BRANCH_DEFAULT,
+                              config.BRANCH_POSITIVE_IS_LEFT)["index"]
+          == (3 if (config.BRANCH_DEFAULT == "left")
+                   == config.BRANCH_POSITIVE_IS_LEFT else 2))
+
+    # The consequence worth having on record: the slow zone and its high-gain
+    # pair came from that row's tags, so the junction is now taken at cruise on
+    # the ordinary gains. Run 0018 is why that is worth a check rather than a
+    # comment - it lost the tape on a 0.5 m U-turn at exactly these gains.
+    check("no slow zone survives the removal - the junction runs at auto_rpm "
+          "on the ordinary gains, and a tight U-turn needs neither of those "
+          "to be true (see run 0018)",
+          not any(r["slow_speed"] for r in config.BRANCH_LATCH))
+
+
+def test_the_resume_window_ignores_stations():
+    """After Start resumes a station stop, no station may stop the vehicle again
+    for that tag's ignore_t.
+
+    The bug it exists for: the vehicle comes to rest ON the tag that stopped it
+    and the reader goes on seeing it, so the first scan after Start reads the
+    same tag and parks the vehicle again on the spot. That looks like a dead
+    Start button rather than a tag being re-read, which is why this is worth a
+    test that goes through _run_autopilot() rather than one that pokes the
+    flag.
+    """
+    import canworker
+    import config
+    import events
+    print("\nbranch: the resume ignore window")
+
+    tag = sorted(config.STOP_TAGS)[0]
+    ign = config.STOP_TAGS[tag]["ignore_s"]
+    check("the profile asks for a window at all", ign > 0, f"{ign} s")
+
+    ctl = canworker.Controller()
+    ctl._armed, ctl._mode = True, "auto"
+    ctl._auto_running = True
+    ctl._follower._v_rpm = config.AUTO_RPM
+
+    class FakeRfid:
+        def __init__(self):
+            self.n, self.tag = 0, None
+
+        def read(self, t):
+            self.n += 1
+            self.tag = t
+
+        def snapshot(self):
+            return {"tags_seen": self.n, "last_tag": self.tag}
+
+    rfid = FakeRfid()
+    ctl._rfid = rfid
+    tape = {"tracks": PLAIN, "nlcp": 2, "has_track": True}
+
+    def tick():
+        ctl._sensor = tape
+        ctl._sensor_seen += 1
+        ctl._sensor_last = time.monotonic()
+        ctl._run_autopilot()
+
+    # --- the station still works, which is the thing not to break ---------
+    check("no window is open on a fresh run", ctl._stop_ignore_left() == 0.0)
+    rfid.read(tag)
+    tick()
+    check("*** the station tag still stops the vehicle ***",
+          ctl._stop_hold == tag, str(ctl._stop_hold))
+
+    # --- resuming opens the window ----------------------------------------
+    events.clear()
+    ctl._resume_from_stop()
+    check("the resume clears the hold", ctl._stop_hold is None)
+    left = ctl._stop_ignore_left()
+    check("...and opens the departed tag's window", 0 < left <= ign,
+          f"{left:.1f} s of {ign:.0f}")
+    check("...and says so, so it is not a silent mode change",
+          any("ignored for" in e["msg"] for e in events.since(0)[1]),
+          str(events.since(0)[1]))
+
+    # --- a second read inside the window must NOT stop ---------------------
+    events.clear()
+    rfid.read(tag)
+    tick()
+    check("*** re-reading the same tag inside the window does not re-park ***",
+          ctl._stop_hold is None,
+          "this is the station the vehicle could never leave")
+    check("...and the suppression is logged with the time left",
+          any("ignored" in e["msg"] and tag in e["msg"]
+              for e in events.since(0)[1]), str(events.since(0)[1]))
+
+    # The OTHER station is suppressed too - the literal reading of "ignore
+    # other tag readings", and the cost is on record in the tuning note.
+    other = sorted(config.STOP_TAGS)[1]
+    rfid.read(other)
+    tick()
+    check("a different station inside the window is also ignored",
+          ctl._stop_hold is None, str(ctl._stop_hold))
+
+    # --- and it ends -------------------------------------------------------
+    ctl._stop_ignore_until = time.monotonic() - 0.001
+    check("an expired window reports nothing left",
+          ctl._stop_ignore_left() == 0.0)
+    check("...and clears itself rather than leaking",
+          ctl._stop_ignore_until == 0.0)
+    rfid.read(tag)
+    tick()
+    check("*** once it expires the station stops the vehicle again ***",
+          ctl._stop_hold == tag, str(ctl._stop_hold))
+
+    # --- a window belongs to one run ---------------------------------------
+    ctl._stop_ignore_until = time.monotonic() + ign
+    ctl._end_auto_run("auto run STOP (operator)", hard=True)
+    check("ending the run drops the window with the hold",
+          ctl._stop_ignore_until == 0.0 and ctl._stop_hold is None)
+
+    # --- zero means off ----------------------------------------------------
+    ctl._stop_hold = tag
+    saved = config.STOP_TAGS[tag]["ignore_s"]
+    try:
+        config.STOP_TAGS[tag]["ignore_s"] = 0.0
+        ctl._resume_from_stop()
+        check("ignore_t 0 opens no window at all",
+              ctl._stop_ignore_left() == 0.0)
+    finally:
+        config.STOP_TAGS[tag]["ignore_s"] = saved
+
+    # --- the window is about stopping, not about steering ------------------
+    check("the suppression sits on the STOP, not on the tag read - the branch "
+          "ladder still sees every tag",
+          "self._branch.scan(tag" in (ROOT / "canworker.py").read_text())
+
+    # --- and it is visible -------------------------------------------------
+    ctl._stop_ignore_until = time.monotonic() + ign
+    snap = ctl.snapshot()
+    check("the snapshot reports the window, so a skipped station has a reason "
+          "on the page rather than looking like a failed read",
+          snap["stop_ignore_s"] is not None and snap["stop_ignore_s"] > 0,
+          str(snap["stop_ignore_s"]))
+    ctl._stop_ignore_until = 0.0
+    check("...and reports None when none is running",
+          ctl.snapshot()["stop_ignore_s"] is None)
+    events.clear()
+
+
 TESTS = [
     test_ladder_truth_table,
     test_select_track,
@@ -1024,7 +1284,9 @@ TESTS = [
     test_engine_scans_tags,
     test_the_fork_consumes_the_order,
     test_the_u_turn_merge_end_to_end,
+    test_standing_default_replaces_the_tag_pair,
     test_station_stop_pauses_the_run,
+    test_the_resume_window_ignores_stations,
     test_slow_zone_latch,
     test_choose,
     test_profile_table,

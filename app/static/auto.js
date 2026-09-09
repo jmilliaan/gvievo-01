@@ -48,14 +48,38 @@ function showPid(p) {
 function showHold(s) {
   const el = document.getElementById('p-guard');
   if (!el) return;
-  // A station stop is a planned pause and reads as one; a lost line is not.
-  if (s.stop_hold) {
-    el.textContent = 'AT STATION ' + s.stop_hold + ' — press Start';
-    el.style.color = 'var(--accent-2)';
-  } else if (s.auto_hold) {
+  // Station stops moved to their own tile - see showStation(). What is left
+  // here is the unplanned one, which is why it keeps the hazard colour.
+  if (s.auto_hold) {
     el.textContent = 'HOLDING — ' + s.auto_hold;
     el.style.color = 'var(--hazard-ink)';
   }
 }
 
-onState(s => { showPid(s.pid); showHold(s); });
+// The station tag mechanism, in the two states an operator has to tell apart.
+//
+// PARKED is a planned pause waiting for a hand on Start. IGNORING is the window
+// after that hand: the vehicle is standing on the tag that stopped it, so for
+// ignore_t no station may stop it again. Showing the countdown is the whole
+// point - a station that goes by during the window looks exactly like a tag
+// that failed to read, and those want completely different responses.
+function showStation(s) {
+  const v = document.getElementById('p-stn');
+  const note = document.getElementById('p-stn-note');
+  if (!v || !note) return;
+  if (s.stop_hold) {
+    v.textContent = s.stop_hold;
+    v.style.color = 'var(--accent-2)';
+    note.textContent = 'AT STATION — press Start';
+  } else if (s.stop_ignore_s) {
+    v.textContent = s.stop_ignore_s.toFixed(0) + ' s';
+    v.style.color = 'var(--hazard-ink)';
+    note.textContent = 'stations ignored after resume';
+  } else {
+    v.textContent = '–';
+    v.style.color = '';
+    note.textContent = 'stop tags';
+  }
+}
+
+onState(s => { showPid(s.pid); showHold(s); showStation(s); });

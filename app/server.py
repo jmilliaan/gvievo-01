@@ -39,6 +39,7 @@ import autopilot  # noqa: E402
 import config  # noqa: E402
 import events  # noqa: E402
 import motion  # noqa: E402
+import wifi  # noqa: E402
 from canworker import Controller  # noqa: E402
 
 # guard holds the permitted/forbidden write lists from the monitoring plan's
@@ -150,7 +151,8 @@ def params():
         env_var=config.PROFILE_ENV_VAR,
         zeta=f"{autopilot.predicted_zeta():.2f}",
         enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])
-                 for name in ("dio", "panel", "rfid", "lidar", "monitor")],
+                 for name in ("dio", "panel", "horn", "rfid", "lidar",
+                              "monitor")],
         dry_run=config.DRY_RUN)
 
 
@@ -185,7 +187,12 @@ def api_state():
     """
     if request.args.get("hb") == "1":
         ctl.keepalive()
-    return jsonify(ctl.snapshot())
+    snap = ctl.snapshot()
+    # Merged HERE rather than inside Controller.snapshot() on purpose: this is
+    # a /proc read about the operator's link to the vehicle, not a fact the bus
+    # thread observes, and it must never become something a tick waits on.
+    snap["wifi"] = wifi.snapshot()
+    return jsonify(snap)
 
 
 @app.post("/api/preflight")
@@ -366,6 +373,7 @@ def api_config():
         "profile": config.PROFILE_NAME,
         "profile_path": config.PROFILE_PATH_LOADED,
         "full_rpm": config.MANUAL_FULL_RPM, "half_rpm": config.MANUAL_HALF_RPM,
+        "spin_rpm": config.MANUAL_SPIN_RPM,
         "auto_rpm": config.AUTO_RPM,
         "auto_slow_rpm": config.AUTO_SLOW_RPM,
         "driver_ramp": config.RAMP,   # 6083h/6084h, per mode

@@ -66,10 +66,29 @@ merge after a U-turn: the followed position went -43 -> +86 -> -60 mm in half a
 second, switching tape and back. So STRAIGHT no longer trusts the label; it
 follows the track nearest the one it was already on. See select_track().
 
+*** A STANDING DEFAULT REPLACES THE TAG PAIR AT THE U-TURN. *** The test track
+has no RFID tag at the U-turn junction, so there is no pulse to seal in and
+nothing for the ladder to latch. `default` is the intent when no coil is set:
+with it at RIGHT the vehicle takes the rightmost tape wherever a diverter
+appears, and the U-turn is selected by the junction's geometry rather than by
+being told about it in advance.
+
+*** That default is a STANDING RULE, and standing rules are what run 0023/0024
+cost us. *** Everything above about ForkPassed is about not letting an order
+outlive its fork; a default outlives every fork by definition, because there is
+no pulse that could consume it. What makes it tolerable is that it is only ever
+consulted where there is a CHOICE to make: on plain tape the extreme track in
+any direction is the only track, and at a crossing choose() overrides it to
+STRAIGHT. The exposure is a merge - two tapes converging inside the sensor
+window - where the rightmost is whichever tape is momentarily further over, and
+STRAIGHT's continuity rule is not there to hold the vehicle on the one it was
+already following. A track whose merges are not all right-handed will jump tape
+at them, and that is a property of the layout rather than of this file.
+
 Deliberately imports neither config nor any clock - the caller supplies
-handedness and the compiled tag table. Same rule plotrun.py follows: a module
-that cannot read the vehicle profile cannot grow a hidden dependency on one
-vehicle.
+handedness, the standing default, and the compiled tag table. Same rule
+plotrun.py follows: a module that cannot read the vehicle profile cannot grow a
+hidden dependency on one vehicle.
 """
 
 STRAIGHT, LEFT, RIGHT = "straight", "left", "right"
@@ -87,9 +106,18 @@ SINGLE_NLCP = 2
 
 
 class Ladder:
-    """The intent latch. One scan per control tick, inputs frozen by the caller."""
+    """The intent latch. One scan per control tick, inputs frozen by the caller.
 
-    def __init__(self):
+    `default` is what intent() answers with no coil set. STRAIGHT is the drawn
+    behaviour and the ladder is unchanged by any other value: a default is not
+    a coil, cannot be sealed in, cannot be cleared, and does not interlock. It
+    is only the answer given when the rungs have nothing to say.
+    """
+
+    def __init__(self, default=STRAIGHT):
+        if default not in (STRAIGHT,) + DIRECTIONS:
+            raise ValueError(f"unknown default intent {default!r}")
+        self.default = default
         self.left = False
         self.right = False
         self.slow = False
@@ -97,7 +125,11 @@ class Ladder:
     def reset(self):
         """Disarm clears intent. A latch that survived a manual intervention
         would take a junction on an order given before whatever made the
-        operator stop the vehicle."""
+        operator stop the vehicle.
+
+        The DEFAULT survives, because it is not intent that somebody gave - it
+        is the layout of the track, and disarming does not rebuild the track.
+        """
         self.left = False
         self.right = False
         self.slow = False
@@ -130,12 +162,17 @@ class Ladder:
         self.slow = (set_slow or self.slow) and not clear_slow
         return self.intent()
 
+    def latched(self):
+        """Is a coil actually sealed in? Distinct from intent(), which answers
+        with the standing default when nothing is."""
+        return self.left or self.right
+
     def intent(self):
         if self.right:
             return RIGHT
         if self.left:
             return LEFT
-        return STRAIGHT
+        return self.default
 
 
 def compile_table(rows):
@@ -163,8 +200,8 @@ def compile_table(rows):
 class BranchEngine:
     """Ladder plus the compiled tag table. Scanned once per control tick."""
 
-    def __init__(self, rows=(), positive_is_left=True):
-        self.ladder = Ladder()
+    def __init__(self, rows=(), positive_is_left=True, default=STRAIGHT):
+        self.ladder = Ladder(default)
         self.table = compile_table(rows)
         self.positive_is_left = bool(positive_is_left)
         self.set_by = None          # the tag that set the live latch
@@ -190,12 +227,19 @@ class BranchEngine:
         the merge on the way back, a crossing - can never produce a pulse and
         can never clear anything.
 
+        *** Armed by a LATCHED coil, not by intent(). *** A standing default is
+        not an order and there is nothing to consume: it has no seal-in to
+        break, and clearing coils that were never set would leave the intent
+        exactly where it was while logging a fork the vehicle did not take. So
+        this reads the coils directly - the one place in the file where the
+        difference between "sealed in" and "answered with" matters.
+
         #LCP 0 is "no track at all", which is a dropout rather than the far side
         of a fork, so it holds the armed state instead of resolving it. Only a
         genuine single track counts as having come out the other side.
         """
         if nlcp in MULTI_NLCP:
-            if self.ladder.intent() != STRAIGHT:
+            if self.ladder.latched():
                 self._at_fork = True
             return False
         if nlcp == SINGLE_NLCP and self._at_fork:
@@ -228,10 +272,14 @@ class BranchEngine:
             set_slow=tag in self.table["set_slow"],
             clear_slow=tag in self.table["clear_slow"],
             fork_passed=fork)
-        if fork and was != STRAIGHT:
+        # `fork` can only pulse when a coil was sealed in - see _fork_passed -
+        # so it already means an order was consumed, with no second test on the
+        # intent. That test would read as true forever under a standing
+        # default, which is exactly the trap this pair of methods avoids.
+        if fork:
             self.forks += 1
         if intent != was:
-            self.set_by = tag if intent != STRAIGHT else None
+            self.set_by = tag if self.ladder.latched() else None
         return intent
 
     @property

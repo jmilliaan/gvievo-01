@@ -280,6 +280,36 @@ function renderRail(s) {
                              : worst ? 'var(--hazard-ink)' : '';
 }
 
+// ---- Wi-Fi indicator ------------------------------------------------------
+// Header, beside the state pill. Reports only: the manual watchdog is what
+// actually stops the vehicle when the link goes, whatever took it away. This
+// tells the operator it is about to happen.
+//
+// Hidden entirely when the machine has no radio, rather than drawn as zero
+// bars - four empty bars reads as "connected, no signal", which is a different
+// and wrong statement.
+function renderWifi(w) {
+  const box = document.getElementById('wifi');
+  if (!box) return;
+  box.hidden = !(w && w.present);
+  if (box.hidden) return;
+
+  const bars = document.getElementById('wifi-bars');
+  if (bars) {
+    const lit = w.bars || 0;
+    // A dropped association lights one bar in red rather than none, so the
+    // indicator never renders as an empty frame that looks like a style bug.
+    const show = w.dbm === null ? 1 : lit;
+    [...bars.children].forEach((el, i) => el.classList.toggle('on', i < show));
+  }
+  setText('wifi-dbm', w.dbm === null ? 'no link' : `${Math.round(w.dbm)} dBm`);
+  box.classList.toggle('down', w.dbm === null);
+  box.classList.toggle('weak', w.dbm !== null && !!w.weak);
+  box.title = w.dbm === null
+    ? `${w.iface}: not associated`
+    : `${w.iface}: ${Math.round(w.dbm)} dBm, ${w.bars}/4 bars`;
+}
+
 // ---- loop health ----------------------------------------------------------
 // work = time the bus thread spent doing things; period = the interval it
 // actually achieved. Splitting them says whether a late tick is the controller
@@ -359,12 +389,26 @@ async function poll() {
       st.className = 'st' + ((silent || n.error_reg || n.fault) ? ' bad' : '');
     }
     setText('setpoint', `${s.target.left} / ${s.target.right}`);
+    // Body speed alongside the wheel pair. For a differential drive the
+    // forward speed IS the mean of the two wheels, so "average them on a
+    // corner" needs no special case - it is the exact answer, not an
+    // approximation, and a spin on the spot correctly reads 0.00 m/s.
+    //
+    // THEORETICAL: this is the commanded setpoint converted through the
+    // geometry, not measured travel. It ignores wheel slip and says nothing
+    // about whether the drives obeyed - the Left/Right tiles above are the
+    // measured r/min, and they are what disagree when something is wrong.
+    const mps = (s.mps_per_rpm && s.target)
+      ? (s.target.left + s.target.right) / 2 * s.mps_per_rpm : null;
+    setText('setpoint-mps',
+            mps === null ? 'L / R' : `L / R · ${mps.toFixed(2)} m/s`);
     // Watchdog and loop health live on /monitor only now. Both are guarded,
     // because an unguarded lookup for a tile that moved throws inside poll()
     // and silently freezes EVERY page's telemetry.
     setText('wd', s.armed ? s.watchdog_s.toFixed(1) : '–');
     renderLoopHealth(s.loop);
     renderRail(s);
+    renderWifi(s.wifi);
 
     // Stop reasons now arrive through the server event log, which survives a
     // reload; logging them here too would just double every line.

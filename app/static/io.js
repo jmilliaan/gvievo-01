@@ -28,6 +28,18 @@ onState(s => {
   paint('di', d.di, d.di_names);
   paint('do', d.do, d.do_names);
 
+  // Outputs this software is driving. Two facts on one line: that the channel
+  // is claimed at all, and which way it is being held - so a horn that is off
+  // between runs cannot be confused with a horn nothing is wired to.
+  const cmd = d.commanded || {};
+  for (let i = 0; i < 16; i++) {
+    const el = document.getElementById(`do-c-${i}`);
+    if (!el) continue;
+    const held = cmd[String(i)];
+    el.textContent = held === undefined ? '' : (held ? 'held on' : 'held off');
+    el.classList.toggle('on', held === true);
+  }
+
   // Three states worth telling apart, because they need different actions:
   // disabled (nothing to do), never connected (address or cable), and
   // connected-but-stale (module wedged, or the switch dropped it).

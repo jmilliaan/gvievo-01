@@ -10,24 +10,33 @@ invert_right in the vehicle profile rather than editing the table - the table
 stays in vehicle terms.
 
 Speeds and the invert flags live in the profile (config.MANUAL_FULL_RPM,
-MANUAL_HALF_RPM, INVERT_LEFT, INVERT_RIGHT). What stays here is the pad layout
-and its labels, which are interface, not vehicle parameters.
+MANUAL_HALF_RPM, MANUAL_SPIN_RPM, INVERT_LEFT, INVERT_RIGHT). What stays here
+is the pad layout and its labels, which are interface, not vehicle parameters.
 """
 import config
 
 # Vehicle-frame table, before INVERT_* is applied. Built per call rather than at
 # import so it always reflects the loaded profile.
 #   curves  : outer wheel FULL, inner wheel HALF
-#   spins   : wheels equal and opposite at HALF, so the AGV turns on its axis
+#   spins   : wheels equal and opposite at SPIN, so the AGV turns on its axis
 #   reverse : the forward arc driven backwards (both signs flipped)
 #
-# The profile stores full_rpm as a whole number and half_ratio as a fraction;
-# config rounds the product, because 60FFh is an INT32 and a float setpoint
+# *** Spins take their own speed, not the curve's. *** They shared half_ratio
+# until now, which tied two unrelated things together: on a curve the fraction
+# sets the RADIUS, because the outer wheel is still at full and the difference
+# is what steers; on a spin there is no radius at all and the fraction sets the
+# YAW RATE. Sharing one number meant raising full_rpm for open-floor travel
+# also sped up the spin, which is the manoeuvre done in a confined space with
+# somebody standing close by. See the manual.half_ratio / spin_ratio note.
+#
+# The profile stores full_rpm as a whole number and the ratios as fractions;
+# config rounds the products, because 60FFh is an INT32 and a float setpoint
 # would render as "480.0 / 800" on the buttons and in /api/config. The bus
 # itself is safe either way - canworker._write_target() casts before packing.
 def _table():
     full = config.MANUAL_FULL_RPM
     half = config.MANUAL_HALF_RPM
+    spin = config.MANUAL_SPIN_RPM
     return {
         "forward":       ( full,  full),
         "forward_left":  ( half,  full),
@@ -35,8 +44,8 @@ def _table():
         "reverse":       (-full, -full),
         "reverse_left":  (-half, -full),
         "reverse_right": (-full, -half),
-        "left":          (-half,  half),   # spin on axis, counter-clockwise
-        "right":         ( half, -half),   # spin on axis, clockwise
+        "left":          (-spin,  spin),   # spin on axis, counter-clockwise
+        "right":         ( spin, -spin),   # spin on axis, clockwise
         "stop":          (    0,     0),
     }
 
