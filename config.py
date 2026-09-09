@@ -348,59 +348,42 @@ branch_latch.*
     it, and the exit tag ends the slow zone that ran alongside it - three coils
     off one tag pair, see core/branch.py.
 
-    A tag id may appear once across the WHOLE rule set. The loader refuses a
-    repeat inside this table and refuses one shared with
-    stop_until_start_button, because a tag that means two things is a tag whose
-    meaning depends on which rung reads it first.
+    Branch tags are unique within this table and cannot also be station or
+    high-speed tags. Direction-qualified reuse belongs to those other tables.
 
 stop_until_start_button.*
-    Station tags. A running auto vehicle that reads one of these comes to rest
-    over stop_distance_m and STAYS there until Start is pressed.
+    Direction-qualified station rules: tag, direction and stop_distance_m.
+    The route stage identifies the physical station when tag values repeat.
+    Arrival pauses the same run/log; Start resumes after auto_start_delay_s.
+    Distance-based deceleration is computed from the software ramp speed, not
+    measured odometry. Steering and drive dynamics affect actual stop distance.
+    ignore_t was removed: tag encounters now suppress repeats until clearance.
 
-    It is a pause in the run, not the end of one. The START latch is kept, so the
-    run log stays open across the dwell, the PID and branch state survive, and
-    the vehicle stays armed rather than being disarmed by the ordinary AUTO idle
-    rule. Start resumes the same run - after timing.auto_start_delay_s, because a
-    station is exactly where somebody is likely to be standing.
+route
+    Ordered physical stations. The first row is the startup position (point 2,
+    outbound). Each row supplies id, tag, arrival direction and permission for
+    high speed on its outgoing leg. Departure adopts the NEXT station's arrival
+    direction. Route state survives Reset, disarm and manual mode in memory;
+    a process restart initializes the first station again.
 
-    *** Distance, not time. *** A timed ramp stops wherever the approach speed
-    puts it - 0.25 m past the tag at 800 r/min but 0.38 m at 1200. A distance is
-    the same from any speed, because the deceleration is computed once, at the
-    tag, from the speed the vehicle is actually doing: a = v^2 / 2d.
+high_speed_mode.*
+    Direction-qualified entry_tag / exit_tag set and reset the high-speed latch.
+    The same physical tag pair may be reversed for the opposite direction and
+    reused on several segments. Station, branch and speed tag types cannot
+    overlap. Stations, holds, disarm and RFID link loss clear high speed.
 
-    Steering stays live all the way down - the follower keeps correcting while
-    it decelerates, which is what "stopping" state has always done. Place these
-    tags only where the track has been straight for a metre or so, so the
-    vehicle has settled before it starts to slow.
+autopilot.auto_rpm_high / speed_switch_accel_decel_s
+    auto_rpm_high must exceed auto_rpm and fit motor_max_rpm. The speed-switch
+    rate is their difference divided by speed_switch_accel_decel_s: 1000 to
+    2000 over 2 s requests 500 rpm/s. Existing jerk limiting remains active, so
+    completion can take slightly longer. Startup and station stops keep their
+    own ramps; slow-zone speed and gains override high-speed mode.
 
-    A tag may not be both a station stop and a branch_latch tag; _parse()
-    refuses it, because one tag cannot both steer and stop.
-
-    *** ignore_t: why a resume needs a blind window. *** The vehicle comes to
-    rest ON or just past the tag that stopped it, and the reader goes on seeing
-    it. Without this, Start would resume the run straight into another read of
-    the same tag and stop again on the spot - a station the vehicle can never
-    leave, which looks like a broken Start button rather than a tag it keeps
-    re-reading.
-
-    So the tag that was just resumed FROM contributes its ignore_t, and for
-    that long no station tag can stop the vehicle. The clock starts when the
-    wheels actually move, not when Start is pressed: auto_start_delay_s is
-    spent standing still, and a window that began at the press would hand part
-    of itself back before the vehicle had travelled a millimetre.
-
-    *** It suppresses ALL stations, not just the one departed. *** That is the
-    literal thing asked for and it is the simpler rule to reason about at the
-    vehicle, but it has a cost worth doing the arithmetic on: at auto_rpm the
-    window is a DISTANCE the vehicle is blind for. 30 s at 1000 r/min is 9.4 m.
-    If two stations are closer together than that, the second one is skipped -
-    silently, as far as the track is concerned. It is not silent in the log:
-    every suppressed read is an event naming the tag and the time left, which
-    is what turns "the AGV ignored my station" into something readable.
-
-    Set it to 0 to switch the window off for a tag; the tag then re-arms as
-    soon as the vehicle moves, which is correct only if it clears the reader
-    before the first scan.
+rfid.tag_clear_s
+    A same-valued tag becomes a new encounter after this interval without a
+    read. This is separate from tag_hold_s, which only keeps the HMI readable.
+    0.5 s is provisional: verify it against actual read gaps and station spacing.
+    Reconnection re-baselines the reader rather than inventing a station visit.
 
 panel.manual_auto_arm
     MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
@@ -622,6 +605,8 @@ _SCHEMA = {
         "sr_cap":              ("SR_CAP", float),
         "sr_tau_s":            ("SR_TAU_S", float),
         "auto_rpm":            ("AUTO_RPM", float),
+        "auto_rpm_high":       ("AUTO_RPM_HIGH", float),
+        "speed_switch_accel_decel_s": ("SPEED_SWITCH_S", float),
         "auto_slow_rpm":       ("AUTO_SLOW_RPM", float),
         "slow_k_ratio":        ("SLOW_K_RATIO", float),
         "slow_kd":             ("SLOW_KD", float),
@@ -666,6 +651,7 @@ _SCHEMA = {
         "silent_warn_s":      ("RFID_SILENT_WARN_S", float),
         "reconnect_period_s": ("RFID_RECONNECT_PERIOD_S", float),
         "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
+        "tag_clear_s":        ("RFID_TAG_CLEAR_S", float),
     },
     "dio": {
         "enabled":            ("DIO_ENABLED", bool),
@@ -936,78 +922,87 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
     return out
 
 
-def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
-    """stop_until_start_button -> {tag: stopping distance in m}.
-
-    Returns {tag: {"stop_distance_m": float, "ignore_s": float}}.
-
-    A tag here brings a running auto vehicle to rest over stop_distance_m and
-    holds it there until Start is pressed. Distance rather than time because the
-    resting point is the thing that matters at a station: a timed ramp stops
-    0.25 m past the tag at 800 r/min and 0.38 m past it at 1200, while a
-    distance is the same from any approach speed.
-
-    ignore_t is the opposite units for the opposite reason - see the tuning
-    note. It is a TIME because what it has to outlast is the vehicle sitting
-    still on top of the tag it just stopped for, and a distance cannot measure
-    that: the vehicle covers no distance at all while it waits for Start, so a
-    distance budget would still be full at the moment it is needed.
-
-    Same strictness as branch_latch, and for the same reason: a tag that never
-    matches produces no error and no symptom, just a vehicle that sails past the
-    station.
-    """
+def _rule_rows(rows, keys, where):
     if not isinstance(rows, list):
-        raise ConfigError("stop_until_start_button: expected a list")
-    want = {"tag", "stop_distance_m", "ignore_t"}
-    width = tag_len * 2
-    out = {}
+        raise ConfigError(f"{where}: expected a list")
     for i, row in enumerate(rows):
-        where = f"stop_until_start_button[{i}]"
-        if not isinstance(row, dict):
-            raise ConfigError(f"{where}: expected an object")
-        unknown = set(row) - want
-        if unknown:
-            raise ConfigError(f"{where}: unknown key(s) {sorted(unknown)}")
-        missing = want - set(row)
-        if missing:
-            raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
+        loc = f"{where}[{i}]"
+        if not isinstance(row, dict) or set(row) != set(keys):
+            raise ConfigError(f"{loc}: expected exactly {sorted(keys)}")
+        yield row, loc
 
-        raw = row["tag"]
-        if not isinstance(raw, str):
-            raise ConfigError(
-                f"{where}.tag: expected a {width}-character hex string like "
-                f'"000A", got {raw!r}. Tag ids come from rfid.tag_of() as hex '
-                f"text, so a number never matches.")
-        tag = raw.upper()
-        if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
-            raise ConfigError(f"{where}.tag: expected {width} hex characters, "
-                              f"got {raw!r}")
-        if tag in ignore_tags:
-            raise ConfigError(f"{where}.tag: {tag} is also in rfid.ignore_tags, "
-                              f"so it is discarded before anything can see it")
-        if tag in branch_tags:
-            raise ConfigError(f"{where}.tag: {tag} is already a branch_latch "
-                              f"tag - one tag cannot both steer and stop")
-        if tag in out:
-            raise ConfigError(f"{where}.tag: {tag} is listed twice")
 
-        dist = _coerce(row["stop_distance_m"], float, f"{where}.stop_distance_m")
-        if not 0 < dist <= 5.0:
-            raise ConfigError(f"{where}.stop_distance_m: expected a distance in "
-                              f"(0, 5] m, got {dist}")
+def _tag(raw, width, where, forbidden):
+    if not isinstance(raw, str) or len(raw) != width or any(
+            c not in "0123456789ABCDEF" for c in raw.upper()):
+        raise ConfigError(f"{where}: expected {width} hex characters")
+    tag = raw.upper()
+    if tag in forbidden:
+        raise ConfigError(f"{where}: tag {tag} is ignored or assigned to another rule type")
+    return tag
 
-        # 0 is legal and means "no window" - the tag re-arms the moment the
-        # vehicle moves. The ceiling is a typo guard rather than a policy: this
-        # window SUPPRESSES stations, so a value entered in milliseconds by
-        # mistake would quietly turn the whole station system off for the rest
-        # of the run, which is the one failure that produces no symptom.
-        ign = _coerce(row["ignore_t"], float, f"{where}.ignore_t")
-        if not 0 <= ign <= 300.0:
-            raise ConfigError(f"{where}.ignore_t: expected a time in [0, 300] "
-                              f"s, got {ign}")
-        out[tag] = {"stop_distance_m": dist, "ignore_s": ign}
+
+def _travel_direction(raw, where):
+    if raw not in ("outbound", "inbound"):
+        raise ConfigError(f"{where}.direction must be outbound or inbound")
+    return raw
+
+
+def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
+    """Direction-qualified stop parameters; physical stations live in route."""
+    out = {}
+    for row, loc in _rule_rows(rows, ("tag", "direction", "stop_distance_m"),
+                               "stop_until_start_button"):
+        direction = _travel_direction(row["direction"], loc)
+        tag = _tag(row["tag"], tag_len * 2, loc, ignore_tags | branch_tags)
+        dist = _coerce(row["stop_distance_m"], float, loc + ".stop_distance_m")
+        if not 0 < dist <= 5:
+            raise ConfigError(f"{loc}.stop_distance_m must be in (0, 5] m")
+        key = (direction, tag)
+        if key in out:
+            raise ConfigError(f"{loc}: duplicate direction/tag stop rule")
+        out[key] = {"stop_distance_m": dist}
     return out
+
+
+def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
+    stations, ids = [], set()
+    for row, loc in _rule_rows(rows, ("id", "tag", "direction", "high_speed_to_next"),
+                               "route"):
+        ident = _coerce(row["id"], str, loc + ".id")
+        if not ident.strip() or ident in ids:
+            raise ConfigError(f"{loc}.id must be nonempty and unique")
+        ids.add(ident)
+        direction = _travel_direction(row["direction"], loc)
+        tag = _tag(row["tag"], tag_len * 2, loc, ignored | branch_tags)
+        if (direction, tag) not in stops:
+            raise ConfigError(f"{loc}: no matching direction/tag stop rule")
+        high = _coerce(row["high_speed_to_next"], bool, loc + ".high_speed_to_next")
+        stations.append(dict(id=ident, tag=tag, direction=direction,
+                             high_speed_to_next=high))
+    if len(stations) < 2:
+        raise ConfigError("route must contain at least two stations; first is initial position")
+    if stations[0]["direction"] != "outbound":
+        raise ConfigError("route first station must be outbound")
+    speed, contacts = [], set()
+    stop_tags = {tag for direction, tag in stops}
+    for row, loc in _rule_rows(speed_rows, ("entry_tag", "exit_tag", "direction"),
+                               "high_speed_mode"):
+        direction = _travel_direction(row["direction"], loc)
+        tags = [_tag(row[k], tag_len * 2, loc + "." + k,
+                     ignored | branch_tags | stop_tags)
+                for k in ("entry_tag", "exit_tag")]
+        for tag in tags:
+            if (direction, tag) in contacts:
+                raise ConfigError(f"{loc}: duplicate/ambiguous high-speed contact in {direction}")
+            contacts.add((direction, tag))
+        speed.append(dict(entry_tag=tags[0], exit_tag=tags[1], direction=direction))
+    for i, station in enumerate(stations):
+        departure = stations[(i + 1) % len(stations)]["direction"]
+        if station["high_speed_to_next"] and not any(
+                r["direction"] == departure for r in speed):
+            raise ConfigError(f"route[{i}]: high-speed leg has no {departure} speed rule")
+    return stations, speed
 
 
 def _parse(doc):
@@ -1016,7 +1011,8 @@ def _parse(doc):
         raise ConfigError("profile must be a JSON object")
 
     expected_sections = (set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
-                         | {"branch_latch", "stop_until_start_button"})
+                         | {"branch_latch", "stop_until_start_button",
+                            "route", "high_speed_mode"})
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -1068,6 +1064,9 @@ def _parse(doc):
     ns["STOP_TAGS"] = _read_stop_tags(
         doc["stop_until_start_button"], ns["RFID_TAG_LEN"],
         set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
+    ns["ROUTE"], ns["HIGH_SPEED_MODE"] = _read_route(
+        doc["route"], doc["high_speed_mode"], ns["STOP_TAGS"],
+        ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
     return ns
 
 
@@ -1079,6 +1078,10 @@ def _derive(ns):
     ns["MPS_PER_RPM"] = (math.pi * ns["WHEEL_DIA_M"]
                          / (ns["GEAR_RATIO"] * 60.0))          # 3.14159e-4
     ns["RPM_PER_MPS"] = 1.0 / ns["MPS_PER_RPM"]                # 3183.1
+    if ns["SPEED_SWITCH_S"] <= 0:
+        raise ConfigError("speed_switch_accel_decel_s must be > 0")
+    ns["SPEED_SWITCH_RPM_S"] = (
+        ns["AUTO_RPM_HIGH"] - ns["AUTO_RPM"]) / ns["SPEED_SWITCH_S"]
     # Yaw rate from a left/right difference: omega = (v_right - v_left) / TRACK.
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
@@ -1175,6 +1178,12 @@ def _validate(ns):
           "SR fractions must be >= 0")
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           f"AUTO_RPM must be in (0, {g('MOTOR_MAX_RPM')}]")
+    check(g("AUTO_RPM") < g("AUTO_RPM_HIGH") <= g("MOTOR_MAX_RPM"),
+          "auto_rpm_high must exceed auto_rpm and not exceed motor_max_rpm")
+    check(0 < g("SPEED_SWITCH_RPM_S") <= g("RAMP_ACCEL_RPM_S"),
+          "speed_switch_accel_decel_s requests a rate above ramp_accel_rpm_s")
+    check(0 < g("RFID_TAG_CLEAR_S") <= 5,
+          "rfid.tag_clear_s must be in (0, 5] seconds")
     check(g("SLOW_K_RATIO") > 0, "slow_k_ratio must be > 0")
     check(g("SLOW_KD") >= 0, "slow_kd must be >= 0")
     check(g("GAIN_BLEND_S") >= 0, "gain_blend_s must be >= 0")
@@ -1610,6 +1619,8 @@ _SPEED_ROWS = [
     ("manual", "half_ratio"),
     ("manual", "spin_ratio"),
     ("autopilot", "auto_rpm"),
+    ("autopilot", "auto_rpm_high"),
+    ("autopilot", "speed_switch_accel_decel_s"),
     ("autopilot", "auto_slow_rpm"),
     ("drivers", "ramp.manual.accel"),
     ("drivers", "ramp.manual.decel"),
@@ -1691,7 +1702,7 @@ def describe():
                 "the manual, autopilot and drivers sections of the JSON - each "
                 "row is labelled with the path to edit. auto_slow_rpm applies "
                 "only between the entry and exit tags of a junction that asked "
-                "for it; everywhere else an auto run uses auto_rpm."})
+                "for it; high_speed_mode selects auto_rpm_high on permitted route legs."})
 
     # Every kind of thing a station tag can mean, in slot order, with what is
     # actually loaded under each. Grouped by FUNCTION rather than listed as one
@@ -1733,28 +1744,28 @@ def describe():
     stops = g["STOP_TAGS"]
     rule(2, "stop until start button", "STOP_TAGS", len(stops),
          notes.get("stop_until_start_button.*"))
-    for tag, row in sorted(stops.items()):
-        ign = row["ignore_s"]
-        rules.append({
-            "key": f"\u2514 {tag}", "const": "",
-            "value": f"stop over {row['stop_distance_m']:.2f} m, hold for Start"
-                     + (f" \u00b7 then ignore stations {ign:.0f} s"
-                        if ign else " \u00b7 no ignore window"),
-            "unit": "", "note": None})
-
-    for n in range(1, RFID_RULE_SLOTS - 1):
-        rules.append({"key": f"{n + 2} \u00b7 undefined rule {n}", "const": "",
+    for (direction, tag), row in sorted(stops.items()):
+        rules.append({"key": f"\u2514 {direction} {tag}", "const": "",
+                      "value": f"stop over {row['stop_distance_m']:.2f} m, hold for Start",
+                      "unit": "", "note": "Repeated reads suppressed until tag clears."})
+    rule(3, "high speed", "HIGH_SPEED_MODE", len(g["HIGH_SPEED_MODE"]))
+    for row in g["HIGH_SPEED_MODE"]:
+        rules.append({"key": f"\u2514 {row['direction']} {row['entry_tag']} -> {row['exit_tag']}",
+                      "const": "", "value": "set / reset high speed", "unit": "", "note": None})
+    for n in range(4, RFID_RULE_SLOTS + 1):
+        rules.append({"key": f"{n} \u00b7 undefined rule {n - 3}", "const": "",
                       "value": "free slot", "unit": "", "note": None})
-
     tags = ({t for r in ladder for t in (r["entry_tag"], r["exit_tag"])}
-            | set(stops))
-    out.append({
-        "name": "rfid rules", "rows": rules,
-        "note": f"{len(tags)} tag id(s) in use across "
-                f"{RFID_RULE_SLOTS} rule types. A tag may mean exactly one "
-                f"thing: the loader refuses a repeat within a table and one "
-                f"shared between tables, because a tag that means two things "
-                f"is a tag whose meaning depends on which rung reads it first."})
+            | {tag for direction, tag in stops}
+            | {t for r in g["HIGH_SPEED_MODE"] for t in (r["entry_tag"], r["exit_tag"])})
+    out.append({"name": "rfid rules", "rows": rules,
+                "note": f"{len(tags)} tag id(s) in use. Rules are direction-qualified; "
+                        "physical stations are identified by the ordered route."})
+    out.append({"name": "route", "note": "First station is the startup position; state survives manual/Reset.",
+                "rows": [{"key": r["id"], "const": "", "unit": "", "note": None,
+                          "value": f"{r['direction']} {r['tag']}; "
+                                   f"high speed to next: {r['high_speed_to_next']}"}
+                         for r in g["ROUTE"]]})
 
     # Then the schema's own sections: the named ones in the order above, then
     # whatever is left in the order the profile writes it.

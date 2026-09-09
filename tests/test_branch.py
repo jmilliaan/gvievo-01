@@ -382,10 +382,10 @@ def test_station_stop_pauses_the_run():
 
     check("the profile carries station tags", bool(config.STOP_TAGS),
           str(config.STOP_TAGS))
-    tag, row = sorted(config.STOP_TAGS.items())[0]
+    (direction, tag), row = sorted(config.STOP_TAGS.items())[0]
     dist = row["stop_distance_m"]
     check("a station row carries both a distance and a resume window",
-          set(row) == {"stop_distance_m", "ignore_s"}, str(row))
+          set(row) == {"stop_distance_m"}, str(row))
 
     # --- the ramp lands at the distance, from any speed --------------------
     for v in (config.AUTO_SLOW_RPM, config.AUTO_RPM):
@@ -408,6 +408,7 @@ def test_station_stop_pauses_the_run():
     # --- the run is paused, not ended --------------------------------------
     class Ctl(canworker.Controller):
         def __init__(self):
+            super().__init__()
             self._lock = __import__("threading").RLock()
             self._armed, self._mode = True, "auto"
             self._auto_running = True
@@ -425,6 +426,9 @@ def test_station_stop_pauses_the_run():
             self._follower.reset()
 
     c = Ctl()
+    c._route.index = 2
+    c._route.direction = direction
+    c._route.parked = True
     c._follower._v_rpm = config.AUTO_SLOW_RPM
     events.clear()
     c._begin_station_stop(tag)
@@ -733,8 +737,10 @@ def test_slow_zone_reaches_the_wheels():
             self.n += 1
             self.tag = tag
 
-        def snapshot(self):
-            return {"tags_seen": self.n, "last_tag": self.tag}
+        def snapshot(self, encounters=False):
+            return {"tags_seen": self.n, "last_tag": self.tag,
+                    "comms_ok": True, "encounter_seq": self.n, "generation": 0,
+                    "encounters": [(self.n, self.tag)] if self.n else []}
 
     rfid = FakeRfid()
     ctl._rfid = rfid
@@ -996,8 +1002,10 @@ def test_branch_events_are_edge_only():
             if tag is not None:
                 self.n, self.tag = self.n + 1, tag
 
-        def snapshot(self):
-            return {"tags_seen": self.n, "last_tag": self.tag}
+        def snapshot(self, encounters=False):
+            return {"tags_seen": self.n, "last_tag": self.tag,
+                    "comms_ok": True, "encounter_seq": self.n, "generation": 0,
+                    "encounters": [(self.n, self.tag)] if self.n else []}
 
     ctl = canworker.Controller.__new__(canworker.Controller)
     ctl._rfid = _Link()
@@ -1010,7 +1018,7 @@ def test_branch_events_are_edge_only():
 
     events.clear()
     ctl._rfid.read("000A")
-    ctl._branch_scan({"nlcp": 2, "tracks": PLAIN})
+    ctl._branch_scan({"nlcp": 2, "tracks": PLAIN}, "000A")
     check("latching emits once", len(events.since(0)[1]) == 1)
 
     for _ in range(200):                       # 4 s of ticks, tag still in field
@@ -1148,134 +1156,6 @@ def test_standing_default_replaces_the_tag_pair():
           not any(r["slow_speed"] for r in config.BRANCH_LATCH))
 
 
-def test_the_resume_window_ignores_stations():
-    """After Start resumes a station stop, no station may stop the vehicle again
-    for that tag's ignore_t.
-
-    The bug it exists for: the vehicle comes to rest ON the tag that stopped it
-    and the reader goes on seeing it, so the first scan after Start reads the
-    same tag and parks the vehicle again on the spot. That looks like a dead
-    Start button rather than a tag being re-read, which is why this is worth a
-    test that goes through _run_autopilot() rather than one that pokes the
-    flag.
-    """
-    import canworker
-    import config
-    import events
-    print("\nbranch: the resume ignore window")
-
-    tag = sorted(config.STOP_TAGS)[0]
-    ign = config.STOP_TAGS[tag]["ignore_s"]
-    check("the profile asks for a window at all", ign > 0, f"{ign} s")
-
-    ctl = canworker.Controller()
-    ctl._armed, ctl._mode = True, "auto"
-    ctl._auto_running = True
-    ctl._follower._v_rpm = config.AUTO_RPM
-
-    class FakeRfid:
-        def __init__(self):
-            self.n, self.tag = 0, None
-
-        def read(self, t):
-            self.n += 1
-            self.tag = t
-
-        def snapshot(self):
-            return {"tags_seen": self.n, "last_tag": self.tag}
-
-    rfid = FakeRfid()
-    ctl._rfid = rfid
-    tape = {"tracks": PLAIN, "nlcp": 2, "has_track": True}
-
-    def tick():
-        ctl._sensor = tape
-        ctl._sensor_seen += 1
-        ctl._sensor_last = time.monotonic()
-        ctl._run_autopilot()
-
-    # --- the station still works, which is the thing not to break ---------
-    check("no window is open on a fresh run", ctl._stop_ignore_left() == 0.0)
-    rfid.read(tag)
-    tick()
-    check("*** the station tag still stops the vehicle ***",
-          ctl._stop_hold == tag, str(ctl._stop_hold))
-
-    # --- resuming opens the window ----------------------------------------
-    events.clear()
-    ctl._resume_from_stop()
-    check("the resume clears the hold", ctl._stop_hold is None)
-    left = ctl._stop_ignore_left()
-    check("...and opens the departed tag's window", 0 < left <= ign,
-          f"{left:.1f} s of {ign:.0f}")
-    check("...and says so, so it is not a silent mode change",
-          any("ignored for" in e["msg"] for e in events.since(0)[1]),
-          str(events.since(0)[1]))
-
-    # --- a second read inside the window must NOT stop ---------------------
-    events.clear()
-    rfid.read(tag)
-    tick()
-    check("*** re-reading the same tag inside the window does not re-park ***",
-          ctl._stop_hold is None,
-          "this is the station the vehicle could never leave")
-    check("...and the suppression is logged with the time left",
-          any("ignored" in e["msg"] and tag in e["msg"]
-              for e in events.since(0)[1]), str(events.since(0)[1]))
-
-    # The OTHER station is suppressed too - the literal reading of "ignore
-    # other tag readings", and the cost is on record in the tuning note.
-    other = sorted(config.STOP_TAGS)[1]
-    rfid.read(other)
-    tick()
-    check("a different station inside the window is also ignored",
-          ctl._stop_hold is None, str(ctl._stop_hold))
-
-    # --- and it ends -------------------------------------------------------
-    ctl._stop_ignore_until = time.monotonic() - 0.001
-    check("an expired window reports nothing left",
-          ctl._stop_ignore_left() == 0.0)
-    check("...and clears itself rather than leaking",
-          ctl._stop_ignore_until == 0.0)
-    rfid.read(tag)
-    tick()
-    check("*** once it expires the station stops the vehicle again ***",
-          ctl._stop_hold == tag, str(ctl._stop_hold))
-
-    # --- a window belongs to one run ---------------------------------------
-    ctl._stop_ignore_until = time.monotonic() + ign
-    ctl._end_auto_run("auto run STOP (operator)", hard=True)
-    check("ending the run drops the window with the hold",
-          ctl._stop_ignore_until == 0.0 and ctl._stop_hold is None)
-
-    # --- zero means off ----------------------------------------------------
-    ctl._stop_hold = tag
-    saved = config.STOP_TAGS[tag]["ignore_s"]
-    try:
-        config.STOP_TAGS[tag]["ignore_s"] = 0.0
-        ctl._resume_from_stop()
-        check("ignore_t 0 opens no window at all",
-              ctl._stop_ignore_left() == 0.0)
-    finally:
-        config.STOP_TAGS[tag]["ignore_s"] = saved
-
-    # --- the window is about stopping, not about steering ------------------
-    check("the suppression sits on the STOP, not on the tag read - the branch "
-          "ladder still sees every tag",
-          "self._branch.scan(tag" in (ROOT / "canworker.py").read_text())
-
-    # --- and it is visible -------------------------------------------------
-    ctl._stop_ignore_until = time.monotonic() + ign
-    snap = ctl.snapshot()
-    check("the snapshot reports the window, so a skipped station has a reason "
-          "on the page rather than looking like a failed read",
-          snap["stop_ignore_s"] is not None and snap["stop_ignore_s"] > 0,
-          str(snap["stop_ignore_s"]))
-    ctl._stop_ignore_until = 0.0
-    check("...and reports None when none is running",
-          ctl.snapshot()["stop_ignore_s"] is None)
-    events.clear()
-
 
 TESTS = [
     test_ladder_truth_table,
@@ -1286,7 +1166,6 @@ TESTS = [
     test_the_u_turn_merge_end_to_end,
     test_standing_default_replaces_the_tag_pair,
     test_station_stop_pauses_the_run,
-    test_the_resume_window_ignores_stations,
     test_slow_zone_latch,
     test_choose,
     test_profile_table,

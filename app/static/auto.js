@@ -1,5 +1,5 @@
 // Auto page: DISPLAY ONLY. It cannot arm, start or stop anything - the panel
-// owns those (Reset arms, Start runs). The PID runs on the bus thread, which is
+// owns those (Start arms and runs). The PID runs on the bus thread, which is
 // the only place with a deterministic tick and direct sensor access.
 //
 // The page still claims the auto watchdog below, and that is not vestigial: it
@@ -56,30 +56,21 @@ function showHold(s) {
   }
 }
 
-// The station tag mechanism, in the two states an operator has to tell apart.
-//
-// PARKED is a planned pause waiting for a hand on Start. IGNORING is the window
-// after that hand: the vehicle is standing on the tag that stopped it, so for
-// ignore_t no station may stop it again. Showing the countdown is the whole
-// point - a station that goes by during the window looks exactly like a tag
-// that failed to read, and those want completely different responses.
+// A station ID distinguishes physical stops that share an RFID value.
 function showStation(s) {
+  const r = s.route;
+  if (!r) return;
   const v = document.getElementById('p-stn');
   const note = document.getElementById('p-stn-note');
-  if (!v || !note) return;
-  if (s.stop_hold) {
-    v.textContent = s.stop_hold;
-    v.style.color = 'var(--accent-2)';
-    note.textContent = 'AT STATION — press Start';
-  } else if (s.stop_ignore_s) {
-    v.textContent = s.stop_ignore_s.toFixed(0) + ' s';
-    v.style.color = 'var(--hazard-ink)';
-    note.textContent = 'stations ignored after resume';
-  } else {
-    v.textContent = '–';
-    v.style.color = '';
-    note.textContent = 'stop tags';
+  if (v && note) {
+    v.textContent = r.station;
+    note.textContent = r.parked ? 'AT STATION — press Start' : 'last confirmed station';
   }
+  document.getElementById('p-direction').textContent = r.travel_direction.toUpperCase();
+  document.getElementById('p-route').textContent = `${r.station} → ${r.next_station} · lap ${r.laps}`;
+  document.getElementById('p-speed-mode').textContent = s.pid?.speed_mode || 'normal';
+  document.getElementById('p-speed-target').textContent = s.pid
+    ? `${n1(s.pid.speed_target_rpm, 0)} r/min reference` : 'r/min reference';
 }
 
 onState(s => { showPid(s.pid); showHold(s); showStation(s); });

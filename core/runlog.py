@@ -67,6 +67,8 @@ COLUMNS = [
     "speed_red", "v_base", "n_l", "n_r", "sat_scale",
     "rpm_l", "rpm_r", "has_track", "n_tracks", "guard",
     "sw_l", "sw_r", "loop_ms", "branch", "slow", "k_used",
+    "travel_direction", "station", "next_station", "parked", "laps",
+    "high_speed", "speed_mode", "speed_target_rpm",
 ]
 
 

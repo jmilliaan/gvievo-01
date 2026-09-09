@@ -65,6 +65,7 @@ import os
 import socket
 import threading
 import time
+from collections import deque
 
 import config
 import events
@@ -149,6 +150,12 @@ class RfidLink:
         self._last_tag_at = None            # monotonic
         self._last_rx = None                # monotonic, any bytes
         self._tags_seen = 0
+        self._encounters = deque(maxlen=256)
+        self._encounter_seq = 0
+        self._encounter_tag = None
+        self._encounter_at = None
+        self._rebaseline = False
+        self._generation = 0
         self._identity = None
         self._detail = "disabled" if not config.RFID_ENABLED else "starting"
 
@@ -187,7 +194,7 @@ class RfidLink:
         except OSError:
             return None                     # no such interface; not a fault
 
-    def snapshot(self):
+    def snapshot(self, encounters=False):
         now = time.monotonic()
         with self._lock:
             tag_age = (now - self._last_tag_at) if self._last_tag_at else None
@@ -210,6 +217,9 @@ class RfidLink:
                 "tag_age_s": tag_age,
                 "rx_age_s": rx_age,
                 "tags_seen": self._tags_seen,
+                "encounter_seq": self._encounter_seq,
+                "generation": self._generation,
+                "encounters": list(self._encounters) if encounters else [],
                 "identity": self._identity,
                 "detail": self._detail,
             }
@@ -336,6 +346,17 @@ class RfidLink:
             self._last_rx = now
             if not tags:
                 return
+            for current in tags:
+                # A reconnect first establishes a baseline. It is not evidence
+                # of departure, and must not synthesize a second station visit.
+                if self._rebaseline:
+                    self._rebaseline = False
+                elif (current != self._encounter_tag
+                      or self._encounter_at is None
+                      or now - self._encounter_at >= config.RFID_TAG_CLEAR_S):
+                    self._encounter_seq += 1
+                    self._encounters.append((self._encounter_seq, current))
+                self._encounter_tag, self._encounter_at = current, now
             tag = tags[-1]
             new = tag != self._last_tag
             self._last_tag = tag
@@ -356,6 +377,9 @@ class RfidLink:
                 pass
         with self._lock:
             self._connected = False
+            self._generation += 1
+            self._encounters.clear()
+            self._rebaseline = True
         if was:
             events.warn("RFID link lost")
 

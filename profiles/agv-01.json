@@ -23,6 +23,8 @@
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
     "auto_rpm": 1000.0,
+    "auto_rpm_high": 2000.0,
+    "speed_switch_accel_decel_s": 2.0,
     "auto_slow_rpm": 800.0,
     "slow_k_ratio": 25.0,
     "slow_kd": 5.0,
@@ -77,7 +79,8 @@
     "banner_wait_s": 0.6,
     "silent_warn_s": 60.0,
     "reconnect_period_s": 2.0,
-    "tag_hold_s": 2.0
+    "tag_hold_s": 2.0,
+    "tag_clear_s": 0.5
   },
   "dio": {
     "enabled": true,
@@ -142,7 +145,11 @@
     "expected_identity": "",
     "expected_checksum": "",
     "zone_block": 0,
-    "zone_bytes": [6, 12, 13],
+    "zone_bytes": [
+      6,
+      12,
+      13
+    ],
     "zone_active_low": false,
     "zones_validated": false
   },
@@ -189,7 +196,53 @@
   },
   "branch_latch": [],
   "stop_until_start_button": [
-    { "tag": "0010", "stop_distance_m": 0.4, "ignore_t": 20 },
-    { "tag": "0011", "stop_distance_m": 0.4, "ignore_t": 20 }
+    {
+      "tag": "0010",
+      "stop_distance_m": 0.4,
+      "direction": "outbound"
+    },
+    {
+      "tag": "0011",
+      "stop_distance_m": 0.4,
+      "direction": "inbound"
+    }
+  ],
+  "high_speed_mode": [
+    {
+      "entry_tag": "0020",
+      "exit_tag": "0021",
+      "direction": "outbound"
+    },
+    {
+      "entry_tag": "0021",
+      "exit_tag": "0020",
+      "direction": "inbound"
+    }
+  ],
+  "route": [
+    {
+      "id": "2",
+      "tag": "0010",
+      "direction": "outbound",
+      "high_speed_to_next": true
+    },
+    {
+      "id": "3",
+      "tag": "0010",
+      "direction": "outbound",
+      "high_speed_to_next": false
+    },
+    {
+      "id": "4",
+      "tag": "0011",
+      "direction": "inbound",
+      "high_speed_to_next": true
+    },
+    {
+      "id": "1",
+      "tag": "0011",
+      "direction": "inbound",
+      "high_speed_to_next": false
+    }
   ]
 }

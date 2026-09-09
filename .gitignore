@@ -3,6 +3,7 @@ agv-kim2a-controller/
 *.py[cod]
 *.log
 *.sh
+AGENTS.md
 
 # ...but these are documentation, not runtime artifacts: rfid-setup.md calls them
 # "the four files" and step 1/2 of the guide is running them. Without this negation

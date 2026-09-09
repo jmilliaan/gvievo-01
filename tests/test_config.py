@@ -133,15 +133,12 @@ def test_config_profile():
     # The resume window: a missing key is as fatal as an unknown one, and the
     # ceiling is what catches a value typed in milliseconds - which would
     # switch the stations off for the rest of the run without a symptom.
-    refuses("a station row missing ignore_t is refused",
-            lambda d: d["stop_until_start_button"][0].pop("ignore_t"),
-            "ignore_t")
-    refuses("a negative ignore_t is refused",
-            lambda d: d["stop_until_start_button"][0].update(ignore_t=-1),
-            "ignore_t")
-    refuses("an ignore_t entered in milliseconds is refused",
-            lambda d: d["stop_until_start_button"][0].update(ignore_t=30000),
-            "ignore_t")
+    refuses("a station row missing direction is refused",
+            lambda d: d["stop_until_start_button"][0].pop("direction"), "direction")
+    refuses("an unknown stop direction is refused",
+            lambda d: d["stop_until_start_button"][0].update(direction="forward"), "direction")
+    refuses("obsolete global ignore_t is refused",
+            lambda d: d["stop_until_start_button"][0].update(ignore_t=20), "expected exactly")
 
     refuses("an unknown branch_default is refused",
             lambda d: d["autopilot"].update(branch_default="rightmost"),

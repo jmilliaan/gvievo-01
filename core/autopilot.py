@@ -101,6 +101,8 @@ class LineFollower:
         # Deceleration rate for a station stop, r/min per second, or None for
         # the ordinary profile ramp. Set once at the tag - see begin_measured_stop.
         self._stop_rate = None
+        self._cruise_high = False
+        self._speed_switching = False
         self._track_gap_m = 0.0      # distance travelled since the track was seen
         self._track_age_s = 0.0      # standstill backstop for the same
         self._saturated = False
@@ -329,7 +331,7 @@ class LineFollower:
     # ---- the tick --------------------------------------------------------
 
     def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT,
-               slow=False):
+               slow=False, high=False):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
@@ -365,7 +367,12 @@ class LineFollower:
         # The switch is a step, not a ramp. It lands at the entry tag, which is
         # on the straight before a diverter where the error is small, so the
         # step in Kp*e is small with it - a few hundredths of a rad/s.
-        cruise = config.AUTO_SLOW_RPM if slow else config.AUTO_RPM
+        high = bool(high) and not slow
+        cruise = (config.AUTO_SLOW_RPM if slow else
+                  config.AUTO_RPM_HIGH if high else config.AUTO_RPM)
+        if high != self._cruise_high:
+            self._speed_switching = True
+        self._cruise_high = high
         k_ratio, kd = self._blend_gains(slow, dt)
         dt = _clamp(dt if dt and dt > 0 else config.DT_NOMINAL_S,
                     config.DT_MIN_S, config.DT_MAX_S)
@@ -441,7 +448,17 @@ class LineFollower:
         # outlive the stop it was computed for.
         if running:
             self._stop_rate = None
-        v_base = self._ramp(target, dt, None if running else self._stop_rate)
+        rate = None
+        if not running:
+            rate = self._stop_rate
+            self._speed_switching = False
+        elif self._speed_switching and not slow:
+            # Startup still uses the ordinary ramp below normal cruise.
+            if self._v_rpm >= config.AUTO_RPM or target == config.AUTO_RPM:
+                rate = config.SPEED_SWITCH_RPM_S
+        v_base = self._ramp(target, dt, rate)
+        if v_base == target:
+            self._speed_switching = False
         red = self._reduce_speed(e_m if e_m is not None else 0.0, dt)
         left, right, scale = self._to_wheels(max(v_base - red, 0.0), self._omega)
 
@@ -464,4 +481,6 @@ class LineFollower:
             # Which gain set produced this row. The header line records both
             # sets, but they now vary WITHIN a run, so the row has to say.
             "k_used": k_ratio,
+            "speed_mode": "slow" if slow else "high" if high else "normal",
+            "speed_target_rpm": target,
         }

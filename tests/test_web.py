@@ -493,13 +493,13 @@ def test_params_lists_the_rfid_rules():
           "branch latch" in heads[0] and "stop until start button" in heads[1],
           str(heads[:2]))
     check("the rest are numbered free slots",
-          all("undefined rule" in h for h in heads[2:]), str(heads[2:]))
+          all("undefined rule" in h for h in heads[3:]), str(heads[3:]))
 
     # Loaded rules appear under their own type, not in a flat list.
     for r in config.BRANCH_LATCH:
         check(f"junction {r['entry_tag']} is listed",
               any(r["entry_tag"] in k for k in keys), str(keys))
-    for tag in config.STOP_TAGS:
+    for direction, tag in config.STOP_TAGS:
         check(f"station tag {tag} is listed",
               any(tag in k for k in keys), str(keys))
 
@@ -522,11 +522,11 @@ def test_params_lists_the_rfid_rules():
           "branch_latch" not in names, str(names))
 
     body = c.get("/params").get_data(as_text=True)
-    check("it renders", "rfid rules" in body and "undefined rule 6" in body)
-    check("...and says a tag may mean exactly one thing",
-          "exactly one thing" in body)
+    check("it renders", "rfid rules" in body and "undefined rule 5" in body)
+    check("...and explains direction-qualified rules",
+          "direction-qualified" in body)
     check("...and counts the tags in use",
-          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | set(config.STOP_TAGS))} tag id(s)"
+          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | {t for dr, t in config.STOP_TAGS} | {t for r in config.HIGH_SPEED_MODE for t in (r['entry_tag'], r['exit_tag'])})} tag id(s)"
           in body)
 
 
@@ -813,15 +813,14 @@ def test_setpoint_shows_body_speed_and_the_station_window():
     check("two decimal places, as asked", "toFixed(2)" in common)
 
     # -- the station window ------------------------------------------------
-    check("the state reports the resume window", "stop_ignore_s" in st)
-    check("a vehicle that is not in one reports None rather than 0 - 0 s left "
-          "and no window running are different facts",
-          st["stop_ignore_s"] is None, str(st["stop_ignore_s"]))
+    check("the state reports the route", "route" in st)
+    check("startup reports the initial parked route position",
+          st["route"]["parked"], str(st["route"]))
 
     body = c.get("/auto").get_data(as_text=True)
     check("the auto page has a station tile", 'id="p-stn"' in body)
-    check("...and it shows both states", "stop_hold" in autojs
-          and "stop_ignore_s" in autojs)
+    check("...and it shows both states", "r.parked" in autojs
+          and "travel_direction" in autojs)
     check("...on its own tile, so a PID guard and a station stop cannot "
           "displace each other",
           "p-stn" in autojs and "AT STATION" not in

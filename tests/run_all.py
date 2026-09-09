@@ -32,6 +32,7 @@ MODULES = [
     "test_lidar",
     "test_panel",
     "test_branch",
+    "test_route",
     "test_web",
     "test_layout",
 ]

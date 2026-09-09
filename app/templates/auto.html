@@ -11,7 +11,7 @@
 
 <div class="bar">
   <span class="hint"><b>Auto is armed and started from the panel</b> —
-        selector to AUTO, press Reset to arm, Start to run. Reset or the
+        selector to AUTO, press Start to arm and run. Reset or the
         selector stops it. This page has no controls.</span>
   <span class="hint">Line following at {{ auto_rpm }} r/min ·
         K={{ k_ratio }} Kd={{ kd }} ζ={{ zeta }}<br>
@@ -42,6 +42,8 @@
        a station stop and a PID guard can be true at the same moment, and the
        one that lost the race would simply not be on screen. #}
     <div class="tel"><span>Station</span><b id="p-stn">–</b><i id="p-stn-note">stop tags</i></div>
+    <div class="tel"><span>Travel direction</span><b id="p-direction">–</b><i id="p-route">route</i></div>
+    <div class="tel"><span>Speed mode</span><b id="p-speed-mode">normal</b><i id="p-speed-target">r/min reference</i></div>
   </div>
 </section>
 

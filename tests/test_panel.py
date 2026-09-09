@@ -139,6 +139,7 @@ def test_reset_means_ready():
     class Ctl(canworker.Controller):
         """Real handlers, faked slow actions - no bus, no drivers."""
         def __init__(self):
+            super().__init__()
             self._lock = __import__("threading").Lock()
             self._armed = False
             self._mode = "idle"

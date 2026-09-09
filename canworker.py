@@ -59,6 +59,7 @@ import lidar  # noqa: E402
 import panel  # noqa: E402
 import rfid  # noqa: E402
 import runlog  # noqa: E402
+import route  # noqa: E402
 
 # Node IDs, driver ramp rates, watchdogs and loop periods all come from the
 # vehicle profile - see config.py's TUNING NOTES for the reasoning behind the
@@ -340,7 +341,11 @@ class Controller:
         self._branch = branch.BranchEngine(
             config.BRANCH_LATCH, config.BRANCH_POSITIVE_IS_LEFT,
             config.BRANCH_DEFAULT)
-        self._branch_seen = 0
+        self._route = route.Route(config.ROUTE, config.HIGH_SPEED_MODE)
+        self._rfid_cursor = 0
+        self._rfid_generation = 0
+        self._departure_tag = None
+        self._departure_at = 0.0
         # Pulled rather than pushed: the link already tracks its own health on
         # its own thread, and copying that verdict beats defining "healthy" for
         # the reader twice. Registered unconditionally - snapshot() reports a
@@ -408,12 +413,6 @@ class Controller:
         # dwell, the PID and branch state survive, and _hold_arm_state leaves the
         # vehicle armed because the run is still running. Start resumes it.
         self._stop_hold = None
-        # Monotonic deadline until which NO station tag may stop the vehicle.
-        # Set when a held run resumes, from the departed tag's ignore_t: the
-        # vehicle is standing on the tag that stopped it, and without this the
-        # first scan after Start would stop it again on the spot. 0 means no
-        # window is running. See the stop_until_start_button tuning note.
-        self._stop_ignore_until = 0.0
         # Start ARMS and then, after timing.auto_start_delay_s, goes. This is
         # when the wheels are due to be commanded; 0 means nothing pending.
         self._auto_start_at = 0.0
@@ -582,7 +581,7 @@ class Controller:
                 "rpm_profile": {"full": config.MANUAL_FULL_RPM, "half": config.MANUAL_HALF_RPM,
                                 "spin": config.MANUAL_SPIN_RPM,
                                 "auto": config.AUTO_RPM,
-                                "auto_slow": config.AUTO_SLOW_RPM},
+                                "auto_slow": config.AUTO_SLOW_RPM, "high": config.AUTO_RPM_HIGH},
                 # Wheel r/min -> m/s, for the setpoint tile. Served rather than
                 # hardcoded in the browser for the same reason sensor_range_mm
                 # is: it is derived from wheel_dia_m and gear_ratio, and a copy
@@ -598,11 +597,7 @@ class Controller:
                 "eto_hold": self._eto_hold,
                 "eto_resume_s": (self._eto_resume_at - now
                                  if self._eto_resume_at > now else None),
-                # Seconds of station-blindness left after a resume, or None.
-                # Reported so the page can say WHY a station went by, which is
-                # otherwise indistinguishable from a tag that failed to read.
-                "stop_ignore_s": (self._stop_ignore_until - now
-                                  if self._stop_ignore_until > now else None),
+                "route": self._route.snapshot(),
                 "pid": self._pid,
                 "dry_run": config.DRY_RUN,
                 "loop": dict(self._loop),
@@ -930,34 +925,13 @@ class Controller:
 
     # ---- autopilot -------------------------------------------------------
 
-    def _branch_scan(self, sensor):
-        """One ladder scan against the RFID input image.
+    def _branch_scan(self, sensor, tag=None):
+        """Scan one encounter (or no tag) against the current MLS image.
 
-        Returns (choice, slow, tag) - the steering answer, the speed answer, and
-        the one-shot tag itself, because the station-stop table reads the same
-        pulse and must not derive a second one.
-
-        Takes ONE snapshot and derives the pulse from it, PLC-style: RfidLink
-        runs on its own thread, so a tag landing between two reads would let
-        the rungs disagree about the same scan.
-
-        The pulse is a rise in tags_seen, not the `tag` field - `tag` is held
-        live for RFID_TAG_HOLD_S so a 5 Hz UI poll cannot miss it, and a held
-        tag would re-trigger its rung on every tick for two seconds. On a clear
-        contact that would pin the latch off.
-
-        Called from _run_autopilot AFTER its "no new TPDO1" early return, so the
-        ladder is scanned on the sensor's clock rather than the reader's. No tag
-        is lost by that - tags_seen is cumulative and last_tag persists, so the
-        read is merely deferred to the next frame, at most one 10 ms TPDO1
-        period. Only two tags arriving inside that window would drop one, which
-        no station layout can produce.
+        _scan_route consumes the frozen RFID batch exactly once and supplies
+        tags in order. A separate no-tag scan handles sensor fork completion.
+        Returns steering choice, slow-zone latch and the supplied tag.
         """
-        snap = self._rfid.snapshot()
-        seen = snap.get("tags_seen") or 0
-        tag = snap.get("last_tag") if seen > self._branch_seen else None
-        self._branch_seen = seen
-
         was = self._branch.ladder.intent()
         was_slow = self._branch.slow
         was_forks = self._branch.forks
@@ -994,6 +968,66 @@ class Controller:
                         f"diverter - carrying straight on")
         return choice, slow, tag
 
+    def _discard_encounters(self):
+        snap = self._rfid.snapshot()
+        self._rfid_cursor = snap.get("encounter_seq", 0)
+        self._rfid_generation = snap.get("generation", 0)
+
+    def _depart_route(self):
+        self._discard_encounters()
+        with self._lock:
+            if self._route.parked:
+                self._departure_tag = self._route.current.tag
+                self._departure_at = time.monotonic()
+            self._route.depart()
+
+    def _scan_route(self, snap):
+        """Consume a frozen, ordered batch once, even without a new MLS frame."""
+        seq = snap.get("encounter_seq", 0)
+        generation = snap.get("generation", 0)
+        if (not self._auto_running or generation != self._rfid_generation
+                or not snap.get("comms_ok", False)):
+            self._rfid_generation, self._rfid_cursor = generation, seq
+            with self._lock:
+                self._route.clear_speed()
+            return []
+        pending = [(n, t) for n, t in snap.get("encounters", ())
+                   if n > self._rfid_cursor]
+        if pending and pending[0][0] != self._rfid_cursor + 1:
+            self._end_auto_run("RFID encounter buffer overrun", hard=True)
+            self._set_fault("RFID encounter buffer overrun; route position must be checked")
+            self._rfid_cursor = seq
+            return []
+        self._rfid_cursor = seq
+        # At startup the first physical read can arrive AFTER Start. Treat
+        # that as the station being departed, not the next equal-valued tag.
+        age = snap.get("tag_age_s")
+        if (self._departure_tag is not None
+                and time.monotonic() - self._departure_at >= config.RFID_TAG_CLEAR_S
+                and (age is None or age >= config.RFID_TAG_CLEAR_S)):
+            self._departure_tag = None
+        tags = []
+        for _, tag in pending:
+            if self._departure_tag is not None:
+                if tag == self._departure_tag:
+                    continue
+                self._departure_tag = None
+            # Reads while stopped cannot advance logical position. In
+            # particular, a dwell or recovery cannot accumulate future stops.
+            if (not self._auto_running or self._auto_hold is not None
+                    or self._eto_hold is not None or self._stop_hold is not None):
+                continue
+            with self._lock:
+                was_high = self._route.high
+                station = self._route.encounter(tag)
+                high = self._route.high
+            tags.append(tag)
+            if station is not None:
+                self._begin_station_stop(station.tag)
+            if high != was_high:
+                events.info(f"speed mode {'high' if high else 'normal'} (tag {tag})")
+        return tags
+
     def _run_autopilot(self):
         """One PID tick. Returns the setpoint to write this pass."""
         tick = time.perf_counter()
@@ -1002,6 +1036,12 @@ class Controller:
                                      self._auto_running)
             age = ((time.monotonic() - self._sensor_last)
                    if self._sensor_last else None)
+
+        snap = self._rfid.snapshot(encounters=True)
+        tags = self._scan_route(snap)
+        running = self._auto_running
+        for tag in tags:
+            self._branch_scan(sensor, tag)
 
         # The START latch says the operator wants a run; `driving` says whether
         # the wheels are allowed to turn right now. They differ while a lost
@@ -1016,26 +1056,17 @@ class Controller:
         # keep ticking regardless, so the ramp-down still completes - and while
         # HOLDING we must keep ticking too, or a sensor that went silent would
         # never deliver the frame that proves it came back.
-        if driving and seen == self._auto_seen:
+        if (driving and seen == self._auto_seen and age is not None
+                and age <= config.SENSOR_TIMEOUT_S):
             return self._target
 
         dt = (tick - self._auto_tick) if self._auto_tick else config.DT_NOMINAL_S
         self._auto_seen, self._auto_tick = seen, tick
 
-        choice, slow, tag = self._branch_scan(sensor)
-        # A station tag stops THIS tick, so the ramp down starts on the frame the
-        # tag was read rather than one later.
-        #
-        # Only the STOP is suppressed by the ignore window, never the read
-        # itself: the tag still reaches the branch ladder above, because a
-        # window that exists to stop a station re-triggering has no business
-        # deciding which way the vehicle steers on the way out of it.
-        if (driving and tag is not None and tag in config.STOP_TAGS
-                and not self._stop_ignored(tag)):
-            self._begin_station_stop(tag)
-            driving = False
-        left, right, diag = self._follower.update(sensor, age, dt, driving,
-                                                  choice, slow)
+        choice, slow, _ = self._branch_scan(sensor)
+        left, right, diag = self._follower.update(
+            sensor, age, dt, driving, choice, slow, high=self._route.high)
+        diag.update(self._route.snapshot())
         commanded = (int(round(left)), int(round(right)))
         # DRY_RUN still computes and logs everything; only the wheels go quiet.
         target = (0, 0) if config.DRY_RUN else commanded
@@ -1393,61 +1424,28 @@ class Controller:
         correcting in its "stopping" state, which is why these tags belong on
         track that has been straight for a metre or so.
         """
-        dist = config.STOP_TAGS[tag]["stop_distance_m"]
+        dist = config.STOP_TAGS[(self._route.direction, tag)]["stop_distance_m"]
+        with self._lock:
+            self._route.clear_speed()
         rate = self._follower.begin_measured_stop(dist)
         self._stop_hold = tag
         with self._lock:
-            self._last_stop_reason = (f"station tag {tag} - stopping over "
+            self._last_stop_reason = (f"station {self._route.current.id} tag {tag} - stopping over "
                                       f"{dist:.2f} m")
-        events.info(f"station tag {tag} - stopping over {dist:.2f} m"
+        events.info(f"station {self._route.current.id} tag {tag} - stopping over {dist:.2f} m"
                     + (f" ({rate:.0f} r/min/s)" if rate else "")
                     + ", press Start to go on")
 
-    def _stop_ignored(self, tag):
-        """Is this station read being suppressed by the resume window?
-
-        The emit lives HERE rather than in _run_autopilot, whose body must not
-        contain an events call at all - test_logging pins that, because it is
-        the 50 Hz path and one chatty call site empties the ring in about four
-        seconds. Reaching this needs a genuine tag PULSE, so it is edge-driven
-        in exactly the way _branch_scan's events already are.
-        """
-        left = self._stop_ignore_left()
-        if left <= 0:
-            return False
-        events.info(f"station tag {tag} ignored - {left:.0f} s left of the "
-                    f"resume window")
-        return True
-
-    def _stop_ignore_left(self):
-        """Seconds left of the resume window, 0 when none is running.
-
-        Read rather than tested for truth, so the caller can say how long is
-        left instead of only that something was suppressed - "ignored, 24 s
-        left" is a sentence somebody can act on at the vehicle.
-        """
-        if not self._stop_ignore_until:
-            return 0.0
-        left = self._stop_ignore_until - time.monotonic()
-        if left <= 0:
-            self._stop_ignore_until = 0.0       # self-clearing, so it cannot leak
-            return 0.0
-        return left
-
     def _resume_from_stop(self):
-        """Let the held run carry on. The SAME run - nothing is reset."""
-        tag, self._stop_hold = self._stop_hold, None
-        # The departed tag sets the window, and it starts HERE rather than at
-        # the button press: auto_start_delay_s is spent standing still on top
-        # of the tag, so a window opened at the press would spend part of
-        # itself before the vehicle had moved at all.
-        ign = config.STOP_TAGS.get(tag, {}).get("ignore_s", 0.0)
-        self._stop_ignore_until = (time.monotonic() + ign) if ign else 0.0
+        """Resume the same run; commit its route departure after Start delay."""
+        self._depart_route()
         with self._lock:
+            station = self._route.current.id
+            self._stop_hold = None
             self._last_stop_reason = None
             self._deadline = time.monotonic() + config.AUTO_WATCHDOG_S
-        events.info(f"resuming from station tag {tag}"
-                    + (f" - stations ignored for {ign:.0f} s" if ign else ""))
+        events.info(f"departing station {station}, {self._route.direction} "
+                    f"toward {self._route.next.id}")
         self._note_action("resumed from station", "panel")
 
     def _eto_scan(self):
@@ -1512,6 +1510,7 @@ class Controller:
                 self._arm_retry_at = now + ARM_RETRY_S
                 self._follower.hard_stop()
                 with self._lock:
+                    self._route.clear_speed()
                     self._direction = "stop"
                     self._target = (0, 0)
                     self._last_stop_reason = self._eto_hold
@@ -1589,6 +1588,8 @@ class Controller:
         this is reached from a 50 Hz path, which is why it is a method here
         rather than an events call inside the tick.
         """
+        with self._lock:
+            self._route.clear_speed()
         first = self._auto_hold is None
         self._auto_hold = reason
         self._auto_ok_since = None
@@ -1648,10 +1649,8 @@ class Controller:
         self._stop_hold = None
         self._eto_hold = None
         self._eto_resume_at = 0.0
-        # The window belongs to the run that opened it. Carrying it into the
-        # next run would let a station be skipped by a resume that happened
-        # before the operator stopped the vehicle and started again.
-        self._stop_ignore_until = 0.0
+        with self._lock:
+            self._route.clear_speed()
         # Emit on the EDGE only. This is reachable from _run_autopilot(), which
         # is a 50 Hz path - without the was_running guard a fault would refill
         # the whole ring buffer with copies of itself in four seconds.
@@ -2032,6 +2031,7 @@ class Controller:
                 raise RuntimeError("auto mode is not armed")
 
         if running:
+            self._depart_route()
             # Fresh integral, derivative and ramp state for every run, and a
             # fresh log - gains are file constants, so one run is one datapoint.
             self._follower.reset()
@@ -2049,6 +2049,8 @@ class Controller:
                 f"SLOW_KD={config.SLOW_KD} "
                 f"KI={config.KI} TAU_D={config.TAU_D_S} "
                 f"AUTO_RPM={config.AUTO_RPM} "
+                f"AUTO_RPM_HIGH={config.AUTO_RPM_HIGH} "
+                f"SPEED_SWITCH_RPM_S={config.SPEED_SWITCH_RPM_S} "
                 f"AUTO_SLOW_RPM={config.AUTO_SLOW_RPM} "
                 f"zeta={autopilot.predicted_zeta():.3f} "
                 f"6083h={config.ACCEL_RPM_S} 6084h={config.DECEL_RPM_S} "
