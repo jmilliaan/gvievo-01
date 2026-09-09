@@ -92,10 +92,10 @@
     "num_do": 16,
     "di_flipped": false,
     "di_names": [
-      "PB Reset",
-      "PB Start",
-      "SS Auto/Manual",
       "[SPARE]",
+      "PB Start",
+      "PB Reset",
+      "SS Auto/Manual",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -146,9 +146,9 @@
   },
   "panel": {
     "enabled": true,
-    "di_reset": 0,
+    "di_reset": 2,
     "di_start": 1,
-    "di_auto": 2,
+    "di_auto": 3,
     "debounce_scans": 2,
     "manual_auto_arm": true
   },

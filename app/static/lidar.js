@@ -172,6 +172,11 @@ onState(s => {
 
   paintZones(l.zones);
 
+  // The plain-language banner for an unplugged scanner. Guarded like every
+  // other lookup: this element exists only on this page.
+  const nolink = document.getElementById('l-nolink');
+  if (nolink) nolink.hidden = !(l.enabled && l.never_seen);
+
   // Same three states worth telling apart as the I/O page: disabled, never
   // connected, and connected-but-stale.
   let text, colour;

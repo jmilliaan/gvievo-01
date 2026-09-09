@@ -39,7 +39,17 @@ function renderStanding(s) {
 
   const hw = s.health || {};
   if (hw.system_error) rows.push(['error', 'Critical device lost', hw.system_detail]);
-  if (hw.sensor_error) rows.push(['warn', 'Sensor lost', hw.sensor_detail
+  // hw.sensor_detail joins EVERY lost non-critical source, and the lidar is
+  // registered as one - so an unplugged scanner used to render here as
+  // "Sensor lost: OSError: [Errno 99]... - auto unavailable". Both halves were
+  // wrong: nothing gates auto on the lidar (canworker consults system_error
+  // only), and the raw errno is not a sentence. The lidar reports itself in
+  // its own row below, so it is excluded here rather than being described in
+  // words that belong to the MLS.
+  const heldBack = Object.entries(hw.sources || {})
+    .filter(([name, h]) => name !== 'lidar' && h.seen && !h.ok && !h.critical)
+    .map(([, h]) => h.detail);
+  if (heldBack.length) rows.push(['warn', 'Sensor lost', heldBack.join(', ')
                                   + ' — auto unavailable, manual unaffected']);
 
   const b = s.battery || {};
@@ -51,7 +61,14 @@ function renderStanding(s) {
   // reportable states, not silence.
   const l = s.lidar;
   if (l && l.enabled) {
-    if (l.stale) rows.push(['error', 'Lidar stream', 'stale — zones assumed occupied']);
+    // Never connected vs went silent. An unplugged scanner is a cable to go
+    // and look at and the vehicle drives without it, so it is a WARN; a stream
+    // that stopped after it had been running is a scanner that died with the
+    // vehicle moving, and stays an error. Both leave the zone lamps occupied.
+    if (l.never_seen) rows.push(['warn', 'Lidar', 'not connected — check the '
+                                 + 'Ethernet link. The vehicle runs without it; '
+                                 + 'the stop is the OSSD chain in hardware']);
+    else if (l.stale) rows.push(['error', 'Lidar stream', 'stale — zones assumed occupied']);
     else if (l.zones && !l.zones.validated)
       rows.push(['warn', 'Lidar zones', 'byte mapping unvalidated — see /lidar']);
     if (l.gaps) rows.push(['warn', 'Lidar telegrams', `${l.gaps} lost`]);

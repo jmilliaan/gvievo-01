@@ -140,6 +140,18 @@ class LidarLink:
         # from rx_age_s and get the comparison the wrong way round.
         stale = bool(config.LIDAR_ENABLED) and not snap["comms_ok"]
         snap["stale"] = stale
+        # Never connected is not the same fault as went silent, and the two
+        # want different words in front of an operator: an unplugged scanner
+        # is a cable to go and look at, while a stream that stopped mid-run is
+        # a scanner that died with the vehicle moving. Decided here, once, for
+        # the same reason `stale` is - so no page re-derives it and gets the
+        # comparison backwards.
+        #
+        # This changes what is DISPLAYED and nothing else. Both cases remain
+        # non-critical (the stop is the OSSD pair into the FX3, in hardware),
+        # and both still render the zone lamps as occupied - absence of data is
+        # never clear, whatever the reason for the absence.
+        snap["never_seen"] = bool(config.LIDAR_ENABLED) and age is None
         z = dict(snap.get("zones") or {})
         z["stale"] = stale
         snap["zones"] = z

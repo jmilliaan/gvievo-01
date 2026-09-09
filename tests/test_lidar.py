@@ -418,6 +418,90 @@ def test_reader_never_writes_to_the_scanner():
             check(f"{name} does not use {bad}", bad not in src)
 
 
+def test_an_unplugged_scanner_is_a_warning_not_a_stop():
+    """The vehicle must drive with the lidar Ethernet unplugged.
+
+    Two things get checked here, because they fail differently. The BEHAVIOUR:
+    a socket that cannot even bind - which is what an unplugged NIC gives you,
+    errno 99 - must leave the reader thread alive, retrying, and must raise no
+    critical fault, or a data-only link would be gating a vehicle whose real
+    stop is the OSSD pair into the FX3. The WORDS: an operator seeing three red
+    lamps needs to be told it is a cable and that the AGV still runs, not shown
+    a raw errno.
+    """
+    print("\nan unplugged scanner warns, and nothing else")
+
+    class DeadNic:
+        """bind() on an address the machine does not have."""
+        def __init__(self):
+            self.tries = 0
+        def __call__(self):
+            self.tries += 1
+            raise OSError(99, "Cannot assign requested address")
+
+    factory = DeadNic()
+    ln = lidar.LidarLink(sock_factory=factory)
+    t = threading.Thread(target=ln._run, daemon=True)
+    t.start()
+    time.sleep(0.05)
+    snap = ln.snapshot()
+
+    check("the reader thread survives a socket it cannot open", t.is_alive())
+    check("...and keeps retrying", factory.tries >= 1, str(factory.tries))
+    check("the link reports itself down", snap["connected"] is False)
+    check("never_seen says the scanner has not answered at all",
+          snap["never_seen"] is True)
+    check("...and rx_age_s is None rather than a number",
+          snap["rx_age_s"] is None)
+
+    # The safety rule is NOT relaxed by knowing why the data is absent.
+    check("the zones still read stale, so no lamp reads clear",
+          snap["stale"] is True and snap["zones"]["stale"] is True)
+
+    # The whole point: this must not reach the critical tier.
+    mon = health.HealthMonitor()
+    mon.add(health.PullSource("lidar", ln.snapshot), config.LIDAR_SILENT_WARN_S)
+    r = mon.evaluate()
+    check("an unplugged scanner raises no system error",
+          r["system_error"] is False)
+    ln.stop()
+    t.join(timeout=2.0)
+
+    # A scanner that RAN and then died is a different fault and keeps its
+    # error level - never_seen must not swallow it.
+    ln2 = _link()
+    ln2._on_telegram(1, telegram())
+    ln2._last_ok = time.monotonic() - 10.0
+    dead = ln2.snapshot()
+    check("a stream that ran and then stopped is not 'never seen'",
+          dead["never_seen"] is False)
+    check("...and is still stale", dead["stale"] is True)
+
+    # The words in front of the operator.
+    al = (ROOT / "app" / "static" / "alarms.js").read_text()
+    check("the alarms page warns rather than errors when never connected",
+          "if (l.never_seen) rows.push(['warn'" in al)
+    check("...and says it is the Ethernet link", "not connected" in al)
+    check("...while a stream that died stays an error",
+          "else if (l.stale) rows.push(['error'" in al)
+    # Matched against the expression, not the file: the comment above it in
+    # alarms.js names the old code to explain what was wrong with it.
+    check("the raw errno no longer renders as 'Sensor lost'",
+          "name !== 'lidar'" in al
+          and "'Sensor lost', hw.sensor_detail" not in al
+          and "heldBack.join" in al)
+
+    page = (ROOT / "app" / "templates" / "lidar.html").read_text()
+    check("the lidar page carries a not-connected banner",
+          'id="l-nolink"' in page)
+    check("...hidden until the state poll says otherwise", "hidden>" in page)
+    check("...and states the vehicle runs without it",
+          "runs normally without it" in page)
+    js = (ROOT / "app" / "static" / "lidar.js").read_text()
+    check("the banner is driven by never_seen",
+          "l.enabled && l.never_seen" in js)
+
+
 TESTS = [
     test_header_and_reassembly,
     test_block_table_is_the_only_map,
@@ -429,5 +513,6 @@ TESTS = [
     test_cloud_is_separate_and_survives_a_bad_telegram,
     test_link_survives_a_hostile_socket,
     test_lidar_cannot_stop_the_vehicle,
+    test_an_unplugged_scanner_is_a_warning_not_a_stop,
     test_reader_never_writes_to_the_scanner,
 ]

@@ -367,7 +367,11 @@ def test_panel_profile():
 
     refused("two functions on one channel is refused - it would fire a Reset "
             "edge every time Start is pushed",
-            lambda d: d["panel"].update(di_start=0), "distinct")
+            # Derived from the profile rather than hardcoded to a channel: the
+            # point is that two functions may not share ONE channel, whichever
+            # channel the wiring currently puts Reset on.
+            lambda d: d["panel"].update(di_start=d["panel"]["di_reset"]),
+            "distinct")
     refused("a channel past num_di is refused",
             lambda d: d["panel"].update(di_auto=99), "channel in 0..")
     refused("a negative channel is refused",
@@ -377,10 +381,16 @@ def test_panel_profile():
     refused("the panel cannot be enabled without the DI scan that feeds it",
             lambda d: d["dio"].update(enabled=False), "never respond")
 
-    check("the shipped profile matches the wiring: DI00 reset, DI01 start, "
-          "DI02 auto",
+    # Rewired 2026-09-08: the harness moved up one channel and DI00 is now
+    # unused. DI00 stays out of the panel entirely - a spare channel that
+    # floats must not be able to present as a button press.
+    check("the shipped profile matches the wiring: DI02 reset, DI01 start, "
+          "DI03 auto",
           (config.PANEL_DI_RESET, config.PANEL_DI_START,
-           config.PANEL_DI_AUTO) == (0, 1, 2))
+           config.PANEL_DI_AUTO) == (2, 1, 3))
+    check("DI00 is no longer wired to a panel function",
+          0 not in (config.PANEL_DI_RESET, config.PANEL_DI_START,
+                    config.PANEL_DI_AUTO))
 
 
 TESTS = [

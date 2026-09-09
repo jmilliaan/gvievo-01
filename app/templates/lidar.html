@@ -9,6 +9,20 @@
    lidarframe.zones(). This page still cannot stop the vehicle or write to the
    scanner; there is no endpoint for either. #}
 
+{# Shown only while the scanner has never answered on this run - see
+   never_seen in drivers/lidar.py. Deliberately a plain advisory and not an
+   alarm: the vehicle drives perfectly well without this Ethernet link, which
+   carries data only. The lamps below still read occupied, because absence of
+   data is never clear. #}
+<div class="warn" id="l-nolink" hidden>
+  <b>Scanner not connected.</b>
+  No telegram has arrived from {{ sensor_ip }} since start-up — check
+  the Ethernet link to the scanner. <b>The vehicle runs normally without it:</b>
+  this stream is data only and stops nothing. The protective stop is the
+  scanner's OSSD pair into the FX3, in hardware, and is unaffected. The cut-off
+  lamps below stay lit because absent data is never reported as clear.
+</div>
+
 <section class="sensor">
   <h2>Cut-off paths <small>protective field {{ protective_m }} m · warning field {{ warning_m }} m</small></h2>
   <div class="io-list zone-list" id="zone-list">
