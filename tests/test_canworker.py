@@ -33,13 +33,21 @@ def test_arm_does_not_deadlock():
     ctl._do_preflight = lambda: {"ok": True, "report": []}
     ctl._nmt = lambda cmd, node: None
 
-    t = threading.Thread(target=lambda: ctl._do_arm("auto"), daemon=True)
+    result, errors = [], []
+    def arm():
+        try:
+            result.append(ctl._do_arm("auto"))
+        except Exception as exc:
+            errors.append(exc)
+    t = threading.Thread(target=arm, daemon=True)
     t.start()
     t.join(timeout=10.0)
     check("_do_arm completes (no deadlock)", not t.is_alive(),
           "still blocked after 10 s" if t.is_alive() else "")
     if t.is_alive():
         return
+    check("arming completes successfully, not by thread exception",
+          not errors and bool(result) and result[0]['ok'] and ctl._armed, str(errors))
     check("the re-entrant path was actually exercised", ctl._sensor_seen > 0,
           f"{ctl._sensor_seen} sensor frames absorbed during the arm")
 

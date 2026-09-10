@@ -15,6 +15,7 @@ a run go green.
 import importlib
 import pathlib
 import sys
+import threading
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -33,11 +34,13 @@ MODULES = [
     "test_panel",
     "test_branch",
     "test_route",
+    "test_route_guard",
+    "test_auto_display",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 1085
+EXPECTED_CHECKS = 1275
 
 
 def main():
@@ -47,17 +50,26 @@ def main():
           f"DRY_RUN={helpers.config.DRY_RUN}")
 
     ran = 0
-    for name in MODULES:
-        mod = importlib.import_module(name)
-        for fn in mod.TESTS:
-            fn()
-            ran += 1
+    thread_errors = []
+    previous_hook = threading.excepthook
+    def thread_exception(args):
+        thread_errors.append(f'{args.thread.name}: {args.exc_type.__name__}: {args.exc_value}')
+        previous_hook(args)
+    threading.excepthook = thread_exception
+    try:
+        for name in MODULES:
+            mod = importlib.import_module(name)
+            for fn in mod.TESTS:
+                fn()
+                ran += 1
+    finally:
+        threading.excepthook = previous_hook
 
     total = helpers.CHECKS[0]
     print()
     print(f"{ran} test function(s), {total} check(s)")
 
-    problems = list(helpers.FAIL)
+    problems = list(helpers.FAIL) + thread_errors
     if total != EXPECTED_CHECKS:
         problems.append(
             f"expected {EXPECTED_CHECKS} checks, ran {total} - a module or a "

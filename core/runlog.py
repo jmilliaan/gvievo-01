@@ -69,6 +69,7 @@ COLUMNS = [
     "sw_l", "sw_r", "loop_ms", "branch", "slow", "k_used",
     "travel_direction", "station", "next_station", "parked", "laps",
     "high_speed", "speed_mode", "speed_target_rpm",
+    "guard_enabled", "guard_error", "distance_estimate_m", "high_distance_estimate_m",
 ]
 
 

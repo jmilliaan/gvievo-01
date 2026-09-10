@@ -9,6 +9,19 @@
   <span id="pn-fault" class="pn-fault" hidden></span>
 </div>
 
+<section class="auto-summary" aria-label="Route operating summary">
+  <div id="auto-status" class="auto-status" role="status">LIVE STATE UNAVAILABLE</div>
+  <div class="auto-overview">
+    <div class="auto-destination"><span>Route point</span><h1 id="auto-point">--</h1><p id="auto-context">Waiting for controller state</p></div>
+    <div><span>Travel direction</span><b id="auto-direction" class="auto-direction">--</b><p id="auto-next-direction">Logical route direction</p></div>
+    <div><span id="auto-tag-label">LAST READ</span><b id="auto-tag" class="auto-tag">--</b><p id="auto-tag-age">No tag received</p><p id="auto-reader">Reader status unknown</p></div>
+  </div>
+  <ol id="auto-sequence" class="auto-sequence" aria-label="Route sequence"></ol>
+  <div class="auto-summary-meta"><b id="auto-lap">Completed laps: --</b><span id="p-speed-mode">normal</span><span id="p-speed-target">r/min reference</span><span>Route guard: <b id="p-route-guard">off</b></span></div>
+  <p id="auto-encounter">No processed route encounter</p>
+  <p id="p-route-distance" class="auto-detail">Distance estimate unavailable</p>
+</section>
+
 <div class="bar">
   <span class="hint"><b>Auto is armed and started from the panel</b> —
         selector to AUTO, press Start to arm and run. Reset or the
@@ -38,12 +51,6 @@
     <div class="tel"><span>Command</span><b id="p-cmd">–</b><i>L / R r/min</i></div>
     <div class="tel"><span>State</span><b id="p-state">idle</b><i id="p-guard">—</i></div>
     <div class="tel"><span>P / I / D</span><b id="p-terms">–</b><i id="p-sat">—</i></div>
-    {# Its own tile rather than another message in the State tile's guard line:
-       a station stop and a PID guard can be true at the same moment, and the
-       one that lost the race would simply not be on screen. #}
-    <div class="tel"><span>Station</span><b id="p-stn">–</b><i id="p-stn-note">stop tags</i></div>
-    <div class="tel"><span>Travel direction</span><b id="p-direction">–</b><i id="p-route">route</i></div>
-    <div class="tel"><span>Speed mode</span><b id="p-speed-mode">normal</b><i id="p-speed-target">r/min reference</i></div>
   </div>
 </section>
 
@@ -72,18 +79,14 @@
 </section>
 
 <section class="sensor">
-  <h2>Station tag <small>Chafon CF821 &middot; 192.168.1.200:2022</small></h2>
-  {# Same shape as /manual: the tag is the fact worth a glance, so it takes the
-     left column at full height and the context tiles stack beside it. Branch
-     joins them here because an auto run has a standing junction order to show
-     and the jog page does not. #}
-  <div class="rfid-grid">
-    <div class="tel tag"><span>RFID tag</span><b id="r-tag">–</b><i id="r-age">—</i></div>
-    <div class="rfid-side">
-      <div class="tel"><span>Branch</span><b id="r-branch">straight</b><i id="r-branch-by">no order</i></div>
-      <div class="tel"><span>Link</span><b id="r-link">off</b><i id="r-detail">—</i></div>
-      <div class="tel"><span>Tags read</span><b id="r-count">0</b><i>this session</i></div>
-    </div>
+  <h2>RFID and junction diagnostics <small>Chafon CF821 &middot; 192.168.1.200:2022</small></h2>
+  {# Auto-scoped IDs, not the shared r-* tiles: common.js owns those for
+     /manual, and a second live tag headline here would compete with the
+     route summary above. #}
+  <div class="tel-grid">
+    <div class="tel"><span>Reader link</span><b id="auto-reader-link">off</b><i id="auto-reader-detail">&mdash;</i></div>
+    <div class="tel"><span>Branch order</span><b id="auto-branch">straight</b><i id="auto-branch-by">no order</i></div>
+    <div class="tel"><span>Reads</span><b id="auto-rfid-count">&ndash;</b><i>raw &middot; encounters</i></div>
   </div>
 </section>
 {% endblock %}

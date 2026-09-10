@@ -244,5 +244,35 @@
       "direction": "inbound",
       "high_speed_to_next": false
     }
-  ]
+  ],
+  "route_guard": {
+    "enabled": false,
+    "legs": [
+      {
+        "from_station": "2",
+        "min_m": null,
+        "max_m": null
+      },
+      {
+        "from_station": "3",
+        "min_m": null,
+        "max_m": null
+      },
+      {
+        "from_station": "4",
+        "min_m": null,
+        "max_m": null
+      },
+      {
+        "from_station": "1",
+        "min_m": null,
+        "max_m": null
+      }
+    ],
+    "high_speed_max_m": {
+      "outbound": null,
+      "inbound": null
+    },
+    "station_decel_limit_rpm_s": null
+  }
 }

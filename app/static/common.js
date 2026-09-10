@@ -419,6 +419,7 @@ async function poll() {
     listeners.forEach(fn => fn(s));
   } catch (e) {
     setPill('server unreachable', 'bad');
+    window.dispatchEvent(new Event('state-poll-error'));
   }
 }
 

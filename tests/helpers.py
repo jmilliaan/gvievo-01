@@ -158,10 +158,20 @@ class _FakeRaw:
 
     def __init__(self):
         self.pending = [("pdo",), ("pdo",)]
+        self.objects = {}
 
     def send(self, m):
         if 0x600 <= m.arbitration_id <= 0x67F:
-            self.pending += [("pdo",), ("sdo", m.arbitration_id - 0x600)]
+            node = m.arbitration_id - 0x600
+            index = int.from_bytes(m.data[1:3], 'little')
+            sub = m.data[3]
+            if m.data[0] == 0x40:
+                value = self.objects.get((node, index, sub), 0x27 if index == 0x6041 else 7)
+                reply = bytes([0x43]) + bytes(m.data[1:4]) + struct.pack('<I', value)
+            else:
+                self.objects[node, index, sub] = int.from_bytes(m.data[4:], 'little')
+                reply = bytes([0x60]) + bytes(m.data[1:4]) + bytes(4)
+            self.pending += [("pdo",), ("sdo", node, reply)]
 
     def recv(self, timeout=None):
         import can
@@ -172,7 +182,7 @@ class _FakeRaw:
             return can.Message(arbitration_id=config.TPDO1_COB,
                                data=bytes(8), is_extended_id=False)
         return can.Message(arbitration_id=0x580 + kind[1],
-                           data=bytes([0x43, 0, 0, 0]) + struct.pack("<I", 7),
+                           data=kind[2],
                            is_extended_id=False)
 
     def shutdown(self):

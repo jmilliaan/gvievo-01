@@ -239,6 +239,73 @@ def test_stale_sensor_at_high_speed():
               and not c._route.high and c._route.current.id == '2')
 
 
+def test_branch_encounters_during_holds():
+    import branch
+    c = canworker.Controller()
+    c._log = runlog.RunLog(enabled=False)
+    c._auto_running = True
+    c._route.depart()
+    c._branch = branch.BranchEngine([
+        dict(entry_tag='000A', exit_tag='000B', branch='left', slow_speed=True)])
+    c._auto_hold = 'test hold'
+    before = c._route.snapshot()
+    tape = dict(sensor(0), nlcp=2)
+    snap = dict(encounter_seq=1, generation=0, comms_ok=True,
+                encounters=[(1, '000A')])
+    for tag in c._scan_route(snap):
+        c._branch_scan(tape, tag)
+    check('branch entry reaches ladder during line hold', c._branch.slow)
+    check('line hold still prevents route progress', c._route.snapshot() == before)
+    check('held encounter is consumed exactly once', c._scan_route(snap) == [])
+    c._auto_hold = None
+    c._eto_hold = 'test drive hold'
+    snap.update(encounter_seq=2, encounters=[(2, '000B')])
+    for tag in c._scan_route(snap):
+        c._branch_scan(tape, tag)
+    check('branch exit clears slow during drive hold', not c._branch.slow)
+    c._eto_hold = None
+    c._stop_hold = '0010'
+    snap.update(encounter_seq=3, encounters=[(3, '000A')])
+    for tag in c._scan_route(snap):
+        c._branch_scan(tape, tag)
+    check('station dwell does not suppress branch inputs', c._branch.slow)
+    c._stop_hold = None
+    c._departure_tag = '0010'
+    snap.update(encounter_seq=4, encounters=[(4, '000B')])
+    for tag in c._scan_route(snap):
+        c._branch_scan(tape, tag)
+    check('departure suppression does not suppress branch exit', not c._branch.slow)
+
+
+def test_reconnect_warning_and_api():
+    import events
+    import server
+    c = canworker.Controller()
+    c._auto_running = True
+    c._route.depart()
+    events.clear()
+    lost = dict(encounter_seq=0, generation=1, comms_ok=False, encounters=[])
+    c._scan_route(lost)
+    restored = dict(lost, comms_ok=True)
+    c._scan_route(restored)
+    for _ in range(20):
+        c._scan_route(restored)
+    warnings = [e for e in events.since(0)[1] if 're-established mid-run' in e['msg']]
+    check('mid-run reconnect warns once', len(warnings) == 1)
+    check('reconnect warning names possible lost station', 'station may have been missed' in warnings[0]['msg'] if warnings else False)
+    check('reconnect does not invent a station arrival', c._route.current.id == '2')
+    client = server.app.test_client()
+    data = client.get('/api/config').get_json()
+    check('config API exposes high cruise', data['auto_rpm_high'] == config.AUTO_RPM_HIGH)
+    check('config API exposes nominal transition and derived rate',
+          data['speed_switch_accel_decel_s'] == config.SPEED_SWITCH_S
+          and data['speed_switch_rpm_s'] == config.SPEED_SWITCH_RPM_S)
+    check('config API exposes route and speed rules',
+          data['route'] == config.ROUTE and data['high_speed_mode'] == config.HIGH_SPEED_MODE)
+    check('config API exposes tag clearance', data['rfid_tag_clear_s'] == config.RFID_TAG_CLEAR_S)
+    events.clear()
+
+
 def test_route_validation():
     base = json.loads((ROOT / 'profiles/agv-01.json').read_text())
     def refused(name, mutate):
@@ -270,4 +337,5 @@ def test_route_validation():
 
 TESTS = [test_route_sequence, test_encounters, test_controller_route,
          test_recovery_and_overrun, test_high_speed_ramp,
-         test_stale_sensor_at_high_speed, test_route_validation]
+         test_stale_sensor_at_high_speed, test_route_validation,
+         test_branch_encounters_during_holds, test_reconnect_warning_and_api]

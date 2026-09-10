@@ -818,12 +818,12 @@ def test_setpoint_shows_body_speed_and_the_station_window():
           st["route"]["parked"], str(st["route"]))
 
     body = c.get("/auto").get_data(as_text=True)
-    check("the auto page has a station tile", 'id="p-stn"' in body)
+    check("the auto page has a primary point summary", 'id="auto-point"' in body)
     check("...and it shows both states", "r.parked" in autojs
           and "travel_direction" in autojs)
     check("...on its own tile, so a PID guard and a station stop cannot "
           "displace each other",
-          "p-stn" in autojs and "AT STATION" not in
+          "auto-point" in autojs and "AT STATION" not in
           autojs[autojs.index("function showHold"):autojs.index("function showStation")])
 
     # Still a readout. The page has no way to end the window or skip a station.

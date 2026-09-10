@@ -357,6 +357,10 @@ stop_until_start_button.*
     Arrival pauses the same run/log; Start resumes after auto_start_delay_s.
     Distance-based deceleration is computed from the software ramp speed, not
     measured odometry. Steering and drive dynamics affect actual stop distance.
+    Distance, not time, defines the intended resting point after the tag. A
+    fixed-duration ramp changes that point with approach speed. Place station
+    tags on track already straight for about a metre; steering remains active
+    during deceleration. Validate the resting point with the actual trailer load.
     ignore_t was removed: tag encounters now suppress repeats until clearance.
 
 route
@@ -1005,6 +1009,44 @@ def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
     return stations, speed
 
 
+def _read_route_guard(raw, stations):
+    keys = {'enabled', 'legs', 'high_speed_max_m', 'station_decel_limit_rpm_s'}
+    if not isinstance(raw, dict) or set(raw) != keys:
+        raise ConfigError(f"route_guard: expected exactly {sorted(keys)}")
+    enabled = _coerce(raw['enabled'], bool, 'route_guard.enabled')
+
+    def measured(value, where):
+        if value is None:
+            if enabled:
+                raise ConfigError(f"{where}: measurement required before enabling route_guard")
+            return None
+        value = _coerce(value, float, where)
+        if not math.isfinite(value) or value <= 0:
+            raise ConfigError(f"{where}: expected a positive finite measurement")
+        return value
+
+    legs, ids = [], set()
+    for row, loc in _rule_rows(raw['legs'], ('from_station', 'min_m', 'max_m'),
+                               'route_guard.legs'):
+        ident = _coerce(row['from_station'], str, loc + '.from_station')
+        if ident in ids:
+            raise ConfigError(f"{loc}: duplicate from_station")
+        ids.add(ident)
+        lo, hi = (measured(row[k], loc + '.' + k) for k in ('min_m', 'max_m'))
+        if (lo is None) != (hi is None) or (lo is not None and lo >= hi):
+            raise ConfigError(f"{loc}: provide both bounds with min_m < max_m")
+        legs.append(dict(from_station=ident, min_m=lo, max_m=hi))
+    if ids != {r['id'] for r in stations}:
+        raise ConfigError('route_guard.legs: require exactly one row per route station')
+    high = raw['high_speed_max_m']
+    if not isinstance(high, dict) or set(high) != {'outbound', 'inbound'}:
+        raise ConfigError('route_guard.high_speed_max_m: require outbound and inbound')
+    high = {k: measured(v, 'route_guard.high_speed_max_m.' + k) for k, v in high.items()}
+    limit = measured(raw['station_decel_limit_rpm_s'], 'route_guard.station_decel_limit_rpm_s')
+    return dict(enabled=enabled, legs=legs, high_speed_max_m=high,
+                station_decel_limit_rpm_s=limit)
+
+
 def _parse(doc):
     """Raw JSON document -> flat namespace of primitives. Strict both ways."""
     if not isinstance(doc, dict):
@@ -1012,7 +1054,7 @@ def _parse(doc):
 
     expected_sections = (set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
                          | {"branch_latch", "stop_until_start_button",
-                            "route", "high_speed_mode"})
+                            "route", "high_speed_mode", "route_guard"})
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -1067,6 +1109,7 @@ def _parse(doc):
     ns["ROUTE"], ns["HIGH_SPEED_MODE"] = _read_route(
         doc["route"], doc["high_speed_mode"], ns["STOP_TAGS"],
         ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
+    ns['ROUTE_GUARD'] = _read_route_guard(doc['route_guard'], ns['ROUTE'])
     return ns
 
 
@@ -1078,6 +1121,18 @@ def _derive(ns):
     ns["MPS_PER_RPM"] = (math.pi * ns["WHEEL_DIA_M"]
                          / (ns["GEAR_RATIO"] * 60.0))          # 3.14159e-4
     ns["RPM_PER_MPS"] = 1.0 / ns["MPS_PER_RPM"]                # 3183.1
+    guard = ns['ROUTE_GUARD']
+    if guard['enabled']:
+        if not ns['RFID_ENABLED']:
+            raise ConfigError('route_guard requires RFID enabled')
+        limit = guard['station_decel_limit_rpm_s']
+        if limit > ns['RAMP']['auto']['decel']:
+            raise ConfigError('route_guard: station deceleration limit exceeds auto drive deceleration')
+        for rule in ns['STOP_TAGS'].values():
+            rate = ns['AUTO_RPM_HIGH'] ** 2 * ns['MPS_PER_RPM'] / (2 * rule['stop_distance_m'])
+            if rate > limit:
+                raise ConfigError('route_guard: high-speed station stop exceeds measured deceleration limit; '
+                                  'reduce auto_rpm_high or commission a longer stop_distance_m')
     if ns["SPEED_SWITCH_S"] <= 0:
         raise ConfigError("speed_switch_accel_decel_s must be > 0")
     ns["SPEED_SWITCH_RPM_S"] = (
@@ -1766,6 +1821,11 @@ def describe():
                           "value": f"{r['direction']} {r['tag']}; "
                                    f"high speed to next: {r['high_speed_to_next']}"}
                          for r in g["ROUTE"]]})
+    guard = g['ROUTE_GUARD']
+    out.append({'name': 'route guard',
+                'note': 'Wheel-speed distance estimate, not independent localization. Null limits need measurement.',
+                'rows': [{'key': k, 'const': '', 'unit': '', 'note': None,
+                          'value': json.dumps(v)} for k, v in guard.items()]})
 
     # Then the schema's own sections: the named ones in the order above, then
     # whatever is left in the order the profile writes it.

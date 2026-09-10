@@ -52,6 +52,7 @@ import canmon  # noqa: E402
 import config  # noqa: E402
 import events  # noqa: E402
 import health  # noqa: E402
+import kinematics  # noqa: E402
 import motion  # noqa: E402
 import branch  # noqa: E402
 import dio  # noqa: E402
@@ -267,6 +268,9 @@ class Controller:
 
         self._telemetry = {n: {"statusword": None, "state": "-", "rpm": None,
                                "error_reg": None} for n in config.NODES}
+        self._rpm_seen = {n: None for n in config.NODES}
+        self._status_seen = {n: None for n in config.NODES}
+        self._last_encounter = None
         # Last reported fault state per node, so _poll_telemetry emits one event
         # per edge rather than one per 5 Hz poll. This is the driver's OWN fault
         # bit; whether the driver is still answering at all is health.py's job.
@@ -341,9 +345,11 @@ class Controller:
         self._branch = branch.BranchEngine(
             config.BRANCH_LATCH, config.BRANCH_POSITIVE_IS_LEFT,
             config.BRANCH_DEFAULT)
-        self._route = route.Route(config.ROUTE, config.HIGH_SPEED_MODE)
+        self._route = route.Route(config.ROUTE, config.HIGH_SPEED_MODE, config.ROUTE_GUARD)
+        self._route_tick = None
         self._rfid_cursor = 0
         self._rfid_generation = 0
+        self._rfid_reconnect_pending = False
         self._departure_tag = None
         self._departure_at = 0.0
         # Pulled rather than pushed: the link already tracks its own health on
@@ -598,6 +604,18 @@ class Controller:
                 "eto_resume_s": (self._eto_resume_at - now
                                  if self._eto_resume_at > now else None),
                 "route": self._route.snapshot(),
+                "route_display": {
+                    "sequence": [r['id'] for r in config.ROUTE],
+                    "next_departure_direction": self._route.next.direction,
+                    "stopped": (all(self._telemetry[n].get('speed_zero', False)
+                                    for n in (config.LEFT, config.RIGHT))
+                                if all(self._status_seen[n] is not None
+                                       and now - self._status_seen[n] <= config.DRIVER_TIMEOUT_S
+                                       for n in (config.LEFT, config.RIGHT)) else None),
+                    "last_encounter": (dict(self._last_encounter,
+                                            age_s=max(0.0, now - self._last_encounter['processed_at']))
+                                       if self._last_encounter else None),
+                },
                 "pid": self._pid,
                 "dry_run": config.DRY_RUN,
                 "loop": dict(self._loop),
@@ -970,23 +988,89 @@ class Controller:
 
     def _discard_encounters(self):
         snap = self._rfid.snapshot()
+        if snap.get('generation', 0) != self._rfid_generation:
+            with self._lock:
+                self._last_encounter = None
         self._rfid_cursor = snap.get("encounter_seq", 0)
         self._rfid_generation = snap.get("generation", 0)
+        self._rfid_reconnect_pending = False
 
     def _depart_route(self):
+        if self._route.guard_error:
+            raise route.RouteError(self._route.guard_error + '; return to point 2 and restart controller')
+        if self._route.guarded:
+            if self._feedback_speed(time.monotonic()) is None:
+                raise RuntimeError('route guard: fresh speed feedback from both drives required')
+            if not self._rfid.snapshot().get('comms_ok', False):
+                raise RuntimeError('route guard: RFID connection required')
         self._discard_encounters()
         with self._lock:
             if self._route.parked:
                 self._departure_tag = self._route.current.tag
                 self._departure_at = time.monotonic()
             self._route.depart()
+            self._route_tick = time.monotonic()
+
+    def _feedback_speed(self, now):
+        """Last sampled body speed; no SDO reads on this control path."""
+        with self._lock:
+            for nid in (config.LEFT, config.RIGHT):
+                seen = self._rpm_seen[nid]
+                if (seen is None or now - seen > config.DRIVER_TIMEOUT_S
+                        or self._telemetry[nid]['rpm'] is None):
+                    return None
+            return kinematics.wheels_to_body(self._telemetry[config.LEFT]['rpm'],
+                                            self._telemetry[config.RIGHT]['rpm'])[0]
+
+    def _route_failure(self, reason):
+        with self._lock:
+            self._route.invalidate(reason)
+            self._target = (0, 0)
+        self._end_auto_run(reason, hard=True)
+        self._set_fault(reason + '; return to point 2 and restart controller')
+
+    def _update_route_distance(self):
+        now = time.monotonic()
+        previous, self._route_tick = self._route_tick, now
+        if not self._auto_running or self._route.parked:
+            return
+        speed = self._feedback_speed(now)
+        dt = now - previous if previous is not None else 0.0
+        if speed is None or dt < 0 or dt > config.DRIVER_TIMEOUT_S:
+            if self._route.guarded:
+                self._route_failure('route guard: speed feedback stale or distance sampling interrupted')
+            return
+        try:
+            with self._lock:
+                notice = self._route.advance(abs(speed) * dt)
+        except route.RouteError as exc:
+            self._route_failure(str(exc))
+        else:
+            if notice:
+                events.warn(notice)
 
     def _scan_route(self, snap):
         """Consume a frozen, ordered batch once, even without a new MLS frame."""
         seq = snap.get("encounter_seq", 0)
         generation = snap.get("generation", 0)
-        if (not self._auto_running or generation != self._rfid_generation
-                or not snap.get("comms_ok", False)):
+        changed = generation != self._rfid_generation
+        if changed:
+            with self._lock:
+                self._last_encounter = None
+        connected = bool(snap.get("comms_ok", False))
+        if (self._route.guarded and self._auto_running
+                and (changed or not connected)):
+            self._rfid_generation, self._rfid_cursor = generation, seq
+            self._route_failure('route guard: RFID continuity lost')
+            return []
+        if self._auto_running and not connected:
+            self._rfid_reconnect_pending = True
+        if (self._auto_running and connected
+                and (changed or self._rfid_reconnect_pending)):
+            events.warn("RFID link re-established mid-run; a station may have "
+                        "been missed. Check route position before continuing.")
+            self._rfid_reconnect_pending = False
+        if (not self._auto_running or changed or not connected):
             self._rfid_generation, self._rfid_cursor = generation, seq
             with self._lock:
                 self._route.clear_speed()
@@ -994,8 +1078,7 @@ class Controller:
         pending = [(n, t) for n, t in snap.get("encounters", ())
                    if n > self._rfid_cursor]
         if pending and pending[0][0] != self._rfid_cursor + 1:
-            self._end_auto_run("RFID encounter buffer overrun", hard=True)
-            self._set_fault("RFID encounter buffer overrun; route position must be checked")
+            self._route_failure("RFID encounter buffer overrun; route position must be checked")
             self._rfid_cursor = seq
             return []
         self._rfid_cursor = seq
@@ -1007,26 +1090,47 @@ class Controller:
                 and (age is None or age >= config.RFID_TAG_CLEAR_S)):
             self._departure_tag = None
         tags = []
-        for _, tag in pending:
+        for number, tag in pending:
+            # Route holds suppress station decisions, not steering inputs.
+            # A branch/slow-zone exit encountered during a hold still clears
+            # its latch, and every encounter is delivered exactly once.
+            tags.append(tag)
             if self._departure_tag is not None:
                 if tag == self._departure_tag:
+                    self._record_encounter(number, tag, 'suppressed', 'departed station repeat')
                     continue
                 self._departure_tag = None
             # Reads while stopped cannot advance logical position. In
             # particular, a dwell or recovery cannot accumulate future stops.
             if (not self._auto_running or self._auto_hold is not None
                     or self._eto_hold is not None or self._stop_hold is not None):
+                self._record_encounter(number, tag, 'suppressed', 'route held or stopped')
                 continue
             with self._lock:
                 was_high = self._route.high
                 station = self._route.encounter(tag)
                 high = self._route.high
-            tags.append(tag)
+                notice = self._route.notice
+            if notice:
+                events.warn(notice)
             if station is not None:
                 self._begin_station_stop(station.tag)
+            action = ('fault' if self._route.guard_error else
+                      'station accepted' if station is not None else
+                      'early arrival rejected' if notice else
+                      ('high selected' if high else 'normal selected') if high != was_high else
+                      'no route action')
+            self._record_encounter(number, tag, action, notice or self._route.guard_error,
+                                   station.id if station else None)
             if high != was_high:
                 events.info(f"speed mode {'high' if high else 'normal'} (tag {tag})")
         return tags
+
+    def _record_encounter(self, sequence, tag, action, reason=None, station=None):
+        with self._lock:
+            self._last_encounter = dict(sequence=sequence, tag=tag, action=action,
+                                        reason=reason, station=station,
+                                        processed_at=time.monotonic())
 
     def _run_autopilot(self):
         """One PID tick. Returns the setpoint to write this pass."""
@@ -1037,8 +1141,10 @@ class Controller:
             age = ((time.monotonic() - self._sensor_last)
                    if self._sensor_last else None)
 
+        self._update_route_distance()
         snap = self._rfid.snapshot(encounters=True)
         tags = self._scan_route(snap)
+        # Distance/encounter processing may have ended the run this tick.
         running = self._auto_running
         for tag in tags:
             self._branch_scan(sensor, tag)
@@ -1315,13 +1421,12 @@ class Controller:
         if time.monotonic() < self._auto_start_at:
             return
         self._auto_start_at = 0.0
-        if self._stop_hold is not None:
-            # Resuming a run that never ended - not starting a new one, which
-            # would reset the follower and open a second log for one lap.
-            self._resume_from_stop()
-            return
         try:
-            self._do_auto_run(True, source="panel")
+            if self._stop_hold is not None:
+                # Resume the existing log/follower; readiness can be refused.
+                self._resume_from_stop()
+            else:
+                self._do_auto_run(True, source="panel")
         except Exception as e:          # noqa: BLE001
             self._set_fault(str(e))
 
@@ -1424,7 +1529,11 @@ class Controller:
         correcting in its "stopping" state, which is why these tags belong on
         track that has been straight for a metre or so.
         """
-        dist = config.STOP_TAGS[(self._route.direction, tag)]["stop_distance_m"]
+        rule = config.STOP_TAGS.get((self._route.direction, tag))
+        if rule is None:
+            self._route_failure(f'missing stop rule: {self._route.direction} tag {tag}')
+            return
+        dist = rule["stop_distance_m"]
         with self._lock:
             self._route.clear_speed()
         rate = self._follower.begin_measured_stop(dist)
@@ -1738,6 +1847,7 @@ class Controller:
             with self._lock:
                 t = self._telemetry[nid]
                 if sw is not None:
+                    self._status_seen[nid] = time.monotonic()
                     t["statusword"] = sw & 0xFFFF
                     t["state"] = decode_state(sw)
                     t["fault"] = bool(sw & SW_FAULT)
@@ -1745,6 +1855,7 @@ class Controller:
                     t["speed_zero"] = bool(sw & SW_SPEED_IS_ZERO)
                 if rpm is not None:
                     t["rpm"] = rpm
+                    self._rpm_seen[nid] = time.monotonic()
                 if err is not None:
                     t["error_reg"] = err & 0xFF
                 label = config.NODES[nid]
