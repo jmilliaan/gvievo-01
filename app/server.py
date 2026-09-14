@@ -15,6 +15,9 @@ Read the safety model before changing anything here:
     zeroes the setpoint, and /api/restart de-energises and then ends the
     process. None of them can produce motion, and the last is refused outright
     while the vehicle is armed.
+  * /api/blind/plan and /api/blind/clear only store or discard a blind-run
+    PLAN. Nothing here runs it: PB Start runs it, with the selector in MANUAL,
+    and PB Reset, a selector move or /api/stop stops it.
   * Auto is latched and watchdogged, but a panel-started run is held up by the
     DI scan rather than by this page's poll - see canworker._panel_scan().
 """
@@ -148,12 +151,25 @@ def params():
         "params.html", page="params",
         sections=config.describe(),
         profile=config.PROFILE_NAME, path=config.PROFILE_PATH_LOADED,
+        mission=config.MISSION_NAME, mission_env=config.MISSION_ENV_VAR,
+        mission_path=config.MISSION_PATH_LOADED or "built-in empty mission",
         env_var=config.PROFILE_ENV_VAR,
         zeta=f"{autopilot.predicted_zeta():.2f}",
         enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])
                  for name in ("dio", "panel", "horn", "rfid", "lidar",
                               "monitor")],
         dry_run=config.DRY_RUN)
+
+
+@app.get("/blind")
+def blind():
+    """Encoder-only test moves. The page SETS a plan; only PB Start runs it."""
+    return render_template(
+        "blind.html", page="blind", track_m=config.TRACK_M,
+        max_distance_m=config.BLIND_MAX_DISTANCE_M,
+        max_rpm=int(config.BLIND_MAX_RPM),
+        max_segments=config.BLIND_MAX_SEGMENTS,
+        max_mps=round(config.BLIND_MAX_RPM * config.MPS_PER_RPM, 3))
 
 
 @app.get("/auto")
@@ -320,6 +336,24 @@ def api_stop():
     return jsonify({"ok": True})
 
 
+# A blind-run PLAN only. Storing one moves nothing; PB Start runs it.
+@app.post("/api/blind/plan")
+def api_blind_plan():
+    try:
+        return jsonify({"ok": True, "plan": ctl.set_blind_plan(request.json or {})})
+    except Exception as e:
+        return _fail(e)
+
+
+@app.post("/api/blind/clear")
+def api_blind_clear():
+    try:
+        ctl.clear_blind_plan()
+    except Exception as e:
+        return _fail(e)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/events")
 def api_events():
     """Operator events newer than ?since=<seq>. since=0 returns the whole ring.
@@ -372,6 +406,8 @@ def api_config():
     return jsonify({
         "profile": config.PROFILE_NAME,
         "profile_path": config.PROFILE_PATH_LOADED,
+        "mission": config.MISSION_NAME,
+        "mission_path": config.MISSION_PATH_LOADED,
         "full_rpm": config.MANUAL_FULL_RPM, "half_rpm": config.MANUAL_HALF_RPM,
         "spin_rpm": config.MANUAL_SPIN_RPM,
         "auto_rpm": config.AUTO_RPM,
@@ -383,6 +419,13 @@ def api_config():
         "route_guard": config.ROUTE_GUARD,
         "high_speed_mode": config.HIGH_SPEED_MODE,
         "rfid_tag_clear_s": config.RFID_TAG_CLEAR_S,
+        "u_turn": config.U_TURN_TAGS,
+        "auto_u_turn_rpm": config.AUTO_U_TURN_RPM,
+        "blind_run": {"max_distance_m": config.BLIND_MAX_DISTANCE_M,
+                      "max_rpm": config.BLIND_MAX_RPM,
+                      "accel_rpm_s": config.BLIND_ACCEL_RPM_S,
+                      "stop_tolerance_mm": config.BLIND_STOP_TOLERANCE_MM,
+                      "max_segments": config.BLIND_MAX_SEGMENTS},
         "driver_ramp": config.RAMP,   # 6083h/6084h, per mode
         "manual_watchdog_ms": int(config.MANUAL_WATCHDOG_S * 1000),
         "auto_watchdog_ms": int(config.AUTO_WATCHDOG_S * 1000),

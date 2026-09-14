@@ -84,7 +84,8 @@ def test_controller_route():
     real_log = runlog.RunLog
     with patch('canworker.time.monotonic', side_effect=lambda: now[0]), \
             patch('canworker.time.perf_counter', side_effect=lambda: now[0]), \
-            patch('canworker.runlog.RunLog', side_effect=lambda: real_log(enabled=False)):
+            patch('canworker.runlog.RunLog',
+                  side_effect=lambda **kw: real_log(**dict(kw, enabled=False))):
         c = canworker.Controller()
         c._rfid._connected = True
         c._rfid.carrier = lambda: True
@@ -182,8 +183,10 @@ def test_recovery_and_overrun():
 def test_high_speed_ramp():
     f = autopilot.LineFollower()
     f._v_rpm = config.AUTO_RPM
+    # Long enough for the configured switch time plus jerk limiting.
+    ramp_ticks = int((config.SPEED_SWITCH_S + 1.0) / .02)
     states = []
-    for _ in range(130):
+    for _ in range(ramp_ticks):
         _, _, d = f.update(sensor(0), 0, .02, True, high=True)
         states.append(d)
     speeds = [d['v_base'] for d in states]
@@ -193,13 +196,13 @@ def test_high_speed_ramp():
     check("transition retains jerk limiting", 0 < speeds[0] - config.AUTO_RPM < 500 * .02)
     check("high reports normal steering gain", states[-1]['k_used'] == config.K_RATIO)
     check("high is visible in diagnostics", states[-1]['speed_mode'] == 'high')
-    for _ in range(130):
+    for _ in range(ramp_ticks):
         f.update(sensor(0), 0, .02, True, high=False)
     check("exit returns exactly to normal", f._v_rpm == config.AUTO_RPM)
     for _ in range(35):
         f.update(sensor(0), 0, .02, True, high=True)
     intermediate = f._v_rpm
-    for _ in range(130):
+    for _ in range(ramp_ticks):
         f.update(sensor(0), 0, .02, True, high=False)
     check("exit during acceleration retargets without jumping",
           config.AUTO_RPM < intermediate < config.AUTO_RPM_HIGH
@@ -307,32 +310,31 @@ def test_reconnect_warning_and_api():
 
 
 def test_route_validation():
-    base = json.loads((ROOT / 'profiles/agv-01.json').read_text())
+    from helpers import mission_doc, parse, profile_doc
+
     def refused(name, mutate):
-        doc = copy.deepcopy(base)
-        mutate(doc)
+        profile, mission = profile_doc(), mission_doc()
+        mutate(profile, mission)
         try:
-            ns = config._parse(doc)
-            config._derive(ns)
-            config._validate(ns)
+            parse(profile, mission)
         except config.ConfigError:
             check(name, True)
         else:
             check(name, False)
-    refused('duplicate station IDs refused', lambda d: d['route'][1].update(id='2'))
-    refused('unknown station tag refused', lambda d: d['route'][1].update(tag='FFFF'))
-    refused('bad route direction refused', lambda d: d['route'][1].update(direction='north'))
-    refused('empty route refused', lambda d: d.update(route=[]))
-    refused('ambiguous speed contacts refused', lambda d: d['high_speed_mode'][0].update(exit_tag='0020'))
-    refused('speed and station tags cannot overlap', lambda d: d['high_speed_mode'][0].update(entry_tag='0010'))
-    refused('duplicate qualified stops refused', lambda d: d['stop_until_start_button'].append(d['stop_until_start_button'][0]))
-    refused('high below normal refused', lambda d: d['autopilot'].update(auto_rpm_high=900))
-    refused('high above drive limit refused', lambda d: d['autopilot'].update(auto_rpm_high=5000))
-    refused('zero transition time refused', lambda d: d['autopilot'].update(speed_switch_accel_decel_s=0))
-    refused('excessive transition rate refused', lambda d: d['autopilot'].update(speed_switch_accel_decel_s=.1))
-    refused('nonfinite high speed refused', lambda d: d['autopilot'].update(auto_rpm_high=float('nan')))
-    refused('nonfinite clear interval refused', lambda d: d['rfid'].update(tag_clear_s=float('inf')))
-    refused('legacy ignore window refused', lambda d: d['stop_until_start_button'][0].update(ignore_t=20))
+    refused('duplicate station IDs refused', lambda p, m: m['route'][1].update(id='2'))
+    refused('unknown station tag refused', lambda p, m: m['route'][1].update(tag='FFFF'))
+    refused('bad route direction refused', lambda p, m: m['route'][1].update(direction='north'))
+    refused('single-station route refused', lambda p, m: m.update(route=m['route'][:1]))
+    refused('ambiguous speed contacts refused', lambda p, m: m['high_speed_mode'][0].update(exit_tag='0020'))
+    refused('speed and station tags cannot overlap', lambda p, m: m['high_speed_mode'][0].update(entry_tag='0010'))
+    refused('duplicate qualified stops refused', lambda p, m: m['stop_until_start_button'].append(m['stop_until_start_button'][0]))
+    refused('high below normal refused', lambda p, m: m['speed'].update(auto_rpm_high=900))
+    refused('high above drive limit refused', lambda p, m: m['speed'].update(auto_rpm_high=5000))
+    refused('zero transition time refused', lambda p, m: m['speed'].update(speed_switch_accel_decel_s=0))
+    refused('excessive transition rate refused', lambda p, m: m['speed'].update(speed_switch_accel_decel_s=.1))
+    refused('nonfinite high speed refused', lambda p, m: m['speed'].update(auto_rpm_high=float('nan')))
+    refused('nonfinite clear interval refused', lambda p, m: p['rfid'].update(tag_clear_s=float('inf')))
+    refused('legacy ignore window refused', lambda p, m: m['stop_until_start_button'][0].update(ignore_t=20))
 
 
 TESTS = [test_route_sequence, test_encounters, test_controller_route,

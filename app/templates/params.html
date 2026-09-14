@@ -11,6 +11,11 @@
     <div class="pm-id-name">{{ profile }}</div>
     <div class="pm-id-path"><code>{{ path }}</code></div>
   </div>
+  {# The site is a separate file, so a layout change never edits the vehicle. #}
+  <div class="pm-id">
+    <div class="pm-id-name">{{ mission }}</div>
+    <div class="pm-id-path">mission &middot; {{ mission_env }} overrides &middot; <code>{{ mission_path }}</code></div>
+  </div>
   <div class="chips">
     {# dry_run is not a subsystem, but it is the one flag that decides whether
        an auto run can produce motion at all, so it leads. #}

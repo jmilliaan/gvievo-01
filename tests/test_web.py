@@ -223,7 +223,7 @@ def test_the_shared_rail_is_on_every_page():
     OPERATOR = ('id="batt"', 'id="vstate"', 'id="alarm"', 'id="zone-rail"')
     DIAGNOSTIC = ('id="loop-work"', 'id="loop-frames"', 'id="wd"')
 
-    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/params"):
+    for page in ("/manual", "/auto", "/blind", "/io", "/lidar", "/alarms", "/params"):
         body = c.get(page).get_data(as_text=True)
         for el in OPERATOR:
             check(f"{page} carries {el}", el in body)
@@ -492,8 +492,10 @@ def test_params_lists_the_rfid_rules():
     check("the implemented ones are named first",
           "branch latch" in heads[0] and "stop until start button" in heads[1],
           str(heads[:2]))
+    check("the U-turn table takes the fourth slot",
+          "u-turn" in heads[3], str(heads[3:4]))
     check("the rest are numbered free slots",
-          all("undefined rule" in h for h in heads[3:]), str(heads[3:]))
+          all("undefined rule" in h for h in heads[4:]), str(heads[4:]))
 
     # Loaded rules appear under their own type, not in a flat list.
     for r in config.BRANCH_LATCH:
@@ -522,11 +524,12 @@ def test_params_lists_the_rfid_rules():
           "branch_latch" not in names, str(names))
 
     body = c.get("/params").get_data(as_text=True)
-    check("it renders", "rfid rules" in body and "undefined rule 5" in body)
+    check("it renders", "rfid rules" in body
+          and f"undefined rule {config.RFID_RULE_SLOTS - 4}" in body)
     check("...and explains direction-qualified rules",
           "direction-qualified" in body)
     check("...and counts the tags in use",
-          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | {t for dr, t in config.STOP_TAGS} | {t for r in config.HIGH_SPEED_MODE for t in (r['entry_tag'], r['exit_tag'])})} tag id(s)"
+          f"{len({t for r in config.BRANCH_LATCH for t in (r['entry_tag'], r['exit_tag'])} | {t for dr, t in config.STOP_TAGS} | {t for r in config.HIGH_SPEED_MODE for t in (r['entry_tag'], r['exit_tag'])} | set(config.U_TURN_TAGS))} tag id(s)"
           in body)
 
 
@@ -566,7 +569,7 @@ def test_landing_page_is_auto_and_the_pill_says_armed():
     check("/monitor carries the bus identity instead", 'id="bus-how"' in mon)
     check("...fed from /api/can, which does not claim the watchdog",
           "renderBus" in (ROOT / "app" / "static" / "monitor.js").read_text())
-    for page in ("/manual", "/auto", "/io", "/lidar", "/alarms", "/params"):
+    for page in ("/manual", "/auto", "/blind", "/io", "/lidar", "/alarms", "/params"):
         check(f"{page} does not carry the bus tile",
               'id="bus-how"' not in c.get(page).get_data(as_text=True))
 

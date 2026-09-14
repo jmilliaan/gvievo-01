@@ -10,6 +10,7 @@ K_RATIO = 100 is fine, and on this vehicle that diverges at 0.8 m/s.
 FAIL is shared state, deliberately. Every module appends to the same list so
 run_all.py can report one verdict for the whole suite rather than eight.
 """
+import json
 import math
 import os
 import pathlib
@@ -35,6 +36,23 @@ FAIL = []
 CHECKS = [0]
 
 NO_TRACK = {"tracks": [], "has_track": False}
+
+
+def profile_doc(name="agv-01"):
+    """A fresh copy of a vehicle profile document, for mutation in a test."""
+    return json.loads((ROOT / "profiles" / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def mission_doc(name="gy-demo"):
+    """A fresh copy of a mission document, for mutation in a test."""
+    return json.loads((ROOT / "missions" / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def parse(profile=None, mission=None):
+    """Parse, derive and validate a profile/mission pair WITHOUT publishing it."""
+    ns = config._parse(profile if profile is not None else profile_doc())
+    ns.update(config._parse_mission(mission if mission is not None else mission_doc(), ns))
+    return config._validate(config._derive(ns))
 
 
 def check(name, cond, detail=""):

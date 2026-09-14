@@ -36,11 +36,14 @@ MODULES = [
     "test_route",
     "test_route_guard",
     "test_auto_display",
+    "test_uturn",
+    "test_blindrun",
+    "test_mission",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 1275
+EXPECTED_CHECKS = 1450
 
 
 def main():

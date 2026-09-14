@@ -26,8 +26,11 @@ class Route:
         self.stations = tuple(Station(**row) for row in stations)
         self.speed_rules = tuple(dict(row) for row in speed_rules)
         self.index = 0
-        self.parked = True
-        self.direction = self.stations[0].direction
+        # No stations: a mission without a route. Plain line-following, with
+        # speed rules applied by tag alone (validation made them unambiguous).
+        self.enabled = bool(self.stations)
+        self.parked = self.enabled
+        self.direction = self.stations[0].direction if self.enabled else None
         self.high = False
         self.laps = 0
         self.guard = guard or {'enabled': False}
@@ -37,7 +40,7 @@ class Route:
         self.zone_expired = False
         self.guard_error = None
         self.notice = None
-        self.initial_assumption = True
+        self.initial_assumption = self.enabled
 
     @property
     def guarded(self) -> bool:
@@ -69,11 +72,13 @@ class Route:
         return None
 
     @property
-    def current(self) -> Station:
-        return self.stations[self.index]
+    def current(self) -> Station | None:
+        return self.stations[self.index] if self.enabled else None
 
     @property
-    def next(self) -> Station:
+    def next(self) -> Station | None:
+        if not self.enabled:
+            return None
         return self.stations[(self.index + 1) % len(self.stations)]
 
     def clear_speed(self) -> None:
@@ -93,6 +98,12 @@ class Route:
     def encounter(self, tag: str) -> Station | None:
         """Process one new encounter, returning a station only on arrival."""
         self.notice = None
+        if not self.enabled:
+            if any(r['exit_tag'] == tag for r in self.speed_rules):
+                self.high = False
+            elif any(r['entry_tag'] == tag for r in self.speed_rules):
+                self.high = True
+            return None
         if self.parked or self.guard_error:
             return None
         # Direction is route bookkeeping, not independent physical evidence.
@@ -126,7 +137,15 @@ class Route:
         return None
 
     def snapshot(self) -> dict:
-        return {'station': self.current.id, 'next_station': self.next.id,
+        if not self.enabled:
+            return {'enabled': False, 'station': None, 'next_station': None,
+                    'travel_direction': None, 'parked': False,
+                    'high_speed': self.high, 'laps': 0,
+                    'guard_enabled': False, 'guard_error': self.guard_error,
+                    'initial_assumption': False,
+                    'distance_estimate_m': self.distance_m,
+                    'high_distance_estimate_m': 0.0}
+        return {'enabled': True, 'station': self.current.id, 'next_station': self.next.id,
                 'travel_direction': self.direction, 'parked': self.parked,
                 'high_speed': self.high, 'laps': self.laps,
                 'guard_enabled': self.guarded, 'guard_error': self.guard_error,

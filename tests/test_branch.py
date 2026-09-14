@@ -564,13 +564,15 @@ def test_profile_table():
     import config
     print("\nbranch: profile validation")
 
-    doc = json.load(open(str(ROOT / "profiles" / "agv-01.json")))
+    from helpers import mission_doc, profile_doc
+    doc = mission_doc()
+    vehicle = config._parse(profile_doc())
 
     def refused(name, rows, needle):
         d = copy.deepcopy(doc)
         d["branch_latch"] = rows
         try:
-            config._parse(d)
+            config._parse_mission(d, vehicle)
             check(name, False, "NOT rejected")
         except config.ConfigError as e:
             check(name, needle in str(e), str(e)[:70])
@@ -602,20 +604,20 @@ def test_profile_table():
     d = copy.deepcopy(doc)
     d["branch_latch"] = [ok]
     check("slow_speed is optional and defaults to false",
-          config._parse(d)["BRANCH_LATCH"][0]["slow_speed"] is False)
+          config._parse_mission(d, vehicle)["BRANCH_LATCH"][0]["slow_speed"] is False)
     d["branch_latch"] = [dict(ok, slow_speed=True)]
     check("...and is carried through when given",
-          config._parse(d)["BRANCH_LATCH"][0]["slow_speed"] is True)
+          config._parse_mission(d, vehicle)["BRANCH_LATCH"][0]["slow_speed"] is True)
 
     d = copy.deepcopy(doc)
     d["branch_latch"] = []
     check("an empty table is valid - it ships that way until the real tags "
-          "are known", config._parse(d)["BRANCH_LATCH"] == [])
+          "are known", config._parse_mission(d, vehicle)["BRANCH_LATCH"] == [])
 
     d["branch_latch"] = [{"entry_tag": "000a", "exit_tag": "000b",
                           "branch": "left"}]
     check("lower-case hex normalises, so it cannot become a second tag",
-          config._parse(d)["BRANCH_LATCH"][0]["entry_tag"] == "000A")
+          config._parse_mission(d, vehicle)["BRANCH_LATCH"][0]["entry_tag"] == "000A")
 
 
 def test_follower_uses_the_choice():

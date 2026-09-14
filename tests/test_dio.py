@@ -3,7 +3,7 @@ import copy
 import json
 import time
 
-from helpers import ROOT, check
+from helpers import ROOT, check, parse
 
 import config
 
@@ -252,7 +252,7 @@ def test_dio_profile():
         d = copy.deepcopy(doc)
         mutate(d["dio"])
         try:
-            config._validate(config._derive(config._parse(d)))
+            parse(profile=d)
             check(name, False, "NOT rejected")
         except config.ConfigError as e:
             check(name, needle in str(e), str(e)[:70])

@@ -7,13 +7,16 @@ jogging and operating diagnostics. RFID tags identify stations and speed zones.
 
 The existing controller has operated on real hardware. The direction-aware route,
 high-speed changes and route guards described here have only been tested offline.
-This README describes the source and `profiles/agv-01.json`; historical
+This README describes the source, `profiles/agv-01.json` (the vehicle) and
+`missions/gy-demo.json` (the site); historical
 run logs retain the parameters and behavior of their own software revision.
 
 **Route guards are currently disabled.** Their measurement fields are `null`.
-The [hardware commissioning handoff](manuals/route-hardware-acceptance.md)
-contains the route map, required measurements, 26 hardware test cases, expected
-results and recovery procedures. All hardware cases remain **NOT RUN**.
+The [hardware commissioning handoff](manuals/today_priority/route-hardware-acceptance.md)
+contains the route map, required measurements, 48 hardware test cases, expected
+results and recovery procedures. Run them in the order set by the
+[hardware test run sheet](manuals/today_priority/hardware-test-runsheet.md).
+All hardware cases remain **NOT RUN**.
 
 ## Current profile
 
@@ -21,7 +24,7 @@ results and recovery procedures. All hardware cases remain **NOT RUN**.
 |---|---|
 | Normal auto cruise | 1000 motor r/min, approximately 0.314 m/s |
 | High-speed cruise | 2000 motor r/min, approximately 0.628 m/s |
-| Normal/high transition | 500 r/min/s, with existing jerk limiting |
+| Normal/high transition | About 333 r/min/s (3 s nominal), with existing jerk limiting |
 | Slow-zone cruise | 800 motor r/min; requires a configured branch slow zone |
 | Manual straight / inner curve wheel / spin | 2000 / 1200 / 300 motor r/min |
 | Normal gains | `k_ratio=11.3`, `kd=0.94`, `ki=0` |
@@ -35,6 +38,7 @@ results and recovery procedures. All hardware cases remain **NOT RUN**.
 | RFID repeat-clearance interval | 0.5 s, provisional |
 | Route guards | Disabled; distance and station-deceleration limits unmeasured |
 | Standing branch preference | Left; `branch_latch` is currently empty |
+| Mission | `missions/gy-demo.json`; `missions/empty.json` gives plain line-following |
 | `dry_run` | **false** |
 
 Speeds are derived from 180 mm wheels and a 30:1 gearbox. Steering and speed
@@ -57,6 +61,8 @@ belongs on the vehicle's trusted operating network.
 | Selector changes | Stops and disarms; MANUAL can then automatically re-arm |
 | Station arrival | Distance-based deceleration, followed by a dwell waiting for physical Start |
 | Start at a station | Resumes the same run after the start delay |
+| Start in MANUAL with a blind-run plan set on `/blind` | Runs the encoder-only move after the start delay |
+| Reset during a blind run | Stops it and keeps the plan for a repeat |
 | Tape disappears | Coasts within the configured travel grace, then holds the run |
 | Tape returns during a hold | Resumes after 2 s of continuously usable tape |
 | Drives leave Operation enabled during auto | Holds commands at zero and attempts to re-enable; recovery can resume automatically |
@@ -84,11 +90,37 @@ commands while sending zero targets. It does not release a motor brake or make
 the shafts free to push. Check error sign by moving a magnet under a stationary
 sensor. Use the offline tests when no hardware is available.
 
+## Profile and mission files
+
+Configuration is split in two, both loaded once at start-up:
+
+| File | Holds | Changes when |
+|---|---|---|
+| `profiles/<agv>.json` | The vehicle: geometry, drives, sensors, gains, ramps, network, panel, U-turn dynamics, blind-run limits | The vehicle is rebuilt or retuned |
+| `missions/<name>.json` | The site: `branch_latch`, `stop_until_start_button`, `high_speed_mode`, `route`, `route_guard`, `u_turn`, `branch_default`, and `speed` (`auto_rpm_high`, `speed_switch_accel_decel_s`) | The layout, tags or site speeds change |
+
+- **Selecting a mission:** the profile's top-level `"mission"` names it, and
+  `$AGV_MISSION` overrides that name. `mission_name` inside the file must match
+  its file name, the same rule as `profile_name`.
+- **No mission:** `"mission": null`, or `missions/empty.json`, gives plain auto
+  line-following and manual jogging. The empty file keeps every key present as a
+  placeholder, to copy for a new site.
+- **Stale copies are refused:** a site key left in a profile fails as unknown.
+  Tags are checked against the profile's RFID reader settings.
+- **Route-less missions:** without a route there is no travel direction, so each
+  tag must mean one thing. A station tag has one stop distance, a speed tag is
+  entry-only or exit-only, and `route_guard` stays off. U-turns, speed zones,
+  branch latches and station stops still act, and nothing tracks position.
+- **Where to see it:** `/params` and `/api/config` show which mission and file
+  are loaded, and each auto run log header records it.
+
 ## Route and station identity
 
-The installation uses a shared line with a balloon U-turn at each end, around
-90 m total. Four physical stopping positions deliberately reuse two RFID values.
-The route is cyclic, and the first profile row is the assumed startup position.
+The installation uses a shared line, around 90 m total, that ends in a
+differential U-turn at each end (tags `0030` / `0031`, replacing the earlier
+balloon loops). Four physical stopping positions deliberately reuse two RFID
+values. The route is cyclic, and the first `route` row in the mission file is the
+assumed startup position.
 
 | Departing station | Departure direction | Next station | Expected arrival tag | High-speed zones allowed on this leg |
 |---|---|---|---|---|
@@ -177,9 +209,10 @@ Rules live in `high_speed_mode`. The route also gates which legs permit high
 speed, so a speed tag on a U-turn leg cannot enable it. Station arrival,
 direction change, holds, disarm, and RFID link loss clear the latch.
 
-`autopilot.speed_switch_accel_decel_s=2.0` derives a 500 r/min/s rate from the
-1000 r/min difference between normal and high cruise. The existing jerk limiter
-remains active, so completion can take slightly longer than two seconds. An exit
+The mission's `speed.speed_switch_accel_decel_s=3.0` derives about a 333 r/min/s
+rate from the 1000 r/min difference between normal and high cruise. The existing
+jerk limiter remains active, so completion takes slightly longer than three
+seconds (about 3.04 s offline). An exit
 received during acceleration retargets the same ramp without jumping its state.
 Startup uses the existing acceleration ramp; station stopping uses its own
 computed deceleration. Hard stops bypass the cruise transition. Slow-zone mode
@@ -256,7 +289,7 @@ not a guarantee of physical stopping distance under jerk limiting and load.
 Until these guards are enabled and commissioned, a missed station can still
 silently shift the logical route stage, and a missed exit can permit a
 high-speed station approach. Follow the
-[hardware test and measurement procedure](manuals/route-hardware-acceptance.md)
+[hardware test and measurement procedure](manuals/today_priority/route-hardware-acceptance.md)
 before accepting the new behavior on the vehicle.
 
 ## Branch selection
@@ -417,6 +450,65 @@ via `python3 -B tests/browser_auto.py` (headless Edge/Chromium, fixture-only
 HTTP, no device services). Operator verification from the normal viewing
 position is hardware case A11 and is **not run**.
 
+### Differential U-turn
+
+A `u_turn` tag (`0030` cw, `0031` ccw) replaces a balloon loop. In AUTO only,
+reading one stops the vehicle over `u_turn_stop_distance_m` (0.4 m), then pivots
+on its axis with the wheels equal and opposite at `auto_u_turn_rpm`. The MLS
+loses the tape as the sensor swings off it, then sees it again near 180°. Past
+`u_turn_min_deg`, and at a track level within `u_turn_level_tolerance` of the
+start, that ends the pivot: the vehicle centres at no more than half speed until
+the error is inside ±`u_turn_center_tol_mm`, holds there for
+`u_turn_resume_delay_s` (1 s), and resumes line following.
+
+Encoder travel gates it rather than ending it. `6064h` position is read from
+both drives each tick and scaled by `608Fh` (control resolution per motor
+revolution) times `vehicle.gear_ratio`; `6091h` must be 1:1 or equal that ratio.
+A 180° pivot rolls each wheel π·track/2 = 0.765 m at track 0.487 m, which is
+1.353 wheel turns, 40.6 motor turns, or about 1,461,000 counts at the default
+36,000 P/R. No reacquisition by
+`u_turn_max_deg`, a counter that runs backwards or stalls, a silent sensor, or
+any hold during the manoeuvre ends the run with a fault: a half-finished pivot
+is not resumed. Reset cancels it quietly.
+
+U-turn tags are not route events. They do not advance the route or change the
+high-speed latch, and route tags are ignored while a U-turn is in progress. After
+turning, the vehicle drives back over its own tag once; that read is ignored
+within the next `u_turn_stop_distance_m` + 1 m of travel. Offline coverage is in
+`tests/test_uturn.py`, including a closed-loop pivot model; none of it is
+hardware evidence.
+
+### Blind run (encoder-only test moves) and the MLS IMU box
+
+`/blind` exists to measure the drive encoders before SLAM depends on them.
+The page **only sets a plan**: one or more segments (straight distance, arc by
+radius and angle, pivot by angle, or raw per-drive `6064h` pulses) plus a speed
+in m/s or motor r/min. **PB Start runs it**, only with the selector in MANUAL
+and the vehicle armed; PB Reset, a selector move, web Stop, a fault, drives
+leaving Operation enabled, or `6064h` unreadable for `driver_timeout_s` stops
+it. There is no start control on the page and no `/api/blind/start`.
+
+The drives stay in profile-velocity mode. The write guard refuses the
+profile-position objects, so a software loop drives the faster wheel on a
+trapezoid over its remaining counts. The other wheel follows the planned ratio
+plus a progress trim. Each segment ends at rest before its counts are recorded.
+Counts per wheel turn come from `608Fh` × `vehicle.gear_ratio`. Whether `6064h`
+counts motor-shaft steps (1,080,000 per wheel turn at 36,000 P/R) is not settled
+by the manual, and is hardware case E01. The MLS error is logged when tape is
+present and never steers.
+
+Each run writes `logs/NNNN-blind_*/run.csv`, and every segment is appended to
+`logs/blind_results.csv`. Each row records target and final counts, encoder
+distance and heading, and the commanded values. Blank `measured_distance_m` and
+`measured_heading_deg` columns are left for tape-measured values. Limits and
+tuning are in the profile's `blind_run` section.
+
+The IMU box displays MLS roll/pitch/yaw (`2030h`), acceleration (`2033h`),
+angular rate (`2034h`) and temperature (`2070h:01`), read by SDO about once a
+second while the MLS streams. These exist only on MLS firmware V5+ with
+`2006h:02` = 1; otherwise the box says why. Nothing uses the values yet, and the
+MLS is never written.
+
 ## Logs and verification
 
 An auto run creates `logs/NNNN-auto_YYYYmmdd_HHMMSS/run.csv` and, on close,
@@ -440,9 +532,11 @@ python3 -c "import main"             # import/profile check only
 ```
 
 The runner pins the test modules and check count and fails on uncaught worker
-thread exceptions. Latest offline verification on 2026-09-10: **115 test
-functions / 1,250 checks passed**, exit 0, without uncaught exceptions, using
-Python 3.13.9 on the development PC. Changed Python files also passed Python
+thread exceptions. Latest offline verification on 2026-09-14: **131 test
+functions / 1,450 checks passed**, exit 0, without uncaught exceptions, using
+Python 3.13.9 on the development PC with `profiles/agv-01.json` and
+`missions/gy-demo.json`. `tests/browser_auto.py` passed 50 real-DOM Auto page
+checks at two viewports. Changed Python files also passed Python
 3.10 syntax parsing; rerun the suite with the deployed interpreter/dependencies.
 
 Coverage includes the real
@@ -454,8 +548,10 @@ feedback, sampling gaps, guarded Start refusal and retained position faults.
 Synthetic limits in `tests/test_route_guard.py` are not site measurements.
 Offline results do not validate physical stopping distance or RFID coverage.
 
-The [hardware commissioning handoff](manuals/route-hardware-acceptance.md)
-contains 26 cases across normal-speed checks, speed/stopping measurements and
-guarded fault injection, with expected results and an evidence template. All
+The [hardware commissioning handoff](manuals/today_priority/route-hardware-acceptance.md)
+contains 48 cases across normal-speed route, speed/stopping, guarded fault
+injection, U-turn, blind-run encoder accuracy and mission checks, with expected
+results and an evidence template. Run them in the order set by the
+[hardware test run sheet](manuals/today_priority/hardware-test-runsheet.md). All
 hardware cases remain NOT RUN. Preserve original run logs as historical
 commissioning evidence rather than treating them as tests of this new behavior.

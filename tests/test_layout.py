@@ -45,6 +45,9 @@ def test_path_anchors():
     check("the profile resolves under profiles/",
           pathlib.Path(config.profile_path()).parent.resolve()
           == (ROOT / "profiles").resolve())
+    check("the mission resolves under missions/",
+          pathlib.Path(config.mission_path("gy-demo")).parent.resolve()
+          == (ROOT / "missions").resolve())
 
 
 def test_flat_namespace_is_unambiguous():

@@ -6,7 +6,7 @@ import struct
 import sys
 import threading
 
-from helpers import FAIL, ROOT, check, sensor
+from helpers import FAIL, ROOT, check, mission_doc, sensor
 
 import autopilot
 import config
@@ -74,6 +74,24 @@ def test_config_profile():
         msg = load_with(mutate)
         check(name, msg is not None and expect in (msg or ""), msg or "accepted!")
 
+    def refuses_mission(name, mutate, expect=""):
+        m = mission_doc()
+        mutate(m)
+        # Under its mission NAME, for the same reason as the profile above.
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, f"{m['mission_name']}.json")
+        with open(path, "w") as fh:
+            json.dump(m, fh)
+        try:
+            config.load(mission=path)
+            msg = None
+        except config.ConfigError as e:
+            msg = str(e)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+            config.load()
+        check(name, msg is not None and expect in (msg or ""), msg or "accepted!")
+
     check("the real profile loads", config.PROFILE_NAME == "agv-01",
           config.PROFILE_NAME)
     refuses("a typo'd key is refused",
@@ -133,19 +151,26 @@ def test_config_profile():
     # The resume window: a missing key is as fatal as an unknown one, and the
     # ceiling is what catches a value typed in milliseconds - which would
     # switch the stations off for the rest of the run without a symptom.
-    refuses("a station row missing direction is refused",
-            lambda d: d["stop_until_start_button"][0].pop("direction"), "direction")
-    refuses("an unknown stop direction is refused",
-            lambda d: d["stop_until_start_button"][0].update(direction="forward"), "direction")
-    refuses("obsolete global ignore_t is refused",
-            lambda d: d["stop_until_start_button"][0].update(ignore_t=20), "expected exactly")
+    refuses_mission("a station row missing direction is refused",
+                    lambda m: m["stop_until_start_button"][0].pop("direction"), "direction")
+    refuses_mission("an unknown stop direction is refused",
+                    lambda m: m["stop_until_start_button"][0].update(direction="forward"),
+                    "direction")
+    refuses_mission("obsolete global ignore_t is refused",
+                    lambda m: m["stop_until_start_button"][0].update(ignore_t=20),
+                    "expected exactly")
 
-    refuses("an unknown branch_default is refused",
-            lambda d: d["autopilot"].update(branch_default="rightmost"),
-            "branch_default")
-    refuses("a capitalised branch_default is refused rather than folded",
-            lambda d: d["autopilot"].update(branch_default="Right"),
-            "branch_default")
+    refuses_mission("an unknown branch_default is refused",
+                    lambda m: m.update(branch_default="rightmost"), "branch_default")
+    refuses_mission("a capitalised branch_default is refused rather than folded",
+                    lambda m: m.update(branch_default="Right"), "branch_default")
+
+    # The site moved out of the profile. A stale copy left behind must be
+    # refused rather than quietly ignored beside the real mission.
+    refuses("a site speed left in the profile is refused",
+            lambda d: d["autopilot"].update(auto_rpm_high=2000.0), "unknown key")
+    refuses("a route left in the profile is refused",
+            lambda d: d.update(route=[]), "unknown top-level")
 
     # The horn is the only output this software energises, and both ways of
     # getting it wrong are silent: a channel off the end of the module writes
@@ -213,7 +238,7 @@ def test_derived_constants():
           f"{config.MPS_PER_RPM:.6e}")
     check("RPM_PER_MPS", close(config.RPM_PER_MPS, 3183.0989),
           f"{config.RPM_PER_MPS:.4f}")
-    check("RAD_S_PER_RPM_DIFF", close(config.RAD_S_PER_RPM_DIFF, 6.4641824e-4),
+    check("RAD_S_PER_RPM_DIFF", close(config.RAD_S_PER_RPM_DIFF, 6.4509089e-4),
           f"{config.RAD_S_PER_RPM_DIFF:.6e}")
     check("MAX_SPEED_MPS", close(config.MAX_SPEED_MPS, 1.2566371),
           f"{config.MAX_SPEED_MPS:.4f}")

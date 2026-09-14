@@ -1,0 +1,22 @@
+{
+  "mission_name": "empty",
+  "speed": {
+    "auto_rpm_high": null,
+    "speed_switch_accel_decel_s": null
+  },
+  "branch_default": "straight",
+  "branch_latch": [],
+  "stop_until_start_button": [],
+  "high_speed_mode": [],
+  "route": [],
+  "route_guard": {
+    "enabled": false,
+    "legs": [],
+    "high_speed_max_m": {
+      "outbound": null,
+      "inbound": null
+    },
+    "station_decel_limit_rpm_s": null
+  },
+  "u_turn": []
+}

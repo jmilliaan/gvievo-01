@@ -659,6 +659,27 @@ code, .mon-policy code {
 }
 .pm-secnote { margin:0 0 10px; }
 
+/* ---- blind run --------------------------------------------------------- */
+.blind-segments { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+.blind-row { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin:0 0 10px; }
+.blind-seg { padding:8px; border:1px solid var(--rule); background:var(--surface); margin:0; }
+.blind-fields { display:flex; flex-wrap:wrap; gap:6px 14px; flex:1 1 280px; }
+.blind-row label { font-size:13px; color:var(--ink-2); }
+.blind-row input, .blind-row select {
+  font:400 13px var(--mono); color:var(--ink); background:var(--surface);
+  border:1px solid var(--rule); padding:5px 8px; width:9em; max-width:100%;
+}
+.blind-row input:focus-visible, .blind-row select:focus-visible {
+  outline:2px solid var(--accent-2); outline-offset:1px;
+}
+.blind-error { color:var(--stop); }
+.blind-table-wrap { overflow-x:auto; }
+.blind-table { border-collapse:collapse; width:100%; font:400 12.5px var(--mono); }
+.blind-table th, .blind-table td {
+  border-bottom:1px solid var(--rule-soft); padding:5px 8px; text-align:left; white-space:nowrap;
+}
+.blind-table th { color:var(--ink-2); font-weight:600; }
+
 .al-filters input[type=search] {
   font:400 12.5px var(--mono); color:var(--ink); background:var(--surface);
   border:1px solid var(--rule); padding:5px 8px; min-width:15em;

@@ -185,18 +185,17 @@ def test_distance_feedback_and_failures():
 
 
 def test_guard_configuration():
-    base = json.loads((ROOT / 'profiles/agv-01.json').read_text())
+    from helpers import mission_doc, parse
+    base = mission_doc()
     base['route_guard'] = limits()
-    check('fully specified synthetic limits load', config._parse(base)['ROUTE_GUARD']['enabled'])
-    ns = config._parse(base)
-    config._derive(ns)
+    check('fully specified synthetic limits load', parse(mission=base)['ROUTE_GUARD']['enabled'])
+    ns = parse(mission=base)
     check('permitted high-speed stop rate passes derived validation', ns['ROUTE_GUARD']['enabled'])
     def refused(name, mutate):
         doc = copy.deepcopy(base)
         mutate(doc['route_guard'])
         try:
-            ns = config._parse(doc)
-            config._derive(ns)
+            parse(mission=doc)
         except config.ConfigError:
             check(name, True)
         else:

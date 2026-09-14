@@ -376,18 +376,91 @@ high_speed_mode.*
     reused on several segments. Station, branch and speed tag types cannot
     overlap. Stations, holds, disarm and RFID link loss clear high speed.
 
-autopilot.auto_rpm_high / speed_switch_accel_decel_s
+mission.*
+    The mission file (missions/<name>.json, named by the profile's "mission"
+    key or $AGV_MISSION) holds the SITE: branch_latch, stop_until_start_button,
+    high_speed_mode, route, route_guard, u_turn, branch_default and the site
+    speeds. The vehicle profile holds the vehicle. mission_name must match the
+    file name. "mission": null, or missions/empty.json, gives plain auto
+    line-following and manual jogging.
+
+    Without a route there is no travel direction, so each tag must mean one
+    thing: a station tag has one stop distance, a speed tag is entry-only or
+    exit-only, and route_guard stays off. U-turns, speed zones, branch latches
+    and station stops still act; nothing tracks position.
+
+mission.speed
     auto_rpm_high must exceed auto_rpm and fit motor_max_rpm. The speed-switch
     rate is their difference divided by speed_switch_accel_decel_s: 1000 to
-    2000 over 2 s requests 500 rpm/s. Existing jerk limiting remains active, so
-    completion can take slightly longer. Startup and station stops keep their
-    own ramps; slow-zone speed and gains override high-speed mode.
+    2000 over 3 s requests about 333 rpm/s. Existing jerk limiting remains
+    active, so completion can take slightly longer. Startup and station stops
+    keep their own ramps; slow-zone speed and gains override high-speed mode.
+    Both may be null when high_speed_mode is empty.
+
+mission.branch_default
+    The branch taken at a junction with no latched order: straight, left or
+    right. A junction with no RFID tag has nothing to seal in, so this answers.
 
 rfid.tag_clear_s
     A same-valued tag becomes a new encounter after this interval without a
     read. This is separate from tag_hold_s, which only keeps the HMI readable.
     0.5 s is provisional: verify it against actual read gaps and station spacing.
     Reconnection re-baselines the reader rather than inventing a station visit.
+
+u_turn.*
+    Differential U-turn tags, replacing a balloon loop. Each row is exactly
+    {tag, direction}; direction is cw or ccw seen from above. AUTO only and
+    independent of the route: a U-turn tag is not a station, does not advance
+    or reverse the route, and leaves the high-speed latch as it was.
+
+    Reading one stops over u_turn_stop_distance_m, pivots with the wheels equal
+    and opposite at auto_u_turn_rpm, and ends on the TAPE: the MLS must lose it,
+    then see it again. It then centres at no more than half spin speed, holds
+    inside u_turn_center_tol_mm for u_turn_resume_delay_s and resumes following.
+    Encoder travel (6064h, scaled by 608Fh and vehicle.gear_ratio) only gates
+    it. A missed reacquisition, stale counter or sensor, or any hold faults the
+    run: a half-finished pivot cannot be resumed, so align on tape and restart.
+
+    Tags are unique here and cannot also be branch, station or speed tags. The
+    same tag is ignored once as the vehicle drives back over it after turning.
+
+autopilot.auto_u_turn_rpm / u_turn_stop_distance_m
+    Pivot wheel speed and the stopping distance past the tag. A 180 degree pivot
+    rolls each wheel pi*track/2 = 0.765 m at track 0.487 m: 1.353 wheel turns,
+    or 40.6 motor turns at gear_ratio 30 - about 1,461,000 counts at the default
+    36,000 P/R. At 200 r/min that is about 12 s; the sensor, 0.097 m ahead of the
+    axle, moves ~25 mm/s.
+
+autopilot.u_turn_min_deg / u_turn_max_deg / u_turn_level_tolerance
+    The encoder gate. Tape seen again before u_turn_min_deg is not the far side;
+    none by u_turn_max_deg faults. A reacquired track must read at least the
+    starting MLS track level minus u_turn_level_tolerance (0-7 grade).
+
+autopilot.u_turn_center_tol_mm / u_turn_center_kp_rpm_per_mm
+    Centring: wheel speed = kp * error, capped at half auto_u_turn_rpm, until
+    the error is inside the tolerance. At auto_u_turn_rpm 200 the cap is 100
+    r/min, which 1.5 r/min per mm reaches at about 67 mm.
+
+autopilot.u_turn_resume_delay_s
+    Time the error must stay inside u_turn_center_tol_mm, stopped, before line
+    following resumes. Leaving the band during it re-enters centring.
+
+blind_run.*
+    Encoder-only test moves from /blind, to measure the encoders before SLAM
+    relies on them. The page only SETS a plan; PB Start runs it, with the
+    selector in MANUAL and the vehicle armed. Reset, a selector move, web Stop,
+    a fault or lost 6064h feedback stops it. The MLS error is logged when tape
+    is present and never steers.
+
+    Profile velocity mode with a software position loop: the faster wheel runs
+    a trapezoid on its REMAINING counts at accel_rpm_s, capped at max_rpm; the
+    other follows the planned ratio plus sync_kp (1/s) times its progress lag.
+    A segment ends within stop_tolerance_mm, then waits settle_s at standstill
+    before its counts are recorded. Overrunning by overrun_margin, or taking
+    twice the planned time, aborts. max_distance_m caps each wheel per segment.
+
+    imu_period_s paces the display-only MLS IMU poll (2030h/2033h/2034h/2070h,
+    firmware V5+ with 2006h:02 = 1). The MLS is never written.
 
 panel.manual_auto_arm
     MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
@@ -578,6 +651,34 @@ def profile_path(name=None):
     return os.path.join(PROFILE_DIR, f"{name}.json")
 
 
+# The SITE, kept apart from the vehicle: tag layout, route, guards, U-turns and
+# the site speeds. Named by the profile's "mission" key, overridable here.
+MISSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "missions")
+MISSION_ENV_VAR = "AGV_MISSION"
+
+# What "mission": null means, and the shape missions/empty.json ships in:
+# plain auto line-following and manual jogging, nothing site-specific.
+EMPTY_MISSION = {
+    "mission_name": "empty",
+    "speed": {"auto_rpm_high": None, "speed_switch_accel_decel_s": None},
+    "branch_default": "straight",
+    "branch_latch": [],
+    "stop_until_start_button": [],
+    "high_speed_mode": [],
+    "route": [],
+    "route_guard": {"enabled": False, "legs": [],
+                    "high_speed_max_m": {"outbound": None, "inbound": None},
+                    "station_decel_limit_rpm_s": None},
+    "u_turn": [],
+}
+
+
+def mission_path(name):
+    """Resolve a mission name to missions/<name>.json. No fallback either."""
+    return os.path.join(MISSION_DIR, f"{name}.json")
+
+
 # section -> json key -> (exported name, type). The exported names match the
 # constants these replaced, so the diff at every call site is one word.
 _SCHEMA = {
@@ -594,10 +695,6 @@ _SCHEMA = {
         "dry_run":             ("DRY_RUN", bool),
         "invert_error":        ("INVERT_ERROR", bool),
         "branch_positive_is_left": ("BRANCH_POSITIVE_IS_LEFT", bool),
-        # The intent with no latch set - "straight", "left" or "right". A
-        # junction with no RFID tag has nothing to seal in, so this is how it
-        # gets an answer. See the tuning note.
-        "branch_default":      ("BRANCH_DEFAULT", str),
         "k_ratio":             ("K_RATIO", float),
         "kd":                  ("KD", float),
         "ki":                  ("KI", float),
@@ -609,8 +706,14 @@ _SCHEMA = {
         "sr_cap":              ("SR_CAP", float),
         "sr_tau_s":            ("SR_TAU_S", float),
         "auto_rpm":            ("AUTO_RPM", float),
-        "auto_rpm_high":       ("AUTO_RPM_HIGH", float),
-        "speed_switch_accel_decel_s": ("SPEED_SWITCH_S", float),
+        "auto_u_turn_rpm":     ("AUTO_U_TURN_RPM", float),
+        "u_turn_stop_distance_m": ("U_TURN_STOP_DISTANCE_M", float),
+        "u_turn_center_tol_mm": ("U_TURN_CENTER_TOL_MM", float),
+        "u_turn_resume_delay_s": ("U_TURN_RESUME_DELAY_S", float),
+        "u_turn_min_deg":      ("U_TURN_MIN_DEG", float),
+        "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
+        "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
+        "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
         "auto_slow_rpm":       ("AUTO_SLOW_RPM", float),
         "slow_k_ratio":        ("SLOW_K_RATIO", float),
         "slow_kd":             ("SLOW_KD", float),
@@ -744,6 +847,17 @@ _SCHEMA = {
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "log_tail_s":         ("LOG_TAIL_S", float),
         "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
+    },
+    "blind_run": {
+        "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
+        "max_rpm":           ("BLIND_MAX_RPM", float),
+        "accel_rpm_s":       ("BLIND_ACCEL_RPM_S", float),
+        "settle_s":          ("BLIND_SETTLE_S", float),
+        "stop_tolerance_mm": ("BLIND_STOP_TOLERANCE_MM", float),
+        "sync_kp":           ("BLIND_SYNC_KP", float),
+        "overrun_margin":    ("BLIND_OVERRUN_MARGIN", float),
+        "max_segments":      ("BLIND_MAX_SEGMENTS", int),
+        "imu_period_s":      ("BLIND_IMU_PERIOD_S", float),
     },
 }
 
@@ -984,9 +1098,12 @@ def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
         high = _coerce(row["high_speed_to_next"], bool, loc + ".high_speed_to_next")
         stations.append(dict(id=ident, tag=tag, direction=direction,
                              high_speed_to_next=high))
-    if len(stations) < 2:
-        raise ConfigError("route must contain at least two stations; first is initial position")
-    if stations[0]["direction"] != "outbound":
+    # An empty route is a mission without one: plain line-following. A real
+    # route needs a starting position and somewhere to go.
+    if len(stations) == 1:
+        raise ConfigError("route must contain at least two stations, or none; "
+                          "first is initial position")
+    if stations and stations[0]["direction"] != "outbound":
         raise ConfigError("route first station must be outbound")
     speed, contacts = [], set()
     stop_tags = {tag for direction, tag in stops}
@@ -1047,14 +1164,27 @@ def _read_route_guard(raw, stations):
                 station_decel_limit_rpm_s=limit)
 
 
+def _read_u_turn(rows, tag_len, forbidden):
+    """u_turn -> {tag: "cw" | "ccw"}. AUTO only; never a route station."""
+    out = {}
+    for row, loc in _rule_rows(rows, ("tag", "direction"), "u_turn"):
+        tag = _tag(row["tag"], tag_len * 2, loc + ".tag", forbidden)
+        if row["direction"] not in ("cw", "ccw"):
+            raise ConfigError(f"{loc}.direction must be cw or ccw")
+        if tag in out:
+            raise ConfigError(f"{loc}.tag: {tag} is listed twice")
+        out[tag] = row["direction"]
+    return out
+
+
 def _parse(doc):
     """Raw JSON document -> flat namespace of primitives. Strict both ways."""
     if not isinstance(doc, dict):
         raise ConfigError("profile must be a JSON object")
 
-    expected_sections = (set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
-                         | {"branch_latch", "stop_until_start_button",
-                            "route", "high_speed_mode", "route_guard"})
+    # The site layout lives in the mission file; a stale copy here is refused
+    # as an unknown key rather than silently ignored.
+    expected_sections = set(_SCHEMA) | set(_TOP_LEVEL_SCALARS) | {"mission"}
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -1065,6 +1195,11 @@ def _parse(doc):
     ns = {}
     for key, (name, want) in _TOP_LEVEL_SCALARS.items():
         ns[name] = _coerce(doc[key], want, key)
+    mission = doc["mission"]
+    if mission is not None and (not isinstance(mission, str) or not mission.strip()):
+        raise ConfigError('mission: expected a mission name like "gy-demo", '
+                          'or null for no mission')
+    ns["MISSION"] = mission
 
     for section, fields in _SCHEMA.items():
         block = doc[section]
@@ -1099,18 +1234,86 @@ def _parse(doc):
         doc["dio"]["do_names"], ns["DIO_NUM_DO"], "dio.do_names")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
-    ns["BRANCH_LATCH"] = _read_branch_latch(
-        doc["branch_latch"], ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]))
-    _branch_tags = {r[k] for r in ns["BRANCH_LATCH"]
-                    for k in ("entry_tag", "exit_tag")}
-    ns["STOP_TAGS"] = _read_stop_tags(
-        doc["stop_until_start_button"], ns["RFID_TAG_LEN"],
-        set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
-    ns["ROUTE"], ns["HIGH_SPEED_MODE"] = _read_route(
-        doc["route"], doc["high_speed_mode"], ns["STOP_TAGS"],
-        ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"]), _branch_tags)
-    ns['ROUTE_GUARD'] = _read_route_guard(doc['route_guard'], ns['ROUTE'])
     return ns
+
+
+_MISSION_KEYS = ("mission_name", "speed", "branch_default", "branch_latch",
+                 "stop_until_start_button", "high_speed_mode", "route",
+                 "route_guard", "u_turn")
+
+
+def _optional_float(value, where):
+    if value is None:
+        return None
+    value = _coerce(value, float, where)
+    if not math.isfinite(value):
+        raise ConfigError(f"{where}: expected a finite number or null")
+    return value
+
+
+def _parse_mission(doc, ns):
+    """Mission document -> namespace entries, checked against the parsed profile.
+
+    Tags are validated with the profile's reader settings (tag length, ignore
+    list), because a mission tag the reader discards is a rule that never fires.
+    """
+    if not isinstance(doc, dict):
+        raise ConfigError("mission must be a JSON object")
+    unknown = set(doc) - set(_MISSION_KEYS)
+    if unknown:
+        raise ConfigError(f"mission: unknown key(s) {sorted(unknown)}")
+    missing = set(_MISSION_KEYS) - set(doc)
+    if missing:
+        raise ConfigError(f"mission: missing key(s) {sorted(missing)}")
+
+    out = {"MISSION_NAME": _coerce(doc["mission_name"], str, "mission_name")}
+    speed, keys = doc["speed"], {"auto_rpm_high", "speed_switch_accel_decel_s"}
+    if not isinstance(speed, dict) or set(speed) != keys:
+        raise ConfigError(f"mission speed: expected exactly {sorted(keys)}")
+    out["AUTO_RPM_HIGH"] = _optional_float(speed["auto_rpm_high"], "speed.auto_rpm_high")
+    out["SPEED_SWITCH_S"] = _optional_float(speed["speed_switch_accel_decel_s"],
+                                            "speed.speed_switch_accel_decel_s")
+    out["BRANCH_DEFAULT"] = _coerce(doc["branch_default"], str, "branch_default")
+
+    tag_len, ignored = ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"])
+    out["BRANCH_LATCH"] = _read_branch_latch(doc["branch_latch"], tag_len, ignored)
+    branch_tags = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
+    out["STOP_TAGS"] = _read_stop_tags(doc["stop_until_start_button"], tag_len,
+                                       ignored, branch_tags)
+    out["ROUTE"], out["HIGH_SPEED_MODE"] = _read_route(
+        doc["route"], doc["high_speed_mode"], out["STOP_TAGS"], tag_len,
+        ignored, branch_tags)
+    out["ROUTE_GUARD"] = _read_route_guard(doc["route_guard"], out["ROUTE"])
+    speed_tags = {r[k] for r in out["HIGH_SPEED_MODE"] for k in ("entry_tag", "exit_tag")}
+    out["U_TURN_TAGS"] = _read_u_turn(
+        doc["u_turn"], tag_len,
+        ignored | branch_tags | {tag for _, tag in out["STOP_TAGS"]} | speed_tags)
+    out["STOP_TAGS_ANY"] = {} if out["ROUTE"] else _routeless(out)
+    return out
+
+
+def _routeless(out):
+    """Without a route there is no travel direction, so a tag must mean one thing.
+
+    Returns {tag: stop rule} for station stops matched by tag alone.
+    """
+    if out["ROUTE_GUARD"]["enabled"]:
+        raise ConfigError("route_guard cannot be enabled without a route")
+    stops = {}
+    for (_direction, tag), rule in sorted(out["STOP_TAGS"].items()):
+        if tag in stops and stops[tag]["stop_distance_m"] != rule["stop_distance_m"]:
+            raise ConfigError(f"stop_until_start_button: tag {tag} has two stop "
+                              f"distances; without a route there is no direction "
+                              f"to choose between them")
+        stops[tag] = {"stop_distance_m": rule["stop_distance_m"]}
+    entries = {r["entry_tag"] for r in out["HIGH_SPEED_MODE"]}
+    exits = {r["exit_tag"] for r in out["HIGH_SPEED_MODE"]}
+    both = sorted(entries & exits)
+    if both:
+        raise ConfigError(f"high_speed_mode: tag(s) {both} both set and reset high "
+                          f"speed; without a route there is no direction, so each "
+                          f"tag must be entry-only or exit-only")
+    return stops
 
 
 def _derive(ns):
@@ -1128,15 +1331,21 @@ def _derive(ns):
         limit = guard['station_decel_limit_rpm_s']
         if limit > ns['RAMP']['auto']['decel']:
             raise ConfigError('route_guard: station deceleration limit exceeds auto drive deceleration')
+        cruise = ns['AUTO_RPM_HIGH'] if ns['HIGH_SPEED_MODE'] else ns['AUTO_RPM']
         for rule in ns['STOP_TAGS'].values():
-            rate = ns['AUTO_RPM_HIGH'] ** 2 * ns['MPS_PER_RPM'] / (2 * rule['stop_distance_m'])
+            rate = cruise ** 2 * ns['MPS_PER_RPM'] / (2 * rule['stop_distance_m'])
             if rate > limit:
                 raise ConfigError('route_guard: high-speed station stop exceeds measured deceleration limit; '
                                   'reduce auto_rpm_high or commission a longer stop_distance_m')
-    if ns["SPEED_SWITCH_S"] <= 0:
+    high, switch = ns["AUTO_RPM_HIGH"], ns["SPEED_SWITCH_S"]
+    if ns["HIGH_SPEED_MODE"] and (high is None or switch is None):
+        raise ConfigError("mission speed.auto_rpm_high and "
+                          "speed.speed_switch_accel_decel_s are required when "
+                          "high_speed_mode has rules")
+    if switch is not None and switch <= 0:
         raise ConfigError("speed_switch_accel_decel_s must be > 0")
-    ns["SPEED_SWITCH_RPM_S"] = (
-        ns["AUTO_RPM_HIGH"] - ns["AUTO_RPM"]) / ns["SPEED_SWITCH_S"]
+    ns["SPEED_SWITCH_RPM_S"] = ((high - ns["AUTO_RPM"]) / switch
+                                if high is not None and switch is not None else None)
     # Yaw rate from a left/right difference: omega = (v_right - v_left) / TRACK.
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
@@ -1218,7 +1427,7 @@ def _validate(ns):
     # Spelled out rather than taken from branch.py: config imports nothing from
     # the layers it configures, so a typo here has to be caught here.
     check(g("BRANCH_DEFAULT") in ("straight", "left", "right"),
-          f"autopilot.branch_default ({g('BRANCH_DEFAULT')!r}) must be "
+          f"mission branch_default ({g('BRANCH_DEFAULT')!r}) must be "
           f"'straight', 'left' or 'right'")
 
     # -- control law ------------------------------------------------------
@@ -1233,12 +1442,46 @@ def _validate(ns):
           "SR fractions must be >= 0")
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           f"AUTO_RPM must be in (0, {g('MOTOR_MAX_RPM')}]")
-    check(g("AUTO_RPM") < g("AUTO_RPM_HIGH") <= g("MOTOR_MAX_RPM"),
-          "auto_rpm_high must exceed auto_rpm and not exceed motor_max_rpm")
-    check(0 < g("SPEED_SWITCH_RPM_S") <= g("RAMP_ACCEL_RPM_S"),
-          "speed_switch_accel_decel_s requests a rate above ramp_accel_rpm_s")
+    # Null site speeds are legal only when the mission has no high-speed rules;
+    # _derive has already enforced that pairing.
+    if g("AUTO_RPM_HIGH") is not None:
+        check(g("AUTO_RPM") < g("AUTO_RPM_HIGH") <= g("MOTOR_MAX_RPM"),
+              "auto_rpm_high must exceed auto_rpm and not exceed motor_max_rpm")
+    if g("SPEED_SWITCH_RPM_S") is not None:
+        check(0 < g("SPEED_SWITCH_RPM_S") <= g("RAMP_ACCEL_RPM_S"),
+              "speed_switch_accel_decel_s requests a rate above ramp_accel_rpm_s")
     check(0 < g("RFID_TAG_CLEAR_S") <= 5,
           "rfid.tag_clear_s must be in (0, 5] seconds")
+    check(0 < g("AUTO_U_TURN_RPM") <= g("MOTOR_MAX_RPM"),
+          "auto_u_turn_rpm must be in (0, motor_max_rpm]")
+    check(0 < g("U_TURN_STOP_DISTANCE_M") <= 5,
+          "u_turn_stop_distance_m must be in (0, 5] m")
+    check(0 < g("U_TURN_CENTER_TOL_MM") < g("SENSOR_MAX_MM"),
+          "u_turn_center_tol_mm must be > 0 and inside sensor_max_mm")
+    check(g("U_TURN_RESUME_DELAY_S") >= 0, "u_turn_resume_delay_s must be >= 0")
+    check(0 < g("U_TURN_MIN_DEG") < 180 < g("U_TURN_MAX_DEG") <= 360,
+          "u_turn angles need 0 < u_turn_min_deg < 180 < u_turn_max_deg <= 360")
+    check(g("U_TURN_CENTER_KP_RPM_PER_MM") > 0,
+          "u_turn_center_kp_rpm_per_mm must be > 0")
+    check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
+          "blind_run.max_distance_m must be in (0, 50] m")
+    check(0 < g("BLIND_MAX_RPM") <= g("MOTOR_MAX_RPM"),
+          "blind_run.max_rpm must be in (0, motor_max_rpm]")
+    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["manual"]["accel"],
+          "blind_run.accel_rpm_s must be > 0 and within the manual drive ramp "
+          "(drivers.ramp.manual.accel), or the drive lags the plan")
+    check(g("BLIND_SETTLE_S") >= 0, "blind_run.settle_s must be >= 0")
+    check(0 < g("BLIND_STOP_TOLERANCE_MM") <= 50,
+          "blind_run.stop_tolerance_mm must be in (0, 50] mm")
+    check(g("BLIND_SYNC_KP") >= 0, "blind_run.sync_kp must be >= 0")
+    check(0 <= g("BLIND_OVERRUN_MARGIN") <= 0.5,
+          "blind_run.overrun_margin must be a fraction in [0, 0.5]")
+    check(1 <= g("BLIND_MAX_SEGMENTS") <= 32,
+          "blind_run.max_segments must be in 1..32")
+    check(g("BLIND_IMU_PERIOD_S") >= 0.2,
+          "blind_run.imu_period_s must be >= 0.2 s (each poll is ten SDO reads)")
+    check(0 <= g("U_TURN_LEVEL_TOLERANCE") <= 7,
+          "u_turn_level_tolerance must be a track-level grade in 0..7")
     check(g("SLOW_K_RATIO") > 0, "slow_k_ratio must be > 0")
     check(g("SLOW_KD") >= 0, "slow_kd must be >= 0")
     check(g("GAIN_BLEND_S") >= 0, "gain_blend_s must be >= 0")
@@ -1493,18 +1736,26 @@ def _validate(ns):
     return ns
 
 
-def load(path=None):
-    """Parse, derive, validate, then publish. Nothing is published on failure."""
-    path = path or profile_path()
+def _read_json(path, what, hint):
     try:
         with open(path) as fh:
-            doc = json.load(fh)
+            return json.load(fh)
     except FileNotFoundError:
-        raise ConfigError(
-            f"no vehicle profile at {path}. Set {PROFILE_ENV_VAR} to one of "
-            f"{_available() or ['(none found)']}, or add the file.")
+        raise ConfigError(f"no {what} at {path}. {hint}")
     except json.JSONDecodeError as e:
         raise ConfigError(f"{os.path.basename(path)} is not valid JSON: {e}")
+
+
+def load(path=None, mission=None):
+    """Parse, derive, validate, then publish. Nothing is published on failure.
+
+    `mission` is a mission name or a path to a mission file. Without it the
+    mission is $AGV_MISSION, then the profile's own "mission" (null: none).
+    """
+    path = path or profile_path()
+    doc = _read_json(path, "vehicle profile",
+                     f"Set {PROFILE_ENV_VAR} to one of "
+                     f"{_available() or ['(none found)']}, or add the file.")
 
     # The name inside the file has to agree with the file it came from. A
     # profile copied for a second vehicle and not renamed would otherwise
@@ -1516,16 +1767,33 @@ def load(path=None):
         raise ConfigError(f"profile_name is {ns['PROFILE_NAME']!r} but the file "
                           f"is {stem}.json - rename one to match the other")
 
+    name = mission or os.environ.get(MISSION_ENV_VAR) or ns["MISSION"]
+    if name is None:
+        mission_doc, mpath = EMPTY_MISSION, None
+    else:
+        mpath = name if name.endswith(".json") else mission_path(name)
+        mission_doc = _read_json(
+            mpath, "mission",
+            f"Set the profile's \"mission\" or {MISSION_ENV_VAR} to one of "
+            f"{_available(MISSION_DIR) or ['(none found)']}, or add the file.")
+    ns.update(_parse_mission(mission_doc, ns))
+    if mpath is not None:
+        mstem = os.path.splitext(os.path.basename(mpath))[0]
+        if ns["MISSION_NAME"] != mstem:
+            raise ConfigError(f"mission_name is {ns['MISSION_NAME']!r} but the file "
+                              f"is {mstem}.json - rename one to match the other")
+
     ns = _validate(_derive(ns))
     ns["PROFILE_PATH_LOADED"] = path
+    ns["MISSION_PATH_LOADED"] = mpath
     globals().update(ns)
     return ns
 
 
-def _available():
-    """Profile names on disk, for the error message. Never raises."""
+def _available(directory=None):
+    """File stems on disk, for the error message. Never raises."""
     try:
-        return sorted(f[:-5] for f in os.listdir(PROFILE_DIR)
+        return sorted(f[:-5] for f in os.listdir(directory or PROFILE_DIR)
                       if f.endswith(".json"))
     except OSError:
         return []
@@ -1601,6 +1869,8 @@ def _fmt(value):
     blank cell reads as "not set" when the setting is genuinely an empty
     string, which for rfid.init_hex is the difference between a reader that
     streams and one that never says anything."""
+    if value is None:
+        return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
@@ -1674,8 +1944,9 @@ _SPEED_ROWS = [
     ("manual", "half_ratio"),
     ("manual", "spin_ratio"),
     ("autopilot", "auto_rpm"),
-    ("autopilot", "auto_rpm_high"),
-    ("autopilot", "speed_switch_accel_decel_s"),
+    ("mission", "speed.auto_rpm_high"),
+    ("autopilot", "auto_u_turn_rpm"),
+    ("mission", "speed.speed_switch_accel_decel_s"),
     ("autopilot", "auto_slow_rpm"),
     ("drivers", "ramp.manual.accel"),
     ("drivers", "ramp.manual.decel"),
@@ -1686,12 +1957,12 @@ _SPEED_ROWS = [
 # Everything in _SPEED_ROWS is suppressed where it would otherwise appear, so no
 # value is ever printed twice - a page showing one parameter in two places is a
 # page where the two can be read as two parameters.
-#
-# branch_default moves for the same reason and to the same effect: the question
-# it answers is "what will the vehicle do at a junction", and that is the RFID
-# rules block. Left in autopilot as well it would be the one parameter on the
-# page appearing twice, which is exactly what this set exists to prevent.
-_MOVED = set(_SPEED_ROWS) | {("autopilot", "branch_default")}
+_MOVED = set(_SPEED_ROWS)
+
+# The mission's site speeds, shown in the speed block. They have no _SCHEMA
+# section of their own: the mission file is not a profile section.
+_MISSION_SCALARS = {"speed.auto_rpm_high": "AUTO_RPM_HIGH",
+                    "speed.speed_switch_accel_decel_s": "SPEED_SWITCH_S"}
 
 # Section order on the page. Speed first, then the control law, then the
 # geometry it runs on; everything after is in schema order. Named here rather
@@ -1741,6 +2012,9 @@ def describe():
     def build(section, key):
         if key.startswith("ramp."):
             return ramp_row(section, key)
+        if section == "mission":
+            const = _MISSION_SCALARS[key]
+            return _row(section, key, const, g.get(const), notes)
         const, _want = _SCHEMA[section][key]
         return _row(section, key, const, g.get(const), notes)
 
@@ -1754,7 +2028,8 @@ def describe():
     out.append({
         "name": "speed", "rows": speed,
         "note": "How fast the vehicle goes, in one place. These keys live in "
-                "the manual, autopilot and drivers sections of the JSON - each "
+                "the manual, autopilot and drivers sections of the profile and "
+                "the speed block of the mission file - each "
                 "row is labelled with the path to edit. auto_slow_rpm applies "
                 "only between the entry and exit tags of a junction that asked "
                 "for it; high_speed_mode selects auto_rpm_high on permitted route legs."})
@@ -1792,9 +2067,9 @@ def describe():
     if g["BRANCH_DEFAULT"] != "straight":
         side = "rightmost" if g["BRANCH_DEFAULT"] == "right" else "leftmost"
         rules.append({
-            "key": "\u2514 autopilot.branch_default", "const": "BRANCH_DEFAULT",
+            "key": "\u2514 mission.branch_default", "const": "BRANCH_DEFAULT",
             "value": f"take the {side} tape", "unit": "",
-            "note": notes.get("autopilot.branch_default")})
+            "note": notes.get("mission.branch_default")})
 
     stops = g["STOP_TAGS"]
     rule(2, "stop until start button", "STOP_TAGS", len(stops),
@@ -1807,12 +2082,18 @@ def describe():
     for row in g["HIGH_SPEED_MODE"]:
         rules.append({"key": f"\u2514 {row['direction']} {row['entry_tag']} -> {row['exit_tag']}",
                       "const": "", "value": "set / reset high speed", "unit": "", "note": None})
-    for n in range(4, RFID_RULE_SLOTS + 1):
-        rules.append({"key": f"{n} \u00b7 undefined rule {n - 3}", "const": "",
+    rule(4, "u-turn", "U_TURN_TAGS", len(g["U_TURN_TAGS"]), notes.get("u_turn.*"))
+    for tag, direction in sorted(g["U_TURN_TAGS"].items()):
+        rules.append({"key": f"\u2514 {tag}", "const": "",
+                      "value": f"stop, pivot {direction}, recentre on tape",
+                      "unit": "", "note": None})
+    for n in range(5, RFID_RULE_SLOTS + 1):
+        rules.append({"key": f"{n} \u00b7 undefined rule {n - 4}", "const": "",
                       "value": "free slot", "unit": "", "note": None})
     tags = ({t for r in ladder for t in (r["entry_tag"], r["exit_tag"])}
             | {tag for direction, tag in stops}
-            | {t for r in g["HIGH_SPEED_MODE"] for t in (r["entry_tag"], r["exit_tag"])})
+            | {t for r in g["HIGH_SPEED_MODE"] for t in (r["entry_tag"], r["exit_tag"])}
+            | set(g["U_TURN_TAGS"]))
     out.append({"name": "rfid rules", "rows": rules,
                 "note": f"{len(tags)} tag id(s) in use. Rules are direction-qualified; "
                         "physical stations are identified by the ordered route."})
@@ -1820,12 +2101,23 @@ def describe():
                 "rows": [{"key": r["id"], "const": "", "unit": "", "note": None,
                           "value": f"{r['direction']} {r['tag']}; "
                                    f"high speed to next: {r['high_speed_to_next']}"}
-                         for r in g["ROUTE"]]})
+                         for r in g["ROUTE"]]
+                        or [{"key": "none", "const": "", "unit": "", "note": None,
+                             "value": "no route in this mission - plain line-following"}]})
     guard = g['ROUTE_GUARD']
     out.append({'name': 'route guard',
                 'note': 'Wheel-speed distance estimate, not independent localization. Null limits need measurement.',
                 'rows': [{'key': k, 'const': '', 'unit': '', 'note': None,
                           'value': json.dumps(v)} for k, v in guard.items()]})
+    out.append({"name": "mission",
+                "note": "The site layout and site speeds. Edit the mission file, "
+                        "not the vehicle profile, for a new layout.",
+                "rows": [{"key": "mission_name", "const": "MISSION_NAME", "unit": "",
+                          "note": notes.get("mission.*"), "value": g["MISSION_NAME"]},
+                         {"key": "file", "const": "MISSION_PATH_LOADED", "unit": "",
+                          "note": None,
+                          "value": g.get("MISSION_PATH_LOADED")
+                                   or "built-in empty mission (profile mission: null)"}]})
 
     # Then the schema's own sections: the named ones in the order above, then
     # whatever is left in the order the profile writes it.

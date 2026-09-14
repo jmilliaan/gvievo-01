@@ -1,11 +1,12 @@
 {
   "profile_name": "agv-01",
+  "mission": "gy-demo",
   "vehicle": {
-    "track_m": 0.486,
+    "track_m": 0.487,
     "wheel_dia_m": 0.18,
     "gear_ratio": 30.0,
     "motor_max_rpm": 4000.0,
-    "sensor_lookahead_m": 0.1,
+    "sensor_lookahead_m": 0.097,
     "invert_left": false,
     "invert_right": false
   },
@@ -23,8 +24,14 @@
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
     "auto_rpm": 1000.0,
-    "auto_rpm_high": 2000.0,
-    "speed_switch_accel_decel_s": 2.0,
+    "auto_u_turn_rpm": 200.0,
+    "u_turn_stop_distance_m": 0.4,
+    "u_turn_center_tol_mm": 10.0,
+    "u_turn_resume_delay_s": 1.0,
+    "u_turn_min_deg": 90.0,
+    "u_turn_max_deg": 225.0,
+    "u_turn_center_kp_rpm_per_mm": 1.5,
+    "u_turn_level_tolerance": 1,
     "auto_slow_rpm": 800.0,
     "slow_k_ratio": 25.0,
     "slow_kd": 5.0,
@@ -38,8 +45,7 @@
     "auto_resume_hold_s": 2.0,
     "dt_nominal_s": 0.02,
     "inner_wheel_min_rpm": 0.0,
-    "branch_positive_is_left": true,
-    "branch_default": "left"
+    "branch_positive_is_left": true
   },
   "manual": {
     "full_rpm": 2000,
@@ -194,85 +200,15 @@
     "log_tail_s": 2.0,
     "auto_start_delay_s": 0.6
   },
-  "branch_latch": [],
-  "stop_until_start_button": [
-    {
-      "tag": "0010",
-      "stop_distance_m": 0.4,
-      "direction": "outbound"
-    },
-    {
-      "tag": "0011",
-      "stop_distance_m": 0.4,
-      "direction": "inbound"
-    }
-  ],
-  "high_speed_mode": [
-    {
-      "entry_tag": "0020",
-      "exit_tag": "0021",
-      "direction": "outbound"
-    },
-    {
-      "entry_tag": "0021",
-      "exit_tag": "0020",
-      "direction": "inbound"
-    }
-  ],
-  "route": [
-    {
-      "id": "2",
-      "tag": "0010",
-      "direction": "outbound",
-      "high_speed_to_next": true
-    },
-    {
-      "id": "3",
-      "tag": "0010",
-      "direction": "outbound",
-      "high_speed_to_next": false
-    },
-    {
-      "id": "4",
-      "tag": "0011",
-      "direction": "inbound",
-      "high_speed_to_next": true
-    },
-    {
-      "id": "1",
-      "tag": "0011",
-      "direction": "inbound",
-      "high_speed_to_next": false
-    }
-  ],
-  "route_guard": {
-    "enabled": false,
-    "legs": [
-      {
-        "from_station": "2",
-        "min_m": null,
-        "max_m": null
-      },
-      {
-        "from_station": "3",
-        "min_m": null,
-        "max_m": null
-      },
-      {
-        "from_station": "4",
-        "min_m": null,
-        "max_m": null
-      },
-      {
-        "from_station": "1",
-        "min_m": null,
-        "max_m": null
-      }
-    ],
-    "high_speed_max_m": {
-      "outbound": null,
-      "inbound": null
-    },
-    "station_decel_limit_rpm_s": null
+  "blind_run": {
+    "max_distance_m": 10.0,
+    "max_rpm": 1000.0,
+    "accel_rpm_s": 300.0,
+    "settle_s": 0.5,
+    "stop_tolerance_mm": 1.0,
+    "sync_kp": 2.0,
+    "overrun_margin": 0.02,
+    "max_segments": 8,
+    "imu_period_s": 1.0
   }
 }

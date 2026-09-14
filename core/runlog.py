@@ -70,7 +70,51 @@ COLUMNS = [
     "travel_direction", "station", "next_station", "parked", "laps",
     "high_speed", "speed_mode", "speed_target_rpm",
     "guard_enabled", "guard_error", "distance_estimate_m", "high_distance_estimate_m",
+    "u_turn_phase", "u_turn_deg",
 ]
+
+# An encoder-only blind run: one row per tick, counts and the pose they imply.
+BLIND_COLUMNS = [
+    "t", "dt", "phase", "segment", "tgt_l_m", "tgt_r_m", "prog_l_m", "prog_r_m",
+    "cnt_l", "cnt_r", "n_l", "n_r", "rpm_l", "rpm_r",
+    "x_m", "y_m", "heading_deg", "speed_mps", "e_mm", "has_track", "loop_ms",
+]
+
+# One row per completed blind-run segment, across runs. The measured_* columns
+# are left blank for the operator's tape-measure values.
+RESULTS_NAME = "blind_results.csv"
+RESULT_COLUMNS = [
+    "time", "profile", "counts_per_wheel_rev", "log_dir", "segment", "kind",
+    "spec", "speed_motor_rpm", "target_left", "target_right", "final_left",
+    "final_right", "error_left", "error_right", "encoder_left_m",
+    "encoder_right_m", "encoder_distance_m", "encoder_heading_deg",
+    "encoder_dx_m", "encoder_dy_m", "commanded_distance_m",
+    "commanded_heading_deg", "commanded_dx_m", "commanded_dy_m", "duration_s",
+    "tape_at_start", "e_mm_start", "e_mm_end",
+    "measured_distance_m", "measured_heading_deg", "notes",
+]
+
+
+def append_result(row, path=None):
+    """Append one row to the cross-run results table. Never raises.
+
+    Returns an error string, or None. Opened and closed per row: a segment ends
+    seconds apart at most a few times a minute, and a file left open would lose
+    the table's last rows to a power cut at the vehicle.
+    """
+    import csv
+    path = path or os.path.join(LOG_DIR, RESULTS_NAME)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        new = not os.path.exists(path)
+        with open(path, "a", newline="") as fh:
+            out = csv.writer(fh)
+            if new:
+                out.writerow(RESULT_COLUMNS)
+            out.writerow([_fmt(row.get(c)) for c in RESULT_COLUMNS])
+        return None
+    except Exception as e:                      # noqa: BLE001 - never fatal
+        return str(e)
 
 
 def _fmt(v):
@@ -86,8 +130,11 @@ def _fmt(v):
 class RunLog:
     """Open on START, close on STOP. Disabled instances are silently inert."""
 
-    def __init__(self, enabled=True):
+    def __init__(self, enabled=True, columns=None, prefix="auto", plot=True):
         self.enabled = enabled
+        self.columns = COLUMNS if columns is None else columns
+        self.prefix = prefix
+        self.plot = plot
         self.dir = None
         self.seq = None           # run number, assigned at open()
         self.path = None          # the CSV; the UI links this
@@ -104,8 +151,10 @@ class RunLog:
             return
         try:
             self.seq = next_seq()
+            stamp = (STAMP_FMT if self.prefix == "auto"
+                     else f"{self.prefix}_%Y%m%d_%H%M%S")
             self.dir = os.path.join(
-                LOG_DIR, f"{self.seq:04d}-" + time.strftime(STAMP_FMT))
+                LOG_DIR, f"{self.seq:04d}-" + time.strftime(stamp))
             os.makedirs(self.dir, exist_ok=True)
             self.path = os.path.join(self.dir, CSV_NAME)
             self.plot_path = os.path.join(self.dir, PNG_NAME)
@@ -113,7 +162,7 @@ class RunLog:
             self._fh = open(self.path, "w", buffering=1)
             if note:
                 self._fh.write(f"# {note}\n")
-            self._fh.write(",".join(COLUMNS) + "\n")
+            self._fh.write(",".join(self.columns) + "\n")
             self._t0 = time.monotonic()
             self._last_flush = self._t0
         except Exception as e:                  # noqa: BLE001 - never fatal
@@ -128,7 +177,7 @@ class RunLog:
             if extra:
                 row.update(extra)
             row["t"] = time.monotonic() - self._t0
-            self._buf.append(",".join(_fmt(row.get(c)) for c in COLUMNS))
+            self._buf.append(",".join(_fmt(row.get(c)) for c in self.columns))
             now = time.monotonic()
             if now - self._last_flush >= FLUSH_PERIOD_S:
                 self._drain()
@@ -160,7 +209,7 @@ class RunLog:
             self.error = str(e)
         finally:
             self._fh = None
-        if plot and self.path:
+        if plot and self.plot and self.path:
             threading.Thread(target=self._render, name="runplot",
                              daemon=True).start()
 

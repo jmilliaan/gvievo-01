@@ -73,6 +73,31 @@ try {
   expect(`viewport width ${innerWidth}px matches requested ${window.TEST_WIDTH}px`, innerWidth === window.TEST_WIDTH);
   s.rfid.comms_ok = true; showStation(s);
 
+  // A U-turn names its phase and direction, and a hold still outranks it.
+  s = fixture(); s.u_turn = {active:true, phase:'spin', direction:'cw', tag:'0030',
+                             angle_deg:95, tape_lost:true, reason:null};
+  showStation(s);
+  expect('U-turn pivot is the headline', displayed('auto-status') === 'U-TURN CW - PIVOTING'
+         && displayed('auto-context').includes('95 deg') && displayed('auto-point') === 'TO POINT 3');
+  s.u_turn.phase = 'center'; showStation(s);
+  expect('U-turn centring is named', displayed('auto-status') === 'U-TURN CW - CENTRING ON TAPE');
+  s.auto_hold = 'sensor silent'; showStation(s);
+  expect('a hold outranks the U-turn wording', displayed('auto-status') === 'HOLD');
+  s.auto_hold = null; s.u_turn.active = false; s.u_turn.phase = 'done'; showStation(s);
+  expect('a finished U-turn is not still shown as turning', displayed('auto-status') === 'TRAVELLING');
+
+  // A mission with no route: plain line following, stops named by tag.
+  s = fixture();
+  Object.assign(s.route, {enabled:false, station:null, next_station:null, travel_direction:null,
+                          parked:false, initial_assumption:false});
+  s.route_display.sequence = []; showStation(s);
+  expect('a route-less mission reads as line following',
+         displayed('auto-status') === 'LINE FOLLOWING' && displayed('auto-point') === 'NO ROUTE'
+         && displayed('auto-direction') === 'NO ROUTE');
+  s.stop_hold = '0010'; s.route_display.stopped = true; showStation(s);
+  expect('a route-less station stop names the tag',
+         displayed('auto-status') === 'WAITING FOR START' && displayed('auto-point') === 'STATION TAG 0010');
+
   // Lap count is its own fact: the trailing 2 is a return boundary, not a stop.
   s = fixture(); s.route.laps = 3; showStation(s);
   expect('completed laps shown separately', displayed('auto-lap') === 'Completed laps: 3');

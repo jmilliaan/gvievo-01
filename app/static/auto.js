@@ -60,7 +60,10 @@ function showHold(s) {
 function autoView(s) {
   const r = s.route, d = s.route_display || {}, panel = s.panel || {};
   if (!r) return {status: 'LIVE STATE UNAVAILABLE', point: '--', context: 'Route state unavailable'};
-  let status = 'STOPPED', point = `POINT ${r.station}`, context = `Retained stage ${r.station} -> ${r.next_station}`;
+  const routed = r.enabled !== false;
+  let status = 'STOPPED', point = routed ? `POINT ${r.station}` : 'NO ROUTE',
+      context = routed ? `Retained stage ${r.station} -> ${r.next_station}`
+                       : 'Mission has no route - plain line following';
   if (r.guard_error) {
     status = 'POSITION CHECK REQUIRED'; point = 'POSITION UNKNOWN'; context = r.guard_error + '; return to point 2 and restart';
   } else if (panel.fault || s.health?.system_error || !s.connected) {
@@ -69,8 +72,23 @@ function autoView(s) {
     status = 'MANUAL';
   } else if (s.auto_hold || s.eto_hold) {
     status = 'HOLD'; context = s.auto_hold || s.eto_hold;
+  } else if (s.u_turn && s.u_turn.active) {
+    const u = s.u_turn;
+    const what = {stopping: 'STOPPING', spin: 'PIVOTING', center: 'CENTRING ON TAPE',
+                  settle: 'SETTLING'}[u.phase] || String(u.phase).toUpperCase();
+    status = `U-TURN ${u.direction.toUpperCase()} - ${what}`;
+    if (routed && !r.parked) point = `TO POINT ${r.next_station}`;
+    context = u.phase === 'stopping' ? `Tag ${u.tag} read; stopping before the pivot`
+      : `${n1(u.angle_deg, 0)} deg by encoder${u.tape_lost ? '; tape left the sensor' : ''}`;
   } else if (panel.starting_in !== null && panel.starting_in !== undefined) {
     status = `STARTING - ${n1(panel.starting_in, 1)} s`;
+  } else if (!routed && s.auto_running) {
+    if (s.stop_hold) {
+      status = d.stopped === true ? 'WAITING FOR START' : d.stopped === false ? 'STOPPING' : 'STOP STATUS UNKNOWN';
+      point = `STATION TAG ${s.stop_hold}`;
+    } else {
+      status = 'LINE FOLLOWING';
+    }
   } else if (r.initial_assumption && r.parked) {
     status = 'INITIAL POSITION ASSUMED'; context = 'Point 2 assumed at startup; physical Start begins the route';
   } else if (!s.armed) {
@@ -115,7 +133,7 @@ function showStation(s) {
   document.querySelector('.auto-summary').classList.remove('is-stale');
   document.querySelector('.auto-summary').dataset.status = v.status;
   text('auto-status', v.status); text('auto-point', v.point); text('auto-context', v.context);
-  text('auto-direction', r.travel_direction.toUpperCase());
+  text('auto-direction', (r.travel_direction || 'no route').toUpperCase());
   text('auto-next-direction', r.parked ? `Next departure: ${(d.next_departure_direction || '--').toUpperCase()} to point ${r.next_station}` : 'Logical route direction');
   text('auto-tag', tag.last_tag || '--');
   const reader = readerHealth(tag);
