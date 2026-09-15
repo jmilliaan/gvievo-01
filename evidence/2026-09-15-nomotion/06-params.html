@@ -1,0 +1,3664 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>AGV — parameters</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>AGV control</h1>
+  <nav>
+    <a href="/manual" class="">Manual</a>
+    <a href="/auto"   class="">Auto</a>
+    <a href="/blind"  class="">Blind run</a>
+    <a href="/io"     class="">I/O</a>
+    <a href="/lidar"  class="">Lidar</a>
+    <a href="/alarms" class="">Alarms</a>
+    <a href="/monitor" class="">Monitor</a>
+    <a href="/params" class="on">Params</a>
+  </nav>
+  <div id="link" class="pill">connecting…</div>
+
+  
+  <div id="wifi" class="wifi" hidden title="Wi-Fi signal">
+    <span class="wifi-bars" id="wifi-bars" aria-hidden="true">
+      <i></i><i></i><i></i><i></i>
+    </span>
+    <span class="wifi-dbm" id="wifi-dbm">–</span>
+  </div>
+</header>
+
+<div class="shell">
+  <aside id="telemetry">
+    
+    <div class="tel-grid">
+      <div class="tel"><span>Battery</span><b id="batt">–</b><i id="batt-note">V</i></div>
+      <div class="tel"><span>State</span><b id="vstate">–</b><i id="vstate-note">—</i></div>
+      <div class="tel"><span>Left</span><b id="rpm-1">–</b><i>r/min</i></div>
+      <div class="tel"><span>Right</span><b id="rpm-2">–</b><i>r/min</i></div>
+      <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i id="setpoint-mps">L / R</i></div>
+      <div class="tel"><span>Alarm</span><b id="alarm">–</b><i id="alarm-note">—</i></div>
+    </div>
+
+    
+    <div class="zone-rail" id="zone-rail" hidden>
+      <span class="zone-rail-label">Lidar</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-0"></i>stop</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-1"></i>slow</span>
+      <span class="zone-pip"><i class="lamp zone" id="rail-z-2"></i>warn</span>
+      <span class="zone-rail-state" id="rail-z-note">—</span>
+    </div>
+    <div class="states">
+      <div id="st-1" class="st">node 1 –</div>
+      <div id="st-2" class="st">node 2 –</div>
+    </div>
+    <pre id="log"></pre>
+  </aside>
+
+  <main>
+
+
+<section class="sensor">
+  <h2>Profile <small>AGV_PROFILE · loaded at start-up</small></h2>
+  <div class="pm-id">
+    <div class="pm-id-name">agv-01</div>
+    <div class="pm-id-path"><code>/home/gvipc-evo-01/agv_can/profiles/agv-01.json</code></div>
+  </div>
+  
+  <div class="pm-id">
+    <div class="pm-id-name"></div>
+    <div class="pm-id-path">mission &middot;  overrides &middot; <code></code></div>
+  </div>
+  <div class="chips">
+    
+    <span class="chip ">dry run off</span>
+    
+    <span class="chip">dio on</span>
+    
+    <span class="chip">panel on</span>
+    
+    <span class="chip">horn on</span>
+    
+    <span class="chip">rfid on</span>
+    
+    <span class="chip">lidar on</span>
+    
+    <span class="chip">monitor on</span>
+    
+    <span class="chip">predicted ζ 0.29</span>
+  </div>
+  <p class="mon-note">
+    A profile that fails any check is refused at import with the failing check
+    named, so a running vehicle is a validated one — see
+    <code>config._validate()</code> for the pairings it enforces between keys
+    (the software ramp must stay under the driver's, the driver timeout above
+    the telemetry period, the heartbeat under half the timeout).
+  </p>
+</section>
+
+
+<div class="al-filters">
+  <label>Find
+    <input type="search" id="pm-find" placeholder="k_ratio, watchdog, lidar…"
+           autocomplete="off" spellcheck="false">
+  </label>
+  <label><input type="checkbox" id="pm-notes"> expand all notes</label>
+  <span class="al-count" id="pm-count">—</span>
+</div>
+
+
+<section class="sensor pm-sec" data-sec="speed">
+  <h2>speed
+    <small>11 values</small></h2>
+  <p class="mon-note pm-secnote">How fast the vehicle goes, in one place. These keys live in the manual, autopilot and drivers sections of the JSON - each row is labelled with the path to edit. auto_slow_rpm applies only between the entry and exit tags of a junction that asked for it; high_speed_mode selects auto_rpm_high on permitted route legs.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="manual.full_rpm manual_full_rpm 2000 speed">
+      <div class="pm-key">
+        manual.full_rpm
+        
+        <i>config.MANUAL_FULL_RPM</i>
+        
+      </div>
+      <div class="pm-val">2000<i>r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual.half_ratio manual_half_ratio 0.6 speed">
+      <div class="pm-key">
+        manual.half_ratio
+        
+        <i>config.MANUAL_HALF_RATIO</i>
+        
+      </div>
+      <div class="pm-val">0.6</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Two fractions of full_rpm, for two different manoeuvres.
+
+half_ratio is the INNER WHEEL of a curve. The outer wheel stays at
+full_rpm, so the ratio between them is what sets the turn radius: the
+vehicle still travels forward and the fraction only decides how sharply.
+
+spin_ratio is BOTH WHEELS of a spin, equal and opposite. It sets no radius
+at all - the vehicle turns on its axis and goes nowhere - so what this
+fraction actually chooses is how fast it rotates.
+
+*** They were one number and that was the bug. *** Sharing half_ratio tied
+the turn radius of a curve to the yaw rate of a spin, and those want
+opposite things: a curve wants a big difference between the wheels to turn
+tightly, while a spin wants a SMALL common speed, because a spin is the
+manoeuvre done in a confined space with somebody standing close enough to
+have chosen it over driving round. Raising full_rpm for open-floor travel
+sped up the spin in exactly the place that wanted it slowest.
+
+The spin also loads the drivetrain differently. Both wheels are fighting
+the floor sideways for the whole manoeuvre rather than rolling, so it is
+the one jog that is scrubbing the tyres the entire time it is held.
+
+_validate() refuses a spin_ratio that rounds to 0 r/min against full_rpm:
+that is a spin button which commands nothing, and a dead control reads as
+broken hardware rather than as a profile that asked for it.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual.spin_ratio manual_spin_ratio 0.15 speed">
+      <div class="pm-key">
+        manual.spin_ratio
+        
+        <i>config.MANUAL_SPIN_RATIO</i>
+        
+      </div>
+      <div class="pm-val">0.15</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Two fractions of full_rpm, for two different manoeuvres.
+
+half_ratio is the INNER WHEEL of a curve. The outer wheel stays at
+full_rpm, so the ratio between them is what sets the turn radius: the
+vehicle still travels forward and the fraction only decides how sharply.
+
+spin_ratio is BOTH WHEELS of a spin, equal and opposite. It sets no radius
+at all - the vehicle turns on its axis and goes nowhere - so what this
+fraction actually chooses is how fast it rotates.
+
+*** They were one number and that was the bug. *** Sharing half_ratio tied
+the turn radius of a curve to the yaw rate of a spin, and those want
+opposite things: a curve wants a big difference between the wheels to turn
+tightly, while a spin wants a SMALL common speed, because a spin is the
+manoeuvre done in a confined space with somebody standing close enough to
+have chosen it over driving round. Raising full_rpm for open-floor travel
+sped up the spin in exactly the place that wanted it slowest.
+
+The spin also loads the drivetrain differently. Both wheels are fighting
+the floor sideways for the whole manoeuvre rather than rolling, so it is
+the one jog that is scrubbing the tyres the entire time it is held.
+
+_validate() refuses a spin_ratio that rounds to 0 r/min against full_rpm:
+that is a spin button which commands nothing, and a dead control reads as
+broken hardware rather than as a profile that asked for it.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="autopilot.auto_rpm auto_rpm 1000 speed">
+      <div class="pm-key">
+        autopilot.auto_rpm
+        
+        <i>config.AUTO_RPM</i>
+        
+      </div>
+      <div class="pm-val">1000<i>r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="autopilot.auto_rpm_high auto_rpm_high 2000 speed">
+      <div class="pm-key">
+        autopilot.auto_rpm_high
+        
+        <i>config.AUTO_RPM_HIGH</i>
+        
+      </div>
+      <div class="pm-val">2000</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>auto_rpm_high must exceed auto_rpm and fit motor_max_rpm. The speed-switch
+rate is their difference divided by speed_switch_accel_decel_s: 1000 to
+2000 over 2 s requests 500 rpm/s. Existing jerk limiting remains active, so
+completion can take slightly longer. Startup and station stops keep their
+own ramps; slow-zone speed and gains override high-speed mode.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="autopilot.speed_switch_accel_decel_s speed_switch_s 2 speed">
+      <div class="pm-key">
+        autopilot.speed_switch_accel_decel_s
+        
+        <i>config.SPEED_SWITCH_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>auto_rpm_high must exceed auto_rpm and fit motor_max_rpm. The speed-switch
+rate is their difference divided by speed_switch_accel_decel_s: 1000 to
+2000 over 2 s requests 500 rpm/s. Existing jerk limiting remains active, so
+completion can take slightly longer. Startup and station stops keep their
+own ramps; slow-zone speed and gains override high-speed mode.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="autopilot.auto_slow_rpm auto_slow_rpm 800 speed">
+      <div class="pm-key">
+        autopilot.auto_slow_rpm
+        
+        <i>config.AUTO_SLOW_RPM</i>
+        
+      </div>
+      <div class="pm-val">800<i>r/min</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Cruise speed while a SLOW ZONE is latched - the stretch between the entry and
+exit tags of any branch_latch row carrying slow_speed true. Off the zone the
+vehicle runs at auto_rpm; the transition either way goes through the ordinary
+software ramp, so it is shaped by ramp_accel_rpm_s and ramp_jerk_rpm_s2 like
+any other change of target and needs no separate profile.
+
+The zone is the whole entry-to-exit interval rather than the diverter itself,
+which is what gives the ramp room to act: the entry tag sits before the
+junction precisely so the branch order arrives in time, and the slowdown
+wants exactly the same lead. At 1200 -&gt; 800 r/min with ramp_accel_rpm_s 1000
+that is 0.4 s, about 150 mm of travel.
+
+Must be in (0, auto_rpm]; _validate() enforces it, because a &#34;slow&#34; speed
+above cruise would speed the vehicle UP at a junction. Two derived values key
+off the SLOWER of the two - the line-loss time ceiling and the
+inner_wheel_min_rpm headroom check - since normal travel through a slow zone
+is the case they have to tolerate.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="drivers.ramp.manual.accel ramp[&#34;manual&#34;][&#34;accel&#34;] 1000 speed">
+      <div class="pm-key">
+        drivers.ramp.manual.accel
+        
+        <i>config.RAMP[&#34;manual&#34;][&#34;accel&#34;]</i>
+        
+      </div>
+      <div class="pm-val">1000<i>r/min/s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>6083h/6084h per mode, written at arm time. The two modes want opposite things
+from the driver:
+  manual : a hand-jogged pad. The driver does all the shaping, so it is set
+           gentle. Decel stays faster than accel because releasing the button
+           is the safety-relevant direction.
+  auto   : the software S-curve shapes the motion (autopilot.ramp_accel_rpm_s),
+           so the driver is set as transparent as is safe and mostly just
+           follows. A STOP deliberately falls through to this decel rate.
+CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
+can be damaged by a hard decel while demand and actual velocity differ a lot
+(opman_fun:2951). On that combination drop the auto decel to match its accel
+and set drive_forward.PVCM_NORMAL = 0 to use motion extension instead.
+CAUTION (auto): 6083h also caps how fast the wheel DIFFERENCE can slew, which
+is the real ceiling on steering gain - see the note atop autopilot.py. Raising
+k_ratio without raising this diverges; raising this without re-checking
+traction is a different kind of mistake.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="drivers.ramp.manual.decel ramp[&#34;manual&#34;][&#34;decel&#34;] 2000 speed">
+      <div class="pm-key">
+        drivers.ramp.manual.decel
+        
+        <i>config.RAMP[&#34;manual&#34;][&#34;decel&#34;]</i>
+        
+      </div>
+      <div class="pm-val">2000<i>r/min/s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>6083h/6084h per mode, written at arm time. The two modes want opposite things
+from the driver:
+  manual : a hand-jogged pad. The driver does all the shaping, so it is set
+           gentle. Decel stays faster than accel because releasing the button
+           is the safety-relevant direction.
+  auto   : the software S-curve shapes the motion (autopilot.ramp_accel_rpm_s),
+           so the driver is set as transparent as is safe and mostly just
+           follows. A STOP deliberately falls through to this decel rate.
+CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
+can be damaged by a hard decel while demand and actual velocity differ a lot
+(opman_fun:2951). On that combination drop the auto decel to match its accel
+and set drive_forward.PVCM_NORMAL = 0 to use motion extension instead.
+CAUTION (auto): 6083h also caps how fast the wheel DIFFERENCE can slew, which
+is the real ceiling on steering gain - see the note atop autopilot.py. Raising
+k_ratio without raising this diverges; raising this without re-checking
+traction is a different kind of mistake.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="drivers.ramp.auto.accel ramp[&#34;auto&#34;][&#34;accel&#34;] 2400 speed">
+      <div class="pm-key">
+        drivers.ramp.auto.accel
+        
+        <i>config.RAMP[&#34;auto&#34;][&#34;accel&#34;]</i>
+        
+      </div>
+      <div class="pm-val">2400<i>r/min/s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>6083h/6084h per mode, written at arm time. The two modes want opposite things
+from the driver:
+  manual : a hand-jogged pad. The driver does all the shaping, so it is set
+           gentle. Decel stays faster than accel because releasing the button
+           is the safety-relevant direction.
+  auto   : the software S-curve shapes the motion (autopilot.ramp_accel_rpm_s),
+           so the driver is set as transparent as is safe and mostly just
+           follows. A STOP deliberately falls through to this decel rate.
+CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
+can be damaged by a hard decel while demand and actual velocity differ a lot
+(opman_fun:2951). On that combination drop the auto decel to match its accel
+and set drive_forward.PVCM_NORMAL = 0 to use motion extension instead.
+CAUTION (auto): 6083h also caps how fast the wheel DIFFERENCE can slew, which
+is the real ceiling on steering gain - see the note atop autopilot.py. Raising
+k_ratio without raising this diverges; raising this without re-checking
+traction is a different kind of mistake.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="drivers.ramp.auto.decel ramp[&#34;auto&#34;][&#34;decel&#34;] 3200 speed">
+      <div class="pm-key">
+        drivers.ramp.auto.decel
+        
+        <i>config.RAMP[&#34;auto&#34;][&#34;decel&#34;]</i>
+        
+      </div>
+      <div class="pm-val">3200<i>r/min/s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>6083h/6084h per mode, written at arm time. The two modes want opposite things
+from the driver:
+  manual : a hand-jogged pad. The driver does all the shaping, so it is set
+           gentle. Decel stays faster than accel because releasing the button
+           is the safety-relevant direction.
+  auto   : the software S-curve shapes the motion (autopilot.ramp_accel_rpm_s),
+           so the driver is set as transparent as is safe and mostly just
+           follows. A STOP deliberately falls through to this decel rate.
+CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
+can be damaged by a hard decel while demand and actual velocity differ a lot
+(opman_fun:2951). On that combination drop the auto decel to match its accel
+and set drive_forward.PVCM_NORMAL = 0 to use motion extension instead.
+CAUTION (auto): 6083h also caps how fast the wheel DIFFERENCE can slew, which
+is the real ceiling on steering gain - see the note atop autopilot.py. Raising
+k_ratio without raising this diverges; raising this without re-checking
+traction is a different kind of mistake.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="rfid rules">
+  <h2>rfid rules
+    <small>13 values</small></h2>
+  <p class="mon-note pm-secnote">4 tag id(s) in use. Rules are direction-qualified; physical stations are identified by the ordered route.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="1 · branch latch branch_latch none loaded rfid rules">
+      <div class="pm-key">
+        1 · branch latch
+        
+        <i>config.BRANCH_LATCH</i>
+        
+      </div>
+      <div class="pm-val">none loaded</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The junction table. An entry tag latches a steering order, the fork consumes
+it, and the exit tag ends the slow zone that ran alongside it - three coils
+off one tag pair, see core/branch.py.
+
+Branch tags are unique within this table and cannot also be station or
+high-speed tags. Direction-qualified reuse belongs to those other tables.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="└ autopilot.branch_default branch_default take the leftmost tape rfid rules">
+      <div class="pm-key">
+        └ autopilot.branch_default
+        
+        <i>config.BRANCH_DEFAULT</i>
+        
+      </div>
+      <div class="pm-val">take the leftmost tape</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Which track to follow when NO branch order is latched. &#34;straight&#34;, &#34;left&#34;
+or &#34;right&#34;.
+
+*** This is how the U-turn is taken now. *** It used to be a branch_latch
+row - tag 0002 in, 0001 out, ordering LEFT - but the track has no RFID tag
+at that junction any more, so there is no pulse to seal in. The vehicle
+takes the extreme tape on the named side wherever a diverter appears, and
+the U-turn is selected by the junction&#39;s geometry instead of by being told
+about it beforehand.
+
+*** The side was measured, not guessed. *** It shipped as &#34;right&#34; and runs
+0048/0049 refused it: &#34;branch right ordered, but that side is not in this
+diverter - carrying straight on&#34;, twice, with the sensor reporting two
+tracks and the follower still on LCP2. RIGHT takes the LOWEST position, so
+landing on LCP2 means the second tape was above it - the positive side,
+which with branch_positive_is_left true is LEFT. Hence &#34;left&#34;. If the
+vehicle ever carries straight on through that junction again, this is the
+first line to re-read, and that same warning is the evidence.
+
+*** It is a standing rule, and the ForkPassed contact cannot end it. ***
+That contact exists to stop a latched order outliving its fork, after run
+0023/0024 - and a default outlives every fork by definition, because there
+is no pulse that could consume it. It is only consulted where there is a
+choice: on plain tape the extreme track in any direction is the only track,
+and a #LCP 7 crossing overrides it to straight. The exposure is a MERGE,
+where two tapes converge in the sensor window and the continuity rule that
+keeps STRAIGHT on the tape it was already following does not apply. Whether
+that is safe is a property of the LAYOUT: every merge on the track has to
+be right-handed, or the vehicle will change tape at the ones that are not.
+
+*** Setting this does not slow the junction down. *** The slow zone and the
+high-gain pair it carries come from a branch_latch row&#39;s tags, and a
+junction with no tags has neither. See auto_slow_rpm and slow_k_ratio: run
+0018 lost the tape on a 0.5 m U-turn at k_ratio 11.3, so if the new
+junction turns that tightly it needs either those gains everywhere or a tag
+pair to switch them in. &#34;straight&#34; restores the previous behaviour exactly.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="2 · stop until start button stop_tags 2 rules loaded rfid rules">
+      <div class="pm-key">
+        2 · stop until start button
+        
+        <i>config.STOP_TAGS</i>
+        
+      </div>
+      <div class="pm-val">2 rules loaded</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Direction-qualified station rules: tag, direction and stop_distance_m.
+The route stage identifies the physical station when tag values repeat.
+Arrival pauses the same run/log; Start resumes after auto_start_delay_s.
+Distance-based deceleration is computed from the software ramp speed, not
+measured odometry. Steering and drive dynamics affect actual stop distance.
+Distance, not time, defines the intended resting point after the tag. A
+fixed-duration ramp changes that point with approach speed. Place station
+tags on track already straight for about a metre; steering remains active
+during deceleration. Validate the resting point with the actual trailer load.
+ignore_t was removed: tag encounters now suppress repeats until clearance.
+
+Ordered physical stations. The first row is the startup position (point 2,
+outbound). Each row supplies id, tag, arrival direction and permission for
+high speed on its outgoing leg. Departure adopts the NEXT station&#39;s arrival
+direction. Route state survives Reset, disarm and manual mode in memory;
+a process restart initializes the first station again.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="└ inbound 0011  stop over 0.40 m, hold for start rfid rules">
+      <div class="pm-key">
+        └ inbound 0011
+        
+        
+        
+      </div>
+      <div class="pm-val">stop over 0.40 m, hold for Start</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Repeated reads suppressed until tag clears.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="└ outbound 0010  stop over 0.40 m, hold for start rfid rules">
+      <div class="pm-key">
+        └ outbound 0010
+        
+        
+        
+      </div>
+      <div class="pm-val">stop over 0.40 m, hold for Start</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Repeated reads suppressed until tag clears.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="3 · high speed high_speed_mode 2 rules loaded rfid rules">
+      <div class="pm-key">
+        3 · high speed
+        
+        <i>config.HIGH_SPEED_MODE</i>
+        
+      </div>
+      <div class="pm-val">2 rules loaded</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="└ outbound 0020 -&gt; 0021  set / reset high speed rfid rules">
+      <div class="pm-key">
+        └ outbound 0020 -&gt; 0021
+        
+        
+        
+      </div>
+      <div class="pm-val">set / reset high speed</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="└ inbound 0021 -&gt; 0020  set / reset high speed rfid rules">
+      <div class="pm-key">
+        └ inbound 0021 -&gt; 0020
+        
+        
+        
+      </div>
+      <div class="pm-val">set / reset high speed</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="4 · undefined rule 1  free slot rfid rules">
+      <div class="pm-key">
+        4 · undefined rule 1
+        
+        
+        
+      </div>
+      <div class="pm-val">free slot</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="5 · undefined rule 2  free slot rfid rules">
+      <div class="pm-key">
+        5 · undefined rule 2
+        
+        
+        
+      </div>
+      <div class="pm-val">free slot</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="6 · undefined rule 3  free slot rfid rules">
+      <div class="pm-key">
+        6 · undefined rule 3
+        
+        
+        
+      </div>
+      <div class="pm-val">free slot</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="7 · undefined rule 4  free slot rfid rules">
+      <div class="pm-key">
+        7 · undefined rule 4
+        
+        
+        
+      </div>
+      <div class="pm-val">free slot</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="8 · undefined rule 5  free slot rfid rules">
+      <div class="pm-key">
+        8 · undefined rule 5
+        
+        
+        
+      </div>
+      <div class="pm-val">free slot</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="route">
+  <h2>route
+    <small>4 values</small></h2>
+  <p class="mon-note pm-secnote">First station is the startup position; state survives manual/Reset.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="2  outbound 0010; high speed to next: true route">
+      <div class="pm-key">
+        2
+        
+        
+        
+      </div>
+      <div class="pm-val">outbound 0010; high speed to next: True</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="3  outbound 0010; high speed to next: false route">
+      <div class="pm-key">
+        3
+        
+        
+        
+      </div>
+      <div class="pm-val">outbound 0010; high speed to next: False</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="4  inbound 0011; high speed to next: true route">
+      <div class="pm-key">
+        4
+        
+        
+        
+      </div>
+      <div class="pm-val">inbound 0011; high speed to next: True</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="1  inbound 0011; high speed to next: false route">
+      <div class="pm-key">
+        1
+        
+        
+        
+      </div>
+      <div class="pm-val">inbound 0011; high speed to next: False</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="route guard">
+  <h2>route guard
+    <small>4 values</small></h2>
+  <p class="mon-note pm-secnote">Wheel-speed distance estimate, not independent localization. Null limits need measurement.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled  false route guard">
+      <div class="pm-key">
+        enabled
+        
+        
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="legs  [{&#34;from_station&#34;: &#34;2&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;3&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;4&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;1&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}] route guard">
+      <div class="pm-key">
+        legs
+        
+        
+        
+      </div>
+      <div class="pm-val">[{&#34;from_station&#34;: &#34;2&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;3&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;4&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}, {&#34;from_station&#34;: &#34;1&#34;, &#34;min_m&#34;: null, &#34;max_m&#34;: null}]</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="high_speed_max_m  {&#34;outbound&#34;: null, &#34;inbound&#34;: null} route guard">
+      <div class="pm-key">
+        high_speed_max_m
+        
+        
+        
+      </div>
+      <div class="pm-val">{&#34;outbound&#34;: null, &#34;inbound&#34;: null}</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="station_decel_limit_rpm_s  null route guard">
+      <div class="pm-key">
+        station_decel_limit_rpm_s
+        
+        
+        
+      </div>
+      <div class="pm-val">null</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="autopilot">
+  <h2>autopilot
+    <small>25 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="dry_run dry_run false autopilot">
+      <div class="pm-key">
+        dry_run
+        
+        <i>config.DRY_RUN</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>*** Set false only after the sign has been confirmed by a dry run. ***
+Runs the whole loop and writes the CSV, but canworker never arms the drivers
+and sends 0 to 60FFh, so nothing can move. Check the sign by sliding a magnet
+under a STATIONARY AGV - not by pushing the AGV, which is not possible: the
+CiA 402 &#34;Operation enabled&#34; state excites the motor (opman_can:1391) and the
+velocity loop then holds zero, and a non-excited brake motor has the brake
+clamped instead (opman_fun:2021). Only the FREE input frees the shaft.
+A wrong sign steers the AGV off the line and accelerates away from it.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="invert_error invert_error true autopilot">
+      <div class="pm-key">
+        invert_error
+        
+        <i>config.INVERT_ERROR</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>True if a positive reported track position means the line is to the LEFT.
+Not derivable from the manual - established on the machine by dry run on
+2026-08-31:
+    tape to the RIGHT of the sensor -&gt; reported -53 mm
+    tape to the LEFT  of the sensor -&gt; reported +20 mm
+so positive does mean LEFT, and the raw reading has to be negated.
+
+Those two readings ARE the evidence - the run CSVs they came from are no
+longer kept. If a sensor is remounted, re-measure the same way (dry run,
+magnet under a STATIONARY AGV) rather than trusting this line.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="branch_positive_is_left branch_positive_is_left true autopilot">
+      <div class="pm-key">
+        branch_positive_is_left
+        
+        <i>config.BRANCH_POSITIVE_IS_LEFT</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="k_ratio k_ratio 11.3 autopilot">
+      <div class="pm-key">
+        k_ratio
+        
+        <i>config.K_RATIO</i>
+        
+      </div>
+      <div class="pm-val">11.3<i>1/m²</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Steering gains. k_ratio is in 1/m^2 (Kp = k_ratio*v has units rad/s per m).
+Commission at the KIM2A-proven point first as a model check, then move up:
+    k_ratio 11.3, kd 0.94 -&gt; zeta 0.30, ~12.6 mm overshoot, ~7 s settle
+    k_ratio 25.0, kd 5.0  -&gt; zeta 0.61, ~2.6 mm overshoot, ~1.2 s settle
+ki starts at 0; add it only to null a standing offset.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="kd kd 0.94 autopilot">
+      <div class="pm-key">
+        kd
+        
+        <i>config.KD</i>
+        
+      </div>
+      <div class="pm-val">0.94</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Steering gains. k_ratio is in 1/m^2 (Kp = k_ratio*v has units rad/s per m).
+Commission at the KIM2A-proven point first as a model check, then move up:
+    k_ratio 11.3, kd 0.94 -&gt; zeta 0.30, ~12.6 mm overshoot, ~7 s settle
+    k_ratio 25.0, kd 5.0  -&gt; zeta 0.61, ~2.6 mm overshoot, ~1.2 s settle
+ki starts at 0; add it only to null a standing offset.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ki ki 0 autopilot">
+      <div class="pm-key">
+        ki
+        
+        <i>config.KI</i>
+        
+      </div>
+      <div class="pm-val">0</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Steering gains. k_ratio is in 1/m^2 (Kp = k_ratio*v has units rad/s per m).
+Commission at the KIM2A-proven point first as a model check, then move up:
+    k_ratio 11.3, kd 0.94 -&gt; zeta 0.30, ~12.6 mm overshoot, ~7 s settle
+    k_ratio 25.0, kd 5.0  -&gt; zeta 0.61, ~2.6 mm overshoot, ~1.2 s settle
+ki starts at 0; add it only to null a standing offset.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tau_d_s tau_d_s 0.05 autopilot">
+      <div class="pm-key">
+        tau_d_s
+        
+        <i>config.TAU_D_S</i>
+        
+      </div>
+      <div class="pm-val">0.05<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Derivative low-pass. The sensor quantises to 1 mm, so a raw derivative sees
+100 mm/s steps on every bit flip. KIM2A pairs a light kd with a 13 ms filter;
+the 25/5 point above needs the heavier 50 ms.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ti_deadband_mm ti_deadband_mm 20 autopilot">
+      <div class="pm-key">
+        ti_deadband_mm
+        
+        <i>config.TI_DEADBAND_MM</i>
+        
+      </div>
+      <div class="pm-val">20<i>mm</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Conditional integration: integrate only while the error
+is SMALL, freeze outside. This is anti-windup, not a conventional deadband -
+large excursions must contribute nothing. Do not invert this.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="i_clamp i_clamp 2 autopilot">
+      <div class="pm-key">
+        i_clamp
+        
+        <i>config.I_CLAMP</i>
+        
+      </div>
+      <div class="pm-val">2</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Conditional integration: integrate only while the error
+is SMALL, freeze outside. This is anti-windup, not a conventional deadband -
+large excursions must contribute nothing. Do not invert this.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sr_pos_frac sr_pos_frac 0.0075 autopilot">
+      <div class="pm-key">
+        sr_pos_frac
+        
+        <i>config.SR_POS_FRAC</i>
+        
+      </div>
+      <div class="pm-val">0.0075</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Speed reduction (error_cons). Responds to error magnitude AND
+rate, so it slows on approach to a curve rather than after deviating.
+
+These are FRACTIONS OF BASE SPEED per mm (and per mm/s), not absolute r/min.
+They used to be absolute, and that was a bug: when cruise went 800 -&gt; 2000 the
+authority silently fell from 15% of base to 6% because nobody rescaled them.
+Anything that must stay proportional to speed has to be *expressed* relative
+to speed, or it will be missed at the next speed change. 0.0075 per mm means
+a 20 mm error always sheds 15% of whatever the base currently is.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sr_rate_frac sr_rate_frac 0.001875 autopilot">
+      <div class="pm-key">
+        sr_rate_frac
+        
+        <i>config.SR_RATE_FRAC</i>
+        
+      </div>
+      <div class="pm-val">0.001875</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Speed reduction (error_cons). Responds to error magnitude AND
+rate, so it slows on approach to a curve rather than after deviating.
+
+These are FRACTIONS OF BASE SPEED per mm (and per mm/s), not absolute r/min.
+They used to be absolute, and that was a bug: when cruise went 800 -&gt; 2000 the
+authority silently fell from 15% of base to 6% because nobody rescaled them.
+Anything that must stay proportional to speed has to be *expressed* relative
+to speed, or it will be missed at the next speed change. 0.0075 per mm means
+a 20 mm error always sheds 15% of whatever the base currently is.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sr_cap sr_cap 0.45 autopilot">
+      <div class="pm-key">
+        sr_cap
+        
+        <i>config.SR_CAP</i>
+        
+      </div>
+      <div class="pm-val">0.45</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Ceiling on the reduction, as a fraction of base, and the lag on the reduction
+itself. sr_tau_s is a TIME, not a per-tick coefficient: KIM2A uses a fixed
+alpha of 0.15, which quietly makes the filter faster or slower with the tick
+rate; since dt here is measured and only clamped to a band, a time constant
+is the honest form. 0.12 s == alpha 0.15 at 50 Hz.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sr_tau_s sr_tau_s 0.12 autopilot">
+      <div class="pm-key">
+        sr_tau_s
+        
+        <i>config.SR_TAU_S</i>
+        
+      </div>
+      <div class="pm-val">0.12<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Ceiling on the reduction, as a fraction of base, and the lag on the reduction
+itself. sr_tau_s is a TIME, not a per-tick coefficient: KIM2A uses a fixed
+alpha of 0.15, which quietly makes the filter faster or slower with the tick
+rate; since dt here is measured and only clamped to a band, a time constant
+is the honest form. 0.12 s == alpha 0.15 at 50 Hz.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="slow_k_ratio slow_k_ratio 25 autopilot">
+      <div class="pm-key">
+        slow_k_ratio
+        
+        <i>config.SLOW_K_RATIO</i>
+        
+      </div>
+      <div class="pm-val">25</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The steering gains used while a SLOW ZONE is latched, in place of k_ratio and
+kd. This is the pair that decides how tight a corner the vehicle can hold.
+
+*** Slowing down does not help a corner. Raising k_ratio does. ***
+Cross-track error on a curve settles at
+
+    e_ss = kappa / k_ratio          (kappa = 1/radius)
+
+and speed does not appear in it - it cancels, because Kp = k_ratio*v while
+holding a curve needs omega = v*kappa. That is the same cancellation that
+makes damping speed-independent, and it means halving the speed leaves the
+steady-state cornering error exactly where it was.
+
+Run 0018 is the evidence. It lost the tape on the ~0.5 m U-turn while already
+slowed to 441 r/min, with sat_scale at 1.00 throughout - so it never ran out
+of wheel authority, it simply could not point tightly enough. At k_ratio 11.3
+a 0.5 m radius needs 177 mm of standing error to hold, and the sensor stops
+at 100 mm, so the tape was always going to leave the window.
+
+What each gain buys, simulated against the real 6083h slew limit at 800 r/min:
+
+    k_ratio / kd    R=1.0 m   R=0.7 m   R=0.5 m
+      11.3 / 0.94     54 mm     71 mm    OFF THE SENSOR
+      25   / 5.0      30 mm     39 mm     49 mm
+      40   / 6.0      21 mm     28 mm     36 mm
+      50   / 8.0      17 mm     23 mm     30 mm
+
+A slow zone is the right home for a high gain, and not only because that is
+where the corners are: the binding limit on k_ratio is how fast 6083h slews
+the wheel DIFFERENCE (2.59 rad/s^2 at 2000 r/min/s), and a lower speed needs
+proportionally less yaw rate for the same curvature. The headroom is largest
+exactly where it is wanted.
+
+kd has to rise with k_ratio or damping collapses - zeta is
+(kd + Ls*k)/(2*sqrt(k*(1 + Ls*kd))), which _validate() holds inside a sane
+band. Commission by working UP: 25/5.0 first, and only go further if the
+tightest corner on the route still runs wide.
+
+The changeover is a step, not a ramp. It lands at the entry tag, on the
+straight before the diverter, where the error is small - so the step in Kp*e
+is a few hundredths of a rad/s and is not worth ramping out.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="slow_kd slow_kd 5 autopilot">
+      <div class="pm-key">
+        slow_kd
+        
+        <i>config.SLOW_KD</i>
+        
+      </div>
+      <div class="pm-val">5</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The steering gains used while a SLOW ZONE is latched, in place of k_ratio and
+kd. This is the pair that decides how tight a corner the vehicle can hold.
+
+*** Slowing down does not help a corner. Raising k_ratio does. ***
+Cross-track error on a curve settles at
+
+    e_ss = kappa / k_ratio          (kappa = 1/radius)
+
+and speed does not appear in it - it cancels, because Kp = k_ratio*v while
+holding a curve needs omega = v*kappa. That is the same cancellation that
+makes damping speed-independent, and it means halving the speed leaves the
+steady-state cornering error exactly where it was.
+
+Run 0018 is the evidence. It lost the tape on the ~0.5 m U-turn while already
+slowed to 441 r/min, with sat_scale at 1.00 throughout - so it never ran out
+of wheel authority, it simply could not point tightly enough. At k_ratio 11.3
+a 0.5 m radius needs 177 mm of standing error to hold, and the sensor stops
+at 100 mm, so the tape was always going to leave the window.
+
+What each gain buys, simulated against the real 6083h slew limit at 800 r/min:
+
+    k_ratio / kd    R=1.0 m   R=0.7 m   R=0.5 m
+      11.3 / 0.94     54 mm     71 mm    OFF THE SENSOR
+      25   / 5.0      30 mm     39 mm     49 mm
+      40   / 6.0      21 mm     28 mm     36 mm
+      50   / 8.0      17 mm     23 mm     30 mm
+
+A slow zone is the right home for a high gain, and not only because that is
+where the corners are: the binding limit on k_ratio is how fast 6083h slews
+the wheel DIFFERENCE (2.59 rad/s^2 at 2000 r/min/s), and a lower speed needs
+proportionally less yaw rate for the same curvature. The headroom is largest
+exactly where it is wanted.
+
+kd has to rise with k_ratio or damping collapses - zeta is
+(kd + Ls*k)/(2*sqrt(k*(1 + Ls*kd))), which _validate() holds inside a sane
+band. Commission by working UP: 25/5.0 first, and only go further if the
+tightest corner on the route still runs wide.
+
+The changeover is a step, not a ramp. It lands at the entry tag, on the
+straight before the diverter, where the error is small - so the step in Kp*e
+is a few hundredths of a rad/s and is not worth ramping out.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="gain_blend_s gain_blend_s 0.4 autopilot">
+      <div class="pm-key">
+        gain_blend_s
+        
+        <i>config.GAIN_BLEND_S</i>
+        
+      </div>
+      <div class="pm-val">0.4<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Time constant for moving between the ordinary gains and the slow-zone pair.
+0 switches them instantly.
+
+The zone boundary is a tag, and a tag lands wherever it was stuck down - not
+necessarily where the vehicle has finished converging. Run 0020 read its exit
+tag while still 44 mm off the line, and k_ratio fell 25 -&gt; 11.3 in one tick:
+steering authority more than halved at the moment the vehicle also began
+accelerating 800 -&gt; 1200 r/min. The speed change was already shaped by
+ramp_accel_rpm_s; this gives the gain change the same courtesy.
+
+Short. It is smoothing a step, not filtering a signal - too long and the
+vehicle carries the wrong gains into the corner the zone exists for.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ramp_accel_rpm_s ramp_accel_rpm_s 1000 autopilot">
+      <div class="pm-key">
+        ramp_accel_rpm_s
+        
+        <i>config.RAMP_ACCEL_RPM_S</i>
+        
+      </div>
+      <div class="pm-val">1000<i>r/min/s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The software motion profile, and it must stay meaningfully BELOW the driver&#39;s
+6083h (drivers.ramp.auto.accel) or the driver becomes the limiter and the
+S-curve shape is lost. _validate() enforces the ordering.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ramp_jerk_rpm_s2 ramp_jerk_rpm_s2 4000 autopilot">
+      <div class="pm-key">
+        ramp_jerk_rpm_s2
+        
+        <i>config.RAMP_JERK_RPM_S2</i>
+        
+      </div>
+      <div class="pm-val">4000<i>r/min/s²</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The software motion profile, and it must stay meaningfully BELOW the driver&#39;s
+6083h (drivers.ramp.auto.accel) or the driver becomes the limiter and the
+S-curve shape is lost. _validate() enforces the ordering.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_max_mm sensor_max_mm 100 autopilot">
+      <div class="pm-key">
+        sensor_max_mm
+        
+        <i>config.SENSOR_MAX_MM</i>
+        
+      </div>
+      <div class="pm-val">100<i>mm</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Sensor guards. A single glitch frame would otherwise jerk
+the steering hard through the derivative term. Beyond max_mm the frame is
+DISCARDED; a jump bigger than max_step_mm is CLAMPED toward the last accepted.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_max_step_mm sensor_max_step_mm 40 autopilot">
+      <div class="pm-key">
+        sensor_max_step_mm
+        
+        <i>config.SENSOR_MAX_STEP_MM</i>
+        
+      </div>
+      <div class="pm-val">40<i>mm</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Sensor guards. A single glitch frame would otherwise jerk
+the steering hard through the derivative term. Beyond max_mm the frame is
+DISCARDED; a jump bigger than max_step_mm is CLAMPED toward the last accepted.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="line_loss_grace_m line_loss_grace_m 0.075 autopilot">
+      <div class="pm-key">
+        line_loss_grace_m
+        
+        <i>config.LINE_LOSS_GRACE_M</i>
+        
+      </div>
+      <div class="pm-val">0.075<i>m</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>How far the AGV may travel on the last good correction across a tape gap
+before it gives up and stops. A DISTANCE for the same reason the sr_ terms
+are fractions: as seconds it was 0.30, which meant 75 mm of blind travel at
+800 r/min but 188 mm at 2000. Distance is the quantity that actually matters,
+and it rescales itself - it even adapts within a run as the ramp changes
+speed. config derives LINE_LOSS_GRACE_MAX_S from this as a standstill
+backstop, since a stationary AGV accrues no distance.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_timeout_s sensor_timeout_s 0.1 autopilot">
+      <div class="pm-key">
+        sensor_timeout_s
+        
+        <i>config.SENSOR_TIMEOUT_S</i>
+        
+      </div>
+      <div class="pm-val">0.1<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="auto_resume_hold_s auto_resume_hold_s 2 autopilot">
+      <div class="pm-key">
+        auto_resume_hold_s
+        
+        <i>config.AUTO_RESUME_HOLD_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>How long the tape must be CONTINUOUSLY in view before an auto run that
+stopped itself on a lost line resumes on its own. 0 disables the resume
+entirely, and the run then behaves as it always did: a latched fault that
+only panel Reset clears.
+
+The stop is unchanged and still immediate - this only governs going again
+afterwards. A gap in the tape stops the vehicle within line_loss_grace_m of
+travel; if the tape comes back and STAYS back for this long, the run picks
+up where it left off and accelerates through the ordinary software ramp.
+Any dropout inside the window restarts the window, so an intermittent read
+can never accumulate its way to a resume.
+
+2 s is deliberately far longer than the 100 ms sensor_timeout_s that
+declares the loss: the question being answered is not &#34;is there a frame&#34;
+but &#34;is this vehicle genuinely back on the tape&#34;, and a marginal sensor
+sitting at the edge of the tape will flicker for longer than a few frames.
+
+*** This is an automatic restart of MOTION, so it is worth being clear
+about what it is not. *** It cannot restart anything the safety chain
+stopped: an FX3 demand removes torque at the drives, and no value here
+brings that back. A lost tape is a navigation failure, not a protective
+stop. Every other involuntary stop - watchdog, silent driver, panel Reset,
+selector - still latches a fault and still needs a human.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="dt_nominal_s dt_nominal_s 0.02 autopilot">
+      <div class="pm-key">
+        dt_nominal_s
+        
+        <i>config.DT_NOMINAL_S</i>
+        
+      </div>
+      <div class="pm-val">0.02<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>dt is measured, then clamped to [0.2x, 5x] this, so a scheduling hiccup or a
+resume-after-stop gap cannot blow up the I and D terms.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="inner_wheel_min_rpm inner_wheel_min_rpm 0 autopilot">
+      <div class="pm-key">
+        inner_wheel_min_rpm
+        
+        <i>config.INNER_WHEEL_MIN_RPM</i>
+        
+      </div>
+      <div class="pm-val">0<i>r/min</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Lowest r/min either wheel may be commanded. 0 means the inner wheel may stop
+but never reverses; the differential is limited to respect it rather than the
+wheel being clipped, which would alter the turn ratio. Set negative to permit
+pivoting. KIM2A gets this for free (negative rpm -&gt; 0 V); our 60FFh is signed.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="vehicle">
+  <h2>vehicle
+    <small>7 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="track_m track_m 0.486 vehicle">
+      <div class="pm-key">
+        track_m
+        
+        <i>config.TRACK_M</i>
+        
+      </div>
+      <div class="pm-val">0.486<i>m</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="wheel_dia_m wheel_dia_m 0.18 vehicle">
+      <div class="pm-key">
+        wheel_dia_m
+        
+        <i>config.WHEEL_DIA_M</i>
+        
+      </div>
+      <div class="pm-val">0.18<i>m</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="gear_ratio gear_ratio 30 vehicle">
+      <div class="pm-key">
+        gear_ratio
+        
+        <i>config.GEAR_RATIO</i>
+        
+      </div>
+      <div class="pm-val">30</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="motor_max_rpm motor_max_rpm 4000 vehicle">
+      <div class="pm-key">
+        motor_max_rpm
+        
+        <i>config.MOTOR_MAX_RPM</i>
+        
+      </div>
+      <div class="pm-val">4000<i>r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_lookahead_m sensor_lookahead_m 0.1 vehicle">
+      <div class="pm-key">
+        sensor_lookahead_m
+        
+        <i>config.SENSOR_LOOKAHEAD_M</i>
+        
+      </div>
+      <div class="pm-val">0.1<i>m</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="invert_left invert_left false vehicle">
+      <div class="pm-key">
+        invert_left
+        
+        <i>config.INVERT_LEFT</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Both drivers take a POSITIVE 60FFh to travel forward on this AGV. If you swap
+a motor, re-flash a driver or remount a wheel, re-verify on blocks and set
+these rather than editing motion.py&#39;s table - the table stays in vehicle terms.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="invert_right invert_right false vehicle">
+      <div class="pm-key">
+        invert_right
+        
+        <i>config.INVERT_RIGHT</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Both drivers take a POSITIVE 60FFh to travel forward on this AGV. If you swap
+a motor, re-flash a driver or remount a wheel, re-verify on blocks and set
+these rather than editing motion.py&#39;s table - the table stays in vehicle terms.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="plot">
+  <h2>plot
+    <small>2 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="err_range_mm plot_err_range_mm 100 plot">
+      <div class="pm-key">
+        err_range_mm
+        
+        <i>config.PLOT_ERR_RANGE_MM</i>
+        
+      </div>
+      <div class="pm-val">100<i>mm</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Fixed axis limits for the per-run PNG, so two runs can be compared by eye
+rather than each being scaled to its own data. Traces HARD CLIP at the frame.
+They are profile values rather than code constants deliberately: KIM2A
+hardcoded theirs for one vehicle and the second vehicle&#39;s traces compressed
+into an unreadable band, and we would hit the same trap inverted - at the
+sensor&#39;s full +/-100 mm a straight-line run of +/-8 mm draws as a flat line.
+
+err_range_mm 100 matches the MLS range, so a saturated sensor clips flat at
+the frame and every run is directly comparable. That is the right window for
+curve work, where steady-state error is kappa/k_ratio - 59 mm on a 1.5 m
+radius at k_ratio 11.3. The cost is that a clean straight-line run of a few
+mm draws as an almost flat line; drop to ~30 if you are chasing millimetre
+detail on straights and do not need the curve headroom.
+rpm_max wants roughly auto_rpm x 1.25 so the ramp has headroom to read true.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="rpm_max plot_rpm_max 2500 plot">
+      <div class="pm-key">
+        rpm_max
+        
+        <i>config.PLOT_RPM_MAX</i>
+        
+      </div>
+      <div class="pm-val">2500<i>r/min</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Fixed axis limits for the per-run PNG, so two runs can be compared by eye
+rather than each being scaled to its own data. Traces HARD CLIP at the frame.
+They are profile values rather than code constants deliberately: KIM2A
+hardcoded theirs for one vehicle and the second vehicle&#39;s traces compressed
+into an unreadable band, and we would hit the same trap inverted - at the
+sensor&#39;s full +/-100 mm a straight-line run of +/-8 mm draws as a flat line.
+
+err_range_mm 100 matches the MLS range, so a saturated sensor clips flat at
+the frame and every run is directly comparable. That is the right window for
+curve work, where steady-state error is kappa/k_ratio - 59 mm on a 1.5 m
+radius at k_ratio 11.3. The cost is that a clean straight-line run of a few
+mm draws as an almost flat line; drop to ~30 if you are chasing millimetre
+detail on straights and do not need the curve headroom.
+rpm_max wants roughly auto_rpm x 1.25 so the ramp has headroom to read true.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="drivers">
+  <h2>drivers
+    <small>1 value</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="target_deadband_rpm target_deadband_rpm 5 drivers">
+      <div class="pm-key">
+        target_deadband_rpm
+        
+        <i>config.TARGET_DEADBAND_RPM</i>
+        
+      </div>
+      <div class="pm-val">5<i>r/min</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The PID rewrites the setpoint nearly every tick, and each write is a blocking
+SDO round-trip (~1.8 ms x 2 nodes). Only resend when the command has actually
+moved; 5 r/min out of 800 is 0.6% and well inside the driver&#39;s own resolution.
+A target of exactly (0, 0) is never deadbanded away.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="rfid">
+  <h2>rfid
+    <small>15 values</small></h2>
+  <p class="mon-note pm-secnote">enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled rfid_enabled true rfid">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.RFID_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ip rfid_ip 192.168.1.200 rfid">
+      <div class="pm-key">
+        ip
+        
+        <i>config.RFID_IP</i>
+        
+      </div>
+      <div class="pm-val">192.168.1.200</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="port rfid_port 2022 rfid">
+      <div class="pm-key">
+        port
+        
+        <i>config.RFID_PORT</i>
+        
+      </div>
+      <div class="pm-val">2022</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="interface rfid_interface enp2s0 rfid">
+      <div class="pm-key">
+        interface
+        
+        <i>config.RFID_INTERFACE</i>
+        
+      </div>
+      <div class="pm-val">enp2s0</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="init_hex rfid_init_hex cfff0070002415 rfid">
+      <div class="pm-key">
+        init_hex
+        
+        <i>config.RFID_INIT_HEX</i>
+        
+      </div>
+      <div class="pm-val">CFFF0070002415</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="frame_len rfid_frame_len 17 rfid">
+      <div class="pm-key">
+        frame_len
+        
+        <i>config.RFID_FRAME_LEN</i>
+        
+      </div>
+      <div class="pm-val">17</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tag_offset rfid_tag_offset 13 rfid">
+      <div class="pm-key">
+        tag_offset
+        
+        <i>config.RFID_TAG_OFFSET</i>
+        
+      </div>
+      <div class="pm-val">13</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tag_len rfid_tag_len 2 rfid">
+      <div class="pm-key">
+        tag_len
+        
+        <i>config.RFID_TAG_LEN</i>
+        
+      </div>
+      <div class="pm-val">2</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ignore_tags rfid_ignore_tags 3130 rfid">
+      <div class="pm-key">
+        ignore_tags
+        
+        <i>config.RFID_IGNORE_TAGS</i>
+        
+      </div>
+      <div class="pm-val">3130</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="recv_timeout_s rfid_recv_timeout_s 1 rfid">
+      <div class="pm-key">
+        recv_timeout_s
+        
+        <i>config.RFID_RECV_TIMEOUT_S</i>
+        
+      </div>
+      <div class="pm-val">1<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="banner_wait_s rfid_banner_wait_s 0.6 rfid">
+      <div class="pm-key">
+        banner_wait_s
+        
+        <i>config.RFID_BANNER_WAIT_S</i>
+        
+      </div>
+      <div class="pm-val">0.6<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="silent_warn_s rfid_silent_warn_s 60 rfid">
+      <div class="pm-key">
+        silent_warn_s
+        
+        <i>config.RFID_SILENT_WARN_S</i>
+        
+      </div>
+      <div class="pm-val">60<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="reconnect_period_s rfid_reconnect_period_s 2 rfid">
+      <div class="pm-key">
+        reconnect_period_s
+        
+        <i>config.RFID_RECONNECT_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tag_hold_s rfid_tag_hold_s 2 rfid">
+      <div class="pm-key">
+        tag_hold_s
+        
+        <i>config.RFID_TAG_HOLD_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>enabled ships FALSE. The link layer is commissioned and reboot-safe
+(manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
+reader, so the driver must not be trusted to produce real tags until it is.
+
+inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
+here precisely so they can be corrected from a packet capture without a code
+change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two&#39;s
+complement checksum) is the documented Chafon family layout.
+
+poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
+streams on its own. Any positive value is command mode. The CF821 datasheet
+lists &#34;active mode / command mode / trigger mode&#34;, and which one this unit is
+in has not been read yet; both are supported without a code change.
+
+poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
+100 ms poll means a tag&#39;s position is known to about 50 mm.
+
+comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
+normal silence of an empty antenna field reads as a comms fault. _validate()
+enforces that.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tag_clear_s rfid_tag_clear_s 0.5 rfid">
+      <div class="pm-key">
+        tag_clear_s
+        
+        <i>config.RFID_TAG_CLEAR_S</i>
+        
+      </div>
+      <div class="pm-val">0.5<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>A same-valued tag becomes a new encounter after this interval without a
+read. This is separate from tag_hold_s, which only keeps the HMI readable.
+0.5 s is provisional: verify it against actual read gaps and station spacing.
+Reconnection re-baselines the reader rather than inventing a station visit.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="dio">
+  <h2>dio
+    <small>15 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled dio_enabled true dio">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.DIO_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="ip dio_ip 192.168.1.30 dio">
+      <div class="pm-key">
+        ip
+        
+        <i>config.DIO_IP</i>
+        
+      </div>
+      <div class="pm-val">192.168.1.30</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="port dio_port 502 dio">
+      <div class="pm-key">
+        port
+        
+        <i>config.DIO_PORT</i>
+        
+      </div>
+      <div class="pm-val">502</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="device_id dio_device_id 1 dio">
+      <div class="pm-key">
+        device_id
+        
+        <i>config.DIO_DEVICE_ID</i>
+        
+      </div>
+      <div class="pm-val">1</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="scan_period_s dio_scan_period_s 0.05 dio">
+      <div class="pm-key">
+        scan_period_s
+        
+        <i>config.DIO_SCAN_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.05<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="timeout_s dio_timeout_s 0.02 dio">
+      <div class="pm-key">
+        timeout_s
+        
+        <i>config.DIO_TIMEOUT_S</i>
+        
+      </div>
+      <div class="pm-val">0.02<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="reconnect_period_s dio_reconnect_period_s 0.5 dio">
+      <div class="pm-key">
+        reconnect_period_s
+        
+        <i>config.DIO_RECONNECT_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.5<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="silent_warn_s dio_silent_warn_s 2 dio">
+      <div class="pm-key">
+        silent_warn_s
+        
+        <i>config.DIO_SILENT_WARN_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_base dio_di_base 0 dio">
+      <div class="pm-key">
+        di_base
+        
+        <i>config.DIO_DI_BASE</i>
+        
+      </div>
+      <div class="pm-val">0</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="do_base dio_do_base 0 dio">
+      <div class="pm-key">
+        do_base
+        
+        <i>config.DIO_DO_BASE</i>
+        
+      </div>
+      <div class="pm-val">0</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="num_di dio_num_di 16 dio">
+      <div class="pm-key">
+        num_di
+        
+        <i>config.DIO_NUM_DI</i>
+        
+      </div>
+      <div class="pm-val">16</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="num_do dio_num_do 16 dio">
+      <div class="pm-key">
+        num_do
+        
+        <i>config.DIO_NUM_DO</i>
+        
+      </div>
+      <div class="pm-val">16</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_flipped dio_di_flipped false dio">
+      <div class="pm-key">
+        di_flipped
+        
+        <i>config.DIO_DI_FLIPPED</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_names dio_di_names 16 of 16 named · 00 [spare] · 01 pb start · 02 pb reset · 03 ss auto/manual · 04 [spare] · 05 [spare] · 06 [spare] · 07 [spare] · 08 [spare] · 09 [spare] · 10 [spare] · 11 [spare] · 12 [spare] · 13 [spare] · 14 [spare] · 15 [spare] dio">
+      <div class="pm-key">
+        di_names
+        
+        <i>config.DIO_DI_NAMES</i>
+        
+      </div>
+      <div class="pm-val">16 of 16 named · 00 [SPARE] · 01 PB Start · 02 PB Reset · 03 SS Auto/Manual · 04 [SPARE] · 05 [SPARE] · 06 [SPARE] · 07 [SPARE] · 08 [SPARE] · 09 [SPARE] · 10 [SPARE] · 11 [SPARE] · 12 [SPARE] · 13 [SPARE] · 14 [SPARE] · 15 [SPARE]</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="do_names dio_do_names 16 of 16 named · 00 horn · 01 [spare] · 02 [spare] · 03 [spare] · 04 [spare] · 05 [spare] · 06 [spare] · 07 [spare] · 08 [spare] · 09 [spare] · 10 [spare] · 11 [spare] · 12 [spare] · 13 [spare] · 14 [spare] · 15 [spare] dio">
+      <div class="pm-key">
+        do_names
+        
+        <i>config.DIO_DO_NAMES</i>
+        
+      </div>
+      <div class="pm-val">16 of 16 named · 00 Horn · 01 [SPARE] · 02 [SPARE] · 03 [SPARE] · 04 [SPARE] · 05 [SPARE] · 06 [SPARE] · 07 [SPARE] · 08 [SPARE] · 09 [SPARE] · 10 [SPARE] · 11 [SPARE] · 12 [SPARE] · 13 [SPARE] · 14 [SPARE] · 15 [SPARE]</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="lidar">
+  <h2>lidar
+    <small>14 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled lidar_enabled true lidar">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.LIDAR_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="host_ip lidar_host_ip 192.168.3.2 lidar">
+      <div class="pm-key">
+        host_ip
+        
+        <i>config.LIDAR_HOST_IP</i>
+        
+      </div>
+      <div class="pm-val">192.168.3.2</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_ip lidar_sensor_ip 192.168.3.10 lidar">
+      <div class="pm-key">
+        sensor_ip
+        
+        <i>config.LIDAR_SENSOR_IP</i>
+        
+      </div>
+      <div class="pm-val">192.168.3.10</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="port lidar_port 6060 lidar">
+      <div class="pm-key">
+        port
+        
+        <i>config.LIDAR_PORT</i>
+        
+      </div>
+      <div class="pm-val">6060</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="silent_warn_s lidar_silent_warn_s 0.15 lidar">
+      <div class="pm-key">
+        silent_warn_s
+        
+        <i>config.LIDAR_SILENT_WARN_S</i>
+        
+      </div>
+      <div class="pm-val">0.15<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="reassembly_timeout_s lidar_reassembly_timeout_s 0.06 lidar">
+      <div class="pm-key">
+        reassembly_timeout_s
+        
+        <i>config.LIDAR_REASSEMBLY_TIMEOUT_S</i>
+        
+      </div>
+      <div class="pm-val">0.06<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="reconnect_period_s lidar_reconnect_period_s 1 lidar">
+      <div class="pm-key">
+        reconnect_period_s
+        
+        <i>config.LIDAR_RECONNECT_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">1<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="decimate lidar_decimate 4 lidar">
+      <div class="pm-key">
+        decimate
+        
+        <i>config.LIDAR_DECIMATE</i>
+        
+      </div>
+      <div class="pm-val">4</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="expected_identity lidar_expected_identity (empty) lidar">
+      <div class="pm-key">
+        expected_identity
+        
+        <i>config.LIDAR_EXPECTED_IDENTITY</i>
+        
+      </div>
+      <div class="pm-val">(empty)</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="expected_checksum lidar_expected_checksum (empty) lidar">
+      <div class="pm-key">
+        expected_checksum
+        
+        <i>config.LIDAR_EXPECTED_CHECKSUM</i>
+        
+      </div>
+      <div class="pm-val">(empty)</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="zone_block lidar_zone_block 0 lidar">
+      <div class="pm-key">
+        zone_block
+        
+        <i>config.LIDAR_ZONE_BLOCK</i>
+        
+      </div>
+      <div class="pm-val">0</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="zone_active_low lidar_zone_active_low false lidar">
+      <div class="pm-key">
+        zone_active_low
+        
+        <i>config.LIDAR_ZONE_ACTIVE_LOW</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="zones_validated lidar_zones_validated false lidar">
+      <div class="pm-key">
+        zones_validated
+        
+        <i>config.LIDAR_ZONES_VALIDATED</i>
+        
+      </div>
+      <div class="pm-val">false</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="zone_bytes lidar_zone_bytes stop 6, slow 12, warn 13 lidar">
+      <div class="pm-key">
+        zone_bytes
+        
+        <i>config.LIDAR_ZONE_BYTES</i>
+        
+      </div>
+      <div class="pm-val">stop 6, slow 12, warn 13<i>byte offset</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="panel">
+  <h2>panel
+    <small>6 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled panel_enabled true panel">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.PANEL_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_reset panel_di_reset 2 panel">
+      <div class="pm-key">
+        di_reset
+        
+        <i>config.PANEL_DI_RESET</i>
+        
+      </div>
+      <div class="pm-val">2</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_start panel_di_start 1 panel">
+      <div class="pm-key">
+        di_start
+        
+        <i>config.PANEL_DI_START</i>
+        
+      </div>
+      <div class="pm-val">1</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="di_auto panel_di_auto 3 panel">
+      <div class="pm-key">
+        di_auto
+        
+        <i>config.PANEL_DI_AUTO</i>
+        
+      </div>
+      <div class="pm-val">3</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual_auto_arm panel_manual_auto_arm true panel">
+      <div class="pm-key">
+        manual_auto_arm
+        
+        <i>config.PANEL_MANUAL_AUTO_ARM</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
+itself the arm command: the drives energise without anyone pressing Reset,
+and re-energise on their own if something de-energised them.
+
+The point is the operator&#39;s hands. Reset had become a button pressed
+reflexively before every jog, and a control pressed by reflex is a control
+that has stopped being a decision.
+
+*** Arming is not motion. *** An armed manual vehicle is excited and holding
+zero; every millimetre of travel still needs a jog button HELD, re-POSTed
+every ~100 ms, with manual_watchdog_s to stop it the moment they are
+released. What this changes is that the vehicle is live whenever the
+selector says MANUAL - including at power-up with the selector already
+there, which is a level, not an edge, and so is not covered by the panel&#39;s
+anti-tie-down rule.
+
+It cannot arm through the safety chain. An FX3 demand leaves the drives in
+ETO and the arm attempt simply fails; it is retried on a slow backoff rather
+than latched, so the vehicle comes back on its own once the chain is
+restored and acknowledged. No latched fault is cleared this way - a fault
+still blocks arming until somebody presses Reset.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="debounce_scans panel_debounce_scans 2 panel">
+      <div class="pm-key">
+        debounce_scans
+        
+        <i>config.PANEL_DEBOUNCE_SCANS</i>
+        
+      </div>
+      <div class="pm-val">2</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="horn">
+  <h2>horn
+    <small>2 values</small></h2>
+  <p class="mon-note pm-secnote">The only output this software energises. DO goes high whenever motion is
+COMMANDED - manual jog or auto run, no distinction, because the hazard is
+the same 150 kg either way and a horn that means two different things means
+neither.
+
+*** It follows the setpoint, not the wheels. *** The coil is raised from the
+commanded target, so it sounds at the instant motion is asked for rather
+than once the vehicle is already rolling - which is the whole point of a
+warning device. It also means the horn goes quiet while the drives are
+still decelerating, and that is the right way round: the warning ends when
+the vehicle stops being commanded to move, and what remains is a coast that
+is already ending.
+
+*** Not a safety function. *** The stop is the OSSD chain into the FX3, in
+hardware. This is an audible warning and nothing gates on it: a horn that
+failed to sound must not be able to prevent a jog, or a broken lamp becomes
+a stranded vehicle.
+
+Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
+it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
+rather than leaving it energised. See the derived value.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled horn_enabled true horn">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.HORN_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The only output this software energises. DO goes high whenever motion is
+COMMANDED - manual jog or auto run, no distinction, because the hazard is
+the same 150 kg either way and a horn that means two different things means
+neither.
+
+*** It follows the setpoint, not the wheels. *** The coil is raised from the
+commanded target, so it sounds at the instant motion is asked for rather
+than once the vehicle is already rolling - which is the whole point of a
+warning device. It also means the horn goes quiet while the drives are
+still decelerating, and that is the right way round: the warning ends when
+the vehicle stops being commanded to move, and what remains is a coast that
+is already ending.
+
+*** Not a safety function. *** The stop is the OSSD chain into the FX3, in
+hardware. This is an audible warning and nothing gates on it: a horn that
+failed to sound must not be able to prevent a jog, or a broken lamp becomes
+a stranded vehicle.
+
+Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
+it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
+rather than leaving it energised. See the derived value.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="do_channel horn_do_channel 0 horn">
+      <div class="pm-key">
+        do_channel
+        
+        <i>config.HORN_DO_CHANNEL</i>
+        
+      </div>
+      <div class="pm-val">0</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The only output this software energises. DO goes high whenever motion is
+COMMANDED - manual jog or auto run, no distinction, because the hazard is
+the same 150 kg either way and a horn that means two different things means
+neither.
+
+*** It follows the setpoint, not the wheels. *** The coil is raised from the
+commanded target, so it sounds at the instant motion is asked for rather
+than once the vehicle is already rolling - which is the whole point of a
+warning device. It also means the horn goes quiet while the drives are
+still decelerating, and that is the right way round: the warning ends when
+the vehicle stops being commanded to move, and what remains is a coast that
+is already ending.
+
+*** Not a safety function. *** The stop is the OSSD chain into the FX3, in
+hardware. This is an audible warning and nothing gates on it: a horn that
+failed to sound must not be able to prevent a jog, or a broken lamp becomes
+a stranded vehicle.
+
+Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
+it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
+rather than leaving it energised. See the derived value.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="can">
+  <h2>can
+    <small>7 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="bitrate can_bitrate 125000 can">
+      <div class="pm-key">
+        bitrate
+        
+        <i>config.CAN_BITRATE</i>
+        
+      </div>
+      <div class="pm-val">125000<i>bit/s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="channel can_channel can0 can">
+      <div class="pm-key">
+        channel
+        
+        <i>config.CAN_CHANNEL</i>
+        
+      </div>
+      <div class="pm-val">can0</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The SocketCAN interface to prefer, and which CANable2 to accept on the USB
+fallback. Per-vehicle hardware identity, so it belongs in the profile rather
+than in canbus/verify_drivers.py where it used to live. adapter_serial &#34;&#34;
+accepts any matching adapter, which is what a bench with one wants.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="adapter_serial can_adapter_serial 2087327f5548 can">
+      <div class="pm-key">
+        adapter_serial
+        
+        <i>config.CAN_ADAPTER_SERIAL</i>
+        
+      </div>
+      <div class="pm-val">2087327F5548</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The SocketCAN interface to prefer, and which CANable2 to accept on the USB
+fallback. Per-vehicle hardware identity, so it belongs in the profile rather
+than in canbus/verify_drivers.py where it used to live. adapter_serial &#34;&#34;
+accepts any matching adapter, which is what a bench with one wants.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="heartbeat_ms can_heartbeat_ms 200 can">
+      <div class="pm-key">
+        heartbeat_ms
+        
+        <i>config.CAN_HEARTBEAT_MS</i>
+        
+      </div>
+      <div class="pm-val">200<i>ms</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Producer heartbeat time (1017h), written to each drive at bus-up. The
+driver default is 0 = OFF, and with it off a drive that has stopped
+responding looks identical to one that is simply idle - which is exactly
+the hole health.py was working around by inferring liveness from whether an
+SDO happened to answer. 200 ms is the plan&#39;s recommendation.
+
+Must be under half timing.driver_timeout_s or one missed heartbeat reads as
+a dead driver; _validate() enforces that. 0 leaves the drive&#39;s own setting
+alone.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="left_node left 1 can">
+      <div class="pm-key">
+        left_node
+        
+        <i>config.LEFT</i>
+        
+      </div>
+      <div class="pm-val">1</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="right_node right 2 can">
+      <div class="pm-key">
+        right_node
+        
+        <i>config.RIGHT</i>
+        
+      </div>
+      <div class="pm-val">2</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="sensor_node sensor_node 10 can">
+      <div class="pm-key">
+        sensor_node
+        
+        <i>config.SENSOR_NODE</i>
+        
+      </div>
+      <div class="pm-val">10</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="monitor">
+  <h2>monitor
+    <small>8 values</small></h2>
+  <p class="mon-note pm-secnote">Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</p>
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="enabled monitor_enabled true monitor">
+      <div class="pm-key">
+        enabled
+        
+        <i>config.MONITOR_ENABLED</i>
+        
+      </div>
+      <div class="pm-val">true</div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="poll_period_s monitor_period_s 0.1 monitor">
+      <div class="pm-key">
+        poll_period_s
+        
+        <i>config.MONITOR_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.1<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="driver_temp_warn_c mon_drv_warn_c 70 monitor">
+      <div class="pm-key">
+        driver_temp_warn_c
+        
+        <i>config.MON_DRV_WARN_C</i>
+        
+      </div>
+      <div class="pm-val">70<i>°C</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="driver_temp_trip_c mon_drv_trip_c 85 monitor">
+      <div class="pm-key">
+        driver_temp_trip_c
+        
+        <i>config.MON_DRV_TRIP_C</i>
+        
+      </div>
+      <div class="pm-val">85<i>°C</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="motor_temp_warn_c mon_mtr_warn_c 80 monitor">
+      <div class="pm-key">
+        motor_temp_warn_c
+        
+        <i>config.MON_MTR_WARN_C</i>
+        
+      </div>
+      <div class="pm-val">80<i>°C</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="motor_temp_trip_c mon_mtr_trip_c 95 monitor">
+      <div class="pm-key">
+        motor_temp_trip_c
+        
+        <i>config.MON_MTR_TRIP_C</i>
+        
+      </div>
+      <div class="pm-val">95<i>°C</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="bus_v_warn_low mon_bus_v_warn_low 42 monitor">
+      <div class="pm-key">
+        bus_v_warn_low
+        
+        <i>config.MON_BUS_V_WARN_LOW</i>
+        
+      </div>
+      <div class="pm-val">42<i>V</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="bus_v_warn_high mon_bus_v_warn_high 56 monitor">
+      <div class="pm-key">
+        bus_v_warn_high
+        
+        <i>config.MON_BUS_V_WARN_HIGH</i>
+        
+      </div>
+      <div class="pm-val">56<i>V</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>Drive health monitoring - see manuals/can-monitoring-plan.txt.
+
+*** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
+The safety chain is lidar/encoders -&gt; FX3 -&gt; HWTO1/HWTO2 -&gt; STO, in
+hardware. CAN is the channel beside it that records what happened and warns
+before a trip.
+
+The analogue objects are polled ONE PER NODE per poll, round-robin, and
+poll_period_s paces it. At tick rate that would be two SDO round-trips out
+of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
+for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
+average tick and ~4% of the bus, sweeping the whole table in about a
+second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
+leaves the control loop alone, which matters more.
+
+Temperature warns are the plan&#39;s: driver trips at 85 C so warn at 70, motor
+trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
+with stopping distance already degraded, high is regen the battery is
+refusing to take, and the high warn wants to sit well below the drive&#39;s
+own 63 V overvoltage trip.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="timing">
+  <h2>timing
+    <small>8 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="loop_period_s loop_period_s 0.02 timing">
+      <div class="pm-key">
+        loop_period_s
+        
+        <i>config.LOOP_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.02<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>50 Hz control loop; 5 Hz statusword + rpm + error register (6 fast reads);
+2 Hz sensor field level. The telemetry rate is also what sets how coarsely the
+ACTUAL wheel speeds appear in the run plot - the commanded traces are logged
+at the full loop rate, the measured ones only as fast as they are polled.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="telemetry_period_s telemetry_period_s 0.2 timing">
+      <div class="pm-key">
+        telemetry_period_s
+        
+        <i>config.TELEMETRY_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>50 Hz control loop; 5 Hz statusword + rpm + error register (6 fast reads);
+2 Hz sensor field level. The telemetry rate is also what sets how coarsely the
+ACTUAL wheel speeds appear in the run plot - the commanded traces are logged
+at the full loop rate, the measured ones only as fast as they are polled.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="field_period_s field_period_s 0.5 timing">
+      <div class="pm-key">
+        field_period_s
+        
+        <i>config.FIELD_PERIOD_S</i>
+        
+      </div>
+      <div class="pm-val">0.5<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>50 Hz control loop; 5 Hz statusword + rpm + error register (6 fast reads);
+2 Hz sensor field level. The telemetry rate is also what sets how coarsely the
+ACTUAL wheel speeds appear in the run plot - the commanded traces are logged
+at the full loop rate, the measured ones only as fast as they are polled.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual_watchdog_s manual_watchdog_s 0.6 timing">
+      <div class="pm-key">
+        manual_watchdog_s
+        
+        <i>config.MANUAL_WATCHDOG_S</i>
+        
+      </div>
+      <div class="pm-val">0.6<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>A held button re-POSTs every ~100 ms. Miss six in a row and the setpoint is
+zeroed - covers a closed tab, a dropped Wi-Fi link and a wedged browser. Auto
+is fed by the telemetry poll rather than a held button, so it gets a looser
+deadline; it still stops if the page goes away.
+
+0.6 s rather than the original 0.4: three missed POSTs is tight over Wi-Fi,
+and the trips it produced were the link hiccuping rather than the operator
+letting go. It does not change how fast the vehicle stops when they DO let
+go - the browser sends /api/stop on release and that is immediate; this
+deadline only covers the case where nothing arrives at all.
+
+*** The two modes do different things when it expires. *** Both zero the
+setpoint. Manual stops there and logs a warning: recovery is to hold the
+button again, which is a deliberate act with a hand on the control, so
+there is nothing for an acknowledgment to add. Auto latches a fault, because
+an auto run is latched motion that would otherwise resume on its own.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="auto_watchdog_s auto_watchdog_s 1.5 timing">
+      <div class="pm-key">
+        auto_watchdog_s
+        
+        <i>config.AUTO_WATCHDOG_S</i>
+        
+      </div>
+      <div class="pm-val">1.5<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>A held button re-POSTs every ~100 ms. Miss six in a row and the setpoint is
+zeroed - covers a closed tab, a dropped Wi-Fi link and a wedged browser. Auto
+is fed by the telemetry poll rather than a held button, so it gets a looser
+deadline; it still stops if the page goes away.
+
+0.6 s rather than the original 0.4: three missed POSTs is tight over Wi-Fi,
+and the trips it produced were the link hiccuping rather than the operator
+letting go. It does not change how fast the vehicle stops when they DO let
+go - the browser sends /api/stop on release and that is immediate; this
+deadline only covers the case where nothing arrives at all.
+
+*** The two modes do different things when it expires. *** Both zero the
+setpoint. Manual stops there and logs a warning: recovery is to hold the
+button again, which is a deliberate act with a hand on the control, so
+there is nothing for an acknowledgment to add. Auto latches a fault, because
+an auto run is latched motion that would otherwise resume on its own.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="driver_timeout_s driver_timeout_s 0.6 timing">
+      <div class="pm-key">
+        driver_timeout_s
+        
+        <i>config.DRIVER_TIMEOUT_S</i>
+        
+      </div>
+      <div class="pm-val">0.6<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>How long a driver may go without answering a telemetry read before it is
+declared silent and the vehicle is stopped. This is HARDWARE health and has
+nothing to do with the browser watchdogs above - those cover an absent
+operator, this covers an absent driver.
+
+Must sit above telemetry_period_s or the ordinary gap between two polls
+reads as a dead driver; _validate() enforces that. 0.6 s is three normal
+polls, which is deliberately generous: the 5 Hz telemetry poll shares the
+bus with setpoint writes, so an occasional late read is expected. Tighten it
+only after watching the event log across several runs.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="log_tail_s log_tail_s 2 timing">
+      <div class="pm-key">
+        log_tail_s
+        
+        <i>config.LOG_TAIL_S</i>
+        
+      </div>
+      <div class="pm-val">2<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>How long to keep logging after a stop. The deceleration is the part worth
+seeing afterwards, and it happens entirely inside the drivers.</pre>
+      </details>
+      
+    </div>
+    
+    <div class="pm-row" data-find="auto_start_delay_s auto_start_delay_s 0.6 timing">
+      <div class="pm-key">
+        auto_start_delay_s
+        
+        <i>config.AUTO_START_DELAY_S</i>
+        
+      </div>
+      <div class="pm-val">0.6<i>s</i></div>
+      
+      
+      <details class="pm-note">
+        <summary>why</summary>
+        <pre>The pause between AUTO arming and the wheels being commanded, after Start is
+pressed. The drives energise, the brake releases and the sensor comes up
+during it, so the vehicle is fully awake before the first setpoint rather
+than during it - and it gives whoever pressed the button a beat to step back.
+
+Start does the arming now, so the whole press-to-motion time is the arm
+sequence (~0.8 s of SDO) plus this. Cancelled by a selector move, by Reset,
+or by losing the panel image inside the window.</pre>
+      </details>
+      
+    </div>
+    
+  </div>
+</section>
+
+<section class="sensor pm-sec" data-sec="derived">
+  <h2>derived
+    <small>14 values</small></h2>
+  
+
+  <div class="pm-list">
+    
+    <div class="pm-row" data-find="mps_per_rpm  0.0003141592654 derived">
+      <div class="pm-key">
+        MPS_PER_RPM
+        
+        
+        <i>π·wheel_dia_m / (gear_ratio · 60)</i>
+      </div>
+      <div class="pm-val">0.0003141592654<i>m/s per r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="rpm_per_mps  3183.098862 derived">
+      <div class="pm-key">
+        RPM_PER_MPS
+        
+        
+        <i>1 / MPS_PER_RPM</i>
+      </div>
+      <div class="pm-val">3183.098862<i>r/min per m/s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="rad_s_per_rpm_diff  0.0006464182415 derived">
+      <div class="pm-key">
+        RAD_S_PER_RPM_DIFF
+        
+        
+        <i>MPS_PER_RPM / track_m</i>
+      </div>
+      <div class="pm-val">0.0006464182415<i>rad/s per r/min diff</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="max_speed_mps  1.256637061 derived">
+      <div class="pm-key">
+        MAX_SPEED_MPS
+        
+        
+        <i>motor_max_rpm · MPS_PER_RPM</i>
+      </div>
+      <div class="pm-val">1.256637061<i>m/s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual_half_rpm  1200 derived">
+      <div class="pm-key">
+        MANUAL_HALF_RPM
+        
+        
+        <i>manual.full_rpm · manual.half_ratio</i>
+      </div>
+      <div class="pm-val">1200<i>r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="manual_spin_rpm  300 derived">
+      <div class="pm-key">
+        MANUAL_SPIN_RPM
+        
+        
+        <i>manual.full_rpm · manual.spin_ratio</i>
+      </div>
+      <div class="pm-val">300<i>r/min</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="dt_min_s  0.004 derived">
+      <div class="pm-key">
+        DT_MIN_S
+        
+        
+        <i>0.2 · dt_nominal_s</i>
+      </div>
+      <div class="pm-val">0.004<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="dt_max_s  0.1 derived">
+      <div class="pm-key">
+        DT_MAX_S
+        
+        
+        <i>5 · dt_nominal_s</i>
+      </div>
+      <div class="pm-val">0.1<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="line_loss_grace_max_s  1.492077591 derived">
+      <div class="pm-key">
+        LINE_LOSS_GRACE_MAX_S
+        
+        
+        <i>5 · line_loss_grace_m / cruise speed - the standstill backstop</i>
+      </div>
+      <div class="pm-val">1.492077591<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="accel_rpm_s  2400 derived">
+      <div class="pm-key">
+        ACCEL_RPM_S
+        
+        
+        <i>drivers.ramp.auto.accel</i>
+      </div>
+      <div class="pm-val">2400<i>r/min/s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="decel_rpm_s  3200 derived">
+      <div class="pm-key">
+        DECEL_RPM_S
+        
+        
+        <i>drivers.ramp.auto.decel</i>
+      </div>
+      <div class="pm-val">3200<i>r/min/s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="horn_hold_s  0.1 derived">
+      <div class="pm-key">
+        HORN_HOLD_S
+        
+        
+        <i>max(5 · loop_period_s, 2 · dio.scan_period_s) - how long a coil command survives unrenewed</i>
+      </div>
+      <div class="pm-val">0.1<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="tpdo1_cob  0x18a derived">
+      <div class="pm-key">
+        TPDO1_COB
+        
+        
+        <i>0x180 + can.sensor_node</i>
+      </div>
+      <div class="pm-val">0x18A</div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+    <div class="pm-row" data-find="lidar_scan_cycle_s  0.03 derived">
+      <div class="pm-key">
+        LIDAR_SCAN_CYCLE_S
+        
+        
+        <i>nanoScan3 datasheet - a device constant, not a tunable</i>
+      </div>
+      <div class="pm-val">0.03<i>s</i></div>
+      
+      <span class="pm-nonote"></span>
+      
+    </div>
+    
+  </div>
+</section>
+
+
+<p class="mon-note">
+  The sections above are generated from the profile schema itself
+  (<code>config.describe()</code>), so a key added to a profile appears here
+  without anyone having to remember this page exists. Derived values are shown
+  apart because they cannot be edited: they are computed from the primitives
+  above, which is what stops a profile carrying a geometry that disagrees with
+  itself.
+</p>
+
+</main>
+</div>
+
+
+
+<script src="/static/common.js"></script>
+
+<script src="/static/params.js"></script>
+
+</body>
+</html>

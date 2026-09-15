@@ -1,0 +1,1754 @@
+autopilot config: K_RATIO=11.3 KD=0.94 KI=0.0 zeta=0.290 DRY_RUN=False
+
+step response (30 mm), real slew limit + 20 ms transport delay
+  gains K_RATIO=11.3 KD=0.94 -> predicted zeta 0.290
+  PASS  converges at 1000 r/min (cruise)   overshoot 13.4 mm, settle 10.14 s, tail 1.13 mm
+  PASS  overshoot bounded at 1000 r/min
+  PASS  tail settled at 1000 r/min
+  PASS  converges at 2546 r/min (0.8 m/s target)   overshoot 13.3 mm, settle 4.17 s, tail 0.22 mm
+  PASS  overshoot bounded at 2546 r/min
+  PASS  tail settled at 2546 r/min
+
+negative control: an over-high gain must diverge
+  PASS  K_RATIO=100 at 0.8 m/s diverges as predicted   overshoot 44 mm
+
+a track swap must not become a yaw spike
+  PASS  the 120 mm swap does not produce the logged 6.66 rad/s   peak |omega| 1.24 rad/s
+  PASS  ...and the derivative is no longer what drives it   peak |d| 0.73
+  PASS  an impossible lateral rate is clamped to a possible one   d 0.137 vs limit 0.479
+  PASS  a genuine correction is not clamped   0.02014 vs 0.02014
+  PASS  the first sample after a gap primes instead of differentiating   d 0.0000
+
+gains blend across a zone boundary
+  PASS  the first tick snaps to the zone's gains rather than sliding up from nothing   25.0
+  PASS  leaving a zone does not step the gain   k_used 24.35 between 11.3 and 25.0
+  PASS  ...and it does arrive   k_used 11.337
+  PASS  gain_blend_s = 0 keeps the old instant switch
+
+reset() must not differentiate a standing error against a fake zero
+  PASS  first tick after reset has zero D term   d=0.0000
+  PASS  second tick with unchanged error still has ~zero D   d=0.000000
+
+sensor guards
+  PASS  a glitch jump is clamped, not accepted   guard='slew' e_used=50.0
+  PASS  clamped to the step limit   e_used=50.0
+  PASS  an implausible reading is discarded   guard='discard'
+
+conditional integration (integrate INSIDE the deadband only)
+  PASS  integrator frozen outside the deadband   integral=0.0000
+  PASS  integrator accumulates inside the deadband   integral=-0.0100
+
+line loss
+  PASS  reaches cruise before the line drops   v_base=1000
+  PASS  first missing frame coasts, does not stop   state=coast
+  PASS  grace expires into a stop   state=line_lost
+  PASS  ramps down to zero after line loss   v_base=0.00
+
+stale sensor is a different failure from a tape gap
+  PASS  stale frames stop immediately, no grace   state=sensor_lost
+  PASS  never-seen sensor is also a stop
+
+saturation scales BOTH wheels (turn ratio preserved)
+  PASS  scale factor applied   scale=0.643
+  PASS  neither wheel exceeds the motor limit   L=4000 R=1012
+  PASS  arc (omega/v) preserved through scaling   requested -2.44854, got -2.44854
+
+inner wheel floor limits the DIFFERENTIAL, not one wheel
+  PASS  inner wheel held at or above the floor   L=800.0 R=0.0 floor=0.0
+  PASS  base speed unchanged by the floor   mean=400.00
+
+kinematics
+  PASS  body_to_wheels and wheels_to_body are inverses   v=0.250000 w=0.300000
+  PASS  2546 r/min is 0.8 m/s   0.7998 m/s
+  PASS  yaw accel limit at 6083h=2000 is 2.59 rad/s^2   2.580
+
+line-loss grace is budgeted in distance, not time
+  PASS  both speeds reached cruise   800 / 2000 r/min
+  PASS  coasts the same DISTANCE at either speed   70 mm at 800 vs 63 mm at 2000
+  PASS  distance is about the configured budget   63 mm vs budget 75 mm
+  PASS  coasts for LESS TIME when moving faster   0.28 s at 800 vs 0.10 s at 2000
+  PASS  a stationary AGV still gives up, on the time ceiling   line_lost after 1.50 s (ceiling 1.49 s)
+
+speed reduction scales with base speed
+  PASS  20 mm error sheds the same fraction at 800 and 2000   15.0% vs 15.0%
+  PASS  and that fraction is the configured one   15.0% vs 15.0%
+  PASS  the cap still bounds it
+
+vehicle profile loading
+  PASS  the real profile loads   agv-01
+  PASS  a typo'd key is refused   autopilot: unknown key(s) ['k_rato']
+  PASS  a missing key is refused   autopilot: missing key(s) ['kd']
+  PASS  an unknown section is refused   unknown top-level key(s): ['extra']
+  PASS  a negative gain is refused, by name   K_RATIO must be > 0
+  PASS  auto_rpm above the motor limit is refused   AUTO_RPM must be in (0, 4000.0]
+  PASS  a bool where a number belongs is refused   autopilot.kd: expected a number, got True
+  PASS  duplicate CAN node IDs are refused   CAN node IDs must be distinct, got left=1 right=2 sensor=2
+  PASS  a software ramp at or above 6083h is refused   autopilot.ramp_accel_rpm_s (2400.0) must stay below drivers.ramp.auto.accel (2400), or the driver becomes the limiter and the software profile has no effect
+  PASS  a pre-rename profile (line_loss_grace_s) is refused   autopilot: unknown key(s) ['line_loss_grace_s']
+  PASS  a pre-rename profile (sr_pos_coef) is refused   autopilot: unknown key(s) ['sr_pos_coef']
+  PASS  a driver timeout inside the telemetry period is refused   timing.driver_timeout_s (0.1) must exceed telemetry_period_s (0.2), or the gap between two normal polls is reported as a dead driver
+  PASS  an empty can.channel is refused   can.channel must be a SocketCAN interface name such as "can0"
+  PASS  a spin_ratio above 1 is refused   manual.spin_ratio must be a fraction in (0, 1]
+  PASS  a zero spin_ratio is refused   manual.spin_ratio must be a fraction in (0, 1]
+  PASS  a spin_ratio that rounds to 0 r/min is refused   manual.spin_ratio (0.001) x full_rpm (100) rounds to 0 r/min - the spin buttons would be dead
+  PASS  a station row missing direction is refused   stop_until_start_button[0]: expected exactly ['direction', 'stop_distance_m', 'tag']
+  PASS  an unknown stop direction is refused   stop_until_start_button[0].direction must be outbound or inbound
+  PASS  obsolete global ignore_t is refused   stop_until_start_button[0]: expected exactly ['direction', 'stop_distance_m', 'tag']
+  PASS  an unknown branch_default is refused   mission branch_default ('rightmost') must be 'straight', 'left' or 'right'
+  PASS  a capitalised branch_default is refused rather than folded   mission branch_default ('Right') must be 'straight', 'left' or 'right'
+  PASS  a site speed left in the profile is refused   autopilot: unknown key(s) ['auto_rpm_high']
+  PASS  a route left in the profile is refused   unknown top-level key(s): ['route']
+  PASS  a horn channel past the end of the module is refused   horn.do_channel (16) must be a channel in 0..15
+  PASS  a negative horn channel is refused   horn.do_channel (-1) must be a channel in 0..15
+  PASS  a horn without the DIO scan that writes it is refused   horn.enabled is true while dio.enabled is false - the coil is written by the DIO scan, so the horn would never sound
+  PASS  profile_name must match the filename   profile_name is 'agv-01' but the file is agv-99.json - rename one to match the other
+  PASS  the default profile resolves into profiles/   /home/gvipc-evo-01/agv_can/profiles/agv-01.json
+  PASS  AGV_PROFILE selects the profile   /home/gvipc-evo-01/agv_can/profiles/agv-02.json
+  PASS  an explicit path still wins over the env var
+  PASS  a missing profile names the env var and what exists   no vehicle profile at /home/gvipc-evo-01/agv_can/profiles/agv-02.json. Set AGV_P
+  PASS  a rejected profile leaves the live one intact   K_RATIO=11.3
+
+derived constants follow their inputs
+  PASS  MPS_PER_RPM   3.141593e-04
+  PASS  RPM_PER_MPS   3183.0989
+  PASS  RAD_S_PER_RPM_DIFF   6.450909e-04
+  PASS  MAX_SPEED_MPS   1.2566
+  PASS  MANUAL_HALF_RPM is full_rpm * half_ratio, rounded   2000 x 0.6 -> 1200
+  PASS  MANUAL_SPIN_RPM is full_rpm * spin_ratio, rounded   2000 x 0.15 -> 300
+  PASS  DT band is 0.2x .. 5x nominal   0.004 .. 0.1
+  PASS  ACCEL/DECEL track the auto ramp block   2400 / 3200
+  PASS  TPDO1_COB is 0x180 + sensor node   0x18a
+  PASS  NODES maps the configured driver IDs   {1: 'left', 2: 'right'}
+  PASS  manual jog table is built from the profile   fwd-left (1200, 2000)
+  PASS  *** a spin takes spin_ratio, not the curve's half_ratio ***   left (-300, 300) right (300, -300)
+  PASS  ...both wheels equal and opposite, so it turns on its axis and travels nowhere
+  PASS  ...and the two spins are mirror images
+  PASS  the curves are untouched by the spin speed - they still take the inner wheel to half and leave the outer at full
+  PASS  a spin commands something - a ratio that rounded to zero would be a dead button, and _validate() refuses it   300 r/min
+
+the parameters view covers the whole profile
+  PASS  every schema key is displayed   []
+  PASS  the nested drivers.ramp.auto.accel is displayed
+  PASS  the nested dio.di_names is displayed
+  PASS  the nested lidar.zone_bytes is displayed
+  PASS  the junction table is displayed under the RFID rules
+  PASS  MPS_PER_RPM is shown as derived
+  PASS  MAX_SPEED_MPS is shown as derived
+  PASS  MANUAL_HALF_RPM is shown as derived
+  PASS  MANUAL_SPIN_RPM is shown as derived
+  PASS  LINE_LOSS_GRACE_MAX_S is shown as derived
+  PASS  TPDO1_COB is shown as derived
+  PASS  a derived row names its relation, not a JSON key
+  PASS  the profile's own values are shown   11.3
+  PASS  LOOP_PERIOD_S reads as s   's'
+  PASS  CAN_HEARTBEAT_MS reads as ms   'ms'
+  PASS  TI_DEADBAND_MM reads as mm   'mm'
+  PASS  TRACK_M reads as m   'm'
+  PASS  RAMP_JERK_RPM_S2 reads as r/min/s²   'r/min/s²'
+  PASS  MON_DRV_WARN_C reads as °C   '°C'
+  PASS  MON_BUS_V_WARN_LOW reads as V   'V'
+  PASS  MPS_PER_RPM reads as m/s per r/min   'm/s per r/min'
+  PASS  booleans render as JSON does   false
+  PASS  a whole float drops its .0   4000
+  PASS  no cell is blank
+
+tuning notes are parsed from the module docstring
+  PASS  the notes parse at all   65 note(s)
+  PASS  no note is empty
+  PASS  autopilot.k_ratio carries the shared gains note
+  PASS  autopilot.kd carries the shared gains note
+  PASS  autopilot.ki carries the shared gains note
+  PASS  a key named without its section still resolves
+  PASS  a section-wide note is kept as such
+  PASS  the dry-run note reaches its row
+  PASS  a nested ramp row inherits the drivers.ramp note
+  PASS  a section note reaches a row that has none of its own
+  PASS  a docstring with no notes yields none, quietly
+  PASS  ...and the notes come back
+
+canworker: arming must not deadlock on the sensor stream
+  PASS  _do_arm completes (no deadlock)
+  PASS  arming completes successfully, not by thread exception   []
+  PASS  the re-entrant path was actually exercised   28 sensor frames absorbed during the arm
+  PASS  snapshot() still returns afterwards
+  PASS  no bus I/O inside any locked section
+  PASS  healthy drivers raise no critical fault
+  PASS  a silent driver trips the critical tier   node 1 (left), node 2 (right)
+  PASS  a critical fault zeroes the setpoint   (0, 0)
+  PASS  a critical fault clears the auto latch
+  PASS  a critical fault names itself in stop_reason   driver silent - node 1 (left), node 2 (right), stopping
+  PASS  a standing fault does not re-emit every tick   0 extra event(s)
+  PASS  arming is refused while a driver is silent   driver not answering: node 1 (left), node 2 (right)
+
+sensor bring-up is mode-independent
+  PASS  _start_sensor() exists
+  PASS  no sensor NMT start left behind a mode test
+  PASS  both arm paths call it   2 call sites
+  PASS  field level polls whenever armed, not only in auto
+
+loop health window
+  PASS  emits once the window fills
+  PASS  work and period are separate numbers   work 9.0 ms, period 20.0 ms
+  PASS  counts starved ticks while armed   2
+  PASS  window resets after emitting
+  PASS  no frames while DISARMED is not starvation
+
+unsolicited frames survive an SDO transfer
+  PASS  the SDO reply still gets through
+  PASS  an EMCY mid-transfer reaches its handler   [(1, b'"\xff\x81\x00\x00\x00\x00\x00')]
+  PASS  a heartbeat mid-transfer reaches its handler   [(2, 5)]
+  PASS  the sensor stream is still routed
+  PASS  a throwing handler cannot break the transfer
+  PASS  an unrouted frame is returned to the caller
+
+canworker: the horn
+  PASS  a jog sounds it
+  PASS  so does a spin, where the wheels oppose each other and the vehicle does not go anywhere a bystander expects
+  PASS  an auto run sounds it - the same vehicle, so the same warning
+  PASS  a single creeping wheel still counts as motion
+  PASS  armed and holding zero is silent - arming is not motion
+  PASS  a disarmed vehicle is silent
+  PASS  ...even if a setpoint is somehow still standing
+  PASS  the command carries the renewal deadline, so a dead tick drops it   (0, False, 0.1)
+  PASS  a held jog renews the claim every tick
+  PASS  _run() calls it on every tick, outside any armed-only branch
+  PASS  and does so BEFORE the setpoint reaches the wheels
+
+an STO stop is logged even though the drive calls it no fault
+  PASS  a drive in Operation enabled decodes as such
+  PASS  a steady state logs nothing - the edge really is an edge   []
+  PASS  *** the drive does NOT call this a fault ***   so the FAULT-bit logger has nothing to report
+  PASS  ...and indeed no FAULT event is emitted   ['node 1 (left) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)', 'node 2 (right) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)']
+  PASS  *** but the state transition IS logged, per node ***   ['node 1 (left) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)', 'node 2 (right) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)']
+  PASS  ...as a warning, because leaving Operation enabled while armed is something this software did not do
+  PASS  ...naming the statusword and the error code, which is what tells a plain loss of torque from an HWTO alarm   ['node 1 (left) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)', 'node 2 (right) Operation enabled -> Switch on disabled (statusword 0x0040, error code 0x0000)']
+  PASS  the drives coming back is logged as well   [{'seq': 10, 't': 1789460623.5772107, 'level': 'info', 'msg': 'node 1 (left) Switch on disabled -> Operation enabled (statusword 0x1737, error code 0x0000)'}, {'seq': 11, 't': 1789460623.5772192, 'level': 'info', 'msg': 'node 2 (right) Switch on disabled -> Operation enabled (statusword 0x1737, error code 0x0000)'}]
+  PASS  ...at info, because that direction is the recovery
+
+a safety stop holds the run, then resumes it by itself
+  PASS  a healthy run is not held
+  PASS  *** the run NOTICES - this is what runs 0048/0049 could not do ***   drives de-energised - safety chain
+  PASS  *** and it is a HOLD, not the end of the run ***   ending it would close the log and lose the lap
+  PASS  the wheels go to zero   (0, 0)
+  PASS  ...and the ramp is collapsed, so the resume starts from rest rather than from the setpoint it was carrying   0.0
+  PASS  the reason names the chain
+  PASS  it says so once, on the edge   [{'seq': 12, 't': 1789460623.5773585, 'level': 'warn', 'msg': 'drives de-energised - safety chain - wheels held at zero, the run is kept and will resume on its own when torque returns'}]
+  PASS  ...and holding is silent after that
+  PASS  a failed re-enable does not end the run
+  PASS  ...and schedules no resume
+  PASS  *** a latched fault blocks the automatic resume ***   anything that latched a fault wanted a human, and this must not talk it round
+  PASS  torque restored schedules a resume
+  PASS  ...after the same delay a Start press gets, not instantly   0.6 s
+  PASS  ...and warns that it is about to move on its own   ['torque restored - the auto run resumes BY ITSELF in 0.6 s, stand clear']
+  PASS  still held until the delay is up
+  PASS  *** then the run carries on, with no button pressed ***
+  PASS  the watchdog deadline is refreshed on the way out, or the resume would trip it immediately
+  PASS  it can hold again later in the same run
+  PASS  ending the run drops the hold
+  PASS  a manual jog is not held by this - manual has its own re-arm
+  PASS  *** a dry run is not held for drives it never enabled ***
+  PASS  *** ...and never re-enables them ***   []
+
+hardware health
+  PASS  a never-seen source is not reported lost
+  PASS  a never-seen source reports seen=False
+  PASS  a fresh source is healthy
+  PASS  a source past its timeout is lost   mls
+  PASS  a source recovers on the next read
+  PASS  a silent driver raises the CRITICAL tier   node 1 (left)
+  PASS  a silent sensor raises the AUTO-ONLY tier   mls
+  PASS  a source transition is reported once, not per tick   1 edge(s) over 100 ticks
+  PASS  a tier transition is reported once, not per tick   1 edge(s) over 100 ticks
+  PASS  a pull source reports its snapshot verdict
+  PASS  a pull source fault reaches the auto-only tier
+  PASS  a disabled pull source never blocks a mode
+  PASS  a raising snapshot is absorbed, never propagated
+  PASS  reset() forgets a stale timestamp
+  PASS  health.py imports only the standard library   ['time']
+  PASS  the sensor marks health on every decoded frame
+  PASS  each driver marks health on a telemetry answer
+  PASS  health is evaluated outside the lock
+  PASS  a critical fault refuses an arm
+
+false 'driver silent' on a blocking action
+  PASS  _enable_heartbeat() is called from the bus-open path
+  PASS  ...and it is not called from _do_arm, so liveness does not depend on having armed
+  PASS  _read() marks the node alive on success
+  PASS  _read_i32() marks the node alive on success
+  PASS  _write() marks the node alive on success
+  PASS  _mark_alive uses .get(), so the MLS is not mistaken for a drive
+  PASS  a long queue drain resets the monitor instead of failing it
+  PASS  min_timeout is the tightest deadline in the table
+  PASS  both drives healthy to start
+  PASS  an arm that talks to the drives throughout raises no fault   False None
+  PASS  after reset an unobserved window reads as not-seen, not as lost   False
+  PASS  a drive that really stops answering still faults   True True
+
+CAN monitoring: alarms, deny-list, poller
+  PASS  the top-priority HWTO alarm decodes   HWTO input circuit error
+  PASS  the error register is decoded from byte 2   ['generic', 'manufacturer']
+  PASS  0000h is a clear, not an alarm
+  PASS  an unlisted code still reports as an error   unknown alarm 0x9999
+  PASS  a short frame decodes rather than raising
+  PASS  decode_emcy never raises on random bytes
+  PASS  every MUST alarm from the plan is in the table   29 codes
+  PASS  ILA decodes from statusword bit 11   {'ILA'}
+  PASS  a clear statusword yields no flags
+  PASS  decode_statusword_flags tolerates None
+  PASS  NMT state decodes from the heartbeat byte
+  PASS  the setpoint is writable
+  PASS  the controlword is writable
+  PASS  the heartbeat interval is writable
+  PASS  403Eh (FREE / brake release) is refused
+  PASS  40D0h (clear ETO / automatic restart) is refused
+  PASS  40C0h (alarm reset) is refused
+  PASS  1011h (restore defaults) is refused
+  PASS  1010h (store parameters) is refused
+  PASS  the whole 4xxxh parameter block is refused
+  PASS  controlword bit 7 (fault reset) is refused
+  PASS  a refusal explains itself   write to 403Eh refused: driver input command - bit 6 is FREE
+  PASS  an unlisted index is refused by default
+  PASS  an RPDO may map the setpoint and the controlword
+  PASS  *** an RPDO may NOT map 403Eh behind the deny-list ***
+  PASS  ...and the refusal names the smuggled object   RPDO mapping 1600h:01 would map 403Eh, which is not writable: write to
+  PASS  no 4xxxh parameter or unlisted object can be mapped into an RPDO
+  PASS  *** an RPDO may not map PDO configuration, so a frame cannot re-address a PDO ***
+  PASS  sub 0 of a mapping is the entry count, not an object
+  PASS  an empty mapping slot maps nothing and is permitted
+  PASS  an RPDO mapping entry without its subindex or value is refused, not guessed
+  PASS  a TPDO is a read path: it may map any object, forbidden ones included
+  PASS  an RPDO COB-ID in its own range, on its own node, is writable
+  PASS  a TPDO COB-ID in its own range is writable, the MLS's 18Ah included
+  PASS  disabling a PDO is always writable (bit 31: it obeys nothing)
+  PASS  *** an RPDO may not listen on the MLS's TPDO1 id, which would make sensor frames wheel commands ***
+  PASS  ...nor on NMT, SYNC/EMCY, SDO or heartbeat identifiers
+  PASS  *** a TPDO may not transmit on an RPDO id, which would make status frames another node's commands ***
+  PASS  *** a PDO may not take another node's identifier ***
+  PASS  node 0 and 29-bit identifiers are refused
+  PASS  a COB-ID without its subindex or value is refused, not guessed
+  PASS  transmission type, inhibit time and event timer only set timing
+  PASS  the PDO ranges stop where CiA 301 says they do
+  PASS  the motion objects are unaffected by the PDO rules
+  PASS  _write() calls the guard with the subindex and node PDO rules need
+  PASS  direct sdo_write calls are only the disarm path   3: ok, detail = sdo_write(self.bus, node, index, sub, value, size); sdo_write(self.bus, nid, 0x60FF, 0, 0, 4); sd
+  PASS  no direct write targets a forbidden index
+  PASS  a sweep visits every object exactly once   11 objects
+  PASS  the cursor wraps and counts sweeps
+  PASS  40A4h is decoded as INT16 per the manual
+  PASS  409Bh is decoded as INT32 per the manual
+  PASS  a negative current decodes as regeneration
+  PASS  an i16 sign bit is honoured
+  PASS  a short payload decodes rather than raising
+  PASS  a None payload yields None
+  PASS  a raw reading is scaled to its unit   48.2
+  PASS  a temperature over its warn threshold is flagged
+  PASS  a temperature under its warn threshold is not
+  PASS  bus voltage is flagged at the LOW end too   37.5
+  PASS  an unanswered read stores as blank, not zero
+
+operator event log
+  PASS  empty buffer reports seq 0
+  PASS  sequence numbers advance   17 -> 18
+  PASS  since(0) returns everything
+  PASS  since(seq) returns only newer
+  PASS  entries carry level and message
+  PASS  ring buffer is bounded   200 retained, cap 200
+  PASS  oldest entries are the ones dropped
+  PASS  concurrent emit keeps sequence numbers unique and ordered
+  PASS  an unknown level does not raise
+  PASS  _run_autopilot() never emits
+  PASS  _LoopHealth never emits
+  PASS  driver faults are edge-tracked, not polled
+
+run plot rendering
+  PASS  emits a PNG signature
+  PASS  IHDR is the requested pixel size   1700x850
+  PASS  width/height are honoured
+  PASS  empty input does not raise
+  PASS  an out-of-range point does not change the frame size
+  PASS  the outlier still changes the image (drawn, then clipped)
+  PASS  figures are closed, not leaked   0 open figures
+  PASS  stats line reports duration and RMS   Duration 9.0 s     RMS 8.40 mm     Max 12 mm     Avg L 800     Avg R 790 r/min
+  PASS  stats ignores non-run rows
+  PASS  all-None error column does not raise
+  PASS  decimation thins a long run   20000 -> 1002 rows
+  PASS  decimation preserves the error envelope   kept max 99.0 min -77.0
+  PASS  decimated rows stay in time order
+  PASS  a plot failure is captured, never raised   plot: [Errno 2] No such file or directory: '/nonex
+  PASS  plotrun does not import matplotlib at module level
+  PASS  the Agg backend is selected before pyplot
+
+run log numbering
+  PASS  an empty log directory starts at 1
+  PASS  a missing log directory starts at 1
+  PASS  numbering continues from the highest prefix present   0001/0007/0017 -> 18
+  PASS  unprefixed entries are ignored
+  PASS  the prefix survives passing 9999
+  PASS  consecutive runs number 1, 2, 3   0001-auto_20260915_152345 0002-auto_20260915_152345 0003-auto_20260915_152345
+  PASS  runs in the same second get distinct directories
+  PASS  a deleted run leaves a gap, never a collision   0004-auto_20260915_152345
+  PASS  next_seq() honours a reassigned LOG_DIR   5
+
+rfid link
+  PASS  init command is the one the working vehicle sends   CF FF 00 70 00 24 15
+  PASS  push-only: there is nothing to poll
+  PASS  a 17-byte frame decodes
+  PASS  tag comes from bytes 13:15   1234
+  PASS  the 3130 startup echo is not a tag
+  PASS  junk before the header is skipped
+  PASS  two frames in one read both decode
+  PASS  a partial frame is kept, not consumed   used=0
+  PASS  trailing partial survives a whole frame   used=17
+  PASS  a payload containing 0xCF still decodes as ONE frame   1 frame(s)
+  PASS  decode and tag_of never raise on random bytes
+  PASS  carrier is read from the real NIC, or None if absent   True
+  PASS  silence is not a fault while connected   False
+  PASS  a tag slice outside the frame is refused   rfid.tag_offset + tag_len (16+2) must fit inside frame_len (17)
+  PASS  a non-hex init command is refused   rfid.init_hex must be valid hex, or empty
+  PASS  enabling with no init command is refused   rfid.init_hex is empty while rfid.enabled is true - the reader will st
+  PASS  an ignore_tags entry of the wrong width is refused   rfid.ignore_tags: '31' must be 4 hex chars to match tag_len
+  PASS  silent_warn below recv_timeout is refused   rfid.silent_warn_s must exceed recv_timeout_s
+
+dio: the scan
+  PASS  before any scan there is no image age
+  PASS  and comms_ok is false - never scanned is not healthy
+  PASS  the lists are still the right length, so the page can render
+  PASS  a scan reads the inputs
+  PASS  and the coil readback
+  PASS  byte-boundary padding is sliced off
+  PASS  the scan counts
+  PASS  comms_ok once a scan has landed
+  PASS  connected
+  PASS  snapshot returns copies, not the live image
+  PASS  names are copied too
+
+dio: inversion
+  PASS  flipped inverts every input
+  PASS  outputs are NOT inverted - the flag is about input wiring
+
+dio: faults
+  PASS  a Modbus error raises out of the scan
+  PASS  the last good image survives the failure - blanking it would read as 'all inputs off', which is a lie
+  PASS  a short reply is refused, not zero-padded into the image
+  PASS  a refused connection raises
+
+dio: the write phase
+  PASS  an unclaimed module is never written to - this driver energises nothing it was not asked to   []
+  PASS  set_coil does no I/O of its own - it runs on the 50 Hz CAN tick   []
+  PASS  the next scan raises the coil   [(3, True)]
+  PASS  and counts it
+  PASS  the image is not patched with our intent
+  PASS  the readback catches up on the following scan
+  PASS  a coil already at the right level is not rewritten every scan - at 20 scans a second that would be a relay chattering   [(3, True)]
+  PASS  a module that came back with its coils clear is re-asserted   (3, True)
+  PASS  lowering the claim lowers the coil
+  PASS  a channel off the end of the module is refused
+
+dio: command expiry
+  PASS  the coil is raised while the claim is fresh
+  PASS  the module is holding it
+  PASS  an unrenewed claim is driven LOW rather than left standing - a horn that outlives its control loop is how operators learn to ignore horns
+  PASS  and the snapshot says so, so the page agrees with the module
+  PASS  an expired claim keeps holding the coil low, without rewriting it
+  PASS  renewing it raises the coil again
+
+dio: write faults
+  PASS  a refused write raises out of the scan rather than being assumed to have landed
+  PASS  the coil's state is not counted as written
+  PASS  a scan that could not write is not a successful scan
+  PASS  it recovers on its own once the write goes through
+
+dio: shutdown
+  PASS  the coil is up before we stop
+  PASS  stop() drives the claim low before closing the socket   [(0, True), (0, False)]
+  PASS  and waits for the READBACK to prove it, not for the write to be acknowledged
+  PASS  the socket is closed afterwards
+
+dio: health verdict
+  PASS  a fresh scan is healthy
+  PASS  a stale image is unhealthy even though the socket is 'connected'
+  PASS  disabled reports a None verdict, which health.py reads as 'not in use' rather than as a fault
+
+dio: health integration
+  PASS  a scanning module is healthy
+  PASS  a dead module is reported
+  PASS  as a SENSOR error - auto stops
+  PASS  not a system error - manual keeps jogging
+
+dio: event discipline
+  PASS  connecting emits once
+  PASS  a healthy scan does not emit   1 events
+  PASS  losing it emits once
+  PASS  and staying lost stays quiet   2 events
+
+dio: profile validation
+  PASS  a short name list is refused - a 16-lamp page fed 12 labels would mislabel the rest   dio.di_names: has 12 name(s) but there are 16 channel(s) - they must m
+  PASS  a long name list is refused   dio.do_names: has 20 name(s) but there are 16 channel(s) - they must m
+  PASS  a non-string name is refused   dio.di_names: expected a list of strings
+  PASS  num_di of zero is refused   dio.num_di: expected 1..256, got 0
+  PASS  a negative base is refused   dio.di_base must be >= 0
+  PASS  a timeout longer than the scan period is refused   dio.timeout_s (0.5) must be below scan_period_s (0.05) - one stalled o
+  PASS  silent_warn below the scan period is refused - one late scan would read as a fault   dio.silent_warn_s (0.01) must exceed scan_period_s (0.05)
+  PASS  a reconnect wait longer than the health window is refused - one retry would always trip it   dio.reconnect_period_s (5.0) must be below silent_warn_s (2.0) - other
+  PASS  an out-of-range port is refused   dio.port must be in 1..65535
+  PASS  names are stripped, so stray spaces cannot misalign the column
+  PASS  DI02 (reset) is named on the /io page   PB Reset
+  PASS  DI01 (start) is named on the /io page   PB Start
+  PASS  DI03 (auto selector) is named on the /io page   SS Auto/Manual
+
+the telegram reassembles
+  PASS  the fixture is five datagrams   5
+  PASS  the marker is recognised
+  PASS  total_length is the telegram length   6812
+  PASS  the header is 24 bytes   24
+  PASS  a foreign datagram is rejected, not decoded
+  PASS  a truncated datagram returns None rather than raising
+  PASS  reversed fragments still reassemble   6812
+  PASS  shuffled fragments still reassemble   6812
+  PASS  an incomplete telegram emits nothing
+  PASS  the partial telegram was dropped, not kept   1
+  PASS  a slow telegram is not dropped for being slow
+  PASS  a duplicated fragment does not lengthen the telegram
+
+the block table is the map
+  PASS  the table has seven slots   7
+  PASS  the observed blocks are found   [(80, 16), (100, 24), (128, 6608), None, None, (6748, 64), None]
+  PASS  an absent block is None, not offset 0
+  PASS  block() returns None for an absent block
+  PASS  the last block ends exactly at the telegram end   6812 vs 6812
+  PASS  a block running past the end is refused
+
+the beam count comes from the block size
+  PASS  the fixture carries 1652 points   1652
+  PASS  that is the block size divided by the point size
+  PASS  1651 is not hardcoded in lidarframe
+  PASS  ...nor in the reader
+  PASS  every point decodes   1652
+  PASS  most points are valid with an echo   1605
+  PASS  a zero-distance point is not marked valid   [1651]
+  PASS  no-echo returns are excluded from the mask
+  PASS  decimation keeps every 4th point
+
+the angular geometry is read from the telegram
+  PASS  the start angle decodes   -47.5
+  PASS  the resolution decodes   0.16666650772094727
+  PASS  the span is the configured 275 deg or a little more   275.33 deg
+  PASS  unnamed header words are kept raw rather than guessed   ['f0', 'f3', 'f4', 'f5']
+
+cut-off paths are never silently clear
+  PASS  the profile's flag is reported, not inferred
+  PASS  three paths are reported   [False, False, True]
+  PASS  the raw bytes travel with them for the walk-through
+  PASS  an out-of-range offset reads as unknown, not clear   [False, False, None]
+  PASS  an absent status block is not readable
+  PASS  ...and yields no path claims
+
+the link reports staleness rather than hiding it
+  PASS  before any telegram, comms is not ok
+  PASS  ...and that counts as stale
+  PASS  ...and the zones say so too
+  PASS  a telegram makes the link ok
+  PASS  ...and not stale
+  PASS  the beam count is published   1652
+  PASS  the summary carries no point array
+  PASS  the summary carries no raw diagnostic blocks
+  PASS  an old telegram goes stale
+  PASS  the zone snapshot is stale too
+  PASS  stale zones still carry their last paths, flagged
+
+telegram counter gaps are counted
+  PASS  consecutive telegrams report no gap   0
+  PASS  a jump of 5 counts four lost telegrams   4
+  PASS  wraparound reports no gap   0
+  PASS  a backwards counter is not a huge gap   0
+
+the cloud is decoded on demand
+  PASS  with no telegram the cloud is stale and empty
+  PASS  the cloud decimates   413
+  PASS  it carries the geometry the browser needs
+  PASS  it carries the no-echo value rather than the page assuming one
+  PASS  it carries the zones
+  PASS  a malformed telegram yields no points instead of an exception
+
+the reader thread survives bad input
+  PASS  the telegram was received despite the junk before it   1
+  PASS  the datagram from the wrong host was not decoded
+  PASS  the thread stopped cleanly
+
+a dead lidar is a display fault and nothing more
+  PASS  the lidar source is not critical
+  PASS  a dead lidar is reported lost
+  PASS  ...but raises no system error
+  PASS  ...it lands in the sensor tier, which stops auto but not manual   192.168.3.10:6060
+  PASS  canworker registers it without critical=True
+  PASS  _do_arm() does not consult the lidar
+  PASS  _do_auto_run() does not consult the lidar
+  PASS  drive() does not consult the lidar
+
+an unplugged scanner warns, and nothing else
+  PASS  the reader thread survives a socket it cannot open
+  PASS  ...and keeps retrying   1
+  PASS  the link reports itself down
+  PASS  never_seen says the scanner has not answered at all
+  PASS  ...and rx_age_s is None rather than a number
+  PASS  the zones still read stale, so no lamp reads clear
+  PASS  an unplugged scanner raises no system error
+  PASS  a stream that ran and then stopped is not 'never seen'
+  PASS  ...and is still stale
+  PASS  the alarms page warns rather than errors when never connected
+  PASS  ...and says it is the Ethernet link
+  PASS  ...while a stream that died stays an error
+  PASS  the raw errno no longer renders as 'Sensor lost'
+  PASS  the lidar page carries a not-connected banner
+  PASS  ...hidden until the state poll says otherwise
+  PASS  ...and states the vehicle runs without it
+  PASS  the banner is driven by never_seen
+
+nothing can write to the scanner
+  PASS  drivers/lidar.py does not use sendto
+  PASS  drivers/lidar.py does not use sendall
+  PASS  drivers/lidar.py does not use SOCK_STREAM
+  PASS  drivers/lidar.py does not use 2122
+  PASS  drivers/lidar.py does not use sick_safetyscanners
+  PASS  drivers/lidar_scan.py does not use sendto
+  PASS  drivers/lidar_scan.py does not use sendall
+  PASS  drivers/lidar_scan.py does not use SOCK_STREAM
+  PASS  drivers/lidar_scan.py does not use 2122
+  PASS  drivers/lidar_scan.py does not use sick_safetyscanners
+  PASS  core/lidarframe.py does not use sendto
+  PASS  core/lidarframe.py does not use sendall
+  PASS  core/lidarframe.py does not use SOCK_STREAM
+  PASS  core/lidarframe.py does not use 2122
+  PASS  core/lidarframe.py does not use sick_safetyscanners
+
+panel: edges
+  PASS  the first image is a baseline and emits nothing
+  PASS  pressing Start is one edge
+  PASS  holding it is not another edge - a half-second press covers ten scans   [False, True, False, False, False]
+  PASS  Start held down at boot never fires
+  PASS  and the selector is reported, not treated as a change
+  PASS  Reset is edge-detected the same way
+
+panel: selector
+  PASS  low reads MANUAL
+  PASS  high reads AUTO
+  PASS  and the move is flagged once
+  PASS  holding the position is not a change
+  PASS  moving back flags again
+  PASS  mode() reports it for the UI
+
+panel: debounce
+  PASS  a single-scan glitch is not yet a press
+  PASS  and if it goes away it never becomes one
+  PASS  two consecutive scans are accepted
+  PASS  an unsettled contact keeps reporting the last SETTLED selector position, so the UI does not flicker mid-bounce   valid=True mode=auto
+
+panel: comms loss
+  PASS  a scan with comms down is not valid
+  PASS  and reports no edges
+  PASS  the first scan back re-baselines instead of firing Start
+  PASS  and the held button still does not fire on later scans
+  PASS  releasing and pressing again works normally
+  PASS  a short image is refused
+  PASS  None is refused
+
+panel: MANUAL is armed, AUTO is armed by Start
+  PASS  the selector resting in MANUAL arms it, with nothing pressed   [('arm', 'manual')]
+  PASS  ...and holding it there does not re-arm every scan   0 extra call(s)
+  PASS  Start in manual does nothing - jogging is per-direction from the web pad
+  PASS  the selector moving to AUTO disarms
+  PASS  ...and AUTO does not arm itself   idle
+  PASS  Start arms
+  PASS  ...but does NOT move yet
+  PASS  ...it is pending, with the delay running
+  PASS  and nothing moves while the delay is still running
+  PASS  after auto_start_delay_s it runs
+  PASS  the run is owned by the panel, which is what the watchdog keys on
+  PASS  Reset from running stops it
+  PASS  ...and AUTO returns to disarmed once the run is over   idle
+  PASS  Start arms again
+  PASS  Reset cancels a start that has not reached the wheels yet
+  PASS  ...so the delay expiring afterwards moves nothing
+  PASS  a selector move cancels a pending start
+  PASS  a latched fault stops MANUAL arming itself
+  PASS  ...and Start is refused too
+  PASS  Reset clears the fault
+  PASS  ...and the selector arms it again with no second press
+  PASS  an auto-arm that fails does NOT latch a fault - nobody did anything wrong   None
+  PASS  ...it records why   preflight failed: driver 2 not answering
+  PASS  ...and backs off rather than hammering the bus at tick rate   0 attempt(s) in 50 scans
+  PASS  ...then arms by itself once the cause is gone, with no Reset
+  PASS  armed in manual
+  PASS  drives dropping out of Operation enabled triggers a re-arm   [('arm', 'manual'), ('disarm',), ('arm', 'manual')]
+  PASS  an unread statusword is 'unknown', never 'not ready'
+
+panel: the manual watchdog stops without latching
+  PASS  manual warns instead of latching
+  PASS  ...and auto still latches
+  PASS  both zero the setpoint outright
+  PASS  both clear the ramp, or the PID re-commands on the next tick
+  PASS  the branch self-clears after warning, so it cannot repeat at 50 Hz
+  PASS  the stop reason is recorded for the UI in both modes
+
+panel: event discipline
+  PASS  the panel is scanned from _run(), not from _run_autopilot() - it is what ENTERS every state
+  PASS  a fault emits once
+  PASS  and a fault that persists stays quiet   1 events
+
+panel: profile validation
+  PASS  two functions on one channel is refused - it would fire a Reset edge every time Start is pushed   panel channels must be distinct, got {'di_reset': 2, 'di_start': 2, 'd
+  PASS  a channel past num_di is refused   panel.di_auto (99) must be a channel in 0..15
+  PASS  a negative channel is refused   panel.di_reset (-1) must be a channel in 0..15
+  PASS  debounce_scans below 1 is refused   panel.debounce_scans must be >= 1
+  PASS  the panel cannot be enabled without the DI scan that feeds it   panel.enabled is true while dio.enabled is false - the panel is read f
+  PASS  the shipped profile matches the wiring: DI02 reset, DI01 start, DI03 auto
+  PASS  DI00 is no longer wired to a panel function
+
+branch: intent ladder
+  PASS  rung L=0R=0 sL=0 cL=0 sR=0 cR=0 -> L=0R=0   got L=0R=0
+  PASS  rung L=0R=0 sL=1 cL=0 sR=0 cR=0 -> L=1R=0   got L=1R=0
+  PASS  rung L=1R=0 sL=0 cL=0 sR=0 cR=0 -> L=1R=0   got L=1R=0
+  PASS  rung L=0R=0 sL=0 cL=0 sR=1 cR=0 -> L=0R=1   got L=0R=1
+  PASS  rung L=0R=1 sL=0 cL=0 sR=0 cR=0 -> L=0R=1   got L=0R=1
+  PASS  rung L=1R=0 sL=0 cL=1 sR=0 cR=0 -> L=0R=0   got L=0R=0
+  PASS  rung L=0R=1 sL=0 cL=0 sR=0 cR=1 -> L=0R=0   got L=0R=0
+  PASS  rung L=1R=0 sL=0 cL=0 sR=0 cR=1 -> L=1R=0   got L=1R=0
+  PASS  rung L=0R=1 sL=0 cL=1 sR=0 cR=0 -> L=0R=1   got L=0R=1
+  PASS  rung L=1R=0 sL=0 cL=0 sR=1 cR=0 -> L=1R=0   got L=1R=0
+  PASS  rung L=0R=1 sL=1 cL=0 sR=0 cR=0 -> L=0R=1   got L=0R=1
+  PASS  rung L=1R=0 sL=0 cL=1 sR=1 cR=0 -> L=0R=0   got L=0R=0
+  PASS  rung L=0R=1 sL=1 cL=0 sR=0 cR=1 -> L=1R=0   got L=1R=0
+  PASS  a simultaneous set-left and set-right resolves right-wins   False True
+  PASS  intent() reports RIGHT
+  PASS  reset() drops intent to STRAIGHT
+
+branch: track selection
+  PASS  no tracks selects nothing
+  PASS  straight on a plain track takes LCP2
+  PASS  left on a plain track still takes LCP2 - nothing to branch onto
+  PASS  left on a +ve-side diverter takes LCP3
+  PASS  right on a -ve-side diverter takes LCP1
+  PASS  straight through a +ve-side diverter holds LCP2
+  PASS  straight through a -ve-side diverter holds LCP2
+  PASS  left at a -ve-side diverter degrades to LCP2, not the branch
+  PASS  right at a +ve-side diverter degrades to LCP2, not the branch
+  PASS  a crossing offers both extremes
+  PASS  positive_is_left=False mirrors left and right
+  PASS  positive_is_left=False leaves straight alone
+  PASS  a track with no position is ignored
+
+branch: selection follows the tape, not the LCP label
+  PASS  without an anchor it still trusts LCP2, as it always did
+  PASS  anchored on the tape it was following, it stays on it
+  PASS  ...and would have stayed even mid-jump
+  PASS  a LEFT order still jumps to the branch
+  PASS  a RIGHT order still takes the other extreme
+  PASS  a crossing holds the track it is on
+  PASS  ...even when the labels put another nearer zero
+  PASS  one track is picked whatever the anchor says
+  PASS  choose() re-selects to the same tape as the follower
+  PASS  the follower stays on its tape through the merge   -43.0 ''
+
+branch: engine
+  PASS  entry tags for a side OR onto one contact   ['000A', '001E']
+  PASS  exit tags likewise
+  PASS  the other side is separate
+  PASS  no tag leaves intent straight
+  PASS  an entry tag latches its direction
+  PASS  and it holds with no further reads
+  PASS  the tag that set it is recorded
+  PASS  the OTHER junction's exit tag does not clear it
+  PASS  its own exit tag does
+  PASS  set_by clears with the latch
+  PASS  the second left junction drives the same coil
+  PASS  and its own exit tag clears it
+  PASS  an unmatched tag is counted, not fatal
+  PASS  and does not disturb the latch
+  PASS  reset() drops intent and set_by
+
+branch: the fork consumes the order
+  PASS  an entry tag still latches the order
+  PASS  ...and the slow zone with it
+  PASS  a single track before the fork does not consume the order   consumed too early
+  PASS  the order survives while the diverter is in view
+  PASS  coming out on a single track consumes it
+  PASS  ...and it is counted
+  PASS  *** but the slow zone SURVIVES the fork ***   the vehicle must stay slow across the whole junction bubble
+  PASS  set_by clears with the order
+  PASS  a diverter seen with NO order cannot arm a pulse
+  PASS  ...so coming out of it changes nothing
+  PASS  ...and the vehicle is still slow through it
+  PASS  the exit tag is what ends the slow zone
+  PASS  losing the tape mid-diverter does not consume the order   a dropout is not the far side of a fork
+  PASS  ...it is consumed when a real single track returns
+  PASS  an undetected fork leaves the order standing
+  PASS  ...and the exit tag still clears it, as it always did
+  PASS  without #LCP the latch behaves exactly as it used to
+
+branch: the U-turn merge, end to end
+  PASS  the order is standing before the fork
+  PASS  the order steers onto the branch   41.0 mm
+  PASS  the fork consumed the order
+  PASS  ...and the bubble is still slow
+  PASS  it follows its tape round the loop   -43.0 mm
+  PASS  *** it stays on its own tape through the merge ***   jumped to -43.0 mm
+  PASS  ...with no slew clamp, because nothing jumped
+  PASS  ...and it is still slow, so the exit tag still has a job
+  PASS  the exit tag ends the bubble
+
+branch: the standing default
+  PASS  with nothing latched the default IS the intent
+  PASS  ...but nothing is actually sealed in
+  PASS  a scan with no pulses leaves it there
+  PASS  a clear contact cannot clear a default
+  PASS  an order still overrides the default
+  PASS  ...and that one IS latched
+  PASS  clearing the order falls back to the default, not to straight
+  PASS  reset() drops orders but keeps the default - disarming does not rebuild the track
+  PASS  an unknown default is refused
+  PASS  straight is still the drawn behaviour, and still the fallback
+  PASS  the engine carries the default through
+  PASS  a diverter driven on the default alone consumes no order   0 fork(s)
+  PASS  ...and the intent is unchanged by it
+  PASS  ...and no tag is credited for it
+  PASS  the tag still orders the other side
+  PASS  the order stands through the diverter
+  PASS  coming out of it consumes the order
+  PASS  ...exactly once   1
+  PASS  on plain tape the default changes nothing - the extreme track in any direction is the only track
+  PASS  ...and that is not reported as unhonoured
+  PASS  at a right-hand diverter it takes the branch - this is the U-turn   {'index': 1, 'pos_mm': -38, 'width': 10}
+  PASS  at a left-hand diverter it degrades to the main track, not the branch
+  PASS  ...and says the order was not honoured, because a standing default is still an intent somebody should hear about
+  PASS  a crossing overrides the default to straight, per the manual
+  PASS  the profile no longer carries the U-turn tag pair   []
+  PASS  ...and takes the U-turn by standing preference instead   left
+  PASS  the standing side maps to an extreme position through the profile's handedness, whichever side it names
+  PASS  no slow zone survives the removal - the junction runs at auto_rpm on the ordinary gains, and a tight U-turn needs neither of those to be true (see run 0018)
+
+branch: a station tag pauses the run
+  PASS  the profile carries station tags   {('outbound', '0010'): {'stop_distance_m': 0.4}, ('inbound', '0011'): {'stop_distance_m': 0.4}}
+  PASS  a station row carries both a distance and a resume window   {'stop_distance_m': 0.4}
+  PASS  from 800 r/min it stops within 10% of 0.4 m   403 mm in 3.22 s
+  PASS  from 1000 r/min it stops within 10% of 0.4 m   409 mm in 2.60 s
+  PASS  a measured stop with no speed asks for no rate
+  PASS  the tag parks the vehicle
+  PASS  *** the run is NOT ended - the latch is kept ***   ending it would close the log and let AUTO disarm the vehicle
+  PASS  ...so no log tail is scheduled
+  PASS  ...and the reason names the station   station 4 tag 0011 - stopping over 0.40 m
+  PASS  it says so once
+  PASS  Start in manual still does nothing at a station
+  PASS  Start at a station schedules the same delay as any other start
+  PASS  ...and nothing moves until it expires
+  PASS  then the run carries on
+  PASS  *** it did NOT start a new run ***   _do_auto_run would reset the PID and open a second log for one lap
+  PASS  a real stop clears the station hold too
+
+branch: slow zone
+  PASS  only the rows that asked for it feed the slow contacts   ['000A'] / ['000B']
+  PASS  a fresh engine is not in a slow zone
+  PASS  the entry tag latches the zone
+  PASS  ...and slow is set with it
+  PASS  it holds across ticks with no read
+  PASS  it survives 50 ticks of silence
+  PASS  an unrelated junction's tags do not end it
+  PASS  a shared direction coil can clear while the zone stands   straight
+  PASS  ...the zone is still latched
+  PASS  its own exit tag ends the zone
+  PASS  ...and slow drops with it
+  PASS  a junction without the flag latches a direction but no zone
+  PASS  a right-hand junction without the flag is likewise not slow
+  PASS  reset() drops the slow zone too
+
+branch: choose
+  PASS  ordered left at a +ve diverter, it takes LCP3
+  PASS  an honoured order is not flagged
+  PASS  ordered left at a -ve diverter, it carries straight on
+  PASS  and the order is flagged unhonoured
+  PASS  a crossing ignores intent and holds LCP2
+  PASS  a crossing is not an unhonoured order
+  PASS  and does not consume the latch
+  PASS  plain tape is never an unhonoured order
+  PASS  no track returns nothing, and is not unhonoured
+
+branch: profile validation
+  PASS  an integer tag is refused - hex text is what tag_of() returns   branch_latch[0].entry_tag: expected a 4-character hex string like "000
+  PASS  a short tag is refused   branch_latch[0].entry_tag: expected 4 hex characters, got '0A'
+  PASS  a non-hex tag is refused   branch_latch[0].entry_tag: expected 4 hex characters, got '00ZZ'
+  PASS  an unknown direction is refused   branch_latch[0].branch: expected 'left' or 'right', got 'up'
+  PASS  entry_tag == exit_tag is refused   branch_latch[0]: entry_tag and exit_tag are both 000A - the same read 
+  PASS  a tag used twice is refused   branch_latch[1].entry_tag: tag 000A is already used by branch_latch[0]
+  PASS  a tag also in ignore_tags is refused   branch_latch[0].entry_tag: 3130 is also in rfid.ignore_tags, so it is 
+  PASS  an unknown row key is refused   branch_latch[0]: unknown key(s) ['x']
+  PASS  a missing row key is refused   branch_latch[0]: missing key(s) ['exit_tag']
+  PASS  slow_speed as a STRING is refused, not silently truthy   branch_latch[0].slow_speed: expected true/false, got 'True'
+  PASS  slow_speed as a number is refused   branch_latch[0].slow_speed: expected true/false, got 1
+  PASS  slow_speed is optional and defaults to false
+  PASS  ...and is carried through when given
+  PASS  an empty table is valid - it ships that way until the real tags are known
+  PASS  lower-case hex normalises, so it cannot become a second tag
+
+branch: follower wiring
+  PASS  straight follows LCP2 through a diverter   -0.003
+  PASS  left follows LCP3   -0.041
+  PASS  on plain tape the order changes nothing   -0.004
+  PASS  the default argument keeps every existing caller working
+  PASS  handedness is read from the profile, not hardcoded
+
+branch: slow zone changes the cruise target
+  PASS  outside a zone the ramp converges on auto_rpm   1000.0 r/min
+  PASS  inside one it converges on auto_slow_rpm   800.0 r/min
+  PASS  ...which is genuinely slower on this profile   800.0 < 1000.0
+  PASS  and back to auto_rpm when the zone ends   1000.0 r/min
+  PASS  entering a zone does not step the base speed   one tick in: 998.4 r/min
+  PASS  the diag says which regime it is in
+  PASS  not running still ramps down inside a zone   995.2 r/min
+  PASS  the default argument keeps every existing caller working
+
+branch: slow zone carries its own gains
+  PASS  the profile actually raises the gain in a zone   11.3 -> 25.0
+  PASS  ...and raises kd with it, or damping collapses   0.94 -> 5.0
+  PASS  the slow pair is sanely damped   zeta 0.609
+  PASS  at the same speed and error the zone's P term scales by the gain ratio   2.208 vs 2.212
+  PASS  the row records which gain set produced it   11.3 / 25.0
+  PASS  a bigger gain commands more yaw for the same error   0.0569 -> 0.1257
+  PASS  _pid defaults to the profile gains   0.0565 0.0565
+
+auto: hold and resume on a lost line
+  PASS  a run on tape is driving
+  PASS  a lost line holds the run   line lost - no track for 75 mm of travel, stopping
+  PASS  ...without latching a fault   None
+  PASS  ...keeping the START latch, because the operator never stopped
+  PASS  ...and the wheels are at zero   (0, 0)
+  PASS  it does not go again the instant the tape reappears
+  PASS  any dropout restarts the window   was 1000.3599999999997
+  PASS  after 2 s of tape it resumes
+  PASS  ...and says so in the event log
+  PASS  the wheels accelerate again   v_base 445 r/min
+  PASS  ...through the ramp rather than in one step   445 r/min at half the ramp (25 ticks)
+  PASS  ending the run drops the hold with it
+
+auto: resume disabled falls back to a latched fault
+  PASS  a lost line still latches a fault when resume is off   line lost - no track for 75 mm of travel, stopping
+  PASS  ...and ends the run
+  PASS  ...with no hold standing
+
+branch: a slow zone reaches the setpoint
+  PASS  a run with no tag read cruises at auto_rpm   1000 r/min
+  PASS  the entry tag latches the zone on the very next tick   True
+  PASS  ...and the branch order with it   left
+  PASS  ...but the speed does not step - the ramp takes it down   1000 r/min
+  PASS  the setpoint settles on auto_slow_rpm inside the zone   800 r/min
+  PASS  the exit tag returns it to auto_rpm   1000 r/min
+  PASS  ...and clears the order too   straight
+  PASS  the zone is logged on the edges only, twice   ['slow zone entered (tag 000A) - 800 r/min', 'slow zone left (tag 000B) - 1000 r/min']
+  PASS  ...and each says which speed it moved to   ['slow zone entered (tag 000A) - 800 r/min', 'slow zone left (tag 000B) - 1000 r/min']
+
+branch: event discipline
+  PASS  the branch emits live in _branch_scan, not _run_autopilot
+  PASS  latching emits once
+  PASS  a held tag does not re-emit for every tick   1 events
+  PASS  and the latch is still set - a held tag must not re-trigger a CLEAR contact either
+  PASS  a sustained unhonoured order emits once   2 events
+  PASS  startup is parked at 2 outbound
+  PASS  reads during dwell cannot advance
+  PASS  2->3 direction
+  PASS  2->3 ignores pass-through station
+  PASS  2 segment 0: high only on long legs
+  PASS  2 segment 0: exit clears high
+  PASS  2 segment 1: high only on long legs
+  PASS  2 segment 1: exit clears high
+  PASS  arrived at physical station 3
+  PASS  3 dwell ignores every further read
+  PASS  3->4 direction
+  PASS  3->4 ignores pass-through station
+  PASS  3 segment 0: high only on long legs
+  PASS  3 segment 0: exit clears high
+  PASS  3 segment 1: high only on long legs
+  PASS  3 segment 1: exit clears high
+  PASS  arrived at physical station 4
+  PASS  4 dwell ignores every further read
+  PASS  4->1 direction
+  PASS  4->1 ignores pass-through station
+  PASS  4 segment 0: high only on long legs
+  PASS  4 segment 0: exit clears high
+  PASS  4 segment 1: high only on long legs
+  PASS  4 segment 1: exit clears high
+  PASS  arrived at physical station 1
+  PASS  1 dwell ignores every further read
+  PASS  1->2 direction
+  PASS  1->2 ignores pass-through station
+  PASS  1 segment 0: high only on long legs
+  PASS  1 segment 0: exit clears high
+  PASS  1 segment 1: high only on long legs
+  PASS  1 segment 1: exit clears high
+  PASS  arrived at physical station 2
+  PASS  2 dwell ignores every further read
+  PASS  one lap counted at point 2
+  PASS  2->3 direction
+  PASS  2->3 ignores pass-through station
+  PASS  2 segment 0: high only on long legs
+  PASS  2 segment 0: exit clears high
+  PASS  2 segment 1: high only on long legs
+  PASS  2 segment 1: exit clears high
+  PASS  arrived at physical station 3
+  PASS  3 dwell ignores every further read
+  PASS  3->4 direction
+  PASS  3->4 ignores pass-through station
+  PASS  3 segment 0: high only on long legs
+  PASS  3 segment 0: exit clears high
+  PASS  3 segment 1: high only on long legs
+  PASS  3 segment 1: exit clears high
+  PASS  arrived at physical station 4
+  PASS  4 dwell ignores every further read
+  PASS  4->1 direction
+  PASS  4->1 ignores pass-through station
+  PASS  4 segment 0: high only on long legs
+  PASS  4 segment 0: exit clears high
+  PASS  4 segment 1: high only on long legs
+  PASS  4 segment 1: exit clears high
+  PASS  arrived at physical station 1
+  PASS  1 dwell ignores every further read
+  PASS  1->2 direction
+  PASS  1->2 ignores pass-through station
+  PASS  1 segment 0: high only on long legs
+  PASS  1 segment 0: exit clears high
+  PASS  1 segment 1: high only on long legs
+  PASS  1 segment 1: exit clears high
+  PASS  arrived at physical station 2
+  PASS  2 dwell ignores every further read
+  PASS  one lap counted at point 2
+  PASS  51 raw reads are one encounter
+  PASS  same value after clearance is another physical encounter
+  PASS  a batch preserves every different tag in order
+  PASS  reconnect does not invent a departure
+  PASS  reconnect discards the old queue
+  PASS  fresh clearance after reconnect rearms the same tag
+  PASS  initial point 2 read AFTER Start is not point 3
+  PASS  standing on departed tag never reparks
+  PASS  entry is processed even without a new sensor frame
+  PASS  exit is processed even without a new sensor frame
+  PASS  outbound passes point 4 without stopping
+  PASS  point 3 starts a dwell in the same run
+  PASS  Start delay keeps arrival direction
+  PASS  cancelled Start cannot advance route
+  PASS  departure at 3 selects inbound
+  PASS  upper U-turn cannot enable high speed
+  PASS  next arrival is point 4
+  PASS  point 4 repeated read is not point 1
+  PASS  inbound entry enables high
+  PASS  line hold preserves stage but clears high
+  PASS  tag while holding cannot advance stage
+  PASS  same tag later arrives at 1
+  PASS  disarm preserves route state
+  PASS  new run continues from 1 toward 2
+  PASS  return to point 2 completes the lap
+  PASS  reconnect clears high and drops pre-baseline encounters
+  PASS  reader loss clears high without advancing
+  PASS  missing encounter sequence stops rather than guessing position
+  PASS  normal to high reaches 2000
+  PASS  speed transition acceleration stays at derived rate
+  PASS  transition retains jerk limiting
+  PASS  high reports normal steering gain
+  PASS  high is visible in diagnostics
+  PASS  exit returns exactly to normal
+  PASS  exit during acceleration retargets without jumping
+  PASS  slow zone overrides high
+  PASS  station stop retains its own deceleration
+  PASS  hard stop overrides high target
+  PASS  stale frame cannot hold a high-speed command forever
+  PASS  sensor silence holds route and clears high
+  PASS  duplicate station IDs refused
+  PASS  unknown station tag refused
+  PASS  bad route direction refused
+  PASS  single-station route refused
+  PASS  ambiguous speed contacts refused
+  PASS  speed and station tags cannot overlap
+  PASS  duplicate qualified stops refused
+  PASS  high below normal refused
+  PASS  high above drive limit refused
+  PASS  zero transition time refused
+  PASS  excessive transition rate refused
+  PASS  nonfinite high speed refused
+  PASS  nonfinite clear interval refused
+  PASS  legacy ignore window refused
+  PASS  branch entry reaches ladder during line hold
+  PASS  line hold still prevents route progress
+  PASS  held encounter is consumed exactly once
+  PASS  branch exit clears slow during drive hold
+  PASS  station dwell does not suppress branch inputs
+  PASS  departure suppression does not suppress branch exit
+  PASS  mid-run reconnect warns once
+  PASS  reconnect warning names possible lost station
+  PASS  reconnect does not invent a station arrival
+  PASS  config API exposes high cruise
+  PASS  config API exposes nominal transition and derived rate
+  PASS  config API exposes route and speed rules
+  PASS  config API exposes tag clearance
+  PASS  too-early equal-value station read rejected
+  PASS  arrival at minimum accepted
+  PASS  genuine departure resets estimated leg distance
+  PASS  resuming mid-leg preserves estimated distance
+  PASS  next station accepted inside window
+  PASS  missed station faults before later equal-valued tag
+  PASS  later point 2 cannot masquerade as point 3 after fault
+  PASS  position fault blocks restart of route in same process
+  PASS  outbound: repeated entry does not reset distance
+  PASS  outbound: missed exit returns to normal at limit
+  PASS  outbound: expiry emits only once
+  PASS  outbound: entry cannot bypass expired zone
+  PASS  outbound: exit rearms next segment
+  PASS  inbound: repeated entry does not reset distance
+  PASS  inbound: missed exit returns to normal at limit
+  PASS  inbound: expiry emits only once
+  PASS  inbound: entry cannot bypass expired zone
+  PASS  inbound: exit rearms next segment
+  PASS  controller logs zone timeout once across repeated scans
+  PASS  distance uses mean wheel feedback, not cruise target
+  PASS  standing vehicle accrues no distance
+  PASS  one stale wheel faults and zeros target
+  PASS  Reset cannot erase lost position confidence
+  PASS  distance fault precedes repeated MLS frame return
+  PASS  long control gap faults even with newly refreshed feedback
+  PASS  reconnect on station faults without consuming arrival
+  PASS  repeated reconnect scan cannot advance route
+  PASS  RFID disconnection faults without waiting for reconnect
+  PASS  missing stop rule produces fault rather than exception
+  PASS  fully specified synthetic limits load
+  PASS  permitted high-speed stop rate passes derived validation
+  PASS  enabled guard rejects unknown measurements
+  PASS  guard rejects inverted arrival window
+  PASS  guard rejects missing route leg
+  PASS  guard rejects duplicate leg ID
+  PASS  guard rejects negative zone length
+  PASS  guard rejects nonfinite zone length
+  PASS  guard rejects unknown settings
+  PASS  guard rejects high-speed stop above measured deceleration limit
+  PASS  guard rejects deceleration above drive configuration
+  PASS  API exposes disabled guard and unmeasured limits honestly
+  PASS  station Start refuses stale feedback without thread exception
+  PASS  station reached with high latch clears high and uses approach speed
+  PASS  guarded approach rate fits the configured measured limit
+  PASS  station dwell and stopped run do not accrue distance
+  PASS  runner exits nonzero for uncaught worker-thread exception
+  PASS  startup is explicitly an assumed position
+  PASS  display sequence comes from profile
+  PASS  missing drive status cannot prove stopped
+  PASS  fresh stopped bits prove stopped display state
+  PASS  one moving wheel prevents dwell wording
+  PASS  old status cannot prove stopped or moving
+  PASS  departed-tag suppression is structured
+  PASS  high selection is a controller outcome
+  PASS  normal selection is a controller outcome
+  PASS  pass-through read does not claim arrival
+  PASS  accepted tag names physical station
+  PASS  first arrival clears initial assumption
+  PASS  station 3 displays next departure direction separately
+  PASS  processed encounter age survives later polls
+  PASS  held route outcome does not pretend to be an arrival
+  PASS  reconnect clears old processed outcome
+  PASS  restart shows point 2 outbound before any read
+  PASS  every batched tag still reaches the ladder exactly once
+  PASS  batch reports the LAST processed encounter, not the first
+  PASS  batched pass-through never claims arrival
+  PASS  repeated pass-through read stays a non-event
+  PASS  early equal-valued read is rejected, not an arrival
+  PASS  a rejected read leaves the route stage alone
+  PASS  the correct later tag is accepted inside the window
+  PASS  accepted arrival advances the displayed stage
+
+U-turn geometry
+  PASS  180 deg is track/(2*D) wheel turns of counts at 36,000 P/R x gear ratio   1461000
+  PASS  encoder counts read back as a 180 deg pivot   180.000
+  PASS  clockwise travel is positive progress for a cw turn
+  PASS  INT32 wrap is the short way round
+
+U-turn closed loop, both directions
+  PASS  ccw: finishes centred on the far tape   done e=-9.986149715894962 None
+  PASS  ccw: ends near 180 deg by encoder   174.1
+  PASS  ccw: the tape left the sensor before reacquisition
+  PASS  ccw: pivots in place at auto_u_turn_rpm, correct way
+  PASS  ccw: centring never exceeds half spin speed
+  PASS  ccw: holds inside tolerance for the resume delay   1.0000000000000004
+  PASS  cw: finishes centred on the far tape   done e=9.98614971589492 None
+  PASS  cw: ends near 180 deg by encoder   174.1
+  PASS  cw: the tape left the sensor before reacquisition
+  PASS  cw: pivots in place at auto_u_turn_rpm, correct way
+  PASS  cw: centring never exceeds half spin speed
+  PASS  cw: holds inside tolerance for the resume delay   1.0000000000000004
+
+U-turn gates and failures
+  PASS  tape seen before u_turn_min_deg is not the far side
+  PASS  a much weaker track is not the tape the spin started on
+  PASS  a similar-strength track past the gate starts centring
+  PASS  no reacquisition by u_turn_max_deg faults   U-turn tape not reacquired within 225 deg
+  PASS  a tape that never left the sensor cannot end the pivot
+  PASS  encoder travel against the command faults   U-turn encoder angle -30 deg opposes the commanded ccw spin
+  PASS  a frozen counter faults on the time budget   U-turn spin exceeded 30 s at 0 deg by encoder
+  PASS  centring turns against the error, like the follower's -K*e   omega=-0.05805818045648488
+  PASS  and the other way for the opposite error
+  PASS  tape lost while centring faults rather than guessing   U-turn tape lost while centring
+  PASS  leaving the band during the delay re-enters centring
+
+U-turn configuration
+  PASS  the profile's U-turn tags load   {'0030': 'cw', '0031': 'ccw'}
+  PASS  the removed enabled key is refused   u_turn[0]: expected exactly ['direction', 'tag']
+  PASS  direction must be cw or ccw   u_turn[0].direction must be cw or ccw
+  PASS  a station tag cannot also be a U-turn tag   u_turn[0].tag: tag 0010 is ignored or assigned to another rule type
+  PASS  a speed tag cannot also be a U-turn tag   u_turn[0].tag: tag 0020 is ignored or assigned to another rule type
+  PASS  a U-turn tag listed twice is refused   u_turn[1].tag: 0030 is listed twice
+  PASS  min angle must stay short of 180   u_turn angles need 0 < u_turn_min_deg < 180 < u_turn_max_deg <= 360
+  PASS  max angle must pass 180   u_turn angles need 0 < u_turn_min_deg < 180 < u_turn_max_deg <= 360
+  PASS  a zero pivot speed is refused   auto_u_turn_rpm must be in (0, motor_max_rpm]
+  PASS  level tolerance is a 0-7 grade   u_turn_level_tolerance must be a track-level grade in 0..7
+  PASS  /api/config exposes the U-turn tags
+
+U-turn on the CAN thread
+  PASS  a U-turn tag begins a measured stop, not a route event
+  PASS  the U-turn tag leaves the high-speed latch alone
+  PASS  the processed encounter names the U-turn
+  PASS  route tags are held off while a U-turn is in progress
+  PASS  the snapshot reports the stop before the pivot
+  PASS  the U-turn completes without a fault   {'active': False, 'phase': 'done', 'direction': 'ccw', 'angle_deg': 174.12320328542262, 'tape_lost': True, 'reason': None, 'tag': '0031'} fault=None
+  PASS  the vehicle ends 180 deg round, centred on tape   yaw=174.1 e=-9.984274601299372
+  PASS  the pivot was commanded at auto_u_turn_rpm, wheels opposed
+  PASS  no wheel moved before the drives reported standstill
+  PASS  line following resumes forward after the delay   (0.2020044076258237, 0.02064290860675018)
+  PASS  driving back over its own tag does not turn again
+  PASS  after that one pass the tag is armed again
+
+U-turn interruptions
+  PASS  the pivot is under way
+  PASS  a hold mid-pivot ends the run with a fault, never a resume   U-turn interrupted by a hold; align the AGV on the tape and restart
+  PASS  the last U-turn state is kept for the display
+  PASS  no encoder scale refuses to pivot, with the reason   U-turn needs the drive encoder scale (608Fh/6091h) read at arming; align the AGV on the tape and restart
+  PASS  Reset cancels a U-turn quietly, keeping why
+  PASS  encoder scale is 608Fh x vehicle.gear_ratio
+  PASS  a drive that applies the same gear ratio agrees
+  PASS  a drive gear ratio that disagrees with the profile is refused
+  PASS  an unreadable resolution is refused
+
+/blind U-turn: 180 on the tape, 90 on the encoder
+  PASS  only 90 and 180 degrees   U-turn angle_deg must be one of (90, 180)
+  PASS  an angle that is not a number is refused   U-turn angle_deg must be one of (90, 180)
+  PASS  direction must be cw or ccw   U-turn direction must be cw or ccw
+  PASS  no encoder scale, no turn   encoder scale unknown
+  PASS  180 ends on the tape and has no encoder pivot
+  PASS  90 cw is a blind-run pivot of -90 deg at auto_u_turn_rpm, ending on the encoder   {'angle_deg': -90.0}
+  PASS  a U-turn starts only spinning or centring
+  PASS  a U-turn started in CENTER centres on the tape it is given
+  PASS  180 ccw: done, centred on the far tape by the MLS   done None e=-9.986149715894962
+  PASS  180 ccw: about 180 deg the commanded way, tape lost first   174.1
+  PASS  90 ccw on a straight tape: done on the encoder, not centred   done None
+  PASS  90 ccw: within a degree of 90 the commanded way   89.82 yaw=89.82
+  PASS  90 ccw: never faster than auto_u_turn_rpm   200.0000000000002
+  PASS  90 ccw at a junction: centres on the crossing tape   done e=9.969990423284171
+  PASS  180 cw: done, centred on the far tape by the MLS   done None e=9.98614971589492
+  PASS  180 cw: about 180 deg the commanded way, tape lost first   174.1
+  PASS  90 cw on a straight tape: done on the encoder, not centred   done None
+  PASS  90 cw: within a degree of 90 the commanded way   89.82 yaw=-89.82
+  PASS  90 cw: never faster than auto_u_turn_rpm   200.0000000000002
+  PASS  90 cw at a junction: centres on the crossing tape   done e=9.989909000724131
+  PASS  180 that never finds the tape again fails by u_turn_max_deg   U-turn tape not reacquired within 225 deg
+  PASS  a frozen counter fails the 90 pivot on its time budget, naming it   90 deg pivot: segment 1 exceeded its time budget at 0.000 m of 0.382 m
+  PASS  abort stops a turn and keeps why
+  PASS  a finished turn stays finished
+
+/blind U-turn on the CAN thread: web sets, panel runs, tape required
+  PASS  no U-turn without an encoder scale   encoder scale unknown - put the selector in MANUAL so the vehicle arms and reads 608Fh/6091h
+  PASS  a 45 deg turn is refused   U-turn angle_deg must be one of (90, 180)
+  PASS  setting a U-turn replaces the move and moves nothing
+  PASS  Start with no tape under the MLS is ignored, and says why
+  PASS  Start with the tape arms the start delay
+  PASS  tape gone by the end of the delay: no turn, no fault, plan kept
+  PASS  the turn begins after the delay
+  PASS  jogging is refused during a U-turn
+  PASS  180 ccw completes centred, setpoint zeroed, no fault   {'kind': 'u_turn', 'phase': 'done', 'reason': None, 'angle_deg': 180, 'direction': 'ccw', 'end': 'tape', 'turned_deg': 174.12320328542262, 'tape_lost': True, 'centred': True} e=-9.984274601299372
+  PASS  ...having pivoted about 180 deg ccw at auto_u_turn_rpm
+  PASS  the U-turn survives the run for a repeat
+  PASS  90 cw on a straight tape completes on the encoder, not centred   {'kind': 'u_turn', 'phase': 'done', 'reason': None, 'angle_deg': 90, 'direction': 'cw', 'end': 'encoder', 'turned_deg': 89.81963039014411, 'tape_lost': False, 'centred': False} yaw=-89.82
+  PASS  Reset stops a U-turn quietly and keeps the plan   {'kind': 'u_turn', 'phase': 'failed', 'reason': 'stopped from panel (Reset)', 'angle_deg': 180, 'direction': 'cw', 'end': 'tape', 'turned_deg': 5.618069815195072, 'tape_lost': False, 'centred': None}
+  PASS  web Stop stops a U-turn
+  PASS  a silent MLS stops a U-turn without latching a fault
+  PASS  a selector move stops a U-turn
+  PASS  180 with the far tape missing stops by u_turn_max_deg, no fault latched
+
+blind run plan maths
+  PASS  1 m straight is counts_per_wheel_rev / (pi*D) on both wheels   [1909859, 1909859] vs 1909859
+  PASS  ...and commands 1 m with no heading change
+  PASS  a negative distance reverses both wheels
+  PASS  a 90 deg pivot matches the U-turn geometry, wheels opposed
+  PASS  ...and is +90 deg (counter-clockwise)
+  PASS  a left arc runs the right wheel faster by (R+T/2)/(R-T/2)
+  PASS  ...and ends 1 m forward, 1 m left, heading +90
+  PASS  a negative radius turns right
+  PASS  the speed names the centre path; the outer wheel runs faster
+  PASS  pulses pass through unchanged, in driver terms
+  PASS  ...and their heading follows from the wheel difference
+  PASS  an unknown kind is refused   segment 1: kind must be one of straight, arc, pivot, pulses
+  PASS  a move of nothing is refused   segment 1: moves nothing
+  PASS  a wheel beyond max_distance_m is refused   segment 1: a wheel would travel 11.00 m, above blind_run.max_distance_m (10 m)
+  PASS  an arc tighter than half the track is refused   segment 1: |radius_m| must be at least half the track (0.243 m); use a pivot to turn tighter
+  PASS  a speed that pushes the faster wheel past max_rpm is refused   segment 1: the faster wheel would need 1630 r/min, above blind_run.max_rpm (1000)
+  PASS  too many segments are refused   at most 8 segments
+  PASS  a speed must name its unit   speed must be {speed_mps: n} or {motor_rpm: n}
+  PASS  a non-finite value is refused   segment 1: distance_m must be finite
+  PASS  no encoder scale, no plan   encoder scale unknown
+
+blind run closed loop on an ideal plant
+  PASS  a 1 m straight completes and records its counts at rest   done None
+  PASS  both wheels end within the stop tolerance   [-1900, -1900]
+  PASS  encoder distance agrees with the counts it came from
+  PASS  an arc completes with both wheels on target   [-967, -1590]
+  PASS  ...the wheels stay in step the whole way   0.0000
+  PASS  ...and the encoder heading is the planned 90 deg   89.962
+  PASS  a 1 m square counter-clockwise closes on the start by encoder   done x=0.0000 y=-0.0000 h=360.000
+  PASS  a 1 m square clockwise closes on the start by encoder   done x=-0.0000 y=0.0000 h=-360.000
+  PASS  the live pose is the composition of the recorded segments
+  PASS  counts are never recorded without a standstill verdict   segment 1: drives did not report standstill
+  PASS  running past the target by the margin aborts   segment 1 overran: 0.515 m of 0.500 m by encoder
+  PASS  a frozen counter aborts on the time budget   segment 1 exceeded its time budget at 0.000 m of 0.500 m
+
+blind run on the CAN thread: web sets, panel runs
+  PASS  no plan without an encoder scale   encoder scale unknown - put the selector in MANUAL so the vehicle arms and reads 608Fh/6091h
+  PASS  Start in MANUAL with no plan is ignored
+  PASS  setting a plan moves nothing
+  PASS  Start in MANUAL with a plan arms the start delay
+  PASS  jogging is refused while a blind start is pending
+  PASS  nothing moves before the delay
+  PASS  the run begins after the delay
+  PASS  the plan cannot be changed mid-run
+  PASS  the run completes and publishes its segment   {'phase': 'done', 'reason': None, 'segment': 1, 'segments': 1, 'kind': 'straight', 'target_m': [0.3, 0.3], 'progress_m': [0.29917386840135607, 0.29917386840135607], 'speed_mps': 0.0, 'pose': {'x_m': 0.29917386840135607, 'y_m': 0.0, 'heading_deg': 0.0}, 'completed': 1}
+  PASS  the result row carries blank-for-operator context
+  PASS  the plan survives the run for a repeat
+  PASS  Reset stops a blind run and keeps the plan   {'phase': 'aborted', 'reason': 'stopped from panel (Reset)', 'segment': 1, 'segments': 1, 'kind': 'straight', 'target_m': [2.0, 2.0], 'progress_m': [0.007162831250184729, 0.007162831250184729], 'speed_mps': 0.03769911184304494, 'pose': {'x_m': 0.007162831250184729, 'y_m': 0.0, 'heading_deg': 0.0}, 'completed': 0}
+  PASS  ...with the setpoint zeroed
+  PASS  web Stop stops a blind run
+  PASS  web Stop cancels a pending blind start
+  PASS  a selector move stops a blind run
+  PASS  lost 6064h feedback stops the run
+  PASS  panel scans keep a blind run's watchdog alive
+
+MLS IMU is decoded for display only
+  PASS  angles are 1/10000 rad per bit, signed
+  PASS  acceleration is 2^-11 g per bit, signed
+  PASS  angular rate is 125*2^-11 deg/s per bit
+  PASS  temperature is a signed byte
+  PASS  a V5 MLS with MEMS on reports its IMU   {'roll_deg': 0.0, 'pitch_deg': 0.0, 'yaw_deg': 0.0, 'accel_mps2': [0.0, 0.0, 0.0], 'gyro_dps': [0.0, 0.0, 0.0], 'temp_c': 25, 'available': True, 'reason': None, 'read_at': 50.5}
+  PASS  MEMS off is named, not faked
+  PASS  no 2006h:02 answer means no IMU on this firmware
+  PASS  an MLS that is not streaming is not polled
+  PASS  the IMU poll never writes the MLS
+  PASS  the snapshot carries it with an age
+
+the blind-run page sets a plan and cannot start the wheels
+  PASS  /blind renders
+  PASS  no control on the page is a start   ['link', 'wifi', 'wifi-bars', 'wifi-dbm', 'telemetry', 'batt', 'batt-note', 'vstate', 'vstate-note', 'rpm-1', 'rpm-2', 'setpoint', 'setpoint-mps', 'alarm', 'alarm-note', 'zone-rail', 'rail-z-0', 'rail-z-1', 'rail-z-2', 'rail-z-note', 'st-1', 'st-2', 'log', 'panel-strip', 'pn-sel', 'pn-act', 'pn-fault', 'blind-status', 'blind-status-note', 'blind-segments', 'blind-add', 'blind-speed', 'blind-speed-unit', 'blind-set', 'blind-clear', 'blind-error', 'blind-plan-note', 'blind-plan', 'br-phase', 'br-seg', 'br-left', 'br-left-t', 'br-right', 'br-right-t', 'br-pose', 'br-speed', 'br-tape', 'blind-log', 'blind-results', 'imu-status', 'imu-rp', 'imu-yaw', 'imu-acc', 'imu-gyro', 'imu-temp', 'imu-age']
+  PASS  ...and it says where Start is
+  PASS  the page does not claim the heartbeat
+  PASS  blind.js POSTs only to the plan endpoints   ['/api/blind/clear', '/api/blind/plan', '/api/blind/turn']
+  PASS  the page offers exactly the four U-turns it may set
+  PASS  there is no blind start route
+  PASS  ...defined anywhere
+  PASS  setting a plan without an encoder scale is refused with the reason
+  PASS  setting a U-turn without an encoder scale is refused with the reason
+  PASS  every page links to it
+
+mission files: selection and the empty template
+  PASS  the profile names its mission   gy-demo
+  PASS  the default load uses it
+  PASS  the empty template loads with nothing site-specific
+  PASS  ...with null site speeds and no switch rate
+  PASS  ...and it is exactly the built-in empty mission
+  PASS  /params still renders every section with rows   []
+  PASS  /api/config names the mission and its file
+  PASS  AGV_MISSION overrides the profile's mission
+  PASS  profile mission null loads the built-in empty mission, no file needed
+  PASS  a missing mission names the env var and what exists   no mission at /home/gvipc-evo-01/agv_can/missions/no-such-mission.json. Set the profile's "mission" 
+  PASS  mission_name must match the file name   mission_name is 'gy-demo' but the file is other-site.json - rename one to match the other
+  PASS  a blank mission name is refused   mission: expected a mission name like "gy-demo", or null for no mission
+  PASS  the real profile and mission are restored
+
+mission validation
+  PASS  a site speed left in the profile is refused   autopilot: unknown key(s) ['auto_rpm_high']
+  PASS  a mission table left in the profile is refused   unknown top-level key(s): ['u_turn']
+  PASS  an unknown mission key is refused   mission: unknown key(s) ['extra']
+  PASS  a missing mission key is refused   mission: missing key(s) ['u_turn']
+  PASS  high-speed rules need both site speeds   mission speed.auto_rpm_high and speed.speed_switch_accel_decel_s are required when high_speed_mode has rules
+  PASS  a mission tag the reader ignores is refused   u_turn[0].tag: tag 3130 is ignored or assigned to another rule type
+  PASS  a one-station route is refused   route must contain at least two stations, or none; first is initial position
+  PASS  a route-less mission loads, stops matched by tag
+  PASS  a routed mission needs no tag-only stop table
+  PASS  without a route, a reversed speed pair is refused   high_speed_mode: tag(s) ['0020', '0021'] both set and reset high speed; without a route there is no direction, so each tag must be entry-only or exit-only
+  PASS  without a route, route_guard cannot be enabled   route_guard cannot be enabled without a route
+  PASS  without a route, one tag cannot have two stop distances   stop_until_start_button: tag 0010 has two stop distances; without a route there is no direction to choose between them
+
+auto without a route in the mission
+  PASS  an empty mission reports the route as disabled
+  PASS  with an empty mission a tag is not a station
+  PASS  a speed entry tag selects high speed without a route
+  PASS  ...and the exit clears it
+  PASS  a station tag still stops the run, named by its tag
+  PASS  Start resumes with the departed tag suppressed
+  PASS  ...so the tag it is still standing on does not stop it again
+  PASS  a U-turn tag still starts a U-turn
+
+the parameters page displays and cannot edit
+  PASS  the params page renders
+  PASS  it names the profile and the file it came from
+  PASS  it is reachable from every page
+  PASS  there are no controls
+  PASS  the page makes no POST
+  PASS  ...and no request of any kind
+  PASS  there is no endpoint that writes a profile
+  PASS  the params page does not claim the heartbeat
+  PASS  every parameter in the schema reaches the page   []
+  PASS  derived values are shown apart, as underivable from the JSON
+  PASS  a tuning note reaches the page
+  PASS  ...from config.py, not from the template
+
+the parameters page reads speed first
+  PASS  the gathered blocks lead   ['speed', 'rfid rules', 'route']
+  PASS  then the control law, then the geometry   ['autopilot', 'vehicle', 'plot']
+  PASS  both manual jog speeds are there   ['manual.full_rpm', 'manual.half_ratio', 'manual.spin_ratio', 'autopilot.auto_rpm', 'mission.speed.auto_rpm_high', 'autopilot.auto_u_turn_rpm', 'mission.speed.speed_switch_accel_decel_s', 'autopilot.auto_slow_rpm', 'drivers.ramp.manual.accel', 'drivers.ramp.manual.decel', 'drivers.ramp.auto.accel', 'drivers.ramp.auto.decel']
+  PASS  both auto speeds are there, slow included
+  PASS  and the driver ramps that shape them
+  PASS  every gathered row names the section it lives in, so it can be found in the JSON   ['manual.full_rpm', 'manual.half_ratio', 'manual.spin_ratio', 'autopilot.auto_rpm', 'mission.speed.auto_rpm_high', 'autopilot.auto_u_turn_rpm', 'mission.speed.speed_switch_accel_decel_s', 'autopilot.auto_slow_rpm', 'drivers.ramp.manual.accel', 'drivers.ramp.manual.decel', 'drivers.ramp.auto.accel', 'drivers.ramp.auto.decel']
+  PASS  no parameter is printed twice   []
+  PASS  ...and none is lost by being moved   []
+  PASS  an emptied section is dropped, not shown blank   ['speed', 'rfid rules', 'route', 'route guard', 'mission', 'autopilot', 'vehicle', 'plot', 'drivers', 'rfid', 'dio', 'lidar', 'panel', 'horn', 'can', 'monitor', 'timing', 'blind_run', 'derived']
+  PASS  the page renders the gathered section first
+  PASS  ...and says where those keys actually live
+
+the parameters page lists the RFID rules
+  PASS  the block sits directly after speed   ['speed', 'rfid rules', 'route']
+  PASS  there are 8 rule types   ['1 · branch latch', '2 · stop until start button', '3 · high speed', '4 · u-turn', '5 · undefined rule 1', '6 · undefined rule 2', '7 · undefined rule 3', '8 · undefined rule 4']
+  PASS  the implemented ones are named first   ['1 · branch latch', '2 · stop until start button']
+  PASS  the U-turn table takes the fourth slot   ['4 · u-turn']
+  PASS  the rest are numbered free slots   ['5 · undefined rule 1', '6 · undefined rule 2', '7 · undefined rule 3', '8 · undefined rule 4']
+  PASS  station tag 0010 is listed   ['1 · branch latch', '└ mission.branch_default', '2 · stop until start button', '└ inbound 0011', '└ outbound 0010', '3 · high speed', '└ outbound 0020 -> 0021', '└ inbound 0021 -> 0020', '4 · u-turn', '└ 0030', '└ 0031', '5 · undefined rule 1', '6 · undefined rule 2', '7 · undefined rule 3', '8 · undefined rule 4']
+  PASS  station tag 0011 is listed   ['1 · branch latch', '└ mission.branch_default', '2 · stop until start button', '└ inbound 0011', '└ outbound 0010', '3 · high speed', '└ outbound 0020 -> 0021', '└ inbound 0021 -> 0020', '4 · u-turn', '└ 0030', '└ 0031', '5 · undefined rule 1', '6 · undefined rule 2', '7 · undefined rule 3', '8 · undefined rule 4']
+  PASS  the standing branch default is listed with the junction rules   ['1 · branch latch', '└ mission.branch_default', '2 · stop until start button', '└ inbound 0011', '└ outbound 0010', '3 · high speed', '└ outbound 0020 -> 0021', '└ inbound 0021 -> 0020', '4 · u-turn', '└ 0030', '└ 0031', '5 · undefined rule 1', '6 · undefined rule 2', '7 · undefined rule 3', '8 · undefined rule 4']
+  PASS  ...and is on the page, not just in the model
+  PASS  the junction table is not also listed on its own   ['speed', 'rfid rules', 'route', 'route guard', 'mission', 'autopilot', 'vehicle', 'plot', 'drivers', 'rfid', 'dio', 'lidar', 'panel', 'horn', 'can', 'monitor', 'timing', 'blind_run', 'derived']
+  PASS  it renders
+  PASS  ...and explains direction-qualified rules
+  PASS  ...and counts the tags in use
+
+the landing page is /auto and the pill says armed
+  PASS  the bare address redirects   302
+  PASS  ...to /auto   /auto
+  PASS  the pill shows armed state
+  PASS  a silent driver still outranks it
+  PASS  ...and so does a missing bus
+  PASS  the bus identity is no longer in the pill
+  PASS  /monitor carries the bus identity instead
+  PASS  ...fed from /api/can, which does not claim the watchdog
+  PASS  /manual does not carry the bus tile
+  PASS  /auto does not carry the bus tile
+  PASS  /blind does not carry the bus tile
+  PASS  /io does not carry the bus tile
+  PASS  /lidar does not carry the bus tile
+  PASS  /alarms does not carry the bus tile
+  PASS  /params does not carry the bus tile
+
+the web app cannot start the vehicle
+  PASS  POST /api/arm is gone   404
+  PASS  POST /api/auto/run is gone   404
+  PASS  POST /api/disarm still resolves
+  PASS  POST /api/stop still resolves
+  PASS  POST /api/drive still resolves
+  PASS  POST /api/restart is registered
+  PASS  ...and is POST-only, so a link cannot trigger it
+  PASS  no arm route is defined at all
+  PASS  no auto-run route is defined at all
+  PASS  the auto page has no controls
+  PASS  ...and says where they went
+  PASS  the manual page keeps DISARM
+  PASS  ...but cannot arm
+  PASS  ...and says arming happens at the panel
+  PASS  auto.js has no reference to runBtn
+  PASS  auto.js has no reference to armBtn
+  PASS  auto.js has no reference to /api/arm
+  PASS  auto.js has no reference to /api/auto/run
+
+the monitoring page cannot hold a run alive
+  PASS  /api/state alone does NOT refresh the watchdog   0 refresh(es)
+  PASS  /api/can does NOT refresh the watchdog
+  PASS  /api/state?hb=1 DOES refresh the watchdog
+  PASS  the auto page claims the heartbeat
+  PASS  the monitor page does not
+  PASS  the claim is declared before common.js polls
+  PASS  common.js only sends hb=1 when the page claims it
+  PASS  the monitor page renders
+  PASS  it publishes the write deny-list
+  PASS  it has no controls
+
+the lidar page is read-only and fails loud
+  PASS  the lidar page renders
+  PASS  the only control is the scan toggle   ['scan-toggle']
+  PASS  ...and it moves nothing
+  PASS  it publishes the real protective range
+  PASS  /api/lidar resolves
+  PASS  /api/lidar does NOT refresh the watchdog
+  PASS  there is no POST counterpart
+  PASS  the lidar page does not claim the heartbeat
+  PASS  staleness lights the zone lamps rather than dimming them
+  PASS  ...and stale is tested before validity and before the paths
+  PASS  an unreadable path is not rendered as clear
+  PASS  clear is the ONLY branch that leaves the lamp off   1
+  PASS  the page states the bearing convention is unverified
+
+the manual page shows the station tag
+  PASS  /manual carries id="r-tag"
+  PASS  /manual carries id="r-age"
+  PASS  /manual carries id="r-count"
+  PASS  /manual carries id="r-link"
+  PASS  ...and says what it is
+  PASS  showRfid is defined in common.js
+  PASS  ...and not in auto.js
+  PASS  common.js calls it from the shared poll
+  PASS  auto.js has no reference to runBtn
+  PASS  auto.js has no reference to armBtn
+  PASS  auto.js has no reference to /api/arm
+  PASS  auto.js has no reference to /api/auto/run
+  PASS  auto.js has no reference to r-branch
+  PASS  /manual still does not claim the heartbeat
+  PASS  /manual still cannot arm
+  PASS  /manual still keeps DISARM
+
+the shared rail carries what an operator needs
+  PASS  /manual carries id="batt"
+  PASS  /manual carries id="vstate"
+  PASS  /manual carries id="alarm"
+  PASS  /manual carries id="zone-rail"
+  PASS  /manual does NOT carry id="loop-work"
+  PASS  /manual does NOT carry id="loop-frames"
+  PASS  /manual does NOT carry id="wd"
+  PASS  /auto carries id="batt"
+  PASS  /auto carries id="vstate"
+  PASS  /auto carries id="alarm"
+  PASS  /auto carries id="zone-rail"
+  PASS  /auto does NOT carry id="loop-work"
+  PASS  /auto does NOT carry id="loop-frames"
+  PASS  /auto does NOT carry id="wd"
+  PASS  /blind carries id="batt"
+  PASS  /blind carries id="vstate"
+  PASS  /blind carries id="alarm"
+  PASS  /blind carries id="zone-rail"
+  PASS  /blind does NOT carry id="loop-work"
+  PASS  /blind does NOT carry id="loop-frames"
+  PASS  /blind does NOT carry id="wd"
+  PASS  /io carries id="batt"
+  PASS  /io carries id="vstate"
+  PASS  /io carries id="alarm"
+  PASS  /io carries id="zone-rail"
+  PASS  /io does NOT carry id="loop-work"
+  PASS  /io does NOT carry id="loop-frames"
+  PASS  /io does NOT carry id="wd"
+  PASS  /lidar carries id="batt"
+  PASS  /lidar carries id="vstate"
+  PASS  /lidar carries id="alarm"
+  PASS  /lidar carries id="zone-rail"
+  PASS  /lidar does NOT carry id="loop-work"
+  PASS  /lidar does NOT carry id="loop-frames"
+  PASS  /lidar does NOT carry id="wd"
+  PASS  /alarms carries id="batt"
+  PASS  /alarms carries id="vstate"
+  PASS  /alarms carries id="alarm"
+  PASS  /alarms carries id="zone-rail"
+  PASS  /alarms does NOT carry id="loop-work"
+  PASS  /alarms does NOT carry id="loop-frames"
+  PASS  /alarms does NOT carry id="wd"
+  PASS  /params carries id="batt"
+  PASS  /params carries id="vstate"
+  PASS  /params carries id="alarm"
+  PASS  /params carries id="zone-rail"
+  PASS  /params does NOT carry id="loop-work"
+  PASS  /params does NOT carry id="loop-frames"
+  PASS  /params does NOT carry id="wd"
+  PASS  /monitor carries id="batt"
+  PASS  /monitor carries id="vstate"
+  PASS  /monitor carries id="alarm"
+  PASS  /monitor carries id="zone-rail"
+  PASS  /monitor carries id="loop-work"
+  PASS  /monitor carries id="loop-frames"
+  PASS  /monitor carries id="wd"
+  PASS  common.js writes the watchdog through a guarded setter
+  PASS  ...and the setpoint too
+  PASS  renderLoopHealth returns early when its tiles are absent
+  PASS  the alarm verdict is computed server-side
+  PASS  the battery summary is computed server-side
+  PASS  both reach the browser through the state snapshot
+
+the lidar scan is off by default
+  PASS  the toggle starts in the off state
+  PASS  ...and says so
+  PASS  scanOn starts false
+  PASS  the page initialises through setScan(false), not a bare poll
+  PASS  a poll while off makes NO request at all
+  PASS  hiding the tab stops the scan
+  PASS  toggling clears the held cloud
+  PASS  an off scan says so rather than reading as an empty room
+  PASS  the zone lamps are painted from /api/state, not from the cloud
+
+the alarms page records and cannot clear
+  PASS  the alarms page renders
+  PASS  it is reachable from every page
+  PASS  a latched fault says it is cleared at the panel
+  PASS  no id="ack" control on the page
+  PASS  no id="clear" control on the page
+  PASS  no acknowledge control on the page
+  PASS  no Acknowledge control on the page
+  PASS  the only endpoint the page POSTs to is the restart   ['/api/restart']
+  PASS  there is no endpoint that clears a fault or an alarm
+  PASS  events.clear is not reachable from the web
+  PASS  the restart is refused while armed
+  PASS  ...and refuses when nothing would restart the process
+  PASS  the page says it de-energises the drives
+  PASS  lv-info is styled
+  PASS  lv-warn is styled
+  PASS  lv-error is styled
+  PASS  the level is also printed as text
+  PASS  colour is carried by a left bar, not a fill alone
+  PASS  info and warn are filterable
+  PASS  errors are not
+  PASS  the filter always keeps errors
+  PASS  event text is set through textContent, not innerHTML
+
+the wifi indicator reports and does not act
+  PASS  a strong link is four bars
+  PASS  the -67 dBm voice/video floor is inside two bars
+  PASS  a marginal link is one bar
+  PASS  below -80 dBm is none
+  PASS  not associated is none
+  PASS  bars never rise as the signal falls   [4, 4, 4, 4, 4, 4, 3, 3, 2, 1, 1, 0, 0]
+  PASS  a normal row parses   [{'iface': 'wlp1s0', 'quality': 70.0, 'dbm': -39.0}]
+  PASS  the trailing dot is not read as a decimal point
+  PASS  an unassociated interface reports no dBm rather than 0   [{'iface': 'wlan9', 'quality': 0.0, 'dbm': None}]
+  PASS  ...and therefore no bars
+  PASS  a truncated line is skipped, not raised on
+  PASS  a machine with no radio reports present=False
+  PASS  ...so the indicator hides rather than showing zero bars
+  PASS  /api/state carries the wifi block
+  PASS  ...with present
+  PASS  ...with bars
+  PASS  ...with dbm
+  PASS  ...with weak
+  PASS  the wifi merge did not make /api/state feed the watchdog
+  PASS  the bus thread knows nothing about wifi
+  PASS  the module opens nothing but /proc
+  PASS  ...and cannot write anywhere
+  PASS  renderWifi returns early when the header element is absent
+  PASS  ...and is called from the shared poll
+  PASS  /manual carries the indicator
+  PASS  /manual starts it hidden
+  PASS  /auto carries the indicator
+  PASS  /auto starts it hidden
+  PASS  /io carries the indicator
+  PASS  /io starts it hidden
+  PASS  /lidar carries the indicator
+  PASS  /lidar starts it hidden
+  PASS  /alarms carries the indicator
+  PASS  /alarms starts it hidden
+  PASS  /monitor carries the indicator
+  PASS  /monitor starts it hidden
+
+the I/O page cannot command an output
+  PASS  no coil route is defined
+  PASS  no output route is defined
+  PASS  POST /api/do is not a route
+  PASS  POST /api/coil is not a route
+  PASS  POST /api/horn is not a route
+  PASS  POST /api/output is not a route
+  PASS  io.js posts nothing
+  PASS  ...and binds no handler
+  PASS  the I/O page has no controls
+  PASS  ...and says who does command the outputs
+  PASS  the page renders which coils are claimed
+  PASS  io.js reads the claim out of the snapshot
+
+the horn warns and nothing waits for it
+  PASS  the horn is on a real coil
+  PASS  ...and that channel is labelled on the /io page - an unnamed lamp beside a device that makes noise is a trap   Horn
+  PASS  the horn is written in one place and never read back into a decision   only _update_horn touches it
+  PASS  _do_arm() does not consult the horn
+  PASS  drive() does not consult the horn
+  PASS  _do_auto_run() does not consult the horn
+  PASS  _do_disarm() does not consult the horn
+  PASS  the horn is not registered with health
+  PASS  the snapshot carries the claimed coils for the page   ['commanded', 'comms_ok', 'connected', 'detail', 'di', 'di_names', 'do', 'do_nam
+
+the setpoint tile shows m/s, and the station window is visible
+  PASS  the state carries the r/min -> m/s conversion   0.0003141592653589793
+  PASS  ...and it is the SAME constant the vehicle runs on, not a literal typed into JS   a hardcoded ratio would go stale the moment wheel_dia_m or gear_ratio changed
+  PASS  straight ahead converts the commanded r/min   0.31 m/s
+  PASS  a corner averages the pair, and lands between the two wheels   0.50 m/s
+  PASS  *** a spin on the spot is 0.00 m/s, not half of full ***   the vehicle turns but does not travel, and the mean says so
+  PASS  a stopped vehicle reads zero
+  PASS  /auto carries the setpoint tile's m/s slot
+  PASS  /manual carries the setpoint tile's m/s slot
+  PASS  two decimal places, as asked
+  PASS  the state reports the route
+  PASS  startup reports the initial parked route position   {'distance_estimate_m': 0.0, 'enabled': True, 'guard_enabled': False, 'guard_error': None, 'high_distance_estimate_m': 0.0, 'high_speed': False, 'initial_assumption': True, 'laps': 0, 'next_station': '3', 'parked': True, 'station': '2', 'travel_direction': 'outbound'}
+  PASS  the auto page has a primary point summary
+  PASS  ...and it shows both states
+  PASS  ...on its own tile, so a PID guard and a station stop cannot displace each other
+  PASS  the station readout gates nothing and posts nothing   the auto page is display-only
+
+filesystem anchors survive the move
+  PASS  runlog.LOG_DIR points at the repo root, not core/logs   /home/gvipc-evo-01/agv_can/logs
+  PASS  config.PROFILE_DIR points at the repo root   /home/gvipc-evo-01/agv_can/profiles
+  PASS  run numbering continues from the real logs   next_seq() == 55
+  PASS  the profile resolves under profiles/
+  PASS  the mission resolves under missions/
+
+the flat module namespace stays unambiguous
+  PASS  no two modules share a basename
+  PASS  no module shadows a standard library module   []
+  PASS  the layer directories are not packages   []
+  PASS  every layer directory exists
+
+the entry point resolves
+  PASS  main.py imports the server
+  PASS  main.py stays thin   25 lines
+  PASS  main.py puts the layer directories on sys.path
+  PASS  the Flask module is not named app.py
+  PASS  Flask finds its templates under app/
+
+web assets are self-contained
+  PASS  alarms.js loads nothing remotely   []
+  PASS  app.css loads nothing remotely   []
+  PASS  auto.js loads nothing remotely   []
+  PASS  blind.js loads nothing remotely   []
+  PASS  common.js loads nothing remotely   []
+  PASS  io.js loads nothing remotely   []
+  PASS  lidar.js loads nothing remotely   []
+  PASS  manual.js loads nothing remotely   []
+  PASS  monitor.js loads nothing remotely   []
+  PASS  params.js loads nothing remotely   []
+  PASS  alarms.html loads nothing remotely   []
+  PASS  auto.html loads nothing remotely   []
+  PASS  base.html loads nothing remotely   []
+  PASS  blind.html loads nothing remotely   []
+  PASS  io.html loads nothing remotely   []
+  PASS  lidar.html loads nothing remotely   []
+  PASS  manual.html loads nothing remotely   []
+  PASS  monitor.html loads nothing remotely   []
+  PASS  params.html loads nothing remotely   []
+  PASS  app.css declares the self-hosted faces   8
+  PASS  fonts/archivo-600.woff2 is present
+  PASS  fonts/archivo-700.woff2 is present
+  PASS  fonts/plex-sans-400.woff2 is present
+  PASS  fonts/plex-sans-500.woff2 is present
+  PASS  fonts/plex-sans-600.woff2 is present
+  PASS  fonts/plex-mono-400.woff2 is present
+  PASS  fonts/plex-mono-500.woff2 is present
+  PASS  fonts/plex-mono-600.woff2 is present
+  PASS  Archivo is declared and bundled
+  PASS  IBM Plex Sans is declared and bundled
+  PASS  IBM Plex Mono is declared and bundled
+
+133 test function(s), 1516 check(s)
+all checks passed
+EXIT=0

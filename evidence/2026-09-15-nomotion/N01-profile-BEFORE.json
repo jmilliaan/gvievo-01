@@ -11,7 +11,7 @@
     "invert_right": false
   },
   "autopilot": {
-    "dry_run": true,
+    "dry_run": false,
     "invert_error": true,
     "k_ratio": 11.3,
     "kd": 0.94,
@@ -202,8 +202,8 @@
   },
   "blind_run": {
     "max_distance_m": 10.0,
-    "max_rpm": 3000.0,
-    "accel_rpm_s": 800.0,
+    "max_rpm": 1000.0,
+    "accel_rpm_s": 300.0,
     "settle_s": 0.5,
     "stop_tolerance_mm": 1.0,
     "sync_kp": 2.0,

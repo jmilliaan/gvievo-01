@@ -1,0 +1,30 @@
+# /etc/systemd/system/agv_controller.service
+[Unit]
+Description=AGV controller web UI (manual + auto)
+After=network-online.target sys-subsystem-net-devices-can0.device
+Wants=network-online.target
+# Optional but sensible: if can0 disappears, stop rather than sit there failing.
+BindsTo=sys-subsystem-net-devices-can0.device
+
+[Service]
+Type=simple
+User=gvipc-evo-01
+Group=gvipc-evo-01
+WorkingDirectory=/home/gvipc-evo-01/agv_can
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/gvipc-evo-01
+ExecStart=/usr/bin/python3 /home/gvipc-evo-01/agv_can/main.py --host 0.0.0.0 --port 5000
+
+# *** SAFETY — do not drop this line ***
+# Python's default SIGTERM disposition terminates the process outright, so the
+# `finally: ctl.shutdown()` in run_web.py would NEVER run and the drivers would
+# stay energised at their last setpoint. SIGINT raises KeyboardInterrupt, which
+# unwinds through that finally and de-energises the motors.
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
