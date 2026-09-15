@@ -3,8 +3,6 @@
 // Read-only by construction - there is no write endpoint to call, and this
 // file deliberately contains no click handlers. Adding one would need an
 // arm-state interlock and event logging on the server side first.
-//
-// screen cannot hold an auto run alive. See api_state() in server.py.
 
 const grid = document.getElementById('io-grid');
 
@@ -26,6 +24,18 @@ onState(s => {
 
   paint('di', d.di, d.di_names);
   paint('do', d.do, d.do_names);
+
+  // Outputs this software is driving. Two facts on one line: that the channel
+  // is claimed at all, and which way it is being held - so a horn that is off
+  // between runs cannot be confused with a horn nothing is wired to.
+  const cmd = d.commanded || {};
+  for (let i = 0; i < 16; i++) {
+    const el = document.getElementById(`do-c-${i}`);
+    if (!el) continue;
+    const held = cmd[String(i)];
+    el.textContent = held === undefined ? '' : (held ? 'held on' : 'held off');
+    el.classList.toggle('on', held === true);
+  }
 
   // Three states worth telling apart, because they need different actions:
   // disabled (nothing to do), never connected (address or cable), and

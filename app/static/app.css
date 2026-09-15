@@ -414,6 +414,17 @@ code, .mon-policy code {
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 
+/* What the vehicle is doing to an output, beside the readback lamp. Small and
+   grey on purpose: it is a qualifier on the lamp, not a second lamp. The name
+   column already says what the channel is, and the lamp beside it already
+   says what the channel is doing. Only "held on" is coloured, and it borrows
+   the DO lamp's hazard ink so the row reads as one statement. */
+.io-cmd {
+  font:600 10px var(--mono); color:var(--ink-3);
+  letter-spacing:.06em; text-transform:uppercase; white-space:nowrap;
+}
+.io-cmd.on { color:var(--hazard-ink); }
+
 /* The one deliberate exception to square corners: a round indicator is the
    convention for a lamp, and a square one would read as a button. The dark
    theme's outer glow is gone - it is a dark-ground device that only muddies the
@@ -431,6 +442,9 @@ code, .mon-policy code {
 /* Stale: the lamps are last-known, not current. Dimmed and desaturated so the
    page cannot be misread as a live view of an idle module. */
 #io-grid.stale { opacity:.38; filter:grayscale(1); }
+/* Same treatment for the IMU tiles: a sensor that stopped answering keeps its
+   last numbers, dimmed, rather than showing a live-looking value. */
+#mon-imu.stale, .tel.stale { opacity:.38; filter:grayscale(1); }
 
 /* ---- lidar --------------------------------------------------------------
    The cut-off path lamps are NOT the I/O page's lamps in another colour, and
@@ -531,6 +545,32 @@ code, .mon-policy code {
   margin-left:auto; font:600 10px var(--mono); letter-spacing:.07em;
   text-transform:uppercase; color:var(--ink-3);
 }
+
+/* ---- blind run ---------------------------------------------------------- */
+.blind-segments { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+.blind-row { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin:0 0 10px; }
+.blind-seg { padding:8px; border:1px solid var(--rule); background:var(--surface); margin:0; }
+.blind-fields { display:flex; flex-wrap:wrap; gap:6px 14px; flex:1 1 280px; }
+.blind-row label { font-size:13px; color:var(--ink-2); }
+.blind-row input, .blind-row select {
+  font:400 13px var(--mono); color:var(--ink); background:var(--surface);
+  border:1px solid var(--rule); padding:5px 8px; width:9em; max-width:100%;
+}
+.blind-row input:focus-visible, .blind-row select:focus-visible {
+  outline:2px solid var(--accent-2); outline-offset:1px;
+}
+.blind-error { color:var(--stop); }
+.blind-table-wrap { overflow-x:auto; }
+.blind-table { border-collapse:collapse; width:100%; font:400 12.5px var(--mono); }
+.blind-table th, .blind-table td {
+  border-bottom:1px solid var(--rule-soft); padding:5px 8px; text-align:left; white-space:nowrap;
+}
+.blind-table th { color:var(--ink-2); font-weight:600; }
+/* The status banner. Big and bordered because it is read from beside the
+   vehicle, and it carries the one instruction that matters: where Start is. */
+.auto-summary { border:2px solid var(--rule); padding:clamp(16px,3vw,32px); margin-bottom:20px; overflow-wrap:anywhere; }
+.auto-status { font-weight:700; letter-spacing:.06em; margin-bottom:18px; }
+.auto-detail { color:var(--ink-2); font-size:13px; }
 
 /* ---- alarms page --------------------------------------------------------
    White, orange, red. The level is carried by a left bar AND a text label, not

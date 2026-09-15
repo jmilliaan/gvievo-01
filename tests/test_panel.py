@@ -152,6 +152,12 @@ def test_reset_means_ready():
             self._arm_retry_at = 0.0
             self._arm_fail = None
             self._telemetry = {n: {"statusword": 0x0027} for n in config.NODES}
+            # No blind-run plan set: Start in MANUAL has nothing to run.
+            self._blind_plan = None
+            self._blind = None
+            self._blind_start_at = 0.0
+            self._blind_abort_req = None
+            self._counts_per_wheel_rev = None
             self.arm_fails = None
 
         def _do_arm(self, mode):
@@ -178,8 +184,9 @@ def test_reset_means_ready():
           len(calls) == n, f"{len(calls) - n} extra call(s)")
 
     c._panel_start(MANUAL)
-    check("Start in MANUAL does nothing - jogging is per-direction from the "
-          "web pad", ("run", True, "panel") not in calls)
+    check("Start in MANUAL with no blind-run plan does nothing - jogging is "
+          "per-direction from the web pad",
+          ("run", True, "panel") not in calls and not c._blind_start_at)
 
     # ---- AUTO is the resting state now ------------------------------------
     # *** There is nothing autonomous to start. *** Tape following was the only

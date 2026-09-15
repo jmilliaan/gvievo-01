@@ -165,6 +165,42 @@ function renderRail(s) {
                          : a.level === 'warn' ? 'var(--hazard-ink)' : '';
   setText('alarm-note', a.detail || 'nothing outstanding');
 
+  // Yaw rate from the MLS's IMU. One number; the full set is on /monitor.
+  // Greyed rather than blanked when stale - the last value is still worth
+  // something, a frozen number that looks live is not.
+  const imuTile = document.getElementById('rail-imu');
+  const imu = s.imu;
+  if (imuTile) {
+    imuTile.hidden = !(imu && imu.enabled);
+    if (!imuTile.hidden) {
+      const gz = (imu.gyro_dps || [])[2];
+      const el = setText('rail-gz', gz === null || gz === undefined ? '–' : gz.toFixed(1));
+      imuTile.classList.toggle('stale', !!imu.stale);
+      if (el) el.style.color = imu.stale ? 'var(--stop)' : '';
+      setText('rail-gz-note', imu.stale ? '°/s · STALE' : '°/s · gyro z');
+    }
+  }
+
+  // The horn-and-lights coil. Shown when the profile drives one, so an
+  // operator can see the vehicle ASKED for the horn - a horn that is off
+  // because nothing commanded it and one that is off because the DIO module
+  // is down look the same from the bay.
+  const hornTile = document.getElementById('rail-horn');
+  const dio = s.dio || {};
+  const horn = s.horn;
+  if (hornTile) {
+    hornTile.hidden = !(horn && horn.enabled);
+    if (!hornTile.hidden) {
+      const held = (dio.commanded || {})[String(horn.channel)];
+      const live = dio.do && dio.do[horn.channel];
+      const el = setText('rail-horn-state', held ? 'ON' : 'off');
+      if (el) el.style.color = held ? 'var(--hazard-ink)' : '';
+      setText('rail-horn-note', !dio.enabled || !dio.comms_ok
+        ? 'DIO down'
+        : `DO${String(horn.channel).padStart(2, '0')} · coil ${live ? 'on' : 'off'}`);
+    }
+  }
+
   // Lidar zones. Hidden entirely when the scanner is not in use - three
   // permanent "?" lamps on a vehicle without one is noise, not information.
   const rail = document.getElementById('zone-rail');

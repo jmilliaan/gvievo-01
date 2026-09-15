@@ -12,6 +12,7 @@
   <nav>
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
+    <a href="/blind"  class="{{ 'on' if page == 'blind' }}">Blind run</a>
     <a href="/lidar"  class="{{ 'on' if page == 'lidar' }}">Lidar</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
@@ -33,6 +34,11 @@
       <div class="tel"><span>Right</span><b id="rpm-2">–</b><i>r/min</i></div>
       <div class="tel"><span>Setpoint</span><b id="setpoint">0 / 0</b><i>L / R</i></div>
       <div class="tel"><span>Alarm</span><b id="alarm">–</b><i id="alarm-note">—</i></div>
+      {# The gyro, on every page. Yaw rate is the one IMU number worth a
+         glance from beside the vehicle; the rest is on /monitor. Hidden when
+         the profile has no IMU, greyed when it stops answering. #}
+      <div class="tel" id="rail-imu" hidden><span>Yaw rate</span><b id="rail-gz">–</b><i id="rail-gz-note">°/s</i></div>
+      <div class="tel" id="rail-horn" hidden><span>Horn</span><b id="rail-horn-state">–</b><i id="rail-horn-note">—</i></div>
     </div>
 
     {# Lidar zones, on every page. Three lamps and nothing else: the scan

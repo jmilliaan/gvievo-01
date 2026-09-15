@@ -36,6 +36,35 @@
 </section>
 
 <section class="sensor">
+  <h2>IMU <small>node {{ imu_node }} · 2034h · 2033h · 2030h · SDO, one object per
+      {{ imu_period_ms }} ms</small></h2>
+  {# Display only. Nothing steers from this yet and it is not a health source;
+     it is here so the gyro can be watched before gyro-odometry is built on it.
+     See the imu.* tuning note in config.py and drivers/canbus/read_imu.py. #}
+  {% if imu_enabled %}
+  <div class="tel-grid" id="mon-imu">
+    <div class="tel"><span>Yaw rate</span><b id="imu-gz">–</b><i>°/s · gyro z</i></div>
+    <div class="tel"><span>Heading</span><b id="imu-yaw">–</b><i>° · relative, drifts</i></div>
+    <div class="tel"><span>Gyro x</span><b id="imu-gx">–</b><i>°/s</i></div>
+    <div class="tel"><span>Gyro y</span><b id="imu-gy">–</b><i>°/s</i></div>
+    <div class="tel"><span>Accel x</span><b id="imu-ax">–</b><i>g</i></div>
+    <div class="tel"><span>Accel y</span><b id="imu-ay">–</b><i>g</i></div>
+    <div class="tel"><span>Accel z</span><b id="imu-az">–</b><i id="imu-az-note">g · 1.00 at rest</i></div>
+    <div class="tel"><span>Link</span><b id="imu-link">–</b><i id="imu-link-note">—</i></div>
+  </div>
+  <p class="mon-note">
+    Yaw rate is the value that matters: the wheel encoders sit on the motor side
+    of the 30:1 gearhead, so backlash on every reversal lands as heading error
+    that only a gyro can see. <b>Heading</b> is the sensor's own integrated yaw
+    — relative, and it drifts a few degrees a minute, so read it for motion,
+    not for direction. |accel| at rest is a free scale check.
+  </p>
+  {% else %}
+  <div class="mon-none">imu.enabled is false in the profile</div>
+  {% endif %}
+</section>
+
+<section class="sensor">
   <h2>Alarms <small>EMCY · pushed on 0x080+n</small></h2>
   <div id="mon-alarms" class="mon-alarms">
     <div class="mon-none">no alarm reported since start-up</div>

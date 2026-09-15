@@ -1,0 +1,8 @@
+line-length = 110
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[lint.isort]
+known-first-party = ["amr_base", "amr_sim", "amr_interfaces", "amr_description", "amr_bringup"]

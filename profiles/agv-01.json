@@ -1,7 +1,7 @@
 {
   "profile_name": "agv-01",
   "vehicle": {
-    "track_m": 0.486,
+    "track_m": 0.487,
     "wheel_dia_m": 0.18,
     "gear_ratio": 30.0,
     "motor_max_rpm": 4000.0,
@@ -77,7 +77,7 @@
       "[SPARE]"
     ],
     "do_names": [
-      "[SPARE]",
+      "Horn + lights",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -123,6 +123,10 @@
     "debounce_scans": 2,
     "manual_auto_arm": true
   },
+  "horn": {
+    "enabled": true,
+    "do_channel": 0
+  },
   "can": {
     "bitrate": 125000,
     "channel": "can0",
@@ -143,10 +147,26 @@
     "bus_v_warn_low": 42.0,
     "bus_v_warn_high": 56.0
   },
+  "imu": {
+    "enabled": true,
+    "poll_period_s": 0.04,
+    "retry_period_s": 2.0
+  },
+  "blind_run": {
+    "max_distance_m": 10.0,
+    "max_rpm": 3000.0,
+    "accel_rpm_s": 800.0,
+    "settle_s": 0.5,
+    "stop_tolerance_mm": 1.0,
+    "sync_kp": 2.0,
+    "overrun_margin": 0.02,
+    "max_segments": 8
+  },
   "timing": {
     "loop_period_s": 0.02,
     "telemetry_period_s": 0.2,
     "manual_watchdog_s": 0.6,
-    "driver_timeout_s": 0.6
+    "driver_timeout_s": 0.6,
+    "auto_start_delay_s": 0.6
   }
 }

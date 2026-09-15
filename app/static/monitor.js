@@ -70,6 +70,37 @@ function renderBus(d) {
   st.textContent = d.connected ? (d.error || 'open') : (d.error || 'no bus');
 }
 
+// The IMU inside the MLS. Stale is greyed rather than blanked: the last value
+// is still informative, but a frozen number that looks live is how a dead
+// sensor goes unnoticed for a shift.
+function renderImu(imu) {
+  const grid = document.getElementById('mon-imu');
+  if (!grid || !imu) return;
+  const num = (v, d) => v === null || v === undefined ? '–' : v.toFixed(d);
+  const g = imu.gyro_dps || [], a = imu.accel_g || [];
+  setText('imu-gz', num(g[2], 2));
+  setText('imu-gx', num(g[0], 2));
+  setText('imu-gy', num(g[1], 2));
+  setText('imu-ax', num(a[0], 3));
+  setText('imu-ay', num(a[1], 3));
+  setText('imu-az', num(a[2], 3));
+  setText('imu-yaw', imu.yaw_rad === null || imu.yaw_rad === undefined
+                     ? '–' : (imu.yaw_rad * 180 / Math.PI).toFixed(1));
+  const link = document.getElementById('imu-link');
+  let text, colour;
+  if (imu.seen === 0 && imu.misses === 0) { text = 'waiting'; colour = ''; }
+  else if (imu.stale)                    { text = 'STALE';   colour = 'var(--stop)'; }
+  else if (imu.misses)                   { text = 'ok';      colour = 'var(--hazard-ink)'; }
+  else                                   { text = 'ok';      colour = ''; }
+  if (link) { link.textContent = text; link.style.color = colour; }
+  setText('imu-link-note', imu.age_s === null || imu.age_s === undefined
+    ? 'no reply yet'
+    : `${(imu.age_s * 1000).toFixed(0)} ms ago · ${imu.seen} reads`
+      + (imu.misses ? ` · ${imu.misses} timeouts` : '')
+      + (imu.stamp_ms === null || imu.stamp_ms === undefined ? '' : ` · clock ${imu.stamp_ms} ms`));
+  grid.classList.toggle('stale', !!imu.stale);
+}
+
 function renderAlarms(can) {
   const rows = NODE_ORDER
     .map(n => [n, (can.alarms || {})[n]])
@@ -99,6 +130,7 @@ async function pollCan() {
     const mon = can.monitor || {nodes: {}};
     renderBus(d);
     renderState(can, d.nodes, d.health || {});
+    renderImu(d.imu);
     renderAlarms(can);
     group('mon-power', mon, [
       ['bus_v', 'Bus voltage', 1],

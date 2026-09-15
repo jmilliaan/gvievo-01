@@ -23,6 +23,7 @@ import helpers  # noqa: E402
 MODULES = [
     "test_config",
     "test_canworker",
+    "test_invariants",
     "test_health",
     "test_canmon",
     "test_lss",
@@ -32,11 +33,12 @@ MODULES = [
     "test_dio",
     "test_lidar",
     "test_panel",
+    "test_blindrun",
     "test_web",
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 696
+EXPECTED_CHECKS = 853
 
 
 def main():

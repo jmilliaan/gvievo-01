@@ -49,21 +49,33 @@ def sdo_read(bus, node, index, sub, timeout=0.4, collision_window=0.01):
     # Once the first reply lands, linger only briefly to catch a second
     # responder - waiting the full timeout every time would make the measured
     # latency meaningless and the whole scan glacial.
-    replies, first_at = [], None
+    # A reply counts only if it echoes OUR multiplexer (index, sub) in a full
+    # 8-byte frame. The drain above does not rule out a late reply to an
+    # EARLIER request landing now, and one accepted on node ID + command byte
+    # alone would be read as this object's value. Anything else from the
+    # node is skipped, not returned.
+    mux = bytes([index & 0xFF, (index >> 8) & 0xFF, sub])
+    replies, first_at, stale = [], None, 0
     t0 = time.perf_counter()
     deadline = t0 + timeout
     while time.perf_counter() < deadline:
         m = bus.recv(timeout=max(0.0, deadline - time.perf_counter()))
         if m is None:
             break
-        if m.arbitration_id == 0x580 + node:
-            replies.append(bytes(m.data))
-            if first_at is None:
-                first_at = time.perf_counter()
-                deadline = min(deadline, first_at + collision_window)
+        if m.arbitration_id != 0x580 + node:
+            continue
+        data = bytes(m.data)
+        if len(data) != 8 or data[1:4] != mux:
+            stale += 1
+            continue
+        replies.append(data)
+        if first_at is None:
+            first_at = time.perf_counter()
+            deadline = min(deadline, first_at + collision_window)
 
     if not replies:
-        return None, None, "timeout", None
+        return None, None, ("timeout" if not stale
+                            else f"timeout ({stale} reply(s) for another object)"), None
 
     latency_ms = (first_at - t0) * 1000.0
     note = "ok" if len(replies) == 1 else f"{len(replies)} REPLIES - ID COLLISION?"

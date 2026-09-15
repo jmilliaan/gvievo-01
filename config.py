@@ -218,6 +218,74 @@ monitor.*
     refusing to take, and the high warn wants to sit well below the drive's
     own 63 V overvoltage trip.
 
+horn.*
+    The only output this software energises. One DO drives the horn AND the
+    running lights together - one channel, one meaning - and it goes high
+    whenever motion is COMMANDED: manual jog or auto run, no distinction,
+    because the hazard is the same 150 kg either way and a horn that means two
+    different things means neither.
+
+    *** It follows the setpoint, not the wheels. *** The coil is raised from the
+    commanded target, so it sounds at the instant motion is asked for rather
+    than once the vehicle is already rolling - which is the whole point of a
+    warning device. It also means the horn goes quiet while the drives are
+    still decelerating, and that is the right way round: the warning ends when
+    the vehicle stops being commanded to move, and what remains is a coast that
+    is already ending.
+
+    *** Not a safety function. *** The stop is the OSSD chain into the FX3, in
+    hardware. This is an audible and visible warning and nothing gates on it: a
+    horn that failed to sound must not be able to prevent a jog, or a broken
+    lamp becomes a stranded vehicle.
+
+    Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
+    it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
+    rather than leaving it energised. See the derived value.
+
+blind_run.*
+    Encoder-only test moves from /blind, to measure the encoders before SLAM
+    relies on them. The page only SETS a plan; PB Start runs it, with the
+    selector in MANUAL and the vehicle armed. Reset, a selector move, web Stop,
+    a fault or lost 6064h feedback stops it. The plan survives a stop so the
+    same move can be run again.
+
+    Profile velocity mode with a software position loop: the faster wheel runs
+    a trapezoid on its REMAINING counts at accel_rpm_s, capped at max_rpm; the
+    other follows the planned ratio plus sync_kp (1/s) times its progress lag.
+    A segment ends within stop_tolerance_mm, then waits settle_s at standstill
+    before its counts are recorded. Overrunning by overrun_margin, or taking
+    twice the planned time, aborts. max_distance_m caps each wheel per segment.
+
+    Nothing steers on a sensor. The IMU yaw rate is written beside the encoder
+    heading in the run CSV so the two can be compared afterwards - see imu.* -
+    and that is the whole of its involvement.
+
+timing.auto_start_delay_s
+    The pause between PB Start and the wheels being commanded. It gives whoever
+    pressed the button a beat to step back, and it is the window in which a
+    Reset, a selector move or web Stop cancels the start outright. Today only a
+    blind run is started this way; whatever navigates next inherits the same
+    delay and the same cancellation rules.
+
+imu.*
+    The IMU inside the SICK MLS on can.sensor_node, read over SDO by the bus
+    thread and shown on /monitor and the rail. DISPLAY ONLY today: nothing
+    steers from it, nothing gates on it, and it is not a health source. It is
+    here so the gyro can be watched before gyro-odometry is built on it - see
+    drivers/canbus/read_imu.py for why the gyro is a navigation component.
+
+    One SDO read per poll, round-robin over eight objects (gyro xyz, accel xyz,
+    yaw, the sensor's own clock). A read costs ~4 ms on the 125 kbps bus, so
+    reading the whole set at once would eat a 20 ms tick; spreading it keeps
+    every tick short and refreshes the whole picture every 8 x poll_period_s.
+    At 0.04 s that is ~3 Hz, which is plenty to eyeball. SLAM wants 100 Hz
+    yaw rate and will get it from a TPDO (read_imu.py tpdo gyro), routed
+    through TpdoTap - not by turning this poll up.
+
+    retry_period_s is the back-off after a read times out. Without it an
+    absent or unpowered sensor would cost a timeout on every poll, and the
+    timeout (short as it is) is dead time the control loop pays for.
+
 can.channel / can.adapter_serial
     The SocketCAN interface to prefer, and which CANable2 to accept on the USB
     fallback. Per-vehicle hardware identity, so it belongs in the profile rather
@@ -347,6 +415,10 @@ _SCHEMA = {
         "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
     },
+    "horn": {
+        "enabled":    ("HORN_ENABLED", bool),
+        "do_channel": ("HORN_DO_CHANNEL", int),
+    },
     "can": {
         "bitrate":        ("CAN_BITRATE", int),
         "channel":        ("CAN_CHANNEL", str),
@@ -367,11 +439,27 @@ _SCHEMA = {
         "bus_v_warn_low":     ("MON_BUS_V_WARN_LOW", float),
         "bus_v_warn_high":    ("MON_BUS_V_WARN_HIGH", float),
     },
+    "imu": {
+        "enabled":        ("IMU_ENABLED", bool),
+        "poll_period_s":  ("IMU_PERIOD_S", float),
+        "retry_period_s": ("IMU_RETRY_PERIOD_S", float),
+    },
+    "blind_run": {
+        "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
+        "max_rpm":           ("BLIND_MAX_RPM", float),
+        "accel_rpm_s":       ("BLIND_ACCEL_RPM_S", float),
+        "settle_s":          ("BLIND_SETTLE_S", float),
+        "stop_tolerance_mm": ("BLIND_STOP_TOLERANCE_MM", float),
+        "sync_kp":           ("BLIND_SYNC_KP", float),
+        "overrun_margin":    ("BLIND_OVERRUN_MARGIN", float),
+        "max_segments":      ("BLIND_MAX_SEGMENTS", int),
+    },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
         "telemetry_period_s": ("TELEMETRY_PERIOD_S", float),
         "manual_watchdog_s":  ("MANUAL_WATCHDOG_S", float),
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
+        "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
     },
 }
 
@@ -571,6 +659,18 @@ def _derive(ns):
     }
 
     ns["NODES"] = {ns["LEFT"]: "left", ns["RIGHT"]: "right"}
+
+    # How long a coil command stays valid without being renewed. The horn is
+    # commanded from the CAN tick and written by the DIO thread, so the two run
+    # at different rates and the command has to survive the gap between them -
+    # but only the gap. If the tick stops renewing it, the coil must fall low on
+    # its own rather than sound until somebody kills the process, which is the
+    # one failure a horn can have that trains operators to ignore it.
+    #
+    # Five ticks or two scans, whichever is longer, so neither thread's normal
+    # jitter can expire a command that is still being renewed.
+    ns["HORN_HOLD_S"] = max(5.0 * ns["LOOP_PERIOD_S"],
+                            2.0 * ns["DIO_SCAN_PERIOD_S"])
     return ns
 
 
@@ -720,6 +820,51 @@ def _validate(ns):
           "panel.enabled is true while dio.enabled is false - the panel is read "
           "from the DI image, so the buttons would never respond")
 
+    # -- horn -------------------------------------------------------------
+    check(0 <= g("HORN_DO_CHANNEL") < g("DIO_NUM_DO"),
+          f"horn.do_channel ({g('HORN_DO_CHANNEL')}) must be a channel in "
+          f"0..{g('DIO_NUM_DO') - 1}")
+    # Same reasoning as panel.enabled above: the coil is written by the DIO
+    # scan, so without it the horn is silently dead rather than merely off.
+    check(not g("HORN_ENABLED") or g("DIO_ENABLED"),
+          "horn.enabled is true while dio.enabled is false - the coil is "
+          "written by the DIO scan, so the horn would never sound")
+
+    # -- imu --------------------------------------------------------------
+    # One SDO read per poll on the bus thread, so it is paced like the other
+    # polls: never faster than the tick it runs inside.
+    check(g("IMU_PERIOD_S") >= g("LOOP_PERIOD_S"),
+          f"imu.poll_period_s ({g('IMU_PERIOD_S')}) must be >= loop_period_s "
+          f"({g('LOOP_PERIOD_S')})")
+    # The back-off exists to be longer than a poll; equal or shorter and an
+    # absent sensor is retried at poll rate, which is the case it exists for.
+    check(g("IMU_RETRY_PERIOD_S") > g("IMU_PERIOD_S"),
+          f"imu.retry_period_s ({g('IMU_RETRY_PERIOD_S')}) must exceed "
+          f"poll_period_s ({g('IMU_PERIOD_S')})")
+
+    # -- blind run --------------------------------------------------------
+    check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
+          "blind_run.max_distance_m must be in (0, 50] m")
+    check(0 < g("BLIND_MAX_RPM") <= g("MOTOR_MAX_RPM"),
+          "blind_run.max_rpm must be in (0, motor_max_rpm]")
+    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["manual"]["accel"],
+          "blind_run.accel_rpm_s must be > 0 and within the manual drive ramp "
+          "(drivers.ramp.manual.accel), or the drive lags the plan")
+    check(g("BLIND_SETTLE_S") >= 0, "blind_run.settle_s must be >= 0")
+    check(0 < g("BLIND_STOP_TOLERANCE_MM") <= 50,
+          "blind_run.stop_tolerance_mm must be in (0, 50] mm")
+    check(g("BLIND_SYNC_KP") >= 0, "blind_run.sync_kp must be >= 0")
+    check(0 <= g("BLIND_OVERRUN_MARGIN") <= 0.5,
+          "blind_run.overrun_margin must be a fraction in [0, 0.5]")
+    check(1 <= g("BLIND_MAX_SEGMENTS") <= 32,
+          "blind_run.max_segments must be in 1..32")
+    check(g("AUTO_START_DELAY_S") >= 0,
+          "timing.auto_start_delay_s must be >= 0")
+    check(g("AUTO_START_DELAY_S") <= 10.0,
+          f"timing.auto_start_delay_s ({g('AUTO_START_DELAY_S')} s) is a long "
+          f"time to stand still after a button press - an operator will press "
+          f"it again")
+
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
     check(g("RFID_FRAME_LEN") > 0, "rfid.frame_len must be > 0")
@@ -834,6 +979,8 @@ _DERIVED = (
     ("MANUAL_HALF_RPM", "manual.full_rpm \u00b7 manual.half_ratio"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
+    ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "
+                    "how long a coil claim outlives its last renewal"),
     ("LIDAR_SCAN_CYCLE_S",
      "nanoScan3 datasheet - a device constant, not a tunable"),
 )

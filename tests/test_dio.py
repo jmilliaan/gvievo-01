@@ -28,7 +28,9 @@ class FakeClient:
         self.fail_connect = False
         self.fail_read = False
         self.short_read = False
+        self.fail_write = False
         self.reads = 0
+        self.writes = []                    # (address, value), in order
         self.closed = 0
 
     def connect(self):
@@ -47,6 +49,15 @@ class FakeClient:
 
     def read_coils(self, address, count=1, device_id=1):
         return self._bits(self.do, count)
+
+    def write_coil(self, address, value, device_id=1):
+        self.writes.append((address, bool(value)))
+        if self.fail_write:
+            return _Reply([], error=True)
+        # The module latches it, so the next read_coils sees it. That is what
+        # makes the readback a readback rather than a restatement of intent.
+        self.do[address] = bool(value)
+        return _Reply([bool(value)])
 
     def close(self):
         self.closed += 1
@@ -281,10 +292,167 @@ def test_dio_profile():
               config.DIO_DI_NAMES[ch] != "", config.DIO_DI_NAMES[ch])
 
 
+def test_dio_write_phase():
+    """A claimed coil is driven to match intent, against the readback."""
+    print("\ndio: the write phase")
+
+    fake = FakeClient()
+    link = _link(fake)
+
+    link._scan()
+    check("an unclaimed module is never written to - this driver energises "
+          "nothing it was not asked to", fake.writes == [], str(fake.writes))
+
+    link.set_coil(3, True, hold_s=10.0)
+    check("set_coil does no I/O of its own - it runs on the 50 Hz CAN tick",
+          fake.writes == [], str(fake.writes))
+
+    link._scan()
+    check("the next scan raises the coil",
+          fake.writes == [(config.DIO_DO_BASE + 3, True)], str(fake.writes))
+    check("and counts it", link.snapshot()["writes"] == 1)
+
+    # The published image is the last thing the MODULE reported, not what we
+    # asked for. One scan of lag, in exchange for a write that is acknowledged
+    # but not applied showing up as a lamp that never lights.
+    check("the image is not patched with our intent",
+          link.snapshot()["do"][3] is False)
+    link._scan()
+    check("the readback catches up on the following scan",
+          link.snapshot()["do"][3] is True)
+
+    n = len(fake.writes)
+    link._scan()
+    link._scan()
+    check("a coil already at the right level is not rewritten every scan - "
+          "at 20 scans a second that would be a relay chattering",
+          len(fake.writes) == n, str(fake.writes))
+
+    # The reboot case, which is the whole reason this diffs against a readback
+    # instead of tracking a shadow copy. Nothing detects the reboot.
+    fake.do[3] = False
+    link._scan()
+    check("a module that came back with its coils clear is re-asserted",
+          fake.writes[-1] == (config.DIO_DO_BASE + 3, True), str(fake.writes[-1]))
+
+    link.set_coil(3, False, hold_s=10.0)
+    link._scan()
+    check("lowering the claim lowers the coil",
+          fake.writes[-1] == (config.DIO_DO_BASE + 3, False))
+
+    try:
+        link.set_coil(config.DIO_NUM_DO, True, hold_s=1.0)
+        check("a channel off the end of the module is refused", False,
+              "accepted!")
+    except ValueError:
+        check("a channel off the end of the module is refused", True)
+
+
+def test_dio_command_expires():
+    """A claim is renewed or it falls low. The horn cannot outlive its caller."""
+    print("\ndio: command expiry")
+
+    fake = FakeClient()
+    link = _link(fake)
+    link.set_coil(0, True, hold_s=0.05)
+    link._scan()
+    check("the coil is raised while the claim is fresh",
+          fake.writes[-1] == (config.DIO_DO_BASE + 0, True))
+    link._scan()
+    check("the module is holding it", fake.do[0] is True)
+
+    # The failure this exists for: the CAN tick dies mid-run. Nothing calls
+    # set_coil again, and nothing has to notice - the deadline does the work.
+    time.sleep(0.06)
+    link._scan()
+    check("an unrenewed claim is driven LOW rather than left standing - a horn "
+          "that outlives its control loop is how operators learn to ignore "
+          "horns", fake.writes[-1] == (config.DIO_DO_BASE + 0, False))
+    check("and the snapshot says so, so the page agrees with the module",
+          link.snapshot()["commanded"]["0"] is False)
+
+    # Expiry lowers the coil; it does not release it. The claim stays, so the
+    # channel goes on being held low rather than reverting to whoever wrote it
+    # last - which for an output is the difference between off and unknown.
+    n = len(fake.writes)
+    link._scan()
+    check("an expired claim keeps holding the coil low, without rewriting it",
+          len(fake.writes) == n and "0" in link.snapshot()["commanded"])
+
+    link.set_coil(0, True, hold_s=10.0)
+    link._scan()
+    check("renewing it raises the coil again",
+          fake.writes[-1] == (config.DIO_DO_BASE + 0, True))
+
+
+def test_dio_write_failure_is_not_silent():
+    """A write that fails is a dropped connection, exactly like a failed read."""
+    print("\ndio: write faults")
+
+    fake = FakeClient()
+    link = _link(fake)
+    link.set_coil(1, True, hold_s=10.0)
+    fake.fail_write = True
+
+    raised = False
+    try:
+        link._scan()
+    except IOError:
+        raised = True
+    check("a refused write raises out of the scan rather than being assumed "
+          "to have landed", raised)
+    check("the coil's state is not counted as written",
+          link.snapshot()["writes"] == 0)
+
+    # The scan that raised also never published, so comms_ok stays false and
+    # the health source reports the module as lost - the same verdict a module
+    # that stopped answering reads would get.
+    check("a scan that could not write is not a successful scan",
+          link.snapshot()["comms_ok"] is False)
+
+    fake.fail_write = False
+    link._scan()
+    check("it recovers on its own once the write goes through",
+          fake.do[1] is True and link.snapshot()["comms_ok"] is True)
+
+
+def test_dio_stop_de_energises():
+    """Coils LATCH in hardware. Exiting must not leave the horn sounding."""
+    print("\ndio: shutdown")
+
+    fake = FakeClient()
+    link = _link(fake)
+    link.set_coil(0, True, hold_s=10.0)
+    link._scan()
+    check("the coil is up before we stop", fake.do[0] is True)
+
+    # stop() waits on the scan thread, so drive the scans a real one would.
+    import threading
+    stopping = threading.Thread(target=lambda: link.stop(quiesce_s=2.0),
+                                daemon=True)
+    link._thread = stopping             # stop() only quiesces a live link
+    stopping.start()
+    deadline = time.monotonic() + 2.0
+    while not link._quiet.is_set() and time.monotonic() < deadline:
+        link._scan()
+        time.sleep(0.005)
+    stopping.join(timeout=2.0)
+
+    check("stop() drives the claim low before closing the socket",
+          fake.do[0] is False, str(fake.writes))
+    check("and waits for the READBACK to prove it, not for the write to be "
+          "acknowledged", link._quiet.is_set())
+    check("the socket is closed afterwards", fake.closed >= 1)
+
+
 TESTS = [
     test_dio_scan,
     test_dio_flipped,
     test_dio_faults,
+    test_dio_write_phase,
+    test_dio_command_expires,
+    test_dio_write_failure_is_not_silent,
+    test_dio_stop_de_energises,
     test_dio_health,
     test_dio_health_source,
     test_dio_events_are_edge_only,

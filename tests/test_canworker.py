@@ -5,6 +5,7 @@ import pathlib
 import struct
 import sys
 import threading
+import time
 
 from helpers import FAIL, ROOT, check, _FakeRaw
 
@@ -240,9 +241,226 @@ def test_unsolicited_frames_survive_sdo():
           passthru.recv(timeout=0.1) is not None)
 
 
+def test_bus_thread_survives_open():
+    """_run() must get past TpdoTap construction with a bus that opened.
+
+    Nothing else in this file goes through _run(): every test builds the tap
+    by hand, so the call site in _run() can drift from TpdoTap.__init__ and
+    the suite stays green. That shipped: the MLS sensor path was removed, the
+    tap lost its on_pdo argument, and _run() kept passing self._on_pdo - so
+    open_bus() succeeded, the thread died on an AttributeError one line later,
+    and the UI reported the bus down while can0 carried traffic.
+
+    open_bus is replaced by an idle fake; the thread has to come up, publish
+    connected/how, and still be alive when told to stop.
+    """
+    import canworker
+    import events
+    print("\ncanworker: the bus thread survives a successful open")
+
+    class _Idle:
+        def send(self, m):
+            pass
+
+        def recv(self, timeout=None):
+            if timeout:
+                time.sleep(min(timeout, 0.01))
+            return None
+
+        def shutdown(self):
+            pass
+
+    real = canworker.open_bus
+    canworker.open_bus = lambda *a, **k: (_Idle(), "fake:test")
+    try:
+        ctl = canworker.Controller()
+        t = threading.Thread(target=ctl._run, name="can-test", daemon=True)
+        t.start()
+        time.sleep(0.5)
+        snap = ctl.snapshot()
+        check("bus thread is still running", t.is_alive(),
+              "died - see the traceback above" if not t.is_alive() else "")
+        check("connected is published", snap["connected"] is True,
+              f"connected={snap['connected']!r} error={snap['error']!r}")
+        check("transport is published", snap["how"] == "fake:test",
+              f"how={snap['how']!r}")
+        ctl._stop_evt.set()
+        t.join(timeout=5.0)
+        check("bus thread stops on request", not t.is_alive())
+    finally:
+        canworker.open_bus = real
+
+
+def test_horn_follows_commanded_motion():
+    """DO high whenever motion is commanded, in either mode, and never else."""
+    print("\ncanworker: the horn")
+    import canworker
+
+    class FakeDio:
+        def __init__(self):
+            self.calls = []
+
+        def set_coil(self, ch, value, hold_s):
+            self.calls.append((ch, value, hold_s))
+
+    ctl = canworker.Controller()
+    fake = FakeDio()
+    ctl._dio = fake
+
+    def horn(armed, target):
+        fake.calls.clear()
+        ctl._update_horn(armed, target)
+        check_ch = [c for c in fake.calls if c[0] == config.HORN_DO_CHANNEL]
+        return check_ch[-1][1] if check_ch else None
+
+    check("a jog sounds it", horn(True, (600, 600)) is True)
+    check("so does a spin, where the wheels oppose each other and the vehicle "
+          "does not go anywhere a bystander expects",
+          horn(True, (600, -600)) is True)
+    check("a single creeping wheel still counts as motion",
+          horn(True, (0, 40)) is True)
+
+    check("armed and holding zero is silent - arming is not motion",
+          horn(True, (0, 0)) is False)
+    check("a disarmed vehicle is silent", horn(False, (0, 0)) is False)
+    # The interlock, stated rather than implied. A setpoint left standing from
+    # before a disarm must not sound the horn on a vehicle that cannot move.
+    check("...even if a setpoint is somehow still standing",
+          horn(False, (600, 600)) is False)
+
+    check("the command carries the renewal deadline, so a dead tick drops it",
+          fake.calls[-1][2] == config.HORN_HOLD_S, str(fake.calls[-1]))
+
+    # Renewed every tick, not written on the edge - that is what makes the
+    # deadline in dio.set_coil() a live watchdog rather than a formality.
+    fake.calls.clear()
+    for _ in range(5):
+        ctl._update_horn(True, (600, 600))
+    check("a held jog renews the claim every tick", len(fake.calls) == 5)
+
+    # And the policy has to be ON the tick, not merely available to it.
+    src = (ROOT / "canworker.py").read_text()
+    body = src[src.index("def _run(self)"):src.index("def _update_horn")]
+    check("_run() calls it on every tick, outside any armed-only branch",
+          "self._update_horn(armed, target)" in body)
+
+    horn_at = src.index("self._update_horn(armed, target)")
+    check("and does so BEFORE the setpoint reaches the wheels",
+          horn_at < src.index("self._write_target(target)", horn_at))
+
+
+def test_imu_poll():
+    """One SDO read per poll, spread over the schedule, backing off on a miss.
+
+    The whole point of the round-robin is that no single tick pays for the
+    full set, so the test counts requests per poll as well as checking that
+    the values land decoded in the snapshot.
+    """
+    print("\ncanworker: the IMU poll")
+    import canworker
+
+    class _Sensor:
+        """Answers node 10 SDO uploads from a table; silent for anything else."""
+
+        def __init__(self, table):
+            self.table = dict(table)      # (index, sub) -> 16-bit raw
+            self.requests = []
+            self.pending = []
+            self.absent = False
+
+        def send(self, m):
+            if m.arbitration_id != 0x600 + config.SENSOR_NODE:
+                return
+            index = m.data[1] | (m.data[2] << 8)
+            sub = m.data[3]
+            self.requests.append((index, sub))
+            if self.absent:
+                return
+            raw = self.table[(index, sub)]
+            self.pending.append(canworker.can.Message(
+                arbitration_id=0x580 + config.SENSOR_NODE,
+                data=bytes([0x4B, m.data[1], m.data[2], sub,
+                            raw & 0xFF, raw >> 8, 0, 0]),
+                is_extended_id=False))
+
+        def recv(self, timeout=None):
+            if self.pending:
+                return self.pending.pop(0)
+            if timeout:
+                time.sleep(min(timeout, 0.002))
+            return None
+
+        def shutdown(self):
+            pass
+
+    # gyro z = +16 LSB = 0.9765625 deg/s; accel z = 2048 LSB = 1 g;
+    # gyro x negative to prove the sign is decoded; yaw = -pi.
+    raw = {(0x2034, 1): 0x10000 - 32, (0x2034, 2): 0, (0x2034, 3): 16,
+           (0x2033, 1): 0, (0x2033, 2): 0, (0x2033, 3): 2048,
+           (0x2030, 3): 0x10000 - 31416, (0x2035, 0): 1234}
+    sensor = _Sensor(raw)
+    ctl = canworker.Controller()
+    ctl.bus = canworker.TpdoTap(sensor, nodes=())
+
+    n = len(canworker._IMU_SCHEDULE)
+    base = time.monotonic()
+    for i in range(n):
+        before = len(sensor.requests)
+        ctl._poll_imu(base + i)
+        check(f"poll {i} is exactly one SDO request", len(sensor.requests) - before == 1,
+              str(sensor.requests[before:]))
+
+    imu = ctl.snapshot()["imu"]
+    check("gyro z decoded to deg/s", abs(imu["gyro_dps"][2] - 0.9765625) < 1e-9,
+          str(imu["gyro_dps"]))
+    check("a negative gyro reading keeps its sign",
+          abs(imu["gyro_dps"][0] + 1.953125) < 1e-9, str(imu["gyro_dps"]))
+    check("accel z decoded to g", abs(imu["accel_g"][2] - 1.0) < 1e-9,
+          str(imu["accel_g"]))
+    check("yaw decoded to radians", abs(imu["yaw_rad"] + 3.1416) < 1e-9,
+          str(imu["yaw_rad"]))
+    check("the sensor clock is unsigned", imu["stamp_ms"] == 1234)
+    check("every read counted, none missed",
+          imu["seen"] == n and imu["misses"] == 0)
+    check("fresh", imu["stale"] is False and imu["age_s"] is not None)
+    check("the next poll is one poll_period_s out",
+          abs(ctl._imu_next - (base + n - 1 + config.IMU_PERIOD_S)) < 1e-9)
+
+    # The sensor goes away. One short timeout, then back off - the control
+    # loop must not pay a timeout on every poll for a display value.
+    sensor.absent = True
+    cursor = ctl._imu_cursor
+    t0 = time.perf_counter()
+    ctl._poll_imu(base + 100.0)
+    took = time.perf_counter() - t0
+    check("a miss is a short timeout, not sdo_read's 0.4 s default",
+          took < 0.2, f"{took:.3f} s")
+    check("a miss backs off retry_period_s",
+          abs(ctl._imu_next - (base + 100.0 + config.IMU_RETRY_PERIOD_S)) < 1e-9)
+    check("and retries the same object rather than skipping it",
+          ctl._imu_cursor == cursor)
+    imu = ctl.snapshot()["imu"]
+    check("the miss is counted and the last values stand",
+          imu["misses"] == 1 and abs(imu["accel_g"][2] - 1.0) < 1e-9)
+
+    # Stale is a function of age, judged at snapshot time.
+    ctl._imu["last"] = time.monotonic() - 60.0
+    check("a sensor silent for a minute is reported stale",
+          ctl.snapshot()["imu"]["stale"] is True)
+
+    # And the poll has to be on the tick.
+    src = (ROOT / "canworker.py").read_text()
+    body = src[src.index("def _run(self)"):src.index("def _pump(")]
+    check("_run() polls it, gated on imu.enabled",
+          "config.IMU_ENABLED" in body and "self._poll_imu(now)" in body)
+
+
 TESTS = [
     test_arm_does_not_deadlock,
     test_arm_no_longer_touches_the_sensor,
     test_loop_health,
     test_unsolicited_frames_survive_sdo,
+    test_bus_thread_survives_open,
+    test_horn_follows_commanded_motion,
+    test_imu_poll,
 ]

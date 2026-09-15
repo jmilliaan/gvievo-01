@@ -44,6 +44,9 @@ from guard import check as guard_write  # noqa: E402
 from drive_forward import (CW_DISABLE_VOLTAGE, CW_ENABLE, CW_SHUTDOWN,  # noqa: E402
                            CW_SWITCH_ON, SW_FAULT, SW_REMOTE,
                            SW_SPEED_IS_ZERO, sdo_write)
+import read_imu  # noqa: E402
+import blindrun  # noqa: E402
+import runlog  # noqa: E402
 import rpdo  # noqa: E402
 from verify_drivers import open_bus, sdo_read, u32  # noqa: E402
 
@@ -168,6 +171,31 @@ class TpdoTap:
         self._bus.shutdown()
 
 
+# The IMU poll, one SDO read per poll_period_s, round-robin over this list. A
+# read costs ~4 ms on the 125 kbps bus and a full set would eat a 20 ms tick,
+# so it is spread rather than burst - see the imu.* tuning note in config.py.
+# (field, axis, index, sub). Axis is the slot in a three-vector, None for the
+# scalars. Only what is worth watching before gyro-odometry exists: the
+# quaternion and the other two Euler angles are on read_imu.py when wanted.
+_IMU_SCHEDULE = (
+    ("gyro_dps", 0, read_imu.OBJ_GYRO, 1),
+    ("gyro_dps", 1, read_imu.OBJ_GYRO, 2),
+    ("gyro_dps", 2, read_imu.OBJ_GYRO, 3),
+    ("accel_g", 0, read_imu.OBJ_ACCEL, 1),
+    ("accel_g", 1, read_imu.OBJ_ACCEL, 2),
+    ("accel_g", 2, read_imu.OBJ_ACCEL, 3),
+    ("yaw_rad", None, read_imu.OBJ_EULER, 3),
+    ("stamp_ms", None, *read_imu.OBJ_STAMP),
+)
+_IMU_SCALE = {"gyro_dps": read_imu.GYRO_LSB_DPS,
+              "accel_g": read_imu.ACCEL_LSB_G,
+              "yaw_rad": read_imu.EULER_LSB_RAD}
+# A reply normally lands in ~4 ms. This is the wait before the sensor is
+# declared absent for this poll; sdo_read's 0.4 s default is meant for
+# commissioning, and blocking the tick that long for a display value is not.
+IMU_SDO_TIMEOUT_S = 0.05
+
+
 class _LoopHealth:
     """Rolling loop-timing window for the bus thread.
 
@@ -251,6 +279,34 @@ class Controller:
         # per edge rather than one per 5 Hz poll. This is the driver's OWN fault
         # bit; whether the driver is still answering at all is health.py's job.
         self._fault_seen = {n: False for n in config.NODES}
+
+        # The IMU inside the MLS, polled over SDO for display. Not a health
+        # source and not an input to anything - see the imu.* tuning note.
+        self._imu = {"gyro_dps": [None, None, None],
+                     "accel_g": [None, None, None],
+                     "yaw_rad": None, "stamp_ms": None,
+                     "seen": 0, "misses": 0, "last": None}
+        self._imu_cursor = 0
+        self._imu_next = 0.0
+
+        # When each drive's statusword was last read. _drives_stopped() needs
+        # a FRESH speed-zero bit, not the last one that happened to be seen.
+        self._status_seen = {n: None for n in config.NODES}
+
+        # Encoder-only blind run: the web SETS a plan, PB Start (MANUAL) runs
+        # it. See blindrun.py and the blind_run.* tuning note.
+        self._counts_per_wheel_rev = None     # 608Fh/6091h, read at arm time
+        self._blind_plan = None
+        self._blind = None
+        self._blind_start_at = 0.0
+        self._blind_last = None
+        self._blind_results = []
+        self._blind_written = 0
+        self._blind_tick_at = None
+        self._blind_pos_at = 0.0
+        self._blind_abort_req = None
+        self._blind_log = runlog.RunLog(columns=runlog.BLIND_COLUMNS,
+                                        prefix="blind")
 
         # Hardware health. One table, one place to add the next device - see
         # health.py for why this is not three more if-statements, and for why it
@@ -382,17 +438,52 @@ class Controller:
                 raise RuntimeError("not in manual mode")
             if not self._armed:
                 raise RuntimeError("not armed")
+            if self._fault:
+                # A latched fault zeroed the setpoint; a jog must not replace
+                # it. Reset acknowledges, then MANUAL re-arms (_hold_arm_state).
+                raise RuntimeError(f"fault latched: {self._fault} - press Reset")
+            if self._blind is not None or self._blind_start_at:
+                raise RuntimeError("a blind run is in progress - Reset or Stop it first")
             self._direction = direction
             self._target = motion.velocities(direction)
             self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
             self._last_stop_reason = None
 
     def halt(self):
-        """Zero the setpoint but stay armed."""
+        """Zero the setpoint but stay armed. Also stops a blind run."""
         with self._lock:
+            if self._blind is not None or self._blind_start_at:
+                # Acted on by the bus thread, which owns the run.
+                self._blind_abort_req = "stopped from the web (Stop)"
             self._direction = "stop"
             self._target = (0, 0)
             self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
+
+    def set_blind_plan(self, spec):
+        """Validate and store a blind-run plan. Moves nothing: PB Start runs it."""
+        spec = spec or {}
+        with self._lock:
+            busy = self._blind is not None or bool(self._blind_start_at)
+            cpr = self._counts_per_wheel_rev
+        if busy:
+            raise RuntimeError("a blind run is in progress - press Reset to stop it first")
+        if cpr is None:
+            raise RuntimeError("encoder scale unknown - put the selector in MANUAL so "
+                               "the vehicle arms and reads 608Fh/6091h")
+        planned = blindrun.plan(spec.get("segments"), spec.get("speed"), cpr)
+        with self._lock:
+            self._blind_plan = planned
+        events.info(f"blind-run plan set from the web: {len(planned['segments'])} "
+                    f"segment(s) - press Start with the selector in MANUAL to run it")
+        return planned
+
+    def clear_blind_plan(self):
+        with self._lock:
+            if self._blind is not None or self._blind_start_at:
+                raise RuntimeError("a blind run is in progress - press Reset to stop it first")
+            had, self._blind_plan = self._blind_plan, None
+        if had:
+            events.info("blind-run plan cleared from the web")
 
     def lidar_cloud(self, step=None):
         """The decimated point cloud, decoded on the CALLING (Flask) thread.
@@ -496,6 +587,10 @@ class Controller:
                 # /api/state five times a second; the cloud goes out on
                 # /api/lidar, which only the lidar page asks for.
                 "lidar": self._lidar.snapshot(),
+                "imu": self._imu_snapshot(now),
+                "blind": self._blind_snapshot(now),
+                "horn": {"enabled": config.HORN_ENABLED,
+                         "channel": config.HORN_DO_CHANNEL},
                 "panel": {"enabled": config.PANEL_ENABLED,
                           "selector": self._panel.mode(),
                           "fault": self._fault,
@@ -531,8 +626,8 @@ class Controller:
                 self.error = str(e)
             events.error(f"CAN bus unavailable: {e}")
             return
-        self.bus = TpdoTap(raw, self._on_pdo, self._on_emcy,
-                           self._on_heartbeat, nodes=config.NODES)
+        self.bus = TpdoTap(raw, self._on_emcy, self._on_heartbeat,
+                           nodes=config.NODES)
         with self._lock:
             self.how = how
             self.error = None
@@ -567,6 +662,7 @@ class Controller:
                 with self._lock:
                     armed, target, deadline, mode = (
                         self._armed, self._target, self._deadline, self._mode)
+                target = self._fault_gate(target)
 
                 if armed and now > deadline and target != (0, 0):
                     reason = "watchdog: no keepalive from the browser"
@@ -594,6 +690,8 @@ class Controller:
                         self._direction = "stop"
                         self._target = target = (0, 0)
                         self._last_stop_reason = reason
+                    if self._blind is not None or self._blind_start_at:
+                        self._abort_blind(reason)
 
                 # Device liveness, a separate question from the operator
                 # watchdog above. Pure arithmetic, no bus I/O, deliberately
@@ -603,6 +701,16 @@ class Controller:
                     target = self._apply_health(hw, armed, target)
                 with self._lock:
                     self._health = hw
+
+                if self._blind is not None:
+                    target = (self._blind_tick() if armed and mode == "manual"
+                              else self._abort_blind("vehicle is no longer armed in MANUAL"))
+
+                # Horn before wheels. Both are only intents at this point -
+                # one crosses to the DIO thread, the other goes out as an SDO -
+                # but the order says which is meant to lead, and a warning that
+                # follows the motion it warns about is decoration.
+                self._update_horn(armed, target)
 
                 if armed and self._target_moved(target):
                     self._write_target(target)
@@ -618,6 +726,10 @@ class Controller:
                 if config.MONITOR_ENABLED and now - t_mon >= config.MONITOR_PERIOD_S:
                     t_mon = now
                     self._poll_monitor()
+                # One IMU object per poll, display only. Paces itself, because
+                # a miss backs off further than a hit - see _poll_imu.
+                if config.IMU_ENABLED and now >= self._imu_next:
+                    self._poll_imu(now)
 
                 # Pump only the REMAINDER of the period, not a further fixed
                 # 20 ms on top of the work. Telemetry and setpoint writes already
@@ -727,6 +839,52 @@ class Controller:
         self.bus.send(can.Message(arbitration_id=0x000, data=[command, node],
                                   is_extended_id=False))
         time.sleep(0.05)
+
+    def _update_horn(self, armed, target):
+        """Sound the horn and lights while motion is COMMANDED. Manual and auto alike.
+
+        No distinction between the modes, because the hazard does not make one:
+        a jogged vehicle and a running one are the same 150 kg, and a horn that
+        meant two different things would mean neither.
+
+        It follows the SETPOINT, not measured rpm. That puts the sound at the
+        moment motion is asked for rather than once the wheels are already
+        turning, which is the whole point of a warning - and it accepts the
+        other end, where the horn stops while the drives are still ramping
+        down. Ending the warning when the vehicle stops being commanded to move
+        is the right way round; what is left is a coast that is already over.
+
+        `armed` is redundant against a zero setpoint today, and is stated
+        anyway. It is the interlock, and an interlock that is only implied is
+        one a later edit removes without noticing.
+
+        Renewed every tick rather than written on the edge: the deadline is
+        what drops the coil if this loop dies, so a horn cannot outlive the
+        thread that was sounding it. See dio.set_coil().
+        """
+        if not config.HORN_ENABLED:
+            return
+        self._dio.set_coil(config.HORN_DO_CHANNEL,
+                           bool(armed) and tuple(target) != (0, 0),
+                           config.HORN_HOLD_S)
+
+    def _fault_gate(self, target):
+        """The one motion-permission rule, applied at the output.
+
+        drive() refuses a jog while a fault is latched; this is the same rule
+        on the tick, so nothing that slipped past acceptance - a request that
+        raced the fault edge, a code path added later - can reach the drives.
+        Pure arithmetic under the lock, no bus I/O.
+        """
+        if target == (0, 0):
+            return target
+        with self._lock:
+            if self._fault is None:
+                return target
+            self._direction = "stop"
+            self._target = (0, 0)
+            self._last_stop_reason = f"fault latched: {self._fault}"
+        return (0, 0)
 
     def _write_target(self, target):
         """Push the setpoint to both drives. The hot path of the whole loop.
@@ -843,9 +1001,19 @@ class Controller:
         snap = self._dio.snapshot()
         intent = self._panel.scan(snap.get("di"), bool(snap.get("comms_ok")))
         if not intent.valid:
-            # No trusted image, so no decisions. The operator's panel is the
-            # thing that just went away.
+            # No trusted image, so no decisions - and a pending start is
+            # abandoned rather than carried across the gap. The operator's
+            # panel is the thing that just went away; going anyway is the
+            # wrong way to resolve that.
+            if self._blind is not None or self._blind_start_at:
+                self._abort_blind("panel image lost")
             return
+
+        # A blind run is panel-started, so this scan - not a browser - is its
+        # evidence of a live control path. Without this the manual watchdog
+        # would stop it 0.6 s in, blaming a browser nobody is holding.
+        if self._blind is not None and intent.mode == panel.MANUAL:
+            self._blind_keepalive()
 
         # Order matters: a selector move disarms, so evaluate it before the
         # buttons decide what to do about the new mode.
@@ -856,20 +1024,21 @@ class Controller:
         if intent.start:
             self._panel_start(intent.mode)
 
-        # A LEVEL, not an edge: what the selector is resting on decides whether
-        # the vehicle should be energised, so it is evaluated every scan rather
-        # than only when something is pressed.
+        # Both of these are LEVELS, not edges: what the selector is resting on
+        # decides whether the vehicle should be energised, so they are
+        # evaluated every scan rather than only when something is pressed.
+        self._pending_start()
         self._hold_arm_state(intent.mode)
 
     def _panel_start(self, mode):
-        """Start has nothing to run. Kept live, and deliberately not removed.
+        """Start runs the blind-run plan in MANUAL. In AUTO it has nothing to run.
 
-        *** This is a stub with a reason. *** Start used to arm and then launch
-        a tape-following run; that run is gone and no autonomous mode has
-        replaced it yet. The button, its debounced edge in core/panel.py, and
-        the anti-tie-down rule that stops a taped-down Start acting at power-on
-        are all still correct and still tested - what is missing is something to
-        start.
+        *** The AUTO branch is a stub with a reason. *** Start used to arm and
+        then launch a tape-following run; that run is gone and no autonomous
+        mode has replaced it yet. The button, its debounced edge in
+        core/panel.py, and the anti-tie-down rule that stops a taped-down Start
+        acting at power-on are all still correct and still tested - what is
+        missing is something to start.
 
         So it reports rather than silently doing nothing: an operator pressing a
         button that does nothing needs to be told which of the two it is. When
@@ -883,7 +1052,9 @@ class Controller:
             events.warn(f"Start ignored - fault latched: {fault}. Press Reset.")
             return
         if mode != panel.AUTO:
-            events.info("Start ignored - selector is in MANUAL")
+            # In MANUAL, Start runs the blind-run plan set on /blind, if any.
+            # Jogging stays per-direction from the web pad.
+            self._blind_panel_start()
             return
         events.warn("Start ignored - this build has no autonomous mode. "
                     "Tape following is retired; navigation is not here yet.")
@@ -891,6 +1062,8 @@ class Controller:
 
     def _panel_mode_changed(self, mode):
         events.info(f"selector -> {mode.upper()}")
+        if self._blind is not None or self._blind_start_at:
+            self._abort_blind(f"selector moved to {mode.upper()}")
         # A move INTO manual re-arms through _hold_arm_state on this same scan,
         # so the disarm below is not a round trip to idle and back - it is the
         # mode change itself, which _do_arm cannot do in place.
@@ -916,6 +1089,12 @@ class Controller:
         Clearing the fault is what lets MANUAL arm itself again, so Reset is
         still the way back from anything the vehicle latched.
         """
+        if self._blind is not None or self._blind_start_at:
+            # The plan is kept, so the same move can be run again with Start.
+            self._abort_blind("stopped from panel (Reset)")
+            self._note_action("blind run stopped", "panel")
+            return
+
         # Stop first, whatever else is true. Reset is the button somebody
         # presses when they want motion to end, and it must not be conditional
         # on which mode happens to be live.
@@ -935,6 +1114,244 @@ class Controller:
 
 
 
+
+    def _pending_start(self):
+        """Turn a delayed Start into an actual run once the delay is up."""
+        if not self._blind_start_at:
+            return
+        with self._lock:
+            request = self._blind_abort_req
+        if request:
+            self._abort_blind(request)
+        elif self._panel.mode() == panel.AUTO:
+            self._abort_blind("selector is not in MANUAL")
+        elif time.monotonic() >= self._blind_start_at:
+            self._blind_start_at = 0.0
+            self._begin_blind()
+
+    # ---- encoders --------------------------------------------------------
+
+    def _read_positions(self):
+        """6064h from both drives, or None - a move must not guess its progress."""
+        counts = []
+        for nid in (config.LEFT, config.RIGHT):
+            pos = self._read_i32(nid, 0x6064, fast=True)
+            if pos is None:
+                return None
+            counts.append(pos)
+        return tuple(counts)
+
+    def _read_encoder_scale(self):
+        """Position counts per WHEEL revolution, or None if not trustworthy.
+
+        608Fh is the control resolution per motor revolution. 6091h is the gear
+        ratio the drive applies itself; only 1:1 (motor-shaft steps) or the
+        profile's own gear_ratio agree with scaling by vehicle.gear_ratio.
+        """
+        scales = set()
+        for nid in (config.LEFT, config.RIGHT):
+            inc, revs = self._read(nid, 0x608F, 1), self._read(nid, 0x608F, 2)
+            gm, gs = self._read(nid, 0x6091, 1), self._read(nid, 0x6091, 2)
+            if not (inc and revs and gm and gs):
+                return None
+            drive_gear = gm / gs
+            if not (abs(drive_gear - 1.0) < 1e-9
+                    or abs(drive_gear - config.GEAR_RATIO) < 1e-9):
+                return None
+            scales.add(inc / revs * config.GEAR_RATIO)
+        return scales.pop() if len(scales) == 1 else None
+
+    def _drives_stopped(self, now):
+        """Both speed-zero bits from fresh statuswords; None if not fresh.
+
+        Caller holds the lock.
+        """
+        nodes = (config.LEFT, config.RIGHT)
+        if not all(self._status_seen[n] is not None
+                   and now - self._status_seen[n] <= config.DRIVER_TIMEOUT_S
+                   for n in nodes):
+            return None
+        return all(self._telemetry[n].get("speed_zero", False) for n in nodes)
+
+    # ---- encoder-only blind run -------------------------------------------
+
+    def _blind_panel_start(self):
+        """PB Start with the selector in MANUAL: run the plan set on /blind."""
+        with self._lock:
+            plan, armed, mode = self._blind_plan, self._armed, self._mode
+        if self._blind is not None or self._blind_start_at:
+            return                      # already going, or already about to
+        if plan is None:
+            events.info("Start ignored - selector is in MANUAL and no blind-run "
+                        "plan is set on /blind")
+            return
+        if not (armed and mode == "manual"):
+            events.warn("Start ignored - a blind run needs the vehicle armed in MANUAL")
+            return
+        if plan["counts_per_wheel_rev"] != self._counts_per_wheel_rev:
+            events.warn("Start ignored - the encoder scale changed since the "
+                        "blind-run plan was set; Set it again")
+            return
+        self._blind_start_at = time.monotonic() + config.AUTO_START_DELAY_S
+        events.info(f"START pressed - blind run of {len(plan['segments'])} "
+                    f"segment(s) in {config.AUTO_START_DELAY_S:.1f} s")
+        self._note_action("blind run START", "panel")
+
+    def _blind_keepalive(self):
+        with self._lock:
+            if self._mode == "manual" and self._armed:
+                self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
+
+    def _begin_blind(self):
+        with self._lock:
+            plan, armed, mode, fault = (self._blind_plan, self._armed,
+                                        self._mode, self._fault)
+        if plan is None or not (armed and mode == "manual") or fault:
+            events.warn("blind start abandoned - the plan, MANUAL arming or a "
+                        "fault changed during the start delay")
+            return
+        counts = self._read_positions()
+        if counts is None:
+            self._set_fault("blind run refused: encoder position (6064h) unreadable")
+            return
+        now = time.monotonic()
+        with self._lock:
+            self._blind = blindrun.BlindRun(plan, counts)
+            self._blind_last = None
+            self._blind_written = 0
+            self._blind_tick_at = None
+            self._blind_pos_at = now
+            self._blind_abort_req = None
+            self._deadline = now + config.MANUAL_WATCHDOG_S
+            self._last_stop_reason = None
+        self._blind_log.open(
+            f"profile={config.PROFILE_NAME} blind run: {len(plan['segments'])} "
+            f"segment(s) at {plan['ref_rpm']:.0f} r/min reference, "
+            f"{plan['counts_per_wheel_rev']:.0f} counts per wheel turn")
+        events.info("blind run started - encoder only; the IMU yaw rate is "
+                    "recorded, never steered on")
+
+    def _blind_tick(self):
+        """One tick of a blind run. Returns the setpoint to write."""
+        tick = time.perf_counter()
+        dt = (tick - self._blind_tick_at) if self._blind_tick_at else config.LOOP_PERIOD_S
+        self._blind_tick_at = tick
+        now = time.monotonic()
+        with self._lock:
+            fault, request = self._fault, self._blind_abort_req
+            self._blind_abort_req = None
+        if request:
+            return self._abort_blind(request)
+        if fault:
+            return self._abort_blind(f"fault latched: {fault}")
+        if self._drives_ready() is False:
+            return self._abort_blind("drives left Operation enabled")
+        counts = self._read_positions()
+        if counts is None:
+            if now - self._blind_pos_at > config.DRIVER_TIMEOUT_S:
+                return self._abort_blind("encoder position (6064h) unreadable")
+            return self._target
+        self._blind_pos_at = now
+
+        with self._lock:
+            stopped = self._drives_stopped(now)
+            left, right = self._blind.update(counts, dt, stopped)
+            run = self._blind
+        self._emit_blind_results(run)
+        if run.phase == blindrun.ABORTED:
+            return self._abort_blind(run.reason)
+
+        snap = run.snapshot()
+        target = (int(round(left)), int(round(right)))
+        with self._lock:
+            self._target = target
+            self._direction = "blind" if target != (0, 0) else "stop"
+            tel = {"rpm_l": self._telemetry[config.LEFT]["rpm"],
+                   "rpm_r": self._telemetry[config.RIGHT]["rpm"],
+                   "gyro_z_dps": self._imu["gyro_dps"][2]}
+        self._blind_log.write({
+            "dt": dt, "phase": snap["phase"], "segment": snap["segment"],
+            "tgt_l_m": snap["target_m"][0], "tgt_r_m": snap["target_m"][1],
+            "prog_l_m": snap["progress_m"][0], "prog_r_m": snap["progress_m"][1],
+            "cnt_l": counts[0], "cnt_r": counts[1], "n_l": left, "n_r": right,
+            "x_m": snap["pose"]["x_m"], "y_m": snap["pose"]["y_m"],
+            "heading_deg": snap["pose"]["heading_deg"], "speed_mps": snap["speed_mps"],
+            "loop_ms": dt * 1000.0,
+        }, tel)
+        if run.phase == blindrun.DONE:
+            self._finish_blind()
+            return (0, 0)
+        return target
+
+    def _emit_blind_results(self, run):
+        """Publish segments completed since the last tick: page, CSV, event."""
+        new = run.results[self._blind_written:]
+        if not new:
+            return
+        self._blind_written = len(run.results)
+        for r in new:
+            row = dict(r, time=time.strftime("%Y-%m-%d %H:%M:%S"),
+                       profile=config.PROFILE_NAME,
+                       counts_per_wheel_rev=run.plan["counts_per_wheel_rev"],
+                       log_dir=self._blind_log.dir,
+                       spec=";".join(f"{k}={v}" for k, v in r["spec"].items()),
+                       speed_motor_rpm=run.plan["ref_rpm"],
+                       target_left=r["target_counts"][0], target_right=r["target_counts"][1],
+                       final_left=r["final_counts"][0], final_right=r["final_counts"][1],
+                       error_left=r["error_counts"][0], error_right=r["error_counts"][1])
+            with self._lock:
+                self._blind_results.append(row)
+                del self._blind_results[:-blindrun.RESULTS_KEPT]
+            if self._blind_log.enabled:
+                err = runlog.append_result(row)
+                if err:
+                    events.warn(f"blind result not written to CSV: {err}")
+            events.info(f"blind segment {r['segment']} ({r['kind']}): encoder "
+                        f"{r['encoder_distance_m']:.4f} m, "
+                        f"{r['encoder_heading_deg']:.2f} deg; count error "
+                        f"L {r['error_counts'][0]:+d} R {r['error_counts'][1]:+d}")
+
+    def _abort_blind(self, reason):
+        """Stop a blind run, or cancel one about to start. Zeroes outright."""
+        with self._lock:
+            run, pending = self._blind, bool(self._blind_start_at)
+            self._blind_start_at = 0.0
+            self._blind = None
+            self._blind_abort_req = None
+            if run is not None:
+                run.abort(reason)
+                self._blind_last = run.snapshot()
+            if run is not None or pending:
+                self._target = (0, 0)
+                self._direction = "stop"
+                self._last_stop_reason = f"blind run stopped: {reason}"
+        if run is not None:
+            self._blind_log.close()
+            events.warn(f"blind run stopped - {reason}")
+        elif pending:
+            events.warn(f"blind run start cancelled - {reason}")
+        return (0, 0)
+
+    def _finish_blind(self):
+        with self._lock:
+            run, self._blind = self._blind, None
+            self._blind_last = run.snapshot()
+            self._target = (0, 0)
+            self._direction = "stop"
+        self._blind_log.close()
+        events.info(f"blind run complete - {len(run.results)} segment(s) recorded")
+
+    def _blind_snapshot(self, now):
+        """Caller holds the lock."""
+        run = self._blind
+        return {"plan": self._blind_plan,
+                "active": run is not None,
+                "starting_in": (max(0.0, self._blind_start_at - now)
+                                if self._blind_start_at else None),
+                "run": run.snapshot() if run is not None else self._blind_last,
+                "results": list(self._blind_results),
+                "counts_per_wheel_rev": self._counts_per_wheel_rev,
+                "log_dir": self._blind_log.dir}
 
     def _hold_arm_state(self, mode):
         """Keep the vehicle energised iff the selector says it should be.
@@ -1090,6 +1507,7 @@ class Controller:
             with self._lock:
                 t = self._telemetry[nid]
                 if sw is not None:
+                    self._status_seen[nid] = time.monotonic()
                     t["statusword"] = sw & 0xFFFF
                     t["state"] = decode_state(sw)
                     t["fault"] = bool(sw & SW_FAULT)
@@ -1113,6 +1531,60 @@ class Controller:
                 else:
                     events.info(f"node {nid} ({label}) fault cleared")
 
+
+    def _poll_imu(self, now):
+        """Read the next object in _IMU_SCHEDULE. One SDO round-trip, no more.
+
+        A hit advances the cursor and schedules the next read one poll_period_s
+        out. A miss does NOT advance - the same object is retried - and backs
+        off retry_period_s, so an absent sensor costs one short timeout every
+        couple of seconds rather than one on every poll. The values already
+        held are left standing and dated by `last`, which is what the page
+        uses to grey them.
+        """
+        field, axis, index, sub = _IMU_SCHEDULE[self._imu_cursor]
+        raw = self._read(config.SENSOR_NODE, index, sub, fast=True,
+                         timeout=IMU_SDO_TIMEOUT_S)
+        if raw is None:
+            with self._lock:
+                self._imu["misses"] += 1
+            self._imu_next = now + config.IMU_RETRY_PERIOD_S
+            return
+        self._imu_cursor = (self._imu_cursor + 1) % len(_IMU_SCHEDULE)
+        self._imu_next = now + config.IMU_PERIOD_S
+        # 16-bit objects come back as the low half of a u32; the stamp is the
+        # one unsigned quantity.
+        value = (raw & 0xFFFF if field == "stamp_ms"
+                 else read_imu.s16(raw & 0xFFFF) * _IMU_SCALE[field])
+        with self._lock:
+            if axis is None:
+                self._imu[field] = value
+            else:
+                self._imu[field][axis] = value
+            self._imu["seen"] += 1
+            self._imu["last"] = now
+
+    def _imu_snapshot(self, now):
+        """Caller holds the lock. Lists are copied: this goes out as JSON from
+        another thread while the bus thread keeps writing into them."""
+        i = self._imu
+        last = i["last"]
+        return {
+            "enabled": config.IMU_ENABLED,
+            "node": config.SENSOR_NODE,
+            "gyro_dps": list(i["gyro_dps"]),
+            "accel_g": list(i["accel_g"]),
+            "yaw_rad": i["yaw_rad"],
+            "stamp_ms": i["stamp_ms"],
+            "seen": i["seen"],
+            "misses": i["misses"],
+            "age_s": None if last is None else now - last,
+            # A full picture is eight reads; anything older than a couple of
+            # sweeps is a sensor that has stopped answering, not a slow one.
+            "stale": last is None
+                     or now - last > 2 * len(_IMU_SCHEDULE) * config.IMU_PERIOD_S
+                                     + config.IMU_RETRY_PERIOD_S,
+        }
 
     # ---- queued actions --------------------------------------------------
 
@@ -1202,6 +1674,42 @@ class Controller:
             for nid in config.NODES:
                 rpdo.configure(self.bus, nid, self._sdo_write_for_rpdo)
 
+        # From the first NMT start onward a drive may be enabled, and _armed
+        # is only set at the very end. Any exit before then - a statusword
+        # that never reached Operation enabled, a write that timed out on the
+        # SECOND drive after the first was already excited - has to run the
+        # de-energise sequence for BOTH drives, so force=True: _do_disarm()
+        # would otherwise see _armed False and return without touching them.
+        try:
+            self._arm_drives(mode)
+        except BaseException:
+            self._do_disarm(force=True)
+            raise
+
+        # The blind run plans in wheel counts, so the scale is read here, once
+        # per arm, rather than trusted from a previous session or the profile.
+        self._counts_per_wheel_rev = self._read_encoder_scale()
+        if self._counts_per_wheel_rev is None:
+            events.warn("encoder scale (608Fh/6091h) unreadable or inconsistent "
+                        "- blind runs unavailable this arm")
+        else:
+            events.info(f"encoder scale {self._counts_per_wheel_rev:.0f} "
+                        f"counts per wheel turn (blind run)")
+
+        self._applied = None
+        with self._lock:
+            self._armed = True
+            self._mode = mode
+            self._direction = "stop"
+            self._target = (0, 0)
+            self._last_stop_reason = None
+            self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
+        report = list(pre["report"])
+        events.info(f"armed in {mode} mode")
+        return {"ok": True, "report": report}
+
+    def _arm_drives(self, mode):
+        """NMT start, mode and ramps, then the 402 enable sequence, per drive."""
         for nid in config.NODES:
             self._nmt(0x01, nid)
 
@@ -1218,33 +1726,34 @@ class Controller:
                 time.sleep(0.05)
             sw = self._read(nid, 0x6041) or 0
             if (sw & 0x6F) != 0x27:
-                self._do_disarm()
                 raise RuntimeError(f"node {nid} did not reach Operation enabled "
                                    f"(statusword 0x{sw:04X}, {decode_state(sw)})")
 
-        self._applied = None
-        with self._lock:
-            self._armed = True
-            self._mode = mode
-            self._direction = "stop"
-            self._target = (0, 0)
-            self._last_stop_reason = None
-            self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
-        report = list(pre["report"])
-        events.info(f"armed in {mode} mode")
-        return {"ok": True, "report": report}
+    def _do_disarm(self, force=False):
+        """Zero the setpoint, wait for the ramp, then de-energise. Never raises.
 
-    def _do_disarm(self):
-        """Zero the setpoint, wait for the ramp, then de-energise. Never raises."""
+        force=True runs the de-energise sequence even though software never
+        reached armed - the rollback of an arm that failed part-way, with one
+        drive already in Operation enabled.
+
+        A blind run, active or counting down to start, dies here too. The
+        loop would abort an active one on its next tick, but under MANUAL
+        auto-arm the panel scan re-arms on that same tick, so a run that was
+        not cancelled HERE resumed without a new Start.
+        """
         with self._lock:
             was_armed = self._armed
             self._armed = False
             self._direction = "stop"
             self._target = (0, 0)
-        if not was_armed:
+        if not was_armed and not force:
             return {"ok": True}
-        self._clear_fault()             # web disarm is an acknowledgement too
-        events.info("disarmed")
+        self._abort_blind("disarmed")
+        if was_armed:
+            self._clear_fault()         # web disarm is an acknowledgement too
+            events.info("disarmed")
+        else:
+            events.warn("arm did not complete - de-energising both drives")
 
         for nid in config.NODES:
             try:

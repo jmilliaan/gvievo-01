@@ -107,6 +107,33 @@ def test_config_profile():
     refuses("an empty can.channel is refused",
             lambda d: d["can"].update(channel=""), "can.channel")
 
+    # The horn is the only output this software energises, and both ways of
+    # mis-wiring it in the profile are refused: a channel the module does not
+    # have would write nothing, and a horn enabled without the DIO scan has
+    # nobody to write it.
+    refuses("a horn channel past the end of the module is refused",
+            lambda d: d["horn"].update(do_channel=d["dio"]["num_do"]),
+            "horn.do_channel")
+    refuses("a negative horn channel is refused",
+            lambda d: d["horn"].update(do_channel=-1), "horn.do_channel")
+    refuses("a horn without the DIO scan that writes it is refused",
+            lambda d: (d["dio"].update(enabled=False),
+                       d["panel"].update(enabled=False)),
+            "horn.enabled")
+    check("HORN_HOLD_S outlasts both the tick and the DIO scan",
+          config.HORN_HOLD_S >= 5 * config.LOOP_PERIOD_S
+          and config.HORN_HOLD_S >= 2 * config.DIO_SCAN_PERIOD_S,
+          f"HORN_HOLD_S={config.HORN_HOLD_S}")
+
+    # The IMU poll runs on the bus thread, so it is paced like every other
+    # poll there, and its back-off has to be a back-off.
+    refuses("an IMU poll faster than the tick is refused",
+            lambda d: d["imu"].update(poll_period_s=d["timing"]["loop_period_s"] / 2),
+            "imu.poll_period_s")
+    refuses("an IMU retry no slower than the poll is refused",
+            lambda d: d["imu"].update(retry_period_s=d["imu"]["poll_period_s"]),
+            "imu.retry_period_s")
+
     # The name in the file must match the file. A profile copied for a second
     # vehicle and not renamed would report the old identity in the event log
     # and in every run CSV header.
@@ -159,8 +186,9 @@ def test_derived_constants():
           f"{config.MPS_PER_RPM:.6e}")
     check("RPM_PER_MPS", close(config.RPM_PER_MPS, 3183.0989),
           f"{config.RPM_PER_MPS:.4f}")
-    check("RAD_S_PER_RPM_DIFF", close(config.RAD_S_PER_RPM_DIFF, 6.4641824e-4),
-          f"{config.RAD_S_PER_RPM_DIFF:.6e}")
+    check("RAD_S_PER_RPM_DIFF",
+          close(config.RAD_S_PER_RPM_DIFF, config.MPS_PER_RPM / config.TRACK_M),
+          f"{config.RAD_S_PER_RPM_DIFF:.6e} (track {config.TRACK_M} m)")
     check("MAX_SPEED_MPS", close(config.MAX_SPEED_MPS, 1.2566371),
           f"{config.MAX_SPEED_MPS:.4f}")
     check("MANUAL_HALF_RPM is full_rpm * half_ratio, rounded",

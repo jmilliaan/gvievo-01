@@ -27,7 +27,7 @@ diagnostic pages.
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (IMU only) |
 | CAN | 125 kbps — **migration to 1 Mbps is task T0** |
 | `use_rpdo` | **false** — the setpoint is still a blocking SDO write |
-| Tests | 696 offline checks, all passing |
+| Tests | 824 offline checks, all passing |
 
 ---
 
@@ -57,6 +57,13 @@ excites the motor and the velocity loop then holds zero — a servo lock, not a
 free shaft; a non-excited brake motor has the brake clamped instead. Only the
 `FREE` input releases it, and `FREE` is on the write deny-list. A disarmed
 vehicle cannot be pushed either.
+
+**The only output this software energises is the horn-and-lights coil**
+(`horn.do_channel`, DO00). It follows the *commanded* setpoint — high whenever
+the vehicle is armed and asked to move, manual or auto alike — and it is a
+claim the bus tick must renew every 20 ms: stop renewing and the DIO scan drops
+it within `HORN_HOLD_S`. Nothing gates on it; a horn that failed cannot prevent
+a jog.
 
 **Nothing in this repo is in the safety path.** The chain is lidar/encoders →
 FX3 → HWTO1/HWTO2 → STO, wired in hardware with EDM returned to the FX3. Nothing
@@ -192,6 +199,7 @@ blocking SDO polls arrive in *bursts*, not as steady load.
 | setpoint `60FFh` | most ticks | 2 | ~3.6 ms, nearly every tick |
 | `_poll_telemetry` | 5 Hz | 6 | **~10.8 ms, one tick in ten** |
 | `_poll_monitor` | 10 Hz | 2 | ~3.6 ms, one tick in five |
+| `_poll_imu` | 25 Hz | 1 | ~4 ms, one tick in two — display only, one object per poll |
 
 A round trip is ~1.8 ms at 125 kbps. Two fixes are staged and both are unblocked
 by the deny-list change below:
@@ -282,6 +290,7 @@ Derived from the profile, never stored:
 MPS_PER_RPM    3.1416e-4     RAD_S_PER_RPM_DIFF   6.4642e-4
 RPM_PER_MPS    3183.1        MAX_SPEED_MPS        1.2566
 MANUAL_HALF_RPM  720         ACCEL/DECEL_RPM_S    from drivers.ramp.auto
+HORN_HOLD_S      0.1         max(5·loop_period_s, 2·dio.scan_period_s)
 ```
 
 **`6083h` is the ceiling on yaw acceleration, not just on forward ramp.** It

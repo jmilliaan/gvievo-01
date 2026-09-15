@@ -62,18 +62,25 @@ def sdo_write(bus, node, index, sub, value, size, timeout=0.5):
         data=bytes([cs, index & 0xFF, (index >> 8) & 0xFF, sub]) + payload.ljust(4, b"\0"),
         is_extended_id=False))
 
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        m = bus.recv(timeout=max(0.0, deadline - time.time()))
+    # Same rule as sdo_read: only a full frame echoing our (index, sub) is
+    # this transaction's answer. A late reply to an earlier request, or a
+    # short frame, is skipped rather than reported as the result.
+    mux = bytes([index & 0xFF, (index >> 8) & 0xFF, sub])
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        m = bus.recv(timeout=max(0.0, deadline - time.monotonic()))
         if m is None:
             break
         if m.arbitration_id != 0x580 + node:
             continue
-        if m.data[0] == 0x60:
+        data = bytes(m.data)
+        if len(data) != 8 or data[1:4] != mux:
+            continue
+        if data[0] == 0x60:
             return True, "ok"
-        if m.data[0] == 0x80:
-            return False, f"abort 0x{struct.unpack_from('<I', m.data, 4)[0]:08X}"
-        return False, f"unexpected 0x{m.data[0]:02X}"
+        if data[0] == 0x80:
+            return False, f"abort 0x{struct.unpack_from('<I', data, 4)[0]:08X}"
+        return False, f"unexpected 0x{data[0]:02X}"
     return False, "timeout"
 
 

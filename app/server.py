@@ -15,8 +15,10 @@ Read the safety model before changing anything here:
     zeroes the setpoint, and /api/restart de-energises and then ends the
     process. None of them can produce motion, and the last is refused outright
     while the vehicle is armed.
-  * Auto is latched and watchdogged, but a panel-started run is held up by the
-    DI scan rather than by this page's poll - see canworker._panel_scan().
+  * /api/blind/plan and /api/blind/clear only store or discard a blind-run
+    PLAN. Nothing here runs it: PB Start on the panel does, with the selector
+    in MANUAL, and the DI scan - not this page's poll - is what keeps that run
+    alive. See canworker._panel_scan().
 """
 import os
 import subprocess
@@ -89,7 +91,22 @@ def monitor():
         nodes={str(n): config.NODES[n] for n in config.NODES},
         allowed=sorted(f"{i:04X}h" for i in guard.ALLOWED),
         scan_period_s=config.LOOP_PERIOD_S,
+        imu_enabled=config.IMU_ENABLED,
+        imu_node=config.SENSOR_NODE,
+        imu_period_ms=round(1000 * config.IMU_PERIOD_S),
         forbidden=sorted(f"{i:04X}h" for i in guard.FORBIDDEN))
+
+
+@app.get("/blind")
+def blind():
+    """Encoder-only test moves. The page SETS a plan; only PB Start runs it."""
+    return render_template(
+        "blind.html", page="blind", track_m=config.TRACK_M,
+        max_distance_m=config.BLIND_MAX_DISTANCE_M,
+        max_rpm=int(config.BLIND_MAX_RPM),
+        max_segments=config.BLIND_MAX_SEGMENTS,
+        max_mps=round(config.BLIND_MAX_RPM * config.MPS_PER_RPM, 3),
+        imu_enabled=config.IMU_ENABLED)
 
 
 @app.get("/io")
@@ -303,6 +320,24 @@ def api_stop():
     return jsonify({"ok": True})
 
 
+# A blind-run PLAN only. Storing one moves nothing; PB Start runs it.
+@app.post("/api/blind/plan")
+def api_blind_plan():
+    try:
+        return jsonify({"ok": True, "plan": ctl.set_blind_plan(request.json or {})})
+    except Exception as e:
+        return _fail(e)
+
+
+@app.post("/api/blind/clear")
+def api_blind_clear():
+    try:
+        ctl.clear_blind_plan()
+    except Exception as e:
+        return _fail(e)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/events")
 def api_events():
     """Operator events newer than ?since=<seq>. since=0 returns the whole ring.
@@ -330,6 +365,7 @@ def api_can():
         "can": snap.get("can"),
         "nodes": snap.get("nodes"),
         "health": snap.get("health"),
+        "imu": snap.get("imu"),
         "connected": snap.get("connected"),
         "how": snap.get("how"),
         "error": snap.get("error"),
