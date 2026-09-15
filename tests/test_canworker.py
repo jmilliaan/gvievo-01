@@ -488,6 +488,23 @@ def test_a_safety_stop_holds_the_run_and_resumes_itself():
     ctl._eto_scan()
     check("a manual jog is not held by this - manual has its own re-arm",
           ctl._eto_hold is None)
+
+    # -- nor to a dry run, whose drives are de-energised on purpose ---------
+    ctl._mode, ctl._auto_running = "auto", True
+    ctl._arm_retry_at = 0.0
+    called = []
+    ctl._reenable_drives = lambda: called.append(1) or True
+    real = config.DRY_RUN
+    config.DRY_RUN = True
+    try:
+        drives(0x0250)                  # switch-on disabled: never enabled
+        ctl._eto_scan()
+        ctl._eto_scan()
+        check("*** a dry run is not held for drives it never enabled ***",
+              ctl._eto_hold is None and ctl._auto_running is True)
+        check("*** ...and never re-enables them ***", called == [], str(called))
+    finally:
+        config.DRY_RUN = real
     events.clear()
 
 

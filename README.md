@@ -13,8 +13,9 @@ run logs retain the parameters and behavior of their own software revision.
 
 **Route guards are currently disabled.** Their measurement fields are `null`.
 The [hardware commissioning handoff](manuals/today_priority/route-hardware-acceptance.md)
-contains the route map, required measurements, 48 hardware test cases, expected
-results and recovery procedures. Run them in the order set by the
+contains the route map, required measurements, 63 hardware test cases (49 that
+need motion and 14 for a no-motion session), expected results and recovery
+procedures. Run them in the order set by the
 [hardware test run sheet](manuals/today_priority/hardware-test-runsheet.md).
 All hardware cases remain **NOT RUN**.
 
@@ -62,10 +63,11 @@ belongs on the vehicle's trusted operating network.
 | Station arrival | Distance-based deceleration, followed by a dwell waiting for physical Start |
 | Start at a station | Resumes the same run after the start delay |
 | Start in MANUAL with a blind-run plan set on `/blind` | Runs the encoder-only move after the start delay |
+| Start in MANUAL with a U-turn set on `/blind` | Ignored without tape under the MLS; otherwise pivots 90° or 180° after the start delay |
 | Reset during a blind run | Stops it and keeps the plan for a repeat |
 | Tape disappears | Coasts within the configured travel grace, then holds the run |
 | Tape returns during a hold | Resumes after 2 s of continuously usable tape |
-| Drives leave Operation enabled during auto | Holds commands at zero and attempts to re-enable; recovery can resume automatically |
+| Drives leave Operation enabled during auto | Holds commands at zero and attempts to re-enable; recovery can resume automatically. Not in a dry run, whose drives are never enabled |
 | Route position fault | Stops the run; Start remains refused until recovery at point 2 and process restart |
 
 The web API has no `/api/arm` or `/api/auto/run`. `/auto` is a display page.
@@ -86,9 +88,12 @@ fresh actual-speed feedback from both wheels and a connected RFID reader.
 
 `dry_run` concerns the auto path; it is not an offline simulator or a global
 manual-motion inhibit. Auto dry-run leaves the drives unarmed and computes
-commands while sending zero targets. It does not release a motor brake or make
-the shafts free to push. Check error sign by moving a magnet under a stationary
-sensor. Use the offline tests when no hardware is available.
+commands while sending zero targets. Because the drives are never enabled, a
+dry run skips the safety-chain hold and its automatic re-enable (see
+`_eto_scan`), so no torque is applied. It does not release a motor brake or make
+the shafts free to push. MANUAL is unaffected: it still energises the drives,
+and a blind run or web jog still moves the wheels with `dry_run` true. Check
+error sign by moving a magnet under a stationary sensor. Use the offline tests when no hardware is available.
 
 ## Profile and mission files
 
@@ -383,6 +388,21 @@ The controller's guarded CAN writes permit controlword, operating mode, ramps,
 target velocity and heartbeat time. Manufacturer parameter writes, FREE, clear
 ETO, parameter store/restore and controlword fault reset are refused. Normal
 CiA 402 re-enable remains possible; the write guard is not a no-resume guarantee.
+
+PDO configuration is admitted by rule, because a PDO is a write path by another
+name. Nothing in the controller configures a PDO yet; these rules exist so
+pushed feedback or a PDO setpoint can be added safely:
+
+- **RPDO mapping:** may name only an object that is itself SDO-writable, and
+  never a PDO configuration object.
+- **TPDO mapping:** may name anything, since the device only transmits.
+- **COB-ID:** must be disabled, or an 11-bit identifier in its own PDO kind's
+  predefined range on its own node. An RPDO therefore cannot obey sensor, NMT,
+  SDO or another node's traffic, and a TPDO cannot transmit on a command
+  identifier.
+
+The guard cannot see PDO frames: anything that sends a controlword by RPDO must
+check each value itself (fault reset, bit 7).
 See [drivers/canbus/guard.py](drivers/canbus/guard.py) and
 [manuals/can-monitoring-plan.txt](manuals/can-monitoring-plan.txt).
 
@@ -503,6 +523,17 @@ distance and heading, and the commanded values. Blank `measured_distance_m` and
 `measured_heading_deg` columns are left for tape-measured values. Limits and
 tuning are in the profile's `blind_run` section.
 
+The page can also set a **U-turn** instead of a move: 90° or 180°, CW or CCW, at
+`autopilot.auto_u_turn_rpm`. It stands in for a U-turn tag read, and unlike a
+move it needs the tape: PB Start is ignored without a track under the MLS, and
+the turn starts only from rest. 180° is the AUTO pivot (`core/uturn.py`): it
+ends when the MLS finds the tape again inside `u_turn_min_deg`..`u_turn_max_deg`,
+then centres. On a straight tape nothing is under the sensor at 90°, so 90° ends
+on the encoder angle through the blind-run pivot, then centres only if a track
+(a crossing tape) is there. The same stop paths apply, and a failed turn stops
+without latching a fault. The turn is logged to `logs/NNNN-blind_*/run.csv`, with
+the turned angle in `heading_deg`, and adds no `blind_results.csv` row.
+
 The IMU box displays MLS roll/pitch/yaw (`2030h`), acceleration (`2033h`),
 angular rate (`2034h`) and temperature (`2070h:01`), read by SDO about once a
 second while the MLS streams. These exist only on MLS firmware V5+ with
@@ -532,12 +563,13 @@ python3 -c "import main"             # import/profile check only
 ```
 
 The runner pins the test modules and check count and fails on uncaught worker
-thread exceptions. Latest offline verification on 2026-09-14: **131 test
-functions / 1,450 checks passed**, exit 0, without uncaught exceptions, using
-Python 3.13.9 on the development PC with `profiles/agv-01.json` and
-`missions/gy-demo.json`. `tests/browser_auto.py` passed 50 real-DOM Auto page
-checks at two viewports. Changed Python files also passed Python
-3.10 syntax parsing; rerun the suite with the deployed interpreter/dependencies.
+thread exceptions. Latest offline verification on 2026-09-15: **133 test
+functions / 1,516 checks passed**, exit 0, without uncaught exceptions, using
+Python 3.11.9 on Windows with `PYTHONUTF8=1` (some tests read files with the
+platform's default encoding), `profiles/agv-01.json` and
+`missions/gy-demo.json`. On 2026-09-14 `tests/browser_auto.py` passed 50
+real-DOM Auto page checks at two viewports; it was not rerun. Rerun the suite
+with the deployed interpreter/dependencies.
 
 Coverage includes the real
 follower against a simulated plant, controller recovery, protocol fixtures,
@@ -549,8 +581,9 @@ Synthetic limits in `tests/test_route_guard.py` are not site measurements.
 Offline results do not validate physical stopping distance or RFID coverage.
 
 The [hardware commissioning handoff](manuals/today_priority/route-hardware-acceptance.md)
-contains 48 cases across normal-speed route, speed/stopping, guarded fault
-injection, U-turn, blind-run encoder accuracy and mission checks, with expected
+contains 49 motion cases across normal-speed route, speed/stopping, guarded fault
+injection, U-turn, blind-run encoder accuracy and mission checks, plus 14
+no-motion cases (Phase N) for hardware sessions where the motors must not turn, with expected
 results and an evidence template. Run them in the order set by the
 [hardware test run sheet](manuals/today_priority/hardware-test-runsheet.md). All
 hardware cases remain NOT RUN. Preserve original run logs as historical

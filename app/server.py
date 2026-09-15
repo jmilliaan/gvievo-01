@@ -15,9 +15,11 @@ Read the safety model before changing anything here:
     zeroes the setpoint, and /api/restart de-energises and then ends the
     process. None of them can produce motion, and the last is refused outright
     while the vehicle is armed.
-  * /api/blind/plan and /api/blind/clear only store or discard a blind-run
-    PLAN. Nothing here runs it: PB Start runs it, with the selector in MANUAL,
-    and PB Reset, a selector move or /api/stop stops it.
+  * /api/blind/plan, /api/blind/turn and /api/blind/clear only store or
+    discard a blind-run PLAN - a move, or a 90/180 U-turn in its place. Nothing
+    here runs it: PB Start runs it, with the selector in MANUAL (a U-turn also
+    needs the tape under the MLS), and PB Reset, a selector move or /api/stop
+    stops it.
   * Auto is latched and watchdogged, but a panel-started run is held up by the
     DI scan rather than by this page's poll - see canworker._panel_scan().
 """
@@ -169,7 +171,8 @@ def blind():
         max_distance_m=config.BLIND_MAX_DISTANCE_M,
         max_rpm=int(config.BLIND_MAX_RPM),
         max_segments=config.BLIND_MAX_SEGMENTS,
-        max_mps=round(config.BLIND_MAX_RPM * config.MPS_PER_RPM, 3))
+        max_mps=round(config.BLIND_MAX_RPM * config.MPS_PER_RPM, 3),
+        u_turn_rpm=int(config.AUTO_U_TURN_RPM))
 
 
 @app.get("/auto")
@@ -341,6 +344,15 @@ def api_stop():
 def api_blind_plan():
     try:
         return jsonify({"ok": True, "plan": ctl.set_blind_plan(request.json or {})})
+    except Exception as e:
+        return _fail(e)
+
+
+# A 90/180 U-turn PLAN only, in place of any move. PB Start runs it.
+@app.post("/api/blind/turn")
+def api_blind_turn():
+    try:
+        return jsonify({"ok": True, "plan": ctl.set_blind_turn(request.json or {})})
     except Exception as e:
         return _fail(e)
 

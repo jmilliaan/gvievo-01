@@ -23,6 +23,23 @@
 </section>
 
 <section class="sensor">
+  <h2>U-turn <small>on the tape &middot; {{ u_turn_rpm }} r/min pivot</small></h2>
+  {# Each button SETS the turn, like a U-turn tag that has been read but not
+     yet acted on. Start on the panel is still the only thing that pivots. #}
+  <div class="bar">
+    <button type="button" class="big" data-turn="90" data-dir="ccw">SET 90° CCW</button>
+    <button type="button" class="big" data-turn="90" data-dir="cw">SET 90° CW</button>
+    <button type="button" class="big" data-turn="180" data-dir="ccw">SET 180° CCW</button>
+    <button type="button" class="big" data-turn="180" data-dir="cw">SET 180° CW</button>
+  </div>
+  <p class="auto-detail">Replaces any move set below. Jog onto the tape, then press
+     Start with the selector in MANUAL - Start is ignored with no tape under the MLS.
+     180° ends when the MLS finds the tape again, then centres, exactly like a
+     U-turn tag in AUTO. 90° ends on the encoder angle, and centres only if a
+     tape is under the MLS there.</p>
+</section>
+
+<section class="sensor">
   <h2>Move <small>track {{ track_m }} m</small></h2>
   <div id="blind-segments" class="blind-segments"></div>
   <div class="blind-row">

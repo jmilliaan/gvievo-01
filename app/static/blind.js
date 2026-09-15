@@ -67,6 +67,17 @@ document.getElementById('blind-clear').addEventListener('click', async () => {
   try { await api('/api/blind/clear'); showPlan(null); }
   catch (e) { errEl.textContent = e.message; }
 });
+const turnButtons = [...document.querySelectorAll('[data-turn]')];
+turnButtons.forEach(b => b.addEventListener('click', async () => {
+  errEl.textContent = '';
+  try {
+    showPlan((await api('/api/blind/turn',
+      {angle_deg: Number(b.dataset.turn), direction: b.dataset.dir})).plan);
+  } catch (e) { errEl.textContent = e.message; }
+}));
+
+const isTurn = p => !!p && p.kind === 'u_turn';
+const turnName = p => `U-turn ${p.angle_deg}° ${p.direction.toUpperCase()}`;
 
 function describe(kind, spec) {
   return kind + ' ' + Object.entries(spec || {}).map(([k, v]) => `${k}=${v}`).join(' ');
@@ -84,6 +95,14 @@ function showPlan(plan) {
   const key = JSON.stringify(plan);
   if (key === shownPlan) return;
   shownPlan = key;
+  if (isTurn(plan)) {
+    setText('blind-plan-note', `${turnName(plan)} at ${fx(plan.rpm, 0)} r/min, ends on the `
+      + (plan.end === 'tape' ? 'tape' : 'encoder angle'));
+    document.querySelector('#blind-plan tbody').replaceChildren(row([
+      1, turnName(plan), '–', '–', `${fx(plan.rpm, 0)} / ${fx(plan.rpm, 0)}`,
+      plan.pivot ? fx(plan.pivot.duration_s, 1) : '–']));
+    return;
+  }
   setText('blind-plan-note', plan
     ? `${plan.segments.length} segment(s), ~${fx(plan.duration_s, 1)} s, `
       + `${fx(plan.ref_rpm, 0)} r/min reference (${fx(plan.speed_mps, 3)} m/s)`
@@ -110,6 +129,10 @@ function showResults(results) {
 
 function statusOf(s) {
   const b = s.blind || {}, run = b.run;
+  if (b.active && isTurn(run)) {
+    return [`${turnName(run)} - ${run.phase.toUpperCase()}`,
+            `${fx(run.turned_deg, 1)}° by encoder · Reset on the panel stops it`];
+  }
   if (b.active && run) {
     return [`BLIND RUN - ${run.phase.toUpperCase()}`,
             `segment ${run.segment} of ${run.segments} · Reset on the panel stops it`];
@@ -117,11 +140,17 @@ function statusOf(s) {
   if (b.starting_in !== null && b.starting_in !== undefined) {
     return [`STARTING - ${fx(b.starting_in, 1)} s`, 'Reset on the panel cancels'];
   }
-  const last = run && run.phase === 'aborted' ? `Last run stopped: ${run.reason}`
+  const last = run && (run.phase === 'aborted' || run.phase === 'failed')
+               ? `Last run stopped: ${run.reason}`
+             : isTurn(run) && run.phase === 'done'
+               ? `Last U-turn complete at ${fx(run.turned_deg, 1)}°${run.centred ? ', centred' : ', not centred'}`
              : run && run.phase === 'done' ? 'Last run complete' : null;
   if (!b.plan) return ['NO PLAN SET', last || 'Build a move and press SET'];
   if (s.mode !== 'manual' || !s.armed) {
     return ['PLAN SET - SELECTOR TO MANUAL', 'Start runs the plan only while armed in MANUAL'];
+  }
+  if (isTurn(b.plan) && nearestTape(s.sensor) === null) {
+    return ['PLAN SET - NO TAPE UNDER THE MLS', `${turnName(b.plan)} needs the tape to start`];
   }
   return ['PLAN SET - PRESS START ON THE PANEL', last || 'Reset on the panel stops a run'];
 }
@@ -151,15 +180,19 @@ onState(s => {
   const busy = !!b.active || (b.starting_in !== null && b.starting_in !== undefined);
   document.getElementById('blind-set').disabled = busy;
   document.getElementById('blind-clear').disabled = busy;
+  turnButtons.forEach(t => { t.disabled = busy; });
   showPlan(b.plan || null);
   setText('br-phase', run ? run.phase : '–');
-  setText('br-seg', run ? `segment ${run.segment} of ${run.segments} · ${run.kind}` : 'segment –');
-  setText('br-left', run ? fx(run.progress_m[0]) : '–');
-  setText('br-left-t', run ? `of ${fx(run.target_m[0])} m` : 'of – m');
-  setText('br-right', run ? fx(run.progress_m[1]) : '–');
-  setText('br-right-t', run ? `of ${fx(run.target_m[1])} m` : 'of – m');
-  setText('br-pose', run ? `${fx(run.pose.x_m)} / ${fx(run.pose.y_m)} · ${fx(run.pose.heading_deg, 1)}` : '–');
-  setText('br-speed', run ? fx(run.speed_mps) : '–');
+  // A U-turn has an angle, not per-wheel distances or a pose.
+  const seg = isTurn(run) ? null : run;
+  setText('br-seg', isTurn(run) ? `${turnName(run)} · ${fx(run.turned_deg, 1)}° by encoder`
+    : seg ? `segment ${seg.segment} of ${seg.segments} · ${seg.kind}` : 'segment –');
+  setText('br-left', seg ? fx(seg.progress_m[0]) : '–');
+  setText('br-left-t', seg ? `of ${fx(seg.target_m[0])} m` : 'of – m');
+  setText('br-right', seg ? fx(seg.progress_m[1]) : '–');
+  setText('br-right-t', seg ? `of ${fx(seg.target_m[1])} m` : 'of – m');
+  setText('br-pose', seg ? `${fx(seg.pose.x_m)} / ${fx(seg.pose.y_m)} · ${fx(seg.pose.heading_deg, 1)}` : '–');
+  setText('br-speed', seg ? fx(seg.speed_mps) : '–');
   const tape = nearestTape(s.sensor);
   setText('br-tape', tape === null ? 'no tape' : fx(tape, 0));
   showResults(b.results || []);

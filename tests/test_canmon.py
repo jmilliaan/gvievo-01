@@ -86,9 +86,77 @@ def test_can_monitoring():
     check("an unlisted index is refused by default",
           not guard.is_allowed(0x1000, 1))
 
+    # -- PDO configuration: a PDO is a write path by another name -----------
+    MAP_60FF = (0x60FF << 16) | 0x0020        # target velocity, 32 bits
+    MAP_6040 = (0x6040 << 16) | 0x0010        # controlword, 16 bits
+    MAP_403E = (0x403E << 16) | 0x0010        # FREE / brake release
+    check("an RPDO may map the setpoint and the controlword",
+          guard.is_allowed(0x1600, MAP_60FF, sub=1)
+          and guard.is_allowed(0x1600, MAP_6040, sub=2))
+    check("*** an RPDO may NOT map 403Eh behind the deny-list ***",
+          not guard.is_allowed(0x1600, MAP_403E, sub=1))
+    check("...and the refusal names the smuggled object",
+          "403E" in _why(guard, 0x1600, MAP_403E, sub=1),
+          _why(guard, 0x1600, MAP_403E, sub=1)[:70])
+    check("no 4xxxh parameter or unlisted object can be mapped into an RPDO",
+          not any(guard.is_allowed(0x1600, (i << 16) | 0x0010, sub=1)
+                  for i in (0x4000, 0x40C0, 0x40D0, 0x40C6, 0x4FFF, 0x1010, 0x2000)))
+    check("*** an RPDO may not map PDO configuration, so a frame cannot "
+          "re-address a PDO ***",
+          not any(guard.is_allowed(0x1600, (i << 16) | 0x0120, sub=1)
+                  for i in (0x1400, 0x1600, 0x1800, 0x1A00)))
+    check("sub 0 of a mapping is the entry count, not an object",
+          guard.is_allowed(0x1600, 2, sub=0))
+    check("an empty mapping slot maps nothing and is permitted",
+          guard.is_allowed(0x1600, 0, sub=3))
+    check("an RPDO mapping entry without its subindex or value is refused, "
+          "not guessed",
+          not guard.is_allowed(0x1600, MAP_60FF)
+          and not guard.is_allowed(0x1600, None, sub=1))
+    check("a TPDO is a read path: it may map any object, forbidden ones included",
+          guard.is_allowed(0x1A00, MAP_403E, sub=1)
+          and guard.is_allowed(0x1A03, (0x2034 << 16) | 0x0010, sub=1))
+
+    check("an RPDO COB-ID in its own range, on its own node, is writable",
+          guard.is_allowed(0x1400, 0x201, sub=1, node=1)
+          and guard.is_allowed(0x1401, 0x302, sub=1, node=2))
+    check("a TPDO COB-ID in its own range is writable, the MLS's 18Ah included",
+          guard.is_allowed(0x1800, 0x181, sub=1, node=1)
+          and guard.is_allowed(0x1800, 0x18A, sub=1, node=10))
+    check("disabling a PDO is always writable (bit 31: it obeys nothing)",
+          guard.is_allowed(0x1400, (1 << 31) | 0x18A, sub=1, node=1))
+    check("*** an RPDO may not listen on the MLS's TPDO1 id, which would make "
+          "sensor frames wheel commands ***",
+          not guard.is_allowed(0x1400, 0x18A, sub=1, node=1))
+    check("...nor on NMT, SYNC/EMCY, SDO or heartbeat identifiers",
+          not any(guard.is_allowed(0x1400, cob, sub=1)
+                  for cob in (0x000, 0x080, 0x081, 0x581, 0x601, 0x701)))
+    check("*** a TPDO may not transmit on an RPDO id, which would make status "
+          "frames another node's commands ***",
+          not guard.is_allowed(0x1800, 0x202, sub=1, node=2)
+          and not guard.is_allowed(0x1800, 0x202, sub=1))
+    check("*** a PDO may not take another node's identifier ***",
+          not guard.is_allowed(0x1400, 0x202, sub=1, node=1)
+          and "node 2" in _why(guard, 0x1400, 0x202, sub=1, node=1))
+    check("node 0 and 29-bit identifiers are refused",
+          not guard.is_allowed(0x1400, 0x200, sub=1)
+          and not guard.is_allowed(0x1400, (1 << 29) | 0x201, sub=1, node=1))
+    check("a COB-ID without its subindex or value is refused, not guessed",
+          not guard.is_allowed(0x1400, 0x201, node=1)
+          and not guard.is_allowed(0x1400, None, sub=1, node=1))
+    check("transmission type, inhibit time and event timer only set timing",
+          guard.is_allowed(0x1400, 255, sub=2, node=1)
+          and guard.is_allowed(0x1800, 100, sub=3, node=1)
+          and guard.is_allowed(0x1800, 10, sub=5, node=1))
+    check("the PDO ranges stop where CiA 301 says they do",
+          not any(guard.is_allowed(i, 0, sub=1) for i in (0x13FF, 0x1C00)))
+    check("the motion objects are unaffected by the PDO rules",
+          guard.is_allowed(0x60FF, 800) and not guard.is_allowed(0x6040, 0x0080))
+
     # Every write in canworker must go through the guard, not around it.
     cw = (ROOT / "canworker.py").read_text()
-    check("_write() calls the guard", "guard_write(index, value)" in cw)
+    check("_write() calls the guard with the subindex and node PDO rules need",
+          "guard_write(index, value, sub, node)" in cw)
     direct = [ln.strip() for ln in cw.splitlines()
               if "sdo_write(" in ln and "def " not in ln and "guard" not in ln
               and not ln.strip().startswith(("#", "*", '"'))

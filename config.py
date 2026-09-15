@@ -424,6 +424,9 @@ u_turn.*
     Tags are unique here and cannot also be branch, station or speed tags. The
     same tag is ignored once as the vehicle drives back over it after turning.
 
+    Tags act in AUTO only. /blind can also SET a 90 or 180 degree turn for
+    MANUAL, run by PB Start from rest on the tape - see blind_run.*.
+
 autopilot.auto_u_turn_rpm / u_turn_stop_distance_m
     Pivot wheel speed and the stopping distance past the tag. A 180 degree pivot
     rolls each wheel pi*track/2 = 0.765 m at track 0.487 m: 1.353 wheel turns,
@@ -461,6 +464,16 @@ blind_run.*
 
     imu_period_s paces the display-only MLS IMU poll (2030h/2033h/2034h/2070h,
     firmware V5+ with 2006h:02 = 1). The MLS is never written.
+
+    /blind can set a U-turn instead of a move: 90 or 180 degrees, cw or ccw,
+    at autopilot.auto_u_turn_rpm. Unlike a move it uses the tape: Start is
+    ignored without a track under the MLS, and the drives must be at rest.
+    180 is the AUTO pivot - it ends when the tape is found again inside
+    u_turn_min_deg..u_turn_max_deg, then centres. 90 ends on the encoder angle
+    using this section's accel_rpm_s, stop_tolerance_mm, settle_s and
+    overrun_margin (a straight tape is not under the sensor at 90), then
+    centres only if a track is there. A failed turn stops without latching a
+    fault, like a move.
 
 panel.manual_auto_arm
     MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is

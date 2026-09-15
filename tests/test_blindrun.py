@@ -398,7 +398,10 @@ def test_blind_page_sets_but_cannot_start():
     js = (ROOT / "app" / "static" / "blind.js").read_text()
     posts = sorted(set(re.findall(r"api\('([^']+)'", js)))
     check("blind.js POSTs only to the plan endpoints",
-          posts == ["/api/blind/clear", "/api/blind/plan"], str(posts))
+          posts == ["/api/blind/clear", "/api/blind/plan", "/api/blind/turn"], str(posts))
+    check("the page offers exactly the four U-turns it may set",
+          sorted(re.findall(r'data-turn="(\d+)" data-dir="(cw|ccw)"', body))
+          == [("180", "ccw"), ("180", "cw"), ("90", "ccw"), ("90", "cw")])
     check("there is no blind start route", c.post("/api/blind/start", json={}).status_code == 404)
     src = (ROOT / "app" / "server.py").read_text()
     check("...defined anywhere", "/api/blind/start" not in src and '"/api/arm"' not in src)
@@ -408,6 +411,9 @@ def test_blind_page_sets_but_cannot_start():
         r = c.post("/api/blind/plan", json={"segments": [{"kind": "pivot", "angle_deg": 90}],
                                             "speed": SPEED})
         check("setting a plan without an encoder scale is refused with the reason",
+              r.status_code == 409 and "encoder scale" in r.get_json()["error"])
+        r = c.post("/api/blind/turn", json={"angle_deg": 180, "direction": "cw"})
+        check("setting a U-turn without an encoder scale is refused with the reason",
               r.status_code == 409 and "encoder scale" in r.get_json()["error"])
     finally:
         webapp.ctl._counts_per_wheel_rev = real

@@ -1,9 +1,20 @@
 # Hardware test run sheet
 
-Status: **all 48 cases NOT RUN**. This sheet sets the order in which to run them.
-The procedure and pass criteria for each ID are in
-[route-hardware-acceptance.md](route-hardware-acceptance.md), which is the
-authority. Record results as described in its section 6.
+Status: **all 63 cases NOT RUN** (49 motion-matrix cases and N01-N14). This
+sheet sets the order in which to run them. The procedure and pass criteria for
+each ID are in [route-hardware-acceptance.md](route-hardware-acceptance.md),
+which is the authority. Record results as described in its section 6.
+
+## Pick the session type first
+
+| Session | When | Runs | Order |
+|---|---|---|---|
+| **No-motion** | Hardware connected, motors must not turn; arming and disarming allowed | Phase N plus A01, A02, A06, E02 | [No-motion session](#no-motion-session-motors-must-not-turn) below |
+| **Motion** | Operator present, clear area, motion approved case by case | Phases A, B, C, U, E | [Execution order](#execution-order) below |
+
+Never mix them. A no-motion session never presses Start in AUTO with `dry_run`
+false, never presses Start in MANUAL with a plan or U-turn set on `/blind`, and
+never opens `/manual`.
 
 ## Why this order differs from the handoff's phases
 
@@ -44,7 +55,9 @@ authority. Record results as described in its section 6.
 
 - Do handoff section 4, items 1-4:
   - record the revision, git status, profile and mission file
-  - run `tests/run_all.py` on the target interpreter. Expect exit 0 and the pinned count of 1450
+  - run `tests/run_all.py` on the target interpreter. Expect exit 0 and the pinned count of 1516
+  - check `autopilot.dry_run`. A no-motion session leaves it `true`; set it
+    `false` only after A02 passes in this session
   - verify the systemd unit's working directory, profile and mission (including
     any `AGV_PROFILE` / `AGV_MISSION` environment); `/params` shows both
   - save `/api/config`, `/api/state` (without `hb=1`) and `/api/events`
@@ -100,6 +113,7 @@ tape-measured values into `logs/blind_results.csv` after each segment.
 
 | # | ID | What | Output needed later |
 |---|---|---|---|
+| 6j | E13 | `/blind` U-turn 90 / 180°, CW and CCW, from rest on tape; Start refused without tape | Pivot and centring seen from rest before the first tag-triggered U-turn |
 | 7 | U02 + U08 | First U-turn at each tag. Watch low-speed centring (75 r/min) closely | Stop distance, `u_turn_deg` at the end, final MLS error, settle time |
 | 8 | U03 | MLS track level at the start and on reacquisition, both ends | Measured `u_turn_level_tolerance` |
 | 9 | U05 | Far tape obscured: fault by `u_turn_max_deg` | Fault text and stop behaviour |
@@ -154,6 +168,76 @@ Fill every `route_guard` value from phases 4b-5, then enable the guards.
 | 31 | C10 | Watchdog, with the observer read-only and the auto browser state controlled |
 | 32 | C09 | **Final:** full normal and high-speed cycles with operational loads |
 
+## No-motion session (motors must not turn)
+
+Hardware is connected, but no motor may turn. Arming (selector MANUAL, or a
+dry-run AUTO Start) and disarming are allowed. The rules, the table of what can
+turn a motor, and every procedure are in the acceptance doc's Phase N. Read
+them before Step N1.
+
+### Step N0: physical prerequisites
+
+| Check | Why |
+|---|---|
+| E-stop within the operator's reach and tested | The stop if a motor ever turns |
+| Drive wheels raised or chocked where possible | A second barrier; it does not make motion allowed |
+| Vehicle location recorded: on the service tape, or off it | Off the tape, a loose tape strip under the MLS is needed for dry-run cases; A02 and N07 need it off the tape |
+| Hand-held tags: `0010`, `0011`, `0020`, `0021`, `0030`, `0031`, and a second `0010` | N04-N06, N08, N12, A06 |
+| Reader and DIO network cables reachable to unplug and replug | N05, N08, N09, N14 |
+| Nobody opens `/manual` on any device for the whole session | Arrow keys on that page jog the wheels |
+
+### Step N1: agent preparation (no arming)
+
+- Record the revision, `git status --short`, a patch of local changes, and the
+  profile and mission files.
+- Run `python3 -B tests/run_all.py`. Expect exit 0, 1516 checks, no uncaught
+  thread exceptions.
+- Check the unit's working directory, `AGV_PROFILE` and `AGV_MISSION`
+  (`systemctl cat agv_controller.service`).
+- Save `/api/config`, `/api/state` (no `hb=1`) and `/api/events?since=0`.
+- Start an `/api/state` poll that records `target`, `nodes[*].rpm`,
+  `nodes[*].state`, `armed`, `mode`, `dry_run` and `blind.plan` for the whole
+  session.
+
+### Order
+
+| # | ID | What | Needs before it |
+|---|---|---|---|
+| 1 | N01 | `dry_run` true, restart, confirm | — |
+| 2 | A01 | Panel inputs one at a time (Start in AUTO is a dry-run Start) | N01 |
+| 3 | N02 | MANUAL arm and disarm, encoder scale event, web stop surfaces | — |
+| 4 | E02 | IMU box while the MLS streams | N02 armed |
+| 5 | N10 | E-stop with MANUAL armed | N02 |
+| 6 | N11 | `/blind` page: SET, replace, CLEAR, then Start with no plan | A restart first, for step (1) |
+| 7 | A06 | Hand-held tag read gaps and clearance | — |
+| 8 | A02 | Magnet sign check, only if the vehicle is off the tape | N01 |
+| 9 | N03 | Dry-run AUTO run: drives never enabled | N01 |
+| 10 | N04 | Logical route lap with hand-held tags, and the `/auto` wording | N03 |
+| 11 | N05 | High-speed zone logic | N04 method |
+| 12 | N08 | RFID link loss, guard off | N05 |
+| 13 | N06 | U-turn tag in dry run | MANUAL arm since the last restart |
+| 14 | N07 | Line-loss hold, only with a loose strip | N03 |
+| 15 | N09 | DIO link loss, `/auto` closed then open | N03 |
+| 16 | N13 | Mission validation in a scratch folder | — |
+| 17 | N12 | Empty mission, then restore gy-demo | N01 |
+| 18 | N14 | Guard with the placeholder mission, then restore | N01, N13 |
+
+- **After A06:** propose a `tag_clear_s` change if the data supports one, and
+  apply it only with the operator's agreement.
+- **Stop the session** if any `target` or wheel rpm leaves 0, if a drive shows
+  Operation enabled during a dry-run AUTO run, or if a fault text does not
+  match its cause.
+
+### Closing state
+
+- Selector AUTO, disarmed, no fault latched.
+- `/api/state` shows `blind.plan` null.
+- Profile `mission` is gy-demo; `missions/` holds only the original files.
+- `dry_run` is left `true`, and this is recorded. The next motion session sets
+  it false only after A02.
+- Every motion-matrix ID is NOT RUN ("motion prohibited in this session"),
+  naming the Phase N case that covered part of it.
+
 ## Measurements this sheet must produce
 
 | Value | From | Key (`route_guard.*` in the mission file, the rest in the profile) |
@@ -167,5 +251,5 @@ Fill every `route_guard` value from phases 4b-5, then enable the guards.
 | High-speed zone limits | B05 | `route_guard.high_speed_max_m` |
 | Effective wheel diameter and track width | E04, E05, E07 (E10 loaded) | `vehicle.wheel_dia_m`, `vehicle.track_m`, only after the evidence supports a change |
 
-A result sheet needs one row for each of the 48 IDs: A01-A12, B01-B06, C01-C10,
-U01-U08 and E01-E12, including any that were not run and why.
+A result sheet needs one row for each of the 63 IDs: A01-A12, B01-B06, C01-C10,
+U01-U08, E01-E13 and N01-N14, including any that were not run and why.

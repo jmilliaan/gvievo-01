@@ -50,16 +50,21 @@ def counts_for_angle(deg, counts_per_wheel_rev):
 
 
 class UTurn:
-    def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level):
+    def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
+                 phase=SPIN):
+        """phase=CENTER skips the spin: centre on the tape already under the
+        sensor, then settle. manualturn.py uses it after an encoder pivot."""
         if direction not in ("cw", "ccw"):
             raise ValueError(f"U-turn direction {direction!r}")
+        if phase not in (SPIN, CENTER):
+            raise ValueError(f"U-turn start phase {phase!r}")
         self.direction = direction
         self.sign = -1.0 if direction == "cw" else 1.0     # omega > 0 is CCW
         self._m_per_count = math.pi * config.WHEEL_DIA_M / counts_per_wheel_rev
         self._last = tuple(start_counts)
         self._left_m = self._right_m = 0.0
         self.start_level = start_level
-        self.phase = SPIN
+        self.phase = phase
         self.lost = False
         self.reason = None
         self.elapsed_s = 0.0
@@ -92,6 +97,12 @@ class UTurn:
 
     def _fail(self, reason):
         self.phase, self.reason = FAILED, reason
+        return 0.0, 0.0
+
+    def abort(self, reason):
+        """Stopped from outside (Reset, Stop, a fault). A finished turn stays so."""
+        if self.active:
+            self._fail(reason)
         return 0.0, 0.0
 
     def update(self, counts, e_mm, level, dt):

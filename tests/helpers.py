@@ -207,10 +207,10 @@ class _FakeRaw:
         pass
 
 
-def _why(g, index):
+def _why(g, index, value=0x40, sub=None, node=None):
     """The refusal message, so a test can assert it explains itself."""
     try:
-        g.check(index, 0x40)
+        g.check(index, value, sub, node)
         return ""
     except g.ForbiddenWrite as e:
         return str(e)

@@ -14,6 +14,8 @@ import canworker
 import config
 import events
 import kinematics
+import manualturn
+import panel
 import runlog
 import server
 import uturn
@@ -381,6 +383,293 @@ def test_controller_u_turn_failures():
     events.clear()
 
 
+def cross_tape_error(yaw):
+    """A tape junction: tapes every 90 degrees through the pivot point."""
+    rel = ((yaw + math.pi / 4) % (math.pi / 2)) - math.pi / 4
+    e = 1000.0 * config.SENSOR_LOOKAHEAD_M * math.tan(rel)
+    return e if abs(e) <= MLS_HALF_MM else None
+
+
+def run_manual(angle, direction, tape=tape_error, yaw0=0.0, dt=0.02, steps=8000):
+    """A /blind U-turn from rest on the tape; the drives stop instantly."""
+    plant = Plant()
+    plant.yaw = yaw0
+    t = manualturn.ManualTurn(manualturn.plan(angle, direction, CPR), plant.counts, 5)
+    last, peak = (0.0, 0.0), 0.0
+    for _ in range(steps):
+        cmd = t.update(plant.counts, tape(plant.yaw), 5, dt, last == (0.0, 0.0))
+        peak = max(peak, abs(cmd[0]), abs(cmd[1]))
+        if not t.active:
+            break
+        plant.step(*cmd, dt)
+        last = cmd
+    return t, plant, peak
+
+
+def test_manual_turn():
+    print("\n/blind U-turn: 180 on the tape, 90 on the encoder")
+
+    def refused(name, angle, direction, cpr=CPR, expect=""):
+        try:
+            manualturn.plan(angle, direction, cpr)
+        except ValueError as e:
+            check(name, expect in str(e), str(e))
+        else:
+            check(name, False, "accepted")
+
+    refused("only 90 and 180 degrees", 45, "cw", expect="(90, 180)")
+    refused("an angle that is not a number is refused", "half", "cw", expect="(90, 180)")
+    refused("direction must be cw or ccw", 180, "left", expect="cw or ccw")
+    refused("no encoder scale, no turn", 90, "cw", cpr=None, expect="encoder scale")
+    p180, p90 = manualturn.plan(180, "ccw", CPR), manualturn.plan("90", "cw", CPR)
+    check("180 ends on the tape and has no encoder pivot",
+          p180["end"] == "tape" and p180["pivot"] is None and p180["angle_deg"] == 180)
+    seg = p90["pivot"]["segments"][0]
+    check("90 cw is a blind-run pivot of -90 deg at auto_u_turn_rpm, ending on the encoder",
+          p90["end"] == "encoder" and seg["kind"] == "pivot"
+          and seg["spec"]["angle_deg"] == -90 and seg["dom_rpm"] == config.AUTO_U_TURN_RPM,
+          str(seg["spec"]))
+
+    try:
+        uturn.UTurn("cw", CPR, (0, 0), 5, phase=uturn.SETTLE)
+        check("a U-turn starts only spinning or centring", False, "accepted")
+    except ValueError:
+        check("a U-turn starts only spinning or centring", True)
+    t = uturn.UTurn("cw", CPR, (0, 0), 5, phase=uturn.CENTER)
+    left, right = t.update((0, 0), 30.0, 5, 0.02)
+    check("a U-turn started in CENTER centres on the tape it is given",
+          t.phase == uturn.CENTER and kinematics.wheels_to_body(left, right)[1] < 0)
+
+    for direction in ("ccw", "cw"):
+        want = 1 if direction == "ccw" else -1
+        t, plant, peak = run_manual(180, direction)
+        e = tape_error(plant.yaw)
+        check(f"180 {direction}: done, centred on the far tape by the MLS",
+              t.phase == uturn.DONE and t.centred and e is not None
+              and abs(e) <= config.U_TURN_CENTER_TOL_MM, f"{t.phase} {t.reason} e={e}")
+        check(f"180 {direction}: about 180 deg the commanded way, tape lost first",
+              170 <= t.turned_deg <= 190 and t.snapshot()["tape_lost"]
+              and abs(math.degrees(plant.yaw) - want * 180) < 10, f"{t.turned_deg:.1f}")
+
+        t, plant, peak = run_manual(90, direction)
+        check(f"90 {direction} on a straight tape: done on the encoder, not centred",
+              t.phase == uturn.DONE and t.centred is False, f"{t.phase} {t.reason}")
+        check(f"90 {direction}: within a degree of 90 the commanded way",
+              abs(t.turned_deg - 90) < 1.0 and abs(math.degrees(plant.yaw) - want * 90) < 1.0,
+              f"{t.turned_deg:.2f} yaw={math.degrees(plant.yaw):.2f}")
+        check(f"90 {direction}: never faster than auto_u_turn_rpm",
+              0 < peak <= config.AUTO_U_TURN_RPM + 1e-6, f"{peak}")
+
+        t, plant, _ = run_manual(90, direction, tape=cross_tape_error, yaw0=math.radians(10))
+        e = cross_tape_error(plant.yaw)
+        check(f"90 {direction} at a junction: centres on the crossing tape",
+              t.phase == uturn.DONE and t.centred and e is not None
+              and abs(e) <= config.U_TURN_CENTER_TOL_MM, f"{t.phase} e={e}")
+
+    t, _, _ = run_manual(180, "cw", tape=lambda yaw: tape_error(yaw) if abs(yaw) < 0.3 else None)
+    check("180 that never finds the tape again fails by u_turn_max_deg",
+          t.phase == uturn.FAILED and "not reacquired" in t.reason, str(t.reason))
+
+    t = manualturn.ManualTurn(p90, (0, 0), 5)
+    budget = seg["duration_s"] * 2 + 2
+    for _ in range(int(budget / 0.02) + 5):
+        t.update((0, 0), 0.0, 5, 0.02, True)
+    check("a frozen counter fails the 90 pivot on its time budget, naming it",
+          t.phase == uturn.FAILED and t.reason.startswith("90 deg pivot"), str(t.reason))
+
+    t = manualturn.ManualTurn(p180, (0, 0), 5)
+    t.abort("stopped from panel (Reset)")
+    check("abort stops a turn and keeps why",
+          t.phase == uturn.FAILED and t.reason == "stopped from panel (Reset)"
+          and t.update((0, 0), 0.0, 5, 0.02, True) == (0.0, 0.0))
+    t, _, _ = run_manual(90, "ccw")
+    t.abort("late")
+    check("a finished turn stays finished", t.phase == uturn.DONE and t.reason is None)
+
+
+class ManualBench:
+    """A controller armed in MANUAL, the pivot plant behind the MLS and 6064h."""
+
+    def __init__(self, now, tape=tape_error):
+        self.now, self.tape = now, tape
+        c = self.c = canworker.Controller()
+        c._log = runlog.RunLog(enabled=False)
+        c._blind_log = runlog.RunLog(enabled=False, columns=runlog.BLIND_COLUMNS,
+                                     prefix="blind", plot=False)
+        c._armed, c._mode = True, "manual"
+        c._counts_per_wheel_rev = CPR
+        self.plant = Plant()
+        c._read_positions = lambda: self.plant.counts
+        self.last = (0, 0)
+        self.refresh()
+
+    def refresh(self):
+        e = self.tape(self.plant.yaw)
+        tracks = [] if e is None else [
+            {"index": 2, "pos_mm": -e if config.INVERT_ERROR else e, "width": 20}]
+        with self.c._lock:
+            self.c._sensor = {"nlcp": len(tracks), "tracks": tracks,
+                              "track_level": 5, "has_track": bool(tracks)}
+            self.c._sensor_seen += 1
+            self.c._sensor_last = self.now[0]
+        for n in (config.LEFT, config.RIGHT):
+            self.c._telemetry[n]["speed_zero"] = self.last == (0, 0)
+            self.c._status_seen[n] = self.now[0]
+
+    def start(self, angle, direction):
+        self.refresh()
+        self.c.set_blind_turn({"angle_deg": angle, "direction": direction})
+        self.c._panel_start(panel.MANUAL)
+        self.now[0] += config.AUTO_START_DELAY_S + 0.01
+        self.refresh()
+        self.c._pending_start()
+
+    def tick(self, dt=0.02):
+        self.now[0] += dt
+        self.refresh()
+        target = self.c._blind_tick()
+        self.plant.step(*target, dt)
+        self.last = target
+        return target
+
+    def until_done(self, limit=6000):
+        seen = []
+        for _ in range(limit):
+            seen.append(self.tick())
+            if self.c._blind is None:
+                break
+        return seen
+
+
+def test_manual_turn_on_the_can_thread():
+    print("\n/blind U-turn on the CAN thread: web sets, panel runs, tape required")
+    now = [2000.0]
+    with patch("canworker.time.monotonic", side_effect=lambda: now[0]), \
+            patch("canworker.time.perf_counter", side_effect=lambda: now[0]):
+        b = ManualBench(now)
+        c = b.c
+        c._counts_per_wheel_rev = None
+        try:
+            c.set_blind_turn({"angle_deg": 180, "direction": "cw"})
+            check("no U-turn without an encoder scale", False, "accepted")
+        except RuntimeError as e:
+            check("no U-turn without an encoder scale", "encoder scale" in str(e), str(e))
+        c._counts_per_wheel_rev = CPR
+        try:
+            c.set_blind_turn({"angle_deg": 45, "direction": "cw"})
+            check("a 45 deg turn is refused", False, "accepted")
+        except ValueError as e:
+            check("a 45 deg turn is refused", "(90, 180)" in str(e), str(e))
+
+        c.set_blind_plan({"segments": [{"kind": "straight", "distance_m": 0.3}],
+                          "speed": {"speed_mps": 0.2}})
+        c.set_blind_turn({"angle_deg": 180, "direction": "ccw"})
+        check("setting a U-turn replaces the move and moves nothing",
+              c.snapshot()["blind"]["plan"]["kind"] == "u_turn"
+              and c._blind is None and c._target == (0, 0))
+
+        events.clear()
+        b.tape = lambda yaw: None
+        b.refresh()
+        c._panel_start(panel.MANUAL)
+        check("Start with no tape under the MLS is ignored, and says why",
+              not c._blind_start_at and c._blind is None
+              and any("needs the tape" in e["msg"] for e in events.since(0)[1]))
+
+        b.tape = tape_error
+        b.refresh()
+        c._panel_start(panel.MANUAL)
+        check("Start with the tape arms the start delay", c._blind_start_at > now[0])
+        b.tape = lambda yaw: None
+        now[0] += config.AUTO_START_DELAY_S + 0.01
+        b.refresh()
+        c._pending_start()
+        check("tape gone by the end of the delay: no turn, no fault, plan kept",
+              c._blind is None and not c._blind_start_at and not c._fault
+              and c._target == (0, 0) and c.snapshot()["blind"]["plan"] is not None)
+
+        b.tape = tape_error
+        b.start(180, "ccw")
+        check("the turn begins after the delay", isinstance(c._blind, manualturn.ManualTurn))
+        try:
+            c.drive("forward")
+            check("jogging is refused during a U-turn", False, "accepted")
+        except RuntimeError as e:
+            check("jogging is refused during a U-turn", "blind run" in str(e))
+        cmds = b.until_done()
+        run = c.snapshot()["blind"]["run"]
+        e = tape_error(b.plant.yaw)
+        check("180 ccw completes centred, setpoint zeroed, no fault",
+              run["kind"] == "u_turn" and run["phase"] == "done" and run["centred"]
+              and c._target == (0, 0) and not c._fault
+              and e is not None and abs(e) <= config.U_TURN_CENTER_TOL_MM, f"{run} e={e}")
+        check("...having pivoted about 180 deg ccw at auto_u_turn_rpm",
+              abs(math.degrees(b.plant.yaw) - 180) < 10
+              and any(abs(l) == round(config.AUTO_U_TURN_RPM) and r == -l for l, r in cmds))
+        check("the U-turn survives the run for a repeat",
+              c.snapshot()["blind"]["plan"]["kind"] == "u_turn")
+
+        b = ManualBench(now)
+        c = b.c
+        b.start(90, "cw")
+        b.until_done()
+        run = c.snapshot()["blind"]["run"]
+        check("90 cw on a straight tape completes on the encoder, not centred",
+              run["phase"] == "done" and run["centred"] is False
+              and abs(math.degrees(b.plant.yaw) + 90) < 1.0 and not c._fault,
+              f"{run} yaw={math.degrees(b.plant.yaw):.2f}")
+
+        b = ManualBench(now)
+        c = b.c
+        b.start(180, "cw")
+        for _ in range(20):
+            b.tick()
+        c._panel_reset(panel.MANUAL)
+        run = c.snapshot()["blind"]["run"]
+        check("Reset stops a U-turn quietly and keeps the plan",
+              c._blind is None and run["phase"] == "failed" and "Reset" in run["reason"]
+              and not c._fault and c._target == (0, 0)
+              and c.snapshot()["blind"]["plan"] is not None, str(run))
+
+        b = ManualBench(now)
+        c = b.c
+        b.start(180, "cw")
+        b.tick()
+        c.halt()
+        b.tick()
+        check("web Stop stops a U-turn",
+              c._blind is None and "web" in c.snapshot()["blind"]["run"]["reason"])
+
+        b = ManualBench(now)
+        c = b.c
+        b.start(180, "cw")
+        for _ in range(5):
+            b.tick()
+        now[0] += config.SENSOR_TIMEOUT_S + 0.01
+        c._blind_tick()
+        check("a silent MLS stops a U-turn without latching a fault",
+              c._blind is None and not c._fault
+              and "sensor silent" in c.snapshot()["blind"]["run"]["reason"])
+
+        b = ManualBench(now)
+        c = b.c
+        b.start(90, "ccw")
+        b.tick()
+        c._do_disarm = lambda: None
+        c._panel_mode_changed(panel.AUTO)
+        check("a selector move stops a U-turn", c._blind is None and c._target == (0, 0))
+
+        b = ManualBench(now, tape=lambda yaw: tape_error(yaw) if abs(yaw) < 0.3 else None)
+        c = b.c
+        b.start(180, "ccw")
+        b.until_done()
+        check("180 with the far tape missing stops by u_turn_max_deg, no fault latched",
+              c._blind is None and not c._fault and c._target == (0, 0)
+              and "not reacquired" in c.snapshot()["blind"]["run"]["reason"])
+    events.clear()
+
+
 TESTS = [test_geometry_and_counts, test_closed_loop_pivot, test_gates_and_failures,
          test_u_turn_configuration, test_controller_u_turn,
-         test_controller_u_turn_failures]
+         test_controller_u_turn_failures, test_manual_turn,
+         test_manual_turn_on_the_can_thread]

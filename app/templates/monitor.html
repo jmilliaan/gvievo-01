@@ -83,6 +83,12 @@
     <div>
       <h3>Permitted</h3>
       <ul>{% for i in allowed %}<li><code>{{ i }}</code></li>{% endfor %}</ul>
+      <h3>PDO configuration, by rule</h3>
+      <ul>
+        <li><code>1600h–17FFh</code> RPDO map: only an SDO-writable object</li>
+        <li><code>1A00h–1BFFh</code> TPDO map: any object (read path)</li>
+        <li><code>1400h/1800h</code> COB-ID: disabled, or in its own PDO range on its own node</li>
+      </ul>
     </div>
     <div>
       <h3>Refused in code</h3>

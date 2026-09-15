@@ -63,6 +63,7 @@ import runlog  # noqa: E402
 import route  # noqa: E402
 import uturn  # noqa: E402
 import blindrun  # noqa: E402
+import manualturn  # noqa: E402
 
 # Node IDs, driver ramp rates, watchdogs and loop periods all come from the
 # vehicle profile - see config.py's TUNING NOTES for the reasoning behind the
@@ -530,6 +531,28 @@ class Controller:
                     f"segment(s) - press Start with the selector in MANUAL to run it")
         return planned
 
+    def set_blind_turn(self, spec):
+        """Validate and store a 90/180 U-turn in place of any blind-run plan.
+
+        Moves nothing: PB Start runs it, in MANUAL, with the tape under the MLS.
+        """
+        spec = spec or {}
+        with self._lock:
+            busy = self._blind is not None or bool(self._blind_start_at)
+            cpr = self._counts_per_wheel_rev
+        if busy:
+            raise RuntimeError("a blind run is in progress - press Reset to stop it first")
+        if cpr is None:
+            raise RuntimeError("encoder scale unknown - put the selector in MANUAL so "
+                               "the vehicle arms and reads 608Fh/6091h")
+        planned = manualturn.plan(spec.get("angle_deg"), spec.get("direction"), cpr)
+        with self._lock:
+            self._blind_plan = planned
+        events.info(f"U-turn {planned['angle_deg']} deg {planned['direction']} set from "
+                    f"the web - press Start with the selector in MANUAL and the "
+                    f"tape under the MLS to run it")
+        return planned
+
     def clear_blind_plan(self):
         with self._lock:
             if self._blind is not None or self._blind_start_at:
@@ -953,7 +976,11 @@ class Controller:
         # Section 8 of the monitoring plan: the nav stack is READ-MOSTLY. A
         # denied index raises rather than being silently dropped - a command a
         # caller believed had landed is its own hazard.
-        guard_write(index, value)
+        #
+        # sub and node let the guard judge PDO configuration: a mapping entry
+        # names the object a frame will write, and a COB-ID decides whose
+        # frames a drive obeys.
+        guard_write(index, value, sub, node)
         ok, detail = sdo_write(self.bus, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
@@ -1884,7 +1911,12 @@ class Controller:
             armed, mode = self._armed, self._mode
             running, fault = self._auto_running, self._fault
 
-        if not (armed and mode == "auto" and running):
+        # A dry run arms the sensor only and leaves the drives de-energised on
+        # purpose, so "not Operation enabled" is the expected state, not the
+        # chain opening. Holding would suppress the run's tag reads, and the
+        # re-enable below would energise the drives dry_run promises to leave
+        # alone.
+        if not (armed and mode == "auto" and running) or config.DRY_RUN:
             # A hold cannot outlive the run it belongs to. _end_auto_run()
             # clears it too; this covers the paths that end a run without
             # going through it.
@@ -2256,10 +2288,26 @@ class Controller:
             events.warn("Start ignored - the encoder scale changed since the "
                         "blind-run plan was set; Set it again")
             return
+        turn = plan.get("kind") == manualturn.KIND
+        if turn and self._turn_tape(time.monotonic()) is None:
+            # Checked again when the delay is up; this one answers the press.
+            events.warn("Start ignored - a U-turn needs the tape under the MLS; "
+                        "jog the vehicle onto it")
+            return
         self._blind_start_at = time.monotonic() + config.AUTO_START_DELAY_S
-        events.info(f"START pressed - blind run of {len(plan['segments'])} "
-                    f"segment(s) in {config.AUTO_START_DELAY_S:.1f} s")
-        self._note_action("blind run START", "panel")
+        what = (f"U-turn {plan['angle_deg']} deg {plan['direction']}" if turn
+                else f"blind run of {len(plan['segments'])} segment(s)")
+        events.info(f"START pressed - {what} in {config.AUTO_START_DELAY_S:.1f} s")
+        self._note_action("U-turn START" if turn else "blind run START", "panel")
+
+    def _turn_tape(self, now):
+        """(e_mm, level) of the track under a streaming MLS, or None."""
+        with self._lock:
+            sensor, last = self._sensor, self._sensor_last
+        if not last or now - last > config.SENSOR_TIMEOUT_S:
+            return None
+        e_mm, level = _u_turn_error(sensor)
+        return None if e_mm is None or level is None else (e_mm, level)
 
     def _blind_keepalive(self):
         with self._lock:
@@ -2274,13 +2322,27 @@ class Controller:
             events.warn("blind start abandoned - the plan, MANUAL arming or a "
                         "fault changed during the start delay")
             return
+        turn = plan.get("kind") == manualturn.KIND
+        if turn:
+            # Like a U-turn tag read in AUTO: no tape, no pivot. And from rest -
+            # the start counts and track level must describe where it stands.
+            now = time.monotonic()
+            tape = self._turn_tape(now)
+            with self._lock:
+                stopped = self._drives_stopped(now)
+            if tape is None or not stopped:
+                events.warn("U-turn start abandoned - " + (
+                    "no tape under the MLS" if tape is None
+                    else "the drives are not reporting standstill"))
+                return
         counts = self._read_positions()
         if counts is None:
             self._set_fault("blind run refused: encoder position (6064h) unreadable")
             return
         now = time.monotonic()
         with self._lock:
-            self._blind = blindrun.BlindRun(plan, counts)
+            self._blind = (manualturn.ManualTurn(plan, counts, tape[1]) if turn
+                           else blindrun.BlindRun(plan, counts))
             self._blind_last = None
             self._blind_written = 0
             self._blind_tick_at = None
@@ -2289,6 +2351,16 @@ class Controller:
             self._blind_abort_req = None
             self._deadline = now + config.MANUAL_WATCHDOG_S
             self._last_stop_reason = None
+        if turn:
+            self._blind_log.open(
+                f"profile={config.PROFILE_NAME} U-turn {plan['angle_deg']} deg "
+                f"{plan['direction']} at {plan['rpm']:.0f} r/min, ends on "
+                f"{plan['end']}, {plan['counts_per_wheel_rev']:.0f} counts per wheel turn")
+            events.info(f"U-turn {plan['angle_deg']} deg {plan['direction']} started - "
+                        + ("ends when the MLS finds the tape again" if plan["end"] == "tape"
+                           else "ends on the encoder angle, centres only if tape is "
+                                "under the MLS"))
+            return
         self._blind_log.open(
             f"profile={config.PROFILE_NAME} blind run: {len(plan['segments'])} "
             f"segment(s) at {plan['ref_rpm']:.0f} r/min reference, "
@@ -2305,7 +2377,7 @@ class Controller:
         with self._lock:
             fault, request = self._fault, self._blind_abort_req
             self._blind_abort_req = None
-            sensor = self._sensor
+            sensor, sensor_last = self._sensor, self._sensor_last
         if request:
             return self._abort_blind(request)
         if fault:
@@ -2318,6 +2390,8 @@ class Controller:
                 return self._abort_blind("encoder position (6064h) unreadable")
             return self._target
         self._blind_pos_at = now
+        if isinstance(self._blind, manualturn.ManualTurn):
+            return self._turn_tick(counts, dt, now, sensor, sensor_last)
 
         with self._lock:
             stopped = self._drives_stopped(now)
@@ -2345,6 +2419,39 @@ class Controller:
             "e_mm": e_mm, "has_track": e_mm is not None, "loop_ms": dt * 1000.0,
         }, tel)
         if run.phase == blindrun.DONE:
+            self._finish_blind()
+            return (0, 0)
+        return target
+
+    def _turn_tick(self, counts, dt, now, sensor, sensor_last):
+        """One tick of a /blind U-turn, after _blind_tick's common checks.
+
+        The MLS decides where a 180 ends and whether a 90 centres, so a silent
+        sensor stops it here exactly as it does an AUTO U-turn.
+        """
+        if not sensor_last or now - sensor_last > config.SENSOR_TIMEOUT_S:
+            return self._abort_blind("sensor silent during U-turn")
+        e_mm, level = _u_turn_error(sensor)
+        with self._lock:
+            stopped = self._drives_stopped(now)
+            run = self._blind
+            left, right = run.update(counts, e_mm, level, dt, stopped)
+        if run.phase == uturn.FAILED:
+            return self._abort_blind(run.reason)
+
+        target = (int(round(left)), int(round(right)))
+        with self._lock:
+            self._target = target
+            self._direction = "spin" if target != (0, 0) else "stop"
+            tel = {"rpm_l": self._telemetry[config.LEFT]["rpm"],
+                   "rpm_r": self._telemetry[config.RIGHT]["rpm"]}
+        self._blind_log.write({
+            "dt": dt, "phase": run.phase, "segment": 1,
+            "cnt_l": counts[0], "cnt_r": counts[1], "n_l": left, "n_r": right,
+            "heading_deg": run.turned_deg, "e_mm": e_mm,
+            "has_track": e_mm is not None, "loop_ms": dt * 1000.0,
+        }, tel)
+        if run.phase == uturn.DONE:
             self._finish_blind()
             return (0, 0)
         return target
@@ -2384,6 +2491,9 @@ class Controller:
         """Stop a blind run, or cancel one about to start. Zeroes outright."""
         with self._lock:
             run, pending = self._blind, bool(self._blind_start_at)
+            # The plan cannot change while busy, so it names what is stopping.
+            what = ("U-turn" if (self._blind_plan or {}).get("kind") == manualturn.KIND
+                    else "blind run")
             self._blind_start_at = 0.0
             self._blind = None
             self._blind_abort_req = None
@@ -2393,12 +2503,12 @@ class Controller:
             if run is not None or pending:
                 self._target = (0, 0)
                 self._direction = "stop"
-                self._last_stop_reason = f"blind run stopped: {reason}"
+                self._last_stop_reason = f"{what} stopped: {reason}"
         if run is not None:
             self._blind_log.close()
-            events.warn(f"blind run stopped - {reason}")
+            events.warn(f"{what} stopped - {reason}")
         elif pending:
-            events.warn(f"blind start cancelled - {reason}")
+            events.warn(f"{what} start cancelled - {reason}")
         return (0, 0)
 
     def _finish_blind(self):
@@ -2408,6 +2518,12 @@ class Controller:
             self._target = (0, 0)
             self._direction = "stop"
         self._blind_log.close()
+        if isinstance(run, manualturn.ManualTurn):
+            events.info(f"U-turn {run.angle} deg {run.direction} complete at "
+                        f"{run.turned_deg:.1f} deg by encoder - "
+                        + ("centred on the tape" if run.centred
+                           else "no tape under the MLS, not centred"))
+            return
         events.info(f"blind run complete - {len(run.results)} segment(s) recorded")
 
     def _blind_snapshot(self, now):
