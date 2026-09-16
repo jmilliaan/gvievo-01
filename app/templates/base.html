@@ -13,7 +13,6 @@
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/blind"  class="{{ 'on' if page == 'blind' }}">Blind run</a>
-    <a href="/lidar"  class="{{ 'on' if page == 'lidar' }}">Lidar</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
@@ -41,19 +40,6 @@
       <div class="tel" id="rail-horn" hidden><span>Horn</span><b id="rail-horn-state">–</b><i id="rail-horn-note">—</i></div>
     </div>
 
-    {# Lidar zones, on every page. Three lamps and nothing else: the scan
-       picture belongs on /lidar, but "is something in the protective field"
-       is a fact you want without changing page.
-
-       Renders as ? or STALE rather than as clear whenever it does not know -
-       see zoneState() in common.js, and sec 4 of lidar_brief.md. #}
-    <div class="zone-rail" id="zone-rail" hidden>
-      <span class="zone-rail-label">Lidar</span>
-      <span class="zone-pip"><i class="lamp zone" id="rail-z-0"></i>stop</span>
-      <span class="zone-pip"><i class="lamp zone" id="rail-z-1"></i>slow</span>
-      <span class="zone-pip"><i class="lamp zone" id="rail-z-2"></i>warn</span>
-      <span class="zone-rail-state" id="rail-z-note">—</span>
-    </div>
     <div class="states">
       <div id="st-1" class="st">node 1 –</div>
       <div id="st-2" class="st">node 2 –</div>

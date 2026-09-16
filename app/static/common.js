@@ -111,7 +111,7 @@ function showRfid(r) {
 }
 
 // ---- the shared rail ------------------------------------------------------
-// Battery, state, alarm and the lidar zones, on every page. Rendered here for
+// Battery, state and alarm, on every page. Rendered here for
 // the same reason the verdicts are COMPUTED on the server: four pages deciding
 // separately what counts as an alarm is four chances for one of them to say
 // everything is fine while the vehicle is stopped.
@@ -120,20 +120,6 @@ function setText(id, v) {
   const el = document.getElementById(id);
   if (el) el.textContent = v;
   return el;
-}
-
-// One definition of what a zone lamp is showing, shared by the rail and by the
-// full lamps on /lidar. Order matters and is the safety-relevant part: stale
-// outranks everything, because a dead stream must never render as "clear"
-// whatever the last telegram happened to say. See sec 4 of lidar_brief.md.
-function zoneState(z, i) {
-  const paths = (z && z.paths) || [];
-  if (!z || z.stale)   return {on: true,  text: 'STALE',    cls: 'stale'};
-  if (!z.validated)    return {on: true,  text: '?',        cls: 'unknown'};
-  if (paths[i] === null || paths[i] === undefined)
-                       return {on: true,  text: 'UNREAD',   cls: 'stale'};
-  if (paths[i])        return {on: true,  text: 'OCCUPIED', cls: ''};
-  return {on: false, text: 'clear', cls: ''};
 }
 
 function renderRail(s) {
@@ -200,30 +186,6 @@ function renderRail(s) {
         : `DO${String(horn.channel).padStart(2, '0')} · coil ${live ? 'on' : 'off'}`);
     }
   }
-
-  // Lidar zones. Hidden entirely when the scanner is not in use - three
-  // permanent "?" lamps on a vehicle without one is noise, not information.
-  const rail = document.getElementById('zone-rail');
-  const l = s.lidar;
-  if (!rail) return;
-  rail.hidden = !(l && l.enabled);
-  if (rail.hidden) return;
-  let worst = '';
-  for (let i = 0; i < 3; i++) {
-    const z = zoneState(l.zones, i);
-    const lamp = document.getElementById(`rail-z-${i}`);
-    if (!lamp) continue;
-    lamp.classList.toggle('on', z.on);
-    lamp.classList.toggle('unknown', z.cls === 'unknown');
-    lamp.classList.toggle('stale', z.cls === 'stale');
-    if (z.cls === 'stale') worst = 'STALE';
-    else if (z.cls === 'unknown' && !worst) worst = 'unvalidated';
-    else if (z.text === 'OCCUPIED' && worst !== 'STALE') worst = 'OCCUPIED';
-  }
-  const note = setText('rail-z-note', worst || 'clear');
-  if (note) note.style.color = worst === 'STALE' || worst === 'OCCUPIED'
-                             ? 'var(--stop)'
-                             : worst ? 'var(--hazard-ink)' : '';
 }
 
 // ---- loop health ----------------------------------------------------------

@@ -19,6 +19,12 @@ diagnostic pages.
 > [manuals/slam-generalized-plan/](manuals/slam-generalized-plan/) — read
 > `hardware-reconciliation.md` first; it wins over the other two wherever they
 > disagree.
+>
+> **The nanoScan3 is owned by the ROS stack.** The legacy UDP listener
+> (`drivers/lidar.py`), the `/lidar` page and the zone rail were removed on
+> 2026-09-16 so `sick_safetyscanners2` can hold `192.168.3.2:6060`. The
+> scanner's liveness is now read from `/amr/localization_state` (`scan_age_s`)
+> on the ROS side; this app shows nothing about it.
 
 | | |
 |---|---|
@@ -27,7 +33,7 @@ diagnostic pages.
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (IMU only) |
 | CAN | 125 kbps — **migration to 1 Mbps is task T0** |
 | `use_rpdo` | **false** — the setpoint is still a blocking SDO write |
-| Tests | 824 offline checks, all passing |
+| Tests | 784 offline checks, all passing |
 
 ---
 
@@ -118,14 +124,15 @@ core/              No hardware, no Flask. Computation and record-keeping.
   motion.py          Manual jog pad table, labels, key bindings.
   health.py          Hardware liveness: the two-tier watchdog table.
   panel.py           Operator panel: debounced edges over the DI image.
-  lidarframe.py      nanoScan3 UDP telegram decode. Not a safety function.
+  lidarframe.py      nanoScan3 telegram decode, for the bench tool only.
   canmon.py          Drive monitoring: the round-robin SDO object table.
   events.py          Operator event ring buffer (200). Survives a reload.
 
 drivers/           Everything that talks to a device.
   rfid.py            Chafon CF821 station-tag reader. Own thread and socket.
   dio.py             16-in/16-out digital I/O over Modbus TCP. Own thread.
-  lidar.py           nanoScan3 UDP stream. Own thread. Not a safety path.
+  lidar_scan.py      nanoScan3 bench tool (scan/watch/raw/capture). Hand-run
+                     only; needs the ROS driver stopped to bind the port.
   canbus/            CAN layer, and standalone bench tools:
     guard.py           the write deny-list, incl. PDO mapping validation
     rpdo.py            RPDO1 setpoint frames (behind can.use_rpdo)
@@ -142,7 +149,7 @@ app/               The web tier.
   templates/         base.html is the shared shell.
   static/            app.css and the per-page scripts.
 
-tests/             696 offline checks. run_all.py runs them. No hardware.
+tests/             784 offline checks. run_all.py runs them. No hardware.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Driver, sensor and RFID documentation, plus the SLAM plan.
 ```
@@ -245,7 +252,7 @@ and each row declares its own tier:
 | device | fed by | timeout | losing it stops |
 |---|---|---|---|
 | `driver:1`, `driver:2` | heartbeat, or a telemetry read that answered | `driver_timeout_s` 0.6 s | **everything** |
-| `rfid`, `dio`, `lidar` | each link's own `snapshot()` | per-device | nothing today |
+| `rfid`, `dio` | each link's own `snapshot()` | per-device | nothing today |
 
 Losing a driver means the wheels can be neither commanded nor observed, so every
 mode stops and an arm is refused. A source that has **never** answered is not a
@@ -305,7 +312,7 @@ drives cannot produce.
 ## Testing
 
 ```bash
-python3 tests/run_all.py      # 696 checks, no hardware
+python3 tests/run_all.py      # 784 checks, no hardware
 python3 -c "import main"      # exits 1 with a named check on a bad profile
 ```
 

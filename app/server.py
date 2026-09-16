@@ -119,18 +119,6 @@ def io():
         scan_hz=round(1.0 / config.DIO_SCAN_PERIOD_S))
 
 
-@app.get("/lidar")
-def lidar():
-    """Safety-lidar data output. Read-only, and explicitly NOT a safety path."""
-    return render_template(
-        "lidar.html", page="lidar",
-        sensor_ip=config.LIDAR_SENSOR_IP,
-        scan_hz=round(1.0 / config.LIDAR_SCAN_CYCLE_S),
-        decimate=config.LIDAR_DECIMATE,
-        zones_validated=config.LIDAR_ZONES_VALIDATED,
-        protective_m=2.15, warning_m=10.0, range_m=40.0)
-
-
 @app.get("/alarms")
 def alarms():
     """The event log and everything standing against the vehicle right now.
@@ -164,7 +152,7 @@ def params():
         profile=config.PROFILE_NAME, path=config.PROFILE_PATH_LOADED,
         env_var=config.PROFILE_ENV_VAR,
         enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])
-                 for name in ("dio", "panel", "rfid", "lidar", "monitor")])
+                 for name in ("dio", "panel", "rfid", "monitor")])
 
 
 # ---- api ------------------------------------------------------------------
@@ -370,19 +358,6 @@ def api_can():
         "how": snap.get("how"),
         "error": snap.get("error"),
     })
-
-
-@app.get("/api/lidar")
-def api_lidar():
-    """The decimated point cloud. Read-only.
-
-    Split from /api/state for the same reason /api/can is: this is polled by one
-    page several times a second and carries far more than a status line.
-
-    GET only, and there is no counterpart that writes. The scanner is read-only
-    business - see drivers/lidar.py.
-    """
-    return jsonify(ctl.lidar_cloud())
 
 
 @app.get("/api/config")

@@ -383,22 +383,16 @@ _SCHEMA = {
         # handled separately in _read_io_names().
     },
     "lidar": {
-        # SICK nanoScan3, streaming UDP to this host. READ-ONLY: we bind a
-        # socket and listen. Nothing here opens a CoLa 2 session or writes to
-        # the device - see drivers/lidar.py.
+        # SICK nanoScan3. The live UDP stream is owned by the ROS driver
+        # (amr_ws, sick_safetyscanners2); the controller no longer listens.
+        # These keys configure the standalone bench tool drivers/lidar_scan.py,
+        # which binds the port only while a human runs it. READ-ONLY: nothing
+        # here opens a CoLa 2 session or writes to the device.
         "enabled":               ("LIDAR_ENABLED", bool),
         "host_ip":               ("LIDAR_HOST_IP", str),
         "sensor_ip":             ("LIDAR_SENSOR_IP", str),
         "port":                  ("LIDAR_PORT", int),
-        "silent_warn_s":         ("LIDAR_SILENT_WARN_S", float),
         "reassembly_timeout_s":  ("LIDAR_REASSEMBLY_TIMEOUT_S", float),
-        "reconnect_period_s":    ("LIDAR_RECONNECT_PERIOD_S", float),
-        "decimate":              ("LIDAR_DECIMATE", int),
-        # Identity and configuration checksum, compared at runtime so a swapped
-        # scanner or an altered configuration is visible. Empty disables the
-        # comparison rather than failing it.
-        "expected_identity":     ("LIDAR_EXPECTED_IDENTITY", str),
-        "expected_checksum":     ("LIDAR_EXPECTED_CHECKSUM", str),
         # Provisional cut-off-path mapping. The status block's layout is not in
         # this repo, so the bytes it reads are configuration rather than code
         # until a human has walked the rings and confirmed them.
@@ -464,15 +458,6 @@ _SCHEMA = {
 }
 
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str)}
-
-# The nanoScan3's scan cycle, from its datasheet: 30 ms, i.e. 33 Hz. A device
-# constant, not a tunable - it is here so the lidar timing checks below have
-# something to measure the profile against, and it is the ONE nanoScan3 number
-# taken from paper rather than from the telegram. Everything about the scan
-# ITSELF - beam count, start angle, angular resolution - is read off the wire,
-# because sec 2.4 of lidar_brief.md says the device may not do what the
-# datasheet says.
-LIDAR_SCAN_CYCLE_S = 0.030
 
 
 def _coerce(value, want, where):
@@ -779,23 +764,8 @@ def _validate(ns):
 
     # -- lidar ------------------------------------------------------------
     check(1 <= g("LIDAR_PORT") <= 65535, "lidar.port must be in 1..65535")
-    check(g("LIDAR_SILENT_WARN_S") > 0, "lidar.silent_warn_s must be > 0")
     check(g("LIDAR_REASSEMBLY_TIMEOUT_S") > 0,
           "lidar.reassembly_timeout_s must be > 0")
-    check(g("LIDAR_RECONNECT_PERIOD_S") > 0,
-          "lidar.reconnect_period_s must be > 0")
-    check(g("LIDAR_DECIMATE") >= 1, "lidar.decimate must be >= 1")
-    # The scanner streams every 30 ms. A window under that declares the link
-    # dead between two consecutive good telegrams, and the page flaps at 34 Hz.
-    check(g("LIDAR_SILENT_WARN_S") > LIDAR_SCAN_CYCLE_S,
-          f"lidar.silent_warn_s ({g('LIDAR_SILENT_WARN_S')}) must exceed the "
-          f"{LIDAR_SCAN_CYCLE_S * 1000:.0f} ms scan cycle")
-    # A telegram is five datagrams arriving inside one cycle. Holding fragments
-    # for longer than a cycle risks pairing a fragment with a same-offset
-    # fragment from the NEXT scan and emitting a stitched-together picture.
-    check(g("LIDAR_REASSEMBLY_TIMEOUT_S") < g("LIDAR_SILENT_WARN_S"),
-          f"lidar.reassembly_timeout_s ({g('LIDAR_REASSEMBLY_TIMEOUT_S')}) must "
-          f"be below silent_warn_s ({g('LIDAR_SILENT_WARN_S')})")
     check(0 <= g("LIDAR_ZONE_BLOCK") < 7,
           f"lidar.zone_block ({g('LIDAR_ZONE_BLOCK')}) must be a block slot 0..6")
     check(g("LIDAR_HOST_IP") != g("LIDAR_SENSOR_IP"),
@@ -981,8 +951,6 @@ _DERIVED = (
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
     ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "
                     "how long a coil claim outlives its last renewal"),
-    ("LIDAR_SCAN_CYCLE_S",
-     "nanoScan3 datasheet - a device constant, not a tunable"),
 )
 
 # A tuning note heads a paragraph and starts at column 0 as section.key.

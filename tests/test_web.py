@@ -80,6 +80,11 @@ def test_web_cannot_start_the_vehicle():
     check("no auto-run route is defined at all", '"/api/auto/run"' not in src)
 
     check("the retired auto page is not served", c.get("/auto").status_code == 404)
+    # The lidar page went with drivers/lidar.py: the ROS driver owns the
+    # scanner's UDP port, and a page fed by a listener that cannot bind is a
+    # page that always reads "stale".
+    check("the retired lidar page is not served", c.get("/lidar").status_code == 404)
+    check("...and neither is its cloud endpoint", c.get("/api/lidar").status_code == 404)
 
     # The manual page keeps DISARM - removing a stop path is the wrong
     # direction - but must not offer ARM.
@@ -95,54 +100,6 @@ def test_web_cannot_start_the_vehicle():
         js = (ROOT / "app" / "static" / name).read_text(encoding="utf-8")
         for dead in ("runBtn", "armBtn", "/api/arm", "/api/auto/run"):
             check(f"{name} has no reference to {dead}", dead not in js)
-
-
-def test_lidar_page_is_read_only_and_never_reads_clear():
-    """The lidar page shows a non-safety data source, and must look like it."""
-    import server as webapp   # app/server.py; see the note on the rename
-    print("\nthe lidar page is read-only and fails loud")
-    c = webapp.app.test_client()
-
-    body = c.get("/lidar").get_data(as_text=True)
-    check("the lidar page renders", "Cut-off paths" in body)
-    # The "not a safety path" and "cut-off paths are unvalidated" banners were
-    # removed from this page by request. Neither was doing the work: the rule
-    # they described is enforced in zoneState() below, which is asserted here
-    # and is what actually keeps an unknown or dead stream off "clear".
-    # There IS a button now - the scan toggle - so the assertion has to be
-    # about what a control can DO, not whether one exists. The page has no POST
-    # endpoint to call and no handler that calls one.
-    ids = re.findall(r'<button[^>]*id="([^"]+)"', body)
-    check("the only control is the scan toggle", ids == ["scan-toggle"], str(ids))
-    check("...and it moves nothing", "api(" not in
-          (ROOT / "app" / "static" / "lidar.js").read_text(encoding="utf-8"))
-    # sec 5: the protective field ends at 2.15 m, not the 3 m on the datasheet
-    # headline, and planner behaviour designed around 3 m would be wrong.
-    check("it publishes the real protective range", "2.15" in body)
-
-    # The cloud is a separate GET, for the same reason /api/can is: a picture
-    # polled several times a second must not touch the auto watchdog.
-    check("/api/lidar resolves", c.get("/api/lidar").status_code == 200)
-    check("there is no POST counterpart",
-          c.post("/api/lidar", json={}).status_code == 405)
-
-    # The rule the page exists to enforce. Dimming is what io.js does for the
-    # DIO grid; here a dim lamp would still read as "path clear", so staleness
-    # has to LIGHT the lamps instead.
-    # The rule now lives in common.js's zoneState, shared with the rail every
-    # page shows - so it is asserted there, once, where it is defined.
-    js = (ROOT / "app" / "static" / "common.js").read_text(encoding="utf-8")
-    zs = js[js.index("function zoneState"):js.index("function renderRail")]
-    check("staleness lights the zone lamps rather than dimming them",
-          "z.stale)   return {on: true" in zs)
-    check("...and stale is tested before validity and before the paths",
-          zs.index("z.stale") < zs.index("z.validated") < zs.index("paths[i])"))
-    check("an unreadable path is not rendered as clear",
-          "UNREAD" in zs and "paths[i] === null" in zs)
-    check("clear is the ONLY branch that leaves the lamp off",
-          zs.count("on: false") == 1, str(zs.count("on: false")))
-    check("the page states the bearing convention is unverified",
-          "not yet verified" in body)
 
 
 def test_manual_page_shows_the_rfid_tag():
@@ -171,7 +128,7 @@ def test_manual_page_shows_the_rfid_tag():
 
 
 def test_the_shared_rail_is_on_every_page():
-    """Battery, state, alarm and the lidar zones travel with every page.
+    """Battery, state and alarm travel with every page.
 
     And the three diagnostics that used to sit there do NOT: loop timing,
     frames-per-tick and the watchdog countdown are for somebody tuning the
@@ -182,10 +139,10 @@ def test_the_shared_rail_is_on_every_page():
     print("\nthe shared rail carries what an operator needs")
     c = webapp.app.test_client()
 
-    OPERATOR = ('id="batt"', 'id="vstate"', 'id="alarm"', 'id="zone-rail"')
+    OPERATOR = ('id="batt"', 'id="vstate"', 'id="alarm"')
     DIAGNOSTIC = ('id="loop-work"', 'id="loop-frames"', 'id="wd"')
 
-    for page in ("/manual", "/io", "/lidar", "/alarms", "/params"):
+    for page in ("/manual", "/io", "/alarms", "/params"):
         body = c.get(page).get_data(as_text=True)
         for el in OPERATOR:
             check(f"{page} carries {el}", el in body)
@@ -214,37 +171,6 @@ def test_the_shared_rail_is_on_every_page():
     check("the battery summary is computed server-side", "def _battery(" in worker)
     check("both reach the browser through the state snapshot",
           '"alarm": self._alarm(' in worker and '"battery": _battery(' in worker)
-
-
-def test_the_scan_is_off_until_asked_for():
-    """The picture costs CPU, so it is drawn only while somebody is looking."""
-    import server as webapp   # app/server.py; see the note on the rename
-    print("\nthe lidar scan is off by default")
-    c = webapp.app.test_client()
-
-    body = c.get("/lidar").get_data(as_text=True)
-    check("the toggle starts in the off state", ">Start scan<" in body)
-    check("...and says so", "off by default" in body)
-
-    js = (ROOT / "app" / "static" / "lidar.js").read_text(encoding="utf-8")
-    check("scanOn starts false", "let scanOn = false;" in js)
-    check("the page initialises through setScan(false), not a bare poll",
-          "setScan(false);" in js and "\npollCloud();" not in js)
-    check("a poll while off makes NO request at all",
-          "if (!scanOn) return;" in js)
-    # Leaving the page stops it for free - the script is destroyed - but a tab
-    # left in the background is still "not looking".
-    check("hiding the tab stops the scan",
-          "visibilitychange" in js and "document.hidden" in js)
-    # Turning it off must not leave the last picture on screen looking live.
-    check("toggling clears the held cloud", "cloud = null;" in
-          js[js.index("function setScan"):js.index("function setScan") + 400])
-    check("an off scan says so rather than reading as an empty room",
-          "'scan off'" in js)
-
-    # The lamps must NOT depend on the toggle: they ride on the state poll.
-    check("the zone lamps are painted from /api/state, not from the cloud",
-          "paintZones(l.zones)" in js)
 
 
 def test_alarms_page_records_but_cannot_clear():
@@ -477,9 +403,7 @@ TESTS = [
     test_landing_page_is_manual_and_the_pill_says_armed,
     test_web_cannot_start_the_vehicle,
     test_no_page_can_hold_the_vehicle_alive,
-    test_lidar_page_is_read_only_and_never_reads_clear,
     test_manual_page_shows_the_rfid_tag,
     test_the_shared_rail_is_on_every_page,
-    test_the_scan_is_off_until_asked_for,
     test_alarms_page_records_but_cannot_clear,
 ]

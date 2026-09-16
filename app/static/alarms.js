@@ -46,16 +46,6 @@ function renderStanding(s) {
   else if (b.state === 'warn') rows.push(['warn', 'Battery', `${b.volts} V`
                                           + (b.warn_low ? ` (low at ${b.warn_low})` : '')]);
 
-  // The lidar, by the same rule the lamps follow: unknown and stale are
-  // reportable states, not silence.
-  const l = s.lidar;
-  if (l && l.enabled) {
-    if (l.stale) rows.push(['error', 'Lidar stream', 'stale — zones assumed occupied']);
-    else if (l.zones && !l.zones.validated)
-      rows.push(['warn', 'Lidar zones', 'byte mapping unvalidated — see /lidar']);
-    if (l.gaps) rows.push(['warn', 'Lidar telegrams', `${l.gaps} lost`]);
-  }
-
   const c = s.can || {};
   for (const [node, al] of Object.entries(c.alarms || {})) {
     if (al) rows.push([al.level === 'error' ? 'error' : 'warn',

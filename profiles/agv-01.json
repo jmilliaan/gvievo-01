@@ -100,12 +100,7 @@
     "host_ip": "192.168.3.2",
     "sensor_ip": "192.168.3.10",
     "port": 6060,
-    "silent_warn_s": 0.15,
     "reassembly_timeout_s": 0.06,
-    "reconnect_period_s": 1.0,
-    "decimate": 4,
-    "expected_identity": "",
-    "expected_checksum": "",
     "zone_block": 0,
     "zone_bytes": [
       6,

@@ -56,7 +56,6 @@ import events  # noqa: E402
 import health  # noqa: E402
 import motion  # noqa: E402
 import dio  # noqa: E402
-import lidar  # noqa: E402
 import panel  # noqa: E402
 import rfid  # noqa: E402
 
@@ -366,23 +365,6 @@ class Controller:
         self._hw.add(health.PullSource("dio", self._dio.snapshot),
                      config.DIO_SILENT_WARN_S)
 
-        # Safety lidar, data output only. Same arrangement again: own thread,
-        # own socket, pulled for health.
-        #
-        # NON-CRITICAL, and more than that: nothing consumes it. The scanner
-        # stops the vehicle through its OSSD pair into the FX3, in hardware,
-        # and the manual is explicit that this Ethernet data must not be used
-        # for safety. So a dead scanner here is a display fault - it must not
-        # stop the vehicle, and must not block arming either, because doing so
-        # would put a non-safety data path in the way of manual recovery.
-        #
-        # The sec 4 rule ("absence of data is never clear") is therefore
-        # enforced at the CONSUMERS - today only the /lidar page, which renders
-        # a stale stream as occupied rather than as clear.
-        self._lidar = lidar.LidarLink()
-        self._hw.add(health.PullSource("lidar", self._lidar.snapshot),
-                     config.LIDAR_SILENT_WARN_S)
-
         # Operator panel. Scanned from the DI image every tick in _run(), in
         # every state - the panel is what ENTERS a state, so it has to be read
         # while idle.
@@ -411,13 +393,11 @@ class Controller:
         self._thread.start()
         self._rfid.start()          # no-op while rfid.enabled is false
         self._dio.start()           # likewise while dio.enabled is false
-        self._lidar.start()         # likewise while lidar.enabled is false
 
     def shutdown(self):
         self._stop_evt.set()
         self._rfid.stop()
         self._dio.stop()
-        self._lidar.stop()
         if self._thread:
             self._thread.join(timeout=6.0)
 
@@ -484,16 +464,6 @@ class Controller:
             had, self._blind_plan = self._blind_plan, None
         if had:
             events.info("blind-run plan cleared from the web")
-
-    def lidar_cloud(self, step=None):
-        """The decimated point cloud, decoded on the CALLING (Flask) thread.
-
-        Deliberately not part of snapshot() and deliberately not held under this
-        object's lock: decoding 1652 points costs ~250 us, and doing that on the
-        bus thread - or while holding the lock the bus thread needs - would put a
-        browser refresh inside the control tick's 20 ms budget.
-        """
-        return self._lidar.cloud(step)
 
     def _alarm(self, mon, flags):
         """The one-line verdict every page shows. Caller holds the lock.
@@ -583,10 +553,6 @@ class Controller:
                 # this moves, so a quiet vehicle costs no extra requests.
                 "rfid": self._rfid.snapshot(),
                 "dio": self._dio.snapshot(),
-                # Summary only - never the 1652-point cloud. Every page polls
-                # /api/state five times a second; the cloud goes out on
-                # /api/lidar, which only the lidar page asks for.
-                "lidar": self._lidar.snapshot(),
                 "imu": self._imu_snapshot(now),
                 "blind": self._blind_snapshot(now),
                 "horn": {"enabled": config.HORN_ENABLED,

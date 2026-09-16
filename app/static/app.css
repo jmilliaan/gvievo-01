@@ -58,7 +58,7 @@ body {
    it. Everywhere else it stays on: log paths, statusword hex, alarm codes and
    IP addresses are read off these pages to be pasted somewhere, and a page you
    cannot copy a fault code out of is a page somebody retypes it from. */
-button, nav a, .pad, .lamp, .pill, kbd, .zone-pip {
+button, nav a, .pad, .lamp, .pill, kbd {
   -webkit-user-select:none; user-select:none;
 }
 
@@ -446,62 +446,6 @@ code, .mon-policy code {
    last numbers, dimmed, rather than showing a live-looking value. */
 #mon-imu.stale, .tel.stale { opacity:.38; filter:grayscale(1); }
 
-/* ---- lidar --------------------------------------------------------------
-   The cut-off path lamps are NOT the I/O page's lamps in another colour, and
-   the difference is the whole point. A dark I/O lamp means "that input is low",
-   which is information. A dark ZONE lamp means "the path is clear", which is a
-   claim about the world - and one this page must never make on the strength of
-   a stream that stopped arriving. So there is no dimming here: stale and
-   unknown are LOUD states with their own fills, and both light the lamp.
-   See lidar.js, and sec 4 of lidar_brief.md. */
-.zone-list .io-row { grid-template-columns:28px 18px 1fr auto; }
-.zone-state {
-  font:600 11px var(--mono); letter-spacing:.06em;
-  font-variant-numeric:tabular-nums; color:var(--ink-3);
-}
-.io-name i { color:var(--ink-3); font-style:normal; }
-
-/* Occupied: the same red the stop ring uses on the canvas. */
-.lamp.zone.on { background:var(--stop); border-color:var(--stop); }
-/* Unknown - the byte mapping is unconfirmed. Hazard, because "we do not know"
-   is a different problem from "something is there" and needs a different fix. */
-.lamp.zone.unknown, .lamp.zone.on.unknown {
-  background:var(--hazard); border-color:var(--hazard-ink);
-}
-/* Stale outranks both: a hatched fill, so it is distinguishable from occupied
-   even in a photograph, and for anyone who cannot separate the two hues. */
-.lamp.zone.stale, .lamp.zone.on.stale {
-  border-color:var(--stop);
-  background:repeating-linear-gradient(45deg,
-    var(--stop) 0 3px, var(--surface) 3px 5px);
-}
-
-.scan-wrap { position:relative; margin:12px 0 4px; }
-#scan {
-  display:block; width:100%; max-width:720px; margin:0 auto;
-  border:1px solid var(--rule); background:var(--surface);
-}
-/* Not a tooltip - a banner across the picture. A greyed scan on its own reads
-   as an empty room, which is the one reading that must never happen. */
-.scan-stale {
-  position:absolute; left:50%; top:12px; transform:translateX(-50%);
-  background:var(--stop); color:#fff; padding:5px 12px;
-  font:600 11px var(--mono); letter-spacing:.08em; white-space:nowrap;
-}
-.scan-range {
-  position:absolute; right:8px; bottom:8px;
-  font:600 11px var(--mono); letter-spacing:.06em; color:var(--ink-3);
-  background:var(--surface); border:1px solid var(--rule); padding:3px 6px;
-}
-.scan-range select {
-  font:inherit; color:var(--ink-2); background:var(--surface);
-  border:1px solid var(--rule); margin-left:4px; padding:1px 2px;
-}
-/* The second callout colour: the page can carry a hazard advisory (unvalidated
-   mapping) at the same time as the standard one, and two identical boxes would
-   read as one repeated warning. */
-.warn.hazard { border-left-color:var(--stop); }
-
 /* ---- operator panel strip ---------------------------------------------- */
 .panel-strip {
   display:flex; align-items:center; gap:18px; flex-wrap:wrap;
@@ -522,28 +466,6 @@ code, .mon-policy code {
   border:1px solid var(--stop); border-left-width:3px;
   background:var(--stop-wash); color:var(--stop);
   font-weight:600; text-transform:none; letter-spacing:.01em;
-}
-
-/* ---- shared rail: lidar zone pips ---------------------------------------
-   A compact form of the /lidar lamps, on every page. Same lamp classes, so the
-   "stale is hatched, unknown is hazard" rules are defined once. */
-.zone-rail {
-  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-  border:1px solid var(--rule); background:var(--surface);
-  padding:6px 10px; margin-bottom:10px;
-}
-.zone-rail-label {
-  font:600 10px var(--mono); letter-spacing:.09em; text-transform:uppercase;
-  color:var(--ink-3);
-}
-.zone-pip {
-  display:inline-flex; align-items:center; gap:5px;
-  font:500 11px var(--mono); color:var(--ink-2);
-}
-.zone-pip .lamp { width:10px; height:10px; }
-.zone-rail-state {
-  margin-left:auto; font:600 10px var(--mono); letter-spacing:.07em;
-  text-transform:uppercase; color:var(--ink-3);
 }
 
 /* ---- blind run ---------------------------------------------------------- */
@@ -616,10 +538,6 @@ code, .mon-policy code {
 .lv-warn  .al-lv { color:var(--hazard-ink); }
 .lv-error { border-left-color:var(--stop); background:var(--stop-wash); }
 .lv-error .al-lv, .lv-error .al-what { color:var(--stop); }
-
-/* The scan toggle sits in a .bar like every other primary action, but it is a
-   view control - it moves nothing. Lit while the picture is being drawn. */
-#scan-toggle.on { background:var(--accent-2); border-color:var(--accent); color:#fff; }
 
 /* ---- parameters page ----------------------------------------------------
    A reference table, not a control surface: no lamps, no colour semantics and

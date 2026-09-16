@@ -63,10 +63,10 @@ fused 0.07 % / 0.2°.
 never exceed hardware.
 
 **Lidar ownership.** `sick_safetyscanners2` and the controller's
-`drivers/lidar.py` both need `192.168.3.2:6060`; only one can hold it. Decision
-2026-09-15: the ROS driver owns it, the legacy listener is to be removed. Until
-it is, the `/lidar` page shows *assumed occupied* while `lidar.launch.py` runs —
-that is its fail-safe, not a fault. The ROS driver writes the scanner's
+`drivers/lidar.py` both needed `192.168.3.2:6060`; only one could hold it.
+Decision 2026-09-15: the ROS driver owns it. The legacy listener, the `/lidar`
+page and the zone rail were removed on 2026-09-16; the controller no longer
+touches the scanner. The ROS driver writes the scanner's
 channel-0 data-output settings over CoLa2; that is not the verified safety
 configuration (fields, monitoring cases), which stays humans-only.
 
