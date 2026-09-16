@@ -13,6 +13,7 @@ Confirmed user decisions:
 - Migrate all useful operator and diagnostic pages in phases.
 - Boot into **IDLE** with hardware and web available. Do not automatically load the previous navigation map.
 - Fully retire `agv_controller` after unified-service acceptance. Retain it only as a temporary migration fallback.
+- Use a Pareto testing strategy: prioritize tests by likely failure impact and execution cost; run a compact core, and expand only for affected components or observed failures. The requested 50% effort / 80% issue coverage is a prioritization heuristic, not a measured coverage claim.
 
 One service means one application supervision boundary containing several processes. Keep ROS nodes separate. The OS, network services and existing `canable@can0.service` remain infrastructure dependencies; merging the serial-CAN bridge into Python is outside this change.
 
@@ -120,7 +121,7 @@ Browser mode changes, map selection, mission load and fault acknowledgement do n
 
 ### 4.2 Required interfaces
 
-Add interfaces in `amr_interfaces`; register them in `CMakeLists.txt` and rebuild dependents. Final enum numbers should be frozen with interface tests.
+Add interfaces in `amr_interfaces`; register them in `CMakeLists.txt` and rebuild dependents. Review/freeze final enum numbers and verify compatibility through the existing build and representative interface consumers; do not add tests that merely repeat field declarations.
 
 | Interface | Proposed contents / semantics |
 |---|---|
@@ -302,7 +303,7 @@ Specify freshness across the HTTP hop too: use a server-issued, single-use refre
 
 ## 7. Diagnostic migration and legacy feature disposition
 
-“All useful pages” requires data contracts as well as templates. Maintain a parity checklist recording each old display/control, new source, implemented behavior and test. Unsupported values display “not available,” never a plausible zero or old profile value.
+“All useful pages” requires data contracts as well as templates. Maintain a parity checklist recording each old display/control, new source and implemented behavior. Verify shared data paths once and visually spot-check the pages; do not require a separate automated test for every display. Unsupported values display “not available,” never a plausible zero or old profile value.
 
 | Existing capability | New owner / source | Migration decision |
 |---|---|---|
@@ -368,7 +369,7 @@ This is a controlled engineering mode within IDLE. Its purpose remains encoder/g
 
 ### 8.1 Ordered service shutdown
 
-The supervisor must keep its ROS context usable during controlled teardown; default rclpy SIGINT handling can invalidate it too early. Install explicit SIGINT/SIGTERM handling that sets a stop event, performs the bounded shutdown sequence, then shuts down the executor/context. Test both signals.
+The supervisor must keep its ROS context usable during controlled teardown; default rclpy SIGINT handling can invalidate it too early. Install explicit SIGINT/SIGTERM handling that sets a stop event, performs the bounded shutdown sequence, then shuts down the executor/context. Exercise the configured SIGINT path in core acceptance; test SIGTERM separately only if its implementation differs or the signal path changes.
 
 1. Stop accepting operations; publish STOPPING and revoke all command/job authority.
 2. Cancel active actions where possible, confirm zero command acknowledgement and observe stopping. Failure to obtain a cancellation response does not delay inhibition.
@@ -380,7 +381,7 @@ If shutdown interrupts an in-progress map save, the service-stop deadline takes 
 
 Within the base group, the existing stop handlers may run concurrently. If measured cleanup ordering requires panel to outlive drive stop, implement explicit per-node ordering in the base launch rather than claiming order from list position.
 
-Do not change the delicate `1016h` disarm sequencing as an incidental supervisor refactor. Current implementation clears the consumer heartbeat before its bounded speed-zero wait. Capture tests for clean exit and failed cleanup, and separately review any heartbeat-policy change. A SIGKILL bypasses these handlers; neither logs nor process exit alone prove the drives de-energized.
+Do not change the delicate `1016h` disarm sequencing as an incidental supervisor refactor. Current implementation clears the consumer heartbeat before its bounded speed-zero wait. Reuse its existing tests and verify clean exit once in the integrated hardware session. Failed-cleanup and drive-crash variants are change-triggered tests if this policy or driver cleanup changes. A SIGKILL bypasses these handlers; neither logs nor process exit alone prove the drives de-energized.
 
 For action cancellation, fix the existing late-goal-response case: if an old goal is accepted after its run/generation is invalidated, cancel that accepted handle rather than simply returning. Keep generation/run/action identity on feedback/results. An abort service response is not proof the action server has stopped; track cancellation/completion and wheel stillness. Killing the old complete layer remains the final mode-switch boundary.
 
@@ -466,13 +467,15 @@ The supervised lifecycle design uses the actual Humble manager's STARTUP/PAUSE/R
 
 Implement in small reviewable commits. Each gate is a technical verification milestone, not a request for repeated user approval. Keep hardware-changing acceptance separate from offline work and schedule it with the person at the vehicle.
 
+**Testing policy:** section 12 defines the execution budget and required core. These work-package gates describe required behavior, not separate suites to rerun at every stage. Reuse evidence from the same build and unchanged code; satisfy multiple gates with one integrated run. Broader failure variants elsewhere in this document describe design obligations, not automatic requirements to build and run an exhaustive test matrix.
+
 ### U0 — Reproducible baseline and contracts
 
 Dependencies: none.
 
-- Record current commit, concurrent edits, installed units/enablement, hardware/environment versions and baseline tests.
+- Record current commit, concurrent edits, installed units/enablement and hardware/environment versions; run the relevant fast existing tests once to establish a baseline.
 - Track the missing deployment scripts through narrow ignore exceptions.
-- Write interface/state contract tests first for the behaviors that can cause motion or stale-state errors. Finalize map identity, generation ownership, abort/save results and manual session behavior.
+- Select the representative core contract tests in section 12 before implementing motion/state changes. Finalize map identity, generation ownership, abort/save results and manual session behavior; avoid exhaustive transition enumeration and implementation-mirroring tests.
 - Record acceptance fields and parameter sources in a short requirements-to-test checklist alongside this plan.
 
 Exit gate: clean-checkout build/environment files present; agreed implementation contracts are explicit; no hardware behavior changes yet.
@@ -506,7 +509,7 @@ Dependencies: U1, U2.
 - Implement single-owner state loop, allowlisted child spawns, operation IDs/deduplication, SIGINT/SIGTERM handling and bounded process-group cleanup.
 - Boot into STARTING then IDLE; launch persistent base/web and optional bridge.
 - Implement base readiness, failure classification, inhibit acknowledgement and explicit recovery to idle.
-- Test child leader death, grandchild persistence, supervisor freeze/crash, unexpected zero exit and late worker completion.
+- Exercise one representative required-child failure and orphan cleanup in P5, and supervisor lease loss in P2. Reserve alternate exit codes, every signal combination and late worker variants for a changed path or a failure that points to them.
 
 Exit gate: supervised simulation boots idle, stays stopped and cleans all descendants. Failures appear in state. No map/route layer needed for this gate.
 
@@ -531,7 +534,7 @@ Dependencies: U2, U3; U4 for mode-specific UX.
 - Add mode requests, progress/status recovery and generation-aware map/mission operations.
 - Keep Flask/ROS adapter tests independent of hardware.
 
-Exit gate: browser automation proves press/release, focus loss, disconnect, two-tab conflict, malformed input, delayed command and mode-switch races. All are also stopped by robot-side expiry if browser zero delivery fails.
+Exit gate: P3 covers the delayed-command/release race and two-tab exclusion; use an existing browser harness if present, otherwise one manual UI smoke during K1/K2. Robot-side expiry is covered by P2. Do not build a broad new browser automation framework for this milestone.
 
 ### U6 — Live survey and localization view
 
@@ -575,13 +578,13 @@ Dependencies: U4–U6; U7/U8 must finish before legacy retirement.
 
 Exit gate: unit validation and simulated service fault tests pass. Hardware cutover checklist has concrete commands, expected observations and rollback files.
 
-### U10 — Vehicle acceptance and sustained operation
+### U10 — Compact vehicle acceptance
 
 Dependencies: U5–U9 complete for full scope.
 
-- Run the hardware tests in section 12 with a person at the vehicle; record measured stopping/readiness/latency separately from expectations.
+- Run K1–K5 from section 12 in one scheduled session with a person at the vehicle; record measured stopping/readiness/latency separately from expectations.
 - Perform at least one real survey-to-route run and a second fresh survey without service restart.
-- Complete diagnostic and commissioning parity checks and a sustained mixed-mode session.
+- Spot-check diagnostic/commissioning integration during the same session. Observe resources during the workflow; add a long soak only if its trigger in section 12 is met.
 
 Exit gate: all mandatory acceptance rows have evidence or a documented unresolved failure. An unresolved required row blocks retirement; a passing unit test is not substituted for a missing cable-loss/stop test.
 
@@ -599,69 +602,98 @@ Exit gate: clean checkout builds/tests; `amr.service` is the only AGV applicatio
 
 ### 11.1 Effort and sequencing expectation
 
-For one engineer familiar with this repository, budget roughly **2–4 working weeks** for the complete scope including diagnostics, commissioning parity, failure tests and vehicle acceptance. Treat this as a planning range, not a delivery promise. The core unified workflow can reach a reviewable simulation milestone earlier; diagnostic scheduling and vehicle findings are the largest uncertainties. The earlier “one day plus jog pad” estimate does not cover this full retirement scope.
+The original **2–4 working week** estimate included the broad test campaign below, which has now been replaced by the compact policy in section 12. Re-estimate after U3 using measured implementation and core-test times; do not convert a 50% testing reduction into a claimed 50% reduction of the entire project. Diagnostics, commissioning migration and vehicle findings still determine much of the implementation effort. The earlier “one day plus jog pad” estimate does not cover the full retirement scope.
 
 Critical order: authority contracts → launch/process ownership → supervisor transactions → web workflow → parity/acceptance → deletion. Do not remove the fallback merely because the new service can launch.
 
-## 12. Verification and acceptance matrix
+## 12. Pareto verification and acceptance
 
-### 12.1 Offline and simulated tests
+### 12.1 Execution policy and time budget
 
-| ID | Test | Required observation |
+Replace the original **23 automated/simulation scenarios + 15 hardware scenarios** with **8 core automated scenarios + 5 combined hardware checks**. This is 13 top-level scenarios instead of 38. It is a smaller required scope, not a claim of equivalent coverage or a promise of a particular defect-detection percentage.
+
+Reduce actual work as well as test count:
+
+- Exercise representative failure paths, not every state/input/signal permutation. Keep the omitted variants in the trigger table below; do not conceal the old full matrix inside parameterized tests.
+- Test pure rules with fake clocks and fake process/service adapters. Most errors in lease expiry, state admission, stale commands, identity checks and save retries do not need a ROS launch or vehicle.
+- Use **one integrated simulation workflow** to check launch topology, mode switching, fresh survey state and map activation. Reuse its running stack for one failure injection; avoid separate full-stack launches for each assertion.
+- Reuse existing tests for unchanged CAN decoding, kinematics, map storage, route following and blind-run computation. Do not rewrite them or rerun all hardware commissioning just because the supervisor changed.
+- On each edit, run only the affected fast tests and lint the touched modules. After they pass, stop testing until another relevant change or failure warrants more.
+- Before first hardware cutover, run the core integrated simulation and relevant existing fast regression tests once. Reuse that evidence through review unless the tested paths change.
+- Do not run the entire opt-in survey/AMCL/route/run-control simulation collection by default. Select an existing suite only when its component changes or the integrated workflow exposes a fault in it.
+- Retain existing repository-required checks, including the pinned root test-runner coverage checks when root code/tests change. Reducing frequency and new test scope does not mean deleting useful existing tests or lowering expected counts to get green.
+- No new browser automation framework for this milestone. Use the existing Flask test client for backend contracts; check pointer/keyboard interaction in the scheduled hardware/browser session. Extend an existing browser harness only if it saves work.
+
+| When | What runs | Planning budget / stop rule |
 |---|---|---|
-| V01 | FSM transition table, every source/target state | Allowed transitions, explicit rejections, no implicit abort of READY/PAUSED/BLOCKED jobs or unsaved survey. |
-| V02 | Duplicate/concurrent HTTP and ROS operation requests | Same request ID returns same outcome; different request rejected BUSY; bounded operation storage. |
-| V03 | Stale generation/instance/sequence/manual token | Rejected at web and control consumers; a delayed release/nonzero command cannot revive or hijack a later session. |
-| V04 | Lost/frozen supervisor with mux still publishing | Mux and drive owner each independently stop accepting nonzero by their lease deadline. |
-| V05 | Expired manual command while source remains TELEOP | Zero output by declared command deadline plus one control tick; no software slew extension. |
-| V06 | Old navigation publisher/permit and late accepted action | Generation-private topic cannot feed new run; old handle is canceled; results cannot advance a new step. |
-| V07 | Same map name, different revision/hash and valid foreign mission | Load refused unless active ID/revision/hash match. Canvas selection alone does not activate robot map. |
-| V08 | Abort/new survey in same service | New SLAM/coordinator PIDs and no retained graph/session reference; base PIDs/odom unchanged. |
-| V09 | Save success/failure/client timeout/duplicate request/disk failure | Exactly one approved revision per operation; uncertain outcome reconciled; drafts never listed as approved. |
-| V10 | Large map hashing/PNG work and slow clients | Control-lease publication and command handling remain within deadline; bounded worker/cache memory. |
-| V11 | Layer startup fails halfway | All partial children cleaned, no competing map owner, FAULT visible, no automatic reopen of authority. |
-| V12 | Launch leader exits while child lives; required child exits zero | Supervisor detects incomplete cleanup/failure; no new layer until all old owners are gone. |
-| V13 | Child ignores SIGINT/TERM | Bounded escalation works; cgroup final cleanup on service stop; operation cannot hang forever. |
-| V14 | Stale transient-local READY/RunState and old TF after switch | UI marks/clears state; robot rejects it; map transforms used only for current generation. |
-| V15 | Navigation lifecycle inactive/unreachable but process alive | Readiness/permission lost; bounded transition failure; no reliance on PID alone. |
-| V16 | Full simulated repeated workflow | Same base/web PIDs through map save/load/change; exactly one `/map` producer and `map -> odom` authority when relevant, none in IDLE. |
-| V17 | Resource lock contention/direct legacy start | Second owner rejected before device I/O; fail-closed behavior independent of process-name matching. |
-| V18 | Browser input race matrix | Release, blur, hidden tab, touch cancel, focused text field, two tabs, request reordering and network reconnection require fresh intentional press. |
-| V19 | Sim/hardware isolation | Production rejects fake panel/test domain; tests do not bind physical devices, production ports, map store or locks. |
-| V20 | Diagnostics load and unsupported channels | GET requests cause no bus I/O; missing values explicitly unavailable; stale status never looks live. |
-| V21 | Commissioning job interruption and physical edge replay | One plan per fresh authorized Start; invalid/stale/held edges do not restart; no mode switch or jog competition. |
-| V22 | SIGINT, SIGTERM, supervisor crash and reboot | New instance starts IDLE with no mission/survey/jog/commissioning replay; descendants cleaned within budget. |
-| V23 | Clean-checkout deployment | Required `.sh` files tracked, executable wrapper available, unit references resolve, coherent message overlay, map files preserved on reinstall. |
+| Ordinary implementation edit | Affected subset of P1–P6/P8; relevant existing unit tests; touched-file lint | Target 1–2 minutes, excluding build time. No full ROS launch unless its path changed. |
+| Completed integration milestone | P7 plus any changed process path from P5; relevant fast regressions | Target one 5–10 minute simulation run on the N97; once per meaningful integration change, not per commit. |
+| First vehicle acceptance | K1–K5, sequentially in one prepared area | Target one 45–60 minute session for a compact survey/route. Area preparation and fault repair are separate; record actual duration. |
+| Follow-up fix | Previously failing test plus its directly affected neighbors | Do not restart acceptance from K1 if earlier evidence remains applicable. |
+| Expanded investigation | Only the triggered row(s) in section 12.4 | Stop when the fault is reproduced, fixed and its regression passes. No automatic escalation to every suite. |
 
-Run the repository's relevant existing tests alongside these additions: root shared-library/controller tests while legacy remains; `amr_base` gating/CAN/panel tests; mission/map/FSM tests; web tests; launch/TF tests; and opt-in survey/localization/route/run-control simulation suites. Existing simulation tests pin domains 61–67: allocate new distinct test domains and ports and update `domains.TEST_RANGE`/documentation deliberately.
+These are execution targets, not measured runtimes. Record elapsed time for the first real run and adjust expensive fixtures before adding tests. Aim for at least a **50% reduction in test execution time** against the original broad campaign; no comparable baseline has been measured yet, so do not report that saving as achieved.
 
-Use the documented `AMR_SIM_TESTS=1` and sequential simulation execution on the N97; simultaneous full navigation simulations can create resource-starvation failures. Introduce a browser-test harness only for meaningful input/state behavior, not snapshots that mirror HTML. Pure plan preparation does not require running hardware or full simulation tests; these are implementation gates.
+### 12.2 Eight core automated scenarios
 
-### 12.2 Hardware acceptance
+P1–P6 and P8 should primarily be short unit/contract or small subprocess tests. P7 is the single full-stack simulation. Each scenario has a few named assertions because they share the same mechanism/setup; it does not require all combinations of its inputs.
 
-Record operator, commit/build identity, profile, active map revision/hash, timestamps and measured results for each row.
-
-| ID | Sequence | Pass evidence |
+| ID | Scenario and cheapest useful method | Required evidence |
 |---|---|---|
-| H01 | Fresh boot | Only unified application service enabled; UI reports IDLE; no route/commissioning execution; physical selector accurately shown. Energized zero-target state is distinguished from disarmed. |
-| H02 | Manual forward/reverse/left/right at low speed | Correct wheel signs; hold/release behavior; horn/lights actual response; measured travel and stop. |
-| H03 | Release / close tab / Wi-Fi loss / stale POST | Command-zero timestamp and measured physical stopping distance/time recorded separately. No restart on reconnection. |
-| H04 | MANUAL → AUTO during jog; AUTO jog attempt | Output inhibited; new command cannot move under AUTO without route authorization. |
-| H05 | Physical DIO cable loss and reconnection | Panel invalidity, command inhibition and actual horn/DO behavior measured. Reconnection produces no phantom Start/Reset or continued jog. This was skipped in the earlier session and remains unproven. |
-| H06 | Fresh survey, drive loop, return, inspect, save | Live map remains usable in browser; closure evidence retained; saved bundle verifies; transition to IDLE preserves base process/odom. |
-| H07 | Draw route, activate exact revision, initialize/confirm localization, load mission | No robot motion from editor, map activation, initial pose, confirmation or load. AUTO + fresh physical Start executes the drawn route. |
-| H08 | Pause/abort, mode-change attempt during active/resumable run | Proper refusal until explicit job cleanup; no stale Nav2 command survives switching. |
-| H09 | Select another saved revision, then new survey | Old localization/confirmation invalidated; new mapping graph; no base rearm cycle caused by successful mode replacement. |
-| H10 | Layer crash and startup failure | Vehicle behavior agrees with inhibition design; browser shows reason; explicit recovery; no route replay. |
-| H11 | Planned whole-service stop/restart | Drive de-energization/heartbeat-consumer cleanup verified and DO0 checked; no orphan scanner/CAN/panel/web processes. |
-| H12 | Supervisor/drive crash and heartbeat PC-loss response | Controlled test with person at E-stop; record drive response and recovery. Prior accidental heartbeat fault is supporting evidence, not a substitute for a controlled failure-path test of the new service. |
-| H13 | All diagnostic pages plus multiple browser views while driving | Sensor/command/heartbeat deadlines hold; bus/CPU/memory/log load measured; optional polls cannot starve control. |
-| H14 | Commissioning parity | Straight/arc/pivot/pulse plans and aborts behave within configured bounds; evidence export and physical Start semantics validated. |
-| H15 | Sustained mixed-mode use and final boot after retirement | Repeated switches do not accumulate processes, TF owners, stale operation results or memory; old service cannot start a competing controller. |
+| P1 | **Mode admission and competing requests** — pure FSM with fake snapshots | Representative allowed switch succeeds; an active/paused job, unsaved survey and stale wheel feedback reject replacement. One duplicate request returns the existing operation, one competing request returns BUSY. No exhaustive state-pair matrix. |
+| P2 | **Authority expires at both control layers** — injected monotonic clock, nonzero command fixture | Expired manual input produces zero at the mux; supervisor lease loss inhibits both mux and drive owner independently, even when the other layer appears healthy. Freshness recovery cannot replay cached commands; fresh physical authority/input is required. |
+| P3 | **Released/stale browser command cannot return** — Flask stub and pure session helper | Accept a command, release it, then deliver its delayed nonzero request: reject it. Also reject one old-generation command, nonfinite input and a competing tab. Expired-ticket behavior uses the same fake-clock fixture. |
+| P4 | **Mission matches the active map** — temporary map/mission fixtures | A matching mission loads; an otherwise valid mission for a different revision/hash is refused. This checks robot-side binding, not only UI filtering. |
+| P5 | **Failed layer is cleaned before replacement** — fake worker processes plus one readiness-failure stub | Kill the launch leader while its child remains: child is reaped/terminated, motion stays inhibited and replacement cannot start prematurely. One never-ready layer times out to FAULT. SIGINT cleanup is the normal path; alternate signal/exit permutations are conditional. |
+| P6 | **Save outcome survives a lost response** — existing bundle fixture + fake coordinator | Complete atomic publish but drop the response; retry the same operation without creating another revision. Inject one pre-publish error and show that the draft is not approved. Reuse existing bundle integrity tests rather than recreating all filesystem failures. |
+| P7 | **One unified workflow and fresh restart of a layer** — one sequential simulation | IDLE → survey → save → IDLE → selected navigation map → one short route → IDLE → new survey, then abort. Assert unchanged base/web PIDs, one map/TF owner, new survey graph and cleared localization/run state. During this same stack lifetime, inject one required-node failure and verify FAULT/inhibition/cleanup. |
+| P8 | **Deployable, exclusive startup** — file/unit validation plus mock owners | Required scripts tracked, executable/config paths resolve, unit syntax and conflict ordering valid. A duplicate resource lock refuses before I/O. Production rejects fake panel/wrong domain. Reuse current domain tests; no extra fleet/environment matrix. |
 
-Use the existing sensor freshness targets as constraints: scan 0.15 s, wheels 0.10 s, corrected IMU 0.20 s and TF 0.20 s where applicable. Record latency distributions and failure counts under load; an average CPU percentage alone does not establish readiness. Begin sustained testing with a 60-minute session containing repeated mode switches and use observed drift/load to choose a longer production soak.
+For commissioning integration, run existing `test_blindrun` cases unchanged where the pure library is unchanged, plus a small adapter assertion that a plan upload cannot start motion and a fresh physical Start can authorize exactly one job. Attach this to P1/P2's existing authority fixture when U8 lands; do not create another full-stack suite. Test newly changed calculations directly if U8 modifies them.
 
-Full hardware acceptance still depends on measured footprint/clearance and the existing unresolved commissioning items. This service refactor does not establish geometric accuracy, functional safety certification, or hardware fault clearing behavior by itself.
+Allocate new simulation domains/ports separate from existing test domains 61–67 and production domain 10. Keep hardware, data directories and locks isolated. Run the full-stack simulation sequentially on this host. For a domain/configuration-only change, use P8; do not automatically repeat the route simulation.
+
+### 12.3 Five hardware checks in one session
+
+Record one shared commit/build/profile/map identity for the session, then results and measured timing per check. Reuse the same compact mapped area and short route throughout. These checks retain physical authority, stop behavior and resource handover because software-only evidence cannot demonstrate them.
+
+| ID | Combined check | Minimum execution and pass evidence |
+|---|---|---|
+| K1 | **Boot, jog and physical mode** | Boot unified service to IDLE. Brief low-speed forward/reverse/turn checks, verify horn/lights, release to stop, then switch MANUAL → AUTO during a short jog and confirm inhibition. A jog attempt under AUTO is refused. Spot-check keyboard focus loss here rather than in a separate browser campaign. |
+| K2 | **Loss of operator/panel input** | During separate short, controlled jogs, interrupt browser connectivity once and disconnect/reconnect DIO once. Record command-zero timing and actual physical stop; observe DO/horn behavior. Reconnection must not produce a phantom Start or resume held input. No separate tab-close/Wi-Fi/router-failure matrix. |
+| K3 | **Complete browser workflow and one mode round trip** | Survey a compact loop, return/review/save, create a short route, select its exact map, localize/confirm/load and execute through AUTO + physical Start. Exercise one pause/abort and confirm a mode request while the job is still active/resumable is refused. Explicitly abort, return IDLE, start a second survey and abort it; no second complete mapping loop. Observe base PIDs/odom and map/TF ownership through the same run. |
+| K4 | **Supervisor loss and clean service restart** | Under a controlled low-speed test, suspend/fail the supervisor once and confirm lease-loss stopping with no command replay on recovery. Then do one normal service stop/start: verify drive de-energization, heartbeat-consumer cleanup, DO0 and absence of child owners; startup is IDLE. Test the drive heartbeat implementation itself only when triggered below. |
+| K5 | **Diagnostics and commissioning smoke** | While performing the above workflow, view monitor/I/O/alarms/effective parameters and observe timing/resources for about 10 minutes; no separate soak. After U8, run one short straight and one turn commissioning job, including one abort; planning alone cannot move and a fresh physical Start is required. Reuse existing pure tests for unchanged arc/pulse calculations. Spot-check other pages rather than retest every field. |
+
+When legacy retirement occurs on the accepted build, repeat only K1's **boot/ownership portion** after changing installed unit files. Do not repeat the entire survey and drive session for removal of unused files. If retirement changes shared runtime code, select tests for that code as usual.
+
+Use the existing sensor freshness constraints while recording the workflow: scan 0.15 s, wheels 0.10 s, corrected IMU 0.20 s and TF 0.20 s where applicable. Capture ages, missed deadlines and command/physical-stop observations together. Do not require a separate performance report or exhaustive benchmark matrix when the integrated evidence is clean.
+
+### 12.4 Deferred tests: run only when triggered
+
+These variants are **outside the normal core acceptance**. Their absence is recorded as untested, not passed. They are not automatically required before legacy retirement unless the corresponding code changed, relevant prior evidence is absent, or an observed failure activates the trigger.
+
+| Deferred work | Trigger | Smallest useful expansion |
+|---|---|---|
+| Full FSM/request permutation matrix | A transition race, inconsistent state or transaction-policy change | Add the failing transition and its nearest alternative; expand only if the defect crosses transitions. |
+| Every signal, exit code and unresponsive-child combination | Process/signal implementation changes beyond P5/K4, a shutdown timeout or leaked child | One reproduction including the problematic signal/process tree; test SIGTERM separately if it uses different code. |
+| Drive `kill -9`, PC-loss heartbeat and failed-disarm variants | Changes to `canopen.py` heartbeat/disarm logic, bus-thread lifetime or driver-failure cleanup; contradictory hardware evidence | Controlled drive-crash/recovery check. A supervisor-only refactor does not require repeating all drive commissioning. Existing gaps remain documented, not claimed resolved. |
+| Every layer node crashed separately; lifecycle bond variants | A unique recovery path changes, lifecycle supervision behavior changes, or representative failure misses it | Target the affected node/path; do not crash all nodes as a checklist. |
+| Delayed action acceptance/result combinations | Action cancellation/run-ID/generation handling changes | Focused asynchronous callback regression, preferably with a fake action server; no long route needed. |
+| Large-map/slow-client stress and 60-minute-plus soak | Deadline misses, memory/process growth during K5, cache/encoding/worker changes, or a deployment map outside tested size | Reproduce the load and run a focused 20–30 minute check; extend only if the symptom needs longer. |
+| Disk-full, permission, crash-at-every-save-stage matrix | Storage/atomic-publish implementation changes or save outcomes become ambiguous despite P6 | Inject the relevant failing stage with temporary files/fakes; avoid a real disk-filling campaign. |
+| Broad browser/input/device matrix | New frontend event-handling path or a stuck-input report | Reproduce that browser/input event and one neighboring event using available tooling. |
+| Existing full survey/AMCL/route/run-control simulation suites | Corresponding estimator/controller/executor algorithms change, or P7 fails in that component | Run the affected existing suite once; do not invoke the entire collection for launch/UI edits. |
+| Full hardware commissioning across arc/pulse/sign/scale variants | Changes to encoder scaling, inversion, pure commissioning calculations or adapter unit conversion | Check the changed motion primitive/conversion on hardware; retain unchanged pure-test evidence. |
+| Repeated clean-install/rollback/environment matrix | Installer/environment/dependency changes or deployment mismatch | One fresh-install/rollback rehearsal of the changed path; repeat P8's cheap validation otherwise. |
+
+### 12.5 Acceptance and stopping rule
+
+- Core scenarios pass on the relevant build, or applicable earlier evidence is linked to unchanged code. Every triggered expansion also passes. No release claim rests on a skipped test.
+- Record failures, fix the affected behavior and rerun that scenario; expand only when its cause reaches another component. A fresh concern is a reason to test, not a reason to restart every suite.
+- Once this evidence is complete, proceed to cutover/retirement. Do not add tests merely because another hypothetical edge case can be named.
+- The section 13 checklist is a design/review checklist, **not 13 additional executable tests**. Mark entries using existing core evidence or a source review where behavior is low-impact and unchanged.
+- Pure documentation edits, including this plan revision, need link/format/diff review only. They do not trigger builds, simulation or hardware testing.
 
 ## 13. Review checklist before implementation is considered complete
 
