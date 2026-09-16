@@ -285,4 +285,3 @@ def test_disarm_retires_the_pc_loss_guard_first():
     bus2.writes.clear()
     link2.disarm()
     assert not any(i == 0x1016 for _, i, _, _ in bus2.writes)
-
