@@ -67,6 +67,8 @@ class MappingSession(Node):
         self.declare_parameter("wheels_age_limit_s", 0.10)
         self.declare_parameter("stationary_wheel_rad_s", 0.01)
         self.declare_parameter("service_timeout_s", 10.0)
+        self.declare_parameter("generation", 0)  # layer generation (unified plan U0)
+        self.generation = int(self.get_parameter("generation").value)
         p = self.get_parameter
         self.maps_dir = os.path.expanduser(p("maps_dir").value)
         self.scan_age = p("scan_age_limit_s").value
@@ -179,6 +181,7 @@ class MappingSession(Node):
     def _publish_state(self) -> None:
         with self._lock:
             m = MappingState()
+            m.generation = self.generation
             m.header.stamp = self.get_clock().now().to_msg()
             m.state = self._state
             m.map_id = self._map_id

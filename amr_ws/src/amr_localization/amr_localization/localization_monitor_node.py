@@ -54,6 +54,8 @@ class LocalizationMonitor(Node):
         self.declare_parameter("settle_s", 2.0)
         self.declare_parameter("initial_grace_s", 1.5)
         self.declare_parameter("scan_age_limit_s", 0.15)
+        self.declare_parameter("generation", 0)  # layer generation (unified plan U0)
+        self.generation = int(self.get_parameter("generation").value)
         self.declare_parameter("wheels_age_limit_s", 0.10)
         self.declare_parameter("imu_age_limit_s", 0.20)
         self.declare_parameter("tf_age_limit_s", 0.20)
@@ -219,6 +221,7 @@ class LocalizationMonitor(Node):
     def _publish(self) -> None:
         t = self._now()
         m = LocalizationState()
+        m.generation = self.generation
         m.header.stamp = self.get_clock().now().to_msg()
         m.state = self.rd.state
         m.operator_confirmed = self.rd.confirmed

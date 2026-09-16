@@ -1,102 +1,61 @@
-"""mapping.launch.py (spec §9): estimation chain + live async SLAM + session coordinator.
+"""mapping.launch.py: standalone survey stack = base + web + mapping_layer (+ Foxglove).
 
-sim:=true   fake base/IMU + scan_synth against the sim_factory world
-sim:=false  drivers.launch.py: drive_node on can0 + nanoScan3 (stop agv_controller first)
-No AMCL, no route actions. `foxglove:=true` adds the bridge.
+sim:=true   base.launch.py real:=false with scan_synth against the sim_factory world
+sim:=false  base.launch.py real:=true (drive_node on can0, panel, nanoScan3)
+
+Compatible wrapper for the tests and the bench; the supervised service starts
+the same layers itself (unified plan §3.1).
 """
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
-from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from amr_bringup import domains
+from amr_bringup.launch_helpers import default_world, foxglove, include
 
 
-def _sim_layer(context):
-    sim = LaunchConfiguration("sim").perform(context).lower() == "true"
-    what = f"mapping.launch.py sim:={str(sim).lower()}"
-    domains.refuse_vehicle_domain(what) if sim else domains.require_vehicle_domain(what)
-    if not sim:
+def _base(context):
+    cfg = LaunchConfiguration
+    if cfg("sim").perform(context).lower() == "true":
         return [
-            IncludeLaunchDescription(
-                AnyLaunchDescriptionSource(
-                    os.path.join(get_package_share_directory("amr_bringup"), "launch", "drivers.launch.py")
-                ),
-                launch_arguments={"lidar": "true", "foxglove": "false"}.items(),
+            include(
+                "amr_bringup",
+                "base.launch.py",
+                real="false",
+                slip_noise_std=cfg("slip_noise_std"),
+                scan_synth="true",
+                world_yaml=cfg("world_yaml"),
+                clutter_count=cfg("clutter_count"),
             )
         ]
-    return [
-        IncludeLaunchDescription(
-            AnyLaunchDescriptionSource(
-                os.path.join(get_package_share_directory("amr_bringup"), "launch", "sim.launch.py")
-            ),
-            launch_arguments={"slip_noise_std": LaunchConfiguration("slip_noise_std")}.items(),
-        ),
-        Node(
-            package="amr_sim",
-            executable="scan_synth_node",
-            name="scan_synth",
-            output="screen",
-            parameters=[
-                {
-                    "world_yaml": LaunchConfiguration("world_yaml"),
-                    "clutter_count": LaunchConfiguration("clutter_count"),
-                }
-            ],
-        ),
-    ]
+    return [include("amr_bringup", "base.launch.py", real="true", lidar="true")]
 
 
 def generate_launch_description() -> LaunchDescription:
-    bringup = get_package_share_directory("amr_bringup")
-    default_world = os.path.join(
-        get_package_share_directory("amr_maps"), "worlds", "sim_factory", "world.yaml"
-    )
+    cfg = LaunchConfiguration
     return LaunchDescription(
         [
             DeclareLaunchArgument("sim", default_value="true"),
             DeclareLaunchArgument("slip_noise_std", default_value="0.02"),
-            DeclareLaunchArgument("world_yaml", default_value=default_world),
+            DeclareLaunchArgument("world_yaml", default_value=default_world()),
             DeclareLaunchArgument("clutter_count", default_value="0"),
             DeclareLaunchArgument("maps_dir", default_value=os.path.expanduser("~/amr_maps")),
             DeclareLaunchArgument("foxglove", default_value="false"),
             DeclareLaunchArgument("web", default_value="true", description="operator pages on :5001"),
-            OpaqueFunction(function=_sim_layer),
+            OpaqueFunction(function=_base),
             Node(
                 package="amr_web",
                 executable="web_node",
                 name="amr_web",
                 output="screen",
-                parameters=[{"maps_dir": LaunchConfiguration("maps_dir")}],
-                condition=IfCondition(LaunchConfiguration("web")),
+                parameters=[{"maps_dir": cfg("maps_dir")}],
+                condition=IfCondition(cfg("web")),
             ),
-            Node(
-                package="slam_toolbox",
-                executable="async_slam_toolbox_node",
-                name="slam_toolbox",
-                output="screen",
-                parameters=[os.path.join(bringup, "config", "slam_mapping.yaml")],
-            ),
-            Node(
-                package="amr_mission",
-                executable="mapping_session_node",
-                name="mapping_session",
-                output="screen",
-                parameters=[{"maps_dir": LaunchConfiguration("maps_dir")}],
-            ),
-            IncludeLaunchDescription(
-                AnyLaunchDescriptionSource(
-                    os.path.join(
-                        get_package_share_directory("foxglove_bridge"), "launch", "foxglove_bridge_launch.xml"
-                    )
-                ),
-                condition=IfCondition(LaunchConfiguration("foxglove")),
-            ),
+            include("amr_bringup", "mapping_layer.launch.py", maps_dir=cfg("maps_dir")),
+            foxglove(IfCondition(cfg("foxglove"))),
         ]
     )

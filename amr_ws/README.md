@@ -29,11 +29,14 @@ from the same overlay, or custom `amr_interfaces` messages will not decode.
 
 | Launch | What |
 |---|---|
-| `amr_bringup lidar.launch.py` | nanoScan3 driver + URDF TF (ROS owns UDP 6060 outright since the legacy listener was removed) |
-| `amr_bringup drivers.launch.py [lidar:=true] [pc_loss_ms:=500] [feedback_hz:=50] [gyro_sign:=1] [panel:=none\|fake]` | **hardware Layer 1**: `drive_node` (both BLV-R + MLS gyro on `can0`) + nanoScan3 + mux/odom/bias/EKF + URDF. `sudo systemctl stop agv_controller` first: two owners on one bus is forbidden (spec §3.1) |
-| `amr_bringup sim.launch.py [slip_noise_std:=0.02] [foxglove:=true]` | fake base + fake IMU → cmd_mux, odom, imu_bias, EKF → URDF; touches no hardware |
-| `amr_bringup mapping.launch.py [sim:=true] [maps_dir:=~/amr_maps] [clutter_count:=N] [foxglove:=true]` | sim chain + `scan_synth` + `slam_toolbox` online async + `mapping_session`. `sim:=false` includes `drivers.launch.py` |
-| `amr_bringup nav.launch.py [map_id:=sim_factory] [revision:=latest] [maps_dir:=~/amr_maps] [clutter_count:=N] [web:=true] [foxglove:=true]` | verified bundle → `map_server` + AMCL + `localization_monitor` + `controller_server` (RPP) + `behavior_server` (Spin) + `route_executor` + web app; sim chain + `scan_synth` + `fake_panel`. Mutually exclusive with mapping |
+| `amr_bringup base.launch.py real:=true\|false [...]` | **the persistent base layer** (unified plan U1): one URDF publisher, mux, odom, imu_bias, EKF; `real:=true` adds drive_node (can0), panel_node (DIO) and the nanoScan3 (`scanner.launch.py`); `real:=false` adds fake base/IMU/panel and optional `scan_synth:=true`. No web, no Foxglove, no SLAM/AMCL. Required nodes end the launch when they exit |
+| `amr_bringup mapping_layer.launch.py [maps_dir] [generation:=N] [internal:=true]` | **mode layer**: slam_toolbox + mapping_session only. One survey = one fresh instance |
+| `amr_bringup navigation_layer.launch.py map_id:=… revision:=N [generation:=N] [autostart:=false]` | **mode layer**: verified bundle → map_server, AMCL, localization_monitor, controller, behaviors, lifecycle managers, route_executor. One map = one instance |
+| `amr_bringup drivers.launch.py [lidar] [pc_loss_ms] [feedback_hz] [gyro_sign] [panel:=real\|fake]` | bench wrapper = `base real:=true` (+ Foxglove). `sudo systemctl stop agv_controller` first; drive_node/panel_node refuse otherwise |
+| `amr_bringup sim.launch.py [slip_noise_std] [scan_synth] [foxglove]` | wrapper = `base real:=false` (+ Foxglove); touches no hardware |
+| `amr_bringup mapping.launch.py [sim:=true] [maps_dir] [clutter_count] [foxglove]` | standalone survey stack = base + web + mapping_layer |
+| `amr_bringup nav.launch.py [sim:=true] [map_id] [revision] [maps_dir] [clutter_count] [web] [foxglove]` | standalone runtime stack = base + web + navigation_layer. Mutually exclusive with mapping |
+| `amr_bringup lidar.launch.py` | scanner commissioning: `scanner.launch.py` + URDF (+ Foxglove) |
 | `amr_description description.launch.py [laser_x:=…]` | robot_state_publisher only |
 
 Survey in sim (spec §6.1), from three terminals:

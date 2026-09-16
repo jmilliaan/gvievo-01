@@ -70,6 +70,13 @@ class RouteExecutor(Node):
         super().__init__("route_executor")
         self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
         self.declare_parameter("footprint_yaml", "")
+        # Layer identity (unified plan U0/U4): stamped into every RunState and MotionPermit;
+        # the active_map_* values are what a mission must match (U4 enforces).
+        self.declare_parameter("generation", 0)
+        self.declare_parameter("active_map_id", "")
+        self.declare_parameter("active_map_revision", 0)
+        self.declare_parameter("active_map_sha256", "")
+        self.generation = int(self.get_parameter("generation").value)
         self.declare_parameter("start_gate_m", 0.10)
         self.declare_parameter("start_gate_deg", 5.0)
         self.declare_parameter("settle_s", 0.3)
@@ -713,6 +720,7 @@ class RouteExecutor(Node):
 
     def _publish_permit(self) -> None:
         m = MotionPermit()
+        m.generation = self.generation
         m.header.stamp = self.get_clock().now().to_msg()
         m.run_id = self.fsm.run_id
         st = self._step()
@@ -736,6 +744,7 @@ class RouteExecutor(Node):
 
     def _publish_state(self) -> None:
         m = RunState()
+        m.generation = self.generation
         m.header.stamp = self.get_clock().now().to_msg()
         m.state = self.fsm.state
         m.run_id, m.mission_id = self.fsm.run_id, self.fsm.mission_id
