@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}AMR — manual{% endblock %}
+{% block body %}
+<section class="cols">
+  <div class="card">
+    <h2>Manual jog</h2>
+    <div id="jog"></div>
+  </div>
+  <div class="card">
+    <h2>Vehicle</h2>
+    <div id="manual-state" class="state">—</div>
+    <p class="muted">Arming is the physical panel's job: the selector resting in MANUAL energises the drives at zero. This page cannot arm, clear a drive alarm or change the operating mode. The drives de-energise on a service stop; nothing here does that.</p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/jogpad.js"></script>
+<script>
+jogpad(document.getElementById('jog'));
+onState(st => {
+  const m = st.mode, mx = st.mux, l = st.lease;
+  document.getElementById('manual-state').textContent =
+    `mode: ${m ? m.mode_name : '—'}${m && m.phase ? ' · ' + m.phase : ''}\n` +
+    `manual allowed by supervisor: ${m ? m.manual_available : '—'}\n` +
+    `command source: ${mx ? mx.source + (mx.inhibited ? ' (inhibited)' : '') + ' — ' + mx.reason : '—'}\n` +
+    `generation: ${l ? l.generation : '—'}\n` +
+    (m && m.reason ? `\n${m.reason}` : '');
+});
+</script>{% endblock %}

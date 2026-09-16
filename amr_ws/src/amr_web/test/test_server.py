@@ -20,9 +20,31 @@ class Stub:
         self.calls = []
         self.previews = []
         self.run_state = None
+        self.identity = ("inst-1", 3)
+        self.published = []
+        self.ops = {}
 
     def state(self):
         return {"mapping": None, "localization": {"state_name": "READY"}, "run": self.run_state}
+
+    # supervisor surface (unified plan §6.2)
+    def supervisor_identity(self):
+        return self.identity
+
+    def request_mode(self, target, map_id, rev, request_id):
+        self.calls.append(("request_mode", (target, map_id, rev, request_id)))
+        self.ops["op-mode"] = {"operation_id": "op-mode", "status": 0, "status_name": "PENDING"}
+        return True, "op-mode", "accepted"
+
+    def survey_request(self, operation, map_id, description, request_id):
+        self.calls.append(("survey_request", (operation, map_id, description, request_id)))
+        return True, "op-survey", "accepted"
+
+    def get_operation(self, oid):
+        return self.ops.get(oid)
+
+    def manual_publish(self, cmd):
+        self.published.append(cmd)
 
     def _rec(self, name):
         def fn(*a):
@@ -179,9 +201,6 @@ def test_keepout_mask_is_honoured(env):
 def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
     client, stub, maps, rev_dir, manifest = env
     for path, body, name in (
-        ("/api/survey/start", {"map_id": "a", "description": "b"}, "survey_start"),
-        ("/api/survey/returned", {}, "survey_returned"),
-        ("/api/survey/save", {"note": "n"}, "survey_save"),
         ("/api/localization/confirm", {}, "localization_confirm"),
         ("/api/localization/initialpose", {"x_m": 1, "y_m": 2, "yaw_rad": 0.5}, "set_initial_pose"),
         ("/api/mission/run", {"mission_id": "m"}, "run_mission"),
@@ -193,10 +212,36 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
         r = client.post(path, json=body)
         assert r.status_code == 200 and r.json["ok"], path
         assert stub.calls[-1][0] == name
-    assert stub.calls[4] == ("set_initial_pose", (1.0, 2.0, 0.5))
+    assert stub.calls[1] == ("set_initial_pose", (1.0, 2.0, 0.5))
     assert client.post("/api/localization/initialpose", json={"x_m": "no"}).status_code == 400
     rules = [str(r.rule) for r in client.application.url_map.iter_rules()]
+    # the one velocity-publishing route is the held manual refresh; nothing else
     assert not any("cmd_vel" in r or "drive" in r or "jog" in r for r in rules)
+    assert (
+        sum("/api/manual" in r for r in rules) == 3
+    )  # press, refresh, release (the /manual page is not an API)
+
+
+def test_mode_and_survey_are_asynchronous_operations(env):
+    client, stub, *_ = env
+    r = client.post(
+        "/api/mode", json={"target": "navigation", "map_id": "m", "map_revision": 2, "request_id": "r1"}
+    )
+    assert r.status_code == 202 and r.json["operation_id"] == "op-mode"
+    assert stub.calls[-1] == ("request_mode", (3, "m", 2, "r1"))
+    assert client.get("/api/operations/op-mode").json["status_name"] == "PENDING"
+    assert client.get("/api/operations/nope").status_code == 404
+    assert client.post("/api/mode", json={"target": "navigation", "map_id": "m"}).status_code == 422
+    assert client.post("/api/mode", json={"target": "fly"}).status_code == 400
+    r = client.post("/api/survey/start", json={"map_id": "a", "description": "mark"})
+    assert (
+        r.status_code == 202
+        and stub.calls[-1][0] == "survey_request"
+        and stub.calls[-1][1][:3] == (0, "a", "mark")
+    )
+    r = client.post("/api/survey/save", json={"note": "seams ok"})
+    assert r.status_code == 202 and stub.calls[-1][1][:3] == (2, "", "seams ok")
+    assert client.post("/api/survey/bogus", json={}).status_code == 404
 
 
 def test_state_and_footprint(env):

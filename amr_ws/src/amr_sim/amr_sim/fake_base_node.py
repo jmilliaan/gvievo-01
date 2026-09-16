@@ -144,6 +144,20 @@ class FakeBase(Node):
         w.left_vel_rad_s = self.model.actual_l
         w.right_vel_rad_s = self.model.actual_r
         w.left_valid = w.right_valid = True
+        # emulated raw 6064h counters (vehicle-terms radians -> driver-terms counts)
+        cpr = 1080000.0
+        sl = -1.0 if config.INVERT_LEFT else 1.0
+        sr = -1.0 if config.INVERT_RIGHT else 1.0
+        left_counts = int(round(sl * self.model.pos_l / (2 * math.pi) * cpr)) & 0xFFFFFFFF
+        right_counts = int(round(sr * self.model.pos_r / (2 * math.pi) * cpr)) & 0xFFFFFFFF
+        if left_counts >= 1 << 31:
+            left_counts -= 1 << 32
+        if right_counts >= 1 << 31:
+            right_counts -= 1 << 32
+        w.left_counts = left_counts
+        w.right_counts = right_counts
+        w.counts_valid = True
+        w.counts_per_wheel_rev = cpr
         self._pub_wheels.publish(w)
 
         s = self.model.truth

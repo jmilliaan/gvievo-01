@@ -20,8 +20,10 @@ island or the map files' contents beyond bundle verification.
 
 from __future__ import annotations
 
+import faulthandler
 import os
 import signal
+import sys
 import threading
 import time
 import uuid
@@ -40,8 +42,10 @@ from amr_bringup import operations as ops
 from amr_bringup import readiness as rd
 from amr_bringup.process_supervisor import Group
 from amr_interfaces.msg import (
+    CommissioningState,
     ControlLease,
     DriveStatus,
+    Event,
     LocalizationState,
     MappingState,
     ModeState,
@@ -63,7 +67,7 @@ SENSOR = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
 )
 
-LEASE_MANUAL, LEASE_AUTONOMOUS = 1, 2
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
 INTERNAL = "/amr/internal/survey"
 
 
@@ -117,6 +121,7 @@ class Supervisor(Node):
         self._worker_result: bool | None = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        self._stopping = False  # read without the lock by shutdown()
         self._logs = os.path.join(self.state_dir, "logs")
         os.makedirs(self._logs, exist_ok=True)
 
@@ -134,8 +139,17 @@ class Supervisor(Node):
         self.create_subscription(
             LocalizationState, "/amr/localization_state", self.snap.on_loc, LATCHED, callback_group=g
         )
+        self.create_subscription(
+            CommissioningState,
+            "/amr/commissioning_state",
+            self.snap.on_commissioning,
+            LATCHED,
+            callback_group=g,
+        )
         self._pub_lease = self.create_publisher(ControlLease, "/amr/control_lease", RELIABLE_1)
         self._pub_mode = self.create_publisher(ModeState, "/amr/mode_state", LATCHED)
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
         self.create_service(RequestMode, "/amr/mode/request", self._srv_mode, callback_group=g)
         self.create_service(RequestSurvey, "/amr/supervisor/survey", self._srv_survey, callback_group=g)
         self.create_service(GetOperation, "/amr/operations/get", self._srv_get_op, callback_group=g)
@@ -179,11 +193,28 @@ class Supervisor(Node):
         self.get_logger().info(f"spawned {g.describe()}: {' '.join(argv[3:])}")
         return g
 
+    def _event(self, level: int, code: str, text: str) -> None:
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source, m.level, m.code, m.text = "amr_supervisor", level, code, text
+        self._event_seq += 1
+        m.seq = self._event_seq
+        try:
+            self._pub_event.publish(m)
+        except Exception:  # noqa: BLE001 - never let an event stop the loop
+            pass
+
     def _set(self, mode: int, phase: str = "", reason: str = "", fault: str = "") -> None:
         with self._lock:
             if mode != self.mode:
                 self.get_logger().info(
                     f"mode {fsm.MODE_NAMES[self.mode]} -> {fsm.MODE_NAMES[mode]} ({phase or reason})"
+                )
+                lvl = Event.ERROR if mode == fsm.FAULT else Event.INFO
+                self._event(
+                    lvl,
+                    "MODE_CHANGE",
+                    f"{fsm.MODE_NAMES[self.mode]} -> {fsm.MODE_NAMES[mode]}: {fault or phase or reason}",
                 )
             self.mode, self.phase, self.reason = mode, phase, reason
             if fault:
@@ -199,6 +230,8 @@ class Supervisor(Node):
             return 0
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
+        if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
+            return LEASE_COMMISSIONING  # exclusive IDLE substate: no ordinary jog meanwhile
         return LEASE_MANUAL
 
     def _conditions(self) -> fsm.Conditions:
@@ -206,7 +239,8 @@ class Supervisor(Node):
 
     # ---------------------------------------------------------------- publishers
 
-    def _publish_lease(self) -> None:
+    def _lease_msg(self) -> ControlLease:
+        """Built under the state lock; published outside it (never hold our lock inside rcl)."""
         m = ControlLease()
         m.header.stamp = self.get_clock().now().to_msg()
         m.instance = self.instance
@@ -215,6 +249,11 @@ class Supervisor(Node):
         m.seq = self.lease_seq
         m.allowed = self._allowed()
         m.inhibit_reason = "" if m.allowed else (self.phase or fsm.MODE_NAMES[self.mode])
+        return m
+
+    def _publish_lease(self) -> None:
+        with self._lock:
+            m = self._lease_msg()
         self._pub_lease.publish(m)
 
     def _publish_mode(self) -> None:
@@ -510,8 +549,9 @@ class Supervisor(Node):
             if t.target == fsm.NAVIGATION:
                 self.active_map = (t.map_id, t.map_revision, t.map_sha256)
             self.inhibit_manual = False
+            msg = next((n for n in t.notes if n and not n.startswith("lm:") and n != "from_fault"), "ok")
             self.book.finish(
-                op, ops.SUCCEEDED, "ok", map_id=t.map_id, map_revision=t.map_revision, map_sha256=t.map_sha256
+                op, ops.SUCCEEDED, msg, map_id=t.map_id, map_revision=t.map_revision, map_sha256=t.map_sha256
             )
             self._set(t.target, "", "")
             return
@@ -520,7 +560,7 @@ class Supervisor(Node):
         if not self.snap.mapping_state_for(self.generation):
             return  # coordinator not up yet
         if self._pending_future is None:
-            if not self._cli["start"].service_is_ready():
+            if not self._cli["start"].service_is_ready() or now < getattr(self, "_retry_at", 0.0):
                 return
             req = StartSurvey.Request()
             req.map_id = t.map_id
@@ -533,7 +573,14 @@ class Supervisor(Node):
         r = self._pending_future.result()
         self._pending_future = None
         if r is None or not r.accepted:
-            self._fail(t.operation_id, "SURVEY_START_REFUSED", getattr(r, "message", "no response"))
+            msg = getattr(r, "message", "no response")
+            if r is not None and msg.startswith("not ready"):
+                # SLAM has not produced map->odom / a map yet (plan §5.4 step 3):
+                # keep asking until the layer start budget runs out.
+                self.book.phase(t.operation_id, f"waiting: {msg}")
+                self._retry_at = now + 1.0
+                return
+            self._fail(t.operation_id, "SURVEY_START_REFUSED", msg)
             return
         t.notes.append(r.message)
         t.step = fsm.COMMIT
@@ -622,30 +669,33 @@ class Supervisor(Node):
                 self.book.finish(op_id, ops.FAILED, getattr(r, "message", "no response"))
                 return
             rev = int(r.revision)
-            sha = rd.bundle_sha(self.maps_dir, self.snap.mapping_map_id, rev)
-            self.last_survey = (self.snap.mapping_map_id, rev)
-            self.book.finish(
-                op_id,
-                ops.SUCCEEDED,
-                r.message,
-                map_id=self.snap.mapping_map_id,
-                map_revision=rev,
-                map_sha256=sha,
-            )
-            follow, _ = self.book.submit("", fsm.REQ_IDLE, message="after save")
-            self._begin_transaction(follow, fsm.IDLE, "", 0, "")
+            map_id = self.snap.mapping_map_id
+            sha = rd.bundle_sha(self.maps_dir, map_id, rev)
+            self.last_survey = (map_id, rev)
+            # The bundle is published; the SAME operation now carries the return
+            # to IDLE, so the browser sees one SUCCEEDED only once the vehicle is
+            # back in a stable mode (no BUSY window for the next request).
+            self.book.phase(op_id, f"saved rev{rev}; returning to idle")
+            self._begin_transaction(self.book.get(op_id), fsm.IDLE, map_id, rev, sha)
+            self.txn.notes.append(r.message)
             return
         if name == "abort":
-            self.book.finish(op_id, ops.SUCCEEDED, getattr(r, "message", ""))
-            follow, _ = self.book.submit("", fsm.REQ_IDLE, message="after abort")
-            self._begin_transaction(follow, fsm.IDLE, "", 0, "")
+            self.book.phase(op_id, "aborted; returning to idle")
+            self._begin_transaction(self.book.get(op_id), fsm.IDLE, "", 0, "")
 
     # ------------------------------------------------------------------ the loop
 
     def _boot(self) -> None:
         p = self.get_parameter
         if p("web").value:
-            argv = ["ros2", "run", "amr_web", "web_node", "--ros-args", "-p", f"maps_dir:={self.maps_dir}"]
+            argv = [
+                sys.executable,
+                "-m",
+                "amr_web.web_node",
+                "--ros-args",
+                "-p",
+                f"maps_dir:={self.maps_dir}",
+            ]
             self.groups["web"] = Group.spawn(
                 "web", argv, env=self._env(), log_path=os.path.join(self._logs, "web.log")
             )
@@ -669,19 +719,19 @@ class Supervisor(Node):
         self._boot_deadline = self._now() + self.budget["base_ready_s"]
 
     def _reap(self, now: float) -> None:
+        """An unrequested exit of base or the layer is a fault - once. The dead
+        group stays in the table, marked, so the recovery transaction's STOP_OLD
+        verifies it is empty (a leader that died may have left members)."""
         for role, g in list(self.groups.items()):
             if g.poll() is None or g.requested_stop:
                 continue
-            if role == "layer" and self.txn is not None and self.txn.step in (fsm.STOP_OLD,):
-                continue
+            g.requested_stop = True  # handled; never reap it again
             if role in ("base", "layer"):
-                self._fail(
-                    self.txn.operation_id if self.txn else self.book.submit("", "fault")[0].operation_id,
-                    f"{role.upper()}_EXITED",
-                    f"{g.describe()} exited unrequested",
-                )
-                if role == "base":
-                    self.groups.pop("base", None)
+                if self.txn is not None:
+                    op_id = self.txn.operation_id
+                else:
+                    op_id = self.book.submit("", "fault", message=f"{role} exited")[0].operation_id
+                self._fail(op_id, f"{role.upper()}_EXITED", f"{g.describe()} exited unrequested")
             else:
                 self.get_logger().warn(f"{g.describe()} exited; optional group, not restarted")
                 self.groups.pop(role, None)
@@ -697,7 +747,7 @@ class Supervisor(Node):
                 except Exception as e:  # noqa: BLE001 - the loop must keep publishing the (inhibited) lease
                     self.get_logger().error(f"loop error: {e!r}")
                     self._set(fsm.FAULT, "loop error", repr(e), "LOOP_ERROR")
-                self._publish_lease()
+            self._publish_lease()  # outside the lock
             time.sleep(max(0.0, period - (self._now() - t0)))
 
     def _tick(self, now: float) -> None:
@@ -720,11 +770,28 @@ class Supervisor(Node):
     # --------------------------------------------------------------- shutdown
 
     def shutdown(self) -> None:
-        """Ordered teardown (§8.1): revoke, stop layer, stop base (drives disarm), web, bridge."""
-        with self._lock:
-            self._set(fsm.STOPPING, "stopping")
-            self._publish_lease()
+        """Ordered teardown (§8.1): revoke, stop layer, stop base (drives disarm), web, bridge.
+
+        The loop is asked to stop first and the state lock is taken with a
+        bounded wait: a wedged loop must not keep the children (and the drives)
+        alive. The lease stops being published either way, which is what
+        actually revokes motion."""
         self._stop.set()
+        self._stopping = True
+        got = self._lock.acquire(timeout=2.0)
+        try:
+            self.mode, self.phase = fsm.STOPPING, "stopping"
+            if got:
+                self._set(fsm.STOPPING, "stopping")
+        finally:
+            if got:
+                self._lock.release()
+        if not got:
+            self.get_logger().error("shutdown: state lock not acquired in 2 s; stopping children anyway")
+        try:
+            self._publish_lease() if got else None
+        except Exception:  # noqa: BLE001
+            pass
         for role in ("layer", "base", "foxglove", "web"):
             g = self.groups.get(role)
             if g is None:
@@ -750,15 +817,26 @@ def main(args=None) -> None:
 
     signal.signal(signal.SIGINT, on_signal)
     signal.signal(signal.SIGTERM, on_signal)
+    faulthandler.register(signal.SIGUSR1, all_threads=True)  # `kill -USR1 <pid>` dumps every thread's stack
     node._thread.start()
     try:
         while not stop.is_set():
             executor.spin_once(timeout_sec=0.2)
     finally:
+        t0 = time.monotonic()
         node.shutdown()
-        executor.shutdown()
-        node.destroy_node()
+        node.get_logger().info(f"teardown: groups stopped in {time.monotonic() - t0:.1f} s")
+        executor.shutdown(timeout_sec=2.0)
+        node.get_logger().info(f"teardown: executor down at {time.monotonic() - t0:.1f} s")
+        node._thread.join(timeout=2.0)
+        print(f"teardown: loop joined at {time.monotonic() - t0:.1f} s", flush=True)
+        try:
+            node.destroy_node()
+        except Exception as e:  # noqa: BLE001
+            print(f"teardown: destroy_node {e!r}", flush=True)
+        print(f"teardown: node destroyed at {time.monotonic() - t0:.1f} s", flush=True)
         rclpy.try_shutdown()
+        print(f"teardown: done at {time.monotonic() - t0:.1f} s", flush=True)
 
 
 if __name__ == "__main__":

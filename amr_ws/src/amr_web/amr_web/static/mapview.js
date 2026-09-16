@@ -38,6 +38,22 @@ class MapView {
     await new Promise((res, rej) => { const im = new Image(); im.onload = () => { this.img = im; res(); }; im.onerror = rej; im.src = `/api/maps/${mapId}/${rev}/image.png?s=${data.sha256.slice(0, 8)}`; });
     this.fit(); this.draw();
   }
+  // Live grid (unified plan §6.4): metadata and image share one snapshot id; the
+  // grid may grow and move its origin between snapshots, so meta and image are
+  // swapped together. The view is fitted only the first time (or when asked),
+  // never on every update.
+  async loadLive(meta) {
+    if (!meta || !meta.available) return false;
+    if (this._liveSnapshot === meta.snapshot && this.meta && this.meta.generation === meta.generation) return false;
+    const im = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = `/api/live/map.png?snapshot=${meta.snapshot}`; });
+    if (!im) return false;  // a newer snapshot appeared; the next poll gets it
+    const first = !this.img || !this.meta || this.meta.generation !== meta.generation;
+    this.meta = meta; this.img = im; this._liveSnapshot = meta.snapshot;
+    if (first) this.fit();
+    this.draw();
+    return true;
+  }
+  clearLive() { this.meta = null; this.img = null; this._liveSnapshot = null; this.draw(); }
   fit() {
     if (!this.img) return;
     this.scale = Math.min(this.canvas.width / this.img.width, this.canvas.height / this.img.height) * 0.95;
@@ -71,6 +87,7 @@ class MapView {
   dot(x, y, color, r) { const c = this.ctx, p = this.worldToScreen(x, y); c.fillStyle = color; c.beginPath(); c.arc(p[0], p[1], r || 4, 0, 2 * Math.PI); c.fill(); }
   text(x, y, s, color) { const c = this.ctx, p = this.worldToScreen(x, y); c.fillStyle = color || '#fff'; c.font = '12px system-ui'; c.fillText(s, p[0] + 6, p[1] - 6); }
   arrow(x, y, yaw, len, color) { this.line(x, y, x + len * Math.cos(yaw), y + len * Math.sin(yaw), color, 3); this.dot(x, y, color, 5); }
+  points(pts, color) { const c = this.ctx; c.fillStyle = color; pts.forEach(p => { const q = this.worldToScreen(p[0], p[1]); c.fillRect(q[0] - 1, q[1] - 1, 2, 2); }); }
   polygon(pts, color) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.closePath(); c.stroke(); }
   footprint(x, y, yaw, poly, color) { const c = Math.cos(yaw), s = Math.sin(yaw); this.polygon(poly.map(p => [x + c * p[0] - s * p[1], y + s * p[0] + c * p[1]]), color); }
 }

@@ -3,10 +3,19 @@
 {% block body %}
 <section class="editor">
   <aside class="card tools">
+    <h2>Vehicle map</h2>
+    <div id="active-map" class="state">—</div>
+    <label>View / activate <select id="run-map"></select></label>
+    <div class="row">
+      <button id="btn-activate" class="primary">Use this map on the vehicle</button>
+      <button id="btn-idle">Return to idle</button>
+    </div>
+    <p class="muted">Selecting only changes the picture. "Use this map" replaces the navigation software on that exact revision (vehicle stopped, selector MANUAL) and does not move anything.</p>
+    <hr>
     <h2>Localisation</h2>
     <div id="loc-state" class="state">—</div>
-    <label>Map <select id="run-map"></select></label>
     <div class="row"><button id="tool-initialpose" class="tool">Set initial pose on map</button></div>
+    <div id="jog-run"></div>
     <div class="row">
       <button id="btn-loc-confirm" class="primary">Confirm: scans align</button>
       <button id="btn-loc-reset">Reset</button>
@@ -30,4 +39,4 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/run.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/liveview.js"></script><script src="/static/jogpad.js"></script><script src="/static/run.js"></script>{% endblock %}

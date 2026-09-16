@@ -1,6 +1,11 @@
 # Unified `amr.service` — implementation and acceptance plan
 
-Status: proposed implementation; no runtime changes made by this study.
+Status (2026-09-16): implementation in progress. U0–U7 software is present;
+U8 commissioning passes focused unit and simulation straight/turn/abort checks,
+with controlled vehicle checks still required. U9 deployment source and runbook
+are prepared but not installed or cut over. U10 vehicle acceptance and U11
+legacy retirement remain open; the legacy deployment must stay available until
+that acceptance passes.
 
 Prepared: 2026-09-16. Reviewed baseline: branch `slam-roadmap`, commit `29b4cfa4362b099528ff5c51dc80e1b67a2e3c0e`. Repository was clean at the start of inspection. Recheck the baseline before implementation because other Claude sessions share this checkout.
 

@@ -23,6 +23,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MuxState.msg"
   "msg/ManualCommand.msg"
   "msg/OperationState.msg"
+  "msg/IoImage.msg"
+  "msg/Event.msg"
+  "msg/CommissioningState.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"
   "srv/SaveMap.srv"
@@ -31,6 +34,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RequestMode.srv"
   "srv/RequestSurvey.srv"
   "srv/GetOperation.srv"
+  "srv/PlanCommissioning.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

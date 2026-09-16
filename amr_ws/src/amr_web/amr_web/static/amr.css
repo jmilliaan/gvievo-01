@@ -32,3 +32,8 @@ ol#ed-steps { padding-left:20px; font:12px/1.6 ui-monospace, monospace; }
 ol#ed-steps li.bad { color:var(--err); }
 table { width:100%; border-collapse:collapse; font-size:12px; }
 td, th { padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; }
+.jog-grid { display:grid; grid-template-columns:repeat(3, 64px); gap:6px; margin:8px 0; }
+.jog-grid button { height:56px; font-size:22px; touch-action:none; user-select:none; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+.canvas-wrap.live { height: 380px; }
+.lv-warn td { color: var(--warn); } .lv-error td { color: var(--err); }

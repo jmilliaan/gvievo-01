@@ -101,6 +101,8 @@ class CmdMuxKinematics(Node):
         self._lease: gating.Lease | None = None
         self._manual: gating.Manual | None = None
         self._drives: gating.Drives | None = None
+        self._commissioning: gating.Wheels | None = None
+        self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
         self._v = 0.0
@@ -117,6 +119,9 @@ class CmdMuxKinematics(Node):
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ManualCommand, "/amr/manual_command", self._on_manual, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
+        self.create_subscription(
+            WheelVelocities, "/amr/commissioning_wheels", self._on_commissioning, RELIABLE_1
+        )
         self._pub = self.create_publisher(WheelVelocities, "/cmd_wheel_vel", RELIABLE_1)
         self._pub_state = self.create_publisher(MuxState, "/amr/mux_state", RELIABLE_1)
         self.create_timer(self.dt, self._tick)
@@ -153,6 +158,11 @@ class CmdMuxKinematics(Node):
 
     def _on_panel(self, msg: PanelState) -> None:
         self._panel = gating.Panel(self._now(), bool(msg.valid), bool(msg.mode_auto))
+
+    def _on_commissioning(self, msg: WheelVelocities) -> None:
+        wl, wr = float(msg.left_rad_s), float(msg.right_rad_s)
+        if math.isfinite(wl) and math.isfinite(wr):
+            self._commissioning = gating.Wheels(self._now(), wl, wr, int(msg.generation))
 
     def _on_drives(self, msg: DriveStatus) -> None:
         self._drives = gating.Drives(self._now(), bool(msg.operational))
@@ -195,7 +205,9 @@ class CmdMuxKinematics(Node):
         self._teleop = self._follow = self._rotate = None
         self._permit = None
         self._manual = None
+        self._commissioning = None
         self._v = self._wz = 0.0
+        self._wl = self._wr = 0.0
         self._subscribe_nav(gen)
 
     def _subscribe_nav(self, gen: int) -> None:
@@ -220,6 +232,7 @@ class CmdMuxKinematics(Node):
             lease=self._lease,
             manual=self._manual,
             drives=self._drives,
+            commissioning=self._commissioning,
         )
         name = gating.NAMES[sel.source]
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
@@ -227,13 +240,21 @@ class CmdMuxKinematics(Node):
             self._source, self._reason = name, sel.reason
 
         if sel.source == gating.NONE or (sel.v == 0.0 and sel.w == 0.0 and sel.reason.endswith("timed out")):
-            self._v = 0.0  # loss of authority or an expired command: zero at once, never a ramp
-            self._wz = 0.0
+            self._v = self._wz = 0.0  # loss of authority or an expired command: zero at once, never a ramp
+            self._wl = self._wr = 0.0
+            wl, wr = 0.0, 0.0
+        elif sel.wheels:
+            # per-wheel targets (commissioning): the same hardware accel limit, applied per wheel
+            a_wheel = self.a_max / self.geom.wheel_radius_m
+            self._wl = slew(self._wl, sel.v, a_wheel, self.dt)
+            self._wr = slew(self._wr, sel.w, a_wheel, self.dt)
+            self._v = self._wz = 0.0
+            wl, wr = clamp_wheels(self._wl, self._wr, self.w_max)
         else:
             self._v = slew(self._v, sel.v, self.a_max, self.dt)
             self._wz = slew(self._wz, sel.w, self.alpha_max, self.dt)
-
-        wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
+            self._wl = self._wr = 0.0
+            wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         self._last = sel
         self._out = (wl, wr)
         out = WheelVelocities()

@@ -1,7 +1,11 @@
 # amr_ws — ROS 2 Humble workspace for the SLAM AMR
 
-Plan: `manuals/slam-generalized-plan/amr_implementation_spec.md` (rev. 2026-09-15:
-manual mapping + drawn routes). Status: T1–T8 in simulation, T9/T10/T12 verified on the vehicle, T11 deploy files written (2026-09-16); T11 acceptance (live survey → save → draw → run) next. Operator procedure: [RUNBOOK.md](RUNBOOK.md).
+Plans: `manuals/slam-generalized-plan/amr_implementation_spec.md` and
+`manuals/slam-generalized-plan/unified_amr_service_plan.md`. The unified stack
+boots hardware and web in IDLE, then changes mapping/navigation layers under one
+supervisor. Software integration through commissioning parity is implemented;
+the compact vehicle acceptance and witnessed service cutover remain. Operator
+and rollback procedure: [RUNBOOK.md](RUNBOOK.md).
 
 ## Build, test, run
 
@@ -9,17 +13,17 @@ manual mapping + drawn routes). Status: T1–T8 in simulation, T9/T10/T12 verifi
 cd ~/agv_can/amr_ws
 colcon build --symlink-install
 source install/setup.bash        # re-source after any build that ADDS a package
-colcon test && colcon test-result --verbose          # unit tests only, ~1 min
-AMR_SIM_TESTS=1 colcon test --executor sequential    # + the simulation launch tests, ~20 min
+python3 -m pytest -q <affected tests>                 # normal edit: focused fast tests
+AMR_SIM_TESTS=1 python3 -m pytest -q src/amr_bringup/test/test_unified_sim.py
+                                                     # one milestone workflow, sequential
 ruff check src/                  # ruff.toml here; spec §0.2
 ```
 
-Launch tests (one per task: T2 square drive, T3 fused odometry, T4 survey,
-T5 AMCL, T7 route, T8 run control) are **opt-in** with `AMR_SIM_TESTS=1`:
-each runs a full simulation for 1–5 min and four at once starve the N97 into
-stale-sensor faults, hence `--executor sequential`. They check *mechanisms*
-(does it run, stop, resume, fault); final tolerances are set on hardware.
-Each pins its own `ROS_DOMAIN_ID` (61–67) so they can never talk to each other.
+The verification policy is Pareto-based: use focused unit/contract tests for an
+ordinary edit and the single unified simulation workflow once per integration
+milestone. Older component launch suites remain opt-in for a failure in their
+component; do not run all of them by default. Full-stack tests must be
+sequential on the N97. Their pinned `ROS_DOMAIN_ID`s keep them isolated.
 
 `~/.bashrc` sources `/opt/ros/humble` and this overlay, with
 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. A shell started before a package was
@@ -29,6 +33,7 @@ from the same overlay, or custom `amr_interfaces` messages will not decode.
 
 | Launch | What |
 |---|---|
+| `python3 -m amr_bringup.supervisor_node --ros-args -p real:=true` | **production topology behind `amr.service`**: persistent base/web/optional Foxglove, IDLE at boot, at most one replaceable mapping/navigation layer, generation leases and bounded process-group cleanup |
 | `amr_bringup base.launch.py real:=true\|false [...]` | **the persistent base layer** (unified plan U1): one URDF publisher, mux, odom, imu_bias, EKF; `real:=true` adds drive_node (can0), panel_node (DIO) and the nanoScan3 (`scanner.launch.py`); `real:=false` adds fake base/IMU/panel and optional `scan_synth:=true`. No web, no Foxglove, no SLAM/AMCL. Required nodes end the launch when they exit |
 | `amr_bringup mapping_layer.launch.py [maps_dir] [generation:=N] [internal:=true]` | **mode layer**: slam_toolbox + mapping_session only. One survey = one fresh instance |
 | `amr_bringup navigation_layer.launch.py map_id:=… revision:=N [generation:=N] [autostart:=false]` | **mode layer**: verified bundle → map_server, AMCL, localization_monitor, controller, behaviors, lifecycle managers, route_executor. One map = one instance |
@@ -345,12 +350,15 @@ unicast over `MaxAutoParticipantIndex` = 120 slots; raise it if a launch ever ha
 more participants. To let a laptop join deliberately: copy the XML, bind `wlp1s0`,
 point `CYCLONEDDS_URI` at the copy for that session only.
 
-Also sourced by anything long-lived: `deploy/amr-launch.sh` is the systemd
-wrapper that does exactly this.
+Also sourced by anything long-lived: `deploy/amr-supervisor.sh` is the unified
+systemd entry point; `deploy/amr-launch.sh` remains the standalone legacy-unit
+wrapper during the rollback window.
 
-**Deployment (T11).** `deploy/`: `amr_nav.service` (runtime) and
-`amr_mapping.service` (survey), both `Conflicts=agv_controller.service` and each
-other, `BindsTo` can0, `KillSignal=SIGINT` so drive_node's clean exit runs
-(zero → 1016h cleared → de-energise) and panel_node quiesces the horn.
-`amr.env` holds the map to load; `sudo deploy/install.sh` installs without
-enabling. Operator procedure: [RUNBOOK.md](RUNBOOK.md).
+**Unified deployment (U9).** `deploy/amr.service` conflicts with all three old
+application units, binds to can0 and starts the supervisor through the coherent
+overlay/domain wrapper. It has a bounded restart rate and preserves SIGINT for
+ordered lease revocation and drive/panel shutdown. `amr.env` contains paths and
+feature switches only; boot never selects a map or resumes work.
+`deploy/validate.sh` is the no-side-effect P8 check. `sudo deploy/install.sh`
+backs up and installs unit files but never changes enabled/running state.
+Vehicle acceptance, witnessed cutover and rollback: [RUNBOOK.md](RUNBOOK.md).

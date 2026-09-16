@@ -71,6 +71,16 @@ class Manual(Stamped):
 
 
 @dataclass
+class Wheels:
+    """A per-wheel command (commissioning) as received."""
+
+    t: float
+    left: float
+    right: float
+    generation: int = 0
+
+
+@dataclass
 class Permit:
     t_recv: float
     source: int
@@ -110,6 +120,7 @@ class Selection:
     reason: str
     generation: int = 0  # the lease generation applied (0 unsupervised)
     inhibited: bool = False  # true when the supervisor/drives gate closed, not merely "no command"
+    wheels: bool = False  # v/w are per-wheel rad/s (COMMISSIONING), not a body twist
 
 
 def _fresh(t: float | None, now: float, limit: float) -> bool:
@@ -127,6 +138,7 @@ def select(
     lease: Lease | None = None,
     manual: Manual | None = None,
     drives: Drives | None = None,
+    commissioning: Wheels | None = None,
 ) -> Selection:
     gen = 0
     if p.require_supervisor:
@@ -143,6 +155,13 @@ def select(
         return Selection(NONE, 0.0, 0.0, "no panel authority", gen)
 
     if not panel.auto:
+        # Commissioning: the supervisor grants this class INSTEAD of MANUAL while a
+        # job is prepared/running; only a fresh per-wheel command of this generation counts.
+        if p.require_supervisor and (lease.allowed & LEASE_COMMISSIONING):
+            c = commissioning
+            if c is not None and c.generation == lease.generation and _fresh(c.t, now, p.cmd_timeout_s):
+                return Selection(COMMISSIONING, c.left, c.right, "commissioning", gen, False, True)
+            return Selection(NONE, 0.0, 0.0, "commissioning: no fresh wheel command", gen)
         if p.require_supervisor and not (lease.allowed & LEASE_MANUAL):
             return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True)
         # Browser jog: bound by its own carried lifetime as well as the mux timeout.

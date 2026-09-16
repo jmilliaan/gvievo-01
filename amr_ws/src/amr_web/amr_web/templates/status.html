@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}AMR — status{% endblock %}
+{% block body %}
+<section class="cols">
+  <div class="card">
+    <h2>Operating mode</h2>
+    <div id="status-mode" class="state">—</div>
+    <div class="row">
+      <a href="/maps"><button>Survey a new map</button></a>
+      <a href="/run"><button>Use a saved map</button></a>
+      <button id="btn-idle">Return to idle</button>
+      <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
+    </div>
+    <p class="muted">Changing mode replaces only the mapping/navigation software; the drives, panel, lidar and this page stay up. A change needs the vehicle stopped and the selector in MANUAL, and never starts a route or a survey by itself.</p>
+  </div>
+  <div class="card">
+    <h2>Readiness</h2>
+    <div id="status-ready" class="state">—</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
+document.getElementById('btn-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'err'));
+onState(st => {
+  const m = st.mode;
+  document.getElementById('status-mode').textContent = m ?
+    `${m.mode_name}${m.phase ? ' · ' + m.phase : ''}${m.requested_name !== m.mode_name && m.mode_name === 'TRANSITIONING' ? ' → ' + m.requested_name : ''}\n` +
+    `active map: ${m.active_map_id ? m.active_map_id + ' rev' + m.active_map_revision : '—'}\n` +
+    `last saved survey: ${m.last_survey_map_id ? m.last_survey_map_id + ' rev' + m.last_survey_revision : '—'}\n` +
+    `operation: ${m.operation_id || '—'}\n` +
+    (m.fault_code ? `FAULT ${m.fault_code}: ${m.reason}\n` : (m.reason ? m.reason + '\n' : '')) : 'no supervisor';
+  const p = st.panel, d = st.drives, mx = st.mux, l = st.localization;
+  document.getElementById('status-ready').textContent =
+    `base ready: ${m ? m.base_ready : '—'}\n` +
+    `panel: ${p ? (p.valid ? (p.mode_auto ? 'AUTO' : 'MANUAL') : 'invalid') + ` (${p.age_s.toFixed(2)} s)` : '—'}\n` +
+    `drives: ${d ? (d.operational ? 'armed at zero' : 'de-energised') + ` (${d.age_s.toFixed(2)} s)` : '—'}\n` +
+    `command source: ${mx ? mx.source + (mx.inhibited ? ' (inhibited)' : '') : '—'}\n` +
+    `localisation: ${l ? l.state_name : (st.localization_stale ? 'stale (old layer)' : '—')}\n` +
+    `manual available: ${m ? m.manual_available : '—'}   autonomous available: ${m ? m.autonomous_available : '—'}`;
+});
+</script>{% endblock %}

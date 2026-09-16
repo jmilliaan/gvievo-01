@@ -127,6 +127,16 @@ def _compose(context):
     actions.append(
         Node(package="amr_localization", executable="imu_bias_node", name="imu_bias", output="screen")
     )
+    if supervised:  # the /blind replacement (unified plan §7.2); an exclusive IDLE substate
+        actions.append(
+            Node(
+                package="amr_base",
+                executable="commissioning_node",
+                name="commissioning_node",
+                output="screen",
+                parameters=[{"state_dir": os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))}],
+            )
+        )
     actions += required(
         Node(
             package="robot_localization",

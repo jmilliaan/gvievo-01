@@ -1,14 +1,25 @@
-// Maps page: survey session controls and the list of saved revisions.
+// Maps page: survey session controls (asynchronous supervisor operations) and the saved revisions.
 const $ = id => document.getElementById(id);
-$('btn-survey-start').onclick = () => api('/api/survey/start', { map_id: $('survey-map-id').value.trim(), description: $('survey-desc').value.trim() }).then(r => log(r.data.message, r.status === 200 ? '' : 'err'));
-$('btn-survey-returned').onclick = () => api('/api/survey/returned').then(r => log(r.data.message, r.status === 200 ? '' : 'err'));
-$('btn-survey-save').onclick = () => api('/api/survey/save', { note: $('survey-note').value.trim() }).then(r => { log(r.data.message, r.status === 200 ? '' : 'err'); loadMaps(); });
-$('btn-survey-abort').onclick = () => api('/api/survey/abort').then(r => log(r.data.message));
+const busy = (on) => ['btn-survey-start', 'btn-survey-returned', 'btn-survey-save', 'btn-survey-abort'].forEach(id => $(id).disabled = on);
+function op(path, body) { busy(true); return operation(path, body, () => { busy(false); loadMaps(); }); }
+$('btn-survey-start').onclick = () => op('/api/survey/start', { map_id: $('survey-map-id').value.trim(), description: $('survey-desc').value.trim() });
+$('btn-survey-returned').onclick = () => op('/api/survey/returned');
+$('btn-survey-save').onclick = () => op('/api/survey/save', { note: $('survey-note').value.trim() });
+$('btn-survey-abort').onclick = () => op('/api/survey/abort');
 onState(st => {
+  const mode = st.mode;
   const m = st.mapping;
-  if (!m) { $('survey-state').textContent = 'no mapping session (mapping.launch.py not running)'; return; }
+  if (!mode) { $('survey-state').textContent = 'no supervisor'; return; }
+  if (mode.mode_name !== 'MAPPING') {
+    $('survey-state').textContent = `mode ${mode.mode_name}${mode.phase ? ' · ' + mode.phase : ''}` +
+      (mode.last_survey_map_id ? `\nlast saved survey: ${mode.last_survey_map_id} rev${mode.last_survey_revision} — use it from the Run page` : '') +
+      (mode.reason ? `\n${mode.reason}` : '');
+    $('closure').textContent = '';
+    return;
+  }
+  if (!m) { $('survey-state').textContent = 'MAPPING — waiting for the session coordinator'; return; }
   $('survey-state').textContent = `${m.state_name}  ${m.map_id ? 'map ' + m.map_id : ''}${m.revision ? ' rev' + m.revision : ''}\n${m.message}`;
-  $('closure').textContent = m.closure_available ? `closure as estimated: dx ${m.closure_dx_m.toFixed(3)} m, dy ${m.closure_dy_m.toFixed(3)} m, dyaw ${(m.closure_dyaw_rad * 180 / Math.PI).toFixed(2)}°  — review seams in Foxglove before saving` : '';
+  $('closure').textContent = m.closure_available ? `closure as estimated: dx ${m.closure_dx_m.toFixed(3)} m, dy ${m.closure_dy_m.toFixed(3)} m, dyaw ${(m.closure_dyaw_rad * 180 / Math.PI).toFixed(2)}°  — review seams before saving` : '';
 });
 async function loadMaps() {
   const { data } = await apiGet('/api/maps');
@@ -18,3 +29,9 @@ async function loadMaps() {
       `<tr><td>${r.revision}</td><td>${r.created}</td><td>${r.width}×${r.height} @ ${r.resolution} m</td><td>${r.review ? `dx ${(+r.review.dx_m).toFixed(2)} dy ${(+r.review.dy_m).toFixed(2)} dyaw ${(+r.review.dyaw_rad * 180 / Math.PI).toFixed(1)}° ${r.review.note || ''}` : ''}</td><td>${Object.entries(r.routes || {}).map(([k, v]) => `${k} rev${v.join(',')}`).join('; ')}</td><td><code>${r.sha256.slice(0, 12)}</code></td></tr>`).join('') + '</table>').join('');
 }
 loadMaps();
+
+// live occupancy + pose while surveying, and the shared jog pad next to it
+const liveView = new MapView(document.getElementById('live-canvas'));
+liveOverlay(liveView);
+pollLive(liveView, { map: true });
+jogpad(document.getElementById('jog-maps'));

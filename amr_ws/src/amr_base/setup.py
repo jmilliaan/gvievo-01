@@ -23,6 +23,7 @@ setup(
             "diff_drive_odom_node = amr_base.diff_drive_odom_node:main",
             "drive_node = amr_base.drive_node:main",
             "panel_node = amr_base.panel_node:main",
+            "commissioning_node = amr_base.commissioning_node:main",
         ],
     },
 )

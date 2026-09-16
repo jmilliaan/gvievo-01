@@ -20,10 +20,14 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 
 ALLOWED_EXECUTABLES = ("ros2",)
+# Direct module entry points: `ros2 run` does not forward SIGINT to its child,
+# so nodes we must stop cleanly are started as `python3 -m <module>` instead.
+ALLOWED_MODULES = ("amr_web.web_node", "amr_bringup.supervisor_node")
 
 
 def _pgid_of(pid: int) -> int | None:
@@ -59,8 +63,11 @@ class Group:
 
     @classmethod
     def spawn(cls, role: str, argv: list[str], env: dict | None = None, log_path: str | None = None) -> Group:
-        if not argv or os.path.basename(argv[0]) not in ALLOWED_EXECUTABLES:
-            raise ValueError(f"refusing to spawn {argv[:1]!r}: not an allow-listed executable")
+        exe = os.path.basename(argv[0]) if argv else ""
+        module_entry = len(argv) >= 3 and argv[1] == "-m" and argv[2] in ALLOWED_MODULES
+        python = exe.startswith("python3") or argv[:1] == [sys.executable]
+        if not argv or not (exe in ALLOWED_EXECUTABLES or (python and module_entry)):
+            raise ValueError(f"refusing to spawn {argv[:3]!r}: not an allow-listed executable")
         for a in argv:
             if not isinstance(a, str) or "\0" in a:
                 raise ValueError("argv must be plain strings")

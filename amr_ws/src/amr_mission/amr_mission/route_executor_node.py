@@ -41,7 +41,14 @@ from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_interfaces.msg import LocalizationState, MotionPermit, PanelState, RunState, WheelStates
+from amr_interfaces.msg import (
+    ControlLease,
+    LocalizationState,
+    MotionPermit,
+    PanelState,
+    RunState,
+    WheelStates,
+)
 from amr_interfaces.srv import RunMission
 from amr_mission import map_bundle as mb
 from amr_mission import run_fsm as fsm
@@ -65,6 +72,24 @@ def _yaw(q) -> float:
     return math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
 
 
+def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> str | None:
+    """P4 (unified plan §5.6): a mission may only load onto the map AMCL is running.
+
+    `active` is (id, revision, sha256) from the launch; ("", 0, "") means an
+    unsupervised standalone stack, which binds to nothing (bench behaviour).
+    Returns the refusal reason, or None when the mission's map IS the active map.
+    """
+    aid, arev, asha = active
+    if not aid:
+        return None
+    m = mission.get("map", {})
+    if m.get("id") != aid or int(m.get("revision", 0)) != arev:
+        return f"mission is for map {m.get('id')} rev{m.get('revision')}, active map is {aid} rev{arev}"
+    if asha and m.get("sha256") != asha:
+        return "mission map hash differs from the active map bundle"
+    return None
+
+
 class RouteExecutor(Node):
     def __init__(self) -> None:
         super().__init__("route_executor")
@@ -77,6 +102,11 @@ class RouteExecutor(Node):
         self.declare_parameter("active_map_revision", 0)
         self.declare_parameter("active_map_sha256", "")
         self.generation = int(self.get_parameter("generation").value)
+        self.active_map = (
+            str(self.get_parameter("active_map_id").value),
+            int(self.get_parameter("active_map_revision").value),
+            str(self.get_parameter("active_map_sha256").value),
+        )
         self.declare_parameter("start_gate_m", 0.10)
         self.declare_parameter("start_gate_deg", 5.0)
         self.declare_parameter("settle_s", 0.3)
@@ -172,6 +202,11 @@ class RouteExecutor(Node):
             LocalizationState, "/amr/localization_state", self._on_loc, LATCHED, callback_group=io
         )
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10, callback_group=io)
+        # The permit must carry the supervisor's instance (unified plan §4.3): the mux
+        # refuses a permit from another instance/generation. Unsupervised: "" / 0.
+        self._lease_instance = ""
+        self._permit_seq = 0
+        self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, 10, callback_group=io)
         self.create_subscription(
             WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA, callback_group=io
         )
@@ -200,6 +235,10 @@ class RouteExecutor(Node):
 
     def _on_loc(self, m: LocalizationState) -> None:
         self._loc, self._loc_t = m, self._now()
+
+    def _on_lease(self, m: ControlLease) -> None:
+        if int(m.generation) == self.generation or self.generation == 0:
+            self._lease_instance = m.instance
 
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, self._now()
@@ -253,6 +292,9 @@ class RouteExecutor(Node):
         with self._lock:
             try:
                 mission = store.load_mission(self.maps_dir, req.mission_id)
+                why = mission_matches_active_map(mission, self.active_map)
+                if why:
+                    raise store.StoreError(why)
                 manifest, grid = mb.load(self.maps_dir, mission["map"]["id"], int(mission["map"]["revision"]))
                 if manifest.sha256 != mission["map"]["sha256"]:
                     raise store.StoreError("map bundle hash differs from the mission manifest")
@@ -721,6 +763,9 @@ class RouteExecutor(Node):
     def _publish_permit(self) -> None:
         m = MotionPermit()
         m.generation = self.generation
+        m.instance = self._lease_instance
+        self._permit_seq += 1
+        m.seq = self._permit_seq
         m.header.stamp = self.get_clock().now().to_msg()
         m.run_id = self.fsm.run_id
         st = self._step()

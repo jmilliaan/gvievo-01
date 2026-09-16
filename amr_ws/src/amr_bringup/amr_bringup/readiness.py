@@ -36,6 +36,8 @@ def resolve_map(maps_dir: str, map_id: str, revision: int) -> tuple[str, int, st
     rev_dir = os.path.realpath(mb.revision_dir(maps_dir, map_id, revision))
     if not rev_dir.startswith(root + os.sep):
         raise ValueError("map path escapes the map store")
+    if not os.path.isdir(rev_dir):
+        raise ValueError(f"no such map revision: {map_id} rev{revision}")
     manifest = mb.verify(rev_dir)  # raises BundleError on any mismatch
     return map_id, revision, manifest.sha256
 
@@ -70,6 +72,8 @@ class Snapshots:
         self.run_state = None
         self.loc_gen = None
         self.loc_state = None
+        self.commissioning_phase = 0
+        self.commissioning_t = None
 
     # -- callbacks --
 
@@ -119,6 +123,23 @@ class Snapshots:
             self.loc_gen = int(m.generation)
             self.loc_state = int(m.state)
 
+    def on_commissioning(self, m) -> None:
+        with self._lock:
+            self.commissioning_phase = int(m.phase)
+            self.commissioning_t = time.monotonic()
+
+    def _commissioning_active_locked(self, now: float, fresh_s: float = 2.0) -> bool:
+        return (
+            self.commissioning_t is not None
+            and now - self.commissioning_t <= fresh_s
+            and self.commissioning_phase in (1, 2, 3)
+        )
+
+    def commissioning_active(self, now: float, fresh_s: float = 2.0) -> bool:
+        """PREPARED / RUNNING / SETTLING (1..3) on a fresh state; a stale state is not a job."""
+        with self._lock:
+            return self._commissioning_active_locked(now, fresh_s)
+
     # -- reads --
 
     def reset_layer_state(self) -> None:
@@ -156,6 +177,7 @@ class Snapshots:
                 run_state=self.run_state if self.run_gen == generation else None,
                 survey_state=self.mapping_state if self.mapping_gen == generation else None,
                 operation_pending=operation_pending,
+                commissioning_active=self._commissioning_active_locked(now),  # lock already held
             )
 
 

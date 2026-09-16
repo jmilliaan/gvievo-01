@@ -20,9 +20,15 @@
     </div>
   </div>
   <div class="card">
-    <h2>Saved map revisions</h2>
-    <div id="maps-list">loading…</div>
+    <h2>Live map</h2>
+    <div class="canvas-wrap live"><canvas id="live-canvas" width="800" height="480"></canvas>
+      <div class="hint">Grows while surveying. Green = vehicle, red = current scan. Wheel = zoom, drag = pan.</div></div>
+    <div id="jog-maps"></div>
   </div>
 </section>
+<section class="card">
+  <h2>Saved map revisions</h2>
+  <div id="maps-list">loading…</div>
+</section>
 {% endblock %}
-{% block scripts %}<script src="/static/maps.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/liveview.js"></script><script src="/static/jogpad.js"></script><script src="/static/maps.js"></script>{% endblock %}

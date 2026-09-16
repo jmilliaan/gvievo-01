@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}AMR — monitor{% endblock %}
+{% block body %}
+<p class="muted">Diagnostic only — nothing here is in the safety path. Values come from the drive owner's own bus thread (one bounded read per slot); this page never opens a CAN client. A value shown as <em>not available</em> was never read or last timed out.</p>
+<section id="mon" class="cols"></section>
+{% endblock %}
+{% block scripts %}<script>
+const LEVEL = ['ok', 'warn', 'err', 'err'];
+async function tick() {
+  const { status, data } = await apiGet('/api/diagnostics');
+  if (status === 200) {
+    const names = Object.keys(data).sort();
+    document.getElementById('mon').innerHTML = names.length ? names.map(n => {
+      const d = data[n]; const stale = d.age_s > 3;
+      const rows = Object.entries(d.values).map(([k, v]) => `<tr><td>${k}</td><td>${v === '' ? '<span class="muted">not available</span>' : v}</td></tr>`).join('');
+      return `<div class="card"><h2>${n} <span class="pill ${stale ? 'err' : LEVEL[d.level] || ''}">${stale ? 'stale' : d.message}</span></h2><div class="muted">${d.hardware_id} · ${d.age_s.toFixed(1)} s ago</div><table>${rows}</table></div>`;
+    }).join('') : '<div class="card">no diagnostics yet (drive owner not running?)</div>';
+  }
+  setTimeout(tick, 1000);
+}
+tick();
+</script>{% endblock %}

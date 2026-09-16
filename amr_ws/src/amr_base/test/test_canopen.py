@@ -13,6 +13,7 @@ from amr_base.canopen import (
     DISARMED,
     FAULT,
     DriveLink,
+    MonitorCursor,
     Router,
     WheelScale,
     counts_per_wheel_rev,
@@ -285,3 +286,29 @@ def test_disarm_retires_the_pc_loss_guard_first():
     bus2.writes.clear()
     link2.disarm()
     assert not any(i == 0x1016 for _, i, _, _ in bus2.writes)
+
+
+def test_monitor_cursor_reads_one_object_per_node_per_call_and_keeps_timeouts_apart():
+    """U7: the diagnostic slot is bounded (one SDO per call) and a timeout is
+    stored as None, never a plausible number."""
+    import canmon  # repo module via agv_repo
+
+    poller = canmon.MonitorPoller({1: "left", 2: "right"}, objects=canmon.OBJECTS[:2])
+    cur = MonitorCursor(poller, [1, 2])
+    calls = []
+
+    def read(nid, idx):
+        calls.append((nid, idx))
+        if nid == 2:
+            return None  # right drive times out
+        return 0xFFFF & 0x01F4  # 500 raw -> 50.0 V for an i16 x0.1 object
+
+    out = [cur.step(read, canmon._decode) for _ in range(4)]
+    assert len(calls) == 4  # exactly one read per call
+    assert [c[0] for c in calls] == [1, 2, 1, 2]  # alternating nodes
+    assert calls[0][1] == calls[1][1] == canmon.OBJECTS[0][0]  # same object for both nodes
+    assert calls[2][1] == canmon.OBJECTS[1][0]  # then the next object
+    assert out[0][2] == 500 and out[1][2] is None
+    snap = poller.snapshot({})["nodes"]
+    assert snap["1"]["bus_v"]["value"] == 50.0 and snap["2"]["bus_v"]["value"] is None
+    assert cur.reads == 4 and cur.timeouts == 2

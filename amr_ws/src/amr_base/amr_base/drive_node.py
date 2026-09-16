@@ -29,6 +29,7 @@ import threading
 import time
 
 import rclpy
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
@@ -39,9 +40,10 @@ from amr_base import canopen, gating
 from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
-from amr_interfaces.msg import ControlLease, DriveStatus, WheelStates, WheelVelocities
+from amr_interfaces.msg import ControlLease, DriveStatus, Event, WheelStates, WheelVelocities
 
-import ownerlock  # noqa: E402  (repo module via agv_repo)
+import canmon  # noqa: E402  (repo module via agv_repo)
+import ownerlock  # noqa: E402
 from verify_drivers import open_bus  # noqa: E402
 
 SENSOR_DATA = QoSProfile(
@@ -75,6 +77,11 @@ class DriveNode(Node):
         dp("imu_frame", "imu_frame")
         dp("require_supervisor", False)  # production: True (unified plan §4.2)
         dp("lease_timeout_s", 0.3)
+        # Diagnostic monitoring (unified plan §7.1): ONE bounded SDO read per slot on the
+        # bus thread, below command/feedback/heartbeat work, slower while moving.
+        dp("monitor_enabled", bool(config.MONITOR_ENABLED))
+        dp("monitor_period_still_s", 0.25)
+        dp("monitor_period_moving_s", 1.0)
         p = self.get_parameter
         self.period = 1.0 / p("rate_hz").value
         self.cmd_timeout = p("cmd_timeout_s").value
@@ -100,12 +107,22 @@ class DriveNode(Node):
             lease_timeout_s=float(p("lease_timeout_s").value),
         )
         self._gate_reason: str | None = None
+        self._mon = canmon.MonitorPoller(config.NODES) if p("monitor_enabled").value else None
+        self._mon_periods = (
+            float(p("monitor_period_still_s").value),
+            float(p("monitor_period_moving_s").value),
+        )
+        self._mon_node_i = 0
+        self._bus_stats = {"sdo_timeouts": 0, "monitor_reads": 0}
+        self._event_seq = 0
         self._requests: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._status_snapshot: dict = {"state": "starting", "reason": "", "mode": "off"}
 
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
+        self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
@@ -210,7 +227,7 @@ class DriveNode(Node):
 
     def _loop(self, link, router, imu) -> None:
         retry_at = 0.0
-        t_tick = t_hb = t_status = 0.0
+        t_tick = t_hb = t_status = t_mon = t_diag = 0.0
         last_pub = {n: (None, None) for n in self.nodes}
         while not self._stop.is_set() and rclpy.ok():
             t0 = time.perf_counter()
@@ -276,6 +293,15 @@ class DriveNode(Node):
             if now - t_status >= 0.1:
                 t_status = now
                 self._publish_status(link, imu)
+
+            if self._mon is not None and link.state != canopen.DISARMED:
+                moving = link.applied is not None and link.applied != (0, 0)
+                if now - t_mon >= self._mon_periods[1 if moving else 0]:
+                    t_mon = now
+                    self._monitor_slot(link)
+            if now - t_diag >= 1.0:
+                t_diag = now
+                self._publish_diagnostics(link, imu)
 
             spent = time.perf_counter() - t0
             router.pump(max(0.001, self.period - spent))
@@ -345,6 +371,11 @@ class DriveNode(Node):
                 m.left_pos_rad, m.left_vel_rad_s, m.left_valid = (pos or 0.0), vel, valid
             else:
                 m.right_pos_rad, m.right_vel_rad_s, m.right_valid = (pos or 0.0), vel, valid
+        tl, tr = link.telemetry[config.LEFT], link.telemetry[config.RIGHT]
+        if tl.position is not None and tr.position is not None:
+            m.left_counts, m.right_counts = int(tl.position), int(tr.position)
+            m.counts_valid = bool(m.left_valid and m.right_valid)
+        m.counts_per_wheel_rev = float(scale.counts_per_wheel_rev or 0.0) if scale else 0.0
         self._safe_publish(self._pub_wheels, m)
 
     def _publish_status(self, link, imu) -> None:
@@ -362,6 +393,84 @@ class DriveNode(Node):
             self._status_snapshot = snap
             why = f" ({snap['reason']})" if snap["reason"] else ""
             self._log(f"drives {snap['state']}{why}, imu {snap['mode']}")
+
+    def _monitor_slot(self, link) -> None:
+        """One object, one node, one SDO round trip (~2-4 ms); see canopen.MonitorCursor."""
+        self._cursor.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05), canmon._decode)
+        self._bus_stats["monitor_reads"] = self._cursor.reads
+        self._bus_stats["sdo_timeouts"] = self._cursor.timeouts
+
+    def event(self, level: int, code: str, text: str) -> None:
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source, m.level, m.code, m.text = "drive_node", level, code, text
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._safe_publish(self._pub_event, m)
+
+    def _publish_diagnostics(self, link, imu) -> None:
+        """Owner-published snapshot (unified plan §7.1): drive states, alarms, the
+        monitored analogue values with warn/trip applied from the profile, bus
+        counters and IMU acquisition. GET requests on the web read this; they
+        never cause bus traffic."""
+        arr = DiagnosticArray()
+        arr.header.stamp = self.get_clock().now().to_msg()
+        mon = self._mon.snapshot(config.MONITOR_THRESHOLDS)["nodes"] if self._mon is not None else {}
+        for nid, label in config.NODES.items():
+            t = link.telemetry[nid]
+            st = DiagnosticStatus()
+            st.name = f"drive/{label}"
+            st.hardware_id = f"node {nid}"
+            worst = DiagnosticStatus.OK
+            kv = [
+                KeyValue(key="state", value=t.state),
+                KeyValue(key="statusword", value=f"0x{(t.statusword or 0):04X}"),
+                KeyValue(key="error_register", value=f"0x{(t.error_register or 0):02X}"),
+                KeyValue(key="rpm", value=str(t.rpm if t.rpm is not None else "")),
+                KeyValue(key="position_counts", value=str(t.position if t.position is not None else "")),
+                KeyValue(key="nmt", value=t.nmt or ""),
+            ]
+            if t.alarm:
+                kv.append(
+                    KeyValue(key="alarm", value=f"0x{t.alarm.get('code', 0):04X} {t.alarm.get('text', '')}")
+                )
+                worst = DiagnosticStatus.ERROR
+            for key, v in (mon.get(str(nid)) or {}).items():
+                val = "" if v.get("value") is None else f"{v['value']}"
+                kv.append(KeyValue(key=f"{key} [{v.get('unit', '')}]", value=val))
+                lvl = v.get("state")
+                if lvl == "trip":
+                    worst = DiagnosticStatus.ERROR
+                elif lvl == "warn" and worst == DiagnosticStatus.OK:
+                    worst = DiagnosticStatus.WARN
+            st.level = worst
+            st.message = t.state if not t.alarm else "alarm"
+            st.values = kv
+            arr.status.append(st)
+        bus = DiagnosticStatus(name="can/bus", hardware_id=config.CAN_CHANNEL, level=DiagnosticStatus.OK)
+        bus.message = f"{link.state}"
+        bus.values = [
+            KeyValue(key="link_state", value=link.state),
+            KeyValue(key="fault_reason", value=link.fault_reason or ""),
+            KeyValue(key="monitor_reads", value=str(self._bus_stats["monitor_reads"])),
+            KeyValue(key="sdo_timeouts", value=str(self._bus_stats["sdo_timeouts"])),
+            KeyValue(key="require_supervisor", value=str(self._gate.require_supervisor)),
+            KeyValue(key="feedback_hz", value=f"{1000.0 / self.feedback_ms:.0f}"),
+            KeyValue(key="pc_loss_ms", value=str(self.pc_loss_ms)),
+            KeyValue(key="setpoint_gate", value=self._gate_reason or "open"),
+        ]
+        arr.status.append(bus)
+        if imu is not None:
+            im = DiagnosticStatus(name="imu/mls", hardware_id="node 10", level=DiagnosticStatus.OK)
+            im.message = imu.mode
+            im.values = [
+                KeyValue(key="mode", value=imu.mode),
+                KeyValue(key="samples", value=str(imu.samples)),
+                KeyValue(key="misses", value=str(imu.misses)),
+                KeyValue(key="gyro_sign", value=str(self.get_parameter("gyro_sign").value)),
+            ]
+            arr.status.append(im)
+        self._safe_publish(self._pub_diag, arr)
 
     def _publish_imu(self, s: ImuSample) -> None:
         m = Imu()

@@ -7,3 +7,9 @@ float64 left_vel_rad_s
 float64 right_vel_rad_s
 bool left_valid
 bool right_valid
+# Raw signed 6064h counters in DRIVER terms (unified plan §7.2, commissioning):
+# the pure blind-run library measures encoders on these, never on rounded radians.
+int32 left_counts
+int32 right_counts
+bool counts_valid
+float64 counts_per_wheel_rev   # 608Fh x gear / 6091h at arm time; 0 = unknown

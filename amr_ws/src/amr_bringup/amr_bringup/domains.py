@@ -7,7 +7,7 @@ real drives on the same /cmd_wheel_vel, /wheel_states and /tf.
 
     VEHICLE   the one domain drive_node / panel / lidar may run in
     SIM       the default for simulation on this host
-    61..67    pinned by the launch tests, one each, so they cannot see each other
+    61..68    pinned by the launch tests, one each, so they cannot see each other
 
 Launch files call require_vehicle_domain() / refuse_vehicle_domain() at
 description-generation time, so a wrong shell fails before any process starts.
@@ -21,7 +21,7 @@ import os
 
 VEHICLE = 10
 SIM = 20
-TEST_RANGE = range(61, 68)
+TEST_RANGE = range(61, 69)  # 68: test_unified_sim (P7)
 
 ENV_HINT = "source ~/agv_can/amr_ws/env/vehicle.sh (hardware) or env/sim.sh (simulation)"
 

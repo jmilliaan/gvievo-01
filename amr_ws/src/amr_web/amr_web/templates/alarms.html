@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}AMR — alarms{% endblock %}
+{% block body %}
+<section class="cols">
+  <div class="card"><h2>Standing against the vehicle now</h2><div id="active" class="state">—</div>
+    <p class="muted">This page cannot clear anything. A drive alarm is cleared by a drive power cycle; a latched supervisor FAULT by <b>Recover</b> on the Status page after the cause is fixed; an executor FAULT by <b>Acknowledge</b> on the Run page. Software never resets a drive alarm or ETO (deny-listed).</p></div>
+  <div class="card"><h2>Events</h2><table id="events"></table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+let since = 0; const rows = [];
+async function events() {
+  const { status, data } = await apiGet(`/api/events?since=${since}`);
+  if (status === 200 && data.length) {
+    data.forEach(e => { since = Math.max(since, e.n); rows.unshift(e); });
+    rows.splice(200);
+    document.getElementById('events').innerHTML = rows.map(e => `<tr class="lv-${e.level}"><td>${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${e.source}</td><td>${e.code}</td><td>${e.text}</td></tr>`).join('');
+  }
+  setTimeout(events, 1000);
+}
+events();
+onState(st => {
+  const out = [];
+  const m = st.mode; if (m && m.fault_code) out.push(`SUPERVISOR FAULT ${m.fault_code}: ${m.reason}`);
+  const r = st.run; if (r && r.state_name === 'FAULT') out.push(`executor FAULT: ${r.reason}`);
+  const l = st.localization; if (l && l.state_name === 'LOST') out.push(`localisation LOST: ${l.reason}`);
+  const p = st.panel; if (!p || p.age_s > 0.5 || !p.valid) out.push('panel invalid or stale — no motion authority');
+  const d = st.drives; if (d && !d.operational) out.push(`drives not operational: ${d.left} / ${d.right}`);
+  const mx = st.mux; if (mx && mx.inhibited) out.push(`motion inhibited: ${mx.reason}`);
+  document.getElementById('active').textContent = out.length ? out.join('\n') : 'nothing';
+});
+</script>{% endblock %}

@@ -635,3 +635,39 @@ def decide(
             return ArmDecision("disarm", f"drive left Operation enabled (ETO?): {dropped}")
         return ArmDecision("none", "armed")
     return ArmDecision("none", "fault latched")
+
+
+# ---------------------------------------------------------------- monitoring slot
+
+
+class MonitorCursor:
+    """One bounded diagnostic SDO read per call (unified plan §7.1), round-robin
+    over canmon.OBJECTS x nodes. `read(node, index)` is the link's SDO read
+    (None on timeout). Pure bookkeeping around the repo's MonitorPoller so the
+    slot is testable without a bus; the caller decides WHEN to call it."""
+
+    def __init__(self, poller, nodes) -> None:
+        self.poller = poller
+        self.nodes = list(nodes)
+        self._i = 0
+        self._current = None
+        self.reads = 0
+        self.timeouts = 0
+
+    def step(self, read, decode) -> tuple[int, str, object] | None:
+        if self._i == 0 or self._current is None:
+            self._current = self.poller.next_object()
+            if self._current is None:
+                return None
+        index, key, ctype = self._current
+        nid = self.nodes[self._i]
+        self._i = (self._i + 1) % len(self.nodes)
+        raw = read(nid, index)
+        self.reads += 1
+        if raw is None:
+            self.timeouts += 1
+            self.poller.store(nid, key, None)
+            return nid, key, None
+        value = decode(ctype, int(raw).to_bytes(4, "little"))
+        self.poller.store(nid, key, value)
+        return nid, key, value

@@ -18,7 +18,7 @@ def main(args=None) -> None:
     adapter.declare_parameter("port", 5001)
     maps_dir = adapter.get_parameter("maps_dir").value
     host, port = adapter.get_parameter("host").value, int(adapter.get_parameter("port").value)
-    start_spinning(adapter)
+    spinner = start_spinning(adapter)
     app = create_app(adapter, maps_dir)
     adapter.get_logger().info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
     try:
@@ -26,6 +26,7 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        spinner.stop()  # explicit executor shutdown + join before the context goes away
         try:
             adapter.destroy_node()
         except Exception:  # noqa: BLE001

@@ -28,7 +28,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from amr_base import panel_io
 from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
-from amr_interfaces.msg import DriveStatus, PanelState, WheelVelocities
+from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, WheelVelocities
 
 import dio  # repo module: drivers/dio.py
 import ownerlock  # repo module: core/ownerlock.py
@@ -48,11 +48,17 @@ class PanelNode(Node):
         self.link = link or dio.DioLink()
         self.adapter = panel_io.PanelAdapter()
         self._pub = self.create_publisher(PanelState, "/amr/panel_state", 10)
+        self._pub_io = self.create_publisher(IoImage, "/amr/io", 5)
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
+        self._io_every = 10  # 50 Hz tick -> 5 Hz image (unified plan §7.1)
+        self._io_n = 0
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
         self._cmd = (0.0, 0.0)
         self._cmd_t: float | None = None
         self._armed = False
+        self._armed_t: float | None = None  # a stale "armed" is not armed (unified plan §7.1)
         self._horn = None
 
         if not config.DIO_ENABLED:
@@ -76,6 +82,7 @@ class PanelNode(Node):
 
     def _on_drives(self, m: DriveStatus) -> None:
         self._armed = bool(m.operational)
+        self._armed_t = time.monotonic()
 
     # -- tick --
 
@@ -86,6 +93,11 @@ class PanelNode(Node):
         frame = self.adapter.tick(snap)
         if frame.changed:
             self.get_logger().info(frame.changed)
+            lvl = Event.WARN if "LOST" in frame.changed or "invalid" in frame.changed else Event.INFO
+            self._event(lvl, "PANEL", frame.changed)
+        self._io_n = (self._io_n + 1) % self._io_every
+        if self._io_n == 0:
+            self._publish_io(snap)
         m = PanelState()
         m.header.stamp = self.get_clock().now().to_msg()
         m.valid = frame.valid
@@ -96,12 +108,43 @@ class PanelNode(Node):
         self._pub.publish(m)
 
         if config.HORN_ENABLED:
-            age = None if self._cmd_t is None else time.monotonic() - self._cmd_t
-            want = panel_io.horn_wanted(self._armed, *self._cmd, age, self.cmd_timeout)
+            now = time.monotonic()
+            age = None if self._cmd_t is None else now - self._cmd_t
+            armed = self._armed and self._armed_t is not None and now - self._armed_t <= 0.3
+            want = panel_io.horn_wanted(armed, *self._cmd, age, self.cmd_timeout)
             self.link.set_coil(config.HORN_DO_CHANNEL, want, config.HORN_HOLD_S)
             if want != self._horn:
                 self._horn = want
                 self.get_logger().debug(f"horn {'on' if want else 'off'}")
+
+    def _event(self, level: int, code: str, text: str) -> None:
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source, m.level, m.code, m.text = "panel_node", level, code, text
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._pub_event.publish(m)
+
+    def _publish_io(self, snap: dict) -> None:
+        """The owner's full I/O image (unified plan §7): requested vs readback kept apart."""
+        m = IoImage()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.comms_ok = bool(snap.get("comms_ok"))
+        age = snap.get("rx_age_s")
+        m.rx_age_s = -1.0 if age is None else float(age)
+        m.di_names = list(snap.get("di_names", []))
+        m.di = [bool(x) for x in snap.get("di", [])]
+        m.do_names = list(snap.get("do_names", []))
+        m.do_readback = [bool(x) for x in snap.get("do", [])]
+        wanted = snap.get("commanded", {})
+        m.do_requested = [bool(wanted.get(str(i), False)) for i in range(len(m.do_names))]
+        m.scans, m.errors, m.writes = (
+            int(snap.get("scans", 0)),
+            int(snap.get("errors", 0)),
+            int(snap.get("writes", 0)),
+        )
+        m.detail = str(snap.get("detail", ""))
+        self._pub_io.publish(m)
 
     def close(self) -> None:
         try:

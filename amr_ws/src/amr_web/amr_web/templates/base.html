@@ -10,12 +10,22 @@
 <header>
   <h1>AMR</h1>
   <nav>
+    <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
+    <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps &amp; survey</a>
     <a href="/editor" class="{{ 'on' if page == 'editor' }}">Route editor</a>
     <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
+    <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
+    <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
+    <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
+    <a href="/params" class="{{ 'on' if page == 'params' }}">Parameters</a>
+    <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commissioning</a>
   </nav>
   <div id="pills">
     <span id="pill-link" class="pill">connecting…</span>
+    <span id="pill-mode" class="pill">mode —</span>
+    <span id="pill-panel" class="pill">selector —</span>
+    <span id="pill-drives" class="pill">drives —</span>
     <span id="pill-loc" class="pill">localisation —</span>
     <span id="pill-run" class="pill">run —</span>
   </div>
