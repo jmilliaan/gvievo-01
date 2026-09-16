@@ -1,5 +1,8 @@
 """base.launch.py: the persistent base layer (unified plan §3.1, U1).
 
+    supervised:=true   mux and drive_node require the supervisor's ControlLease
+                       and the keyboard teleop input is off (production);
+                       false = unsupervised bench (wrappers), no lease needed
     real:=true    drive_node (can0), panel_node (DIO) or fake panel, nanoScan3
     real:=false   fake_base, fake_imu, fake_panel, optional scan_synth
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
@@ -31,6 +34,8 @@ def _compose(context):
     domains.require_vehicle_domain(what) if real else domains.refuse_vehicle_domain(what)
     ekf_yaml = os.path.join(get_package_share_directory("amr_localization"), "config", "ekf.yaml")
     cfg = LaunchConfiguration
+    supervised = cfg("supervised").perform(context).lower() == "true"
+    gate = {"require_supervisor": supervised}
 
     actions = [include("amr_description", "description.launch.py")]
     if real:
@@ -46,6 +51,7 @@ def _compose(context):
                         "pc_loss_ms": cfg("pc_loss_ms"),
                         "feedback_hz": cfg("feedback_hz"),
                         "gyro_sign": cfg("gyro_sign"),
+                        **gate,
                     }
                 ],
             ),
@@ -110,6 +116,7 @@ def _compose(context):
             executable="cmd_mux_kinematics_node",
             name="cmd_mux_kinematics",
             output="screen",
+            parameters=[{**gate, "teleop_enabled": not supervised}],
         ),
         "cmd_mux_kinematics",
     )
@@ -137,6 +144,9 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("real", default_value="false", description="true = vehicle hardware"),
+            DeclareLaunchArgument(
+                "supervised", default_value="false", description="true = ControlLease required (production)"
+            ),
             # hardware
             DeclareLaunchArgument(
                 "lidar", default_value="true", description="real: also start the nanoScan3"

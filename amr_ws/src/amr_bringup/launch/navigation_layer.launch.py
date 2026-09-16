@@ -20,6 +20,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from amr_base import gating
 from amr_bringup.launch_helpers import required
 
 
@@ -41,7 +42,12 @@ def _compose(context):
     manifest = mb.verify(rev_dir)  # raises BundleError on any mismatch
     map_yaml = os.path.join(rev_dir, "map.yaml")
     autostart = cfg("autostart").perform(context).lower() == "true"
-    generation = cfg("generation")
+    generation = int(cfg("generation").perform(context))
+    # Generation-private Nav2 outputs (unified plan §4.3 item 4): the mux of the
+    # matching generation subscribes here; a replaced layer's controller keeps
+    # publishing on ITS own topic and can never look fresh to the new mux.
+    cmd_vel = gating.nav_topic("/cmd_vel", generation)
+    cmd_vel_rotate = gating.nav_topic("/cmd_vel_rotate", generation)
 
     loc = get_package_share_directory("amr_localization")
     params = os.path.join(loc, "config", "amcl.yaml")
@@ -100,7 +106,7 @@ def _compose(context):
             name="controller_server",
             output="screen",
             parameters=[nav2, {"local_costmap.local_costmap.footprint": footprint}],
-            remappings=[("cmd_vel", "/cmd_vel")],
+            remappings=[("cmd_vel", cmd_vel)],
         ),
         "controller_server",
     )
@@ -111,7 +117,7 @@ def _compose(context):
             name="behavior_server",
             output="screen",
             parameters=[nav2],
-            remappings=[("cmd_vel", "/cmd_vel_rotate")],
+            remappings=[("cmd_vel", cmd_vel_rotate)],
         ),
         "behavior_server",
     )

@@ -12,4 +12,4 @@ known-first-party = ["amr_base", "amr_sim", "amr_interfaces", "amr_description",
 section-order = ["future", "standard-library", "third-party", "first-party", "agv-repo", "local-folder"]
 
 [lint.isort.sections]
-"agv-repo" = ["config", "kinematics", "guard", "rpdo", "read_imu", "alarms", "bus_health", "drive_forward", "verify_drivers", "panel", "dio", "events", "health", "rfid", "lidarframe", "canmon", "motion"]
+"agv-repo" = ["config", "kinematics", "guard", "rpdo", "read_imu", "alarms", "bus_health", "drive_forward", "verify_drivers", "panel", "dio", "events", "health", "rfid", "lidarframe", "canmon", "motion", "ownerlock"]

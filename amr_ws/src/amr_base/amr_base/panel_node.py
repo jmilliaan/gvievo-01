@@ -31,6 +31,7 @@ from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_interfaces.msg import DriveStatus, PanelState, WheelVelocities
 
 import dio  # repo module: drivers/dio.py
+import ownerlock  # repo module: core/ownerlock.py
 
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
@@ -58,6 +59,7 @@ class PanelNode(Node):
             self.get_logger().warn("dio.enabled is false in the profile: no panel, no horn, valid=false")
         if not config.PANEL_ENABLED:
             self.get_logger().warn("panel.enabled is false in the profile: publishing valid=false forever")
+        self._dio_lock = ownerlock.acquire("dio", "panel_node")  # before any Modbus I/O (plan §9.2)
         self.link.start()
         self.create_timer(1.0 / float(self.get_parameter("rate_hz").value), self._tick)
         self.get_logger().info(

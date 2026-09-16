@@ -13,7 +13,11 @@ publish, then pumps the bus for the rest of the period (TPDOs, EMCY and
 heartbeats are decoded inside that pump). rclpy spins on the main thread.
 
 Independent command watchdog: a /cmd_wheel_vel older than cmd_timeout_s is a
-zero setpoint. Independent PC-loss response on the drive side: see
+zero setpoint. Independent supervisor gate (unified plan §4.3 item 7): with
+`require_supervisor` a fresh ControlLease whose generation matches the wheel
+command's is needed for any nonzero setpoint - so a mux that keeps publishing
+after its own control-plane subscription stalled cannot move the vehicle.
+Independent PC-loss response on the drive side: see
 amr_base.canopen (1016h). Never runs beside agv_controller - both would own
 can0 - and refuses to start if the bus cannot be opened.
 """
@@ -31,13 +35,14 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import canopen
+from amr_base import canopen, gating
 from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
-from amr_interfaces.msg import DriveStatus, WheelStates, WheelVelocities
+from amr_interfaces.msg import ControlLease, DriveStatus, WheelStates, WheelVelocities
 
-from verify_drivers import open_bus  # noqa: E402  (repo module via agv_repo)
+import ownerlock  # noqa: E402  (repo module via agv_repo)
+from verify_drivers import open_bus  # noqa: E402
 
 SENSOR_DATA = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
@@ -68,6 +73,8 @@ class DriveNode(Node):
         dp("gyro_sign", 1.0)  # VERIFY on the vehicle: CCW spin must read positive
         dp("gyro_var", 1e-6)  # (rad/s)^2; measured sigma 0.029 deg/s and LSB 0.061 deg/s
         dp("imu_frame", "imu_frame")
+        dp("require_supervisor", False)  # production: True (unified plan §4.2)
+        dp("lease_timeout_s", 0.3)
         p = self.get_parameter
         self.period = 1.0 / p("rate_hz").value
         self.cmd_timeout = p("cmd_timeout_s").value
@@ -86,6 +93,13 @@ class DriveNode(Node):
         self.nodes = {config.LEFT: "left", config.RIGHT: "right"}
         self._lock = threading.Lock()
         self._cmd: tuple[float, float, float] | None = None  # (t_mono, wl, wr)
+        self._cmd_gen = 0
+        self._lease: gating.Lease | None = None
+        self._gate = gating.Params(
+            require_supervisor=bool(p("require_supervisor").value),
+            lease_timeout_s=float(p("lease_timeout_s").value),
+        )
+        self._gate_reason: str | None = None
         self._requests: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._status_snapshot: dict = {"state": "starting", "reason": "", "mode": "off"}
@@ -94,6 +108,7 @@ class DriveNode(Node):
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
+        self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_service(Trigger, "/drives/arm", lambda q, r: self._request("arm", r))
         self.create_service(Trigger, "/drives/disarm", lambda q, r: self._request("disarm", r))
         self.create_service(Trigger, "/drives/ack_fault", lambda q, r: self._request("ack", r))
@@ -111,9 +126,20 @@ class DriveNode(Node):
 
     # ---- rclpy thread ----
 
+    def _on_lease(self, msg: ControlLease) -> None:
+        with self._lock:
+            cur = self._lease
+            if cur is not None and (cur.instance, cur.generation) == (msg.instance, int(msg.generation)):
+                if int(msg.seq) <= cur.seq:
+                    return
+            self._lease = gating.Lease(
+                time.monotonic(), msg.instance, int(msg.generation), int(msg.seq), int(msg.allowed)
+            )
+
     def _on_cmd(self, msg: WheelVelocities) -> None:
         with self._lock:
             self._cmd = (time.monotonic(), float(msg.left_rad_s), float(msg.right_rad_s))
+            self._cmd_gen = int(msg.generation)
 
     def _request(self, what: str, res):
         done = threading.Event()
@@ -135,6 +161,12 @@ class DriveNode(Node):
         self.get_logger().info(s)
 
     def _run(self) -> None:
+        try:
+            self._can_lock = ownerlock.acquire("can", "drive_node")  # before any bus I/O (plan §9.2)
+        except ownerlock.OwnerBusy as e:
+            self.get_logger().error(f"refusing can0: {e}")
+            self._status_snapshot = {"state": "no bus", "reason": str(e), "mode": "off"}
+            return
         try:
             raw, how = open_bus(config.CAN_BITRATE, config.CAN_CHANNEL, config.CAN_ADAPTER_SERIAL)
         except Exception as e:  # noqa: BLE001
@@ -274,7 +306,14 @@ class DriveNode(Node):
 
     def _target(self, now: float, scale: canopen.WheelScale) -> tuple[int, int]:
         with self._lock:
-            cmd = self._cmd
+            cmd, gen, lease = self._cmd, self._cmd_gen, self._lease
+        reason = gating.drive_gate(time.monotonic(), lease, gen, self._gate)
+        if reason != self._gate_reason:
+            self._gate_reason = reason
+            if reason is not None:
+                self.get_logger().warn(f"setpoint gated to zero: {reason}")
+        if reason is not None:
+            return 0, 0
         return canopen.target_rpm(cmd, now, self.cmd_timeout, scale, config.MOTOR_MAX_RPM)
 
     def _safe_publish(self, pub, msg) -> None:

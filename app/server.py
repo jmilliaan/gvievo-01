@@ -45,6 +45,7 @@ from canworker import Controller  # noqa: E402
 # guard holds the permitted/forbidden write lists from the monitoring plan's
 # section 8; the monitor page displays them because an assessor will ask.
 import guard  # noqa: E402
+import ownerlock  # noqa: E402
 
 app = Flask(__name__)
 ctl = Controller()
@@ -395,7 +396,13 @@ def main():
                          "can0 twice and orphan an armed driver.")
     args = ap.parse_args()
 
-    ctl.start()
+    try:
+        ctl.start()
+    except ownerlock.OwnerBusy as e:
+        # The ROS stack (drive_node / panel_node) holds can0 or the DIO island.
+        # Refuse cleanly rather than become a second owner - see core/ownerlock.py.
+        print(f"refusing to start: {e}. Stop the AMR service first.", file=sys.stderr)
+        return 1
     print(f"AGV web UI on http://{args.host}:{args.port}/  "
           f"(manual: /manual)")
     try:

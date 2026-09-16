@@ -1,21 +1,40 @@
-"""Command source selection for the mux (spec §2.1, §3.5). Pure, clock-fed.
+"""Command source selection for the mux (spec §2.1, §3.5; unified plan §4.3). Pure, clock-fed.
 
-Authority comes from two places, never from the command streams themselves:
-  * the physical panel: selector MANUAL is teleop authority, AUTO is the
+Authority comes from three places, never from the command streams themselves:
+  * the supervisor's ControlLease: instance + generation + allowed classes,
+    expiring 0.3 s after local receipt. Under `require_supervisor` nothing is
+    selected without a fresh one; a lease from another instance or generation
+    is not a lease;
+  * the physical panel: selector MANUAL is manual authority, AUTO is the
     executor's; a stale or invalid panel image is no authority at all;
-  * the executor's MotionPermit lease: FOLLOW or ROTATE, expiring 0.3 s after
-    local receipt, and only honoured under AUTO.
-Within an authority a command must still be fresh (0.2 s). Teleop owns the mux
-for 0.5 s after its last message (so a stray nav command cannot slip in) but a
-non-zero teleop command older than 0.2 s is still replaced by zero.
+  * the executor's MotionPermit: FOLLOW or ROTATE, expiring 0.3 s after local
+    receipt, honoured only under AUTO, only with the AUTONOMOUS lease class,
+    and only if it carries the lease's instance and generation.
+The drive owner must also be fresh and operational for anything but zero.
+Within an authority a command must still be fresh (0.2 s); a browser
+ManualCommand is additionally bounded by the lifetime it carries. Expiry is
+zero at once - the mux never lets a ramp extend a command that is gone.
+
+Sequence monotonicity (permit.seq, manual.seq) is enforced by the node, which
+is the thing that sees the stream; this module sees one sample at a time.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-NONE, TELEOP, FOLLOW, ROTATE = 0, 1, 2, 3
-NAMES = {NONE: "none", TELEOP: "teleop", FOLLOW: "follow", ROTATE: "rotate"}
+NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING = 0, 1, 2, 3, 4, 5
+NAMES = {
+    NONE: "none",
+    TELEOP: "teleop",
+    FOLLOW: "follow",
+    ROTATE: "rotate",
+    MANUAL: "manual",
+    COMMISSIONING: "commissioning",
+}
+
+# ControlLease.allowed bits
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
 
 
 @dataclass(frozen=True)
@@ -24,6 +43,10 @@ class Params:
     teleop_window_s: float = 0.5
     permit_timeout_s: float = 0.3
     panel_timeout_s: float = 0.2
+    lease_timeout_s: float = 0.3
+    drives_timeout_s: float = 0.3
+    require_supervisor: bool = False  # production sets True; the bench wrappers leave it False
+    teleop_enabled: bool = True  # /cmd_vel_teleop is an engineering input; production turns it off
 
 
 DEFAULT = Params()
@@ -37,10 +60,24 @@ class Stamped:
 
 
 @dataclass
+class Manual(Stamped):
+    """A browser jog refresh (ManualCommand) as received."""
+
+    instance: str = ""
+    generation: int = 0
+    session: str = ""
+    seq: int = 0
+    valid_for_s: float = 0.0
+
+
+@dataclass
 class Permit:
     t_recv: float
     source: int
     enabled: bool
+    instance: str = ""
+    generation: int = 0
+    seq: int = 0
 
 
 @dataclass
@@ -51,11 +88,32 @@ class Panel:
 
 
 @dataclass
+class Lease:
+    t_recv: float
+    instance: str
+    generation: int
+    seq: int
+    allowed: int
+
+
+@dataclass
+class Drives:
+    t_recv: float
+    operational: bool
+
+
+@dataclass
 class Selection:
     source: int
     v: float
     w: float
     reason: str
+    generation: int = 0  # the lease generation applied (0 unsupervised)
+    inhibited: bool = False  # true when the supervisor/drives gate closed, not merely "no command"
+
+
+def _fresh(t: float | None, now: float, limit: float) -> bool:
+    return t is not None and now - t <= limit
 
 
 def select(
@@ -66,27 +124,83 @@ def select(
     permit: Permit | None,
     panel: Panel | None,
     p: Params = DEFAULT,
+    lease: Lease | None = None,
+    manual: Manual | None = None,
+    drives: Drives | None = None,
 ) -> Selection:
-    panel_ok = panel is not None and panel.valid and now - panel.t_recv <= p.panel_timeout_s
+    gen = 0
+    if p.require_supervisor:
+        if lease is None or not _fresh(lease.t_recv, now, p.lease_timeout_s):
+            return Selection(NONE, 0.0, 0.0, "no supervisor lease", 0, True)
+        gen = lease.generation
+        if lease.allowed == 0:
+            return Selection(NONE, 0.0, 0.0, "inhibited by supervisor", gen, True)
+        if drives is None or not _fresh(drives.t_recv, now, p.drives_timeout_s) or not drives.operational:
+            return Selection(NONE, 0.0, 0.0, "drives not operational or stale", gen, True)
+
+    panel_ok = panel is not None and panel.valid and _fresh(panel.t_recv, now, p.panel_timeout_s)
     if not panel_ok:
-        return Selection(NONE, 0.0, 0.0, "no panel authority")
+        return Selection(NONE, 0.0, 0.0, "no panel authority", gen)
 
     if not panel.auto:
-        if teleop is not None and now - teleop.t <= p.teleop_window_s:
+        if p.require_supervisor and not (lease.allowed & LEASE_MANUAL):
+            return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True)
+        # Browser jog: bound by its own carried lifetime as well as the mux timeout.
+        if manual is not None and p.require_supervisor:
+            same = manual.instance == lease.instance and manual.generation == lease.generation
+            limit = min(p.cmd_timeout_s, max(0.0, manual.valid_for_s))
+            if same and _fresh(manual.t, now, limit):
+                return Selection(MANUAL, manual.v, manual.w, "manual", gen)
+        if p.teleop_enabled and teleop is not None and now - teleop.t <= p.teleop_window_s:
             if now - teleop.t <= p.cmd_timeout_s:
-                return Selection(TELEOP, teleop.v, teleop.w, "teleop")
-            return Selection(TELEOP, 0.0, 0.0, "teleop command timed out")
-        return Selection(NONE, 0.0, 0.0, "MANUAL, no teleop command")
+                return Selection(TELEOP, teleop.v, teleop.w, "teleop", gen)
+            return Selection(TELEOP, 0.0, 0.0, "teleop command timed out", gen)
+        return Selection(NONE, 0.0, 0.0, "MANUAL, no fresh command", gen)
 
-    permit_ok = permit is not None and permit.enabled and now - permit.t_recv <= p.permit_timeout_s
+    if p.require_supervisor and not (lease.allowed & LEASE_AUTONOMOUS):
+        return Selection(NONE, 0.0, 0.0, "AUTO not allowed by supervisor", gen, True)
+    permit_ok = permit is not None and permit.enabled and _fresh(permit.t_recv, now, p.permit_timeout_s)
     if not permit_ok:
-        return Selection(NONE, 0.0, 0.0, "AUTO, no motion permit")
+        return Selection(NONE, 0.0, 0.0, "AUTO, no motion permit", gen)
+    if p.require_supervisor and (permit.instance != lease.instance or permit.generation != lease.generation):
+        return Selection(NONE, 0.0, 0.0, "permit from another generation", gen, True)
     if permit.source == FOLLOW:
         if follow is not None and now - follow.t <= p.cmd_timeout_s:
-            return Selection(FOLLOW, follow.v, follow.w, "follow")
-        return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel")
+            return Selection(FOLLOW, follow.v, follow.w, "follow", gen)
+        return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel", gen)
     if permit.source == ROTATE:
         if rotate is not None and now - rotate.t <= p.cmd_timeout_s:
-            return Selection(ROTATE, rotate.v, rotate.w, "rotate")
-        return Selection(NONE, 0.0, 0.0, "permit ROTATE, no fresh /cmd_vel_rotate")
-    return Selection(NONE, 0.0, 0.0, "permit NONE")
+            return Selection(ROTATE, rotate.v, rotate.w, "rotate", gen)
+        return Selection(NONE, 0.0, 0.0, "permit ROTATE, no fresh /cmd_vel_rotate", gen)
+    return Selection(NONE, 0.0, 0.0, "permit NONE", gen)
+
+
+def nav_topic(base: str, generation: int) -> str:
+    """Generation-private Nav2 output topic (unified plan §4.3 item 4).
+
+    A controller from a replaced layer keeps publishing on ITS topic; the new
+    mux listens on the new generation's, so the old stream cannot look fresh.
+    Generation 0 (unsupervised bench) keeps the plain topic.
+    """
+    return base if generation == 0 else f"/amr/layers/{generation}{base}"
+
+
+def drive_gate(
+    now: float,
+    lease: Lease | None,
+    cmd_generation: int,
+    p: Params = DEFAULT,
+) -> str | None:
+    """The drive owner's independent check before any nonzero setpoint (§4.3 item 7).
+
+    Returns None when the command may be applied, else the reason to zero.
+    """
+    if not p.require_supervisor:
+        return None
+    if lease is None or not _fresh(lease.t_recv, now, p.lease_timeout_s):
+        return "no supervisor lease"
+    if lease.allowed == 0:
+        return "inhibited by supervisor"
+    if cmd_generation != lease.generation:
+        return f"command generation {cmd_generation} != lease {lease.generation}"
+    return None

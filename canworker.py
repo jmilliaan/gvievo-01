@@ -51,6 +51,7 @@ import rpdo  # noqa: E402
 from verify_drivers import open_bus, sdo_read, u32  # noqa: E402
 
 import canmon  # noqa: E402
+import ownerlock  # noqa: E402
 import config  # noqa: E402
 import events  # noqa: E402
 import health  # noqa: E402
@@ -388,6 +389,10 @@ class Controller:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
+        # Cooperative owner locks (core/ownerlock.py): the ROS drive_node and
+        # panel_node take the same two before touching can0 / the DIO island,
+        # so neither side can start on top of the other. Raises OwnerBusy.
+        self._locks = [ownerlock.acquire("can", "agv_controller"), ownerlock.acquire("dio", "agv_controller")]
         self._stop_evt.clear()
         self._thread = threading.Thread(target=self._run, name="can", daemon=True)
         self._thread.start()
