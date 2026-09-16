@@ -6,6 +6,7 @@ uint8 SAVING=3
 uint8 SAVED=4
 
 std_msgs/Header header
+uint32 generation           # layer generation that produced this; consumers drop other generations
 uint8 state
 string map_id
 uint32 revision              # of the last SAVED bundle, 0 if none

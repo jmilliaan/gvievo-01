@@ -7,6 +7,9 @@ uint8 FOLLOW=2      # controller_server output on /cmd_vel during a straight
 uint8 ROTATE=3      # behavior_server output on /cmd_vel_rotate during a turn
 
 std_msgs/Header header
+string instance             # supervisor instance this permit was issued under
+uint32 generation           # control generation; the mux ignores a permit from another
+uint64 seq                  # strictly increasing; an older sample cannot renew permission
 string run_id
 uint8 source
 bool enabled

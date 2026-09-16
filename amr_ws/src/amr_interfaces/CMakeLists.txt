@@ -18,11 +18,19 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MotionPermit.msg"
   "msg/RunState.msg"
   "msg/PanelState.msg"
+  "msg/ModeState.msg"
+  "msg/ControlLease.msg"
+  "msg/MuxState.msg"
+  "msg/ManualCommand.msg"
+  "msg/OperationState.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"
   "srv/SaveMap.srv"
   "srv/SetPose2D.srv"
   "srv/AddObstacle.srv"
+  "srv/RequestMode.srv"
+  "srv/RequestSurvey.srv"
+  "srv/GetOperation.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

@@ -7,6 +7,7 @@ uint8 LOST=3            # was READY (or CHECKING) and a stream went stale, covar
                         # or map->odom jumped more than the trigger; requires revalidation
 
 std_msgs/Header header
+uint32 generation           # layer generation that produced this; consumers drop other generations
 uint8 state
 bool operator_confirmed
 bool can_confirm            # CHECKING and every automatic condition holds

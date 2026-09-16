@@ -8,6 +8,7 @@ uint8 FAULT=5       # sensor/drive/panel/localisation fault; acknowledgement doe
 uint8 DONE=6
 
 std_msgs/Header header
+uint32 generation           # layer generation that produced this; consumers drop other generations
 uint8 state
 string run_id
 string mission_id
