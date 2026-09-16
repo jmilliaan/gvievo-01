@@ -273,6 +273,26 @@ free map space inside the active step's swept footprint (1.5 m horizon on a
 line, the full disc on a turn). Sim panel: `fake_panel_node`; the real adapter
 (T12) publishes the same `PanelState`.
 
+**Panel and horn (T12, 2026-09-16).** `amr_base/panel_node` wraps the repo's
+`drivers/dio.py` scan thread and `core/panel.py` debounce unchanged and publishes
+`/amr/panel_state` at 50 Hz: `valid` only while DIO comms are good and a
+debounced baseline exists (anti-tie-down: a button held at start produces no
+edge; a comms gap re-baselines instead of inventing a press). The horn coil
+follows canworker's rule at the ROS boundary — drives armed **and** a fresh
+non-zero `/cmd_wheel_vel` — as a claim renewed every tick with `HORN_HOLD_S`, so
+a dead node drops it on the next DIO scan. No services, no parameters that could
+fake an edge. `drivers.launch.py panel:=real` is the default; `fake` is the
+simulated panel for the bench. Both `drive_node` and `panel_node` refuse to
+start while the `agv_controller` unit is active (`amr_base.legacy_guard`): socketcan
+and Modbus TCP both accept a second client, so nothing else would stop two owners.
+
+Verified at the panel 2026-09-16, and this found a wiring error in the profile:
+the real mapping is **DI1 Start, DI2 Reset, DI3 AUTO/MANUAL**, DI0 empty
+(`profiles/agv-01.json` shipped 0/1/2, so the legacy app had been reading a
+Reset press as a flick of the selector and never saw the real selector at all).
+With the corrected profile: one Start press → one edge, one Reset press → one
+edge, the selector level tracks, Start held 3 s → one edge, 50.0 Hz.
+
 **Sim world.** `amr_maps/worlds/sim_factory`: 30 × 20 m, four 16 m rack rows
 at y = ±2.4 / ±7.2, start mark (0, 0) at the west end of the B/C aisle.
 `scan_synth_node` raycasts it from ground truth with the URDF laser offset,

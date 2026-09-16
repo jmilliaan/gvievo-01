@@ -33,6 +33,7 @@ from std_srvs.srv import Trigger
 
 from amr_base import canopen
 from amr_base.agv_repo import config
+from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_interfaces.msg import DriveStatus, WheelStates, WheelVelocities
 
@@ -335,6 +336,7 @@ class DriveNode(Node):
 
 
 def main(args=None) -> None:
+    refuse_if_legacy_running("drive_node")
     rclpy.init(args=args)
     node = DriveNode()
     try:

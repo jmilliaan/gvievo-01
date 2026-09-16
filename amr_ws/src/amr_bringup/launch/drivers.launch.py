@@ -7,12 +7,13 @@ Replaces sim.launch.py's fake base/IMU/scan for hardware runs:
 
 *** agv_controller must be stopped first *** - it owns can0 and the panel, and
 two owners on one bus is exactly what spec §3.1 forbids. drive_node refuses to
-start if the bus cannot be opened; it does not check for the service.
+start if the bus cannot be opened, and drive_node / panel_node refuse to
+start while the agv_controller unit is active (amr_base.legacy_guard).
 
-The panel adapter (T12) is not here yet: without /amr/panel_state the mux
-grants no authority and the wheels stay at zero. For bench work start
-fake_panel_node by hand (panel:=fake) - it is a SIMULATED panel, never use it
-with the vehicle on the floor.
+panel:=real (default) is panel_node (T12): the DIO island's Reset/Start/AUTO
+and the horn coil. Without a valid /amr/panel_state the mux grants no
+authority and the wheels stay at zero. panel:=fake is a SIMULATED panel for
+bench work only - never with the vehicle on the floor and people nearby.
 """
 
 import os
@@ -48,7 +49,9 @@ def generate_launch_description() -> LaunchDescription:
                 "gyro_sign", default_value="1.0", description="+1 if CCW reads positive on the vehicle"
             ),
             DeclareLaunchArgument(
-                "panel", default_value="none", description="none | fake (SIMULATED panel, bench only, MANUAL)"
+                "panel",
+                default_value="real",
+                description="real (DIO island, T12) | fake (SIMULATED panel, bench only, MANUAL) | none",
             ),
             IncludeLaunchDescription(
                 AnyLaunchDescriptionSource(
@@ -84,6 +87,13 @@ def generate_launch_description() -> LaunchDescription:
                 output="screen",
                 parameters=[{"auto": False}],
                 condition=LaunchConfigurationEquals("panel", "fake"),
+            ),
+            Node(
+                package="amr_base",
+                executable="panel_node",
+                name="panel_node",
+                output="screen",
+                condition=LaunchConfigurationEquals("panel", "real"),
             ),
             # --- Layer 2, same as sim.launch.py ---
             Node(

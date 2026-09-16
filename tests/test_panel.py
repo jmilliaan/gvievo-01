@@ -349,7 +349,7 @@ def test_panel_profile():
 
     refused("two functions on one channel is refused - it would fire a Reset "
             "edge every time Start is pushed",
-            lambda d: d["panel"].update(di_start=0), "distinct")
+            lambda d: d["panel"].update(di_start=2), "distinct")
     refused("a channel past num_di is refused",
             lambda d: d["panel"].update(di_auto=99), "channel in 0..")
     refused("a negative channel is refused",
@@ -359,10 +359,17 @@ def test_panel_profile():
     refused("the panel cannot be enabled without the DI scan that feeds it",
             lambda d: d["dio"].update(enabled=False), "never respond")
 
-    check("the shipped profile matches the wiring: DI00 reset, DI01 start, "
-          "DI02 auto",
+    # Verified at the panel 2026-09-16 with the ROS panel_node watching the
+    # DI image: DI00 is empty, Start is DI01, Reset is DI02, the selector is
+    # DI03. The profile shipped as 0/1/2 until then, which read a Reset press
+    # as the selector flicking to AUTO and never saw the real selector at all.
+    check("the shipped profile matches the wiring: DI01 start, DI02 reset, "
+          "DI03 auto",
           (config.PANEL_DI_RESET, config.PANEL_DI_START,
-           config.PANEL_DI_AUTO) == (0, 1, 2))
+           config.PANEL_DI_AUTO) == (2, 1, 3))
+    check("...and the DI names say the same",
+          (config.DIO_DI_NAMES[1], config.DIO_DI_NAMES[2], config.DIO_DI_NAMES[3])
+          == ("PB Start", "PB Reset", "SS Auto/Manual"))
 
 
 TESTS = [

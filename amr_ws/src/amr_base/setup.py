@@ -22,6 +22,7 @@ setup(
             "cmd_mux_kinematics_node = amr_base.cmd_mux_kinematics_node:main",
             "diff_drive_odom_node = amr_base.diff_drive_odom_node:main",
             "drive_node = amr_base.drive_node:main",
+            "panel_node = amr_base.panel_node:main",
         ],
     },
 )
