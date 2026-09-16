@@ -77,6 +77,11 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError:
+        # A callback running while launch tears the context down raises from
+        # the C layer ("Unable to convert call argument"); only real if still ok.
+        if rclpy.ok():
+            raise
     finally:
         # launch sends SIGINT; the context may already be down by the time we
         # get here, and destroy_node() then raises from the C layer.

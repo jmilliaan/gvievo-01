@@ -7,6 +7,20 @@ within 1 degree of heading; the raw wheel odometry, which has no gyro, is
 reported alongside so the gain from fusion is visible in the log.
 """
 
+import os
+
+# Every launch test gets its own DDS domain so `colcon test` may run packages in
+# parallel without simulations talking to each other's /scan, /map or /cmd_vel_teleop.
+# Set before rclpy and before launch forks the nodes, which inherit it.
+os.environ["ROS_DOMAIN_ID"] = "62"
+
+import pytest
+
+if (
+    os.environ.get("AMR_SIM_TESTS") != "1"
+):  # ~1-5 min each on the N97: run deliberately, not on every colcon test
+    pytest.skip("simulation launch test; set AMR_SIM_TESTS=1", allow_module_level=True)
+
 import math
 import os
 import threading

@@ -26,6 +26,9 @@ def generate_launch_description() -> LaunchDescription:
                 "slip_noise_std", default_value="0.0", description="fake_base wheel slip noise (fraction, 1σ)"
             ),
             DeclareLaunchArgument(
+                "panel_auto", default_value="false", description="fake panel selector starts in AUTO"
+            ),
+            DeclareLaunchArgument(
                 "foxglove", default_value="false", description="Also start foxglove_bridge on :8765"
             ),
             IncludeLaunchDescription(
@@ -44,6 +47,14 @@ def generate_launch_description() -> LaunchDescription:
                 parameters=[{"slip_noise_std": slip}],
             ),
             Node(package="amr_sim", executable="fake_imu_node", name="fake_imu", output="screen"),
+            # The panel is authority for the mux: MANUAL here, so teleop works in plain sim.
+            Node(
+                package="amr_sim",
+                executable="fake_panel_node",
+                name="fake_panel",
+                output="screen",
+                parameters=[{"auto": LaunchConfiguration("panel_auto")}],
+            ),
             # --- Layer 2, real ---
             Node(
                 package="amr_base",

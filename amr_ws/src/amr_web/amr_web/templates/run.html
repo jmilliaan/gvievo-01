@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}AMR — run{% endblock %}
+{% block body %}
+<section class="editor">
+  <aside class="card tools">
+    <h2>Localisation</h2>
+    <div id="loc-state" class="state">—</div>
+    <label>Map <select id="run-map"></select></label>
+    <div class="row"><button id="tool-initialpose" class="tool">Set initial pose on map</button></div>
+    <div class="row">
+      <button id="btn-loc-confirm" class="primary">Confirm: scans align</button>
+      <button id="btn-loc-reset">Reset</button>
+    </div>
+    <hr>
+    <h2>Mission</h2>
+    <label>Mission <select id="run-mission"></select></label>
+    <div class="row"><button id="btn-run-load">Load (READY)</button></div>
+    <div id="run-state" class="state">—</div>
+    <p class="muted">Motion starts only from the physical panel: selector AUTO, then Start. Pause/abort/prepare-resume below; Start confirms a prepared resume.</p>
+    <div class="row">
+      <button id="btn-run-pause">Pause</button>
+      <button id="btn-run-resume">Prepare resume</button>
+      <button id="btn-run-abort" class="danger">Abort</button>
+      <button id="btn-run-ack">Acknowledge fault</button>
+    </div>
+  </aside>
+  <div class="canvas-wrap">
+    <canvas id="run-canvas" width="900" height="600"></canvas>
+    <div id="run-hint" class="hint">Wheel = zoom, drag = pan. Initial pose: click the position, drag towards the heading, release.</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/run.js"></script>{% endblock %}

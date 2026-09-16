@@ -23,6 +23,7 @@ setup(
     entry_points={
         "console_scripts": [
             "imu_bias_node = amr_localization.imu_bias_node:main",
+            "localization_monitor_node = amr_localization.localization_monitor_node:main",
         ],
     },
 )

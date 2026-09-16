@@ -17,6 +17,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from amr_base.agv_repo import config
 from amr_base.diff_drive import Geometry
 from amr_interfaces.msg import WheelStates, WheelVelocities
+from amr_interfaces.srv import SetPose2D
 from amr_sim.wheel_model import WheelModel
 
 SENSOR_DATA = QoSProfile(
@@ -62,6 +63,7 @@ class FakeBase(Node):
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_truth = self.create_publisher(Odometry, "/sim/ground_truth", SENSOR_DATA)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
+        self.create_service(SetPose2D, "/sim/set_pose", self._on_set_pose)
         self.create_timer(self.dt, self._tick)
         self.get_logger().info(
             f"r={self.model.geom.wheel_radius_m} track={self.model.geom.track_width_m} "
@@ -71,6 +73,15 @@ class FakeBase(Node):
 
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    def _on_set_pose(self, req: SetPose2D.Request, res: SetPose2D.Response):
+        self.model.teleport(req.x_m, req.y_m, req.yaw_rad)
+        res.ok = True
+        res.message = (
+            f"ground truth moved to ({req.x_m:.2f}, {req.y_m:.2f}, {math.degrees(req.yaw_rad):.1f} deg)"
+        )
+        self.get_logger().warn("teleport: " + res.message)
+        return res
 
     def _on_cmd(self, msg: WheelVelocities) -> None:
         self.model.command(msg.left_rad_s, msg.right_rad_s, self._now())
@@ -119,6 +130,11 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError:
+        # A callback running while launch tears the context down raises from
+        # the C layer ("Unable to convert call argument"); only real if still ok.
+        if rclpy.ok():
+            raise
     finally:
         # launch sends SIGINT; the context may already be down by the time we
         # get here, and destroy_node() then raises from the C layer.

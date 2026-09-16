@@ -33,6 +33,10 @@ class WheelModel:
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
 
+    def teleport(self, x: float, y: float, yaw: float) -> None:
+        """Move REALITY only (kidnapped robot). Reported wheel positions keep integrating."""
+        self.truth = OdomState(x=x, y=y, th=yaw, distance=self.truth.distance)
+
     def command(self, left_rad_s: float, right_rad_s: float, t: float) -> None:
         self.target_l, self.target_r = left_rad_s, right_rad_s
         self.last_cmd_t = t

@@ -29,6 +29,11 @@ class SquareDrive(Node):
         self.declare_parameter("turn_rate_rad_s", 1.0)
         self.declare_parameter("settle_s", 1.0)
         self.declare_parameter("start_delay_s", 0.0)  # stillness for gyro-bias calibration
+        # Deliberate return error (spec §8 "modest return error"): the last
+        # straight is shortened and the last turn cut short, so the loop does
+        # not close exactly and a survey review has something real to report.
+        self.declare_parameter("closing_error_m", 0.0)
+        self.declare_parameter("closing_error_deg", 0.0)
         self.declare_parameter("rate_hz", 20.0)
         p = self.get_parameter
         v, w, settle = (
@@ -82,6 +87,11 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError:
+        # A callback running while launch tears the context down raises from
+        # the C layer ("Unable to convert call argument"); only real if still ok.
+        if rclpy.ok():
+            raise
     finally:
         # launch sends SIGINT; the context may already be down by the time we
         # get here, and destroy_node() then raises from the C layer.

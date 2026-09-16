@@ -1,0 +1,37 @@
+"""web_node: Flask in the main thread, the rclpy adapter spinning behind it."""
+
+from __future__ import annotations
+
+import os
+
+import rclpy
+
+from amr_web.adapter import RosAdapter, start_spinning
+from amr_web.server import create_app
+
+
+def main(args=None) -> None:
+    rclpy.init(args=args)
+    adapter = RosAdapter()
+    adapter.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
+    adapter.declare_parameter("host", "0.0.0.0")
+    adapter.declare_parameter("port", 5001)
+    maps_dir = adapter.get_parameter("maps_dir").value
+    host, port = adapter.get_parameter("host").value, int(adapter.get_parameter("port").value)
+    start_spinning(adapter)
+    app = create_app(adapter, maps_dir)
+    adapter.get_logger().info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
+    try:
+        app.run(host=host, port=port, threaded=True, use_reloader=False)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            adapter.destroy_node()
+        except Exception:  # noqa: BLE001
+            pass
+        rclpy.try_shutdown()
+
+
+if __name__ == "__main__":
+    main()

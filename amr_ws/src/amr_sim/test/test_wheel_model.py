@@ -82,3 +82,16 @@ def test_deterministic_seed():
             m.command(1.0, 3.0, t)
             m.step(t, 0.01)
     assert (a.pos_l, a.pos_r) == (b.pos_l, b.pos_r)
+
+
+def test_teleport_moves_truth_not_odometry():
+    m = make()
+    t = 0.0
+    for _ in range(100):
+        t += 0.01
+        m.command(2.0, 2.0, t)
+        m.step(t, 0.01)
+    pos_before = (m.pos_l, m.pos_r)
+    m.teleport(5.0, -1.0, 1.0)
+    assert (m.truth.x, m.truth.y, m.truth.th) == (5.0, -1.0, 1.0)
+    assert (m.pos_l, m.pos_r) == pos_before

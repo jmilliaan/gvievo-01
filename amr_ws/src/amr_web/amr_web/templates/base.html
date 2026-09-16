@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}AMR{% endblock %}</title>
+<link rel="stylesheet" href="/static/amr.css">
+</head>
+<body>
+<header>
+  <h1>AMR</h1>
+  <nav>
+    <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps &amp; survey</a>
+    <a href="/editor" class="{{ 'on' if page == 'editor' }}">Route editor</a>
+    <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
+  </nav>
+  <div id="pills">
+    <span id="pill-link" class="pill">connecting…</span>
+    <span id="pill-loc" class="pill">localisation —</span>
+    <span id="pill-run" class="pill">run —</span>
+  </div>
+</header>
+<main>{% block body %}{% endblock %}</main>
+<footer><pre id="log"></pre></footer>
+<script src="/static/amr.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -23,8 +23,12 @@ sick_safetyscanners2_node:
     channel: 0
     channel_enabled: true
     skip: 0                          # publish every scan (~34 Hz); raise to 1 for ~17 Hz if the N97 needs it
-    angle_start: 0.0                 # 0/0 = full configured range (275°); never hardcode the sector
-    angle_end: 0.0
+    # The mount has a wall behind the scanner: only about +/-95 deg is usable
+    # (operator, 2026-09-16). Beams outside that hit the vehicle itself and
+    # must not reach AMCL or the costmap. Radians, 0 = scanner forward.
+    # VERIFY on the unit that the rear-wall returns are gone with this window.
+    angle_start: -1.658
+    angle_end: 1.658
     time_offset: 0.0
     general_system_state: true
     derived_settings: true

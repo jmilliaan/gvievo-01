@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}AMR — maps{% endblock %}
+{% block body %}
+<section class="cols">
+  <div class="card">
+    <h2>Survey session</h2>
+    <p class="muted">Drive the area manually, return to the same physical mark and heading, review, save. The buttons here only talk to the session coordinator; nothing on this page moves the vehicle.</p>
+    <div id="survey-state" class="state">—</div>
+    <label>Map id <input id="survey-map-id" placeholder="line_section"></label>
+    <label>Start mark description <input id="survey-desc" placeholder="floor mark A, facing the rack ends"></label>
+    <div class="row">
+      <button id="btn-survey-start">New map (start survey)</button>
+      <button id="btn-survey-returned">Returned to start</button>
+    </div>
+    <div id="closure" class="muted"></div>
+    <label>Review note <input id="survey-note" placeholder="seams ok, span 12.00 m measured 11.96"></label>
+    <div class="row">
+      <button id="btn-survey-save" class="primary">Save map revision</button>
+      <button id="btn-survey-abort" class="danger">Abort survey</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Saved map revisions</h2>
+    <div id="maps-list">loading…</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/maps.js"></script>{% endblock %}
