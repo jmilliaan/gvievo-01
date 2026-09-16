@@ -195,10 +195,18 @@ no TPDO/heartbeat) or raises an **alarm** → FAULT, setpoint zero at once, latc
 node, `canopen.target_rpm`) which the mux only produces under panel authority, so
 arming alone moves nothing. Services: `/drives/arm`, `/drives/disarm`, `/drives/ack_fault`.
 
-Still to do on the bench (needs a person at the vehicle): **(1)** PC-loss response:
-run with `pc_loss_ms:=500`, `kill -9` the node, confirm both drives raise `8130h`
-and stop on their own; that alarm is cleared by a drive power cycle (40C0h is
-deny-listed on purpose). **(2)** First powered move on blocks: `panel:=fake` +
+**PC-loss response, observed 2026-09-16.** `disarm()` did not retire `1016h`, so a
+*clean* exit of `drive_node` left both drives expecting a heartbeat that stopped:
+0.5 s later both were in FAULT (error register `0x11`, statusword `0x1A98`) and
+`agv_controller` refused to arm — which is the drive-side reaction working as
+designed, triggered by the wrong event. `disarm()` now writes `1016h = 0` on
+both drives **first**, before the speed-zero wait, so only a crash or a `kill -9`
+trips the guard. Clearing `8130h` needs a drive power cycle (40C0h is deny-listed
+on purpose); the drives' `1016h` is volatile, so the power cycle also clears it.
+
+Still to do on the bench (needs a person at the vehicle): **(1)** deliberate
+`kill -9` of the node with `pc_loss_ms:=500` — the accidental version above is
+the only evidence so far. **(2)** First powered move on blocks: `panel:=fake` +
 `teleop_twist_keyboard` on `/cmd_vel_teleop`, confirm both wheels turn forward for
 +x and the `/odom_raw` distance matches a tape measure. **(3)** `gyro_sign`: spin the
 vehicle CCW by hand, `/imu/data_raw` z must be positive. **(4)** 100 Hz feedback

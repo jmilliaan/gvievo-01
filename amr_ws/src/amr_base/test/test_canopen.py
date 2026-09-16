@@ -255,3 +255,34 @@ def test_fault_zeroes_at_once_and_disarm_de_energises():
     link.disarm()
     assert link.state == DISARMED
     assert [(n, v) for n, i, _, v in bus.writes if i == 0x6040][-2:] == [(2, 0x06), (2, 0x00)]
+
+
+def test_disarm_retires_the_pc_loss_guard_first():
+    """A clean exit must not look like a crash to the drives.
+
+    Found on the vehicle 2026-09-16: drive_node exited cleanly, 1016h stayed
+    set, both drives raised 8130h half a second later and agv_controller could
+    not arm (40C0h is deny-listed, so only a power cycle clears it).
+    """
+    bus = FakeBus()
+    link = _link(bus)
+    link.arm(20, 100, 500, 30.0, False, False)
+    assert link.pc_guard_set
+    bus.writes.clear()
+    link.disarm()
+    hb = [(n, v) for n, i, sub, v in bus.writes if i == 0x1016 and sub == 1]
+    assert hb == [(1, 0), (2, 0)]
+    # ...and before the zero setpoint / controlword sequence, while our own
+    # heartbeat is still fresh, not after a speed-zero wait the drives may not survive.
+    first_cw = next(k for k, (n, i, _, _) in enumerate(bus.writes) if i in (0x60FF, 0x6040))
+    assert all(bus.writes[k][1] == 0x1016 for k in range(len(hb))) and first_cw >= len(hb)
+    assert not link.pc_guard_set
+
+    # Without the guard armed (pc_loss_ms=0) nothing is written to 1016h at all.
+    bus2 = FakeBus()
+    link2 = _link(bus2)
+    link2.arm(20, None, 0, 30.0, False, False)
+    bus2.writes.clear()
+    link2.disarm()
+    assert not any(i == 0x1016 for _, i, _, _ in bus2.writes)
+

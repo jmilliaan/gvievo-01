@@ -302,6 +302,7 @@ class DriveLink:
     telemetry: dict[int, DriveTelemetry] = field(default_factory=dict)
     scale: WheelScale | None = None
     applied: tuple[int, int] | None = None
+    pc_guard_set: bool = False  # 1016h written on the drives; cleared on disarm
 
     def __post_init__(self):
         for nid in self.nodes:
@@ -396,6 +397,25 @@ class DriveLink:
             self.write(
                 nid, 0x1016, 1, heartbeat_consumer_value(pc_node, timeout_ms), 4, "consumer heartbeat time"
             )
+        self.pc_guard_set = True
+
+    def clear_pc_loss_guard(self) -> None:
+        """Retire 1016h on a DELIBERATE exit, while our heartbeat is still fresh.
+
+        The guard exists for the PC dying, not for the PC leaving. Left set, the
+        drives fault with 8130h half a second after a clean shutdown - which
+        looks identical to a crash, cannot be cleared over CAN (40C0h is
+        deny-listed) and needs a drive power cycle. Found 2026-09-16: both drives
+        in FAULT after drive_node exited, and agv_controller could not arm.
+        """
+        if not self.pc_guard_set:
+            return
+        for nid in self.nodes:
+            try:
+                self.write(nid, 0x1016, 1, 0, 4, "consumer heartbeat time = 0")
+            except Exception as e:  # noqa: BLE001 - de-energising still proceeds
+                self.log(f"node {nid}: could not clear 1016h ({e}); it will fault when we stop")
+        self.pc_guard_set = False
 
     def configure_pdos(self, feedback_period_ms: int) -> None:
         """RPDO1 (setpoint) and TPDO1/2 (feedback). Pre-operational only (CiA 301)."""
@@ -506,6 +526,9 @@ class DriveLink:
         self.state, self.applied = DISARMED, None
         if was == DISARMED and not force:
             return
+        # First, before the speed-zero wait (up to 4 s with no heartbeat sent):
+        # otherwise the guard trips DURING the disarm it was meant to survive.
+        self.clear_pc_loss_guard()
         for nid in self.nodes:
             try:
                 sdo_write(self.router, nid, 0x60FF, 0, 0, 4)
