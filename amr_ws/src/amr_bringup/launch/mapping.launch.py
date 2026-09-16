@@ -15,9 +15,14 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from amr_bringup import domains
+
 
 def _sim_layer(context):
-    if LaunchConfiguration("sim").perform(context).lower() != "true":
+    sim = LaunchConfiguration("sim").perform(context).lower() == "true"
+    what = f"mapping.launch.py sim:={str(sim).lower()}"
+    domains.refuse_vehicle_domain(what) if sim else domains.require_vehicle_domain(what)
+    if not sim:
         return [
             IncludeLaunchDescription(
                 AnyLaunchDescriptionSource(

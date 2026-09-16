@@ -18,10 +18,15 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from amr_bringup import domains
+
 
 def _resolve(context):
     from amr_mission import map_bundle as mb  # noqa: PLC0415 - launch-time import
 
+    sim = LaunchConfiguration("sim").perform(context).lower() == "true"
+    what = f"nav.launch.py sim:={str(sim).lower()}"
+    domains.refuse_vehicle_domain(what) if sim else domains.require_vehicle_domain(what)
     maps_dir = os.path.expanduser(LaunchConfiguration("maps_dir").perform(context))
     map_id = LaunchConfiguration("map_id").perform(context)
     revision = LaunchConfiguration("revision").perform(context)
@@ -115,7 +120,7 @@ def _resolve(context):
             condition=IfCondition(LaunchConfiguration("web")),
         ),
     ]
-    if LaunchConfiguration("sim").perform(context).lower() != "true":
+    if not sim:
         actions.append(
             IncludeLaunchDescription(
                 AnyLaunchDescriptionSource(

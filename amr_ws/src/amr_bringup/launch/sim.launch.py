@@ -16,8 +16,11 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from amr_bringup import domains
+
 
 def generate_launch_description() -> LaunchDescription:
+    domains.refuse_vehicle_domain("sim.launch.py")
     slip = LaunchConfiguration("slip_noise_std")
     ekf_yaml = os.path.join(get_package_share_directory("amr_localization"), "config", "ekf.yaml")
     return LaunchDescription(

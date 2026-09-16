@@ -299,6 +299,20 @@ They break `cv_bridge` (system, built on numpy 1.21). Nothing in this project
 uses `cv_bridge` — there is no camera (D-4) — so this is a known, accepted
 conflict. Do not import `cv_bridge`; if a camera ever appears, revisit.
 
-**ROS domain / DDS scope.** Not yet set. Before the hardware drive node (T9)
-exists, sim and hardware must not share a domain: decide `ROS_DOMAIN_ID` and a
-CycloneDDS interface config in T11 (deployment).
+**ROS domain / DDS scope (2026-09-16).** Vehicle = `ROS_DOMAIN_ID=10`,
+simulation = `20`, launch tests pin 61–67 (`amr_bringup/domains.py`). The shell on
+the vehicle sources `env/vehicle.sh` from `~/.bashrc`; for sim work in a shell,
+`source ~/agv_can/amr_ws/env/sim.sh`. This is enforced, not advisory:
+`drivers.launch.py` (and `mapping`/`nav` with `sim:=false`) refuse any domain but
+10; `sim.launch.py` (and `mapping`/`nav` with `sim:=true`) refuse 10 and refuse an
+*unset* domain, because default 0 is what every unconfigured ROS host on the LAN
+uses. DDS is loopback-only (`config/cyclonedds-local.xml`, `CYCLONEDDS_URI`):
+nothing off this host can join either graph, nothing is bound on the Wi-Fi
+address, and a sim on this host cannot leak either. Foxglove is unaffected — it
+uses `foxglove_bridge` on :8765, not DDS. `lo` has no multicast, so discovery is
+unicast over `MaxAutoParticipantIndex` = 120 slots; raise it if a launch ever has
+more participants. To let a laptop join deliberately: copy the XML, bind `wlp1s0`,
+point `CYCLONEDDS_URI` at the copy for that session only.
+
+Also sourced by anything long-lived: a systemd unit that runs a hardware launch
+must set the same three variables (T11).
