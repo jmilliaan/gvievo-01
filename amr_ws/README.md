@@ -293,6 +293,14 @@ Reset press as a flick of the selector and never saw the real selector at all).
 With the corrected profile: one Start press → one edge, one Reset press → one
 edge, the selector level tracks, Start held 3 s → one edge, 50.0 Hz.
 
+Live under the real panel the same day (`drivers.launch.py lidar:=false`, moves
+on `/cmd_vel_teleop` at 0.10 m/s): selector **AUTO** → 21 s of forward commands,
+0.000 m; **MANUAL** → 0.320 m, horn and lights on while moving, off on stop;
+selector flipped to AUTO **mid-move** → stopped at 0.329 m and stayed stopped
+while commands continued; reverse 0.667 m under MANUAL, horn on. The DIO
+cable-pull case (comms loss → `valid=false` → no authority) is covered by
+`test_panel_io.py`, not yet pulled on the vehicle.
+
 **Sim world.** `amr_maps/worlds/sim_factory`: 30 × 20 m, four 16 m rack rows
 at y = ±2.4 / ±7.2, start mark (0, 0) at the west end of the B/C aisle.
 `scan_synth_node` raycasts it from ground truth with the URDF laser offset,
