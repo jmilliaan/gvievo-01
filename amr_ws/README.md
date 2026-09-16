@@ -1,7 +1,7 @@
 # amr_ws — ROS 2 Humble workspace for the SLAM AMR
 
 Plan: `manuals/slam-generalized-plan/amr_implementation_spec.md` (rev. 2026-09-15:
-manual mapping + drawn routes). Status: T1–T8 done in simulation, T9/T10 bench-verified with the vehicle parked (2026-09-16); T11/T12 next.
+manual mapping + drawn routes). Status: T1–T8 in simulation, T9/T10/T12 verified on the vehicle, T11 deploy files written (2026-09-16); T11 acceptance (live survey → save → draw → run) next. Operator procedure: [RUNBOOK.md](RUNBOOK.md).
 
 ## Build, test, run
 
@@ -342,5 +342,12 @@ unicast over `MaxAutoParticipantIndex` = 120 slots; raise it if a launch ever ha
 more participants. To let a laptop join deliberately: copy the XML, bind `wlp1s0`,
 point `CYCLONEDDS_URI` at the copy for that session only.
 
-Also sourced by anything long-lived: a systemd unit that runs a hardware launch
-must set the same three variables (T11).
+Also sourced by anything long-lived: `deploy/amr-launch.sh` is the systemd
+wrapper that does exactly this.
+
+**Deployment (T11).** `deploy/`: `amr_nav.service` (runtime) and
+`amr_mapping.service` (survey), both `Conflicts=agv_controller.service` and each
+other, `BindsTo` can0, `KillSignal=SIGINT` so drive_node's clean exit runs
+(zero → 1016h cleared → de-energise) and panel_node quiesces the horn.
+`amr.env` holds the map to load; `sudo deploy/install.sh` installs without
+enabling. Operator procedure: [RUNBOOK.md](RUNBOOK.md).
