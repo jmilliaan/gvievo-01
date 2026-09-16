@@ -86,7 +86,7 @@ def _compose(context):
                 executable="fake_base_node",
                 name="fake_base",
                 output="screen",
-                parameters=[{"slip_noise_std": cfg("slip_noise_std")}],
+                parameters=[{"slip_noise_std": cfg("slip_noise_std"), **gate}],
             ),
             "fake_base",
         )

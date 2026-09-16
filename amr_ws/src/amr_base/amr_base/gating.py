@@ -182,7 +182,7 @@ def nav_topic(base: str, generation: int) -> str:
     mux listens on the new generation's, so the old stream cannot look fresh.
     Generation 0 (unsupervised bench) keeps the plain topic.
     """
-    return base if generation == 0 else f"/amr/layers/{generation}{base}"
+    return base if generation == 0 else f"/amr/layers/g{generation}{base}"
 
 
 def drive_gate(

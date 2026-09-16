@@ -1,12 +1,16 @@
 """fake_base_node (spec §8): replaces drive node + odometry source in sim.
 
-Subscribes /cmd_wheel_vel, publishes /wheel_states (100 Hz, SensorData) and
+Subscribes /cmd_wheel_vel, publishes /wheel_states (100 Hz, SensorData),
+/drives/status (10 Hz, always operational - the simulated drive owner) and
 /sim/ground_truth (nav_msgs/Odometry, frame map->base_footprint). Zeroes the wheels
 if no command arrives within cmd_timeout_s, mirroring the drive-node watchdog
-(spec test 6). Wheel ramp defaults to the profile's 6083h auto ramp (D-1).
+(spec test 6), and - like drive_node - applies the supervisor lease gate when
+`require_supervisor` is set (unified plan §4.3 item 7). Wheel ramp defaults to
+the profile's 6083h auto ramp (D-1).
 """
 
 import math
+import time
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -14,9 +18,10 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
+from amr_base import gating
 from amr_base.agv_repo import config
 from amr_base.diff_drive import Geometry
-from amr_interfaces.msg import WheelStates, WheelVelocities
+from amr_interfaces.msg import ControlLease, DriveStatus, WheelStates, WheelVelocities
 from amr_interfaces.srv import SetPose2D
 from amr_sim.wheel_model import WheelModel
 
@@ -45,6 +50,8 @@ class FakeBase(Node):
         self.declare_parameter("seed", 0)
         self.declare_parameter("truth_frame", "map")
         self.declare_parameter("base_frame", "base_footprint")
+        self.declare_parameter("require_supervisor", False)
+        self.declare_parameter("lease_timeout_s", 0.3)
 
         p = self.get_parameter
         self.model = WheelModel(
@@ -60,9 +67,18 @@ class FakeBase(Node):
         self._last_t: float | None = None
         self._was_timed_out = True
 
+        self._gate = gating.Params(
+            require_supervisor=bool(self.get_parameter("require_supervisor").value),
+            lease_timeout_s=float(self.get_parameter("lease_timeout_s").value),
+        )
+        self._lease: gating.Lease | None = None
+        self._gate_reason: str | None = None
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_truth = self.create_publisher(Odometry, "/sim/ground_truth", SENSOR_DATA)
+        self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
+        self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
+        self.create_timer(0.1, self._publish_status)
         self.create_service(SetPose2D, "/sim/set_pose", self._on_set_pose)
         self.create_timer(self.dt, self._tick)
         self.get_logger().info(
@@ -83,8 +99,32 @@ class FakeBase(Node):
         self.get_logger().warn("teleport: " + res.message)
         return res
 
+    def _on_lease(self, msg: ControlLease) -> None:
+        cur = self._lease
+        if cur is not None and (cur.instance, cur.generation) == (msg.instance, int(msg.generation)):
+            if int(msg.seq) <= cur.seq:
+                return
+        self._lease = gating.Lease(
+            time.monotonic(), msg.instance, int(msg.generation), int(msg.seq), int(msg.allowed)
+        )
+
     def _on_cmd(self, msg: WheelVelocities) -> None:
+        reason = gating.drive_gate(time.monotonic(), self._lease, int(msg.generation), self._gate)
+        if reason != self._gate_reason:
+            self._gate_reason = reason
+            if reason is not None:
+                self.get_logger().warn(f"setpoint gated to zero: {reason}")
+        if reason is not None:
+            self.model.command(0.0, 0.0, self._now())
+            return
         self.model.command(msg.left_rad_s, msg.right_rad_s, self._now())
+
+    def _publish_status(self) -> None:
+        m = DriveStatus()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.left_state = m.right_state = "Operation enabled (simulated)"
+        m.operational = True
+        self._pub_status.publish(m)
 
     def _tick(self) -> None:
         t = self._now()

@@ -153,6 +153,6 @@ def test_drive_owner_gate_is_independent_of_the_mux():
 
 def test_nav_topics_are_private_per_generation():
     assert nav_topic("/cmd_vel", 0) == "/cmd_vel"
-    assert nav_topic("/cmd_vel", 7) == "/amr/layers/7/cmd_vel"
-    assert nav_topic("/cmd_vel_rotate", 7) == "/amr/layers/7/cmd_vel_rotate"
+    assert nav_topic("/cmd_vel", 7) == "/amr/layers/g7/cmd_vel"  # a token may not start with a digit
+    assert nav_topic("/cmd_vel_rotate", 7) == "/amr/layers/g7/cmd_vel_rotate"
     assert gating.NAMES[MANUAL] == "manual"
