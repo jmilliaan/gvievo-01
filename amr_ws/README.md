@@ -204,13 +204,30 @@ both drives **first**, before the speed-zero wait, so only a crash or a `kill -9
 trips the guard. Clearing `8130h` needs a drive power cycle (40C0h is deny-listed
 on purpose); the drives' `1016h` is volatile, so the power cycle also clears it.
 
+**Ground test, 2026-09-16** (`drivers.launch.py panel:=fake lidar:=false`, moves
+commanded on `/cmd_vel_teleop` at 0.10 m/s / 0.30 rad/s, closed on `/odom_raw`,
+gyro integrated alongside; the vehicle was first checked on blocks: +x turns both
+wheels forward, +yaw turns left-back/right-forward):
+
+| Move | Odometry | Gyro ∫ | Note |
+|---|---|---|---|
+| straight 1.0 m ×2 | 1.047 m each | −0.5° (rest bias × 12 s) | **tape 1.048 m** → 0.1 % |
+| reverse 1.0 m | 1.033 m | — | straight |
+| CCW 90° | +95.5° | **+96.8°** | `gyro_sign = +1` confirmed |
+| CW 90° | −97.9° | −97.8° | |
+| CCW 180° | +182.5° (read −177.5° wrapped) | +188.5° | script only sampled 11 Hz of the 50 Hz IMU — see next row |
+| CW 180° | −183.9° (read +176.1° wrapped) | **−184.2°** | full 50 Hz sampling: 0.3° |
+
+Odometry scale is right on the ground; gyro and wheels agree on rotation to
+< 1 % both ways and across the ±π wrap, so the 0.487 m track is good to a few
+mm. Overshoots (4–5 cm, 5–8°) are the test script's reaction time plus the
+mux ramp, not the vehicle. After the clean SIGINT both drives read `0x1A50`
+Switch on disabled, error register 0, `1016h = 0`: the guard fix holds.
+
 Still to do on the bench (needs a person at the vehicle): **(1)** deliberate
 `kill -9` of the node with `pc_loss_ms:=500` — the accidental version above is
-the only evidence so far. **(2)** First powered move on blocks: `panel:=fake` +
-`teleop_twist_keyboard` on `/cmd_vel_teleop`, confirm both wheels turn forward for
-+x and the `/odom_raw` distance matches a tape measure. **(3)** `gyro_sign`: spin the
-vehicle CCW by hand, `/imu/data_raw` z must be positive. **(4)** 100 Hz feedback
-(`feedback_hz:=100`) only after (1)–(3), watching the bus load and the IMU rate.
+the only evidence so far. **(2)** 100 Hz feedback (`feedback_hz:=100`), watching
+the bus load and the IMU rate. Blocks/ground moves and `gyro_sign` are done (table above).
 
 **Routes (T6).** `amr_navigation`: spec §6.4 schema (`route.py`), compiler
 (`compiler.py`: straight must lie forward on the current heading within 1 mm,
