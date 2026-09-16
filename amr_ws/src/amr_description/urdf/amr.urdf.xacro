@@ -25,12 +25,15 @@
 
   <!-- nanoScan3 optical centre relative to base_link (measured 2026-09-15):
        0.964 m ahead of the axle, scan plane 0.110 m above the floor, so
-       z = 0.110 - wheel_radius. yaw 0 = scanner forward axis along +x;
-       calibrate by scan alignment against a known wall (architecture §5). -->
+       z = 0.110 - wheel_radius. yaw 0 = scanner forward axis along +x.
+       Verified on the vehicle 2026-09-16 (T10): a box 2.00 m ahead by tape
+       read 2.014 m at 0 deg (std 1.2 mm); a box 1.20 m to the left appeared
+       at +y. No yaw or mirror error at grid resolution; lateral offset taken
+       as 0 (not tape-measured, unobservable below ~5 cm at this range). -->
   <xacro:arg name="laser_x"   default="0.964"/>
-  <xacro:arg name="laser_y"   default="0.00"/>  <!-- MEASURE: assumed on centreline -->
+  <xacro:arg name="laser_y"   default="0.00"/>  <!-- verified on centreline 2026-09-16 -->
   <xacro:arg name="laser_z"   default="0.020"/>
-  <xacro:arg name="laser_yaw" default="0.0"/>   <!-- MEASURE, rad -->
+  <xacro:arg name="laser_yaw" default="0.0"/>   <!-- verified 2026-09-16, rad -->
 
   <!-- IMU inside the SICK MLS, 0.092 m ahead of the axle (measured 2026-09-15).
        Lateral/vertical position inside the MLS housing not confirmed: VERIFY

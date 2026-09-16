@@ -1,7 +1,7 @@
 """mapping.launch.py (spec §9): estimation chain + live async SLAM + session coordinator.
 
 sim:=true   fake base/IMU + scan_synth against the sim_factory world
-sim:=false  real drivers: NOT wired until T9/T10 (raises)
+sim:=false  drivers.launch.py: drive_node on can0 + nanoScan3 (stop agv_controller first)
 No AMCL, no route actions. `foxglove:=true` adds the bridge.
 """
 
@@ -18,7 +18,14 @@ from launch_ros.actions import Node
 
 def _sim_layer(context):
     if LaunchConfiguration("sim").perform(context).lower() != "true":
-        raise RuntimeError("mapping.launch.py sim:=false needs drivers.launch.py (T9/T10); not available yet")
+        return [
+            IncludeLaunchDescription(
+                AnyLaunchDescriptionSource(
+                    os.path.join(get_package_share_directory("amr_bringup"), "launch", "drivers.launch.py")
+                ),
+                launch_arguments={"lidar": "true", "foxglove": "false"}.items(),
+            )
+        ]
     return [
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(

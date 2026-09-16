@@ -1,7 +1,7 @@
 # amr_ws — ROS 2 Humble workspace for the SLAM AMR
 
 Plan: `manuals/slam-generalized-plan/amr_implementation_spec.md` (rev. 2026-09-15:
-manual mapping + drawn routes). Status: T1–T8 done in simulation (2026-09-16); T9–T12 hardware next.
+manual mapping + drawn routes). Status: T1–T8 done in simulation, T9/T10 bench-verified with the vehicle parked (2026-09-16); T11/T12 next.
 
 ## Build, test, run
 
@@ -29,9 +29,10 @@ from the same overlay, or custom `amr_interfaces` messages will not decode.
 
 | Launch | What |
 |---|---|
-| `amr_bringup lidar.launch.py` | nanoScan3 driver + URDF TF. Needs UDP 6060: `sudo systemctl stop agv_controller` first |
+| `amr_bringup lidar.launch.py` | nanoScan3 driver + URDF TF (ROS owns UDP 6060 outright since the legacy listener was removed) |
+| `amr_bringup drivers.launch.py [lidar:=true] [pc_loss_ms:=500] [feedback_hz:=50] [gyro_sign:=1] [panel:=none\|fake]` | **hardware Layer 1**: `drive_node` (both BLV-R + MLS gyro on `can0`) + nanoScan3 + mux/odom/bias/EKF + URDF. `sudo systemctl stop agv_controller` first: two owners on one bus is forbidden (spec §3.1) |
 | `amr_bringup sim.launch.py [slip_noise_std:=0.02] [foxglove:=true]` | fake base + fake IMU → cmd_mux, odom, imu_bias, EKF → URDF; touches no hardware |
-| `amr_bringup mapping.launch.py [sim:=true] [maps_dir:=~/amr_maps] [clutter_count:=N] [foxglove:=true]` | sim chain + `scan_synth` + `slam_toolbox` online async + `mapping_session`. `sim:=false` waits for T9/T10 |
+| `amr_bringup mapping.launch.py [sim:=true] [maps_dir:=~/amr_maps] [clutter_count:=N] [foxglove:=true]` | sim chain + `scan_synth` + `slam_toolbox` online async + `mapping_session`. `sim:=false` includes `drivers.launch.py` |
 | `amr_bringup nav.launch.py [map_id:=sim_factory] [revision:=latest] [maps_dir:=~/amr_maps] [clutter_count:=N] [web:=true] [foxglove:=true]` | verified bundle → `map_server` + AMCL + `localization_monitor` + `controller_server` (RPP) + `behavior_server` (Spin) + `route_executor` + web app; sim chain + `scan_synth` + `fake_panel`. Mutually exclusive with mapping |
 | `amr_description description.launch.py [laser_x:=…]` | robot_state_publisher only |
 
@@ -82,9 +83,9 @@ composed sim and fails if any frame ever has two.
 
 **Geometry.** Measured 2026-09-15: track 0.487 m (also in `profiles/agv-01.json`),
 wheel radius 0.09 m, nanoScan3 0.964 m ahead of the axle with the scan plane
-0.110 m above the floor, MLS IMU 0.092 m ahead of the axle. Still `MEASURE`:
-chassis box, laser lateral offset and yaw (calibrate against a straight wall).
-Still `VERIFY`: IMU lateral/vertical position inside the MLS.
+0.110 m above the floor, MLS IMU 0.092 m ahead of the axle. Laser yaw and
+lateral offset verified 2026-09-16 (see "Lidar commissioning"). Still `MEASURE`:
+chassis box. Still `VERIFY`: IMU lateral/vertical position inside the MLS.
 
 **Repo modules.** ROS nodes reuse `config`, `kinematics` etc. from the repo
 root via `amr_base.agv_repo` (bare imports, layer dirs on `sys.path`, same as
@@ -136,9 +137,72 @@ along a corridor, which a lidar-built map never has.
 **Lidar window (T6+).** The nanoScan3 is a 275° scanner but the mount has a wall
 behind it: about **±95°** is usable (operator, 2026-09-16). `scan_synth` defaults
 to 190°/381 beams and `nanoscan3.yaml` masks the driver to ±1.658 rad
-(VERIFY on the unit that the rear-wall returns are gone). Consequence for
+(verified on the unit 2026-09-16, nothing returns inside 2.25 m). Consequence for
 routes: the swept area behind the vehicle is never observed live, so turn
 clearance comes from the *saved map* plus the scan's forward window only.
+
+**Lidar commissioning (T10, lidar half, 2026-09-16).** Measured on the vehicle
+with `lidar.launch.py foxglove:=true`, `agv_controller` running (it no longer
+touches the scanner):
+
+| Check | Result |
+|---|---|
+| `/scan` rate | 34.05 Hz, period 26–33 ms (`skip: 0`) |
+| stamp → receive delay | ~1 ms; the 0.15 s scan age limit has >100× margin |
+| window | −96.2° … +95.7°, 1152 beams at 0.167°, 976 valid; nearest return 2.25 m |
+| orientation | box 2.00 m ahead → +x, box 1.20 m left → +y; no yaw/mirror error |
+| range | box face at 2.00 m by tape read 2.014 m mean over 100 scans, std 1.2 mm |
+| scan plane | 0.110 m above the floor (accepted from the mount measurement) |
+| fields | `/output_paths`: 3 valid paths, path 0 is the safety output, monitoring case 1 |
+
+Open: the scanner reported a *contamination warning* (window needs cleaning) and
+the `/output_paths` status polarity was not confirmed (echo it with the field clear
+and with a box inside). The physical stop is the OSSD pair into the FX3 and is
+not checked through ROS.
+
+**Drive node and MLS gyro (T9 + T10 IMU half, 2026-09-16).** `amr_base/drive_node`
+is the one owner of `can0`: both BLV-R drives and the MLS IMU in one bus thread,
+`amr_base/canopen.py` (PDO layout, scaling, CiA-402 arm/disarm, PC-loss guard) and
+`amr_base/mls_imu.py` (gyro by TPDO if the sensor has one enabled, else SDO polling)
+underneath, both unit-tested against a scripted bus. Every write goes through
+`drivers/canbus/guard.py`; `1016h` (consumer heartbeat) was added to its allow-list.
+
+| Wire | Frame | Rate |
+|---|---|---|
+| RPDO1 `0x200+n` | `6040h` controlword u16 + `60FFh` target r/min i32 | 50 Hz, both drives, every tick (no deadband) |
+| TPDO1 `0x180+n` | `6041h` statusword + `606Ch` velocity r/min | event timer = inhibit = 20 ms (`feedback_hz`) |
+| TPDO2 `0x280+n` | `6064h` position counts + `1001h` error register | same |
+| PC heartbeat `0x700+100` | NMT operational | 100 ms; drives consume it with `1016h` = `pc_loss_ms` |
+| MLS `2034h:3` (+`2035h` every 10th) | SDO poll | 50 Hz (`1806h` yaw-rate TPDO is disabled on the unit) |
+
+Measured with the vehicle parked, drives armed at zero (`ros2 run amr_base drive_node`):
+
+| Check | Result |
+|---|---|
+| preflight / arm | both drives `0x1737` Operation enabled in ~0.7 s; encoder scale **1 080 000 counts per wheel turn** (`608Fh` 36 000 × gear 30, `6091h` 1:1) |
+| `/wheel_states` | 47 Hz (one message per complete TPDO1+TPDO2 pair from both drives), positions valid |
+| `/imu/data_raw` | 49.8 Hz by SDO polling; z reads the known ~0.06 °/s bias at rest |
+| TPDO spacing | 20.00 ms on both COB-IDs (`candump -t d`) |
+| bus load | ~440 f/s total ≈ 45 % of 125 kbps. **Inhibit time must equal the event timer**: with inhibit 0 the servo-locked position counter dithering one count fired TPDO2 on every drive cycle, ~1200 f/s, and the MLS SDO replies missed their 50 ms window |
+| exit (SIGINT) | zero setpoint → speed-zero wait → Shutdown/Disable voltage → NMT Pre-op; drives read `0x1A50` Switch on disabled afterwards |
+
+Policy (`canopen.decide`, tabled in `test_canopen.py`): armed automatically with zero
+targets (`auto_arm`), retry every 2 s if the enable fails (usually ETO); a drive that
+leaves Operation enabled while armed → disarm and re-arm with zero (the safety chain
+took it, exactly canworker's level-held MANUAL); a drive that goes **silent** (0.6 s,
+no TPDO/heartbeat) or raises an **alarm** → FAULT, setpoint zero at once, latched until
+`/drives/ack_fault`. Motion needs a fresh `/cmd_wheel_vel` (0.2 s watchdog inside the
+node, `canopen.target_rpm`) which the mux only produces under panel authority, so
+arming alone moves nothing. Services: `/drives/arm`, `/drives/disarm`, `/drives/ack_fault`.
+
+Still to do on the bench (needs a person at the vehicle): **(1)** PC-loss response:
+run with `pc_loss_ms:=500`, `kill -9` the node, confirm both drives raise `8130h`
+and stop on their own; that alarm is cleared by a drive power cycle (40C0h is
+deny-listed on purpose). **(2)** First powered move on blocks: `panel:=fake` +
+`teleop_twist_keyboard` on `/cmd_vel_teleop`, confirm both wheels turn forward for
++x and the `/odom_raw` distance matches a tape measure. **(3)** `gyro_sign`: spin the
+vehicle CCW by hand, `/imu/data_raw` z must be positive. **(4)** 100 Hz feedback
+(`feedback_hz:=100`) only after (1)–(3), watching the bus load and the IMU rate.
 
 **Routes (T6).** `amr_navigation`: spec §6.4 schema (`route.py`), compiler
 (`compiler.py`: straight must lie forward on the current heading within 1 mm,

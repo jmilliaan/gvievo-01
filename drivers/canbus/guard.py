@@ -47,6 +47,12 @@ ALLOWED = {
     0x6084: "profile deceleration",
     0x60FF: "target velocity",
     0x1017: "producer heartbeat time",
+    # 1016h consumer heartbeat: the drive's OWN response to losing the PC (spec
+    # §3.3). The ROS drive node produces a heartbeat and tells each drive to
+    # expect it; if the PC dies the drive raises 8130h and applies its fault
+    # reaction (605Eh) with nothing on the PC involved. It cannot start motion,
+    # and the alarm it raises is cleared by an operator, not by us (40C0h).
+    0x1016: "consumer heartbeat time",
 }
 
 # Named purely so a refusal can say WHY, rather than "not allowed".

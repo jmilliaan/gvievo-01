@@ -1,7 +1,7 @@
 """nav.launch.py (spec §9): immutable saved map, AMCL, readiness. Grows through T5-T8.
 
 sim:=true   fake base/IMU + scan_synth (clutter optional) + the estimation chain
-sim:=false  real drivers: NOT wired until T9/T10 (raises)
+sim:=false  drivers.launch.py: drive_node on can0 + nanoScan3 (stop agv_controller first)
 
 The bundle <maps_dir>/<map_id>/rev<revision>/ is verified (hashes) before
 anything starts; a bundle that fails verification refuses to launch. No SLAM
@@ -116,7 +116,15 @@ def _resolve(context):
         ),
     ]
     if LaunchConfiguration("sim").perform(context).lower() != "true":
-        raise RuntimeError("nav.launch.py sim:=false needs drivers.launch.py (T9/T10); not available yet")
+        actions.append(
+            IncludeLaunchDescription(
+                AnyLaunchDescriptionSource(
+                    os.path.join(get_package_share_directory("amr_bringup"), "launch", "drivers.launch.py")
+                ),
+                launch_arguments={"lidar": "true", "foxglove": "false"}.items(),
+            )
+        )
+        return actions
     actions += [
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(

@@ -26,7 +26,10 @@ sick_safetyscanners2_node:
     # The mount has a wall behind the scanner: only about +/-95 deg is usable
     # (operator, 2026-09-16). Beams outside that hit the vehicle itself and
     # must not reach AMCL or the costmap. Radians, 0 = scanner forward.
-    # VERIFY on the unit that the rear-wall returns are gone with this window.
+    # Verified on the unit 2026-09-16 (T10): the driver publishes -96.2..+95.7
+    # deg, 1152 beams at 0.167 deg, ~34 Hz, stamp-to-receive delay ~1 ms;
+    # nothing inside the window returns closer than 2.25 m, so no vehicle or
+    # rear-wall hits. Fields: 3 output paths (path 0 = safety OSSD).
     angle_start: -1.658
     angle_end: 1.658
     time_offset: 0.0

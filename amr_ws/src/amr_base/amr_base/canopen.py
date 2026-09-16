@@ -1,0 +1,614 @@
+"""CANopen side of the drive node (T9): PDO layout, unit scaling, the CiA-402
+arm/disarm sequence and the drive-side response to losing the PC.
+
+No rclpy here. Everything that touches the bus goes through an injected
+`bus` (python-can) so the sequences can be asserted without hardware, and every
+write goes through drivers/canbus/guard.py, the same deny-list canworker used.
+The SDO helpers, RPDO1 packing and the CiA-402 constants are the repo's own
+(drivers/canbus), imported bare via amr_base.agv_repo.
+
+Units (spec §3.2, reconciliation D-1/D-2): 60FFh and 606Ch are signed MOTOR
+r/min; 6064h is motor-side encoder counts (608Fh counts per 6091h-geared
+revolution). ROS speaks WHEEL rad/s. The gearbox ratio and the profile's
+invert flags are applied exactly once, here.
+
+PDO layout (spec §3.2: statusword + velocity + position do not fit one frame):
+
+    RPDO1  0x200+n  6040h controlword u16 | 60FFh target velocity i32   (PC -> drive, 50 Hz)
+    TPDO1  0x180+n  6041h statusword  u16 | 606Ch velocity actual i32   (drive -> PC, event timer)
+    TPDO2  0x280+n  6064h position    i32 | 1001h error register u8     (drive -> PC, event timer)
+
+TPDOs are transmission type 255 with an event timer, so the drive pushes them
+at a fixed period whether or not the value changed, and an inhibit time equal
+to that period so a changing value cannot push them faster.
+
+PC-loss response (spec §3.3): the drive is told to CONSUME a heartbeat that
+this process produces (1016h = PC node id + timeout). If the PC dies, the
+drive raises 8130h (heartbeat error) and applies its fault reaction (605Eh,
+default 2 = quick-stop ramp), independent of anything on the PC. Clearing that
+alarm is an operator act (40C0h is on the deny-list), which is the intended
+behaviour: a vehicle that stopped because its controller died is not restarted
+by the controller coming back.
+"""
+
+from __future__ import annotations
+
+import struct
+import time
+from dataclasses import dataclass, field
+
+import can
+
+import amr_base.agv_repo  # noqa: F401  (puts the repo layer dirs on sys.path)
+
+import guard  # repo module
+import rpdo  # noqa: E402
+from alarms import decode_emcy, decode_nmt  # noqa: E402
+from bus_health import decode_state  # noqa: E402
+from drive_forward import (  # noqa: E402
+    CW_DISABLE_VOLTAGE,
+    CW_ENABLE,
+    CW_SHUTDOWN,
+    CW_SWITCH_ON,
+    SW_FAULT,
+    SW_REMOTE,
+    SW_SPEED_IS_ZERO,
+    sdo_write,
+)
+from verify_drivers import sdo_read, u32  # noqa: E402
+
+# ---------------------------------------------------------------- PDO layout
+
+TPDO1_COB_BASE = 0x180
+TPDO2_COB_BASE = 0x280
+TPDO1_COMM, TPDO1_MAP = 0x1800, 0x1A00
+TPDO2_COMM, TPDO2_MAP = 0x1801, 0x1A01
+COB_DISABLED = 1 << 31
+TRANSMISSION_EVENT = 255
+
+MAP_STATUSWORD = (0x6041 << 16) | 0x0010
+MAP_VELOCITY_ACTUAL = (0x606C << 16) | 0x0020
+MAP_POSITION_ACTUAL = (0x6064 << 16) | 0x0020
+MAP_ERROR_REGISTER = (0x1001 << 16) | 0x0008
+
+_TPDO1 = struct.Struct("<Hi")  # statusword, velocity r/min
+_TPDO2 = struct.Struct("<iB")  # position counts, error register
+
+HEARTBEAT_COB_BASE = 0x700
+NMT_OPERATIONAL = 0x05
+CW_OPERATION_ENABLED = rpdo.CW_OPERATION_ENABLED
+OPERATION_ENABLED_MASK, OPERATION_ENABLED = 0x6F, 0x27
+
+
+def tpdo_configuration_steps(node: int, period_ms: int) -> list[tuple[int, int, int, int, str]]:
+    """The SDO writes that put statusword+velocity on TPDO1 and position+error on TPDO2.
+
+    Same disable → remap → enable ordering rpdo.configuration_steps uses (BLV-R
+    manual §4.7.1). Returned as data so it can be checked against the deny-list
+    and asserted in tests before a frame is sent.
+    """
+    if not 1 <= period_ms <= 65535:
+        raise ValueError(f"TPDO event timer {period_ms} ms out of range 1..65535")
+    steps = []
+    for comm, mapping, cob_base, entries, label in (
+        (TPDO1_COMM, TPDO1_MAP, TPDO1_COB_BASE, (MAP_STATUSWORD, MAP_VELOCITY_ACTUAL), "TPDO1"),
+        (TPDO2_COMM, TPDO2_MAP, TPDO2_COB_BASE, (MAP_POSITION_ACTUAL, MAP_ERROR_REGISTER), "TPDO2"),
+    ):
+        cob = cob_base + node
+        steps.append((comm, 1, COB_DISABLED | cob, 4, f"disable {label} before remapping"))
+        steps.append((mapping, 0, 0, 1, f"{label}: clear the mapping entry count"))
+        for i, entry in enumerate(entries, start=1):
+            steps.append((mapping, i, entry, 4, f"{label}: map {entry >> 16:04X}h ({entry & 0xFF} bit)"))
+        steps.append((mapping, 0, len(entries), 1, f"{label}: {len(entries)} mapped objects"))
+        steps.append((comm, 2, TRANSMISSION_EVENT, 1, f"{label}: transmission type 255 (event)"))
+        # Inhibit = period: type 255 also transmits on every VALUE CHANGE, and a
+        # servo-locked position counter dithering by one count fired TPDO2 on
+        # every drive cycle (~1200 f/s measured 2026-09-16, 3x the budget).
+        steps.append((comm, 3, period_ms * 10, 2, f"{label}: inhibit time {period_ms} ms"))
+        steps.append((comm, 5, period_ms, 2, f"{label}: event timer {period_ms} ms"))
+        steps.append((comm, 1, cob, 4, f"enable {label} on 0x{cob:03X}"))
+    for index, sub, value, _size, _what in steps:
+        guard.check(index, value, sub)
+    return steps
+
+
+def decode_tpdo1(data: bytes) -> tuple[int, int]:
+    """TPDO1 payload -> (statusword, velocity actual r/min)."""
+    if len(data) < _TPDO1.size:
+        raise ValueError(f"TPDO1 payload is {_TPDO1.size} bytes, got {len(data)}")
+    return _TPDO1.unpack_from(bytes(data), 0)
+
+
+def decode_tpdo2(data: bytes) -> tuple[int, int]:
+    """TPDO2 payload -> (position actual counts, error register)."""
+    if len(data) < _TPDO2.size:
+        raise ValueError(f"TPDO2 payload is {_TPDO2.size} bytes, got {len(data)}")
+    return _TPDO2.unpack_from(bytes(data), 0)
+
+
+def heartbeat_consumer_value(producer_node: int, timeout_ms: int) -> int:
+    """1016h:01 = producer node id in bits 16..23, timeout in ms in bits 0..15."""
+    if not 1 <= producer_node <= 127:
+        raise ValueError(f"producer node id {producer_node} not in 1..127")
+    if not 0 <= timeout_ms <= 0xFFFF:
+        raise ValueError(f"consumer heartbeat {timeout_ms} ms out of range")
+    return (producer_node << 16) | timeout_ms
+
+
+def pc_heartbeat_message(pc_node: int) -> can.Message:
+    """The heartbeat this process produces so the drives can miss it."""
+    return can.Message(
+        arbitration_id=HEARTBEAT_COB_BASE + pc_node, data=[NMT_OPERATIONAL], is_extended_id=False
+    )
+
+
+def unwrap_i32(prev: int, new: int) -> int:
+    """Signed delta between two INT32 counter readings, wrap-safe."""
+    d = (new - prev) & 0xFFFFFFFF
+    return d - (1 << 32) if d >= (1 << 31) else d
+
+
+# ---------------------------------------------------------------- scaling
+
+RAD_S_PER_RPM = 2.0 * 3.141592653589793 / 60.0
+
+
+@dataclass(frozen=True)
+class WheelScale:
+    """Motor-side units -> wheel-side SI, per wheel. Applied exactly once."""
+
+    gear_ratio: float
+    invert_left: bool
+    invert_right: bool
+    counts_per_wheel_rev: float | None = None  # 608Fh/6091h at arm time; None = positions unknown
+
+    def _sign(self, left: bool) -> float:
+        return -1.0 if (self.invert_left if left else self.invert_right) else 1.0
+
+    def motor_rpm(self, wheel_rad_s: float, left: bool) -> float:
+        return wheel_rad_s / RAD_S_PER_RPM * self.gear_ratio * self._sign(left)
+
+    def wheel_rad_s(self, motor_rpm: float, left: bool) -> float:
+        return motor_rpm * RAD_S_PER_RPM / self.gear_ratio * self._sign(left)
+
+    def wheel_rad(self, counts: int, left: bool) -> float | None:
+        if not self.counts_per_wheel_rev:
+            return None
+        return counts / self.counts_per_wheel_rev * 2.0 * 3.141592653589793 * self._sign(left)
+
+
+def counts_per_wheel_rev(read, nodes, gear_ratio: float) -> float | None:
+    """Port of canworker._read_encoder_scale: 608Fh counts per motor rev × gear.
+
+    `read(node, index, sub)` returns an unsigned int or None. Refuses (None)
+    when the two drives disagree or 6091h shows a gear the profile does not,
+    because a position scale guessed wrong is odometry that is wrong by 30×.
+    """
+    scales = set()
+    for nid in nodes:
+        inc, revs = read(nid, 0x608F, 1), read(nid, 0x608F, 2)
+        gm, gs = read(nid, 0x6091, 1), read(nid, 0x6091, 2)
+        if not (inc and revs and gm and gs):
+            return None
+        drive_gear = gm / gs
+        if not (abs(drive_gear - 1.0) < 1e-9 or abs(drive_gear - gear_ratio) < 1e-9):
+            return None
+        scales.add(inc / revs * gear_ratio)
+    return scales.pop() if len(scales) == 1 else None
+
+
+# ---------------------------------------------------------------- router
+
+
+class Router:
+    """Bus wrapper that hands UNSOLICITED frames to decoders before the SDO
+    helpers can discard them (the canworker.TpdoTap shape).
+
+    sdo_read/sdo_write drain and filter on 0x580+node, so any pushed frame not
+    routed here is lost while a transfer is in flight. Handlers run on the bus
+    thread and must never raise; an exception is swallowed so an SDO transfer
+    in progress is not broken by a decoder bug.
+    """
+
+    def __init__(self, bus):
+        self._bus = bus
+        self._route: dict[int, callable] = {}
+
+    def add(self, cob_id: int, handler) -> None:
+        self._route[cob_id] = handler
+
+    def send(self, msg) -> None:
+        self._bus.send(msg)
+
+    def recv(self, timeout=None):
+        deadline = None if timeout is None else time.perf_counter() + timeout
+        while True:
+            remaining = None if deadline is None else max(0.0, deadline - time.perf_counter())
+            m = self._bus.recv(timeout=remaining)
+            if m is None:
+                return None
+            h = self._route.get(m.arbitration_id)
+            if h is None:
+                return m
+            try:
+                h(m)
+            except Exception:  # noqa: BLE001 - see class docstring
+                pass
+            if deadline is not None and time.perf_counter() >= deadline:
+                return None
+
+    def pump(self, seconds: float) -> None:
+        """Route everything that arrives for `seconds`; SDO replies to nobody are dropped."""
+        end = time.perf_counter() + seconds
+        while True:
+            left = end - time.perf_counter()
+            if left <= 0:
+                return
+            if self.recv(timeout=left) is None:
+                return
+
+    def shutdown(self) -> None:
+        self._bus.shutdown()
+
+
+# ---------------------------------------------------------------- drive link
+
+DISARMED, ARMED, FAULT = "disarmed", "armed", "fault"
+
+
+@dataclass
+class DriveTelemetry:
+    statusword: int | None = None
+    rpm: int | None = None
+    position: int | None = None
+    error_register: int | None = None
+    t_status: float | None = None  # monotonic receive time of the last TPDO1
+    t_position: float | None = None  # ... TPDO2
+    t_alive: float | None = None  # any frame or SDO reply from this node
+    nmt: str | None = None
+    alarm: dict | None = None
+
+    @property
+    def state(self) -> str:
+        return "-" if self.statusword is None else decode_state(self.statusword)
+
+    @property
+    def operation_enabled(self) -> bool | None:
+        if self.statusword is None:
+            return None
+        return (self.statusword & OPERATION_ENABLED_MASK) == OPERATION_ENABLED
+
+    @property
+    def faulted(self) -> bool:
+        return bool(self.statusword is not None and self.statusword & SW_FAULT) or bool(self.error_register)
+
+
+@dataclass
+class DriveLink:
+    """Owns the two BLV-R drives over one Router. Blocking, bus-thread only.
+
+    State: DISARMED (drives de-energised, or not yet touched), ARMED (both in
+    Operation enabled, RPDO1 live), FAULT (a drive faulted or fell silent while
+    armed; cleared only by disarm()). Every transition that can fail part-way
+    rolls back to a known state: arm() de-energises BOTH drives on any error.
+    """
+
+    router: Router
+    nodes: dict[int, str]
+    ramp: dict  # {"accel": rpm/s, "decel": rpm/s}
+    log: callable = print
+    state: str = DISARMED
+    fault_reason: str | None = None
+    telemetry: dict[int, DriveTelemetry] = field(default_factory=dict)
+    scale: WheelScale | None = None
+    applied: tuple[int, int] | None = None
+
+    def __post_init__(self):
+        for nid in self.nodes:
+            self.telemetry[nid] = DriveTelemetry()
+            self.router.add(TPDO1_COB_BASE + nid, self._make_tpdo1(nid))
+            self.router.add(TPDO2_COB_BASE + nid, self._make_tpdo2(nid))
+            self.router.add(0x080 + nid, self._make_emcy(nid))
+            self.router.add(HEARTBEAT_COB_BASE + nid, self._make_heartbeat(nid))
+
+    # -- pushed frames (bus thread, inside recv) --
+
+    def _make_tpdo1(self, nid):
+        def on(m):
+            sw, rpm = decode_tpdo1(m.data)
+            t = self.telemetry[nid]
+            t.statusword, t.rpm = sw & 0xFFFF, rpm
+            t.t_status = t.t_alive = time.monotonic()
+
+        return on
+
+    def _make_tpdo2(self, nid):
+        def on(m):
+            pos, err = decode_tpdo2(m.data)
+            t = self.telemetry[nid]
+            t.position, t.error_register = pos, err
+            t.t_position = t.t_alive = time.monotonic()
+
+        return on
+
+    def _make_emcy(self, nid):
+        def on(m):
+            a = decode_emcy(bytes(m.data))
+            t = self.telemetry[nid]
+            t.t_alive = time.monotonic()
+            t.alarm = None if a["cleared"] else a
+            label = self.nodes[nid]
+            if a["cleared"]:
+                self.log(f"node {nid} ({label}) alarms cleared")
+            else:
+                self.log(f"node {nid} ({label}) ALARM {a['hex']} - {a['name']}: {a['note']}")
+
+        return on
+
+    def _make_heartbeat(self, nid):
+        def on(m):
+            t = self.telemetry[nid]
+            t.t_alive = time.monotonic()
+            t.nmt = decode_nmt(m.data[0] if m.data else 0)
+
+        return on
+
+    # -- SDO (blocking) --
+
+    def read(self, node, index, sub=0, timeout=0.4):
+        st, val, _, _ = sdo_read(self.router, node, index, sub, timeout=timeout, collision_window=0.0)
+        if st:
+            self._alive(node)
+            return u32(val)
+        return None
+
+    def _alive(self, node):
+        t = self.telemetry.get(node)  # the MLS (node 10) is read through here too
+        if t is not None:
+            t.t_alive = time.monotonic()
+
+    def write(self, node, index, sub, value, size, what):
+        guard.check(index, value, sub)
+        ok, detail = sdo_write(self.router, node, index, sub, value, size)
+        if not ok:
+            raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
+        self._alive(node)
+
+    def nmt(self, command, node=0):
+        self.router.send(can.Message(arbitration_id=0x000, data=[command, node], is_extended_id=False))
+        self.router.pump(0.05)
+
+    # -- configuration --
+
+    def enable_heartbeat(self, ms: int) -> None:
+        """Drive PRODUCER heartbeat (1017h): what tells a dead drive from an idle one."""
+        if not ms:
+            return
+        for nid in self.nodes:
+            try:
+                self.write(nid, 0x1017, 0, ms, 2, "producer heartbeat time")
+            except Exception as e:  # noqa: BLE001
+                self.log(f"node {nid} refused a heartbeat interval ({e}); liveness falls back to TPDOs")
+
+    def set_pc_loss_guard(self, pc_node: int, timeout_ms: int) -> None:
+        """Drive CONSUMER heartbeat (1016h): the drive's own response to losing us."""
+        for nid in self.nodes:
+            self.write(
+                nid, 0x1016, 1, heartbeat_consumer_value(pc_node, timeout_ms), 4, "consumer heartbeat time"
+            )
+
+    def configure_pdos(self, feedback_period_ms: int) -> None:
+        """RPDO1 (setpoint) and TPDO1/2 (feedback). Pre-operational only (CiA 301)."""
+        for nid in self.nodes:
+            rpdo.configure(self.router, nid, self._sdo_write_tuple)
+            for index, sub, value, size, what in tpdo_configuration_steps(nid, feedback_period_ms):
+                self.write(nid, index, sub, value, size, what)
+
+    def _sdo_write_tuple(self, bus, node, index, sub, value, size):
+        try:
+            self.write(node, index, sub, value, size, "RPDO1 setup")
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+        return True, ""
+
+    # -- state machine --
+
+    def preflight(self) -> tuple[bool, list[str]]:
+        ok, report = True, []
+        for nid, label in self.nodes.items():
+            st, _, note, _ = sdo_read(self.router, nid, 0x1000, 0)
+            if st is None:
+                report.append(f"node {nid} ({label}): not responding")
+                ok = False
+                continue
+            if "COLLISION" in note:
+                report.append(f"node {nid} ({label}): {note}")
+                ok = False
+                continue
+            err, sw = self.read(nid, 0x1001), self.read(nid, 0x6041)
+            if err is None or sw is None:
+                report.append(f"node {nid} ({label}): diagnostics unreadable")
+                ok = False
+                continue
+            report.append(
+                f"node {nid} ({label}): error reg 0x{err:02X}, statusword 0x{sw:04X} ({decode_state(sw)})"
+            )
+            if err:
+                report.append(f"  node {nid}: driver reports a fault - clear it first")
+                ok = False
+            if not sw & SW_REMOTE:
+                report.append(
+                    f"  node {nid}: Remote bit clear - controlword ignored (S-ON active, or MEXE02)"
+                )
+                ok = False
+            if sw & SW_FAULT:
+                report.append(f"  node {nid}: FAULT state")
+                ok = False
+        return ok, report
+
+    def arm(
+        self,
+        feedback_period_ms: int,
+        pc_node: int | None,
+        pc_loss_ms: int,
+        gear_ratio: float,
+        invert_left: bool,
+        invert_right: bool,
+    ) -> list[str]:
+        """Energise both drives with zero targets. Raises, and rolls back, on any failure."""
+        ok, report = self.preflight()
+        if not ok:
+            raise RuntimeError("preflight failed: " + "; ".join(report))
+        # PDO mapping and NMT error control belong in PRE-OPERATIONAL.
+        self.nmt(0x80)
+        self.configure_pdos(feedback_period_ms)
+        if pc_node is not None and pc_loss_ms:
+            self.set_pc_loss_guard(pc_node, pc_loss_ms)
+        try:
+            self._enable_sequence()
+        except BaseException:
+            self.disarm(force=True)
+            raise
+        cprev = counts_per_wheel_rev(lambda n, i, s: self.read(n, i, s), tuple(self.nodes), gear_ratio)
+        self.scale = WheelScale(gear_ratio, invert_left, invert_right, cprev)
+        if cprev is None:
+            self.log("encoder scale (608Fh/6091h) unreadable or inconsistent - wheel positions invalid")
+        else:
+            self.log(f"encoder scale {cprev:.0f} counts per wheel turn")
+        self.applied = None
+        self.state, self.fault_reason = ARMED, None
+        return report
+
+    def _enable_sequence(self) -> None:
+        for nid in self.nodes:
+            self.nmt(0x01, nid)
+        for nid in self.nodes:
+            self.write(nid, 0x6060, 0, 3, 1, "modes of operation = pv")
+            self.write(nid, 0x6083, 0, int(self.ramp["accel"]), 4, "profile acceleration")
+            self.write(nid, 0x6084, 0, int(self.ramp["decel"]), 4, "profile deceleration")
+            self.write(nid, 0x60FF, 0, 0, 4, "target velocity = 0")
+            for cw, name in (
+                (CW_SHUTDOWN, "Shutdown"),
+                (CW_SWITCH_ON, "Switch On"),
+                (CW_ENABLE, "Enable Operation"),
+            ):
+                self.write(nid, 0x6040, 0, cw, 2, name)
+                self.router.pump(0.05)
+            sw = self.read(nid, 0x6041) or 0
+            if (sw & OPERATION_ENABLED_MASK) != OPERATION_ENABLED:
+                raise RuntimeError(
+                    f"node {nid} did not reach Operation enabled (statusword 0x{sw:04X}, {decode_state(sw)})"
+                )
+
+    def disarm(self, force: bool = False) -> None:
+        """Zero, wait for the ramp, de-energise, Pre-operational. Never raises."""
+        was = self.state
+        self.state, self.applied = DISARMED, None
+        if was == DISARMED and not force:
+            return
+        for nid in self.nodes:
+            try:
+                sdo_write(self.router, nid, 0x60FF, 0, 0, 4)
+            except Exception:  # noqa: BLE001
+                pass
+        end = time.monotonic() + 4.0
+        while time.monotonic() < end:
+            try:
+                if all((self.read(n, 0x6041, timeout=0.2) or 0) & SW_SPEED_IS_ZERO for n in self.nodes):
+                    break
+            except Exception:  # noqa: BLE001
+                break
+            self.router.pump(0.05)
+        for nid in self.nodes:
+            for cw in (CW_SHUTDOWN, CW_DISABLE_VOLTAGE):
+                try:
+                    sdo_write(self.router, nid, 0x6040, 0, cw, 2)
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            self.nmt(0x80)
+        except Exception:  # noqa: BLE001
+            pass
+        self.fault_reason = None if was != FAULT else self.fault_reason
+
+    def fault(self, reason: str) -> None:
+        """Latch a fault: setpoint zero now, no ramp. Drives stay energised (servo lock)."""
+        if self.state == ARMED:
+            try:
+                self.send_target(0, 0)
+            except Exception:  # noqa: BLE001
+                pass
+        self.state, self.fault_reason = FAULT, reason
+
+    def send_target(self, left_rpm: int, right_rpm: int) -> None:
+        """RPDO1 to both drives. A queue append; nothing is waited for."""
+        target = (int(round(left_rpm)), int(round(right_rpm)))
+        for nid, rpm in zip(self.nodes, target, strict=True):
+            rpdo.send(self.router, nid, CW_OPERATION_ENABLED, rpm)
+        self.applied = target
+
+    def send_pc_heartbeat(self, pc_node: int) -> None:
+        self.router.send(pc_heartbeat_message(pc_node))
+
+    # -- checks --
+
+    def silent_nodes(self, now: float, timeout_s: float) -> list[int]:
+        return [n for n, t in self.telemetry.items() if t.t_alive is None or now - t.t_alive > timeout_s]
+
+    def dropped_out(self) -> list[int]:
+        """Drives that left Operation enabled while we believe they are armed."""
+        return [n for n, t in self.telemetry.items() if t.operation_enabled is False]
+
+    def faulted_nodes(self) -> list[int]:
+        return [n for n, t in self.telemetry.items() if t.faulted or t.alarm is not None]
+
+
+def target_rpm(cmd, now: float, timeout_s: float, scale: WheelScale, max_rpm: float) -> tuple[int, int]:
+    """The setpoint for this tick. `cmd` is (t_recv, left_rad_s, right_rad_s) or None.
+
+    The drive node's OWN command watchdog (spec §3.5): a command older than
+    timeout_s is a zero setpoint regardless of what the mux last said, and the
+    result is clamped to the motor's rating per wheel.
+    """
+    if cmd is None or now - cmd[0] > timeout_s:
+        return 0, 0
+    left = max(-max_rpm, min(max_rpm, scale.motor_rpm(cmd[1], left=True)))
+    right = max(-max_rpm, min(max_rpm, scale.motor_rpm(cmd[2], left=False)))
+    return int(round(left)), int(round(right))
+
+
+@dataclass(frozen=True)
+class ArmDecision:
+    action: str  # "none" | "arm" | "fault" | "disarm"
+    reason: str = ""
+
+
+def decide(
+    state: str, want_armed: bool, now: float, retry_at: float, silent: list, dropped: list, faulted: list
+) -> ArmDecision:
+    """The arm/fault policy as a pure function, so it can be tabled in a test.
+
+    - not wanted: disarm if anything is energised.
+    - DISARMED and wanted: arm, subject to the retry backoff.
+    - ARMED: a silent or alarmed drive is a FAULT (latched; the setpoint goes
+      to zero at once). FAULT is left only by an explicit ack/disarm - a
+      vehicle that stopped itself is not restarted by the thing that stopped it.
+    - ARMED but a drive left Operation enabled (the safety chain took it to
+      ETO): DISARM and let the backoff re-arm with a ZERO target, the same
+      level-held behaviour canworker._hold_arm_state has. Re-arming moves
+      nothing: motion needs a MotionPermit and a Start edge upstream (T8).
+    - FAULT: stay there.
+    """
+    if not want_armed:
+        return ArmDecision("disarm" if state != DISARMED else "none", "not wanted")
+    if state == DISARMED:
+        return ArmDecision("arm" if now >= retry_at else "none", "backoff" if now < retry_at else "wanted")
+    if state == ARMED:
+        if silent:
+            return ArmDecision("fault", f"drive silent: {silent}")
+        if faulted:
+            return ArmDecision("fault", f"drive fault: {faulted}")
+        if dropped:
+            return ArmDecision("disarm", f"drive left Operation enabled (ETO?): {dropped}")
+        return ArmDecision("none", "armed")
+    return ArmDecision("none", "fault latched")
