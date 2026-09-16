@@ -112,7 +112,7 @@ class DriveNode(Node):
             float(p("monitor_period_still_s").value),
             float(p("monitor_period_moving_s").value),
         )
-        self._mon_node_i = 0
+        self._cursor = canopen.MonitorCursor(self._mon, config.NODES) if self._mon is not None else None
         self._bus_stats = {"sdo_timeouts": 0, "monitor_reads": 0}
         self._event_seq = 0
         self._requests: queue.Queue = queue.Queue()
