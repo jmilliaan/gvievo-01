@@ -249,9 +249,7 @@ class RouteExecutor(Node):
         # R07: receipt is not evidence. Prerequisites need the drive's validity flags too.
         self._wheels_valid = bool(m.left_valid and m.right_valid)
         self._wheels_still = (
-            self._wheels_valid
-            and abs(m.left_vel_rad_s) < self.w_eps
-            and abs(m.right_vel_rad_s) < self.w_eps
+            self._wheels_valid and abs(m.left_vel_rad_s) < self.w_eps and abs(m.right_vel_rad_s) < self.w_eps
         )
 
     def _on_odom(self, m: Odometry) -> None:
@@ -519,7 +517,9 @@ class RouteExecutor(Node):
             p1 = (st.start[0] + c * a1, st.start[1] + s * a1, st.start[2])
             mask = fpmod.swept_line(self.grid, self.fp, p0, p1)
         else:
-            mask = fpmod.swept_rotation(self.grid, self.fp, (st.start[0], st.start[1]))
+            mask = fpmod.swept_rotation(
+                self.grid, self.fp, (st.start[0], st.start[1]), st.start[2], st.signed_angle_rad
+            )
         yaw = _yaw(tr.transform.rotation)
         r = np.asarray(scan.ranges, dtype=np.float64)
         ang = scan.angle_min + np.arange(len(r)) * scan.angle_increment + yaw

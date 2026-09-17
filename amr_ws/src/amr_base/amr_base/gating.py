@@ -6,7 +6,9 @@ Authority comes from three places, never from the command streams themselves:
     selected without a fresh one; a lease from another instance or generation
     is not a lease;
   * the physical panel: selector MANUAL is manual authority, AUTO is the
-    executor's; a stale or invalid panel image is no authority at all;
+    executor's; a stale or invalid panel image is no authority at all. Under
+    MANUAL the panel image also carries the jog pendant levels, which win over
+    every other manual stream while a direction is held;
   * the executor's MotionPermit: FOLLOW or ROTATE, expiring 0.3 s after local
     receipt, honoured only under AUTO, only with the AUTONOMOUS lease class,
     and only if it carries the lease's instance and generation.
@@ -26,7 +28,7 @@ import math
 from collections import OrderedDict
 from dataclasses import dataclass
 
-NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING = 0, 1, 2, 3, 4, 5
+NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING, PENDANT = 0, 1, 2, 3, 4, 5, 6
 NAMES = {
     NONE: "none",
     TELEOP: "teleop",
@@ -34,6 +36,7 @@ NAMES = {
     ROTATE: "rotate",
     MANUAL: "manual",
     COMMISSIONING: "commissioning",
+    PENDANT: "pendant",
 }
 
 # ControlLease.allowed bits
@@ -50,6 +53,8 @@ class Params:
     drives_timeout_s: float = 0.3
     require_supervisor: bool = False  # production sets True; the bench wrappers leave it False
     teleop_enabled: bool = True  # /cmd_vel_teleop is an engineering input; production turns it off
+    pendant_v: float = 0.30  # body m/s while a pendant direction is held (browser jog's V_MAX)
+    pendant_w: float = 0.30  # body rad/s
 
 
 DEFAULT = Params()
@@ -154,6 +159,11 @@ class Panel:
     t_recv: float
     valid: bool
     auto: bool
+    # jog pendant direction levels, opposing pairs already cancelled
+    fwd: bool = False
+    rvs: bool = False
+    left: bool = False
+    right: bool = False
 
 
 @dataclass
@@ -223,6 +233,12 @@ def select(
             return Selection(NONE, 0.0, 0.0, "commissioning: no fresh wheel command", gen)
         if p.require_supervisor and not (lease.allowed & LEASE_MANUAL):
             return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True)
+        # Physical pendant: a held deadman outranks any browser or keyboard stream.
+        # Its freshness is the panel image's own (panel_ok above).
+        if panel.fwd or panel.rvs or panel.left or panel.right:
+            v = p.pendant_v * (int(panel.fwd) - int(panel.rvs))
+            w = p.pendant_w * (int(panel.left) - int(panel.right))
+            return Selection(PENDANT, v, w, "pendant", gen)
         # Browser jog: bound by its own carried lifetime as well as the mux timeout.
         if manual is not None and p.require_supervisor:
             same = manual.instance == lease.instance and manual.generation == lease.generation

@@ -1,0 +1,86 @@
+// Runs the real static/jogpad.js against a minimal fake DOM and a deferred fetch.
+// Driven by test_jogpad_js.py; prints one JSON line of results.
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+function el(tag) {
+  const e = { tagName: tag, classList: new Set(), dataset: {}, listeners: {}, textContent: '', value: '0.2', children: [],
+    addEventListener(ev, fn) { (this.listeners[ev] = this.listeners[ev] || []).push(fn); },
+    setPointerCapture() {}, fire(ev, arg) { (this.listeners[ev] || []).forEach(fn => fn(arg || { preventDefault() {}, pointerId: 1 })); } };
+  e.classList.toggle = function (c, on) { if (on === undefined ? !this.has(c) : on) this.add(c); else this.delete(c); };
+  e.classList.contains = e.classList.has;
+  return e;
+}
+function makeRoot() {
+  const buttons = ['fl', 'f', 'fr', 'l', 'stop', 'r', 'bl', 'b', 'br'].map(d => { const b = el('BUTTON'); b.dataset.dir = d; return b; });
+  const status = el('B'), speed = el('SELECT');
+  return { buttons, status, set innerHTML(v) { this.html = v; },
+    querySelector(sel) { return sel === '.jog-status' ? status : sel === '.jog-speed' ? speed : null; },
+    querySelectorAll() { return buttons; } };
+}
+const doc = el('DOC'); doc.activeElement = null; doc.hidden = false;
+const win = el('WIN');
+const calls = [];
+let pendingPress = [];
+async function api(url, body) {
+  calls.push({ url, body });
+  if (url === '/api/manual/press') return new Promise(res => pendingPress.push(() => res({ status: 200, data: { session: 'S' + calls.length, ticket: 't0' } })));
+  if (url === '/api/manual/refresh') return { status: 200, data: { ticket: 't' + calls.length, v: body.v, w: body.w } };
+  return { status: 200, data: {} };
+}
+api.catchable = true;
+const timers = [];
+const ctx = { document: doc, window: win, crypto: { randomUUID: () => 'owner-uuid' }, console,
+  setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout: (i) => { timers[i - 1] = null; },
+  api: (u, b) => { const p = api(u, b); return p; } };
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'amr_web', 'static', 'jogpad.js'), 'utf8'), ctx);
+const flush = () => new Promise(r => setImmediate(r));
+const runTimers = async (n) => { for (let i = 0; i < n; i++) { const t = timers.splice(0); t.forEach(f => f && f()); await flush(); } };
+const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh' && (c.body.v !== 0 || c.body.w !== 0)).length;
+
+(async () => {
+  const out = {};
+  const root = makeRoot();
+  ctx.jogpad(root);
+  const fwd = root.buttons[1];
+
+  // 1. release BEFORE the press response arrives: no refresh may ever go out
+  for (const ev of ['pointerup', 'pointercancel']) {
+    calls.length = 0;
+    fwd.fire('pointerdown');
+    out[`active_while_pending_${ev}`] = fwd.classList.has('active');
+    fwd.fire(ev);
+    out[`cleared_${ev}`] = !fwd.classList.has('active');
+    pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
+    out[`refreshes_after_${ev}`] = nonzeroRefreshes();
+    out[`late_session_released_${ev}`] = calls.some(c => c.url === '/api/manual/release');
+  }
+  // 2. blur and hidden tab before the response
+  for (const kind of ['blur', 'hidden']) {
+    calls.length = 0;
+    fwd.fire('pointerdown');
+    if (kind === 'blur') win.fire('blur'); else { doc.hidden = true; doc.fire('visibilitychange'); doc.hidden = false; }
+    pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
+    out[`refreshes_after_${kind}`] = nonzeroRefreshes();
+  }
+  // 3. a normal hold refreshes and lights the cell; release stops refreshing and clears it
+  calls.length = 0;
+  fwd.fire('pointerdown');
+  pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
+  out.hold_refreshes = nonzeroRefreshes();
+  out.hold_active = fwd.classList.has('active');
+  fwd.fire('pointerup'); await flush();
+  const before = nonzeroRefreshes(); await runTimers(3);
+  out.refreshes_after_release = nonzeroRefreshes() - before;
+  out.release_cleared = !root.buttons.some(b => b.classList.has('active'));
+  // 4. Stop cell sends /api/stop and flashes
+  calls.length = 0;
+  root.buttons[4].onclick(); await flush();
+  out.stop_sent = calls.some(c => c.url === '/api/stop');
+  out.stop_flash = root.buttons[4].classList.has('active');
+  await runTimers(1);
+  out.stop_flash_cleared = !root.buttons[4].classList.has('active');
+  console.log(JSON.stringify(out));
+})();

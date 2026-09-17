@@ -3,7 +3,7 @@
     DIO discrete inputs (Modbus TCP, drivers/dio.DioLink thread)
         -> /amr/panel_state (PanelState, 50 Hz): debounced Reset/Start edges,
            AUTO/MANUAL selector, valid=false while comms are down or before
-           the first baseline
+           the first baseline; jog pendant direction levels
     /cmd_wheel_vel + /drives/status
         -> horn-and-lights coil (DO HORN_DO_CHANNEL), renewed every tick,
            expiring on its own (config.HORN_HOLD_S) if this node dies
@@ -71,7 +71,14 @@ class PanelNode(Node):
         self.get_logger().info(
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, auto DI{config.PANEL_DI_AUTO}; "
-            f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}"
+            f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}; "
+            + (
+                f"pendant fwd DI{config.PENDANT_DI_FWD}, "
+                f"rvs DI{config.PENDANT_DI_RVS}, left DI{config.PENDANT_DI_LEFT}, "
+                f"right DI{config.PENDANT_DI_RIGHT}"
+                if config.PENDANT_ENABLED
+                else "pendant disabled"
+            )
         )
 
     # -- inputs --
@@ -105,6 +112,7 @@ class PanelNode(Node):
         m.start_edge = frame.start_edge
         m.reset_edge = frame.reset_edge
         m.seq = frame.seq
+        m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
         self._pub.publish(m)
 
         if config.HORN_ENABLED:

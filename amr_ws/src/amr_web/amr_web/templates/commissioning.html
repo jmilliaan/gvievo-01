@@ -1,46 +1,64 @@
 {% extends "base.html" %}
 {% block title %}AMR — commissioning{% endblock %}
 {% block body %}
+<div class="warn-box"><b>Engineering mode inside IDLE.</b> <b>Hold plan</b> validates and stores the move — it moves nothing. The job runs only on a <b>fresh press of the physical Start</b> with the selector in <b>MANUAL</b>, once. While a plan is held or running, ordinary jog and mode changes are refused. Selector change, Stop, panel or feedback loss aborts it.</div>
 <section class="cols">
-  <div class="card">
-    <h2>Encoder-only test move</h2>
-    <p class="muted">Engineering mode inside IDLE. <b>Hold plan</b> validates and stores the move — it moves nothing. The job runs only on a fresh press of the physical <b>Start</b> with the selector in <b>MANUAL</b>, once. While a plan is held or running, ordinary jog and mode changes are refused. Selector change, Stop, panel or feedback loss aborts it. Results are measurements of the encoders, not corrections.</p>
-    <label>Plan (JSON)<textarea id="plan" rows="9" style="width:100%;font:12px ui-monospace,monospace">{
+  <div class="panel">
+    <h2>Encoder-only test move <small>plan json</small></h2>
+    <label class="field">Plan <small>kinds: straight {distance_m} · arc {radius_m, angle_deg} · pivot {angle_deg} · pulses {left, right}</small>
+      <textarea id="plan" rows="9">{
   "id": "straight-1m",
   "speed": {"speed_mps": 0.10},
   "segments": [
     {"kind": "straight", "distance_m": 1.0}
   ]
 }</textarea></label>
-    <div class="muted">kinds: straight {distance_m} · arc {radius_m, angle_deg} · pivot {angle_deg} · pulses {left, right}</div>
-    <div class="row">
-      <button id="btn-plan" class="primary">Hold plan</button>
+    <div class="bar">
+      <button id="btn-plan" class="big run">Hold plan</button>
       <button id="btn-clear" class="danger">Clear / abort</button>
     </div>
-    <div id="planned" class="state">—</div>
+    <h3 style="margin-top:14px">Planned segments</h3>
+    <div id="planned" class="list"><div class="none">no plan held</div></div>
   </div>
-  <div class="card">
-    <h2>Job</h2>
-    <div id="job" class="state">—</div>
-    <h2>Results</h2>
-    <div id="results"></div>
+  <div class="panel">
+    <h2>Job <small>/amr/commissioning_state</small></h2>
+    <div id="job" class="tel-grid"></div>
+    <p id="job-reason" class="note"></p>
+    <p id="job-evidence" class="note"></p>
+    <p class="note">Results are measurements of the encoders, not corrections.</p>
   </div>
 </section>
 {% endblock %}
 {% block scripts %}<script>
 const $ = id => document.getElementById(id);
+const PHASE_LEVEL = { PREPARED: 'warn', RUNNING: 'warn', SETTLING: 'warn', ABORTED: 'bad' };
 $('btn-plan').onclick = async () => {
-  let plan; try { plan = JSON.parse($('plan').value); } catch (e) { log('plan is not valid JSON: ' + e.message, 'err'); return; }
+  let plan; try { plan = JSON.parse($('plan').value); } catch (e) { log('plan is not valid JSON: ' + e.message, 'bad'); return; }
   const { status, data } = await api('/api/commissioning/plan', { plan });
-  log(data.message, status === 200 ? '' : 'err');
-  if (data.planned) $('planned').textContent = data.planned.segments.map((s, i) => `${i + 1}. ${s.kind}  target counts L ${s.counts[0]} R ${s.counts[1]}  (${s.commanded.distance_m.toFixed(3)} m, ${s.commanded.heading_deg.toFixed(1)}°)`).join('\n');
+  log(data.message, status === 200 ? '' : 'bad');
+  if (data.planned) $('planned').innerHTML = '<div class="row three head"><span>#</span><span>target counts L / R</span><span>distance · heading</span></div>' +
+    data.planned.segments.map((s, i) => `<div class="row three"><span class="k">${i + 1} ${esc(s.kind)}</span>` +
+      `<span class="v">${esc(s.counts[0])} / ${esc(s.counts[1])}</span><span class="v">${num(s.commanded.distance_m, 3)}<i>m</i> ${num(s.commanded.heading_deg, 1)}<i>°</i></span></div>`).join('');
 };
 $('btn-clear').onclick = () => api('/api/commissioning/clear').then(r => log(r.data.message));
 async function tick() {
   const { status, data } = await apiGet('/api/commissioning');
   if (status === 200 && data) {
-    $('job').textContent = `${data.phase_name}  ${data.plan_id}${data.reason ? '\n' + data.reason : ''}\nsegment ${data.segment}/${data.segments} ${data.kind}  progress L ${data.progress_left_m.toFixed(3)} R ${data.progress_right_m.toFixed(3)} m  v ${data.speed_mps.toFixed(2)} m/s\nencoder pose x ${data.pose_x_m.toFixed(3)} y ${data.pose_y_m.toFixed(3)} heading ${data.heading_deg.toFixed(1)}°   gyro heading ${data.gyro_heading_deg.toFixed(1)}°\ncompleted ${data.completed}${data.results_path ? '\nevidence: ' + data.results_path : ''}`;
-  } else if (status === 200) $('job').textContent = 'no commissioning node (supervised base only)';
+    tiles('job', [
+      ['Phase', data.phase_name, data.plan_id || '—', PHASE_LEVEL[data.phase_name], 'key'],
+      ['Segment', `${data.segment}/${data.segments}`, data.kind || '—'],
+      ['Progress L', num(data.progress_left_m, 3), 'm'],
+      ['Progress R', num(data.progress_right_m, 3), 'm'],
+      ['Speed', num(data.speed_mps, 2), 'm/s'],
+      ['Encoder x', num(data.pose_x_m, 3), 'm'],
+      ['Encoder y', num(data.pose_y_m, 3), 'm'],
+      ['Heading', num(data.heading_deg, 1), '° encoder'],
+      ['Gyro heading', num(data.gyro_heading_deg, 1), '° integrated'],
+      ['Completed', String(data.completed), 'jobs'],
+    ]);
+    $('job-reason').textContent = data.reason || '';
+    $('job-evidence').innerHTML = data.results_path ? `evidence: <code>${esc(data.results_path)}</code>` : '';
+  } else if (status === 200) tiles('job', [['Phase', '–', 'no commissioning node (supervised base only)', 'warn']]);
   setTimeout(tick, 500);
 }
 tick();

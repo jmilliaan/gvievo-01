@@ -1,6 +1,19 @@
 # amr_web style makeover — coding plan
 
 Prepared 2026-09-17 against branch `slam-roadmap` @ `55d400a`.
+
+**Status (2026-09-17): W1–W8 implemented on top of `dac7a0a`, offline-verified only.**
+Deviations from the text below:
+- The operator callout class is `.warn-box` (and `.warn-box.stop`), not `.warn`: `warn` is
+  already the level modifier on `.tel`, `.chip` and `.hero-mode`, and one class name for
+  both would restyle every warning tile as a callout.
+- The Maps jog pad sits in the survey panel, under the controls, not under the live map.
+- W8 got two extra tests: `test_every_element_id_a_page_script_uses_exists_on_that_page`
+  (the id-rename risk in §6) and `test_jogpad_js.py`, which runs the real `jogpad.js` in
+  node against a fake DOM with deferred press responses (skipped when node is absent).
+- Still open: §5 items 2–8. These are the sim walk-through at three sizes, the forced
+  stale states, the jog regression in a real browser, the editor flow, the offline font
+  check, the glyph check (`■ ▲ ◀ ↖` fall back to a system font) and P7.
 Target: the unified-service web app `amr_ws/src/amr_web` (port 5001).
 Style spec: [design_language.json](design_language.json).
 Reference implementation of that spec: the legacy app, `app/static/app.css` and

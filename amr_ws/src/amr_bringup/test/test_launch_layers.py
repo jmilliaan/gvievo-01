@@ -30,6 +30,7 @@ BASE_EXES = {
     "cmd_mux_kinematics_node",
     "diff_drive_odom_node",
     "imu_bias_node",
+    "scan_gate_node",
     "ekf_node",
     "robot_state_publisher",
 }

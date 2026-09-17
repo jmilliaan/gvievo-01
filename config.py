@@ -413,6 +413,16 @@ _SCHEMA = {
         "enabled":    ("HORN_ENABLED", bool),
         "do_channel": ("HORN_DO_CHANNEL", int),
     },
+    "pendant": {
+        # Hard-wired jog pendant on the DIO island: four direction pushbuttons,
+        # levels resolved in core/panel.pendant_intent() (an opposing pair
+        # cancels); the mux turns them into a body twist.
+        "enabled":   ("PENDANT_ENABLED", bool),
+        "di_fwd":    ("PENDANT_DI_FWD", int),
+        "di_rvs":    ("PENDANT_DI_RVS", int),
+        "di_left":   ("PENDANT_DI_LEFT", int),
+        "di_right":  ("PENDANT_DI_RIGHT", int),
+    },
     "can": {
         "bitrate":        ("CAN_BITRATE", int),
         "channel":        ("CAN_CHANNEL", str),
@@ -809,6 +819,22 @@ def _validate(ns):
     check(not g("HORN_ENABLED") or g("DIO_ENABLED"),
           "horn.enabled is true while dio.enabled is false - the coil is "
           "written by the DIO scan, so the horn would never sound")
+
+    # -- pendant ----------------------------------------------------------
+    pchans = {k: g(f"PENDANT_DI_{k.upper()}") for k in ("fwd", "rvs", "left", "right")}
+    for key, ch in pchans.items():
+        check(0 <= ch < g("DIO_NUM_DI"),
+              f"pendant.di_{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
+    check(len(set(pchans.values())) == 4,
+          f"pendant channels must be distinct, got {pchans}")
+    # A pendant button on a panel channel would drive the vehicle while also
+    # pressing Start/Reset or flipping the selector.
+    shared = set(pchans.values()) & set(chans.values())
+    check(not shared,
+          f"pendant channels {sorted(shared)} collide with panel channels {chans}")
+    check(not g("PENDANT_ENABLED") or g("DIO_ENABLED"),
+          "pendant.enabled is true while dio.enabled is false - the pendant is "
+          "read from the DI image, so its buttons would never respond")
 
     # -- imu --------------------------------------------------------------
     # One SDO read per poll on the bus thread, so it is paced like the other

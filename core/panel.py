@@ -131,3 +131,60 @@ class PanelScan:
         if self._stable is None:
             return None
         return AUTO if self._stable[2] else MANUAL
+
+
+class DebouncedLevels:
+    """Debounced LEVELS over any set of DI channels (the jog pendant).
+
+    Same trust rules as PanelScan - a level must read the same on N consecutive
+    scans, stale bits during a comms loss are not input, a malformed image is
+    not input - but no anti-tie-down baseline: a pendant button is a deadman,
+    and one held at power-on is meant to drive.
+
+    scan() returns the believed levels as a tuple of bools, or None while there
+    is nothing trustworthy to report.
+    """
+
+    def __init__(self, channels, debounce_scans=2):
+        self.channels = tuple(int(c) for c in channels)
+        self.debounce_scans = max(1, int(debounce_scans))
+        self._stable = None
+        self._candidate = None
+        self._count = 0
+
+    def reset(self):
+        self._stable = None
+        self._candidate = None
+        self._count = 0
+
+    def scan(self, di, comms_ok):
+        if not comms_ok:
+            self.reset()
+            return None
+        try:
+            sample = tuple(bool(di[c]) for c in self.channels)
+        except (IndexError, TypeError):
+            self.reset()
+            return None
+        if sample == self._candidate:
+            self._count += 1
+        else:
+            self._candidate, self._count = sample, 1
+        if self._count >= self.debounce_scans:
+            self._stable = sample
+        return self._stable
+
+
+# fwd/rvs/left/right - what the pendant is asking for
+PendantIntent = namedtuple("PendantIntent", "fwd rvs left right")
+
+PENDANT_IDLE = PendantIntent(False, False, False, False)
+
+
+def pendant_intent(fwd, rvs, left, right):
+    """Direction levels; an opposing pair cancels to nothing on that axis."""
+    if fwd and rvs:
+        fwd = rvs = False
+    if left and right:
+        left = right = False
+    return PendantIntent(bool(fwd), bool(rvs), bool(left), bool(right))

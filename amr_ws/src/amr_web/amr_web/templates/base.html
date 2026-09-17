@@ -8,30 +8,40 @@
 </head>
 <body>
 <header>
-  <h1>AMR</h1>
+  <h1>AMR control</h1>
   <nav>
     <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
-    <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps &amp; survey</a>
-    <a href="/editor" class="{{ 'on' if page == 'editor' }}">Route editor</a>
+    <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps</a>
+    <a href="/editor" class="{{ 'on' if page == 'editor' }}">Routes</a>
     <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
-    <a href="/params" class="{{ 'on' if page == 'params' }}">Parameters</a>
-    <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commissioning</a>
+    <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
+    <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
   </nav>
-  <div id="pills">
-    <span id="pill-link" class="pill">connecting…</span>
-    <span id="pill-mode" class="pill">mode —</span>
-    <span id="pill-panel" class="pill">selector —</span>
-    <span id="pill-drives" class="pill">drives —</span>
-    <span id="pill-loc" class="pill">localisation —</span>
-    <span id="pill-run" class="pill">run —</span>
-  </div>
+  <span id="pill-link" class="pill">connecting…</span>
 </header>
-<main>{% block body %}{% endblock %}</main>
-<footer><pre id="log"></pre></footer>
+
+<div class="shell">
+  {# The shared rail: what somebody standing next to the vehicle needs on every
+     page. Every tile says "–" until the first poll; a failed poll dims them all. #}
+  <aside id="telemetry" class="stale">
+    <div class="tel-grid">
+      <div class="tel" id="tel-mode"><span>Mode</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-selector"><span>Selector</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-drives"><span>Drives</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-source"><span>Command</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-loc"><span>Localisation</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-run"><span>Run</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-wheels"><span>Wheels</span><b>–</b><i>rad/s · L / R</i></div>
+      <div class="tel" id="tel-gen"><span>Generation</span><b>–</b><i>—</i></div>
+    </div>
+    <pre id="log"></pre>
+  </aside>
+  <main class="{% block main_class %}{% endblock %}">{% block body %}{% endblock %}</main>
+</div>
 <script src="/static/amr.js"></script>
 {% block scripts %}{% endblock %}
 </body>

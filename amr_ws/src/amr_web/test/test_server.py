@@ -394,3 +394,51 @@ def test_r23_concurrent_route_saves_get_distinct_revisions(env):
     for k, _, j in out:
         data = open(j["path"], "rb").read()
         assert hashlib.sha256(data).hexdigest() == j["sha256"] and f"x_m: {4.0 + k}".encode() in data
+
+
+def test_pages_fonts_and_style_guards(env):
+    """web-style W8: every page renders, fonts are self-hosted, and the style rules that
+    are mechanical (no external URLs, light only, flat, square) hold in the source."""
+    import pathlib  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    client = env[0]
+    for page in ("/status", "/manual", "/maps", "/editor", "/run", "/monitor", "/io", "/alarms", "/params",
+                 "/commissioning"):
+        r = client.get(page)
+        assert r.status_code == 200, page
+        assert b'id="telemetry"' in r.data and b"/static/amr.css" in r.data, page
+    r = client.get("/static/fonts/plex-mono-400.woff2")
+    assert r.status_code == 200 and r.data[:4] == b"wOF2"
+    root = pathlib.Path(__file__).resolve().parents[1] / "amr_web"
+    sources = [*root.glob("static/*.css"), *root.glob("static/*.js"), *root.glob("templates/*.html")]
+    assert len(sources) > 15
+    for f in sources:
+        text = f.read_text()
+        assert not re.search(r"https?://", text), f"external URL in {f.name}"
+        assert not re.search(r"@media[^{]*prefers-color-scheme", text), f"dark-mode query in {f.name}"
+        assert "box-shadow" not in text, f.name
+        assert "gradient(" not in text, f.name
+        for radius in re.findall(r"border-radius\s*:\s*([^;}]+)", text):
+            assert radius.strip() in ("50%", "2px", "0"), f"{f.name}: border-radius {radius}"
+
+
+def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
+    """web-style §6: no JS runtime in CI - an id renamed in a template must not silently
+    break its handler. Collects $('id') / getElementById('id') / tile|tiles('id') from the
+    page's inline and linked scripts and checks the rendered page defines each id."""
+    import pathlib  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    client = env[0]
+    static = pathlib.Path(__file__).resolve().parents[1] / "amr_web" / "static"
+    pat = re.compile(r"""(?:\$|getElementById|tiles?)\(\s*'([A-Za-z][\w-]*)'""")
+    for page in ("/status", "/manual", "/maps", "/editor", "/run", "/monitor", "/io", "/alarms", "/params",
+                 "/commissioning"):
+        html = client.get(page).data.decode()
+        ids = set(re.findall(r'\bid="([^"]+)"', html))
+        code = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
+        for src in re.findall(r'<script src="/static/([\w.]+)"', html):
+            code += (static / src).read_text()  # amr.js too: the rail ids must exist on every page
+        missing = {i for i in pat.findall(code) if i not in ids}
+        assert not missing, f"{page}: scripts use ids not on the page: {sorted(missing)}"

@@ -67,6 +67,10 @@ class MappingSession(Node):
         self.declare_parameter("wheels_age_limit_s", 0.10)
         self.declare_parameter("stationary_wheel_rad_s", 0.01)
         self.declare_parameter("service_timeout_s", 10.0)
+        # slam_toolbox stamps map->odom with the last scan it CONSUMED (+ transform_timeout).
+        # Scans flowing while that stamp stands still means SLAM is no longer taking them:
+        # its executor froze (2026-09-17) or its message filter drops everything.
+        self.declare_parameter("slam_stall_s", 5.0)
         self.declare_parameter("generation", 0)  # layer generation (unified plan U0)
         self.generation = int(self.get_parameter("generation").value)
         p = self.get_parameter
@@ -76,6 +80,7 @@ class MappingSession(Node):
         self.wheels_age = p("wheels_age_limit_s").value
         self.w_eps = p("stationary_wheel_rad_s").value
         self.srv_timeout = p("service_timeout_s").value
+        self.slam_stall_s = p("slam_stall_s").value
 
         self._lock = threading.Lock()
         self._state = MappingState.IDLE
@@ -87,6 +92,8 @@ class MappingSession(Node):
         self._saved_path = ""
         self._message = "select New map while stopped"
         self._last_scan_t: float | None = None
+        self._last_scan_stamp: float | None = None  # header stamp, slam's clock for map->odom
+        self._slam_stalled_s = 0.0  # >0: seconds of scans SLAM has not consumed
         self._last_imu_t: float | None = None
         self._last_wheels: tuple[float, bool] | None = None  # (t, still)
         self._map: OccupancyGrid | None = None
@@ -126,8 +133,40 @@ class MappingSession(Node):
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
-    def _on_scan(self, _msg: LaserScan) -> None:
+    def _on_scan(self, msg: LaserScan) -> None:
         self._last_scan_t = self._now()
+        self._last_scan_stamp = rclpy.time.Time.from_msg(msg.header.stamp).nanoseconds * 1e-9
+
+    def _slam_lag_s(self) -> float | None:
+        """Seconds between the newest scan and the scan SLAM last consumed, from the
+        map->odom stamp; None when there is no map->odom or no scan yet."""
+        if self._last_scan_stamp is None:
+            return None
+        try:
+            t = self.tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
+        except Exception:  # noqa: BLE001
+            return None
+        consumed = rclpy.time.Time.from_msg(t.header.stamp).nanoseconds * 1e-9
+        return self._last_scan_stamp - consumed
+
+    def _check_slam(self) -> None:
+        """Once a second while a graph is being built (not paused for review/save)."""
+        if self._state != MappingState.MAPPING:
+            self._slam_stalled_s = 0.0
+            return
+        lag = self._slam_lag_s()
+        stalled = lag is not None and lag > self.slam_stall_s
+        if stalled and self._slam_stalled_s == 0.0:
+            self.get_logger().error(
+                f"SLAM stalled: scans arrive but slam_toolbox consumed none for {lag:.0f} s "
+                "(map->odom stamp frozen); abort the survey and start again"
+            )
+        self._slam_stalled_s = lag if stalled else 0.0
+        if stalled:
+            with self._lock:
+                self._message = (
+                    f"SLAM STALLED {lag:.0f} s: slam_toolbox stopped taking scans; abort, then start again"
+                )
 
     def _on_imu(self, _msg: Imu) -> None:
         self._last_imu_t = self._now()
@@ -167,6 +206,10 @@ class MappingSession(Node):
             problems.append("vehicle is moving")
         if self._pose_in_map() is None:
             problems.append("no map->base_footprint transform")
+        if self._slam_stalled_s > 0.0:
+            problems.append(
+                f"SLAM stalled for {self._slam_stalled_s:.0f} s (slam_toolbox hung); abort and restart"
+            )
         return problems
 
     # ---- state -------------------------------------------------------------
@@ -179,6 +222,7 @@ class MappingSession(Node):
         self._publish_state()
 
     def _publish_state(self) -> None:
+        self._check_slam()
         with self._lock:
             m = MappingState()
             m.generation = self.generation

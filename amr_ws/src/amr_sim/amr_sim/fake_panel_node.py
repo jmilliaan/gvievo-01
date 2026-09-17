@@ -7,6 +7,9 @@ terminal:
     /sim/panel/press_start  std_srvs/Trigger
     /sim/panel/press_reset  std_srvs/Trigger
     /sim/panel/set_valid    std_srvs/SetBool   false = DIO link lost (stale/invalid image)
+Jog pendant levels are bool parameters read every tick, so a terminal can drive
+without a browser:  ros2 param set /fake_panel pendant_fwd true  (also
+pendant_rvs / pendant_left / pendant_right).
 The real adapter (T12) wraps core/panel.PanelScan over drivers/dio.DioLink and
 publishes the same message.
 """
@@ -16,7 +19,12 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_srvs.srv import SetBool, Trigger
 
+from amr_base import agv_repo  # noqa: F401 - puts the agv_can repo on sys.path
 from amr_interfaces.msg import PanelState
+
+import panel as panel_core  # repo module: core/panel.py
+
+PENDANT_PARAMS = ("pendant_fwd", "pendant_rvs", "pendant_left", "pendant_right")
 
 
 class FakePanel(Node):
@@ -24,6 +32,8 @@ class FakePanel(Node):
         super().__init__("fake_panel")
         self.declare_parameter("auto", False)
         self.declare_parameter("rate_hz", 20.0)
+        for name in PENDANT_PARAMS:
+            self.declare_parameter(name, False)
         self.auto = bool(self.get_parameter("auto").value)
         self.valid = True
         self.seq = 0
@@ -70,6 +80,8 @@ class FakePanel(Node):
         m.reset_edge, self._reset_pending = self._reset_pending, False
         self.seq += 1
         m.seq = self.seq
+        levels = [bool(self.get_parameter(n).value) for n in PENDANT_PARAMS]
+        m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = panel_core.pendant_intent(*levels)
         self._pub.publish(m)
 
 

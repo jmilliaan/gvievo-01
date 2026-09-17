@@ -2,6 +2,16 @@
 // systems the editor needs. Formulas mirror amr_maps.grid.world_to_pixel /
 // pixel_to_world exactly (origin, resolution, origin yaw, row inversion).
 //   world (x, y) metres  <->  pixel (u, v) image coords, v down  <->  screen (sx, sy)
+// Canvas colours are the UI tokens (design language: canvas graphics match the page).
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const INK = {
+  paper: cssVar('--paper'), rule: cssVar('--rule'), ink3: cssVar('--ink-3'), accent: cssVar('--accent'),
+  route: cssVar('--accent-2'), pose: cssVar('--ok'), scan: cssVar('--stop'), turn: cssVar('--hazard-ink'),
+  preview: cssVar('--hazard'), stop: cssVar('--stop'),
+};
+// hex token + alpha 0..1 -> #rrggbbaa (tokens are #RRGGBB)
+const alpha = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
+
 class MapView {
   constructor(canvas) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
@@ -14,7 +24,7 @@ class MapView {
       const dx = e.offsetX - this._drag.x, dy = e.offsetY - this._drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) this._drag.moved = true;
       if (this.onDrag && this._drag.btn === 0 && this.tool) { this.onDrag(this.screenToWorld(this._drag.x, this._drag.y), this.screenToWorld(e.offsetX, e.offsetY), false); this.draw(); return; }
-      this.ox += dx; this.oy += dy; this._drag.x = e.offsetX; this._drag.y = e.offsetY; this.draw();
+      this.ox += dx; this.oy += dy; this._drag.x = e.offsetX; this._drag.y = e.offsetY; this._keepVisible(); this.draw();
     });
     const up = e => {
       if (!this._drag) return;
@@ -28,8 +38,11 @@ class MapView {
     };
     canvas.addEventListener('mouseup', up);
     canvas.addEventListener('mouseleave', () => { this._drag = null; });
+    canvas.addEventListener('dblclick', e => { e.preventDefault(); this.fit(); this.draw(); });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     this._resize(); window.addEventListener('resize', () => { this._resize(); this.draw(); });
+    // labels are Plex Mono: redraw once the self-hosted face has loaded
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => this.draw());
   }
   _resize() { const r = this.canvas.getBoundingClientRect(); this.canvas.width = Math.max(200, r.width); this.canvas.height = Math.max(200, r.height); }
   // Returns false when a later load() superseded this one while it was in flight: the
@@ -62,10 +75,25 @@ class MapView {
   clearLive() { this.meta = null; this.img = null; this._liveSnapshot = null; this.draw(); }
   fit() {
     if (!this.img) return;
-    this.scale = Math.min(this.canvas.width / this.img.width, this.canvas.height / this.img.height) * 0.95;
+    this.scale = this._fitScale = Math.min(this.canvas.width / this.img.width, this.canvas.height / this.img.height) * 0.95;
     this.ox = (this.canvas.width - this.img.width * this.scale) / 2; this.oy = (this.canvas.height - this.img.height * this.scale) / 2;
   }
-  zoomAt(sx, sy, f) { this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.scale *= f; this.draw(); }
+  // Zoom is bounded to [fit/4, fit x 40] and a pan always leaves some of the map on
+  // screen: a sensitive trackpad or a free-spinning wheel must not lose the picture.
+  // Double-click refits.
+  zoomAt(sx, sy, f) {
+    if (!this.img) return;
+    const fit = this._fitScale || this.scale, target = Math.min(fit * 40, Math.max(fit / 4, this.scale * f));
+    f = target / this.scale;
+    this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.scale = target;
+    this._keepVisible(); this.draw();
+  }
+  _keepVisible() {
+    if (!this.img) return;
+    const w = this.img.width * this.scale, h = this.img.height * this.scale, keep = 60;
+    this.ox = Math.min(this.canvas.width - keep, Math.max(keep - w, this.ox));
+    this.oy = Math.min(this.canvas.height - keep, Math.max(keep - h, this.oy));
+  }
   // --- coordinates (see amr_maps.grid) ---
   worldToPixel(x, y) {
     const m = this.meta, dx = x - m.origin[0], dy = y - m.origin[1], c = Math.cos(m.origin[2]), s = Math.sin(m.origin[2]);
@@ -82,19 +110,43 @@ class MapView {
   screenToWorld(sx, sy) { const [u, v] = this.screenToPixel(sx, sy); return this.pixelToWorld(u, v); }
   // --- drawing ---
   draw() {
-    const c = this.ctx; c.fillStyle = '#0d0f12'; c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    const c = this.ctx; c.fillStyle = INK.paper; c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!this.img) return;
     c.imageSmoothingEnabled = false;
-    c.drawImage(this.img, this.ox, this.oy, this.img.width * this.scale, this.img.height * this.scale);
+    const w = this.img.width * this.scale, h = this.img.height * this.scale;
+    c.drawImage(this.img, this.ox, this.oy, w, h);
+    // unknown cells (205) are close to the paper tone: a hairline frame keeps the map edge visible
+    c.strokeStyle = INK.rule; c.lineWidth = 1; c.strokeRect(Math.round(this.ox) - 0.5, Math.round(this.oy) - 0.5, Math.round(w) + 1, Math.round(h) + 1);
     this.overlays.forEach(fn => fn(c, this));
+    this.drawStartMark();
+  }
+  // The survey's start reference (the floor mark the operator surveyed from). Most
+  // routes begin there, so it is always drawn on a saved map, on top of the overlays.
+  drawStartMark() {
+    const st = this.meta && this.meta.start;
+    if (!st || st.x_m === undefined) return;
+    const c = this.ctx, p = this.worldToScreen(st.x_m, st.y_m), yaw = st.yaw_rad || 0, r = 9;
+    c.save();
+    c.strokeStyle = INK.accent; c.lineWidth = 2; c.setLineDash([3, 3]);
+    c.beginPath(); c.arc(p[0], p[1], r, 0, 2 * Math.PI); c.stroke();
+    c.setLineDash([]);
+    c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(p[0] + 2.2 * r * Math.cos(yaw), p[1] - 2.2 * r * Math.sin(yaw)); c.stroke();
+    c.font = '600 11px "IBM Plex Mono", monospace'; c.fillStyle = INK.accent;
+    c.fillText('SURVEY START', p[0] + r + 4, p[1] + r + 10);
+    c.restore();
   }
   // helpers for overlays
   line(x1, y1, x2, y2, color, width) { const c = this.ctx, a = this.worldToScreen(x1, y1), b = this.worldToScreen(x2, y2); c.strokeStyle = color; c.lineWidth = width || 2; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
   dot(x, y, color, r) { const c = this.ctx, p = this.worldToScreen(x, y); c.fillStyle = color; c.beginPath(); c.arc(p[0], p[1], r || 4, 0, 2 * Math.PI); c.fill(); }
-  text(x, y, s, color) { const c = this.ctx, p = this.worldToScreen(x, y); c.fillStyle = color || '#fff'; c.font = '12px system-ui'; c.fillText(s, p[0] + 6, p[1] - 6); }
+  text(x, y, s, color) { const c = this.ctx, p = this.worldToScreen(x, y); c.fillStyle = color || INK.ink3; c.font = '500 11px "IBM Plex Mono", monospace'; c.fillText(s, p[0] + 6, p[1] - 6); }
+  // A fixed caption in the top-left corner (screen space), e.g. STALE SCAN: stale must never look clear.
+  label(text, color, row) { const c = this.ctx; c.font = '600 11px "IBM Plex Mono", monospace'; const y = 10 + (row || 0) * 22, w = c.measureText(text).width + 12;
+    c.fillStyle = INK.paper; c.fillRect(8, y, w, 18); c.strokeStyle = color; c.lineWidth = 1; c.strokeRect(8.5, y + 0.5, w - 1, 17); c.fillStyle = color; c.fillText(text, 14, y + 13); }
   arrow(x, y, yaw, len, color) { this.line(x, y, x + len * Math.cos(yaw), y + len * Math.sin(yaw), color, 3); this.dot(x, y, color, 5); }
   points(pts, color) { const c = this.ctx; c.fillStyle = color; pts.forEach(p => { const q = this.worldToScreen(p[0], p[1]); c.fillRect(q[0] - 1, q[1] - 1, 2, 2); }); }
   polygon(pts, color) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.closePath(); c.stroke(); }
+  // Dashed outline of a world polygon: the area a validation check sweeps.
+  dashed(pts, color) { const c = this.ctx; c.setLineDash([4, 4]); this.polygon(pts, color); c.setLineDash([]); }
   footprint(x, y, yaw, poly, color) { const c = Math.cos(yaw), s = Math.sin(yaw); this.polygon(poly.map(p => [x + c * p[0] - s * p[1], y + s * p[0] + c * p[1]]), color); }
 }
 async function fillMapSelect(sel) {

@@ -6,7 +6,7 @@
     real:=true    drive_node (can0), panel_node (DIO) or fake panel, nanoScan3
     real:=false   fake_base, fake_imu, fake_panel, optional scan_synth
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
-                  imu_bias, ekf_local
+                  imu_bias, scan_gate, ekf_local
 
 No web app, no Foxglove, no SLAM, no AMCL: those are the supervisor's other
 groups. Every node listed as REQUIRED ends the launch when it exits, so a
@@ -126,6 +126,13 @@ def _compose(context):
     )
     actions.append(
         Node(package="amr_localization", executable="imu_bias_node", name="imu_bias", output="screen")
+    )
+    # /scan_gated for slam_toolbox and AMCL: scans released only once their odom
+    # transform exists, so their tf2 MessageFilters take the synchronous path
+    # (the asynchronous one hung slam_toolbox on the vehicle, 2026-09-17).
+    actions += required(
+        Node(package="amr_localization", executable="scan_gate_node", name="scan_gate", output="screen"),
+        "scan_gate",
     )
     if supervised:  # the /blind replacement (unified plan §7.2); an exclusive IDLE substate
         actions.append(

@@ -98,3 +98,54 @@ def test_horn_follows_commanded_motion_while_armed_on_a_fresh_command():
     assert not h(False, 1.0, 1.0, 0.0, 0.2)  # not armed: cannot be moving
     assert not h(True, 1.0, 1.0, None, 0.2)  # never received a command
     assert not h(True, 1.0, 1.0, 0.3, 0.2)  # stale command is zero
+
+
+# ---- pendant -----------------------------------------------------------------
+
+F, V, L, RT = (
+    config.PENDANT_DI_FWD,
+    config.PENDANT_DI_RVS,
+    config.PENDANT_DI_LEFT,
+    config.PENDANT_DI_RIGHT,
+)
+
+
+def _pdi(fwd=False, rvs=False, left=False, right=False):
+    bits = _di()
+    bits[F], bits[V], bits[L], bits[RT] = fwd, rvs, left, right
+    return bits
+
+
+def test_pendant_levels_and_log():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
+    f = _settle(ad, _pdi())
+    assert not any(f.pendant) and "pendant" not in (f.changed or "")
+    f = _settle(ad, _pdi(fwd=True))
+    assert f.pendant == (True, False, False, False) and "pendant FWD" in f.changed
+    f = _settle(ad, _pdi(fwd=True))
+    assert f.changed is None  # a held level is not repeated in the log
+    f = _settle(ad, _pdi(fwd=True, rvs=True, left=True))
+    assert f.pendant == (False, False, True, False)  # fwd+rvs cancel; left survives
+    f = _settle(ad, _pdi())
+    assert not any(f.pendant) and f.changed == "pendant released"
+
+
+def test_pendant_is_held_at_power_on_and_dropped_on_comms_loss():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
+    f = ad.tick(_snap(_pdi(fwd=True)))
+    assert not any(f.pendant)  # one scan: not yet believed
+    f = ad.tick(_snap(_pdi(fwd=True)))
+    assert f.pendant.fwd  # no anti-tie-down: a held deadman drives
+    f = _settle(ad, _pdi(fwd=True), comms=False)
+    assert not any(f.pendant) and not f.valid
+    f = ad.tick(_snap(_pdi(fwd=True)))
+    assert not any(f.pendant)  # reconnect: needs a fresh debounce
+    f = ad.tick(_snap(_pdi(fwd=True)))
+    assert f.pendant.fwd
+
+
+def test_pendant_disabled_in_profile_publishes_nothing():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=False)
+    f = _settle(ad, _pdi(fwd=True))
+    assert f.valid and not any(f.pendant)
+    assert "pendant" not in (f.changed or "")

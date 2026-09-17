@@ -2,9 +2,10 @@
 
 Reads amr_description/config/footprint.yaml (the single source of truth the
 costmap also gets). Sweeps are unions of the rasterised polygon at poses every
-0.05 m along a straight, or a disc of the polygon's reach around a pivot for a
-rotation - the COMPLETE swept area, not the centreline (spec §5.4). The margin
-is applied as a dilation of the result.
+0.05 m along a straight, or at headings a fraction of a cell apart through the
+signed angle of a rotation - the COMPLETE swept area, not the centreline (spec
+§5.4). A rotation of unknown angle is the disc of the polygon's reach. The
+margin is applied as a dilation of the result.
 """
 
 from __future__ import annotations
@@ -131,11 +132,40 @@ def line_outside(
     )
 
 
-def rotation_outside(grid: Grid, fp: Footprint, pivot: tuple[float, float]) -> bool:
-    """True if the rotation disc plus margin leaves the map rectangle."""
+def turn_headings(fp: Footprint, res: float, yaw: float, signed_angle: float) -> list[float]:
+    """Headings from `yaw` through `yaw + signed_angle`, close enough that the farthest
+    vertex moves at most half a cell between neighbours (so the union has no gaps)."""
+    step = res / (2.0 * max(fp.reach_m, res))
+    n = max(1, int(math.ceil(abs(signed_angle) / step)))
+    return [yaw + signed_angle * k / n for k in range(n + 1)]
+
+
+def rotation_outside(
+    grid: Grid,
+    fp: Footprint,
+    pivot: tuple[float, float],
+    yaw: float | None = None,
+    signed_angle: float | None = None,
+) -> bool:
+    """True if the rotation sweep plus margin leaves the map rectangle. With a heading and a
+    signed angle this is the exact sweep; without, the disc of the reach (any turn)."""
     x0, y0, x1, y1 = _map_extent(grid)
-    r = fp.reach_m + _pad(grid, fp) - 1e-9
-    return bool(pivot[0] - r < x0 or pivot[0] + r > x1 or pivot[1] - r < y0 or pivot[1] + r > y1)
+    pad = _pad(grid, fp) - 1e-9
+    if yaw is None or signed_angle is None:
+        r = fp.reach_m + pad
+        return bool(pivot[0] - r < x0 or pivot[0] + r > x1 or pivot[1] - r < y0 or pivot[1] + r > y1)
+    pts = np.vstack(
+        [
+            _polygon_world(fp, pivot[0], pivot[1], h)
+            for h in turn_headings(fp, grid.meta.resolution, yaw, signed_angle)
+        ]
+    )
+    return bool(
+        (pts[:, 0].min() - pad < x0)
+        or (pts[:, 0].max() + pad > x1)
+        or (pts[:, 1].min() - pad < y0)
+        or (pts[:, 1].max() + pad > y1)
+    )
 
 
 def swept_line(
@@ -158,11 +188,23 @@ def swept_line(
     return dilate(mask, margin_cells(fp, grid.meta.resolution))
 
 
-def swept_rotation(grid: Grid, fp: Footprint, pivot: tuple[float, float]) -> np.ndarray:
-    """Disc of the footprint's reach about the pivot: the complete sweep of ANY turn."""
+def swept_rotation(
+    grid: Grid,
+    fp: Footprint,
+    pivot: tuple[float, float],
+    yaw: float | None = None,
+    signed_angle: float | None = None,
+) -> np.ndarray:
+    """Cells the footprint covers turning about the pivot from `yaw` through `signed_angle`
+    (+ccw): the polygon rasterised at every heading of turn_headings(). Without a heading
+    and angle, the disc of the footprint's reach - the complete sweep of ANY turn."""
     require_axis_aligned(grid.meta)
     mask = np.zeros(grid.data.shape, dtype=bool)
     res = grid.meta.resolution
+    if yaw is not None and signed_angle is not None:
+        for h in turn_headings(fp, res, yaw, signed_angle):
+            rasterize_polygon(grid, _polygon_world(fp, pivot[0], pivot[1], h), mask)
+        return dilate(mask, margin_cells(fp, res))
     r = fp.reach_m
     c0 = max(0, int(math.floor((pivot[0] - r - grid.meta.origin_x) / res)))
     c1 = min(grid.width - 1, int(math.floor((pivot[0] + r - grid.meta.origin_x) / res)))

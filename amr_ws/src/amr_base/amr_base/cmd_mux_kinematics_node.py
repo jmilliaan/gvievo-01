@@ -1,7 +1,9 @@
 """Command mux + permission gating + slew limit + inverse kinematics (spec §3.5, §3.7).
 
-Sources: /amr/manual_command (browser jog, panel MANUAL), /cmd_vel_teleop
-(engineering keyboard, panel MANUAL, `teleop_enabled`), the navigation layer's
+Sources: the jog pendant levels in /amr/panel_state (panel MANUAL, first
+choice while a direction is held), /amr/manual_command (browser jog, panel
+MANUAL), /cmd_vel_teleop (engineering keyboard, panel MANUAL,
+`teleop_enabled`), the navigation layer's
 generation-private /amr/layers/<gen>/cmd_vel (controller_server, permit FOLLOW)
 and .../cmd_vel_rotate (behavior_server, permit ROTATE) -> /cmd_wheel_vel at
 50 Hz, stamped with the applied supervisor generation.
@@ -68,6 +70,8 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
+        self.declare_parameter("pendant_v_m_s", 0.30)
+        self.declare_parameter("pendant_w_rad_s", 0.30)
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
 
@@ -90,6 +94,8 @@ class CmdMuxKinematics(Node):
             drives_timeout_s=p("drives_timeout_s").value,
             require_supervisor=bool(p("require_supervisor").value),
             teleop_enabled=bool(p("teleop_enabled").value),
+            pendant_v=max(0.0, float(p("pendant_v_m_s").value)),
+            pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
         )
         self.dt = 1.0 / p("rate_hz").value
 
@@ -157,7 +163,15 @@ class CmdMuxKinematics(Node):
         )
 
     def _on_panel(self, msg: PanelState) -> None:
-        self._panel = gating.Panel(self._now(), bool(msg.valid), bool(msg.mode_auto))
+        self._panel = gating.Panel(
+            self._now(),
+            bool(msg.valid),
+            bool(msg.mode_auto),
+            bool(msg.pendant_fwd),
+            bool(msg.pendant_rvs),
+            bool(msg.pendant_left),
+            bool(msg.pendant_right),
+        )
 
     def _on_commissioning(self, msg: WheelVelocities) -> None:
         wl, wr = float(msg.left_rad_s), float(msg.right_rad_s)

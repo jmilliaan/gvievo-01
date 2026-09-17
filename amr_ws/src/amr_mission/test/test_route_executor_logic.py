@@ -69,8 +69,14 @@ ren.RouteExecutor.wheels = _wheels
 
 
 def rotate(angle, sid="t1"):
-    return CompiledStep(id=sid, type=ROTATE, start=(0.0, 0.0, 0.0), end=(0.0, 0.0, angle),
-                        signed_angle_rad=angle, time_allowance_s=10.0)
+    return CompiledStep(
+        id=sid,
+        type=ROTATE,
+        start=(0.0, 0.0, 0.0),
+        end=(0.0, 0.0, angle),
+        signed_angle_rad=angle,
+        time_allowance_s=10.0,
+    )
 
 
 def test_r07_fresh_but_invalid_wheel_feedback_fails_prerequisites():

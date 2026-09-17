@@ -371,6 +371,56 @@ def test_panel_profile():
           (config.DIO_DI_NAMES[1], config.DIO_DI_NAMES[2], config.DIO_DI_NAMES[3])
           == ("PB Start", "PB Reset", "SS Auto/Manual"))
 
+    refused("a pendant channel on a panel channel is refused",
+            lambda d: d["pendant"].update(di_fwd=d["panel"]["di_start"]), "collide")
+    refused("two pendant functions on one channel is refused",
+            lambda d: d["pendant"].update(di_left=d["pendant"]["di_right"]), "distinct")
+    refused("a pendant channel past num_di is refused",
+            lambda d: d["pendant"].update(di_rvs=99), "channel in 0..")
+    refused("the pendant cannot be enabled without the DI scan that feeds it",
+            lambda d: (d["dio"].update(enabled=False),
+                       d["panel"].update(enabled=False),
+                       d["horn"].update(enabled=False)), "pendant")
+    check("the shipped pendant wiring: DI04 fwd, DI05 rvs, DI06 left, DI07 right",
+          (config.PENDANT_DI_FWD, config.PENDANT_DI_RVS, config.PENDANT_DI_LEFT,
+           config.PENDANT_DI_RIGHT) == (4, 5, 6, 7))
+    check("...and the DI names say the same",
+          [config.DIO_DI_NAMES[i] for i in (4, 5, 6, 7)]
+          == ["Pendant FWD", "Pendant RVS", "Pendant LEFT", "Pendant RIGHT"])
+
+
+def test_pendant():
+    """The jog pendant: debounced direction levels, no tie-down rule."""
+    print("\npanel: pendant")
+    lv = panel.DebouncedLevels((4, 5, 6, 7), debounce_scans=2)
+
+    def di(fwd=False, rvs=False, left=False, right=False):
+        bits = [False] * 16
+        bits[4], bits[5], bits[6], bits[7] = fwd, rvs, left, right
+        return bits
+
+    check("nothing is believed before the first debounced scan",
+          lv.scan(di(fwd=True), True) is None)
+    check("a level held at power-on IS reported - no anti-tie-down for a deadman",
+          lv.scan(di(fwd=True), True) == (True, False, False, False))
+    check("one differing scan is not yet believed; the last level holds",
+          lv.scan(di(), True) == (True, False, False, False))
+    check("the second identical scan is believed",
+          lv.scan(di(), True) == (False, False, False, False))
+    check("comms loss reports nothing", lv.scan(di(fwd=True), False) is None)
+    check("...and the return of comms needs a fresh debounce",
+          lv.scan(di(fwd=True), True) is None)
+    check("a short image reports nothing", lv.scan([True] * 4, True) is None)
+
+    I = panel.pendant_intent
+    check("nothing held asks for nothing", I(False, False, False, False) == panel.PENDANT_IDLE)
+    check("fwd", I(True, False, False, False) == (True, False, False, False))
+    check("right", I(False, False, False, True) == (False, False, False, True))
+    check("fwd with rvs cancels the axis, the other axis survives",
+          I(True, True, True, False) == (False, False, True, False))
+    check("left with right cancels the axis",
+          I(True, False, True, True) == (True, False, False, False))
+
 
 def test_panel_loss_removes_manual_authority():
     """R14: a jog must not outlive the panel that authorises it.
@@ -473,4 +523,5 @@ TESTS = [
     test_panel_events_are_edge_only,
     test_panel_loss_removes_manual_authority,
     test_panel_profile,
+    test_pendant,
 ]

@@ -18,8 +18,7 @@ import math
 
 import numpy as np
 import rclpy
-import rclpy.duration
-from amr_maps.raycast import ScanGeometry, cast
+from amr_maps.raycast import ScanGeometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
 from rclpy.executors import ExternalShutdownException
@@ -31,6 +30,7 @@ from tf2_ros import Buffer, TransformListener
 
 from amr_interfaces.msg import LocalizationState, WheelStates
 from amr_localization import readiness as rd
+from amr_localization import scan_consistency as consistency
 from amr_maps import grid as gridio
 
 SENSOR_DATA = QoSProfile(
@@ -108,6 +108,10 @@ class LocalizationMonitor(Node):
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl, 10)
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initialpose, RELIABLE_1)
         self.create_subscription(LaserScan, "/scan", self._on_scan, SENSOR_DATA)
+        # the map comparison runs on the gated scan: its odom transform already exists, so the
+        # lookup below never has to wait (a 50 ms wait on every raw scan starved this node's
+        # executor and made its OWN view of TF stale, 2026-09-17)
+        self.create_subscription(LaserScan, "/scan_gated", self._on_scan_gated, SENSOR_DATA)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA)
         self.create_subscription(Imu, "/imu/data", lambda _m: self._touch("imu"), SENSOR_DATA)
@@ -134,13 +138,7 @@ class LocalizationMonitor(Node):
         m = grid.meta
         key = (grid.width, grid.height, m.resolution, m.origin_x, m.origin_y, m.origin_yaw)
         key += (hashlib.sha256(grid.data.tobytes()).hexdigest(),)
-        occ = grid.data >= 65
-        cells = max(1, int(round(self._match_tol / grid.meta.resolution)))
-        near = np.zeros_like(occ)
-        for dr in range(-cells, cells + 1):
-            for dc in range(-cells, cells + 1):
-                near |= np.roll(np.roll(occ, dr, axis=0), dc, axis=1)
-        self._occ_near, self._grid = near, grid
+        self._occ_near, self._grid = consistency.occupied_near(grid, self._match_tol), grid
         if self._map_key is not None and key != self._map_key:
             # Pose, covariance and scan evidence were all about the previous map.
             self.rd.reset("map changed; give a new initial pose")
@@ -148,20 +146,20 @@ class LocalizationMonitor(Node):
         self._map_key = key
         self.get_logger().info(f"map {grid.width}x{grid.height} loaded for scan consistency")
 
-    def _on_scan(self, msg: LaserScan) -> None:
+    def _on_scan(self, _msg: LaserScan) -> None:
         self._touch("scan")
+
+    def _on_scan_gated(self, msg: LaserScan) -> None:
         t = self._now()
         if self._grid is None or t - self._last_match_t < self._match_period:
             return
+        self._last_match_t = t  # one attempt per period, whether or not it succeeds
         try:
             # At the scan's own stamp: during a turn the latest transform is a few
             # degrees ahead of the scan, which throws every long beam off the map.
-            tr = self.tf_buffer.lookup_transform(
-                "map", msg.header.frame_id, msg.header.stamp, timeout=rclpy.duration.Duration(seconds=0.05)
-            )
+            tr = self.tf_buffer.lookup_transform("map", msg.header.frame_id, msg.header.stamp)
         except Exception:  # noqa: BLE001 - not localised yet, or the stamp is not covered
             return  # no comparison: readiness lets the previous result expire
-        self._last_match_t = t
         q = tr.transform.rotation
         yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
         lx, ly = tr.transform.translation.x, tr.transform.translation.y
@@ -171,28 +169,9 @@ class LocalizationMonitor(Node):
         geom = ScanGeometry(
             msg.angle_min, msg.angle_min + (n - 1) * msg.angle_increment, n, msg.range_min, max_r
         )
-        expected = cast(self._grid, lx, ly, yaw, geom)  # inf where the map has nothing within max_r
-        measured = np.where(np.isfinite(ranges), ranges, np.inf)
-
-        # long: the map says a wall is closer than what was measured -> beam went through it
-        wall_expected = np.isfinite(expected)
-        long = wall_expected & (measured > expected + self._match_tol)
-        long_frac = float(long.sum()) / max(1, int(wall_expected.sum()))
-
-        # match: endpoints near mapped obstacles (informational; clutter lowers it)
-        valid = np.isfinite(ranges) & (ranges >= msg.range_min) & (ranges < max_r)
-        if valid.sum() >= 20:
-            a = geom.angles[valid] + yaw
-            ex, ey = lx + ranges[valid] * np.cos(a), ly + ranges[valid] * np.sin(a)
-            g = self._grid.meta
-            cols = np.floor((ex - g.origin_x) / g.resolution).astype(int)
-            rows = np.floor((ey - g.origin_y) / g.resolution).astype(int)
-            inside = (cols >= 0) & (cols < self._grid.width) & (rows >= 0) & (rows < self._grid.height)
-            hit = np.zeros(int(valid.sum()), dtype=bool)
-            hit[inside] = self._occ_near[rows[inside], cols[inside]]
-            match_frac = float(hit.mean())
-        else:
-            match_frac = 0.0
+        match_frac, long_frac = consistency.compare(
+            self._grid, self._occ_near, lx, ly, yaw, ranges, geom, self._match_tol
+        )
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self.rd.on_scan_match(t, match_frac, long_frac, stamp)
 

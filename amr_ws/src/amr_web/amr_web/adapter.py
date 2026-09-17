@@ -54,6 +54,7 @@ from amr_web import live
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
+SCAN_PERIOD_S = 0.1  # live-view scan projection rate cap (the page redraws at 5 Hz)
 STATE_NAMES = {0: "IDLE", 1: "MAPPING", 2: "RETURN_REVIEW", 3: "SAVING", 4: "SAVED"}
 LOC_NAMES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
 RUN_NAMES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
@@ -67,7 +68,7 @@ MODE_NAMES = {
     6: "STOPPING",
 }
 OP_NAMES = {0: "PENDING", 1: "SUCCEEDED", 2: "FAILED", 3: "INTERRUPTED"}
-MUX_NAMES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning"}
+MUX_NAMES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning", 6: "pendant"}
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
@@ -83,7 +84,6 @@ def _msg_to_dict(msg) -> dict[str, Any]:
             v = [x if isinstance(x, (int, float, str, bool)) else _msg_to_dict(x) for x in v]
         out[name] = v
     return out
-
 
 
 def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int, sha256: str = "") -> str:
@@ -103,6 +103,7 @@ def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int,
     if int(generation) != int(mode.get("generation", -1)):
         return "the vehicle changed mode since the map was shown; look again"
     return ""
+
 
 class RosAdapter(Node):
     def __init__(self) -> None:
@@ -147,6 +148,7 @@ class RosAdapter(Node):
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
+        self._scan_seen_t = 0.0
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
         self.create_subscription(OccupancyGrid, "/map", self.live.on_grid, LATCHED, callback_group=g)
@@ -228,12 +230,23 @@ class RosAdapter(Node):
         return "odom"
 
     def _on_scan(self, m: LaserScan) -> None:
+        # The live view redraws at 5 Hz; projecting 1152 beams 34 times a second is waste.
+        now = time.monotonic()
+        if now - self._scan_seen_t < SCAN_PERIOD_S:
+            return
+        self._scan_seen_t = now
         frame = self._world_frame()
+        # Never wait here. The EKF's odom TF lands 20-40 ms after the scan it covers (more
+        # under SLAM load), so a blocking lookup at the scan stamp missed every scan on the
+        # vehicle and kept the executor's threads asleep: the scan went stale and the /map
+        # and pose callbacks starved with it (2026-09-17). Use the stamp when the buffer
+        # already has it, else the latest transform: at survey speed that is under 1 cm.
         try:
-            t = self._tf_buffer.lookup_transform(
-                frame, m.header.frame_id, m.header.stamp, timeout=rclpy.duration.Duration(seconds=0.05)
-            )
-        except Exception:  # noqa: BLE001 - no transform at the scan time: draw nothing rather than something wrong
+            try:
+                t = self._tf_buffer.lookup_transform(frame, m.header.frame_id, m.header.stamp)
+            except Exception:  # noqa: BLE001 - not there yet
+                t = self._tf_buffer.lookup_transform(frame, m.header.frame_id, Time())
+        except Exception:  # noqa: BLE001 - no transform at all: draw nothing rather than something wrong
             return
         tr, q = t.transform.translation, t.transform.rotation
         pts = live.scan_points(

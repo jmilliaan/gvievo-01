@@ -8,6 +8,10 @@ drivers/dio.DioLink for the Modbus scan thread and the expiring coil claim.
     PanelAdapter.tick(now, snapshot)  -> PanelFrame  (what to publish)
     horn_wanted(...)                  -> bool        (what the coil should be)
 
+The jog pendant rides in the same frame: core/panel.DebouncedLevels over the
+four PENDANT_DI_* channels, resolved by core/panel.pendant_intent (an opposing
+pair cancels). Levels, reported as-is; the mux turns them into a twist.
+
 Policy that lives here, and nowhere else on the ROS side:
 
   * The panel image is VALID only while DIO comms are good AND PanelScan has a
@@ -41,22 +45,33 @@ class PanelFrame:
     seq: int
     comms_ok: bool
     changed: str | None = None  # human-readable transition for the log, if any
+    pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
 
 
 class PanelAdapter:
     """Turns DioLink snapshots into PanelFrames. One instance per node."""
 
-    def __init__(self, debounce_scans: int | None = None) -> None:
+    def __init__(self, debounce_scans: int | None = None, pendant: bool | None = None) -> None:
+        scans = config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans
         self.scan = panel_core.PanelScan(
-            config.PANEL_DI_RESET,
-            config.PANEL_DI_START,
-            config.PANEL_DI_AUTO,
-            config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans,
+            config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO, scans
         )
+        self.pendant = None
+        if config.PENDANT_ENABLED if pendant is None else pendant:
+            self.pendant = panel_core.DebouncedLevels(
+                (
+                    config.PENDANT_DI_FWD,
+                    config.PENDANT_DI_RVS,
+                    config.PENDANT_DI_LEFT,
+                    config.PENDANT_DI_RIGHT,
+                ),
+                scans,
+            )
         self.seq = 0
         self._last_valid: bool | None = None
         self._last_mode: str | None = None
         self._last_comms: bool | None = None
+        self._last_pendant: panel_core.PendantIntent | None = None
 
     def tick(self, snapshot: dict) -> PanelFrame:
         comms = bool(snapshot.get("comms_ok"))
@@ -76,6 +91,16 @@ class PanelAdapter:
             notes.append("START edge")
         if intent.reset:
             notes.append("RESET edge")
+
+        pend = panel_core.PENDANT_IDLE
+        if self.pendant is not None:
+            levels = self.pendant.scan(snapshot.get("di"), comms)
+            if levels is not None:
+                pend = panel_core.pendant_intent(*levels)
+            if pend != self._last_pendant:
+                held = [n for n in pend._fields if getattr(pend, n)]
+                notes.append("pendant " + (" ".join(held).upper() if held else "released"))
+                self._last_pendant = pend
         return PanelFrame(
             valid=bool(intent.valid),
             mode_auto=intent.mode == panel_core.AUTO,
@@ -84,6 +109,7 @@ class PanelAdapter:
             seq=self.seq,
             comms_ok=comms,
             changed="; ".join(notes) or None,
+            pendant=pend,
         )
 
 

@@ -15,9 +15,18 @@ function liveOverlay(view) {
     if (v.meta.map_id !== undefined && !(mode && mode.active_map_id === v.meta.map_id && +mode.active_map_revision === +v.meta.revision)) return;
     const frame = v.meta.frame_id || 'map';
     const s = livePose.scan;
-    if (s && s.frame === frame) v.points(s.points, s.age_s > 1.0 ? '#8b1a1a' : '#e74c3c');
+    let row = 0;
+    if (s && s.frame === frame) {
+      const stale = s.age_s > 1.0;
+      v.points(s.points, stale ? alpha(INK.ink3, 0.5) : INK.scan);
+      if (stale) v.label(`STALE SCAN ${s.age_s.toFixed(1)} s`, INK.stop, row++);
+    }
     const p = livePose.pose;
-    if (p && p.frame === frame) v.arrow(p.x, p.y, p.yaw, 0.6, p.age_s > 1.0 ? '#777' : '#2ecc71');
+    if (p && p.frame === frame) {
+      const stale = p.age_s > 1.0;
+      v.arrow(p.x, p.y, p.yaw, 0.6, stale ? INK.ink3 : INK.pose);
+      if (stale) v.label(`STALE POSE ${p.age_s.toFixed(1)} s`, INK.stop, row++);
+    }
   });
 }
 function pollLive(view, opts) {

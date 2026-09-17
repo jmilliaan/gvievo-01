@@ -143,7 +143,31 @@ def test_footprint_rasterize_and_reach():
     assert FP.reach_m == pytest.approx(math.hypot(1.1, 0.35))
     disc = fpmod.swept_rotation(g, fpmod.Footprint(FP.polygon, 0.0), (0.0, 0.0))
     assert disc.sum() * 0.0025 == pytest.approx(math.pi * FP.reach_m**2, rel=0.05)
+    # the exact sweep of a turn: a 360 is the disc, a 90 is a quadrant of it plus the body
+    full = fpmod.swept_rotation(g, fpmod.Footprint(FP.polygon, 0.0), (0.0, 0.0), 0.0, 2 * math.pi)
+    assert (full & ~disc).sum() == 0 and full.sum() > 0.97 * disc.sum()
+    quarter = fpmod.swept_rotation(g, fpmod.Footprint(FP.polygon, 0.0), (0.0, 0.0), 0.0, math.pi / 2)
+    assert (quarter & ~disc).sum() == 0 and 0.3 * disc.sum() < quarter.sum() < 0.6 * disc.sum()
     assert FP.as_costmap_string().startswith("[[-0.500, -0.350]")
+
+
+def test_rotation_sweep_is_the_turn_actually_made():
+    # A wall 0.9 m behind the axle: standing there and a 90 ccw are clear (the nose swings
+    # ahead and left, the tail reaches 0.61 m), a 180 sweeps the nose through it. The old
+    # reach disc (1.35 m with margin) refused all three.
+    g = small_grid()
+    r0, c0 = g.world_to_cell(-0.95, 0.0)
+    g.data[r0 - 10 : r0 + 10, c0 - 1 : c0 + 1] = 100
+    ok = validate(route([rotate("s1", "ccw", 90)]), Manifest, g, FP)
+    assert ok.ok, [i.to_dict() for i in ok.issues]
+    bad = validate(route([rotate("s1", "ccw", 180)]), Manifest, g, FP)
+    assert [i.step_id for i in bad.issues if i.code == "clearance"] == ["s1"]
+    # the bounds check follows the same sweep: tail 0.5 m from the east edge, facing west
+    fp0 = fpmod.Footprint(FP.polygon, 0.0)
+    edge = 2.5 - 0.5 - 0.001
+    assert fpmod.rotation_outside(g, fp0, (edge, 0.0))  # disc of any turn
+    assert not fpmod.rotation_outside(g, fp0, (edge, 0.0), math.pi, 0.0)
+    assert fpmod.rotation_outside(g, fp0, (edge, 0.0), math.pi, math.pi)
 
 
 def test_valid_route_in_the_aisle():

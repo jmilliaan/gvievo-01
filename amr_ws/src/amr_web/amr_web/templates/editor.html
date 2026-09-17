@@ -1,38 +1,46 @@
 {% extends "base.html" %}
 {% block title %}AMR — route editor{% endblock %}
+{% block main_class %}wide{% endblock %}
 {% block body %}
 <section class="editor">
-  <aside class="card tools">
-    <h2>Route</h2>
-    <label>Map <select id="ed-map"></select></label>
-    <label>Route id <input id="ed-route-id" placeholder="route_a"></label>
-    <label>Load saved <select id="ed-load"><option value="">— new —</option></select></label>
-    <hr>
-    <div class="row">
+  <aside class="tools">
+    <h2>Route <small>map metres</small></h2>
+    <label class="field">Map <select id="ed-map"></select></label>
+    <label class="field">Route id <input id="ed-route-id" placeholder="route_a"></label>
+    <label class="field">Load saved <select id="ed-load"><option value="">— new —</option></select></label>
+    <div class="sep"></div>
+    <h3>Draw</h3>
+    <div class="bar" style="margin-top:0">
       <button id="tool-start" class="tool">Start pose</button>
+      <button id="btn-start-survey" class="tool" title="Put the route start on the map's survey start mark">Start = survey mark</button>
       <button id="tool-line" class="tool">Straight</button>
     </div>
+    <label class="field" style="margin-top:12px">Turn <small>viewed from above</small></label>
     <div class="turns">
-      <span class="muted">Turn (viewed from above)</span>
-      <div class="row"><button class="turn" data-dir="ccw" data-ang="45">CCW 45</button><button class="turn" data-dir="ccw" data-ang="90">CCW 90</button><button class="turn" data-dir="ccw" data-ang="180">CCW 180</button><button class="turn" data-dir="ccw" data-ang="270">CCW 270</button></div>
-      <div class="row"><button class="turn" data-dir="cw" data-ang="45">CW 45</button><button class="turn" data-dir="cw" data-ang="90">CW 90</button><button class="turn" data-dir="cw" data-ang="180">CW 180</button><button class="turn" data-dir="cw" data-ang="270">CW 270</button></div>
+      <button class="tool turn" data-dir="ccw" data-ang="45">CCW 45</button><button class="tool turn" data-dir="ccw" data-ang="90">CCW 90</button><button class="tool turn" data-dir="ccw" data-ang="180">CCW 180</button><button class="tool turn" data-dir="ccw" data-ang="270">CCW 270</button>
+      <button class="tool turn" data-dir="cw" data-ang="45">CW 45</button><button class="tool turn" data-dir="cw" data-ang="90">CW 90</button><button class="tool turn" data-dir="cw" data-ang="180">CW 180</button><button class="tool turn" data-dir="cw" data-ang="270">CW 270</button>
     </div>
-    <div class="row">
-      <button id="btn-undo">Undo</button><button id="btn-redo">Redo</button><button id="btn-clear" class="danger">Clear steps</button>
+    <div class="bar">
+      <button id="btn-undo" class="tool">Undo</button><button id="btn-redo" class="tool">Redo</button><button id="btn-clear" class="danger">Clear steps</button>
     </div>
-    <label>Repeat count <input id="ed-repeat" type="number" min="1" value="1"></label>
-    <label>Speed cap m/s <input id="ed-speed" type="number" step="0.05" min="0.05" max="0.3" value="0.30"></label>
-    <div class="row">
-      <button id="btn-validate">Validate</button>
-      <button id="btn-save" class="primary">Save revision</button>
+    <div class="sep"></div>
+    <h3>Limits</h3>
+    <label class="field">Repeat count <input id="ed-repeat" type="number" min="1" max="100" value="1"></label>
+    <label class="field">Speed cap m/s <input id="ed-speed" type="number" step="0.05" min="0.05" max="0.3" value="0.30"></label>
+    <div class="bar">
+      <button id="btn-validate" class="big">Validate</button>
+      <button id="btn-save" class="big run">Save revision</button>
     </div>
-    <div class="row"><button id="btn-mission">Create mission from saved revision</button></div>
-    <div id="ed-result" class="state">—</div>
-    <ol id="ed-steps"></ol>
+    <div class="bar"><button id="btn-mission" class="big">Create mission from saved revision</button></div>
+    <div class="sep"></div>
+    <h3>Result</h3>
+    <div id="ed-result"><div class="none">not validated</div></div>
+    <h3 style="margin-top:12px">Steps</h3>
+    <div id="ed-steps" class="list"><div class="none">no steps</div></div>
   </aside>
   <div class="canvas-wrap">
     <canvas id="ed-canvas" width="900" height="600"></canvas>
-    <div id="ed-hint" class="hint">Pick a map. Wheel = zoom, drag = pan. Start pose: click, then drag for heading.</div>
+    <div id="ed-hint" class="hint">Pick a map. Wheel = zoom, drag = pan, double-click = fit. Start pose: click, then drag for heading. Dashed outlines are the area validation checks (footprint + margin); all of it must be white.</div>
   </div>
 </section>
 {% endblock %}

@@ -88,16 +88,16 @@ def validate(
         if problem:
             issues.append(Issue("keepout", f"keepout mask not aligned with the map: {problem}"))
             keepout = None  # the issue already fails validation; do not index a mismatched grid
-    # Start pose itself must be clear (the vehicle stands there).
-    start = (route.start.x_m, route.start.y_m)
-    c = _clearance(grid, fp, keepout, None, start)
+    # Start pose itself must be clear (the vehicle stands there, at the start heading).
+    start = (route.start.x_m, route.start.y_m, route.start.yaw_rad)
+    c = _clearance(grid, fp, keepout, (start, start), None)
     if not c.clear:
         issues.append(Issue("clearance", "start pose " + _describe(c)))
     for st in compiled.steps:
         if st.type == STRAIGHT:
             c = _clearance(grid, fp, keepout, (st.start, st.end), None)
         else:
-            c = _clearance(grid, fp, keepout, None, (st.start[0], st.start[1]))
+            c = _clearance(grid, fp, keepout, None, (st.start, st.signed_angle_rad))
         if not c.clear:
             what = "line" if st.type == STRAIGHT else "rotation sweep"
             issues.append(Issue("clearance", f"{what} {_describe(c)} (margin included)", st.id))
@@ -118,16 +118,18 @@ def keepout_misalignment(grid: gridio.Grid, keepout: gridio.Grid) -> str | None:
     return None
 
 
-def _clearance(grid, fp, keepout, line, pivot) -> fpmod.Clearance:
+def _clearance(grid, fp, keepout, line, turn) -> fpmod.Clearance:
     # Bounds first: a sweep leaving the map is rejected outright, and the (clipped) mask of
     # an off-map sweep is never rasterised, so absurd coordinates cost nothing.
+    # `turn` is ((x, y, yaw), signed_angle): the exact sweep of that rotation, not a disc.
     if line is not None:
         if fpmod.line_outside(grid, fp, *line):
             return fpmod.Clearance(0, 0, 0, 0, outside=True)
         return fpmod.check(grid, fpmod.swept_line(grid, fp, *line), keepout)
-    if fpmod.rotation_outside(grid, fp, pivot):
+    (x, y, yaw), angle = turn
+    if fpmod.rotation_outside(grid, fp, (x, y), yaw, angle):
         return fpmod.Clearance(0, 0, 0, 0, outside=True)
-    return fpmod.check(grid, fpmod.swept_rotation(grid, fp, pivot), keepout)
+    return fpmod.check(grid, fpmod.swept_rotation(grid, fp, (x, y), yaw, angle), keepout)
 
 
 def _describe(c: fpmod.Clearance) -> str:

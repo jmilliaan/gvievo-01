@@ -12,9 +12,15 @@ The physical controls remain authoritative:
 - E-stop and the FX3/STO chain remain the immediate physical stop path.
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
-The web app is `http://192.168.2.20:5001/`. The useful operator and diagnostic
-pages are Status, Manual, Maps & survey, Route editor, Run, Monitor, I/O,
-Alarms (events), Parameters and Commissioning.
+The web app is `http://192.168.2.20:5001/`. Its tabs are **Status**, **Manual**,
+**Maps** (survey), **Routes** (route editor), **Run**, **Monitor**, **I/O**,
+**Alarms** (events), **Params** and **Commission**. Every page has the same left
+rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
+Generation, with the event log below. A tile with a yellow bar needs attention and
+a red bar means a fault or stale data. If the whole rail is greyed out and the
+header pill says `DISCONNECTED`, the values are last known, not live. After a
+software update, hard-refresh the browser (Ctrl+Shift+R) so it does not keep old
+styles or scripts.
 
 ## 1. Normal service operation
 
@@ -27,12 +33,12 @@ sudo systemctl restart amr.service
 ```
 
 A healthy start reaches `IDLE`, with the base and web processes running and no
-mapping/navigation layer. The home page must show:
+mapping/navigation layer. The Status page and the rail must show:
 
-- mode `IDLE` and no transition/fault reason;
-- a fresh panel image and operational drives;
-- mux source `none` while untouched;
-- no active map, survey, localization or run.
+- Mode `IDLE`, with no red fault banner on the Status page;
+- Selector `MANUAL` or `AUTO` (not `STALE`/`INVALID`) and Drives `ARMED` or `OFF`, without a red bar;
+- Command `none` while untouched;
+- Active map `—`, Localisation and Run `–`.
 
 Stopping the service revokes the control lease first. The supervisor then stops
 the active layer, base, Foxglove and web process groups. The base shutdown
@@ -62,13 +68,23 @@ Before you begin:
 - Mark a start position and heading on the floor (tape an arrow). The survey
   begins and ends there, and it is the easiest place to start a route from.
 
-**Jogging.** A jog pad appears on the Manual, Maps & survey and Run pages. Hold
-a pad button, or hold W/A/S/D or the arrow keys, to drive. Releasing stops the
-vehicle. So does Space, Esc or the STOP button, switching browser tabs or
-windows, or typing in a text field. The speed menu offers 0.10, 0.20 and
+**Jogging.** A jog pad appears on the Manual, Maps and Run pages. Hold
+a pad button, or hold W/A/S/D or the arrow keys, to drive. The held button turns
+blue. Releasing stops the vehicle, even if you let go before the page has
+received its jog session. So do Space, Esc, the centre **Stop** button, switching
+browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20 and
 0.30 m/s. Use 0.10–0.20 m/s while surveying.
 
-### A. Survey a map (`Maps & survey` page)
+**Pendant.** The hard-wired jog pendant on the DIO island works under the same
+authority as the jog pad (selector **MANUAL**, drives armed, no fault) and
+needs no browser. Hold a direction button to drive; releasing it stops the
+vehicle. Opposing buttons pressed together cancel each other. The pendant
+outranks the jog pad while a direction is held. Speed is fixed at 0.30 m/s /
+0.30 rad/s (mux parameters `pendant_v_m_s`, `pendant_w_rad_s`). Wiring
+(profile `pendant`, 0-based DI channels): FWD DI04, RVS DI05, LEFT DI06,
+RIGHT DI07. The IO page shows the live bits under those names.
+
+### A. Survey a map (`Maps` page)
 
 1. Park the vehicle on the floor mark, facing the marked heading, and keep it
    **still**.
@@ -107,7 +123,15 @@ windows, or typing in a text field. The speed menu offers 0.10, 0.20 and
 to navigation while an unsaved survey exists: save it or abort it first. A new
 survey can start straight away, with no service restart.
 
-### B. Draw a route (`Route editor` page)
+**`SLAM STALLED N s`** in the session message (also refused by "Returned to
+start" and "Save") means slam_toolbox stopped consuming scans while the scanner
+is still publishing: its process has hung. The live map freezes and the pose
+falls back to `odom` a few seconds later. Nothing recovers it: abort and start
+the survey again (a fresh slam_toolbox is launched). SLAM and AMCL read
+`/scan_gated` (scan_gate_node), which releases each scan only once its odometry
+transform exists, to keep them off the tf2 code path that hung on 2026-09-17.
+
+### B. Draw a route (`Routes` page)
 
 The route editor moves nothing. The mode can stay `IDLE`.
 
@@ -128,40 +152,56 @@ The route editor moves nothing. The mode can stay `IDLE`.
    - **CCW / CW 45, 90, 180, 270**: turn in place, as seen from above. CCW is
      to the left.
    - **Undo**, **Redo** and **Clear steps** edit the list. The step list
-     (`s1`, `s2`, …) is shown under the buttons.
-4. **Repeat count**: how many times the route runs back to back. Use 1 unless
-   the route returns to its own start pose. **Speed cap**: 0.05–0.30 m/s. Use
+     (`s1`, `s2`, …) is shown under **Steps**.
+4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
+   unless the route returns to its own start pose. A repeated run shows
+   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.30 m/s. Use
    0.15–0.20 m/s for a first run.
 5. Press **Validate**. The robot checks the route against the map, including
-   the footprint along every straight and the swept area of every turn.
-   Problem steps turn red and the reasons are listed. It reports the length,
-   total turning, and whether the route closes on its start.
+   the footprint along every straight and the area every turn actually sweeps
+   (a 90° turn does not check behind the vehicle; a 180° does). The footprint
+   is grown by the 0.10 m margin (footprint.yaml `margin_m`) and every cell under it must be free: unknown
+   (grey) cells count as blocked. The dashed outlines on the map are exactly
+   these areas; a failed one is red. A start pose or turn next to the wall the
+   survey began against is the usual failure: move the start forward.
+   A route that leaves the map, even partly, is refused. Problem steps turn red
+   and the reasons are listed under **Result**, with the length, total turning,
+   and whether the route closes on its start.
 6. Press **Save revision**. The result shows `saved <route> rev M`. An invalid
    route is refused.
 7. Press **Create mission from saved revision**. The result shows
-   `mission <id> created`. A mission ties this exact route revision to this
-   exact map revision, and the Run page lists missions.
+   `mission <id> created`. The id is `<map>_rev<N>_<route>_rev<M>`. A mission
+   ties this exact route revision to this exact map revision, and the Run page
+   lists missions. Creating it again with the same references is harmless; an
+   existing id with different references is refused.
 
 ### C. Run the route (`Run` page)
 
 1. **Activate the map.** Under **View / activate**, pick the same
    `<id> rev N` and press **Use this map on the vehicle**. The vehicle must be
    stopped and the selector on MANUAL. The mode goes `TRANSITIONING` →
-   `NAVIGATION`, and the box shows `ACTIVE: <id> rev N`. Nothing moves.
-2. **Tell it where it is.** Press **Set initial pose on map**, then on the map
-   click the vehicle's real position and **drag towards the way it faces**, and
-   release. Localisation shows `CHECKING`. The red scan points should now lie
+   `NAVIGATION`, and the **Active** tile shows `<id> rev N`. Nothing moves.
+2. **Tell it where it is.** Keep the active map selected in **View / activate**.
+   **Set initial pose on map** and **Confirm** are greyed out while another map is
+   in view, and a pose drawn on a map that is no longer active is refused. Press
+   **Set initial pose on map**, then on the map click the vehicle's real position
+   and **drag towards the way it faces**, and release. Localisation shows
+   `CHECKING`. The red scan points should now lie
    on the map's walls.
    - If they don't line up, set the pose again more carefully.
    - Jog a short distance (about 0.5 m forward and back, a small turn) with the
      pad on this page. This helps it converge.
-3. **Confirm.** Wait until the localisation box shows `can_confirm: true`:
-   covariance small, `scan_match` ≥ 0.6, sensors fresh. Check yourself that the
+3. **Confirm.** Wait until the **Can confirm** tile shows `YES`: covariance
+   small, a recent scan comparison with **Scan match** ≥ 0.6, sensors fresh
+   (sensor ages over 1 s turn yellow). A new initial pose or **Reset** clears all
+   earlier evidence, so it can take a moment to become `YES` again. Check yourself that the
    red scan overlays the walls, then press **Confirm: scans align**. The state
    becomes `READY`. **Reset** starts localisation over.
 4. **Position the vehicle** on the route's start pose, within 0.10 m and 5°,
-   using the jog pad. The white arrow is where the vehicle thinks it is, and
-   the planned route is drawn in blue.
+   using the jog pad. The dark-blue arrow and outline show where the vehicle
+   thinks it is, and the planned route is drawn in steel blue. A red
+   `STALE SCAN` or `STALE POSE` label means that overlay is old; do not position
+   against it.
 5. **Load.** Pick the mission in **Mission**. Only missions for the active map
    revision are listed. Press **Load (READY)**. The run state becomes `READY`.
 6. **Go.** Clear the area. Switch the physical selector to **AUTO**, then press
@@ -202,6 +242,10 @@ Mode changes (a new survey, another map) are refused while a run is `READY`,
 | `READY` | Confirmed. Runs can load and start. |
 | `LOST` | A sensor went stale, uncertainty grew, or the pose jumped. Set the initial pose and confirm again. |
 
+Wheel feedback that arrives but is flagged invalid counts as missing: localisation
+treats the wheels as stale, and a loaded or running route faults with
+`wheel feedback invalid`.
+
 ## 3. Diagnostics and commissioning
 
 Use `/monitor`, `/io`, `/alarms` and `/params` for read-only diagnosis. The
@@ -213,15 +257,21 @@ cycle where required by the drive procedure.
 It is an exclusive IDLE substate:
 
 1. Select **MANUAL**, ensure the vehicle is stopped and the test area is clear.
-2. Enter and **Hold plan**. This validates the plan and moves nothing.
-3. Review the calculated wheel count targets.
-4. Press physical **Start** once to execute. Browser input cannot start it.
-5. Use **Clear / abort** to stop and invalidate the held job.
-6. Save the displayed evidence path with the commissioning record.
+2. Enter and **Hold plan**. This validates the plan and moves nothing. The plan
+   `id` may use letters, digits, `_`, `.` and `-` only, starts with a letter or digit, max 64. Holding is
+   refused unless the wheels are known to be still and the encoder scale is fresh.
+3. Review the calculated wheel count targets under **Planned segments**.
+4. Press physical **Start** once to execute. Only a Start pressed after the plan
+   was held counts. Browser input cannot start it.
+5. Use **Clear / abort** to stop and invalidate the held job. An aborted run
+   still writes its evidence, including the interrupted segment.
+6. Save the displayed evidence path with the commissioning record. If the reason
+   says `evidence NOT written`, the file is missing; do not record an old path.
 
 While a plan is prepared or running, ordinary jog and mapping/navigation mode
-requests are refused. Selector change, lease loss, stale counts or panel loss
-aborts the job. `DONE` or `ABORTED` cannot replay on another Start edge; upload
+requests are refused. Selector change, lease loss, a supervisor restart or
+generation change, an encoder-scale change, stale counts or panel loss aborts
+the job, or drops a held plan. `DONE` or `ABORTED` cannot replay on another Start edge; upload
 a new plan.
 
 ## 4. Fault recovery
@@ -233,7 +283,18 @@ a new plan.
   it does not automatically restart the failed operation.
 - `8130h` on both drives: the drive lost the PC heartbeat. Stop the service,
   correct the PC/CAN cause, perform the required drive power-cycle procedure,
-  then start to IDLE.
+  then start to IDLE. The drive owner also withholds the heartbeat on purpose
+  when it cannot confirm a fault stop (Monitor shows `stop_unconfirmed` and
+  `heartbeat_withheld`); treat that as a drive/CAN fault, not a PC crash.
+- A drive faults while its heartbeat is still arriving: check Monitor for
+  `tpdo1_age_s` / `tpdo2_age_s`. Losing either feedback PDO alone now faults the
+  drive owner.
+- `LOOP_ERROR` or `BOOT_ERROR`: the supervisor caught an internal exception and
+  finished the operation that was running as failed. Save `journalctl -u
+  amr.service` for the report; restart the service if Recover does not reach IDLE.
+- `SURVEY_RPC_TIMEOUT` / `SAVE_UNKNOWN_OUTCOME`: the survey coordinator did not
+  answer in time. After a save timeout, check the Maps page for a new revision
+  before saving again.
 - Panel invalid: check the DIO island at `192.168.1.30`. Reconnection must not
   create a Start edge or replay a jog.
 - No ROS discovery in an engineering shell: source `env/vehicle.sh`. Hardware

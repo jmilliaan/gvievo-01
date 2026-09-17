@@ -95,8 +95,10 @@ class Readiness:
         `match`: fraction of endpoints within tolerance of an occupied cell.
         Unmapped clutter lowers it without the pose being wrong, so it only
         informs the operator and gates confirmation.
-        `long`: fraction of beams longer than the map permits, i.e. passing
-        through mapped walls. That cannot be clutter; sustained, it is a loss.
+        `long`: fraction of beams that pass through a mapped wall AND end in
+        mapped free space (scan_consistency.compare). Seeing through mesh or
+        glass onto other mapped obstacles does not count; a wrong pose puts
+        endpoints in free space. That cannot be clutter; sustained, it is a loss.
         `t` is when the comparison succeeded; `stamp` the scan's own time. A scan
         taken before the current initial pose belongs to an earlier attempt and
         is ignored; a non-finite result is unavailable evidence, not a match.

@@ -6,32 +6,57 @@ $('btn-survey-start').onclick = () => op('/api/survey/start', { map_id: $('surve
 $('btn-survey-returned').onclick = () => op('/api/survey/returned');
 $('btn-survey-save').onclick = () => op('/api/survey/save', { note: $('survey-note').value.trim() });
 $('btn-survey-abort').onclick = () => op('/api/survey/abort');
+const SURVEY_LEVEL = { SAVING: 'warn', RETURN_REVIEW: 'warn' };
+const noClosure = '<div class="none">available after "Returned to start"</div>';
 onState(st => {
   const mode = st.mode;
   const m = st.mapping;
-  if (!mode) { $('survey-state').textContent = 'no supervisor'; return; }
+  if (!mode) { tiles('survey-state', [['Session', '–', 'no supervisor', 'bad', 'key']]); $('survey-msg').textContent = ''; return; }
   if (mode.mode_name !== 'MAPPING') {
-    $('survey-state').textContent = `mode ${mode.mode_name}${mode.phase ? ' · ' + mode.phase : ''}` +
-      (mode.last_survey_map_id ? `\nlast saved survey: ${mode.last_survey_map_id} rev${mode.last_survey_revision} — use it from the Run page` : '') +
-      (mode.reason ? `\n${mode.reason}` : '');
-    $('closure').textContent = '';
+    tiles('survey-state', [
+      ['Mode', mode.mode_name, mode.phase || '—', MODE_LEVEL[mode.mode_name], 'key'],
+      ['Last saved survey', mode.last_survey_map_id ? `${mode.last_survey_map_id} rev${mode.last_survey_revision}` : '—',
+       mode.last_survey_map_id ? 'use it from the Run page' : '—'],
+    ]);
+    $('survey-msg').textContent = mode.reason || '';
+    $('closure').innerHTML = noClosure;
     return;
   }
-  if (!m) { $('survey-state').textContent = 'MAPPING — waiting for the session coordinator'; return; }
-  $('survey-state').textContent = `${m.state_name}  ${m.map_id ? 'map ' + m.map_id : ''}${m.revision ? ' rev' + m.revision : ''}\n${m.message}`;
-  $('closure').textContent = m.closure_available ? `closure as estimated: dx ${m.closure_dx_m.toFixed(3)} m, dy ${m.closure_dy_m.toFixed(3)} m, dyaw ${(m.closure_dyaw_rad * 180 / Math.PI).toFixed(2)}°  — review seams before saving` : '';
+  if (!m) {
+    tiles('survey-state', [['Session', 'MAPPING', 'waiting for the session coordinator', 'warn', 'key']]);
+    $('survey-msg').textContent = '';
+    return;
+  }
+  tiles('survey-state', [
+    ['Session', m.state_name, 'coordinator', SURVEY_LEVEL[m.state_name], 'key'],
+    ['Map', m.map_id ? `${m.map_id}${m.revision ? ' rev' + m.revision : ''}` : '—', 'id · revision'],
+  ]);
+  $('survey-msg').textContent = m.message || '';
+  if (m.closure_available) {
+    tiles('closure', [
+      ['dx', num(m.closure_dx_m, 3), 'm', 'warn'],
+      ['dy', num(m.closure_dy_m, 3), 'm', 'warn'],
+      ['dyaw', num(m.closure_dyaw_rad * 180 / Math.PI, 2), '°', 'warn'],
+    ]);
+  } else $('closure').innerHTML = noClosure;
 });
 async function loadMaps() {
   const { data } = await apiGet('/api/maps');
-  if (!data.length) { $('maps-list').textContent = 'no saved maps yet'; return; }
-  $('maps-list').innerHTML = data.map(m => `<h3>${esc(m.map_id)}</h3><table><tr><th>rev</th><th>created</th><th>size</th><th>closure review</th><th>routes</th><th>bundle</th></tr>` +
-    m.revisions.map(r => r.error ? `<tr><td>${esc(r.revision)}</td><td colspan=5 style="color:#e74c3c">${esc(r.error)}</td></tr>` :
-      `<tr><td>${esc(r.revision)}</td><td>${esc(r.created)}</td><td>${esc(r.width)}×${esc(r.height)} @ ${esc(r.resolution)} m</td><td>${r.review ? `dx ${(+r.review.dx_m).toFixed(2)} dy ${(+r.review.dy_m).toFixed(2)} dyaw ${(+r.review.dyaw_rad * 180 / Math.PI).toFixed(1)}° ${esc(r.review.note)}` : ''}</td><td>${Object.entries(r.routes || {}).map(([k, v]) => `${esc(k)} rev${esc(v.join(','))}`).join('; ')}</td><td><code>${esc(String(r.sha256).slice(0, 12))}</code></td></tr>`).join('') + '</table>').join('');
+  if (!data.length) { $('maps-list').innerHTML = '<div class="none">no saved maps yet</div>'; return; }
+  const head = '<div class="row head"><span>rev · created · size</span><span>closure review · routes · bundle</span></div>';
+  $('maps-list').innerHTML = data.map(m => `<h3>${esc(m.map_id)}</h3><div class="list">${head}` +
+    m.revisions.map(r => r.error
+      ? `<div class="al-row standing lv-error"><span class="al-lv">rev${esc(r.revision)}</span><span class="al-msg">${esc(r.error)}</span></div>`
+      : `<div class="row"><span><span class="k">rev${esc(r.revision)}</span> <span class="n">${esc(r.created)}</span><br>` +
+        `<span class="v">${esc(r.width)}×${esc(r.height)}<i>@ ${esc(r.resolution)} m</i></span></span>` +
+        `<span><span class="n">${r.review ? `dx ${num(+r.review.dx_m, 2)} · dy ${num(+r.review.dy_m, 2)} · dyaw ${num(+r.review.dyaw_rad * 180 / Math.PI, 1)}° ${esc(r.review.note)}` : 'no review'}</span><br>` +
+        `<span class="n">${Object.entries(r.routes || {}).map(([k, v]) => `${esc(k)} rev${esc(v.join(','))}`).join('; ') || 'no routes'}</span> ` +
+        `<code>${esc(String(r.sha256).slice(0, 12))}</code></span></div>`).join('') + '</div>').join('');
 }
 loadMaps();
 
-// live occupancy + pose while surveying, and the shared jog pad next to it
+// live occupancy + pose while surveying, and the shared jog pad beside the controls
 const liveView = new MapView(document.getElementById('live-canvas'));
 liveOverlay(liveView);
 pollLive(liveView, { map: true });
-jogpad(document.getElementById('jog-maps'));
+jogpad(document.getElementById('jog-maps'), { compact: true });

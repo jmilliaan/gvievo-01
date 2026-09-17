@@ -6,3 +6,9 @@ bool mode_auto        # selector: true = AUTO, false = MANUAL  ("auto" is a C++ 
 bool start_edge       # rising edge of Start on THIS message
 bool reset_edge       # rising edge of Reset on THIS message
 uint32 seq            # increments per scan, so edges are never missed by a slow consumer
+# Jog pendant (core/panel.pendant_intent): direction levels, an opposing pair
+# cancelled. Levels, not edges: held = keep moving.
+bool pendant_fwd
+bool pendant_rvs
+bool pendant_left
+bool pendant_right

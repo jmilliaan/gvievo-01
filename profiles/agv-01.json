@@ -63,10 +63,10 @@
       "PB Start",
       "PB Reset",
       "SS Auto/Manual",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
+      "Pendant FWD",
+      "Pendant RVS",
+      "Pendant LEFT",
+      "Pendant RIGHT",
       "EDM BLDC L",
       "EDM BLDC R",
       "[SPARE]",
@@ -121,6 +121,13 @@
   "horn": {
     "enabled": true,
     "do_channel": 0
+  },
+  "pendant": {
+    "enabled": true,
+    "di_fwd": 4,
+    "di_rvs": 5,
+    "di_left": 6,
+    "di_right": 7
   },
   "can": {
     "bitrate": 125000,
