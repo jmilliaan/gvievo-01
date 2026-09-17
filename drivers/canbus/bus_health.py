@@ -14,7 +14,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from verify_drivers import BAD, OK, WARN, open_bus, sdo_read, u32  # noqa: E402
+from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
+                            sdo_read, u32)
 
 NODES = {1: "left", 2: "right"}
 SOAK_N = 400
@@ -49,6 +50,9 @@ def read(bus, node, idx, sub=0):
 
 
 def main():
+    lock = claim_bus("bus_health")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus()
     except Exception as e:

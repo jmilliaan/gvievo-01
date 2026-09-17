@@ -19,7 +19,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import can  # noqa: E402
-from verify_drivers import BAD, OK, WARN, open_bus, sdo_read, u32  # noqa: E402
+from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
+                            sdo_read, u32)
 
 EXPECTED = {
     1:  ("left driver",  "BLVD-KRD", 0x00020192),
@@ -147,6 +148,9 @@ def main():
     ap.add_argument("--scan-timeout", type=float, default=0.1)
     args = ap.parse_args()
 
+    lock = claim_bus("verify_bus")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus()
     except Exception as e:

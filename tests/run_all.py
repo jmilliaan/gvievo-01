@@ -15,6 +15,7 @@ a run go green.
 import importlib
 import pathlib
 import sys
+import threading
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -38,10 +39,26 @@ MODULES = [
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 785
+EXPECTED_CHECKS = 833
+
+
+# An exception on a helper thread only prints a traceback by default - the
+# check that started the thread can still pass. Record every one so the run
+# fails instead.
+THREAD_ERRORS = []
+
+
+def _thread_excepthook(args):
+    THREAD_ERRORS.append(f"{args.thread.name if args.thread else '?'}: "
+                         f"{args.exc_type.__name__}: {args.exc_value}")
+    _default_excepthook(args)
+
+
+_default_excepthook = threading.excepthook
 
 
 def main():
+    threading.excepthook = _thread_excepthook
     print(f"profile {helpers.config.PROFILE_NAME}: "
           f"can {helpers.config.CAN_BITRATE // 1000} kbps "
           f"use_rpdo={helpers.config.CAN_USE_RPDO} "
@@ -60,6 +77,7 @@ def main():
     print(f"{ran} test function(s), {total} check(s)")
 
     problems = list(helpers.FAIL)
+    problems += [f"uncaught exception in thread {e}" for e in THREAD_ERRORS]
     if total != EXPECTED_CHECKS:
         problems.append(
             f"expected {EXPECTED_CHECKS} checks, ran {total} - a module or a "

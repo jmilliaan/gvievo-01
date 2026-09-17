@@ -90,6 +90,7 @@ class Supervisor(Node):
         dp("mux_ack_s", 2.0)
         dp("still_wait_s", 5.0)
         dp("save_s", 60.0)
+        dp("survey_rpc_s", 15.0)  # returned / abort answer budget (review R27)
         p = self.get_parameter
         self.real = bool(p("real").value)
         self.maps_dir = os.path.expanduser(str(p("maps_dir").value))
@@ -97,7 +98,15 @@ class Supervisor(Node):
         os.makedirs(self.state_dir, exist_ok=True)
         self.budget = {
             k: float(p(k).value)
-            for k in ("base_ready_s", "layer_start_s", "layer_stop_s", "mux_ack_s", "still_wait_s", "save_s")
+            for k in (
+                "base_ready_s",
+                "layer_start_s",
+                "layer_stop_s",
+                "mux_ack_s",
+                "still_wait_s",
+                "save_s",
+                "survey_rpc_s",
+            )
         }
 
         self.instance = uuid.uuid4().hex
@@ -318,7 +327,12 @@ class Supervisor(Node):
                     res.accepted, res.message = False, f"map: {e}"
                     return res
                 if self.mode == fsm.NAVIGATION and (map_id, rev, sha) == self.active_map:
-                    res.accepted, res.message = True, "already on that map"
+                    # accepted means "poll this id": give the browser a finished operation, not ""
+                    op, _ = self.book.submit(
+                        req.request_id, kind, map_id=map_id, map_revision=rev, map_sha256=sha
+                    )
+                    self.book.finish(op.operation_id, ops.SUCCEEDED, "already on that map")
+                    res.accepted, res.operation_id, res.message = True, op.operation_id, "already on that map"
                     return res
             op, _ = self.book.submit(req.request_id, kind, map_id=map_id, map_revision=rev, map_sha256=sha)
             target = fsm.IDLE if kind == fsm.REQ_IDLE else fsm.NAVIGATION
@@ -409,9 +423,24 @@ class Supervisor(Node):
         self.requested = target
         self._set(fsm.TRANSITIONING, "inhibiting")
 
+    def _fail_active(self, code: str, why: str) -> None:
+        """Terminal failure of whatever is in flight (review R25): the transaction's or the
+        survey's own operation is finished - never a fresh one left beside a pending original."""
+        if self.txn is not None:
+            op_id = self.txn.operation_id
+        elif self.survey_op is not None:
+            op_id = self.survey_op[0]
+        else:
+            op_id = self.book.submit("", "fault", message=why)[0].operation_id
+        self._fail(op_id, code, why)
+
     def _fail(self, op_id: str, code: str, why: str) -> None:
         self.get_logger().error(f"FAULT {code}: {why}")
         self.book.finish(op_id, ops.FAILED, why)
+        if self.survey_op is not None and self.survey_op[0] != op_id:
+            self.book.finish(self.survey_op[0], ops.FAILED, f"interrupted by fault {code}")
+        if self.txn is not None and self.txn.operation_id != op_id:
+            self.book.finish(self.txn.operation_id, ops.FAILED, f"interrupted by fault {code}")
         self.txn = None
         self.survey_op = None
         self.inhibit_manual = False
@@ -647,14 +676,19 @@ class Supervisor(Node):
                 self._save_deadline = now + self.budget["save_s"]
             else:
                 req = Trigger.Request()
+                self._save_deadline = now + self.budget["survey_rpc_s"]
             self._pending_future = cli.call_async(req)
             self.book.phase(op_id, name)
             return
         if not self._pending_future.done():
-            if name == "save" and now > self._save_deadline:
-                self._fail(
-                    op_id, "SAVE_UNKNOWN_OUTCOME", "save did not answer within budget; outcome unknown"
-                )
+            if now > self._save_deadline:
+                # _fail drops the future: a late answer can no longer finish or advance anything
+                if name == "save":
+                    self._fail(
+                        op_id, "SAVE_UNKNOWN_OUTCOME", "save did not answer within budget; outcome unknown"
+                    )
+                else:
+                    self._fail(op_id, "SURVEY_RPC_TIMEOUT", f"{INTERNAL}/{name} did not answer within budget")
             return
         r = self._pending_future.result()
         self._pending_future = None
@@ -727,17 +761,19 @@ class Supervisor(Node):
                 continue
             g.requested_stop = True  # handled; never reap it again
             if role in ("base", "layer"):
-                if self.txn is not None:
-                    op_id = self.txn.operation_id
-                else:
-                    op_id = self.book.submit("", "fault", message=f"{role} exited")[0].operation_id
-                self._fail(op_id, f"{role.upper()}_EXITED", f"{g.describe()} exited unrequested")
+                self._fail_active(f"{role.upper()}_EXITED", f"{g.describe()} exited unrequested")
             else:
                 self.get_logger().warn(f"{g.describe()} exited; optional group, not restarted")
                 self.groups.pop(role, None)
 
     def _loop(self) -> None:
-        self._boot()
+        with self._lock:
+            try:
+                self._boot()
+            except Exception as e:  # noqa: BLE001 - a spawn failure is a fault, not a dead worker thread
+                self.get_logger().error(f"boot error: {e!r}")
+                self._boot_deadline = self._now()
+                self._fail_active("BOOT_ERROR", f"boot failed: {e!r}")
         period = 0.1
         while not self._stop.is_set():
             t0 = self._now()
@@ -746,8 +782,16 @@ class Supervisor(Node):
                     self._tick(t0)
                 except Exception as e:  # noqa: BLE001 - the loop must keep publishing the (inhibited) lease
                     self.get_logger().error(f"loop error: {e!r}")
-                    self._set(fsm.FAULT, "loop error", repr(e), "LOOP_ERROR")
-            self._publish_lease()  # outside the lock
+                    try:
+                        self._fail_active("LOOP_ERROR", repr(e))
+                    except Exception as e2:  # noqa: BLE001 - last resort: nothing in flight survives
+                        self.get_logger().error(f"fault handling failed: {e2!r}")
+                        self.txn, self.survey_op, self._pending_future = None, None, None
+                        self._set(fsm.FAULT, "loop error", repr(e), "LOOP_ERROR")
+            try:
+                self._publish_lease()  # outside the lock
+            except Exception as e:  # noqa: BLE001 - a dead loop would stop IDLE/FAULT state reporting
+                self.get_logger().error(f"lease publish failed: {e!r}")
             time.sleep(max(0.0, period - (self._now() - t0)))
 
     def _tick(self, now: float) -> None:

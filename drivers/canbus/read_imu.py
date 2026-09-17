@@ -65,7 +65,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from drive_forward import sdo_write  # noqa: E402
-from verify_drivers import BAD, OK, WARN, open_bus, sdo_read  # noqa: E402
+from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
+                            sdo_read)
 
 SENSOR_NODE = 10
 
@@ -425,6 +426,9 @@ def main(argv=None):
             print(f"{WARN} the control service must not be running - it owns "
                   f"can0.\n")
 
+    lock = claim_bus("read_imu")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus()
     except Exception as e:                      # noqa: BLE001 - a bench tool

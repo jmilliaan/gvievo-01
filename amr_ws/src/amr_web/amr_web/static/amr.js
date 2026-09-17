@@ -8,6 +8,9 @@ async function request(path, method, body) {
   if (!r.ok && data && data.message) log(data.message, 'err');
   return { status: r.status, data };
 }
+// Every value from the robot, a saved file or an operator note goes into innerHTML only
+// through esc(): route step ids, survey notes and event text are data, not markup (R30).
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const api = (path, body) => request(path, 'POST', body || {});
 const apiGet = (path) => request(path, 'GET');
 function log(msg, cls) {

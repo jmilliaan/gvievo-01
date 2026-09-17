@@ -1,4 +1,5 @@
 import math
+import os
 
 import numpy as np
 import pytest
@@ -222,3 +223,268 @@ def test_route_store_revisions(tmp_path):
     assert [x["mission_id"] for x in store.list_missions(str(tmp_path))] == ["m1"]
     with pytest.raises(store.StoreError):
         store.save_mission(str(tmp_path), "../x", "sim_factory", 1, "a", "r1", 1, "b")
+
+
+# ---- R10: map bounds are never "clear" -------------------------------------------------
+
+SMALL = GridMeta(0.05, -2.5, -2.5)  # 5 m x 5 m, x and y in [-2.5, 2.5]
+
+
+def small_grid():
+    return Grid(np.zeros((100, 100), dtype=np.int8), SMALL)
+
+
+def test_r10_dilation_does_not_wrap_across_edges():
+    mask = np.zeros((20, 30), dtype=bool)
+    mask[10, 0] = True  # left edge
+    mask[0, 15] = True  # bottom edge
+    out = fpmod.dilate(mask, 3)
+    assert not out[:, -5:].any(), "left-edge cell appeared on the right edge"
+    assert not out[-5:, :].any(), "bottom-edge cell appeared on the top edge"
+    assert out[10, 3] and out[3, 15] and out[13, 0] and not out[10, 4]
+
+
+def test_r10_margin_smaller_than_a_cell_still_dilates():
+    assert fpmod.margin_cells(fpmod.Footprint(FP.polygon, 0.01), 0.05) == 1
+    assert fpmod.margin_cells(fpmod.Footprint(FP.polygon, 0.20), 0.05) == 4  # 0.2/0.05 = 4.000000000000001
+    assert fpmod.margin_cells(fpmod.Footprint(FP.polygon, 0.0), 0.05) == 0
+
+
+@pytest.mark.parametrize(
+    "steps,start,step_id",
+    [
+        ([straight("s1", 41.0, 40.0)], (40.0, 40.0, 0.0), None),  # wholly outside: empty in-map mask
+        ([straight("s1", 2.0, 0.0)], (0.0, 0.0, 0.0), "s1"),  # nose overhangs the east edge
+        ([rotate("s1", "ccw", 90), straight("s2", 0.0, 2.2)], (0.0, 0.0, 0.0), "s2"),  # north edge
+        ([straight("s1", -2.0, 0.0)], (0.0, 0.0, 180.0), "s1"),  # west edge
+        ([rotate("s1", "cw", 90), straight("s2", 0.0, -2.0)], (0.0, 0.0, 0.0), "s2"),  # south edge
+    ],
+)
+def test_r10_routes_leaving_the_map_are_rejected(steps, start, step_id):
+    v = validate(route(steps, start=start), Manifest, small_grid(), FP)
+    assert not v.ok
+    out = [i for i in v.issues if i.code == "clearance" and "outside the map" in i.message]
+    assert out, [i.to_dict() for i in v.issues]
+    if step_id:
+        assert any(i.step_id == step_id for i in out)
+    else:
+        assert any(i.step_id is None for i in out)  # the start pose itself
+
+
+def test_r10_rotation_and_corner_overhang():
+    g = small_grid()
+    fp0 = fpmod.Footprint(FP.polygon, 0.0)
+    assert not fpmod.rotation_outside(g, fp0, (0.0, 0.0))
+    for corner in ((2.0, 2.0), (-2.0, 2.0), (2.0, -2.0), (-2.0, -2.0)):
+        assert fpmod.rotation_outside(g, fp0, corner)
+    # a line whose rotated footprint pokes past the corner by a sliver of margin only
+    reach = math.hypot(1.1, 0.35)
+    edge = 2.5 - reach - 0.001
+    assert not fpmod.rotation_outside(g, fp0, (edge, 0.0))
+    assert fpmod.rotation_outside(g, fpmod.Footprint(FP.polygon, 0.01), (edge, 0.0))
+    yaw = math.radians(45)
+    assert fpmod.line_outside(g, fp0, (1.5, 1.5, yaw), (1.6, 1.6, yaw))
+    assert not fpmod.line_outside(g, fp0, (-0.5, -0.5, yaw), (0.0, 0.0, yaw))
+    c = fpmod.check(g, np.zeros(g.data.shape, dtype=bool), outside=True)
+    assert c.occupied == c.unknown == c.keepout == c.cells == 0 and not c.clear
+
+
+def test_r10_route_inside_small_map_still_valid():
+    v = validate(route([straight("s1", 0.5, 0.0)], start=(-0.5, 0.0, 0.0)), Manifest, small_grid(), FP)
+    assert v.ok, [i.to_dict() for i in v.issues]
+
+
+# ---- R19: yaw-free maps only; keepout must be aligned ---------------------------------
+
+
+def test_r19_rotated_grid_is_a_validation_issue():
+    g = Grid(np.zeros((100, 100), dtype=np.int8), GridMeta(0.05, -2.5, -2.5, origin_yaw=0.2))
+    v = validate(route([straight("s1", 0.5, 0.0)], start=(-0.5, 0.0, 0.0)), Manifest, g, FP)
+    assert not v.ok and any(i.code == "map_geometry" for i in v.issues)
+
+
+@pytest.mark.parametrize(
+    "ko_meta,shape",
+    [
+        (GridMeta(0.05, -2.5, -2.5), (100, 99)),
+        (GridMeta(0.10, -2.5, -2.5), (100, 100)),
+        (GridMeta(0.05, -2.45, -2.5), (100, 100)),
+        (GridMeta(0.05, -2.5, -2.5, origin_yaw=0.1), (100, 100)),
+    ],
+)
+def test_r19_misaligned_keepout_is_rejected(ko_meta, shape):
+    ko = Grid(np.zeros(shape, dtype=np.int8), ko_meta)
+    v = validate(route([straight("s1", 0.5, 0.0)], start=(-0.5, 0.0, 0.0)), Manifest, small_grid(), FP, ko)
+    assert not v.ok and any(i.code == "keepout" and "aligned" in i.message for i in v.issues)
+
+
+# ---- R21: strict schema --------------------------------------------------------------
+
+
+def good_dict():
+    return route([straight("s1", 3.0, 0.0), rotate("s2", "cw", 270)], repeat=2).to_dict()
+
+
+def _mut(path, value):
+    d = good_dict()
+    cur = d
+    for k in path[:-1]:
+        cur = cur[k]
+    if value is KeyError:
+        del cur[path[-1]]
+    else:
+        cur[path[-1]] = value
+    return d
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("repeat_count",), 2.5),
+        (("repeat_count",), "2"),
+        (("repeat_count",), True),
+        (("repeat_count",), -1),
+        (("repeat_count",), 10**9),
+        (("repeat_count",), 101),  # amr_mission run_fsm MAX_PASSES = 100
+        (("revision",), 1.5),
+        (("schema_version",), "1"),
+        (("limits", "linear_mps"), 0),
+        (("limits", "linear_mps"), float("nan")),
+        (("limits", "linear_mps"), float("inf")),
+        (("limits", "linear_mps"), "fast"),
+        (("limits", "angular_rad_s"), -0.3),
+        (("limits", "warp"), 1.0),
+        (("limits",), [1, 2]),
+        (("start",), KeyError),
+        (("start", "yaw_deg"), KeyError),
+        (("start", "x_m"), None),
+        (("start", "x_m"), 1e300),
+        (("frame_id",), "odom"),
+        (("steps",), {"a": 1}),
+        (("steps",), [1]),
+        (("steps",), [{"id": "s1", "type": "straight"}]),
+        (("steps",), [{"id": "s1", "type": "straight", "to": {"x_m": 1.0}}]),
+        (("steps",), [{"id": "s1", "type": "straight", "to": {"x_m": "1", "y_m": 0}}]),
+        (("steps",), [{"id": "s1", "type": "rotate", "direction": "cw", "angle_deg": 90.5}]),
+        (("steps",), [{"id": "s1", "type": "rotate", "direction": "cw", "angle_deg": "90"}]),
+        (("steps",), [{"id": 7, "type": "rotate", "direction": "cw", "angle_deg": 90}]),
+        (("steps",), [{"id": "s1", "type": "rotate", "direction": "up", "angle_deg": 90}]),
+        (("steps",), [{"id": "s1", "type": "rotate", "angle_deg": 90}]),
+        (("steps",), [{"id": "s", "type": "rotate", "direction": "cw", "angle_deg": 90}] * 501),
+        (("route_id",), ["r"]),
+        (("map",), "m"),
+    ],
+)
+def test_r21_malformed_routes_raise_route_error(path, value):
+    with pytest.raises(RouteError):
+        Route.from_dict(_mut(path, value))
+
+
+def test_r21_well_formed_inputs_still_accepted():
+    back = Route.from_dict(good_dict())
+    assert back.repeat_count == 2 and back.steps[1].angle_deg == 270
+    d = _mut(("limits",), {"linear_mps": 1})  # JSON int speed from the browser
+    d["start"] = {"x_m": 0, "y_m": 0, "yaw_deg": 0}
+    d["steps"][1]["angle_deg"] = 270  # int from JSON; stored revisions carry 270.0
+    assert Route.from_dict(d).limits.linear_mps == 1.0
+    assert Route.from_dict(_mut(("limits",), KeyError)).limits == Limits()
+    assert Route.from_dict(_mut(("repeat_count",), 0)).repeat_count == 0  # validate() reports it
+    assert Route.from_dict(_mut(("repeat_count",), 100)).repeat_count == 100
+
+
+def test_r21_validate_bounds_repeat_count_of_constructed_routes():
+    g = build()
+    for bad in (101, 2.5, True):
+        r = route([straight("s1", 5.0, 0.0)])
+        r.repeat_count = bad
+        assert any(i.code == "repeat" for i in validate(r, Manifest, g, FP).issues), bad
+
+
+def test_r21_compiler_refuses_zero_speed_and_unbounded_work():
+    r = route([straight("s1", 3.0, 0.0)])
+    r.limits.linear_mps = 0.0
+    with pytest.raises(RouteError, match="linear_mps"):
+        compile_route(r)
+    r = route([straight("s1", 9000.0, 0.0), rotate("t", "ccw", 180), straight("s2", -9000.0, 0.0)])
+    with pytest.raises(RouteError, match="too long"):
+        compile_route(r)
+
+
+# ---- R22/R23: immutable, serialised store --------------------------------------------
+
+
+def test_r22_mission_id_conflict_and_idempotent_retry(tmp_path):
+    d = str(tmp_path)
+    p = store.save_mission(d, "m", "mapA", 1, "shaA", "r1", 1, "rsha")
+    before = open(p, "rb").read()
+    assert store.save_mission(d, "m", "mapA", 1, "shaA", "r1", 1, "rsha") == p  # same refs: ok
+    with pytest.raises(store.StoreConflict):
+        store.save_mission(d, "m", "mapB", 1, "shaB", "r1", 1, "rsha2")
+    assert open(p, "rb").read() == before
+    assert [x["map"]["id"] for x in store.list_missions(d)] == ["mapA"]
+
+
+def test_r23_concurrent_route_writers_get_distinct_immutable_revisions(tmp_path):
+    import hashlib
+    import threading
+
+    d = str(tmp_path)
+    n = 12
+    barrier = threading.Barrier(n)
+    results, errors = [], []
+
+    def writer(k):
+        try:
+            r = route([straight("s1", 1.0 + k, 0.0)])
+            barrier.wait(timeout=10)
+            results.append((k, *store.save_route(d, r)))
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(k,)) for k in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert not errors and len(results) == n
+    assert sorted(rev for _, rev, _, _ in results) == list(range(1, n + 1))
+    for k, rev, path, sha in results:
+        data = open(path, "rb").read()
+        assert hashlib.sha256(data).hexdigest() == sha
+        assert (
+            Route.loads(data.decode()).steps[0].to == (1.0 + k, 0.0) and f"revision: {rev}" in data.decode()
+        )
+    leftovers = [f for f in os.listdir(os.path.dirname(results[0][2])) if f.startswith(".tmp-")]
+    assert leftovers == []
+
+
+def test_r23_concurrent_mission_writers_one_winner(tmp_path):
+    import threading
+
+    d = str(tmp_path)
+    n = 8
+    barrier = threading.Barrier(n)
+    ok, conflicts = [], []
+
+    def writer(k):
+        barrier.wait(timeout=10)
+        try:
+            ok.append((k, store.save_mission(d, "m", f"map{k}", 1, "s", "r", 1, "rs")))
+        except store.StoreConflict:
+            conflicts.append(k)
+
+    threads = [threading.Thread(target=writer, args=(k,)) for k in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert len(ok) == 1 and len(conflicts) == n - 1
+    assert store.load_mission(d, "m")["map"]["id"] == f"map{ok[0][0]}"
+
+
+def test_r23_existing_revision_is_never_replaced(tmp_path):
+    d = str(tmp_path)
+    _, path, _ = store.save_route(d, route([straight("s1", 1.0, 0.0)]))
+    with pytest.raises(store.StoreConflict):
+        store._commit_new(path, b"other")
+    assert b"other" not in open(path, "rb").read()

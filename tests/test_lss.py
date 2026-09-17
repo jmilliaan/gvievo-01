@@ -282,5 +282,101 @@ def test_write_gating():
           "--go" in lss.__doc__)
 
 
+def test_bench_tools_respect_the_owner_lock():
+    """R33: every bench tool that transmits takes the CAN owner lock first.
+
+    socketcan admits any number of openers, so without the lock a drive or LSS
+    tool could run alongside the controller and interleave SDO transfers with
+    it. A fake runtime holds the lock in a scratch lock directory; every entry
+    point, --go included, must name the owner and exit without opening the bus.
+    """
+    import contextlib
+    import io
+    import os
+    import shutil
+    import tempfile
+    import bus_health
+    import drive_forward
+    import ownerlock
+    import read_imu
+    import verify_bus
+    import verify_drivers
+    print("\nbench tools: the CAN owner lock comes before the bus")
+
+    opened = []
+
+    def fake_open(*a, **k):
+        opened.append(a)
+        raise RuntimeError("fake open_bus - no bus in the offline suite")
+
+    mods = (bus_health, drive_forward, lss, read_imu, verify_bus,
+            verify_drivers)
+    entry = [
+        ("drive_forward --go",
+         lambda: drive_forward.main(), ["drive_forward.py", "--go"]),
+        ("bus_health", lambda: bus_health.main(), ["bus_health.py"]),
+        ("verify_drivers", lambda: verify_drivers.main(), ["verify_drivers.py"]),
+        ("verify_bus", lambda: verify_bus.main(), ["verify_bus.py"]),
+        ("read_imu show", lambda: read_imu.main(["show"]), None),
+        ("read_imu tpdo --go",
+         lambda: read_imu.main(["tpdo", "euler", "--go"]), None),
+        ("lss scan", lambda: lss.main(["scan"]), None),
+        ("lss verify", lambda: lss.main(["verify"]), None),
+        ("lss set --go",
+         lambda: lss.main(["set", "--to", "1000000", "--go"]), None),
+    ]
+
+    tmp = tempfile.mkdtemp()
+    old_env = os.environ.get("AMR_LOCK_DIR")
+    old_argv = sys.argv
+    saved = {m: m.open_bus for m in mods}
+    os.environ["AMR_LOCK_DIR"] = tmp
+    try:
+        for m in mods:
+            m.open_bus = fake_open
+
+        def run(fn, argv):
+            sys.argv = argv or ["tool"]
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = fn()
+            return rc, out.getvalue()
+
+        runtime = ownerlock.acquire("can", "agv_controller")
+        try:
+            for name, fn, argv in entry:
+                del opened[:]
+                rc, out = run(fn, argv)
+                check(f"{name}: refused while the controller owns can0, "
+                      f"naming it, bus never opened",
+                      rc == 2 and not opened and "agv_controller" in out,
+                      f"rc={rc} opened={len(opened)} {out.strip()[-60:]!r}")
+        finally:
+            runtime.release()
+
+        for name, fn, argv in entry:
+            del opened[:]
+            run(fn, argv)
+            ok = bool(opened)
+            try:
+                ownerlock.acquire("can", "after").release()
+                released = True
+            except ownerlock.OwnerBusy:
+                released = False
+            check(f"{name}: with can0 free it goes on to open the bus, and "
+                  f"lets go of the lock afterwards", ok and released,
+                  f"opened={len(opened)} released={released}")
+    finally:
+        sys.argv = old_argv
+        for m, fn in saved.items():
+            m.open_bus = fn
+        if old_env is None:
+            os.environ.pop("AMR_LOCK_DIR", None)
+        else:
+            os.environ["AMR_LOCK_DIR"] = old_env
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 TESTS = [test_framing, test_reply_filtering, test_inquire,
-         test_selective_switch, test_bit_timing, test_write_gating]
+         test_selective_switch, test_bit_timing, test_write_gating,
+         test_bench_tools_respect_the_owner_lock]

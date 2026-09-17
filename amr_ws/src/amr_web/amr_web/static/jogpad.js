@@ -28,6 +28,7 @@ function jogpad(root) {
   const speedSel = root.querySelector('.jog-speed');
   const DIRS = { f: [1, 0], b: [-1, 0], l: [0, 1], r: [0, -1], fl: [1, 1], fr: [1, -1], bl: [-1, -1], br: [-1, 1] };
   let held = null;     // {dir, session, ticket, seq, timer}
+  let pending = null;  // {dir} while /press is in flight; a release clears it (review R01)
   let releasing = false;
 
   function body(dir) {
@@ -35,9 +36,26 @@ function jogpad(root) {
     const [a, b] = DIRS[dir];
     return { v: a * v, w: b * Math.min(0.30, v * 1.5) };
   }
+  // The physical input is recorded BEFORE the press request goes out, so a release that
+  // happens while it is in flight has something to cancel. A press whose input was
+  // released meanwhile gives its session straight back and never refreshes it.
   async function press(dir) {
-    if (held || releasing) return;
-    const { status: st, data } = await api('/api/manual/press', { owner });
+    if (held || pending || releasing) return;
+    const token = { dir };
+    pending = token;
+    let st, data;
+    try {
+      ({ status: st, data } = await api('/api/manual/press', { owner }));
+    } catch (e) {
+      if (pending === token) pending = null;
+      status.textContent = 'press failed (no connection)';
+      return;
+    }
+    if (pending !== token) {
+      if (st === 200) api('/api/manual/release', { session: data.session }).catch(() => {});
+      return;
+    }
+    pending = null;
     if (st !== 200) { status.textContent = data.message || 'refused'; return; }
     held = { dir, session: data.session, ticket: data.ticket, seq: 0, timer: null };
     status.textContent = `holding ${dir}`;
@@ -48,7 +66,13 @@ function jogpad(root) {
     const h = held;
     const b = body(h.dir);
     h.seq += 1;
-    const { status: st, data } = await api('/api/manual/refresh', { session: h.session, ticket: h.ticket, seq: h.seq, v: b.v, w: b.w });
+    let st, data;
+    try {
+      ({ status: st, data } = await api('/api/manual/refresh', { session: h.session, ticket: h.ticket, seq: h.seq, v: b.v, w: b.w }));
+    } catch (e) {
+      if (held === h) { held = null; status.textContent = 'stopped: no connection'; }
+      return;  // the robot drops the command 0.2 s after the last refresh by itself
+    }
     if (held !== h) return;
     if (st !== 200) { status.textContent = `stopped: ${data.message}`; held = null; return; }
     h.ticket = data.ticket;
@@ -56,15 +80,16 @@ function jogpad(root) {
     h.timer = setTimeout(refresh, 100);
   }
   async function release(why) {
+    if (pending) { pending = null; status.textContent = `released (${why})`; }
     if (!held) return;
     const h = held; held = null; releasing = true;
     if (h.timer) clearTimeout(h.timer);
-    try { await api('/api/manual/release', { session: h.session }); } finally { releasing = false; }
+    try { await api('/api/manual/release', { session: h.session }); } catch (e) { /* robot expires it */ } finally { releasing = false; }
     status.textContent = `released (${why})`;
   }
   root.querySelectorAll('.jog-grid button').forEach(btn => {
     const dir = btn.dataset.dir;
-    if (dir === 'stop') { btn.onclick = () => { release('stop'); api('/api/stop'); }; return; }
+    if (dir === 'stop') { btn.onclick = () => { release('stop'); api('/api/stop').catch(() => {}); }; return; }
     btn.addEventListener('pointerdown', e => { e.preventDefault(); btn.setPointerCapture(e.pointerId); press(dir); });
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, () => release(ev)));
   });
@@ -73,7 +98,7 @@ function jogpad(root) {
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;  // typing, not driving
     if (e.repeat) return;                                                   // a held key is one press
-    if (e.key === ' ' || e.key === 'Escape') { e.preventDefault(); release('key'); api('/api/stop'); return; }
+    if (e.key === ' ' || e.key === 'Escape') { e.preventDefault(); release('key'); api('/api/stop').catch(() => {}); return; }
     const dir = KEYS[e.key]; if (!dir) return;
     e.preventDefault(); press(dir);
   });

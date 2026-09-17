@@ -102,3 +102,53 @@ def test_step_progress_to_done():
     assert m.step_done() and m.state == f.DONE
     assert not m.step_done()
     assert not m.pause() and not m.block("x")
+
+
+def run_pass(m, n):
+    for _ in range(n):
+        assert m.state == f.EXECUTING
+        m.step_done()
+
+
+def test_repeat_count_passes():
+    for passes in (1, 2, 3):
+        m = f.RunFsm()
+        assert m.load("m1", 2, passes)
+        m.start(True, True)
+        for p in range(passes):
+            assert m.pass_index == p and m.step_index == 0
+            run_pass(m, 2)
+        assert m.state == f.DONE and m.pass_index == passes - 1, passes
+        assert f"{passes} passes" in m.reason
+
+
+def test_pause_and_fault_on_a_later_pass():
+    m = f.RunFsm()
+    m.load("m1", 2, 3)
+    m.start(True, True)
+    run_pass(m, 2)
+    assert m.pass_index == 1 and m.step_index == 0 and "pass 2/3" in m.reason
+    assert m.pause() and m.prepare_resume(True, "") and m.start(True, True)
+    assert m.pass_index == 1 and m.step_index == 0 and "pass 2/3" in m.reason
+    m.step_done()
+    assert m.fault("scan stale") and m.pass_index == 1
+    assert m.ack() and m.pass_index == 0
+    assert m.load("m1", 2, 3) and m.start(True, True) and m.pass_index == 0
+
+
+def test_abort_at_a_pass_boundary_discards_the_pass():
+    m = f.RunFsm()
+    m.load("m1", 1, 2)
+    m.start(True, True)
+    m.step_done()
+    assert m.pass_index == 1 and m.abort("operator")
+    assert m.pass_index == 0 and m.step_index == -1
+
+
+def test_invalid_repeat_counts_are_refused():
+    for bad in (0, -1, 2.5, 2.0, True, f.MAX_PASSES + 1, "2"):
+        m = f.RunFsm()
+        assert not m.load("m1", 3, bad) and "repeat_count" in m.reason and m.state == f.IDLE, bad
+    m = f.RunFsm()
+    assert not m.load("m1", 0) and m.state == f.IDLE
+    assert m.load("m1", 3, f.MAX_PASSES)

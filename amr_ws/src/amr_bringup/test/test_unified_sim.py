@@ -10,6 +10,7 @@ rotation, the lease at every stable mode, and zero descendants after SIGINT.
 """
 
 import os
+import re
 import signal
 import subprocess
 
@@ -172,13 +173,77 @@ class Probe(Node):
         return peak
 
 
-def base_pids() -> set[int]:
-    out = subprocess.run(
-        ["pgrep", "-f", "fake_base_node|cmd_mux_kinematics_node --ros|diff_drive_odom_node --ros|ekf_node"],
-        capture_output=True,
-        text=True,
-    ).stdout.split()
-    return {int(x) for x in out}
+BASE_PATTERN = "fake_base_node|cmd_mux_kinematics_node --ros|diff_drive_odom_node --ros|ekf_node"
+
+
+def _proc_stat(pid: int) -> tuple[int, int] | None:
+    """-> (ppid, session) from /proc, None if the process is gone."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+            rest = f.read().rsplit(")", 1)[1].split()  # the comm field may contain spaces
+        return int(rest[1]), int(rest[3])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _cmdline(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _owned(pid: int, root: int, table: dict[int, tuple[int, int]]) -> bool:
+    """A descendant of the fixture's process, or still in the session it created.
+
+    The session catches orphans after the root exits (the fixture starts the
+    supervisor with start_new_session=True, so session id == root pid).
+    """
+    if pid == os.getpid() or pid not in table:
+        return False
+    if table[pid][1] == root:
+        return True
+    seen = set()
+    while pid in table and pid not in seen and pid > 1:
+        if pid == root:
+            return True
+        seen.add(pid)
+        pid = table[pid][0]
+    return False
+
+
+def owned_pids(root: int, pattern: str) -> set[int]:
+    """PIDs owned by the fixture's process tree whose command line matches `pattern`.
+
+    Replaces host-wide pgrep/pkill: another stack on this host (another domain,
+    or the vehicle) matching the same pattern is never seen or signalled.
+    """
+    table = {}
+    for name in os.listdir("/proc"):
+        if name.isdigit():
+            st = _proc_stat(int(name))
+            if st is not None:
+                table[int(name)] = st
+    rx = re.compile(pattern)
+    return {pid for pid in table if _owned(pid, root, table) and rx.search(_cmdline(pid))}
+
+
+def kill_owned(root: int, pattern: str, sig: int = signal.SIGKILL) -> set[int]:
+    """Signal only fixture-owned matches, re-verifying ownership just before each signal."""
+    killed = set()
+    for pid in owned_pids(root, pattern):
+        if pid in owned_pids(root, pattern):
+            try:
+                os.kill(pid, sig)
+                killed.add(pid)
+            except ProcessLookupError:
+                pass
+    return killed
+
+
+def base_pids(root: int) -> set[int]:
+    return owned_pids(root, BASE_PATTERN)
 
 
 @pytest.fixture(scope="module")
@@ -229,7 +294,7 @@ def test_unified_workflow_and_layer_restart(stack):
     p, proc, state = stack
     assert p.wait_mode(1, 60), "IDLE"
     settled_lease(p, 1)
-    pids0 = base_pids()
+    pids0 = base_pids(proc.pid)
     assert len(pids0) >= 4
     gen0 = p.mode.generation
 
@@ -344,7 +409,7 @@ def test_unified_workflow_and_layer_restart(stack):
     # required-node failure in a live layer -> FAULT, inhibited; recover -> IDLE
     r = p.survey(0, "p7_map", "kill")
     assert r.accepted and p.wait_mode(2, 60)
-    subprocess.run(["pkill", "-9", "-f", "async_slam_toolbox_node"])
+    assert kill_owned(proc.pid, "async_slam_toolbox_node"), "no fixture-owned slam_toolbox to kill"
     assert p.wait_mode(5, 20)
     settled_lease(p, 0)
     assert p.mode.fault_code == "LAYER_EXITED"
@@ -352,7 +417,7 @@ def test_unified_workflow_and_layer_restart(stack):
     assert r.success and p.wait_mode(1, 40)
     settled_lease(p, 1)
 
-    assert base_pids() == pids0, "base layer must survive every transition"
+    assert base_pids(proc.pid) == pids0, "base layer must survive every transition"
     assert p.mode.generation > gen0 + 6
 
 
@@ -361,7 +426,5 @@ def test_shutdown_leaves_no_descendants(stack):
     proc.send_signal(signal.SIGINT)
     proc.wait(timeout=40)
     p.spin(1.0)
-    assert base_pids() == set()
-    assert not subprocess.run(
-        ["pgrep", "-f", "slam_toolbox|amcl|map_server|base.launch"], capture_output=True
-    ).stdout
+    assert base_pids(proc.pid) == set()
+    assert not owned_pids(proc.pid, "slam_toolbox|amcl|map_server|base.launch")

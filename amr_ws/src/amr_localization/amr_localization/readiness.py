@@ -6,7 +6,9 @@ stale, covariance grew, or map->odom jumped beyond the trigger).
 
 Low covariance alone cannot establish the correct aisle, so READY needs the
 operator's confirmation; a later jump or staleness drops READY regardless of
-covariance. A correction right after an initial pose is expected (the filter is
+covariance. Confirmation also needs a finite, recent scan-consistency comparison
+made in the current attempt: no comparison is not the same as a good one. A
+correction right after an initial pose is expected (the filter is
 snapping to it) and is ignored for `initial_grace_s`.
 """
 
@@ -44,6 +46,7 @@ class Limits:
     settle_s: float = 2.0  # no jump and covariance under limits for this long
     initial_grace_s: float = 1.5  # corrections right after /initialpose are expected
     amcl_age_max_s: float = 5.0  # AMCL only publishes on update; stationary is fine for a while
+    match_age_max_s: float = 2.0  # a successful scan-vs-map comparison older than this proves nothing
     age_limits: dict = field(default_factory=lambda: {"scan": 0.15, "wheels": 0.10, "imu": 0.20, "tf": 0.20})
 
 
@@ -69,6 +72,7 @@ class Readiness:
     _cov_bad_since: float | None = None
     scan_match: float | None = None
     scan_long: float | None = None
+    scan_match_t: float | None = None  # when the last SUCCESSFUL comparison was made (not scan receipt)
     _match_bad_since: float | None = None
     _prev_map_odom: tuple[float, float, float] | None = None
     _prev_map_odom_t: float | None = None
@@ -79,16 +83,13 @@ class Readiness:
         """Operator (or explicit seed) estimate: (re)start validation."""
         self.state, self.reason = CHECKING, "initial pose received; converging"
         self.confirmed, self.can_confirm = False, False
+        self._clear_evidence()
         self._initial_t = t
-        self._stable_since = None
-        self._match_bad_since = None
-        self.last_jump = None
-        self._prev_map_odom = None
 
     def on_amcl_pose(self, t: float, cov_xx: float, cov_yy: float, cov_yaw: float) -> None:
         self.cov, self.cov_t = (cov_xx, cov_yy, cov_yaw), t
 
-    def on_scan_match(self, t: float, match: float, long: float) -> None:
+    def on_scan_match(self, t: float, match: float, long: float, stamp: float | None = None) -> None:
         """Latest scan against the map at the estimated pose.
 
         `match`: fraction of endpoints within tolerance of an occupied cell.
@@ -96,8 +97,16 @@ class Readiness:
         informs the operator and gates confirmation.
         `long`: fraction of beams longer than the map permits, i.e. passing
         through mapped walls. That cannot be clutter; sustained, it is a loss.
+        `t` is when the comparison succeeded; `stamp` the scan's own time. A scan
+        taken before the current initial pose belongs to an earlier attempt and
+        is ignored; a non-finite result is unavailable evidence, not a match.
         """
-        self.scan_match, self.scan_long = match, long
+        if self._initial_t is not None and (stamp if stamp is not None else t) < self._initial_t:
+            return
+        if not (math.isfinite(match) and math.isfinite(long)):
+            self.scan_match = self.scan_long = self.scan_match_t = None
+            return
+        self.scan_match, self.scan_long, self.scan_match_t = match, long, t
         if long <= self.limits.max_scan_long:
             self._match_bad_since = None
             return
@@ -201,12 +210,17 @@ class Readiness:
             self.reason = f"not converged: {self._cov_text()}"
             self.can_confirm = False
             return self.state
-        if self.scan_long is not None and self.scan_long > self.limits.max_scan_long:
+        if self.scan_match_t is None or t - self.scan_match_t > self.limits.match_age_max_s:
+            self._stable_since = None
+            self.reason = "no recent scan-consistency check against the map"
+            self.can_confirm = False
+            return self.state
+        if self.scan_long > self.limits.max_scan_long:
             self._stable_since = None
             self.reason = f"scan passes through mapped obstacles ({100 * self.scan_long:.0f} % of beams)"
             self.can_confirm = False
             return self.state
-        if self.scan_match is not None and self.scan_match < self.limits.min_scan_match:
+        if self.scan_match < self.limits.min_scan_match:
             self._stable_since = None
             self.reason = f"scan does not match the map ({100 * self.scan_match:.0f} % of beams)"
             self.can_confirm = False
@@ -231,13 +245,20 @@ class Readiness:
         self.reason = "operator confirmed scan alignment"
         return True
 
-    def reset(self) -> None:
-        self.state, self.reason = UNLOCALIZED, "reset by operator"
+    def reset(self, reason: str = "reset by operator") -> None:
+        """Back to UNLOCALIZED; every piece of readiness proof is dropped."""
+        self.state, self.reason = UNLOCALIZED, reason
         self.confirmed, self.can_confirm = False, False
-        self._initial_t, self._stable_since = None, None
-        self._prev_map_odom, self.last_jump = None, None
+        self._clear_evidence()
 
     # ---- helpers -------------------------------------------------------------
+
+    def _clear_evidence(self) -> None:
+        """Covariance, scan consistency and jump history all belong to one attempt."""
+        self._initial_t, self._stable_since = None, None
+        self.cov = self.cov_t = self._cov_bad_since = None
+        self.scan_match = self.scan_long = self.scan_match_t = self._match_bad_since = None
+        self._prev_map_odom = self._prev_map_odom_t = self.last_jump = None
 
     def _lose(self, why: str) -> None:
         self.state, self.reason = LOST, why

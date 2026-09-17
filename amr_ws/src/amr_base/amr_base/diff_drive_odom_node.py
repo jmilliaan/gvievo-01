@@ -74,11 +74,17 @@ class DiffDriveOdom(Node):
         return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
     def _on_wheels(self, msg: WheelStates) -> None:
-        if not (msg.left_valid and msg.right_valid):
+        finite = math.isfinite(msg.left_pos_rad) and math.isfinite(msg.right_pos_rad)
+        if not (msg.left_valid and msg.right_valid and finite):
             self._last = None  # restart the increment chain after a gap
             return
         prev, self._last = self._last, msg
         if prev is None:
+            return
+        # R06: positions are continuous only under one encoder scale, and a
+        # publisher restart can step the clock back. Either is a new baseline,
+        # never an increment.
+        if msg.counts_per_wheel_rev != prev.counts_per_wheel_rev:
             return
         dt = self._t(msg) - self._t(prev)
         if dt <= 0.0:

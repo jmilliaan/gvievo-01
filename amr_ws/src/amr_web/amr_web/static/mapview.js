@@ -32,11 +32,17 @@ class MapView {
     this._resize(); window.addEventListener('resize', () => { this._resize(); this.draw(); });
   }
   _resize() { const r = this.canvas.getBoundingClientRect(); this.canvas.width = Math.max(200, r.width); this.canvas.height = Math.max(200, r.height); }
+  // Returns false when a later load() superseded this one while it was in flight: the
+  // picture and its metadata always belong to the same, most recently requested map (R12).
   async load(mapId, rev) {
+    const token = this._loadToken = {};
     const { data } = await apiGet(`/api/maps/${mapId}/${rev}`);
-    this.meta = data;
-    await new Promise((res, rej) => { const im = new Image(); im.onload = () => { this.img = im; res(); }; im.onerror = rej; im.src = `/api/maps/${mapId}/${rev}/image.png?s=${data.sha256.slice(0, 8)}`; });
+    if (this._loadToken !== token) return false;
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = `/api/maps/${mapId}/${rev}/image.png?s=${data.sha256.slice(0, 8)}`; });
+    if (this._loadToken !== token) return false;
+    this.meta = data; this.img = im;
     this.fit(); this.draw();
+    return true;
   }
   // Live grid (unified plan §6.4): metadata and image share one snapshot id; the
   // grid may grow and move its origin between snapshots, so meta and image are

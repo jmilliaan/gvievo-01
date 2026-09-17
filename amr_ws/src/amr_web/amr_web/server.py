@@ -15,6 +15,7 @@ GET /api/operations/<id> until it is terminal.
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -47,7 +48,9 @@ class Adapter(Protocol):
     def survey_abort(self) -> tuple[bool, str]: ...
     def localization_confirm(self) -> tuple[bool, str]: ...
     def localization_reset(self) -> tuple[bool, str]: ...
-    def set_initial_pose(self, x: float, y: float, yaw: float) -> tuple[bool, str]: ...
+    def set_initial_pose(
+        self, x: float, y: float, yaw: float, map_id: str, map_revision: int, generation: int, sha256: str
+    ) -> tuple[bool, str]: ...
     def publish_route_preview(self, compiled, frame_id: str) -> None: ...
     def run_mission(self, mission_id: str) -> tuple[bool, str]: ...
     def pause(self) -> tuple[bool, str]: ...
@@ -249,7 +252,7 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
     def api_route_validate(map_id: str, rev: int):
         try:
             route, v = _validate_payload(map_id, rev, request.get_json(force=True) or {})
-        except mb.BundleError as e:
+        except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         except RouteError as e:
             return jsonify(
@@ -266,7 +269,7 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
     def api_route_save(map_id: str, rev: int):
         try:
             route, v = _validate_payload(map_id, rev, request.get_json(force=True) or {})
-        except mb.BundleError as e:
+        except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         except RouteError as e:
             return jsonify(
@@ -274,7 +277,10 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
             ), 422
         if not v.ok:
             return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
-        revision, path, sha = store.save_route(app.config["MAPS_DIR"], route)
+        try:
+            revision, path, sha = store.save_route(app.config["MAPS_DIR"], route)
+        except store.StoreError as e:
+            return _result(False, str(e), 409)
         return jsonify(
             {"ok": True, "route_id": route.route_id, "revision": revision, "sha256": sha, "path": path}
         )
@@ -308,23 +314,35 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
     @app.post("/api/missions")
     def api_mission_create():
         d = request.get_json(force=True) or {}
+        if not isinstance(d, dict):
+            d = {}
+        req = (d.get("map_id"), d.get("map_revision"), d.get("route_id"), d.get("route_revision"))
+        if not (
+            isinstance(req[0], str)
+            and isinstance(req[2], str)
+            and all(isinstance(x, int) and not isinstance(x, bool) for x in (req[1], req[3]))
+            and isinstance(d.get("mission_id") or "", str)
+        ):
+            return _result(False, "map_id, map_revision, route_id, route_revision required", 400)
+        map_id, rev, route_id, rrev = req
         try:
-            map_id, rev = str(d["map_id"]), int(d["map_revision"])
-            route_id, rrev = str(d["route_id"]), int(d["route_revision"])
             m, g = bundle(map_id, rev)
             route, sha = store.load_route(app.config["MAPS_DIR"], map_id, route_id, rrev)
-        except (KeyError, ValueError, TypeError):
-            return _result(False, "map_id, map_revision, route_id, route_revision required", 400)
-        except (store.StoreError, mb.BundleError) as e:
+        except RouteError as e:
+            return _result(False, f"stored route unreadable: {e}", 422)
+        except (store.StoreError, mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         v = validate(route, m, g, fp, load_keepout(mb.revision_dir(app.config["MAPS_DIR"], map_id, rev)))
         if not v.ok:
             return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
-        mission_id = str(d.get("mission_id") or f"{route_id}_rev{rrev}")
+        # route ids/revisions are per map; missions share one directory: the default id names the map
+        mission_id = d.get("mission_id") or f"{map_id}_rev{rev}_{route_id}_rev{rrev}"
         try:
             path = store.save_mission(
                 app.config["MAPS_DIR"], mission_id, map_id, rev, m.sha256, route_id, rrev, sha
             )
+        except store.StoreConflict as e:
+            return _result(False, str(e), 409)
         except store.StoreError as e:
             return _result(False, str(e), 400)
         return jsonify({"ok": True, "mission_id": mission_id, "path": path})
@@ -532,20 +550,26 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
     @app.post("/api/manual/release")
     def api_manual_release():
         d = request.get_json(force=True) or {}
+        inst, gen = adapter.supervisor_identity()
         with jog_lock:
             had = sessions.release(str(d.get("session", "")))
-        # the session is dead before this zero goes out; a delayed nonzero from it is now refused
-        inst, gen = adapter.supervisor_identity()
-        adapter.manual_publish(jog.Command(inst, gen, str(d.get("session", "")), 0, 0.0, 0.0, 0.0, "", 0.0))
+            # The session is dead before this goes out. valid_for_s = 0 is a revocation at
+            # the mux (gating.ManualIntake): terminal for the session whatever its seq, so
+            # neither this zero nor a delayed refresh can lose to the sequence filter (R02).
+            # Published under the lock so it cannot interleave with a refresh publication.
+            adapter.manual_publish(
+                jog.Command(inst, gen, str(d.get("session", "")), 0, 0.0, 0.0, 0.0, "", 0.0)
+            )
         return jsonify({"ok": True, "released": had})
 
     @app.post("/api/stop")
     def api_stop():
         """Revoke this browser's manual session. During a route use pause/abort."""
+        inst, gen = adapter.supervisor_identity()
         with jog_lock:
             sessions.invalidate_all()
-        inst, gen = adapter.supervisor_identity()
-        adapter.manual_publish(jog.Command(inst, gen, "", 0, 0.0, 0.0, 0.0, "", 0.0))
+            # empty session + valid_for_s 0: the mux drops whatever it holds
+            adapter.manual_publish(jog.Command(inst, gen, "", 0, 0.0, 0.0, 0.0, "", 0.0))
         return jsonify({"ok": True, "message": "manual sessions revoked"})
 
     @app.post("/api/localization/confirm")
@@ -561,9 +585,13 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
         d = request.get_json(force=True) or {}
         try:
             x, y, yaw = float(d["x_m"]), float(d["y_m"]), float(d["yaw_rad"])
+            map_id, map_rev, gen = str(d["map_id"]), int(d["map_revision"]), int(d["generation"])
         except (KeyError, ValueError, TypeError):
-            return _result(False, "x_m, y_m, yaw_rad required", 400)
-        return _call(adapter.set_initial_pose, x, y, yaw)
+            return _result(False, "x_m, y_m, yaw_rad, map_id, map_revision, generation required", 400)
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(yaw)):
+            return _result(False, "x_m, y_m, yaw_rad must be finite", 400)
+        # the adapter re-checks the identity against the live ModeState right before publishing (R12)
+        return _call(adapter.set_initial_pose, x, y, yaw, map_id, map_rev, gen, str(d.get("sha256", "")))
 
     @app.post("/api/mission/run")
     def api_mission_run():

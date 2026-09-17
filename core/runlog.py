@@ -21,6 +21,8 @@ import os
 import re
 import time
 
+import events
+
 # Anchored to the REPO ROOT, not to this file. runlog.py lives in core/, so
 # dirname(__file__) would be core/ and every run would quietly land in
 # core/logs/ - no error, just numbering restarting at 0001 beside the real runs.
@@ -28,6 +30,10 @@ import time
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(_ROOT, "logs")
 FLUSH_PERIOD_S = 1.0
+# Rows held while the file cannot be written: a minute of 50 Hz ticks. Past it,
+# new rows are dropped and counted rather than growing the buffer (and each
+# retried write) without limit on the bus thread.
+MAX_BUFFER_ROWS = 3000
 CSV_NAME = "run.csv"
 
 # Run directories are NNNN-<prefix>_YYYYmmdd_HHMMSS. The sequence number is
@@ -132,6 +138,7 @@ class RunLog:
         self._t0 = None
         self._last_flush = 0.0
         self.error = None
+        self.dropped = 0          # rows discarded because the buffer was full
 
     def open(self, note=""):
         if not self.enabled:
@@ -150,6 +157,8 @@ class RunLog:
             self._fh.write(",".join(self.columns) + "\n")
             self._t0 = time.monotonic()
             self._last_flush = self._t0
+            self._buf = []
+            self.dropped = 0
         except Exception as e:                  # noqa: BLE001 - never fatal
             self.error = str(e)
             self._fh = None
@@ -162,11 +171,22 @@ class RunLog:
             if extra:
                 row.update(extra)
             row["t"] = time.monotonic() - self._t0
-            self._buf.append(",".join(_fmt(row.get(c)) for c in self.columns))
+            if len(self._buf) >= MAX_BUFFER_ROWS:
+                self.dropped += 1
+                if self.dropped == 1:           # once per run, not per tick
+                    events.error(
+                        f"run log {self.path} cannot be written "
+                        f"({self.error or 'write stalled'}) - dropping rows; "
+                        f"check free space and permissions on {LOG_DIR}")
+            else:
+                self._buf.append(",".join(_fmt(row.get(c))
+                                          for c in self.columns))
             now = time.monotonic()
             if now - self._last_flush >= FLUSH_PERIOD_S:
-                self._drain()
+                # Stamped BEFORE the attempt, so a failing disk is retried once
+                # per flush period rather than on every tick.
                 self._last_flush = now
+                self._drain()
         except Exception as e:                  # noqa: BLE001
             self.error = str(e)
 
@@ -182,8 +202,17 @@ class RunLog:
             return
         try:
             self._drain()
-            self._fh.close()
         except Exception as e:                  # noqa: BLE001
             self.error = str(e)
         finally:
+            # Closed even when the drain failed, or every failed run leaks a
+            # descriptor.
+            try:
+                self._fh.close()
+            except Exception as e:              # noqa: BLE001
+                self.error = self.error or str(e)
             self._fh = None
+            self._buf = []
+        if self.dropped:
+            events.warn(f"run log {self.path}: {self.dropped} row(s) dropped "
+                        f"({self.error})")

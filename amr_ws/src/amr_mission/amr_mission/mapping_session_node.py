@@ -267,9 +267,12 @@ class MappingSession(Node):
             res.ok, res.message = False, "not ready: " + "; ".join(problems)
             return res
         self._set(MappingState.SAVING, "pausing SLAM and serialising")
-        revision = mb.next_revision(self.maps_dir, self._map_id)
-        stage = mb.staging_dir(self.maps_dir, self._map_id, revision)
+        stage = None
         try:
+            # allocation and staging are part of the transaction (review R27): an unwritable
+            # maps dir must return a failed save and RETURN_REVIEW, not leave SAVING behind
+            revision = mb.next_revision(self.maps_dir, self._map_id)
+            stage = mb.staging_dir(self.maps_dir, self._map_id, revision)
             self._pause_slam(True)
             pause_t = self._now()
             self._call(self._serialize, SerializePoseGraph.Request(filename=os.path.join(stage, "posegraph")))
@@ -293,16 +296,18 @@ class MappingSession(Node):
             mb.verify(stage)
             dest = mb.publish(stage, self.maps_dir, self._map_id, revision)
         except Exception as e:  # noqa: BLE001 - any failure keeps the draft, never a revision
-            draft = stage.replace(".staging-", ".draft-")
-            try:
-                os.rename(stage, draft)
-            except OSError:
-                draft = stage
+            draft = stage.replace(".staging-", ".draft-") if stage else None
+            if stage:
+                try:
+                    os.rename(stage, draft)
+                except OSError:
+                    draft = stage
             try:
                 self._pause_slam(False)  # let the operator keep surveying
             except Exception as e2:  # noqa: BLE001
                 self.get_logger().error(f"could not resume SLAM after failed save: {e2}")
-            self._set(MappingState.RETURN_REVIEW, f"save failed: {e}; draft kept at {draft}")
+            kept = f"; draft kept at {draft}" if draft else "; nothing was staged"
+            self._set(MappingState.RETURN_REVIEW, f"save failed: {e}{kept}")
             res.ok, res.message = False, self._message
             return res
         with self._lock:

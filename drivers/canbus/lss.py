@@ -76,7 +76,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import can  # noqa: E402
-from verify_drivers import BAD, OK, WARN, open_bus  # noqa: E402
+from verify_drivers import BAD, OK, WARN, claim_bus, open_bus  # noqa: E402
 
 # CiA 305, table 1. The master transmits on 0x7E5 and listens on 0x7E4.
 LSS_RX = 0x7E5          # master -> slave
@@ -293,6 +293,9 @@ def store_configuration(bus, echo=False):
 
 def _cmd_scan(args):
     """Read-only: is anything speaking LSS, and what is it?"""
+    lock = claim_bus("lss scan")
+    if lock is None:
+        return 2
     bus, how = open_bus(args.bitrate, args.channel)
     print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
     try:
@@ -343,6 +346,9 @@ def _cmd_set(args):
     print("      * you will need to reopen the bus at the new rate afterwards")
     print()
 
+    lock = claim_bus("lss set")
+    if lock is None:
+        return 2
     bus, how = open_bus(args.bitrate, args.channel)
     print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
     try:
@@ -402,6 +408,9 @@ def _cmd_set(args):
 
 def _cmd_verify(args):
     """Reopen at a given rate and see whether the node is there. Read-only."""
+    lock = claim_bus("lss verify")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus(args.bitrate, args.channel)
     except Exception as e:

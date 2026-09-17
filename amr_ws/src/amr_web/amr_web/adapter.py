@@ -85,6 +85,25 @@ def _msg_to_dict(msg) -> dict[str, Any]:
     return out
 
 
+
+def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int, sha256: str = "") -> str:
+    """Why a pose drawn on (map_id, map_revision) under `generation` must not be applied; "" if it may."""
+    if not mode:
+        return "no supervisor state"
+    if mode.get("mode_name") != "NAVIGATION" or not mode.get("active_map_id"):
+        return "no navigation map is active"
+    if (map_id, int(map_revision)) != (mode["active_map_id"], int(mode.get("active_map_revision", -1))):
+        return (
+            f"the pose was drawn on {map_id} rev{map_revision}, but the vehicle is running "
+            f"{mode['active_map_id']} rev{mode.get('active_map_revision')}"
+        )
+    active_sha = mode.get("active_map_sha256") or ""
+    if sha256 and active_sha and sha256 != active_sha:
+        return "the viewed map's content differs from the active map (sha256)"
+    if int(generation) != int(mode.get("generation", -1)):
+        return "the vehicle changed mode since the map was shown; look again"
+    return ""
+
 class RosAdapter(Node):
     def __init__(self) -> None:
         super().__init__("amr_web")
@@ -502,10 +521,28 @@ class RosAdapter(Node):
     def localization_reset(self) -> tuple[bool, str]:
         return self._trigger("loc_reset")
 
-    def set_initial_pose(self, x: float, y: float, yaw: float) -> tuple[bool, str]:
-        """Operator estimate (spec §4.2): wide covariance, AMCL refines it."""
+    def set_initial_pose(
+        self,
+        x: float,
+        y: float,
+        yaw: float,
+        map_id: str,
+        map_revision: int,
+        generation: int,
+        sha256: str = "",
+    ) -> tuple[bool, str]:
+        """Operator estimate (spec §4.2): wide covariance, AMCL refines it.
+
+        The coordinates were drawn on one particular map picture. They go out only if
+        that is the map the navigation layer is running NOW, under the generation the
+        browser saw (review R12): every map shares the frame name "map", so the frame
+        alone cannot tell map A's coordinates from map B's.
+        """
         with self._lock:
-            run = self._run
+            run, mode = self._run, self._mode
+        why = initial_pose_mismatch(mode, map_id, map_revision, generation, sha256)
+        if why:
+            return False, f"refused: {why}"
         if run and run.get("state_name") == "EXECUTING":
             return False, "refused: a route is executing (no /initialpose during a segment)"
         m = PoseWithCovarianceStamped()

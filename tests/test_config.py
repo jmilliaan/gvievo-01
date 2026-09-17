@@ -96,6 +96,40 @@ def test_config_profile():
             lambda d: d["manual"].update(full_rpm=9000), "manual.full_rpm")
     refuses("a bool where a number belongs is refused",
             lambda d: d["manual"].update(half_ratio=True), "expected a number")
+    # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
+    # an infinite manual watchdog would never expire. Python's json reader takes
+    # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form
+    # is written as raw text and must be refused with the FIELD named.
+    def refuses_raw(name, token, expect):
+        def mutate(d):
+            d["timing"]["manual_watchdog_s"] = "@@TOKEN@@"
+        d = copy.deepcopy(base)
+        mutate(d)
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "agv-01.json")
+        with open(path, "w") as fh:
+            fh.write(json.dumps(d).replace('"@@TOKEN@@"', token))
+        try:
+            config.load(path)
+            msg = None
+        except config.ConfigError as e:
+            msg = str(e)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+            config.load()
+        check(name, msg is not None and expect in msg, msg or "accepted!")
+
+    for token in ("Infinity", "-Infinity", "NaN", "1e999", "-1e999"):
+        refuses_raw(f"a watchdog of {token} is refused, naming the field",
+                    token, "timing.manual_watchdog_s")
+    refuses_raw("an integer too large for a float is refused, naming the field",
+                "1" + "0" * 400, "timing.manual_watchdog_s")
+    refuses("a finite wheel diameter that overflows a derived value is refused",
+            lambda d: d["vehicle"].update(wheel_dia_m=1e308, gear_ratio=1e-300),
+            "not finite")
+    check("the live watchdog is finite after the refusals",
+          math.isfinite(config.MANUAL_WATCHDOG_S), config.MANUAL_WATCHDOG_S)
+
     refuses("duplicate CAN node IDs are refused",
             lambda d: d["can"].update(sensor_node=2), "distinct")
     refuses("a non-boolean can.use_rpdo is refused",

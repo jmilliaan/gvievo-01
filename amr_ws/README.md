@@ -197,9 +197,18 @@ Measured with the vehicle parked, drives armed at zero (`ros2 run amr_base drive
 Policy (`canopen.decide`, tabled in `test_canopen.py`): armed automatically with zero
 targets (`auto_arm`), retry every 2 s if the enable fails (usually ETO); a drive that
 leaves Operation enabled while armed → disarm and re-arm with zero (the safety chain
-took it, exactly canworker's level-held MANUAL); a drive that goes **silent** (0.6 s,
-no TPDO/heartbeat) or raises an **alarm** → FAULT, setpoint zero at once, latched until
-`/drives/ack_fault`. Motion needs a fresh `/cmd_wheel_vel` (0.2 s watchdog inside the
+took it, exactly canworker's level-held MANUAL); a drive that goes **silent** (0.6 s
+without frames, *or* without TPDO1 or TPDO2 on its own even while heartbeats/SDO replies
+still arrive) or raises an **alarm** → FAULT, setpoint zero at once (sent to each drive
+independently, a failed send retried 5 ticks), latched until
+`/drives/ack_fault`. If that zero cannot be delivered, or a drive with fresh status is
+still not at speed zero 3 s later, `drive_node` stops producing the PC heartbeat so the
+drives' own `1016h` reaction takes over (8130h; power cycle). A nonfinite
+`/cmd_wheel_vel` clears the command (zero), it does not keep the last one.
+`/wheel_states` positions are continuous (wrap-safe `6064h` count deltas, rebaselined
+without moving on invalid feedback, re-arm or scale change); a wheel is valid only with
+a new, fresh TPDO1 *and* TPDO2, and once started the topic keeps publishing (marked
+invalid) when a pair is missing. `DriveStatus.operational` also needs fresh TPDOs. Motion needs a fresh `/cmd_wheel_vel` (0.2 s watchdog inside the
 node, `canopen.target_rpm`) which the mux only produces under panel authority, so
 arming alone moves nothing. Services: `/drives/arm`, `/drives/disarm`, `/drives/ack_fault`.
 
@@ -211,6 +220,9 @@ designed, triggered by the wrong event. `disarm()` now writes `1016h = 0` on
 both drives **first**, before the speed-zero wait, so only a crash or a `kill -9`
 trips the guard. Clearing `8130h` needs a drive power cycle (40C0h is deny-listed
 on purpose); the drives' `1016h` is volatile, so the power cycle also clears it.
+Since R05, a zero RPDO precedes the `1016h` clear (non-blocking), the PC heartbeat is
+also produced inside the blocking arm/disarm SDO sequences, arm rolls back per node
+from its first write, and a disarm that could not finish stays owed and is retried.
 
 **Ground test, 2026-09-16** (`drivers.launch.py panel:=fake lidar:=false`, moves
 commanded on `/cmd_vel_teleop` at 0.10 m/s / 0.30 rad/s, closed on `/odom_raw`,

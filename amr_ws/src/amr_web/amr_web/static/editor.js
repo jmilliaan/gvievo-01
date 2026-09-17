@@ -79,7 +79,7 @@ function showResult(d) {
 }
 function refresh() {
   const bad = new Set((lastResult && lastResult.issues || []).map(i => i.step_id));
-  $('ed-steps').innerHTML = route.steps.map(s => `<li class="${bad.has(s.id) ? 'bad' : ''}">${s.id}: ${s.type === 'straight' ? `straight → (${s.to.x_m.toFixed(2)}, ${s.to.y_m.toFixed(2)})` : `${s.direction.toUpperCase()} ${s.angle_deg}°`}</li>`).join('');
+  $('ed-steps').innerHTML = route.steps.map(s => `<li class="${bad.has(s.id) ? 'bad' : ''}">${esc(s.id)}: ${s.type === 'straight' ? `straight → (${(+s.to.x_m).toFixed(2)}, ${(+s.to.y_m).toFixed(2)})` : `${esc(String(s.direction).toUpperCase())} ${esc(s.angle_deg)}°`}</li>`).join('');
   $('ed-repeat').value = route.repeat_count; view.draw();
 }
 view.overlays.push((c, v) => {
@@ -95,7 +95,9 @@ view.overlays.push((c, v) => {
   });
   if (v._preview && v.tool === 'start') v.arrow(v._preview.x, v._preview.y, v._preview.yaw, 1.0, '#f0ad4e');
   const st = lastState && lastState.localization;
-  if (st && st.state_name !== 'UNLOCALIZED' && lastState.run && lastState.run.pose_x !== undefined) v.arrow(lastState.run.pose_x, lastState.run.pose_y, lastState.run.pose_yaw, 0.8, '#fff');
+  const md = lastState && lastState.mode;
+  const onActive = md && v.meta && md.active_map_id === v.meta.map_id && +md.active_map_revision === +v.meta.revision;  // R12
+  if (onActive && st && st.state_name !== 'UNLOCALIZED' && lastState.run && lastState.run.pose_x !== undefined) v.arrow(lastState.run.pose_x, lastState.run.pose_y, lastState.run.pose_yaw, 0.8, '#fff');
 });
 async function reloadRouteList() {
   const { data } = await apiGet(`/api/maps/${mapId}/${mapRev}`);

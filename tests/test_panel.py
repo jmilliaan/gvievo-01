@@ -372,6 +372,97 @@ def test_panel_profile():
           == ("PB Start", "PB Reset", "SS Auto/Manual"))
 
 
+def test_panel_loss_removes_manual_authority():
+    """R14: a jog must not outlive the panel that authorises it.
+
+    DIO is not a critical health source, and drive() checked only the cached
+    mode/armed state - so a browser still re-POSTing an arrow kept the vehicle
+    moving with the panel gone. Driven through the real _panel_scan and drive()
+    on a controller with a fake DI link: no bus, no socket.
+    """
+    import canworker
+    import events
+    print("\npanel: losing the panel ends manual jog")
+
+    class FakeDio:
+        def __init__(self):
+            self.comms_ok, self.auto = True, False
+
+        def snapshot(self):
+            di = [False] * config.DIO_NUM_DI
+            di[config.PANEL_DI_AUTO] = self.auto
+            return {"di": di, "comms_ok": self.comms_ok}
+
+        def set_coil(self, *a):
+            pass
+
+    class Ctl(canworker.Controller):
+        def _do_arm(self, mode):
+            self._armed, self._mode = True, mode
+
+        def _do_disarm(self, force=False):
+            self._armed, self._mode = False, "idle"
+
+        def _drives_ready(self):
+            return True
+
+    def refused(c, needle):
+        try:
+            c.drive("forward")
+            return "accepted"
+        except RuntimeError as e:
+            return "" if needle in str(e) else str(e)
+
+    def settle(c):
+        for _ in range(config.PANEL_DEBOUNCE_SCANS + 1):
+            c._panel_scan()
+
+    events.clear()
+    c = Ctl()
+    c._dio = FakeDio()
+    settle(c)
+    check("a valid panel in MANUAL arms and allows a jog",
+          c._armed and c._mode == "manual" and refused(c, "") == "accepted"
+          and c._target != (0, 0), f"armed={c._armed} target={c._target}")
+
+    c._dio.comms_ok = False
+    c._panel_scan()
+    check("one scan without the panel zeroes the held jog",
+          c._target == (0, 0) and c._direction == "stop",
+          f"target={c._target}")
+    check("...and says why", c._last_stop_reason == "panel input lost",
+          str(c._last_stop_reason))
+    why = refused(c, "panel input lost")
+    check("a browser keepalive cannot restart it while the panel is gone",
+          why == "" and c._target == (0, 0), why)
+
+    c._dio.comms_ok = True
+    settle(c)
+    why = refused(c, "release and press again")
+    check("the panel coming back (MANUAL) does not replay the held direction",
+          why == "" and c._target == (0, 0), why)
+    c.halt()                                    # the browser's release
+    check("a release followed by a fresh press drives again",
+          refused(c, "") == "accepted" and c._target != (0, 0),
+          str(c._target))
+
+    c._dio.comms_ok = False
+    c._panel_scan()
+    c._dio.comms_ok, c._dio.auto = True, True
+    settle(c)
+    why = refused(c, "not in manual mode")
+    check("the panel coming back in AUTO disarms and cannot replay either",
+          why == "" and not c._armed and c._target == (0, 0),
+          f"{why} armed={c._armed} target={c._target}")
+
+    src = (ROOT / "canworker.py").read_text(encoding="utf-8")
+    loop = src[src.index("while not self._stop_evt.is_set():"):]
+    check("the panel scan runs before the setpoint is read for the tick",
+          loop.index("self._panel_scan()")
+          < loop.index("armed, target, deadline, mode = ("))
+    events.clear()
+
+
 TESTS = [
     test_edges_and_tie_down,
     test_selector,
@@ -380,5 +471,6 @@ TESTS = [
     test_reset_means_ready,
     test_the_manual_watchdog_does_not_latch,
     test_panel_events_are_edge_only,
+    test_panel_loss_removes_manual_authority,
     test_panel_profile,
 ]

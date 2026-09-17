@@ -1,5 +1,9 @@
+import contextlib
+import signal
+
 import numpy as np
 import pytest
+import yaml
 from amr_maps.generate_sim_factory import ORIGIN_X, ORIGIN_Y, build
 
 from amr_maps import grid
@@ -74,3 +78,107 @@ def test_pixel_conventions():
     g = build()
     cx, cy = g.cell_to_world(0, 0)
     assert grid.world_to_pixel(g.meta, g.height, cx, cy) == pytest.approx((0.5, 399.5))
+
+
+# ---- R24: bounded PGM header parsing; R19: yaw-free origins only ------------------
+
+
+@contextlib.contextmanager
+def hard_timeout(seconds: float):
+    """SIGALRM fails the test instead of hanging the run (pytest-timeout is not loaded)."""
+
+    def fire(signum, frame):
+        raise TimeoutError(f"parser did not finish within {seconds} s")
+
+    old = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
+META = grid.GridMeta(0.05, 0.0, 0.0)
+GOOD = b"P5\n# made by test\n3 2\n255\n" + bytes([254, 0, 205, 254, 254, 0])
+
+
+def test_r24_eof_at_every_header_position_errors_promptly():
+    header_len = GOOD.index(b"255\n") + 4
+    with hard_timeout(5.0):
+        for cut in range(header_len):
+            with pytest.raises(grid.GridError):
+                grid.from_pgm_bytes(GOOD[:cut], META)
+        for bad in (
+            b"",
+            b"P5",
+            b"P5 ",
+            b"P5\n# no newline",
+            b"P5\n3 2\n255",  # EOF right after maxval, no separator
+            b"P5\n3 2\n255\n" + b"\x00" * 5,  # short payload
+            b"P5\n0 2\n255\n",
+            b"P5\n-3 2\n255\n" + b"\x00" * 6,
+            b"P5\nx 2\n255\n" + b"\x00" * 6,
+            b"P5\n3 2\n0\n" + b"\x00" * 6,
+            b"P5\n3 2\n65535\n" + b"\x00" * 12,
+            b"P5\n100000 100000\n255\n",  # oversized: refused before allocating
+            b"P6\n3 2\n255\n" + b"\x00" * 18,
+            b"P55\n3 2\n255\n" + b"\x00" * 6,
+            b"P5" + b"9" * 1_000_000,  # no whitespace anywhere
+        ):
+            with pytest.raises(grid.GridError):
+                grid.from_pgm_bytes(bad, META)
+
+
+def test_r24_supported_header_forms_still_parse():
+    with hard_timeout(5.0):
+        for raw in (
+            GOOD,
+            b"P5 3 2 255 " + GOOD[-6:],
+            b"P5\r\n3\t2\r\n#c\n255\n" + GOOD[-6:],
+            b"P5\n3#c\n 2\n255\n" + GOOD[-6:],
+        ):
+            g = grid.from_pgm_bytes(raw, META)
+            assert g.data.shape == (2, 3)
+            assert g.data[1].tolist() == [0, 100, -1] and g.data[0].tolist() == [0, 0, 100]
+
+
+def test_r24_bad_map_yaml_is_a_grid_error(tmp_path):
+    g = grid.Grid(np.zeros((2, 3), dtype=np.int8), META)
+    stem = str(tmp_path / "m")
+    grid.write(g, stem)
+    base = yaml.safe_load(open(stem + ".yaml"))
+    (tmp_path / "trunc.pgm").write_bytes(b"P5\n3 ")
+    for name, patch in (
+        ("trunc", {"image": "trunc.pgm"}),
+        ("res0", {"resolution": 0.0}),
+        ("resnan", {"resolution": float("nan")}),
+        ("noorigin", {"origin": None}),
+        ("shortorigin", {"origin": [1.0]}),
+        ("thresh", {"free_thresh": 0.9}),
+    ):
+        doc = {k: v for k, v in {**base, **patch}.items() if v is not None}
+        (tmp_path / f"{name}.yaml").write_text(yaml.safe_dump(doc))
+        with hard_timeout(5.0), pytest.raises(grid.GridError):
+            grid.read(str(tmp_path / f"{name}.yaml"))
+    (tmp_path / "garbage.yaml").write_text("origin: [1, 2\n: :")
+    with pytest.raises(grid.GridError):
+        grid.read(str(tmp_path / "garbage.yaml"))
+
+
+def test_r19_rotated_origin_is_refused_at_load(tmp_path):
+    stem = str(tmp_path / "rot")
+    grid.write(
+        grid.Grid(np.zeros((2, 3), dtype=np.int8), grid.GridMeta(0.05, 1.0, 2.0, origin_yaw=0.3)), stem
+    )
+    with pytest.raises(grid.GridError, match="yaw"):
+        grid.read(stem + ".yaml")
+    # what slam_toolbox / map_saver and our own writer produce: yaw 0 (float or int) still loads
+    stem0 = str(tmp_path / "flat")
+    grid.write(grid.Grid(np.zeros((2, 3), dtype=np.int8), grid.GridMeta(0.05, -1.5, 2.0)), stem0)
+    assert grid.read(stem0 + ".yaml").meta.origin_yaw == 0.0
+    text = open(stem0 + ".yaml").read()
+    (tmp_path / "ints.yaml").write_text(
+        text.replace("- 0.0\n", "- 0\n").replace("image: flat.pgm", "image: " + stem0 + ".pgm")
+    )
+    assert grid.read(str(tmp_path / "ints.yaml")).width == 3

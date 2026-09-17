@@ -168,8 +168,16 @@ def verify(stage: str) -> Manifest:
     for required in ("map.pgm", "map.yaml"):
         if required not in m.files:
             raise BundleError(f"bundle lacks {required}")
-    gridio.read(os.path.join(stage, "map.yaml"))  # must parse
+    _read_grid(os.path.join(stage, "map.yaml"))  # must parse
     return m
+
+
+def _read_grid(path: str) -> gridio.Grid:
+    """A malformed or unsupported (e.g. rotated-origin) grid is a bad bundle, not a crash."""
+    try:
+        return gridio.read(path)
+    except (gridio.GridError, OSError) as e:
+        raise BundleError(f"map grid: {e}") from e
 
 
 def publish(stage: str, maps_dir: str, map_id: str, revision: int) -> str:
@@ -190,7 +198,7 @@ def load(maps_dir: str, map_id: str, revision: int) -> tuple[Manifest, gridio.Gr
     if not os.path.isdir(d):
         raise BundleError(f"no such revision: {d}")
     m = verify(d)
-    return m, gridio.read(os.path.join(d, "map.yaml"))
+    return m, _read_grid(os.path.join(d, "map.yaml"))
 
 
 def now_iso() -> str:

@@ -151,7 +151,7 @@ def test_validate_save_load_and_mission(env):
         "/api/missions",
         json={"map_id": "sim_factory", "map_revision": 1, "route_id": "r1", "route_revision": 2},
     )
-    assert r.status_code == 200 and r.json["mission_id"] == "r1_rev2"
+    assert r.status_code == 200 and r.json["mission_id"] == "sim_factory_rev1_r1_rev2"
     r = client.get("/api/missions")
     assert r.json[0]["route"]["revision"] == 2 and r.json[0]["map"]["sha256"] == manifest.sha256
     assert (
@@ -202,7 +202,11 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
     client, stub, maps, rev_dir, manifest = env
     for path, body, name in (
         ("/api/localization/confirm", {}, "localization_confirm"),
-        ("/api/localization/initialpose", {"x_m": 1, "y_m": 2, "yaw_rad": 0.5}, "set_initial_pose"),
+        (
+            "/api/localization/initialpose",
+            {"x_m": 1, "y_m": 2, "yaw_rad": 0.5, "map_id": "a", "map_revision": 2, "generation": 7},
+            "set_initial_pose",
+        ),
         ("/api/mission/run", {"mission_id": "m"}, "run_mission"),
         ("/api/mission/pause", {}, "pause"),
         ("/api/mission/resume", {}, "prepare_resume"),
@@ -212,7 +216,10 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
         r = client.post(path, json=body)
         assert r.status_code == 200 and r.json["ok"], path
         assert stub.calls[-1][0] == name
-    assert stub.calls[1] == ("set_initial_pose", (1.0, 2.0, 0.5))
+    assert stub.calls[1] == ("set_initial_pose", (1.0, 2.0, 0.5, "a", 2, 7, ""))
+    # R12: a pose without the map identity it was drawn on is not accepted at all
+    no_map = {"x_m": 1, "y_m": 2, "yaw_rad": 0}
+    assert client.post("/api/localization/initialpose", json=no_map).status_code == 400
     assert client.post("/api/localization/initialpose", json={"x_m": "no"}).status_code == 400
     rules = [str(r.rule) for r in client.application.url_map.iter_rules()]
     # the one velocity-publishing route is the held manual refresh; nothing else
@@ -256,3 +263,134 @@ def test_state_and_footprint(env):
     assert client.get("/").status_code == 302
     for page in ("/maps", "/editor", "/run"):
         assert client.get(page).status_code == 200
+
+
+# ---- R21/R22/R23: route schema errors, mission identity, concurrent saves ----------------
+
+
+def _publish_bundle(maps: str, map_id: str) -> mb.Manifest:
+    g = build()
+    stage = mb.staging_dir(maps, map_id, 1)
+    m = mb.Manifest(
+        map_id,
+        1,
+        mb.now_iso(),
+        "map",
+        0.05,
+        [-3.0, -10.0, 0.0],
+        g.width,
+        g.height,
+        {"x_m": 0, "y_m": 0, "yaw_rad": 0, "description": "mark"},
+        {"dx_m": 0, "dy_m": 0, "dyaw_rad": 0, "note": "t"},
+    )
+    mb.stage_bundle(stage, g, None, m, required_posegraph=False)
+    return mb.verify(mb.publish(stage, maps, map_id, 1))
+
+
+def test_r21_malformed_route_payloads_are_422_and_never_stored(env):
+    from amr_navigation import store
+
+    client, stub, maps, rev_dir, manifest = env
+    good = route_payload([S("s1", 5.0, 0.0)])
+    bad = []
+    for key, value in (
+        ("repeat_count", 2.5),
+        ("repeat_count", "2"),
+        ("repeat_count", 101),
+        ("limits", {"linear_mps": 0}),
+        ("limits", {"linear_mps": "fast"}),
+        ("limits", {"bogus": 1.0}),
+        ("start", None),
+        ("start", {"x_m": 0.0, "y_m": 0.0}),
+        ("steps", [{"id": "s1", "type": "straight", "to": {"x_m": "5", "y_m": 0}}]),
+        ("steps", [{"id": "s1", "type": "rotate", "direction": "cw", "angle_deg": 90.5}]),
+        ("steps", [S("s", 5.0, 0.0)] * 1000),
+    ):
+        bad.append({**good, key: value})
+    bad.append({**good, "start": {"x_m": 1e6, "y_m": 0.0, "yaw_deg": 0.0}, "steps": [S("s1", 1e6 + 1, 0.0)]})
+    bad.append([1, 2])
+    for payload in bad:
+        for path in ("validate", "save"):
+            r = client.post(f"/api/maps/sim_factory/1/routes/{path}", json=payload)
+            assert r.status_code in (400, 422), (path, payload if not isinstance(payload, dict) else "")
+            assert not r.json["ok"]
+    assert store.list_routes(maps, "sim_factory") == {}
+    assert stub.previews == []
+
+
+def test_r22_same_route_name_on_two_maps_keeps_both_missions(env):
+    from amr_navigation import store
+
+    client, stub, maps, rev_dir, manifest = env
+    _publish_bundle(maps, "other_map")
+    payload = route_payload([S("s1", 5.0, 0.0)])
+    ids = []
+    for map_id in ("sim_factory", "other_map"):
+        r = client.post(f"/api/maps/{map_id}/1/routes/save", json=payload)
+        assert r.status_code == 200 and r.json["revision"] == 1
+        r = client.post(
+            "/api/missions", json={"map_id": map_id, "map_revision": 1, "route_id": "r1", "route_revision": 1}
+        )
+        assert r.status_code == 200, r.json
+        ids.append(r.json["mission_id"])
+    assert len(set(ids)) == 2 and all(
+        map_id in i for map_id, i in zip(("sim_factory", "other_map"), ids, strict=True)
+    )
+    assert {m["map"]["id"] for m in store.list_missions(maps)} == {"sim_factory", "other_map"}
+    # idempotent retry of the same references
+    body = {"map_id": "sim_factory", "map_revision": 1, "route_id": "r1", "route_revision": 1}
+    assert client.post("/api/missions", json=body).status_code == 200
+    # an explicit id already used for other references fails and leaves the original bytes alone
+    path = f"{maps}/missions/{ids[0]}.yaml"
+    before = open(path, "rb").read()
+    r = client.post(
+        "/api/missions",
+        json={
+            "mission_id": ids[0],
+            "map_id": "other_map",
+            "map_revision": 1,
+            "route_id": "r1",
+            "route_revision": 1,
+        },
+    )
+    assert r.status_code == 409 and not r.json["ok"]
+    assert open(path, "rb").read() == before
+    for bad in (
+        {**body, "map_revision": "1"},
+        {**body, "route_revision": 1.5},
+        {**body, "map_revision": True},
+        {**body, "mission_id": 5},
+    ):
+        assert client.post("/api/missions", json=bad).status_code == 400
+
+
+def test_r23_concurrent_route_saves_get_distinct_revisions(env):
+    import hashlib
+    import threading
+
+    client, stub, maps, rev_dir, manifest = env
+    app = client.application
+    n = 6
+    barrier = threading.Barrier(n)
+    out, errors = [], []
+
+    def save(k):
+        try:
+            c = app.test_client()
+            payload = route_payload([S("s1", 4.0 + k, 0.0)])
+            barrier.wait(timeout=10)
+            r = c.post("/api/maps/sim_factory/1/routes/save", json=payload)
+            out.append((k, r.status_code, r.json))
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=save, args=(k,)) for k in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    assert not errors and len(out) == n and all(code == 200 for _, code, _ in out)
+    assert sorted(j["revision"] for _, _, j in out) == list(range(1, n + 1))
+    for k, _, j in out:
+        data = open(j["path"], "rb").read()
+        assert hashlib.sha256(data).hexdigest() == j["sha256"] and f"x_m: {4.0 + k}".encode() in data

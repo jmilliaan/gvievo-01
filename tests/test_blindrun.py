@@ -375,5 +375,63 @@ def test_blind_page_sets_but_cannot_start():
     check("every page links to it", 'href="/blind"' in c.get("/manual").get_data(as_text=True))
 
 
+def test_run_log_failure_is_bounded():
+    """R32: a disk that refuses writes must not grow the buffer or leak the file.
+
+    _drain() used to fail before clearing the buffer, so every tick added a row
+    and retried an ever larger write; close() skipped the actual close when that
+    drain raised.
+    """
+    import errno
+    import shutil
+    import tempfile
+    print("\nrun log: a failing disk is bounded and reported once")
+
+    class FullDisk:
+        def __init__(self):
+            self.writes, self.closed = 0, False
+
+        def write(self, text):
+            self.writes += 1
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        def close(self):
+            self.closed = True
+
+    tmp = tempfile.mkdtemp()
+    now = [5000.0]
+    try:
+        with patch.object(runlog, "LOG_DIR", tmp), \
+                patch("runlog.time.monotonic", side_effect=lambda: now[0]):
+            log = runlog.RunLog(columns=runlog.BLIND_COLUMNS, prefix="blind")
+            log.open("test")
+            real = log._fh
+            disk = log._fh = FullDisk()
+            events.clear()
+            ticks = runlog.MAX_BUFFER_ROWS + 500
+            for _ in range(ticks):
+                now[0] += 0.02
+                log.write({"phase": "run"})
+            check("the buffer stops at its bound",
+                  len(log._buf) == runlog.MAX_BUFFER_ROWS, str(len(log._buf)))
+            check("...and the overflow is counted, not silently lost",
+                  log.dropped == ticks - runlog.MAX_BUFFER_ROWS,
+                  str(log.dropped))
+            check("a failing write is retried once per flush period, not per "
+                  "tick", disk.writes <= ticks * 0.02 / runlog.FLUSH_PERIOD_S + 2,
+                  f"{disk.writes} attempts in {ticks} ticks")
+            errs = [e for e in events.since(0)[1] if "dropping rows" in e["msg"]]
+            check("one actionable error, naming the cause",
+                  len(errs) == 1 and "No space left" in errs[0]["msg"],
+                  str([e["msg"] for e in errs])[:90])
+            log.close()
+            check("close() still closes the file when the final drain fails",
+                  disk.closed and log._fh is None and not log._buf)
+            real.close()
+            events.clear()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 TESTS = [test_plan_maths, test_closed_loop_and_odometry, test_controller_panel_rules,
-         test_blind_page_sets_but_cannot_start]
+         test_blind_page_sets_but_cannot_start, test_run_log_failure_is_bounded]

@@ -99,7 +99,7 @@ class CmdMuxKinematics(Node):
         self._permit: gating.Permit | None = None
         self._panel: gating.Panel | None = None
         self._lease: gating.Lease | None = None
-        self._manual: gating.Manual | None = None
+        self._manual = gating.ManualIntake()
         self._drives: gating.Drives | None = None
         self._commissioning: gating.Wheels | None = None
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
@@ -139,13 +139,13 @@ class CmdMuxKinematics(Node):
         return self.get_clock().now().nanoseconds * 1e-9
 
     def _on_teleop(self, msg: Twist) -> None:
-        self._teleop = gating.Stamped(self._now(), msg.linear.x, msg.angular.z)
+        self._teleop = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)
 
     def _on_follow(self, msg: Twist) -> None:
-        self._follow = gating.Stamped(self._now(), msg.linear.x, msg.angular.z)
+        self._follow = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)
 
     def _on_rotate(self, msg: Twist) -> None:
-        self._rotate = gating.Stamped(self._now(), msg.linear.x, msg.angular.z)
+        self._rotate = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)
 
     def _on_permit(self, msg: MotionPermit) -> None:
         cur = self._permit
@@ -163,26 +163,22 @@ class CmdMuxKinematics(Node):
         wl, wr = float(msg.left_rad_s), float(msg.right_rad_s)
         if math.isfinite(wl) and math.isfinite(wr):
             self._commissioning = gating.Wheels(self._now(), wl, wr, int(msg.generation))
+        else:
+            self._commissioning = None  # never leave an earlier nonzero wheel target in force (R03)
 
     def _on_drives(self, msg: DriveStatus) -> None:
         self._drives = gating.Drives(self._now(), bool(msg.operational))
 
     def _on_manual(self, msg: ManualCommand) -> None:
-        cur = self._manual
-        if cur is not None and cur.session == msg.session and int(msg.seq) <= cur.seq:
-            return  # reordered / duplicate refresh
-        v, w = float(msg.v), float(msg.w)
-        if not (math.isfinite(v) and math.isfinite(w) and math.isfinite(msg.valid_for_s)):
-            return
-        self._manual = gating.Manual(
+        self._manual.offer(
             self._now(),
-            v,
-            w,
             msg.instance,
             int(msg.generation),
             msg.session,
             int(msg.seq),
             float(msg.valid_for_s),
+            float(msg.v),
+            float(msg.w),
         )
 
     def _on_lease(self, msg: ControlLease) -> None:
@@ -204,7 +200,7 @@ class CmdMuxKinematics(Node):
         self._applied_instance, self._applied_gen = instance, gen
         self._teleop = self._follow = self._rotate = None
         self._permit = None
-        self._manual = None
+        self._manual.clear()
         self._commissioning = None
         self._v = self._wz = 0.0
         self._wl = self._wr = 0.0
@@ -230,7 +226,7 @@ class CmdMuxKinematics(Node):
             self._panel,
             self.gp,
             lease=self._lease,
-            manual=self._manual,
+            manual=self._manual.current,
             drives=self._drives,
             commissioning=self._commissioning,
         )
@@ -255,6 +251,11 @@ class CmdMuxKinematics(Node):
             self._wz = slew(self._wz, sel.w, self.alpha_max, self.dt)
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
+        if not (math.isfinite(wl) and math.isfinite(wr)):
+            # last line before the drive owner (R03): nothing upstream may turn into full scale
+            self.get_logger().error(f"nonfinite wheel output ({wl}, {wr}) from {name}; zeroed")
+            self._v = self._wz = self._wl = self._wr = 0.0
+            wl, wr = 0.0, 0.0
         self._last = sel
         self._out = (wl, wr)
         out = WheelVelocities()

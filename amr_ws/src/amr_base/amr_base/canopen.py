@@ -33,6 +33,7 @@ by the controller coming back.
 
 from __future__ import annotations
 
+import math
 import struct
 import time
 from dataclasses import dataclass, field
@@ -146,6 +147,34 @@ def unwrap_i32(prev: int, new: int) -> int:
     """Signed delta between two INT32 counter readings, wrap-safe."""
     d = (new - prev) & 0xFFFFFFFF
     return d - (1 << 32) if d >= (1 << 31) else d
+
+
+class WheelPosition:
+    """Continuous wheel angle from the wrapping INT32 6064h counter (R06).
+
+    Absolute counts / scale would turn the signed 32-bit rollover (about 2 000
+    wheel turns at 1 080 000 counts per turn) into kilometres of travel. This
+    accumulates wrap-safe count deltas instead, and only between two VALID
+    samples under the same arm epoch and scale: an invalid sample, a re-arm or
+    a scale change drops the baseline, and the next valid sample becomes the new
+    one without moving the output. A discontinuity costs at most the motion
+    since the last valid sample; it never shows up as displacement.
+    """
+
+    def __init__(self) -> None:
+        self.rad = 0.0
+        self._raw: int | None = None
+        self._key = None
+
+    def update(self, raw: int | None, valid: bool, scale: WheelScale | None, left: bool, epoch: int) -> float:
+        if not valid or raw is None or scale is None or not scale.counts_per_wheel_rev:
+            self._raw = None
+            return self.rad
+        key = (epoch, scale)
+        if self._raw is not None and key == self._key:
+            self.rad += scale.wheel_rad(unwrap_i32(self._raw, raw), left)
+        self._raw, self._key = raw, key
+        return self.rad
 
 
 # ---------------------------------------------------------------- scaling
@@ -302,7 +331,29 @@ class DriveLink:
     telemetry: dict[int, DriveTelemetry] = field(default_factory=dict)
     scale: WheelScale | None = None
     applied: tuple[int, int] | None = None
-    pc_guard_set: bool = False  # 1016h written on the drives; cleared on disarm
+    pc_guard_nodes: set = field(default_factory=set)  # 1016h written on these; cleared on disarm
+    # PC heartbeat kept alive INSIDE blocking arm/disarm transactions (R05): the
+    # loop cannot produce it while an SDO sequence or the speed-zero wait runs.
+    pc_node: int | None = None
+    pc_heartbeat_s: float = 0.1
+    heartbeat_withheld: bool = False  # R04 fallback: let the drives' 1016h trip
+    cleanup_owed: bool = False  # arm touched the drives; a disarm has not fully undone it
+    cleanup_failures: list = field(default_factory=list)
+    arm_epoch: int = 0  # bumped by every arm; WheelPosition rebaselines on it
+    t_armed: float | None = None
+    # R04: nodes a fault-stop zero has not reached yet, and the retry/confirm budget.
+    stop_pending: set = field(default_factory=set)
+    stop_unconfirmed: list = field(default_factory=list)
+    t_fault: float | None = None
+    _stop_tries: int = 0
+    _t_hb: float = 0.0
+
+    STOP_RETRIES = 5  # extra loop ticks a failed zero send is retried
+    STOP_CONFIRM_S = 3.0  # decel 3200 rpm/s from 4000 r/min is 1.25 s
+
+    @property
+    def pc_guard_set(self) -> bool:
+        return bool(self.pc_guard_nodes)
 
     def __post_init__(self):
         for nid in self.nodes:
@@ -356,7 +407,18 @@ class DriveLink:
 
     # -- SDO (blocking) --
 
+    def keepalive(self) -> None:
+        """PC heartbeat if one is due. Same thread as every other frame, so no second CAN owner."""
+        if self.pc_node is None or self.heartbeat_withheld:
+            return
+        if time.monotonic() - self._t_hb >= self.pc_heartbeat_s:
+            try:
+                self.send_pc_heartbeat(self.pc_node)
+            except Exception:  # noqa: BLE001 - the caller's own write will report the bus
+                pass
+
     def read(self, node, index, sub=0, timeout=0.4):
+        self.keepalive()
         st, val, _, _ = sdo_read(self.router, node, index, sub, timeout=timeout, collision_window=0.0)
         if st:
             self._alive(node)
@@ -370,6 +432,7 @@ class DriveLink:
 
     def write(self, node, index, sub, value, size, what):
         guard.check(index, value, sub)
+        self.keepalive()
         ok, detail = sdo_write(self.router, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
@@ -397,9 +460,11 @@ class DriveLink:
             self.write(
                 nid, 0x1016, 1, heartbeat_consumer_value(pc_node, timeout_ms), 4, "consumer heartbeat time"
             )
-        self.pc_guard_set = True
+            # Per node, as soon as its write lands: a failure on the second node
+            # must still leave the first one tracked for the rollback (R05).
+            self.pc_guard_nodes.add(nid)
 
-    def clear_pc_loss_guard(self) -> None:
+    def clear_pc_loss_guard(self) -> list[int]:
         """Retire 1016h on a DELIBERATE exit, while our heartbeat is still fresh.
 
         The guard exists for the PC dying, not for the PC leaving. Left set, the
@@ -407,15 +472,19 @@ class DriveLink:
         looks identical to a crash, cannot be cleared over CAN (40C0h is
         deny-listed) and needs a drive power cycle. Found 2026-09-16: both drives
         in FAULT after drive_node exited, and agv_controller could not arm.
+
+        Returns the nodes still carrying the guard; they stay tracked, so a
+        later disarm or exit tries again.
         """
-        if not self.pc_guard_set:
-            return
-        for nid in self.nodes:
+        failed = []
+        for nid in [n for n in self.nodes if n in self.pc_guard_nodes]:
             try:
                 self.write(nid, 0x1016, 1, 0, 4, "consumer heartbeat time = 0")
+                self.pc_guard_nodes.discard(nid)
             except Exception as e:  # noqa: BLE001 - de-energising still proceeds
                 self.log(f"node {nid}: could not clear 1016h ({e}); it will fault when we stop")
-        self.pc_guard_set = False
+                failed.append(nid)
+        return failed
 
     def configure_pdos(self, feedback_period_ms: int) -> None:
         """RPDO1 (setpoint) and TPDO1/2 (feedback). Pre-operational only (CiA 301)."""
@@ -475,27 +544,37 @@ class DriveLink:
         invert_left: bool,
         invert_right: bool,
     ) -> list[str]:
-        """Energise both drives with zero targets. Raises, and rolls back, on any failure."""
+        """Energise both drives with zero targets. Raises, and rolls back, on any failure.
+
+        Everything after preflight (the first write to a drive) is inside the
+        rollback: NMT, PDO mapping, each node's 1016h, the enable sequence and
+        the post-enable scale reads (R05). A failure anywhere de-energises both
+        drives and retires whichever guards were already written.
+        """
         ok, report = self.preflight()
         if not ok:
             raise RuntimeError("preflight failed: " + "; ".join(report))
-        # PDO mapping and NMT error control belong in PRE-OPERATIONAL.
-        self.nmt(0x80)
-        self.configure_pdos(feedback_period_ms)
-        if pc_node is not None and pc_loss_ms:
-            self.set_pc_loss_guard(pc_node, pc_loss_ms)
+        self.arm_epoch += 1
+        self.cleanup_owed = True
+        self._reset_stop()
         try:
+            # PDO mapping and NMT error control belong in PRE-OPERATIONAL.
+            self.nmt(0x80)
+            self.configure_pdos(feedback_period_ms)
+            if pc_node is not None and pc_loss_ms:
+                self.set_pc_loss_guard(pc_node, pc_loss_ms)
             self._enable_sequence()
+            cprev = counts_per_wheel_rev(lambda n, i, s: self.read(n, i, s), tuple(self.nodes), gear_ratio)
         except BaseException:
             self.disarm(force=True)
             raise
-        cprev = counts_per_wheel_rev(lambda n, i, s: self.read(n, i, s), tuple(self.nodes), gear_ratio)
         self.scale = WheelScale(gear_ratio, invert_left, invert_right, cprev)
         if cprev is None:
             self.log("encoder scale (608Fh/6091h) unreadable or inconsistent - wheel positions invalid")
         else:
             self.log(f"encoder scale {cprev:.0f} counts per wheel turn")
         self.applied = None
+        self.t_armed = time.monotonic()
         self.state, self.fault_reason = ARMED, None
         return report
 
@@ -520,20 +599,36 @@ class DriveLink:
                     f"node {nid} did not reach Operation enabled (statusword 0x{sw:04X}, {decode_state(sw)})"
                 )
 
-    def disarm(self, force: bool = False) -> None:
-        """Zero, wait for the ramp, de-energise, Pre-operational. Never raises."""
+    def disarm(self, force: bool = False) -> bool:
+        """Zero, wait for the ramp, de-energise, Pre-operational. Never raises.
+
+        Returns True when every cleanup write was acknowledged. Anything short of
+        that leaves `cleanup_owed` set (and `cleanup_failures` saying what), so a
+        later disarm or the exit path runs the teardown again instead of taking
+        the software DISARMED state as proof the hardware is (R05).
+        """
         was = self.state
         self.state, self.applied = DISARMED, None
-        if was == DISARMED and not force:
-            return
-        # First, before the speed-zero wait (up to 4 s with no heartbeat sent):
-        # otherwise the guard trips DURING the disarm it was meant to survive.
-        self.clear_pc_loss_guard()
+        if was == DISARMED and not force and not self.cleanup_owed:
+            return True
+        failed = []
+        # A zero RPDO before anything blocking, so a teardown interrupted during
+        # the SDO writes below still leaves the drives commanding zero. Only
+        # when they were ours and enabled: the RPDO carries controlword 0x0F,
+        # which must not ENABLE a drive a rollback caught half-switched-on.
+        if was in (ARMED, FAULT):
+            failed += [f"node {n}: zero RPDO" for n in self._send_zero_each()]
+        # Retire 1016h next, BEFORE the speed-zero wait. The review (R05) asks for
+        # stop/de-energise first; the measured order is the other way round
+        # (2026-09-16, 6515799): with the guard still set, both drives raised
+        # 8130h during/after a clean exit and needed a power cycle. The heartbeat
+        # keep-alive inside write()/read() now covers the wait too, but that is
+        # not yet bench-proven, so the proven order stays.
+        failed += [f"node {n}: 1016h" for n in self.clear_pc_loss_guard()]
         for nid in self.nodes:
-            try:
-                sdo_write(self.router, nid, 0x60FF, 0, 0, 4)
-            except Exception:  # noqa: BLE001
-                pass
+            ok, detail = self._raw_write(nid, 0x60FF, 0, 0, 4)
+            if not ok:
+                failed.append(f"node {nid}: 60FFh=0 ({detail})")
         end = time.monotonic() + 4.0
         while time.monotonic() < end:
             try:
@@ -544,24 +639,87 @@ class DriveLink:
             self.router.pump(0.05)
         for nid in self.nodes:
             for cw in (CW_SHUTDOWN, CW_DISABLE_VOLTAGE):
-                try:
-                    sdo_write(self.router, nid, 0x6040, 0, cw, 2)
-                except Exception:  # noqa: BLE001
-                    pass
+                ok, detail = self._raw_write(nid, 0x6040, 0, cw, 2)
+                if not ok:
+                    failed.append(f"node {nid}: 6040h=0x{cw:04X} ({detail})")
         try:
             self.nmt(0x80)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            failed.append(f"NMT pre-operational ({e})")
         self.fault_reason = None if was != FAULT else self.fault_reason
+        self.cleanup_owed, self.cleanup_failures = bool(failed), failed
+        self._reset_stop()
+        if failed:
+            self.log(f"disarm incomplete, will retry on the next disarm: {'; '.join(failed)}")
+        return not failed
+
+    def _raw_write(self, nid, index, sub, value, size) -> tuple[bool, str]:
+        self.keepalive()
+        try:
+            ok, detail = sdo_write(self.router, nid, index, sub, value, size)
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+        if ok:
+            self._alive(nid)
+        return ok, detail
 
     def fault(self, reason: str) -> None:
-        """Latch a fault: setpoint zero now, no ramp. Drives stay energised (servo lock)."""
+        """Latch a fault: setpoint zero now, no ramp. Drives stay energised (servo lock).
+
+        The zero goes to each drive independently; one failed send does not skip
+        the other (R04). Nodes it did not reach are retried by fault_tick().
+        """
         if self.state == ARMED:
-            try:
-                self.send_target(0, 0)
-            except Exception:  # noqa: BLE001
-                pass
+            self.stop_pending = set(self._send_zero_each())
+            self.t_fault = time.monotonic()
+            self._stop_tries = 0
         self.state, self.fault_reason = FAULT, reason
+
+    def fault_tick(self, now: float, max_age: float) -> None:
+        """Once per loop in FAULT: bounded zero retries, then measured standstill.
+
+        Unconfirmed = a zero that could not be sent after STOP_RETRIES, or a drive
+        whose FRESH statusword still lacks speed-zero STOP_CONFIRM_S after the
+        fault. A drive with no fresh status is reported but not escalated: if it
+        cannot be heard it most likely cannot hear us, and its own 1016h trips.
+        """
+        if self.state != FAULT or self.t_fault is None:
+            return
+        if self.stop_pending and self._stop_tries < self.STOP_RETRIES:
+            self._stop_tries += 1
+            self.stop_pending = set(self._send_zero_each(self.stop_pending))
+        unconfirmed = []
+        if self.stop_pending and self._stop_tries >= self.STOP_RETRIES:
+            unconfirmed += [f"node {n}: zero not delivered" for n in sorted(self.stop_pending)]
+        if now - self.t_fault >= self.STOP_CONFIRM_S:
+            for n, t in self.telemetry.items():
+                if (
+                    t.t_status is not None
+                    and now - t.t_status < max_age
+                    and not t.statusword & SW_SPEED_IS_ZERO
+                ):
+                    unconfirmed.append(f"node {n}: still turning ({t.rpm} r/min)")
+        if unconfirmed != self.stop_unconfirmed:
+            self.stop_unconfirmed = unconfirmed
+            if unconfirmed:
+                self.log(f"fault stop UNCONFIRMED: {'; '.join(unconfirmed)}")
+
+    def _reset_stop(self) -> None:
+        self.stop_pending, self.stop_unconfirmed, self.t_fault, self._stop_tries = set(), [], None, 0
+        self.heartbeat_withheld = False
+
+    def _send_zero_each(self, nodes=None) -> list[int]:
+        """Zero RPDO1 to each node on its own; returns the nodes whose send raised."""
+        failed = []
+        for nid in self.nodes if nodes is None else [n for n in self.nodes if n in nodes]:
+            try:
+                rpdo.send(self.router, nid, CW_OPERATION_ENABLED, 0)
+            except Exception as e:  # noqa: BLE001
+                self.log(f"node {nid}: zero setpoint send failed ({e})")
+                failed.append(nid)
+        if not failed:
+            self.applied = (0, 0)
+        return failed
 
     def send_target(self, left_rpm: int, right_rpm: int) -> None:
         """RPDO1 to both drives. A queue append; nothing is waited for."""
@@ -571,6 +729,7 @@ class DriveLink:
         self.applied = target
 
     def send_pc_heartbeat(self, pc_node: int) -> None:
+        self._t_hb = time.monotonic()
         self.router.send(pc_heartbeat_message(pc_node))
 
     # -- checks --
@@ -578,12 +737,66 @@ class DriveLink:
     def silent_nodes(self, now: float, timeout_s: float) -> list[int]:
         return [n for n, t in self.telemetry.items() if t.t_alive is None or now - t.t_alive > timeout_s]
 
+    def feedback_fresh(self, nid: int, now: float, max_age: float) -> tuple[bool, bool]:
+        """(status fresh, position fresh): TPDO1 and TPDO2 each on their own (R07).
+
+        Heartbeats, EMCY and SDO replies refresh t_alive, never these.
+        """
+        t = self.telemetry[nid]
+        return (
+            t.t_status is not None and now - t.t_status < max_age,
+            t.t_position is not None and now - t.t_position < max_age,
+        )
+
+    def missing_feedback(self, now: float, timeout_s: float) -> list[int]:
+        """Armed drives whose TPDO1 or TPDO2 stopped, even if they still answer
+        heartbeats/SDOs. Counted from the arm, so frames from before it do not count."""
+        since = self.t_armed if self.t_armed is not None else now
+        out = []
+        for n, t in self.telemetry.items():
+            ts = max(t.t_status or 0.0, since)
+            tp = max(t.t_position or 0.0, since)
+            if now - ts > timeout_s or now - tp > timeout_s:
+                out.append(n)
+        return out
+
     def dropped_out(self) -> list[int]:
         """Drives that left Operation enabled while we believe they are armed."""
         return [n for n, t in self.telemetry.items() if t.operation_enabled is False]
 
     def faulted_nodes(self) -> list[int]:
         return [n for n, t in self.telemetry.items() if t.faulted or t.alarm is not None]
+
+
+def wheel_feedback(
+    link: DriveLink, now: float, max_age: float, wheels, is_new: dict, positions: dict
+) -> dict:
+    """Per wheel (pos_rad, vel_rad_s, valid) for one WheelStates (R06/R07).
+
+    `wheels` is ((node, left), ...); `is_new[node]` says both TPDO1 and TPDO2
+    arrived since the last publish; `positions[node]` is that wheel's
+    WheelPosition. Valid needs a fresh statusword AND a fresh position, each on
+    its own clock, a new sample of both, a known scale, no fault, and ARMED.
+    """
+    out = {}
+    scale = link.scale
+    for n, left in wheels:
+        t = link.telemetry[n]
+        status_ok, position_ok = link.feedback_fresh(n, now, max_age)
+        valid = bool(
+            status_ok
+            and position_ok
+            and is_new.get(n)
+            and t.position is not None
+            and scale is not None
+            and scale.counts_per_wheel_rev
+            and not t.faulted
+            and link.state == ARMED
+        )
+        pos = positions[n].update(t.position, valid, scale, left, link.arm_epoch)
+        vel = scale.wheel_rad_s(t.rpm, left) if (scale and status_ok and t.rpm is not None) else 0.0
+        out[n] = (pos, vel, valid)
+    return out
 
 
 def target_rpm(cmd, now: float, timeout_s: float, scale: WheelScale, max_rpm: float) -> tuple[int, int]:
@@ -595,8 +808,15 @@ def target_rpm(cmd, now: float, timeout_s: float, scale: WheelScale, max_rpm: fl
     """
     if cmd is None or now - cmd[0] > timeout_s:
         return 0, 0
-    left = max(-max_rpm, min(max_rpm, scale.motor_rpm(cmd[1], left=True)))
-    right = max(-max_rpm, min(max_rpm, scale.motor_rpm(cmd[2], left=False)))
+    # R03: max/min would turn NaN into full scale. Anything nonfinite - the
+    # command, the scaled result (1e308 x gear) or the limit - is zero.
+    if not (math.isfinite(max_rpm) and max_rpm >= 0.0):
+        return 0, 0
+    left, right = scale.motor_rpm(cmd[1], left=True), scale.motor_rpm(cmd[2], left=False)
+    if not (math.isfinite(left) and math.isfinite(right)):
+        return 0, 0
+    left = max(-max_rpm, min(max_rpm, left))
+    right = max(-max_rpm, min(max_rpm, right))
     return int(round(left)), int(round(right))
 
 

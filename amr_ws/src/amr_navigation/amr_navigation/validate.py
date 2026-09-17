@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from amr_maps import grid as gridio
 from amr_navigation import footprint as fpmod
 from amr_navigation.compiler import STRAIGHT, CompiledRoute, compile_route
-from amr_navigation.route import Route, RouteError
+from amr_navigation.route import MAX_REPEAT, Route, RouteError
 
 
 @dataclass
@@ -60,15 +60,17 @@ def validate(
         )
     if not route.route_id or "/" in route.route_id or route.route_id.startswith("."):
         issues.append(Issue("route_id", "route_id must be a plain name"))
-    if route.repeat_count < 1:
-        issues.append(Issue("repeat", "repeat_count must be a positive integer"))
+    rc = route.repeat_count
+    rc_ok = isinstance(rc, int) and not isinstance(rc, bool) and 1 <= rc <= MAX_REPEAT
+    if not rc_ok:
+        issues.append(Issue("repeat", f"repeat_count must be an integer in 1..{MAX_REPEAT}"))
     try:
         compiled = compile_route(route)
     except RouteError as e:
         issues.append(Issue("geometry", str(e), e.step_id))
         return Validation(issues, None)
 
-    if route.repeat_count > 1 and not compiled.closes:
+    if rc_ok and rc > 1 and not compiled.closes:
         issues.append(
             Issue(
                 "repeat",
@@ -76,30 +78,59 @@ def validate(
                 "add an explicit return sequence",
             )
         )
+    try:
+        gridio.require_axis_aligned(grid.meta)
+    except gridio.GridError as e:
+        issues.append(Issue("map_geometry", str(e)))
+        return Validation(issues, compiled)
+    if keepout is not None:
+        problem = keepout_misalignment(grid, keepout)
+        if problem:
+            issues.append(Issue("keepout", f"keepout mask not aligned with the map: {problem}"))
+            keepout = None  # the issue already fails validation; do not index a mismatched grid
     # Start pose itself must be clear (the vehicle stands there).
-    c = fpmod.check(grid, fpmod.swept_rotation(grid, fp, (route.start.x_m, route.start.y_m)), keepout)
+    start = (route.start.x_m, route.start.y_m)
+    c = _clearance(grid, fp, keepout, None, start)
     if not c.clear:
-        issues.append(
-            Issue(
-                "clearance",
-                f"start pose not clear: {c.occupied} occupied, {c.unknown} unknown, "
-                f"{c.keepout} keepout cells",
-            )
-        )
+        issues.append(Issue("clearance", "start pose " + _describe(c)))
     for st in compiled.steps:
         if st.type == STRAIGHT:
-            mask = fpmod.swept_line(grid, fp, st.start, st.end)
+            c = _clearance(grid, fp, keepout, (st.start, st.end), None)
         else:
-            mask = fpmod.swept_rotation(grid, fp, (st.start[0], st.start[1]))
-        c = fpmod.check(grid, mask, keepout)
+            c = _clearance(grid, fp, keepout, None, (st.start[0], st.start[1]))
         if not c.clear:
             what = "line" if st.type == STRAIGHT else "rotation sweep"
-            issues.append(
-                Issue(
-                    "clearance",
-                    f"{what} not clear: {c.occupied} occupied, {c.unknown} unknown, "
-                    f"{c.keepout} keepout cells (margin included)",
-                    st.id,
-                )
-            )
+            issues.append(Issue("clearance", f"{what} {_describe(c)} (margin included)", st.id))
     return Validation(issues, compiled)
+
+
+def keepout_misalignment(grid: gridio.Grid, keepout: gridio.Grid) -> str | None:
+    """None if the keepout grid indexes the same cells as the map, else what differs."""
+    a, b = grid.meta, keepout.meta
+    if keepout.data.shape != grid.data.shape:
+        return f"shape {keepout.data.shape} != map {grid.data.shape}"
+    if abs(a.resolution - b.resolution) > 1e-9:
+        return f"resolution {b.resolution} != map {a.resolution}"
+    if abs(a.origin_x - b.origin_x) > 1e-6 or abs(a.origin_y - b.origin_y) > 1e-6:
+        return f"origin ({b.origin_x}, {b.origin_y}) != map ({a.origin_x}, {a.origin_y})"
+    if abs(a.origin_yaw - b.origin_yaw) > gridio.YAW_TOL_RAD:
+        return f"origin yaw {b.origin_yaw} != map {a.origin_yaw}"
+    return None
+
+
+def _clearance(grid, fp, keepout, line, pivot) -> fpmod.Clearance:
+    # Bounds first: a sweep leaving the map is rejected outright, and the (clipped) mask of
+    # an off-map sweep is never rasterised, so absurd coordinates cost nothing.
+    if line is not None:
+        if fpmod.line_outside(grid, fp, *line):
+            return fpmod.Clearance(0, 0, 0, 0, outside=True)
+        return fpmod.check(grid, fpmod.swept_line(grid, fp, *line), keepout)
+    if fpmod.rotation_outside(grid, fp, pivot):
+        return fpmod.Clearance(0, 0, 0, 0, outside=True)
+    return fpmod.check(grid, fpmod.swept_rotation(grid, fp, pivot), keepout)
+
+
+def _describe(c: fpmod.Clearance) -> str:
+    if c.outside:
+        return "not clear: footprint (with margin) extends outside the map"
+    return f"not clear: {c.occupied} occupied, {c.unknown} unknown, {c.keepout} keepout cells"

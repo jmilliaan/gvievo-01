@@ -114,3 +114,60 @@ def test_http_press_refresh_release_publishes_exactly_one_command_per_refresh(tm
         json={"session": r.json["session"], "ticket": r.json["ticket"], "seq": 1, "v": 0.1, "w": 0},
     )
     assert r.status_code == 409 and "generation" in r.json["message"]
+
+
+def test_r02_http_release_revokes_at_the_mux_after_refreshes(tmp_path):
+    """Server -> mux path: the release the server publishes must beat the seq filter."""
+    from amr_mission.fixtures import write_world_as_bundle  # noqa: PLC0415
+
+    from amr_base.gating import (  # noqa: PLC0415
+        LEASE_MANUAL,
+        MANUAL,
+        NONE,
+        Drives,
+        Lease,
+        ManualIntake,
+        Panel,
+        Params,
+        select,
+    )
+
+    write_world_as_bundle(str(tmp_path))
+    stub = Stub()
+    c = create_app(stub, str(tmp_path)).test_client()
+    mux = ManualIntake()
+
+    def deliver(cmd):
+        mux.offer(10.0, cmd.instance, cmd.generation, cmd.session, cmd.seq, cmd.valid_for_s, cmd.v, cmd.w)
+
+    def source():
+        lease = Lease(10.0, "inst", 3, 1, LEASE_MANUAL)
+        return select(10.0, None, None, None, None, Panel(10.0, True, False), Params(require_supervisor=True),
+                      lease, mux.current, Drives(10.0, True)).source
+
+    r = c.post("/api/manual/press", json={"owner": "tab-A"}).json
+    sid, ticket = r["session"], r["ticket"]
+    for seq in range(1, 8):
+        ticket = c.post("/api/manual/refresh",
+                        json={"session": sid, "ticket": ticket, "seq": seq, "v": 0.2, "w": 0}).json["ticket"]
+    refreshes = list(stub.published)
+    for cmd in refreshes:
+        deliver(cmd)
+    assert source() == MANUAL
+    c.post("/api/manual/release", json={"session": sid})
+    deliver(stub.published[-1])
+    assert source() == NONE
+    # reordered delivery: an in-flight refresh arriving after the release stays dead
+    deliver(refreshes[-1])
+    assert source() == NONE
+    # duplicate release, then a fresh press works again
+    c.post("/api/manual/release", json={"session": sid})
+    deliver(stub.published[-1])
+    r = c.post("/api/manual/press", json={"owner": "tab-A"}).json
+    body = {"session": r["session"], "ticket": r["ticket"], "seq": 1, "v": 0.1, "w": 0}
+    c.post("/api/manual/refresh", json=body)
+    deliver(stub.published[-1])
+    assert source() == MANUAL
+    c.post("/api/stop", json={})
+    deliver(stub.published[-1])
+    assert source() == NONE

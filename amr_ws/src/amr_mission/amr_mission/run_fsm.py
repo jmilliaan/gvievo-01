@@ -22,6 +22,7 @@ NAMES = {
     DONE: "DONE",
 }
 ACTIVE = (EXECUTING, PAUSED, BLOCKED)
+MAX_PASSES = 100  # repeat_count bound: a route pass count above this is refused at load
 
 
 _counter = itertools.count(1)
@@ -38,7 +39,9 @@ class RunFsm:
     mission_id: str = ""
     run_id: str = ""
     n_steps: int = 0
-    step_index: int = -1
+    step_index: int = -1  # within the current pass
+    n_passes: int = 1
+    pass_index: int = 0
     resume_prepared: bool = False
     history: list[tuple[int, str]] = field(default_factory=list)
 
@@ -49,14 +52,27 @@ class RunFsm:
 
     # ---- loading -------------------------------------------------------------------
 
-    def load(self, mission_id: str, n_steps: int) -> bool:
-        """A mission may be (re)loaded when nothing is running: IDLE, READY or DONE."""
+    def load(self, mission_id: str, n_steps: int, passes: int = 1) -> bool:
+        """A mission may be (re)loaded when nothing is running: IDLE, READY or DONE.
+        `passes` is the route's repeat_count: the step list is executed that many times."""
         if self.state not in (IDLE, READY, DONE):
             self.reason = f"cannot load while {NAMES[self.state]}"
             return False
-        self.mission_id, self.n_steps = mission_id, n_steps
-        self.run_id, self.step_index, self.resume_prepared = "", -1, False
-        return self._set(READY, f"mission {mission_id} loaded ({n_steps} steps); AUTO + Start to run")
+        if type(passes) is not int or not 1 <= passes <= MAX_PASSES:
+            self.reason = f"cannot load: repeat_count must be an integer 1..{MAX_PASSES}, got {passes!r}"
+            return False
+        if type(n_steps) is not int or n_steps < 1:
+            self.reason = f"cannot load: route has no steps ({n_steps!r})"
+            return False
+        self.mission_id, self.n_steps, self.n_passes = mission_id, n_steps, passes
+        self.run_id, self.step_index, self.pass_index, self.resume_prepared = "", -1, 0, False
+        return self._set(
+            READY, f"mission {mission_id} loaded ({n_steps} steps x {passes} passes); AUTO + Start to run"
+        )
+
+    def progress(self) -> str:
+        """Human-readable pass/step position (RunState has no pass field yet)."""
+        return f"pass {self.pass_index + 1}/{self.n_passes} step {self.step_index}"
 
     def unready(self, reason: str) -> bool:
         """A prerequisite lapsed while waiting (nothing was moving): back to IDLE, no acknowledgement."""
@@ -76,7 +92,7 @@ class RunFsm:
             if not gate_ok:
                 self.reason = f"Start refused: {gate_reason}"
                 return False
-            self.run_id, self.step_index = new_run_id(), 0
+            self.run_id, self.step_index, self.pass_index = new_run_id(), 0, 0
             return self._set(EXECUTING, f"run {self.run_id} started")
         if self.state in (PAUSED, BLOCKED):
             if not auto:
@@ -86,7 +102,7 @@ class RunFsm:
                 self.reason = f"Start ignored: resume not prepared ({NAMES[self.state]})"
                 return False
             self.resume_prepared = False
-            return self._set(EXECUTING, f"resumed step {self.step_index}")
+            return self._set(EXECUTING, f"resumed {self.progress()}")
         self.reason = f"Start ignored in {NAMES[self.state]}"
         return False
 
@@ -123,7 +139,7 @@ class RunFsm:
         if self.state not in (READY, *ACTIVE):
             self.reason = f"abort ignored in {NAMES[self.state]}"
             return False
-        self.run_id, self.step_index, self.resume_prepared = "", -1, False
+        self.run_id, self.step_index, self.pass_index, self.resume_prepared = "", -1, 0, False
         return self._set(IDLE, reason)
 
     def fault(self, reason: str) -> bool:
@@ -137,7 +153,7 @@ class RunFsm:
         if self.state != FAULT:
             self.reason = f"nothing to acknowledge ({NAMES[self.state]})"
             return False
-        self.run_id, self.step_index = "", -1
+        self.run_id, self.step_index, self.pass_index = "", -1, 0
         return self._set(IDLE, "fault acknowledged; load a mission")
 
     # ---- progress -----------------------------------------------------------------------
@@ -147,8 +163,10 @@ class RunFsm:
             return False
         self.step_index += 1
         if self.step_index >= self.n_steps:
-            return self._set(DONE, f"run {self.run_id} complete")
-        self.reason = f"step {self.step_index} of {self.n_steps}"
+            if self.pass_index + 1 >= self.n_passes:
+                return self._set(DONE, f"run {self.run_id} complete ({self.n_passes} passes)")
+            self.pass_index, self.step_index = self.pass_index + 1, 0
+        self.reason = f"{self.progress()} of {self.n_steps}"
         return True
 
     def accepts(self, run_id: str) -> bool:

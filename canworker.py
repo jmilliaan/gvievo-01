@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeout
 
 # The layer directories are put on sys.path rather than made into packages, so
 # every module keeps importing its neighbours by bare name. That is what lets
@@ -71,6 +72,16 @@ import rfid  # noqa: E402
 # it lasts, so retrying it at tick rate would spend the whole bus thread on
 # a question whose answer cannot change quickly.
 ARM_RETRY_S = 2.0
+
+# Queued web actions run on the bus thread between the panel scan and the
+# watchdog, so they are rationed: at most one that actually does bus work per
+# tick. Refused or abandoned requests cost nothing and do not use the slot, but
+# a tick still looks at no more than QUEUE_SCAN_PER_TICK of them.
+QUEUE_SCAN_PER_TICK = 32
+
+# Queued actions that stall the bus thread on blocking SDO round-trips and have
+# no business running while the drives are energised.
+_REFUSED_WHILE_ARMED = {"preflight"}
 
 
 def _battery(mon):
@@ -383,6 +394,13 @@ class Controller:
         self._arm_retry_at = 0.0
         self._arm_fail = None
         self._last_action = None        # (what, source) for the UI
+        # Manual authority comes from the panel, so it ends with the panel's
+        # image. _panel_valid is the last scan's verdict; _jog_released goes
+        # False when that image is lost and stays False until a stop arrives
+        # from the browser, so a direction the browser was still re-POSTing
+        # through the gap cannot resume on its own when the panel comes back.
+        self._panel_valid = False
+        self._jog_released = True
 
     # ---- lifecycle ------------------------------------------------------
 
@@ -410,7 +428,13 @@ class Controller:
         """Run a slow action on the bus thread and wait for it."""
         fut = Future()
         self._q.put((action, args, fut))
-        return fut.result(timeout=timeout)
+        try:
+            return fut.result(timeout=timeout)
+        except FutureTimeout:
+            # Nobody is waiting any more, so it must not run later either. A
+            # no-op if the bus thread has already started it.
+            fut.cancel()
+            raise
 
     # ---- called from Flask threads --------------------------------------
 
@@ -429,6 +453,14 @@ class Controller:
                 raise RuntimeError(f"fault latched: {self._fault} - press Reset")
             if self._blind is not None or self._blind_start_at:
                 raise RuntimeError("a blind run is in progress - Reset or Stop it first")
+            if direction == "stop":
+                self._jog_released = True
+            elif config.PANEL_ENABLED and not self._panel_valid:
+                # A browser keepalive is not manual authority; the panel is.
+                raise RuntimeError("panel input lost - jog refused")
+            elif not self._jog_released:
+                raise RuntimeError("panel input was lost while jogging - "
+                                   "release and press again")
             self._direction = direction
             self._target = motion.velocities(direction)
             self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
@@ -443,6 +475,7 @@ class Controller:
             self._direction = "stop"
             self._target = (0, 0)
             self._deadline = time.monotonic() + config.MANUAL_WATCHDOG_S
+            self._jog_released = True
 
     def set_blind_plan(self, spec):
         """Validate and store a blind-run plan. Moves nothing: PB Start runs it."""
@@ -736,15 +769,33 @@ class Controller:
                 return
 
     def _drain_queue(self):
-        while True:
+        """Run queued web actions - bounded, so the tick after it always runs.
+
+        It used to run the queue to exhaustion, so a burst of requests (each
+        preflight is six blocking SDO reads, 0.4 s apiece against a silent
+        drive) held off the panel scan and the watchdog for as long as the
+        burst lasted.
+        """
+        for _ in range(QUEUE_SCAN_PER_TICK):
             try:
                 action, args, fut = self._q.get_nowait()
             except queue.Empty:
                 return
+            if not fut.set_running_or_notify_cancel():
+                continue                # its HTTP waiter already timed out
+            if action in _REFUSED_WHILE_ARMED:
+                with self._lock:
+                    armed = self._armed
+                if armed:
+                    fut.set_exception(RuntimeError(
+                        f"{action} refused while armed - it blocks the bus "
+                        f"thread; disarm first"))
+                    continue
             try:
                 fut.set_result(getattr(self, "_do_" + action)(*args))
             except Exception as e:
                 fut.set_exception(e)
+            return                      # one real action per tick
 
     # ---- primitives ------------------------------------------------------
 
@@ -978,7 +1029,26 @@ class Controller:
             # wrong way to resolve that.
             if self._blind is not None or self._blind_start_at:
                 self._abort_blind("panel image lost")
+            # *** Manual jog loses its authority too. *** DIO is not a critical
+            # health source, and drive() used to check only cached mode/armed,
+            # so a browser still holding an arrow kept the vehicle moving with
+            # the panel gone. Zero now, refuse jogs until the panel is back, and
+            # make the held direction be released before it counts again.
+            with self._lock:
+                self._panel_valid = False
+                moving = self._target != (0, 0)
+                if moving:
+                    self._jog_released = False
+                self._direction = "stop"
+                self._target = (0, 0)
+                if moving:
+                    self._last_stop_reason = "panel input lost"
+            if moving:
+                events.warn("panel input lost - manual jog stopped; release "
+                            "and press again once the panel is back")
             return
+        with self._lock:
+            self._panel_valid = True
 
         # A blind run is panel-started, so this scan - not a browser - is its
         # evidence of a live control path. Without this the manual watchdog

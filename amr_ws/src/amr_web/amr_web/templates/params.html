@@ -13,10 +13,10 @@ function render() {
   const sec = cfg.sections.map(s => {
     const rows = s.rows.filter(r => !q || (`${s.name}.${r.key} ${r.value} ${r.note || ''}`).toLowerCase().includes(q));
     if (!rows.length) return '';
-    return `<div class="card"><h2>${s.name}</h2><table>${rows.map(r => `<tr><td><code>${r.key}</code></td><td>${r.value}</td><td class="muted">${r.unit || ''}</td><td class="muted">${r.note || ''}</td></tr>`).join('')}</table></div>`;
+    return `<div class="card"><h2>${esc(s.name)}</h2><table>${rows.map(r => `<tr><td><code>${esc(r.key)}</code></td><td>${esc(r.value)}</td><td class="muted">${esc(r.unit)}</td><td class="muted">${esc(r.note)}</td></tr>`).join('')}</table></div>`;
   }).join('');
-  const rt = Object.entries(cfg.runtime).map(([n, v]) => `<div class="card"><h2>runtime · ${n}</h2><table>${Object.entries(v).filter(([k, x]) => !q || (k + x).toLowerCase().includes(q)).map(([k, x]) => `<tr><td><code>${k}</code></td><td>${x}</td></tr>`).join('')}</table></div>`).join('');
-  document.getElementById('params').innerHTML = `<div class="muted">profile <b>${cfg.profile}</b> — ${cfg.profile_path}</div>` + rt + sec;
+  const rt = Object.entries(cfg.runtime).map(([n, v]) => `<div class="card"><h2>runtime · ${esc(n)}</h2><table>${Object.entries(v).filter(([k, x]) => !q || (k + x).toLowerCase().includes(q)).map(([k, x]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(x)}</td></tr>`).join('')}</table></div>`).join('');
+  document.getElementById('params').innerHTML = `<div class="muted">profile <b>${esc(cfg.profile)}</b> — ${esc(cfg.profile_path)}</div>` + rt + sec;
 }
 document.getElementById('find').oninput = render;
 async function load() { const { status, data } = await apiGet('/api/config'); if (status === 200) { cfg = data; render(); } setTimeout(load, 5000); }

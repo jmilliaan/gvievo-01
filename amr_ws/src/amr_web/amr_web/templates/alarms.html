@@ -14,7 +14,7 @@ async function events() {
   if (status === 200 && data.length) {
     data.forEach(e => { since = Math.max(since, e.n); rows.unshift(e); });
     rows.splice(200);
-    document.getElementById('events').innerHTML = rows.map(e => `<tr class="lv-${e.level}"><td>${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${e.source}</td><td>${e.code}</td><td>${e.text}</td></tr>`).join('');
+    document.getElementById('events').innerHTML = rows.map(e => `<tr class="lv-${esc(e.level)}"><td>${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${esc(e.source)}</td><td>${esc(e.code)}</td><td>${esc(e.text)}</td></tr>`).join('');
   }
   setTimeout(events, 1000);
 }

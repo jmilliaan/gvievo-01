@@ -26,6 +26,54 @@ class RouteError(ValueError):
         self.step_id = step_id
 
 
+# Schema bounds (R21): enough for any real site, small enough that a malformed request
+# cannot make the compiler or the sweep rasteriser do unbounded work.
+MAX_STEPS = 500
+MAX_REPEAT = 100  # = amr_mission run_fsm MAX_PASSES: the executor's pass bound
+MAX_ABS_COORD_M = 10_000.0
+MAX_NAME_LEN = 128
+FRAMES = ("map",)
+LIMIT_BOUNDS = {  # key -> (exclusive min, inclusive max)
+    "linear_mps": (0.0, 5.0),
+    "angular_rad_s": (0.0, 5.0),
+    "position_tolerance_m": (0.0, 1.0),
+    "heading_tolerance_deg": (0.0, 45.0),
+    "cross_track_limit_m": (0.0, 1.0),
+}
+
+
+def _field(d, key: str, where: str, step_id: str | None = None, default=None, required: bool = True):
+    if not isinstance(d, dict):
+        raise RouteError(f"{where} must be an object", step_id)
+    if key not in d:
+        if required:
+            raise RouteError(f"{where}.{key} is required", step_id)
+        return default
+    return d[key]
+
+
+def _int(v, where: str, lo: int, hi: int, step_id: str | None = None) -> int:
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise RouteError(f"{where} must be an integer, got {v!r}", step_id)
+    if not lo <= v <= hi:
+        raise RouteError(f"{where} must be in {lo}..{hi}, got {v}", step_id)
+    return v
+
+
+def _float(v, where: str, lim: float = MAX_ABS_COORD_M, step_id: str | None = None) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise RouteError(f"{where} must be a finite number, got {v!r}", step_id)
+    if abs(v) > lim:
+        raise RouteError(f"{where} out of range (|value| <= {lim:g})", step_id)
+    return float(v)
+
+
+def _str(v, where: str, step_id: str | None = None) -> str:
+    if not isinstance(v, str) or len(v) > MAX_NAME_LEN:
+        raise RouteError(f"{where} must be a string of at most {MAX_NAME_LEN} characters", step_id)
+    return v
+
+
 @dataclass
 class MapRef:
     id: str
@@ -68,20 +116,27 @@ class Step:
 
     @staticmethod
     def from_dict(d: dict) -> Step:
+        if not isinstance(d, dict):
+            raise RouteError(f"each step must be an object, got {d!r}"[:200])
+        sid = _str(d.get("id", ""), "step.id")
         t = d.get("type")
         if t == STRAIGHT:
-            to = d.get("to") or {}
-            return Step(
-                str(d.get("id", "")), STRAIGHT, to=(float(to.get("x_m", 0.0)), float(to.get("y_m", 0.0)))
-            )
+            to = _field(d, "to", "step", sid)
+            x = _float(_field(to, "x_m", "step.to", sid), "step.to.x_m", step_id=sid)
+            y = _float(_field(to, "y_m", "step.to", sid), "step.to.y_m", step_id=sid)
+            return Step(sid, STRAIGHT, to=(x, y))
         if t == ROTATE:
-            return Step(
-                str(d.get("id", "")),
-                ROTATE,
-                direction=d.get("direction"),
-                angle_deg=float(d["angle_deg"]) if "angle_deg" in d else None,
-            )
-        raise RouteError(f"unknown step type {t!r}", str(d.get("id", "")))
+            direction = _field(d, "direction", "step", sid)
+            if direction not in DIRECTIONS:
+                raise RouteError(f"direction must be one of {DIRECTIONS}", sid)
+            a = _field(d, "angle_deg", "step", sid)
+            # stored revisions carry 90.0; an integral float is the same angle, a fraction is not
+            if isinstance(a, float) and math.isfinite(a) and a.is_integer():
+                a = int(a)
+            if isinstance(a, bool) or not isinstance(a, int) or a not in ALLOWED_ANGLES_DEG:
+                raise RouteError(f"angle_deg must be one of {ALLOWED_ANGLES_DEG}", sid)
+            return Step(sid, ROTATE, direction=direction, angle_deg=float(a))
+        raise RouteError(f"unknown step type {t!r}"[:200], sid)
 
 
 @dataclass
@@ -111,21 +166,55 @@ class Route:
 
     @staticmethod
     def from_dict(d: dict) -> Route:
-        if int(d.get("schema_version", 0)) != SCHEMA_VERSION:
+        """Strict: every malformed field is a RouteError naming it, never a TypeError,
+        a silent coercion (2.5 -> 2, "3" -> 3) or a default standing in for a missing pose."""
+        if not isinstance(d, dict):
+            raise RouteError("route must be an object")
+        sv = d.get("schema_version", 0)
+        if isinstance(sv, bool) or not isinstance(sv, int) or sv != SCHEMA_VERSION:
             raise RouteError(f"schema_version must be {SCHEMA_VERSION}")
         m = d.get("map") or {}
-        st = d.get("start") or {}
+        if not isinstance(m, dict):
+            raise RouteError("map must be an object")
+        st = _field(d, "start", "route")
+        frame_id = _str(d.get("frame_id", "map"), "frame_id")
+        if frame_id not in FRAMES:
+            raise RouteError(f"frame_id must be one of {FRAMES}")
+        limits_in = d.get("limits") or {}
+        if not isinstance(limits_in, dict):
+            raise RouteError("limits must be an object")
+        unknown = set(limits_in) - set(LIMIT_BOUNDS)
+        if unknown:
+            raise RouteError(f"unknown limits {sorted(map(str, unknown))}")
+        limits = {}
+        for k, v in limits_in.items():
+            lo, hi = LIMIT_BOUNDS[k]
+            f = _float(v, f"limits.{k}")
+            if not lo < f <= hi:
+                raise RouteError(f"limits.{k} must be in ({lo:g}, {hi:g}], got {f:g}")
+            limits[k] = f
+        steps_in = d.get("steps") or []
+        if not isinstance(steps_in, list):
+            raise RouteError("steps must be a list")
+        if len(steps_in) > MAX_STEPS:
+            raise RouteError(f"too many steps ({len(steps_in)} > {MAX_STEPS})")
         return Route(
-            route_id=str(d.get("route_id", "")),
-            revision=int(d.get("revision", 0)),
-            map=MapRef(str(m.get("id", "")), int(m.get("revision", 0)), str(m.get("sha256", ""))),
-            frame_id=str(d.get("frame_id", "map")),
-            start=StartPose(
-                float(st.get("x_m", 0.0)), float(st.get("y_m", 0.0)), float(st.get("yaw_deg", 0.0))
+            route_id=_str(d.get("route_id", ""), "route_id"),
+            revision=_int(d.get("revision", 0), "revision", 0, 2**31 - 1),
+            map=MapRef(
+                _str(m.get("id", ""), "map.id"),
+                _int(m.get("revision", 0), "map.revision", 0, 2**31 - 1),
+                _str(m.get("sha256", ""), "map.sha256"),
             ),
-            limits=Limits(**{k: float(v) for k, v in (d.get("limits") or {}).items()}),
-            steps=[Step.from_dict(s) for s in d.get("steps") or []],
-            repeat_count=int(d.get("repeat_count", 1)),
+            frame_id=frame_id,
+            start=StartPose(
+                _float(_field(st, "x_m", "start"), "start.x_m"),
+                _float(_field(st, "y_m", "start"), "start.y_m"),
+                _float(_field(st, "yaw_deg", "start"), "start.yaw_deg", lim=3600.0),
+            ),
+            limits=Limits(**limits),
+            steps=[Step.from_dict(s) for s in steps_in],
+            repeat_count=_int(d.get("repeat_count", 1), "repeat_count", 0, MAX_REPEAT),
         )
 
     def dumps(self) -> str:

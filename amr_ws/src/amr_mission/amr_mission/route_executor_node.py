@@ -25,7 +25,6 @@ import threading
 
 import numpy as np
 import rclpy
-from action_msgs.msg import GoalStatus
 from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep, wrap
 from amr_navigation.validate import load_keepout, validate
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
@@ -50,6 +49,7 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import RunMission
+from amr_mission import goal_attempts as ga
 from amr_mission import map_bundle as mb
 from amr_mission import run_fsm as fsm
 from amr_navigation import footprint as fpmod
@@ -131,6 +131,10 @@ class RouteExecutor(Node):
         self.declare_parameter("obstacle_points", 3)
         self.declare_parameter("stopping_horizon_m", 1.5)
         self.declare_parameter("clear_stable_s", 1.0)
+        # R08: bound on waiting for a goal's acceptance, and for an obsolete (cancelled) goal to
+        # report terminal before a replacement goal may be issued.
+        self.declare_parameter("goal_accept_timeout_s", 5.0)
+        self.declare_parameter("goal_cancel_timeout_s", 5.0)
         p = self.get_parameter
         self.maps_dir = os.path.expanduser(p("maps_dir").value)
         self.fp = fpmod.load(p("footprint_yaml").value or fpmod.default_path())
@@ -155,6 +159,8 @@ class RouteExecutor(Node):
         self.obstacle_points = int(p("obstacle_points").value)
         self.horizon = p("stopping_horizon_m").value
         self.clear_stable_s = p("clear_stable_s").value
+        self.goal_accept_timeout = p("goal_accept_timeout_s").value
+        self.goal_cancel_timeout = p("goal_cancel_timeout_s").value
 
         self._lock = threading.RLock()
         self.fsm = fsm.RunFsm()
@@ -163,20 +169,11 @@ class RouteExecutor(Node):
         self.manifest = None
         self.grid = None
         self.mission = None
-        self.phase = PHASE_INIT
-        self.goal_handle = None
-        self.goal_result: str | None = None  # "succeeded" | "aborted" | "canceled"
-        self.goal_run_id = ""
-        self.we_cancelled = False
-        self.settle_since: float | None = None
-        self.turn_travelled = 0.0  # accumulated over pauses, signed
-        self.turn_acc0: float | None = None
-        self.turn_started_t: float | None = None
-        self.turn_centre: tuple[float, float] | None = None  # odom xy where the turn ACTUALLY began
-        self.turn_target: float | None = None  # signed angle to travel: drawn magnitude + entry correction
-        self.turn_feedback = 0.0
-        self.cross_track = 0.0
-        self.clear_since: float | None = None
+        # one goal attempt (run, pass, step, attempt) at a time; see goal_attempts.py (R08)
+        self.goals = ga.GoalAttempts(
+            self._lock, self._now, self._on_goal_error, lambda msg: self.get_logger().warn(msg)
+        )
+        self._reset_step_state()
         self.last_initialpose_t: float | None = None
         self.paused_t: float | None = None
         self.odom_gap = False
@@ -186,6 +183,7 @@ class RouteExecutor(Node):
         self._panel_t = 0.0
         self._panel: PanelState | None = None
         self._wheels_t = 0.0
+        self._wheels_valid = False
         self._wheels_still = False
         self._odom_t = 0.0
         self._odom_yaw_prev: float | None = None
@@ -248,9 +246,10 @@ class RouteExecutor(Node):
 
     def _on_wheels(self, m: WheelStates) -> None:
         self._wheels_t = self._now()
+        # R07: receipt is not evidence. Prerequisites need the drive's validity flags too.
+        self._wheels_valid = bool(m.left_valid and m.right_valid)
         self._wheels_still = (
-            m.left_valid
-            and m.right_valid
+            self._wheels_valid
             and abs(m.left_vel_rad_s) < self.w_eps
             and abs(m.right_vel_rad_s) < self.w_eps
         )
@@ -321,7 +320,7 @@ class RouteExecutor(Node):
             except (store.StoreError, mb.BundleError, KeyError, ValueError) as e:
                 res.accepted, res.message = False, f"refused: {e}"
                 return res
-            ok = self.fsm.load(req.mission_id, len(v.compiled.steps))
+            ok = self.fsm.load(req.mission_id, len(v.compiled.steps), route.repeat_count)
             if not ok:
                 res.accepted, res.message = False, self.fsm.reason
                 return res
@@ -332,7 +331,7 @@ class RouteExecutor(Node):
                 route,
                 v.compiled,
             )
-            self.phase, self.turn_travelled = PHASE_INIT, 0.0
+            self._reset_step_state()
             self._log_state()
             res.accepted, res.message = True, self.fsm.reason
             return res
@@ -378,6 +377,8 @@ class RouteExecutor(Node):
             return f"localisation not READY ({self._loc.reason})"
         if now - self._wheels_t > self.wheels_age:
             return "wheel feedback stale"
+        if not self._wheels_valid:
+            return "wheel feedback invalid"
         if self._panel is None or now - self._panel_t > self.panel_age or not self._panel.valid:
             return "panel stale or invalid"
         if self._scan is None:
@@ -405,9 +406,17 @@ class RouteExecutor(Node):
             if pre:
                 gate_ok, why = False, pre
             if self.fsm.start(self._auto(), gate_ok, why):
-                self.phase, self.turn_travelled = PHASE_INIT, 0.0
+                self._reset_step_state()
             self._log_state()
         elif self.fsm.state in (fsm.PAUSED, fsm.BLOCKED):
+            if self.fsm.resume_prepared:
+                # R18: the prepared resume may be stale by the time Start is pressed (vehicle
+                # moved, obstacle, odometry gap): re-run every resume check at the edge itself.
+                ok, why = self._resume_checks()
+                if not ok:
+                    self.fsm.invalidate_resume(why)  # keeps the reason visible; Start does nothing
+                    self._log_state()
+                    return
             if self.fsm.start(self._auto(), True):
                 self.phase = PHASE_INIT
             self._log_state()
@@ -438,6 +447,12 @@ class RouteExecutor(Node):
         else:
             if self.odom_gap:
                 return False, "odometry continuity lost since the pause; abort and reposition"
+            if self.turn_centre is not None:
+                drift = math.hypot(
+                    self._odom_xy[0] - self.turn_centre[0], self._odom_xy[1] - self.turn_centre[1]
+                )
+                if drift > self.centre_drift_m:
+                    return False, f"moved {drift:.2f} m off the turn centre; abort and reposition"
         blocked = self._obstruction(st, pose)
         if blocked:
             return False, blocked
@@ -462,9 +477,29 @@ class RouteExecutor(Node):
         dx, dy = pose[0] - st.start[0], pose[1] - st.start[1]
         return dx * c + dy * s, -dx * s + dy * c
 
+    def _reset_step_state(self) -> None:
+        """R18: the one place per-step progress is initialised (new load, new run, next step),
+        so no turn geometry of an aborted/faulted step can leak into the next one."""
+        self.phase = PHASE_INIT
+        self.settle_since: float | None = None
+        self.turn_travelled = 0.0  # folded travel of this turn, signed
+        self.turn_acc0: float | None = None  # odom yaw accumulator baseline while travel is being counted
+        self.turn_started_t: float | None = None
+        self.turn_centre: tuple[float, float] | None = None  # odom xy where the turn ACTUALLY began
+        self.turn_target: float | None = None  # signed angle to travel: drawn magnitude + entry correction
+        self.turn_feedback = 0.0
+        self.cross_track = 0.0
+        self.clear_since: float | None = None
+
+    def _turn_travel(self) -> float:
+        """Measured travel of the current turn. Counting is NOT frozen at a pause: rotation
+        while decelerating to standstill (and any after) is real travel (R18)."""
+        live = self._odom_yaw_acc - self.turn_acc0 if self.turn_acc0 is not None else 0.0
+        return self.turn_travelled + live
+
     def _remaining_turn(self, st: CompiledStep) -> float:
         target = self.turn_target if self.turn_target is not None else st.signed_angle_rad
-        return target - self.turn_travelled
+        return target - self._turn_travel()
 
     def _obstruction(self, st: CompiledStep, pose) -> str | None:
         """Scan points inside the active step's swept footprint ahead (spec §5.4)."""
@@ -545,7 +580,8 @@ class RouteExecutor(Node):
         goal.target_yaw = float(remaining)
         allowance = st.time_allowance_s * abs(remaining) / max(abs(st.signed_angle_rad), 1e-6) + 2.0
         goal.time_allowance = Duration(seconds=allowance).to_msg()
-        self.turn_acc0 = self._odom_yaw_acc
+        # rebase: fold everything measured so far, keep counting from here
+        self.turn_travelled, self.turn_acc0 = self._turn_travel(), self._odom_yaw_acc
         self.turn_started_t = self._now()
         self.turn_feedback = 0.0
         return self._send(self._spin, goal)
@@ -554,53 +590,28 @@ class RouteExecutor(Node):
         if not client.wait_for_server(timeout_sec=2.0):
             self._fault(f"action server {client._action_name} unavailable")
             return False
-        self.goal_result, self.we_cancelled = None, False
-        self.goal_run_id = self.fsm.run_id
-        run_id = self.fsm.run_id
-        fut = client.send_goal_async(goal, feedback_callback=lambda fb: self._on_feedback(run_id, fb))
-        fut.add_done_callback(lambda f: self._on_goal_response(run_id, f))
+        try:
+            self.goals.send(
+                client, goal, self.fsm.run_id, self.fsm.pass_index, self.fsm.step_index, self._on_feedback
+            )
+        except Exception as e:  # noqa: BLE001
+            self._fault(f"action goal send failed: {e}")
+            return False
         return True
 
-    def _on_goal_response(self, run_id: str, fut) -> None:
-        with self._lock:
-            if not self.fsm.accepts(run_id):
-                return
-            handle = fut.result()
-            if not handle.accepted:
-                self._fault("action goal rejected")
-                return
-            self.goal_handle = handle
-            handle.get_result_async().add_done_callback(lambda f: self._on_result(run_id, f))
+    def _on_goal_error(self, attempt: ga.Attempt, why: str) -> None:
+        """Current attempt rejected or failed (called under the lock by GoalAttempts)."""
+        if self.fsm.accepts(attempt.run_id):
+            self._fault(why)
 
-    def _on_feedback(self, run_id: str, fb) -> None:
+    def _on_feedback(self, fb) -> None:
         if fb and hasattr(fb.feedback, "angular_distance_traveled"):
             self.turn_feedback = float(fb.feedback.angular_distance_traveled)
 
-    def _on_result(self, run_id: str, fut) -> None:
-        with self._lock:
-            if not self.fsm.accepts(run_id) or run_id != self.goal_run_id:
-                self.get_logger().warn(f"ignoring result of an old run {run_id}")
-                return
-            status = fut.result().status
-            self.goal_result = {
-                GoalStatus.STATUS_SUCCEEDED: "succeeded",
-                GoalStatus.STATUS_CANCELED: "canceled",
-            }.get(status, "aborted")
-            self.goal_handle = None
-
     def _interrupt(self, why: str) -> None:
-        """Inhibit at once (the permit drops on the next tick), then cancel the action."""
-        st = self._step()
-        if st is not None and st.type == ROTATE and self.turn_acc0 is not None and self.phase == PHASE_GOAL:
-            self.turn_travelled += self._odom_yaw_acc - self.turn_acc0
-            self.turn_acc0 = None
-        self.we_cancelled = True
-        if self.goal_handle is not None:
-            try:
-                self.goal_handle.cancel_goal_async()
-            except Exception:  # noqa: BLE001
-                pass
-            self.goal_handle = None
+        """Inhibit at once (the permit drops on the next tick), then cancel the action.
+        Turn travel keeps being counted from odometry through the stop (R18)."""
+        self.goals.revoke()
         self.phase, self.paused_t, self.odom_gap = PHASE_INIT, self._now(), False
         self._log_state(why)
 
@@ -642,6 +653,15 @@ class RouteExecutor(Node):
             self._fault("no step or no pose")
             return
         if self.phase == PHASE_INIT:
+            stale = self.goals.obsolete_outstanding()
+            if stale:
+                # R08: an interrupted goal must report terminal before a replacement is issued
+                if now - min(stale.values()) > self.goal_cancel_timeout:
+                    self.goals.forget_obsolete()
+                    self._fault(
+                        f"previous action goal not terminated within {self.goal_cancel_timeout:.1f} s"
+                    )
+                return
             blocked = self._obstruction(st, pose)
             if blocked:
                 self.fsm.block(blocked)
@@ -653,14 +673,15 @@ class RouteExecutor(Node):
                         # nothing left of the segment: treat as arrived, verify in settle
                         self.phase, self.settle_since = PHASE_SETTLE, None
                     return
-                self.phase = PHASE_GOAL
+                if self.fsm.state == fsm.EXECUTING:  # a synchronous rejection may already have faulted
+                    self.phase = PHASE_GOAL
             else:
                 if not self._wheels_still:
                     return  # translation must stop before rotation
                 if abs(self._remaining_turn(st)) < self.turn_tol:
                     self.phase, self.settle_since = PHASE_SETTLE, None
                     return
-                if self._send_spin(st, pose):
+                if self._send_spin(st, pose) and self.fsm.state == fsm.EXECUTING:
                     self.phase = PHASE_GOAL
             return
 
@@ -680,7 +701,7 @@ class RouteExecutor(Node):
                     self._fault(f"passed the endpoint by {along - st.length_m:.2f} m")
                     return
             else:
-                travelled = self.turn_travelled + (self._odom_yaw_acc - self.turn_acc0)
+                travelled = self._turn_travel()
                 drift = math.hypot(
                     self._odom_xy[0] - self.turn_centre[0], self._odom_xy[1] - self.turn_centre[1]
                 )
@@ -706,14 +727,20 @@ class RouteExecutor(Node):
                 self.fsm.block(blocked)
                 self._interrupt(blocked)
                 return
-            if self.goal_result is None:
+            if self.goals.current is None:
+                self._fault("action goal lost")
                 return
-            if self.goal_result != "succeeded":
-                self._fault(f"action {self.goal_result}")
+            if self.goals.result is None:
+                if (
+                    self.goals.handle is None
+                    and self.goals.sent_t is not None
+                    and now - self.goals.sent_t > self.goal_accept_timeout
+                ):
+                    self._fault(f"action goal not accepted within {self.goal_accept_timeout:.1f} s")
                 return
-            if st.type == ROTATE:
-                self.turn_travelled += self._odom_yaw_acc - self.turn_acc0
-                self.turn_acc0 = None
+            if self.goals.result != ga.SUCCEEDED:
+                self._fault(f"action {self.goals.result}")
+                return
             self.phase, self.settle_since = PHASE_SETTLE, None
             return
 
@@ -735,6 +762,7 @@ class RouteExecutor(Node):
                     self._fault(f"endpoint missed: {d:.3f} m / {math.degrees(a):.1f} deg")
                     return
             else:
+                self.turn_travelled, self.turn_acc0 = self._turn_travel(), None  # fold for verification
                 target = self.turn_target if self.turn_target is not None else st.signed_angle_rad
                 travel_err = abs(abs(self.turn_travelled) - abs(target))
                 centre = self.turn_centre or self._odom_xy
@@ -752,11 +780,11 @@ class RouteExecutor(Node):
                     )
                     return
             self.get_logger().info(
-                f"step {st.id} ({st.type}) done: {d:.3f} m / {math.degrees(a):.2f} deg from expected"
+                f"step {st.id} ({st.type}) done ({self.fsm.progress()}): "
+                f"{d:.3f} m / {math.degrees(a):.2f} deg from expected"
             )
             self.fsm.step_done()
-            self.phase, self.turn_travelled, self.cross_track = PHASE_INIT, 0.0, 0.0
-            self.turn_centre, self.turn_target, self.clear_since = None, None, None
+            self._reset_step_state()
 
     # ---- outputs ----------------------------------------------------------------------------------
 
@@ -772,17 +800,24 @@ class RouteExecutor(Node):
         if self.fsm.state == fsm.EXECUTING and self.phase == PHASE_GOAL and st is not None:
             m.source = MotionPermit.FOLLOW if st.type == STRAIGHT else MotionPermit.ROTATE
             m.enabled = True
-            m.reason = f"step {st.id}"
+            m.reason = f"step {st.id} {self.fsm.progress()}"
         else:
             m.source, m.enabled, m.reason = MotionPermit.NONE, False, fsm.NAMES[self.fsm.state]
         self._permit_pub.publish(m)
 
     def _log_state(self, note: str = "") -> None:
-        key = (self.fsm.state, self.fsm.reason, self.fsm.step_index, self.phase, self.fsm.resume_prepared)
+        key = (
+            self.fsm.state,
+            self.fsm.reason,
+            self.fsm.pass_index,
+            self.fsm.step_index,
+            self.phase,
+            self.fsm.resume_prepared,
+        )
         if key != self._last_state_key:
             self._last_state_key = key
             self.get_logger().info(
-                f"{fsm.NAMES[self.fsm.state]} step {self.fsm.step_index} {self.phase}: {self.fsm.reason}"
+                f"{fsm.NAMES[self.fsm.state]} {self.fsm.progress()} {self.phase}: {self.fsm.reason}"
                 + (f" [{note}]" if note else "")
             )
             self._publish_state()
@@ -808,7 +843,10 @@ class RouteExecutor(Node):
         pose = self._pose()
         if pose is not None:
             m.pose_valid, m.pose_x, m.pose_y, m.pose_yaw = True, pose[0], pose[1], pose[2]
+        # TODO(interface): RunState has no pass fields; carry them in the reason for now (R20)
         m.reason = self.fsm.reason
+        if self.fsm.n_passes > 1 and self.fsm.state in (*fsm.ACTIVE, fsm.DONE):
+            m.reason += f" [pass {self.fsm.pass_index + 1}/{self.fsm.n_passes}]"
         self._state_pub.publish(m)
 
 

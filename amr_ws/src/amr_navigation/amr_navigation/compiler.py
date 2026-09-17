@@ -23,6 +23,7 @@ from amr_navigation.route import (
 COLLINEAR_TOL_M = 0.001  # lateral offset of `to` from the heading line
 MIN_LENGTH_M = 0.05
 SAMPLE_SPACING_M = 0.05
+MAX_SAMPLES = 200_000  # 10 km at 0.05 m: bounds the work a malformed route can cause
 
 
 def wrap(a: float) -> float:
@@ -52,7 +53,15 @@ class CompiledRoute:
 
 
 def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRoute:
+    lim = route.limits
+    for name in ("linear_mps", "angular_rad_s", "position_tolerance_m", "heading_tolerance_deg"):
+        v = getattr(lim, name)
+        if not (isinstance(v, (int, float)) and math.isfinite(v) and v > 0.0):
+            raise RouteError(f"limits.{name} must be a finite positive number, got {v!r}")
     x, y, yaw = route.start.x_m, route.start.y_m, route.start.yaw_rad
+    if not all(math.isfinite(v) for v in (x, y, yaw)):
+        raise RouteError("start pose must be finite")
+    n_samples = 0
     steps: list[CompiledStep] = []
     total_len, total_turn = 0.0, 0.0
     seen: set[str] = set()
@@ -64,6 +73,8 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
         if s.type == STRAIGHT:
             if s.to is None:
                 raise RouteError("straight needs 'to'", sid)
+            if not (math.isfinite(s.to[0]) and math.isfinite(s.to[1])):
+                raise RouteError("'to' must be finite", sid)
             dx, dy = s.to[0] - x, s.to[1] - y
             c, sn = math.cos(yaw), math.sin(yaw)
             along = dx * c + dy * sn
@@ -81,6 +92,9 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
                     sid,
                 )
             n = max(1, int(math.ceil(along / spacing)))
+            n_samples += n + 1
+            if n_samples > MAX_SAMPLES:
+                raise RouteError(f"route too long: more than {MAX_SAMPLES} path samples", sid)
             samples = [(x + c * along * k / n, y + sn * along * k / n, yaw) for k in range(n + 1)]
             end = (x + c * along, y + sn * along, yaw)
             steps.append(
@@ -101,6 +115,7 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
                 raise RouteError(f"direction must be one of {DIRECTIONS}", sid)
             if (
                 s.angle_deg is None
+                or not math.isfinite(s.angle_deg)
                 or int(s.angle_deg) != s.angle_deg
                 or int(s.angle_deg) not in ALLOWED_ANGLES_DEG
             ):

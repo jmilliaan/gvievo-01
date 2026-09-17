@@ -24,6 +24,7 @@ can0 - and refuses to start if the bus cannot be opened.
 
 from __future__ import annotations
 
+import math
 import queue
 import threading
 import time
@@ -101,6 +102,7 @@ class DriveNode(Node):
         self._lock = threading.Lock()
         self._cmd: tuple[float, float, float] | None = None  # (t_mono, wl, wr)
         self._cmd_gen = 0
+        self._bad_cmds = 0
         self._lease: gating.Lease | None = None
         self._gate = gating.Params(
             require_supervisor=bool(p("require_supervisor").value),
@@ -154,9 +156,20 @@ class DriveNode(Node):
             )
 
     def _on_cmd(self, msg: WheelVelocities) -> None:
+        wl, wr = float(msg.left_rad_s), float(msg.right_rad_s)
+        ok = math.isfinite(wl) and math.isfinite(wr)
         with self._lock:
-            self._cmd = (time.monotonic(), float(msg.left_rad_s), float(msg.right_rad_s))
+            # R03: a nonfinite command REPLACES the last one with nothing (zero at
+            # the next tick); keeping the previous nonzero target would let a bad
+            # sample extend motion until the watchdog.
+            self._cmd = (time.monotonic(), wl, wr) if ok else None
             self._cmd_gen = int(msg.generation)
+            if not ok:
+                self._bad_cmds += 1
+        if not ok:
+            self.get_logger().warn(
+                f"/cmd_wheel_vel not finite ({wl}, {wr}): setpoint zero", throttle_duration_sec=1.0
+            )
 
     def _request(self, what: str, res):
         done = threading.Event()
@@ -192,6 +205,8 @@ class DriveNode(Node):
             return
         router = canopen.Router(raw)
         link = canopen.DriveLink(router, self.nodes, self.ramp, log=self._log)
+        if self.pc_loss_ms:  # heartbeat kept alive inside blocking arm/disarm sequences too
+            link.pc_node, link.pc_heartbeat_s = self.pc_node, self.pc_hb_s
         self._log(f"bus up on {how} at {config.CAN_BITRATE // 1000} kbps, profile {config.PROFILE_NAME}")
         link.enable_heartbeat(config.CAN_HEARTBEAT_MS)
         imu = None
@@ -228,19 +243,30 @@ class DriveNode(Node):
     def _loop(self, link, router, imu) -> None:
         retry_at = 0.0
         t_tick = t_hb = t_status = t_mon = t_diag = 0.0
+        t_wheels = None
         last_pub = {n: (None, None) for n in self.nodes}
+        positions = {n: canopen.WheelPosition() for n in self.nodes}
+        max_age = 2.5 * self.feedback_ms / 1000.0
         while not self._stop.is_set() and rclpy.ok():
             t0 = time.perf_counter()
             now = time.monotonic()
             self._serve_requests(link)
 
-            # Arm policy: the pure table decides, this thread acts.
+            # Arm policy: the pure table decides, this thread acts. Silent = no
+            # frames at all, OR a required TPDO stopped while heartbeats and SDO
+            # replies still arrive (R07).
+            silent = []
+            if link.state == canopen.ARMED:
+                silent = sorted(
+                    set(link.silent_nodes(now, self.driver_timeout))
+                    | set(link.missing_feedback(now, self.driver_timeout))
+                )
             d = canopen.decide(
                 link.state,
                 self.want_armed,
                 now,
                 retry_at,
-                link.silent_nodes(now, self.driver_timeout) if link.state == canopen.ARMED else [],
+                silent,
                 link.dropped_out(),
                 link.faulted_nodes(),
             )
@@ -265,30 +291,45 @@ class DriveNode(Node):
             elif d.action == "fault":
                 self.get_logger().error(f"FAULT: {d.reason}")
                 link.fault(d.reason)
+            if link.state == canopen.FAULT:
+                link.fault_tick(now, max_age)
+                # R04 fallback: a stop we could not deliver or confirm must not be
+                # covered by a heartbeat that says this controller is healthy.
+                # Withholding it lets the drives' own 1016h reaction (8130h,
+                # quick stop; needs a power cycle) take over.
+                if link.stop_unconfirmed and link.pc_guard_set and not link.heartbeat_withheld:
+                    link.heartbeat_withheld = True
+                    self.get_logger().error(
+                        f"fault stop unconfirmed ({'; '.join(link.stop_unconfirmed)}): "
+                        "withholding the PC heartbeat so the drives trip 1016h"
+                    )
 
             # Setpoint at rate_hz; the command watchdog is independent of the mux.
             if now - t_tick >= self.period and link.state == canopen.ARMED:
                 t_tick = now
                 link.send_target(*self._target(now, link.scale))
 
-            if self.pc_loss_ms and now - t_hb >= self.pc_hb_s:
+            if self.pc_loss_ms and now - t_hb >= self.pc_hb_s and not link.heartbeat_withheld:
                 t_hb = now
                 link.send_pc_heartbeat(self.pc_node)
 
             if imu is not None:
                 imu.poll(now)
 
-            # Feedback: a WheelStates per complete new pair (TPDO1+TPDO2 from both).
-            fresh = all(
-                (link.telemetry[n].t_status, link.telemetry[n].t_position) != last_pub[n]
-                and link.telemetry[n].t_status is not None
-                and link.telemetry[n].t_position is not None
+            # Feedback: a WheelStates per complete new pair - a new TPDO1 AND a new
+            # TPDO2 from both drives, not just one member changing (R07). Once
+            # started, a missing pair still publishes every max_age, marked invalid,
+            # so consumers see the loss rather than silence.
+            is_new = {
+                n: link.telemetry[n].t_status not in (None, last_pub[n][0])
+                and link.telemetry[n].t_position not in (None, last_pub[n][1])
                 for n in self.nodes
-            )
-            if fresh:
+            }
+            if all(is_new.values()) or (t_wheels is not None and now - t_wheels >= max_age):
+                t_wheels = now
                 for n in self.nodes:
                     last_pub[n] = (link.telemetry[n].t_status, link.telemetry[n].t_position)
-                self._publish_wheels(link, now)
+                self._publish_wheels(link, now, max_age, is_new, positions)
 
             if now - t_status >= 0.1:
                 t_status = now
@@ -352,25 +393,16 @@ class DriveNode(Node):
         except Exception:  # noqa: BLE001
             self._stop.set()
 
-    def _publish_wheels(self, link, now: float) -> None:
+    def _publish_wheels(self, link, now: float, max_age: float, is_new: dict, positions: dict) -> None:
         m = WheelStates()
         m.header.stamp = self.get_clock().now().to_msg()
-        max_age = 2.5 * self.feedback_ms / 1000.0
         scale = link.scale
-        for n, left in ((config.LEFT, True), (config.RIGHT, False)):
-            t = link.telemetry[n]
-            fresh = (
-                t.t_status is not None
-                and t.t_position is not None
-                and now - min(t.t_status, t.t_position) < max_age
-            )
-            pos = scale.wheel_rad(t.position, left) if (scale and t.position is not None) else None
-            vel = scale.wheel_rad_s(t.rpm, left) if (scale and t.rpm is not None) else 0.0
-            valid = bool(fresh and pos is not None and not t.faulted and link.state == canopen.ARMED)
-            if left:
-                m.left_pos_rad, m.left_vel_rad_s, m.left_valid = (pos or 0.0), vel, valid
-            else:
-                m.right_pos_rad, m.right_vel_rad_s, m.right_valid = (pos or 0.0), vel, valid
+        # Continuous positions from wrap-safe count deltas (R06), see canopen.wheel_feedback.
+        fb = canopen.wheel_feedback(
+            link, now, max_age, ((config.LEFT, True), (config.RIGHT, False)), is_new, positions
+        )
+        m.left_pos_rad, m.left_vel_rad_s, m.left_valid = fb[config.LEFT]
+        m.right_pos_rad, m.right_vel_rad_s, m.right_valid = fb[config.RIGHT]
         tl, tr = link.telemetry[config.LEFT], link.telemetry[config.RIGHT]
         if tl.position is not None and tr.position is not None:
             m.left_counts, m.right_counts = int(tl.position), int(tr.position)
@@ -386,7 +418,13 @@ class DriveNode(Node):
         m.left_error_code = (tl.alarm or {}).get("code", tl.error_register or 0) & 0xFFFF
         m.right_error_code = (tr.alarm or {}).get("code", tr.error_register or 0) & 0xFFFF
         m.left_state, m.right_state = tl.state, tr.state
-        m.operational = bool(link.state == canopen.ARMED and tl.operation_enabled and tr.operation_enabled)
+        # Cached statuswords are not evidence: operational also needs fresh TPDO1
+        # and TPDO2 from both drives (R07).
+        now, max_age = time.monotonic(), 2.5 * self.feedback_ms / 1000.0
+        fresh = all(all(link.feedback_fresh(n, now, max_age)) for n in (config.LEFT, config.RIGHT))
+        m.operational = bool(
+            link.state == canopen.ARMED and fresh and tl.operation_enabled and tr.operation_enabled
+        )
         self._safe_publish(self._pub_status, m)
         snap = {"state": link.state, "reason": link.fault_reason or "", "mode": imu.mode if imu else "off"}
         if snap != self._status_snapshot:
@@ -429,6 +467,14 @@ class DriveNode(Node):
                 KeyValue(key="rpm", value=str(t.rpm if t.rpm is not None else "")),
                 KeyValue(key="position_counts", value=str(t.position if t.position is not None else "")),
                 KeyValue(key="nmt", value=t.nmt or ""),
+                KeyValue(
+                    key="tpdo1_age_s",
+                    value="" if t.t_status is None else f"{time.monotonic() - t.t_status:.3f}",
+                ),
+                KeyValue(
+                    key="tpdo2_age_s",
+                    value="" if t.t_position is None else f"{time.monotonic() - t.t_position:.3f}",
+                ),
             ]
             if t.alarm:
                 kv.append(
@@ -458,6 +504,10 @@ class DriveNode(Node):
             KeyValue(key="feedback_hz", value=f"{1000.0 / self.feedback_ms:.0f}"),
             KeyValue(key="pc_loss_ms", value=str(self.pc_loss_ms)),
             KeyValue(key="setpoint_gate", value=self._gate_reason or "open"),
+            KeyValue(key="nonfinite_cmds", value=str(self._bad_cmds)),
+            KeyValue(key="stop_unconfirmed", value="; ".join(link.stop_unconfirmed)),
+            KeyValue(key="heartbeat_withheld", value=str(link.heartbeat_withheld)),
+            KeyValue(key="cleanup_failures", value="; ".join(link.cleanup_failures)),
         ]
         arr.status.append(bus)
         if imu is not None:

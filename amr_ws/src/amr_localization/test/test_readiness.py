@@ -9,6 +9,10 @@ def converged(r: rd.Readiness, t: float) -> None:
     r.on_amcl_pose(t, 0.01, 0.01, 0.002)
 
 
+def aligned(r: rd.Readiness, t: float) -> None:
+    r.on_scan_match(t, match=0.9, long=0.0)
+
+
 def test_starts_unlocalized_and_ignores_good_data():
     r = rd.Readiness()
     converged(r, 0.0)
@@ -22,8 +26,10 @@ def test_initialpose_then_settle_then_confirm():
     assert r.state == rd.CHECKING
     assert r.evaluate(0.1, FRESH) == rd.CHECKING and "AMCL" in r.reason
     converged(r, 0.5)
+    aligned(r, 0.5)
     r.evaluate(0.5, FRESH)
     assert not r.can_confirm
+    aligned(r, 2.0)
     r.evaluate(2.4, FRESH)
     assert not r.can_confirm  # 1.9 s settled
     r.evaluate(2.6, FRESH)
@@ -68,7 +74,9 @@ def _ready(settle=1.0) -> rd.Readiness:
     r.on_initialpose(0.0)
     r.on_map_odom(0.1, 0.0, 0.0, 0.0)
     converged(r, 0.6)
+    aligned(r, 0.6)
     r.evaluate(0.6, FRESH)
+    aligned(r, 2.0)
     r.evaluate(2.0, FRESH)
     assert r.confirm()
     return r
@@ -145,6 +153,7 @@ def test_scan_consistency():
     assert not r.can_confirm and "match" in r.reason
     r.on_scan_match(2.1, match=0.9, long=0.0)
     r.evaluate(2.1, FRESH)
+    r.on_scan_match(3.0, match=0.9, long=0.0)
     r.evaluate(3.2, FRESH)
     assert r.can_confirm and r.confirm()
     r.on_scan_match(4.0, match=0.3, long=0.05)  # heavy clutter while READY: not a loss
@@ -166,3 +175,86 @@ def test_long_beams_block_confirm():
     r.evaluate(0.2, FRESH)
     r.evaluate(2.0, FRESH)
     assert not r.can_confirm and "through" in r.reason
+
+
+# ---- R11: confirmation needs fresh scan-consistency evidence from this attempt ----
+
+
+def _settled_without_scan(r: rd.Readiness) -> None:
+    r.on_initialpose(0.0)
+    converged(r, 0.1)
+    for t in (0.2, 1.0, 2.0, 3.0):
+        r.evaluate(t, FRESH)
+
+
+def test_r11_no_comparison_cannot_confirm():
+    r = rd.Readiness(rd.Limits(settle_s=0.5))
+    _settled_without_scan(r)
+    assert not r.can_confirm and not r.confirm()
+    assert "scan-consistency" in r.reason
+
+
+def test_r11_tf_failure_after_one_good_comparison_expires():
+    r = rd.Readiness(rd.Limits(settle_s=0.5, match_age_max_s=2.0))
+    r.on_initialpose(0.0)
+    converged(r, 0.1)
+    aligned(r, 0.1)
+    r.evaluate(0.2, FRESH)
+    r.evaluate(0.8, FRESH)
+    assert r.can_confirm
+    # comparisons stop (TF lookups failing) while scans keep arriving
+    r.evaluate(2.2, FRESH)
+    assert not r.can_confirm and not r.confirm()
+    aligned(r, 2.3)  # fresh evidence restarts the settle period
+    r.evaluate(2.3, FRESH)
+    assert not r.can_confirm
+    r.evaluate(2.9, FRESH)
+    assert r.can_confirm
+
+
+def test_r11_non_finite_comparison_is_unavailable_not_good():
+    r = rd.Readiness(rd.Limits(settle_s=0.5))
+    r.on_initialpose(0.0)
+    converged(r, 0.1)
+    aligned(r, 0.1)
+    r.on_scan_match(0.2, match=float("nan"), long=0.0)
+    r.evaluate(0.3, FRESH)
+    r.evaluate(1.0, FRESH)
+    assert not r.can_confirm and r.scan_match is None
+
+
+def test_r11_new_seed_clears_old_covariance_and_scan_evidence():
+    r = _ready()
+    r.on_initialpose(10.0)
+    assert r.cov is None and r.scan_match is None and r.scan_match_t is None
+    for t in (10.5, 12.0, 14.0):
+        r.evaluate(t, FRESH)
+    assert not r.can_confirm and "AMCL" in r.reason
+    converged(r, 14.0)
+    for t in (14.0, 15.0, 17.0):
+        r.evaluate(t, FRESH)
+    assert not r.can_confirm and "scan-consistency" in r.reason
+
+
+def test_r11_delayed_sample_from_earlier_attempt_is_ignored():
+    r = rd.Readiness(rd.Limits(settle_s=0.5))
+    r.on_initialpose(5.0)
+    converged(r, 5.1)
+    r.on_scan_match(5.2, match=0.9, long=0.0, stamp=4.9)  # scan taken before the seed
+    r.evaluate(5.3, FRESH)
+    r.evaluate(6.0, FRESH)
+    assert r.scan_match_t is None and not r.can_confirm
+    r.on_scan_match(6.1, match=0.9, long=0.0, stamp=6.05)
+    r.evaluate(6.1, FRESH)
+    r.evaluate(6.7, FRESH)
+    assert r.can_confirm
+
+
+def test_r11_reset_drops_all_proof():
+    r = _ready()
+    r.reset("map changed")
+    assert r.state == rd.UNLOCALIZED and r.reason == "map changed"
+    assert r.cov is None and r.scan_match_t is None and r.last_jump is None
+    r.on_initialpose(6.0)
+    r.evaluate(9.0, FRESH)
+    assert not r.can_confirm

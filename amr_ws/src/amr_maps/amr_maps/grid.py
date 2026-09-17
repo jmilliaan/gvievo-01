@@ -6,16 +6,26 @@ nav_msgs/OccupancyGrid: -1 unknown, 0 free, 100 occupied.
 
 PGM rows run top-down; the grid's row 0 is the bottom (lowest y), so the
 image is flipped on read and write. origin = world pose of the grid's
-(0, 0) cell corner; only yaw-free origins are written here.
+(0, 0) cell corner; only yaw-free origins are written or loaded here (read()
+rejects a rotated origin: cell indexing everywhere assumes axis alignment).
 """
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 
 import numpy as np
 import yaml
+
+
+class GridError(ValueError):
+    """A map file that cannot be loaded as a supported, consistent occupancy grid."""
+
+
+MAX_PIXELS = 64_000_000  # e.g. 400 m x 400 m at 0.05 m; bounds allocation before any array is built
+YAW_TOL_RAD = 1e-9
 
 
 @dataclass(frozen=True)
@@ -65,23 +75,58 @@ def to_pgm_bytes(grid: Grid) -> bytes:
     return header + img.tobytes()
 
 
-def from_pgm_bytes(raw: bytes, meta: GridMeta) -> Grid:
-    tokens, pos = [], 0
+def require_axis_aligned(meta: GridMeta) -> None:
+    """Cell indexing, footprint sweeps and raycasts assume a yaw-free origin. Until every
+    consumer handles origin yaw, a rotated origin is refused rather than half-honoured."""
+    if not math.isfinite(meta.origin_yaw) or abs(meta.origin_yaw) > YAW_TOL_RAD:
+        raise GridError(f"map origin yaw {meta.origin_yaw!r} is not supported: origins must be yaw-free")
+
+
+def _header_tokens(raw: bytes) -> tuple[list[bytes], int]:
+    """The four P5 header tokens and the offset just past maxval. Always terminates."""
+    tokens: list[bytes] = []
+    pos, n = 0, len(raw)
     while len(tokens) < 4:
-        while raw[pos : pos + 1].isspace():
+        while pos < n and raw[pos : pos + 1].isspace():
             pos += 1
+        if pos >= n:
+            raise GridError(f"PGM header truncated: EOF after {len(tokens)} of 4 fields")
         if raw[pos : pos + 1] == b"#":
-            pos = raw.index(b"\n", pos) + 1
+            nl = raw.find(b"\n", pos)
+            if nl < 0:
+                raise GridError("PGM header truncated: comment without line end")
+            pos = nl + 1
             continue
         end = pos
-        while not raw[end : end + 1].isspace():
+        while end < n and not raw[end : end + 1].isspace() and raw[end : end + 1] != b"#":
             end += 1
         tokens.append(raw[pos:end])
         pos = end
-    pos += 1  # single whitespace after maxval
+    if pos >= n or not raw[pos : pos + 1].isspace():
+        raise GridError("PGM header truncated: no whitespace after maxval")
+    return tokens, pos + 1  # single whitespace after maxval
+
+
+def _header_int(tok: bytes, what: str) -> int:
+    if not tok.isdigit() or len(tok) > 9:
+        raise GridError(f"PGM {what} is not a positive integer: {tok[:16]!r}")
+    return int(tok)
+
+
+def from_pgm_bytes(raw: bytes, meta: GridMeta) -> Grid:
+    if raw[:2] != b"P5":
+        raise GridError("only binary PGM (P5) is supported")
+    tokens, pos = _header_tokens(raw)
     if tokens[0] != b"P5":
-        raise ValueError("only binary PGM (P5) is supported")
-    w, h, maxval = int(tokens[1]), int(tokens[2]), int(tokens[3])
+        raise GridError("only binary PGM (P5) is supported")
+    w, h = _header_int(tokens[1], "width"), _header_int(tokens[2], "height")
+    maxval = _header_int(tokens[3], "maxval")
+    if w < 1 or h < 1 or w * h > MAX_PIXELS:
+        raise GridError(f"PGM dimensions {w}x{h} out of range (1..{MAX_PIXELS} pixels)")
+    if not 1 <= maxval <= 255:
+        raise GridError(f"PGM maxval {maxval} unsupported (8-bit only, 1..255)")
+    if len(raw) - pos < w * h:
+        raise GridError(f"PGM payload short: {len(raw) - pos} bytes for {w}x{h}")
     img = np.frombuffer(raw[pos : pos + w * h], dtype=np.uint8).reshape(h, w)
     img = np.flipud(img)
     occ = (maxval - img.astype(np.float64)) / maxval if not meta.negate else img / maxval
@@ -110,19 +155,41 @@ def write(grid: Grid, path_stem: str) -> tuple[str, str]:
     return pgm, yml
 
 
+def _num(key: str, value) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise GridError(f"map yaml {key} must be a finite number, got {value!r}")
+    return float(value)
+
+
 def read(yaml_path: str) -> Grid:
     with open(yaml_path) as fh:
-        doc = yaml.safe_load(fh)
-    meta = GridMeta(
-        resolution=float(doc["resolution"]),
-        origin_x=float(doc["origin"][0]),
-        origin_y=float(doc["origin"][1]),
-        origin_yaw=float(doc["origin"][2]) if len(doc["origin"]) > 2 else 0.0,
-        occupied_thresh=float(doc.get("occupied_thresh", 0.65)),
-        free_thresh=float(doc.get("free_thresh", 0.196)),
-        negate=int(doc.get("negate", 0)),
-    )
-    image = doc["image"]
+        try:
+            doc = yaml.safe_load(fh)
+        except yaml.YAMLError as e:
+            raise GridError(f"map yaml unparsable: {yaml_path}: {e}") from None
+    if not isinstance(doc, dict):
+        raise GridError(f"map yaml is not a mapping: {yaml_path}")
+    try:
+        origin = doc["origin"]
+        if not isinstance(origin, list) or len(origin) not in (2, 3):
+            raise GridError(f"map yaml origin must be [x, y] or [x, y, yaw], got {origin!r}")
+        meta = GridMeta(
+            resolution=_num("resolution", doc["resolution"]),
+            origin_x=_num("origin", origin[0]),
+            origin_y=_num("origin", origin[1]),
+            origin_yaw=_num("origin", origin[2]) if len(origin) > 2 else 0.0,
+            occupied_thresh=_num("occupied_thresh", doc.get("occupied_thresh", 0.65)),
+            free_thresh=_num("free_thresh", doc.get("free_thresh", 0.196)),
+            negate=int(doc.get("negate", 0)),
+        )
+        image = str(doc["image"])
+    except KeyError as e:
+        raise GridError(f"map yaml lacks {e.args[0]!r}: {yaml_path}") from None
+    if meta.resolution <= 0.0:
+        raise GridError(f"map resolution must be positive, got {meta.resolution}")
+    if not 0.0 <= meta.free_thresh < meta.occupied_thresh <= 1.0:
+        raise GridError("map thresholds must satisfy 0 <= free_thresh < occupied_thresh <= 1")
+    require_axis_aligned(meta)
     if not os.path.isabs(image):
         image = os.path.join(os.path.dirname(yaml_path), image)
     with open(image, "rb") as fh:

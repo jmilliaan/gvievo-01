@@ -26,7 +26,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import can  # noqa: E402
 from bus_health import decode_state  # noqa: E402
-from verify_drivers import BAD, OK, WARN, open_bus, sdo_read, u32  # noqa: E402
+from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
+                            sdo_read, u32)
 
 NODES = {1: "left", 2: "right"}
 TARGET_RPM = 160        # 60FFh, signed: positive = forward
@@ -230,6 +231,9 @@ def main():
         print(f"{BAD}: TARGET_RPM {TARGET_RPM} exceeds sanity limit")
         return 2
 
+    lock = claim_bus("drive_forward")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus()
     except Exception as e:

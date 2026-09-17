@@ -28,23 +28,58 @@ def test_arm_does_not_deadlock():
     import canworker
     import events
 
-    ctl = canworker.Controller()
-    ctl.bus = canworker.TpdoTap(_FakeRaw(), on_heartbeat=ctl._on_heartbeat,
-                                nodes=(1,))
-    ctl._do_preflight = lambda: {"ok": True, "report": []}
-    ctl._nmt = lambda cmd, node: None
+    def arm_in_thread(objects):
+        """_do_arm on its own thread, with its RESULT and its EXCEPTION kept.
 
-    t = threading.Thread(target=lambda: ctl._do_arm("manual"), daemon=True)
-    t.start()
-    t.join(timeout=10.0)
+        A bare Thread swallows an exception into stderr, so "the thread
+        stopped" used to pass for an arm that had died on an SDO timeout.
+        """
+        ctl = canworker.Controller()
+        ctl.bus = canworker.TpdoTap(_FakeRaw(objects=objects),
+                                    on_heartbeat=ctl._on_heartbeat,
+                                    nodes=(1,))
+        ctl._do_preflight = lambda: {"ok": True, "report": []}
+        ctl._nmt = lambda cmd, node: None
+        out = {}
+
+        def body():
+            try:
+                out["result"] = ctl._do_arm("manual")
+            except BaseException as e:          # noqa: BLE001
+                out["error"] = e
+
+        t = threading.Thread(target=body, daemon=True)
+        t.start()
+        t.join(timeout=10.0)
+        return ctl, t, out
+
+    # -- the drives reach Operation enabled: the arm must SUCCEED ------------
+    ready = {(0x6041, 0): 0x0027,
+             (0x608F, 1): 10000, (0x608F, 2): 1,
+             (0x6091, 1): 1, (0x6091, 2): 1}
+    ctl, t, out = arm_in_thread(ready)
     check("_do_arm completes (no deadlock)", not t.is_alive(),
           "still blocked after 10 s" if t.is_alive() else "")
     if t.is_alive():
         return
+    check("the arm thread raised nothing", "error" not in out,
+          repr(out.get("error")))
+    check("the arm reports success and the controller is armed in manual",
+          (out.get("result") or {}).get("ok") is True
+          and ctl._armed and ctl._mode == "manual",
+          f"result={out.get('result')!r} armed={ctl._armed} mode={ctl._mode}")
     check("the re-entrant path was actually exercised",
           ctl._nmt_state.get(1) is not None,
           f"node 1 NMT state {ctl._nmt_state.get(1)!r} - set from a heartbeat "
           f"routed mid-arm")
+
+    # -- a drive that never reaches Operation enabled: FAIL, still no deadlock
+    bad, tb, outb = arm_in_thread({**ready, (0x6041, 0): 0x0270})
+    check("a failing arm also completes (no deadlock)", not tb.is_alive())
+    check("...and fails with the reason, left disarmed",
+          "did not reach Operation enabled" in str(outb.get("error"))
+          and "result" not in outb and not bad._armed,
+          f"error={outb.get('error')!r} armed={bad._armed}")
 
     done = threading.Event()
     threading.Thread(target=lambda: (ctl.snapshot(), done.set()),
@@ -455,6 +490,64 @@ def test_imu_poll():
           "config.IMU_ENABLED" in body and "self._poll_imu(now)" in body)
 
 
+def test_queued_actions_cannot_starve_the_tick():
+    """R15: queued web work is rationed, refused while armed, and abandoned
+    requests never run.
+
+    _drain_queue() used to run to exhaustion ahead of the panel scan and the
+    watchdog, preflight (blocking SDO reads) was accepted while armed, and a
+    request whose HTTP wait had timed out still executed later.
+    """
+    from concurrent.futures import Future
+    import canworker
+    print("\ncanworker: the action queue is bounded per tick")
+
+    ran = []
+
+    class Ctl(canworker.Controller):
+        def _do_preflight(self):
+            ran.append("preflight")
+            return {"ok": True, "report": []}
+
+        def _do_disarm(self, force=False):
+            ran.append("disarm")
+            self._armed = False
+            return {"ok": True}
+
+    c = Ctl()
+    futs = [Future() for _ in range(5)]
+    for f in futs:
+        c._q.put(("preflight", (), f))
+    c._drain_queue()
+    check("one queued action runs per tick, however many are waiting",
+          ran == ["preflight"] and c._q.qsize() == 4,
+          f"ran={ran} left={c._q.qsize()}")
+
+    c._armed = True
+    del ran[:]
+    c._q.put(("disarm", (), Future()))
+    for _ in range(4):
+        c._drain_queue()
+    check("preflight is refused while armed, without touching the bus",
+          "preflight" not in ran
+          and all("refused while armed" in str(f.exception(0))
+                            for f in futs[1:]),
+          f"ran={ran}")
+    check("...and refusals do not hold up the disarm queued behind them",
+          c._q.qsize() == 0 and not c._armed and "disarm" in ran,
+          f"left={c._q.qsize()} armed={c._armed}")
+
+    del ran[:]
+    try:
+        c.submit("preflight", timeout=0.01)     # no bus thread to answer it
+        check("a request nobody answers times out", False, "returned")
+    except Exception:                           # noqa: BLE001
+        check("a request nobody answers times out", True)
+    c._drain_queue()
+    check("...and never executes later", ran == [] and c._q.qsize() == 0,
+          f"ran={ran}")
+
+
 TESTS = [
     test_arm_does_not_deadlock,
     test_arm_no_longer_touches_the_sensor,
@@ -463,4 +556,5 @@ TESTS = [
     test_bus_thread_survives_open,
     test_horn_follows_commanded_motion,
     test_imu_poll,
+    test_queued_actions_cannot_starve_the_tick,
 ]

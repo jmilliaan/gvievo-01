@@ -114,6 +114,33 @@ def find_adapter(serial=None):
             and (serial is None or p.serial_number == serial)]
 
 
+def claim_bus(who):
+    """Take the CAN owner lock the controller and the ROS drive node hold.
+
+    Returns the lock - keep a reference for as long as the bus is in use - or
+    None after printing who owns can0, in which case the caller must exit
+    WITHOUT opening the bus. socketcan admits any number of openers, so this
+    lock is the only thing that stops a bench tool's SDO requests or controlword
+    writes interleaving with a running controller's.
+
+    Imported lazily so the scripts stay standalone: core/ownerlock.py needs no
+    vehicle profile, only its own directory on the path.
+    """
+    core = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "core")
+    if core not in sys.path:
+        sys.path.insert(0, core)
+    import ownerlock
+    try:
+        return ownerlock.acquire("can", who)
+    except ownerlock.OwnerBusy as e:
+        print(f"{BAD}: {e} - stop it first (e.g. systemctl stop agv_controller "
+              f"or amr). Nothing was sent.")
+    except OSError as e:
+        print(f"{BAD}: cannot take the CAN owner lock ({e}). Nothing was sent.")
+    return None
+
+
 def open_bus(bitrate=None, channel=None, adapter_serial=None):
     """Prefer SocketCAN; fall back to slcan on the auto-discovered port.
 
@@ -146,6 +173,9 @@ def open_bus(bitrate=None, channel=None, adapter_serial=None):
 
 
 def main():
+    lock = claim_bus("verify_drivers")
+    if lock is None:
+        return 2
     try:
         bus, how = open_bus()
     except Exception as e:

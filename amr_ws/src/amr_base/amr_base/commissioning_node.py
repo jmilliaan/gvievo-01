@@ -10,12 +10,14 @@ A job executes only on a fresh physical Start edge under a valid MANUAL panel
 while the supervisor's lease carries the COMMISSIONING class (the supervisor
 grants that - and withholds MANUAL - while this node reports PREPARED/RUNNING).
 Every tick re-checks that authority; the mux and drive owner gate the output
-again on their own. Evidence goes to <state_dir>/commissioning/<plan>-<ts>.json.
+again on their own. Evidence goes to <state_dir>/commissioning/<plan>-<ts>-<ns>.json,
+written when a job ends, is cleared, or the node shuts down mid-job.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 
@@ -48,20 +50,23 @@ class CommissioningNode(Node):
         self.declare_parameter("state_dir", os.path.expanduser("~/.amr"))
         self.declare_parameter("counts_fresh_s", 0.1)
         self.declare_parameter("still_wheel_rad_s", 0.02)
+        self.declare_parameter("gyro_fresh_s", 0.1)
         p = self.get_parameter
         self.dt = 1.0 / float(p("rate_hz").value)
         self.evidence_dir = os.path.join(os.path.expanduser(str(p("state_dir").value)), "commissioning")
         self.counts_fresh = float(p("counts_fresh_s").value)
         self.still_thr = float(p("still_wheel_rad_s").value)
+        self.gyro_fresh = float(p("gyro_fresh_s").value)
         self.job = cj.Job()
         self._wheels = None
         self._wheels_t = None
         self._panel = None
         self._panel_t = None
-        self._start_edge = False
+        self._start_edge_t: float | None = None
         self._lease = None
         self._lease_t = None
         self._gyro = None
+        self._gyro_t = None
         self._generation = 0
         self._last_phase = None
         self._seq = 0
@@ -86,35 +91,67 @@ class CommissioningNode(Node):
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, time.monotonic()
         if m.start_edge:
-            self._start_edge = True  # consumed by exactly one tick
+            self._start_edge_t = time.monotonic()  # consumed by exactly one tick
 
     def _on_lease(self, m: ControlLease) -> None:
+        cur = self._lease
+        if cur is not None and cur.instance == m.instance:
+            # Replayed or reordered leases of the same supervisor never move authority back.
+            if int(m.generation) < int(cur.generation):
+                return
+            if int(m.generation) == int(cur.generation) and int(m.seq) <= int(cur.seq):
+                return
         self._lease, self._lease_t = m, time.monotonic()
         self._generation = int(m.generation)
 
     def _on_imu(self, m: Imu) -> None:
-        self._gyro = float(m.angular_velocity.z)
+        z = float(m.angular_velocity.z)
+        if math.isfinite(z):
+            self._gyro, self._gyro_t = z, time.monotonic()
+
+    def _feedback(self, now: float) -> tuple[tuple[int, int] | None, float, bool | None]:
+        """-> (raw counts, encoder scale, stopped) from FRESH, VALID wheel feedback only."""
+        w = self._wheels
+        fresh = w is not None and self._wheels_t is not None and now - self._wheels_t <= self.counts_fresh
+        if not fresh:
+            return None, 0.0, None
+        counts = (int(w.left_counts), int(w.right_counts)) if w.counts_valid else None
+        cpr = float(w.counts_per_wheel_rev)
+        cpr = cpr if w.counts_valid and math.isfinite(cpr) and cpr > 0.0 else 0.0
+        stopped = None
+        if w.left_valid and w.right_valid:
+            stopped = abs(w.left_vel_rad_s) <= self.still_thr and abs(w.right_vel_rad_s) <= self.still_thr
+        return counts, cpr, stopped
+
+    def _authority(self, now: float) -> tuple[tuple[str, int] | None, int]:
+        if self._lease is None or self._lease_t is None or now - self._lease_t > 0.3:
+            return None, 0
+        return (str(self._lease.instance), int(self._lease.generation)), int(self._lease.allowed)
 
     # -- services (never move anything) --
 
     def _srv_plan(self, req, res):
-        w = self._wheels
-        cpr = float(w.counts_per_wheel_rev) if w is not None else 0.0
+        now = time.monotonic()
+        _counts, cpr, stopped = self._feedback(now)
+        authority, allowed = self._authority(now)
         try:
-            res.planned_json = self.job.plan(req.plan_json, cpr)
+            res.planned_json = self.job.plan(
+                req.plan_json, cpr, now=now, authority=authority, lease_allowed=allowed, stopped=stopped
+            )
         except ValueError as e:
             res.ok, res.message = False, str(e)
             return res
+        self._results_path = ""
         res.ok, res.message = True, f"plan {self.job.plan_id} held: press physical Start under MANUAL to run"
         self.get_logger().info(res.message)
         self._publish_state()
         return res
 
     def _srv_clear(self, req, res):
-        was_active = self.job.phase in (cj.RUNNING, cj.SETTLING)
-        self.job.clear()
-        if was_active:
+        ev = self.job.clear()
+        if ev is not None:
             self._publish_wheels(0.0, 0.0)
+            self._write_evidence(ev)
         res.success, res.message = True, "cleared"
         self._publish_state()
         return res
@@ -124,26 +161,24 @@ class CommissioningNode(Node):
     def _tick(self) -> None:
         now = time.monotonic()
         dt, self._t_last = now - self._t_last, now
-        w = self._wheels
-        fresh = w is not None and self._wheels_t is not None and now - self._wheels_t <= self.counts_fresh
-        counts = (int(w.left_counts), int(w.right_counts)) if fresh and w.counts_valid else None
-        stopped = None
-        if fresh:
-            stopped = abs(w.left_vel_rad_s) <= self.still_thr and abs(w.right_vel_rad_s) <= self.still_thr
+        counts, cpr, stopped = self._feedback(now)
+        authority, allowed = self._authority(now)
         panel_ok = self._panel is not None and self._panel_t is not None and now - self._panel_t <= 0.2
-        lease_ok = self._lease is not None and self._lease_t is not None and now - self._lease_t <= 0.3
-        start_edge, self._start_edge = self._start_edge, False
+        start_edge_t, self._start_edge_t = self._start_edge_t, None
+        gyro_ok = self._gyro_t is not None and now - self._gyro_t <= self.gyro_fresh
         inputs = cj.Inputs(
             now=now,
             dt=min(dt, 5 * self.dt),
             counts=counts,
-            counts_per_rev=float(w.counts_per_wheel_rev) if w is not None else 0.0,
+            counts_per_rev=cpr,
             stopped=stopped,
             panel_valid=bool(panel_ok and self._panel.valid),
             panel_manual=bool(panel_ok and not self._panel.mode_auto),
-            start_edge=start_edge,
-            lease_allowed=int(self._lease.allowed) if lease_ok else 0,
-            gyro_yaw_rad_s=self._gyro,
+            start_edge=start_edge_t is not None,
+            lease_allowed=allowed,
+            gyro_yaw_rad_s=self._gyro if gyro_ok else None,
+            authority=authority,
+            start_edge_t=start_edge_t,
         )
         before = self.job.phase
         wl, wr = self.job.tick(inputs)
@@ -167,19 +202,32 @@ class CommissioningNode(Node):
         m.left_rad_s, m.right_rad_s = float(left), float(right)
         self._pub_cmd.publish(m)
 
-    def _write_evidence(self) -> None:
+    def _write_evidence(self, ev: dict | None = None) -> None:
+        """Write one evidence file; `_results_path` names it only if it was fully written."""
+        self._results_path = ""
+        data = ev if ev is not None else self.job.evidence()
+        data = dict(data, generation=self._generation)
         try:
-            os.makedirs(self.evidence_dir, exist_ok=True)
-            path = os.path.join(
-                self.evidence_dir, f"{self.job.plan_id}-{time.strftime('%Y%m%d-%H%M%S')}.json"
-            )
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self.job.evidence({"generation": self._generation}), f, indent=1)
-            self._results_path = path
-        except OSError as e:
-            self.get_logger().error(f"evidence not written: {e}")
+            self._results_path = write_evidence(self.evidence_dir, str(data.get("plan_id", "")), data)
+        except (OSError, TypeError, ValueError) as e:
+            self.job.reason = f"{self.job.reason} (evidence NOT written: {e})".strip()
+            try:
+                self.get_logger().error(f"evidence not written: {e}")
+            except Exception:  # noqa: BLE001 - logging may already be gone at shutdown
+                pass
 
     _results_path = ""
+
+    def finalize(self, why: str = "commissioning node shutting down") -> None:
+        """Abort a running job and keep its evidence (orderly shutdown)."""
+        ev = self.job.clear(why)
+        if ev is None:
+            return
+        try:
+            self._publish_wheels(0.0, 0.0)
+        except Exception:  # noqa: BLE001 - the context may already be shut down
+            pass
+        self._write_evidence(ev)
 
     def _publish_state(self) -> None:
         s = self.job.snapshot()
@@ -207,6 +255,38 @@ class CommissioningNode(Node):
         self._pub_state.publish(m)
 
 
+def write_evidence(directory: str, plan_id: str, data: dict) -> str:
+    """Exclusively create <directory>/<plan_id>-<ts>-<ns>.json; -> its path.
+
+    The plan id is re-validated and the resolved path must stay inside the
+    directory. A partial file (e.g. disk full) is removed and the error raised.
+    """
+    if not cj.PLAN_ID.fullmatch(plan_id):
+        raise ValueError(f"unsafe plan id {plan_id!r}")
+    os.makedirs(directory, exist_ok=True)
+    base = os.path.realpath(directory)
+    stem = f"{plan_id}-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 1_000_000_000:09d}"
+    for n in range(100):
+        path = os.path.realpath(os.path.join(base, f"{stem}.json" if n == 0 else f"{stem}-{n}.json"))
+        if os.path.commonpath([base, path]) != base:
+            raise ValueError("evidence path escapes the evidence directory")
+        try:
+            f = open(path, "x", encoding="utf-8")
+        except FileExistsError:
+            continue
+        try:
+            with f:
+                json.dump(data, f, indent=1)
+        except BaseException:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            raise
+        return path
+    raise OSError("no unique evidence file name")
+
+
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = CommissioningNode()
@@ -215,6 +295,10 @@ def main(args=None) -> None:
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
+        try:
+            node.finalize()
+        except Exception:  # noqa: BLE001
+            pass
         try:
             node.destroy_node()
         except Exception:  # noqa: BLE001

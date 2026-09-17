@@ -8,8 +8,11 @@ let livePose = null;
 function liveOverlay(view) {
   view.overlays.push((c, v) => {
     if (!livePose || !v.meta) return;
-    const gen = lastState && lastState.mode ? lastState.mode.generation : null;
+    const mode = lastState && lastState.mode;
+    const gen = mode ? mode.generation : null;
     if (gen !== null && livePose.generation !== gen) return;
+    // every map calls its frame "map": a saved map is only comparable if it is the active one (R12)
+    if (v.meta.map_id !== undefined && !(mode && mode.active_map_id === v.meta.map_id && +mode.active_map_revision === +v.meta.revision)) return;
     const frame = v.meta.frame_id || 'map';
     const s = livePose.scan;
     if (s && s.frame === frame) v.points(s.points, s.age_s > 1.0 ? '#8b1a1a' : '#e74c3c');

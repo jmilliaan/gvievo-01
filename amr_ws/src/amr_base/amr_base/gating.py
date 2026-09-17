@@ -15,12 +15,15 @@ Within an authority a command must still be fresh (0.2 s); a browser
 ManualCommand is additionally bounded by the lifetime it carries. Expiry is
 zero at once - the mux never lets a ramp extend a command that is gone.
 
-Sequence monotonicity (permit.seq, manual.seq) is enforced by the node, which
-is the thing that sees the stream; this module sees one sample at a time.
+Sequence monotonicity of permit.seq is enforced by the node, which is the thing
+that sees the stream. The browser jog stream goes through ManualIntake, which
+also owns session revocation (a release is terminal, whatever its seq).
 """
 
 from __future__ import annotations
 
+import math
+from collections import OrderedDict
 from dataclasses import dataclass
 
 NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING = 0, 1, 2, 3, 4, 5
@@ -68,6 +71,62 @@ class Manual(Stamped):
     session: str = ""
     seq: int = 0
     valid_for_s: float = 0.0
+
+
+class ManualIntake:
+    """ManualCommand stream filter (review R02, R03). Pure; the node feeds every sample.
+
+    * valid_for_s <= 0 is a REVOCATION of that session: the held command is dropped
+      at once (the next tick zeroes) and the session is tombstoned, so a delayed or
+      reordered refresh from it can never revive it - a release carries no newer
+      seq than the refresh it cancels, so seq ordering alone cannot express it.
+      An empty session revokes whatever is held (/api/stop).
+    * within a live session seq must increase (duplicates / reordering dropped);
+    * a nonfinite sample drops the held command rather than leaving the previous
+      nonzero one in force.
+    """
+
+    TOMBSTONES = 64
+
+    def __init__(self) -> None:
+        self.current: Manual | None = None
+        self._revoked: OrderedDict[str, None] = OrderedDict()
+
+    def offer(
+        self, now: float, instance: str, generation: int, session: str, seq: int, valid_for_s: float,
+        v: float, w: float,
+    ) -> bool:
+        """Returns True when the sample changed the held command."""
+        if not (math.isfinite(v) and math.isfinite(w) and math.isfinite(valid_for_s)):
+            self.current = None
+            return True
+        if session in self._revoked:
+            return False
+        cur = self.current
+        if valid_for_s <= 0.0:
+            if session:
+                self._revoked[session] = None
+                while len(self._revoked) > self.TOMBSTONES:
+                    self._revoked.popitem(last=False)
+            if cur is None or not session or cur.session == session:
+                self.current = None
+                return True
+            return False
+        if cur is not None and cur.session == session and seq <= cur.seq:
+            return False  # reordered / duplicate refresh
+        self.current = Manual(now, v, w, instance, int(generation), session, int(seq), float(valid_for_s))
+        return True
+
+    def clear(self) -> None:
+        """Generation change: forget the held command (tombstones stay; ids are random)."""
+        self.current = None
+
+
+def finite_or_zero(t: float, v: float, w: float) -> Stamped:
+    """A body-twist sample (teleop / Nav2). Nonfinite becomes an explicit zero (review R03)."""
+    if math.isfinite(v) and math.isfinite(w):
+        return Stamped(t, v, w)
+    return Stamped(t, 0.0, 0.0)
 
 
 @dataclass

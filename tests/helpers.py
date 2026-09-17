@@ -54,17 +54,27 @@ class _FakeRaw:
     pushed traffic is the drives' producer heartbeat, which is routed through
     exactly the same path and re-enters exactly the same lock.
 
-    A couple of heartbeats are queued, then the SDO reply lands, then the queue
-    drains empty.
+    Each request queues a heartbeat and then its reply; the queue then drains
+    empty. Replies echo the request's (index, sub), because the SDO helpers
+    discard any reply that does not - an older version of this fake answered
+    every request with a zero multiplexer, so every transfer timed out and the
+    arm test "passed" on an exception nobody saw.
+
+    objects maps (index, sub) -> the value an upload returns; unlisted objects
+    read as 7. Every download is acknowledged.
     """
 
-    def __init__(self, node=1):
+    def __init__(self, node=1, objects=None):
         self.node = node
+        self.objects = dict(objects or {})
         self.pending = [("hb",), ("hb",)]
+        self.sent = []
 
     def send(self, m):
+        self.sent.append(m)
         if 0x600 <= m.arbitration_id <= 0x67F:
-            self.pending += [("hb",), ("sdo", m.arbitration_id - 0x600)]
+            self.pending += [("hb",),
+                             ("sdo", m.arbitration_id - 0x600, bytes(m.data))]
 
     def recv(self, timeout=None):
         import can
@@ -75,8 +85,14 @@ class _FakeRaw:
             # 0x05 = Operational, the byte a producer heartbeat carries.
             return can.Message(arbitration_id=0x700 + self.node,
                                data=bytes([0x05]), is_extended_id=False)
-        return can.Message(arbitration_id=0x580 + kind[1],
-                           data=bytes([0x43, 0, 0, 0]) + struct.pack("<I", 7),
+        _, node, req = kind
+        mux = req[1:4]
+        if req[0] == 0x40:
+            value = self.objects.get((req[1] | (req[2] << 8), req[3]), 7)
+            data = bytes([0x43]) + mux + struct.pack("<I", value)
+        else:
+            data = bytes([0x60]) + mux + bytes(4)
+        return can.Message(arbitration_id=0x580 + node, data=data,
                            is_extended_id=False)
 
     def shutdown(self):

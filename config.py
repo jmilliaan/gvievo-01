@@ -477,7 +477,17 @@ def _coerce(value, want, where):
     if want is float:
         if not isinstance(value, (int, float)):
             raise ConfigError(f"{where}: expected a number, got {value!r}")
-        return float(value)
+        # An int too large for a float raises here; a float that already read
+        # as inf (1e999 in the file) is refused below. Either way a positive-only
+        # check would otherwise pass infinity - a watchdog that never expires.
+        try:
+            out = float(value)
+        except OverflowError:
+            out = math.inf
+        if not math.isfinite(out):
+            raise ConfigError(f"{where}: expected a finite number, "
+                              f"got {value!r:.40}")
+        return out
     if want is list:
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise ConfigError(f"{where}: expected a list of strings, got {value!r}")
@@ -872,12 +882,34 @@ def _validate(ns):
     return ns
 
 
+def _json_constant(name):
+    """json.load's hook for the non-standard NaN / Infinity / -Infinity tokens.
+
+    Python accepts them silently by default. They are passed through as the
+    float they spell rather than refused here, because only _coerce knows which
+    field it is reading: every value goes through it, and it refuses nonfinite
+    numbers with the field named - "timing.manual_watchdog_s: expected a finite
+    number" sends the reader to the line, "Infinity is invalid" does not."""
+    return float(name)
+
+
+def _check_finite(ns):
+    """Every published float, primitive or derived, must be finite. Finite
+    inputs can still overflow in _derive (a huge wheel diameter), and a NaN
+    compares False against every bound, so this runs before _validate."""
+    for name, value in ns.items():
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ConfigError(f"{name} is not finite ({value!r}) - check the "
+                              "profile values it is derived from")
+    return ns
+
+
 def load(path=None):
     """Parse, derive, validate, then publish. Nothing is published on failure."""
     path = path or profile_path()
     try:
         with open(path) as fh:
-            doc = json.load(fh)
+            doc = json.load(fh, parse_constant=_json_constant)
     except FileNotFoundError:
         raise ConfigError(
             f"no vehicle profile at {path}. Set {PROFILE_ENV_VAR} to one of "
@@ -895,7 +927,7 @@ def load(path=None):
         raise ConfigError(f"profile_name is {ns['PROFILE_NAME']!r} but the file "
                           f"is {stem}.json - rename one to match the other")
 
-    ns = _validate(_derive(ns))
+    ns = _validate(_check_finite(_derive(ns)))
     ns["PROFILE_PATH_LOADED"] = path
     globals().update(ns)
     return ns

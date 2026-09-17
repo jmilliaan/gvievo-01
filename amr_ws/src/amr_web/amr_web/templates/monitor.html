@@ -12,8 +12,8 @@ async function tick() {
     const names = Object.keys(data).sort();
     document.getElementById('mon').innerHTML = names.length ? names.map(n => {
       const d = data[n]; const stale = d.age_s > 3;
-      const rows = Object.entries(d.values).map(([k, v]) => `<tr><td>${k}</td><td>${v === '' ? '<span class="muted">not available</span>' : v}</td></tr>`).join('');
-      return `<div class="card"><h2>${n} <span class="pill ${stale ? 'err' : LEVEL[d.level] || ''}">${stale ? 'stale' : d.message}</span></h2><div class="muted">${d.hardware_id} · ${d.age_s.toFixed(1)} s ago</div><table>${rows}</table></div>`;
+      const rows = Object.entries(d.values).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v === '' ? '<span class="muted">not available</span>' : esc(v)}</td></tr>`).join('');
+      return `<div class="card"><h2>${esc(n)} <span class="pill ${stale ? 'err' : LEVEL[d.level] || ''}">${stale ? 'stale' : esc(d.message)}</span></h2><div class="muted">${esc(d.hardware_id)} · ${d.age_s.toFixed(1)} s ago</div><table>${rows}</table></div>`;
     }).join('') : '<div class="card">no diagnostics yet (drive owner not running?)</div>';
   }
   setTimeout(tick, 1000);

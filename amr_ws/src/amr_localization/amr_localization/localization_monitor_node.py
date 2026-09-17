@@ -13,6 +13,7 @@ executor (T7) faults if one arrives during a segment.
 
 from __future__ import annotations
 
+import hashlib
 import math
 
 import numpy as np
@@ -64,6 +65,7 @@ class LocalizationMonitor(Node):
         self.declare_parameter("match_hold_s", 1.0)
         self.declare_parameter("match_tolerance_m", 0.15)
         self.declare_parameter("match_period_s", 0.5)
+        self.declare_parameter("match_age_max_s", 2.0)  # confirmation needs a comparison this recent
         self.declare_parameter(
             "match_max_range_m", 10.0
         )  # beyond this a 0.3 deg yaw error exceeds the tolerance
@@ -80,6 +82,7 @@ class LocalizationMonitor(Node):
                 jump_angle_rad=math.radians(p("jump_angle_deg").value),
                 settle_s=p("settle_s").value,
                 initial_grace_s=p("initial_grace_s").value,
+                match_age_max_s=p("match_age_max_s").value,
                 age_limits={
                     "scan": p("scan_age_limit_s").value,
                     "wheels": p("wheels_age_limit_s").value,
@@ -97,6 +100,7 @@ class LocalizationMonitor(Node):
         self._match_max_range = p("match_max_range_m").value
         self._occ_near: np.ndarray | None = None  # occupied cells dilated by the tolerance
         self._grid: gridio.Grid | None = None  # the saved map, raycast for expected ranges
+        self._map_key: tuple | None = None  # identity of the loaded map (geometry + content hash)
         self._last_match_t = 0.0
 
         self.tf_buffer = Buffer()
@@ -105,7 +109,7 @@ class LocalizationMonitor(Node):
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initialpose, RELIABLE_1)
         self.create_subscription(LaserScan, "/scan", self._on_scan, SENSOR_DATA)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED)
-        self.create_subscription(WheelStates, "/wheel_states", lambda _m: self._touch("wheels"), SENSOR_DATA)
+        self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA)
         self.create_subscription(Imu, "/imu/data", lambda _m: self._touch("imu"), SENSOR_DATA)
         self.create_service(Trigger, "/amr/localization/confirm", self._srv_confirm)
         self.create_service(Trigger, "/amr/localization/reset", self._srv_reset)
@@ -120,8 +124,16 @@ class LocalizationMonitor(Node):
     def _touch(self, key: str) -> None:
         self._last[key] = self._now()
 
+    def _on_wheels(self, msg: WheelStates) -> None:
+        # Arrival is not feedback: only a sample both drives vouch for keeps wheels fresh.
+        if msg.left_valid and msg.right_valid:
+            self._touch("wheels")
+
     def _on_map(self, msg: OccupancyGrid) -> None:
         grid = gridio.from_occupancy_grid_msg(msg)
+        m = grid.meta
+        key = (grid.width, grid.height, m.resolution, m.origin_x, m.origin_y, m.origin_yaw)
+        key += (hashlib.sha256(grid.data.tobytes()).hexdigest(),)
         occ = grid.data >= 65
         cells = max(1, int(round(self._match_tol / grid.meta.resolution)))
         near = np.zeros_like(occ)
@@ -129,6 +141,11 @@ class LocalizationMonitor(Node):
             for dc in range(-cells, cells + 1):
                 near |= np.roll(np.roll(occ, dr, axis=0), dc, axis=1)
         self._occ_near, self._grid = near, grid
+        if self._map_key is not None and key != self._map_key:
+            # Pose, covariance and scan evidence were all about the previous map.
+            self.rd.reset("map changed; give a new initial pose")
+            self._publish()
+        self._map_key = key
         self.get_logger().info(f"map {grid.width}x{grid.height} loaded for scan consistency")
 
     def _on_scan(self, msg: LaserScan) -> None:
@@ -143,7 +160,7 @@ class LocalizationMonitor(Node):
                 "map", msg.header.frame_id, msg.header.stamp, timeout=rclpy.duration.Duration(seconds=0.05)
             )
         except Exception:  # noqa: BLE001 - not localised yet, or the stamp is not covered
-            return
+            return  # no comparison: readiness lets the previous result expire
         self._last_match_t = t
         q = tr.transform.rotation
         yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
@@ -176,7 +193,8 @@ class LocalizationMonitor(Node):
             match_frac = float(hit.mean())
         else:
             match_frac = 0.0
-        self.rd.on_scan_match(t, match_frac, long_frac)
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        self.rd.on_scan_match(t, match_frac, long_frac, stamp)
 
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         c = msg.pose.covariance

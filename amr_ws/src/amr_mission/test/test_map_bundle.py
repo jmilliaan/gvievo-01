@@ -128,3 +128,21 @@ def test_world_fixture_is_surfaces_only(tmp_path):
     m, g = mb.load(str(tmp_path), "w", 1)
     assert "surfaces" in m.review["note"]
     assert np.array_equal(g.data, surf.data)
+
+
+def test_r19_rotated_grid_in_a_bundle_is_a_bundle_error(tmp_path):
+    import numpy as np  # noqa: PLC0415
+    import pytest  # noqa: PLC0415
+    import yaml  # noqa: PLC0415
+
+    from amr_maps import grid as gridio  # noqa: PLC0415
+    from amr_mission import map_bundle as mb  # noqa: PLC0415
+
+    grid = gridio.Grid(np.zeros((4, 4), dtype=np.int8), gridio.GridMeta(0.05, 0.0, 0.0))
+    gridio.write(grid, str(tmp_path / "map"))
+    y = tmp_path / "map.yaml"
+    doc = yaml.safe_load(y.read_text())
+    doc["origin"] = [0.0, 0.0, 0.5]
+    y.write_text(yaml.safe_dump(doc))
+    with pytest.raises(mb.BundleError, match="map grid"):
+        mb._read_grid(str(y))

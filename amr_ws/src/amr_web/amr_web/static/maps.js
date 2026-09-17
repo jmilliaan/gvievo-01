@@ -24,9 +24,9 @@ onState(st => {
 async function loadMaps() {
   const { data } = await apiGet('/api/maps');
   if (!data.length) { $('maps-list').textContent = 'no saved maps yet'; return; }
-  $('maps-list').innerHTML = data.map(m => `<h3>${m.map_id}</h3><table><tr><th>rev</th><th>created</th><th>size</th><th>closure review</th><th>routes</th><th>bundle</th></tr>` +
-    m.revisions.map(r => r.error ? `<tr><td>${r.revision}</td><td colspan=5 style="color:#e74c3c">${r.error}</td></tr>` :
-      `<tr><td>${r.revision}</td><td>${r.created}</td><td>${r.width}×${r.height} @ ${r.resolution} m</td><td>${r.review ? `dx ${(+r.review.dx_m).toFixed(2)} dy ${(+r.review.dy_m).toFixed(2)} dyaw ${(+r.review.dyaw_rad * 180 / Math.PI).toFixed(1)}° ${r.review.note || ''}` : ''}</td><td>${Object.entries(r.routes || {}).map(([k, v]) => `${k} rev${v.join(',')}`).join('; ')}</td><td><code>${r.sha256.slice(0, 12)}</code></td></tr>`).join('') + '</table>').join('');
+  $('maps-list').innerHTML = data.map(m => `<h3>${esc(m.map_id)}</h3><table><tr><th>rev</th><th>created</th><th>size</th><th>closure review</th><th>routes</th><th>bundle</th></tr>` +
+    m.revisions.map(r => r.error ? `<tr><td>${esc(r.revision)}</td><td colspan=5 style="color:#e74c3c">${esc(r.error)}</td></tr>` :
+      `<tr><td>${esc(r.revision)}</td><td>${esc(r.created)}</td><td>${esc(r.width)}×${esc(r.height)} @ ${esc(r.resolution)} m</td><td>${r.review ? `dx ${(+r.review.dx_m).toFixed(2)} dy ${(+r.review.dy_m).toFixed(2)} dyaw ${(+r.review.dyaw_rad * 180 / Math.PI).toFixed(1)}° ${esc(r.review.note)}` : ''}</td><td>${Object.entries(r.routes || {}).map(([k, v]) => `${esc(k)} rev${esc(v.join(','))}`).join('; ')}</td><td><code>${esc(String(r.sha256).slice(0, 12))}</code></td></tr>`).join('') + '</table>').join('');
 }
 loadMaps();
 

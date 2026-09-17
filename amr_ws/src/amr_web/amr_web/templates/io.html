@@ -12,9 +12,9 @@ const lamp = on => `<span class="pill ${on ? 'ok' : ''}">${on ? 'ON' : 'off'}</s
 async function tick() {
   const { status, data } = await apiGet('/api/io');
   if (status === 200 && data) {
-    document.getElementById('di').innerHTML = data.di.map((v, i) => `<tr><td>DI${String(i).padStart(2, '0')}</td><td>${data.di_names[i] || ''}</td><td>${lamp(v)}</td></tr>`).join('');
+    document.getElementById('di').innerHTML = data.di.map((v, i) => `<tr><td>DI${String(i).padStart(2, '0')}</td><td>${esc(data.di_names[i])}</td><td>${lamp(v)}</td></tr>`).join('');
     document.getElementById('do').innerHTML = '<tr><th></th><th></th><th>requested</th><th>readback</th></tr>' +
-      data.do_readback.map((v, i) => `<tr><td>DO${String(i).padStart(2, '0')}</td><td>${data.do_names[i] || ''}</td><td>${lamp(data.do_requested[i])}</td><td>${lamp(v)}</td></tr>`).join('');
+      data.do_readback.map((v, i) => `<tr><td>DO${String(i).padStart(2, '0')}</td><td>${esc(data.do_names[i])}</td><td>${lamp(data.do_requested[i])}</td><td>${lamp(v)}</td></tr>`).join('');
     document.getElementById('io-link').textContent = `${data.comms_ok ? 'comms ok' : 'COMMS LOST'} · image ${data.age_s.toFixed(2)} s old · scan age ${data.rx_age_s.toFixed(2)} s\nscans ${data.scans}  errors ${data.errors}  writes ${data.writes}\n${data.detail}`;
   } else if (status === 200) document.getElementById('io-link').textContent = 'no I/O image (panel_node not running?)';
   setTimeout(tick, 250);
