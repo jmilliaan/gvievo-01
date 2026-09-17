@@ -442,3 +442,34 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
             code += (static / src).read_text()  # amr.js too: the rail ids must exist on every page
         missing = {i for i in pat.findall(code) if i not in ids}
         assert not missing, f"{page}: scripts use ids not on the page: {sorted(missing)}"
+
+
+def test_wifi_parse_and_bars(tmp_path):
+    from amr_web import wifi
+
+    proc = (
+        "Inter-| sta-|   Quality        | Discarded packets | Missed | WE\n"
+        " face | tus | link level noise |  nwid  crypt frag retry misc | beacon | 22\n"
+        "wlp1s0: 0000   70.  -40.  -256        0      0      0      0     83        0\n"
+    )
+    assert wifi.parse_proc(proc, "wlp1s0") == -40.0
+    assert wifi.parse_proc(proc, "wlan9") is None
+    assert [wifi.bars_for(d) for d in (-40, -60, -70, -80, -90, None)] == [4, 3, 2, 1, 0, 0]
+
+    p = tmp_path / "wireless"
+    p.write_text(proc)
+    r = wifi.WifiReader("wlp1s0", proc_path=str(p))
+    r._ssid, r._ssid_t = "agv_field", float("inf")  # skip nmcli in the test
+    out = r.read()
+    assert (out["connected"], out["dbm"], out["bars"], out["ssid"]) == (True, -40.0, 4, "agv_field")
+    p.write_text(proc.splitlines()[0] + "\n")
+    assert wifi.WifiReader("wlp1s0", proc_path=str(p)).read()["connected"] is False
+    assert wifi.WifiReader("wlp1s0", proc_path=str(tmp_path / "missing")).read()["bars"] == 0
+
+
+def test_wifi_endpoint(env):
+    client = env[0]
+    r = client.get("/api/wifi")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert set(body) >= {"iface", "connected", "ssid", "dbm", "bars"}

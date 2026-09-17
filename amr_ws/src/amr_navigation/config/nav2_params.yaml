@@ -72,7 +72,13 @@ local_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          # /scan_gated, not /scan: the obstacle layer reads scans through a tf2
+          # MessageFilter targeting odom. Raw scans arrive 20-40 ms before their odom
+          # transform and take the filter's asynchronous path, which froze this
+          # process's TF listener seconds after activation (2026-09-17, twice: the
+          # controller then saw no map frame and 'reached' every goal without moving).
+          # scan_gate_node releases scans only once odom covers their stamp.
+          topic: /scan_gated
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -92,7 +98,7 @@ behavior_server:
     use_sim_time: false
     costmap_topic: local_costmap/costmap_raw
     footprint_topic: local_costmap/published_footprint
-    cycle_frequency: 10.0
+    cycle_frequency: 20.0              # 10 Hz let a 0.05 rad/s Spin overrun by up to 2 deg (vehicle 2026-09-17)
     behavior_plugins: [spin]
     spin:
       plugin: nav2_behaviors/Spin

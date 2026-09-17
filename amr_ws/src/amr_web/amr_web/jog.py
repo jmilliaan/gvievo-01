@@ -26,7 +26,10 @@ import secrets
 from dataclasses import dataclass
 
 V_MAX, W_MAX = 0.30, 0.30
-TICKET_S = 0.25  # a refresh must arrive within this; the browser sends every 0.1 s
+TICKET_S = 1.0  # a refresh must arrive within this; the browser sends every 0.1 s. Wider than
+# CMD_S on purpose: the ROBOT stops 0.2 s after the last refresh regardless; this only decides
+# whether a still-held button may resume after a link hiccup without a new press. At 0.25 s a
+# single slow Wi-Fi round trip ended 14 of 17 holds on the vehicle (2026-09-17).
 CMD_S = 0.20  # lifetime a command carries at most
 
 

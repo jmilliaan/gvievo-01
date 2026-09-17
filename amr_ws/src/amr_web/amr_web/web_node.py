@@ -16,10 +16,11 @@ def main(args=None) -> None:
     adapter.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
     adapter.declare_parameter("host", "0.0.0.0")
     adapter.declare_parameter("port", 5001)
+    adapter.declare_parameter("wifi_iface", "wlp1s0")
     maps_dir = adapter.get_parameter("maps_dir").value
     host, port = adapter.get_parameter("host").value, int(adapter.get_parameter("port").value)
     spinner = start_spinning(adapter)
-    app = create_app(adapter, maps_dir)
+    app = create_app(adapter, maps_dir, wifi_iface=str(adapter.get_parameter("wifi_iface").value))
     adapter.get_logger().info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
     try:
         app.run(host=host, port=port, threaded=True, use_reloader=False)

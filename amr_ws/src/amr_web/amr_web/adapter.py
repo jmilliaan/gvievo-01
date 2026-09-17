@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+import traceback
 from typing import Any
 
 import rclpy
@@ -55,6 +56,7 @@ LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
 SCAN_PERIOD_S = 0.1  # live-view scan projection rate cap (the page redraws at 5 Hz)
+MAP_ODOM_FRESH_S = 2.0  # newest map->odom stamp older than this: no layer is localising
 STATE_NAMES = {0: "IDLE", 1: "MAPPING", 2: "RETURN_REVIEW", 3: "SAVING", 4: "SAVED"}
 LOC_NAMES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
 RUN_NAMES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
@@ -220,10 +222,17 @@ class RosAdapter(Node):
             self._run, self._run_t = d, self._now()
 
     def _world_frame(self) -> str:
-        """map while a layer owns map->odom, else odom (plain base): never draw
-        a scan in a frame that is not being published."""
+        """map while a layer is PUBLISHING map->odom, else odom (plain base): never draw
+        a scan in a frame that is not being published. "Publishing" means the newest
+        map->odom is stamped within MAP_ODOM_FRESH_S: both AMCL and slam_toolbox restamp
+        it on every scan they take, so a frozen stamp is a dead or replaced layer (its
+        transform otherwise survives in the cache for ever - tf2 returns the latest
+        sample whatever its age) and a frozen stamp is also how slam_toolbox looked
+        while hung (2026-09-17)."""
         try:
-            if self._tf_buffer.can_transform("map", "base_footprint", Time()):
+            t = self._tf_buffer.lookup_transform("map", "odom", Time())
+            age = self._now() - Time.from_msg(t.header.stamp).nanoseconds * 1e-9
+            if age <= MAP_ODOM_FRESH_S and self._tf_buffer.can_transform("map", "base_footprint", Time()):
                 return "map"
         except Exception:  # noqa: BLE001
             pass
@@ -254,22 +263,15 @@ class RosAdapter(Node):
         )
         self.live.set_scan(pts, frame)
 
-    def _reset_tf(self) -> None:
-        """A replaced layer's map->odom must not survive in the cache (plan §5.3 step 5)."""
-        old = getattr(self, "_tf_listener", None)
-        if old is not None:
-            try:
-                old.unregister()
-            except Exception:  # noqa: BLE001
-                pass
-        self._tf_buffer = Buffer()
-        self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
+    # A replaced layer's map->odom must not be drawn (plan §5.3 step 5). This used to
+    # rebuild the TF listener on a generation change; destroying its subscriptions while
+    # another executor thread was taking from them raised InvalidHandle out of spin_once
+    # and killed the ROS thread (2026-09-17, right as a survey was saved). The listener
+    # now lives as long as the node; staleness is judged by stamp in _world_frame().
 
     def _live_pose(self) -> None:
         with self._lock:
             gen = self._mode["generation"] if self._mode else 0
-        if gen != self.live.generation:
-            self._reset_tf()
         self.live.set_generation(gen)
         frame = self._world_frame()
         try:
@@ -631,12 +633,19 @@ class Spinner:
     def __init__(self, adapter: RosAdapter) -> None:
         self.executor = rclpy.executors.MultiThreadedExecutor(num_threads=4)
         self.executor.add_node(adapter)
+        self._log = adapter.get_logger()
         self._stop = threading.Event()
         self.thread = threading.Thread(target=self._run, name="ros", daemon=True)
 
     def _run(self) -> None:
+        # One bad callback must not take the whole adapter down: with this thread dead
+        # every page shows a frozen snapshot with no indication (2026-09-17).
         while not self._stop.is_set() and rclpy.ok():
-            self.executor.spin_once(timeout_sec=0.1)
+            try:
+                self.executor.spin_once(timeout_sec=0.1)
+            except Exception:  # noqa: BLE001
+                self._log.error(f"adapter executor: callback raised; continuing: {traceback.format_exc()}")
+                time.sleep(0.05)
 
     def start(self) -> Spinner:
         self.thread.start()

@@ -5,7 +5,7 @@ import math
 import threading
 from types import SimpleNamespace
 
-from amr_navigation.compiler import ROTATE, CompiledStep
+from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep
 from test_goal_attempts import Client, Handle, Result
 
 from amr_interfaces.msg import LocalizationState, PanelState, WheelStates
@@ -41,6 +41,7 @@ def make_node(steps, passes=1):
     n.centre_drift_m, n.turn_tol, n.wrong_way = 0.05, math.radians(2), math.radians(5)
     n.entry_corr_max, n.clear_stable_s = math.radians(10), 1.0
     n.goal_accept_timeout, n.goal_cancel_timeout = 5.0, 5.0
+    n.converge_m = 1.0
     n.odom_gap, n.paused_t = False, None
     n._odom_xy, n._odom_yaw_acc = (0.0, 0.0), 0.0
     loc = LocalizationState()
@@ -195,3 +196,24 @@ def test_r20_step_done_advances_passes_through_the_node_reset():
         n._reset_step_state()
         assert n.turn_target is None
     assert seen == [(0, "a"), (0, "b"), (1, "a"), (1, "b")] and n.fsm.state == fsm.DONE
+
+
+def test_straight_stops_itself_at_the_endpoint_when_the_goal_checker_misses():
+    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), length_m=2.0)
+    n = make_node([st])
+    n.fsm.start(True, True)
+    c = Client()
+    n.goals.send(c, "g", n.fsm.run_id, 0, 0)
+    h = Handle()
+    c.sent[0][1].set_result(h)
+    n.phase = ren.PHASE_GOAL
+    n._pose = lambda: (1.95, 0.04, 0.0)  # still short: keep following
+    n._execute(n.clock[0])
+    assert n.phase == ren.PHASE_GOAL and h.cancels == 0
+    n._pose = lambda: (2.03, 0.04, 0.0)  # past the endpoint, 4 cm beside it: the checker's 2.5 cm miss
+    n._execute(n.clock[0])
+    assert n.phase == ren.PHASE_SETTLE and h.cancels == 1 and n.fsm.state == fsm.EXECUTING
+    n._pose = lambda: (2.13, 0.04, 0.0)  # but well past it is still a fault
+    n.phase = ren.PHASE_GOAL
+    n._execute(n.clock[0])
+    assert n.fsm.state == fsm.FAULT and "passed the endpoint" in n.fsm.reason

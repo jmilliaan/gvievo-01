@@ -123,7 +123,11 @@ class RouteExecutor(Node):
         self.declare_parameter("verify_heading_deg", 5.0)
         self.declare_parameter("converge_m", 1.0)  # cross-track grace distance after a step starts
         self.declare_parameter("entry_correction_deg", 10.0)  # max entry-heading error folded into a turn
-        self.declare_parameter("turn_travel_tolerance_deg", 2.0)
+        # Vehicle 2026-09-17: Spin at 10 Hz with min 0.05 rad/s stops 0-2.2 deg past the commanded
+        # angle (turns of 45.0 and 46.6 for 44.4 asked). The overshoot is folded into the next
+        # turn by the entry correction and bounded by verify_heading_deg, so 4 deg here is
+        # the stop discretisation, not a looser route.
+        self.declare_parameter("turn_travel_tolerance_deg", 4.0)
         self.declare_parameter("wrong_way_deg", 5.0)
         self.declare_parameter("wheels_age_limit_s", 0.10)
         self.declare_parameter("panel_age_limit_s", 0.20)
@@ -699,6 +703,15 @@ class RouteExecutor(Node):
                     return
                 if along > st.length_m + 2 * self.route.limits.position_tolerance_m:
                     self._fault(f"passed the endpoint by {along - st.length_m:.2f} m")
+                    return
+                if along >= st.length_m:
+                    # Arrived along the line before Nav2's goal checker fired: its window is a
+                    # 2.5 cm CIRCLE, and a few cm of lateral offset (normal right after a turn)
+                    # takes the vehicle past the endpoint beside it, after which RPP keeps
+                    # driving (vehicle 2026-09-17: faulted at +0.10 m). Stop here; settle then
+                    # verifies the stop like any other (verify_position_m).
+                    self.goals.revoke()
+                    self.phase, self.settle_since = PHASE_SETTLE, None
                     return
             else:
                 travelled = self._turn_travel()

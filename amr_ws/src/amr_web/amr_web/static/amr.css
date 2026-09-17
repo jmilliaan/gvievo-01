@@ -110,6 +110,23 @@ nav a.on { color:var(--accent-2); background:var(--accent-wash); border-color:va
 }
 .pill.ok  { color:var(--ok);   border-color:var(--ok);   background:var(--ok-wash); }
 .pill.bad { color:var(--stop); border-color:var(--stop); background:var(--stop-wash); }
+/* Wi-Fi readout: four bars plus the dBm, quiet unless the link is weak or gone. */
+.wifi {
+  display:inline-flex; align-items:center; gap:7px; padding:4px 10px;
+  font:500 11.5px var(--mono); letter-spacing:.06em; text-transform:uppercase;
+  color:var(--ink-2); border:1px solid var(--rule); background:var(--surface-2);
+  font-variant-numeric:tabular-nums;
+}
+.wifi .bars { display:inline-flex; align-items:flex-end; gap:2px; height:12px; }
+.wifi .bars b { width:3px; background:var(--rule); }
+.wifi .bars b:nth-child(1) { height:4px; }
+.wifi .bars b:nth-child(2) { height:7px; }
+.wifi .bars b:nth-child(3) { height:10px; }
+.wifi .bars b:nth-child(4) { height:12px; }
+.wifi .bars b.on { background:currentColor; }
+.wifi.ok  { color:var(--ok); }
+.wifi.warn { color:var(--hazard-ink); }
+.wifi.bad { color:var(--stop); border-color:var(--stop); background:var(--stop-wash); }
 
 /* ---- shell: rail left, page right ---- */
 .shell { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:300px minmax(0,1fr); }

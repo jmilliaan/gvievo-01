@@ -78,6 +78,7 @@ function jogpad(root, opts) {
     const b = body(h.dir);
     h.seq += 1;
     let st, data;
+    const sent = Date.now();  // fixed 100 ms cadence from send to send, not from reply to send
     try {
       ({ status: st, data } = await api('/api/manual/refresh', { session: h.session, ticket: h.ticket, seq: h.seq, v: b.v, w: b.w }));
     } catch (e) {
@@ -88,7 +89,7 @@ function jogpad(root, opts) {
     if (st !== 200) { status.textContent = `stopped: ${data.message}`; held = null; lit(null); return; }
     h.ticket = data.ticket;
     status.textContent = `holding ${h.dir}: v ${data.v.toFixed(2)} m/s, w ${data.w.toFixed(2)} rad/s`;
-    h.timer = setTimeout(refresh, 100);
+    h.timer = setTimeout(refresh, Math.max(0, 100 - (Date.now() - sent)));
   }
   async function release(why) {
     lit(null);

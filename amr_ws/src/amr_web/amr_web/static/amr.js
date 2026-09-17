@@ -88,6 +88,20 @@ async function poll() {
 }
 poll();
 
+// Wi-Fi header readout: a comfort indicator for whoever holds the tablet, not an authority.
+async function pollWifi() {
+  const el = document.getElementById('wifi'), txt = document.getElementById('wifi-text');
+  if (!el) return;
+  let w = null;
+  try { const { status, data } = await apiGet('/api/wifi'); if (status === 200) w = data; } catch (e) { /* offline */ }
+  const bars = w ? w.bars : 0;
+  el.querySelectorAll('.bars b').forEach((b, i) => b.classList.toggle('on', i < bars));
+  el.className = 'wifi ' + (!w || !w.connected ? 'bad' : bars >= 3 ? 'ok' : bars >= 2 ? '' : 'warn');
+  txt.textContent = !w ? '–' : !w.connected ? `${w.iface} no link` : `${w.ssid || w.iface} ${Math.round(w.dbm)} dBm`;
+  setTimeout(pollWifi, 2000);
+}
+pollWifi();
+
 // Submit an asynchronous supervisor operation and follow it to a terminal status.
 // A refresh/reconnect recovers progress through /api/operations/<id>; nothing is resubmitted.
 async function operation(path, body, onDone) {

@@ -31,7 +31,7 @@ from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
-from amr_web import jog
+from amr_web import jog, wifi
 from amr_web.png import encode_gray
 
 MODE_IDLE, MODE_NAVIGATION = 1, 3
@@ -83,7 +83,9 @@ def _result(ok: bool, message: str, status_fail: int = 409, **extra):
     return jsonify(body), (200 if ok else status_fail)
 
 
-def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = None) -> Flask:
+def create_app(
+    adapter: Adapter, maps_dir: str, footprint_path: str | None = None, wifi_iface: str = "wlp1s0"
+) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
     fp = fpmod.load(footprint_path or fpmod.default_path())
@@ -147,6 +149,12 @@ def create_app(adapter: Adapter, maps_dir: str, footprint_path: str | None = Non
     @app.get("/api/state")
     def api_state():
         return jsonify(adapter.state())
+
+    wifi_reader = wifi.WifiReader(wifi_iface)
+
+    @app.get("/api/wifi")
+    def api_wifi():
+        return jsonify(wifi_reader.read())
 
     @app.get("/api/footprint")
     def api_footprint():
