@@ -111,3 +111,31 @@ def test_returned_and_abort_calls_have_a_deadline_and_late_answers_are_ignored()
         sv._cli[name].future._done = True
         assert sv._pending_future is None and sv.survey_op is None
         assert sv.book.get(op.operation_id).status == ops.FAILED
+
+
+def test_q17_recovery_refuses_a_dead_base_with_the_restart_instruction():
+    class Dead:
+        def poll(self):
+            return 1
+
+    class Alive:
+        def poll(self):
+            return None
+
+    sv = fake()
+    sv._lock = __import__("threading").RLock()
+    sv.mode = fsm.FAULT
+    sv._conditions = lambda: fsm.Conditions(now=10.0)
+    sv.fault_code = "BASE_EXITED"
+    sv.groups = {"base": Dead()}
+    for name in ("_srv_recover", "_base_failure"):
+        setattr(sv, name, types.MethodType(getattr(Supervisor, name), sv))
+    res = types.SimpleNamespace(success=None, message="")
+    sv._srv_recover(None, res)
+    assert res.success is False and "systemctl restart amr.service" in res.message
+    assert sv.book.pending is None and sv.txn is None
+    assert sv.modes[-1][0] == fsm.FAULT
+    # a live base with a layer fault goes through the normal transaction
+    sv.fault_code = "LAYER_EXITED"
+    sv.groups = {"base": Alive()}
+    assert sv._base_failure() is None

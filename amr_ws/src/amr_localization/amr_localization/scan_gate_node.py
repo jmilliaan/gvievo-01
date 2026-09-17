@@ -1,10 +1,10 @@
 """/scan -> /scan_gated: the same scans, released only once odom->laser exists for
 their stamp, and no faster than `min_period_s` (see scan_gate.py for why).
 
-slam_toolbox and AMCL read /scan_gated; the costmap, the route executor's
-obstruction check and the web live view stay on /scan (they need the latest
-scan, not a transformable one). Expired scans are counted and logged, never
-published: a scan whose transform never came is not the consumer's problem.
+slam_toolbox, AMCL, the local costmap, the localization monitor and the route
+executor read /scan_gated; only the web live view stays on raw /scan. Expired
+scans are counted and logged, never published: a scan whose transform never
+came is not the consumer's problem.
 """
 
 import rclpy
@@ -57,13 +57,12 @@ class ScanGateNode(Node):
     def _poll(self) -> None:
         if not self.gate.pending:
             return
-        frame = None
 
         def transformable(t: float) -> bool:
-            return self.tf_buffer.can_transform(self.odom_frame, frame, Time(seconds=t))
+            # the frame of the scan being judged (the oldest), re-read per call: frames may change
+            frame = self.gate.frame_of_oldest()
+            return frame is not None and self.tf_buffer.can_transform(self.odom_frame, frame, Time(seconds=t))
 
-        # all pending scans share the laser frame; read it off the oldest
-        frame = self.gate._pending[0][1].header.frame_id
         for m in self.gate.poll(self._now(), transformable):
             self._pub.publish(m)
 

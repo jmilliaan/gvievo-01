@@ -678,10 +678,13 @@ class DriveLink:
     def fault_tick(self, now: float, max_age: float) -> None:
         """Once per loop in FAULT: bounded zero retries, then measured standstill.
 
-        Unconfirmed = a zero that could not be sent after STOP_RETRIES, or a drive
-        whose FRESH statusword still lacks speed-zero STOP_CONFIRM_S after the
-        fault. A drive with no fresh status is reported but not escalated: if it
-        cannot be heard it most likely cannot hear us, and its own 1016h trips.
+        Unconfirmed = a zero that could not be sent after STOP_RETRIES, or, once
+        STOP_CONFIRM_S has passed, a drive without POSITIVE standstill evidence: a
+        fresh statusword from after the fault with speed-zero. A drive whose status
+        is missing or stale is unconfirmed too (review Q01): a silent TPDO stream
+        does not mean the drive cannot hear our heartbeat, and a successful socket
+        send proves nothing about reception. Unconfirmed makes the node withhold
+        the PC heartbeat so every drive's own 1016h trips (the documented fallback).
         """
         if self.state != FAULT or self.t_fault is None:
             return
@@ -692,12 +695,13 @@ class DriveLink:
         if self.stop_pending and self._stop_tries >= self.STOP_RETRIES:
             unconfirmed += [f"node {n}: zero not delivered" for n in sorted(self.stop_pending)]
         if now - self.t_fault >= self.STOP_CONFIRM_S:
-            for n, t in self.telemetry.items():
-                if (
-                    t.t_status is not None
-                    and now - t.t_status < max_age
-                    and not t.statusword & SW_SPEED_IS_ZERO
-                ):
+            for n in self.nodes:
+                t = self.telemetry.get(n)
+                if t is None or t.t_status is None or t.t_status < self.t_fault:
+                    unconfirmed.append(f"node {n}: no status since the fault")
+                elif now - t.t_status >= max_age:
+                    unconfirmed.append(f"node {n}: status stale ({now - t.t_status:.1f} s)")
+                elif not t.statusword & SW_SPEED_IS_ZERO:
                     unconfirmed.append(f"node {n}: still turning ({t.rpm} r/min)")
         if unconfirmed != self.stop_unconfirmed:
             self.stop_unconfirmed = unconfirmed
@@ -806,7 +810,9 @@ def target_rpm(cmd, now: float, timeout_s: float, scale: WheelScale, max_rpm: fl
     timeout_s is a zero setpoint regardless of what the mux last said, and the
     result is clamped to the motor's rating per wheel.
     """
-    if cmd is None or now - cmd[0] > timeout_s:
+    # A negative age (the caller's clock behind the receipt time) is not "fresh": it is a
+    # clock error, and the safe setpoint for a clock error is zero (review Q03).
+    if cmd is None or not (0.0 <= now - cmd[0] <= timeout_s):
         return 0, 0
     # R03: max/min would turn NaN into full scale. Anything nonfinite - the
     # command, the scaled result (1e308 x gear) or the limit - is zero.
@@ -827,7 +833,14 @@ class ArmDecision:
 
 
 def decide(
-    state: str, want_armed: bool, now: float, retry_at: float, silent: list, dropped: list, faulted: list
+    state: str,
+    want_armed: bool,
+    now: float,
+    retry_at: float,
+    silent: list,
+    dropped: list,
+    faulted: list,
+    cleanup_owed: bool = False,
 ) -> ArmDecision:
     """The arm/fault policy as a pure function, so it can be tabled in a test.
 
@@ -841,7 +854,12 @@ def decide(
       level-held behaviour canworker._hold_arm_state has. Re-arming moves
       nothing: motion needs a MotionPermit and a Start edge upstream (T8).
     - FAULT: stay there.
+    - DISARMED with cleanup owed (a disarm left a drive energised, guarded or
+      in the wrong NMT state): retry the teardown on the backoff, wanted or not,
+      and never arm over it (review Q02) - the software state is not proof.
     """
+    if state == DISARMED and cleanup_owed:
+        return ArmDecision("cleanup" if now >= retry_at else "none", "cleanup owed")
     if not want_armed:
         return ArmDecision("disarm" if state != DISARMED else "none", "not wanted")
     if state == DISARMED:

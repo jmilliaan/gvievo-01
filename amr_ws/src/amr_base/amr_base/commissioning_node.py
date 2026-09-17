@@ -29,12 +29,28 @@ from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import commissioning as cj
-from amr_interfaces.msg import CommissioningState, ControlLease, PanelState, WheelStates, WheelVelocities
+from amr_interfaces.msg import (
+    CommissioningState,
+    ControlLease,
+    ModeState,
+    PanelState,
+    WheelStates,
+    WheelVelocities,
+)
 from amr_interfaces.srv import PlanCommissioning
 
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
+MODE_NAMES = {
+    ModeState.STARTING: "STARTING",
+    ModeState.IDLE: "IDLE",
+    ModeState.MAPPING: "MAPPING",
+    ModeState.NAVIGATION: "NAVIGATION",
+    ModeState.TRANSITIONING: "TRANSITIONING",
+    ModeState.FAULT: "FAULT",
+    ModeState.STOPPING: "STOPPING",
+}
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
@@ -64,6 +80,8 @@ class CommissioningNode(Node):
         self._panel_t = None
         self._start_edge_t: float | None = None
         self._lease = None
+        self._mode: ModeState | None = None
+        self._mode_t: float | None = None
         self._lease_t = None
         self._gyro = None
         self._gyro_t = None
@@ -73,6 +91,7 @@ class CommissioningNode(Node):
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
+        self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
         self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
         self._pub_cmd = self.create_publisher(WheelVelocities, "/amr/commissioning_wheels", RELIABLE_1)
         self._pub_state = self.create_publisher(CommissioningState, "/amr/commissioning_state", LATCHED)
@@ -123,6 +142,16 @@ class CommissioningNode(Node):
             stopped = abs(w.left_vel_rad_s) <= self.still_thr and abs(w.right_vel_rad_s) <= self.still_thr
         return counts, cpr, stopped
 
+    def _on_mode(self, m: ModeState) -> None:
+        self._mode, self._mode_t = m, time.monotonic()
+
+    def _mode_snapshot(self, now: float) -> tuple[str, int, str] | None:
+        """(instance, generation, mode name) when the supervisor's mode is fresh (2 Hz, 1.5 s)."""
+        if self._mode is None or self._mode_t is None or now - self._mode_t > 1.5:
+            return None
+        m = self._mode
+        return (str(m.instance), int(m.generation), MODE_NAMES.get(int(m.mode), "?"))
+
     def _authority(self, now: float) -> tuple[tuple[str, int] | None, int]:
         if self._lease is None or self._lease_t is None or now - self._lease_t > 0.3:
             return None, 0
@@ -136,7 +165,13 @@ class CommissioningNode(Node):
         authority, allowed = self._authority(now)
         try:
             res.planned_json = self.job.plan(
-                req.plan_json, cpr, now=now, authority=authority, lease_allowed=allowed, stopped=stopped
+                req.plan_json,
+                cpr,
+                now=now,
+                authority=authority,
+                lease_allowed=allowed,
+                stopped=stopped,
+                mode=self._mode_snapshot(now),
             )
         except ValueError as e:
             res.ok, res.message = False, str(e)

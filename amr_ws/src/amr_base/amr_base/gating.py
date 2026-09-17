@@ -98,8 +98,15 @@ class ManualIntake:
         self._revoked: OrderedDict[str, None] = OrderedDict()
 
     def offer(
-        self, now: float, instance: str, generation: int, session: str, seq: int, valid_for_s: float,
-        v: float, w: float,
+        self,
+        now: float,
+        instance: str,
+        generation: int,
+        session: str,
+        seq: int,
+        valid_for_s: float,
+        v: float,
+        w: float,
     ) -> bool:
         """Returns True when the sample changed the held command."""
         if not (math.isfinite(v) and math.isfinite(w) and math.isfinite(valid_for_s)):
@@ -109,10 +116,14 @@ class ManualIntake:
             return False
         cur = self.current
         if valid_for_s <= 0.0:
-            if session:
-                self._revoked[session] = None
-                while len(self._revoked) > self.TOMBSTONES:
-                    self._revoked.popitem(last=False)
+            # Tombstone the named session, and for a global stop (empty session) the one
+            # currently held (review Q10): a refresh of it that arrives after the stop must
+            # not revive it - the operator pressed Stop, a new press is required.
+            for sid in (session, cur.session if cur is not None and not session else ""):
+                if sid:
+                    self._revoked[sid] = None
+            while len(self._revoked) > self.TOMBSTONES:
+                self._revoked.popitem(last=False)
             if cur is None or not session or cur.session == session:
                 self.current = None
                 return True
@@ -152,6 +163,15 @@ class Permit:
     instance: str = ""
     generation: int = 0
     seq: int = 0
+    v_max: float = 0.0  # route caps carried with the permission (review Q04); 0 = none
+    w_max: float = 0.0
+
+
+def capped(x: float, limit: float) -> float:
+    """|x| clamped to `limit` when the limit is a positive finite number, else x unchanged."""
+    if math.isfinite(limit) and limit > 0.0:
+        return max(-limit, min(limit, x))
+    return x
 
 
 @dataclass
@@ -258,13 +278,17 @@ def select(
         return Selection(NONE, 0.0, 0.0, "AUTO, no motion permit", gen)
     if p.require_supervisor and (permit.instance != lease.instance or permit.generation != lease.generation):
         return Selection(NONE, 0.0, 0.0, "permit from another generation", gen, True)
+    # The route's authored limits travel with the permit and are enforced HERE, the last
+    # software arbitration point (review Q04): Nav2 keeps its configured speeds.
     if permit.source == FOLLOW:
         if follow is not None and now - follow.t <= p.cmd_timeout_s:
-            return Selection(FOLLOW, follow.v, follow.w, "follow", gen)
+            v, w = capped(follow.v, permit.v_max), capped(follow.w, permit.w_max)
+            return Selection(FOLLOW, v, w, "follow", gen)
         return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel", gen)
     if permit.source == ROTATE:
         if rotate is not None and now - rotate.t <= p.cmd_timeout_s:
-            return Selection(ROTATE, rotate.v, rotate.w, "rotate", gen)
+            v, w = capped(rotate.v, permit.v_max), capped(rotate.w, permit.w_max)
+            return Selection(ROTATE, v, w, "rotate", gen)
         return Selection(NONE, 0.0, 0.0, "permit ROTATE, no fresh /cmd_vel_rotate", gen)
     return Selection(NONE, 0.0, 0.0, "permit NONE", gen)
 

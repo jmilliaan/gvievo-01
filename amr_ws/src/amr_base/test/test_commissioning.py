@@ -34,8 +34,29 @@ def inputs(
     )
 
 
-def plan(job, spec=PLAN, cpr=CPR, now=0.5, auth=AUTH, lease=1, stopped=True):
-    return job.plan(spec, cpr, now=now, authority=auth, lease_allowed=lease, stopped=stopped)
+def plan(job, spec=PLAN, cpr=CPR, now=0.5, auth=AUTH, lease=1, stopped=True, mode="IDLE"):
+    ident = auth or AUTH  # a mode snapshot under the lease identity unless the test says otherwise
+    snap = None if mode is None else (ident[0], ident[1], mode) if isinstance(mode, str) else mode
+    return job.plan(spec, cpr, now=now, authority=auth, lease_allowed=lease, stopped=stopped, mode=snap)
+
+
+def test_q16_plan_admission_needs_a_fresh_idle_mode_under_the_lease_identity():
+    job = cj.Job()
+    for bad, msg in (
+        (None, "no fresh supervisor mode"),
+        ("MAPPING", "in MAPPING"),
+        ("TRANSITIONING", "in TRANSITIONING"),
+        ("FAULT", "in FAULT"),
+        ("NAVIGATION", "in NAVIGATION"),
+        (("sup-b", 3, "IDLE"), "disagree"),
+        (("sup-a", 4, "IDLE"), "disagree"),
+    ):
+        with pytest.raises(ValueError, match=msg):
+            plan(job, mode=bad)
+        assert job.phase == cj.IDLE
+    # an inhibited lease (allowed=0) in IDLE is still not a plan-time mover: admitted, no motion
+    plan(job, lease=0)
+    assert job.phase == cj.PREPARED and job.tick(inputs(1.0)) == (0.0, 0.0)
 
 
 def test_plan_upload_moves_nothing_and_needs_a_scale():

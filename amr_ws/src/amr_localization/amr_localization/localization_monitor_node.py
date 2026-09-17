@@ -177,7 +177,8 @@ class LocalizationMonitor(Node):
 
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         c = msg.pose.covariance
-        self.rd.on_amcl_pose(self._now(), c[0], c[7], c[35])
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # its scan's time (Q07)
+        self.rd.on_amcl_pose(self._now(), c[0], c[7], c[35], stamp if stamp > 0.0 else None)
 
     def _on_initialpose(self, _msg: PoseWithCovarianceStamped) -> None:
         self.rd.on_initialpose(self._now())

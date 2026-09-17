@@ -142,14 +142,25 @@ def test_r02_http_release_revokes_at_the_mux_after_refreshes(tmp_path):
 
     def source():
         lease = Lease(10.0, "inst", 3, 1, LEASE_MANUAL)
-        return select(10.0, None, None, None, None, Panel(10.0, True, False), Params(require_supervisor=True),
-                      lease, mux.current, Drives(10.0, True)).source
+        return select(
+            10.0,
+            None,
+            None,
+            None,
+            None,
+            Panel(10.0, True, False),
+            Params(require_supervisor=True),
+            lease,
+            mux.current,
+            Drives(10.0, True),
+        ).source
 
     r = c.post("/api/manual/press", json={"owner": "tab-A"}).json
     sid, ticket = r["session"], r["ticket"]
     for seq in range(1, 8):
-        ticket = c.post("/api/manual/refresh",
-                        json={"session": sid, "ticket": ticket, "seq": seq, "v": 0.2, "w": 0}).json["ticket"]
+        ticket = c.post(
+            "/api/manual/refresh", json={"session": sid, "ticket": ticket, "seq": seq, "v": 0.2, "w": 0}
+        ).json["ticket"]
     refreshes = list(stub.published)
     for cmd in refreshes:
         deliver(cmd)

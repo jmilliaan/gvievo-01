@@ -24,3 +24,8 @@ def test_jogpad_release_before_press_response_never_refreshes_and_cells_light():
     assert out["hold_refreshes"] >= 1 and out["hold_active"], out
     assert out["refreshes_after_release"] == 0 and out["release_cleared"], out
     assert out["stop_sent"] and out["stop_flash"] and out["stop_flash_cleared"], out
+    # Q09: focus into an editable control releases a held key (accepted or pending); Escape works there
+    assert out["key_hold_refreshes"] >= 1, out
+    assert out["refreshes_after_focus_change"] == 0 and out["released_on_focus"], out
+    assert not out["press_while_typing"] and out["escape_in_field_stops"], out
+    assert out["refreshes_after_focus_while_pending"] == 0, out

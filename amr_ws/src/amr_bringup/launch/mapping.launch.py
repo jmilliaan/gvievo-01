@@ -3,8 +3,9 @@
 sim:=true   base.launch.py real:=false with scan_synth against the sim_factory world
 sim:=false  base.launch.py real:=true (drive_node on can0, panel, nanoScan3)
 
-Compatible wrapper for the tests and the bench; the supervised service starts
-the same layers itself (unified plan §3.1).
+Diagnostics and simulation-test entry point only (review Q18): without the
+supervisor the web pages have no lease or mode, so their jog/survey controls are
+refused; use the ROS services. Interactive operation is amr.service (§3.1).
 """
 
 import os

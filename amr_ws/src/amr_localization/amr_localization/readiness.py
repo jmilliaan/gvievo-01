@@ -86,8 +86,19 @@ class Readiness:
         self._clear_evidence()
         self._initial_t = t
 
-    def on_amcl_pose(self, t: float, cov_xx: float, cov_yy: float, cov_yaw: float) -> None:
-        self.cov, self.cov_t = (cov_xx, cov_yy, cov_yaw), t
+    def on_amcl_pose(
+        self, t: float, cov_xx: float, cov_yy: float, cov_yaw: float, stamp: float | None = None
+    ) -> None:
+        """Latest AMCL covariance. A sample stamped before the current initial pose belongs to
+        an earlier attempt and is ignored; a non-finite or negative covariance is not evidence
+        of anything and replaces the held one with "unknown" (review Q07)."""
+        if self._initial_t is not None and (stamp if stamp is not None else t) < self._initial_t:
+            return
+        vals = (cov_xx, cov_yy, cov_yaw)
+        if not all(math.isfinite(v) and v >= 0.0 for v in vals):
+            self.cov, self.cov_t = None, None
+            return
+        self.cov, self.cov_t = vals, t
 
     def on_scan_match(self, t: float, match: float, long: float, stamp: float | None = None) -> None:
         """Latest scan against the map at the estimated pose.
@@ -180,8 +191,14 @@ class Readiness:
         amcl_fresh = self.cov_t is not None and t - self.cov_t <= self.limits.amcl_age_max_s
 
         if self.state == READY:
+            # READY is held on continuing evidence (Q07): the raw streams AND the independent
+            # scan-vs-map comparison must keep arriving. AMCL itself may legitimately go quiet
+            # while stationary, so its age is not a READY condition - the scan check is.
+            match_stale = self.scan_match_t is None or t - self.scan_match_t > self.limits.match_age_max_s
             if stale:
                 self._lose("stale: " + ", ".join(stale))
+            elif match_stale:
+                self._lose("scan-consistency check against the map stopped (gate or transform failure)")
             elif not cov_ok:
                 # A single wide sample during a turn is a transient; sustained growth is a loss.
                 if self._cov_bad_since is None:

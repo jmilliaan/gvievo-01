@@ -149,3 +149,51 @@ def test_pendant_disabled_in_profile_publishes_nothing():
     f = _settle(ad, _pdi(fwd=True))
     assert f.valid and not any(f.pendant)
     assert "pendant" not in (f.changed or "")
+
+
+# ---- coincidence guard (2026-09-17 phantom MANUAL+FWD) ----
+
+
+def _cdi(auto, fwd=False):
+    bits = _di(auto=auto)
+    bits[F] = fwd
+    return bits
+
+
+def test_selector_and_pendant_changing_together_are_withheld_and_revert_harmlessly():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=30)
+    f = _settle(ad, _cdi(auto=True))
+    assert f.mode_auto and not any(f.pendant)
+    # the glitch: MANUAL and FWD land in the same scan, hold for 20 scans, then revert
+    f = _settle(ad, _cdi(auto=False, fwd=True))
+    assert f.mode_auto and not any(f.pendant) and "suspect" in f.changed
+    for _ in range(18):
+        f = ad.tick(_snap(_cdi(auto=False, fwd=True)))
+        assert f.mode_auto and not any(f.pendant)  # nothing reaches the executor or the mux
+    f = _settle(ad, _cdi(auto=True))
+    assert f.mode_auto and not any(f.pendant) and "cleared" in f.changed
+    assert "selector" not in f.changed  # no MANUAL transition was ever published
+
+
+def test_a_persisting_coincidence_is_accepted_after_the_hold():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=10)
+    _settle(ad, _cdi(auto=True))
+    f = _settle(ad, _cdi(auto=False, fwd=True))
+    assert f.mode_auto
+    for _ in range(8):  # detection counted 1; the change is believed on the hold_scans-th scan
+        f = ad.tick(_snap(_cdi(auto=False, fwd=True)))
+    assert f.mode_auto  # still withheld
+    f = ad.tick(_snap(_cdi(auto=False, fwd=True)))
+    assert not f.mode_auto and f.pendant[0] and "accepted" in f.changed and "selector MANUAL" in f.changed
+
+
+def test_separate_selector_and_pendant_changes_are_immediate():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=30)
+    _settle(ad, _cdi(auto=True))
+    f = _settle(ad, _cdi(auto=False))  # key first
+    assert not f.mode_auto and "selector MANUAL" in f.changed
+    f = _settle(ad, _cdi(auto=False, fwd=True))  # then the pendant: a hand, not a glitch
+    assert f.pendant[0] and "pendant FWD" in f.changed
+    # and back to AUTO with the pendant released together (a normal end of jogging) is immediate too
+    f = _settle(ad, _cdi(auto=True))
+    assert f.mode_auto and not any(f.pendant)

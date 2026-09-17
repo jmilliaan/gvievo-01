@@ -4,8 +4,10 @@ sim:=true   base.launch.py real:=false with scan_synth (clutter optional)
 sim:=false  base.launch.py real:=true (drive_node on can0, panel, nanoScan3)
 
 The bundle is verified before anything starts (navigation_layer.launch.py).
-Mutually exclusive with mapping.launch.py. Compatible wrapper for the tests and
-the bench; the supervised service starts the same layers itself.
+Mutually exclusive with mapping.launch.py. Diagnostics and simulation-test entry
+point only (review Q18): without the supervisor the web pages have no lease, mode
+or active-map context, so their jog/survey/initial-pose/mission controls are
+refused. Interactive operation is amr.service. Drive here with ROS services.
 """
 
 import os

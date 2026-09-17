@@ -5,6 +5,7 @@ import math
 import threading
 from types import SimpleNamespace
 
+import pytest
 from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep
 from test_goal_attempts import Client, Handle, Result
 
@@ -38,10 +39,12 @@ def make_node(steps, passes=1):
     n.goals = ga.GoalAttempts(n._lock, n._now, n._on_goal_error)
     n.start_gate_m, n.start_gate_rad = 0.1, math.radians(5)
     n.w_eps, n.wheels_age, n.panel_age, n.loc_age = 0.02, 0.1, 0.2, 1.5
+    n.scan_age, n._scan_t = float("inf"), 100.0  # freshness is exercised where a test sets scan_age
     n.centre_drift_m, n.turn_tol, n.wrong_way = 0.05, math.radians(2), math.radians(5)
     n.entry_corr_max, n.clear_stable_s = math.radians(10), 1.0
     n.goal_accept_timeout, n.goal_cancel_timeout = 5.0, 5.0
     n.converge_m = 1.0
+    n.fp = SimpleNamespace(margin_m=0.20)
     n.odom_gap, n.paused_t = False, None
     n._odom_xy, n._odom_yaw_acc = (0.0, 0.0), 0.0
     loc = LocalizationState()
@@ -217,3 +220,128 @@ def test_straight_stops_itself_at_the_endpoint_when_the_goal_checker_misses():
     n.phase = ren.PHASE_GOAL
     n._execute(n.clock[0])
     assert n.fsm.state == fsm.FAULT and "passed the endpoint" in n.fsm.reason
+
+
+def test_cross_track_grace_is_independent_of_the_validated_margin():
+    """Q05's clamp was dropped 2026-09-17 with the footprint margin at one cell (0.05 m)."""
+    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (3.0, 0.0, 0.0), length_m=3.0)
+    n = make_node([st])
+    n.fp = SimpleNamespace(margin_m=0.05)
+    n.fsm.start(True, True)
+    c = Client()
+    n.goals.send(c, "g", n.fsm.run_id, 0, 0)
+    c.sent[0][1].set_result(Handle())
+    n.phase = ren.PHASE_GOAL
+    assert n._cross_track_allowed(0.5) == 0.20 and n._cross_track_allowed(2.0) == 0.10
+    n._pose = lambda: (0.5, 0.15, 0.0)  # inside the grace band although beyond the validated clearance
+    n._execute(n.clock[0])
+    assert n.fsm.state != fsm.FAULT
+    n._pose = lambda: (2.0, 0.15, 0.0)  # past the grace distance: the route's own limit applies
+    n._execute(n.clock[0])
+    assert n.fsm.state == fsm.FAULT and "cross-track" in n.fsm.reason
+
+
+def test_q06_acknowledged_fault_keeps_the_unresolved_goal_barrier_across_a_new_run():
+    n = make_node([rotate(1.0)])
+    n.fsm.start(True, True)
+    c = Client()
+    n.goals.send(c, "g", n.fsm.run_id, 0, 0)
+    n.phase = ren.PHASE_GOAL
+    n.fsm.pause()
+    n._interrupt("paused")
+    n.fsm.prepare_resume(True, "")
+    n._start_edge()
+    n.clock[0] += 6.0  # the cancellation bound passes with the goal's acceptance still pending
+    n._loc_t = n._panel_t = n.clock[0]
+    n._execute(n.clock[0])
+    assert n.fsm.state == fsm.FAULT and "not terminated" in n.fsm.reason
+    assert n.fsm.ack() if hasattr(n.fsm, "ack") else n.fsm.acknowledge()
+    assert n.fsm.load("m2", 1, 1)
+    assert "never reported terminal" in (n._prereqs() or "")  # READY cannot become a run
+    h = Handle()
+    c.sent[0][1].set_result(h)  # the old server finally answers: cancelled, then terminal
+    h.result_fut.set_result(Result(5))
+    n.wheels(0.0)  # fresh feedback again: only the barrier was in the way
+    assert n._prereqs() is None
+
+
+def test_q19_physical_reset_acknowledges_a_fault_at_rest_and_nothing_else():
+    n = make_node([rotate(1.0)])
+    n.fsm.start(True, True)
+    n._fault("test fault")
+    assert n.fsm.state == fsm.FAULT
+    n.goals.unresolved.add(ga.Attempt("old", 0, 0, 1))  # a Q06 barrier Reset must not clear
+    n.wheels(0.5)  # rolling: ignored
+    n._reset_edge()
+    assert n.fsm.state == fsm.FAULT
+    n.wheels(0.0)
+    n._reset_edge()
+    assert n.fsm.state == fsm.IDLE and n.goals.barrier()  # acknowledged; barrier intact
+    n._reset_edge()  # a repeated edge outside FAULT does nothing
+    assert n.fsm.state == fsm.IDLE
+
+
+# ---- Part B2: the FollowPath goal sits goal_overshoot_m past the endpoint ----
+
+
+def _clock_stub(n):
+    class T:
+        def to_msg(self):
+            from builtin_interfaces.msg import Time
+
+            return Time()
+
+    class C:
+        def now(self):
+            return T()
+
+    n.get_clock = lambda: C()
+
+
+def test_b2_follow_path_ends_goal_overshoot_past_the_endpoint_clamped_to_tolerance():
+    samples = [(x / 10, 0.0, 0.0) for x in range(0, 21)]  # 0..2.0 m every 0.1 m
+    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), length_m=2.0, samples=samples)
+    n = make_node([st])
+    _clock_stub(n)
+    n.goal_overshoot_m = 0.045
+    path = n._follow_path(st, 0.0)
+    last = path.poses[-1].pose.position
+    assert (round(last.x, 3), round(last.y, 3)) == (2.045, 0.0)
+    assert round(path.poses[-2].pose.position.x, 3) == 2.0  # the true endpoint is still on the path
+    n.goal_overshoot_m = 0.0  # rollback: the endpoint is the goal
+    assert round(n._follow_path(st, 0.0).poses[-1].pose.position.x, 3) == 2.0
+    n.goal_overshoot_m = 0.3  # clamped to position_tolerance_m (0.05)
+    assert round(n._follow_path(st, 0.0).poses[-1].pose.position.x, 3) == 2.05
+    # a resume from 1.0 m along keeps the same goal
+    n.goal_overshoot_m = 0.045
+    p = n._follow_path(st, 1.0)
+    assert round(p.poses[0].pose.position.x, 1) == 0.9 and round(p.poses[-1].pose.position.x, 3) == 2.045
+    # heading is honoured: a step along +y overshoots in +y
+    st2 = CompiledStep(
+        "s2",
+        STRAIGHT,
+        (0.0, 0.0, math.pi / 2),
+        (0.0, 1.0, math.pi / 2),
+        length_m=1.0,
+        samples=[(0.0, y / 10, math.pi / 2) for y in range(0, 11)],
+    )
+    last = n._follow_path(st2, 0.0).poses[-1].pose.position
+    assert (round(last.x, 3), round(last.y, 3)) == (0.0, 1.045)
+
+
+def test_permit_carries_the_loaded_route_limits():
+    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), length_m=2.0)
+    n = make_node([st])
+    _clock_stub(n)
+    n.route.limits.linear_mps, n.route.limits.angular_rad_s = 0.40, 0.24
+    n.generation, n._lease_instance, n._permit_seq = 3, "sup", 0
+    published = []
+    n._permit_pub = SimpleNamespace(publish=published.append)
+    n.fsm.start(True, True)
+    n.phase = ren.PHASE_GOAL
+    n._publish_permit()
+    m = published[-1]
+    assert m.enabled and (m.v_max, m.w_max) == (pytest.approx(0.40), pytest.approx(0.24))
+    n.route.limits.linear_mps = 0.15
+    n._publish_permit()
+    assert published[-1].v_max == pytest.approx(0.15)

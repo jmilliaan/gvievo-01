@@ -48,3 +48,36 @@ def test_auto_needs_a_fresh_enabled_permit_matching_the_source():
 def test_teleop_command_is_ignored_under_auto_even_with_permit():
     s = select(10.0, Stamped(10.0, 0.5, 0.0), Stamped(10.0, 0.3, 0.0), None, Permit(10.0, FOLLOW, True), AUTO)
     assert (s.source, s.v) == (FOLLOW, 0.3)
+
+
+def test_q04_route_caps_in_the_permit_clamp_the_permitted_source():
+    from amr_base.gating import capped
+
+    follow = Stamped(10.0, 0.30, 0.20)
+    rotate = Stamped(10.0, 0.0, 0.30)
+    s = select(10.0, None, follow, rotate, Permit(10.0, FOLLOW, True, v_max=0.10, w_max=0.15), AUTO)
+    assert (s.source, s.v, s.w) == (FOLLOW, 0.10, 0.15)
+    s = select(10.0, None, follow, rotate, Permit(10.0, ROTATE, True, v_max=0.10, w_max=0.15), AUTO)
+    assert (s.source, s.v, s.w) == (ROTATE, 0.0, 0.15)
+    # no cap (0), a negative or nonfinite cap: the command passes unchanged (hardware limits apply later)
+    for bad in (0.0, -1.0, float("nan"), float("inf")):
+        assert capped(0.3, bad) == 0.3
+    s = select(10.0, None, follow, rotate, Permit(10.0, FOLLOW, True), AUTO)
+    assert (s.v, s.w) == (0.30, 0.20)
+    # a reversed command is clamped symmetrically
+    assert capped(-0.3, 0.1) == -0.1
+
+
+def test_autonomous_caps_040_024_and_a_slower_route_wins():
+    from amr_base.gating import capped
+
+    fast = Stamped(10.0, 0.9, 0.9)
+    s = select(10.0, None, fast, fast, Permit(10.0, FOLLOW, True, v_max=0.40, w_max=0.24), AUTO)
+    assert (s.v, s.w) == (0.40, 0.24)
+    s = select(
+        10.0, None, Stamped(10.0, -0.9, -0.9), fast, Permit(10.0, FOLLOW, True, v_max=0.40, w_max=0.24), AUTO
+    )
+    assert (s.v, s.w) == (-0.40, -0.24)  # sign kept
+    s = select(10.0, None, fast, fast, Permit(10.0, FOLLOW, True, v_max=0.15, w_max=0.10), AUTO)
+    assert (s.v, s.w) == (0.15, 0.10)  # a route authored slower than the vehicle cap stays slower
+    assert capped(0.9, 0.24) == 0.24 and capped(-0.9, 0.24) == -0.24

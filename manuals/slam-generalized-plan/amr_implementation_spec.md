@@ -214,7 +214,7 @@ Run map server, AMCL, local costmap, controller and Spin under lifecycle managem
 
 - Compile each line into a sampled `nav_msgs/Path` in `map`, initial spacing 0.05 m, with the segment's forward heading.
 - One `FollowPath` goal per line; explicit RPP/goal-checker IDs. Disable reversing and implicit rotate-to-heading behavior; no smoothing across corners. Small steering corrections to track the line are expected.
-- Initial route speed cap 0.30 m/s, reducible per route. Increase only after physical tracking/stopping validation.
+- Route speed cap 0.40 m/s (initially 0.30; raised 2026-09-17 after vehicle tracking/stopping runs), reducible per route.
 - Initial endpoint tolerance 0.05 m / 2°; maximum cross-track error 0.10 m plus route-specific clearance checks. Passing the endpoint outside tolerance faults; it does not authorize reversing/circling back.
 - Verify endpoint and stopped feedback for 0.3 s before advancing; an action success alone is insufficient.
 
@@ -222,7 +222,7 @@ Run map server, AMCL, local costmap, controller and Spin under lifecycle managem
 
 - Allowed magnitudes: **45°, 90°, 180°, 270°**, with independent **CW/CCW** choice, viewed from above. ROS positive yaw is CCW.
 - Store direction and full magnitude. **CW 270° remains CW 270°**, not CCW 90° merely because the final orientation matches.
-- Send signed relative Spin angle and a bounded allowance derived from angle/speed/ramp. Initial cap 0.30 rad/s; set minimum spin speed low enough for the stopping tolerance.
+- Send signed relative Spin angle and a bounded allowance derived from angle/speed/ramp. Cap 0.24 rad/s (initially 0.30; lowered 2026-09-17); set minimum spin speed low enough for the stopping tolerance.
 - Track unwrapped accumulated yaw in continuous `odom`; independently verify direction, total travel and final map heading. Do not use shortest-angle-to-goal as progress. Humble exposes relative Spin goals and traveled-angle feedback ([action](https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_msgs/action/Spin.action), [implementation](https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_behaviors/plugins/spin.cpp)).
 - Translation stops before rotation. Initial bounds: travel/final heading within 2°, centre drift within 0.05 m, stopped for 0.3 s. Out-of-tolerance results require review, not an unrequested corrective turn.
 - Pausing retains completed angular travel. Resume only the remaining signed angle after validating continuity; never repeat a whole 270° turn after partial execution.
@@ -289,8 +289,8 @@ map: {id: line_section, revision: 1, sha256: "<saved-map-bundle-hash>"}
 frame_id: map
 start: {x_m: 2.0, y_m: 2.0, yaw_deg: 0.0}
 limits:
-  linear_mps: 0.30
-  angular_rad_s: 0.30
+  linear_mps: 0.40
+  angular_rad_s: 0.24
   position_tolerance_m: 0.05
   heading_tolerance_deg: 2.0
   cross_track_limit_m: 0.10

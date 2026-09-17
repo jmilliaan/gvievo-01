@@ -193,9 +193,17 @@ def test_keepout_mask_is_honoured(env):
     ko = Grid(np.zeros(g.data.shape, dtype=np.int8), g.meta)
     r0, c0 = g.world_to_cell(6.0, 0.0)
     ko.data[r0 - 2 : r0 + 2, c0 - 2 : c0 + 2] = 100
+    # a keepout is navigation content: it goes into a NEW revision whose identity covers it (Q14)
+    write(ko, f"{maps}/keepout")  # the yaml names its image by stem: keepout.pgm, as listed
+    _, rev = mb.derive_revision(
+        maps, "sim_factory", 1, {"keepout.yaml": f"{maps}/keepout.yaml", "keepout.pgm": f"{maps}/keepout.pgm"}
+    )
+    r = client.post(f"/api/maps/sim_factory/{rev}/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
+    assert r.status_code == 422 and any("keepout" in i["message"] for i in r.json["issues"])
+    # dropped into the published revision unlisted, it is not a usable revision at all
     write(ko, f"{rev_dir}/keepout")
     r = client.post("/api/maps/sim_factory/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 422 and any("keepout" in i["message"] for i in r.json["issues"])
+    assert r.status_code == 404
 
 
 def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
@@ -403,8 +411,18 @@ def test_pages_fonts_and_style_guards(env):
     import re  # noqa: PLC0415
 
     client = env[0]
-    for page in ("/status", "/manual", "/maps", "/editor", "/run", "/monitor", "/io", "/alarms", "/params",
-                 "/commissioning"):
+    for page in (
+        "/status",
+        "/manual",
+        "/maps",
+        "/editor",
+        "/run",
+        "/monitor",
+        "/io",
+        "/alarms",
+        "/params",
+        "/commissioning",
+    ):
         r = client.get(page)
         assert r.status_code == 200, page
         assert b'id="telemetry"' in r.data and b"/static/amr.css" in r.data, page
@@ -433,8 +451,18 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
     client = env[0]
     static = pathlib.Path(__file__).resolve().parents[1] / "amr_web" / "static"
     pat = re.compile(r"""(?:\$|getElementById|tiles?)\(\s*'([A-Za-z][\w-]*)'""")
-    for page in ("/status", "/manual", "/maps", "/editor", "/run", "/monitor", "/io", "/alarms", "/params",
-                 "/commissioning"):
+    for page in (
+        "/status",
+        "/manual",
+        "/maps",
+        "/editor",
+        "/run",
+        "/monitor",
+        "/io",
+        "/alarms",
+        "/params",
+        "/commissioning",
+    ):
         html = client.get(page).data.decode()
         ids = set(re.findall(r'\bid="([^"]+)"', html))
         code = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
@@ -473,3 +501,21 @@ def test_wifi_endpoint(env):
     assert r.status_code == 200
     body = r.get_json()
     assert set(body) >= {"iface", "connected", "ssid", "dbm", "bars"}
+
+
+def test_route_without_limits_is_stored_at_040_024_and_an_explicit_030_survives(env):
+    client, stub, maps, rev_dir, manifest = env
+    body = route_payload([S("s1", 3.0, 0.0)], route_id="dflt")
+    del body["limits"]
+    r = client.post("/api/maps/sim_factory/1/routes/save", json=body)
+    assert r.status_code == 200
+    r = client.get("/api/maps/sim_factory/1/routes/dflt/1")
+    assert (
+        r.json["route"]["limits"]["linear_mps"] == 0.40 and r.json["route"]["limits"]["angular_rad_s"] == 0.24
+    )
+    r = client.post(
+        "/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 3.0, 0.0)], route_id="slow")
+    )
+    assert r.status_code == 200
+    r = client.get("/api/maps/sim_factory/1/routes/slow/1")
+    assert r.json["route"]["limits"]["linear_mps"] == 0.3  # the stored value, not the default

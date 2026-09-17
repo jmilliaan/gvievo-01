@@ -82,5 +82,31 @@ const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh'
   out.stop_flash = root.buttons[4].classList.has('active');
   await runTimers(1);
   out.stop_flash_cleared = !root.buttons[4].classList.has('active');
+  // 5. Q09: a held key, then focus moves into a text field: no further refresh, and Escape
+  //    pressed INSIDE the field still stops
+  calls.length = 0;
+  const key = (k, extra) => Object.assign({ key: k, repeat: false, preventDefault() {} }, extra || {});
+  doc.fire('keydown', key('w'));
+  pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(2);
+  out.key_hold_refreshes = nonzeroRefreshes();
+  const input = el('INPUT'); doc.activeElement = input;
+  doc.fire('focusin', { target: input });
+  const atFocus = nonzeroRefreshes(); await runTimers(3);
+  out.refreshes_after_focus_change = nonzeroRefreshes() - atFocus;
+  out.released_on_focus = calls.some(c => c.url === '/api/manual/release');
+  // a fresh press while typing is ignored, Escape in the field stops
+  calls.length = 0;
+  doc.fire('keydown', key('w')); await flush(); await runTimers(2);
+  out.press_while_typing = calls.some(c => c.url === '/api/manual/press');
+  doc.fire('keydown', key('Escape')); await flush();
+  out.escape_in_field_stops = calls.some(c => c.url === '/api/stop');
+  doc.activeElement = null;
+  // 6. Q09: focus change while the press response is still pending
+  calls.length = 0;
+  doc.fire('keydown', key('w'));
+  doc.activeElement = input; doc.fire('focusin', { target: input });
+  pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
+  out.refreshes_after_focus_while_pending = nonzeroRefreshes();
+  doc.activeElement = null;
   console.log(JSON.stringify(out));
 })();

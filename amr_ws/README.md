@@ -39,8 +39,8 @@ from the same overlay, or custom `amr_interfaces` messages will not decode.
 | `amr_bringup navigation_layer.launch.py map_id:=… revision:=N [generation:=N] [autostart:=false]` | **mode layer**: verified bundle → map_server, AMCL, localization_monitor, controller, behaviors, lifecycle managers, route_executor. One map = one instance |
 | `amr_bringup drivers.launch.py [lidar] [pc_loss_ms] [feedback_hz] [gyro_sign] [panel:=real\|fake]` | bench wrapper = `base real:=true` (+ Foxglove). `sudo systemctl stop agv_controller` first; drive_node/panel_node refuse otherwise |
 | `amr_bringup sim.launch.py [slip_noise_std] [scan_synth] [foxglove]` | wrapper = `base real:=false` (+ Foxglove); touches no hardware |
-| `amr_bringup mapping.launch.py [sim:=true] [maps_dir] [clutter_count] [foxglove]` | standalone survey stack = base + web + mapping_layer |
-| `amr_bringup nav.launch.py [sim:=true] [map_id] [revision] [maps_dir] [clutter_count] [web] [foxglove]` | standalone runtime stack = base + web + navigation_layer. Mutually exclusive with mapping |
+| `amr_bringup mapping.launch.py [sim:=true] [maps_dir] [clutter_count] [foxglove]` | **diagnostics / sim tests only**: base + web + mapping_layer without the supervisor. The web pages need the supervisor's lease and mode (jog, survey start, initial pose and mission controls are refused here); drive with the ROS services and teleop shown below |
+| `amr_bringup nav.launch.py [sim:=true] [map_id] [revision] [maps_dir] [clutter_count] [web] [foxglove]` | **diagnostics / sim tests only**: base + web + navigation_layer without the supervisor, same limits. Mutually exclusive with mapping. Interactive operation is `amr.service` (the supervisor) only |
 | `amr_bringup lidar.launch.py` | scanner commissioning: `scanner.launch.py` + URDF (+ Foxglove) |
 | `amr_description description.launch.py [laser_x:=…]` | robot_state_publisher only |
 

@@ -68,6 +68,7 @@ def _walk(entities, context, out: dict, depth=0):
             exe = e.node_executable
             exe = "".join(s.perform(context) for s in exe) if isinstance(exe, list) else str(exe)
             out.setdefault("exes", []).append(exe)
+            out.setdefault("params", {})[exe] = list(e._Node__parameters or [])
             continue
         if isinstance(e, IncludeLaunchDescription):
             raw = e.launch_description_source._LaunchDescriptionSource__location  # unexpanded substitutions
@@ -170,3 +171,32 @@ def test_wrappers_compose_base_web_and_exactly_one_layer(tmp_path):
 def test_hardware_wrapper_refuses_sim_domain():
     with pytest.raises(RuntimeError, match="vehicle"):
         compose("drivers.launch.py")
+
+
+def test_q20_custom_footprint_reaches_the_costmap_node_through_a_params_file(tmp_path, monkeypatch):
+    """An inline {"local_costmap.local_costmap.footprint": ...} dict would have set a parameter of
+    that literal name on controller_server; the costmap node only sees a node-scoped file."""
+    import yaml  # noqa: PLC0415
+    from amr_mission.fixtures import write_world_as_bundle  # noqa: PLC0415
+
+    write_world_as_bundle(str(tmp_path))
+    fp = tmp_path / "fp.yaml"
+    fp.write_text(
+        "polygon:\n  - [-0.2, -0.1]\n  - [0.7, -0.1]\n  - [0.7, 0.1]\n  - [-0.2, 0.1]\nmargin_m: 0.05\n"
+    )
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path / "state"))
+    c = compose(
+        "navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory", footprint_yaml=str(fp)
+    )
+    from launch_ros.parameter_descriptions import ParameterFile  # noqa: PLC0415
+
+    params = c["params"]["controller_server"]
+    # no inline dict: nothing can land on the wrong node
+    assert all(isinstance(p, ParameterFile) for p in params)
+    files = ["".join(t.text for t in p._ParameterFile__param_file) for p in params]
+    scoped = [f for f in files if "costmap_footprint" in f]
+    assert len(scoped) == 1
+    doc = yaml.safe_load(open(scoped[0]))
+    assert doc["local_costmap"]["local_costmap"]["ros__parameters"]["footprint"] == (
+        "[[-0.200, -0.100], [0.700, -0.100], [0.700, 0.100], [-0.200, 0.100]]"
+    )

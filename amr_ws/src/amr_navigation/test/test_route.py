@@ -42,7 +42,7 @@ def test_all_eight_turns_keep_full_magnitude(direction, angle):
     expected = math.radians(angle) * (1 if direction == "ccw" else -1)
     assert st.signed_angle_rad == pytest.approx(expected)
     assert st.end[2] == pytest.approx(math.atan2(math.sin(expected), math.cos(expected)))
-    assert st.time_allowance_s > abs(expected) / 0.30
+    assert st.time_allowance_s > abs(expected) / Limits().angular_rad_s  # the route's own cap (0.24)
 
 
 def test_cw_270_is_not_ccw_90():
@@ -512,3 +512,21 @@ def test_r23_existing_revision_is_never_replaced(tmp_path):
     with pytest.raises(store.StoreConflict):
         store._commit_new(path, b"other")
     assert b"other" not in open(path, "rb").read()
+
+
+# ---- autonomous defaults 0.40 / 0.24 (2026-09-17) ----
+
+
+def test_limits_default_to_040_and_024_and_explicit_values_survive():
+    d = good_dict()
+    del d["limits"]
+    r = Route.from_dict(d)
+    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.40, 0.24)
+    c = compile_route(r)
+    assert c.steps[1].time_allowance_s > math.radians(270) / 0.24
+    d = good_dict()
+    d["limits"] = {"linear_mps": 0.15, "angular_rad_s": 0.10}
+    r = Route.from_dict(d)
+    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.15, 0.10)
+    assert compile_route(r).steps[1].time_allowance_s > math.radians(270) / 0.10
+    assert r.to_dict()["limits"]["linear_mps"] == 0.15  # never rewritten

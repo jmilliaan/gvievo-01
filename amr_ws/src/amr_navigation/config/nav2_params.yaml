@@ -2,7 +2,7 @@
 # behavior_server with Spin for directed turns, a rolling local costmap. No planner,
 # no BT navigator, no smoother: nothing here can insert a path the operator did not draw.
 #
-# The local costmap footprint is injected by nav.launch.py from
+# The local costmap footprint is overridden by navigation_layer.launch.py (a node-scoped params file) from
 # amr_description/config/footprint.yaml (single source of truth).
 controller_server:
   ros__parameters:
@@ -10,7 +10,7 @@ controller_server:
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
-    min_theta_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.03   # Part B1: corrections under 0.03 rad/s are noise at crawl speed; rollback 0.001
     failure_tolerance: 0.3
     progress_checker_plugin: progress_checker
     goal_checker_plugins: [precise]
@@ -21,17 +21,23 @@ controller_server:
       movement_time_allowance: 10.0
     precise:
       plugin: nav2_controller::SimpleGoalChecker
-      xy_goal_tolerance: 0.025         # stop CENTRED on the endpoint: the checker fires the moment it is
-                                       # inside, so 0.05 stops ~4.5 cm short every time (spec §5.2 wants +/-0.05)
+      xy_goal_tolerance: 0.05          # spec §5.2 +/-0.05. The executor aims the path goal_overshoot_m PAST the
+                                       # endpoint (Part B2), so the checker fires just before the true end instead
+                                       # of hunting a 2.5 cm circle it cannot see; rollback 0.025 with overshoot 0
       yaw_goal_tolerance: 0.035
       stateful: true
     FollowPath:
       plugin: nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
-      desired_linear_vel: 0.30         # route limit cap; a route may lower it (executor scales the path? no: executor refuses higher)
-      lookahead_dist: 0.6
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.9
-      lookahead_time: 1.5
+      desired_linear_vel: 0.40         # the vehicle-wide cap (0.40 since 2026-09-17). A route's lower linear_mps/angular_rad_s ride in the
+                                       # MotionPermit and the mux clamps the output to them (review Q04)
+      # Pure pursuit steers with curvature 2*offset/L^2: at the 0.3 m minimum lookahead a normal
+      # 5 cm start offset was a 1.1 rad/m yank to the right at the first metre (vehicle
+      # 2026-09-17). Routes are straight lines with turns in place, so a long lookahead costs
+      # nothing (no corners to cut): 0.8 m makes the same offset a 0.16 rad/m drift-in.
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.8
+      max_lookahead_dist: 1.2
+      lookahead_time: 2.5
       use_velocity_scaled_lookahead_dist: true
       transform_tolerance: 0.2
       min_approach_linear_velocity: 0.05
@@ -45,7 +51,7 @@ controller_server:
       use_rotate_to_heading: false      # the executor rotates explicitly with Spin
       allow_reversing: false
       rotate_to_heading_angular_vel: 0.3
-      max_angular_accel: 1.0
+      max_angular_accel: 0.5           # Part B1: halves how fast a correction builds; mux alpha_max stays the hard limit; rollback 1.0
       max_robot_pose_search_dist: 2.0
       use_interpolation: true
 
@@ -62,7 +68,7 @@ local_costmap:
       update_frequency: 5.0
       publish_frequency: 2.0
       transform_tolerance: 0.3
-      footprint: "[[-0.5, -0.35], [1.1, -0.35], [1.1, 0.35], [-0.5, 0.35]]"   # overridden at launch
+      footprint: "[[-0.5, -0.35], [1.1, -0.35], [1.1, 0.35], [-0.5, 0.35]]"   # overridden at launch (footprint.yaml)
       # No static layer: it needs the map frame before an initial pose exists and only
       # duplicates what the scan already shows; clearance against the saved map is
       # validated by the executor/route validator, not by the costmap.
@@ -106,9 +112,12 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.30           # spec §5.3 initial cap
+    max_rotational_vel: 0.24           # autonomous turn cap (spec §5.3, 0.24 since 2026-09-17)
     min_rotational_vel: 0.05           # low enough for the 2 deg stopping tolerance
-    rotational_acc_lim: 0.5
+    # Spin's own stopping profile is w = sqrt(2 * acc_lim * remaining): at 0.5 it still asks
+    # 0.19 rad/s with 2 deg to go and the vehicle coasts past. At 0.12 it is down to 0.09
+    # rad/s there and decelerates from 0.24 over the last 14 deg; residual < 0.3 deg.
+    rotational_acc_lim: 0.12
 
 lifecycle_manager_navigation:
   ros__parameters:

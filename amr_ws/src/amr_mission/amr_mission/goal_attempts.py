@@ -48,6 +48,12 @@ class GoalAttempts:
         self.sent_t: float | None = None
         # sent, not yet known terminal -> sent time; once revoked, the revoke time
         self.outstanding: dict[Attempt, float] = {}
+        # Attempts the executor stopped WAITING for without terminal evidence (review Q06):
+        # a cancellation that never reported, a request or result whose transport failed.
+        # Their goal may still be executing on the action server, so they stay a barrier
+        # against new motion until a late terminal callback resolves them or the layer
+        # (server + this node) is replaced. Operator acknowledgement never clears them.
+        self.unresolved: set[Attempt] = set()
 
     # ---- issuing / revoking ------------------------------------------------------------
 
@@ -84,11 +90,23 @@ class GoalAttempts:
         return {a: t for a, t in self.outstanding.items() if a != self.current}
 
     def forget_obsolete(self) -> list[Attempt]:
-        """Give up waiting for obsolete attempts (after a bounded fault); late callbacks still cancel."""
+        """Give up WAITING for obsolete attempts (after a bounded fault); they become unresolved,
+        which still bars new motion (Q06). Late callbacks still cancel and can resolve them."""
         gone = [a for a in self.outstanding if a != self.current]
         for a in gone:
             self.outstanding.pop(a, None)
+            self.unresolved.add(a)
         return gone
+
+    def barrier(self) -> str | None:
+        """Why new motion may not start: an attempt whose outcome is unknown."""
+        if self.unresolved:
+            a = min(self.unresolved, key=lambda x: x.attempt)
+            return (
+                f"action goal of run {a.run_id} step {a.step_index} never reported terminal; "
+                "its server may still hold it - restart navigation (Stop, then Start)"
+            )
+        return None
 
     # ---- callbacks (executor threads) -----------------------------------------------------
 
@@ -99,14 +117,22 @@ class GoalAttempts:
             self._log(f"cancel of attempt {a} raised: {e}")
 
     def _terminal(self, a: Attempt) -> None:
+        """The server said something final (rejected, or a result status): no longer a barrier."""
         self.outstanding.pop(a, None)
+        self.unresolved.discard(a)
+
+    def _unknown(self, a: Attempt, why: str) -> None:
+        """Transport failed: the server may or may not hold the goal. Stop waiting, keep the barrier."""
+        self.outstanding.pop(a, None)
+        self.unresolved.add(a)
+        self._log(f"attempt {a} outcome unknown: {why}")
 
     def _response(self, a: Attempt, fut) -> None:
         with self._lock:
             try:
                 handle = fut.result()
             except Exception as e:  # noqa: BLE001
-                self._terminal(a)
+                self._unknown(a, f"goal request failed: {e}")
                 if self.is_current(a):
                     self.current = None
                     self._on_error(a, f"action goal request failed: {e}")
@@ -122,19 +148,27 @@ class GoalAttempts:
                 self._cancel(a, handle)
             else:
                 self.handle = handle
-            handle.get_result_async().add_done_callback(lambda f: self._result(a, f))
+            try:
+                handle.get_result_async().add_done_callback(lambda f: self._result(a, f))
+            except Exception as e:  # noqa: BLE001 - the goal is accepted and running, but we cannot watch it
+                self._unknown(a, f"result subscription failed: {e}")
+                if self.is_current(a):
+                    self.current, self.handle = None, None
+                    self._on_error(a, f"action result subscription failed: {e}")
 
     def _result(self, a: Attempt, fut) -> None:
         with self._lock:
-            self._terminal(a)
-            if not self.is_current(a):
-                self._log(f"ignoring result of obsolete goal {a}")
-                return
             try:
                 status = fut.result().status
             except Exception as e:  # noqa: BLE001
-                self.current, self.handle = None, None
-                self._on_error(a, f"action result failed: {e}")
+                self._unknown(a, f"result failed: {e}")
+                if self.is_current(a):
+                    self.current, self.handle = None, None
+                    self._on_error(a, f"action result failed: {e}")
+                return
+            self._terminal(a)
+            if not self.is_current(a):
+                self._log(f"ignoring result of obsolete goal {a}")
                 return
             self.result = {_STATUS_SUCCEEDED: SUCCEEDED, _STATUS_CANCELED: CANCELED}.get(status, ABORTED)
             self.handle = None

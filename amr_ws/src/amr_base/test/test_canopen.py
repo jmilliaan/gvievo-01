@@ -121,6 +121,10 @@ def test_decide_table():
     assert decide(FAULT, False, 0, 0, [], [], []).action == "disarm"
     assert decide(DISARMED, True, 10.0, 12.0, [], [], []).action == "none"  # backoff
     assert decide(DISARMED, True, 12.0, 12.0, [], [], []).action == "arm"
+    # Q02: owed cleanup is retried on the backoff and blocks arming, wanted or not
+    assert decide(DISARMED, True, 12.0, 12.0, [], [], [], cleanup_owed=True).action == "cleanup"
+    assert decide(DISARMED, False, 12.0, 12.0, [], [], [], cleanup_owed=True).action == "cleanup"
+    assert decide(DISARMED, True, 10.0, 12.0, [], [], [], cleanup_owed=True).action == "none"
     assert decide(ARMED, True, 0, 0, [], [], []).action == "none"
     assert decide(ARMED, True, 0, 0, [1], [], []).action == "fault"
     assert decide(ARMED, True, 0, 0, [], [], [2]).action == "fault"

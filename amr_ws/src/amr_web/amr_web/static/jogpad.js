@@ -107,15 +107,19 @@ function jogpad(root, opts) {
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, () => release(ev)));
   });
   const KEYS = { ArrowUp: 'f', ArrowDown: 'b', ArrowLeft: 'l', ArrowRight: 'r', w: 'f', s: 'b', a: 'l', d: 'r', W: 'f', S: 'b', A: 'l', D: 'r' };
+  const editable = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable === true);
   document.addEventListener('keydown', e => {
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;  // typing, not driving
-    if (e.repeat) return;                                                   // a held key is one press
-    if (e.key === ' ' || e.key === 'Escape') { e.preventDefault(); release('key'); flashStop(); api('/api/stop').catch(() => {}); return; }
+    // Escape stops wherever focus is (review Q09): a stop key is never "typing"
+    if (e.key === 'Escape') { e.preventDefault(); release('key'); flashStop(); api('/api/stop').catch(() => {}); return; }
+    if (editable(document.activeElement)) return;  // typing, not driving
+    if (e.repeat) return;                          // a held key is one press
+    if (e.key === ' ') { e.preventDefault(); release('key'); flashStop(); api('/api/stop').catch(() => {}); return; }
     const dir = KEYS[e.key]; if (!dir) return;
     e.preventDefault(); press(dir);
   });
   document.addEventListener('keyup', e => { if (KEYS[e.key]) release('keyup'); });
+  // focus moving into a text field while a key is held: the keyup will be typed, not seen here
+  document.addEventListener('focusin', e => { if (editable(e.target)) release('focus'); });
   window.addEventListener('blur', () => release('blur'));
   window.addEventListener('pagehide', () => release('pagehide'));
   document.addEventListener('visibilitychange', () => { if (document.hidden) release('hidden'); });

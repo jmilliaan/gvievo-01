@@ -44,3 +44,11 @@ def test_drive_node_ingress_replaces_a_nonzero_command_with_nothing():
         assert node._cmd is None
         assert target_rpm(node._cmd, 0.0, 0.2, S, 4000) == (0, 0)
     assert node._bad_cmds == 3 and len(warned) == 3
+
+
+def test_q03_command_age_is_judged_at_transmission_and_a_negative_age_is_zero():
+    # a command received at 10.0 with a 0.2 s watchdog: fine at 10.1, expired at 11.0 (the loop's
+    # pre-blocking timestamp must not be used), and a clock behind the receipt is not "fresh"
+    assert target_rpm((10.0, 1.0, 1.0), 10.1, 0.2, S, 4000) != (0, 0)
+    assert target_rpm((10.0, 1.0, 1.0), 11.0, 0.2, S, 4000) == (0, 0)
+    assert target_rpm((10.0, 1.0, 1.0), 9.5, 0.2, S, 4000) == (0, 0)

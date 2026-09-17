@@ -389,11 +389,32 @@ class Supervisor(Node):
             res.state = self._op_msg(op)
         return res
 
+    def _base_failure(self) -> str | None:
+        """Why recovery cannot help: the base group (drives, mux, panel, EKF) is dead or never
+        came up. The recovery transaction replaces the LAYER and needs a live mux to
+        acknowledge the new generation (review Q17); it cannot rebuild the base. Say so,
+        with the action that does, instead of starting a transaction that cannot finish."""
+        base = self.groups.get("base")
+        if base is None or base.poll() is not None:
+            return "the base layer (drives, mux, panel, EKF) is not running"
+        if self.fault_code in ("BASE_EXITED", "BOOT_ERROR", "BASE_NOT_READY"):
+            return f"fault {self.fault_code}: the base layer failed"
+        return None
+
     def _srv_recover(self, req, res):
         with self._lock:
             d = fsm.admit(self.mode, fsm.REQ_RECOVER, self._conditions())
             if not d.ok:
                 res.success, res.message = False, d.reason
+                return res
+            why = self._base_failure()
+            if why:
+                res.success = False
+                res.message = (
+                    f"recovery cannot rebuild the base: {why}. Restart the service "
+                    "(sudo systemctl restart amr.service) after correcting the cause; motion stays inhibited"
+                )
+                self._set(fsm.FAULT, "restart required", res.message, self.fault_code or "BASE_EXITED")
                 return res
             op, _ = self.book.submit("", fsm.REQ_RECOVER)
             self._begin_transaction(op, fsm.IDLE, "", 0, "", from_fault=True)

@@ -94,8 +94,8 @@ class StartPose:
 
 @dataclass
 class Limits:
-    linear_mps: float = 0.30  # spec §5.2 initial cap
-    angular_rad_s: float = 0.30  # spec §5.3 initial cap
+    linear_mps: float = 0.40  # autonomous route default (spec §5.2, raised 2026-09-17)
+    angular_rad_s: float = 0.24  # autonomous route default (spec §5.3, lowered 2026-09-17)
     position_tolerance_m: float = 0.05
     heading_tolerance_deg: float = 2.0
     cross_track_limit_m: float = 0.10

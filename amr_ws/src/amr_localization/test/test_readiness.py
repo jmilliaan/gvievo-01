@@ -102,12 +102,15 @@ def test_ready_lost_on_stale_stream():
 
 def test_ready_lost_on_sustained_covariance_growth_only():
     r = _ready()
+    aligned(r, 3.0)  # scan verification keeps coming throughout (Q07): only covariance is at issue
     r.on_amcl_pose(3.0, 0.2, 0.2, 0.05)
     assert r.evaluate(3.0, FRESH) == rd.READY  # one wide sample: a transient
     r.on_amcl_pose(3.5, 0.01, 0.01, 0.002)
     assert r.evaluate(3.5, FRESH) == rd.READY  # recovered, timer resets
+    aligned(r, 4.0)
     r.on_amcl_pose(4.0, 0.2, 0.2, 0.05)
     r.evaluate(4.0, FRESH)
+    aligned(r, 5.1)
     r.on_amcl_pose(5.1, 0.2, 0.2, 0.05)
     assert r.evaluate(5.1, FRESH) == rd.LOST and "covariance" in r.reason
 
@@ -258,3 +261,32 @@ def test_r11_reset_drops_all_proof():
     r.on_initialpose(6.0)
     r.evaluate(9.0, FRESH)
     assert not r.can_confirm
+
+
+# ---- Q07: READY is held on continuing evidence ----
+
+
+def test_q07_ready_expires_when_scan_verification_stops_but_not_when_amcl_is_quiet():
+    r = _ready()
+    # a stationary, healthy filter: raw streams fresh, comparisons keep coming, AMCL silent
+    for t in (3.0, 10.0, 60.0, 100.0):
+        aligned(r, t)
+        assert r.evaluate(t, FRESH) == rd.READY, t
+    # raw scans keep flowing but the gated comparison stops (gate / transform failure)
+    assert r.evaluate(102.5, FRESH) == rd.LOST and "scan-consistency" in r.reason
+
+
+def test_q07_invalid_covariance_and_pre_seed_samples_are_not_evidence():
+    r = _ready()
+    aligned(r, 3.0)
+    r.on_amcl_pose(3.0, float("nan"), 0.01, 0.002)
+    assert r.cov is None
+    assert r.evaluate(3.0, FRESH) == rd.READY  # a transient: covariance must stay bad cov_hold_s
+    aligned(r, 4.5)
+    assert r.evaluate(4.5, FRESH) == rd.LOST and "covariance" in r.reason
+    r2 = rd.Readiness(rd.Limits())
+    r2.on_initialpose(10.0)
+    r2.on_amcl_pose(10.5, 0.01, 0.01, 0.002, stamp=9.0)  # from the previous attempt
+    assert r2.cov is None
+    r2.on_amcl_pose(10.5, -1.0, 0.01, 0.002)
+    assert r2.cov is None

@@ -746,6 +746,13 @@ class Controller:
                 if stats:
                     with self._lock:
                         self._loop.update(stats)
+                # A tick that overran the command watchdog is an event, not a statistic
+                # (Q21): the vehicle went that long without a steering update or an
+                # expiry check. Reported once per overrun, with what it cost.
+                if spent > config.DRIVER_TIMEOUT_S / 2.0:
+                    events.error(f"control loop overran: {spent * 1000:.0f} ms of work in one tick "
+                                 f"(budget {config.LOOP_PERIOD_S * 1000:.0f} ms, driver timeout "
+                                 f"{config.DRIVER_TIMEOUT_S * 1000:.0f} ms)")
                 self._pump(max(0.001, config.LOOP_PERIOD_S - spent))
         finally:
             try:
@@ -1531,15 +1538,33 @@ class Controller:
             return
         index, key, ctype = nxt
         for nid in config.NODES:
+            if not self._src_node[nid].health(time.monotonic(), config.DRIVER_TIMEOUT_S)["ok"]:
+                self._mon.store(nid, key, None)  # silent node: no optional reads (Q21)
+                continue
             st, val, _, _ = sdo_read(self.bus, nid, index, 0,
-                                     collision_window=0.0)
+                                     collision_window=0.0,
+                                     timeout=self.TELEMETRY_SDO_TIMEOUT_S)
             self._mon.store(nid, key, canmon._decode(ctype, val) if st else None)
+
+    # Telemetry reads are bounded (review Q21): an SDO reply on a healthy bus arrives in
+    # ~2 ms, so a 50 ms wait is already 25x that; the 0.4 s default was a preflight
+    # figure. Six of those in one burst could stall the control loop for 2.4 s with
+    # the drives silent - longer than the command watchdog it is meant to feed.
+    TELEMETRY_SDO_TIMEOUT_S = 0.05
 
     def _poll_telemetry(self):
         for nid in config.NODES:
-            sw = self._read(nid, 0x6041, fast=True)
-            rpm = self._read_i32(nid, 0x606C, fast=True)
-            err = self._read(nid, 0x1001, fast=True)
+            src = self._src_node[nid]
+            if not src.health(time.monotonic(), config.DRIVER_TIMEOUT_S)["ok"]:
+                # A node that has stopped answering is not polled three more times
+                # per period: liveness is already lost, and each unanswered read is
+                # dead time for the loop. One probe read keeps the door open.
+                sw = self._read(nid, 0x6041, fast=True, timeout=self.TELEMETRY_SDO_TIMEOUT_S)
+                rpm = err = None
+            else:
+                sw = self._read(nid, 0x6041, fast=True, timeout=self.TELEMETRY_SDO_TIMEOUT_S)
+                rpm = self._read_i32(nid, 0x606C, fast=True, timeout=self.TELEMETRY_SDO_TIMEOUT_S)
+                err = self._read(nid, 0x1001, fast=True, timeout=self.TELEMETRY_SDO_TIMEOUT_S)
             # Any answer at all proves the driver is still on the bus. Without
             # this the stale values below simply persist and a driver that has
             # stopped replying looks healthy for as long as the process runs.

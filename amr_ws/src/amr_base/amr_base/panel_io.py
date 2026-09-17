@@ -29,6 +29,7 @@ Policy that lives here, and nowhere else on the ROS side:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from amr_base.agv_repo import config
@@ -51,8 +52,24 @@ class PanelFrame:
 class PanelAdapter:
     """Turns DioLink snapshots into PanelFrames. One instance per node."""
 
-    def __init__(self, debounce_scans: int | None = None, pendant: bool | None = None) -> None:
+    def __init__(
+        self,
+        debounce_scans: int | None = None,
+        pendant: bool | None = None,
+        coincidence_hold_scans: int | None = None,
+    ) -> None:
         scans = config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans
+        # Coincidence guard: the selector and the pendant changing in the SAME debounced scan
+        # is not a hand (2026-09-17: MANUAL+FWD appeared together for 1.02 s mid-route with
+        # nobody at the box, aborting the run and handing the mux a phantom FWD). Both changes
+        # are withheld - the previous selector and an idle pendant are published - until the
+        # new image has persisted this many scans; if it reverts first, nothing happened.
+        if coincidence_hold_scans is None:
+            hold_s, period = config.PANEL_COINCIDENCE_HOLD_S, config.DIO_SCAN_PERIOD_S
+            coincidence_hold_scans = int(math.ceil(hold_s / period))
+        self.hold_scans = max(0, coincidence_hold_scans)
+        self._held: tuple[str, panel_core.PendantIntent] | None = None  # (mode, pendant) being withheld
+        self._held_for = 0
         self.scan = panel_core.PanelScan(
             config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO, scans
         )
@@ -84,9 +101,7 @@ class PanelAdapter:
         if intent.valid != self._last_valid:
             notes.append("panel image " + ("valid" if intent.valid else "invalid"))
             self._last_valid = intent.valid
-        if intent.valid and intent.mode != self._last_mode:
-            notes.append(f"selector {intent.mode.upper()}")
-            self._last_mode = intent.mode
+        # (the selector note is written by _coincidence, once the change is believed)
         if intent.start:
             notes.append("START edge")
         if intent.reset:
@@ -97,13 +112,14 @@ class PanelAdapter:
             levels = self.pendant.scan(snapshot.get("di"), comms)
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
-            if pend != self._last_pendant:
-                held = [n for n in pend._fields if getattr(pend, n)]
-                notes.append("pendant " + (" ".join(held).upper() if held else "released"))
-                self._last_pendant = pend
+        mode, pend = self._coincidence(intent, pend, notes)
+        if self.pendant is not None and pend != self._last_pendant:
+            held = [n for n in pend._fields if getattr(pend, n)]
+            notes.append("pendant " + (" ".join(held).upper() if held else "released"))
+            self._last_pendant = pend
         return PanelFrame(
             valid=bool(intent.valid),
-            mode_auto=intent.mode == panel_core.AUTO,
+            mode_auto=mode == panel_core.AUTO,
             start_edge=bool(intent.start),
             reset_edge=bool(intent.reset),
             seq=self.seq,
@@ -111,6 +127,36 @@ class PanelAdapter:
             changed="; ".join(notes) or None,
             pendant=pend,
         )
+
+    def _coincidence(self, intent, pend, notes) -> tuple[str, panel_core.PendantIntent]:
+        """The (mode, pendant) to publish this scan, withholding a simultaneous change."""
+        if not intent.valid:
+            self._held, self._held_for = None, 0
+            return intent.mode, pend
+        prev_mode = self._last_mode if self._last_mode is not None else intent.mode
+        prev_pend = self._last_pendant if self._last_pendant is not None else panel_core.PENDANT_IDLE
+        mode_changed = intent.mode != prev_mode
+        pend_pressed = any(pend) and pend != prev_pend
+        if self._held is None and self.hold_scans > 0 and mode_changed and pend_pressed:
+            self._held, self._held_for = (intent.mode, pend), 1
+            notes.append(
+                f"panel image suspect: selector {intent.mode.upper()} and pendant changed together; withheld"
+            )
+            return prev_mode, panel_core.PENDANT_IDLE
+        if self._held is not None:
+            if (intent.mode, pend) != self._held:
+                self._held, self._held_for = None, 0  # reverted or moved on: it never counted
+                notes.append("panel image suspect: cleared")
+            else:
+                self._held_for += 1
+                if self._held_for < self.hold_scans:
+                    return prev_mode, panel_core.PENDANT_IDLE
+                self._held, self._held_for = None, 0
+                notes.append("panel image suspect: persisted, accepted")
+        if intent.mode != self._last_mode:
+            notes.append(f"selector {intent.mode.upper()}")
+            self._last_mode = intent.mode
+        return intent.mode, pend
 
 
 def horn_wanted(

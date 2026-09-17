@@ -116,6 +116,7 @@
     "di_start": 1,
     "di_auto": 3,
     "debounce_scans": 2,
+    "coincidence_hold_s": 1.5,
     "manual_auto_arm": true
   },
   "horn": {

@@ -51,6 +51,14 @@ def test_release_of_another_session_does_not_drop_the_live_one_but_stop_does():
     assert m.current is not None and m.current.session == "s2"
     refresh(m, "", 0, v=0.0, valid=0.0)  # /api/stop
     assert m.current is None
+    # Q10: the stopped session is dead - a delayed refresh with a newer seq cannot revive it
+    assert not refresh(m, "s2", 6)
+    assert m.current is None
+    # a fresh press (new session) works; a second global stop with nothing held is harmless
+    assert refresh(m, "s3", 1) and m.current.session == "s3"
+    refresh(m, "", 0, v=0.0, valid=0.0)
+    refresh(m, "", 0, v=0.0, valid=0.0)
+    assert m.current is None and not refresh(m, "s3", 2)
 
 
 def test_seq_ordering_within_a_live_session_still_holds():

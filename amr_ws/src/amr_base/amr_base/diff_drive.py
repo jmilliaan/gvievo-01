@@ -47,6 +47,14 @@ def slew(current: float, target: float, max_rate: float, dt: float) -> float:
     return target
 
 
+def slew_asym(current: float, target: float, accel: float, decel: float, dt: float) -> float:
+    """slew() with separate rates: `accel` while |speed| grows, `decel` while it shrinks
+    (toward zero or through it). A heavy vehicle may start gently and still stop fast."""
+    same_sign = target == 0.0 or current == 0.0 or (target > 0) == (current > 0)
+    growing = abs(target) > abs(current) and same_sign
+    return slew(current, target, accel if growing else decel, dt)
+
+
 def wrap_angle(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
 

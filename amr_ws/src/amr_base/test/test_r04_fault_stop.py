@@ -77,12 +77,32 @@ def test_standstill_is_measured_from_fresh_status_only():
     now = link.t_fault + link.STOP_CONFIRM_S
     t1, t2 = link.telemetry[1], link.telemetry[2]
     t1.statusword, t1.rpm, t1.t_status = 0x0637, 900, now  # fresh, still turning
-    t2.statusword, t2.rpm, t2.t_status = 0x0637, 900, now - 10.0  # stale: not escalated
+    t2.statusword, t2.rpm, t2.t_status = 0x0637, 900, now - 10.0  # stale: no evidence either (Q01)
     link.fault_tick(now, 0.05)
-    assert link.stop_unconfirmed == ["node 1: still turning (900 r/min)"]
+    assert link.stop_unconfirmed == [
+        "node 1: still turning (900 r/min)",
+        "node 2: no status since the fault",
+    ]
     t1.statusword, t1.rpm = 0x0637 | SW_SPEED_IS_ZERO, 0
+    t2.statusword, t2.rpm, t2.t_status = 0x0637 | SW_SPEED_IS_ZERO, 0, now - 1.0  # post-fault but stale
+    link.fault_tick(now, 0.05)
+    assert link.stop_unconfirmed == ["node 2: status stale (1.0 s)"]
+    t2.t_status = now  # fresh, post-fault, speed zero: positive evidence for both
     link.fault_tick(now, 0.05)
     assert link.stop_unconfirmed == []
+
+
+def test_q01_missing_status_is_unconfirmed_and_withholds_the_heartbeat():
+    """A drive that went silent at the fault (one TPDO stream lost) is not assumed stopped."""
+    bus = FakeBus(statusword=0x0637)
+    link = _armed(bus)
+    link.telemetry[1].t_status = None
+    link.telemetry[2].t_status = None
+    link.fault("test")
+    link.fault_tick(link.t_fault + 0.1, 0.05)
+    assert link.stop_unconfirmed == []  # before STOP_CONFIRM_S nothing is judged
+    link.fault_tick(link.t_fault + link.STOP_CONFIRM_S, 0.05)
+    assert link.stop_unconfirmed == ["node 1: no status since the fault", "node 2: no status since the fault"]
 
 
 def test_withheld_heartbeat_is_not_sent_by_the_keepalive():

@@ -408,6 +408,7 @@ _SCHEMA = {
         "di_auto":        ("PANEL_DI_AUTO", int),
         "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
+        "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
     },
     "horn": {
         "enabled":    ("HORN_ENABLED", bool),
@@ -804,6 +805,11 @@ def _validate(ns):
     check(len(set(chans.values())) == 3,
           f"panel channels must be distinct, got {chans}")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
+    # A selector change and a pendant press landing in the SAME scan is not a hand: on
+    # 2026-09-17 the DIO image showed MANUAL+FWD for 1.02 s mid-route with nobody at the
+    # box. Such a coincidence is held back this long before it is believed (0 disables).
+    check(0.0 <= g("PANEL_COINCIDENCE_HOLD_S") <= 5.0,
+          "panel.coincidence_hold_s must be in 0..5 s")
     # The panel is read out of the DI image; without the scan there is nothing
     # to read, and the buttons would be silently dead.
     check(not g("PANEL_ENABLED") or g("DIO_ENABLED"),

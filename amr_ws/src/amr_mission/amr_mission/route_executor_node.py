@@ -130,6 +130,11 @@ class RouteExecutor(Node):
         self.declare_parameter("turn_travel_tolerance_deg", 4.0)
         self.declare_parameter("wrong_way_deg", 5.0)
         self.declare_parameter("wheels_age_limit_s", 0.10)
+        self.declare_parameter("scan_age_limit_s", 0.5)  # /scan_gated is <= 10 Hz; 0.5 s = gate hold_max
+        # Part B2: the FollowPath goal sits this far past the endpoint (0 = aim at the endpoint,
+        # the rollback). Tune on the vehicle so the mean stop error is ~0; never above the
+        # route's position_tolerance_m (clamped).
+        self.declare_parameter("goal_overshoot_m", 0.045)
         self.declare_parameter("panel_age_limit_s", 0.20)
         self.declare_parameter("loc_age_limit_s", 1.5)
         self.declare_parameter("obstacle_points", 3)
@@ -160,6 +165,8 @@ class RouteExecutor(Node):
             p("panel_age_limit_s").value,
             p("loc_age_limit_s").value,
         )
+        self.scan_age = p("scan_age_limit_s").value
+        self.goal_overshoot_m = float(p("goal_overshoot_m").value)
         self.obstacle_points = int(p("obstacle_points").value)
         self.horizon = p("stopping_horizon_m").value
         self.clear_stable_s = p("clear_stable_s").value
@@ -194,6 +201,7 @@ class RouteExecutor(Node):
         self._odom_yaw_acc = 0.0
         self._odom_xy = (0.0, 0.0)
         self._scan: LaserScan | None = None
+        self._scan_t = 0.0
         self._last_state_key = None
 
         self.tf_buffer = Buffer()
@@ -216,7 +224,10 @@ class RouteExecutor(Node):
         self.create_subscription(
             PoseWithCovarianceStamped, "/initialpose", self._on_initialpose, RELIABLE_1, callback_group=io
         )
-        self.create_subscription(LaserScan, "/scan", self._on_scan, SENSOR_DATA, callback_group=io)
+        # /scan_gated: scans whose odom transform already exists, so the obstruction check
+        # can project each one at ITS OWN stamp (review Q08) without waiting or falling
+        # back to the latest pose. Raw /scan would be 20-40 ms ahead of TF on the vehicle.
+        self.create_subscription(LaserScan, "/scan_gated", self._on_scan, SENSOR_DATA, callback_group=io)
         self._follow = ActionClient(self, FollowPath, "/follow_path", callback_group=io)
         self._spin = ActionClient(self, Spin, "/spin", callback_group=io)
         self._permit_pub = self.create_publisher(MotionPermit, "/amr/motion_permit", RELIABLE_1)
@@ -247,6 +258,22 @@ class RouteExecutor(Node):
         if m.start_edge:
             with self._lock:
                 self._start_edge()
+        if m.reset_edge:
+            with self._lock:
+                self._reset_edge()
+
+    def _reset_edge(self) -> None:
+        """Physical Reset (review Q19): acknowledges THIS executor's FAULT, exactly like the
+        web's Acknowledge fault, and nothing else - no motion, no resume, no drive or
+        supervisor fault clearing, and the unresolved-goal barrier (Q06) is untouched.
+        Only while the vehicle is at rest; the operator then localises/loads/Starts again."""
+        if self.fsm.state != fsm.FAULT:
+            return
+        if not self._wheels_still:
+            self.get_logger().warn("physical Reset ignored: wheels not at rest")
+            return
+        if self.fsm.ack():
+            self._log_state("fault acknowledged by physical Reset")
 
     def _on_wheels(self, m: WheelStates) -> None:
         self._wheels_t = self._now()
@@ -278,7 +305,7 @@ class RouteExecutor(Node):
                 self.odom_gap = True
 
     def _on_scan(self, m: LaserScan) -> None:
-        self._scan = m
+        self._scan, self._scan_t = m, self._now()
 
     def _pose(self) -> tuple[float, float, float] | None:
         try:
@@ -318,6 +345,15 @@ class RouteExecutor(Node):
                     raise store.StoreError(
                         "route invalid on this map: "
                         + "; ".join(f"{i.step_id or ''} {i.message}" for i in v.issues)
+                    )
+                # Q05 relaxed 2026-09-17 (operator request, footprint margin 0.05 m): the
+                # lateral envelope execution permits may exceed what validation cleared.
+                # Said once per load so the log records the gap.
+                lateral = max(route.limits.cross_track_limit_m, self.start_gate_m)
+                if lateral > self.fp.margin_m + 1e-9:
+                    self.get_logger().warn(
+                        f"permitted lateral error {lateral:.2f} m (cross-track limit / start gate) "
+                        f"exceeds the validated footprint margin {self.fp.margin_m:.2f} m"
                     )
             except (store.StoreError, mb.BundleError, KeyError, ValueError) as e:
                 res.accepted, res.message = False, f"refused: {e}"
@@ -373,6 +409,9 @@ class RouteExecutor(Node):
     def _prereqs(self) -> str | None:
         """None when everything a run needs holds; otherwise the first failure."""
         now = self._now()
+        barrier = self.goals.barrier()
+        if barrier:
+            return barrier  # Q06: an action goal with an unknown outcome bars new motion
         if self._loc is None or now - self._loc_t > self.loc_age:
             return "no localisation monitor"
         if self._loc.state != LocalizationState.READY:
@@ -383,8 +422,8 @@ class RouteExecutor(Node):
             return "wheel feedback invalid"
         if self._panel is None or now - self._panel_t > self.panel_age or not self._panel.valid:
             return "panel stale or invalid"
-        if self._scan is None:
-            return "no scan"
+        if self._scan is None or now - self._scan_t > self.scan_age:
+            return "no fresh scan"
         return None
 
     def _auto(self) -> bool:
@@ -503,15 +542,22 @@ class RouteExecutor(Node):
         target = self.turn_target if self.turn_target is not None else st.signed_angle_rad
         return target - self._turn_travel()
 
+    def _cross_track_allowed(self, along: float) -> float:
+        limit = self.route.limits.cross_track_limit_m
+        return limit if along > self.converge_m else 2.0 * limit
+
     def _obstruction(self, st: CompiledStep, pose) -> str | None:
         """Scan points inside the active step's swept footprint ahead (spec §5.4)."""
         scan = self._scan
         if scan is None or self.grid is None:
             return "no scan"
+        if self._now() - self._scan_t > self.scan_age:
+            return f"scan stale ({self._now() - self._scan_t:.1f} s)"  # old data cannot clear a corridor
         try:
-            tr = self.tf_buffer.lookup_transform("map", scan.header.frame_id, rclpy.time.Time())
+            # at the scan's acquisition time (Q08): the pose it was taken from, not the latest
+            tr = self.tf_buffer.lookup_transform("map", scan.header.frame_id, scan.header.stamp)
         except Exception:  # noqa: BLE001
-            return "no laser transform"
+            return "no laser transform at the scan time"
         if st.type == STRAIGHT:
             along, _ = self._along_cross(st, pose)
             a0 = max(0.0, along)
@@ -546,21 +592,38 @@ class RouteExecutor(Node):
 
     # ---- goals ---------------------------------------------------------------------------------
 
-    def _send_follow(self, st: CompiledStep, pose) -> bool:
-        along, _ = self._along_cross(st, pose)
+    def _follow_path(self, st: CompiledStep, along: float) -> Path:
+        """The FollowPath path for a straight from the current projection to its end, plus one
+        pose `goal_overshoot_m` PAST the end along the heading (Part B2): the goal checker's
+        circle (xy_goal_tolerance) then fires just before the true endpoint instead of the
+        vehicle hunting for a small circle around it. Arrival and the overshoot fault are
+        still judged against the TRUE endpoint (settle / along > length + 2 tol), and the
+        extra pose is clamped to position_tolerance_m so it lies inside the validated
+        swept envelope."""
         path = Path()
         path.header.frame_id = "map"
         path.header.stamp = self.get_clock().now().to_msg()
-        for x, y, yaw in st.samples:
-            if (x - st.start[0]) * math.cos(st.start[2]) + (y - st.start[1]) * math.sin(
-                st.start[2]
-            ) < along - 0.10:
-                continue  # resume: from the current projection onwards
+        c, s = math.cos(st.start[2]), math.sin(st.start[2])
+
+        def add(x, y, yaw):
             ps = PoseStamped()
             ps.header = path.header
             ps.pose.position.x, ps.pose.position.y = x, y
             ps.pose.orientation.z, ps.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
             path.poses.append(ps)
+
+        for x, y, yaw in st.samples:
+            if (x - st.start[0]) * c + (y - st.start[1]) * s < along - 0.10:
+                continue  # resume: from the current projection onwards
+            add(x, y, yaw)
+        over = max(0.0, min(self.goal_overshoot_m, self.route.limits.position_tolerance_m))
+        if over > 0.0 and path.poses:
+            add(st.end[0] + c * over, st.end[1] + s * over, st.end[2])
+        return path
+
+    def _send_follow(self, st: CompiledStep, pose) -> bool:
+        along, _ = self._along_cross(st, pose)
+        path = self._follow_path(st, along)
         if len(path.poses) < 2:
             return False
         goal = FollowPath.Goal(path=path, controller_id="FollowPath", goal_checker_id="precise")
@@ -693,11 +756,11 @@ class RouteExecutor(Node):
             if st.type == STRAIGHT:
                 along, cross = self._along_cross(st, pose)
                 self.cross_track = cross
-                limit = self.route.limits.cross_track_limit_m
                 # After a turn the line starts with the previous stop's error plus the
                 # estimator's wander during the spin; RPP pulls back onto the line within
-                # a metre. Until then twice the limit (still inside the validated margin).
-                allowed = limit if along > self.converge_m else 2.0 * limit
+                # a metre. Until then twice the limit. (Q05's clamp to the validated
+                # footprint margin was dropped 2026-09-17 with the margin at 0.05 m.)
+                allowed = self._cross_track_allowed(along)
                 if abs(cross) > allowed:
                     self._fault(f"cross-track {cross:+.2f} m exceeds {allowed:.2f} m at {along:.2f} m along")
                     return
@@ -814,6 +877,9 @@ class RouteExecutor(Node):
             m.source = MotionPermit.FOLLOW if st.type == STRAIGHT else MotionPermit.ROTATE
             m.enabled = True
             m.reason = f"step {st.id} {self.fsm.progress()}"
+            # the loaded route's caps ride with the permission; the mux enforces them (Q04)
+            m.v_max = float(self.route.limits.linear_mps)
+            m.w_max = float(self.route.limits.angular_rad_s)
         else:
             m.source, m.enabled, m.reason = MotionPermit.NONE, False, fsm.NAMES[self.fsm.state]
         self._permit_pub.publish(m)

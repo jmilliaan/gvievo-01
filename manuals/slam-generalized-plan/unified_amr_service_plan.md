@@ -280,7 +280,7 @@ Reuse the legacy pad's interaction ideas: pointer capture, key combinations, rel
 
 Required changes beyond copying `manual.js`:
 
-1. Initial maximum translation 0.30 m/s and rotation 0.30 rad/s, with selectable slower values. Validate body and resulting wheel limits using existing geometry/hardware ceilings. Do not copy the legacy RPM pad table or its different timeout as product defaults.
+1. Maximum translation 0.40 m/s and rotation 0.24 rad/s (initially 0.30/0.30; changed 2026-09-17), with selectable slower values. Validate body and resulting wheel limits using existing geometry/hardware ceilings. Do not copy the legacy RPM pad table or its different timeout as product defaults.
 2. A new physical press obtains a short-lived server-issued jog session; only one browser session owns the pad. A second tab receives a conflict while the first holds it. Release, expiry, mode change, disarm or web restart invalidates the session.
 3. Each refresh includes instance/generation, jog-session token and sequence. Validate under a lock, then publish once. No backend timer repeats the last browser command.
 4. Reject late or reordered requests, an invalidated token, nonfinite numbers, malformed directions, and wrong-mode commands. Every rejected nonzero command must leave or restore zero as appropriate for the owning session.

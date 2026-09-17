@@ -100,14 +100,25 @@ class Job:
         authority: tuple[str, int] | None,
         lease_allowed: int,
         stopped: bool | None,
+        mode: tuple[str, int, str] | None = None,
     ) -> str:
-        """Admit a plan. `counts_per_rev` must come from fresh, valid wheel feedback (0 otherwise)."""
+        """Admit a plan. `counts_per_rev` must come from fresh, valid wheel feedback (0 otherwise).
+        `mode` is a fresh supervisor ModeState snapshot (instance, generation, mode name): a
+        plan is admitted in IDLE only, under the same identity as the lease (review Q16) -
+        the lease's permission bits alone cannot tell IDLE from MAPPING or an inhibited
+        transition."""
         if self.phase in (RUNNING, SETTLING):
             raise ValueError("a job is running; abort it first")
         if authority is None:
             raise ValueError("no fresh supervisor lease: cannot bind a plan")
         if lease_allowed & LEASE_AUTONOMOUS:
             raise ValueError("supervisor is in NAVIGATION: commissioning plans need IDLE")
+        if mode is None:
+            raise ValueError("no fresh supervisor mode: commissioning plans need IDLE")
+        if (mode[0], int(mode[1])) != (authority[0], int(authority[1])):
+            raise ValueError("supervisor mode and lease disagree (transition in progress): try again")
+        if mode[2] != "IDLE":
+            raise ValueError(f"supervisor is in {mode[2]}: commissioning plans need IDLE")
         if stopped is not True:
             raise ValueError("wheels not known to be at rest")
         if not (math.isfinite(counts_per_rev) and counts_per_rev > 0.0):

@@ -87,15 +87,18 @@ class LiveStore:
             self.grid_t = time.monotonic()
             self.snapshot += 1
 
-    def set_pose(self, x: float, y: float, yaw: float, frame: str) -> None:
+    def set_pose(self, x: float, y: float, yaw: float, frame: str, source_age_s: float = 0.0) -> None:
+        """`source_age_s`: how old the transform this pose came from already was when read
+        (review Q12). Re-reading a frozen cached transform must not make it look fresh, so
+        the stored time is the SOURCE time, and age_s grows from it."""
         with self._lock:
             self.pose = (x, y, yaw, frame)
-            self.pose_t = time.monotonic()
+            self.pose_t = time.monotonic() - max(0.0, float(source_age_s))
 
-    def set_scan(self, pts, frame: str) -> None:
+    def set_scan(self, pts, frame: str, source_age_s: float = 0.0) -> None:
         with self._lock:
             self.scan, self.scan_frame = pts, frame
-            self.scan_t = time.monotonic()
+            self.scan_t = time.monotonic() - max(0.0, float(source_age_s))
 
     def map_meta(self) -> dict | None:
         with self._lock:

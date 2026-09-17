@@ -14,3 +14,7 @@ string run_id
 uint8 source
 bool enabled
 string reason
+# Route limits carried with the permission (review Q04): the mux clamps the permitted
+# source's |v| and |w| to these. 0 = no route cap (hardware limits still apply).
+float32 v_max
+float32 w_max

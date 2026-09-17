@@ -146,3 +146,74 @@ def test_r19_rotated_grid_in_a_bundle_is_a_bundle_error(tmp_path):
     y.write_text(yaml.safe_dump(doc))
     with pytest.raises(mb.BundleError, match="map grid"):
         mb._read_grid(str(y))
+
+
+# ---- Q14: the bundle identity covers every consumed byte ----
+
+
+def _staged(tmp_path):
+    maps = str(tmp_path / "maps")
+    stage = mb.staging_dir(maps, "q14", 1)
+    mb.stage_bundle(stage, small_grid(), fake_posegraph(tmp_path), manifest())
+    mb.verify(stage)
+    return stage
+
+
+def _relist(stage):
+    """Recompute the file table's listed hashes and the bundle hash (an attacker who can
+    rewrite the manifest can do this; the point is what the table CANNOT cover)."""
+    import yaml  # noqa: PLC0415
+
+    p = os.path.join(stage, mb.MANIFEST)
+    doc = yaml.safe_load(open(p))
+    doc["files"] = {n: mb.sha256_file(os.path.join(stage, n)) for n in doc["files"]}
+    doc["sha256"] = mb.bundle_hash(doc["files"])
+    yaml.safe_dump(doc, open(p, "w"))
+
+
+def test_q14_external_image_cannot_hide_behind_a_verified_bundle(tmp_path):
+    stage = _staged(tmp_path)
+    outside = tmp_path / "elsewhere.pgm"
+    outside.write_bytes(open(os.path.join(stage, "map.pgm"), "rb").read())
+    y = os.path.join(stage, "map.yaml")
+    txt = open(y).read().replace("image: map.pgm", f"image: {outside}")
+    open(y, "w").write(txt)
+    _relist(stage)
+    with pytest.raises(mb.BundleError, match="plain file name"):
+        mb.verify(stage)
+
+
+def test_q14_traversal_and_symlink_members_and_unlisted_keepout_are_refused(tmp_path):
+    import yaml  # noqa: PLC0415
+
+    stage = _staged(tmp_path)
+    p = os.path.join(stage, mb.MANIFEST)
+    doc = yaml.safe_load(open(p))
+    doc["files"]["../escape.pgm"] = "0" * 64
+    yaml.safe_dump(doc, open(p, "w"))
+    with pytest.raises(mb.BundleError, match="contained|plain file"):
+        mb.verify(stage)
+    stage = _staged(tmp_path / "b")
+    os.remove(os.path.join(stage, "map.pgm"))
+    real = tmp_path / "real.pgm"
+    real.write_bytes(b"P5\n2 2\n255\n" + bytes([254, 254, 0, 0]))
+    os.symlink(str(real), os.path.join(stage, "map.pgm"))
+    _relist(stage)
+    with pytest.raises(mb.BundleError, match="symlink"):
+        mb.verify(stage)
+    stage = _staged(tmp_path / "c")
+    open(os.path.join(stage, "keepout.yaml"), "w").write("image: keepout.pgm\n")
+    with pytest.raises(mb.BundleError, match="keepout.yaml is present but not listed"):
+        mb.verify(stage)
+
+
+def test_q14_manifest_geometry_must_match_the_grid(tmp_path):
+    import yaml  # noqa: PLC0415
+
+    stage = _staged(tmp_path)
+    p = os.path.join(stage, mb.MANIFEST)
+    doc = yaml.safe_load(open(p))
+    doc["width"] = doc["width"] + 1
+    yaml.safe_dump(doc, open(p, "w"))
+    with pytest.raises(mb.BundleError, match="geometry"):
+        mb.verify(stage)

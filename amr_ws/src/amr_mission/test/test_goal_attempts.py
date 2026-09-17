@@ -176,3 +176,42 @@ def test_forget_obsolete_keeps_the_current_attempt():
     h = Handle()
     c.sent[0][1].set_result(h)  # forgotten, but a late acceptance is still cancelled
     assert h.cancels == 1 and g.handle is None
+
+
+def test_q06_forgotten_attempt_stays_a_barrier_until_terminal_evidence():
+    errors = []
+    lock = threading.RLock()
+    g = ga.GoalAttempts(lock, lambda: 0.0, lambda a, why: errors.append(why))
+    c = Client()
+    g.send(c, "goal", "run1", 0, 0)
+    g.revoke()
+    assert g.forget_obsolete() and not g.outstanding
+    assert g.barrier() and "run1" in g.barrier()  # unknown outcome: no new motion
+    h = Handle()
+    c.sent[0][1].set_result(h)  # late acceptance: cancelled, still unresolved
+    assert h.cancels == 1 and g.barrier()
+    h.result_fut.set_result(Result(5))  # canceled: terminal evidence lifts the barrier
+    assert g.barrier() is None and not g.unresolved and not errors
+
+
+def test_q06_transport_failures_are_unknown_outcomes_not_terminal_ones():
+    errors = []
+    lock = threading.RLock()
+    g = ga.GoalAttempts(lock, lambda: 0.0, lambda a, why: errors.append(why))
+    c = Client()
+    g.send(c, "goal", "run1", 0, 0)
+    c.sent[0][1].set_exception(RuntimeError("no server"))
+    assert errors == ["action goal request failed: no server"] and g.barrier()
+    g2 = ga.GoalAttempts(lock, lambda: 0.0, lambda a, why: errors.append(why))
+    c2 = Client()
+    g2.send(c2, "goal", "run2", 0, 0)
+    h = Handle()
+    c2.sent[0][1].set_result(h)
+    h.result_fut.set_exception(RuntimeError("lost"))
+    assert errors[-1] == "action result failed: lost" and g2.barrier()
+    # a plain rejection IS terminal: the server never held the goal
+    g3 = ga.GoalAttempts(lock, lambda: 0.0, lambda a, why: errors.append(why))
+    c3 = Client()
+    g3.send(c3, "goal", "run3", 0, 0)
+    c3.sent[0][1].set_result(Handle(accepted=False))
+    assert errors[-1] == "action goal rejected" and g3.barrier() is None

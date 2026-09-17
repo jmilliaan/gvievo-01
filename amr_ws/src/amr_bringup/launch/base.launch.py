@@ -116,7 +116,20 @@ def _compose(context):
             executable="cmd_mux_kinematics_node",
             name="cmd_mux_kinematics",
             output="screen",
-            parameters=[{**gate, "teleop_enabled": not supervised}],
+            # Gentle starts on the vehicle (2.7 s to 0.4 m/s, 0.6 s to 0.24 rad/s); stops at the
+            # hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at its
+            # "same as alpha_max" default made every Spin coast 2.6 deg past its target
+            # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
+            parameters=[
+                {
+                    **gate,
+                    "teleop_enabled": not supervised,
+                    "a_max": 0.15,
+                    "alpha_max": 0.4,
+                    "d_max": 0.5,
+                    "delta_max": 1.0,
+                }
+            ],
         ),
         "cmd_mux_kinematics",
     )

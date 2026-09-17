@@ -1,7 +1,7 @@
 // Maps page: survey session controls (asynchronous supervisor operations) and the saved revisions.
 const $ = id => document.getElementById(id);
 const busy = (on) => ['btn-survey-start', 'btn-survey-returned', 'btn-survey-save', 'btn-survey-abort'].forEach(id => $(id).disabled = on);
-function op(path, body) { busy(true); return operation(path, body, () => { busy(false); loadMaps(); }); }
+function op(path, body) { busy(true); return operation(path, body, () => { busy(false); loadMaps().catch(() => {}); }); }
 $('btn-survey-start').onclick = () => op('/api/survey/start', { map_id: $('survey-map-id').value.trim(), description: $('survey-desc').value.trim() });
 $('btn-survey-returned').onclick = () => op('/api/survey/returned');
 $('btn-survey-save').onclick = () => op('/api/survey/save', { note: $('survey-note').value.trim() });

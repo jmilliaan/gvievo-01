@@ -14,6 +14,7 @@ new instance of this launch; nothing here is reused across maps.
 
 import os
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
@@ -22,6 +23,17 @@ from launch_ros.actions import Node
 
 from amr_base import gating
 from amr_bringup.launch_helpers import required
+
+
+def _costmap_footprint_file(footprint: str, generation: int) -> str:
+    """Node-scoped ROS params YAML carrying the selected footprint to the local costmap."""
+    state_dir = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
+    os.makedirs(state_dir, exist_ok=True)
+    path = os.path.join(state_dir, f"costmap_footprint_gen{generation}.yaml")
+    doc = {"local_costmap": {"local_costmap": {"ros__parameters": {"footprint": footprint}}}}
+    with open(path, "w") as fh:
+        yaml.safe_dump(doc, fh)
+    return path
 
 
 def _compose(context):
@@ -54,6 +66,11 @@ def _compose(context):
     nav2 = os.path.join(get_package_share_directory("amr_navigation"), "config", "nav2_params.yaml")
     footprint_yaml = cfg("footprint_yaml").perform(context) or fpmod.default_path()
     footprint = fpmod.load(footprint_yaml).as_costmap_string()
+    # The costmap is a separate node (local_costmap/local_costmap) inside the controller
+    # process: an inline {"local_costmap.local_costmap.footprint": ...} dict would set a
+    # parameter of that literal name on controller_server (review Q20). Node-scoped
+    # parameters reach it only through a params file, so write one per launch.
+    costmap_params = _costmap_footprint_file(footprint, generation)
     active_map = {
         "active_map_id": map_id,
         "active_map_revision": revision,
@@ -105,7 +122,7 @@ def _compose(context):
             executable="controller_server",
             name="controller_server",
             output="screen",
-            parameters=[nav2, {"local_costmap.local_costmap.footprint": footprint}],
+            parameters=[nav2, costmap_params],  # the file overrides nav2_params.yaml's footprint
             remappings=[("cmd_vel", cmd_vel)],
         ),
         "controller_server",

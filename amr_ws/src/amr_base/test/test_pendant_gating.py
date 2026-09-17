@@ -1,6 +1,7 @@
 """The jog pendant at the mux: levels in the panel image become a body twist."""
 
 from amr_base.gating import (
+    FOLLOW,
     LEASE_AUTONOMOUS,
     LEASE_COMMISSIONING,
     LEASE_MANUAL,
@@ -11,12 +12,11 @@ from amr_base.gating import (
     Drives,
     Lease,
     Manual,
-    Params,
     Panel,
+    Params,
     Permit,
     Stamped,
     Wheels,
-    FOLLOW,
     select,
 )
 

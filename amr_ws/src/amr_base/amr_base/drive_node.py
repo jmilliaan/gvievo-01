@@ -269,6 +269,7 @@ class DriveNode(Node):
                 silent,
                 link.dropped_out(),
                 link.faulted_nodes(),
+                link.cleanup_owed,
             )
             if d.action == "arm":
                 retry_at = now + self.arm_retry
@@ -286,7 +287,15 @@ class DriveNode(Node):
                     self.get_logger().warn(f"cannot arm: {e} - retrying in {self.arm_retry:.0f} s")
             elif d.action == "disarm":
                 self.get_logger().warn(f"disarming: {d.reason}")
-                link.disarm()
+                if not link.disarm():
+                    self.get_logger().error(f"disarm incomplete: {'; '.join(link.cleanup_failures)}")
+                retry_at = now + self.arm_retry
+            elif d.action == "cleanup":
+                # Q02: an owed teardown is retried on the arm backoff; arming waits for it.
+                if link.disarm(force=True):
+                    self._log("owed drive cleanup completed")
+                else:
+                    self.get_logger().error(f"drive cleanup still owed: {'; '.join(link.cleanup_failures)}")
                 retry_at = now + self.arm_retry
             elif d.action == "fault":
                 self.get_logger().error(f"FAULT: {d.reason}")
@@ -307,7 +316,7 @@ class DriveNode(Node):
             # Setpoint at rate_hz; the command watchdog is independent of the mux.
             if now - t_tick >= self.period and link.state == canopen.ARMED:
                 t_tick = now
-                link.send_target(*self._target(now, link.scale))
+                link.send_target(*self._target(time.monotonic(), link.scale))
 
             if self.pc_loss_ms and now - t_hb >= self.pc_hb_s and not link.heartbeat_withheld:
                 t_hb = now
@@ -359,22 +368,33 @@ class DriveNode(Node):
                     box["ok"], box["msg"] = True, "arm requested"
                 elif what == "disarm":
                     self.want_armed = False
-                    link.disarm()
-                    box["ok"], box["msg"] = True, "disarmed"
+                    box["ok"], box["msg"] = self._disarm_result(link, "disarmed")
                 elif what == "ack":
                     if link.state != canopen.FAULT:
                         box["ok"], box["msg"] = False, f"no fault latched (state {link.state})"
                     else:
                         reason = link.fault_reason
-                        link.disarm()
-                        box["ok"], box["msg"] = True, f"fault acknowledged ({reason}); re-arming if wanted"
+                        box["ok"], box["msg"] = self._disarm_result(
+                            link, f"fault acknowledged ({reason}); re-arming if wanted"
+                        )
             finally:
                 done.set()
 
+    @staticmethod
+    def _disarm_result(link, ok_msg: str) -> tuple[bool, str]:
+        """Truthful service result (review Q02): a teardown that did not finish is not
+        "disarmed"; the loop keeps retrying it and will not arm until it is done."""
+        if link.disarm():
+            return True, ok_msg
+        return False, "disarm incomplete, cleanup owed and retrying: " + "; ".join(link.cleanup_failures)
+
     def _target(self, now: float, scale: canopen.WheelScale) -> tuple[int, int]:
+        # `now` is sampled by the caller immediately before this call (review Q03): the
+        # loop's tick timestamp predates request servicing and blocking SDO work, and a
+        # command that expired during that work must not be transmitted.
         with self._lock:
             cmd, gen, lease = self._cmd, self._cmd_gen, self._lease
-        reason = gating.drive_gate(time.monotonic(), lease, gen, self._gate)
+        reason = gating.drive_gate(now, lease, gen, self._gate)
         if reason != self._gate_reason:
             self._gate_reason = reason
             if reason is not None:

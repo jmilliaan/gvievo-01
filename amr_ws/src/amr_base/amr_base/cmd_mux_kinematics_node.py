@@ -32,7 +32,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
 from amr_base.agv_repo import config, kinematics
-from amr_base.diff_drive import Geometry, clamp_wheels, inverse, slew
+from amr_base.diff_drive import Geometry, clamp_wheels, inverse, slew, slew_asym
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -63,6 +63,12 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("wheel_vel_max_rad_s", config.MOTOR_MAX_RPM * WHEEL_RAD_S_PER_MOTOR_RPM)
         self.declare_parameter("a_max", min(0.5, hw_a_max))
         self.declare_parameter("alpha_max", min(1.0, hw_alpha_max))
+        # Deceleration limits (speed shrinking). Default = the acceleration limits, so a stop is
+        # never slower than before; base.launch lowers a_max/alpha_max for a gentle start on
+        # the vehicle (operator: 0 -> 0.3 m/s in 0.6 s was abrupt, 2026-09-17) without
+        # lengthening the stopping distance.
+        self.declare_parameter("d_max", 0.0)  # 0 = same as a_max
+        self.declare_parameter("delta_max", 0.0)  # 0 = same as alpha_max
         self.declare_parameter("teleop_timeout_s", 0.5)
         self.declare_parameter("cmd_timeout_s", 0.2)
         self.declare_parameter("permit_timeout_s", 0.3)
@@ -80,6 +86,8 @@ class CmdMuxKinematics(Node):
         self.w_max = p("wheel_vel_max_rad_s").value
         self.a_max = min(p("a_max").value, hw_a_max)
         self.alpha_max = min(p("alpha_max").value, hw_alpha_max)
+        self.d_max = min(p("d_max").value or self.a_max, hw_a_max)
+        self.delta_max = min(p("delta_max").value or self.alpha_max, hw_alpha_max)
         if self.a_max < p("a_max").value or self.alpha_max < p("alpha_max").value:
             self.get_logger().warn(
                 f"accel limits clamped to hardware: a_max={self.a_max:.3f} "
@@ -159,7 +167,14 @@ class CmdMuxKinematics(Node):
         if same_stream and int(msg.seq) <= cur.seq and int(msg.seq) != 0:
             return  # an older sample cannot renew permission
         self._permit = gating.Permit(
-            self._now(), int(msg.source), bool(msg.enabled), msg.instance, int(msg.generation), int(msg.seq)
+            self._now(),
+            int(msg.source),
+            bool(msg.enabled),
+            msg.instance,
+            int(msg.generation),
+            int(msg.seq),
+            float(msg.v_max),
+            float(msg.w_max),
         )
 
     def _on_panel(self, msg: PanelState) -> None:
@@ -261,8 +276,8 @@ class CmdMuxKinematics(Node):
             self._v = self._wz = 0.0
             wl, wr = clamp_wheels(self._wl, self._wr, self.w_max)
         else:
-            self._v = slew(self._v, sel.v, self.a_max, self.dt)
-            self._wz = slew(self._wz, sel.w, self.alpha_max, self.dt)
+            self._v = slew_asym(self._v, sel.v, self.a_max, self.d_max, self.dt)
+            self._wz = slew_asym(self._wz, sel.w, self.alpha_max, self.delta_max, self.dt)
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         if not (math.isfinite(wl) and math.isfinite(wr)):

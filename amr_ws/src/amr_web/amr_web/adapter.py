@@ -261,7 +261,7 @@ class RosAdapter(Node):
         pts = live.scan_points(
             m.ranges, m.angle_min, m.angle_increment, m.range_min, m.range_max, tr.x, tr.y, live.yaw_of(q)
         )
-        self.live.set_scan(pts, frame)
+        self.live.set_scan(pts, frame, self._stamp_age(m.header.stamp))
 
     # A replaced layer's map->odom must not be drawn (plan §5.3 step 5). This used to
     # rebuild the TF listener on a generation change; destroying its subscriptions while
@@ -279,7 +279,13 @@ class RosAdapter(Node):
         except Exception:  # noqa: BLE001
             return
         tr, q = t.transform.translation, t.transform.rotation
-        self.live.set_pose(float(tr.x), float(tr.y), live.yaw_of(q), frame)
+        # the transform's own stamp is the evidence time (Q12): a cached, no-longer-updated
+        # odom->base (dead EKF) read every 200 ms is old data, not a fresh pose
+        self.live.set_pose(float(tr.x), float(tr.y), live.yaw_of(q), frame, self._stamp_age(t.header.stamp))
+
+    def _stamp_age(self, stamp) -> float:
+        """Seconds between now and a ROS stamp, clamped at 0 (AMCL stamps map->odom ahead)."""
+        return max(0.0, (self.get_clock().now().nanoseconds - Time.from_msg(stamp).nanoseconds) * 1e-9)
 
     def _on_mode(self, m: ModeState) -> None:
         d = _msg_to_dict(m)

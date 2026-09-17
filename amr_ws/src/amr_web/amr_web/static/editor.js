@@ -2,13 +2,21 @@
 // never pixels. Validation and saving happen on the robot (POST); nothing moves.
 const view = new MapView(document.getElementById('ed-canvas'));
 let mapId = null, mapRev = null, footprint = null, mapsIndex = [];
-let route = { route_id: '', start: null, steps: [], repeat_count: 1, limits: { linear_mps: 0.30 } };
+let route = { route_id: '', start: null, steps: [], repeat_count: 1, limits: { linear_mps: 0.40 } };
 let history = [], future = [], lastResult = null, savedRef = null;
 const $ = id => document.getElementById(id);
+// Context tokens (review Q15): every awaited server response is applied only if the map
+// selection (mapToken) and the draft (draftToken) are still the ones it was made for. A
+// map change bumps mapToken; any edit, undo/redo, load or clear bumps draftToken.
+let mapToken = 0, draftToken = 0;
+const ctx = () => ({ m: mapToken, d: draftToken });
+const stillCurrent = c => c.m === mapToken && c.d === draftToken;
+const stillSameMap = c => c.m === mapToken;
 
-function snapshot() { history.push(JSON.stringify(route)); if (history.length > 100) history.shift(); future = []; }
-function undo() { if (!history.length) return; future.push(JSON.stringify(route)); route = JSON.parse(history.pop()); refresh(); }
-function redo() { if (!future.length) return; history.push(JSON.stringify(route)); route = JSON.parse(future.pop()); refresh(); }
+// An edit invalidates the last validation result: a stale "VALID" must not describe a changed draft.
+function snapshot() { history.push(JSON.stringify(route)); if (history.length > 100) history.shift(); future = []; draftToken += 1; lastResult = null; savedRef = null; }
+function undo() { if (!history.length) return; future.push(JSON.stringify(route)); route = JSON.parse(history.pop()); draftToken += 1; lastResult = null; savedRef = null; refresh(); }
+function redo() { if (!future.length) return; history.push(JSON.stringify(route)); route = JSON.parse(future.pop()); draftToken += 1; lastResult = null; savedRef = null; refresh(); }
 
 function setTool(t) { view.tool = t; ['tool-start', 'tool-line'].forEach(id => $(id).classList.toggle('on', id === 'tool-' + t)); $('ed-hint').textContent = t === 'start' ? 'Click the start position, drag towards the heading, release.' : t === 'line' ? 'Click a point: the straight goes along the current heading to the projection of that point.' : 'Wheel = zoom, drag = pan.'; }
 
@@ -56,8 +64,8 @@ $('btn-start-survey').onclick = () => {
 $('tool-line').onclick = () => setTool(view.tool === 'line' ? null : 'line');
 $('btn-undo').onclick = undo; $('btn-redo').onclick = redo;
 $('btn-clear').onclick = () => { snapshot(); route.steps = []; refresh(); };
-$('ed-repeat').onchange = e => { route.repeat_count = +e.target.value; };
-$('ed-speed').onchange = e => { route.limits.linear_mps = +e.target.value; };
+$('ed-repeat').onchange = e => { snapshot(); route.repeat_count = +e.target.value; refresh(); };
+$('ed-speed').onchange = e => { snapshot(); route.limits.linear_mps = +e.target.value; refresh(); };
 
 function payload() {
   return { schema_version: 1, route_id: $('ed-route-id').value.trim(), revision: 0,
@@ -65,20 +73,30 @@ function payload() {
            start: route.start || { x_m: 0, y_m: 0, yaw_deg: 0 }, limits: route.limits, steps: route.steps, repeat_count: route.repeat_count };
 }
 $('btn-validate').onclick = async () => {
+  const c = ctx();
   const { status, data } = await api(`/api/maps/${mapId}/${mapRev}/routes/validate`, payload());
+  if (!stillCurrent(c)) { log('validation result discarded: the draft or map changed meanwhile', 'warn'); return; }
   lastResult = data; showResult(data); log(status === 200 ? `valid: ${data.compiled.total_length_m.toFixed(2)} m, ${data.compiled.steps.length} steps` : `invalid: ${data.issues.length} issue(s)`, status === 200 ? '' : 'bad'); refresh();
 };
 $('btn-save').onclick = async () => {
+  const c = ctx(), forMap = { map_id: mapId, map_revision: mapRev };
   const { status, data } = await api(`/api/maps/${mapId}/${mapRev}/routes/save`, payload());
-  if (status === 200) { savedRef = { route_id: data.route_id, revision: data.revision }; log(`saved ${data.route_id} rev${data.revision} (${data.sha256.slice(0, 12)})`); await reloadRouteList(); }
-  else { lastResult = data; showResult(data); refresh(); }
+  if (status === 200) {
+    log(`saved ${data.route_id} rev${data.revision} (${data.sha256.slice(0, 12)})`);
+    // the saved reference names the FULL identity it was saved under, whatever is selected now
+    if (stillCurrent(c)) savedRef = Object.assign({ route_id: data.route_id, revision: data.revision }, forMap);
+    else log('saved, but the draft changed meanwhile: save again to create a mission from it', 'warn');
+    if (stillSameMap(c)) await reloadRouteList(c);
+  } else if (stillCurrent(c)) { lastResult = data; showResult(data); refresh(); }
 };
 $('btn-mission').onclick = async () => {
-  if (!savedRef) { log('save a revision first', 'bad'); return; }
-  const { status, data } = await api('/api/missions', { map_id: mapId, map_revision: mapRev, route_id: savedRef.route_id, route_revision: savedRef.revision });
+  if (!savedRef) { log('save this draft as a revision first', 'bad'); return; }
+  if (savedRef.map_id !== mapId || +savedRef.map_revision !== +mapRev) { log('the saved revision belongs to another map; save on this map first', 'bad'); return; }
+  const { status, data } = await api('/api/missions', { map_id: savedRef.map_id, map_revision: savedRef.map_revision, route_id: savedRef.route_id, route_revision: savedRef.revision });
   if (status === 200) log(`mission ${data.mission_id} created`);
 };
 function showResult(d) {
+  if (!d) { $('ed-result').innerHTML = '<div class="none">not validated since the last edit</div>'; return; }
   const parts = [];
   parts.push(`<div class="chips" style="margin-bottom:8px"><span class="chip ${d.ok ? 'ok' : 'bad'}">${d.ok ? 'valid' : 'invalid'}</span></div>`);
   if (d.compiled) {
@@ -93,11 +111,16 @@ function showResult(d) {
 }
 function refresh() {
   const bad = new Set((lastResult && lastResult.issues || []).map(i => i.step_id));
+  if (!lastResult) showResult(null);
   $('ed-steps').innerHTML = route.steps.length ? route.steps.map(s => `<div class="row three${bad.has(s.id) ? ' lv-error' : ''}"><span class="k">${esc(s.id)}</span>` +
     (s.type === 'straight' ? `<span class="n">straight</span><span class="v">${num(+s.to.x_m, 2)}, ${num(+s.to.y_m, 2)}<i>m</i></span>`
                            : `<span class="n">rotate</span><span class="v">${esc(String(s.direction).toUpperCase())} ${esc(s.angle_deg)}<i>°</i></span>`) + '</div>').join('')
     : '<div class="none">no steps</div>';
-  $('ed-repeat').value = route.repeat_count; view.draw();
+  $('ed-repeat').value = route.repeat_count;
+  // every control follows the model (Q15): a loaded route's speed cap shows as loaded, and an
+  // option is added if the saved value is not one of the presets
+  $('ed-speed').value = route.limits.linear_mps;  // a number input: shows the stored value, never rewrites it
+  view.draw();
 }
 // The areas validation checks (amr_navigation.footprint), drawn from the same polygon + margin.
 // A straight sweeps the grown footprint box along the heading; a turn sweeps it through the
@@ -157,23 +180,31 @@ view.overlays.push((c, v) => {
   const onActive = md && v.meta && md.active_map_id === v.meta.map_id && +md.active_map_revision === +v.meta.revision;  // R12
   if (onActive && st && st.state_name !== 'UNLOCALIZED' && lastState.run && lastState.run.pose_x !== undefined) v.arrow(lastState.run.pose_x, lastState.run.pose_y, lastState.run.pose_yaw, 0.8, INK.accent);
 });
-async function reloadRouteList() {
+async function reloadRouteList(c) {
+  c = c || ctx();
   const { data } = await apiGet(`/api/maps/${mapId}/${mapRev}`);
+  if (!stillSameMap(c)) return;  // a list for a map no longer selected
   const sel = $('ed-load'); sel.innerHTML = '<option value="">— new —</option>';
   Object.entries(data.routes || {}).forEach(([rid, revs]) => revs.forEach(r => { const o = document.createElement('option'); o.value = `${rid}/${r}`; o.textContent = `${rid} rev${r}`; sel.appendChild(o); }));
 }
 $('ed-load').onchange = async e => {
   if (!e.target.value) return;
   const [rid, rrev] = e.target.value.split('/');
+  const c = ctx(), forMap = { map_id: mapId, map_revision: mapRev };
   const { data } = await apiGet(`/api/maps/${mapId}/${mapRev}/routes/${rid}/${rrev}`);
+  if (!stillCurrent(c)) { log(`load of ${rid} rev${rrev} discarded: the draft or map changed meanwhile`, 'warn'); return; }
   snapshot(); route = { route_id: data.route.route_id, start: data.route.start, steps: data.route.steps, repeat_count: data.route.repeat_count, limits: data.route.limits };
-  $('ed-route-id').value = data.route.route_id; savedRef = { route_id: rid, revision: +rrev }; lastResult = data; showResult(data); refresh();
+  $('ed-route-id').value = data.route.route_id; savedRef = Object.assign({ route_id: rid, revision: +rrev }, forMap); lastResult = data; showResult(data); refresh();
   log(`loaded ${rid} rev${rrev}${data.ok ? '' : ' (INVALID on this map revision)'}`, data.ok ? '' : 'bad');
 };
 $('ed-map').onchange = async e => {
   [mapId, mapRev] = e.target.value.split('/'); mapRev = +mapRev;
-  await view.load(mapId, mapRev); await reloadRouteList();
-  route = { route_id: $('ed-route-id').value, start: null, steps: [], repeat_count: 1, limits: { linear_mps: 0.30 } }; history = []; future = []; lastResult = null; savedRef = null; refresh();
+  mapToken += 1; draftToken += 1;  // everything in flight for the previous map is void
+  const c = ctx();
+  route = { route_id: $('ed-route-id').value, start: null, steps: [], repeat_count: 1, limits: { linear_mps: 0.40 } }; history = []; future = []; lastResult = null; savedRef = null; refresh();
+  await view.load(mapId, mapRev);
+  if (!stillSameMap(c)) return;
+  await reloadRouteList(c);
 };
 (async () => {
   footprint = (await apiGet('/api/footprint')).data;

@@ -1,9 +1,15 @@
 // Shared helpers: JSON requests, a log line, the 2 Hz state poll every page uses,
 // the telemetry rail, tile rendering, and the asynchronous-operation helper
 // (unified plan §6.2: accepted != completed).
+const REQUEST_TIMEOUT_MS = 8000;  // a hung request must not hang a page (Q11); it rejects like a network error
 async function request(path, method, body) {
-  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' },
-                                body: body === undefined ? undefined : JSON.stringify(body) });
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS) : null;
+  let r;
+  try {
+    r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' },
+                            body: body === undefined ? undefined : JSON.stringify(body), signal: ctl ? ctl.signal : undefined });
+  } finally { if (timer) clearTimeout(timer); }
   let data = null;
   try { data = await r.json(); } catch (e) { data = { ok: false, message: r.statusText }; }
   if (!r.ok && data && data.message) log(data.message, 'bad');
@@ -104,17 +110,27 @@ pollWifi();
 
 // Submit an asynchronous supervisor operation and follow it to a terminal status.
 // A refresh/reconnect recovers progress through /api/operations/<id>; nothing is resubmitted.
+// onDone is called EXACTLY once on every path - success, refusal, network failure, timeout -
+// so a page's busy state always unwinds (review Q11). A request that never got a response
+// may still have executed on the robot; it is not resubmitted, the outcome is "unknown".
 async function operation(path, body, onDone) {
   const rid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
-  const { status, data } = await api(path, Object.assign({ request_id: rid }, body || {}));
+  let status, data;
+  try { ({ status, data } = await api(path, Object.assign({ request_id: rid }, body || {}))); }
+  catch (e) { log(`${path}: no response (outcome unknown; check the state before retrying)`, 'bad'); if (onDone) onDone(null); return null; }
   if (status !== 202) { log(data.message || `refused (${status})`, 'bad'); if (onDone) onDone(null); return null; }
   log(`accepted: ${data.message} (operation ${data.operation_id})`);
   return followOperation(data.operation_id, onDone);
 }
 async function followOperation(id, onDone) {
-  for (let i = 0; i < 600; i++) {
-    await new Promise(r => setTimeout(r, 500));
-    const { status, data } = await apiGet(`/api/operations/${id}`);
+  const deadline = Date.now() + 300000;
+  let gap = 500;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, gap));
+    let status, data;
+    try { ({ status, data } = await apiGet(`/api/operations/${id}`)); }
+    catch (e) { gap = Math.min(gap * 2, 4000); continue; }  // offline: back off, keep following the same id
+    gap = 500;
     if (status !== 200) continue;
     if (data.status_name !== 'PENDING') {
       log(`operation ${id}: ${data.status_name}${data.message ? ' — ' + data.message : ''}`, data.status_name === 'SUCCEEDED' ? '' : 'bad');
@@ -123,6 +139,7 @@ async function followOperation(id, onDone) {
     }
     if (data.phase) tile('tel-mode', '…', data.phase, 'warn');
   }
-  log(`operation ${id}: still pending after 5 min`, 'bad');
+  log(`operation ${id}: still pending after 5 min (outcome unknown)`, 'bad');
+  if (onDone) onDone(null);
   return null;
 }

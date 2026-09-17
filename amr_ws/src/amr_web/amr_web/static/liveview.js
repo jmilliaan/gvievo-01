@@ -17,36 +17,45 @@ function liveOverlay(view) {
     const s = livePose.scan;
     let row = 0;
     if (s && s.frame === frame) {
-      const stale = s.age_s > 1.0;
+      const age = ageSince(s), stale = age > 1.0;
       v.points(s.points, stale ? alpha(INK.ink3, 0.5) : INK.scan);
-      if (stale) v.label(`STALE SCAN ${s.age_s.toFixed(1)} s`, INK.stop, row++);
+      if (stale) v.label(`STALE SCAN ${age.toFixed(1)} s`, INK.stop, row++);
     }
     const p = livePose.pose;
     if (p && p.frame === frame) {
-      const stale = p.age_s > 1.0;
+      const age = ageSince(p), stale = age > 1.0;
       v.arrow(p.x, p.y, p.yaw, 0.6, stale ? INK.ink3 : INK.pose);
-      if (stale) v.label(`STALE POSE ${p.age_s.toFixed(1)} s`, INK.stop, row++);
+      if (stale) v.label(`STALE POSE ${age.toFixed(1)} s`, INK.stop, row++);
     }
   });
 }
+// Ages shown are the server's age_s at receipt PLUS the browser time elapsed since (Q11): a
+// sample that stops being replaced keeps ageing on screen instead of staying "fresh".
+function ageSince(sample) { return sample ? sample.age_s + (Date.now() - livePose._received) / 1000 : Infinity; }
 function pollLive(view, opts) {
   const o = Object.assign({ map: false, poseHz: 5, mapHz: 1 }, opts || {});
-  let tPose = 0, tMap = 0;
+  let tPose = 0, tMap = 0, failures = 0;
   async function tick() {
-    if (!document.hidden) {
-      const now = Date.now();
-      if (now - tPose >= 1000 / o.poseHz) {
-        tPose = now;
-        const { status, data } = await apiGet('/api/live/pose');
-        if (status === 200) { livePose = data; view.draw(); }
+    try {
+      if (!document.hidden) {
+        const now = Date.now();
+        if (now - tPose >= 1000 / o.poseHz) {
+          tPose = now;
+          const { status, data } = await apiGet('/api/live/pose');
+          if (status === 200) { data._received = Date.now(); livePose = data; failures = 0; }
+          view.draw();
+        }
+        if (o.map && now - tMap >= 1000 / o.mapHz) {
+          tMap = now;
+          const { status, data } = await apiGet('/api/live/map');
+          if (status === 200) { if (data.available) await view.loadLive(data); else if (view._liveSnapshot) view.clearLive(); }
+        }
       }
-      if (o.map && now - tMap >= 1000 / o.mapHz) {
-        tMap = now;
-        const { status, data } = await apiGet('/api/live/map');
-        if (status === 200) { if (data.available) await view.loadLive(data); else if (view._liveSnapshot) view.clearLive(); }
-      }
+    } catch (e) {
+      failures += 1; view.draw();  // redraw so the retained sample ages visibly
+    } finally {
+      setTimeout(tick, Math.min(100 * Math.pow(2, Math.min(failures, 5)), 3000));  // never stop polling
     }
-    setTimeout(tick, 100);
   }
   tick();
 }

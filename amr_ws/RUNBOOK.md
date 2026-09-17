@@ -155,13 +155,14 @@ The route editor moves nothing. The mode can stay `IDLE`.
      (`s1`, `s2`, …) is shown under **Steps**.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
-   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.30 m/s. Use
+   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.40 m/s. Use
    0.15–0.20 m/s for a first run.
 5. Press **Validate**. The robot checks the route against the map, including
    the footprint along every straight and the area every turn actually sweeps
    (a 90° turn does not check behind the vehicle; a 180° does). The footprint
-   is grown by the 0.10 m margin (footprint.yaml `margin_m`) and every cell under it must be free: unknown
-   (grey) cells count as blocked. The dashed outlines on the map are exactly
+   is grown by the 0.05 m margin (footprint.yaml `margin_m`, one cell) and every cell under it must be free:
+   unknown (grey) cells count as blocked. The margin is smaller than the 0.10 m cross-track the
+   executor tolerates while running, so leave visible clearance to walls when drawing. The dashed outlines on the map are exactly
    these areas; a failed one is red. A start pose or turn next to the wall the
    survey began against is the usual failure: move the start forward.
    A route that leaves the map, even partly, is refused. Problem steps turn red
@@ -232,7 +233,7 @@ Mode changes (a new survey, another map) are refused while a run is `READY`,
 | `EXECUTING` | Driving the route. |
 | `PAUSED` | Operator pause. **Prepare resume**, then physical Start. |
 | `BLOCKED` | Obstruction in the path. Clear it, **Prepare resume**, then physical Start. |
-| `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault**. That does not resume: localise again if needed, reposition, load, Start. |
+| `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault** (or the physical **Reset** button, with the vehicle at rest: it does exactly the same and nothing more - no motion, no resume, no drive or supervisor fault clearing). That does not resume: localise again if needed, reposition, load, Start. A run whose Nav2 goal never reported an outcome stays barred until navigation is stopped and started again, acknowledgement or not. |
 | `DONE` | Route complete. Load a mission again for another run, or Return to idle. |
 
 | Localisation | Meaning |
@@ -281,6 +282,11 @@ a new plan.
 - `LAYER_EXITED` or readiness timeout: inspect `~/.amr/logs/layer.log` (the
   current mapping or navigation layer) and `~/.amr/logs/base.log`. Recovery cleans the old process group and returns to IDLE;
   it does not automatically restart the failed operation.
+- `BASE_EXITED`, `BOOT_ERROR`, or a dead base for any other reason: **Recover
+  refuses** with "restart required". Recovery replaces the mode layer and needs a
+  live mux to acknowledge the new generation; it cannot rebuild the base (drives,
+  mux, panel, EKF). Correct the cause, then `sudo systemctl restart amr.service`.
+  Motion stays inhibited throughout.
 - `8130h` on both drives: the drive lost the PC heartbeat. Stop the service,
   correct the PC/CAN cause, perform the required drive power-cycle procedure,
   then start to IDLE. The drive owner also withholds the heartbeat on purpose
@@ -376,3 +382,10 @@ sudo systemctl daemon-reload
 
 Re-run the prior service's documented boot check before releasing E-stop. A
 rollback does not authorize automatic motion or resume any interrupted job.
+
+What a rollback gives you is the LEGACY controller and its own operator
+interface, as a set. The unified web pages are not part of it: without the
+supervisor they have no lease, mode or active-map context, so jog, survey,
+initial-pose and mission controls are refused by design. Do not try to pair the
+unified web app with a legacy or standalone launch; `nav.launch.py` and
+`mapping.launch.py` are diagnostics and simulation entry points only.

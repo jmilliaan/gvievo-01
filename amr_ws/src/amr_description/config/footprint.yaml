@@ -11,8 +11,9 @@ polygon:
   - [ 1.10, -0.35]
   - [ 1.10,  0.35]
   - [-0.50,  0.35]
-margin_m: 0.10          # route validation + obstruction checks, grown around the polygon.
-                        # Halved from 0.20 on 2026-09-17 (operator request): now equal to the
-                        # cross-track fault limit (0.10 m) with NO localisation allowance
-                        # (sim AMCL p95 0.06 m, more in a turn). A route that validates with
-                        # 0.10 m may still fault on cross-track or brush a wall while turning.
+margin_m: 0.05          # route validation + obstruction checks, grown around the polygon.
+                        # One grid cell. 0.20 -> 0.10 -> 0.05 on 2026-09-17 (operator request).
+                        # DECOUPLED from the cross-track fault limit (route limits, 0.10 m):
+                        # the executor may permit twice the lateral error validation cleared.
+                        # A route that validates here can still brush a wall at the fault limit;
+                        # clearance is the operator's judgement when drawing, not this number.

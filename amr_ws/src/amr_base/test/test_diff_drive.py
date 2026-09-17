@@ -93,3 +93,17 @@ def test_integrate_arc_midpoint_accuracy():
         s = integrate(s, G, d_l, d_r)
     assert (s.x, s.y) == pytest.approx((R, R), abs=1e-3)
     assert s.th == pytest.approx(math.pi / 2)
+
+
+def test_slew_asym_starts_gently_and_stops_fast():
+    from amr_base.diff_drive import slew_asym
+
+    # accelerating from rest: limited by accel
+    assert slew_asym(0.0, 0.3, 0.15, 0.5, 0.02) == pytest.approx(0.003)
+    # stopping: limited by decel
+    assert slew_asym(0.3, 0.0, 0.15, 0.5, 0.02) == pytest.approx(0.29)
+    # reversing through zero counts as shrinking until zero, then growing
+    assert slew_asym(0.1, -0.3, 0.15, 0.5, 0.02) == pytest.approx(0.09)
+    assert slew_asym(0.0, -0.3, 0.15, 0.5, 0.02) == pytest.approx(-0.003)
+    # reaching the target exactly
+    assert slew_asym(0.299, 0.3, 0.15, 0.5, 0.02) == pytest.approx(0.3)

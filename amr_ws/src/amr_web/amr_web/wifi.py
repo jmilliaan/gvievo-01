@@ -42,7 +42,9 @@ def parse_proc(text: str, iface: str) -> float | None:
 
 def _nmcli(*args: str) -> str | None:
     try:
-        out = subprocess.run(["nmcli", *args], capture_output=True, text=True, timeout=1.0, check=False).stdout
+        out = subprocess.run(
+            ["nmcli", *args], capture_output=True, text=True, timeout=1.0, check=False
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     line = out.strip().splitlines()[0] if out.strip() else ""
