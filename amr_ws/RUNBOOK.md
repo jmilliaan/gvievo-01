@@ -290,10 +290,22 @@ It is an exclusive IDLE substate:
 motor is a BLMR6400SKM-GFV-B (400 W, 1:30 gearhead). The BLV-R manual requires
 motion-extension mode for that combination, and no positioning type offers it.
 
+There is no vendor confirmation. Running PP is an internal decision to accept
+that risk, bounded by the drive settings below, the 0.30 m/s PP speed cap for
+the first sessions, and a bench test on blocks before the floor.
+
 Unlock PP only after all of these:
-- **Vendor:** Oriental Motor has confirmed PP for this motor and named the settings.
-- **Drives:** a person has set 6072h, 6065h, 6067h, 605Dh, 605Eh and 6085h in both drives with MEXE02 and saved them.
-- **Profile:** those values are entered under `pp.expect`, with the confirmation recorded in `pp.vendor_ref`.
+- **Drives:** a person has set, in both drives with MEXE02, then saved and power-cycled:
+
+  | MEXE02 parameter | Object | Value |
+  |---|---|---|
+  | Max torque | 6072h | 10000 (default) |
+  | Position deviation alarm (p6) | 6065h | 36000 |
+  | IN-POS positioning completion signal range (p7) | 6067h | 1000 |
+  | Halt option | 605Dh | 1 (default) |
+  | Stopping method at alarm generation (p6) | 605Eh | 2 (default) |
+  | Quick stop rate (p7) | 6085h | 1600 (also shortens alarm stops in PV) |
+- **Profile:** those values are entered under `pp.expect`, and `pp.vendor_ref` records who decided, when and on what basis (`manuals/agent-prompts/pp-profile-fill.md` does both, reading the drives back first).
 
 Software never writes those objects. Before every PP move the drive owner
 reads them back from both drives and refuses the move on any difference.

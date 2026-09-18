@@ -437,8 +437,8 @@ def create_app(
     @app.get("/api/commissioning/capabilities")
     def api_commissioning_capabilities():
         """What the blind-run form may offer: the profile's caps, and whether the drive
-        owner reports profile position available right now (it is locked until the
-        vendor has confirmed pp for this motor). Advisory: the commissioning node and
+        owner reports profile position available right now (locked until the decision
+        to run pp on this motor is recorded in pp.vendor_ref). Advisory: the commissioning node and
         the drive owner enforce the same rules on their own."""
         import amr_base.agv_repo  # noqa: F401, PLC0415
 

@@ -34,7 +34,7 @@ Two backends, chosen per plan ("backend": "pv" | "pp"):
       per plan; this job holds a run id at the drive owner (PpMove, re-sent every
       tick) and follows /drives/pp_status. Admitted and started only while the
       drive owner reports pp available - it is locked by the profile until the
-      vendor has confirmed pp for this motor. An abort or clear sends hold=false
+      decision to run pp on this motor is recorded (pp.vendor_ref). An abort or clear sends hold=false
       for a few ticks, so the drive halts at once rather than on the stale timeout.
 
 Both: the centre-path speed is capped by blind_run.max_speed_mps (and pp by

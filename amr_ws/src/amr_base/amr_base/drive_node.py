@@ -11,7 +11,7 @@
 Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
 
 Profile position (amr_base/pp.py) is LOCKED by the profile (pp.enabled false)
-until the vendor has confirmed it for this motor. While a pp move is active the
+until the decision to run it on this motor is recorded (pp.vendor_ref). While a pp move is active the
 bus thread sends the pp controller's controlwords instead of /cmd_wheel_vel, and
 halts on its own authority check (lease with COMMISSIONING and the move's
 generation, a fresh MANUAL panel - required even without require_supervisor), on

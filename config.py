@@ -271,9 +271,11 @@ pp.*
     drive's own position loop runs each wheel to a count target. LOCKED by
     default (enabled false). The motor is a 400 W BLM with a 1:30 gearhead, and
     the BLV-R manual (function edition 3-4/3-6) requires motion-extension mode
-    for that combination, which no positioning type offers. Enable only after
-    Oriental Motor has confirmed pp for this motor and named the settings
-    below; record their reference in vendor_ref.
+    for that combination, which no positioning type offers. There is no vendor
+    confirmation: enabling pp is an INTERNAL engineering decision to accept
+    that risk, bounded by the settings below, the speed cap and a bench test
+    on blocks first. vendor_ref records who decided, when and on what basis;
+    the loader refuses enabled=true while it is empty.
 
     expect.* are the values a human sets IN THE DRIVES with MEXE02 (and saves).
     This software never writes them - they are on no allow-list in guard.py -
@@ -284,7 +286,7 @@ pp.*
       following_error_counts  6065h  how far a wheel may lag before bit 13
       position_window_counts  6067h  "target reached" band
       halt_option             605Dh  Halt decelerates on the profile ramp (1)
-      fault_reaction          605Eh  per the vendor's answer
+      fault_reaction          605Eh  2 = quick-stop ramp (6085h), never 0 on a gear
       quick_stop_decel        6085h  r/min/s
     max_speed_mps is the pp cap, at most blind_run.max_speed_mps.
 
@@ -941,7 +943,7 @@ def _validate(ns):
           f"blind_run.max_speed_mps ({g('BLIND_MAX_SPEED_MPS')} m/s) needs more than "
           f"blind_run.max_rpm ({g('BLIND_MAX_RPM'):g} r/min)")
 
-    # -- profile position (locked until the vendor has answered) ------------
+    # -- profile position (locked until someone records the decision) -------
     check(0 < g("PP_MAX_SPEED_MPS") <= g("BLIND_MAX_SPEED_MPS"),
           "pp.max_speed_mps must be in (0, blind_run.max_speed_mps]")
     expect = g("PP_EXPECT")
@@ -951,8 +953,8 @@ def _validate(ns):
         unset = sorted(k for k, v in expect.items() if v is None)
         check(not unset, f"pp.enabled is true but pp.expect has null value(s) {unset}")
         check(g("PP_VENDOR_REF").strip() != "",
-              "pp.enabled is true but pp.vendor_ref is empty - record the "
-              "Oriental Motor confirmation that pp is permitted for this motor")
+              "pp.enabled is true but pp.vendor_ref is empty - record who "
+              "authorised pp on this 400 W geared motor, when, and on what basis")
     check(g("AUTO_START_DELAY_S") >= 0,
           "timing.auto_start_delay_s must be >= 0")
     check(g("AUTO_START_DELAY_S") <= 10.0,

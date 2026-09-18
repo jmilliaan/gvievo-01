@@ -58,7 +58,7 @@ ALLOWED = {
     # is true. The pp safety configuration - 6072h max torque, 6065h following
     # error window, 6067h position window, 605Dh halt option, 605Eh fault
     # reaction, 6085h quick stop, 60F2h positioning option - is deliberately NOT
-    # here: a human sets it with MEXE02 per Oriental Motor's answer, and the
+    # here: a human sets it with MEXE02 (RUNBOOK section 3), and the
     # drive owner only READS it back and refuses a move on any difference.
     0x607A: "target position",
     0x6081: "profile velocity",

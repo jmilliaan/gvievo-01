@@ -100,8 +100,12 @@ def test_config_profile():
     # 400 W geared motor needs motion extension, which pp cannot select; a pp
     # section switched on without the verified drive values or the vendor
     # reference must not load.
-    check("pp ships locked, every expected drive value unset",
-          config.PP_ENABLED is False and all(v is None for v in config.PP_EXPECT.values()),
+    # Either locked, or unlocked with every drive value and the vendor reference
+    # recorded - whichever state the vehicle's profile is in today.
+    check("pp is locked, or fully configured with a vendor reference",
+          config.PP_ENABLED is False
+          or (all(v is not None for v in config.PP_EXPECT.values())
+              and config.PP_VENDOR_REF.strip() != ""),
           f"enabled={config.PP_ENABLED} expect={config.PP_EXPECT}")
     refuses("pp enabled with unset drive values is refused",
             lambda d: d["pp"].update(enabled=True, vendor_ref="OM ticket 1"), "null value")

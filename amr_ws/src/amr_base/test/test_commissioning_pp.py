@@ -130,7 +130,7 @@ def test_done_from_the_owner_records_targets_actuals_and_ends_the_hold():
     assert job.pp_hold() is None  # a completed move needs no release
     ev = job.evidence()
     assert ev["backend"] == "pp" and ev["pp_result"]["outcome"] == pp.DONE and ev["pp_move"]["left"]
-    assert ev["pp_config"]["vendor_ref"] == ""
+    assert ev["pp_config"]["vendor_ref"] == cj.config.PP_VENDOR_REF  # whatever the profile records
 
 
 @pytest.mark.parametrize(

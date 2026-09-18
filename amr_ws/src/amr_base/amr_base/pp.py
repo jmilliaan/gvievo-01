@@ -17,9 +17,10 @@ module holds everything about that which can be decided without a bus:
                    Blocking bus work (enter: verify + mode switch + set-points;
                    exit: back to pv) is RETURNED as an action for the bus thread.
 
-LOCKED by default: the profile's pp.enabled is false until Oriental Motor has
-confirmed pp for the 400 W motor with a 1:30 gearhead (the manual requires
-motion extension there, which no positioning type offers).
+LOCKED by default: the profile's pp.enabled is false until someone records, in
+pp.vendor_ref, the decision to run pp on the 400 W motor with a 1:30 gearhead
+(the manual requires motion extension there, which no positioning type offers;
+there is no vendor confirmation, so this is an internal risk acceptance).
 
 Held, not latched. A move continues only while the requester keeps sending a
 fresh hold for the same run id; staleness, hold=false, a gate failure, a
