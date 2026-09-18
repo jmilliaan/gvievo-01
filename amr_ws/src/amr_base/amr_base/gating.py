@@ -53,8 +53,29 @@ class Params:
     drives_timeout_s: float = 0.3
     require_supervisor: bool = False  # production sets True; the bench wrappers leave it False
     teleop_enabled: bool = True  # /cmd_vel_teleop is an engineering input; production turns it off
-    pendant_v: float = 0.30  # body m/s while a pendant direction is held (browser jog's V_MAX)
-    pendant_w: float = 0.30  # body rad/s
+    # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v (the FAST wheel's speed); with LEFT
+    # or RIGHT held as well the vehicle arcs with the slow wheel at pendant_turn_ratio of the
+    # fast one (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
+    pendant_v: float = 0.50  # body m/s while FWD or RVS is held (0.30 before 2026-09-18)
+    pendant_w: float = 0.30  # body rad/s for a spin in place (unchanged)
+    pendant_turn_ratio: float = 0.75  # slow wheel / fast wheel while driving and turning
+    track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
+
+
+def pendant_twist(p: Params, fwd: bool, rvs: bool, left: bool, right: bool) -> tuple[float, float]:
+    """Body (v, w) for the held pendant directions (opposing pairs already cancelled)."""
+    drive = int(fwd) - int(rvs)
+    turn = int(left) - int(right)
+    if drive == 0:
+        return 0.0, p.pendant_w * turn
+    if turn == 0:
+        return p.pendant_v * drive, 0.0
+    fast, slow = p.pendant_v, p.pendant_v * p.pendant_turn_ratio
+    v = drive * (fast + slow) / 2.0
+    # +w turns left (ccw): the right wheel is the fast one. In reverse the same lever still
+    # swings the front to the left (v < 0 and w > 0 arc the front leftwards).
+    w = turn * (fast - slow) / p.track_m
+    return v, w
 
 
 DEFAULT = Params()
@@ -256,8 +277,7 @@ def select(
         # Physical pendant: a held deadman outranks any browser or keyboard stream.
         # Its freshness is the panel image's own (panel_ok above).
         if panel.fwd or panel.rvs or panel.left or panel.right:
-            v = p.pendant_v * (int(panel.fwd) - int(panel.rvs))
-            w = p.pendant_w * (int(panel.left) - int(panel.right))
+            v, w = pendant_twist(p, panel.fwd, panel.rvs, panel.left, panel.right)
             return Selection(PENDANT, v, w, "pendant", gen)
         # Browser jog: bound by its own carried lifetime as well as the mux timeout.
         if manual is not None and p.require_supervisor:

@@ -116,10 +116,13 @@ def _compose(context):
             executable="cmd_mux_kinematics_node",
             name="cmd_mux_kinematics",
             output="screen",
-            # Gentle starts on the vehicle (2.7 s to 0.4 m/s, 0.6 s to 0.24 rad/s); stops at the
-            # hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at its
-            # "same as alpha_max" default made every Spin coast 2.6 deg past its target
+            # Gentle autonomous starts on the vehicle (3.3 s to 0.5 m/s, 0.85 s to 0.34 rad/s); stops
+            # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
+            # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
+            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve to 0.3 m/s^2 with
+            # 1.0 m/s^3 (1.9 s to full speed); driving + turning arcs with the slow wheel at 75 %
+            # of the fast one; a spin in place stays at 0.3 rad/s.
             parameters=[
                 {
                     **gate,
@@ -128,6 +131,11 @@ def _compose(context):
                     "alpha_max": 0.4,
                     "d_max": 0.5,
                     "delta_max": 1.0,
+                    "manual_a_max": 0.3,
+                    "manual_jerk": 1.0,
+                    "pendant_v_m_s": 0.5,
+                    "pendant_w_rad_s": 0.3,
+                    "pendant_turn_ratio": 0.75,
                 }
             ],
         ),

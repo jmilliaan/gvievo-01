@@ -603,7 +603,7 @@ class RosAdapter(Node):
         clear.action = Marker.DELETEALL
         markers.markers.append(clear)
         for i, st in enumerate(compiled.steps):
-            if st.type == "straight":
+            if st.type in ("straight", "reverse", "arc"):
                 for x, y, yaw in st.samples:
                     p = PoseStamped()
                     p.header = path.header

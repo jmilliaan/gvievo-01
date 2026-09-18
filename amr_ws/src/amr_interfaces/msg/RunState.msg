@@ -21,6 +21,7 @@ string step_id
 string step_type            # straight | rotate | ""
 float64 remaining_turn_rad  # signed, for a rotate in progress or paused
 float64 cross_track_m       # for a straight in progress
+float64 step_v_mps          # the speed a straight in progress runs at (route cap or long-straight boost); 0 otherwise
 uint8 localization_state    # LocalizationState value
 bool resume_prepared        # a Start edge will continue the remaining step
 bool pose_valid

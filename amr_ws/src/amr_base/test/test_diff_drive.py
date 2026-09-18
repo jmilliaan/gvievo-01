@@ -107,3 +107,37 @@ def test_slew_asym_starts_gently_and_stops_fast():
     assert slew_asym(0.0, -0.3, 0.15, 0.5, 0.02) == pytest.approx(-0.003)
     # reaching the target exactly
     assert slew_asym(0.299, 0.3, 0.15, 0.5, 0.02) == pytest.approx(0.3)
+
+
+def test_scurve_builds_acceleration_gradually_and_never_overshoots():
+    from amr_base.diff_drive import scurve
+
+    dt, v, a, t, peak = 0.02, 0.0, 0.0, 0.0, 0.0
+    trace = []
+    while v < 0.5:
+        v, a = scurve(v, a, 0.5, 0.3, 0.5, 1.0, dt)
+        t += dt
+        peak = max(peak, a)
+        trace.append((t, v, a))
+        assert v <= 0.5 + 1e-12
+    # trapezoidal acceleration: 0.3 s to build 0.3 m/s^2 at 1 m/s^3, a plateau, a ramp-down;
+    # the whole start takes ~1.9 s (a plain 0.3 m/s^2 ramp would take 1.67 s)
+    assert peak == pytest.approx(0.3)
+    assert trace[4][2] == pytest.approx(0.1, abs=0.011)  # 0.1 s in: a = 0.1, not 0.3
+    assert 1.8 <= t <= 2.0
+    assert trace[-1] == (pytest.approx(t), 0.5, 0.0)  # reaching the target zeroes the accel state
+    # a stop uses the (faster) decel limit
+    v, a, t = 0.5, 0.0, 0.0
+    while v > 0.0:
+        v, a = scurve(v, a, 0.0, 0.3, 0.5, 1.0, dt)
+        t += dt
+        assert v >= 0.0
+    assert 1.3 <= t <= 1.6
+    # a reversal passes through zero without a step
+    v, a = 0.2, 0.0
+    vs = []
+    while v > -0.2:
+        v, a = scurve(v, a, -0.2, 0.3, 0.5, 1.0, dt)
+        vs.append(v)
+    assert max(abs(x - y) for x, y in zip(vs, vs[1:], strict=False)) <= 0.5 * dt + 1e-9
+    assert vs[-1] == -0.2

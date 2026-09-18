@@ -168,24 +168,87 @@ def rotation_outside(
     )
 
 
+def swept_poses(grid: Grid, fp: Footprint, poses) -> np.ndarray:
+    """Cells covered by the footprint at each of `poses` (x, y, yaw), grown by the margin.
+    Callers sample the poses no farther apart than a cell so the union has no gaps."""
+    require_axis_aligned(grid.meta)
+    mask = np.zeros(grid.data.shape, dtype=bool)
+    for x, y, yaw in poses:
+        rasterize_polygon(grid, _polygon_world(fp, x, y, yaw), mask)
+    return dilate(mask, margin_cells(fp, grid.meta.resolution))
+
+
 def swept_line(
     grid: Grid, fp: Footprint, start: tuple[float, float, float], end: tuple[float, float, float]
 ) -> np.ndarray:
     """Cells covered by the footprint translated from `start` to `end` (same heading)."""
-    require_axis_aligned(grid.meta)
-    mask = np.zeros(grid.data.shape, dtype=bool)
     length = math.hypot(end[0] - start[0], end[1] - start[1])
     n = max(1, int(math.ceil(length / grid.meta.resolution)))
+    poses = [
+        (start[0] + k / n * (end[0] - start[0]), start[1] + k / n * (end[1] - start[1]), start[2])
+        for k in range(n + 1)
+    ]
+    return swept_poses(grid, fp, poses)
+
+
+def arc_poses(
+    centre: tuple[float, float],
+    radius: float,
+    yaw0: float,
+    signed_angle: float,
+    spacing: float,
+    from_len: float = 0.0,
+    to_len: float | None = None,
+) -> list[tuple[float, float, float]]:
+    """Poses along an arc (heading tangent) every `spacing` metres of arc length, between
+    `from_len` and `to_len` (default: the whole arc). Same construction as compiler.arc_pose."""
+    sign = 1.0 if signed_angle >= 0 else -1.0
+    total = radius * abs(signed_angle)
+    a0 = max(0.0, min(total, from_len))
+    a1 = total if to_len is None else max(a0, min(total, to_len))
+    n = max(1, int(math.ceil((a1 - a0) / spacing)))
+    out = []
     for k in range(n + 1):
-        f = k / n
-        rasterize_polygon(
-            grid,
-            _polygon_world(
-                fp, start[0] + f * (end[0] - start[0]), start[1] + f * (end[1] - start[1]), start[2]
-            ),
-            mask,
+        phi = (a0 + (a1 - a0) * k / n) / radius
+        yaw = yaw0 + sign * phi
+        out.append(
+            (centre[0] + sign * radius * math.sin(yaw), centre[1] - sign * radius * math.cos(yaw), yaw)
         )
-    return dilate(mask, margin_cells(fp, grid.meta.resolution))
+    return out
+
+
+def swept_arc(
+    grid: Grid,
+    fp: Footprint,
+    centre: tuple[float, float],
+    radius: float,
+    yaw0: float,
+    signed_angle: float,
+    from_len: float = 0.0,
+    to_len: float | None = None,
+) -> np.ndarray:
+    """Cells covered by the footprint driven along an arc (or the part of it between
+    `from_len` and `to_len` metres of arc length)."""
+    return swept_poses(
+        grid, fp, arc_poses(centre, radius, yaw0, signed_angle, grid.meta.resolution, from_len, to_len)
+    )
+
+
+def arc_outside(
+    grid: Grid, fp: Footprint, centre: tuple[float, float], radius: float, yaw0: float, signed_angle: float
+) -> bool:
+    """True if the footprint plus margin leaves the map anywhere along the arc (poses 5 deg apart:
+    conservative through the padded vertices, like line_outside)."""
+    x0, y0, x1, y1 = _map_extent(grid)
+    pad = _pad(grid, fp) - 1e-9
+    poses = arc_poses(centre, radius, yaw0, signed_angle, radius * math.radians(5.0))
+    pts = np.vstack([_polygon_world(fp, *p) for p in poses])
+    return bool(
+        (pts[:, 0].min() - pad < x0)
+        or (pts[:, 0].max() + pad > x1)
+        or (pts[:, 1].min() - pad < y0)
+        or (pts[:, 1].max() + pad > y1)
+    )
 
 
 def swept_rotation(

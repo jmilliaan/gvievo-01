@@ -9,6 +9,9 @@ action result alone:
   straight   cross-track from the drawn line (fault > limit), endpoint within
              tolerance AND wheels still 0.3 s before advancing, passing the
              endpoint outside tolerance is a fault, never a reverse;
+  reverse    a straight driven backwards, facing forward (RPP allow_reversing):
+             same checks along the travel direction; at most 2 m and half the
+             base speed because the rear is outside the scanner's field;
   rotate     wheels still first; signed relative Spin; own unwrapped yaw from
              /odometry/filtered verifies direction and travel, centre drift is
              bounded, final map heading within tolerance; a paused turn resumes
@@ -25,10 +28,11 @@ import threading
 
 import numpy as np
 import rclpy
-from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep, wrap
+from amr_navigation.compiler import ARC, ROTATE, CompiledStep, wrap
 from amr_navigation.validate import load_keepout, validate
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import FollowPath, Spin
+from nav2_msgs.msg import SpeedLimit
 from nav_msgs.msg import Odometry, Path
 from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -137,8 +141,24 @@ class RouteExecutor(Node):
         self.declare_parameter("goal_overshoot_m", 0.045)
         self.declare_parameter("panel_age_limit_s", 0.20)
         self.declare_parameter("loc_age_limit_s", 1.5)
-        self.declare_parameter("obstacle_points", 3)
+        # Obstruction (spec §5.4), made lenient 2026-09-18 after a false BLOCKED at an arc start
+        # (11 returns beside a mapped wall on cells the map calls free): a return within
+        # obstacle_map_tol_m of a mapped obstacle is explained by the map, it takes
+        # obstacle_points such returns, and they must persist over obstacle_persist_scans
+        # consecutive scans before the run stops.
+        self.declare_parameter("obstacle_points", 5)
+        self.declare_parameter("obstacle_map_tol_m", 0.15)
+        self.declare_parameter("obstacle_persist_scans", 2)
         self.declare_parameter("stopping_horizon_m", 1.5)
+        # the envelope is checked at least stopping_time_s of travel ahead at the STEP's speed:
+        # 1.5 m at 0.50 m/s, 2.1 m at the 0.70 long-straight boost (permit revoke -> mux slew stop)
+        self.declare_parameter("stopping_time_s", 3.0)
+        # Speed tapers between chained steps (a boosted straight into a normal one, a straight
+        # into an arc at 60 %) and at the end of a boosted straight: the lower speed is asked
+        # early enough that the mux decel (d_max 0.5) reaches it before the boundary, from
+        # (v^2 - v_next^2) / (2 taper_decel) plus taper_lead_s of travel.
+        self.declare_parameter("taper_decel", 0.4)
+        self.declare_parameter("taper_lead_s", 0.3)
         self.declare_parameter("clear_stable_s", 1.0)
         # R08: bound on waiting for a goal's acceptance, and for an obsolete (cancelled) goal to
         # report terminal before a replacement goal may be issued.
@@ -168,7 +188,15 @@ class RouteExecutor(Node):
         self.scan_age = p("scan_age_limit_s").value
         self.goal_overshoot_m = float(p("goal_overshoot_m").value)
         self.obstacle_points = int(p("obstacle_points").value)
+        self.obstacle_map_tol_m = float(p("obstacle_map_tol_m").value)
+        self.obstacle_persist = max(1, int(p("obstacle_persist_scans").value))
+        self._hit_scans = 0  # consecutive distinct scans with returns in the envelope
+        self._hit_scan_t: float | None = None
+        self._map_near = None  # mapped occupied cells grown by obstacle_map_tol_m (per mission)
         self.horizon = p("stopping_horizon_m").value
+        self.stopping_time_s = p("stopping_time_s").value
+        self.taper_decel = max(0.05, float(p("taper_decel").value))
+        self.taper_lead_s = float(p("taper_lead_s").value)
         self.clear_stable_s = p("clear_stable_s").value
         self.goal_accept_timeout = p("goal_accept_timeout_s").value
         self.goal_cancel_timeout = p("goal_cancel_timeout_s").value
@@ -231,6 +259,12 @@ class RouteExecutor(Node):
         self._follow = ActionClient(self, FollowPath, "/follow_path", callback_group=io)
         self._spin = ActionClient(self, Spin, "/spin", callback_group=io)
         self._permit_pub = self.create_publisher(MotionPermit, "/amr/motion_permit", RELIABLE_1)
+        # Per-step speed for the controller (RPP setSpeedLimit, absolute m/s): the approach ramp
+        # and lookahead scaling are then planned from the step's speed, while the same number
+        # rides in the permit v_max as the mux's hard clamp. controller_server's default
+        # speed_limit_topic; plain (not generation-private) because an old layer's controller
+        # is being stopped when a new one exists and a limit is harmless to it.
+        self._speed_pub = self.create_publisher(SpeedLimit, "/speed_limit", RELIABLE_1)
         self._state_pub = self.create_publisher(RunState, "/amr/run_state", LATCHED)
         self.create_service(RunMission, "/amr/run_mission", self._srv_run, callback_group=srv)
         self.create_service(Trigger, "/amr/pause", self._srv_pause, callback_group=srv)
@@ -369,6 +403,8 @@ class RouteExecutor(Node):
                 route,
                 v.compiled,
             )
+            cells = int(round(self.obstacle_map_tol_m / grid.meta.resolution))
+            self._map_near = fpmod.dilate(grid.data >= 65, cells) if cells > 0 else (grid.data >= 65)
             self._reset_step_state()
             self._log_state()
             res.accepted, res.message = True, self.fsm.reason
@@ -476,7 +512,7 @@ class RouteExecutor(Node):
         pose = self._pose()
         if pose is None:
             return False, "no pose"
-        if st.type == STRAIGHT:
+        if st.type != ROTATE:
             along, cross = self._along_cross(st, pose)
             if abs(cross) > self.route.limits.cross_track_limit_m:
                 return False, f"outside the corridor ({cross:+.2f} m cross-track)"
@@ -514,7 +550,21 @@ class RouteExecutor(Node):
 
     @staticmethod
     def _along_cross(st: CompiledStep, pose) -> tuple[float, float]:
-        c, s = math.cos(st.start[2]), math.sin(st.start[2])
+        """Progress along the step's TRAVEL direction (positive = the way the step goes, so a
+        reverse step counts up while backing) and the signed lateral offset (positive =
+        left of travel). An arc measures both from its centre: progress is the swept angle
+        times the radius, the offset is how far inside (left, for a left arc) the circle."""
+        if st.type == ARC:
+            sign = 1.0 if st.signed_angle_rad >= 0 else -1.0
+            cx, cy = st.centre
+            phi = sign * wrap(
+                math.atan2(pose[1] - cy, pose[0] - cx) - math.atan2(st.start[1] - cy, st.start[0] - cx)
+            )
+            if phi < -math.pi / 2:  # a 180 deg arc overrun reads as a small negative angle
+                phi += 2.0 * math.pi
+            r = math.hypot(pose[0] - cx, pose[1] - cy)
+            return st.radius_m * phi, sign * (st.radius_m - r)
+        c, s = math.cos(st.travel_yaw), math.sin(st.travel_yaw)
         dx, dy = pose[0] - st.start[0], pose[1] - st.start[1]
         return dx * c + dy * s, -dx * s + dy * c
 
@@ -558,14 +608,9 @@ class RouteExecutor(Node):
             tr = self.tf_buffer.lookup_transform("map", scan.header.frame_id, scan.header.stamp)
         except Exception:  # noqa: BLE001
             return "no laser transform at the scan time"
-        if st.type == STRAIGHT:
+        if st.type != ROTATE:
             along, _ = self._along_cross(st, pose)
-            a0 = max(0.0, along)
-            a1 = min(st.length_m, a0 + self.horizon)
-            c, s = math.cos(st.start[2]), math.sin(st.start[2])
-            p0 = (st.start[0] + c * a0, st.start[1] + s * a0, st.start[2])
-            p1 = (st.start[0] + c * a1, st.start[1] + s * a1, st.start[2])
-            mask = fpmod.swept_line(self.grid, self.fp, p0, p1)
+            mask = self._envelope(st, along)
         else:
             mask = fpmod.swept_rotation(
                 self.grid, self.fp, (st.start[0], st.start[1]), st.start[2], st.signed_angle_rad
@@ -580,12 +625,18 @@ class RouteExecutor(Node):
         cols = np.floor((ex - g.origin_x) / g.resolution).astype(int)
         rows = np.floor((ey - g.origin_y) / g.resolution).astype(int)
         inside = (cols >= 0) & (cols < self.grid.width) & (rows >= 0) & (rows < self.grid.height)
-        # points that the MAP already explains (walls) are not obstacles; only free-space hits are
-        hits = mask[rows[inside], cols[inside]] & (self.grid.data[rows[inside], cols[inside]] < 65)
+        # returns the MAP already explains (walls, within obstacle_map_tol_m) are not obstacles
+        near = self._map_near if self._map_near is not None else (self.grid.data >= 65)
+        hits = mask[rows[inside], cols[inside]] & ~near[rows[inside], cols[inside]]
         n = int(hits.sum())
         if n >= self.obstacle_points:
+            if self._hit_scan_t != self._scan_t:  # count each scan once, whatever the tick rate
+                self._hit_scans, self._hit_scan_t = self._hit_scans + 1, self._scan_t
             self.clear_since = None
-            return f"{n} scan points inside the {'line' if st.type == STRAIGHT else 'rotation'} envelope"
+            if self._hit_scans >= self.obstacle_persist:
+                return f"{n} scan points inside the {st.type} envelope"
+            return None  # one scan's worth: wait for the next before stopping the run
+        self._hit_scans, self._hit_scan_t = 0, None
         if self.clear_since is None:
             self.clear_since = self._now()
         return None
@@ -603,7 +654,6 @@ class RouteExecutor(Node):
         path = Path()
         path.header.frame_id = "map"
         path.header.stamp = self.get_clock().now().to_msg()
-        c, s = math.cos(st.start[2]), math.sin(st.start[2])
 
         def add(x, y, yaw):
             ps = PoseStamped()
@@ -612,20 +662,118 @@ class RouteExecutor(Node):
             ps.pose.orientation.z, ps.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
             path.poses.append(ps)
 
-        for x, y, yaw in st.samples:
-            if (x - st.start[0]) * c + (y - st.start[1]) * s < along - 0.10:
+        for sample in st.samples:
+            if self._along_cross(st, sample)[0] < along - 0.10:
                 continue  # resume: from the current projection onwards
-            add(x, y, yaw)
+            add(*sample)
+        # the chained steps after this one, in the same path: no goal, no stop, between them
+        last = st
+        for nxt in self._chain(self.fsm.step_index)[1:]:
+            for sample in nxt.samples[1:]:
+                add(*sample)
+            last = nxt
         over = max(0.0, min(self.goal_overshoot_m, self.route.limits.position_tolerance_m))
         if over > 0.0 and path.poses:
-            add(st.end[0] + c * over, st.end[1] + s * over, st.end[2])
+            # past the end along the travel direction there: the end tangent for an arc, the
+            # (possibly reversed) heading for a line; poses keep the forward heading
+            end_dir = last.end[2] if last.type == ARC else last.travel_yaw
+            add(last.end[0] + math.cos(end_dir) * over, last.end[1] + math.sin(end_dir) * over, last.end[2])
         return path
+
+    def _horizon(self, st: CompiledStep) -> float:
+        return max(self.horizon, float(st.v_mps) * self.stopping_time_s)
+
+    # ---- chains: consecutive forward steps (straight, arc) are driven as ONE FollowPath so the
+    # vehicle never stops between them (2026-09-18); a rotate or a reverse ends a chain.
+
+    @staticmethod
+    def _chainable(st: CompiledStep) -> bool:
+        return st.type != ROTATE and not st.reverse
+
+    def _chain(self, index: int) -> list[CompiledStep]:
+        """The steps driven together from `index`: it and every chainable step after it."""
+        steps = self.compiled.steps
+        if not self._chainable(steps[index]):
+            return [steps[index]]
+        out = []
+        for st in steps[index:]:
+            if not self._chainable(st):
+                break
+            out.append(st)
+        return out
+
+    def _next_in_chain(self) -> CompiledStep | None:
+        chain = self._chain(self.fsm.step_index)
+        return chain[1] if len(chain) > 1 else None
+
+    def _taper_dist(self, v: float, v_next: float) -> float:
+        if v_next >= v:
+            return 0.0
+        return (v * v - v_next * v_next) / (2.0 * self.taper_decel) + v * self.taper_lead_s
+
+    def _step_speed(self, st: CompiledStep, pose) -> float:
+        """The speed the vehicle may run at HERE on a forward step: its compiled speed, tapered
+        to the NEXT chained step's speed (or, for a boosted last step, the base speed) early
+        enough that the mux decel reaches it at the boundary. The controller's own approach
+        ramp then only ever starts from the base speed or less."""
+        v = float(st.v_mps)
+        if pose is None:
+            return v
+        nxt = self._next_in_chain()
+        base = float(self.route.limits.linear_mps)
+        v_next = float(nxt.v_mps) if nxt is not None else min(v, base)
+        if v_next >= v:
+            return v
+        along, _ = self._along_cross(st, pose)
+        if st.length_m - along < self._taper_dist(v, v_next):
+            return v_next
+        return v
+
+    def _envelope(self, st: CompiledStep, along: float) -> np.ndarray:
+        """Cells the vehicle sweeps over the next stopping horizon: the rest of this step and,
+        when that is shorter than the horizon, the start of the chained steps after it (the
+        envelope no longer shrinks to nothing at a step boundary)."""
+        remaining = self._horizon(st)
+        mask = None
+        a0 = max(0.0, along)
+        for i, step in enumerate(self._chain(self.fsm.step_index)):
+            if remaining <= 0.0:
+                break
+            lo = a0 if i == 0 else 0.0
+            hi = min(step.length_m, lo + remaining)
+            part = self._swept(step, lo, hi)
+            mask = part if mask is None else (mask | part)
+            remaining -= hi - lo
+        return mask
+
+    def _swept(self, st: CompiledStep, a0: float, a1: float) -> np.ndarray:
+        if st.type == ARC:
+            return fpmod.swept_arc(
+                self.grid, self.fp, st.centre, st.radius_m, st.start[2], st.signed_angle_rad, a0, a1
+            )
+        # positions along the travel direction, the footprint at the (forward) heading; for
+        # a reverse step this is the envelope BEHIND, mostly outside the scanner's field
+        c, s = math.cos(st.travel_yaw), math.sin(st.travel_yaw)
+        p0 = (st.start[0] + c * a0, st.start[1] + s * a0, st.start[2])
+        p1 = (st.start[0] + c * a1, st.start[1] + s * a1, st.start[2])
+        return fpmod.swept_line(self.grid, self.fp, p0, p1)
+
+    def _publish_speed(self, v: float) -> None:
+        """A speed for the controller (absolute limit). Sent before every FollowPath and
+        repeated every tick while a straight runs: the value changes along a boosted step
+        (taper), and the repeat also guards against a controller that (re)started."""
+        m = SpeedLimit()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.percentage = False
+        m.speed_limit = v
+        self._speed_pub.publish(m)
 
     def _send_follow(self, st: CompiledStep, pose) -> bool:
         along, _ = self._along_cross(st, pose)
         path = self._follow_path(st, along)
         if len(path.poses) < 2:
             return False
+        self._publish_speed(self._step_speed(st, pose))
         goal = FollowPath.Goal(path=path, controller_id="FollowPath", goal_checker_id="precise")
         return self._send(self._follow, goal)
 
@@ -734,7 +882,7 @@ class RouteExecutor(Node):
                 self.fsm.block(blocked)
                 self._interrupt(blocked)
                 return
-            if st.type == STRAIGHT:
+            if st.type != ROTATE:
                 if not self._send_follow(st, pose):
                     if self.fsm.state == fsm.EXECUTING:
                         # nothing left of the segment: treat as arrived, verify in settle
@@ -753,7 +901,7 @@ class RouteExecutor(Node):
             return
 
         if self.phase == PHASE_GOAL:
-            if st.type == STRAIGHT:
+            if st.type != ROTATE:
                 along, cross = self._along_cross(st, pose)
                 self.cross_track = cross
                 # After a turn the line starts with the previous stop's error plus the
@@ -763,6 +911,17 @@ class RouteExecutor(Node):
                 allowed = self._cross_track_allowed(along)
                 if abs(cross) > allowed:
                     self._fault(f"cross-track {cross:+.2f} m exceeds {allowed:.2f} m at {along:.2f} m along")
+                    return
+                if along >= st.length_m and self._next_in_chain() is not None:
+                    # a chained boundary: the same FollowPath goal carries on into the next step,
+                    # the executor just moves its bookkeeping (progress, cross-track, envelope,
+                    # speed) to it; no stop, no settle, no verification here
+                    self.get_logger().info(
+                        f"step {st.id} ({st.type}) passed ({self.fsm.progress()}): "
+                        f"{cross:+.3f} m cross-track, continuing"
+                    )
+                    self.fsm.step_done()
+                    self.cross_track = 0.0
                     return
                 if along > st.length_m + 2 * self.route.limits.position_tolerance_m:
                     self._fault(f"passed the endpoint by {along - st.length_m:.2f} m")
@@ -817,6 +976,10 @@ class RouteExecutor(Node):
             if self.goals.result != ga.SUCCEEDED:
                 self._fault(f"action {self.goals.result}")
                 return
+            # the chain's goal ends at its LAST step: if it finished while the bookkeeping was
+            # still on an earlier chained step, move on so settle verifies the right endpoint
+            while self._next_in_chain() is not None and self.fsm.state == fsm.EXECUTING:
+                self.fsm.step_done()
             self.phase, self.settle_since = PHASE_SETTLE, None
             return
 
@@ -833,7 +996,7 @@ class RouteExecutor(Node):
             # estimated pose with the verification allowance; turn travel from odometry.
             d = math.hypot(pose[0] - st.end[0], pose[1] - st.end[1])
             a = abs(wrap(pose[2] - st.end[2]))
-            if st.type == STRAIGHT:
+            if st.type != ROTATE:
                 if d > self.verify_pos or a > self.verify_yaw:
                     self._fault(f"endpoint missed: {d:.3f} m / {math.degrees(a):.1f} deg")
                     return
@@ -874,12 +1037,18 @@ class RouteExecutor(Node):
         m.run_id = self.fsm.run_id
         st = self._step()
         if self.fsm.state == fsm.EXECUTING and self.phase == PHASE_GOAL and st is not None:
-            m.source = MotionPermit.FOLLOW if st.type == STRAIGHT else MotionPermit.ROTATE
+            m.source = MotionPermit.FOLLOW if st.type != ROTATE else MotionPermit.ROTATE
             m.enabled = True
             m.reason = f"step {st.id} {self.fsm.progress()}"
-            # the loaded route's caps ride with the permission; the mux enforces them (Q04)
-            m.v_max = float(self.route.limits.linear_mps)
-            m.w_max = float(self.route.limits.angular_rad_s)
+            # the STEP's caps ride with the permission; the mux enforces them (Q04). A straight
+            # runs at its compiled speed (linear_mps, or the long-straight boost); a rotation
+            # at the route's angular cap, clamped to the vehicle ceiling like Spin does.
+            if st.type != ROTATE:
+                m.v_max = self._step_speed(st, self._pose())
+                self._publish_speed(m.v_max)
+            else:
+                m.v_max = float(self.route.limits.linear_mps)
+            m.w_max = float(self.route.limits.w_mps)
         else:
             m.source, m.enabled, m.reason = MotionPermit.NONE, False, fsm.NAMES[self.fsm.state]
         self._permit_pub.publish(m)
@@ -916,6 +1085,7 @@ class RouteExecutor(Node):
         m.step_id, m.step_type = (st.id, st.type) if st is not None else ("", "")
         if st is not None and st.type == ROTATE:
             m.remaining_turn_rad = self._remaining_turn(st)
+        m.step_v_mps = float(st.v_mps) if st is not None and st.type != ROTATE else 0.0
         m.cross_track_m = self.cross_track
         m.localization_state = self._loc.state if self._loc is not None else 0
         m.resume_prepared = self.fsm.resume_prepared

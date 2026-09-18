@@ -224,6 +224,10 @@ input, select, textarea {
   border:1px solid var(--rule); padding:6px 8px; border-radius:0;
 }
 textarea { font-size:12.5px; line-height:1.5; resize:vertical; }
+/* an input with its action beside it (editor: typed straight length + Add) */
+label.field > .inline { display:flex; gap:6px; margin-top:3px; }
+label.field > .inline > input { flex:1 1 auto; min-width:0; }
+label.field > .inline > button { flex:0 0 auto; }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid var(--accent-2); outline-offset:1px; }
 
 /* ---- lists (rows split by hairlines) ---- */

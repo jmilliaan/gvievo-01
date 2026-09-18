@@ -55,6 +55,33 @@ def slew_asym(current: float, target: float, accel: float, decel: float, dt: flo
     return slew(current, target, accel if growing else decel, dt)
 
 
+def scurve(
+    v: float, a: float, target: float, accel: float, decel: float, jerk: float, dt: float
+) -> tuple[float, float]:
+    """One tick of a jerk-limited (S-curve) speed profile: returns (v, a).
+
+    The acceleration itself is slewed at `jerk` toward the value that, ramped back down
+    at `jerk`, meets `target` exactly (sqrt(2 j |dv|)), and is bounded by `accel` while
+    |speed| grows and `decel` while it shrinks (same rule as slew_asym). The speed
+    therefore follows a trapezoidal acceleration profile: no step in torque demand at
+    the start of a pendant press, and no overshoot past the target. Reaching the
+    target zeroes the acceleration state. Manual sources on the mux use it (2026-09-18,
+    0.3 m/s^2 with 1.0 m/s^3); the autonomous sources keep slew_asym.
+    """
+    dv = target - v
+    if dv == 0.0:
+        return target, 0.0
+    same_sign = target == 0.0 or v == 0.0 or (target > 0) == (v > 0)
+    growing = abs(target) > abs(v) and same_sign
+    a_lim = accel if growing else decel
+    a_des = math.copysign(min(a_lim, math.sqrt(2.0 * jerk * abs(dv))), dv)
+    a = slew(a, a_des, jerk, dt)
+    v_new = v + a * dt
+    if (dv > 0 and v_new >= target) or (dv < 0 and v_new <= target):
+        return target, 0.0
+    return v_new, a
+
+
 def wrap_angle(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
 

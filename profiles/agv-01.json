@@ -167,16 +167,16 @@
     "max_speed_mps": 0.8
   },
   "pp": {
-    "enabled": false,
-    "vendor_ref": "",
-    "max_speed_mps": 0.8,
+    "enabled": true,
+    "vendor_ref": "Internal engineering decision, 2026-09-18, no vendor consultation: PP on BLMR6400SKM-GFV-B (400 W, 1:30) without motion extension. Bounds: ramps 800 r/min/s, following error 36000, IN-POS 1000, quick stop 1600 r/min/s, PP speed cap 0.30 m/s, bench on blocks before floor.",
+    "max_speed_mps": 0.3,
     "expect": {
-      "max_torque_permille": null,
-      "following_error_counts": null,
-      "position_window_counts": null,
-      "halt_option": null,
-      "fault_reaction": null,
-      "quick_stop_decel": null
+      "max_torque_permille": 10000,
+      "following_error_counts": 36000,
+      "position_window_counts": 1000,
+      "halt_option": 1,
+      "fault_reaction": 2,
+      "quick_stop_decel": 1600
     }
   },
   "timing": {

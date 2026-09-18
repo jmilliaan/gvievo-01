@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from amr_maps import grid as gridio
 from amr_navigation import footprint as fpmod
-from amr_navigation.compiler import STRAIGHT, CompiledRoute, compile_route
+from amr_navigation.compiler import ARC, ROTATE, CompiledRoute, compile_route
 from amr_navigation.route import MAX_REPEAT, Route, RouteError
 
 
@@ -94,12 +94,16 @@ def validate(
     if not c.clear:
         issues.append(Issue("clearance", "start pose " + _describe(c)))
     for st in compiled.steps:
-        if st.type == STRAIGHT:
-            c = _clearance(grid, fp, keepout, (st.start, st.end), None)
-        else:
+        if st.type == ROTATE:
             c = _clearance(grid, fp, keepout, None, (st.start, st.signed_angle_rad))
+        elif st.type == ARC:
+            c = _clearance(
+                grid, fp, keepout, None, None, (st.centre, st.radius_m, st.start[2], st.signed_angle_rad)
+            )
+        else:  # straight or reverse: the footprint translated along the line, either way
+            c = _clearance(grid, fp, keepout, (st.start, st.end), None)
         if not c.clear:
-            what = "line" if st.type == STRAIGHT else "rotation sweep"
+            what = {ROTATE: "rotation sweep", ARC: "arc sweep"}.get(st.type, "line")
             issues.append(Issue("clearance", f"{what} {_describe(c)} (margin included)", st.id))
     return Validation(issues, compiled)
 
@@ -118,14 +122,19 @@ def keepout_misalignment(grid: gridio.Grid, keepout: gridio.Grid) -> str | None:
     return None
 
 
-def _clearance(grid, fp, keepout, line, turn) -> fpmod.Clearance:
+def _clearance(grid, fp, keepout, line, turn, arc=None) -> fpmod.Clearance:
     # Bounds first: a sweep leaving the map is rejected outright, and the (clipped) mask of
     # an off-map sweep is never rasterised, so absurd coordinates cost nothing.
     # `turn` is ((x, y, yaw), signed_angle): the exact sweep of that rotation, not a disc.
+    # `arc` is (centre, radius, yaw0, signed_angle): the footprint driven along the circle.
     if line is not None:
         if fpmod.line_outside(grid, fp, *line):
             return fpmod.Clearance(0, 0, 0, 0, outside=True)
         return fpmod.check(grid, fpmod.swept_line(grid, fp, *line), keepout)
+    if arc is not None:
+        if fpmod.arc_outside(grid, fp, *arc):
+            return fpmod.Clearance(0, 0, 0, 0, outside=True)
+        return fpmod.check(grid, fpmod.swept_arc(grid, fp, *arc), keepout)
     (x, y, yaw), angle = turn
     if fpmod.rotation_outside(grid, fp, (x, y), yaw, angle):
         return fpmod.Clearance(0, 0, 0, 0, outside=True)

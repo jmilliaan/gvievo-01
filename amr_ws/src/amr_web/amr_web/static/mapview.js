@@ -16,11 +16,12 @@ class MapView {
   constructor(canvas) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
     this.meta = null; this.img = null; this.scale = 1; this.ox = 0; this.oy = 0;
-    this.overlays = []; this._drag = null; this.onClick = null; this.onDrag = null;
+    this.overlays = []; this._drag = null; this.onClick = null; this.onDrag = null; this.onHover = null;
     canvas.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.15 : 1/1.15); });
     canvas.addEventListener('mousedown', e => { this._drag = { x: e.offsetX, y: e.offsetY, moved: false, btn: e.button, t0: Date.now() }; });
     canvas.addEventListener('mousemove', e => {
-      if (!this._drag) return;
+      // a plain move with a tool active previews what a click would do (world point, or null)
+      if (!this._drag) { if (this.tool && this.onHover) { this.onHover(this.screenToWorld(e.offsetX, e.offsetY)); this.draw(); } return; }
       const dx = e.offsetX - this._drag.x, dy = e.offsetY - this._drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) this._drag.moved = true;
       if (this.onDrag && this._drag.btn === 0 && this.tool) { this.onDrag(this.screenToWorld(this._drag.x, this._drag.y), this.screenToWorld(e.offsetX, e.offsetY), false); this.draw(); return; }
@@ -37,7 +38,7 @@ class MapView {
       this.draw();
     };
     canvas.addEventListener('mouseup', up);
-    canvas.addEventListener('mouseleave', () => { this._drag = null; });
+    canvas.addEventListener('mouseleave', () => { this._drag = null; if (this.onHover) { this.onHover(null); this.draw(); } });
     canvas.addEventListener('dblclick', e => { e.preventDefault(); this.fit(); this.draw(); });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     this._resize(); window.addEventListener('resize', () => { this._resize(); this.draw(); });
@@ -144,6 +145,7 @@ class MapView {
     c.fillStyle = INK.paper; c.fillRect(8, y, w, 18); c.strokeStyle = color; c.lineWidth = 1; c.strokeRect(8.5, y + 0.5, w - 1, 17); c.fillStyle = color; c.fillText(text, 14, y + 13); }
   arrow(x, y, yaw, len, color) { this.line(x, y, x + len * Math.cos(yaw), y + len * Math.sin(yaw), color, 3); this.dot(x, y, color, 5); }
   points(pts, color) { const c = this.ctx; c.fillStyle = color; pts.forEach(p => { const q = this.worldToScreen(p[0], p[1]); c.fillRect(q[0] - 1, q[1] - 1, 2, 2); }); }
+  polyline(pts, color, width) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = width || 2; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.stroke(); }
   polygon(pts, color) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.closePath(); c.stroke(); }
   // Dashed outline of a world polygon: the area a validation check sweeps.
   dashed(pts, color) { const c = this.ctx; c.setLineDash([4, 4]); this.polygon(pts, color); c.setLineDash([]); }

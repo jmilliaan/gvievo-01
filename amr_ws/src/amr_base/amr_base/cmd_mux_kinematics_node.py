@@ -32,7 +32,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
 from amr_base.agv_repo import config, kinematics
-from amr_base.diff_drive import Geometry, clamp_wheels, inverse, slew, slew_asym
+from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -69,6 +69,13 @@ class CmdMuxKinematics(Node):
         # lengthening the stopping distance.
         self.declare_parameter("d_max", 0.0)  # 0 = same as a_max
         self.declare_parameter("delta_max", 0.0)  # 0 = same as alpha_max
+        # Manual sources (pendant, browser jog) follow a jerk-limited S-curve instead of the
+        # autonomous ramp (2026-09-18): the acceleration builds at manual_jerk to manual_a_max
+        # (0.3 m/s^2 asked by the operator), stops still use d_max/delta_max.
+        self.declare_parameter("manual_a_max", 0.3)
+        self.declare_parameter("manual_jerk", 1.0)  # m/s^3: 0.3 s to full acceleration
+        self.declare_parameter("manual_alpha_max", 0.0)  # 0 = same as alpha_max
+        self.declare_parameter("manual_jerk_w", 2.0)  # rad/s^3
         self.declare_parameter("teleop_timeout_s", 0.5)
         self.declare_parameter("cmd_timeout_s", 0.2)
         self.declare_parameter("permit_timeout_s", 0.3)
@@ -76,8 +83,9 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
-        self.declare_parameter("pendant_v_m_s", 0.30)
-        self.declare_parameter("pendant_w_rad_s", 0.30)
+        self.declare_parameter("pendant_v_m_s", 0.50)
+        self.declare_parameter("pendant_w_rad_s", 0.30)  # spin in place, unchanged
+        self.declare_parameter("pendant_turn_ratio", 0.75)  # slow wheel / fast wheel while driving + turning
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
 
@@ -88,6 +96,10 @@ class CmdMuxKinematics(Node):
         self.alpha_max = min(p("alpha_max").value, hw_alpha_max)
         self.d_max = min(p("d_max").value or self.a_max, hw_a_max)
         self.delta_max = min(p("delta_max").value or self.alpha_max, hw_alpha_max)
+        self.manual_a_max = min(p("manual_a_max").value, hw_a_max)
+        self.manual_alpha_max = min(p("manual_alpha_max").value or self.alpha_max, hw_alpha_max)
+        self.manual_jerk = max(1e-3, float(p("manual_jerk").value))
+        self.manual_jerk_w = max(1e-3, float(p("manual_jerk_w").value))
         if self.a_max < p("a_max").value or self.alpha_max < p("alpha_max").value:
             self.get_logger().warn(
                 f"accel limits clamped to hardware: a_max={self.a_max:.3f} "
@@ -104,6 +116,8 @@ class CmdMuxKinematics(Node):
             teleop_enabled=bool(p("teleop_enabled").value),
             pendant_v=max(0.0, float(p("pendant_v_m_s").value)),
             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
+            pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
+            track_m=float(p("track_width_m").value),
         )
         self.dt = 1.0 / p("rate_hz").value
 
@@ -121,6 +135,7 @@ class CmdMuxKinematics(Node):
         self._applied_instance = ""
         self._v = 0.0
         self._wz = 0.0
+        self._a = self._alpha = 0.0  # S-curve acceleration state (manual sources only)
         self._source = "none"
         self._reason = ""
         self._last = gating.Selection(gating.NONE, 0.0, 0.0, "", 0, False)
@@ -231,7 +246,7 @@ class CmdMuxKinematics(Node):
         self._permit = None
         self._manual.clear()
         self._commissioning = None
-        self._v = self._wz = 0.0
+        self._v = self._wz = self._a = self._alpha = 0.0
         self._wl = self._wr = 0.0
         self._subscribe_nav(gen)
 
@@ -266,6 +281,7 @@ class CmdMuxKinematics(Node):
 
         if sel.source == gating.NONE or (sel.v == 0.0 and sel.w == 0.0 and sel.reason.endswith("timed out")):
             self._v = self._wz = 0.0  # loss of authority or an expired command: zero at once, never a ramp
+            self._a = self._alpha = 0.0
             self._wl = self._wr = 0.0
             wl, wr = 0.0, 0.0
         elif sel.wheels:
@@ -275,15 +291,32 @@ class CmdMuxKinematics(Node):
             self._wr = slew(self._wr, sel.w, a_wheel, self.dt)
             self._v = self._wz = 0.0
             wl, wr = clamp_wheels(self._wl, self._wr, self.w_max)
+        elif sel.source in (gating.PENDANT, gating.MANUAL):
+            # manual: jerk-limited S-curve (trapezoidal acceleration), stops at d_max/delta_max
+            self._v, self._a = scurve(
+                self._v, self._a, sel.v, self.manual_a_max, self.d_max, self.manual_jerk, self.dt
+            )
+            self._wz, self._alpha = scurve(
+                self._wz,
+                self._alpha,
+                sel.w,
+                self.manual_alpha_max,
+                self.delta_max,
+                self.manual_jerk_w,
+                self.dt,
+            )
+            self._wl = self._wr = 0.0
+            wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         else:
             self._v = slew_asym(self._v, sel.v, self.a_max, self.d_max, self.dt)
             self._wz = slew_asym(self._wz, sel.w, self.alpha_max, self.delta_max, self.dt)
+            self._a = self._alpha = 0.0
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         if not (math.isfinite(wl) and math.isfinite(wr)):
             # last line before the drive owner (R03): nothing upstream may turn into full scale
             self.get_logger().error(f"nonfinite wheel output ({wl}, {wr}) from {name}; zeroed")
-            self._v = self._wz = self._wl = self._wr = 0.0
+            self._v = self._wz = self._wl = self._wr = self._a = self._alpha = 0.0
             wl, wr = 0.0, 0.0
         self._last = sel
         self._out = (wl, wr)

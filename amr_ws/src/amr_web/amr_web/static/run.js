@@ -32,6 +32,18 @@ $('tool-initialpose').onclick = () => {
   if (!viewIsActive()) { log('select the active map in the view first', 'bad'); return; }
   poseGen = lastState.mode.generation; view.tool = 'initialpose'; $('tool-initialpose').classList.add('on');
 };
+// Most runs start where the survey began: one press seeds the pose at the map's survey
+// mark (position and heading) with the same identity checks as a drawn pose.
+$('btn-pose-survey').onclick = () => {
+  const st = view.meta && view.meta.start;
+  if (!st || st.x_m === undefined) { log('this map has no survey start mark', 'bad'); return; }
+  if (!viewIsActive()) { log('the viewed map is not the active map; pose not sent', 'bad'); return; }
+  dropPoseTool();
+  const yaw = st.yaw_rad || 0;
+  api('/api/localization/initialpose', { x_m: st.x_m, y_m: st.y_m, yaw_rad: yaw, map_id: view.meta.map_id, map_revision: view.meta.revision,
+                                         sha256: view.meta.sha256, generation: lastState.mode.generation })
+    .then(r => log(r.status === 200 ? `${r.data.message} (survey mark ${num(st.x_m, 2)}, ${num(st.y_m, 2)}, ${num(yaw * 180 / Math.PI, 1)}°)` : r.data.message, r.status === 200 ? '' : 'bad'));
+};
 $('btn-loc-confirm').onclick = () => api('/api/localization/confirm').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 $('btn-loc-reset').onclick = () => api('/api/localization/reset').then(r => log(r.data.message));
 $('btn-run-load').onclick = () => api('/api/mission/run', { mission_id: $('run-mission').value }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
@@ -48,6 +60,7 @@ onState(st => {
   if (JSON.stringify(nowActive) !== JSON.stringify(activeMap)) { activeMap = nowActive; preview = null; loadMissions(); }
   const onActive = viewIsActive();
   $('tool-initialpose').disabled = !onActive; $('btn-loc-confirm').disabled = !onActive;
+  $('btn-pose-survey').disabled = !onActive || !(view.meta && view.meta.start && view.meta.start.x_m !== undefined);
   if (!onActive && view.tool === 'initialpose') dropPoseTool();
   if (view.tool === 'initialpose' && m && m.generation !== poseGen) dropPoseTool();
   tiles('active-map', [m
@@ -78,7 +91,7 @@ onState(st => {
     tiles('run-state', [
       ['State', r.state_name, r.resume_prepared ? 'resume prepared' : '—', RUN_LEVEL[r.state_name], 'key'],
       ['Run', r.run_id || '—', r.mission_id || '—'],
-      ['Step', r.step_id ? `${r.step_index} ${r.step_id}` : String(r.step_index), r.step_type || '—'],
+      ['Step', r.step_id ? `${r.step_index} ${r.step_id}` : String(r.step_index), r.step_type && r.step_type !== 'rotate' && r.step_v_mps > 0 ? `${r.step_type} ${num(r.step_v_mps, 2)} m/s` : (r.step_type || '—')],
       ['Cross-track', num(r.cross_track_m, 3), 'm'],
       ['Remaining turn', num(r.remaining_turn_rad * 180 / Math.PI, 1), '°'],
     ]);
@@ -96,7 +109,17 @@ view.overlays.push((c, v) => {
   if (!viewIsActive()) return;  // executor pose and route preview are in the ACTIVE map's coordinates
   const r = lastState && lastState.run;
   if (r && r.pose_valid) { v.arrow(r.pose_x, r.pose_y, r.pose_yaw, 0.8, INK.accent); if (footprint) v.footprint(r.pose_x, r.pose_y, r.pose_yaw, footprint.polygon, alpha(INK.accent, 0.55)); }
-  if (preview) preview.steps.forEach(s => { if (s.type === 'straight') v.line(s.start[0], s.start[1], s.end[0], s.end[1], INK.route, 2); else v.dot(s.start[0], s.start[1], INK.turn, 5); });
+  if (preview) preview.steps.forEach(s => {
+    if (s.type === 'straight') v.line(s.start[0], s.start[1], s.end[0], s.end[1], INK.route, 2);
+    else if (s.type === 'reverse') { v.dashed([s.start.slice(0, 2), s.end.slice(0, 2)], INK.route); v.dot(s.end[0], s.end[1], INK.route, 4); }
+    else if (s.type === 'arc' && s.centre) {
+      // the compiled arc: from its start heading, signed angle about its centre (compiler.arc_pose)
+      const sign = s.signed_angle_deg >= 0 ? 1 : -1, th = Math.abs(s.signed_angle_deg) * Math.PI / 180, n = Math.max(8, Math.ceil(Math.abs(s.signed_angle_deg) / 3));
+      const pts = Array.from({ length: n + 1 }, (_, k) => { const yaw = s.start[2] + sign * th * k / n; return [s.centre[0] + sign * s.radius_m * Math.sin(yaw), s.centre[1] - sign * s.radius_m * Math.cos(yaw)]; });
+      v.polyline(pts, INK.route, 2); v.dot(s.end[0], s.end[1], INK.turn, 4);
+    }
+    else v.dot(s.start[0], s.start[1], INK.turn, 5);
+  });
 });
 $('run-map').onchange = async e => { [mapId, mapRev] = e.target.value.split('/'); mapRev = +mapRev; dropPoseTool(); await view.load(mapId, mapRev); };
 async function loadMissions() {

@@ -42,7 +42,7 @@ def test_all_eight_turns_keep_full_magnitude(direction, angle):
     expected = math.radians(angle) * (1 if direction == "ccw" else -1)
     assert st.signed_angle_rad == pytest.approx(expected)
     assert st.end[2] == pytest.approx(math.atan2(math.sin(expected), math.cos(expected)))
-    assert st.time_allowance_s > abs(expected) / Limits().angular_rad_s  # the route's own cap (0.24)
+    assert st.time_allowance_s > abs(expected) / Limits().angular_rad_s  # the route's own cap
 
 
 def test_cw_270_is_not_ccw_90():
@@ -407,10 +407,10 @@ def test_r21_malformed_routes_raise_route_error(path, value):
 def test_r21_well_formed_inputs_still_accepted():
     back = Route.from_dict(good_dict())
     assert back.repeat_count == 2 and back.steps[1].angle_deg == 270
-    d = _mut(("limits",), {"linear_mps": 1})  # JSON int speed from the browser
+    d = _mut(("limits",), {"linear_mps": 0.5})  # JSON number from the browser
     d["start"] = {"x_m": 0, "y_m": 0, "yaw_deg": 0}
     d["steps"][1]["angle_deg"] = 270  # int from JSON; stored revisions carry 270.0
-    assert Route.from_dict(d).limits.linear_mps == 1.0
+    assert Route.from_dict(d).limits.linear_mps == 0.5
     assert Route.from_dict(_mut(("limits",), KeyError)).limits == Limits()
     assert Route.from_dict(_mut(("repeat_count",), 0)).repeat_count == 0  # validate() reports it
     assert Route.from_dict(_mut(("repeat_count",), 100)).repeat_count == 100
@@ -514,19 +514,149 @@ def test_r23_existing_revision_is_never_replaced(tmp_path):
     assert b"other" not in open(path, "rb").read()
 
 
-# ---- autonomous defaults 0.40 / 0.24 (2026-09-17) ----
+# ---- autonomous defaults 0.50 / 0.34 (2026-09-18) ----
 
 
-def test_limits_default_to_040_and_024_and_explicit_values_survive():
+def test_limits_default_to_050_and_034_and_explicit_values_survive():
     d = good_dict()
     del d["limits"]
     r = Route.from_dict(d)
-    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.40, 0.24)
+    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.50, 0.34)
+    assert r.limits.long_linear_mps is None  # no boost unless the file says so
     c = compile_route(r)
-    assert c.steps[1].time_allowance_s > math.radians(270) / 0.24
+    assert c.steps[1].time_allowance_s > math.radians(270) / 0.34
     d = good_dict()
     d["limits"] = {"linear_mps": 0.15, "angular_rad_s": 0.10}
     r = Route.from_dict(d)
     assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.15, 0.10)
     assert compile_route(r).steps[1].time_allowance_s > math.radians(270) / 0.10
     assert r.to_dict()["limits"]["linear_mps"] == 0.15  # never rewritten
+
+
+def test_vehicle_ceilings_and_long_straight_boost():
+    from amr_navigation.compiler import step_speed
+    from amr_navigation.route import VEHICLE_V_MAX, VEHICLE_W_MAX
+
+    # linear above the vehicle ceiling is refused; angular above it is CLAMPED (old files carry 0.30)
+    d = good_dict()
+    d["limits"] = {"linear_mps": VEHICLE_V_MAX + 0.01}
+    with pytest.raises(RouteError, match="linear_mps"):
+        Route.from_dict(d)
+    d["limits"] = {"long_linear_mps": VEHICLE_V_MAX + 0.01}
+    with pytest.raises(RouteError, match="long_linear_mps"):
+        Route.from_dict(d)
+    d["limits"] = {"angular_rad_s": VEHICLE_W_MAX + 0.1}
+    r = Route.from_dict(d)
+    assert r.limits.angular_rad_s == VEHICLE_W_MAX + 0.1 and r.limits.w_mps == VEHICLE_W_MAX
+    assert r.to_dict()["limits"]["angular_rad_s"] == VEHICLE_W_MAX + 0.1  # the file is never rewritten
+    # a boost slower than the base speed is a typo
+    d["limits"] = {"linear_mps": 0.5, "long_linear_mps": 0.4}
+    with pytest.raises(RouteError, match="long_linear_mps"):
+        Route.from_dict(d)
+    # null = off, and survives a round trip
+    d["limits"] = {"linear_mps": 0.5, "long_linear_mps": None}
+    r = Route.from_dict(d)
+    assert r.limits.long_linear_mps is None and r.to_dict()["limits"]["long_linear_mps"] is None
+    # per-step speed: strictly LONGER than the threshold boosts, equal does not
+    d["limits"] = {"linear_mps": 0.5, "long_linear_mps": 0.7, "long_min_length_m": 4.0}
+    lim = Route.from_dict(d).limits
+    assert step_speed(lim, 4.0) == 0.5 and step_speed(lim, 4.01) == 0.7 and step_speed(lim, 2.0) == 0.5
+    d["steps"] = [
+        {"id": "s1", "type": "straight", "to": {"x_m": 3.0, "y_m": 0.0}},
+        {"id": "s2", "type": "straight", "to": {"x_m": 9.0, "y_m": 0.0}},
+    ]
+    c = compile_route(Route.from_dict(d))
+    assert [s.v_mps for s in c.steps] == [0.5, 0.7]
+    assert c.steps[1].duration_est_s == pytest.approx(6.0 / 0.7)
+
+
+def test_reverse_step_is_bounded_slow_and_backs_along_the_heading():
+    from amr_navigation.route import REVERSE, REVERSE_MAX_M
+
+    d = good_dict()
+    d["limits"] = {"linear_mps": 0.5, "long_linear_mps": 0.7, "long_min_length_m": 1.0}
+    d["steps"] = [
+        {"id": "s1", "type": "straight", "to": {"x_m": 3.0, "y_m": 0.0}},
+        {"id": "s2", "type": "reverse", "distance_m": 1.5},
+    ]
+    r = Route.from_dict(d)
+    assert r.steps[1].type == REVERSE
+    assert r.to_dict()["steps"][1] == {"id": "s2", "type": "reverse", "distance_m": 1.5}
+    c = compile_route(r)
+    st = c.steps[1]
+    assert st.reverse and st.start == pytest.approx((3.0, 0.0, 0.0))
+    assert st.end == pytest.approx((1.5, 0.0, 0.0))
+    assert st.length_m == 1.5 and st.samples[0] == pytest.approx((3.0, 0.0, 0.0))
+    assert st.samples[-1] == pytest.approx((1.5, 0.0, 0.0)) and all(s[2] == 0.0 for s in st.samples)
+    assert st.v_mps == pytest.approx(0.25)  # half the BASE speed, never the boost (1.5 m > 1.0 m threshold)
+    assert st.travel_yaw == pytest.approx(math.pi)
+    assert c.total_length_m == pytest.approx(4.5) and c.end == pytest.approx((1.5, 0.0, 0.0))
+    # bounded to REVERSE_MAX_M, and never zero
+    for bad in (REVERSE_MAX_M + 0.01, 0.0, -1.0):
+        d["steps"][1]["distance_m"] = bad
+        with pytest.raises(RouteError, match="distance_m"):
+            Route.from_dict(d)
+    d["steps"][1]["distance_m"] = REVERSE_MAX_M
+    assert compile_route(Route.from_dict(d)).steps[1].length_m == REVERSE_MAX_M
+
+
+def test_arc_step_bounds_geometry_and_speed():
+    from amr_navigation.compiler import arc_speed
+    from amr_navigation.route import ARC, ARC_MIN_RADIUS_M
+
+    from amr_navigation import footprint as fpmod
+
+    d = good_dict()
+    d["limits"] = {"linear_mps": 0.5, "long_linear_mps": 0.7, "long_min_length_m": 1.0, "angular_rad_s": 0.34}
+    arc = {"id": "s1", "type": "arc", "direction": "ccw", "angle_deg": 90, "radius_m": 1.0}
+    d["steps"] = [arc]
+    r = Route.from_dict(d)
+    assert r.steps[0].type == ARC and r.to_dict()["steps"][0] == {**arc, "angle_deg": 90.0}
+    for bad in (
+        {"angle_deg": 44},
+        {"angle_deg": 181},
+        {"radius_m": ARC_MIN_RADIUS_M - 0.01},
+        {"direction": "left"},
+    ):
+        d["steps"] = [{**arc, **bad}]
+        with pytest.raises(RouteError):
+            Route.from_dict(d)
+    # ccw 90 deg, R 1 from the origin heading +x: centre (0, 1), end (1, 1) heading +y
+    d["steps"] = [arc]
+    c = compile_route(Route.from_dict(d))
+    st = c.steps[0]
+    assert st.centre == pytest.approx((0.0, 1.0)) and st.end == pytest.approx((1.0, 1.0, math.pi / 2))
+    assert st.length_m == pytest.approx(math.pi / 2) and st.signed_angle_rad == pytest.approx(math.pi / 2)
+    assert st.samples[0] == pytest.approx((0.0, 0.0, 0.0)) and st.samples[-1] == pytest.approx(st.end)
+    mid = st.samples[len(st.samples) // 2]
+    assert math.hypot(mid[0] - 0.0, mid[1] - 1.0) == pytest.approx(1.0) and 0 < mid[2] < math.pi / 2
+    assert c.total_turn_rad == pytest.approx(math.pi / 2) and c.total_length_m == pytest.approx(math.pi / 2)
+    # speed: 60 % of the BASE cap (0.30 at 0.50, never the boost), or less where v/R would pass
+    # 90 % of the turn cap (R 0.5 would ask 0.153)
+    assert st.v_mps == pytest.approx(0.6 * 0.5) and st.v_mps == arc_speed(r.limits, 1.0)
+    assert arc_speed(r.limits, 5.0) == pytest.approx(0.30) and arc_speed(r.limits, 0.5) == pytest.approx(
+        0.153
+    )
+    # cw mirrors; 180 deg ends across the diameter
+    d["steps"] = [{**arc, "direction": "cw", "angle_deg": 180}]
+    st = compile_route(Route.from_dict(d)).steps[0]
+    assert st.centre == pytest.approx((0.0, -1.0))
+    assert st.end[0] == pytest.approx(0.0) and st.end[1] == pytest.approx(-2.0)
+    assert abs(abs(st.end[2]) - math.pi) < 1e-9
+    # four 90 deg arcs close a loop
+    d["steps"] = [{**arc, "id": f"s{i}"} for i in range(4)]
+    assert compile_route(Route.from_dict(d)).closes
+    # the sweep covers the footprint at the start, the middle and the end of the arc
+    import numpy as np
+    from amr_maps.grid import Grid, GridMeta
+
+    g = Grid(np.zeros((120, 120), dtype=np.int8), GridMeta(0.05, -3.0, -3.0))
+    fp = fpmod.Footprint(polygon=[[-0.3, -0.2], [0.5, -0.2], [0.5, 0.2], [-0.3, 0.2]], margin_m=0.0)
+    d["steps"] = [arc]
+    st = compile_route(Route.from_dict(d)).steps[0]
+    m = fpmod.swept_arc(g, fp, st.centre, st.radius_m, st.start[2], st.signed_angle_rad)
+    for x, y, _ in (st.samples[0], st.samples[len(st.samples) // 2], st.samples[-1]):
+        r_, c_ = g.world_to_cell(x, y)
+        assert m[r_, c_]
+    assert not fpmod.arc_outside(g, fp, st.centre, st.radius_m, st.start[2], st.signed_angle_rad)
+    assert fpmod.arc_outside(g, fp, (2.5, 1.0), 1.0, 0.0, math.pi / 2)  # runs off the +x edge

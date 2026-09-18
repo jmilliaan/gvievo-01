@@ -255,6 +255,9 @@ def create_app(
                     "start": list(s.start),
                     "end": list(s.end),
                     "length_m": s.length_m,
+                    "v_mps": s.v_mps,
+                    "radius_m": s.radius_m,
+                    "centre": list(s.centre) if s.centre is not None else None,
                     "signed_angle_deg": float(np.degrees(s.signed_angle_rad)),
                     "duration_est_s": s.duration_est_s,
                 }

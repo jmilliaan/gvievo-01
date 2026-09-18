@@ -79,8 +79,14 @@ browser tabs or windows, and typing in a text field. The speed menu offers 0.10,
 authority as the jog pad (selector **MANUAL**, drives armed, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
 vehicle. Opposing buttons pressed together cancel each other. The pendant
-outranks the jog pad while a direction is held. Speed is fixed at 0.30 m/s /
-0.30 rad/s (mux parameters `pendant_v_m_s`, `pendant_w_rad_s`). Wiring
+outranks the jog pad while a direction is held. Speeds (2026-09-18, mux
+parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`); FWD/RVS
+with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
+(`pendant_turn_ratio`, fast wheel 0.50 m/s, slow 0.375); LEFT/RIGHT alone
+spins in place at 0.30 rad/s (`pendant_w_rad_s`). Manual sources follow an
+S-curve: acceleration builds at 1.0 m/s³ to 0.3 m/s² (`manual_jerk`,
+`manual_a_max`), so 0 → 0.50 m/s takes about 1.9 s; releasing a button still
+stops at the drives' ramp. Wiring
 (profile `pendant`, 0-based DI channels): FWD DI04, RVS DI05, LEFT DI06,
 RIGHT DI07. The IO page shows the live bits under those names.
 
@@ -155,8 +161,34 @@ The route editor moves nothing. The mode can stay `IDLE`.
      (`s1`, `s2`, …) is shown under **Steps**.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
-   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.40 m/s. Use
-   0.15–0.20 m/s for a first run.
+   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.50 m/s. Use
+   0.15–0.20 m/s for a first run. **Long straight speed** (2026-09-18): a
+   straight strictly longer than *Long straight from* (default 4 m) runs at
+   this speed, up to 0.70 m/s; leave the field empty for no boost. Boosted
+   straights show `▲0.70` in the step list and the result shows how many.
+   Consecutive straights and arcs are driven as ONE continuous move (no
+   stop between them); a rotate or a reverse ends such a chain. Before a
+   slower chained step (a normal straight after a boosted one, an arc) the
+   speed tapers early enough for the mux to reach the lower speed at the
+   boundary (executor `taper_decel` 0.4 m/s², `taper_lead_s` 0.3: 0.35 m for
+   0.50 → 0.30, 0.62 m for 0.70 → 0.40); at the end of a chain the
+   controller's own ramp over the last 1.0 m brings it to the stop.
+   Routes saved before 2026-09-18 never boost until re-saved with the field
+   set. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
+   to back up along the current heading, facing forward: at most 2000 mm
+   and at half the speed cap (never the boost). The nanoScan3 does not
+   cover the rear, so a reverse is driven blind: keep it short, keep the
+   area behind clear, and stay within reach of the E-stop for the first
+   ones. Shown dashed with `◂` in the editor. **Arc** (2026-09-18): radius
+   (≥ 1.0 m, twice the track) and angle (45–180°), *Arc L* / *Arc R*; the
+   vehicle drives forward along the circle and leaves with the heading turned
+   by the angle;
+   an arc runs at 60 % of the speed cap (0.30 m/s at 0.50, whatever the
+   straight before it ran at), or less where v/R would exceed the turn cap.
+   Pure
+   pursuit cuts the entry of a 1 m arc inside by a few cm (0.8 m lookahead);
+   watch the cross-track on the first arcs. Above 0.40 m/s the nanoScan3 protective field must be validated for
+   the speed first (stopping from 0.70 needs ≥ 1 m ahead).
 5. Press **Validate**. The robot checks the route against the map, including
    the footprint along every straight and the area every turn actually sweeps
    (a 90° turn does not check behind the vehicle; a 180° does). The footprint

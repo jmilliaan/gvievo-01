@@ -1,5 +1,6 @@
 """Flask API against a stub adapter and a temp maps dir (spec §8 "Coordinates", T6)."""
 
+import math
 import struct
 import zlib
 
@@ -503,7 +504,7 @@ def test_wifi_endpoint(env):
     assert set(body) >= {"iface", "connected", "ssid", "dbm", "bars"}
 
 
-def test_route_without_limits_is_stored_at_040_024_and_an_explicit_030_survives(env):
+def test_route_without_limits_is_stored_at_050_034_and_an_explicit_030_survives(env):
     client, stub, maps, rev_dir, manifest = env
     body = route_payload([S("s1", 3.0, 0.0)], route_id="dflt")
     del body["limits"]
@@ -511,7 +512,7 @@ def test_route_without_limits_is_stored_at_040_024_and_an_explicit_030_survives(
     assert r.status_code == 200
     r = client.get("/api/maps/sim_factory/1/routes/dflt/1")
     assert (
-        r.json["route"]["limits"]["linear_mps"] == 0.40 and r.json["route"]["limits"]["angular_rad_s"] == 0.24
+        r.json["route"]["limits"]["linear_mps"] == 0.50 and r.json["route"]["limits"]["angular_rad_s"] == 0.34
     )
     r = client.post(
         "/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 3.0, 0.0)], route_id="slow")
@@ -519,3 +520,27 @@ def test_route_without_limits_is_stored_at_040_024_and_an_explicit_030_survives(
     assert r.status_code == 200
     r = client.get("/api/maps/sim_factory/1/routes/slow/1")
     assert r.json["route"]["limits"]["linear_mps"] == 0.3  # the stored value, not the default
+
+
+def test_validate_route_with_an_arc_and_a_reverse(env):
+    client, stub, maps, rev_dir, manifest = env
+    # in the sim factory's 3.6 m aisle: 5 m out, a left 45 deg arc of R 1.5 (stays in the aisle), 1 m back
+    arc = {"id": "s2", "type": "arc", "direction": "ccw", "angle_deg": 45, "radius_m": 1.5}
+    body = route_payload([S("s1", 5.0, 0.0), arc, {"id": "s3", "type": "reverse", "distance_m": 1.0}])
+    r = client.post("/api/maps/sim_factory/1/routes/validate", json=body)
+    assert r.status_code == 200, r.json
+    steps = r.json["compiled"]["steps"]
+    assert [s["type"] for s in steps] == ["straight", "arc", "reverse"]
+    assert steps[1]["radius_m"] == 1.5 and steps[1]["centre"] == pytest.approx([5.0, 1.5])
+    q = math.pi / 4
+    assert steps[1]["end"] == pytest.approx([5.0 + 1.5 * math.sin(q), 1.5 - 1.5 * math.cos(q), q])
+    assert steps[1]["v_mps"] == pytest.approx(0.6 * 0.3)  # 60 % of the route's 0.3 cap
+    assert steps[2]["v_mps"] == pytest.approx(0.15)
+    assert steps[2]["end"][0] == pytest.approx(steps[1]["end"][0] - math.cos(q))
+    assert len(stub.previews) == 1  # the preview carries the arc and reverse samples too
+    # a 90 deg arc of the same radius turns the nose into the racks: clearance fails on that step
+    body = route_payload([S("s1", 5.0, 0.0), {**arc, "angle_deg": 90}])
+    r = client.post("/api/maps/sim_factory/1/routes/validate", json=body)
+    assert r.status_code == 422 and any(
+        i["step_id"] == "s2" and i["code"] == "clearance" for i in r.json["issues"]
+    )

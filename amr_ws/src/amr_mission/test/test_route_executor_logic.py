@@ -9,7 +9,7 @@ import pytest
 from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep
 from test_goal_attempts import Client, Handle, Result
 
-from amr_interfaces.msg import LocalizationState, PanelState, WheelStates
+from amr_interfaces.msg import LocalizationState, MotionPermit, PanelState, WheelStates
 from amr_mission import goal_attempts as ga
 from amr_mission import route_executor_node as ren
 from amr_mission import run_fsm as fsm
@@ -34,8 +34,14 @@ def make_node(steps, passes=1):
     n.compiled = SimpleNamespace(steps=steps)
     n.route = SimpleNamespace(
         start=SimpleNamespace(x_m=0.0, y_m=0.0, yaw_rad=0.0),
-        limits=SimpleNamespace(cross_track_limit_m=0.1, position_tolerance_m=0.05),
+        limits=SimpleNamespace(
+            cross_track_limit_m=0.1, position_tolerance_m=0.05, linear_mps=0.5, w_mps=0.24
+        ),
     )
+    n._speed_pub = SimpleNamespace(publish=lambda _m: None)
+    n.horizon, n.stopping_time_s = 1.5, 3.0
+    n.taper_decel, n.taper_lead_s = 0.4, 0.3
+    n.obstacle_points, n.obstacle_persist, n._hit_scans, n._hit_scan_t, n._map_near = 5, 2, 0, None, None
     n.goals = ga.GoalAttempts(n._lock, n._now, n._on_goal_error)
     n.start_gate_m, n.start_gate_rad = 0.1, math.radians(5)
     n.w_eps, n.wheels_age, n.panel_age, n.loc_age = 0.02, 0.1, 0.2, 1.5
@@ -329,11 +335,137 @@ def test_b2_follow_path_ends_goal_overshoot_past_the_endpoint_clamped_to_toleran
     assert (round(last.x, 3), round(last.y, 3)) == (0.0, 1.045)
 
 
-def test_permit_carries_the_loaded_route_limits():
-    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), length_m=2.0)
+def test_permit_carries_the_step_speed_and_the_route_turn_cap():
+    st = CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), length_m=2.0, v_mps=0.40)
+    rot = CompiledStep("s2", ROTATE, (2.0, 0.0, 0.0), (2.0, 0.0, 1.0), signed_angle_rad=1.0)
+    n = make_node([st, rot])
+    _clock_stub(n)
+    n.route.limits.linear_mps, n.route.limits.w_mps = 0.40, 0.24
+    n.generation, n._lease_instance, n._permit_seq = 3, "sup", 0
+    published, speeds = [], []
+    n._permit_pub = SimpleNamespace(publish=published.append)
+    n._speed_pub = SimpleNamespace(publish=speeds.append)
+    n.fsm.start(True, True)
+    n.phase = ren.PHASE_GOAL
+    n._publish_permit()
+    m = published[-1]
+    assert m.enabled and (m.v_max, m.w_max) == (pytest.approx(0.40), pytest.approx(0.24))
+    # the controller is told the same number, as an absolute limit
+    assert speeds[-1].percentage is False and speeds[-1].speed_limit == pytest.approx(0.40)
+    # a boosted long straight: the STEP's speed, not the route's base cap ...
+    st.v_mps, st.length_m = 0.70, 6.0
+    n._publish_permit()
+    assert published[-1].v_max == pytest.approx(0.70) and speeds[-1].speed_limit == pytest.approx(0.70)
+    # ... until the taper distance before its end - (0.7^2 - 0.4^2) / (2 x 0.4) + 0.7 x 0.3 s =
+    # 0.62 m - where it comes back to the base speed so the mux reaches 0.40 at the boundary
+    # and the controller's approach ramp starts from 0.40, not 0.70
+    assert n._taper_dist(0.70, 0.40) == pytest.approx(0.6225)
+    n._pose = lambda: (5.3, 0.0, 0.0)  # 0.7 m to go: still boosted
+    n._publish_permit()
+    assert published[-1].v_max == pytest.approx(0.70)
+    n._pose = lambda: (5.5, 0.0, 0.0)  # 0.5 m to go: tapered
+    n._publish_permit()
+    assert published[-1].v_max == pytest.approx(0.40) and speeds[-1].speed_limit == pytest.approx(0.40)
+    n._pose = lambda: (0.0, 0.0, 0.0)
+    n._publish_permit()
+    # the obstruction horizon grows with the step speed: 3 s of travel, never under 1.5 m
+    assert n._horizon(st) == pytest.approx(2.1)
+    st.v_mps = 0.40
+    assert n._horizon(st) == pytest.approx(1.5)
+    # a rotation: the route's turn cap, the base linear cap (no straight is running)
+    n.fsm.step_done()
+    n.phase = ren.PHASE_GOAL
+    n._publish_permit()
+    assert (published[-1].v_max, published[-1].w_max) == (pytest.approx(0.40), pytest.approx(0.24))
+
+
+def test_reverse_step_progress_path_and_permit():
+    st = CompiledStep(
+        "s1",
+        "reverse",
+        (3.0, 0.0, 0.0),
+        (1.5, 0.0, 0.0),
+        length_m=1.5,
+        samples=[(3.0 - 0.1 * k, 0.0, 0.0) for k in range(16)],
+        v_mps=0.25,
+        reverse=True,
+    )
     n = make_node([st])
     _clock_stub(n)
-    n.route.limits.linear_mps, n.route.limits.angular_rad_s = 0.40, 0.24
+    # progress counts up while backing; a lateral offset is still the cross-track
+    assert n._along_cross(st, (3.0, 0.0, 0.0)) == (pytest.approx(0.0), pytest.approx(0.0))
+    along, cross = n._along_cross(st, (2.0, 0.05, 0.0))
+    assert along == pytest.approx(1.0) and abs(cross) == pytest.approx(0.05)
+    # the FollowPath poses run backwards from the current projection and keep the FORWARD
+    # heading; the overshoot pose lies past the end in the travel (reverse) direction
+    n.goal_overshoot_m = 0.045
+    p = n._follow_path(st, 0.95)  # keeps samples from 0.85 m of progress on: x <= 2.15
+    xs = [q.pose.position.x for q in p.poses]
+    assert xs[0] == pytest.approx(2.1) and xs[-1] == pytest.approx(1.455) and xs == sorted(xs, reverse=True)
+    assert all(q.pose.orientation.w == pytest.approx(1.0) for q in p.poses)
+    # the permit is a FOLLOW at the reverse step's (half base) speed
+    n.generation, n._lease_instance, n._permit_seq = 3, "sup", 0
+    published = []
+    n._permit_pub = SimpleNamespace(publish=published.append)
+    n.fsm.start(True, True)
+    n.phase = ren.PHASE_GOAL
+    n._publish_permit()
+    assert published[-1].source == MotionPermit.FOLLOW and published[-1].v_max == pytest.approx(0.25)
+
+
+def test_arc_step_progress_cross_track_path_and_envelope():
+    from amr_navigation.compiler import arc_pose
+
+    # ccw 90 deg, R 1 from the origin heading +x: centre (0, 1), end (1, 1) heading +y
+    centre, r, theta = (0.0, 1.0), 1.0, math.pi / 2
+    samples = [arc_pose(centre, r, 0.0, 1.0, theta * k / 30) for k in range(31)]
+    st = CompiledStep(
+        "s1",
+        "arc",
+        (0.0, 0.0, 0.0),
+        samples[-1],
+        length_m=r * theta,
+        samples=samples,
+        signed_angle_rad=theta,
+        v_mps=0.30,
+        centre=centre,
+        radius_m=r,
+    )
+    n = make_node([st])
+    _clock_stub(n)
+    # on the arc: progress = swept angle x R, no cross-track; inside the circle = positive (left)
+    assert n._along_cross(st, (0.0, 0.0, 0.0)) == (pytest.approx(0.0), pytest.approx(0.0))
+    along, cross = n._along_cross(st, arc_pose(centre, r, 0.0, 1.0, math.pi / 4))
+    assert along == pytest.approx(r * math.pi / 4) and cross == pytest.approx(0.0)
+    along, cross = n._along_cross(st, (0.0, 0.05, 0.0))  # 5 cm inside at the start
+    assert along == pytest.approx(0.0) and cross == pytest.approx(0.05)
+    along, _ = n._along_cross(st, (0.9, 1.1, math.pi / 2))  # a little past the end
+    assert along > st.length_m
+    # a 180 deg arc overrun by 10 deg reads as +10 deg, not -170
+    half = CompiledStep(
+        "h",
+        "arc",
+        (0.0, 0.0, 0.0),
+        arc_pose(centre, r, 0.0, 1.0, math.pi),
+        length_m=math.pi,
+        signed_angle_rad=math.pi,
+        centre=centre,
+        radius_m=r,
+    )
+    along, _ = n._along_cross(half, arc_pose(centre, r, 0.0, 1.0, math.pi + math.radians(10)))
+    assert along == pytest.approx(r * (math.pi + math.radians(10)))
+    # resume from a quarter in: the path keeps the tangent headings and ends past the end
+    # along the END tangent (+y)
+    n.goal_overshoot_m = 0.045
+    p = n._follow_path(st, r * math.pi / 4)
+    first, last = p.poses[0].pose, p.poses[-1].pose
+    assert math.hypot(first.position.x - centre[0], first.position.y - centre[1]) == pytest.approx(
+        r, abs=1e-6
+    )
+    assert (last.position.x, last.position.y) == (pytest.approx(1.0), pytest.approx(1.045))
+    yaws = [2 * math.atan2(q.pose.orientation.z, q.pose.orientation.w) for q in p.poses]
+    assert yaws == sorted(yaws) and yaws[0] > 0.6  # from ~45 deg up to 90 deg
+    # the permit is a FOLLOW at the arc's capped speed with the route's turn cap
     n.generation, n._lease_instance, n._permit_seq = 3, "sup", 0
     published = []
     n._permit_pub = SimpleNamespace(publish=published.append)
@@ -341,7 +473,73 @@ def test_permit_carries_the_loaded_route_limits():
     n.phase = ren.PHASE_GOAL
     n._publish_permit()
     m = published[-1]
-    assert m.enabled and (m.v_max, m.w_max) == (pytest.approx(0.40), pytest.approx(0.24))
-    n.route.limits.linear_mps = 0.15
-    n._publish_permit()
-    assert published[-1].v_max == pytest.approx(0.15)
+    assert m.source == MotionPermit.FOLLOW and (m.v_max, m.w_max) == (
+        pytest.approx(0.30),
+        pytest.approx(0.24),
+    )
+
+
+def test_chained_straight_and_arc_run_as_one_goal_with_a_speed_taper():
+    from amr_navigation.compiler import arc_pose
+
+    # 3 m straight at 0.5, then a left 90 deg arc of R 1 at 0.3, then a rotate (ends the chain)
+    s1 = CompiledStep(
+        "s1",
+        STRAIGHT,
+        (0.0, 0.0, 0.0),
+        (3.0, 0.0, 0.0),
+        length_m=3.0,
+        samples=[(0.1 * k, 0.0, 0.0) for k in range(31)],
+        v_mps=0.5,
+    )
+    centre, theta = (3.0, 1.0), math.pi / 2
+    arc_samples = [arc_pose(centre, 1.0, 0.0, 1.0, theta * k / 30) for k in range(31)]
+    s2 = CompiledStep(
+        "s2",
+        "arc",
+        (3.0, 0.0, 0.0),
+        arc_samples[-1],
+        length_m=theta,
+        samples=arc_samples,
+        signed_angle_rad=theta,
+        v_mps=0.3,
+        centre=centre,
+        radius_m=1.0,
+    )
+    s3 = CompiledStep("s3", ROTATE, s2.end, s2.end, signed_angle_rad=1.0)
+    n = make_node([s1, s2, s3])
+    _clock_stub(n)
+    n.route.limits.linear_mps = 0.5
+    n.goal_overshoot_m = 0.045
+    assert [s.id for s in n._chain(0)] == ["s1", "s2"] and [s.id for s in n._chain(2)] == ["s3"]
+    n.fsm.start(True, True)  # step 0 is current
+    # one path for both steps: the straight's samples, then the arc's, ending past the arc's end
+    p = n._follow_path(s1, 0.0)
+    xs = [q.pose.position.x for q in p.poses]
+    assert len(p.poses) == 31 + 30 + 1 and xs[30] == pytest.approx(3.0)
+    last = p.poses[-1].pose.position
+    assert (last.x, last.y) == (pytest.approx(4.0), pytest.approx(1.0 + 0.045))
+    # the straight tapers to the arc's speed before the boundary: (0.5^2 - 0.3^2)/0.8 + 0.15 = 0.35 m
+    assert n._taper_dist(0.5, 0.3) == pytest.approx(0.35)
+    assert n._step_speed(s1, (2.5, 0.0, 0.0)) == 0.5 and n._step_speed(s1, (2.7, 0.0, 0.0)) == 0.3
+    # crossing the boundary advances the step without a settle: still EXECUTING in the goal phase
+    n.phase = ren.PHASE_GOAL
+    n.goals.current = object()
+    n.goals.result = None
+    n.goals.handle = object()
+    n._pose = lambda: (3.02, 0.01, 0.0)
+    n._execute(n.clock[0])
+    assert n.fsm.state == fsm.EXECUTING and n.fsm.step_index == 1 and n.phase == ren.PHASE_GOAL
+    assert n.goals.current is not None  # the FollowPath goal was not revoked
+    # the envelope ahead spans the boundary: near the end of the straight it includes arc cells
+    import numpy as np
+    from amr_maps.grid import Grid, GridMeta
+
+    from amr_navigation import footprint as fpmod
+
+    n.grid = Grid(np.zeros((160, 160), dtype=np.int8), GridMeta(0.05, -2.0, -2.0))
+    n.fp = fpmod.Footprint(polygon=[[-0.3, -0.2], [0.5, -0.2], [0.5, 0.2], [-0.3, 0.2]], margin_m=0.0)
+    n.fsm.step_index = 0
+    mask = n._envelope(s1, 2.8)
+    r_, c_ = n.grid.world_to_cell(*arc_samples[15][:2])  # the middle of the arc, ~0.8 m past the boundary
+    assert mask[r_, c_]

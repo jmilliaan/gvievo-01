@@ -1,5 +1,7 @@
 """The jog pendant at the mux: levels in the panel image become a body twist."""
 
+import pytest
+
 from amr_base.gating import (
     FOLLOW,
     LEASE_AUTONOMOUS,
@@ -37,17 +39,35 @@ def browser(v=0.1):
 
 
 def test_directions_map_to_a_twist_at_the_configured_speeds():
-    p = Params(pendant_v=0.25, pendant_w=0.4)
+    p = Params(pendant_v=0.25, pendant_w=0.4, pendant_turn_ratio=0.75, track_m=0.5)
     s = select(10.0, None, None, None, None, panel(fwd=True), p)
     assert (s.source, s.v, s.w, s.reason) == (PENDANT, 0.25, 0.0, "pendant")
     s = select(10.0, None, None, None, None, panel(rvs=True), p)
     assert (s.source, s.v, s.w) == (PENDANT, -0.25, 0.0)
+    # LEFT / RIGHT alone: a spin in place at pendant_w
     s = select(10.0, None, None, None, None, panel(left=True), p)
     assert (s.source, s.v, s.w) == (PENDANT, 0.0, 0.4)
     s = select(10.0, None, None, None, None, panel(right=True), p)
     assert (s.source, s.v, s.w) == (PENDANT, 0.0, -0.4)
+    # driving + turning: an arc with the slow wheel at 75 % of the fast one, the fast wheel
+    # at pendant_v (fast 0.25, slow 0.1875 -> v 0.21875, w = 0.0625 / track)
     s = select(10.0, None, None, None, None, panel(fwd=True, left=True), p)
-    assert (s.source, s.v, s.w) == (PENDANT, 0.25, 0.4)
+    assert (s.source, s.v, s.w) == (PENDANT, pytest.approx(0.21875), pytest.approx(0.125))
+    s = select(10.0, None, None, None, None, panel(fwd=True, right=True), p)
+    assert (s.v, s.w) == (pytest.approx(0.21875), pytest.approx(-0.125))
+    s = select(10.0, None, None, None, None, panel(rvs=True, left=True), p)
+    assert (s.v, s.w) == (pytest.approx(-0.21875), pytest.approx(0.125))  # same lever sense as before
+
+
+def test_pendant_defaults_are_the_2026_09_18_manual_speeds():
+    from amr_base.diff_drive import Geometry, inverse
+
+    p = Params()
+    assert (p.pendant_v, p.pendant_w, p.pendant_turn_ratio) == (0.50, 0.30, 0.75)
+    g = Geometry(0.09, p.track_m)
+    s = select(10.0, None, None, None, None, panel(fwd=True, left=True), p)
+    wl, wr = (x * g.wheel_radius_m for x in inverse(g, s.v, s.w))
+    assert wr == pytest.approx(0.50) and wl == pytest.approx(0.375)  # no wheel above the manual speed
 
 
 def test_no_direction_means_no_pendant_source():

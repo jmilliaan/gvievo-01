@@ -13,7 +13,16 @@ from dataclasses import dataclass, field
 
 from amr_navigation.route import (
     ALLOWED_ANGLES_DEG,
+    ARC,
+    ARC_MAX_DEG,
+    ARC_MIN_DEG,
+    ARC_MIN_RADIUS_M,
+    ARC_SPEED_RATIO,
+    ARC_YAW_RATE_RATIO,
     DIRECTIONS,
+    REVERSE,
+    REVERSE_MAX_M,
+    REVERSE_SPEED_RATIO,
     ROTATE,
     STRAIGHT,
     Route,
@@ -41,6 +50,45 @@ class CompiledStep:
     signed_angle_rad: float = 0.0  # rotate, full magnitude, +ccw
     time_allowance_s: float = 0.0  # rotate
     duration_est_s: float = 0.0
+    v_mps: float = 0.0  # straight: the speed this step runs at (limits.linear_mps, or the
+    # long-straight boost when length_m > long_min_length_m and long_linear_mps is set)
+    reverse: bool = False  # travel is backwards along the heading (type REVERSE), facing forward
+    centre: tuple[float, float] | None = None  # arc: circle centre
+    radius_m: float = 0.0  # arc
+
+    @property
+    def travel_yaw(self) -> float:
+        """Direction of travel: the heading, or its opposite for a reverse step. Progress
+        along a step is measured along this, whichever way the vehicle faces."""
+        return self.start[2] + math.pi if self.reverse else self.start[2]
+
+
+def arc_centre(x: float, y: float, yaw: float, radius: float, sign: float) -> tuple[float, float]:
+    """Centre of the circle an arc from pose (x, y, yaw) follows: to the left for +1 (ccw)."""
+    return x - sign * radius * math.sin(yaw), y + sign * radius * math.cos(yaw)
+
+
+def arc_pose(
+    centre: tuple[float, float], radius: float, yaw0: float, sign: float, phi: float
+) -> tuple[float, float, float]:
+    """Pose after sweeping `phi` (>= 0) radians of an arc that starts with heading yaw0."""
+    yaw = yaw0 + sign * phi
+    return centre[0] + sign * radius * math.sin(yaw), centre[1] - sign * radius * math.cos(yaw), yaw
+
+
+def arc_speed(lim, radius: float) -> float:
+    """An arc's speed: 60 % of the BASE cap (whatever the straight before it ran at), or less
+    so the yaw rate v/R stays under the turn cap (the mux clamps w to the permit; v alone
+    would run the arc wide). Never the boost."""
+    return min(ARC_SPEED_RATIO * float(lim.linear_mps), ARC_YAW_RATE_RATIO * float(lim.w_mps) * radius)
+
+
+def step_speed(lim, length_m: float) -> float:
+    """The one place that decides a straight's speed: validation, the editor's result and
+    the executor all read it from the compiled step. Strictly LONGER than the threshold."""
+    if lim.long_linear_mps is not None and length_m > lim.long_min_length_m:
+        return float(lim.long_linear_mps)
+    return float(lim.linear_mps)
 
 
 @dataclass
@@ -54,10 +102,19 @@ class CompiledRoute:
 
 def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRoute:
     lim = route.limits
-    for name in ("linear_mps", "angular_rad_s", "position_tolerance_m", "heading_tolerance_deg"):
+    for name in (
+        "linear_mps",
+        "angular_rad_s",
+        "position_tolerance_m",
+        "heading_tolerance_deg",
+        "long_min_length_m",
+    ):
         v = getattr(lim, name)
         if not (isinstance(v, (int, float)) and math.isfinite(v) and v > 0.0):
             raise RouteError(f"limits.{name} must be a finite positive number, got {v!r}")
+    b = lim.long_linear_mps
+    if b is not None and not (isinstance(b, (int, float)) and math.isfinite(b) and b >= lim.linear_mps):
+        raise RouteError(f"limits.long_linear_mps must be a finite number >= linear_mps or null, got {b!r}")
     x, y, yaw = route.start.x_m, route.start.y_m, route.start.yaw_rad
     if not all(math.isfinite(v) for v in (x, y, yaw)):
         raise RouteError("start pose must be finite")
@@ -105,11 +162,83 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
                     end,
                     length_m=along,
                     samples=samples,
-                    duration_est_s=along / route.limits.linear_mps,
+                    duration_est_s=along / step_speed(lim, along),
+                    v_mps=step_speed(lim, along),
                 )
             )
             total_len += along
             x, y = end[0], end[1]
+        elif s.type == REVERSE:
+            # Backs up along the heading, facing forward, bounded (route.REVERSE_MAX_M) and at
+            # half the BASE speed: the rear is outside the scanner's field.
+            dist = s.distance_m
+            if dist is None or not (math.isfinite(dist) and MIN_LENGTH_M <= dist <= REVERSE_MAX_M):
+                raise RouteError(
+                    f"reverse needs distance_m in [{MIN_LENGTH_M:g}, {REVERSE_MAX_M:g}] m, got {dist!r}", sid
+                )
+            c, sn = math.cos(yaw), math.sin(yaw)
+            n = max(1, int(math.ceil(dist / spacing)))
+            n_samples += n + 1
+            if n_samples > MAX_SAMPLES:
+                raise RouteError(f"route too long: more than {MAX_SAMPLES} path samples", sid)
+            samples = [(x - c * dist * k / n, y - sn * dist * k / n, yaw) for k in range(n + 1)]
+            end = (x - c * dist, y - sn * dist, yaw)
+            v = REVERSE_SPEED_RATIO * float(lim.linear_mps)
+            steps.append(
+                CompiledStep(
+                    sid,
+                    REVERSE,
+                    (x, y, yaw),
+                    end,
+                    length_m=dist,
+                    samples=samples,
+                    duration_est_s=dist / v,
+                    v_mps=v,
+                    reverse=True,
+                )
+            )
+            total_len += dist
+            x, y = end[0], end[1]
+        elif s.type == ARC:
+            if s.direction not in DIRECTIONS:
+                raise RouteError(f"direction must be one of {DIRECTIONS}", sid)
+            a, r = s.angle_deg, s.radius_m
+            if a is None or not (math.isfinite(a) and ARC_MIN_DEG <= a <= ARC_MAX_DEG):
+                raise RouteError(
+                    f"arc angle_deg must be in [{ARC_MIN_DEG:g}, {ARC_MAX_DEG:g}], got {a!r}", sid
+                )
+            if r is None or not (math.isfinite(r) and r >= ARC_MIN_RADIUS_M):
+                raise RouteError(f"arc radius_m must be at least {ARC_MIN_RADIUS_M:g} m, got {r!r}", sid)
+            sign = 1.0 if s.direction == "ccw" else -1.0
+            theta = math.radians(a)
+            length = r * theta
+            centre = arc_centre(x, y, yaw, r, sign)
+            n = max(1, int(math.ceil(length / spacing)))
+            n_samples += n + 1
+            if n_samples > MAX_SAMPLES:
+                raise RouteError(f"route too long: more than {MAX_SAMPLES} path samples", sid)
+            samples = [arc_pose(centre, r, yaw, sign, theta * k / n) for k in range(n + 1)]
+            ex, ey, eyaw = arc_pose(centre, r, yaw, sign, theta)
+            end = (ex, ey, wrap(eyaw))
+            v = arc_speed(lim, r)
+            steps.append(
+                CompiledStep(
+                    sid,
+                    ARC,
+                    (x, y, yaw),
+                    end,
+                    length_m=length,
+                    samples=samples,
+                    signed_angle_rad=sign * theta,
+                    duration_est_s=length / v,
+                    v_mps=v,
+                    centre=centre,
+                    radius_m=r,
+                )
+            )
+            total_len += length
+            total_turn += theta
+            x, y, yaw = end
         elif s.type == ROTATE:
             if s.direction not in DIRECTIONS:
                 raise RouteError(f"direction must be one of {DIRECTIONS}", sid)
@@ -121,7 +250,7 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
             ):
                 raise RouteError(f"angle_deg must be one of {ALLOWED_ANGLES_DEG}", sid)
             signed = math.radians(s.angle_deg) * (1.0 if s.direction == "ccw" else -1.0)
-            w = route.limits.angular_rad_s
+            w = route.limits.w_mps  # capped at VEHICLE_W_MAX, as Spin does
             # ramp both ends at the profile's yaw-accel limit is the executor's business;
             # the allowance here is generous: 1.5x the constant-rate time plus 2 s.
             allowance = 1.5 * abs(signed) / w + 2.0

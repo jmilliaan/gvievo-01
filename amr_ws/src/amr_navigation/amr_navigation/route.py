@@ -15,7 +15,21 @@ import yaml
 SCHEMA_VERSION = 1
 ALLOWED_ANGLES_DEG = (45, 90, 180, 270)
 DIRECTIONS = ("cw", "ccw")
-STRAIGHT, ROTATE = "straight", "rotate"
+STRAIGHT, ROTATE, REVERSE = "straight", "rotate", "reverse"
+# A reverse straight (2026-09-18) backs up along the current heading, facing forward. The
+# rear is outside the nanoScan3 field (275 deg, blind sector behind), so it is bounded:
+# at most REVERSE_MAX_M and at half the route's base speed (never the long-straight boost).
+REVERSE_MAX_M = 2.0
+REVERSE_SPEED_RATIO = 0.5
+# An arc (2026-09-18) drives forward along a circle of radius_m through angle_deg, left
+# (ccw) or right (cw). Bounded: at least an eighth of a circle, at most a half, and a
+# radius of at least twice the wheel track (2 x 0.487 -> 1.0 m). Its speed is capped so
+# the yaw rate v/R stays under the route's turn cap (compiler.arc_speed).
+ARC = "arc"
+ARC_MIN_DEG, ARC_MAX_DEG = 45.0, 180.0
+ARC_MIN_RADIUS_M = 1.0
+ARC_SPEED_RATIO = 0.6  # of limits.linear_mps: an arc runs at 60 % of the base speed (never the boost)
+ARC_YAW_RATE_RATIO = 0.9  # of limits.w_mps: headroom for the controller's corrections
 
 
 class RouteError(ValueError):
@@ -33,13 +47,23 @@ MAX_REPEAT = 100  # = amr_mission run_fsm MAX_PASSES: the executor's pass bound
 MAX_ABS_COORD_M = 10_000.0
 MAX_NAME_LEN = 128
 FRAMES = ("map",)
+# Vehicle ceilings (policy, 2026-09-18). nav2_params.yaml mirrors both (FollowPath
+# desired_linear_vel = VEHICLE_V_MAX, Spin max_rotational_vel = VEHICLE_W_MAX; test_route.py
+# checks). A route file may not ask for more linear speed than VEHICLE_V_MAX. Angular is
+# CLAMPED, not refused: route files saved before 2026-09-17 carry the old 0.30 default,
+# which Spin capped at 0.24 until 2026-09-18, so refusing them would only force a re-save.
+VEHICLE_V_MAX = 0.70
+VEHICLE_W_MAX = 0.34  # 0.24 -> 0.34 (+40 %) on 2026-09-18
 LIMIT_BOUNDS = {  # key -> (exclusive min, inclusive max)
-    "linear_mps": (0.0, 5.0),
+    "linear_mps": (0.0, VEHICLE_V_MAX),
+    "long_linear_mps": (0.0, VEHICLE_V_MAX),
+    "long_min_length_m": (0.0, 100.0),
     "angular_rad_s": (0.0, 5.0),
     "position_tolerance_m": (0.0, 1.0),
     "heading_tolerance_deg": (0.0, 45.0),
     "cross_track_limit_m": (0.0, 1.0),
 }
+NULLABLE_LIMITS = ("long_linear_mps",)  # null / absent = feature off
 
 
 def _field(d, key: str, where: str, step_id: str | None = None, default=None, required: bool = True):
@@ -94,24 +118,46 @@ class StartPose:
 
 @dataclass
 class Limits:
-    linear_mps: float = 0.40  # autonomous route default (spec §5.2, raised 2026-09-17)
-    angular_rad_s: float = 0.24  # autonomous route default (spec §5.3, lowered 2026-09-17)
+    linear_mps: float = 0.50  # autonomous route default (spec §5.2, 0.40 -> 0.50 on 2026-09-18)
+    # A straight LONGER than long_min_length_m may run at long_linear_mps ("boost"). None =
+    # no boost: route files written before 2026-09-18 never speed up by themselves; the
+    # editor writes the value explicitly into new routes.
+    long_linear_mps: float | None = None
+    long_min_length_m: float = 4.0
+    angular_rad_s: float = 0.34  # autonomous route default (spec §5.3; 0.24 on 09-17, +40 % on 09-18)
     position_tolerance_m: float = 0.05
     heading_tolerance_deg: float = 2.0
     cross_track_limit_m: float = 0.10
+
+    @property
+    def w_mps(self) -> float:
+        """The rotation speed the vehicle actually turns at: the file's value, capped."""
+        return min(float(self.angular_rad_s), VEHICLE_W_MAX)
 
 
 @dataclass
 class Step:
     id: str
-    type: str  # STRAIGHT | ROTATE
+    type: str  # STRAIGHT | ROTATE | REVERSE | ARC
     to: tuple[float, float] | None = None  # straight: end point (x_m, y_m)
-    direction: str | None = None  # rotate: cw | ccw
-    angle_deg: float | None = None  # rotate: 45 | 90 | 180 | 270
+    direction: str | None = None  # rotate / arc: cw | ccw
+    angle_deg: float | None = None  # rotate: 45 | 90 | 180 | 270; arc: ARC_MIN_DEG..ARC_MAX_DEG
+    distance_m: float | None = None  # reverse: how far back, 0 < d <= REVERSE_MAX_M
+    radius_m: float | None = None  # arc: >= ARC_MIN_RADIUS_M
 
     def to_dict(self) -> dict:
         if self.type == STRAIGHT:
             return {"id": self.id, "type": STRAIGHT, "to": {"x_m": self.to[0], "y_m": self.to[1]}}
+        if self.type == REVERSE:
+            return {"id": self.id, "type": REVERSE, "distance_m": self.distance_m}
+        if self.type == ARC:
+            return {
+                "id": self.id,
+                "type": ARC,
+                "direction": self.direction,
+                "angle_deg": self.angle_deg,
+                "radius_m": self.radius_m,
+            }
         return {"id": self.id, "type": ROTATE, "direction": self.direction, "angle_deg": self.angle_deg}
 
     @staticmethod
@@ -136,6 +182,25 @@ class Step:
             if isinstance(a, bool) or not isinstance(a, int) or a not in ALLOWED_ANGLES_DEG:
                 raise RouteError(f"angle_deg must be one of {ALLOWED_ANGLES_DEG}", sid)
             return Step(sid, ROTATE, direction=direction, angle_deg=float(a))
+        if t == REVERSE:
+            raw = _field(d, "distance_m", "step", sid)
+            dist = _float(raw, "step.distance_m", lim=REVERSE_MAX_M, step_id=sid)
+            if not 0.0 < dist <= REVERSE_MAX_M:
+                raise RouteError(f"reverse distance_m must be in (0, {REVERSE_MAX_M:g}] m, got {dist:g}", sid)
+            return Step(sid, REVERSE, distance_m=dist)
+        if t == ARC:
+            direction = _field(d, "direction", "step", sid)
+            if direction not in DIRECTIONS:
+                raise RouteError(f"direction must be one of {DIRECTIONS}", sid)
+            a = _float(_field(d, "angle_deg", "step", sid), "step.angle_deg", lim=360.0, step_id=sid)
+            if not ARC_MIN_DEG <= a <= ARC_MAX_DEG:
+                raise RouteError(
+                    f"arc angle_deg must be in [{ARC_MIN_DEG:g}, {ARC_MAX_DEG:g}], got {a:g}", sid
+                )
+            r = _float(_field(d, "radius_m", "step", sid), "step.radius_m", lim=1000.0, step_id=sid)
+            if r < ARC_MIN_RADIUS_M:
+                raise RouteError(f"arc radius_m must be at least {ARC_MIN_RADIUS_M:g} m, got {r:g}", sid)
+            return Step(sid, ARC, direction=direction, angle_deg=a, radius_m=r)
         raise RouteError(f"unknown step type {t!r}"[:200], sid)
 
 
@@ -189,10 +254,19 @@ class Route:
         limits = {}
         for k, v in limits_in.items():
             lo, hi = LIMIT_BOUNDS[k]
+            if v is None and k in NULLABLE_LIMITS:
+                limits[k] = None
+                continue
             f = _float(v, f"limits.{k}")
             if not lo < f <= hi:
                 raise RouteError(f"limits.{k} must be in ({lo:g}, {hi:g}], got {f:g}")
             limits[k] = f
+        lim = Limits(**limits)
+        if lim.long_linear_mps is not None and lim.long_linear_mps < lim.linear_mps:
+            raise RouteError(
+                f"limits.long_linear_mps ({lim.long_linear_mps:g}) is below linear_mps "
+                f"({lim.linear_mps:g}): a long straight may not be slower than a short one"
+            )
         steps_in = d.get("steps") or []
         if not isinstance(steps_in, list):
             raise RouteError("steps must be a list")
@@ -212,7 +286,7 @@ class Route:
                 _float(_field(st, "y_m", "start"), "start.y_m"),
                 _float(_field(st, "yaw_deg", "start"), "start.yaw_deg", lim=3600.0),
             ),
-            limits=Limits(**limits),
+            limits=lim,
             steps=[Step.from_dict(s) for s in steps_in],
             repeat_count=_int(d.get("repeat_count", 1), "repeat_count", 0, MAX_REPEAT),
         )
