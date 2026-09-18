@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 import can
 
 import amr_base.agv_repo  # noqa: F401  (puts the repo layer dirs on sys.path)
+from amr_base import pp
 
 import guard  # repo module
 import rpdo  # noqa: E402
@@ -347,6 +348,10 @@ class DriveLink:
     t_fault: float | None = None
     _stop_tries: int = 0
     _t_hb: float = 0.0
+    # The drives may be in pp (6060h = 1). In pp, statusword bit 12 is "set-point
+    # acknowledge", NOT "speed is zero", and an RPDO without Halt lets a halted move
+    # RESUME towards its target - so every stop frame and standstill test differs.
+    in_pp: bool = False
 
     STOP_RETRIES = 5  # extra loop ticks a failed zero send is retried
     STOP_CONFIRM_S = 3.0  # decel 3200 rpm/s from 4000 r/min is 1.25 s
@@ -354,6 +359,23 @@ class DriveLink:
     @property
     def pc_guard_set(self) -> bool:
         return bool(self.pc_guard_nodes)
+
+    @property
+    def stop_controlword(self) -> int:
+        """What a zero/stop RPDO carries: Halt while in pp (a plain 0x0F would let a
+        halted pp move continue), plain Operation enabled in pv."""
+        return pp.CW_HALTED if self.in_pp else CW_OPERATION_ENABLED
+
+    def _standstill_status(self, t: DriveTelemetry) -> bool:
+        """Positive standstill from a TPDO1: 606Ch = 0 in pp, the speed-zero bit in pv."""
+        if self.in_pp:
+            return t.rpm == 0
+        return bool(t.statusword & SW_SPEED_IS_ZERO)
+
+    def _standstill_sdo(self, nid: int) -> bool:
+        if self.in_pp:
+            return self.read(nid, 0x606C, timeout=0.2) == 0
+        return bool((self.read(nid, 0x6041, timeout=0.2) or 0) & SW_SPEED_IS_ZERO)
 
     def __post_init__(self):
         for nid in self.nodes:
@@ -574,6 +596,7 @@ class DriveLink:
         else:
             self.log(f"encoder scale {cprev:.0f} counts per wheel turn")
         self.applied = None
+        self.in_pp = False  # _enable_sequence wrote 6060h = pv on both drives
         self.t_armed = time.monotonic()
         self.state, self.fault_reason = ARMED, None
         return report
@@ -632,7 +655,7 @@ class DriveLink:
         end = time.monotonic() + 4.0
         while time.monotonic() < end:
             try:
-                if all((self.read(n, 0x6041, timeout=0.2) or 0) & SW_SPEED_IS_ZERO for n in self.nodes):
+                if all(self._standstill_sdo(n) for n in self.nodes):
                     break
             except Exception:  # noqa: BLE001
                 break
@@ -701,7 +724,7 @@ class DriveLink:
                     unconfirmed.append(f"node {n}: no status since the fault")
                 elif now - t.t_status >= max_age:
                     unconfirmed.append(f"node {n}: status stale ({now - t.t_status:.1f} s)")
-                elif not t.statusword & SW_SPEED_IS_ZERO:
+                elif not self._standstill_status(t):
                     unconfirmed.append(f"node {n}: still turning ({t.rpm} r/min)")
         if unconfirmed != self.stop_unconfirmed:
             self.stop_unconfirmed = unconfirmed
@@ -717,7 +740,7 @@ class DriveLink:
         failed = []
         for nid in self.nodes if nodes is None else [n for n in self.nodes if n in nodes]:
             try:
-                rpdo.send(self.router, nid, CW_OPERATION_ENABLED, 0)
+                rpdo.send(self.router, nid, self.stop_controlword, 0)
             except Exception as e:  # noqa: BLE001
                 self.log(f"node {nid}: zero setpoint send failed ({e})")
                 failed.append(nid)
@@ -735,6 +758,102 @@ class DriveLink:
     def send_pc_heartbeat(self, pc_node: int) -> None:
         self._t_hb = time.monotonic()
         self.router.send(pc_heartbeat_message(pc_node))
+
+    # -- profile position (pp) blind moves: amr_base/pp.py decides, these act --
+    #
+    # Entered only from ARMED, at rest, after the pp safety configuration read back
+    # from both drives matches the profile. Nothing here writes that configuration
+    # (6072h/6065h/6067h/605Dh/605Eh/6085h are not on guard.ALLOWED). Every failure
+    # after the first mode write puts the drives back in pv before it is reported.
+
+    MODE_READBACK_TRIES = 10
+
+    def _mode_readback(self, nid: int, want: int) -> None:
+        for _ in range(self.MODE_READBACK_TRIES):
+            got = self.read(nid, 0x6061)
+            if got is not None and (got & 0xFF) == want:
+                return
+            self.router.pump(0.02)
+        raise RuntimeError(f"node {nid}: 6061h did not read mode {want}")
+
+    def at_rest(self, now: float, max_age: float) -> str | None:
+        """None when both drives report zero speed on fresh feedback, else why not."""
+        for nid, label in self.nodes.items():
+            t = self.telemetry[nid]
+            if t.t_status is None or now - t.t_status > max_age:
+                return f"{label} feedback stale"
+            if t.rpm != 0:
+                return f"{label} turning ({t.rpm} r/min)"
+            if t.position is None or t.t_position is None or now - t.t_position > max_age:
+                return f"{label} position stale"
+        return None
+
+    def pp_enter(self, spec: pp.MoveSpec, expect: dict, objects: dict, max_age: float) -> tuple[int, int]:
+        """Blocking. Verify, switch both drives to pp, write the set-points. -> absolute targets.
+
+        Raises RuntimeError with the reason. Moves nothing by itself: motion starts
+        with the new-set-point edge the controller sends on the next ticks.
+        """
+        if self.state != ARMED:
+            raise RuntimeError(f"drives not armed ({self.state})")
+        if self.faulted_nodes():
+            raise RuntimeError(f"drive fault on node(s) {self.faulted_nodes()}")
+        why = self.at_rest(time.monotonic(), max_age)
+        if why:
+            raise RuntimeError(f"not at rest: {why}")
+        problems = pp.verify_config(lambda n, i: self.read(n, i), self.nodes, expect, objects)
+        if problems:
+            raise RuntimeError("pp configuration check failed: " + "; ".join(problems))
+        actual = tuple(self.telemetry[n].position for n in self.nodes)
+        targets = pp.absolute_targets(actual, spec)  # raises ValueError before anything is written
+        self.in_pp = True  # from the first mode write on, stop frames carry Halt
+        try:
+            for nid in self.nodes:
+                self.write(nid, 0x6060, 0, pp.MODE_PP, 1, "modes of operation = pp")
+            for nid in self.nodes:
+                self._mode_readback(nid, pp.MODE_PP)
+            for (nid, label), wheel, target in zip(self.nodes.items(), spec.wheels(), targets, strict=True):
+                if not wheel.moves:
+                    continue  # stays in pp at rest: the position loop holds it where it is
+                self.write(nid, 0x6081, 0, wheel.velocity_rpm, 4, f"{label} profile velocity")
+                self.write(nid, 0x6083, 0, wheel.accel_rpm_s, 4, f"{label} profile acceleration")
+                self.write(nid, 0x6084, 0, wheel.decel_rpm_s, 4, f"{label} profile deceleration")
+                self.write(nid, 0x607A, 0, target, 4, f"{label} target position")
+        except Exception as e:
+            try:
+                self.pp_exit()
+            except Exception as e2:  # noqa: BLE001
+                raise RuntimeError(f"{e}; and the return to pv failed: {e2}") from e
+            raise RuntimeError(str(e)) from e
+        self.applied = None
+        return targets
+
+    def send_controlwords(self, cw_left: int, cw_right: int) -> None:
+        """pp ticks: RPDO1 carries only the controlword; the velocity field is zero."""
+        for nid, cw in zip(self.nodes, (cw_left, cw_right), strict=True):
+            rpdo.send(self.router, nid, cw, 0)
+
+    def pp_exit(self) -> None:
+        """Blocking. Both drives back to pv at zero, with the pv ramps restored. Raises on failure.
+
+        Halt stays asserted until pv is confirmed and 60FFh is zero: clearing it while
+        still in pp would let a halted move carry on to its target.
+        """
+        errors = []
+        for nid in self.nodes:
+            try:
+                rpdo.send(self.router, nid, pp.CW_HALTED, 0)
+                self.write(nid, 0x6060, 0, pp.MODE_PV, 1, "modes of operation = pv")
+                self._mode_readback(nid, pp.MODE_PV)
+                self.write(nid, 0x60FF, 0, 0, 4, "target velocity = 0")
+                self.write(nid, 0x6083, 0, int(self.ramp["accel"]), 4, "profile acceleration")
+                self.write(nid, 0x6084, 0, int(self.ramp["decel"]), 4, "profile deceleration")
+            except Exception as e:  # noqa: BLE001 - try the other drive too, then report both
+                errors.append(f"node {nid}: {e}")
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        self.in_pp = False
+        self.applied = (0, 0)
 
     # -- checks --
 

@@ -96,6 +96,29 @@ def test_config_profile():
             lambda d: d["manual"].update(full_rpm=9000), "manual.full_rpm")
     refuses("a bool where a number belongs is refused",
             lambda d: d["manual"].update(half_ratio=True), "expected a number")
+    # *** Profile position is LOCKED until the vendor has answered. *** The
+    # 400 W geared motor needs motion extension, which pp cannot select; a pp
+    # section switched on without the verified drive values or the vendor
+    # reference must not load.
+    check("pp ships locked, every expected drive value unset",
+          config.PP_ENABLED is False and all(v is None for v in config.PP_EXPECT.values()),
+          f"enabled={config.PP_ENABLED} expect={config.PP_EXPECT}")
+    refuses("pp enabled with unset drive values is refused",
+            lambda d: d["pp"].update(enabled=True, vendor_ref="OM ticket 1"), "null value")
+
+    def pp_all_set(d, ref):
+        d["pp"]["expect"] = {k: 1 for k in d["pp"]["expect"]}
+        d["pp"].update(enabled=True, vendor_ref=ref)
+    refuses("pp enabled without a vendor reference is refused",
+            lambda d: pp_all_set(d, " "), "vendor_ref")
+    check("pp enabled with every value and a vendor reference loads",
+          load_with(lambda d: pp_all_set(d, "OM ticket 1")) is None)
+    refuses("a pp.expect key missing is refused",
+            lambda d: d["pp"]["expect"].pop("halt_option"), "missing key")
+    refuses("a pp speed above the blind-run cap is refused",
+            lambda d: d["pp"].update(max_speed_mps=0.9), "pp.max_speed_mps")
+    refuses("a blind-run speed above 0.8 m/s is refused",
+            lambda d: d["blind_run"].update(max_speed_mps=1.0), "blind_run.max_speed_mps")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
     # an infinite manual watchdog would never expire. Python's json reader takes
     # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form

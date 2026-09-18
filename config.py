@@ -60,8 +60,9 @@ drivers.ramp
                software above it. A STOP falls through to this decel rate.
     CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
     can be damaged by a hard decel while demand and actual velocity differ a lot
-    (opman_fun:2951). On that combination drop the auto decel to match its accel
-    and set drive_forward.PVCM_NORMAL = 0 to use motion extension instead.
+    (opman_fun:2951). This vehicle IS that combination (BLMR6400SKM-GFV-B, 1:30):
+    the drives run in motion extension (drive_forward.PVCM_MOTION_EXTENSION), and
+    the auto decel should not be raised far above its accel.
     CAUTION (auto): 6083h also caps how fast the wheel DIFFERENCE can slew, so
     it is the ceiling on YAW ACCELERATION as well as on forward ramp -
     kinematics.max_yaw_accel() turns it into rad/s^2 and gives 2.59 at the
@@ -259,6 +260,33 @@ blind_run.*
     Nothing steers on a sensor. The IMU yaw rate is written beside the encoder
     heading in the run CSV so the two can be compared afterwards - see imu.* -
     and that is the whole of its involvement.
+
+    max_speed_mps caps the centre-path speed of a blind move on either backend
+    (the /commissioning page offers up to this). Above ~0.4 m/s the protective
+    field sizing of the nanoScan3/FX3 must be confirmed first; that is a check
+    on the vehicle, not something this file can know.
+
+pp.*
+    Profile position (CiA 402 pp) blind moves, executed INSIDE the drives: the
+    drive's own position loop runs each wheel to a count target. LOCKED by
+    default (enabled false). The motor is a 400 W BLM with a 1:30 gearhead, and
+    the BLV-R manual (function edition 3-4/3-6) requires motion-extension mode
+    for that combination, which no positioning type offers. Enable only after
+    Oriental Motor has confirmed pp for this motor and named the settings
+    below; record their reference in vendor_ref.
+
+    expect.* are the values a human sets IN THE DRIVES with MEXE02 (and saves).
+    This software never writes them - they are on no allow-list in guard.py -
+    it reads them back from both drives before every pp move and refuses on
+    any difference, or while any of them is still null:
+      max_torque_permille     6072h  caps motor torque so torque x 30 stays
+                                     inside the gearhead's permissible torque
+      following_error_counts  6065h  how far a wheel may lag before bit 13
+      position_window_counts  6067h  "target reached" band
+      halt_option             605Dh  Halt decelerates on the profile ramp (1)
+      fault_reaction          605Eh  per the vendor's answer
+      quick_stop_decel        6085h  r/min/s
+    max_speed_mps is the pp cap, at most blind_run.max_speed_mps.
 
 timing.auto_start_delay_s
     The pause between PB Start and the wheels being commanded. It gives whoever
@@ -458,6 +486,13 @@ _SCHEMA = {
         "sync_kp":           ("BLIND_SYNC_KP", float),
         "overrun_margin":    ("BLIND_OVERRUN_MARGIN", float),
         "max_segments":      ("BLIND_MAX_SEGMENTS", int),
+        "max_speed_mps":     ("BLIND_MAX_SPEED_MPS", float),
+    },
+    # "expect" is nested and nullable; _read_pp_expect reads it (see pp.* notes).
+    "pp": {
+        "enabled":       ("PP_ENABLED", bool),
+        "vendor_ref":    ("PP_VENDOR_REF", str),
+        "max_speed_mps": ("PP_MAX_SPEED_MPS", float),
     },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
@@ -573,6 +608,33 @@ def _read_ramp(raw):
     return out
 
 
+# pp.expect: the drive-side values verified before a pp move -> (index, name).
+PP_EXPECT_OBJECTS = {
+    "max_torque_permille":    0x6072,
+    "following_error_counts": 0x6065,
+    "position_window_counts": 0x6067,
+    "halt_option":            0x605D,
+    "fault_reaction":         0x605E,
+    "quick_stop_decel":       0x6085,
+}
+
+
+def _read_pp_expect(raw):
+    """pp.expect -> {name: int | None}. Every key present; null means "not
+    configured yet", which keeps pp unavailable rather than failing the load."""
+    block = raw.get("expect")
+    if not isinstance(block, dict):
+        raise ConfigError("pp.expect: missing or not an object")
+    unknown = set(block) - set(PP_EXPECT_OBJECTS)
+    if unknown:
+        raise ConfigError(f"pp.expect: unknown key(s) {sorted(unknown)}")
+    missing = set(PP_EXPECT_OBJECTS) - set(block)
+    if missing:
+        raise ConfigError(f"pp.expect: missing key(s) {sorted(missing)}")
+    return {k: None if block[k] is None else _coerce(block[k], int, f"pp.expect.{k}")
+            for k in PP_EXPECT_OBJECTS}
+
+
 
 
 
@@ -605,6 +667,8 @@ def _parse(doc):
             allowed |= {"di_names", "do_names"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
+        if section == "pp":
+            allowed.add("expect")
         unknown = set(block) - allowed
         if unknown:
             raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}")
@@ -615,6 +679,7 @@ def _parse(doc):
             ns[name] = _coerce(block[key], want, f"{section}.{key}")
 
     ns["RAMP"] = _read_ramp(doc["drivers"])
+    ns["PP_EXPECT"] = _read_pp_expect(doc["pp"])
     # Sanity-check the counts BEFORE the name lists are sized against them, or
     # "num_di": 0 gets reported as a problem with di_names, which sends the
     # reader to fix the wrong key.
@@ -870,6 +935,24 @@ def _validate(ns):
           "blind_run.overrun_margin must be a fraction in [0, 0.5]")
     check(1 <= g("BLIND_MAX_SEGMENTS") <= 32,
           "blind_run.max_segments must be in 1..32")
+    check(0 < g("BLIND_MAX_SPEED_MPS") <= 0.8,
+          "blind_run.max_speed_mps must be in (0, 0.8] m/s")
+    check(g("BLIND_MAX_SPEED_MPS") * g("RPM_PER_MPS") <= g("BLIND_MAX_RPM") + 1e-6,
+          f"blind_run.max_speed_mps ({g('BLIND_MAX_SPEED_MPS')} m/s) needs more than "
+          f"blind_run.max_rpm ({g('BLIND_MAX_RPM'):g} r/min)")
+
+    # -- profile position (locked until the vendor has answered) ------------
+    check(0 < g("PP_MAX_SPEED_MPS") <= g("BLIND_MAX_SPEED_MPS"),
+          "pp.max_speed_mps must be in (0, blind_run.max_speed_mps]")
+    expect = g("PP_EXPECT")
+    for k, v in expect.items():
+        check(v is None or v >= 0, f"pp.expect.{k} must be >= 0 or null")
+    if g("PP_ENABLED"):
+        unset = sorted(k for k, v in expect.items() if v is None)
+        check(not unset, f"pp.enabled is true but pp.expect has null value(s) {unset}")
+        check(g("PP_VENDOR_REF").strip() != "",
+              "pp.enabled is true but pp.vendor_ref is empty - record the "
+              "Oriental Motor confirmation that pp is permitted for this motor")
     check(g("AUTO_START_DELAY_S") >= 0,
           "timing.auto_start_delay_s must be >= 0")
     check(g("AUTO_START_DELAY_S") <= 10.0,

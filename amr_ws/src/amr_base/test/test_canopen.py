@@ -197,7 +197,8 @@ def test_arm_configures_pdos_guard_and_enables_both_drives():
     assert idx.count(0x1400) == 6 and idx.count(0x1800) == 10 and idx.count(0x1801) == 10
     assert (1, 0x1016, 1, (100 << 16) | 500) in w and (2, 0x1016, 1, (100 << 16) | 500) in w
     cws = [(n, v) for n, i, _, v in w if i == 0x6040]
-    assert cws == [(1, 0x06), (1, 0x07), (1, 0x200F), (2, 0x06), (2, 0x07), (2, 0x200F)]
+    # 0x000F: motion extension (bit 13 = 0), required for the 400 W geared motor
+    assert cws == [(1, 0x06), (1, 0x07), (1, 0x000F), (2, 0x06), (2, 0x07), (2, 0x000F)]
     assert (1, 0x60FF, 0, 0) in w  # armed with a zero target
     # PDO config happened while pre-operational (NMT 0x80 broadcast came before)
     nmt = [(m.data[0], m.data[1]) for m in bus.sent if m.arbitration_id == 0]

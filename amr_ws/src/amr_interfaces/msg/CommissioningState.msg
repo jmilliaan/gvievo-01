@@ -23,3 +23,5 @@ float64 gyro_heading_deg   # integrated corrected yaw rate since the job started
 uint32 completed
 string reason
 string results_path        # evidence file after DONE/ABORTED
+string backend             # pv | pp (profile position, executed inside the drives)
+string run_id              # pp: the run id held at the drive owner for this Start

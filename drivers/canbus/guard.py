@@ -53,7 +53,19 @@ ALLOWED = {
     # reaction (605Eh) with nothing on the PC involved. It cannot start motion,
     # and the alarm it raises is cleared by an operator, not by us (40C0h).
     0x1016: "consumer heartbeat time",
+    # Profile position (pp) blind moves: the SET-POINT of a move and nothing
+    # about how the drive reacts to one. Only reached while profile pp.enabled
+    # is true. The pp safety configuration - 6072h max torque, 6065h following
+    # error window, 6067h position window, 605Dh halt option, 605Eh fault
+    # reaction, 6085h quick stop, 60F2h positioning option - is deliberately NOT
+    # here: a human sets it with MEXE02 per Oriental Motor's answer, and the
+    # drive owner only READS it back and refuses a move on any difference.
+    0x607A: "target position",
+    0x6081: "profile velocity",
 }
+
+# Named so a test can assert that none of them ever becomes writable.
+PP_CONFIG_READ_ONLY = (0x6072, 0x6065, 0x6067, 0x605D, 0x605E, 0x6085, 0x60F2)
 
 # Named purely so a refusal can say WHY, rather than "not allowed".
 FORBIDDEN = {

@@ -370,3 +370,14 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; }
   button.dir { aspect-ratio:1/1; }
   .pad.compact button.dir { aspect-ratio:auto; }
 }
+
+/* ---- blind run (/commissioning) ---- */
+label.check { display:flex; gap:8px; align-items:flex-start; margin:12px 0 0; font:500 12.5px var(--sans); color:var(--ink); cursor:pointer; }
+label.check input { display:inline-block; width:auto; margin:2px 0 0; flex:none; }
+.br-ms { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.list > .row.br-hist { grid-template-columns:minmax(0,1.6fr) minmax(0,.5fr) minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,1.1fr); }
+.row.br-hist i.n { font-style:normal; font-weight:400; font-size:11px; }
+@media (max-width: 760px) {
+  .list > .row.br-hist { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .br-ms { grid-template-columns:minmax(0,1fr); }
+}

@@ -258,16 +258,62 @@ cycle where required by the drive procedure.
 It is an exclusive IDLE substate:
 
 1. Select **MANUAL**, ensure the vehicle is stopped and the test area is clear.
-2. Enter and **Hold plan**. This validates the plan and moves nothing. The plan
-   `id` may use letters, digits, `_`, `.` and `-` only, starts with a letter or digit, max 64. Holding is
-   refused unless the wheels are known to be still and the encoder scale is fresh.
-3. Review the calculated wheel count targets under **Planned segments**.
-4. Press physical **Start** once to execute. Only a Start pressed after the plan
+2. Pick the move and fill in its numbers:
+   - **Straight**: forward/reverse and distance (m).
+   - **Rotate**: CCW/CW and angle (°).
+   - **Arc**: left/right, angle (°) and radius (m). An arc always goes forwards, and its radius must be at least half the track (0.244 m); tighter, use Rotate.
+   - **Speed**: 0.05–0.80 m/s. Above 0.40 m/s the page warns and shows the ramped stopping distance. Confirm the nanoScan3/FX3 protective field is sized for the speed before going above 0.40.
+   - **Backend**: **PV** (profile velocity, the default) or **PP** (profile position, executed inside the drives). PP is greyed out with the reason while it is locked (see below).
+3. Tick the checklist (area clear, E-stop in reach, speed within the field
+   sizing), then **Hold move**. This validates the move and moves nothing.
+   Holding is refused unless the wheels are known to be still and the encoder
+   scale is fresh. Several PV segments can still be held as JSON under
+   **Advanced**. A plan `id` may use letters, digits, `_`, `.` and `-` only,
+   starts with a letter or digit, max 64.
+4. Review **Held move**: the wheel count targets, the commanded dx/dy/heading,
+   and for PP the per-wheel velocity and ramps.
+5. Press physical **Start** once to execute. Only a Start pressed after the plan
    was held counts. Browser input cannot start it.
-5. Use **Clear / abort** to stop and invalidate the held job. An aborted run
+6. Use **Clear / abort** to stop and invalidate the held job. An aborted run
    still writes its evidence, including the interrupted segment.
-6. Save the displayed evidence path with the commissioning record. If the reason
+7. Measure where the vehicle ended up, in the start frame: x forward, y left,
+   heading counter-clockwise +. Measure the axle-midpoint mark, and take the
+   heading from a second mark ~1 m ahead. Enter dx/dy (mm) and heading (°)
+   under **Measured result** and **Save measurement**. **History** then lists
+   commanded, measured and error per run, PV and PP side by side. The
+   measurement is stored beside the evidence as `<evidence>.measured.json`;
+   saving again replaces it.
+8. Save the displayed evidence path with the commissioning record. If the reason
    says `evidence NOT written`, the file is missing; do not record an old path.
+
+**Profile position (PP) is locked** (`pp.enabled: false` in the profile). The
+motor is a BLMR6400SKM-GFV-B (400 W, 1:30 gearhead). The BLV-R manual requires
+motion-extension mode for that combination, and no positioning type offers it.
+
+Unlock PP only after all of these:
+- **Vendor:** Oriental Motor has confirmed PP for this motor and named the settings.
+- **Drives:** a person has set 6072h, 6065h, 6067h, 605Dh, 605Eh and 6085h in both drives with MEXE02 and saved them.
+- **Profile:** those values are entered under `pp.expect`, with the confirmation recorded in `pp.vendor_ref`.
+
+Software never writes those objects. Before every PP move the drive owner
+reads them back from both drives and refuses the move on any difference.
+
+A PP move is held, not latched. It halts (controlword Halt, on the profile ramp) on any of:
+- the page's job stops re-sending it for 0.2 s;
+- the supervisor lease loses COMMISSIONING or changes generation;
+- the panel is not a fresh, valid MANUAL;
+- a drive raises a following error (6041h bit 13);
+- twice the planned time plus 2 s passes.
+
+A halt not confirmed at rest within 3 s faults the drive owner and withholds
+the PC heartbeat, so the drives' own 1016h reaction takes over. Bench first,
+on blocks:
+1. PP refused while locked.
+2. A deliberately mismatched value refused.
+3. One wheel turn at 0.1 m/s lands within the position window.
+4. Selector to AUTO mid-move halts.
+5. Closing the browser mid-move halts within 0.2 s.
+6. `kill -9` of drive_node trips 1016h.
 
 While a plan is prepared or running, ordinary jog and mapping/navigation mode
 requests are refused. Selector change, lease loss, a supervisor restart or

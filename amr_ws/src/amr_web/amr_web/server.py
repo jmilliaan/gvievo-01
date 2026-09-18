@@ -31,6 +31,7 @@ from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
+from amr_web import commissioning_log as clog
 from amr_web import jog, wifi
 from amr_web.png import encode_gray
 
@@ -84,10 +85,15 @@ def _result(ok: bool, message: str, status_fail: int = 409, **extra):
 
 
 def create_app(
-    adapter: Adapter, maps_dir: str, footprint_path: str | None = None, wifi_iface: str = "wlp1s0"
+    adapter: Adapter,
+    maps_dir: str,
+    footprint_path: str | None = None,
+    wifi_iface: str = "wlp1s0",
+    state_dir: str = "~/.amr",
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
+    app.config["EVIDENCE_DIR"] = clog.evidence_dir(state_dir)
     fp = fpmod.load(footprint_path or fpmod.default_path())
     app.config["FOOTPRINT"] = fp
     _grids: dict[tuple[str, int], tuple[Any, gridio.Grid]] = {}
@@ -427,6 +433,54 @@ def create_app(
     @app.post("/api/commissioning/clear")
     def api_commissioning_clear():
         return _call(adapter.commissioning_clear)
+
+    @app.get("/api/commissioning/capabilities")
+    def api_commissioning_capabilities():
+        """What the blind-run form may offer: the profile's caps, and whether the drive
+        owner reports profile position available right now (it is locked until the
+        vendor has confirmed pp for this motor). Advisory: the commissioning node and
+        the drive owner enforce the same rules on their own."""
+        import amr_base.agv_repo  # noqa: F401, PLC0415
+
+        import config  # noqa: PLC0415
+
+        st = adapter.pp_status() if hasattr(adapter, "pp_status") else None
+        fresh = st is not None and float(st.get("age_s", 1e9)) <= 1.0
+        if not fresh:
+            pp_ok, pp_reason = False, "no fresh pp status from the drive owner"
+        else:
+            pp_ok, pp_reason = bool(st.get("available")), str(st.get("reason", ""))
+        return jsonify(
+            {
+                "max_speed_mps": config.BLIND_MAX_SPEED_MPS,
+                "pp_max_speed_mps": config.PP_MAX_SPEED_MPS,
+                "max_distance_m": config.BLIND_MAX_DISTANCE_M,
+                "min_arc_radius_m": config.TRACK_M / 2.0,
+                "track_m": config.TRACK_M,
+                "decel_mps2": config.BLIND_ACCEL_RPM_S * config.MPS_PER_RPM,
+                "field_check_above_mps": 0.4,
+                "pp_available": pp_ok,
+                "pp_reason": "" if pp_ok else pp_reason,
+                "pp_status": st,
+            }
+        )
+
+    @app.get("/api/commissioning/history")
+    def api_commissioning_history():
+        return jsonify(clog.history(app.config["EVIDENCE_DIR"]))
+
+    @app.post("/api/commissioning/measurement")
+    def api_commissioning_measurement():
+        d = request.get_json(force=True) or {}
+        if not isinstance(d, dict):
+            return _result(False, "object required", 400)
+        try:
+            row = clog.save_measurement(app.config["EVIDENCE_DIR"], d.get("run"), d)
+        except clog.LogError as e:
+            return _result(False, str(e), 400)
+        except OSError as e:
+            return _result(False, f"measurement not stored: {e}", 500)
+        return jsonify({"ok": True, "message": "measurement stored", "row": row})
 
     # ---- live view (unified plan §6.4): bounded rates, encoded once per snapshot ----
 

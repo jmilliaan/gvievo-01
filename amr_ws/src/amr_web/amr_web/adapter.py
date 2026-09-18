@@ -40,6 +40,7 @@ from amr_interfaces.msg import (
     ModeState,
     MuxState,
     PanelState,
+    PpStatus,
 )
 from amr_interfaces.srv import (
     GetOperation,
@@ -147,6 +148,9 @@ class RosAdapter(Node):
             CommissioningState, "/amr/commissioning_state", self._on_commissioning, LATCHED, callback_group=g
         )
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
+        self._pp: dict | None = None
+        self._pp_t = 0.0
+        self.create_subscription(PpStatus, "/drives/pp_status", self._on_pp, RELIABLE_1, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
@@ -362,6 +366,17 @@ class RosAdapter(Node):
         d["phase_name"] = ["IDLE", "PREPARED", "RUNNING", "SETTLING", "DONE", "ABORTED"][min(int(m.phase), 5)]
         with self._lock:
             self._commissioning, self._commissioning_t = d, self._now()
+
+    def _on_pp(self, m: PpStatus) -> None:
+        d = _msg_to_dict(m)
+        d.pop("header", None)
+        with self._lock:
+            self._pp, self._pp_t = d, self._now()
+
+    def pp_status(self) -> dict | None:
+        """The drive owner's pp executor (availability, state, last outcome), with its age."""
+        with self._lock:
+            return dict(self._pp, age_s=self._now() - self._pp_t) if self._pp else None
 
     def commissioning(self) -> dict | None:
         with self._lock:

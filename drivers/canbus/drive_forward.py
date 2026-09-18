@@ -37,11 +37,14 @@ RUN_SECONDS = 2.2
 MAX_RPM_SANITY = 4000    # refuse obviously wrong setpoints
 
 # Controlword bit 13 (PVCM): 0 = motion extension, 1 = normal (opman_can:1667).
-# Normal is the conventional ramp. Set to 0 if you are running a 400 W motor
-# with a gearhead - the Function Edition warns of damage on hard decel there
-# (opman_fun:2951).
-PVCM_NORMAL = 1
-CW_ENABLE = 0x000F | (PVCM_NORMAL << 13)   # bit12=0 => continuous velocity
+# MOTION EXTENSION: this vehicle's motor is a BLMR6400SKM-GFV-B, 400 W on a 1:30
+# gearhead, and the Function Edition says that combination must use motion
+# extension - in normal mode a hard decel while demand and actual velocity differ
+# can damage the motor (opman_fun:2951, 3121). It is also what the RPDO stream
+# already sends (rpdo.CW_OPERATION_ENABLED = 0x000F), so the arm sequence and
+# every later setpoint frame now agree.
+PVCM_MOTION_EXTENSION = 0
+CW_ENABLE = 0x000F | (PVCM_MOTION_EXTENSION << 13)   # bit12=0 => continuous velocity
 CW_SWITCH_ON = 0x0007
 CW_SHUTDOWN = 0x0006
 CW_DISABLE_VOLTAGE = 0x0000

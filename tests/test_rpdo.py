@@ -261,6 +261,20 @@ def test_canworker_wiring():
           and 'self._write(node, index, sub, value, size, "RPDO1 setup")' in cw)
 
 
+def test_pp_write_surface():
+    print("\nguard: the profile-position write surface")
+
+    check("607Ah target position is writable (the pp set-point)", guard.is_allowed(0x607A))
+    check("6081h profile velocity is writable (the pp speed)", guard.is_allowed(0x6081))
+    for idx in guard.PP_CONFIG_READ_ONLY:
+        check(f"{idx:04X}h pp safety configuration is NOT writable - MEXE02 only",
+              not guard.is_allowed(idx))
+    check("607Ah may be carried by an RPDO (it is itself writable)",
+          guard.is_allowed(0x1601, (0x607A << 16) | 0x0020, 1))
+    check("6072h may NOT be smuggled in through an RPDO mapping",
+          not guard.is_allowed(0x1601, (0x6072 << 16) | 0x0010, 1))
+
+
 TESTS = [test_payload, test_cob_ids, test_mapping_values, test_setup_ordering,
          test_guard_interaction, test_configure_runs_the_sequence,
-         test_canworker_wiring]
+         test_canworker_wiring, test_pp_write_surface]

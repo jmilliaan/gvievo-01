@@ -163,7 +163,21 @@
     "stop_tolerance_mm": 1.0,
     "sync_kp": 2.0,
     "overrun_margin": 0.02,
-    "max_segments": 8
+    "max_segments": 8,
+    "max_speed_mps": 0.8
+  },
+  "pp": {
+    "enabled": false,
+    "vendor_ref": "",
+    "max_speed_mps": 0.8,
+    "expect": {
+      "max_torque_permille": null,
+      "following_error_counts": null,
+      "position_window_counts": null,
+      "halt_option": null,
+      "fault_reaction": null,
+      "quick_stop_decel": null
+    }
   },
   "timing": {
     "loop_period_s": 0.02,

@@ -39,7 +39,7 @@ MODULES = [
     "test_layout",
 ]
 
-EXPECTED_CHECKS = 851
+EXPECTED_CHECKS = 869
 
 
 # An exception on a helper thread only prints a traceback by default - the

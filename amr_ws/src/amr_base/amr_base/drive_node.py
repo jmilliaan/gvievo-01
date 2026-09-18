@@ -5,7 +5,17 @@
     MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
 
+    /amr/commissioning_pp (PpMove, held 50 Hz)     ->  profile-position blind move
+    /drives/pp_status (PpStatus, 10 Hz)            <-  its state and last result
+
 Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
+
+Profile position (amr_base/pp.py) is LOCKED by the profile (pp.enabled false)
+until the vendor has confirmed it for this motor. While a pp move is active the
+bus thread sends the pp controller's controlwords instead of /cmd_wheel_vel, and
+halts on its own authority check (lease with COMMISSIONING and the move's
+generation, a fresh MANUAL panel - required even without require_supervisor), on
+a stale hold, a following error or the time limit.
 
 One bus thread does everything on the wire, in this order every tick:
 service requests, arm policy, setpoint, PC heartbeat, IMU poll, feedback
@@ -37,11 +47,20 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import canopen, gating
+from amr_base import canopen, gating, pp
 from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
-from amr_interfaces.msg import ControlLease, DriveStatus, Event, WheelStates, WheelVelocities
+from amr_interfaces.msg import (
+    ControlLease,
+    DriveStatus,
+    Event,
+    PanelState,
+    PpMove,
+    PpStatus,
+    WheelStates,
+    WheelVelocities,
+)
 
 import canmon  # noqa: E402  (repo module via agv_repo)
 import ownerlock  # noqa: E402
@@ -83,6 +102,8 @@ class DriveNode(Node):
         dp("monitor_enabled", bool(config.MONITOR_ENABLED))
         dp("monitor_period_still_s", 0.25)
         dp("monitor_period_moving_s", 1.0)
+        dp("pp_hold_timeout_s", 0.2)  # a pp move halts this long after its last hold
+        dp("pp_panel_timeout_s", 0.2)
         p = self.get_parameter
         self.period = 1.0 / p("rate_hz").value
         self.cmd_timeout = p("cmd_timeout_s").value
@@ -120,12 +141,24 @@ class DriveNode(Node):
         self._requests: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._status_snapshot: dict = {"state": "starting", "reason": "", "mode": "off"}
+        self._pp = pp.Controller(
+            hold_timeout_s=float(p("pp_hold_timeout_s").value),
+            feedback_timeout_s=2.5 * self.feedback_ms / 1000.0,
+            stop_confirm_s=canopen.DriveLink.STOP_CONFIRM_S,
+        )
+        self._pp_panel_timeout = float(p("pp_panel_timeout_s").value)
+        self._pp_req: pp.Request | None = None
+        self._pp_bad = ""  # why the last PpMove was not accepted as a request
+        self._panel: tuple[float, bool, bool] | None = None  # (t_mono, valid, mode_auto)
 
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
+        self._pub_pp = self.create_publisher(PpStatus, "/drives/pp_status", RELIABLE_1)
+        self.create_subscription(PpMove, "/amr/commissioning_pp", self._on_pp, RELIABLE_1)
+        self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_service(Trigger, "/drives/arm", lambda q, r: self._request("arm", r))
@@ -170,6 +203,35 @@ class DriveNode(Node):
             self.get_logger().warn(
                 f"/cmd_wheel_vel not finite ({wl}, {wr}): setpoint zero", throttle_duration_sec=1.0
             )
+
+    def _on_panel(self, msg: PanelState) -> None:
+        with self._lock:
+            self._panel = (time.monotonic(), bool(msg.valid), bool(msg.mode_auto))
+
+    def _on_pp(self, msg: PpMove) -> None:
+        """Every hold replaces the last. A malformed one counts as no hold at all."""
+        try:
+            spec = pp.MoveSpec(
+                pp.WheelMove(
+                    int(msg.left_delta_counts),
+                    int(msg.left_velocity_rpm),
+                    int(msg.left_accel_rpm_s),
+                    int(msg.left_decel_rpm_s),
+                ),
+                pp.WheelMove(
+                    int(msg.right_delta_counts),
+                    int(msg.right_velocity_rpm),
+                    int(msg.right_accel_rpm_s),
+                    int(msg.right_decel_rpm_s),
+                ),
+                float(msg.duration_s),
+            )
+            req = pp.Request(str(msg.run_id), int(msg.generation), bool(msg.hold), spec, time.monotonic())
+            bad = ""
+        except (TypeError, ValueError) as e:
+            req, bad = None, f"malformed PpMove: {e}"
+        with self._lock:
+            self._pp_req, self._pp_bad = req, bad
 
     def _request(self, what: str, res):
         done = threading.Event()
@@ -314,9 +376,15 @@ class DriveNode(Node):
                     )
 
             # Setpoint at rate_hz; the command watchdog is independent of the mux.
+            if self._pp.active and link.state != canopen.ARMED:
+                # The drives were lost under a pp move (fault/disarm). Their stop frames
+                # already carry Halt (DriveLink.in_pp); record it and stand down.
+                self._pp.abandon(f"drives {link.state} {link.fault_reason or ''}".strip(), now)
+                self.event(2, "PP_ABANDONED", self._pp.last.reason)
             if now - t_tick >= self.period and link.state == canopen.ARMED:
                 t_tick = now
-                link.send_target(*self._target(time.monotonic(), link.scale))
+                if not self._pp_step(link, time.monotonic()):
+                    link.send_target(*self._target(time.monotonic(), link.scale))
 
             if self.pc_loss_ms and now - t_hb >= self.pc_hb_s and not link.heartbeat_withheld:
                 t_hb = now
@@ -343,6 +411,7 @@ class DriveNode(Node):
             if now - t_status >= 0.1:
                 t_status = now
                 self._publish_status(link, imu)
+                self._publish_pp(link, now)
 
             if self._mon is not None and link.state != canopen.DISARMED:
                 moving = link.applied is not None and link.applied != (0, 0)
@@ -402,6 +471,130 @@ class DriveNode(Node):
         if reason is not None:
             return 0, 0
         return canopen.target_rpm(cmd, now, self.cmd_timeout, scale, config.MOTOR_MAX_RPM)
+
+    # ---- profile position ----
+
+    def _pp_gate(self, link, now: float, generation: int) -> str | None:
+        with self._lock:
+            lease, panel = self._lease, self._panel
+        why = pp.authority_gate(
+            now,
+            enabled=bool(config.PP_ENABLED),
+            lease=None if lease is None else (lease.t_recv, lease.generation, lease.allowed),
+            move_generation=generation,
+            panel=panel,
+            lease_timeout_s=self._gate.lease_timeout_s,
+            panel_timeout_s=self._pp_panel_timeout,
+        )
+        if why:
+            return why
+        if link.faulted_nodes():
+            return f"drive fault on node(s) {link.faulted_nodes()}"
+        return None
+
+    def _pp_max_counts(self, link) -> int:
+        """blind_run.max_distance_m of wheel travel, in counts (0 = scale unknown: refuse)."""
+        cpr = link.scale.counts_per_wheel_rev if link.scale else None
+        if not cpr:
+            return 0
+        return int(cpr * config.BLIND_MAX_DISTANCE_M / (math.pi * config.WHEEL_DIA_M))
+
+    def _pp_step(self, link, now: float) -> bool:
+        """One pp tick. -> True when pp owns this tick's RPDO (no velocity setpoint)."""
+        with self._lock:
+            req = self._pp_req
+        if req is None and not self._pp.active:
+            return False
+        tl, tr = link.telemetry[config.LEFT], link.telemetry[config.RIGHT]
+        gen = req.generation if req is not None else -1
+        out = self._pp.tick(
+            pp.Tick(
+                now,
+                req,
+                self._pp_gate(link, now, gen),
+                pp.Feedback(tl.statusword, tl.rpm, tl.t_status),
+                pp.Feedback(tr.statusword, tr.rpm, tr.t_status),
+            )
+        )
+        if out.action == "enter":
+            why = pp.validate_move(
+                out.spec,
+                max_rpm=config.PP_MAX_SPEED_MPS * config.RPM_PER_MPS,
+                max_counts=self._pp_max_counts(link),
+                max_accel_rpm_s=float(config.BLIND_ACCEL_RPM_S),
+            )
+            targets = None
+            if why is None:
+                try:
+                    targets = link.pp_enter(
+                        out.spec, config.PP_EXPECT, config.PP_EXPECT_OBJECTS, 2.5 * self.feedback_ms / 1000.0
+                    )
+                except (RuntimeError, ValueError) as e:
+                    why = str(e)
+            self._pp.entered(why is None, why or "", targets, time.monotonic())
+            if why:
+                self.get_logger().warn(f"pp move {self._pp.run_id} refused: {why}")
+                self.event(1, "PP_REFUSED", why)
+                return False
+            self._log(f"pp move {self._pp.run_id} started: targets {targets}")
+            self.event(0, "PP_START", f"{self._pp.run_id} targets {targets}")
+            link.send_controlwords(pp.CW_START, pp.CW_START)
+            return True
+        if out.action == "cw":
+            link.send_controlwords(*out.controlwords)
+            return True
+        if out.action == "exit":
+            try:
+                link.pp_exit()
+                self._pp.exited(True, "", time.monotonic())
+            except RuntimeError as e:
+                self._pp.exited(False, str(e), time.monotonic())
+                link.fault(f"pp: return to pv failed ({e})")
+            r = self._pp.last
+            level = 0 if r.outcome == pp.DONE else 1 if r.outcome == pp.HALTED else 2
+            self._log(f"pp move {r.run_id} {r.outcome}: {r.reason}")
+            self.event(level, f"PP_{r.outcome.upper()}", f"{r.run_id}: {r.reason}")
+            return True
+        if out.action == "fault":
+            link.fault(out.reason)
+            # A halt nobody can confirm at rest: let the drives' own 1016h take over.
+            if link.pc_guard_set:
+                link.heartbeat_withheld = True
+            self.get_logger().error(out.reason)
+            self.event(2, "PP_FAULTED", out.reason)
+            return True
+        return self._pp.active
+
+    def _pp_availability(self, link) -> tuple[bool, str]:
+        if not config.PP_ENABLED:
+            return False, "pp locked in the profile (pp.enabled false)"
+        unset = sorted(k for k, v in config.PP_EXPECT.items() if v is None)
+        if unset:
+            return False, f"pp.expect not configured: {', '.join(unset)}"
+        if link.state != canopen.ARMED:
+            return False, f"drives {link.state}"
+        if self._pp.active:
+            return False, f"a pp move is {self._pp.state}"
+        return True, ""
+
+    def _publish_pp(self, link, now: float) -> None:
+        m = PpStatus()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.available, why = self._pp_availability(link)
+        last = self._pp.last
+        m.reason = why or (last.reason if last else "") or self._pp_bad
+        m.state, m.run_id = self._pp.state, self._pp.run_id
+        m.outcome = last.outcome if last and last.run_id == self._pp.run_id and not self._pp.active else ""
+        if self._pp.targets:
+            m.left_target, m.right_target = (int(t) for t in self._pp.targets)
+        tl, tr = link.telemetry[config.LEFT], link.telemetry[config.RIGHT]
+        m.left_actual, m.right_actual = int(tl.position or 0), int(tr.position or 0)
+        m.left_target_reached = bool((tl.statusword or 0) & pp.SW_TARGET_REACHED)
+        m.right_target_reached = bool((tr.statusword or 0) & pp.SW_TARGET_REACHED)
+        m.left_following_error = bool((tl.statusword or 0) & pp.SW_FOLLOWING_ERROR)
+        m.right_following_error = bool((tr.statusword or 0) & pp.SW_FOLLOWING_ERROR)
+        m.started_age_s = (now - self._pp.t_start) if (self._pp.active and self._pp.t_start) else -1.0
+        self._safe_publish(self._pub_pp, m)
 
     def _safe_publish(self, pub, msg) -> None:
         # SIGINT invalidates the context while this thread is mid-iteration;
@@ -528,6 +721,14 @@ class DriveNode(Node):
             KeyValue(key="stop_unconfirmed", value="; ".join(link.stop_unconfirmed)),
             KeyValue(key="heartbeat_withheld", value=str(link.heartbeat_withheld)),
             KeyValue(key="cleanup_failures", value="; ".join(link.cleanup_failures)),
+            KeyValue(key="pp_state", value=self._pp.state),
+            KeyValue(key="pp_in_mode", value=str(link.in_pp)),
+            KeyValue(
+                key="pp_last",
+                value=f"{self._pp.last.run_id} {self._pp.last.outcome}: {self._pp.last.reason}"
+                if self._pp.last
+                else "",
+            ),
         ]
         arr.status.append(bus)
         if imu is not None:
