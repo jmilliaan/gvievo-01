@@ -234,6 +234,17 @@ class SurveyMoveNode(Node):
         self._publish_state()
 
     def _tick(self) -> None:
+        try:
+            self._tick_inner()
+        except Exception as e:  # noqa: BLE001 - a bug must stop the move, never kill the node
+            with self._lock:
+                if self.state in (SurveyMoveState.MOVING, SurveyMoveState.SETTLING):
+                    self._send(0.0, 0.0, 0.0)
+                    self.state, self.reason = SurveyMoveState.ABORTED, f"internal error: {e!r}"
+                    self._publish_state()
+            self.get_logger().error(f"survey move tick failed: {e!r}")
+
+    def _tick_inner(self) -> None:
         with self._lock:
             now = self._now()
             if self.state == SurveyMoveState.MOVING:
@@ -263,10 +274,15 @@ class SurveyMoveNode(Node):
             ok, self.reason = sm.check_verdict(self.move, m, rad, self.max_corr_deg)
             self.check = (ok, m, math.degrees(rad))
         self.state = SurveyMoveState.DONE
-        log = self.get_logger().info if self.check is None or self.check[0] else self.get_logger().warn
-        log(
+        text = (
             f"move {self.move_id} done ({self.move.label()}, achieved {self._achieved_text()}): {self.reason}"
         )
+        # two call sites on purpose: rclpy refuses a severity change at one call site (2026-09-19,
+        # that ValueError killed the node right after a move and left the page "checking the map")
+        if self.check is None or self.check[0]:
+            self.get_logger().info(text)
+        else:
+            self.get_logger().warn(text)
         self._publish_state()
 
     def _achieved_text(self) -> str:

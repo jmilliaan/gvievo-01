@@ -13,10 +13,27 @@ from amr_mission import survey_move_node as smn
 
 
 class Log:
-    def info(self, *_a, **_k):
-        pass
+    """Like rclpy's logger: one call site may not change severity between calls (that
+    ValueError killed the node on the vehicle, 2026-09-19)."""
 
-    warn = info
+    sites: dict = {}
+
+    def _log(self, level):
+        import inspect  # noqa: PLC0415
+
+        f = inspect.stack()[2]
+        key = (f.filename, f.lineno)
+        if Log.sites.setdefault(key, level) != level:
+            raise ValueError("Logger severity cannot be changed between calls.")
+
+    def info(self, *_a, **_k):
+        self._log("info")
+
+    def warn(self, *_a, **_k):
+        self._log("warn")
+
+    def error(self, *_a, **_k):
+        self._log("error")
 
 
 def node():
@@ -161,3 +178,35 @@ def test_own_commands_echoed_back_do_not_abort_and_a_second_move_waits():
     n._on_manual(n.sent[-1])  # our own stream, seen on the topic
     assert n.state == S.MOVING
     assert not request(n, "straight", 1.0).accepted
+
+
+def test_a_clean_then_a_slipped_move_log_without_crashing():
+    n = node()
+    for slip_deg in (0.0, 3.0, 0.0):
+        n.map_odom = (0.0, 0.0, 0.0)
+        feed(n)
+        assert request(n, "straight", 0.5).accepted
+        n._tick()
+        n._odom = (n._odom[0] + 0.5, 0.0, 0.0)
+        n.clock[0] += 2.0
+        feed(n)
+        n._tick()
+        n.map_odom = (0.0, 0.0, math.radians(slip_deg))
+        n.clock[0] += 1.6
+        n._tick()
+        assert n.state == S.DONE and n.check[0] == (slip_deg == 0.0)
+
+
+def test_a_bug_in_the_loop_stops_the_move_and_the_node_lives_on():
+    n = node()
+    request(n, "straight", 2.0)
+    n._tick()
+
+    def boom(*_a):
+        raise RuntimeError("bad")
+
+    n.ctl.step = boom
+    n._tick()  # must not raise
+    assert n.state == S.ABORTED and "internal error" in n.reason
+    assert n.sent[-1].valid_for_s == 0.0  # revoked: the vehicle stops
+    assert request(n, "straight", 1.0).accepted  # and the next move works

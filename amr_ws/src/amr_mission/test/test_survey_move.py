@@ -36,7 +36,8 @@ def test_bounds():
     assert sm.Move.parse("straight", 2.0).target == 2.0
     assert sm.Move.parse("straight", -1.5).label() == "reverse 1.50 m"
     assert sm.Move.parse("rotate", -90).target == pytest.approx(-math.pi / 2)
-    assert sm.Move.parse("rotate", 45).label() == "spin CCW 45 deg"
+    assert sm.Move.parse("rotate", 45).label() == "spin left 45 deg"
+    assert sm.Move.parse("rotate", -90).label() == "spin right 90 deg"
     for kind, value in (
         ("straight", 0.01),
         ("straight", 10.5),

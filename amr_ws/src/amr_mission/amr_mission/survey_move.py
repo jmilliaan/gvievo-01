@@ -70,7 +70,7 @@ class Move:
     def label(self) -> str:
         if self.kind == STRAIGHT:
             return f"{'forward' if self.target > 0 else 'reverse'} {abs(self.target):.2f} m"
-        return f"spin {'CCW' if self.target > 0 else 'CW'} {math.degrees(abs(self.target)):.0f} deg"
+        return f"spin {'left' if self.target > 0 else 'right'} {math.degrees(abs(self.target)):.0f} deg"
 
 
 def _ramp(remaining: float, vmax: float, decel: float, vmin: float) -> float:

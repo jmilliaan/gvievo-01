@@ -8,7 +8,7 @@ uint8 ABORTED=4
 std_msgs/Header header
 uint8 state
 string move_id
-string label                 # e.g. "forward 2.00 m", "spin CW 90 deg"
+string label                 # e.g. "forward 2.00 m", "spin right 90 deg"
 string kind                  # straight | rotate
 float64 target               # m or rad, signed
 float64 progress             # m or rad, signed, from odometry

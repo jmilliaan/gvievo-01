@@ -55,10 +55,16 @@ $('btn-run-ack').onclick = () => api('/api/mission/ack').then(r => log(r.data.me
 
 const age = (v) => [num(v, 2), 's', v > 1.0 ? 'warn' : ''];
 let activeMap = null;  // {id, rev} the vehicle is actually running, from the supervisor
+let runMission = '';  // the mission the executor holds (READY/running), '' if none
 onState(st => {
   const m = st.mode;
   const nowActive = m && m.active_map_id ? { id: m.active_map_id, rev: m.active_map_revision } : null;
-  if (JSON.stringify(nowActive) !== JSON.stringify(activeMap)) { activeMap = nowActive; preview = null; loadMissions(); }
+  const nowRun = (st.run && st.run.mission_id) || '';
+  if (JSON.stringify(nowActive) !== JSON.stringify(activeMap)) {
+    activeMap = nowActive; runMission = nowRun; preview = null; loadMissions(nowRun);
+  } else if (nowRun && nowRun !== runMission) {
+    runMission = nowRun; loadMissions(nowRun);  // a mission was loaded (here or elsewhere): draw THAT route
+  } else runMission = nowRun;
   const onActive = viewIsActive();
   $('tool-initialpose').disabled = !onActive; $('btn-loc-confirm').disabled = !onActive;
   $('btn-pose-survey').disabled = !onActive || !(view.meta && view.meta.start && view.meta.start.x_m !== undefined);
@@ -126,12 +132,19 @@ view.overlays.push((c, v) => {
   });
 });
 $('run-map').onchange = async e => { [mapId, mapRev] = e.target.value.split('/'); mapRev = +mapRev; dropPoseTool(); await view.load(mapId, mapRev); };
-async function loadMissions() {
-  const { data } = await apiGet('/api/missions'); const sel = $('run-mission'); sel.innerHTML = '';
+// Fill the mission list for the active map and draw a route: `prefer` (the mission the executor
+// holds) if it is in the list, else the one already picked, else the first. Every refill loads
+// the route again - before 2026-09-19 a refill left the preview empty until the operator
+// re-picked the mission (the first state poll, arriving after the page's own load, refilled it).
+async function loadMissions(prefer) {
+  const sel = $('run-mission'); const keep = prefer || sel.value;
+  const { data } = await apiGet('/api/missions'); sel.innerHTML = '';
   // only missions for the ACTIVE map can load; the executor refuses the rest anyway (P4)
   const usable = activeMap ? data.filter(m => m.map.id === activeMap.id && +m.map.revision === +activeMap.rev) : [];
   usable.forEach(m => { const o = document.createElement('option'); o.value = m.mission_id; o.textContent = `${m.mission_id}  (${m.map.id} rev${m.map.revision} · ${m.route.id} rev${m.route.revision})`; sel.appendChild(o); });
   if (!usable.length) { const o = document.createElement('option'); o.value = ''; o.textContent = activeMap ? `no missions for ${activeMap.id} rev${activeMap.rev}` : 'activate a map first'; sel.appendChild(o); }
+  if (keep && usable.some(m => m.mission_id === keep)) sel.value = keep;
+  await sel.onchange({ target: sel });
 }
 $('run-mission').onchange = async e => {
   const wanted = e.target.value; preview = null;
@@ -144,7 +157,7 @@ $('run-mission').onchange = async e => {
   footprint = (await apiGet('/api/footprint')).data;
   await fillMapSelect($('run-map'));
   if ($('run-map').options.length) { $('run-map').selectedIndex = 0; $('run-map').onchange({ target: $('run-map') }); }
-  await loadMissions(); if ($('run-mission').options.length) $('run-mission').onchange({ target: $('run-mission') });
+  await loadMissions();
 })();
 
 // live scan over the viewed map: meaningful only when the viewed map IS the active one

@@ -122,7 +122,7 @@ RIGHT DI07. The IO page shows the live bits under those names.
      ~2.3 s of standing still after the service starts. Wait and press again.
    **Preset moves** (2026-09-19, Maps page under the jog pad, only while surveying):
    type a distance and press *Forward* / *Reverse* (0.05–10 m at 0.30 m/s), or a
-   *CCW* / *CW* spin of 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
+   *Left* / *Right* spin of 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
    drives the whole move by itself under the same authority as the jog pad
    (selector **MANUAL**). **Any pendant button, the E-stop, the selector, the jog
    pad or *Stop move* ends it at once.** After each move the page reports how far

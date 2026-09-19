@@ -61,6 +61,8 @@ def _compose(context):
             executable="survey_move_node",
             name="survey_move",
             output="screen",
+            respawn=True,  # a helper that exits comes back; a move never resumes by itself
+            respawn_delay=2.0,
         )
     )
     return actions

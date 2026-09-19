@@ -61,6 +61,13 @@ onState(st => {
   const el = $('sm-status');
   el.classList.remove('bad', 'ok');
   if (!surveying) { el.textContent = 'available while surveying'; return; }
+  // the node publishes at 5 Hz: a state older than 2 s is a helper that is not running
+  if (s && s.age_s != null && s.age_s > 2.0) {
+    SM_BUTTONS().forEach(b => { b.disabled = true; });
+    el.textContent = 'move helper not running (it restarts by itself; if not, restart the survey)';
+    el.classList.add('bad');
+    return;
+  }
   if (!s || s.state_name === 'IDLE') { el.textContent = 'ready'; return; }
   const unit = s.kind === 'rotate' ? '°' : ' m';
   const prog = s.kind === 'rotate' ? num(s.progress * 180 / Math.PI, 1) : num(s.progress, 2);

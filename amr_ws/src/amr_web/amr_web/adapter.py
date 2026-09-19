@@ -480,7 +480,11 @@ class RosAdapter(Node):
                 "run_stale": run_stale,
                 # the node lives in the mapping layer: its latched state outlives it, so only
                 # while a survey runs is it shown
-                "survey_move": self._survey_move if mapping is not None else None,
+                "survey_move": (
+                    dict(self._survey_move, age_s=now - self._survey_move_t)
+                    if mapping is not None and self._survey_move is not None
+                    else None
+                ),
                 "t": time.time(),
             }
 
