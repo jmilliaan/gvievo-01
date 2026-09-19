@@ -597,6 +597,9 @@ Exit gate: all mandatory acceptance rows have evidence or a documented unresolve
 
 Dependencies: U10.
 
+> 2026-09-19: the detailed U11 file lists, test migration and the line-following carve-out (MLS track
+> stays, now owned by the ROS stack) are in [`line-follow-u11-layout-plan.md`](line-follow-u11-layout-plan.md) Part 2.
+
 - Remove `canworker.py`, old `app/`, root `main.py` and legacy deployment references only after import/use audits show migrated equivalents.
 - Preserve runtime libraries still imported through `amr_base.agv_repo`: profile loader/data, kinematics, CAN helpers/guards/decoders, DIO/RFID, panel and reused commissioning logic. Do not delete `drivers/` or `core/` as a category.
 - Split or migrate legacy tests that still cover shared libraries. Update `tests/run_all.py`'s pinned module/check count deliberately with a coverage-migration explanation; do not lower it merely to make the test runner pass.

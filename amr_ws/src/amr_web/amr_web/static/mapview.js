@@ -54,7 +54,11 @@ class MapView {
     if (this._loadToken !== token) return false;
     const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = `/api/maps/${mapId}/${rev}/image.png?s=${data.sha256.slice(0, 8)}`; });
     if (this._loadToken !== token) return false;
-    this.meta = data; this.img = im;
+    // dynamic areas (trolleys, parked forklifts: the scan there may change) drawn hatched on
+    // every page that shows a saved map; a missing mask never blocks the map itself
+    const dyn = data.dynamic_cells > 0 ? await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = `/api/maps/${mapId}/${rev}/dynamic.png?s=${data.sha256.slice(0, 8)}`; }) : null;
+    if (this._loadToken !== token) return false;
+    this.meta = data; this.img = im; this.dyn = dyn ? hatchMask(dyn, INK.preview) : null;
     this.fit(); this.draw();
     return true;
   }
@@ -68,12 +72,12 @@ class MapView {
     const im = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = `/api/live/map.png?snapshot=${meta.snapshot}`; });
     if (!im) return false;  // a newer snapshot appeared; the next poll gets it
     const first = !this.img || !this.meta || this.meta.generation !== meta.generation;
-    this.meta = meta; this.img = im; this._liveSnapshot = meta.snapshot;
+    this.meta = meta; this.img = im; this.dyn = null; this._liveSnapshot = meta.snapshot;
     if (first) this.fit();
     this.draw();
     return true;
   }
-  clearLive() { this.meta = null; this.img = null; this._liveSnapshot = null; this.draw(); }
+  clearLive() { this.meta = null; this.img = null; this.dyn = null; this._liveSnapshot = null; this.draw(); }
   fit() {
     if (!this.img) return;
     this.scale = this._fitScale = Math.min(this.canvas.width / this.img.width, this.canvas.height / this.img.height) * 0.95;
@@ -116,6 +120,7 @@ class MapView {
     c.imageSmoothingEnabled = false;
     const w = this.img.width * this.scale, h = this.img.height * this.scale;
     c.drawImage(this.img, this.ox, this.oy, w, h);
+    if (this.dyn) c.drawImage(this.dyn, this.ox, this.oy, w, h);
     // unknown cells (205) are close to the paper tone: a hairline frame keeps the map edge visible
     c.strokeStyle = INK.rule; c.lineWidth = 1; c.strokeRect(Math.round(this.ox) - 0.5, Math.round(this.oy) - 0.5, Math.round(w) + 1, Math.round(h) + 1);
     this.overlays.forEach(fn => fn(c, this));
@@ -147,9 +152,25 @@ class MapView {
   points(pts, color) { const c = this.ctx; c.fillStyle = color; pts.forEach(p => { const q = this.worldToScreen(p[0], p[1]); c.fillRect(q[0] - 1, q[1] - 1, 2, 2); }); }
   polyline(pts, color, width) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = width || 2; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.stroke(); }
   polygon(pts, color) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.closePath(); c.stroke(); }
+  // A filled world polygon with an optional outline (map edits, dynamic areas being drawn).
+  fillPolygon(pts, fill, stroke) { const c = this.ctx; c.beginPath(); pts.forEach((p, i) => { const s = this.worldToScreen(p[0], p[1]); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.closePath(); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = 1.5; c.stroke(); } }
   // Dashed outline of a world polygon: the area a validation check sweeps.
   dashed(pts, color) { const c = this.ctx; c.setLineDash([4, 4]); this.polygon(pts, color); c.setLineDash([]); }
   footprint(x, y, yaw, poly, color) { const c = Math.cos(yaw), s = Math.sin(yaw); this.polygon(poly.map(p => [x + c * p[0] - s * p[1], y + s * p[0] + c * p[1]]), color); }
+}
+// A dynamic-area mask image (255 = dynamic) as a canvas of the same size: diagonal stripes of
+// `hex`, one cell per pixel, so the hatch scales with the map and never hides it.
+function hatchMask(img, hex) {
+  const w = img.width, h = img.height, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const c = cv.getContext('2d'); c.drawImage(img, 0, 0);
+  const src = c.getImageData(0, 0, w, h), out = c.createImageData(w, h);
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  for (let v = 0, k = 0; v < h; v++) for (let u = 0; u < w; u++, k += 4) {
+    if (src.data[k] < 128) continue;
+    out.data[k] = r; out.data[k + 1] = g; out.data[k + 2] = b; out.data[k + 3] = (u + v) % 6 < 2 ? 200 : 60;
+  }
+  c.putImageData(out, 0, 0);
+  return cv;
 }
 async function fillMapSelect(sel) {
   const { data } = await apiGet('/api/maps');

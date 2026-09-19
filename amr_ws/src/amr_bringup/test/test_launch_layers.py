@@ -200,3 +200,65 @@ def test_q20_custom_footprint_reaches_the_costmap_node_through_a_params_file(tmp
     assert doc["local_costmap"]["local_costmap"]["ros__parameters"]["footprint"] == (
         "[[-0.200, -0.100], [0.700, -0.100], [0.700, 0.100], [-0.200, 0.100]]"
     )
+
+
+def _bundle_with_dynamic(tmp_path, big=False):
+    from amr_mission.fixtures import write_world_as_bundle  # noqa: PLC0415
+
+    from amr_mission import map_bundle as mb  # noqa: PLC0415
+
+    write_world_as_bundle(str(tmp_path))
+    # a mark over the aisle and the rack faces at y 2..2.5 (sim world), or over everything
+    rect = (
+        [[-50.0, -50.0], [50.0, -50.0], [50.0, 50.0], [-50.0, 50.0]]
+        if big
+        else [[4.0, -1.0], [9.0, -1.0], [9.0, 2.7], [4.0, 2.7]]
+    )
+    path, rev, _ = mb.derive_edit(str(tmp_path), "sim_factory", 1, [{"op": "dynamic", "polygon": rect}])
+    return path, rev
+
+
+def test_dynamic_mask_reaches_the_monitor_and_amcl_is_plain_by_default(tmp_path, monkeypatch):
+    path, rev = _bundle_with_dynamic(tmp_path)
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path / "state"))
+    c = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory", revision=rev)
+    assert set(c["exes"]) == NAV_EXES and c["exes"].count("map_server") == 1
+    mon = [p for p in c["params"]["localization_monitor_node"] if isinstance(p, dict)]
+    assert mon[0]["dynamic_yaml"] == os.path.join(path, "dynamic.yaml")
+    assert not (tmp_path / "state" / "loc_map_gen0.yaml").exists()
+
+
+def test_blank_dynamic_serves_amcl_a_derived_map_on_map_loc(tmp_path, monkeypatch):
+    import numpy as np  # noqa: PLC0415
+
+    from amr_maps import grid as gridio  # noqa: PLC0415
+
+    path, rev = _bundle_with_dynamic(tmp_path)
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path / "state"))
+    c = compose(
+        "navigation_layer.launch.py",
+        maps_dir=str(tmp_path),
+        map_id="sim_factory",
+        revision=rev,
+        blank_dynamic="true",
+    )
+    assert c["exes"].count("map_server") == 2 and c["handlers"] == 7
+    loc = gridio.read(str(tmp_path / "state" / "loc_map_gen0.yaml"))
+    ref = gridio.read(os.path.join(path, "map.yaml"))
+    dyn = gridio.read(os.path.join(path, "dynamic.yaml")).data >= 65
+    assert (ref.data[dyn] >= 65).any()  # the fixture's rack/wall cells inside the mark...
+    assert (loc.data[dyn] == -1).all()  # ...are unknown for AMCL
+    assert np.array_equal(loc.data[~dyn], ref.data[~dyn])  # and nothing else changed
+
+
+def test_blank_dynamic_refuses_a_map_with_nothing_fixed_left(tmp_path, monkeypatch):
+    _, rev = _bundle_with_dynamic(tmp_path, big=True)
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path / "state"))
+    with pytest.raises(RuntimeError, match="nothing fixed to localise against"):
+        compose(
+            "navigation_layer.launch.py",
+            maps_dir=str(tmp_path),
+            map_id="sim_factory",
+            revision=rev,
+            blank_dynamic="true",
+        )

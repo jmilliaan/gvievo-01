@@ -10,6 +10,13 @@ new instance of this launch; nothing here is reused across maps.
     generation:=N      stamped into RunState/LocalizationState/MotionPermit
     autostart:=true    lifecycle managers bring Nav2 up on their own (wrappers);
                        the supervisor passes false and drives them explicitly
+    blank_dynamic:=false
+                       AMCL localises against a derived map with the revision's
+                       dynamic areas set to unknown (dynamic-mapping plan §1.2),
+                       served by a second map_server on /map_loc; /map (web view,
+                       localization monitor) stays the reviewed map. Opt-in until the
+                       plain-vs-blanked AMCL comparison has been measured on the
+                       vehicle (plan Increment 4). Env default: AMR_LOC_BLANK_DYNAMIC.
 """
 
 import os
@@ -34,6 +41,40 @@ def _costmap_footprint_file(footprint: str, generation: int) -> str:
     with open(path, "w") as fh:
         yaml.safe_dump(doc, fh)
     return path
+
+
+def _localization_map_file(map_yaml: str, dynamic_yaml: str, generation: int, min_occupied: int) -> str:
+    """AMCL's map: the reviewed map with dynamic-area cells set to unknown, so a trolley that
+    moved leaves no landmark to pull the pose towards. Refuses a map with too little fixed
+    structure left to localise against."""
+    from amr_maps import grid as gridio  # noqa: PLC0415 - launch-time import
+
+    grid = gridio.read(map_yaml)
+    dyn = gridio.read(dynamic_yaml)
+    problem = gridio.mask_misalignment(grid, dyn)
+    if problem:
+        raise RuntimeError(f"dynamic mask not aligned with the map: {problem}")
+    mask = dyn.data >= 65
+    occ = grid.data >= 65
+    blanked = int((occ & mask).sum())
+    remaining = int((occ & ~mask).sum())
+    print(
+        f"[navigation_layer] AMCL map: {blanked} dynamic cells blanked of {int(occ.sum())} occupied, "
+        f"{remaining} remain"
+    )
+    if remaining < min_occupied:
+        raise RuntimeError(
+            f"only {remaining} occupied cells remain outside dynamic areas (< {min_occupied}): "
+            "nothing fixed to localise against; shrink the dynamic areas or set blank_dynamic:=false"
+        )
+    data = grid.data.copy()
+    data[mask] = -1
+    state_dir = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
+    os.makedirs(state_dir, exist_ok=True)
+    _pgm, yml = gridio.write(
+        gridio.Grid(data, grid.meta), os.path.join(state_dir, f"loc_map_gen{generation}")
+    )
+    return yml
 
 
 def _compose(context):
@@ -78,6 +119,9 @@ def _compose(context):
         "generation": generation,
     }
 
+    dynamic_yaml = os.path.join(rev_dir, "dynamic.yaml") if "dynamic.yaml" in manifest.files else ""
+    blank = cfg("blank_dynamic").perform(context).lower() == "true" and bool(dynamic_yaml)
+
     actions = required(
         Node(
             package="nav2_map_server",
@@ -88,8 +132,33 @@ def _compose(context):
         ),
         "map_server",
     )
+    lifecycle_loc = {"autostart": autostart}
+    amcl_remap = []
+    if blank:
+        loc_yaml = _localization_map_file(
+            map_yaml, dynamic_yaml, generation, int(cfg("loc_min_occupied_cells").perform(context))
+        )
+        actions += required(
+            Node(
+                package="nav2_map_server",
+                executable="map_server",
+                name="map_server_loc",
+                output="screen",
+                parameters=[params, {"yaml_filename": loc_yaml, "topic_name": "map_loc", "frame_id": "map"}],
+            ),
+            "map_server_loc",
+        )
+        amcl_remap = [("map", "map_loc")]
+        lifecycle_loc["node_names"] = ["map_server", "map_server_loc", "amcl"]
     actions += required(
-        Node(package="nav2_amcl", executable="amcl", name="amcl", output="screen", parameters=[params]),
+        Node(
+            package="nav2_amcl",
+            executable="amcl",
+            name="amcl",
+            output="screen",
+            parameters=[params],
+            remappings=amcl_remap,
+        ),
         "amcl",
     )
     actions.append(
@@ -101,7 +170,7 @@ def _compose(context):
                     executable="lifecycle_manager",
                     name="lifecycle_manager_localization",
                     output="screen",
-                    parameters=[params, {"autostart": autostart}],
+                    parameters=[params, lifecycle_loc],
                 )
             ],
         )
@@ -112,7 +181,7 @@ def _compose(context):
             executable="localization_monitor_node",
             name="localization_monitor",
             output="screen",
-            parameters=[{"generation": generation}],
+            parameters=[{"generation": generation, "dynamic_yaml": dynamic_yaml}],
         ),
         "localization_monitor",
     )
@@ -162,7 +231,10 @@ def _compose(context):
         ),
         "route_executor",
     )
-    print(f"[navigation_layer] map {map_id} rev{revision} bundle {manifest.sha256[:12]} ({map_yaml})")
+    print(
+        f"[navigation_layer] map {map_id} rev{revision} bundle {manifest.sha256[:12]} ({map_yaml})"
+        + (f", dynamic areas{' (AMCL blanked)' if blank else ''}" if dynamic_yaml else "")
+    )
     return actions
 
 
@@ -175,6 +247,10 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("footprint_yaml", default_value=""),
             DeclareLaunchArgument("generation", default_value="0"),
             DeclareLaunchArgument("autostart", default_value="true"),
+            DeclareLaunchArgument(
+                "blank_dynamic", default_value=os.environ.get("AMR_LOC_BLANK_DYNAMIC", "false")
+            ),
+            DeclareLaunchArgument("loc_min_occupied_cells", default_value="500"),
             OpaqueFunction(function=_compose),
         ]
     )

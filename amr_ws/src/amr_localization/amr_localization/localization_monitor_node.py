@@ -69,6 +69,9 @@ class LocalizationMonitor(Node):
         self.declare_parameter(
             "match_max_range_m", 10.0
         )  # beyond this a 0.3 deg yaw error exceeds the tolerance
+        # the active revision's dynamic.yaml (navigation_layer passes it; "" = none): beams into
+        # dynamic areas are left out of the scan comparison (dynamic-mapping plan §1.2)
+        self.declare_parameter("dynamic_yaml", "")
         p = self.get_parameter
         self.rd = rd.Readiness(
             rd.Limits(
@@ -102,6 +105,14 @@ class LocalizationMonitor(Node):
         self._grid: gridio.Grid | None = None  # the saved map, raycast for expected ranges
         self._map_key: tuple | None = None  # identity of the loaded map (geometry + content hash)
         self._last_match_t = 0.0
+        self._dynamic_grid: gridio.Grid | None = None
+        self._dynamic: np.ndarray | None = None  # aligned with self._grid, else None
+        path = str(p("dynamic_yaml").value or "")
+        if path:
+            try:
+                self._dynamic_grid = gridio.read(path)
+            except (gridio.GridError, OSError) as e:
+                self.get_logger().error(f"dynamic mask {path} unreadable, not used: {e}")
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -139,6 +150,13 @@ class LocalizationMonitor(Node):
         key = (grid.width, grid.height, m.resolution, m.origin_x, m.origin_y, m.origin_yaw)
         key += (hashlib.sha256(grid.data.tobytes()).hexdigest(),)
         self._occ_near, self._grid = consistency.occupied_near(grid, self._match_tol), grid
+        self._dynamic = None
+        if self._dynamic_grid is not None:
+            problem = gridio.mask_misalignment(grid, self._dynamic_grid)
+            if problem:
+                self.get_logger().error(f"dynamic mask not aligned with /map ({problem}): not used")
+            else:
+                self._dynamic = self._dynamic_grid.data >= 65
         if self._map_key is not None and key != self._map_key:
             # Pose, covariance and scan evidence were all about the previous map.
             self.rd.reset("map changed; give a new initial pose")
@@ -170,7 +188,7 @@ class LocalizationMonitor(Node):
             msg.angle_min, msg.angle_min + (n - 1) * msg.angle_increment, n, msg.range_min, max_r
         )
         match_frac, long_frac = consistency.compare(
-            self._grid, self._occ_near, lx, ly, yaw, ranges, geom, self._match_tol
+            self._grid, self._occ_near, lx, ly, yaw, ranges, geom, self._match_tol, self._dynamic
         )
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self.rd.on_scan_match(t, match_frac, long_frac, stamp)

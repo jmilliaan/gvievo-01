@@ -417,6 +417,7 @@ def test_pages_fonts_and_style_guards(env):
         "/manual",
         "/maps",
         "/editor",
+        "/review",
         "/run",
         "/monitor",
         "/io",
@@ -457,6 +458,7 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
         "/manual",
         "/maps",
         "/editor",
+        "/review",
         "/run",
         "/monitor",
         "/io",
@@ -544,3 +546,88 @@ def test_validate_route_with_an_arc_and_a_reverse(env):
     assert r.status_code == 422 and any(
         i["step_id"] == "s2" and i["code"] == "clearance" for i in r.json["issues"]
     )
+
+
+# ---- dynamic-mapping plan §1.2/§1.3: map review -> a derived revision -------------------------
+
+
+def _rect(x0, y0, x1, y1):
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+
+
+def test_edit_endpoint_derives_a_revision_and_validation_turns_provisional(env):
+    client, stub, maps, rev_dir, manifest = env
+    # a trolley surveyed into the aisle: rev1 has it as a wall, so the straight is refused
+    g = build()
+    r0, c0 = g.world_to_cell(8.0, 0.0)
+    g.data[r0 - 3 : r0 + 3, c0 - 3 : c0 + 3] = 100
+    stage = mb.staging_dir(maps, "trolley", 1)
+    m = mb.Manifest(
+        "trolley",
+        1,
+        mb.now_iso(),
+        "map",
+        0.05,
+        [-3.0, -10.0, 0.0],
+        g.width,
+        g.height,
+        {"x_m": 0, "y_m": 0, "yaw_rad": 0, "description": "mark"},
+        {"dx_m": 0, "dy_m": 0, "dyaw_rad": 0, "note": "t"},
+    )
+    mb.stage_bundle(stage, g, None, m, required_posegraph=False)
+    mb.publish(stage, maps, "trolley", 1)
+    r = client.post("/api/maps/trolley/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
+    assert r.status_code == 422
+    assert client.get("/api/maps/trolley/1/dynamic.png").status_code == 404  # no dynamic areas yet
+    # mark it dynamic from the review page
+    body = {"ops": [{"op": "dynamic", "polygon": _rect(7.6, -0.4, 8.4, 0.4)}], "note": "trolley bay"}
+    r = client.post("/api/maps/trolley/1/edit", json=body)
+    assert r.status_code == 200 and r.json["revision"] == 2 and r.json["dynamic_cells"] > 0, r.json
+    idx = {x["map_id"]: x for x in client.get("/api/maps").json}["trolley"]["revisions"]
+    assert idx[0]["edits"] is None and idx[0]["dynamic_cells"] == 0
+    assert idx[1]["edits"]["parent_revision"] == 1 and idx[1]["edits"]["counts"] == {"dynamic": 1}
+    assert idx[1]["edits"]["note"] == "trolley bay" and idx[1]["dynamic_cells"] == r.json["dynamic_cells"]
+    meta = client.get("/api/maps/trolley/2").json
+    assert meta["dynamic_cells"] == r.json["dynamic_cells"]
+    png = client.get("/api/maps/trolley/2/dynamic.png")
+    assert png.status_code == 200 and png.mimetype == "image/png" and png.data[1:4] == b"PNG"
+    # the same straight on rev2: valid, with a provisional (info) issue naming the step
+    r = client.post("/api/maps/trolley/2/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
+    assert r.status_code == 200 and r.json["ok"], r.json
+    assert [(i["code"], i["step_id"], i["severity"]) for i in r.json["issues"]] == [
+        ("provisional", "s1", "info")
+    ]
+    r = client.post("/api/maps/trolley/2/routes/save", json=route_payload([S("s1", 12.0, 0.0)]))
+    assert r.status_code == 200
+    r = client.post(
+        "/api/missions",
+        json={"map_id": "trolley", "map_revision": 2, "route_id": "r1", "route_revision": r.json["revision"]},
+    )
+    assert r.status_code == 200, r.json
+    # rev1 is untouched: still refused there
+    assert (
+        client.post(
+            "/api/maps/trolley/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)])
+        ).status_code
+        == 422
+    )
+
+
+def test_edit_endpoint_refuses_bad_or_empty_edits(env):
+    client, stub, maps, rev_dir, manifest = env
+    for body, code in (
+        ([], 400),
+        ({"ops": []}, 422),
+        ({"ops": [{"op": "paint", "value": "wall", "polygon": _rect(0, 0, 1, 1)}]}, 422),
+        ({"ops": [{"op": "dynamic", "polygon": _rect(500, 500, 501, 501)}]}, 422),  # off the map: no change
+        ({"ops": [{"op": "dynamic", "polygon": _rect(0, 0, 1, 1)}], "note": 5}, 400),
+    ):
+        r = client.post("/api/maps/sim_factory/1/edit", json=body)
+        assert r.status_code == code, (body, r.status_code, r.json)
+    assert (
+        client.post(
+            "/api/maps/nope/1/edit", json={"ops": [{"op": "dynamic", "polygon": _rect(0, 0, 1, 1)}]}
+        ).status_code
+        == 404
+    )
+    assert mb.list_revisions(maps, "sim_factory") == [1]  # nothing was published

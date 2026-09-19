@@ -51,7 +51,16 @@ async function loadMaps() {
         `<span class="v">${esc(r.width)}×${esc(r.height)}<i>@ ${esc(r.resolution)} m</i></span></span>` +
         `<span><span class="n">${r.review ? `dx ${num(+r.review.dx_m, 2)} · dy ${num(+r.review.dy_m, 2)} · dyaw ${num(+r.review.dyaw_rad * 180 / Math.PI, 1)}° ${esc(r.review.note)}` : 'no review'}</span><br>` +
         `<span class="n">${Object.entries(r.routes || {}).map(([k, v]) => `${esc(k)} rev${esc(v.join(','))}`).join('; ') || 'no routes'}</span> ` +
-        `<code>${esc(String(r.sha256).slice(0, 12))}</code></span></div>`).join('') + '</div>').join('');
+        `<code>${esc(String(r.sha256).slice(0, 12))}</code><br>` +
+        `<span class="n">${derived(r)}</span> ` +
+        `<a class="tool" href="/review?map=${encodeURIComponent(m.map_id)}&rev=${encodeURIComponent(r.revision)}" title="Mark dynamic areas (trolleys, parked forklifts) or clean up this map: saves a new revision">Edit areas</a></span></div>`).join('') + '</div>').join('');
+}
+// "dynamic 4.2 m² · from rev1 (3 edits: dynamic 2, unknown 1)": how a revision came to be
+function derived(r) {
+  const parts = [];
+  if (r.dynamic_cells) parts.push(`dynamic ${num(r.dynamic_cells * r.resolution * r.resolution, 1)} m²`);
+  if (r.edits) parts.push(`from rev${esc(r.edits.parent_revision)} (${esc(r.edits.ops)} edits: ${Object.entries(r.edits.counts || {}).map(([k, n]) => `${esc(k)} ${esc(n)}`).join(', ')})${r.edits.note ? ' ' + esc(r.edits.note) : ''}`);
+  return parts.join(' · ') || 'no dynamic areas';
 }
 loadMaps();
 

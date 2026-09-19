@@ -543,3 +543,72 @@ def test_chained_straight_and_arc_run_as_one_goal_with_a_speed_taper():
     mask = n._envelope(s1, 2.8)
     r_, c_ = n.grid.world_to_cell(*arc_samples[15][:2])  # the middle of the arc, ~0.8 m past the boundary
     assert mask[r_, c_]
+
+
+# ---- dynamic-mapping plan §1.2/§1.3: a mapped trolley in a dynamic area is checked live ------
+
+
+def _trolley_world():
+    import numpy as np  # noqa: PLC0415
+    from amr_maps.grid import Grid, GridMeta  # noqa: PLC0415
+
+    # 10 m x 4 m at 0.05 m, origin (-1, -2); a trolley in the map at x 3.0..3.25, |y| <= 0.3
+    data = np.zeros((80, 200), dtype=np.int8)
+    g = Grid(data, GridMeta(0.05, -1.0, -2.0))
+    r0, c0 = g.world_to_cell(3.0, -0.3)
+    r1, c1 = g.world_to_cell(3.24, 0.3)
+    data[r0 : r1 + 1, c0 : c1 + 1] = 100
+    dyn = np.zeros(data.shape, dtype=bool)
+    ra, ca = g.world_to_cell(2.5, -1.0)
+    rb, cb = g.world_to_cell(4.0, 1.0)
+    dyn[ra:rb, ca:cb] = True
+    return g, dyn
+
+
+def test_explained_by_map_excludes_dynamic_areas():
+    g, dyn = _trolley_world()
+    plain = ren.explained_by_map(g, None, 0.15)
+    marked = ren.explained_by_map(g, dyn, 0.15)
+    face = g.world_to_cell(3.0, 0.0)
+    assert plain[face] and not marked[face]  # the trolley face explains a return only without the mark
+    assert plain[g.world_to_cell(2.9, 0.0)]  # the tolerance grows the explanation by 0.15 m
+    assert (marked == (plain & ~dyn)).all()
+
+
+def test_obstruction_blocks_on_a_mapped_trolley_only_inside_a_dynamic_area():
+    import numpy as np  # noqa: PLC0415
+
+    from amr_navigation import footprint as fpmod  # noqa: PLC0415
+
+    g, dyn = _trolley_world()
+    st = CompiledStep(
+        "s1", STRAIGHT, (0.0, 0.0, 0.0), (6.0, 0.0, 0.0), length_m=6.0, samples=[(0.0, 0.0, 0.0)], v_mps=0.5
+    )
+    n = make_node([st])
+    n.grid, n.fp = g, fpmod.Footprint(((-0.5, -0.35), (1.1, -0.35), (1.1, 0.35), (-0.5, 0.35)), 0.05)
+    del n._obstruction  # the real method, not make_node's stub
+    # the laser at (2, 0) facing +x sees the trolley face 1 m ahead on every beam
+    ang = np.linspace(-0.25, 0.25, 51)
+    n._scan = SimpleNamespace(
+        header=SimpleNamespace(frame_id="laser", stamp=None),
+        ranges=list(1.0 / np.cos(ang)),
+        angle_min=float(ang[0]),
+        angle_increment=float(ang[1] - ang[0]),
+        range_min=0.05,
+        range_max=30.0,
+    )
+    tf = SimpleNamespace(
+        transform=SimpleNamespace(
+            translation=SimpleNamespace(x=2.0, y=0.0), rotation=SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0)
+        )
+    )
+    n.tf_buffer = SimpleNamespace(lookup_transform=lambda *_a: tf)
+    pose = (2.0, 0.0, 0.0)
+    n._map_near = ren.explained_by_map(g, None, 0.15)
+    assert n._obstruction(st, pose) is None  # the map explains the trolley: driven into (old behaviour)
+    n._map_near = ren.explained_by_map(g, dyn, 0.15)
+    n.clear_since = None
+    assert n._obstruction(st, pose) is None  # one scan: waits for obstacle_persist_scans
+    n._scan_t += 0.1  # the next scan
+    reason = n._obstruction(st, pose)
+    assert reason is not None and "inside the straight envelope" in reason and n.clear_since is None

@@ -24,9 +24,10 @@ from typing import Any, Protocol
 
 import numpy as np
 from amr_navigation.route import Route, RouteError
-from amr_navigation.validate import load_keepout, validate
+from amr_navigation.validate import load_dynamic, load_keepout, validate
 from flask import Flask, Response, jsonify, redirect, render_template, request
 
+from amr_maps import edit as mapedit
 from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
@@ -84,6 +85,31 @@ def _result(ok: bool, message: str, status_fail: int = 409, **extra):
     return jsonify(body), (200 if ok else status_fail)
 
 
+def _op_kind(op) -> str:
+    """dynamic | undynamic | free | unknown | occupied, for an edits.json op."""
+    if not isinstance(op, dict):
+        return ""
+    return str(op.get("value", "")) if op.get("op") == "paint" else str(op.get("op", ""))
+
+
+def _edits_summary(e: dict | None) -> dict | None:
+    """What the Maps page shows about how a revision was derived (edits.json)."""
+    if not e:
+        return None
+    parent = e.get("parent") or {}
+    ops = e.get("ops") or []
+    kinds = [_op_kind(o) for o in ops]
+    return {
+        "parent_revision": parent.get("revision"),
+        "created": e.get("created", ""),
+        "note": e.get("note", ""),
+        "ops": len(ops),
+        "counts": {
+            k: kinds.count(k) for k in ("dynamic", "undynamic", "free", "unknown", "occupied") if k in kinds
+        },
+    }
+
+
 def create_app(
     adapter: Adapter,
     maps_dir: str,
@@ -103,6 +129,24 @@ def create_app(
         if key not in _grids:
             _grids[key] = mb.load(app.config["MAPS_DIR"], map_id, rev)
         return _grids[key]
+
+    # Revisions are immutable (a verified bundle's files never change), so a revision's masks
+    # and edit record are cached like its grid.
+    _extras: dict[tuple[str, int], dict] = {}
+
+    def extras(map_id: str, rev: int) -> dict:
+        key = (map_id, rev)
+        if key not in _extras:
+            bundle(map_id, rev)  # verified first
+            rev_dir = mb.revision_dir(app.config["MAPS_DIR"], map_id, rev)
+            dyn = load_dynamic(rev_dir)
+            _extras[key] = {
+                "keepout": load_keepout(rev_dir),
+                "dynamic": dyn,
+                "dynamic_cells": int((dyn.data >= 65).sum()) if dyn is not None else 0,
+                "edits": mb.load_edits(rev_dir),
+            }
+        return _extras[key]
 
     # ---- pages -------------------------------------------------------------------
 
@@ -146,6 +190,10 @@ def create_app(
     def page_editor():
         return render_template("editor.html", page="editor")
 
+    @app.get("/review")
+    def page_review():
+        return render_template("review.html", page="maps")
+
     @app.get("/run")
     def page_run():
         return render_template("run.html", page="run")
@@ -181,7 +229,8 @@ def create_app(
                 for r in revs:
                     try:
                         m, _ = bundle(map_id, r)
-                    except mb.BundleError as e:
+                        ex = extras(map_id, r)
+                    except (mb.BundleError, gridio.GridError) as e:
                         items.append({"revision": r, "error": str(e)})
                         continue
                     items.append(
@@ -196,6 +245,8 @@ def create_app(
                             "start": m.start,
                             "review": m.review,
                             "routes": store.list_routes(maps_dir, map_id),
+                            "dynamic_cells": ex["dynamic_cells"],
+                            "edits": _edits_summary(ex["edits"]),
                         }
                     )
                 out.append({"map_id": map_id, "revisions": items})
@@ -205,7 +256,8 @@ def create_app(
     def api_map(map_id: str, rev: int):
         try:
             m, g = bundle(map_id, rev)
-        except mb.BundleError as e:
+            ex = extras(map_id, rev)
+        except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         return jsonify(
             {
@@ -218,6 +270,8 @@ def create_app(
                 "origin": [g.meta.origin_x, g.meta.origin_y, g.meta.origin_yaw],
                 "start": m.start,
                 "routes": store.list_routes(app.config["MAPS_DIR"], map_id),
+                "dynamic_cells": ex["dynamic_cells"],
+                "edits": _edits_summary(ex["edits"]),
             }
         )
 
@@ -233,14 +287,57 @@ def create_app(
         png = encode_gray(np.flipud(img))  # row 0 = bottom in the grid, top in the image
         return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
 
+    @app.get("/api/maps/<map_id>/<int:rev>/dynamic.png")
+    def api_map_dynamic(map_id: str, rev: int):
+        """The dynamic-area mask in the map image's geometry: 255 = dynamic, 0 = not."""
+        try:
+            dyn = extras(map_id, rev)["dynamic"]
+        except (mb.BundleError, gridio.GridError) as e:
+            return _result(False, str(e), 404)
+        if dyn is None:
+            return _result(False, "this revision has no dynamic areas", 404)
+        img = np.where(dyn.data >= 65, 255, 0).astype(np.uint8)
+        png = encode_gray(np.flipud(img))
+        return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
+
+    @app.post("/api/maps/<map_id>/<int:rev>/edit")
+    def api_map_edit(map_id: str, rev: int):
+        """Operator edits (mark/clear dynamic areas, paint free/unknown) -> a NEW revision
+        derived from this one (dynamic-mapping plan §1.1). Nothing is modified in place:
+        routes and missions on this revision keep meaning what they meant."""
+        d = request.get_json(force=True, silent=True)
+        if not isinstance(d, dict):
+            return _result(False, "a JSON object {ops, note} is required", 400)
+        note = d.get("note", "")
+        if not isinstance(note, str):
+            return _result(False, "note must be text", 400)
+        try:
+            bundle(map_id, rev)
+            _path, new_rev, res = mb.derive_edit(app.config["MAPS_DIR"], map_id, rev, d.get("ops"), note)
+        except mapedit.EditError as e:
+            return _result(False, str(e), 422)
+        except (mb.BundleError, gridio.GridError) as e:
+            return _result(False, str(e), 404)
+        return jsonify(
+            {
+                "ok": True,
+                "map_id": map_id,
+                "revision": new_rev,
+                "parent_revision": rev,
+                "dynamic_cells": res.dynamic_cells,
+                "cells": res.cells,
+                "message": f"{map_id} rev{new_rev} saved from rev{rev} ({len(res.cells)} edits)",
+            }
+        )
+
     # ---- routes --------------------------------------------------------------------
 
     def _validate_payload(map_id: str, rev: int, payload: dict):
         m, g = bundle(map_id, rev)
         route = Route.from_dict(payload)
         route.map.id, route.map.revision, route.map.sha256 = map_id, rev, m.sha256
-        keepout = load_keepout(mb.revision_dir(app.config["MAPS_DIR"], map_id, rev))
-        return route, validate(route, m, g, fp, keepout)
+        ex = extras(map_id, rev)
+        return route, validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
 
     def _compiled_dict(compiled) -> dict:
         return {
@@ -309,7 +406,8 @@ def create_app(
             m, g = bundle(map_id, rev)
         except (store.StoreError, mb.BundleError) as e:
             return _result(False, str(e), 404)
-        v = validate(route, m, g, fp, load_keepout(mb.revision_dir(app.config["MAPS_DIR"], map_id, rev)))
+        ex = extras(map_id, rev)
+        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
         body = {
             "route": route.to_dict(),
             "sha256": sha,
@@ -349,7 +447,8 @@ def create_app(
             return _result(False, f"stored route unreadable: {e}", 422)
         except (store.StoreError, mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
-        v = validate(route, m, g, fp, load_keepout(mb.revision_dir(app.config["MAPS_DIR"], map_id, rev)))
+        ex = extras(map_id, rev)
+        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
         if not v.ok:
             return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
         # route ids/revisions are per map; missions share one directory: the default id names the map

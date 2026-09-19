@@ -190,14 +190,16 @@ main.wide > .editor { flex:1 1 auto; }
 
 /* ---- buttons ---- */
 .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0 0; }
-button, a.big { font:inherit; cursor:pointer; }
-button.big, a.big, button.tool {
+button, a.big, a.tool { font:inherit; cursor:pointer; }
+button.big, a.big, button.tool, a.tool {
   font:600 12px var(--mono); letter-spacing:.09em; text-transform:uppercase; text-decoration:none;
   padding:11px 18px; border:1px solid var(--rule); background:var(--surface); color:var(--ink);
   display:inline-block; transition:border-color .06s, color .06s, background .06s;
 }
-button.tool { font-size:11px; padding:7px 10px; letter-spacing:.06em; }
-button.big:hover:not(:disabled), a.big:hover, button.tool:hover:not(:disabled) {
+button.tool, a.tool { font-size:11px; padding:7px 10px; letter-spacing:.06em; }
+/* a link styled as a tool inside a list row (Maps: Edit areas) */
+.row a.tool { padding:3px 8px; margin-top:4px; }
+button.big:hover:not(:disabled), a.big:hover, button.tool:hover:not(:disabled), a.tool:hover {
   border-color:var(--accent-2); color:var(--accent-2);
 }
 button.big.run { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }

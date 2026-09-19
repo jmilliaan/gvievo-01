@@ -16,14 +16,18 @@ publish() refuses if rev<N> already exists. Pure filesystem + numpy; no ROS.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 
+import numpy as np
 import yaml
 
+from amr_maps import edit
 from amr_maps import grid as gridio
 
 MANIFEST = "manifest.yaml"
@@ -154,7 +158,11 @@ def stage_bundle(
 
 # Files the navigation stack consumes from a revision besides the listed ones. If present
 # they must be listed too, or the bundle identity would not cover what is actually used.
-CONSUMED_OPTIONAL = ("keepout.yaml", "keepout.pgm")
+# dynamic.* marks areas whose scan may change (trolleys, parked forklifts); edits.json is the
+# ordered operator edits that made this revision from its parent (dynamic-mapping plan §1.1).
+MASKS = ("keepout", "dynamic")
+EDITS = "edits.json"
+CONSUMED_OPTIONAL = ("keepout.yaml", "keepout.pgm", "dynamic.yaml", "dynamic.pgm", EDITS)
 
 
 def _contained(stage: str, name: str) -> str:
@@ -215,9 +223,17 @@ def verify(stage: str) -> Manifest:
     for name in CONSUMED_OPTIONAL:
         if os.path.lexists(os.path.join(stage, name)) and name not in m.files:
             raise BundleError(f"{name} is present but not listed in the manifest")
-    if "keepout.yaml" in m.files and _image_of(stage, "keepout.yaml") not in m.files:
-        raise BundleError("keepout.yaml image is not a listed bundle file")
+    for mask in MASKS:
+        if f"{mask}.yaml" in m.files and _image_of(stage, f"{mask}.yaml") not in m.files:
+            raise BundleError(f"{mask}.yaml image is not a listed bundle file")
+    if "dynamic.pgm" in m.files and "dynamic.yaml" not in m.files:
+        raise BundleError("dynamic.pgm is listed without dynamic.yaml")
     grid = _read_grid(os.path.join(stage, "map.yaml"))  # must parse
+    if "dynamic.yaml" in m.files:
+        # every consumer indexes the dynamic mask with the map's cells: it must align
+        problem = gridio.mask_misalignment(grid, _read_grid(os.path.join(stage, "dynamic.yaml")))
+        if problem:
+            raise BundleError(f"dynamic mask not aligned with the map: {problem}")
     geom = (int(m.width), int(m.height), float(m.resolution), [float(v) for v in m.origin[:2]])
     actual = (grid.width, grid.height, grid.meta.resolution, [grid.meta.origin_x, grid.meta.origin_y])
     if (
@@ -238,17 +254,26 @@ def _read_grid(path: str) -> gridio.Grid:
         raise BundleError(f"map grid: {e}") from e
 
 
-def derive_revision(maps_dir: str, map_id: str, from_revision: int, extra: dict[str, str]) -> tuple[str, int]:
-    """A NEW revision = a verified revision's files plus `extra` {bundle name: source path},
-    e.g. a keepout mask. Revisions are immutable and their identity covers every consumed
-    file (review Q14), so adding a keepout is a new revision, never an edit; missions
-    referencing the old one keep meaning exactly what they meant. Returns (path, revision)."""
+def derive_revision(
+    maps_dir: str,
+    map_id: str,
+    from_revision: int,
+    extra: dict[str, str],
+    drop: tuple[str, ...] = (),
+) -> tuple[str, int]:
+    """A NEW revision = a verified revision's files minus `drop`, plus `extra` {bundle name:
+    source path} (replacing a same-named file), e.g. a keepout mask. Revisions are immutable
+    and their identity covers every consumed file (review Q14), so adding a keepout is a new
+    revision, never an edit; missions referencing the old one keep meaning exactly what they
+    meant. Returns (path, revision)."""
     src_dir = revision_dir(maps_dir, map_id, from_revision)
     m = verify(src_dir)
     revision = next_revision(maps_dir, map_id)
     stage = staging_dir(maps_dir, map_id, revision)
     for name in m.files:
-        shutil.copy2(os.path.join(src_dir, name), os.path.join(stage, name))
+        # edits.json describes ONE derivation (its parent -> that revision): never inherited
+        if name not in drop and name != EDITS:
+            shutil.copy2(os.path.join(src_dir, name), os.path.join(stage, name))
     for name, path in extra.items():
         _contained(stage, name)
         shutil.copy2(path, os.path.join(stage, name))
@@ -261,6 +286,66 @@ def derive_revision(maps_dir: str, map_id: str, from_revision: int, extra: dict[
         discard(stage)
         raise
     return publish(stage, maps_dir, map_id, revision), revision
+
+
+def load_mask(rev_dir: str, name: str) -> gridio.Grid | None:
+    """A revision's optional mask (MASKS: keepout, dynamic), or None when it has none."""
+    path = os.path.join(rev_dir, f"{name}.yaml")
+    return _read_grid(path) if os.path.isfile(path) else None
+
+
+def load_edits(rev_dir: str) -> dict | None:
+    """The revision's edits.json (how it was made from its parent), or None."""
+    path = os.path.join(rev_dir, EDITS)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError) as e:
+        raise BundleError(f"{EDITS}: {e}") from e
+    return doc if isinstance(doc, dict) else None
+
+
+def derive_edit(
+    maps_dir: str, map_id: str, from_revision: int, ops, note: str = ""
+) -> tuple[str, int, edit.EditResult]:
+    """A NEW revision whose map.pgm is the parent's with the operator's `ops` applied, whose
+    dynamic.* mask is the parent's mask with the dynamic/undynamic ops applied, and whose
+    edits.json records the parent (revision + bundle hash) and the ops, so the edit replays.
+    The pose graph and every other parent file are copied unchanged. Refuses edits that change
+    nothing. Returns (path, revision, result)."""
+    ops = edit.normalize_ops(ops)
+    src_dir = revision_dir(maps_dir, map_id, from_revision)
+    parent, grid = load(maps_dir, map_id, from_revision)
+    dyn = load_mask(src_dir, "dynamic")
+    res = edit.apply(grid, None if dyn is None else dyn.data >= 65, ops)
+    before = np.zeros(grid.data.shape, dtype=bool) if dyn is None else dyn.data >= 65
+    if np.array_equal(res.grid.data, grid.data) and np.array_equal(res.dynamic, before):
+        raise edit.EditError("the edits change nothing on this map (outside it, or already so)")
+    with tempfile.TemporaryDirectory(prefix="amr_edit_") as tmp:
+        gridio.write(res.grid, os.path.join(tmp, "map"))
+        extra = {"map.pgm": os.path.join(tmp, "map.pgm"), "map.yaml": os.path.join(tmp, "map.yaml")}
+        drop: tuple[str, ...] = ()
+        if res.dynamic.any():
+            gridio.write(edit.mask_grid(grid, res.dynamic), os.path.join(tmp, "dynamic"))
+            extra["dynamic.pgm"] = os.path.join(tmp, "dynamic.pgm")
+            extra["dynamic.yaml"] = os.path.join(tmp, "dynamic.yaml")
+        else:
+            drop = ("dynamic.pgm", "dynamic.yaml")  # every mark cleared: the child has none
+        doc = {
+            "parent": {"revision": int(from_revision), "sha256": parent.sha256},
+            "created": now_iso(),
+            "note": str(note)[:500],
+            "ops": ops,
+            "cells": res.cells,
+            "dynamic_cells": res.dynamic_cells,
+        }
+        with open(os.path.join(tmp, EDITS), "w") as fh:
+            json.dump(doc, fh, indent=1)
+        extra[EDITS] = os.path.join(tmp, EDITS)
+        path, revision = derive_revision(maps_dir, map_id, from_revision, extra, drop)
+    return path, revision, res
 
 
 def publish(stage: str, maps_dir: str, map_id: str, revision: int) -> str:

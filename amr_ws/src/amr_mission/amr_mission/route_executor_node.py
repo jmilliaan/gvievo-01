@@ -29,7 +29,7 @@ import threading
 import numpy as np
 import rclpy
 from amr_navigation.compiler import ARC, ROTATE, CompiledStep, wrap
-from amr_navigation.validate import load_keepout, validate
+from amr_navigation.validate import load_dynamic, load_keepout, validate
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import FollowPath, Spin
 from nav2_msgs.msg import SpeedLimit
@@ -74,6 +74,18 @@ PHASE_INIT, PHASE_GOAL, PHASE_SETTLE = "init", "goal", "settle"
 
 def _yaw(q) -> float:
     return math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+
+
+def explained_by_map(grid, dynamic: np.ndarray | None, tol_m: float) -> np.ndarray:
+    """Cells where a scan return is explained by the MAP and so is not an obstacle: mapped
+    occupied cells grown by `tol_m` (spec §5.4, lenient since 2026-09-18), EXCEPT inside a
+    dynamic area (dynamic-mapping plan §1.2): a mapped trolley may still be there, so a return
+    on it always counts. That is what makes a still-present trolley BLOCK a route validation
+    only approved provisionally, instead of being driven into."""
+    cells = int(round(tol_m / grid.meta.resolution))
+    occ = grid.data >= 65
+    near = fpmod.dilate(occ, cells) if cells > 0 else occ
+    return near if dynamic is None else near & ~dynamic
 
 
 def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> str | None:
@@ -368,17 +380,19 @@ class RouteExecutor(Node):
                 )
                 if sha != mission["route"]["sha256"]:
                     raise store.StoreError("route file hash differs from the mission manifest")
-                v = validate(
-                    route,
-                    manifest,
-                    grid,
-                    self.fp,
-                    load_keepout(mb.revision_dir(self.maps_dir, manifest.map_id, manifest.revision)),
-                )
+                rev_dir = mb.revision_dir(self.maps_dir, manifest.map_id, manifest.revision)
+                dynamic = load_dynamic(rev_dir)
+                v = validate(route, manifest, grid, self.fp, load_keepout(rev_dir), dynamic)
                 if not v.ok:
                     raise store.StoreError(
                         "route invalid on this map: "
-                        + "; ".join(f"{i.step_id or ''} {i.message}" for i in v.issues)
+                        + "; ".join(f"{i.step_id or ''} {i.message}" for i in v.errors)
+                    )
+                provisional = [i.step_id or "start" for i in v.issues if i.code == "provisional"]
+                if provisional:
+                    self.get_logger().info(
+                        f"steps {', '.join(provisional)} cross mapped cells in dynamic areas: "
+                        "any scan return there stops the run"
                     )
                 # Q05 relaxed 2026-09-17 (operator request, footprint margin 0.05 m): the
                 # lateral envelope execution permits may exceed what validation cleared.
@@ -403,8 +417,10 @@ class RouteExecutor(Node):
                 route,
                 v.compiled,
             )
-            cells = int(round(self.obstacle_map_tol_m / grid.meta.resolution))
-            self._map_near = fpmod.dilate(grid.data >= 65, cells) if cells > 0 else (grid.data >= 65)
+            # validate() already refused a misaligned dynamic mask, so it indexes the map's cells
+            self._map_near = explained_by_map(
+                grid, None if dynamic is None else dynamic.data >= 65, self.obstacle_map_tol_m
+            )
             self._reset_step_state()
             self._log_state()
             res.accepted, res.message = True, self.fsm.reason
@@ -625,7 +641,8 @@ class RouteExecutor(Node):
         cols = np.floor((ex - g.origin_x) / g.resolution).astype(int)
         rows = np.floor((ey - g.origin_y) / g.resolution).astype(int)
         inside = (cols >= 0) & (cols < self.grid.width) & (rows >= 0) & (rows < self.grid.height)
-        # returns the MAP already explains (walls, within obstacle_map_tol_m) are not obstacles
+        # returns the MAP already explains (walls, within obstacle_map_tol_m) are not obstacles;
+        # inside a dynamic area nothing is explained (explained_by_map)
         near = self._map_near if self._map_near is not None else (self.grid.data >= 65)
         hits = mask[rows[inside], cols[inside]] & ~near[rows[inside], cols[inside]]
         n = int(hits.sum())

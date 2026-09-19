@@ -4,6 +4,8 @@ import numpy as np
 import pytest
 from amr_maps.grid import Grid, GridMeta
 
+from amr_maps import edit
+from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 
 
@@ -216,4 +218,112 @@ def test_q14_manifest_geometry_must_match_the_grid(tmp_path):
     doc["width"] = doc["width"] + 1
     yaml.safe_dump(doc, open(p, "w"))
     with pytest.raises(mb.BundleError, match="geometry"):
+        mb.verify(stage)
+
+
+# ---- dynamic-mapping plan §1.1/§1.3: derive_edit, dynamic.* and edits.json -------------------
+
+
+def _published(tmp_path) -> str:
+    maps = str(tmp_path / "maps")
+    stage = mb.staging_dir(maps, "line_section", 1)
+    mb.stage_bundle(stage, small_grid(), fake_posegraph(tmp_path), manifest())
+    mb.publish(stage, maps, "line_section", 1)
+    return maps
+
+
+def _rect(x0, y0, x1, y1):
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+
+
+def test_derive_edit_writes_a_new_revision_with_the_mask_and_the_edit_record(tmp_path):
+    import json  # noqa: PLC0415
+
+    maps = _published(tmp_path)
+    parent = mb.verify(mb.revision_dir(maps, "line_section", 1))
+    ops = [
+        {"op": "dynamic", "polygon": _rect(-0.5, -0.3, 0.0, 0.0)},
+        {"op": "paint", "value": "unknown", "polygon": _rect(0.1, -0.3, 0.25, -0.15)},
+    ]
+    path, rev, res = mb.derive_edit(maps, "line_section", 1, ops, note="trolley row")
+    assert rev == 2 and path.endswith("rev2") and res.dynamic_cells > 0
+    m = mb.verify(path)
+    # every consumed file is listed and hashed; the pose graph is carried over unchanged
+    assert {"dynamic.pgm", "dynamic.yaml", "edits.json", "posegraph.posegraph"} <= set(m.files)
+    assert m.files["posegraph.posegraph"] == parent.files["posegraph.posegraph"]
+    assert m.sha256 != parent.sha256
+    doc = json.load(open(os.path.join(path, "edits.json")))
+    assert doc["parent"] == {"revision": 1, "sha256": parent.sha256}
+    assert doc["note"] == "trolley row" and [o["op"] for o in doc["ops"]] == ["dynamic", "paint"]
+    _, g = mb.load(maps, "line_section", 2)
+    dyn = mb.load_mask(path, "dynamic")
+    assert dyn is not None and int((dyn.data >= 65).sum()) == res.dynamic_cells
+    assert g.data[g.world_to_cell(0.2, -0.225)] == -1  # the wall piece was erased to unknown
+    # the parent is untouched
+    _, g1 = mb.load(maps, "line_section", 1)
+    assert g1.data[g1.world_to_cell(0.2, -0.225)] == 100
+    assert mb.load_mask(mb.revision_dir(maps, "line_section", 1), "dynamic") is None
+
+
+def test_derive_edit_inherits_clears_and_refuses_no_change(tmp_path):
+    maps = _published(tmp_path)
+    mb.derive_edit(maps, "line_section", 1, [{"op": "dynamic", "polygon": _rect(-0.5, -0.3, 0.0, 0.0)}])
+    # a child of rev2 keeps its mask; its edits.json is its own, never the parent's
+    p3, _, res3 = mb.derive_edit(
+        maps, "line_section", 2, [{"op": "dynamic", "polygon": _rect(0.1, 0.1, 0.3, 0.3)}]
+    )
+    assert mb.load_edits(p3)["parent"]["revision"] == 2 and len(mb.load_edits(p3)["ops"]) == 1
+    assert res3.dynamic_cells > mb.load_edits(p3)["cells"][0]  # rev2's area + the new one
+    # clearing every mark leaves the child without dynamic files at all
+    p4, _, res4 = mb.derive_edit(
+        maps, "line_section", 3, [{"op": "undynamic", "polygon": _rect(-1.0, -0.5, 0.5, 0.5)}]
+    )
+    assert res4.dynamic_cells == 0 and not os.path.exists(os.path.join(p4, "dynamic.pgm"))
+    assert "dynamic.yaml" not in mb.verify(p4).files
+    with pytest.raises(edit.EditError, match="change nothing"):
+        mb.derive_edit(maps, "line_section", 4, [{"op": "undynamic", "polygon": _rect(-1.0, -0.5, 0.5, 0.5)}])
+    with pytest.raises(edit.EditError, match="change nothing"):
+        mb.derive_edit(maps, "line_section", 4, [{"op": "dynamic", "polygon": _rect(50, 50, 51, 51)}])
+    assert mb.list_revisions(maps, "line_section") == [1, 2, 3, 4]  # refusals publish nothing
+
+
+def _list_all(stage):
+    """Like _relist, but also LISTS every file in the directory (a well-formed manifest)."""
+    import yaml  # noqa: PLC0415
+
+    p = os.path.join(stage, mb.MANIFEST)
+    doc = yaml.safe_load(open(p))
+    doc["files"] = {
+        n: mb.sha256_file(os.path.join(stage, n)) for n in sorted(os.listdir(stage)) if n != mb.MANIFEST
+    }
+    doc["sha256"] = mb.bundle_hash(doc["files"])
+    yaml.safe_dump(doc, open(p, "w"))
+
+
+def test_stray_or_misaligned_dynamic_files_are_refused(tmp_path):
+    import shutil  # noqa: PLC0415
+
+    maps = _published(tmp_path)
+    path, _, _ = mb.derive_edit(
+        maps, "line_section", 1, [{"op": "dynamic", "polygon": _rect(-0.5, -0.3, 0.0, 0.0)}]
+    )
+    # an unlisted dynamic.pgm next to a revision without one
+    stage = _staged(tmp_path / "stray")
+    shutil.copy(os.path.join(path, "dynamic.pgm"), os.path.join(stage, "dynamic.pgm"))
+    with pytest.raises(mb.BundleError, match="dynamic.pgm is present but not listed"):
+        mb.verify(stage)
+    # a listed dynamic.pgm without its yaml
+    os.remove(os.path.join(stage, "dynamic.pgm"))
+    stage = _staged(tmp_path / "noyaml")
+    shutil.copy(os.path.join(path, "dynamic.pgm"), os.path.join(stage, "dynamic.pgm"))
+    _list_all(stage)
+    with pytest.raises(mb.BundleError, match="without dynamic.yaml"):
+        mb.verify(stage)
+    # a mask in another geometry
+    stage = _staged(tmp_path / "misaligned")
+    gridio.write(
+        Grid(np.zeros((3, 3), dtype=np.int8), GridMeta(0.05, -1.0, -0.5)), os.path.join(stage, "dynamic")
+    )
+    _list_all(stage)
+    with pytest.raises(mb.BundleError, match="not aligned"):
         mb.verify(stage)

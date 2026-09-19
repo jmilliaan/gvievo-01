@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import yaml
-from amr_maps.grid import Grid, require_axis_aligned
+from amr_maps.grid import Grid, rasterize_polygon, require_axis_aligned
 
 
 @dataclass(frozen=True)
@@ -53,32 +53,6 @@ def _polygon_world(fp: Footprint, x: float, y: float, yaw: float) -> np.ndarray:
     c, s = math.cos(yaw), math.sin(yaw)
     pts = np.asarray(fp.polygon, dtype=np.float64)
     return np.column_stack((x + c * pts[:, 0] - s * pts[:, 1], y + s * pts[:, 0] + c * pts[:, 1]))
-
-
-def rasterize_polygon(grid: Grid, poly: np.ndarray, mask: np.ndarray) -> None:
-    """OR the cells whose centres lie inside `poly` (world coords) into `mask`."""
-    res, ox, oy = grid.meta.resolution, grid.meta.origin_x, grid.meta.origin_y
-    c0 = max(0, int(math.floor((poly[:, 0].min() - ox) / res)))
-    c1 = min(grid.width - 1, int(math.floor((poly[:, 0].max() - ox) / res)))
-    r0 = max(0, int(math.floor((poly[:, 1].min() - oy) / res)))
-    r1 = min(grid.height - 1, int(math.floor((poly[:, 1].max() - oy) / res)))
-    if c1 < c0 or r1 < r0:
-        return
-    cols = np.arange(c0, c1 + 1)
-    rows = np.arange(r0, r1 + 1)
-    px = ox + (cols + 0.5) * res
-    py = oy + (rows + 0.5) * res
-    X, Y = np.meshgrid(px, py)  # [rows, cols]
-    inside = np.zeros(X.shape, dtype=bool)
-    n = len(poly)
-    for i in range(n):  # even-odd crossing test, vectorised over the bbox
-        x1, y1 = poly[i]
-        x2, y2 = poly[(i + 1) % n]
-        crosses = (y1 > Y) != (y2 > Y)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            xint = x1 + (Y - y1) * (x2 - x1) / (y2 - y1)
-        inside ^= crosses & (X < xint)
-    mask[r0 : r1 + 1, c0 : c1 + 1] |= inside
 
 
 def dilate(mask: np.ndarray, cells: int) -> np.ndarray:
@@ -288,17 +262,29 @@ class Clearance:
     keepout: int
     cells: int
     outside: bool = False  # part of the sweep leaves the map: never clear, whatever the mask holds
+    # occupied or unknown cells inside a DYNAMIC area (a trolley in the map): they do not block
+    # approval; the executor checks them live (a return there always counts as an obstacle)
+    provisional: int = 0
 
     @property
     def clear(self) -> bool:
         return not self.outside and self.occupied == 0 and self.unknown == 0 and self.keepout == 0
 
 
-def check(grid: Grid, mask: np.ndarray, keepout: Grid | None = None, outside: bool = False) -> Clearance:
+def check(
+    grid: Grid,
+    mask: np.ndarray,
+    keepout: Grid | None = None,
+    outside: bool = False,
+    dynamic: np.ndarray | None = None,
+) -> Clearance:
     """Unknown cells count as blocked: approval needs observed free space (spec §5.4).
     `outside` (from line_outside/rotation_outside) is kept apart from the in-map mask,
-    which is clipped to the grid and so cannot express overhang."""
-    occ = int(((grid.data >= 65) & mask).sum())
-    unk = int(((grid.data == -1) & mask).sum())
+    which is clipped to the grid and so cannot express overhang. `dynamic` (bool, the map's
+    shape) turns occupied/unknown cells inside it into `provisional`; keepout still blocks."""
+    swept = mask if dynamic is None else mask & ~dynamic
+    occ = int(((grid.data >= 65) & swept).sum())
+    unk = int(((grid.data == -1) & swept).sum())
     ko = int(((keepout.data >= 65) & mask).sum()) if keepout is not None else 0
-    return Clearance(occ, unk, ko, int(mask.sum()), outside)
+    prov = 0 if dynamic is None else int(((grid.data >= 65) | (grid.data == -1))[mask & dynamic].sum())
+    return Clearance(occ, unk, ko, int(mask.sum()), outside, prov)

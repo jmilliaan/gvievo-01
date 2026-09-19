@@ -57,3 +57,27 @@ def test_no_return_and_unknown_endpoints_prove_nothing():
     ranges = np.full(GEOM.beams, np.inf)  # nothing returned at all
     match, long = sc.compare(g, near, 0.0, 0.0, 0.0, ranges, GEOM, TOL)
     assert long == 0.0 and match == 0.0
+
+
+def test_beams_into_dynamic_areas_move_neither_fraction():
+    """dynamic-mapping plan §1.3: a mapped trolley that moved within its dynamic area puts
+    endpoints in mapped free space behind where the map expects it (long) and short of the
+    wall where it now stands (no match). Neither says anything about the pose."""
+    g = cage()
+    g.data[:, int((3.0 + 6.0) / RES)] = 0  # no mesh: a plain wall 5 m ahead
+    col = lambda x: int((x + 6.0) / RES)  # noqa: E731
+    row = lambda y: int((y + 6.0) / RES)  # noqa: E731
+    g.data[row(-1.0) : row(1.0), col(2.0) : col(2.2)] = 100  # the trolley as surveyed, 2 m ahead
+    near = sc.occupied_near(g, TOL)
+    now = g.data.copy()
+    now[row(-1.0) : row(1.0), col(2.0) : col(2.2)] = 0
+    now[row(-1.0) : row(1.0), col(2.6) : col(2.8)] = 100  # pushed 0.6 m further today
+    ranges = cast(Grid(now, g.meta), 0.0, 0.0, 0.0, GEOM)
+    match_plain, long_plain = sc.compare(g, near, 0.0, 0.0, 0.0, ranges, GEOM, TOL)
+    assert long_plain > 0.1 and match_plain < 0.9  # without the mask the trolley looks like a pose error
+    dyn = np.zeros(g.data.shape, dtype=bool)
+    dyn[row(-1.2) : row(1.2), col(1.8) : col(3.0)] = True
+    match, long = sc.compare(g, near, 0.0, 0.0, 0.0, ranges, GEOM, TOL, dyn)
+    assert long == 0.0 and match > 0.95
+    # the same scan with no mask argument is the old behaviour exactly
+    assert sc.compare(g, near, 0.0, 0.0, 0.0, ranges, GEOM, TOL, None) == (match_plain, long_plain)

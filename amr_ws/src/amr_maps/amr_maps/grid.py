@@ -196,6 +196,49 @@ def read(yaml_path: str) -> Grid:
         return from_pgm_bytes(fh.read(), meta)
 
 
+def rasterize_polygon(grid: Grid, poly: np.ndarray, mask: np.ndarray) -> None:
+    """OR the cells whose centres lie inside `poly` (world coords, [n, 2]) into `mask`.
+    Axis-aligned grids only (require_axis_aligned). Footprint sweeps and map edits share it."""
+    poly = np.asarray(poly, dtype=np.float64)
+    res, ox, oy = grid.meta.resolution, grid.meta.origin_x, grid.meta.origin_y
+    c0 = max(0, int(math.floor((poly[:, 0].min() - ox) / res)))
+    c1 = min(grid.width - 1, int(math.floor((poly[:, 0].max() - ox) / res)))
+    r0 = max(0, int(math.floor((poly[:, 1].min() - oy) / res)))
+    r1 = min(grid.height - 1, int(math.floor((poly[:, 1].max() - oy) / res)))
+    if c1 < c0 or r1 < r0:
+        return
+    cols = np.arange(c0, c1 + 1)
+    rows = np.arange(r0, r1 + 1)
+    px = ox + (cols + 0.5) * res
+    py = oy + (rows + 0.5) * res
+    X, Y = np.meshgrid(px, py)  # [rows, cols]
+    inside = np.zeros(X.shape, dtype=bool)
+    n = len(poly)
+    for i in range(n):  # even-odd crossing test, vectorised over the bbox
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        crosses = (y1 > Y) != (y2 > Y)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            xint = x1 + (Y - y1) * (x2 - x1) / (y2 - y1)
+        inside ^= crosses & (X < xint)
+    mask[r0 : r1 + 1, c0 : c1 + 1] |= inside
+
+
+def mask_misalignment(grid: Grid, mask: Grid) -> str | None:
+    """None if `mask` (a keepout or dynamic-area grid) indexes the same cells as the map, else
+    what differs. A misaligned mask must never be indexed with the map's cell coordinates."""
+    a, b = grid.meta, mask.meta
+    if mask.data.shape != grid.data.shape:
+        return f"shape {mask.data.shape} != map {grid.data.shape}"
+    if abs(a.resolution - b.resolution) > 1e-9:
+        return f"resolution {b.resolution} != map {a.resolution}"
+    if abs(a.origin_x - b.origin_x) > 1e-6 or abs(a.origin_y - b.origin_y) > 1e-6:
+        return f"origin ({b.origin_x}, {b.origin_y}) != map ({a.origin_x}, {a.origin_y})"
+    if abs(a.origin_yaw - b.origin_yaw) > YAW_TOL_RAD:
+        return f"origin yaw {b.origin_yaw} != map {a.origin_yaw}"
+    return None
+
+
 def from_occupancy_grid_msg(msg) -> Grid:
     """nav_msgs/OccupancyGrid -> Grid (row 0 = bottom, as in the message)."""
     data = np.asarray(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width)

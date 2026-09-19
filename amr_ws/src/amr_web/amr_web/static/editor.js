@@ -139,6 +139,9 @@ function stepSpeed(i) {
   return (l.long_linear_mps != null && stepLength(i) > (l.long_min_length_m ?? 4.0)) ? l.long_linear_mps : l.linear_mps;
 }
 const boosted = i => route.limits.long_linear_mps != null && stepSpeed(i) === route.limits.long_linear_mps;
+// Steps an ERROR issue names are drawn red; `info` issues (a sweep crossing mapped cells in a
+// dynamic area: passable only if the live scan agrees) never fail validation.
+const badSteps = () => new Set((lastResult && lastResult.issues || []).filter(i => i.severity !== 'info').map(i => i.step_id));
 
 function payload() {
   return { schema_version: 1, route_id: $('ed-route-id').value.trim(), revision: 0,
@@ -171,7 +174,9 @@ $('btn-mission').onclick = async () => {
 function showResult(d) {
   if (!d) { $('ed-result').innerHTML = '<div class="none">not validated since the last edit</div>'; return; }
   const parts = [];
-  parts.push(`<div class="chips" style="margin-bottom:8px"><span class="chip ${d.ok ? 'ok' : 'bad'}">${d.ok ? 'valid' : 'invalid'}</span></div>`);
+  const prov = (d.issues || []).filter(i => i.code === 'provisional').length;
+  parts.push(`<div class="chips" style="margin-bottom:8px"><span class="chip ${d.ok ? 'ok' : 'bad'}">${d.ok ? 'valid' : 'invalid'}</span>` +
+    (prov ? `<span class="chip warn" title="crosses mapped objects in dynamic areas: a scan return there stops the run">${prov} provisional</span>` : '') + '</div>');
   if (d.compiled) {
     const fast = d.compiled.steps.filter(s => s.type === 'straight' && s.v_mps != null && s.v_mps > route.limits.linear_mps);
     parts.push(`<div class="tel-grid">${[['Length', num(d.compiled.total_length_m, 2), 'm'], ['Turns', num(d.compiled.total_turn_deg, 0), '°'],
@@ -179,13 +184,13 @@ function showResult(d) {
       .map(([l, v, u]) => `<div class="tel"><span>${l}</span><b>${esc(v)}</b><i>${u}</i></div>`).join('')}</div>`);
   }
   if (d.issues && d.issues.length) {
-    parts.push(`<div class="al-log" style="margin-top:8px">${d.issues.map(i => `<div class="al-row standing lv-error"><span class="al-lv">${esc(i.step_id || i.code || 'route')}</span>` +
+    parts.push(`<div class="al-log" style="margin-top:8px">${d.issues.map(i => `<div class="al-row standing ${i.severity === 'info' ? 'lv-warn' : 'lv-error'}"><span class="al-lv">${esc(i.step_id || i.code || 'route')}</span>` +
       `<span class="al-msg">${esc(i.message)}</span></div>`).join('')}</div>`);
   }
   $('ed-result').innerHTML = parts.join('');
 }
 function refresh() {
-  const bad = new Set((lastResult && lastResult.issues || []).map(i => i.step_id));
+  const bad = badSteps();
   if (!lastResult) showResult(null);
   view._linePreview = null;  // the route changed: a preview made for the old end pose is void
   $('ed-steps').innerHTML = route.steps.length ? route.steps.map((s, i) => `<div class="row three${bad.has(s.id) ? ' lv-error' : ''}"><span class="k">${esc(s.id)}</span>` +
@@ -244,7 +249,7 @@ function hull(pts) { // Andrew monotone chain
 }
 view.overlays.push((c, v) => {
   if (!route.start) { if (v._preview) v.arrow(v._preview.x, v._preview.y, v._preview.yaw, 1.0, INK.preview); return; }
-  const bad = new Set((lastResult && lastResult.issues || []).map(i => i.step_id));
+  const bad = badSteps();
   let p = poseAfter(0);
   // What validation actually checks (footprint + margin): the standing footprint at the start,
   // the swept box of every straight, the swept hull of every turn. Faint, under the route;

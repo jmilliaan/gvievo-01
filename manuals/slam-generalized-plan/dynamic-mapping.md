@@ -1,5 +1,34 @@
 # Coding plan: dynamic objects on the factory floor (dynamic-mapping)
 
+> **Status 2026-09-19:** Increment 1 is implemented but not yet vehicle-verified.
+> Increments 2–4 are open. Before implementing, the plan was checked against the
+> code, and these points were changed:
+> - **AMCL and `/map`:** one `map_server` feeds AMCL, the web live view and the
+>   localisation monitor, so §1.2's "point map_server at the derived map" and
+>   "/map stays the reviewed map" contradict each other. Now a second
+>   `map_server_loc` serves the blanked map on `/map_loc`, and AMCL is remapped
+>   to it. This is opt-in (`blank_dynamic` launch arg, `AMR_LOC_BLANK_DYNAMIC`,
+>   default false) until the Increment 4 comparison.
+> - **Localisation monitor:** it has no `_load_grid`; it takes the grid from
+>   `/map`. The launch passes `dynamic_yaml`, and the monitor checks alignment.
+> - **Package layering:** `amr_maps` cannot import `amr_navigation.footprint`.
+>   `rasterize_polygon` moved to `amr_maps.grid` (footprint imports it from
+>   there), and `keepout_misalignment` became `grid.mask_misalignment`. The CLI
+>   lives in `amr_mission` (`ros2 run amr_mission map_edit`) because it needs
+>   `map_bundle`.
+> - **Executor:** the obstruction rule changed after this plan was written
+>   (`obstacle_map_tol_m`, 2026-09-18). Dynamic areas are removed from the
+>   "explained by the map" mask (`explained_by_map`); the load call is now
+>   around line 371, not 342.
+> - **Edit format:** `derive_edit(maps_dir, map_id, rev, ops, note)`. Dynamic
+>   polygons are ops (`dynamic` / `undynamic`) in the same ordered list as the
+>   paint ops. The child inherits the parent's mask, and `edits.json` is never
+>   inherited.
+> - **Review UI:** it uses dragged rectangles (the operator's request) instead
+>   of free polygons. The format still takes polygons.
+> - **`Issue.severity`** is new (`error` / `info`); `Validation.ok` counts
+>   errors only.
+
 Trolleys, forklifts and other AMRs occupy floor space for hours or days and then
 move. The survey cannot be done on an empty floor, so the saved map contains
 them, and on later runs some are gone, some are new. Today that breaks the stack

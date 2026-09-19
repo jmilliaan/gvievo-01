@@ -137,6 +137,66 @@ the survey again (a fresh slam_toolbox is launched). SLAM and AMCL read
 `/scan_gated` (scan_gate_node), which releases each scan only once its odometry
 transform exists, to keep them off the tf2 code path that hung on 2026-09-17.
 
+### A2. Trolleys and other temporary objects (`Maps` → **Edit areas**)
+
+The survey cannot wait for an empty floor, so a saved map contains trolleys,
+parked forklifts and pallets that later move. Without a mark, the map treats
+them as walls. A route through a spot where a trolley stood is refused, and a
+scan return from a trolley that is still there counts as the map, not as an
+obstacle. Mark such places as **dynamic areas** (2026-09-19, dynamic-mapping
+plan Increment 1). Nothing on this page moves the vehicle, and the mode can
+stay `IDLE`.
+
+1. On **Maps**, press **Edit areas** on the revision. The Review page opens
+   with that revision. Areas already marked are drawn with yellow hatching.
+2. Pick a tool and drag a rectangle with the left mouse button. Right-drag
+   pans the map.
+   - **Dynamic area**: the scan here may change. Draw it around the object
+     with some floor, not over walls or racks.
+   - **Clear dynamic**: removes the mark.
+   - **Erase to unknown**: safe erase. Unknown cells still block routes unless
+     they lie inside a dynamic area.
+   - **Paint free**: you state that this is open floor (the object is gone for
+     good). Use it rarely.
+   Each rectangle is one edit. Edits apply in order, so a later one wins where
+   rectangles overlap. Undo, Redo and × remove edits.
+3. Add a note and press **Save as new revision**. The robot writes `rev N+1`.
+   The files `map.pgm`, `dynamic.pgm`/`.yaml` and `edits.json` (the parent and
+   the edits) are listed and hashed like every bundle file. The old revision
+   is not changed.
+4. Routes are saved per revision. On **Routes**, select the new revision, load
+   each route, **Validate**, **Save revision**, and create a new mission. On
+   **Run**, select the new revision.
+
+What a dynamic area does:
+
+- **Validation**: mapped occupied or unknown cells inside a dynamic area do not
+  block a route. The result shows a yellow **provisional** line for the step
+  ("passable only if the live scan agrees"). Keepout still blocks, and cells
+  outside the mark still block.
+- **During a run**: any scan return inside a dynamic area, within the step's
+  envelope, counts as an obstacle, even where the map shows a trolley. A
+  trolley that is still there therefore stops the run (**BLOCKED**). Move it,
+  then press Start.
+- **Localisation monitor**: beams that end in a dynamic area, or where the map
+  expects a wall inside one, are left out of the scan match.
+- **AMCL** by default still localises against the full map. With
+  `AMR_LOC_BLANK_DYNAMIC=true` in `amr.env`, it uses a copy with the dynamic
+  areas set to unknown, served on `/map_loc`. The web view keeps showing
+  `/map`. Leave it `false` until AMCL covariance and scan match have been
+  compared on the same route with both settings on a trolley-heavy map. The
+  navigation layer refuses to start if fewer than 500 occupied cells remain
+  outside the dynamic areas.
+- The rear blind spot is unchanged: a dynamic area behind the vehicle is not
+  seen during a reverse.
+
+From the shell (same result as the page):
+
+```bash
+ros2 run amr_mission map_edit --map tool-center-00 --rev 1 \
+    --dynamic-rect 4.0 -1.5 6.5 -0.4 --note "trolley bay by rack C"
+```
+
 ### B. Draw a route (`Routes` page)
 
 The route editor moves nothing. The mode can stay `IDLE`.

@@ -660,3 +660,82 @@ def test_arc_step_bounds_geometry_and_speed():
         assert m[r_, c_]
     assert not fpmod.arc_outside(g, fp, st.centre, st.radius_m, st.start[2], st.signed_angle_rad)
     assert fpmod.arc_outside(g, fp, (2.5, 1.0), 1.0, 0.0, math.pi / 2)  # runs off the +x edge
+
+
+# ---- dynamic-mapping plan §1.2/§1.3: mapped clutter in a dynamic area is provisional -----------
+
+
+def _trolley(g, x=8.0, y=0.0, half=3):
+    r, c = g.world_to_cell(x, y)
+    g.data[r - half : r + half, c - half : c + half] = 100
+    return r, c
+
+
+def _dynamic_around(g, r, c, half=6):
+    d = Grid(np.zeros(g.data.shape, dtype=np.int8), g.meta)
+    d.data[r - half : r + half, c - half : c + half] = 100
+    return d
+
+
+def test_mapped_trolley_in_a_dynamic_area_validates_with_one_info_issue():
+    g = build()
+    r, c = _trolley(g)
+    rt = route([straight("s1", 12.0, 0.0)])
+    blocked = validate(rt, Manifest, g, FP)
+    assert not blocked.ok and any(i.step_id == "s1" and "occupied" in i.message for i in blocked.issues)
+    v = validate(rt, Manifest, g, FP, dynamic=_dynamic_around(g, r, c))
+    assert v.ok, [i.to_dict() for i in v.issues]
+    assert [(i.code, i.step_id, i.severity) for i in v.issues] == [("provisional", "s1", "info")]
+    assert "dynamic area" in v.issues[0].message and v.issues[0].to_dict()["severity"] == "info"
+
+
+def test_dynamic_area_elsewhere_does_not_help_and_keepout_still_blocks():
+    g = build()
+    _trolley(g)
+    r2, c2 = g.world_to_cell(2.0, -6.0)  # far from the line
+    assert not validate(
+        route([straight("s1", 12.0, 0.0)]), Manifest, g, FP, dynamic=_dynamic_around(g, r2, c2)
+    ).ok
+    g2 = build()
+    r, c = g2.world_to_cell(6.0, 0.0)
+    ko = Grid(np.zeros(g2.data.shape, dtype=np.int8), g2.meta)
+    ko.data[r - 2 : r + 2, c - 2 : c + 2] = 100
+    v = validate(
+        route([straight("s1", 12.0, 0.0)]), Manifest, g2, FP, keepout=ko, dynamic=_dynamic_around(g2, r, c)
+    )
+    assert not v.ok and any("keepout" in i.message for i in v.issues)
+
+
+def test_unknown_inside_a_dynamic_area_is_provisional_outside_it_blocks():
+    g = build()
+    r, c = g.world_to_cell(8.0, 0.0)
+    g.data[r - 3 : r + 3, c - 3 : c + 3] = -1  # the floor a trolley hid during the survey
+    rt = route([straight("s1", 12.0, 0.0)])
+    assert any("unknown" in i.message for i in validate(rt, Manifest, g, FP).issues)
+    v = validate(rt, Manifest, g, FP, dynamic=_dynamic_around(g, r, c))
+    assert v.ok and v.issues[0].code == "provisional"
+
+
+def test_dynamic_area_only_partly_covering_the_trolley_still_blocks():
+    g = build()
+    r, c = _trolley(g, half=4)
+    v = validate(
+        route([straight("s1", 12.0, 0.0)]), Manifest, g, FP, dynamic=_dynamic_around(g, r, c, half=2)
+    )
+    assert not v.ok  # the cells outside the mark are ordinary occupied cells
+
+
+def test_misaligned_dynamic_mask_is_an_error_and_never_indexed():
+    g = small_grid()
+    d = Grid(np.zeros((3, 3), dtype=np.int8), g.meta)
+    v = validate(route([straight("s1", 0.5, 0.0)], start=(-0.5, 0.0, 0.0)), Manifest, g, FP, dynamic=d)
+    assert not v.ok and any(i.code == "dynamic" and "aligned" in i.message for i in v.issues)
+
+
+def test_rotation_and_arc_sweeps_honour_the_dynamic_area():
+    g = build()
+    r, c = _trolley(g, x=5.0, y=0.9, half=2)  # beside the turn at x = 5
+    rt = route([straight("s1", 5.0, 0.0), rotate("s2", "ccw", 90)])
+    assert not validate(rt, Manifest, g, FP).ok
+    v = validate(rt, Manifest, g, FP, dynamic=_dynamic_around(g, r, c, half=4))
+    assert v.ok and [i.step_id for i in v.issues if i.code == "provisional"] == ["s2"]
