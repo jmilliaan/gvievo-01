@@ -87,9 +87,10 @@ Stop and report at each gate.
 1. **Inspect the tree.**
    ```bash
    cd ~/agv_can && git status --short && git log --oneline -3
-   git ls-files --eol | grep -E 'w/(crlf|mixed)' || echo "no CRLF"
+   git ls-files --eol | grep -E 'w/(crlf|mixed)' || echo "no tracked CRLF"
+   git ls-files --others --exclude-standard | xargs -r file | grep CRLF || echo "no untracked CRLF"
    ```
-   Fix CRLF with `git add --renormalize .` (no commit). The new files show as untracked (`??`): check that the seven listed above are present.
+   Fix tracked CRLF with `git add --renormalize .` (no commit) and untracked files with `sed -i 's/\r$//' <file>`. The new files show as untracked (`??`): check that the seven listed above are present.
 2. **Legacy suite:** `python3 tests/run_all.py`. Expected: `869 check(s)`, all passed. The root tests are unchanged by Phase A.
 3. **Build:**
    ```bash
@@ -107,7 +108,7 @@ Stop and report at each gate.
    - `test_route_executor_logic.py`: `test_explained_by_map…`, `test_obstruction_blocks_on_a_mapped_trolley…`.
 5. **Offline CLI check** against a **copy** of the real maps, never `~/amr_maps` itself:
    ```bash
-   cp -r ~/amr_maps /tmp/maps_copy && ls /tmp/maps_copy
+   rm -rf /tmp/maps_copy && cp -r ~/amr_maps /tmp/maps_copy && ls /tmp/maps_copy
    ros2 run amr_mission map_edit --maps-dir /tmp/maps_copy --map <an id> --rev <its latest> --dynamic-rect <x0 y0 x1 y1 inside the map> --note test
    ```
    Expected: a new `rev N+1` with `dynamic.pgm`, `dynamic.yaml` and `edits.json`, and the parent unchanged.
