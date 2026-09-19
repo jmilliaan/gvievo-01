@@ -37,6 +37,7 @@ def _node(dt=0.02):
     n.get_logger = lambda: _Logger()
     n.get_clock = lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: Time()))
     n._pub = SimpleNamespace(publish=lambda _m: None)
+    n.survey_w_max, n._surveying = 0.27, False
     return n
 
 
@@ -73,3 +74,22 @@ def test_loss_of_authority_zeroes_speed_and_acceleration_state():
     assert n._v > 0.0 and n._a > 0.0
     _run(n, gating.Selection(gating.NONE, 0.0, 0.0, "MANUAL, no fresh command", 0, True), 1)
     assert (n._v, n._a, n._out) == (0.0, 0.0, (0.0, 0.0))
+
+
+def test_manual_spin_is_capped_while_surveying():
+    from amr_interfaces.msg import ModeState
+
+    assert gating.survey_spin_cap(0.39, True, 0.27) == 0.27
+    assert gating.survey_spin_cap(-0.39, True, 0.27) == -0.27
+    assert gating.survey_spin_cap(0.39, False, 0.27) == 0.39
+    assert gating.survey_spin_cap(0.2, True, 0.27) == 0.2  # arcs / diagonals unchanged
+    n = _node()
+    n._on_mode(ModeState(mode=ModeState.MAPPING))
+    assert n._surveying
+    for _ in range(300):  # 6 s: long enough to reach any target
+        _run(n, gating.Selection(gating.PENDANT, 0.0, 0.39, "pendant", 0), 1)
+    assert n._wz == pytest.approx(0.27)
+    n._on_mode(ModeState(mode=ModeState.IDLE))
+    for _ in range(300):
+        _run(n, gating.Selection(gating.PENDANT, 0.0, 0.39, "pendant", 0), 1)
+    assert n._wz == pytest.approx(0.39)

@@ -53,6 +53,16 @@ def _compose(context):
         ),
         "mapping_session",
     )
+    # preset survey moves (press once, MANUAL authority): only exists while surveying. NOT
+    # required: a helper that dies stops its move (0.2 s command lifetime) but not the survey
+    actions.append(
+        Node(
+            package="amr_mission",
+            executable="survey_move_node",
+            name="survey_move",
+            output="screen",
+        )
+    )
     return actions
 
 

@@ -15,8 +15,9 @@ function el(id, tag) {
 ['ed-canvas', 'tool-start', 'tool-line', 'btn-start-survey', 'btn-undo', 'btn-redo', 'btn-clear', 'btn-validate', 'btn-save',
  'btn-mission', 'ed-steps', 'ed-result', 'ed-hint', 'ed-route-id', 'ed-load', 'ed-map'].forEach(id => el(id));
 el('ed-repeat', 'INPUT').value = '1';
-el('ed-speed', 'INPUT').value = '0.50';   // a NUMBER input, as in editor.html (not a <select>)
-el('ed-speed-long', 'INPUT').value = '0.70'; el('ed-long-min', 'INPUT').value = '4';
+el('ed-speed', 'INPUT').value = '0.55';   // a NUMBER input, as in editor.html (not a <select>)
+el('ed-speed-long', 'INPUT').value = '0.85'; el('ed-long-min', 'INPUT').value = '4';
+el('ed-speed-arc', 'INPUT').value = '0.40';
 // the typed straight length: a number input read through valueAsNumber (NaN when empty), as in the browser
 Object.defineProperty(el('ed-len', 'INPUT'), 'valueAsNumber', { get() { return this.value === '' ? NaN : Number(this.value); } });
 el('btn-line-len', 'BUTTON'); el('btn-reverse-len', 'BUTTON'); el('btn-arc-l', 'BUTTON'); el('btn-arc-r', 'BUTTON');
@@ -48,13 +49,15 @@ const flush = () => new Promise(r => setImmediate(r));
   for (let i = 0; i < 5; i++) await flush();
   out.new_draft_speed = els['ed-speed'].value;                       // refresh() ran on the new draft: 0.50, no TypeError
   out.new_draft_long = [els['ed-speed-long'].value, els['ed-long-min'].value];
+  out.new_draft_arc = els['ed-speed-arc'].value;
   // load a saved route with 0.3: shown as 0.3, model untouched
   scripted['/api/maps/m1/1/routes/slow/1'] = () => ({ status: 200, data: { ok: true, route: { route_id: 'slow', start: { x_m: 0, y_m: 0, yaw_deg: 0 }, steps: [], repeat_count: 1, limits: { linear_mps: 0.3 } }, issues: [] } });
   els['ed-load'].value = 'slow/1';
   await els['ed-load'].onchange({ target: els['ed-load'] });
   for (let i = 0; i < 3; i++) await flush();
   out.loaded_speed_shown = els['ed-speed'].value;
-  out.loaded_long_shown = els['ed-speed-long'].value;                // no long_linear_mps in the file: shown EMPTY, not 0.70
+  out.loaded_long_shown = els['ed-speed-long'].value;                // no long_linear_mps in the file: shown EMPTY, not 0.85
+  out.loaded_arc_shown = els['ed-speed-arc'].value;                  // no arc_linear_mps in the file: the 0.40 default, not written
   // a save carries the loaded value, not the default
   scripted['/api/maps/m1/1/routes/save'] = body => { out.saved_limits = body.limits; return { status: 200, data: { route_id: 'slow', revision: 2, sha256: 'abcdef123456' } }; };
   await els['btn-save'].onclick();

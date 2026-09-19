@@ -37,6 +37,7 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     ManualCommand,
+    ModeState,
     MotionPermit,
     MuxState,
     PanelState,
@@ -47,6 +48,11 @@ RELIABLE_1 = QoSProfile(
     depth=1,
     reliability=QoSReliabilityPolicy.RELIABLE,
     durability=QoSDurabilityPolicy.VOLATILE,
+)
+LATCHED = QoSProfile(
+    depth=1,
+    reliability=QoSReliabilityPolicy.RELIABLE,
+    durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
 )
 
 WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
@@ -84,8 +90,11 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
         self.declare_parameter("pendant_v_m_s", 0.50)
-        self.declare_parameter("pendant_w_rad_s", 0.30)  # spin in place, unchanged
+        self.declare_parameter("pendant_w_rad_s", 0.39)  # spin in place (0.30 until 2026-09-19, +30 %)
         self.declare_parameter("pendant_turn_ratio", 0.75)  # slow wheel / fast wheel while driving + turning
+        # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
+        # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
+        self.declare_parameter("survey_w_max_rad_s", 0.27)
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
 
@@ -120,6 +129,8 @@ class CmdMuxKinematics(Node):
             track_m=float(p("track_width_m").value),
         )
         self.dt = 1.0 / p("rate_hz").value
+        self.survey_w_max = max(0.0, float(p("survey_w_max_rad_s").value))
+        self._surveying = False  # the supervisor's last /amr/mode_state said MAPPING
 
         self._teleop: gating.Stamped | None = None
         self._follow: gating.Stamped | None = None
@@ -148,6 +159,7 @@ class CmdMuxKinematics(Node):
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ManualCommand, "/amr/manual_command", self._on_manual, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
+        self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
         self.create_subscription(
             WheelVelocities, "/amr/commissioning_wheels", self._on_commissioning, RELIABLE_1
         )
@@ -260,6 +272,14 @@ class CmdMuxKinematics(Node):
             ),
         ]
 
+    def _on_mode(self, msg: ModeState) -> None:
+        surveying = msg.mode == ModeState.MAPPING
+        if surveying != self._surveying:
+            self.get_logger().info(
+                f"survey spin cap {self.survey_w_max:.2f} rad/s: {'on' if surveying else 'off'}"
+            )
+        self._surveying = surveying
+
     def _tick(self) -> None:
         sel = gating.select(
             self._now(),
@@ -299,7 +319,7 @@ class CmdMuxKinematics(Node):
             self._wz, self._alpha = scurve(
                 self._wz,
                 self._alpha,
-                sel.w,
+                gating.survey_spin_cap(sel.w, self._surveying, self.survey_w_max),
                 self.manual_alpha_max,
                 self.delta_max,
                 self.manual_jerk_w,

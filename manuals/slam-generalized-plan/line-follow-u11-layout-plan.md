@@ -94,6 +94,15 @@
     vehicle between an NMT start addressed to node 10 only (as `read_mls stream`
     did) and SDO polling of the LCP objects. Record the answer in the doc.
   - Gyro TPDO `1806h` plus track TPDO1 is 2 of the MLS's 4 TPDO slots: OK.
+- **Vehicle result 2026-09-19 (Gate B1), no NMT sent:**
+  - there are no `0x18A` frames and no node-10 heartbeat, so the MLS is in
+    Pre-operational;
+  - `drive_node` (`mls_track_mode: auto`) fell back to SDO polling:
+    `/amr/line_track` runs at 9.8 Hz and `mls/track` shows on Monitor;
+  - with two tapes under the sensor it reads LCP1 −61 mm, LCP2 +33 mm, `#LCP 3`
+    (diverter, LCP1+LCP2), line good, level 7, north.
+  - **Open decision (operator):** NMT start for node 10 only (TPDO1 at control
+    rate, needed by the line follower), or stay on SDO (Monitor only).
 
 ### 1.2 Controller (pure)
 - **New `amr_base/amr_base/line_follow.py`**, ported from the old

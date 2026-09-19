@@ -108,5 +108,21 @@ const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh'
   pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
   out.refreshes_after_focus_while_pending = nonzeroRefreshes();
   doc.activeElement = null;
+  // 7. 2026-09-19 speeds: at 0.40 a diagonal keeps the fast wheel at 0.40 and the slow one at
+  //    75 % of it; a spin runs at 0.39 rad/s (+30 %); straight ahead is the selection itself
+  root.querySelector('.jog-speed').value = '0.4';
+  const holdBody = async (btn) => {
+    calls.length = 0;
+    btn.fire('pointerdown');
+    pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(2);
+    const refs = calls.filter(c => c.url === '/api/manual/refresh' && (c.body.v !== 0 || c.body.w !== 0));
+    btn.fire('pointerup'); await flush(); await runTimers(1);
+    return refs.length ? refs[refs.length - 1].body : null;
+  };
+  out.speed_fr = await holdBody(root.buttons[2]);
+  out.speed_r = await holdBody(root.buttons[5]);
+  out.speed_f = await holdBody(root.buttons[1]);
+  root.querySelector('.jog-speed').value = '0.1';
+  out.speed_l_slow = await holdBody(root.buttons[3]);
   console.log(JSON.stringify(out));
 })();

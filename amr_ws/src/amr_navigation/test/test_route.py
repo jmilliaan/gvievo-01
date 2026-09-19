@@ -514,17 +514,17 @@ def test_r23_existing_revision_is_never_replaced(tmp_path):
     assert b"other" not in open(path, "rb").read()
 
 
-# ---- autonomous defaults 0.50 / 0.34 (2026-09-18) ----
+# ---- autonomous defaults 0.55 / 0.37 / arcs 0.40 (2026-09-19) ----
 
 
-def test_limits_default_to_050_and_034_and_explicit_values_survive():
+def test_limits_default_to_055_and_037_and_explicit_values_survive():
     d = good_dict()
     del d["limits"]
     r = Route.from_dict(d)
-    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.50, 0.34)
+    assert (r.limits.linear_mps, r.limits.angular_rad_s, r.limits.arc_linear_mps) == (0.55, 0.37, 0.40)
     assert r.limits.long_linear_mps is None  # no boost unless the file says so
     c = compile_route(r)
-    assert c.steps[1].time_allowance_s > math.radians(270) / 0.34
+    assert c.steps[1].time_allowance_s > math.radians(270) / 0.37
     d = good_dict()
     d["limits"] = {"linear_mps": 0.15, "angular_rad_s": 0.10}
     r = Route.from_dict(d)
@@ -535,12 +535,22 @@ def test_limits_default_to_050_and_034_and_explicit_values_survive():
 
 def test_vehicle_ceilings_and_long_straight_boost():
     from amr_navigation.compiler import step_speed
-    from amr_navigation.route import VEHICLE_V_MAX, VEHICLE_W_MAX
+    from amr_navigation.route import BASE_V_MAX, VEHICLE_V_MAX, VEHICLE_W_MAX
 
     # linear above the vehicle ceiling is refused; angular above it is CLAMPED (old files carry 0.30)
     d = good_dict()
     d["limits"] = {"linear_mps": VEHICLE_V_MAX + 0.01}
     with pytest.raises(RouteError, match="linear_mps"):
+        Route.from_dict(d)
+    # the BASE speed is bounded lower than the ceiling: only the boost goes near 0.85 (2026-09-19)
+    assert (BASE_V_MAX, VEHICLE_V_MAX, VEHICLE_W_MAX) == (0.60, 0.85, 0.37)
+    d["limits"] = {"linear_mps": 0.61}
+    with pytest.raises(RouteError, match="linear_mps"):
+        Route.from_dict(d)
+    d["limits"] = {"linear_mps": 0.60, "long_linear_mps": 0.85, "arc_linear_mps": 0.60}
+    Route.from_dict(d)
+    d["limits"] = {"arc_linear_mps": 0.61}
+    with pytest.raises(RouteError, match="arc_linear_mps"):
         Route.from_dict(d)
     d["limits"] = {"long_linear_mps": VEHICLE_V_MAX + 0.01}
     with pytest.raises(RouteError, match="long_linear_mps"):
@@ -631,12 +641,18 @@ def test_arc_step_bounds_geometry_and_speed():
     mid = st.samples[len(st.samples) // 2]
     assert math.hypot(mid[0] - 0.0, mid[1] - 1.0) == pytest.approx(1.0) and 0 < mid[2] < math.pi / 2
     assert c.total_turn_rad == pytest.approx(math.pi / 2) and c.total_length_m == pytest.approx(math.pi / 2)
-    # speed: 60 % of the BASE cap (0.30 at 0.50, never the boost), or less where v/R would pass
-    # 90 % of the turn cap (R 0.5 would ask 0.153)
-    assert st.v_mps == pytest.approx(0.6 * 0.5) and st.v_mps == arc_speed(r.limits, 1.0)
-    assert arc_speed(r.limits, 5.0) == pytest.approx(0.30) and arc_speed(r.limits, 0.5) == pytest.approx(
-        0.153
+    # speed (2026-09-19): arc_linear_mps (0.40), never the boost, never above linear_mps, or less
+    # where v/R would pass 90 % of the ARC turn ceiling 0.45 (R 0.5 would ask 0.2025)
+    assert r.limits.arc_linear_mps == 0.40
+    assert st.v_mps == pytest.approx(0.40) and st.v_mps == arc_speed(r.limits, 1.0)
+    assert arc_speed(r.limits, 5.0) == pytest.approx(0.40) and arc_speed(r.limits, 0.5) == pytest.approx(
+        0.2025
     )
+    from amr_navigation.route import Limits
+
+    slow = Limits(linear_mps=0.30)  # a slow route: the arc never outruns its straights
+    assert arc_speed(slow, 3.0) == pytest.approx(0.30)
+    assert Limits(linear_mps=0.30).arc_linear_mps == 0.40  # stored as is, applied as the lower
     # cw mirrors; 180 deg ends across the diameter
     d["steps"] = [{**arc, "direction": "cw", "angle_deg": 180}]
     st = compile_route(Route.from_dict(d)).steps[0]

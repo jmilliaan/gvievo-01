@@ -750,6 +750,12 @@ class DemoAdapter:
                 self._event(0, "supervisor", "MODE_CHANGE", "IDLE")
             return True, self._op("mode"), "accepted"
 
+    def survey_move(self, kind, value):
+        return False, "demo: no vehicle to move"
+
+    def survey_move_stop(self):
+        return False, "no move running"
+
     def survey_request(self, operation, map_id, description, request_id):
         with self.lock:
             name = {0: "start", 1: "returned", 2: "save", 3: "abort"}[operation]

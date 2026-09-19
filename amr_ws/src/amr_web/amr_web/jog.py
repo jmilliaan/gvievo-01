@@ -16,7 +16,8 @@ Rules the tests pin:
   * after the ticket deadline (server monotonic clock) nothing revives the
     session; a new press is required. Only the remaining lifetime travels
     into the ROS command (valid_for_s), never a fresh 0.2 s per late arrival;
-  * limits are the survey caps (0.30 m/s, 0.30 rad/s), not the vehicle's.
+  * limits are the manual jog caps (0.40 m/s, 0.39 rad/s since 2026-09-19; 0.30/0.30
+    before), survey included, not the vehicle's.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import math
 import secrets
 from dataclasses import dataclass
 
-V_MAX, W_MAX = 0.30, 0.30
+V_MAX, W_MAX = 0.40, 0.39
 TICKET_S = 1.0  # a refresh must arrive within this; the browser sends every 0.1 s. Wider than
 # CMD_S on purpose: the ROBOT stops 0.2 s after the last refresh regardless; this only decides
 # whether a still-held button may resume after a link hiccup without a new press. At 0.25 s a

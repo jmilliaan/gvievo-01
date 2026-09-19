@@ -1,5 +1,6 @@
 // Run page: localisation state + initial pose tool, mission load and the coordinator
 // controls. Motion itself is authorised only by the physical panel.
+const HOLD_NAMES = { field: 'lidar stop', estop: 'E-stop', obstacle: 'obstacle', controller: 'controller stop', pending: 'stopping' };
 const view = new MapView(document.getElementById('run-canvas'));
 const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, footprint = null, preview = null;
@@ -89,7 +90,10 @@ onState(st => {
   const r = st.run;
   if (r) {
     tiles('run-state', [
-      ['State', r.state_name, r.resume_prepared ? 'resume prepared' : '—', RUN_LEVEL[r.state_name], 'key'],
+      // a BLOCKED run is a hold with a cause (auto-resume plan 2026-09-19): say whether it continues by itself
+      ['State', r.state_name, r.resume_prepared ? 'resume prepared'
+        : (r.state_name === 'BLOCKED' && r.hold_cause ? `${HOLD_NAMES[r.hold_cause] || r.hold_cause} · ${r.auto_resume ? 'resumes by itself' : 'press Start'}` : '—'),
+        RUN_LEVEL[r.state_name], 'key'],
       ['Run', r.run_id || '—', r.mission_id || '—'],
       ['Step', r.step_id ? `${r.step_index} ${r.step_id}` : String(r.step_index), r.step_type && r.step_type !== 'rotate' && r.step_v_mps > 0 ? `${r.step_type} ${num(r.step_v_mps, 2)} m/s` : (r.step_type || '—')],
       ['Cross-track', num(r.cross_track_m, 3), 'm'],

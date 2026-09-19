@@ -37,9 +37,12 @@ MODULES = [
     "test_blindrun",
     "test_web",
     "test_layout",
+    "test_mls",
 ]
 
-EXPECTED_CHECKS = 869
+# 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
+# (line-follow plan §1.1). Nothing removed or moved.
+EXPECTED_CHECKS = 893
 
 
 # An exception on a helper thread only prints a traceback by default - the

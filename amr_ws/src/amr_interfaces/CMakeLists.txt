@@ -28,6 +28,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CommissioningState.msg"
   "msg/PpMove.msg"
   "msg/PpStatus.msg"
+  "msg/LineTrack.msg"
+  "msg/SurveyMoveState.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"
   "srv/SaveMap.srv"
@@ -37,6 +39,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RequestSurvey.srv"
   "srv/GetOperation.srv"
   "srv/PlanCommissioning.srv"
+  "srv/SurveyMove.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

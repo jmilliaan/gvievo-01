@@ -62,6 +62,9 @@ def make_node(steps, passes=1):
     n._scan = object()
     n._pose = lambda: (0.0, 0.0, 0.0)
     n._obstruction = lambda st, pose: None
+    n.auto_resume_enabled, n.auto_clear_s, n.auto_resume_estop = True, 2.0, False
+    n.safety_window, n.drives_age, n.field_index, n.abort_retries = 1.0, 0.5, 0, 3
+    n._init_hold_state()
     n._reset_step_state()
     n.clear_since = n.clock[0] - 10.0
     n.wheels(0.0, valid=True)
@@ -465,7 +468,8 @@ def test_arc_step_progress_cross_track_path_and_envelope():
     assert (last.position.x, last.position.y) == (pytest.approx(1.0), pytest.approx(1.045))
     yaws = [2 * math.atan2(q.pose.orientation.z, q.pose.orientation.w) for q in p.poses]
     assert yaws == sorted(yaws) and yaws[0] > 0.6  # from ~45 deg up to 90 deg
-    # the permit is a FOLLOW at the arc's capped speed with the route's turn cap
+    # the permit is a FOLLOW at the arc's capped speed with the ARC turn ceiling (2026-09-19):
+    # v/R may reach 0.40 rad/s on the 1 m minimum radius, above the 0.24 spin cap here
     n.generation, n._lease_instance, n._permit_seq = 3, "sup", 0
     published = []
     n._permit_pub = SimpleNamespace(publish=published.append)
@@ -475,7 +479,7 @@ def test_arc_step_progress_cross_track_path_and_envelope():
     m = published[-1]
     assert m.source == MotionPermit.FOLLOW and (m.v_max, m.w_max) == (
         pytest.approx(0.30),
-        pytest.approx(0.24),
+        pytest.approx(ren.VEHICLE_ARC_W_MAX),
     )
 
 
@@ -612,3 +616,61 @@ def test_obstruction_blocks_on_a_mapped_trolley_only_inside_a_dynamic_area():
     n._scan_t += 0.1  # the next scan
     reason = n._obstruction(st, pose)
     assert reason is not None and "inside the straight envelope" in reason and n.clear_since is None
+
+
+def test_speed_boost_2_taper_horizon_and_arc_turn_cap_on_the_lead_in_straight():
+    """2026-09-19: 0.85 boost / 0.55 base / 0.40 arcs; 2 s look-ahead; an arc's chain turns at 0.45."""
+    from amr_navigation.compiler import arc_pose
+
+    assert ren.VEHICLE_ARC_W_MAX == 0.45
+    s1 = CompiledStep(
+        "s1",
+        STRAIGHT,
+        (0.0, 0.0, 0.0),
+        (6.0, 0.0, 0.0),
+        length_m=6.0,
+        samples=[(0.1 * k, 0.0, 0.0) for k in range(61)],
+        v_mps=0.85,
+    )
+    centre, theta = (6.0, 1.0), math.pi / 2
+    arc_samples = [arc_pose(centre, 1.0, 0.0, 1.0, theta * k / 30) for k in range(31)]
+    s2 = CompiledStep(
+        "s2",
+        "arc",
+        (6.0, 0.0, 0.0),
+        arc_samples[-1],
+        length_m=theta,
+        samples=arc_samples,
+        signed_angle_rad=theta,
+        v_mps=0.40,
+        centre=centre,
+        radius_m=1.0,
+    )
+    s3 = CompiledStep("s3", ROTATE, s2.end, s2.end, signed_angle_rad=1.0)
+    n = make_node([s1, s2, s3])
+    _clock_stub(n)
+    n.route.limits.linear_mps, n.route.limits.w_mps = 0.55, 0.37
+    n.stopping_time_s = 2.0  # the node default since 2026-09-19
+    n.fsm.start(True, True)
+    # the ramp-down into the arc starts (0.85^2 - 0.40^2) / 0.8 + 0.85 x 0.3 = 0.96 m before it
+    assert n._taper_dist(0.85, 0.40) == pytest.approx(0.958, abs=1e-3)
+    assert n._taper_dist(0.55, 0.40) == pytest.approx(0.343, abs=1e-3)
+    assert n._step_speed(s1, (4.9, 0.0, 0.0)) == 0.85 and n._step_speed(s1, (5.1, 0.0, 0.0)) == 0.40
+    # look-ahead: 2 s of travel at 0.85 = 1.7 m; the 1.5 m floor at 0.55
+    assert n._horizon(s1) == pytest.approx(1.7)
+    assert n._horizon(CompiledStep("x", STRAIGHT, (0, 0, 0), (1, 0, 0), length_m=1.0, v_mps=0.55)) == 1.5
+    # the straight leading into the arc already carries the arc's turn ceiling (RPP curves early)
+    assert n._step_w_max(s1) == pytest.approx(0.45)
+    n.fsm.step_done()
+    assert n._step_w_max(s2) == pytest.approx(0.45)
+    n.fsm.step_done()
+    assert n._step_w_max(s3) == pytest.approx(0.37)  # a spin keeps the spin cap
+    # a boosted straight with no arc after it keeps the spin cap, and ends at the base speed
+    t1 = CompiledStep("t1", STRAIGHT, (0, 0, 0), (6.0, 0, 0), length_m=6.0, v_mps=0.85)
+    t2 = CompiledStep("t2", ROTATE, (6.0, 0, 0), (6.0, 0, 1.0), signed_angle_rad=1.0)
+    m = make_node([t1, t2])
+    _clock_stub(m)
+    m.route.limits.linear_mps, m.route.limits.w_mps = 0.55, 0.37
+    m.fsm.start(True, True)
+    assert m._step_w_max(t1) == pytest.approx(0.37)
+    assert m._step_speed(t1, (5.5, 0.0, 0.0)) == 0.55  # tapered: RPP's approach starts from the base

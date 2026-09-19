@@ -134,8 +134,9 @@ def _compose(context):
                     "manual_a_max": 0.3,
                     "manual_jerk": 1.0,
                     "pendant_v_m_s": 0.5,
-                    "pendant_w_rad_s": 0.3,
+                    "pendant_w_rad_s": 0.39,
                     "pendant_turn_ratio": 0.75,
+                    "survey_w_max_rad_s": 0.27,  # manual spin cap while surveying (pendant + jog)
                 }
             ],
         ),

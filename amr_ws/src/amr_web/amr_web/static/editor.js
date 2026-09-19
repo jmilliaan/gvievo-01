@@ -2,7 +2,7 @@
 // never pixels. Validation and saving happen on the robot (POST); nothing moves.
 const view = new MapView(document.getElementById('ed-canvas'));
 let mapId = null, mapRev = null, footprint = null, mapsIndex = [];
-const DEFAULT_LIMITS = () => ({ linear_mps: 0.50, long_linear_mps: 0.70, long_min_length_m: 4.0 });
+const DEFAULT_LIMITS = () => ({ linear_mps: 0.55, long_linear_mps: 0.85, long_min_length_m: 4.0, arc_linear_mps: 0.40 });
 let route = { route_id: '', start: null, steps: [], repeat_count: 1, limits: DEFAULT_LIMITS() };
 let history = [], future = [], lastResult = null, savedRef = null;
 const $ = id => document.getElementById(id);
@@ -24,7 +24,10 @@ const mm = m => num(Math.round(m * 1000), 0);
 const MIN_STRAIGHT_M = 0.05;
 const REVERSE_MAX_M = 2.0;  // amr_navigation.route.REVERSE_MAX_M: the rear is outside the scanner's field
 const ARC_MIN_R = 1.0, ARC_MIN_DEG = 45, ARC_MAX_DEG = 180;  // amr_navigation.route ARC_* bounds
-const ARC_SPEED_RATIO = 0.6, ARC_YAW_RATE_RATIO = 0.9, VEHICLE_W_MAX = 0.34;
+// mirrors amr_navigation route.py / compiler.arc_speed (2026-09-19): an arc runs at arc_linear_mps
+// (absent in older files: 0.40), never above linear_mps, and so that v/R <= 0.9 x VEHICLE_ARC_W_MAX
+const ARC_DEFAULT_MPS = 0.40, ARC_YAW_RATE_RATIO = 0.9, VEHICLE_ARC_W_MAX = 0.45;
+const arcCap = () => Math.min(route.limits.arc_linear_mps ?? ARC_DEFAULT_MPS, route.limits.linear_mps);
 // Same construction as compiler.arc_centre / arc_pose: the circle to the left for +1 (ccw).
 function arcCentre(x, y, yaw, r, sign) { return [x - sign * r * Math.sin(yaw), y + sign * r * Math.cos(yaw)]; }
 function arcPose(c, r, yaw0, sign, phi) { const yaw = yaw0 + sign * phi; return { x: c[0] + sign * r * Math.sin(yaw), y: c[1] - sign * r * Math.cos(yaw), yaw }; }
@@ -32,7 +35,7 @@ function arcSamples(a, s, n) {  // poses along step s (an arc) from pose a, n+1 
   const sign = s.direction === 'ccw' ? 1 : -1, c = arcCentre(a.x, a.y, a.yaw, s.radius_m, sign), th = s.angle_deg * Math.PI / 180;
   return Array.from({ length: n + 1 }, (_, k) => arcPose(c, s.radius_m, a.yaw, sign, th * k / n));
 }
-const arcSpeed = r => Math.min(ARC_SPEED_RATIO * route.limits.linear_mps, ARC_YAW_RATE_RATIO * Math.min(route.limits.angular_rad_s ?? VEHICLE_W_MAX, VEHICLE_W_MAX) * r);
+const arcSpeed = r => Math.min(arcCap(), ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * r);
 
 function setTool(t) { view.tool = t; view._linePreview = null; ['tool-start', 'tool-line'].forEach(id => $(id).classList.toggle('on', id === 'tool-' + t)); $('ed-hint').textContent = t === 'start' ? 'Click the start position, drag towards the heading, release.' : t === 'line' ? 'Click a point, or type a length in mm and press Add: the straight goes along the current heading.' : 'Wheel = zoom, drag = pan.'; view.draw(); }
 
@@ -133,6 +136,7 @@ $('ed-speed').onchange = e => { snapshot(); route.limits.linear_mps = +e.target.
 // smuggled into a route that was drawn without one.
 $('ed-speed-long').onchange = e => { snapshot(); route.limits.long_linear_mps = e.target.value === '' ? null : +e.target.value; refresh(); };
 $('ed-long-min').onchange = e => { snapshot(); route.limits.long_min_length_m = +e.target.value; refresh(); };
+$('ed-speed-arc').onchange = e => { snapshot(); route.limits.arc_linear_mps = +e.target.value; refresh(); };
 // The same rule as amr_navigation.compiler.step_speed: strictly LONGER than the threshold.
 function stepSpeed(i) {
   const l = route.limits;
@@ -205,6 +209,7 @@ function refresh() {
   $('ed-speed').value = route.limits.linear_mps;  // a number input: shows the stored value, never rewrites it
   $('ed-speed-long').value = route.limits.long_linear_mps == null ? '' : route.limits.long_linear_mps;  // empty = no boost
   $('ed-long-min').value = route.limits.long_min_length_m ?? 4.0;
+  $('ed-speed-arc').value = route.limits.arc_linear_mps ?? ARC_DEFAULT_MPS;  // shown, not written back unless changed
   view.draw();
 }
 // The areas validation checks (amr_navigation.footprint), drawn from the same polygon + margin.

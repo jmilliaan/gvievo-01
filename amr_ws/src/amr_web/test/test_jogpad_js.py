@@ -29,3 +29,18 @@ def test_jogpad_release_before_press_response_never_refreshes_and_cells_light():
     assert out["refreshes_after_focus_change"] == 0 and out["released_on_focus"], out
     assert not out["press_while_typing"] and out["escape_in_field_stops"], out
     assert out["refreshes_after_focus_while_pending"] == 0, out
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_jogpad_2026_09_19_speeds_diagonal_ratio_and_spin():
+    harness = pathlib.Path(__file__).with_name("jogpad_harness.js")
+    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    track = 0.487
+    fr = out["speed_fr"]  # forward-right at 0.40: fast (left) wheel 0.40, slow (right) 0.30
+    left, right = fr["v"] - fr["w"] * track / 2, fr["v"] + fr["w"] * track / 2
+    assert left == pytest.approx(0.40) and right == pytest.approx(0.30) and fr["w"] < 0
+    assert out["speed_r"]["v"] == 0 and out["speed_r"]["w"] == pytest.approx(-0.39)
+    assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.4), 0)
+    assert out["speed_l_slow"]["w"] == pytest.approx(0.195)  # 1.95 x 0.10: +30 % at every setting

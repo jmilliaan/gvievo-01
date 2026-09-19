@@ -99,8 +99,8 @@ IMU_OFFSET_FROM_LED_MM = (89.1, 2.5, -9.4)
 
 # TPDO slots, as probed on this sensor. The MLS allows at most FOUR TPDOs active
 # at once, and only these COB-ID bases are valid: 0x180, 0x280, 0x380, 0x480,
-# each plus the node id. TPDO1 (0x18A) currently carries track data; retiring
-# tape-following frees that slot.
+# each plus the node id. TPDO1 (0x18A) carries track data and stays: line
+# following is back as an engineering feature (read_mls.py, amr_base/mls_track.py).
 #
 #   1803h TPDO4  Euler         COB-ID 0x48A, DISABLED (raw 0x8000048A)
 #   1804h TPDO5  quaternion    COB-ID 0x000, disabled

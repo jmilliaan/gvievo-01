@@ -152,3 +152,20 @@ def test_invalid_repeat_counts_are_refused():
     m = f.RunFsm()
     assert not m.load("m1", 0) and m.state == f.IDLE
     assert m.load("m1", 3, f.MAX_PASSES)
+
+
+def test_auto_resume_only_from_blocked():
+    m = loaded()
+    m.start(True, True)
+    assert m.block("safety stop: protective field")
+    m.prepare_resume(True, "")
+    assert m.auto_resume("resumed after the protective field cleared")
+    assert m.state == f.EXECUTING and m.step_index == 0 and not m.resume_prepared
+    assert m.pause() and not m.auto_resume("x") and m.state == f.PAUSED  # an operator Pause waits
+    m.abort("x")
+    assert not m.auto_resume("x")
+    m = loaded()
+    assert not m.auto_resume("x") and m.state == f.READY
+    m.start(True, True)
+    m.fault("drive")
+    assert not m.auto_resume("x") and m.state == f.FAULT

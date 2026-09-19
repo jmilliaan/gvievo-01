@@ -17,7 +17,6 @@ from amr_navigation.route import (
     ARC_MAX_DEG,
     ARC_MIN_DEG,
     ARC_MIN_RADIUS_M,
-    ARC_SPEED_RATIO,
     ARC_YAW_RATE_RATIO,
     DIRECTIONS,
     REVERSE,
@@ -25,6 +24,7 @@ from amr_navigation.route import (
     REVERSE_SPEED_RATIO,
     ROTATE,
     STRAIGHT,
+    VEHICLE_ARC_W_MAX,
     Route,
     RouteError,
 )
@@ -77,10 +77,11 @@ def arc_pose(
 
 
 def arc_speed(lim, radius: float) -> float:
-    """An arc's speed: 60 % of the BASE cap (whatever the straight before it ran at), or less
-    so the yaw rate v/R stays under the turn cap (the mux clamps w to the permit; v alone
-    would run the arc wide). Never the boost."""
-    return min(ARC_SPEED_RATIO * float(lim.linear_mps), ARC_YAW_RATE_RATIO * float(lim.w_mps) * radius)
+    """An arc's speed: the route's arc_linear_mps (never above its base linear_mps, whatever
+    the straight before it ran at), or less so the yaw rate v/R stays under the arc turn
+    ceiling (the mux clamps w to the permit; v alone would run the arc wide). Never the boost."""
+    v = min(float(lim.arc_linear_mps), float(lim.linear_mps))
+    return min(v, ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * radius)
 
 
 def step_speed(lim, length_m: float) -> float:

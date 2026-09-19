@@ -23,6 +23,7 @@ setup(
             "world_bundle = amr_mission.fixtures:main",
             "route_executor_node = amr_mission.route_executor_node:main",
             "map_edit = amr_mission.map_edit:main",
+            "survey_move_node = amr_mission.survey_move_node:main",
         ],
     },
 )

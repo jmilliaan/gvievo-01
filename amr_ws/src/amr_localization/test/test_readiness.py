@@ -100,6 +100,22 @@ def test_ready_lost_on_stale_stream():
     assert "scan" in r.reason
 
 
+def test_safety_stop_wheels_excused_while_torque_off_and_graced_briefly():
+    """Auto-resume plan 2026-09-19: an STO stops wheel feedback; READY must survive it."""
+    r = _ready()
+    # the drive report trails the wheel timeout: 0.4 s of grace for wheels alone ...
+    assert r.evaluate(3.0, {**FRESH, "wheels": 0.3}) == rd.READY
+    # ... then excused for as long as the drives say torque off
+    assert r.evaluate(3.1, {**FRESH, "wheels": 30.0}, frozenset({"wheels"})) == rd.READY
+    aligned(r, 3.2)
+    assert r.evaluate(3.2, FRESH) == rd.READY  # wheels back: nothing to re-confirm
+    # not excused and past the grace: lost, as before
+    assert r.evaluate(3.3, {**FRESH, "wheels": 0.6}) == rd.LOST and "wheels" in r.reason
+    # the grace never covers another stream
+    r = _ready()
+    assert r.evaluate(3.0, {**FRESH, "wheels": 0.3, "scan": 0.3}) == rd.LOST
+
+
 def test_ready_lost_on_sustained_covariance_growth_only():
     r = _ready()
     aligned(r, 3.0)  # scan verification keeps coming throughout (Q07): only covariance is at issue

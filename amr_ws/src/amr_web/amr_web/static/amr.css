@@ -76,6 +76,8 @@ kbd {
   padding:1px 5px; font:600 11px var(--mono); color:var(--ink);
 }
 .note { color:var(--ink-2); font-size:13px; line-height:1.6; max-width:74ch; margin:10px 0 0; }
+.note.ok { color:var(--ok); }
+.note.bad { color:var(--stop); font-weight:500; }
 .muted { color:var(--ink-3); }
 .none { color:var(--ink-3); font:500 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; padding:6px 0; }
 
@@ -127,6 +129,17 @@ nav a.on { color:var(--accent-2); background:var(--accent-wash); border-color:va
 .wifi.ok  { color:var(--ok); }
 .wifi.warn { color:var(--hazard-ink); }
 .wifi.bad { color:var(--stop); border-color:var(--stop); background:var(--stop-wash); }
+/* Internet (robot side): a dot and "NET", smaller than the Wi-Fi readout; grey = unknown. */
+.net {
+  display:inline-flex; align-items:center; gap:5px; padding:4px 7px;
+  font:500 10.5px var(--mono); letter-spacing:.06em; color:var(--ink-3);
+  border:1px solid var(--rule); background:var(--surface-2);
+}
+.net i { width:7px; height:7px; border-radius:50%; background:var(--rule); }
+.net.ok { color:var(--ok); }
+.net.ok i { background:var(--ok); }
+.net.bad { color:var(--stop); }
+.net.bad i { background:var(--stop); }
 
 /* ---- shell: rail left, page right ---- */
 .shell { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:300px minmax(0,1fr); }

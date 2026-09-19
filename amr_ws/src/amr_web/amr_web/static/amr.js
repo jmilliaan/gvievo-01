@@ -108,6 +108,21 @@ async function pollWifi() {
 }
 pollWifi();
 
+// Internet as the ROBOT sees it (the server probes; the tablet's own link says nothing about
+// it). 0.25 Hz: the server caches its probe for 4 s anyway. Informational only.
+async function pollNet() {
+  const el = document.getElementById('net');
+  if (!el) return;
+  let n = null;
+  try { const { status, data } = await apiGet('/api/internet'); if (status === 200) n = data; } catch (e) { /* offline */ }
+  el.className = 'net ' + (!n || n.online == null ? '' : n.online ? 'ok' : 'bad');
+  el.title = !n ? 'Internet: robot not reachable'
+    : n.online == null ? 'Internet: checking…'
+    : n.online ? `Internet: online (${n.via}, ${n.rtt_ms} ms) - rechecked every 4 s` : 'Internet: offline - rechecked every 4 s';
+  setTimeout(pollNet, 4000);
+}
+pollNet();
+
 // Submit an asynchronous supervisor operation and follow it to a terminal status.
 // A refresh/reconnect recovers progress through /api/operations/<id>; nothing is resubmitted.
 // onDone is called EXACTLY once on every path - success, refusal, network failure, timeout -

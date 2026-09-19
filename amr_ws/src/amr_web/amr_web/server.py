@@ -33,7 +33,7 @@ from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
 from amr_web import commissioning_log as clog
-from amr_web import jog, wifi
+from amr_web import jog, netcheck, wifi
 from amr_web.png import encode_gray
 
 MODE_IDLE, MODE_NAVIGATION = 1, 3
@@ -48,6 +48,8 @@ class Adapter(Protocol):
     def survey_returned(self) -> tuple[bool, str]: ...
     def survey_save(self, note: str) -> tuple[bool, str]: ...
     def survey_abort(self) -> tuple[bool, str]: ...
+    def survey_move(self, kind: str, value: float) -> tuple[bool, str]: ...
+    def survey_move_stop(self) -> tuple[bool, str]: ...
     def localization_confirm(self) -> tuple[bool, str]: ...
     def localization_reset(self) -> tuple[bool, str]: ...
     def set_initial_pose(
@@ -116,6 +118,7 @@ def create_app(
     footprint_path: str | None = None,
     wifi_iface: str = "wlp1s0",
     state_dir: str = "~/.amr",
+    internet_probe: netcheck.InternetProbe | None = None,
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -209,6 +212,13 @@ def create_app(
     @app.get("/api/wifi")
     def api_wifi():
         return jsonify(wifi_reader.read())
+
+    # the robot's own internet reachability (header indicator); probes at most once per 4 s
+    internet = internet_probe or netcheck.InternetProbe()
+
+    @app.get("/api/internet")
+    def api_internet():
+        return jsonify(internet.read())
 
     @app.get("/api/footprint")
     def api_footprint():
@@ -641,6 +651,24 @@ def create_app(
         rid = str(d.get("request_id") or uuid.uuid4().hex)
         desc = str(d.get("description", d.get("note", "")))
         return _accepted(*adapter.survey_request(SURVEY_OPS[op], str(d.get("map_id", "")), desc, rid))
+
+    # preset survey moves (press once): validated again by survey_move_node, which also checks
+    # the MANUAL authority; a refused move answers 409 with the node's reason
+    @app.post("/api/survey_move")
+    def api_survey_move():
+        d = request.get_json(force=True) or {}
+        kind = str(d.get("kind", ""))
+        try:
+            value = float(d.get("value"))
+        except (TypeError, ValueError):
+            return _result(False, "value must be a number", 422)
+        if kind not in ("straight", "rotate") or not math.isfinite(value):
+            return _result(False, "kind must be straight or rotate, value a finite number", 422)
+        return _result(*adapter.survey_move(kind, value))
+
+    @app.post("/api/survey_move/stop")
+    def api_survey_move_stop():
+        return _result(*adapter.survey_move_stop())
 
     @app.get("/api/operations/<operation_id>")
     def api_operation(operation_id: str):

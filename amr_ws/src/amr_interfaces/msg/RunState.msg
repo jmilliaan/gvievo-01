@@ -24,6 +24,8 @@ float64 cross_track_m       # for a straight in progress
 float64 step_v_mps          # the speed a straight in progress runs at (route cap or long-straight boost); 0 otherwise
 uint8 localization_state    # LocalizationState value
 bool resume_prepared        # a Start edge will continue the remaining step
+string hold_cause           # BLOCKED only: field | estop | obstacle | controller | pending (auto-resume plan)
+bool auto_resume            # BLOCKED and this hold resumes by itself once clear
 bool pose_valid
 float64 pose_x
 float64 pose_y

@@ -106,6 +106,15 @@ class RunFsm:
         self.reason = f"Start ignored in {NAMES[self.state]}"
         return False
 
+    def auto_resume(self, reason: str) -> bool:
+        """Continue a BLOCKED run without a Start edge (auto-resume plan 2026-09-19): the
+        executor calls this once the cause cleared and every resume check held long enough.
+        Never from PAUSED: an operator's own Pause waits for the operator."""
+        if self.state != BLOCKED:
+            return False
+        self.resume_prepared = False
+        return self._set(EXECUTING, f"{reason} ({self.progress()})")
+
     def prepare_resume(self, ok: bool, why: str) -> bool:
         if self.state not in (PAUSED, BLOCKED):
             self.reason = f"nothing to resume ({NAMES[self.state]})"

@@ -40,6 +40,35 @@ onState(st => {
     ]);
   } else $('closure').innerHTML = noClosure;
 });
+// Preset survey moves (survey_move_node): press once; the node checks MANUAL authority itself.
+async function surveyMove(kind, value) {
+  let r;
+  try { r = await api('/api/survey_move', { kind, value }); } catch (e) { $('sm-status').textContent = 'no response'; return; }
+  if (r.status !== 200) $('sm-status').textContent = `refused: ${r.data.message || r.status}`;
+}
+const dist = () => parseFloat($('sm-dist').value);
+$('sm-fwd').onclick = () => surveyMove('straight', dist());
+$('sm-rev').onclick = () => surveyMove('straight', -dist());
+document.querySelectorAll('#sm-spins button, #sm-spins-cw button').forEach(b => { b.onclick = () => surveyMove('rotate', +b.dataset.deg); });
+$('sm-stop').onclick = () => api('/api/survey_move/stop', {}).catch(() => {});
+const SM_BUTTONS = () => [...document.querySelectorAll('#sm-spins button, #sm-spins-cw button'), $('sm-fwd'), $('sm-rev')];
+onState(st => {
+  const surveying = st.mode && st.mode.mode_name === 'MAPPING' && st.mapping && st.mapping.state_name === 'MAPPING';
+  const s = st.survey_move;
+  const moving = !!s && (s.state_name === 'MOVING' || s.state_name === 'SETTLING');
+  SM_BUTTONS().forEach(b => { b.disabled = !surveying || moving; });
+  $('sm-stop').disabled = !(s && s.state_name === 'MOVING');
+  const el = $('sm-status');
+  el.classList.remove('bad', 'ok');
+  if (!surveying) { el.textContent = 'available while surveying'; return; }
+  if (!s || s.state_name === 'IDLE') { el.textContent = 'ready'; return; }
+  const unit = s.kind === 'rotate' ? '°' : ' m';
+  const prog = s.kind === 'rotate' ? num(s.progress * 180 / Math.PI, 1) : num(s.progress, 2);
+  if (s.state_name === 'MOVING') el.textContent = `${s.label}: ${prog}${unit}`;
+  else if (s.state_name === 'SETTLING') el.textContent = `${s.label}: stopped at ${prog}${unit}, checking the map…`;
+  else if (s.state_name === 'ABORTED') { el.textContent = `${s.label}: stopped at ${prog}${unit} (${s.reason})`; el.classList.add('bad'); }
+  else { el.textContent = `${s.label}: done at ${prog}${unit}. ${s.reason}`; el.classList.add(s.check_done && !s.check_ok ? 'bad' : 'ok'); }
+});
 async function loadMaps() {
   const { data } = await apiGet('/api/maps');
   if (!data.length) { $('maps-list').innerHTML = '<div class="none">no saved maps yet</div>'; return; }

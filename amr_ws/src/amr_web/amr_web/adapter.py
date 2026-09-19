@@ -41,6 +41,7 @@ from amr_interfaces.msg import (
     MuxState,
     PanelState,
     PpStatus,
+    SurveyMoveState,
 )
 from amr_interfaces.srv import (
     GetOperation,
@@ -50,6 +51,7 @@ from amr_interfaces.srv import (
     RunMission,
     SaveMap,
     StartSurvey,
+    SurveyMove,
 )
 from amr_web import live
 
@@ -113,6 +115,8 @@ class RosAdapter(Node):
         super().__init__("amr_web")
         self._lock = threading.Lock()
         self._mapping: dict | None = None
+        self._survey_move: dict | None = None  # preset survey moves (survey_move_node)
+        self._survey_move_t = 0.0
         self._loc: dict | None = None
         self._run: dict | None = None
         self._mapping_t = self._loc_t = self._run_t = 0.0
@@ -172,6 +176,9 @@ class RosAdapter(Node):
         self.create_subscription(
             LocalizationState, "/amr/localization_state", self._on_loc, LATCHED, callback_group=g
         )
+        self.create_subscription(
+            SurveyMoveState, "/amr/survey_move_state", self._on_survey_move, LATCHED, callback_group=g
+        )
         try:  # T7 adds RunState; tolerate its absence so the survey pages work without it
             from amr_interfaces.msg import RunState  # noqa: PLC0415
 
@@ -186,6 +193,8 @@ class RosAdapter(Node):
             "survey_returned": self.create_client(Trigger, "/amr/survey/returned", callback_group=g),
             "survey_save": self.create_client(SaveMap, "/amr/survey/save", callback_group=g),
             "survey_abort": self.create_client(Trigger, "/amr/survey/abort", callback_group=g),
+            "survey_move": self.create_client(SurveyMove, "/amr/survey/move", callback_group=g),
+            "survey_move_stop": self.create_client(Trigger, "/amr/survey/move_stop", callback_group=g),
             "loc_confirm": self.create_client(Trigger, "/amr/localization/confirm", callback_group=g),
             "loc_reset": self.create_client(Trigger, "/amr/localization/reset", callback_group=g),
             "run": self.create_client(RunMission, "/amr/run_mission", callback_group=g),
@@ -212,6 +221,14 @@ class RosAdapter(Node):
         d["state_name"] = STATE_NAMES.get(m.state, str(m.state))
         with self._lock:
             self._mapping, self._mapping_t = d, self._now()
+
+    def _on_survey_move(self, m: SurveyMoveState) -> None:
+        d = _msg_to_dict(m)
+        d["state_name"] = {0: "IDLE", 1: "MOVING", 2: "SETTLING", 3: "DONE", 4: "ABORTED"}.get(
+            m.state, str(m.state)
+        )
+        with self._lock:
+            self._survey_move, self._survey_move_t = d, self._now()
 
     def _on_loc(self, m: LocalizationState) -> None:
         d = _msg_to_dict(m)
@@ -461,6 +478,9 @@ class RosAdapter(Node):
                 "run": run,
                 "run_age_s": run_age,
                 "run_stale": run_stale,
+                # the node lives in the mapping layer: its latched state outlives it, so only
+                # while a survey runs is it shown
+                "survey_move": self._survey_move if mapping is not None else None,
                 "t": time.time(),
             }
 
@@ -550,6 +570,20 @@ class RosAdapter(Node):
 
     def survey_abort(self) -> tuple[bool, str]:
         return self._trigger("survey_abort")
+
+    def survey_move(self, kind: str, value: float) -> tuple[bool, str]:
+        r = self._call("survey_move", SurveyMove.Request(kind=kind, value=float(value)), timeout=5.0)
+        return (
+            (False, "survey move service unavailable (survey not running?)")
+            if r is None
+            else (
+                bool(r.accepted),
+                r.message,
+            )
+        )
+
+    def survey_move_stop(self) -> tuple[bool, str]:
+        return self._trigger("survey_move_stop")
 
     def localization_confirm(self) -> tuple[bool, str]:
         return self._trigger("loc_confirm")

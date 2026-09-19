@@ -28,7 +28,7 @@ from sensor_msgs.msg import Imu, LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_interfaces.msg import LocalizationState, WheelStates
+from amr_interfaces.msg import DriveStatus, LocalizationState, WheelStates
 from amr_localization import readiness as rd
 from amr_localization import scan_consistency as consistency
 from amr_maps import grid as gridio
@@ -72,7 +72,12 @@ class LocalizationMonitor(Node):
         # the active revision's dynamic.yaml (navigation_layer passes it; "" = none): beams into
         # dynamic areas are left out of the scan comparison (dynamic-mapping plan §1.2)
         self.declare_parameter("dynamic_yaml", "")
+        # safety stop (auto-resume plan): wheel feedback is excused while a /drives/status no
+        # older than this says both drives have their torque off
+        self.declare_parameter("drives_age_limit_s", 0.5)
         p = self.get_parameter
+        self._drives_age = float(p("drives_age_limit_s").value)
+        self._torque_off_t: float | None = None  # when /drives/status last said torque off
         self.rd = rd.Readiness(
             rd.Limits(
                 cov_xy_max=p("cov_xy_max").value,
@@ -125,6 +130,7 @@ class LocalizationMonitor(Node):
         self.create_subscription(LaserScan, "/scan_gated", self._on_scan_gated, SENSOR_DATA)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA)
+        self.create_subscription(DriveStatus, "/drives/status", self._on_drives, 10)
         self.create_subscription(Imu, "/imu/data", lambda _m: self._touch("imu"), SENSOR_DATA)
         self.create_service(Trigger, "/amr/localization/confirm", self._srv_confirm)
         self.create_service(Trigger, "/amr/localization/reset", self._srv_reset)
@@ -143,6 +149,12 @@ class LocalizationMonitor(Node):
         # Arrival is not feedback: only a sample both drives vouch for keeps wheels fresh.
         if msg.left_valid and msg.right_valid:
             self._touch("wheels")
+
+    def _on_drives(self, msg: DriveStatus) -> None:
+        # torque off = not operational AND neither drive's statusword says Operation enabled:
+        # a feedback-only loss with the drives still enabled is never excused
+        off = not msg.operational and "Operation enabled" not in (msg.left_state, msg.right_state)
+        self._torque_off_t = self._now() if off else None
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         grid = gridio.from_occupancy_grid_msg(msg)
@@ -227,7 +239,8 @@ class LocalizationMonitor(Node):
         except Exception:  # noqa: BLE001 - no transform yet is a normal state
             pass
         ages = {k: (t - self._last[k]) if k in self._last else None for k in ("scan", "wheels", "imu", "tf")}
-        self.rd.evaluate(t, ages)
+        held = self._torque_off_t is not None and t - self._torque_off_t <= self._drives_age
+        self.rd.evaluate(t, ages, frozenset({"wheels"}) if held else frozenset())
         if self.rd.state != self._last_state or self.rd.reason != self._last_reason:
             if self.rd.state != self._last_state:
                 self.get_logger().info(f"{rd.NAMES[self.rd.state]}: {self.rd.reason}")

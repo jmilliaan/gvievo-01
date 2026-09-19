@@ -11,7 +11,10 @@
 function jogpad(root, opts) {
   const o = Object.assign({ compact: false }, opts || {});
   const owner = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).slice(0, 32);
-  const speeds = [0.10, 0.20, 0.30];
+  const speeds = [0.10, 0.20, 0.30, 0.40];  // jog.V_MAX 0.40 (2026-09-19)
+  // Diagonals drive like the pendant: the FAST wheel at the selected speed, the slow one at
+  // TURN_RATIO of it (no wheel above the selection). Spins: +30 % on the 2026-09-18 rule.
+  const TRACK_M = 0.487, TURN_RATIO = 0.75, SPIN_MAX = 0.39, SPIN_PER_V = 1.95;
   const CELLS = [
     ['fl', '↖', 'Fwd-L', ''], ['f', '▲', 'Fwd', '↑ / W'], ['fr', '↗', 'Fwd-R', ''],
     ['l', '◀', 'Left', '← / A'], ['stop', '■', 'Stop', 'Space'], ['r', '▶', 'Right', '→ / D'],
@@ -44,7 +47,10 @@ function jogpad(root, opts) {
   function body(dir) {
     const v = parseFloat(speedSel.value);
     const [a, b] = DIRS[dir];
-    return { v: a * v, w: b * Math.min(0.30, v * 1.5) };
+    if (a === 0) return { v: 0, w: b * Math.min(SPIN_MAX, v * SPIN_PER_V) };
+    if (b === 0) return { v: a * v, w: 0 };
+    const slow = v * TURN_RATIO;
+    return { v: a * (v + slow) / 2, w: b * (v - slow) / TRACK_M };
   }
   // The physical input is recorded BEFORE the press request goes out, so a release that
   // happens while it is in flight has something to cancel. A press whose input was

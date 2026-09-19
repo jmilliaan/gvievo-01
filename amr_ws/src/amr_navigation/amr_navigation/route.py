@@ -23,13 +23,13 @@ REVERSE_MAX_M = 2.0
 REVERSE_SPEED_RATIO = 0.5
 # An arc (2026-09-18) drives forward along a circle of radius_m through angle_deg, left
 # (ccw) or right (cw). Bounded: at least an eighth of a circle, at most a half, and a
-# radius of at least twice the wheel track (2 x 0.487 -> 1.0 m). Its speed is capped so
-# the yaw rate v/R stays under the route's turn cap (compiler.arc_speed).
+# radius of at least twice the wheel track (2 x 0.487 -> 1.0 m). It runs at the route's
+# arc_linear_mps (0.40 by default, 2026-09-19), capped so the yaw rate v/R stays under
+# VEHICLE_ARC_W_MAX (compiler.arc_speed). Never the boost.
 ARC = "arc"
 ARC_MIN_DEG, ARC_MAX_DEG = 45.0, 180.0
 ARC_MIN_RADIUS_M = 1.0
-ARC_SPEED_RATIO = 0.6  # of limits.linear_mps: an arc runs at 60 % of the base speed (never the boost)
-ARC_YAW_RATE_RATIO = 0.9  # of limits.w_mps: headroom for the controller's corrections
+ARC_YAW_RATE_RATIO = 0.9  # of VEHICLE_ARC_W_MAX: headroom for the controller's corrections
 
 
 class RouteError(ValueError):
@@ -52,11 +52,18 @@ FRAMES = ("map",)
 # checks). A route file may not ask for more linear speed than VEHICLE_V_MAX. Angular is
 # CLAMPED, not refused: route files saved before 2026-09-17 carry the old 0.30 default,
 # which Spin capped at 0.24 until 2026-09-18, so refusing them would only force a re-save.
-VEHICLE_V_MAX = 0.70
-VEHICLE_W_MAX = 0.34  # 0.24 -> 0.34 (+40 %) on 2026-09-18
+VEHICLE_V_MAX = 0.85  # 0.70 -> 0.85 on 2026-09-19 (speed boost 2): only the long-straight boost
+VEHICLE_W_MAX = 0.37  # spin: 0.24 -> 0.34 (+40 %) on 2026-09-18, -> 0.37 (+10 %) on 2026-09-19
+# The base (non-boost) speed is bounded lower: every chain ENDS at it (the executor tapers a
+# boosted chain down first), so RPP's approach ramp is planned from at most BASE_V_MAX.
+BASE_V_MAX = 0.60
+# Arcs turn at v/R: 0.40 m/s on the 1.0 m minimum radius is 0.40 rad/s, above the spin cap.
+# Their own ceiling (the permit w_max of an arc step) keeps 0.40 m/s possible from R 1.0 m.
+VEHICLE_ARC_W_MAX = 0.45
 LIMIT_BOUNDS = {  # key -> (exclusive min, inclusive max)
-    "linear_mps": (0.0, VEHICLE_V_MAX),
+    "linear_mps": (0.0, BASE_V_MAX),
     "long_linear_mps": (0.0, VEHICLE_V_MAX),
+    "arc_linear_mps": (0.0, BASE_V_MAX),
     "long_min_length_m": (0.0, 100.0),
     "angular_rad_s": (0.0, 5.0),
     "position_tolerance_m": (0.0, 1.0),
@@ -118,13 +125,17 @@ class StartPose:
 
 @dataclass
 class Limits:
-    linear_mps: float = 0.50  # autonomous route default (spec §5.2, 0.40 -> 0.50 on 2026-09-18)
+    linear_mps: float = 0.55  # autonomous route default (spec §5.2; 0.40, 0.50 on 09-18, 0.55 on 09-19)
     # A straight LONGER than long_min_length_m may run at long_linear_mps ("boost"). None =
     # no boost: route files written before 2026-09-18 never speed up by themselves; the
     # editor writes the value explicitly into new routes.
     long_linear_mps: float | None = None
     long_min_length_m: float = 4.0
-    angular_rad_s: float = 0.34  # autonomous route default (spec §5.3; 0.24 on 09-17, +40 % on 09-18)
+    # Arc speed (2026-09-19; before: 60 % of linear_mps). Absent in older files -> 0.40. Not
+    # refused above linear_mps (every saved file carries it, a slow 0.30 route included):
+    # compiler.arc_speed and the editor take the lower of the two.
+    arc_linear_mps: float = 0.40
+    angular_rad_s: float = 0.37  # route default (spec §5.3; 0.24 09-17, 0.34 09-18, 0.37 09-19)
     position_tolerance_m: float = 0.05
     heading_tolerance_deg: float = 2.0
     cross_track_limit_m: float = 0.10

@@ -44,6 +44,14 @@ class Stub:
     def get_operation(self, oid):
         return self.ops.get(oid)
 
+    def survey_move(self, kind, value):
+        self.calls.append(("survey_move", (kind, value)))
+        return (False, "refused: selector is not MANUAL") if value == 99 else (True, "forward 1.00 m")
+
+    def survey_move_stop(self):
+        self.calls.append(("survey_move_stop", ()))
+        return True, "stopped"
+
     def manual_publish(self, cmd):
         self.published.append(cmd)
 
@@ -506,7 +514,7 @@ def test_wifi_endpoint(env):
     assert set(body) >= {"iface", "connected", "ssid", "dbm", "bars"}
 
 
-def test_route_without_limits_is_stored_at_050_034_and_an_explicit_030_survives(env):
+def test_route_without_limits_is_stored_at_055_037_and_an_explicit_030_survives(env):
     client, stub, maps, rev_dir, manifest = env
     body = route_payload([S("s1", 3.0, 0.0)], route_id="dflt")
     del body["limits"]
@@ -514,8 +522,9 @@ def test_route_without_limits_is_stored_at_050_034_and_an_explicit_030_survives(
     assert r.status_code == 200
     r = client.get("/api/maps/sim_factory/1/routes/dflt/1")
     assert (
-        r.json["route"]["limits"]["linear_mps"] == 0.50 and r.json["route"]["limits"]["angular_rad_s"] == 0.34
+        r.json["route"]["limits"]["linear_mps"] == 0.55 and r.json["route"]["limits"]["angular_rad_s"] == 0.37
     )
+    assert r.json["route"]["limits"]["arc_linear_mps"] == 0.40
     r = client.post(
         "/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 3.0, 0.0)], route_id="slow")
     )
@@ -536,7 +545,7 @@ def test_validate_route_with_an_arc_and_a_reverse(env):
     assert steps[1]["radius_m"] == 1.5 and steps[1]["centre"] == pytest.approx([5.0, 1.5])
     q = math.pi / 4
     assert steps[1]["end"] == pytest.approx([5.0 + 1.5 * math.sin(q), 1.5 - 1.5 * math.cos(q), q])
-    assert steps[1]["v_mps"] == pytest.approx(0.6 * 0.3)  # 60 % of the route's 0.3 cap
+    assert steps[1]["v_mps"] == pytest.approx(0.3)  # arc 0.40, but never above the route's 0.3 cap
     assert steps[2]["v_mps"] == pytest.approx(0.15)
     assert steps[2]["end"][0] == pytest.approx(steps[1]["end"][0] - math.cos(q))
     assert len(stub.previews) == 1  # the preview carries the arc and reverse samples too
@@ -631,3 +640,18 @@ def test_edit_endpoint_refuses_bad_or_empty_edits(env):
         == 404
     )
     assert mb.list_revisions(maps, "sim_factory") == [1]  # nothing was published
+
+
+def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
+    client, stub, *_ = env
+    r = client.post("/api/survey_move", json={"kind": "straight", "value": 1.0})
+    assert r.status_code == 200 and r.json["message"] == "forward 1.00 m"
+    assert ("survey_move", ("straight", 1.0)) in stub.calls
+    r = client.post("/api/survey_move", json={"kind": "straight", "value": 99})
+    assert r.status_code == 409 and "MANUAL" in r.json["message"]  # the node's refusal, passed on
+    for bad in ({"kind": "strafe", "value": 1}, {"kind": "rotate", "value": "x"}, {"kind": "rotate"}):
+        assert client.post("/api/survey_move", json=bad).status_code == 422
+    assert client.post("/api/survey_move/stop", json={}).status_code == 200
+    page = client.get("/maps").data
+    for el in (b'id="sm-dist"', b'id="sm-fwd"', b'id="sm-rev"', b'id="sm-stop"', b'data-deg="-135"'):
+        assert el in page

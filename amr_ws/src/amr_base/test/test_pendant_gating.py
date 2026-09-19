@@ -59,11 +59,11 @@ def test_directions_map_to_a_twist_at_the_configured_speeds():
     assert (s.v, s.w) == (pytest.approx(-0.21875), pytest.approx(0.125))  # same lever sense as before
 
 
-def test_pendant_defaults_are_the_2026_09_18_manual_speeds():
+def test_pendant_defaults_are_the_2026_09_19_manual_speeds():
     from amr_base.diff_drive import Geometry, inverse
 
     p = Params()
-    assert (p.pendant_v, p.pendant_w, p.pendant_turn_ratio) == (0.50, 0.30, 0.75)
+    assert (p.pendant_v, p.pendant_w, p.pendant_turn_ratio) == (0.50, 0.39, 0.75)
     g = Geometry(0.09, p.track_m)
     s = select(10.0, None, None, None, None, panel(fwd=True, left=True), p)
     wl, wr = (x * g.wheel_radius_m for x in inverse(g, s.v, s.w))

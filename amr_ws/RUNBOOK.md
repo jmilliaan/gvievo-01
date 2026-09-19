@@ -68,22 +68,39 @@ Before you begin:
 - Mark a start position and heading on the floor (tape an arrow). The survey
   begins and ends there, and it is the easiest place to start a route from.
 
+**Header (top right).** The Wi-Fi readout shows the robot's link on `wlp1s0`
+(SSID and dBm; red `no link` when `agv_field` is out of range). Next to it, **NET**
+shows whether the ROBOT reaches the internet (green dot = online, red = offline,
+rechecked every 4 s by a TCP connect to 1.1.1.1 / 8.8.8.8 on 443; hover for the
+round trip). Both are information only: nothing on the vehicle needs Wi-Fi or the
+internet. ROS runs on loopback, the lidar and the I/O island are wired, and the
+pages are served by the robot itself. Without `agv_field` the tablet cannot reach
+the pages (use a wired or USB connection), and boot waits at most about 30 s for
+NetworkManager before `amr.service` starts.
+
 **Jogging.** A jog pad appears on the Manual, Maps and Run pages. Hold
 a pad button, or hold W/A/S/D or the arrow keys, to drive. The held button turns
 blue. Releasing stops the vehicle, even if you let go before the page has
 received its jog session. So do Space, Esc, the centre **Stop** button, switching
-browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20 and
-0.30 m/s. Use 0.10–0.20 m/s while surveying.
+browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20, 0.30
+and 0.40 m/s (2026-09-19; the server caps jog at 0.40 m/s and 0.39 rad/s). The diagonal
+buttons drive like the pendant: the fast wheel at the selected speed, the slow one at 75 %
+of it. Left/Right spin at 1.95 × the selected speed in rad/s, at most 0.39 rad/s.
+Surveys may use any setting; check the survey's return review (see below) after the first
+fast one.
 
 **Pendant.** The hard-wired jog pendant on the DIO island works under the same
 authority as the jog pad (selector **MANUAL**, drives armed, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
 vehicle. Opposing buttons pressed together cancel each other. The pendant
-outranks the jog pad while a direction is held. Speeds (2026-09-18, mux
-parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`); FWD/RVS
+outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
+parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`; 0.60 was tried and
+reverted on 2026-09-19 after a survey at that speed came out rotated); FWD/RVS
 with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
 (`pendant_turn_ratio`, fast wheel 0.50 m/s, slow 0.375); LEFT/RIGHT alone
-spins in place at 0.30 rad/s (`pendant_w_rad_s`). Manual sources follow an
+spins in place at 0.39 rad/s (`pendant_w_rad_s`). **While surveying** (mode MAPPING)
+every manual spin, pendant and jog pad alike, is capped at 0.27 rad/s (mux
+`survey_w_max_rad_s`): a fast spin smears the scans the map is built from. Manual sources follow an
 S-curve: acceleration builds at 1.0 m/s³ to 0.3 m/s² (`manual_jerk`,
 `manual_a_max`), so 0 → 0.50 m/s takes about 1.9 s; releasing a button still
 stops at the drives' ramp. Wiring
@@ -103,6 +120,17 @@ RIGHT DI07. The IO page shows the live bits under those names.
    - `not ready: vehicle is moving`: stop and press again.
    - `not ready: IMU not calibrated`: the IMU calibrates during the first
      ~2.3 s of standing still after the service starts. Wait and press again.
+   **Preset moves** (2026-09-19, Maps page under the jog pad, only while surveying):
+   type a distance and press *Forward* / *Reverse* (0.05–10 m at 0.30 m/s), or a
+   *CCW* / *CW* spin of 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
+   drives the whole move by itself under the same authority as the jog pad
+   (selector **MANUAL**). **Any pendant button, the E-stop, the selector, the jog
+   pad or *Stop move* ends it at once.** After each move the page reports how far
+   SLAM corrected the vehicle's position during it; a red "the map may have
+   slipped here" (a heading correction of 2° or more) means the scan matcher
+   probably took a wrong alignment: back up and drive that stretch again, slowly.
+   Smooth preset moves and slow spins are what the mapping copes with best in
+   large open areas.
 4. Drive the area slowly with the jog pad. Watch **Live map**: grey and black
    cells grow, the green arrow is the vehicle and red points are the current
    scan.
@@ -221,17 +249,22 @@ The route editor moves nothing. The mode can stay `IDLE`.
      (`s1`, `s2`, …) is shown under **Steps**.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
-   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.50 m/s. Use
-   0.15–0.20 m/s for a first run. **Long straight speed** (2026-09-18): a
-   straight strictly longer than *Long straight from* (default 4 m) runs at
-   this speed, up to 0.70 m/s; leave the field empty for no boost. Boosted
-   straights show `▲0.70` in the step list and the result shows how many.
+   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.60 m/s, new routes
+   0.55 (2026-09-19). Use 0.15–0.20 m/s for a first run. **Long straight
+   speed**: a straight strictly longer than *Long straight from* (default
+   4 m) runs at this speed, up to 0.85 m/s (new routes 0.85); leave the field
+   empty for no boost. Boosted straights show `▲0.85` in the step list and
+   the result shows how many. **Arc speed** (new routes 0.40 m/s): never
+   above the speed cap. Existing routes keep their stored speeds until they
+   are edited and saved again (re-save them after the first vehicle run at
+   the new speeds). Autonomous acceleration is 0.15 m/s² (mux `a_max`), so a
+   straight reaches 0.85 only after about 2.4 m.
    Consecutive straights and arcs are driven as ONE continuous move (no
    stop between them); a rotate or a reverse ends such a chain. Before a
    slower chained step (a normal straight after a boosted one, an arc) the
    speed tapers early enough for the mux to reach the lower speed at the
-   boundary (executor `taper_decel` 0.4 m/s², `taper_lead_s` 0.3: 0.35 m for
-   0.50 → 0.30, 0.62 m for 0.70 → 0.40); at the end of a chain the
+   boundary (executor `taper_decel` 0.4 m/s², `taper_lead_s` 0.3: 0.96 m for
+   0.85 → 0.40, 0.34 m for 0.55 → 0.40); at the end of a chain the
    controller's own ramp over the last 1.0 m brings it to the stop.
    Routes saved before 2026-09-18 never boost until re-saved with the field
    set. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
@@ -243,12 +276,14 @@ The route editor moves nothing. The mode can stay `IDLE`.
    (≥ 1.0 m, twice the track) and angle (45–180°), *Arc L* / *Arc R*; the
    vehicle drives forward along the circle and leaves with the heading turned
    by the angle;
-   an arc runs at 60 % of the speed cap (0.30 m/s at 0.50, whatever the
-   straight before it ran at), or less where v/R would exceed the turn cap.
+   an arc runs at the route's arc speed (0.40 m/s, whatever the straight
+   before it ran at), or less where v/R would exceed 0.9 × the arc turn
+   ceiling of 0.45 rad/s (never below R 1.0 m). Spins run at 0.37 rad/s.
    Pure
    pursuit cuts the entry of a 1 m arc inside by a few cm (0.8 m lookahead);
    watch the cross-track on the first arcs. Above 0.40 m/s the nanoScan3 protective field must be validated for
-   the speed first (stopping from 0.70 needs ≥ 1 m ahead).
+   the speed first (stopping from 0.85 needs about 0.72 m at 0.5 m/s² plus
+   the reaction time).
 5. Press **Validate**. The robot checks the route against the map, including
    the footprint along every straight and the area every turn actually sweeps
    (a 90° turn does not check behind the vehicle; a 180° does). The footprint
@@ -308,8 +343,27 @@ The route editor moves nothing. The mode can stay `IDLE`.
      it.
    - **Pause** stops it and keeps its progress. To continue: **Prepare resume**,
      then physical **Start**.
-   - `BLOCKED`: something is in the path. Clear it, **Prepare resume**, then
-     physical **Start**.
+   - `BLOCKED` is a hold with a cause, shown on the State tile (2026-09-19,
+     auto-resume). It keeps its progress and continues from where it stopped:
+     - **lidar stop**: a person or object entered the nanoScan3 protective
+       field and the safety chain took the drives' torque. Once the field is
+       clear and the drives are back, the run **continues by itself** after
+       2 s of all-clear. No button.
+     - **E-stop**: the drives lost torque with the field clear (the E-stop
+       button). Release it; the run waits for a physical **Start** (no
+       Prepare resume needed).
+     - **obstacle**: points in the path ahead (the executor's own check).
+       Continues by itself 2 s after the path is clear.
+     - **controller stop**: Nav2 gave up on the move (usually "collision
+       ahead"). Continues by itself when clear, at most 3 times per step,
+       then FAULT.
+     - Every hold waits until the vehicle is still, on its segment and in
+       the corridor, the path is clear and localisation is READY; the reason
+       says what it is waiting for. MANUAL during a hold aborts the run.
+       **Prepare resume** + Start still works as an override.
+     - Executor parameters: `auto_resume_enabled` (false = the old
+       Prepare resume + Start), `auto_resume_clear_s` 2.0,
+       `auto_resume_estop` false, `controller_abort_retries` 3.
    - **Abort** ends the run. The mission must be loaded again.
 8. **Finished.** The run state is `DONE`. Load the same or another mission and
    press Start again for another run. Every run needs its own physical Start.
@@ -324,7 +378,7 @@ Mode changes (a new survey, another map) are refused while a run is `READY`,
 | `READY` | Mission loaded, waiting for AUTO + physical Start. |
 | `EXECUTING` | Driving the route. |
 | `PAUSED` | Operator pause. **Prepare resume**, then physical Start. |
-| `BLOCKED` | Obstruction in the path. Clear it, **Prepare resume**, then physical Start. |
+| `BLOCKED` | A hold: lidar stop, obstacle or controller stop continue by themselves once clear; after the E-stop button press Start. See "While running". |
 | `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault** (or the physical **Reset** button, with the vehicle at rest: it does exactly the same and nothing more - no motion, no resume, no drive or supervisor fault clearing). That does not resume: localise again if needed, reposition, load, Start. A run whose Nav2 goal never reported an outcome stays barred until navigation is stopped and started again, acknowledgement or not. |
 | `DONE` | Route complete. Load a mission again for another run, or Return to idle. |
 

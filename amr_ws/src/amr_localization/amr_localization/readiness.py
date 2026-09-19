@@ -48,6 +48,12 @@ class Limits:
     amcl_age_max_s: float = 5.0  # AMCL only publishes on update; stationary is fine for a while
     match_age_max_s: float = 2.0  # a successful scan-vs-map comparison older than this proves nothing
     age_limits: dict = field(default_factory=lambda: {"scan": 0.15, "wheels": 0.10, "imu": 0.20, "tf": 0.20})
+    # Safety stop (auto-resume plan 2026-09-19): when the safety chain takes the drives' torque
+    # away, wheel feedback stops. The caller EXCUSES the wheels while the drives report torque
+    # off (the vehicle cannot drive), and a READY state waits this long for that report before
+    # a stale wheel stream counts as a loss - the drive status (10 Hz) can trail the wheel
+    # timeout (0.10 s) by a tick.
+    wheels_grace_s: float = 0.4
 
 
 @dataclass
@@ -171,13 +177,18 @@ class Readiness:
 
     # ---- evaluation ----------------------------------------------------------
 
-    def evaluate(self, t: float, ages: dict[str, float | None]) -> int:
-        """Apply staleness and covariance rules. `ages` keys: scan, wheels, imu, tf."""
+    def evaluate(self, t: float, ages: dict[str, float | None], excused: frozenset = frozenset()) -> int:
+        """Apply staleness and covariance rules. `ages` keys: scan, wheels, imu, tf. Streams in
+        `excused` are not stale (wheels while the drives report torque off: a safety stop)."""
         stale = [
             name
             for name, limit in self.limits.age_limits.items()
-            if ages.get(name) is None or ages[name] > limit
+            if name not in excused and (ages.get(name) is None or ages[name] > limit)
         ]
+        if self.state == READY and stale == ["wheels"]:
+            a = ages.get("wheels")
+            if a is not None and a <= self.limits.age_limits["wheels"] + self.limits.wheels_grace_s:
+                stale = []  # a safety stop's drive report may still be on its way
         if self.state == UNLOCALIZED:
             self.can_confirm = False
             return self.state

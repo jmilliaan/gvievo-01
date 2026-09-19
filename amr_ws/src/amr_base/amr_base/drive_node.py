@@ -3,6 +3,7 @@
     /cmd_wheel_vel  (WheelVelocities, mux, 50 Hz)  ->  RPDO1 to both drives
     TPDO1/TPDO2 from both drives                   ->  /wheel_states  (WheelStates)
     MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
+    MLS TPDO1 track (or SDO poll, read-only)       ->  /amr/line_track (LineTrack)
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
 
     /amr/commissioning_pp (PpMove, held 50 Hz)     ->  profile-position blind move
@@ -51,10 +52,12 @@ from amr_base import canopen, gating, pp
 from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
+from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
+    LineTrack,
     PanelState,
     PpMove,
     PpStatus,
@@ -95,6 +98,11 @@ class DriveNode(Node):
         dp("gyro_sign", 1.0)  # VERIFY on the vehicle: CCW spin must read positive
         dp("gyro_var", 1e-6)  # (rad/s)^2; measured sigma 0.029 deg/s and LSB 0.061 deg/s
         dp("imu_frame", "imu_frame")
+        # MLS track reading (line-follow plan §1.1), read-only: tpdo | sdo | auto | off.
+        # auto listens for TPDO1 and polls by SDO (monitor rate) while none arrive.
+        dp("mls_track_mode", "auto")
+        dp("mls_track_sdo_hz", 10.0)
+        dp("mls_track_variant", 0)  # 2006h:01 as commissioned (Standard); a mismatch is reported
         dp("require_supervisor", False)  # production: True (unified plan §4.2)
         dp("lease_timeout_s", 0.3)
         # Diagnostic monitoring (unified plan §7.1): ONE bounded SDO read per slot on the
@@ -150,6 +158,7 @@ class DriveNode(Node):
         self._pp_req: pp.Request | None = None
         self._pp_bad = ""  # why the last PpMove was not accepted as a request
         self._panel: tuple[float, bool, bool] | None = None  # (t_mono, valid, mode_auto)
+        self._track: MlsTrack | None = None  # built on the bus thread
 
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
@@ -157,6 +166,7 @@ class DriveNode(Node):
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
         self._pub_pp = self.create_publisher(PpStatus, "/drives/pp_status", RELIABLE_1)
+        self._pub_track = self.create_publisher(LineTrack, "/amr/line_track", SENSOR_DATA)
         self.create_subscription(PpMove, "/amr/commissioning_pp", self._on_pp, RELIABLE_1)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
@@ -283,6 +293,21 @@ class DriveNode(Node):
                 log=self._log,
             )
             imu.start()
+        track = MlsTrack(
+            link,
+            config.SENSOR_NODE,
+            self._publish_track,
+            mode=str(self.get_parameter("mls_track_mode").value),
+            sdo_hz=float(self.get_parameter("mls_track_sdo_hz").value),
+            expected_variant=int(self.get_parameter("mls_track_variant").value),
+            log=self._log,
+        )
+        try:
+            track.start()
+        except Exception as e:  # noqa: BLE001 - a sensor problem must not keep the drives down
+            self.get_logger().error(f"MLS track reading unavailable: {e!r}")
+            track.mode = "off"
+        self._track = track
         if not self.pc_loss_ms:
             self.get_logger().warn("pc_loss_ms=0: the drives have NO independent response to losing this PC")
 
@@ -392,6 +417,8 @@ class DriveNode(Node):
 
             if imu is not None:
                 imu.poll(now)
+            if self._track is not None:
+                self._track.poll(now)
 
             # Feedback: a WheelStates per complete new pair - a new TPDO1 AND a new
             # TPDO2 from both drives, not just one member changing (R07). Once
@@ -741,7 +768,32 @@ class DriveNode(Node):
                 KeyValue(key="gyro_sign", value=str(self.get_parameter("gyro_sign").value)),
             ]
             arr.status.append(im)
+        if self._track is None:
+            self._safe_publish(self._pub_diag, arr)
+            return
+        level, message, kv = self._track.diagnostic(time.monotonic())
+        tr = DiagnosticStatus(name="mls/track", hardware_id=f"node {config.SENSOR_NODE}")
+        levels = {ERROR: DiagnosticStatus.ERROR, WARN: DiagnosticStatus.WARN}
+        tr.level = levels.get(level, DiagnosticStatus.OK)
+        tr.message = message
+        tr.values = [KeyValue(key=k, value=v) for k, v in kv]
+        arr.status.append(tr)
         self._safe_publish(self._pub_diag, arr)
+
+    def _publish_track(self, s: TrackSample) -> None:
+        r = s.reading
+        m = LineTrack()
+        m.stamp = self.get_clock().now().to_msg()
+        m.lcp_mm = [max(-32768, min(32767, int(p))) for p in s.lcp_mm]
+        m.valid = [(i + 1) in r["valid"] for i in range(3)]
+        m.nlcp = int(r["nlcp"])
+        m.nlcp_label = r["nlcp_label"]
+        st = r["status"]
+        m.line_good, m.track_level, m.polarity = st["line_good"], int(st["track_level"]), st["polarity"]
+        m.event_flag = st["event_flag"]
+        m.marker, m.marker_intro = int(r["marker"]["code"]), r["marker"]["intro"]
+        m.source = s.source
+        self._safe_publish(self._pub_track, m)
 
     def _publish_imu(self, s: ImuSample) -> None:
         m = Imu()

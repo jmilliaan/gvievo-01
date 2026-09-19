@@ -36,7 +36,7 @@ BASE_EXES = {
 }
 HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node"}
 SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
-MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node"}
+MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
 NAV_EXES = {
     "map_server",
     "amcl",
@@ -117,7 +117,7 @@ def test_mapping_layer_is_only_slam_and_coordinator():
     c = compose("mapping_layer.launch.py")
     assert set(c["exes"]) == MAPPING_EXES
     assert c["includes"] == []
-    assert c["handlers"] == 2  # both required
+    assert c["handlers"] == 2  # slam and the session are required; survey_move is not
 
 
 def test_navigation_layer_has_no_base_web_or_sim(tmp_path):
@@ -202,6 +202,21 @@ def test_q20_custom_footprint_reaches_the_costmap_node_through_a_params_file(tmp
     )
 
 
+def _param_dict(p: dict) -> dict:
+    """launch_ros (Humble) normalises a parameters dict: keys and values become tuples of
+    substitutions, strings YAML-dumped. Perform and load them back, as launch_ros does."""
+    import yaml  # noqa: PLC0415
+
+    ctx = LaunchContext()
+
+    def val(v):
+        if isinstance(v, (tuple, list)) and v and all(hasattr(i, "perform") for i in v):
+            return yaml.safe_load(_text(v, ctx))
+        return v
+
+    return {_text(k, ctx): val(v) for k, v in p.items()}
+
+
 def _bundle_with_dynamic(tmp_path, big=False):
     from amr_mission.fixtures import write_world_as_bundle  # noqa: PLC0415
 
@@ -223,7 +238,7 @@ def test_dynamic_mask_reaches_the_monitor_and_amcl_is_plain_by_default(tmp_path,
     monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path / "state"))
     c = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory", revision=rev)
     assert set(c["exes"]) == NAV_EXES and c["exes"].count("map_server") == 1
-    mon = [p for p in c["params"]["localization_monitor_node"] if isinstance(p, dict)]
+    mon = [_param_dict(p) for p in c["params"]["localization_monitor_node"] if isinstance(p, dict)]
     assert mon[0]["dynamic_yaml"] == os.path.join(path, "dynamic.yaml")
     assert not (tmp_path / "state" / "loc_map_gen0.yaml").exists()
 
