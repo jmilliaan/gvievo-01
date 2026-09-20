@@ -65,8 +65,8 @@ The drive owner (`amr_base/drive_node`) compares these profile values with the d
 3. **Read both drives with a throwaway script.** Put it in `/tmp`, never in the repo. It must take the CAN owner lock, so it fails safely if anything else owns `can0`:
    ```python
    # /tmp/read_pp_objects.py
-   import sys; sys.path[:0] = ["/home/gvipc-evo-01/agv_can/drivers/canbus", "/home/gvipc-evo-01/agv_can/core"]
-   from verify_drivers import claim_bus, open_bus, sdo_read, u32
+   import sys; sys.path[:0] = ["/home/gvipc-evo-01/agv_can"]   # the repo root, not the layer dirs
+   from agv_core.drivers.canbus.verify_drivers import claim_bus, open_bus, sdo_read, u32
    OBJ = {"max_torque_permille": 0x6072, "following_error_counts": 0x6065, "position_window_counts": 0x6067,
           "halt_option": 0x605D, "fault_reaction": 0x605E, "quick_stop_decel": 0x6085,
           "modes_of_operation(stored)": 0x6060, "modes_display": 0x6061}
@@ -108,8 +108,8 @@ The drive owner (`amr_base/drive_node`) compares these profile values with the d
 6. **Validate offline.**
    ```bash
    cd ~/agv_can
-   python3 -c "import sys; sys.path[:0]=['.','core','drivers','drivers/canbus']; import config; print(config.PP_ENABLED, config.PP_EXPECT, config.PP_MAX_SPEED_MPS)"
-   python3 tests/run_all.py                      # 869 checks, all passed
+   python3 -c "from agv_core import config; print(config.PP_ENABLED, config.PP_EXPECT, config.PP_MAX_SPEED_MPS)"
+   python3 tests/run_all.py                      # 898 checks, all passed
    cd amr_ws && env AMR_SIM_TESTS=0 ROS_DOMAIN_ID=89 python3 -m pytest -q src/amr_base/test src/amr_web/test
    git diff profiles/agv-01.json
    ```

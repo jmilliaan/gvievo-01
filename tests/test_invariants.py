@@ -14,7 +14,7 @@ import time
 
 from helpers import check
 
-import config
+from agv_core import config
 
 
 class _Recorder:
@@ -65,7 +65,7 @@ def _patched(canworker, rec):
 
 def _disarm_sequence_after_enable(rec, node):
     """Was CW_SHUTDOWN then CW_DISABLE_VOLTAGE written AFTER the enable?"""
-    from drive_forward import CW_DISABLE_VOLTAGE, CW_ENABLE, CW_SHUTDOWN
+    from agv_core.drivers.canbus.drive_forward import CW_DISABLE_VOLTAGE, CW_ENABLE, CW_SHUTDOWN
     cws = rec.controlwords(node)
     if CW_ENABLE not in cws:
         return False
@@ -76,8 +76,8 @@ def _disarm_sequence_after_enable(rec, node):
 def test_partial_arm_is_rolled_back():
     """C01: the first drive is enabled, the second refuses - both end de-energised."""
     print("\ncanworker: an arm that fails part-way de-energises both drives")
-    import events
-    from drive_forward import SW_SPEED_IS_ZERO
+    from agv_core import events
+    from agv_core.drivers.canbus.drive_forward import SW_SPEED_IS_ZERO
     canworker, ctl = _controller()
     left, right = config.NODES
     ok_word = 0x0027 | SW_SPEED_IS_ZERO
@@ -136,8 +136,8 @@ def test_partial_arm_is_rolled_back():
 def test_disarm_cancels_blind_run():
     """C02: web disarm during a run, or during its start delay, kills the run."""
     print("\ncanworker: disarm cancels a blind run, active or pending")
-    import events
-    from drive_forward import SW_SPEED_IS_ZERO
+    from agv_core import events
+    from agv_core.drivers.canbus.drive_forward import SW_SPEED_IS_ZERO
     canworker, ctl = _controller()
     rec = _Recorder(ctl, statusword={n: SW_SPEED_IS_ZERO for n in config.NODES})
     restore = _patched(canworker, rec)
@@ -219,8 +219,9 @@ def test_sdo_replies_match_the_request():
     import struct
 
     import can
-    from drive_forward import sdo_write
-    from verify_drivers import sdo_read
+
+    from agv_core.drivers.canbus.drive_forward import sdo_write
+    from agv_core.drivers.canbus.verify_drivers import sdo_read
 
     def reply(node, cs, index, sub, payload=b"\0\0\0\0"):
         return can.Message(arbitration_id=0x580 + node,

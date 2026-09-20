@@ -18,16 +18,22 @@ Object references (BLV-R CANopen edition, opman_can/blvr_canopen.md):
 Sequence per CiA 402: NMT Start -> Shutdown(06) -> Switch On(07) ->
 Enable Operation(0F) with target 0, then ramp by writing 60FFh.
 """
-import os
 import struct
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import can  # noqa: E402
-from bus_health import decode_state  # noqa: E402
-from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
-                            sdo_read, u32)
+
+from agv_core.drivers.canbus.bus_health import decode_state  # noqa: E402
+from agv_core.drivers.canbus.verify_drivers import (  # noqa: E402
+    BAD,
+    OK,
+    WARN,
+    claim_bus,
+    open_bus,
+    sdo_read,
+    u32,
+)
 
 NODES = {1: "left", 2: "right"}
 TARGET_RPM = 160        # 60FFh, signed: positive = forward

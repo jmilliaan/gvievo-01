@@ -12,15 +12,20 @@ Scans the full 1..127 Node-ID range rather than 1..16, so a device that was
 previously configured to an unexpected address still shows up.
 """
 import argparse
-import os
-import struct
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import can  # noqa: E402
-from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
-                            sdo_read, u32)
+
+from agv_core.drivers.canbus.verify_drivers import (  # noqa: E402
+    BAD,
+    OK,
+    WARN,
+    claim_bus,
+    open_bus,
+    sdo_read,
+    u32,
+)
 
 EXPECTED = {
     1:  ("left driver",  "BLVD-KRD", 0x00020192),

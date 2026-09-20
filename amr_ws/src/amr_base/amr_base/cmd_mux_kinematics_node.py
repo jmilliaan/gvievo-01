@@ -25,13 +25,13 @@ slew diverges. A parameter may lower them, never raise them above hardware.
 import math
 
 import rclpy
+from agv_core import config, kinematics
 from geometry_msgs.msg import Twist
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
-from amr_base.agv_repo import config, kinematics
 from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
 from amr_interfaces.msg import (
     ControlLease,
@@ -294,7 +294,7 @@ class CmdMuxKinematics(Node):
             drives=self._drives,
             commissioning=self._commissioning,
         )
-        name = gating.NAMES[sel.source]
+        name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
             self.get_logger().info(f"command source: {self._source} -> {name} ({sel.reason})")
             self._source, self._reason = name, sel.reason

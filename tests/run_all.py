@@ -42,7 +42,11 @@ MODULES = [
 
 # 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
 # (line-follow plan §1.1). Nothing removed or moved.
-EXPECTED_CHECKS = 893
+# 893 + 5 (2026-09-20): the agv_core package. test_layout stopped pinning the
+# flat sys.path namespace (4 checks) and started pinning the package boundary
+# instead (9), split across one extra test function: the library is a package,
+# it imports neither ROS nor Flask, and no module in it imports a sibling bare.
+EXPECTED_CHECKS = 898
 
 
 # An exception on a helper thread only prints a traceback by default - the

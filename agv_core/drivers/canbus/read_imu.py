@@ -57,16 +57,12 @@ value is a parameter defaulting to a module constant.
 """
 import argparse
 import math
-import os
 import statistics
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from drive_forward import sdo_write  # noqa: E402
-from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
-                            sdo_read)
+from agv_core.drivers.canbus.drive_forward import sdo_write  # noqa: E402
+from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, claim_bus, open_bus, sdo_read  # noqa: E402
 
 SENSOR_NODE = 10
 

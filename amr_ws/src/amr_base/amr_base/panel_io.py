@@ -32,9 +32,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from amr_base.agv_repo import config
-
-import panel as panel_core  # repo module: core/panel.py
+from agv_core import config
+from agv_core import panel as panel_core  # repo module: core/panel.py
 
 
 @dataclass(frozen=True)

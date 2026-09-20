@@ -40,7 +40,8 @@
       {{ imu_period_ms }} ms</small></h2>
   {# Display only. Nothing steers from this yet and it is not a health source;
      it is here so the gyro can be watched before gyro-odometry is built on it.
-     See the imu.* tuning note in config.py and drivers/canbus/read_imu.py. #}
+     See the imu.* tuning note in agv_core/config.py and
+     agv_core/drivers/canbus/read_imu.py. #}
   {% if imu_enabled %}
   <div class="tel-grid" id="mon-imu">
     <div class="tel"><span>Yaw rate</span><b id="imu-gz">–</b><i>°/s · gyro z</i></div>

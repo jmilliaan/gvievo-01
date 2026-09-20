@@ -1,0 +1,38 @@
+# Packaging for the vehicle library, plus the one ruff and pytest configuration
+# the whole repository shares. The ROS workspace keeps its own amr_ws/ruff.toml
+# because colcon invokes ruff from inside each package.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agv-core"
+version = "0.1.0"
+description = "Vehicle library for the gvievo AGV/AMR: profile loader, kinematics, CANopen and device drivers"
+requires-python = ">=3.10"
+# Deliberately empty. python-can, pymodbus and pyserial are installed on the
+# vehicle image and are imported lazily by the modules that need them; pinning
+# them here would make the offline test suite undeployable on a dev box.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["agv_core*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["amr_ws/install", "amr_ws/build", "amr_ws/log", "logs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agv_core"]
+
+[tool.pytest.ini_options]
+# The offline suite is driven by tests/run_all.py, which prints a check count.
+# pytest is here for single-file runs; both need tests/ importable for helpers.
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+python_files = ["test_*.py"]

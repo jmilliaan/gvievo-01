@@ -5,7 +5,7 @@ import time
 
 from helpers import ROOT, check
 
-import config
+from agv_core import config
 
 
 class _Reply:
@@ -64,7 +64,7 @@ class FakeClient:
 
 
 def _link(fake):
-    import dio
+    from agv_core.drivers import dio
     return dio.DioLink(client_factory=lambda: fake)
 
 
@@ -198,7 +198,7 @@ def test_dio_health():
 
 def test_dio_health_source():
     """The PullSource wiring: non-critical, so auto stops and manual does not."""
-    import health
+    from agv_core import health
     print("\ndio: health integration")
 
     link = _link(FakeClient())
@@ -219,7 +219,7 @@ def test_dio_health_source():
 
 def test_dio_events_are_edge_only():
     """The scan runs 20x a second; the event ring holds 200 entries."""
-    import events
+    from agv_core import events
     print("\ndio: event discipline")
 
     fake = FakeClient()

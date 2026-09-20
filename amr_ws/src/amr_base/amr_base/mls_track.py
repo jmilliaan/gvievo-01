@@ -26,9 +26,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-import amr_base.agv_repo  # noqa: F401  (puts the repo layer dirs on sys.path)
-
-import read_mls  # repo module
+from agv_core.drivers.canbus import read_mls  # repo module
 
 MODES = ("tpdo", "sdo", "auto", "off")
 SDO_ITEMS = (

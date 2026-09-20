@@ -1,7 +1,8 @@
 """The real panel adapter (T12): edges, validity, and the horn rule, without ROS."""
 
+from agv_core import config
+
 from amr_base import panel_io
-from amr_base.agv_repo import config
 
 R, S, A = config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO
 

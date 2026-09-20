@@ -7,8 +7,8 @@ Modbus I/O island sit on Ethernet. A Flask web UI provides a manual jog pad and
 diagnostic pages.
 
 > ### Status: this is the base platform, not a navigating vehicle.
-> **Magnetic-tape line following has been retired.** `core/autopilot.py` (the
-> PID), `core/branch.py` (the junction ladder), the per-run logging, the `/auto`
+> **Magnetic-tape line following has been retired.** `autopilot.py` (the
+> PID), `branch.py` (the junction ladder) — both then in `core/` — the per-run logging, the `/auto`
 > page and every tape parameter are deleted. **The vehicle cannot drive itself
 > today** — it jogs from the manual pad, and that is all.
 >
@@ -21,7 +21,7 @@ diagnostic pages.
 > disagree.
 >
 > **The nanoScan3 is owned by the ROS stack.** The legacy UDP listener
-> (`drivers/lidar.py`), the `/lidar` page and the zone rail were removed on
+> (then `drivers/lidar.py`), the `/lidar` page and the zone rail were removed on
 > 2026-09-16 so `sick_safetyscanners2` can hold `192.168.3.2:6060`. The
 > scanner's liveness is now read from `/amr/localization_state` (`scan_age_s`)
 > on the ROS side; this app shows nothing about it.
@@ -33,7 +33,7 @@ diagnostic pages.
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (IMU only) |
 | CAN | 125 kbps — **migration to 1 Mbps is task T0** |
 | `use_rpdo` | **false** — the setpoint is still a blocking SDO write |
-| Tests | 784 offline checks, all passing |
+| Tests | 898 offline checks, all passing |
 
 ---
 
@@ -101,7 +101,8 @@ Environment=AGV_PROFILE=agv-01
 ```
 
 `main.py` is thin and sits at the repo root precisely so `ExecStart` names a path
-that will not move again when the tree below it is reorganised.
+that will not move again when the tree below it is reorganised — as it was on
+2026-09-20, when the library moved into `agv_core/` and this path did not.
 
 `--debug` enables Flask autoreload and is **off by default**: a reload would
 open `can0` twice and orphan an armed driver.
@@ -114,57 +115,94 @@ Standard library, plus `flask` and `python-can`.
 
 ## Layout
 
-```
-main.py            Entry point. Thin: sets up sys.path, calls the server.
-config.py          Loads and validates the profile. Everything imports this.
-canworker.py       Bus thread: NMT, SDO, 50 Hz loop, arm/disarm, telemetry.
+Three things live at the top level, and the split is the whole point:
+**`agv_core/` is the library, `amr_ws/` is the ROS 2 runtime, and `main.py` +
+`app/` + `canworker.py` are the legacy standalone controller.** Both runtimes
+import the library; neither imports the other.
 
-core/              No hardware, no Flask. Computation and record-keeping.
+```
+agv_core/          The vehicle library. No ROS, no Flask, no web tier.
+  config.py          Loads and validates the profile. Everything imports this.
   kinematics.py      body <-> wheels. No control logic, no sensor knowledge.
   motion.py          Manual jog pad table, labels, key bindings.
   health.py          Hardware liveness: the two-tier watchdog table.
   panel.py           Operator panel: debounced edges over the DI image.
+  ownerlock.py       Single-owner bus access, held by whichever stack is up.
+  blindrun.py        Blind-run plans: parse, validate, step.
+  runlog.py          Per-run CSV logging, numbered under logs/.
   lidarframe.py      nanoScan3 telegram decode, for the bench tool only.
   canmon.py          Drive monitoring: the round-robin SDO object table.
   events.py          Operator event ring buffer (200). Survives a reload.
+  drivers/           Everything that talks to a device.
+    rfid.py            Chafon CF821 station-tag reader. Own thread and socket.
+    dio.py             16-in/16-out digital I/O over Modbus TCP. Own thread.
+    modbus_io.py       The Modbus TCP island itself, under dio.py.
+    lidar_scan.py      nanoScan3 bench tool (scan/watch/raw/capture). Hand-run
+                       only; needs the ROS driver stopped to bind the port.
+    canbus/            CAN layer, and standalone bench tools:
+      guard.py           the write deny-list, incl. PDO mapping validation
+      rpdo.py            RPDO1 setpoint frames (behind can.use_rpdo)
+      read_imu.py        the IMU inside the MLS — read, bias, TPDO enable
+      read_mls.py        the MLS track decoders, for line following
+      lss.py             CiA 305 bitrate migration
+      verify_bus.py      bus discovery and collision checks
+      verify_drivers.py  SDO helpers, adapter discovery
+      drive_forward.py   CiA 402 words and SDO download
+      bus_health.py      statusword -> state name
+      alarms.py          EMCY / NMT / statusword-flag tables
 
-drivers/           Everything that talks to a device.
-  rfid.py            Chafon CF821 station-tag reader. Own thread and socket.
-  dio.py             16-in/16-out digital I/O over Modbus TCP. Own thread.
-  lidar_scan.py      nanoScan3 bench tool (scan/watch/raw/capture). Hand-run
-                     only; needs the ROS driver stopped to bind the port.
-  canbus/            CAN layer, and standalone bench tools:
-    guard.py           the write deny-list, incl. PDO mapping validation
-    rpdo.py            RPDO1 setpoint frames (behind can.use_rpdo)
-    read_imu.py        the IMU inside the MLS — read, bias, TPDO enable
-    lss.py             CiA 305 bitrate migration
-    verify_bus.py      bus discovery and collision checks
-    verify_drivers.py  SDO helpers, adapter discovery
-    drive_forward.py   CiA 402 words and SDO download
-    bus_health.py      statusword -> state name
-    alarms.py          EMCY / NMT / statusword-flag tables
+amr_ws/            The ROS 2 workspace: nine packages under src/, plus the
+                   systemd units and env scripts under deploy/ and env/.
+                   src/ is nested because colcon requires <ws>/src/<pkg>/<pkg>/,
+                   not because it is a second source root.
 
-app/               The web tier.
-  server.py          Flask routes.
-  templates/         base.html is the shared shell.
-  static/            app.css and the per-page scripts.
+main.py            Legacy controller entry point. Thin: calls app.server.main.
+canworker.py       Legacy bus thread: NMT, SDO, 50 Hz loop, arm/disarm.
+app/               Legacy web tier: Flask routes, templates, static assets.
 
-tests/             784 offline checks. run_all.py runs them. No hardware.
+tests/             898 offline checks. run_all.py runs them. No hardware.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Driver, sensor and RFID documentation, plus the SLAM plan.
+pyproject.toml     Packages agv_core; also the shared ruff and pytest config.
 ```
 
-**Layers say what a module may touch.** `core/` reaches neither the bus nor the
-browser, `drivers/` owns every device conversation, `app/` only serves.
+**The legacy controller is retirement-pending and still shipping.** The vehicle
+ships today as the magnetic-tape/RFID AGV driven by `main.py` → `app/` →
+`canworker.py`, with the SLAM AMR as the paid upgrade, so this path stays until
+the ported LINE mode is accepted on the vehicle. Nothing here may be deleted on
+the grounds that "the ROS stack does it now" until that acceptance.
 
-**The layer directories go on `sys.path`; they are not packages.** Every module
-imports its neighbours by bare name, which is what lets `drivers/canbus/` still
-run standalone on a bench. The cost is that module *basenames* are one flat
-namespace — two modules may never share a name, and none may shadow a stdlib
-module. `tests/test_layout.py` enforces both.
+**Layers say what a module may touch.** Inside `agv_core/`, the top level
+reaches neither the bus nor the browser, `drivers/` owns every device
+conversation. Above it, `app/` only serves and the ROS nodes only orchestrate.
 
-**Dependency graph:** `config` imports only the standard library; everything
-else imports `config`. No cycles. Nothing in `drivers/canbus/` imports `config`.
+**`agv_core` is a real package, imported by package path.** `from agv_core
+import config`, `from agv_core.drivers.canbus import guard` — an import states
+where the module lives. Before 2026-09-20 the directories `core/`, `drivers/`
+and `drivers/canbus/` were put on `sys.path` instead and every module imported
+its neighbours by bare name, which made module *basenames* one flat namespace
+in which no two modules could ever share a name. That is gone, along with the
+`amr_base.agv_repo` shim the ROS nodes used to reach it through.
+
+**Both runtimes need the repo root importable.** The legacy controller gets it
+for free (`python3 main.py` from the repo root). ROS nodes run out of the
+colcon install space, which is outside the repo, so `amr_ws/deploy/amr-launch.sh`
+and `amr_ws/env/vehicle.sh` put the repo root on `PYTHONPATH`; `pip install -e .`
+at the repo root does the same job permanently and makes those lines redundant.
+`amr_ws/deploy/validate.sh` refuses to install if `agv_core/` is not where the
+launch wrapper expects it.
+
+**The bench tools still run standalone**, but as modules rather than files:
+
+```bash
+python3 -m agv_core.drivers.canbus.verify_drivers      # from the repo root
+```
+
+**Dependency graph:** `agv_core.config` imports only the standard library;
+everything else imports it. No cycles. Nothing in `agv_core/drivers/canbus/`
+imports `config`. `tests/test_layout.py` pins the package boundary: that
+`agv_core` imports neither ROS nor Flask nor the legacy controller, and that no
+module inside it imports a sibling by bare name.
 
 ---
 
@@ -222,7 +260,7 @@ Both, plus the 1 Mbps migration, are written up in
 ### What the vehicle may write over CAN
 
 CANopen is bidirectional, and several objects can defeat safety behaviour from a
-single stray frame. [drivers/canbus/guard.py](drivers/canbus/guard.py) enforces a
+single stray frame. [agv_core/drivers/canbus/guard.py](agv_core/drivers/canbus/guard.py) enforces a
 deny-list on every write path, and `/monitor` publishes it:
 
 | | |
@@ -246,7 +284,7 @@ releases both wheel brakes with every check above passed. So:
 
 ### Hardware health
 
-[core/health.py](core/health.py) holds one table, one row per supervised device,
+[agv_core/health.py](agv_core/health.py) holds one table, one row per supervised device,
 and each row declares its own tier:
 
 | device | fed by | timeout | losing it stops |
@@ -312,7 +350,7 @@ drives cannot produce.
 ## Testing
 
 ```bash
-python3 tests/run_all.py      # 784 checks, no hardware
+python3 tests/run_all.py      # 898 checks, no hardware
 python3 -c "import main"      # exits 1 with a named check on a bad profile
 ```
 
@@ -323,8 +361,9 @@ deliberately when adding checks; never lower it to get a green run.
 
 It also contains **source scans** that fail the build on structural regressions:
 any `self._read` / `_write` / `_nmt` / `bus.` call inside a `with self._lock:`
-block, a module whose filesystem anchor followed it into a new directory, and a
-basename collision on the flat `sys.path`. Keep them.
+block, a module whose filesystem anchor followed it into a new directory, a
+runtime dependency leaking into `agv_core`, and a bare sibling import creeping
+back into the package. Keep them.
 
 > **The plant simulation is gone.** It integrated `e_dot = v*theta + Ls*omega`
 > against the real `LineFollower`, with a negative control asserting the rig
@@ -346,13 +385,20 @@ shipped once and presented as 409s on arm *and* disarm with `/api/state`
 hanging. The lock is an `RLock` as a backstop; keeping bus I/O out of locked
 sections is the actual fix, and the source scan enforces it.
 
-**`drivers/canbus/` is a runtime dependency, not a scratch directory.**
-`canworker` imports from it. Do **not** make those modules import `config` —
-they must stay runnable standalone on a bench; where they need a vehicle-specific
-value, take it as a parameter defaulting to the module constant.
+**`agv_core/drivers/canbus/` is a runtime dependency, not a scratch directory.**
+`canworker` and the ROS `drive_node` both import from it. Do **not** make those
+modules import `config` — they must stay runnable standalone on a bench; where
+they need a vehicle-specific value, take it as a parameter defaulting to the
+module constant.
 
-It is also deliberately **not** a package. Its modules import each other by bare
-name so they run standalone, and adding `__init__.py` would resolve them twice.
+Standalone now means `python3 -m agv_core.drivers.canbus.verify_drivers` from
+the repo root, not a bare file path. Run as a plain script, only the module's
+own directory lands on `sys.path` and its `agv_core.` imports do not resolve.
+
+**`agv_core` may not import ROS, Flask or the legacy controller.** Two very
+different runtimes share it, and a stray `import flask` inside the library
+breaks the other one at import time — on the vehicle, not here.
+`tests/test_layout.py` scans for it, lazy imports included.
 
 **Wheel sign convention:** both drivers take a **positive** `60FFh` to travel
 forward. If you swap a motor, re-flash a driver or remount a wheel, re-verify on

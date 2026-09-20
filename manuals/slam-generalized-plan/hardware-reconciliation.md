@@ -58,7 +58,7 @@ statusword masks, the 3-attempt fault policy, and a never-auto-reset rule.
 wheel **difference** can slew. So yaw acceleration is capped in hardware:
 
 ```
-alpha_max = 2 × 6083h × RAD_S_PER_RPM_DIFF        (core/kinematics.py:max_yaw_accel)
+alpha_max = 2 × 6083h × RAD_S_PER_RPM_DIFF        (agv_core/kinematics.py:max_yaw_accel)
           = 2 × 2000 × 6.46e-4  =  2.586 rad/s²   at the current ramp setting
 ```
 
@@ -178,7 +178,7 @@ existing `branch_latch` convention in the profile).
 ### D-5 — There is a Modbus I/O island the plan does not know about
 
 16 DI / 16 DO at **192.168.1.30:502**, already implemented in
-[`drivers/dio.py`](../../drivers/dio.py): own thread, 20 Hz scan, 2.0 ms per read,
+[`agv_core/drivers/dio.py`](../../agv_core/drivers/dio.py): own thread, 20 Hz scan, 2.0 ms per read,
 health-monitored, with a `/io` lamp page. It belongs in **Layer 1** as a node
 publishing DI state, and it is where the safety-PLC handshake and E-stop status
 will land when that arrives.
@@ -253,11 +253,11 @@ below the old seam is not a *framework*, it is a set of **plain Python libraries
 
 | Module | Framework-agnostic? | Disposition |
 |---|---|---|
-| [`config.py`](../../config.py) | yes — stdlib only | **Import it from the ROS node.** ROS parameters silently ignore undeclared YAML keys; this loader makes unknown *and* missing keys fatal. Keep it and let ROS params carry only what launch needs. |
-| [`core/kinematics.py`](../../core/kinematics.py) | yes — its docstring already names this exact seam | Becomes the mux node's inverse kinematics. |
-| [`drivers/canbus/guard.py`](../../drivers/canbus/guard.py) | yes | Keep the write deny-list. Nothing in ROS supplies it. |
-| [`core/health.py`](../../core/health.py) | yes | Maps onto `diagnostic_updater`; port the two-tier policy, not the code. |
-| [`drivers/dio.py`](../../drivers/dio.py), [`drivers/rfid.py`](../../drivers/rfid.py) | yes | Wrap each in a thin node; the thread + `snapshot()` shape survives. |
+| [`agv_core/config.py`](../../agv_core/config.py) | yes — stdlib only | **Import it from the ROS node.** ROS parameters silently ignore undeclared YAML keys; this loader makes unknown *and* missing keys fatal. Keep it and let ROS params carry only what launch needs. |
+| [`agv_core/kinematics.py`](../../agv_core/kinematics.py) | yes — its docstring already names this exact seam | Becomes the mux node's inverse kinematics. |
+| [`agv_core/drivers/canbus/guard.py`](../../agv_core/drivers/canbus/guard.py) | yes | Keep the write deny-list. Nothing in ROS supplies it. |
+| [`agv_core/health.py`](../../agv_core/health.py) | yes | Maps onto `diagnostic_updater`; port the two-tier policy, not the code. |
+| [`agv_core/drivers/dio.py`](../../agv_core/drivers/dio.py), [`agv_core/drivers/rfid.py`](../../agv_core/drivers/rfid.py) | yes | Wrap each in a thin node; the thread + `snapshot()` shape survives. |
 | `canworker.py` CiA-402 sequence | partly | Extract the arm/disarm/fault state machine as a library; discard the Flask-facing queue. |
 | `core/autopilot.py`, `core/branch.py` | n/a | **Retired with tape following.** |
 
@@ -283,7 +283,7 @@ target velocity, which fixes this. It is a prerequisite, not an optimisation.
 Spec §3.3 (RPDO1 for controlword + `60FFh`) and §5's MLS IMU TPDO enable both
 need SDO writes to the CiA 301 PDO configuration ranges — `1400h`/`1600h` for
 an RPDO, `1800h`/`1A00h` for a TPDO. Every one of them was refused by
-[`guard.py`](../../drivers/canbus/guard.py)'s "not on the permitted-write list"
+[`guard.py`](../../agv_core/drivers/canbus/guard.py)'s "not on the permitted-write list"
 branch. Two of the plan's tasks were blocked on a file neither document
 mentions.
 
@@ -340,12 +340,12 @@ Deltas against spec §10 only:
 
 | Task | Change |
 |---|---|
-| T2 | Reuse `core/kinematics.py`; derive `alpha_max` from `6083h` per D-1. |
+| T2 | Reuse `agv_core/kinematics.py`; derive `alpha_max` from `6083h` per D-1. |
 | T3 | `fake_imu_node` noise model uses the **measured** figures in D-3, not generic values. |
 | T7 | **Rewrite.** QR/solvePnP/precision-docking → `station_id_node` + wide-covariance `/initialpose` seeding. Docking servo is out of scope until a camera exists. |
 | T9 | **Halves.** No `wheel_encoder_node`; one drive node reading `6064h`/`606Ch`. Port from `canworker.py` rather than writing fresh. Delete `KincoScaler`. |
 | T10 | **Halves.** No IMU serial driver (D-3), no camera calibration (D-4). Add: MLS IMU TPDO configuration. |
-| — | **New T12:** Modbus DIO node from `drivers/dio.py` (D-5). |
+| — | **New T12:** Modbus DIO node from `agv_core/drivers/dio.py` (D-5). |
 | — | **New T0:** CAN bitrate migration to 1 Mbps (§5). Blocks T9. |
 | — | **New T0b:** PDO configuration through the write deny-list (D-9). **Done 2026-09-06** — `guard.py` admits the CiA 301 PDO ranges per-range, with RPDO mapping entries validated recursively. Blocks T9 and the MLS IMU TPDO work in T10. |
 

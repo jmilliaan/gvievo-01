@@ -1,17 +1,11 @@
 """The bus thread: arming, locking, frame routing, loop timing."""
-import math
-import os
-import pathlib
-import struct
-import sys
 import threading
 import time
 
-from helpers import FAIL, ROOT, check, _FakeRaw
+from helpers import ROOT, _FakeRaw, check
 
-import config
-import kinematics
-import motion
+from agv_core import config
+
 
 def test_arm_does_not_deadlock():
     """Arming must not self-deadlock the bus thread.
@@ -26,7 +20,7 @@ def test_arm_does_not_deadlock():
     """
     print("\ncanworker: arming must not deadlock on the sensor stream")
     import canworker
-    import events
+    from agv_core import events
 
     def arm_in_thread(objects):
         """_do_arm on its own thread, with its RESULT and its EXCEPTION kept.
@@ -157,7 +151,7 @@ def test_arm_no_longer_touches_the_sensor():
     silent MLS able to refuse an arm.
 
     The sensor hardware is still installed - the IMU lives inside it - but it is
-    read by drivers/canbus/read_imu.py on a bench, not by the arm.
+    read by agv_core/drivers/canbus/read_imu.py on a bench, not by the arm.
     """
     print("\narming is independent of the MLS")
     src = (ROOT / "canworker.py").read_text(encoding="utf-8")
@@ -167,7 +161,7 @@ def test_arm_no_longer_touches_the_sensor():
     check("the arm cannot be refused by a silent sensor",
           "SENSOR_SILENT_MSG" not in src)
     check("the sensor node is still known, for the IMU that lives in it",
-          "SENSOR_NODE" in (ROOT / "config.py").read_text(encoding="utf-8"))
+          "SENSOR_NODE" in (ROOT / "agv_core" / "config.py").read_text(encoding="utf-8"))
 
 
 def test_loop_health():
@@ -213,7 +207,7 @@ def test_unsolicited_frames_survive_sdo():
     which with a setpoint write most ticks is most of the time.
     """
     import canworker
-    from verify_drivers import sdo_read
+    from agv_core.drivers.canbus.verify_drivers import sdo_read
     print("\nunsolicited frames survive an SDO transfer")
 
     emcy, beats = [], []
@@ -290,7 +284,6 @@ def test_bus_thread_survives_open():
     connected/how, and still be alive when told to stop.
     """
     import canworker
-    import events
     print("\ncanworker: the bus thread survives a successful open")
 
     class _Idle:
@@ -499,6 +492,7 @@ def test_queued_actions_cannot_starve_the_tick():
     request whose HTTP wait had timed out still executed later.
     """
     from concurrent.futures import Future
+
     import canworker
     print("\ncanworker: the action queue is bounded per tick")
 

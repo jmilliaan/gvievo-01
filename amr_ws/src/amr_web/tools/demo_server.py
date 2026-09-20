@@ -1027,12 +1027,13 @@ class DemoAdapter:
     def commissioning_plan(self, plan_json: str):
         """The real planner and the real job's backend rules, minus the node around them."""
         try:
-            import amr_base.agv_repo  # noqa: F401, PLC0415  puts repo core/ on sys.path
+            from agv_core import (
+                blindrun,  # noqa: PLC0415
+                config,  # noqa: PLC0415
+            )
+
             from amr_base import commissioning as cj  # noqa: PLC0415
             from amr_base import pp  # noqa: PLC0415
-
-            import blindrun  # noqa: PLC0415
-            import config  # noqa: PLC0415
 
             spec = json.loads(plan_json)
             planned = blindrun.plan(spec.get("segments"), spec.get("speed"), 1_080_000)

@@ -15,8 +15,7 @@ import struct
 
 from helpers import check
 
-import guard
-import rpdo
+from agv_core.drivers.canbus import guard, rpdo
 
 
 def test_payload():
@@ -233,7 +232,8 @@ def test_canworker_wiring():
     print("\nRPDO1: how canworker chooses between the two paths")
 
     from helpers import ROOT
-    import config
+
+    from agv_core import config
     cw = (ROOT / "canworker.py").read_text(encoding="utf-8")
 
     check("the profile carries the flag and it ships OFF",

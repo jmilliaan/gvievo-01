@@ -59,7 +59,7 @@ same bus.
 ### 2.1 Does the MLS speak LSS at all? (read-only, nothing changes)
 
 ```bash
-python3 drivers/canbus/lss.py scan
+python3 -m agv_core.drivers.canbus.lss scan
 ```
 
 - [ ] All four identity fields answer (vendor, product, revision, serial)
@@ -78,7 +78,7 @@ python3 drivers/canbus/lss.py scan
       possible with them off the bus.
 
 ```bash
-python3 drivers/canbus/lss.py set --to 1000000 --go
+python3 -m agv_core.drivers.canbus.lss set --to 1000000 --go
 ```
 
 The tool stages, stores, then activates, in that order, and prints each frame.
@@ -94,7 +94,7 @@ Then bring the PC up to meet it:
 sudo ip link set can0 down
 sudo ip link set can0 type can bitrate 1000000
 sudo ip link set can0 up
-python3 drivers/canbus/lss.py verify --bitrate 1000000
+python3 -m agv_core.drivers.canbus.lss verify --bitrate 1000000
 ```
 
 - [ ] The node answers at 1 Mbps
@@ -112,8 +112,8 @@ python3 drivers/canbus/lss.py verify --bitrate 1000000
 
 - [ ] `profiles/agv-01.json` → `"can": { "bitrate": 1000000 }`
 - [ ] `python3 -c "import main"` exits 0
-- [ ] `python3 drivers/canbus/verify_bus.py` — both drives and the sensor answer
-- [ ] `python3 drivers/canbus/verify_drivers.py` — no collisions
+- [ ] `python3 -m agv_core.drivers.canbus.verify_bus` — both drives and the sensor answer
+- [ ] `python3 -m agv_core.drivers.canbus.verify_drivers` — no collisions
 
 ### 2.5 Restore service
 
@@ -132,7 +132,7 @@ Depends on §1. Independent of §2 — do it at either bitrate.
 ### 3.1 Is the IMU even on? (read-only)
 
 ```bash
-python3 drivers/canbus/read_imu.py show
+python3 -m agv_core.drivers.canbus.read_imu show
 ```
 
 - [ ] `enabled (2006h:02)` reads **1**. If it reads 0 the IMU *and* the
@@ -150,7 +150,7 @@ python3 drivers/canbus/read_imu.py show
 ### 3.2 Re-measure the bias
 
 ```bash
-python3 drivers/canbus/read_imu.py bias --seconds 60
+python3 -m agv_core.drivers.canbus.read_imu bias --seconds 60
 ```
 
 **Vehicle stationary and undisturbed.** Nothing in software can tell a genuine
@@ -170,8 +170,8 @@ The sensor allows **at most four active TPDOs**, and valid COB-ID bases are only
 data; it is freed when tape-following retires.
 
 ```bash
-python3 drivers/canbus/read_imu.py tpdo gyro --cob-base 0x280        # dry run
-python3 drivers/canbus/read_imu.py tpdo gyro --cob-base 0x280 --go
+python3 -m agv_core.drivers.canbus.read_imu tpdo gyro --cob-base 0x280        # dry run
+python3 -m agv_core.drivers.canbus.read_imu tpdo gyro --cob-base 0x280 --go
 ```
 
 - [ ] The dry run prints the intended COB-ID and refuses to write

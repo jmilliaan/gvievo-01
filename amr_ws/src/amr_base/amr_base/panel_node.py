@@ -21,17 +21,18 @@ from __future__ import annotations
 import time
 
 import rclpy
+from agv_core import (
+    config,
+    ownerlock,  # repo module: core/ownerlock.py
+)
+from agv_core.drivers import dio  # repo module: drivers/dio.py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import panel_io
-from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, WheelVelocities
-
-import dio  # repo module: drivers/dio.py
-import ownerlock  # repo module: core/ownerlock.py
 
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE

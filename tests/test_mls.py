@@ -1,4 +1,5 @@
-"""The MLS track decoders (drivers/canbus/read_mls.py), restored for line following.
+"""The MLS track decoders (agv_core/drivers/canbus/read_mls.py), restored for line
+following.
 
 TPDO1 is eight bytes: LCP1..LCP3 as 16-bit words, #LCP plus marker in byte 6,
 status in byte 7 (SICK 8021642 table 6). The word layout depends on 2006h:01:
@@ -10,7 +11,7 @@ import struct
 
 from helpers import check
 
-import read_mls as mls
+from agv_core.drivers.canbus import read_mls as mls
 
 
 def frame(lcp1, lcp2, lcp3, byte6, status):

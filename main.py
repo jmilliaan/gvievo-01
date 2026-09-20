@@ -11,15 +11,15 @@ the port can drive the AGV. Keep it on a trusted network.
 Thin on purpose. Everything real lives in app/server.py; this exists so the
 systemd unit's ExecStart names a path at the repo root that never moves again,
 however the tree below it is reorganised.
+
+Run it from the repo root, or install the library first (`pip install -e .`).
+As a script, sys.path[0] is this file's directory, which is the repo root, so
+both `app` and `agv_core` resolve without any path surgery here. The layer-dir
+inserts this file used to carry went with the move to the agv_core package.
 """
-import os
 import sys
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-for _d in ("", "core", "drivers", os.path.join("drivers", "canbus"), "app"):
-    sys.path.insert(0, os.path.join(_ROOT, _d) if _d else _ROOT)
-
-from server import main  # noqa: E402
+from app.server import main
 
 if __name__ == "__main__":
     sys.exit(main() or 0)

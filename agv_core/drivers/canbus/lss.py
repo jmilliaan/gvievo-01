@@ -69,14 +69,12 @@ open_bus() already does it. That is what keeps this runnable from a laptop on a
 bench, which is exactly where it will be used.
 """
 import argparse
-import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 import can  # noqa: E402
-from verify_drivers import BAD, OK, WARN, claim_bus, open_bus  # noqa: E402
+
+from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, claim_bus, open_bus  # noqa: E402
 
 # CiA 305, table 1. The master transmits on 0x7E5 and listens on 0x7E4.
 LSS_RX = 0x7E5          # master -> slave

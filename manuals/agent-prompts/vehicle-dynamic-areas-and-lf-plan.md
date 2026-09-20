@@ -36,14 +36,14 @@ Stop and report at each gate.
 **On failure**
 - Stop and report.
 - You may fix a test-environment problem (a missing package, a stale overlay, CRLF endings) without asking.
-- A fix to existing production code needs the operator's OK first. That means `amr_base`, `amr_mission`, `amr_navigation`, `amr_localization`, `amr_bringup`, `drivers/` and `config.py`.
+- A fix to existing production code needs the operator's OK first. That means `amr_base`, `amr_mission`, `amr_navigation`, `amr_localization`, `amr_bringup`, `agv_core/drivers/` and `agv_core/config.py`.
 - New files from the Phase B plan are yours to write.
 
 ## Where the tests are
 
 | Location | What | How to run |
 |---|---|---|
-| `tests/` (repo root) | Legacy offline suite for the shared root modules (`config`, CAN helpers, DIO, RFID, panel, blind run, the legacy `canworker`/`app`). `tests/run_all.py` pins the module list and `EXPECTED_CHECKS` (869 today). | `python3 tests/run_all.py` |
+| `tests/` (repo root) | Legacy offline suite for the shared root modules (`config`, CAN helpers, DIO, RFID, panel, blind run, the legacy `canworker`/`app`). `tests/run_all.py` pins the module list and `EXPECTED_CHECKS` (898 today). | `python3 tests/run_all.py` |
 | `amr_ws/src/<package>/test/` | ROS workspace tests, one folder per package: `amr_base`, `amr_bringup`, `amr_description`, `amr_localization`, `amr_maps`, `amr_mission`, `amr_navigation`, `amr_sim`, `amr_web` | `cd ~/agv_can/amr_ws && env AMR_SIM_TESTS=0 ROS_DOMAIN_ID=89 python3 -m pytest -q src/*/test` |
 | `amr_ws/src/amr_web/test/*_harness.js` | The real page scripts run in Node against a fake DOM (editor, jog pad, blind run, review). Driven by `test_*_js.py`; they SKIP if `node` is missing. | Run as part of the pytest command above. |
 
@@ -91,7 +91,7 @@ Stop and report at each gate.
    git ls-files --others --exclude-standard | xargs -r file | grep CRLF || echo "no untracked CRLF"
    ```
    Fix tracked CRLF with `git add --renormalize .` (no commit) and untracked files with `sed -i 's/\r$//' <file>`. The new files show as untracked (`??`): check that the seven listed above are present.
-2. **Legacy suite:** `python3 tests/run_all.py`. Expected: `869 check(s)`, all passed. The root tests are unchanged by Phase A.
+2. **Legacy suite:** `python3 tests/run_all.py`. Expected: `898 check(s)`, all passed. The root tests are unchanged by Phase A.
 3. **Build:**
    ```bash
    cd ~/agv_can/amr_ws && source /opt/ros/humble/setup.bash && colcon build --symlink-install && source install/setup.bash
@@ -129,7 +129,7 @@ Read the whole plan first. Follow its **Order of work**. After each step:
 - report.
 
 **Step 1 — Part 1.1: MLS track reading, no motion.**
-- Restore `drivers/canbus/read_mls.py` from `git show 8403dcb^:drivers/canbus/read_mls.py`, trimmed as the plan says.
+- Restore `agv_core/drivers/canbus/read_mls.py` from `git show 8403dcb^:drivers/canbus/read_mls.py` (the old path is the one that commit knows), trimmed as the plan says.
 - Add `amr_base/mls_track.py`, the `LineTrack.msg` message, the `/amr/line_track` topic and the `mls/track` diagnostics status in `drive_node.py`.
 - Add `tests/test_mls.py` to `tests/run_all.py`. Raise `EXPECTED_CHECKS` deliberately, with a comment.
 - Add `amr_base/test/test_mls_track.py`.

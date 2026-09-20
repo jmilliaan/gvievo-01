@@ -96,9 +96,13 @@ lateral offset verified 2026-09-16 (see "Lidar commissioning"). Still `MEASURE`:
 chassis box. Still `VERIFY`: IMU lateral/vertical position inside the MLS.
 
 **Repo modules.** ROS nodes reuse `config`, `kinematics` etc. from the repo
-root via `amr_base.agv_repo` (bare imports, layer dirs on `sys.path`, same as
-`app/server.py`). `AGV_CAN_ROOT` overrides the search. Profile selection is the
-controller's `AGV_PROFILE`.
+root as ordinary package imports — `from agv_core import config`,
+`from agv_core.drivers.canbus import guard` — the same way `app/server.py` does.
+What they need is the repo root on `PYTHONPATH`; `amr_ws/deploy/amr-launch.sh`
+(and `amr_ws/env/vehicle.sh`) put it there, or `pip install -e .` at the repo
+root does it permanently. `AGV_CAN_ROOT` overrides which root the launcher
+exports. There is no `amr_base.agv_repo` shim any more and no bare imports off
+layer directories. Profile selection is still the controller's `AGV_PROFILE`.
 
 **IMU chain.** `/imu/data_raw` (raw, biased; the MLS node in T10, `fake_imu`
 in sim) → `imu_bias_node` → `/imu/data` → EKF, yaw rate only. The bias node
@@ -173,7 +177,7 @@ is the one owner of `can0`: both BLV-R drives and the MLS IMU in one bus thread,
 `amr_base/canopen.py` (PDO layout, scaling, CiA-402 arm/disarm, PC-loss guard) and
 `amr_base/mls_imu.py` (gyro by TPDO if the sensor has one enabled, else SDO polling)
 underneath, both unit-tested against a scripted bus. Every write goes through
-`drivers/canbus/guard.py`; `1016h` (consumer heartbeat) was added to its allow-list.
+`agv_core/drivers/canbus/guard.py`; `1016h` (consumer heartbeat) was added to its allow-list.
 
 | Wire | Frame | Rate |
 |---|---|---|
@@ -294,7 +298,7 @@ line, the full disc on a turn). Sim panel: `fake_panel_node`; the real adapter
 (T12) publishes the same `PanelState`.
 
 **Panel and horn (T12, 2026-09-16).** `amr_base/panel_node` wraps the repo's
-`drivers/dio.py` scan thread and `core/panel.py` debounce unchanged and publishes
+`agv_core/drivers/dio.py` scan thread and `agv_core/panel.py` debounce unchanged and publishes
 `/amr/panel_state` at 50 Hz: `valid` only while DIO comms are good and a
 debounced baseline exists (anti-tie-down: a button held at start produces no
 edge; a comms gap re-baselines instead of inventing a press). The horn coil

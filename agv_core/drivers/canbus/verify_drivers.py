@@ -6,7 +6,6 @@ Read-only: issues SDO uploads (reads) and NMT nothing. Motors will not move.
 Heartbeat (1017h) defaults to 0 on these drivers, so a passive listen is
 expected to be silent. Liveness must be proven with SDO reads.
 """
-import os
 import struct
 import sys
 import time
@@ -123,14 +122,11 @@ def claim_bus(who):
     lock is the only thing that stops a bench tool's SDO requests or controlword
     writes interleaving with a running controller's.
 
-    Imported lazily so the scripts stay standalone: core/ownerlock.py needs no
-    vehicle profile, only its own directory on the path.
+    Imported lazily so importing this module costs nothing: agv_core.ownerlock
+    needs no vehicle profile, and a bench run that never takes the lock never
+    pays for it.
     """
-    core = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), "core")
-    if core not in sys.path:
-        sys.path.insert(0, core)
-    import ownerlock
+    from agv_core import ownerlock  # noqa: PLC0415
     try:
         return ownerlock.acquire("can", who)
     except ownerlock.OwnerBusy as e:

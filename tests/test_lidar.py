@@ -1,7 +1,8 @@
 """The nanoScan3 telegram decoder, and the rule that keeps it honest.
 
 The live UDP stream is owned by the ROS driver (amr_ws); what survives in this
-repo is core/lidarframe.py and the bench tool drivers/lidar_scan.py, and this
+repo is agv_core/lidarframe.py and the bench tool agv_core/drivers/lidar_scan.py,
+and this
 is their test.
 
 Everything here runs against tests/fixtures/nanoscan3_telegram.bin - five real
@@ -17,7 +18,7 @@ import struct
 
 from helpers import ROOT, check
 
-import lidarframe as lf
+from agv_core import lidarframe as lf
 
 FIXTURE = ROOT / "tests" / "fixtures" / "nanoscan3_telegram.bin"
 
@@ -163,8 +164,8 @@ def test_beam_count_comes_from_the_wire():
     # silently drop the last point of every scan. Assert it is nowhere near the
     # decode path.
     check("1651 is not hardcoded in lidarframe",
-          "1651" not in code("core/lidarframe.py"))
-    check("...nor in the bench tool", "1651" not in code("drivers/lidar_scan.py"))
+          "1651" not in code("agv_core/lidarframe.py"))
+    check("...nor in the bench tool", "1651" not in code("agv_core/drivers/lidar_scan.py"))
 
     m = lf.measurement(tel, table)
     check("every point decodes", len(m["dist_mm"]) == BEAMS, str(len(m["dist_mm"])))
@@ -237,7 +238,7 @@ def test_reader_never_writes_to_the_scanner():
     quietly invalidate the scanner's safety verification.
     """
     print("\nnothing can write to the scanner")
-    for name in ("drivers/lidar_scan.py", "core/lidarframe.py"):
+    for name in ("agv_core/drivers/lidar_scan.py", "agv_core/lidarframe.py"):
         src = code(name)
         for bad in ("sendto", "sendall", "SOCK_STREAM", "2122",
                     "sick_safetyscanners"):

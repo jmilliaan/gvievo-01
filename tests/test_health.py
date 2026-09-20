@@ -1,16 +1,7 @@
 """Hardware liveness: the two-tier watchdog table."""
-import math
-import os
-import pathlib
-import struct
-import sys
-import threading
 
-from helpers import FAIL, ROOT, check
+from helpers import ROOT, check
 
-import config
-import kinematics
-import motion
 
 def test_health():
     """Hardware liveness: the two-tier watchdog and its edge reporting.
@@ -19,7 +10,7 @@ def test_health():
     SDO read returns None, so before health.py a driver that stopped answering
     looked alive for as long as the process ran.
     """
-    import health
+    from agv_core import health
     print("\nhardware health")
 
     # -- a source is not a fault until it has been seen once -----------------
@@ -104,7 +95,7 @@ def test_health():
           mon.evaluate(now=999.0)["sensor_error"] is False)
 
     # -- health.py stays dependency-free -------------------------------------
-    head = (ROOT / "core" / "health.py").read_text(encoding="utf-8")
+    head = (ROOT / "agv_core" / "health.py").read_text(encoding="utf-8")
     head = head[head.index('"""', head.index('"""') + 3):]
     imports = {ln.split()[1].split(".")[0] for ln in head.splitlines()
                if ln.startswith(("import ", "from "))}
@@ -143,8 +134,7 @@ def test_blocking_action_does_not_fake_a_fault():
 
     Three things now prevent it, and each is checked here.
     """
-    import canworker
-    import health
+    from agv_core import health
     print("\nfalse 'driver silent' on a blocking action")
 
     src = (ROOT / "canworker.py").read_text(encoding="utf-8")

@@ -45,14 +45,13 @@ window at once.
 Deliberately free of `config`, like the rest of canbus/.
 """
 import argparse
-import os
 import struct
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import can  # noqa: E402
-from verify_drivers import BAD, OK, WARN, open_bus, sdo_read  # noqa: E402
+
+from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, open_bus, sdo_read  # noqa: E402
 
 SENSOR_NODE = 10
 TPDO1_COB = 0x180

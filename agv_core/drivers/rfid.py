@@ -61,13 +61,11 @@ recording it as the device identity, removes the need for that magic entirely.
 *** The init command is why the reader appears silent. *** It does not answer
 unsolicited queries; it streams continuously once started. Do not add polling.
 """
-import os
 import socket
 import threading
 import time
 
-import config
-import events
+from agv_core import config, events
 
 
 class ChafonCFCodec:

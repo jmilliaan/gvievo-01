@@ -12,7 +12,7 @@ here through config, which also does the deriving - MPS_PER_RPM and friends are
 computed from wheel diameter, gearing and track so the profile cannot hold a
 conversion factor that disagrees with the geometry it came from.
 """
-import config
+from agv_core import config
 
 
 def max_yaw_accel(driver_accel_rpm_s):

@@ -13,13 +13,13 @@ import math
 import time
 
 import rclpy
+from agv_core import config
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
-from amr_base.agv_repo import config
 from amr_base.diff_drive import Geometry
 from amr_interfaces.msg import ControlLease, DriveStatus, WheelStates, WheelVelocities
 from amr_interfaces.srv import SetPose2D

@@ -14,3 +14,12 @@ agv-kim2a-controller/
 
 # Blind-run logs are evidence, not source: keep them out of the tree.
 logs/
+
+# Tool caches. Ruff and pytest drop these wherever they are invoked from, which
+# in a colcon workspace means one per package; none of them are source.
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+build/
+install/
+log/

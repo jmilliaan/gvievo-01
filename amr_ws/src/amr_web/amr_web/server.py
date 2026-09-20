@@ -502,9 +502,8 @@ def create_app(
         """Effective configuration, read-only, with provenance: the strict vehicle
         profile (config.describe(), the same rows the legacy page showed) plus what
         the owners report they are actually running (from /diagnostics)."""
-        import amr_base.agv_repo  # noqa: F401, PLC0415
 
-        import config  # noqa: PLC0415
+        from agv_core import config  # noqa: PLC0415
 
         diag = adapter.diagnostics() if hasattr(adapter, "diagnostics") else {}
         runtime = {k: v["values"] for k, v in diag.items() if k in ("can/bus", "imu/mls")}
@@ -552,9 +551,8 @@ def create_app(
         owner reports profile position available right now (locked until the decision
         to run pp on this motor is recorded in pp.vendor_ref). Advisory: the commissioning node and
         the drive owner enforce the same rules on their own."""
-        import amr_base.agv_repo  # noqa: F401, PLC0415
 
-        import config  # noqa: PLC0415
+        from agv_core import config  # noqa: PLC0415
 
         st = adapter.pp_status() if hasattr(adapter, "pp_status") else None
         fresh = st is not None and float(st.get("age_s", 1e9)) <= 1.0

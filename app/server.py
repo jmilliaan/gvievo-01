@@ -27,25 +27,15 @@ import threading
 
 from flask import Flask, jsonify, redirect, render_template, request
 
-# This file lives in app/, so the repo root is its PARENT. Anchoring to the root
-# rather than to this file is what makes `python3 main.py`, a systemd unit with
-# an absolute path, and an import from any cwd all resolve the same modules.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for _d in ("", "core", "drivers", os.path.join("drivers", "canbus")):
-    sys.path.insert(0, os.path.join(_ROOT, _d) if _d else _ROOT)
-
-# Bare imports throughout - see the note in canworker.py on why the layer
-# directories go on sys.path instead of becoming packages. templates/ and
-# static/ are siblings of THIS file, which is exactly where Flask looks.
-import config  # noqa: E402
-import events  # noqa: E402
-import motion  # noqa: E402
-from canworker import Controller  # noqa: E402
+# Library code comes from the agv_core package; canworker is a root module of
+# this legacy controller, not library code. templates/ and static/ are siblings
+# of THIS file, which is exactly where Flask looks.
+from agv_core import config, events, motion, ownerlock
 
 # guard holds the permitted/forbidden write lists from the monitoring plan's
 # section 8; the monitor page displays them because an assessor will ask.
-import guard  # noqa: E402
-import ownerlock  # noqa: E402
+from agv_core.drivers.canbus import guard
+from canworker import Controller
 
 app = Flask(__name__)
 ctl = Controller()
@@ -400,7 +390,7 @@ def main():
         ctl.start()
     except ownerlock.OwnerBusy as e:
         # The ROS stack (drive_node / panel_node) holds can0 or the DIO island.
-        # Refuse cleanly rather than become a second owner - see core/ownerlock.py.
+        # Refuse cleanly rather than become a second owner - see agv_core/ownerlock.py.
         print(f"refusing to start: {e}. Stop the AMR service first.", file=sys.stderr)
         return 1
     print(f"AGV web UI on http://{args.host}:{args.port}/  "

@@ -15,14 +15,12 @@ publishes the same message.
 """
 
 import rclpy
+from agv_core import panel as panel_core  # repo module: core/panel.py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_srvs.srv import SetBool, Trigger
 
-from amr_base import agv_repo  # noqa: F401 - puts the agv_can repo on sys.path
 from amr_interfaces.msg import PanelState
-
-import panel as panel_core  # repo module: core/panel.py
 
 PENDANT_PARAMS = ("pendant_fwd", "pendant_rvs", "pendant_left", "pendant_right")
 

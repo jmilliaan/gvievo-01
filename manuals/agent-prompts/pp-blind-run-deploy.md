@@ -19,11 +19,11 @@ You are on the vehicle PC of a 150 kg differential-drive AMR (two Oriental Motor
 3. **Stop-path fixes for pp mode** (in `canopen.py`):
    - Stop frames carry Halt while in pp.
    - Standstill in pp is judged on 606Ch = 0, not on statusword bit 12 (which means set-point acknowledged in pp).
-4. **Motion extension**: `drivers/canbus/drive_forward.py` `CW_ENABLE` is now `0x000F` (it was `0x200F`, PV normal mode), as the manual requires for a 400 W motor with a gear. Both `drive_node` (ROS) and `canworker` (legacy) arm with it.
+4. **Motion extension**: `agv_core/drivers/canbus/drive_forward.py` `CW_ENABLE` is now `0x000F` (it was `0x200F`, PV normal mode), as the manual requires for a 400 W motor with a gear. Both `drive_node` (ROS) and `canworker` (legacy) arm with it.
 5. **Write guard and config**:
    - `guard.py` now allows writes to 607Ah and 6081h only. The pp safety objects stay non-writable.
-   - `config.py` adds `blind_run.max_speed_mps` and the `pp` section.
-   - `tests/run_all.py` `EXPECTED_CHECKS` is now 869.
+   - `agv_core/config.py` adds `blind_run.max_speed_mps` and the `pp` section.
+   - `tests/run_all.py` `EXPECTED_CHECKS` is now 898.
 
 ## Hard rules
 
@@ -31,7 +31,7 @@ You are on the vehicle PC of a 150 kg differential-drive AMR (two Oriental Motor
 - **Do not unlock PP.** Do not edit the `pp` section of the profile or `guard.py`'s allow-list, and do not write any drive object (SDO, `cansend` or MEXE02).
 - Before `sudo systemctl restart amr.service`, **ask the operator** and wait for a yes. A restart re-arms the drives (energised, holding zero); someone must be at the vehicle with the E-stop in reach.
 - `agv_controller.service` must not run beside `amr.service`: both would own `can0`. Check it; do not start it.
-- If a step fails, **stop and report**. You may fix a test-environment problem (a missing Python package, a stale overlay), but not production code in `amr_base`, `drivers/` or `config.py` without asking. Say exactly what you changed.
+- If a step fails, **stop and report**. You may fix a test-environment problem (a missing Python package, a stale overlay), but not production code in `amr_base`, `agv_core/drivers/` or `agv_core/config.py` without asking. Say exactly what you changed.
 
 ## Steps
 
@@ -45,7 +45,7 @@ You are on the vehicle PC of a 150 kg differential-drive AMR (two Oriental Motor
    ```bash
    python3 tests/run_all.py
    ```
-   Expected: `87 test function(s), 869 check(s)` and `all checks passed`. The owner-lock checks that fail on Windows must pass here.
+   Expected: `93 test function(s), 898 check(s)` and `all checks passed`. The owner-lock checks that fail on Windows must pass here.
 3. **Build the overlay.** New messages, so build and re-source:
    ```bash
    cd ~/agv_can/amr_ws

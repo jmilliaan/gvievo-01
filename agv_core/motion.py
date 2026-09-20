@@ -13,7 +13,8 @@ Speeds and the invert flags live in the profile (config.MANUAL_FULL_RPM,
 MANUAL_HALF_RPM, INVERT_LEFT, INVERT_RIGHT). What stays here is the pad layout
 and its labels, which are interface, not vehicle parameters.
 """
-import config
+from agv_core import config
+
 
 # Vehicle-frame table, before INVERT_* is applied. Built per call rather than at
 # import so it always reflects the loaded profile.

@@ -1,16 +1,10 @@
 """The vehicle profile: loading, validation, and the derived constants."""
 import math
 import os
-import pathlib
-import struct
-import sys
-import threading
 
-from helpers import FAIL, ROOT, check
+from helpers import check
 
-import config
-import kinematics
-import motion
+from agv_core import config, kinematics, motion
 
 
 def rows_by_path(sections):

@@ -17,17 +17,12 @@ Nothing here opens a CoLa 2 session, and nothing here can change the scanner's
 configuration - which is rule 2 of the brief. It binds a socket and listens.
 """
 import argparse
-import os
 import struct
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "core"))
-import config  # noqa: E402
-import lidarframe as lf  # noqa: E402
+from agv_core import config  # noqa: E402
+from agv_core import lidarframe as lf  # noqa: E402
 
 OK, BAD, WARN = "\033[32mOK\033[0m", "\033[31mFAIL\033[0m", "\033[33mWARN\033[0m"
 

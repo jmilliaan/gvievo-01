@@ -125,7 +125,7 @@ install; see `manuals/rfid-setup/`.
 | Package | Why | Note |
 |---|---|---|
 | `ros-humble-sick-safetyscanners2` | nanoScan3 `/scan` and field status | **Verify nanoScan3 measurement-data support on the unit's firmware** (reconciliation §6) |
-| `ros-humble-diagnostic-updater` | Per-node health publishers; replaces the table in `core/health.py` | reconciliation D-8 |
+| `ros-humble-diagnostic-updater` | Per-node health publishers; replaces the table in `agv_core/health.py` | reconciliation D-8 |
 | `ros-humble-diagnostic-aggregator` | One health view | architecture §4.5 |
 | `ros-humble-foxglove-bridge` | The only visualisation path: Foxglove on the Windows laptop connects to it. Replaces RViz2 | architecture §3 |
 | `ros-humble-teleop-twist-keyboard` | Survey-run driving | architecture §4.5 |
@@ -145,8 +145,8 @@ The existing modules the ROS nodes will import need these (reconciliation D-8:
 
 | Library | Why | Where |
 |---|---|---|
-| `python-can` | Bus access for the drive node and every `drivers/canbus/` tool | `canworker.py`, `rpdo.py`, `lss.py`, `read_imu.py` |
-| `pymodbus` **3.x** | Modbus TCP I/O island. The code imports `pymodbus.client.ModbusTcpClient`, which needs 3.x. The 22.04 apt package is 2.x, so use pip | `drivers/dio.py`, `drivers/modbus_io.py` |
+| `python-can` | Bus access for the drive node and every `agv_core/drivers/canbus/` tool | `canworker.py`, `rpdo.py`, `lss.py`, `read_imu.py` |
+| `pymodbus` **3.x** | Modbus TCP I/O island. The code imports `pymodbus.client.ModbusTcpClient`, which needs 3.x. The 22.04 apt package is 2.x, so use pip | `agv_core/drivers/dio.py`, `agv_core/drivers/modbus_io.py` |
 | `pyserial` | slcan port discovery fallback | `verify_drivers.py` |
 | `flask` | Current web UI, until it is replaced or wrapped | `app/server.py` |
 | `canopen` (python-canopen) | Named by the spec for the drive node and its mocked-bus unit tests (T9) | spec §3.1, §10 |

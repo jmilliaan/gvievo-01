@@ -21,12 +21,12 @@ import os
 import re
 import time
 
-import events
+from agv_core import events
 
-# Anchored to the REPO ROOT, not to this file. runlog.py lives in core/, so
-# dirname(__file__) would be core/ and every run would quietly land in
-# core/logs/ - no error, just numbering restarting at 0001 beside the real runs.
-# If this module ever moves again, this line moves with it.
+# Anchored to the REPO ROOT, not to this file. runlog.py lives in agv_core/,
+# so dirname(__file__) would be agv_core/ and every run would quietly land in
+# agv_core/logs/ - no error, just numbering restarting at 0001 beside the real
+# runs. If this module ever moves again, this line moves with it.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(_ROOT, "logs")
 FLUSH_PERIOD_S = 1.0

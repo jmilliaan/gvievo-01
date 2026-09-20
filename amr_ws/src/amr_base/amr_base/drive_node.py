@@ -41,6 +41,12 @@ import threading
 import time
 
 import rclpy
+from agv_core import (
+    canmon,  # noqa: E402
+    config,
+    ownerlock,  # noqa: E402
+)
+from agv_core.drivers.canbus.verify_drivers import open_bus  # noqa: E402
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -49,7 +55,6 @@ from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import canopen, gating, pp
-from amr_base.agv_repo import config
 from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
@@ -64,10 +69,6 @@ from amr_interfaces.msg import (
     WheelStates,
     WheelVelocities,
 )
-
-import canmon  # noqa: E402  (repo module via agv_repo)
-import ownerlock  # noqa: E402
-from verify_drivers import open_bus  # noqa: E402
 
 SENSOR_DATA = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE

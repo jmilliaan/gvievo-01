@@ -6,6 +6,7 @@ import struct
 
 import can
 import pytest
+from agv_core.drivers.canbus import guard  # noqa: E402
 
 from amr_base import canopen
 from amr_base.canopen import (
@@ -24,8 +25,6 @@ from amr_base.canopen import (
     tpdo_configuration_steps,
     unwrap_i32,
 )
-
-import guard  # noqa: E402  (repo module via agv_repo)
 
 # ---------------------------------------------------------------- layout
 
@@ -296,7 +295,7 @@ def test_disarm_retires_the_pc_loss_guard_first():
 def test_monitor_cursor_reads_one_object_per_node_per_call_and_keeps_timeouts_apart():
     """U7: the diagnostic slot is bounded (one SDO per call) and a timeout is
     stored as None, never a plausible number."""
-    import canmon  # repo module via agv_repo
+    from agv_core import canmon
 
     poller = canmon.MonitorPoller({1: "left", 2: "right"}, objects=canmon.OBJECTS[:2])
     cur = MonitorCursor(poller, [1, 2])

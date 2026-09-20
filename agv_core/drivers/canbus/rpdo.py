@@ -54,14 +54,11 @@ indices the deny-list already permits rather than from raw literals.
 
 Deliberately free of `config`, like the rest of canbus/.
 """
-import os
 import struct
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import can  # noqa: E402
-from guard import check as guard_check  # noqa: E402
+
+from agv_core.drivers.canbus.guard import check as guard_check  # noqa: E402
 
 # CiA 301 default: RPDO1 is 0x200 + node.
 RPDO1_COB_BASE = 0x200

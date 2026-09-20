@@ -13,13 +13,10 @@ useful for buzzing out a harness: short a channel and exactly one line appears,
 naming it. A scrolling table of unchanged bits tells you nothing.
 """
 import argparse
-import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import config  # noqa: E402
+from agv_core import config  # noqa: E402
 
 OK, BAD, WARN = "\033[32mOK\033[0m", "\033[31mFAIL\033[0m", "\033[33mWARN\033[0m"
 

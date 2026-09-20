@@ -5,7 +5,7 @@ No rclpy here. Everything that touches the bus goes through an injected
 `bus` (python-can) so the sequences can be asserted without hardware, and every
 write goes through drivers/canbus/guard.py, the same deny-list canworker used.
 The SDO helpers, RPDO1 packing and the CiA-402 constants are the repo's own
-(drivers/canbus), imported bare via amr_base.agv_repo.
+(agv_core.drivers.canbus).
 
 Units (spec §3.2, reconciliation D-1/D-2): 60FFh and 606Ch are signed MOTOR
 r/min; 6064h is motor-side encoder counts (608Fh counts per 6091h-geared
@@ -39,15 +39,13 @@ import time
 from dataclasses import dataclass, field
 
 import can
-
-import amr_base.agv_repo  # noqa: F401  (puts the repo layer dirs on sys.path)
-from amr_base import pp
-
-import guard  # repo module
-import rpdo  # noqa: E402
-from alarms import decode_emcy, decode_nmt  # noqa: E402
-from bus_health import decode_state  # noqa: E402
-from drive_forward import (  # noqa: E402
+from agv_core.drivers.canbus import (
+    guard,  # repo module
+    rpdo,  # noqa: E402
+)
+from agv_core.drivers.canbus.alarms import decode_emcy, decode_nmt  # noqa: E402
+from agv_core.drivers.canbus.bus_health import decode_state  # noqa: E402
+from agv_core.drivers.canbus.drive_forward import (  # noqa: E402
     CW_DISABLE_VOLTAGE,
     CW_ENABLE,
     CW_SHUTDOWN,
@@ -57,7 +55,9 @@ from drive_forward import (  # noqa: E402
     SW_SPEED_IS_ZERO,
     sdo_write,
 )
-from verify_drivers import sdo_read, u32  # noqa: E402
+from agv_core.drivers.canbus.verify_drivers import sdo_read, u32  # noqa: E402
+
+from amr_base import pp
 
 # ---------------------------------------------------------------- PDO layout
 

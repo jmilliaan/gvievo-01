@@ -16,8 +16,7 @@ Vehicle terms throughout: x forward, heading positive counter-clockwise.
 """
 import math
 
-import config
-import kinematics
+from agv_core import config, kinematics
 
 RUNNING, SETTLING, DONE, ABORTED = "running", "settling", "done", "aborted"
 KINDS = ("straight", "arc", "pivot", "pulses")

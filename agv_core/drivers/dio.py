@@ -58,8 +58,7 @@ cause; either alone is the device itself.
 import threading
 import time
 
-import config
-import events
+from agv_core import config, events
 
 
 class DioLink:

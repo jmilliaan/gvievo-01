@@ -2,13 +2,10 @@
 import copy
 import json
 
-import time
-
 from helpers import ROOT, check
 
-import config
-import panel
-from panel import AUTO, MANUAL
+from agv_core import config, panel
+from agv_core.panel import AUTO, MANUAL
 
 R, S, A = 0, 1, 2                       # channel indices used by these tests
 
@@ -130,8 +127,7 @@ def test_reset_means_ready():
     being pressed reflexively before every jog, which is what this is fixing.
     """
     import canworker
-    import config
-    import events
+    from agv_core import config, events
     print("\npanel: MANUAL is armed, AUTO is armed by Start")
 
     calls = []
@@ -270,7 +266,7 @@ def test_the_manual_watchdog_does_not_latch():
     it made a dropped Wi-Fi packet cost a walk to the panel, and under
     panel.manual_auto_arm it would block re-arming as well.
     """
-    import events
+    from agv_core import events
     print("\npanel: the manual watchdog stops without latching")
 
     src = (ROOT / "canworker.py").read_text(encoding="utf-8")
@@ -305,7 +301,7 @@ def test_the_manual_watchdog_does_not_latch():
 
 def test_panel_events_are_edge_only():
     """_panel_scan runs at 50 Hz; the event ring holds 200 entries."""
-    import events
+    from agv_core import events
     print("\npanel: event discipline")
 
     src = (ROOT / "canworker.py").read_text(encoding="utf-8")
@@ -431,7 +427,7 @@ def test_panel_loss_removes_manual_authority():
     on a controller with a fake DI link: no bus, no socket.
     """
     import canworker
-    import events
+    from agv_core import events
     print("\npanel: losing the panel ends manual jog")
 
     class FakeDio:

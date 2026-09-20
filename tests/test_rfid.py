@@ -1,16 +1,10 @@
 """The station-tag reader: framing, codec, link health."""
-import math
 import os
-import pathlib
-import struct
-import sys
-import threading
 
-from helpers import FAIL, ROOT, check
+from helpers import check
 
-import config
-import kinematics
-import motion
+from agv_core import config
+
 
 def test_rfid():
     """Protocol is not inferred - it is the same reader hardware as KIM2A, so the
@@ -19,7 +13,8 @@ def test_rfid():
     import copy
     import json
     import tempfile
-    import rfid
+
+    from agv_core.drivers import rfid
     print("\nrfid link")
 
     cx = rfid.ChafonCFCodec(init=bytes.fromhex("CFFF0070002415"),

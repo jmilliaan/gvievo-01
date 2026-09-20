@@ -9,12 +9,9 @@ import re
 from unittest.mock import patch
 
 from helpers import ROOT, check
-import blindrun
+
 import canworker
-import config
-import events
-import panel
-import runlog
+from agv_core import blindrun, config, events, panel, runlog
 
 MOTOR_CPR = 36000                      # 608Fh default, per motor revolution
 CPR = MOTOR_CPR * config.GEAR_RATIO    # per wheel revolution
@@ -348,7 +345,7 @@ def test_controller_panel_rules():
 
 def test_blind_page_sets_but_cannot_start():
     print("\nthe blind-run page sets a plan and cannot start the wheels")
-    import server as webapp
+    from app import server as webapp
     c = webapp.app.test_client()
     body = c.get("/blind").get_data(as_text=True)
     check("/blind renders", 'id="blind-set"' in body and 'id="br-imu-tile"' in body)
@@ -402,7 +399,7 @@ def test_run_log_failure_is_bounded():
     now = [5000.0]
     try:
         with patch.object(runlog, "LOG_DIR", tmp), \
-                patch("runlog.time.monotonic", side_effect=lambda: now[0]):
+                patch("agv_core.runlog.time.monotonic", side_effect=lambda: now[0]):
             log = runlog.RunLog(columns=runlog.BLIND_COLUMNS, prefix="blind")
             log.open("test")
             real = log._fh

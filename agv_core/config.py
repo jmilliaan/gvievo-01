@@ -329,8 +329,12 @@ import os
 import re
 import textwrap
 
-PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "profiles")
+# Anchored to the REPO ROOT, not to this file. config.py lives in agv_core/
+# now, so dirname(__file__) would be agv_core/ and every profile lookup would
+# miss - with no error until a vehicle boots and finds no profile at all.
+# profiles/ stays at the root deliberately: it is site data, not library code.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROFILE_DIR = os.path.join(_ROOT, "profiles")
 DEFAULT_PROFILE = "agv-01"
 
 # Which vehicle this process is. Deliberately NOT named AGV_ID: the sibling

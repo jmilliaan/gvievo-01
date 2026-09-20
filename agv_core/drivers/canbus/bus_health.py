@@ -8,14 +8,19 @@ no BUS-OFF, no berr-counter), so bad termination shows up only as flaky
 transfers. Hammering SDO reads and measuring the failure rate is the
 practical substitute for a bus-health readout.
 """
-import os
 import statistics
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from verify_drivers import (BAD, OK, WARN, claim_bus, open_bus,  # noqa: E402
-                            sdo_read, u32)
+from agv_core.drivers.canbus.verify_drivers import (  # noqa: E402
+    BAD,
+    OK,
+    WARN,
+    claim_bus,
+    open_bus,
+    sdo_read,
+    u32,
+)
 
 NODES = {1: "left", 2: "right"}
 SOAK_N = 400

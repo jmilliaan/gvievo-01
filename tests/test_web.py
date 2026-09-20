@@ -1,17 +1,10 @@
 """The web tier: the watchdog opt-in and the read-only monitor page."""
-import math
 import re
-import os
-import pathlib
-import struct
-import sys
-import threading
 
-from helpers import FAIL, ROOT, check
+from helpers import ROOT, check
 
-import config
-import kinematics
-import motion
+from agv_core import config
+
 
 def test_no_page_can_hold_the_vehicle_alive():
     """*** Polling /api/state must not keep anything running. ***
@@ -27,7 +20,7 @@ def test_no_page_can_hold_the_vehicle_alive():
     pins that it did not come back as an unconditional one, which is the shape
     the original bug had.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nno page can hold the vehicle alive")
 
     check("the Controller has no keepalive to call",
@@ -52,7 +45,7 @@ def test_web_cannot_start_the_vehicle():
     that did those are GONE rather than guarded - a stale browser tab gets a 404
     instead of a moving vehicle.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe web app cannot start the vehicle")
     c = webapp.app.test_client()
 
@@ -104,7 +97,7 @@ def test_web_cannot_start_the_vehicle():
 
 def test_manual_page_shows_the_rfid_tag():
     """Reading a tag's value means jogging over it, which happens on /manual."""
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe manual page shows the station tag")
     c = webapp.app.test_client()
 
@@ -135,7 +128,7 @@ def test_the_shared_rail_is_on_every_page():
     control loop, and they were taking four of the six rail slots on a screen an
     operator reads at arm's length.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe shared rail carries what an operator needs")
     c = webapp.app.test_client()
 
@@ -175,7 +168,7 @@ def test_the_shared_rail_is_on_every_page():
 
 def test_alarms_page_records_but_cannot_clear():
     """Colour-coded log plus what is standing. It must not be able to silence."""
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe alarms page records and cannot clear")
     c = webapp.app.test_client()
 
@@ -252,7 +245,7 @@ def test_params_page_displays_and_cannot_edit():
     stops matching the profile the moment a key is added, and what it then
     shows is a value the vehicle is not running on.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe parameters page displays and cannot edit")
     c = webapp.app.test_client()
 
@@ -292,7 +285,7 @@ def test_params_page_displays_and_cannot_edit():
     tpl = (ROOT / "app" / "templates" / "params.html").read_text(encoding="utf-8")
     check("a tuning note reaches the page", note in body)
     check("...from config.py, not from the template",
-          note in (ROOT / "config.py").read_text(encoding="utf-8") and note not in tpl)
+          note in (ROOT / "agv_core" / "config.py").read_text(encoding="utf-8") and note not in tpl)
 
 
 def test_params_page_reads_speed_first():
@@ -304,7 +297,7 @@ def test_params_page_reads_speed_first():
     parameter that can be read as two parameters, and the one somebody edits
     will be the one the vehicle is not using.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe parameters page reads speed first")
     c = webapp.app.test_client()
 
@@ -361,7 +354,7 @@ def test_params_does_not_list_retired_rules():
     stop-until-Start tags - and both were route features on a fixed tape path.
     The RFID reader itself is NOT gone; what is gone is anything consuming a tag.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\n/params no longer lists retired tag rules")
 
     body = webapp.app.test_client().get("/params").get_data(as_text=True)
@@ -379,7 +372,7 @@ def test_landing_page_is_manual_and_the_pill_says_armed():
     that run's heartbeat. Both are gone, so the landing page is /manual - and a
     redirect rather than a render, so the address bar names the page it shows.
     """
-    import server as webapp   # app/server.py; see the note on the rename
+    from app import server as webapp  # see the note on the rename
     print("\nthe landing page and the armed pill")
 
     c = webapp.app.test_client()

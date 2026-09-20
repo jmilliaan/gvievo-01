@@ -23,9 +23,7 @@ import math
 import time
 from dataclasses import dataclass
 
-import amr_base.agv_repo  # noqa: F401  (puts the repo layer dirs on sys.path)
-
-import read_imu  # repo module
+from agv_core.drivers.canbus import read_imu  # repo module
 
 OBJ_GYRO_Z = (read_imu.OBJ_GYRO, 3)
 OBJ_STAMP = read_imu.OBJ_STAMP

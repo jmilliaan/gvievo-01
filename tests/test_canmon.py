@@ -1,16 +1,10 @@
 """CAN monitoring: alarm decode, the write deny-list, the SDO poller."""
-import math
-import os
-import pathlib
 import struct
-import sys
-import threading
 
-from helpers import FAIL, ROOT, check, _why
+from helpers import ROOT, _why, check
 
-import config
-import kinematics
-import motion
+from agv_core import config
+
 
 def test_can_monitoring():
     """Alarm decode, the write deny-list, and the round-robin poller.
@@ -18,10 +12,8 @@ def test_can_monitoring():
     All pure tables and bookkeeping, so all testable without a bus. The wiring
     that puts them on the bus is checked in the two tests below.
     """
-    sys.path.insert(0, str(ROOT / "drivers" / "canbus"))
-    import alarms
-    import canmon
-    import guard
+    from agv_core import canmon
+    from agv_core.drivers.canbus import alarms, guard
     print("\nCAN monitoring: alarms, deny-list, poller")
 
     # -- EMCY decode -------------------------------------------------------

@@ -5,10 +5,7 @@ import subprocess
 import sys
 
 import pytest
-
-import amr_base.agv_repo  # noqa: F401  (repo modules on sys.path)
-
-import ownerlock
+from agv_core import ownerlock
 
 
 @pytest.fixture
@@ -41,7 +38,9 @@ def test_lock_dies_with_its_process_and_is_not_inherited(lockdir):
         "print(child.pid, flush=True)\n"
         "time.sleep(float(sys.argv[2]))\n"
     )
-    core = os.path.join(os.path.dirname(ownerlock.__file__))
+    # the repo root: two levels above agv_core/ownerlock.py, so the child can
+    # import the package rather than the module file
+    core = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(ownerlock.__file__))))
     holder = subprocess.Popen(
         [sys.executable, "-c", code, core, "3"],
         stdout=subprocess.PIPE,

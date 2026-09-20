@@ -9,5 +9,12 @@ WS="${AMR_WS:-$HOME/agv_can/amr_ws}"
 source /opt/ros/humble/setup.bash
 source "$WS/install/setup.bash"
 source "$WS/env/vehicle.sh"
+# The vehicle library (agv_core) lives at the repo root, one level above $WS.
+# ROS nodes run out of the colcon install space, which is NOT under the repo's
+# import path, so without this every amr_base node dies on `import agv_core`.
+# `pip install -e .` at the repo root makes this line redundant but harmless;
+# it is kept so a fresh image boots before anyone has run pip.
+REPO_ROOT="${AGV_CAN_ROOT:-$(dirname "$WS")}"
+export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 exec ros2 launch "$@"

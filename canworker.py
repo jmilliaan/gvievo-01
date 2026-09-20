@@ -15,51 +15,37 @@ Reuses the proven helpers rather than reimplementing CANopen:
   bus_health.decode_state                      statusword -> state name
   rpdo.pack / configure                        RPDO1 setpoint frames
 """
-import os
 import queue
 import struct
-import sys
 import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeout
 
-# The layer directories are put on sys.path rather than made into packages, so
-# every module keeps importing its neighbours by bare name. That is what lets
-# drivers/canbus/ still run standalone on a bench: its modules import each other
-# as `verify_drivers`, not `drivers.canbus.verify_drivers`, and as a package
-# they would resolve twice under two different names.
-#
-# The cost is that module BASENAMES are one flat namespace across these
-# directories. Two modules may never share a name and none may shadow a stdlib
-# module; tests/test_layout.py enforces it.
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-for _d in ("", "core", "drivers", os.path.join("drivers", "canbus")):
-    sys.path.insert(0, os.path.join(_ROOT, _d) if _d else _ROOT)
+# Library code lives in the agv_core package and is imported by package path.
+# Until 2026-09-20 these directories were put on sys.path instead and every
+# module imported its neighbours by bare name; that flat namespace, and the
+# rule that no two modules anywhere could share a basename, are both gone.
+# tests/test_layout.py pins what replaced them.
+import can
 
-import can  # noqa: E402
-from alarms import (decode_emcy, decode_nmt,  # noqa: E402
-                    decode_statusword_flags)
-from bus_health import decode_state  # noqa: E402
-from guard import check as guard_write  # noqa: E402
-from drive_forward import (CW_DISABLE_VOLTAGE, CW_ENABLE, CW_SHUTDOWN,  # noqa: E402
-                           CW_SWITCH_ON, SW_FAULT, SW_REMOTE,
-                           SW_SPEED_IS_ZERO, sdo_write)
-import read_imu  # noqa: E402
-import blindrun  # noqa: E402
-import runlog  # noqa: E402
-import rpdo  # noqa: E402
-from verify_drivers import open_bus, sdo_read, u32  # noqa: E402
-
-import canmon  # noqa: E402
-import ownerlock  # noqa: E402
-import config  # noqa: E402
-import events  # noqa: E402
-import health  # noqa: E402
-import motion  # noqa: E402
-import dio  # noqa: E402
-import panel  # noqa: E402
-import rfid  # noqa: E402
+from agv_core import blindrun, canmon, config, events, health, motion, ownerlock, panel, runlog
+from agv_core.drivers import dio, rfid
+from agv_core.drivers.canbus import read_imu, rpdo
+from agv_core.drivers.canbus.alarms import decode_emcy, decode_nmt, decode_statusword_flags
+from agv_core.drivers.canbus.bus_health import decode_state
+from agv_core.drivers.canbus.drive_forward import (
+    CW_DISABLE_VOLTAGE,
+    CW_ENABLE,
+    CW_SHUTDOWN,
+    CW_SWITCH_ON,
+    SW_FAULT,
+    SW_REMOTE,
+    SW_SPEED_IS_ZERO,
+    sdo_write,
+)
+from agv_core.drivers.canbus.guard import check as guard_write
+from agv_core.drivers.canbus.verify_drivers import open_bus, sdo_read, u32
 
 # Node IDs, driver ramp rates, watchdogs and loop periods all come from the
 # vehicle profile - see config.py's TUNING NOTES for the reasoning behind the

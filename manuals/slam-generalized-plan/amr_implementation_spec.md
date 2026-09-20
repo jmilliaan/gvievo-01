@@ -21,12 +21,12 @@ This records the hardware targeted by active code, not the original generic BOM.
 | Drives | Oriental Motor BLV-R / BLVD-KRD, nodes 1 left and 2 right | [README](../../README.md), [controller](../../canworker.py), [profile](../../profiles/agv-01.json). No Kinco DEC conversion. |
 | Encoders | Motor-integrated: signed `6064h` position, `606Ch` velocity | Controller reads position and checks scaling with `608Fh`/`6091h`. No separate CiA-406 encoders. Motor feedback does not directly measure ground slip or gearbox backlash. |
 | Geometry | Wheel radius 0.09 m, track 0.487 m, gearbox 30:1, motor maximum 4,000 rpm | Active profile and [URDF](../../amr_ws/src/amr_description/urdf/amr.urdf.xacro). |
-| IMU | Inside SICK MLS, CAN node 10 | [read_imu.py](../../drivers/canbus/read_imu.py): gyro `2034h`, timestamp `2035h`. No Yahboom parser or Madgwick stage. |
+| IMU | Inside SICK MLS, CAN node 10 | [read_imu.py](../../agv_core/drivers/canbus/read_imu.py): gyro `2034h`, timestamp `2035h`. No Yahboom parser or Madgwick stage. |
 | Lidar | SICK nanoScan3; sensor `192.168.3.10`, host `192.168.3.2`, UDP 6060 | [ROS config](../../amr_ws/src/amr_bringup/config/nanoscan3.yaml). Approximately 34 Hz previously observed; use incoming scan geometry rather than fixed beam counts. |
 | Sensor mounts | Lidar x = 0.964 m ahead of axle, scan height = 0.110 m above floor; IMU x = 0.092 m ahead | Measurements recorded in [workspace README](../../amr_ws/README.md)/URDF. Laser lateral offset/yaw and IMU lateral/vertical offsets still have verification markers. |
 | Collision footprint | Not yet a verified physical outline | URDF chassis dimensions are placeholders. Measure body, protrusions and relevant load before physical route validation. Sensor position alone does not define the footprint. |
-| RFID | Chafon CF821, TCP `192.168.1.200:2022` | [rfid.py](../../drivers/rfid.py); current parser extracts a two-byte ID. Optional identity/coarse seed, not a precision pose source. |
-| I/O and panel | Modbus TCP `192.168.1.30:502`, 16 DI/16 DO | [dio.py](../../drivers/dio.py): Reset DI0, Start DI1, AUTO/MANUAL DI2, horn DO0 in profile. Preserve physical-panel motion authorization. |
+| RFID | Chafon CF821, TCP `192.168.1.200:2022` | [rfid.py](../../agv_core/drivers/rfid.py); current parser extracts a two-byte ID. Optional identity/coarse seed, not a precision pose source. |
+| I/O and panel | Modbus TCP `192.168.1.30:502`, 16 DI/16 DO | [dio.py](../../agv_core/drivers/dio.py): Reset DI0, Start DI1, AUTO/MANUAL DI2, horn DO0 in profile. Preserve physical-panel motion authorization. |
 | CAN interface | CANable 2.0; SocketCAN `can0` over SLCAN, 125 kbit/s; `use_rpdo: false` | Host `canable@.service` runs `slcand -s4`. Native `gs_usb` and 1 Mbit/s are not the present baseline. |
 | Host | N97, four cores, approximately 8 GB RAM; Ubuntu 22.04.5, Python 3.10, ROS 2 Humble | Host inspection and workspace. No OS upgrade required for the next tasks. |
 
@@ -45,7 +45,7 @@ Completion is confirmed by the operator and workspace README; source and existin
 ### 0.3 Coding rules
 
 - Python 3.10-compatible authored nodes; upstream packages supply existing C++ algorithms. Public functions have type hints; use workspace ruff rules.
-- Reuse `config`, `core/kinematics`, CAN guard and framework-independent drivers through `amr_base.agv_repo`. Do not import `app.server` into ROS nodes: it constructs the legacy controller.
+- Reuse `agv_core.config`, `agv_core.kinematics`, the CAN guard and the framework-independent drivers as ordinary package imports from `agv_core` (the repo root is on `PYTHONPATH`; there is no `amr_base.agv_repo` shim). Do not import `app.server` into ROS nodes: it constructs the legacy controller.
 - The strict vehicle profile owns hardware configuration. ROS YAML owns algorithm/launch settings; avoid independently editable copies of geometry and drive limits.
 - SI internally. Route files/UI may use degrees and `cw`/`ccw`; convert explicitly at ROS boundaries.
 - No blocking CAN/HTTP work or sleeps in control callbacks. Serialize CAN ownership/state transitions even with worker threads. INFO logs state changes; DEBUG carries periodic detail.
