@@ -42,7 +42,9 @@ WHAT CHANGED (so you know what a failure is pointing at)
 --------------------------------------------------------------------------------
 0. BEFORE YOU START
 --------------------------------------------------------------------------------
-0.1  Record the rollback point. Print and keep:
+0.1  Record the rollback point. The refactor is ONE commit, titled
+     "Restructure: the vehicle library becomes the agv_core package".
+     Print and keep:
          cd ~/agv_can && git log --oneline -3 && git status --porcelain
      Rollback for the whole refactor is a single revert of the restructure
      commit. Write its hash down before touching anything.
