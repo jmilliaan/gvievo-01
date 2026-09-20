@@ -1,5 +1,10 @@
 line-length = 110
 target-version = "py310"
+# Resolve first-party imports against amr_ws/src whatever directory ruff was
+# invoked from. Without it, `ruff check --config amr_ws/ruff.toml amr_ws/src`
+# from the repo root stops recognising amr_base and friends as first-party and
+# reports 44 phantom I001s that are clean when colcon runs ruff from in here.
+src = ["src"]
 
 [lint]
 select = ["E", "F", "W", "I", "B", "UP"]
