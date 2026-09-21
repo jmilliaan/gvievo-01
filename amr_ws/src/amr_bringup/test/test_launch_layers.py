@@ -37,6 +37,7 @@ BASE_EXES = {
 HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node"}
 SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
 MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
+LINE_EXES = {"line_follow_node"}
 NAV_EXES = {
     "map_server",
     "amcl",
@@ -118,6 +119,15 @@ def test_mapping_layer_is_only_slam_and_coordinator():
     assert set(c["exes"]) == MAPPING_EXES
     assert c["includes"] == []
     assert c["handlers"] == 2  # slam and the session are required; survey_move is not
+
+
+def test_line_layer_is_only_the_follower():
+    # generation is the ONLY argument _start_line passes; anything else required
+    # here would make the supervisor's spawn fail as SPAWN_FAILED.
+    c = compose("line_layer.launch.py", generation=3)
+    assert set(c["exes"]) == LINE_EXES
+    assert c["includes"] == []
+    assert c["handlers"] == 1  # the follower is required: no follower, no layer
 
 
 def test_navigation_layer_has_no_base_web_or_sim(tmp_path):
