@@ -30,9 +30,10 @@ the next tick picks it up.
 """
 import math
 
-import branch
-import config
-import kinematics
+from agv_core import kinematics
+
+from amr_line import branch
+from amr_line import runtime as config
 
 
 def predicted_zeta(k_ratio=None, kd=None, slow=False):
