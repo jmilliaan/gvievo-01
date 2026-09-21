@@ -364,6 +364,56 @@ def profile_path(name=None):
 # section -> json key -> (exported name, type). The exported names match the
 # constants these replaced, so the diff at every call site is one word.
 _SCHEMA = {
+    # Restored 2026-09-21 for the LINE layer (dual-product plan, Increment 1).
+    # These are the tape follower's constants and they are read by
+    # amr_line.autopilot through amr_line.runtime, never from here directly -
+    # the engine is handed a namespace so a layer can be built in a test, in
+    # sim and on the vehicle from three different sources of the same names.
+    # The u_turn_* keys are carried now though nothing reads them until
+    # Increment 3: the decision was to restore the profile block verbatim
+    # rather than let it arrive in pieces.
+    "autopilot": {
+        "dry_run":             ("DRY_RUN", bool),
+        "invert_error":        ("INVERT_ERROR", bool),
+        "branch_positive_is_left": ("BRANCH_POSITIVE_IS_LEFT", bool),
+        "k_ratio":             ("K_RATIO", float),
+        "kd":                  ("KD", float),
+        "ki":                  ("KI", float),
+        "tau_d_s":             ("TAU_D_S", float),
+        "ti_deadband_mm":      ("TI_DEADBAND_MM", float),
+        "i_clamp":             ("I_CLAMP", float),
+        "sr_pos_frac":         ("SR_POS_FRAC", float),
+        "sr_rate_frac":        ("SR_RATE_FRAC", float),
+        "sr_cap":              ("SR_CAP", float),
+        "sr_tau_s":            ("SR_TAU_S", float),
+        "auto_rpm":            ("AUTO_RPM", float),
+        "auto_u_turn_rpm":     ("AUTO_U_TURN_RPM", float),
+        "u_turn_stop_distance_m": ("U_TURN_STOP_DISTANCE_M", float),
+        "u_turn_center_tol_mm": ("U_TURN_CENTER_TOL_MM", float),
+        "u_turn_resume_delay_s": ("U_TURN_RESUME_DELAY_S", float),
+        "u_turn_min_deg":      ("U_TURN_MIN_DEG", float),
+        "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
+        "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
+        "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
+        "auto_slow_rpm":       ("AUTO_SLOW_RPM", float),
+        "slow_k_ratio":        ("SLOW_K_RATIO", float),
+        "slow_kd":             ("SLOW_KD", float),
+        "gain_blend_s":        ("GAIN_BLEND_S", float),
+        "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
+        "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
+        "sensor_max_mm":       ("SENSOR_MAX_MM", float),
+        "sensor_max_step_mm":  ("SENSOR_MAX_STEP_MM", float),
+        "line_loss_grace_m":   ("LINE_LOSS_GRACE_M", float),
+        "sensor_timeout_s":    ("SENSOR_TIMEOUT_S", float),
+        "auto_resume_hold_s":  ("AUTO_RESUME_HOLD_S", float),
+        "dt_nominal_s":        ("DT_NOMINAL_S", float),
+        "inner_wheel_min_rpm": ("INNER_WHEEL_MIN_RPM", float),
+        # New in the ROS port, not a gy-demo key. sensor_timeout_s is a
+        # STALENESS gate and cannot see a stream that is fresh but slow: the
+        # MLS SDO fallback measured 9.8 Hz against a 50 Hz PID. This is the
+        # rate floor the follower refuses to run below.
+        "line_min_track_hz":   ("LINE_MIN_TRACK_HZ", float),
+    },
     "vehicle": {
         "track_m":            ("TRACK_M", float),
         "wheel_dia_m":        ("WHEEL_DIA_M", float),
