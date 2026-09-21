@@ -271,7 +271,12 @@ def test_params_page_displays_and_cannot_edit():
 
     # The whole profile reaches the screen. Generated, so this cannot pass by
     # somebody having remembered to add a row.
+    # ...every parameter EXCEPT the sections this app deliberately hides, which
+    # it names in one place so this check and the page cannot disagree. The
+    # hole is narrow on purpose: a section that vanishes by accident still
+    # fails here.
     absent = [f"{sec}.{key}" for sec, fields in config._SCHEMA.items()
+              if sec not in webapp.PARAMS_HIDDEN
               for key, (const, _t) in fields.items() if const not in body]
     check("every parameter in the schema reaches the page", not absent,
           str(absent))

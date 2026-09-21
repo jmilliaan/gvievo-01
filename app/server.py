@@ -40,6 +40,20 @@ from canworker import Controller
 app = Flask(__name__)
 ctl = Controller()
 
+# *** Hidden from /params, not dropped from the profile. ***
+# The tape gains came back to the profile on 2026-09-21 for the ROS LINE layer
+# (dual-product plan, Increment 1). This app is the LEGACY standalone
+# controller and it has no tape engine - core/autopilot.py went with the
+# feature - so showing k_ratio and auto_rpm here would invite an operator to
+# tune something nothing in this process reads. The ROS product has its own UI
+# for them.
+#
+# This is the one deliberate hole in "the whole profile reaches the screen".
+# tests/test_web.py imports this tuple rather than repeating the name, so the
+# page and the invariant cannot drift apart, and the invariant still fails for
+# any section that goes missing by accident.
+PARAMS_HIDDEN = ("autopilot",)
+
 
 def _fail(msg, code=409):
     return jsonify({"ok": False, "error": str(msg)}), code
@@ -137,9 +151,10 @@ def params():
     config.describe(). A hand-written list would be a second copy of the
     profile format, and the copy that goes stale is the one on the screen.
     """
+    sections = [s for s in config.describe() if s.get("name") not in PARAMS_HIDDEN]
     return render_template(
         "params.html", page="params",
-        sections=config.describe(),
+        sections=sections,
         profile=config.PROFILE_NAME, path=config.PROFILE_PATH_LOADED,
         env_var=config.PROFILE_ENV_VAR,
         enabled=[(name, config.__dict__[f"{name.upper()}_ENABLED"])

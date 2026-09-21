@@ -76,9 +76,14 @@ def test_config_profile():
     # autopilot block was deleted with tape following; a profile still carrying
     # it is a profile from before the retirement, and running it would mean
     # loading gains nothing reads.
-    refuses("a leftover autopilot section is refused",
+    # The autopilot section came BACK on 2026-09-21 for the ROS LINE layer
+    # (dual-product plan, Increment 1), so a profile carrying it is now valid.
+    # What is still refused is a PARTIAL one: the loader demands every key,
+    # because a half-restored gain set is how a vehicle ends up steering on a
+    # default nobody chose.
+    refuses("a partial autopilot section is refused",
             lambda d: d.update({"autopilot": {"k_ratio": 11.3}}),
-            "unknown top-level")
+            "missing key")
     refuses("a leftover branch_latch table is refused",
             lambda d: d.update({"branch_latch": []}), "unknown top-level")
     refuses("a leftover stop_until_start_button table is refused",

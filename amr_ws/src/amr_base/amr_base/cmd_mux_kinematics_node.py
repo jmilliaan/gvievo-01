@@ -59,6 +59,13 @@ WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
 
 
 class CmdMuxKinematics(Node):
+    # A class-level default, not only an __init__ assignment: several tests
+    # build this node with __new__ and set the attributes they care about by
+    # hand, and the 50 Hz tick reads self._line unconditionally. Without this
+    # a new cache attribute turns every one of those into an AttributeError
+    # from inside the tick, which is a poor way to learn about it.
+    _line: gating.Stamped | None = None
+
     def __init__(self) -> None:
         super().__init__("cmd_mux_kinematics")
         hw_a_max = config.ACCEL_RPM_S * config.MPS_PER_RPM
@@ -141,6 +148,7 @@ class CmdMuxKinematics(Node):
         self._manual = gating.ManualIntake()
         self._drives: gating.Drives | None = None
         self._commissioning: gating.Wheels | None = None
+        self._line: gating.Stamped | None = None
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
@@ -258,6 +266,7 @@ class CmdMuxKinematics(Node):
         self._permit = None
         self._manual.clear()
         self._commissioning = None
+        self._line = None
         self._v = self._wz = self._a = self._alpha = 0.0
         self._wl = self._wr = 0.0
         self._subscribe_nav(gen)
@@ -270,7 +279,17 @@ class CmdMuxKinematics(Node):
             self.create_subscription(
                 Twist, gating.nav_topic("/cmd_vel_rotate", gen), self._on_rotate, RELIABLE_1
             ),
+            # The line follower publishes a body twist and holds no permit, so
+            # it joins the generation-private set rather than carrying its own
+            # generation field: a replaced layer's stream lands on a topic this
+            # mux is no longer subscribed to and cannot look fresh.
+            self.create_subscription(
+                Twist, gating.nav_topic("/amr/line_cmd", gen), self._on_line, RELIABLE_1
+            ),
         ]
+
+    def _on_line(self, msg: Twist) -> None:
+        self._line = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)
 
     def _on_mode(self, msg: ModeState) -> None:
         surveying = msg.mode == ModeState.MAPPING
@@ -293,6 +312,7 @@ class CmdMuxKinematics(Node):
             manual=self._manual.current,
             drives=self._drives,
             commissioning=self._commissioning,
+            line=self._line,
         )
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):

@@ -28,7 +28,9 @@ import math
 from collections import OrderedDict
 from dataclasses import dataclass
 
-NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING, PENDANT = 0, 1, 2, 3, 4, 5, 6
+# Mirrors amr_interfaces/msg/MuxState.msg. APPEND ONLY; every value needs a NAMES
+# entry (test_gating.test_names_cover_the_enum pins that).
+NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING, PENDANT, LINE = 0, 1, 2, 3, 4, 5, 6, 7
 NAMES = {
     NONE: "none",
     TELEOP: "teleop",
@@ -37,10 +39,11 @@ NAMES = {
     MANUAL: "manual",
     COMMISSIONING: "commissioning",
     PENDANT: "pendant",
+    LINE: "line",
 }
 
 # ControlLease.allowed bits
-LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
 
 
 @dataclass(frozen=True)
@@ -258,6 +261,11 @@ def select(
     manual: Manual | None = None,
     drives: Drives | None = None,
     commissioning: Wheels | None = None,
+    # APPEND ONLY. select() is called positionally (amr_base/test/test_pendant_gating.py
+    # passes 11 bare arguments), so a parameter inserted above this line re-binds
+    # every argument after it with no error anywhere - commissioning wheels
+    # arriving as a line command, which is how a mux stops honouring a job.
+    line: Stamped | None = None,
 ) -> Selection:
     gen = 0
     if p.require_supervisor:
@@ -299,6 +307,24 @@ def select(
                 return Selection(TELEOP, teleop.v, teleop.w, "teleop", gen)
             return Selection(TELEOP, 0.0, 0.0, "teleop command timed out", gen)
         return Selection(NONE, 0.0, 0.0, "MANUAL, no fresh command", gen)
+
+    # Line following: the supervisor grants LEASE_LINE exclusively in LINE mode,
+    # so this is checked BEFORE the AUTONOMOUS bit - a line lease carries no
+    # AUTONOMOUS bit and would otherwise be refused as "AUTO not allowed".
+    #
+    # The follower holds no motion permit (MotionPermit.LINE is reserved and
+    # unused): it publishes a body twist directly, so this branch sits above
+    # the permit machinery rather than inside it. Like COMMISSIONING, it is
+    # checked before anything can fall through it and returns an explicit
+    # refusal rather than falling through to the permit path.
+    #
+    # Freshness alone is the generation check here: the topic is
+    # generation-private (nav_topic), so a replaced layer's stream arrives on a
+    # topic this mux is not subscribed to and cannot look fresh.
+    if p.require_supervisor and (lease.allowed & LEASE_LINE):
+        if line is not None and _fresh(line.t, now, p.cmd_timeout_s):
+            return Selection(LINE, line.v, line.w, "line", gen)
+        return Selection(NONE, 0.0, 0.0, "line: no fresh command", gen)
 
     if p.require_supervisor and not (lease.allowed & LEASE_AUTONOMOUS):
         return Selection(NONE, 0.0, 0.0, "AUTO not allowed by supervisor", gen, True)

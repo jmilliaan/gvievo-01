@@ -160,6 +160,9 @@ class DriveNode(Node):
         self._pp_bad = ""  # why the last PpMove was not accepted as a request
         self._panel: tuple[float, bool, bool] | None = None  # (t_mono, valid, mode_auto)
         self._track: MlsTrack | None = None  # built on the bus thread
+        # /amr/line_track is best-effort, so a dropped sample is invisible
+        # without this. Touched only on the bus thread, the sole publisher.
+        self._track_seq = 0
 
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
@@ -785,6 +788,13 @@ class DriveNode(Node):
         r = s.reading
         m = LineTrack()
         m.stamp = self.get_clock().now().to_msg()
+        # stamp is publish time; t_mono is when the frame was DECODED. In SDO
+        # mode those differ by up to a poll period, and a consumer looking only
+        # at stamp cannot tell. The follower gates on this, so it is computed
+        # here rather than inferred downstream.
+        m.sample_age_s = max(0.0, time.monotonic() - s.t_mono)
+        self._track_seq = (self._track_seq + 1) & 0xFFFFFFFF
+        m.seq = self._track_seq
         m.lcp_mm = [max(-32768, min(32767, int(p))) for p in s.lcp_mm]
         m.valid = [(i + 1) in r["valid"] for i in range(3)]
         m.nlcp = int(r["nlcp"])

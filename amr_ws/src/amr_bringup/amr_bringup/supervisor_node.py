@@ -46,6 +46,7 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
+    LineState,
     LocalizationState,
     MappingState,
     ModeState,
@@ -67,7 +68,20 @@ SENSOR = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
 )
 
-LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
+
+# Mode replacement targets a client may ask for. MAPPING is absent deliberately: a survey
+# starts through /amr/supervisor/survey, not here. Keep the two dicts inverse of each other.
+_REQUEST_OF_TARGET = {
+    ModeState.IDLE: fsm.REQ_IDLE,
+    ModeState.NAVIGATION: fsm.REQ_NAVIGATION,
+    ModeState.LINE: fsm.REQ_LINE,
+}
+_MODE_OF_REQUEST = {
+    fsm.REQ_IDLE: fsm.IDLE,
+    fsm.REQ_NAVIGATION: fsm.NAVIGATION,
+    fsm.REQ_LINE: fsm.LINE,
+}
 INTERNAL = "/amr/internal/survey"
 
 
@@ -145,6 +159,12 @@ class Supervisor(Node):
             MappingState, "/amr/mapping_state", self.snap.on_mapping, LATCHED, callback_group=g
         )
         self.create_subscription(RunState, "/amr/run_state", self.snap.on_run, LATCHED, callback_group=g)
+        # Without this the LINE transaction can never COMMIT: _ready_line waits
+        # on snap.line_state_for(generation) and nothing would ever feed it, so
+        # a swap into LINE would sit there until LAYER_START_TIMEOUT.
+        self.create_subscription(
+            LineState, "/amr/line_state", self.snap.on_line, LATCHED, callback_group=g
+        )
         self.create_subscription(
             LocalizationState, "/amr/localization_state", self.snap.on_loc, LATCHED, callback_group=g
         )
@@ -239,6 +259,10 @@ class Supervisor(Node):
             return 0
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
+        if self.mode == fsm.LINE:
+            # Exclusive, like commissioning: a browser jog must not be able to fight the
+            # tape follower for the wheels. Leave LINE mode to jog.
+            return LEASE_LINE
         if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
             return LEASE_COMMISSIONING  # exclusive IDLE substate: no ordinary jog meanwhile
         return LEASE_MANUAL
@@ -277,11 +301,12 @@ class Supervisor(Node):
             pend = self.book.pending
             m.operation_id = pend.operation_id if pend else ""
             m.base_ready = rd.base_ready(self.snap, self._now())
-            m.layer_ready = self.mode in (fsm.MAPPING, fsm.NAVIGATION)
+            m.layer_ready = self.mode in fsm.LAYER_MODES
             m.active_map_id, m.active_map_revision, m.active_map_sha256 = self.active_map
             allowed = self._allowed()
             m.manual_available = bool(allowed & LEASE_MANUAL)
             m.autonomous_available = bool(allowed & LEASE_AUTONOMOUS)
+            m.line_available = bool(allowed & LEASE_LINE)
             m.fault_code = self.fault_code
             m.reason = self.reason
             m.last_survey_map_id, m.last_survey_revision = self.last_survey
@@ -302,13 +327,13 @@ class Supervisor(Node):
             if why:
                 res.accepted, res.message = False, why
                 return res
-            if req.target not in (ModeState.IDLE, ModeState.NAVIGATION):
+            kind = _REQUEST_OF_TARGET.get(req.target)
+            if kind is None:
                 res.accepted, res.message = (
                     False,
-                    "target must be IDLE or NAVIGATION (MAPPING is a survey START)",
+                    "target must be IDLE, NAVIGATION or LINE (MAPPING is a survey START)",
                 )
                 return res
-            kind = fsm.REQ_IDLE if req.target == ModeState.IDLE else fsm.REQ_NAVIGATION
             existing = (
                 self.book.get(self.book._by_request.get(req.request_id, "")) if req.request_id else None
             )
@@ -335,8 +360,7 @@ class Supervisor(Node):
                     res.accepted, res.operation_id, res.message = True, op.operation_id, "already on that map"
                     return res
             op, _ = self.book.submit(req.request_id, kind, map_id=map_id, map_revision=rev, map_sha256=sha)
-            target = fsm.IDLE if kind == fsm.REQ_IDLE else fsm.NAVIGATION
-            self._begin_transaction(op, target, map_id, rev, sha)
+            self._begin_transaction(op, _MODE_OF_REQUEST[kind], map_id, rev, sha)
             res.accepted, res.operation_id, res.message = True, op.operation_id, d.reason or "accepted"
             return res
 
@@ -548,24 +572,12 @@ class Supervisor(Node):
                 t.step = fsm.COMMIT
                 return
             try:
-                if t.target == fsm.MAPPING:
-                    self.groups["layer"] = self._launch(
-                        "layer",
-                        "mapping_layer.launch.py",
-                        maps_dir=self.maps_dir,
-                        generation=self.generation,
-                        internal="true",
-                    )
-                else:
-                    self.groups["layer"] = self._launch(
-                        "layer",
-                        "navigation_layer.launch.py",
-                        maps_dir=self.maps_dir,
-                        map_id=t.map_id,
-                        revision=t.map_revision,
-                        generation=self.generation,
-                        autostart="false",
-                    )
+                # Explicit dispatch, never a fallthrough: an unhandled target must fail
+                # loudly here rather than silently start the wrong layer.
+                start = self._LAYER_START.get(t.target)
+                if start is None:
+                    raise KeyError(f"no layer launch for mode {fsm.MODE_NAMES.get(t.target, t.target)}")
+                self.groups["layer"] = start(self, t)
             except Exception as e:  # noqa: BLE001
                 self._fail(op, "SPAWN_FAILED", str(e))
                 return
@@ -588,10 +600,15 @@ class Supervisor(Node):
                     op, "LAYER_START_TIMEOUT", f"new layer not ready in {self.budget['layer_start_s']:.0f} s"
                 )
                 return
-            if t.target == fsm.MAPPING:
-                self._ready_mapping(t, now)
-            else:
-                self._ready_navigation(t, now)
+            ready = self._LAYER_READY.get(t.target)
+            if ready is None:
+                self._fail(
+                    op,
+                    "LAYER_NO_READINESS",
+                    f"no readiness check for mode {fsm.MODE_NAMES.get(t.target, t.target)}",
+                )
+                return
+            ready(self, t, now)
             return
         if t.step == fsm.COMMIT:
             self.txn = None
@@ -605,6 +622,36 @@ class Supervisor(Node):
             )
             self._set(t.target, "", "")
             return
+
+    def _start_mapping(self, t: fsm.Transaction):
+        return self._launch(
+            "layer",
+            "mapping_layer.launch.py",
+            maps_dir=self.maps_dir,
+            generation=self.generation,
+            internal="true",
+        )
+
+    def _start_navigation(self, t: fsm.Transaction):
+        return self._launch(
+            "layer",
+            "navigation_layer.launch.py",
+            maps_dir=self.maps_dir,
+            map_id=t.map_id,
+            revision=t.map_revision,
+            generation=self.generation,
+            autostart="false",
+        )
+
+    def _start_line(self, t: fsm.Transaction):
+        return self._launch("layer", "line_layer.launch.py", generation=self.generation)
+
+    def _ready_line(self, t: fsm.Transaction, now: float) -> None:
+        """The line layer is ready as soon as it reports its own state on THIS generation.
+        No RPC: unlike a survey, nothing has to be handed to it to start (Increment 1)."""
+        if not self.snap.line_state_for(self.generation):
+            return
+        t.step = fsm.COMMIT
 
     def _ready_mapping(self, t: fsm.Transaction, now: float) -> None:
         if not self.snap.mapping_state_for(self.generation):
@@ -676,6 +723,20 @@ class Supervisor(Node):
         if stage == "lm:ok":
             if self.snap.run_state_for(self.generation) and self.snap.loc_state_for(self.generation):
                 t.step = fsm.COMMIT
+
+    # Layer dispatch. Every mode in fsm.LAYER_MODES must appear in BOTH tables; a missing
+    # entry fails the transaction loudly (SPAWN_FAILED / LAYER_NO_READINESS) instead of
+    # silently starting the wrong layer, which is what the old bare `else` did.
+    _LAYER_START = {
+        fsm.MAPPING: _start_mapping,
+        fsm.NAVIGATION: _start_navigation,
+        fsm.LINE: _start_line,
+    }
+    _LAYER_READY = {
+        fsm.MAPPING: _ready_mapping,
+        fsm.NAVIGATION: _ready_navigation,
+        fsm.LINE: _ready_line,
+    }
 
     # ---------------------------------------------------------- survey follow-ups
 
