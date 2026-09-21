@@ -255,7 +255,7 @@ No ROS on this machine.
 | Yahboom / WitMotion serial IMU driver | The IMU is CANopen node 10 (D-3) |
 | `zxing-cpp`, OpenCV QR pipeline | No floor camera; RFID gives identity, not pose (D-4) |
 | `v4l2_camera`, `camera_calibration` (image_pipeline) | No camera (D-4) |
-| Kinco EDS / `KincoScaler` | BLV-R takes r/min directly in `60FFh` (D-1) |
+| Generic servo EDS / `DriveScaler` | BLV-R takes r/min directly in `60FFh` (D-1) |
 | CiA 406 encoder driver | Encoders are inside the drives; read through `6064h`/`606Ch` (D-2) |
 | `ros2_canopen` / `canopen_402_driver` | Custom node ported from `canworker.py`; `ros2_canopen` has no equivalent of the write deny-list (architecture §4.1, D-8, D-9) |
 | `paho-mqtt` | Fleet adapter deferred (architecture D8) |

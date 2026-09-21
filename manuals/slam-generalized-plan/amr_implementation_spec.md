@@ -18,7 +18,7 @@ This records the hardware targeted by active code, not the original generic BOM.
 
 | Item | Current baseline | Evidence / qualification |
 |---|---|---|
-| Drives | Oriental Motor BLV-R / BLVD-KRD, nodes 1 left and 2 right | [README](../../README.md), [controller](../../canworker.py), [profile](../../profiles/agv-01.json). No Kinco DEC conversion. |
+| Drives | Oriental Motor BLV-R / BLVD-KRD, nodes 1 left and 2 right | [README](../../README.md), [controller](../../canworker.py), [profile](../../profiles/agv-01.json). No DEC unit conversion. |
 | Encoders | Motor-integrated: signed `6064h` position, `606Ch` velocity | Controller reads position and checks scaling with `608Fh`/`6091h`. No separate CiA-406 encoders. Motor feedback does not directly measure ground slip or gearbox backlash. |
 | Geometry | Wheel radius 0.09 m, track 0.487 m, gearbox 30:1, motor maximum 4,000 rpm | Active profile and [URDF](../../amr_ws/src/amr_description/urdf/amr.urdf.xacro). |
 | IMU | Inside SICK MLS, CAN node 10 | [read_imu.py](../../agv_core/drivers/canbus/read_imu.py): gyro `2034h`, timestamp `2035h`. No Yahboom parser or Madgwick stage. |
@@ -400,4 +400,4 @@ T1–T3 keep their meaning and DONE status. Later IDs replace the former QR/free
 
 ## 12. Revision summary
 
-Preserves completed T1–T3; replaces generic Kinco/external-encoder/serial-IMU/QR assumptions with the active code baseline; requires live manual survey and return-to-start review; selects a web editor; and replaces destination planning with straight moves and directed rotations. Runtime localizes against the saved map. Map changes require a reviewed revision and route revalidation.
+Preserves completed T1–T3; replaces generic DEC-servo/external-encoder/serial-IMU/QR assumptions with the active code baseline; requires live manual survey and return-to-start review; selects a web editor; and replaces destination planning with straight moves and directed rotations. Runtime localizes against the saved map. Map changes require a reviewed revision and route revalidation.

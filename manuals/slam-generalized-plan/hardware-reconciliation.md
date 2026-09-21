@@ -19,7 +19,7 @@ wins. Hardware steps that follow from it are written up in
 
 | | Generic plan assumed | We actually have | Delta |
 |---|---|---|---|
-| Drives | Kinco FD, CANopen | **Oriental Motor BLV-R (BLVD-KRD)**, nodes 1 & 2 | **D-1** |
+| Drives | Generic CiA-402 servo, CANopen | **Oriental Motor BLV-R (BLVD-KRD)**, nodes 1 & 2 | **D-1** |
 | Wheel encoders | Separate CiA-406 absolute encoders, nodes 3 & 4 | **Motor-integrated**, read from the drive nodes | **D-2** |
 | IMU | Yahboom 9-axis on serial | **Inside the SICK MLS**, CANopen node 10 | **D-3** |
 | Station anchors | Floor QR/DataMatrix camera | **Chafon CF821 UHF RFID**, TCP | **D-4** |
@@ -40,10 +40,10 @@ track **0.486 m** (not 0.450), gear ratio **30:1**, motor max **4000 r/min**
 
 ## 2. Deltas that change the design
 
-### D-1 — Drives are Oriental Motor, not Kinco *(net simplification)*
+### D-1 — Drives are Oriental Motor, not a generic DEC-unit servo *(net simplification)*
 
-Spec §3.4 hands the agent a Kinco-specific scaling formula
-(`DEC = rpm × 512 × enc_res / 1875`) and a `KincoScaler` class to unit-test. **All
+Spec §3.4 hands the agent a vendor-specific scaling formula
+(`DEC = rpm × 512 × enc_res / 1875`) and a `DriveScaler` class to unit-test. **All
 of that is deleted.** `60FFh` on the BLV-R takes **signed r/min directly** — there
 is no DEC unit, no encoder-resolution term, and no conversion class. Kill the
 `vel_dec_per_rad_s` parameter; the only conversion left is rad/s → r/min, which
@@ -343,7 +343,7 @@ Deltas against spec §10 only:
 | T2 | Reuse `agv_core/kinematics.py`; derive `alpha_max` from `6083h` per D-1. |
 | T3 | `fake_imu_node` noise model uses the **measured** figures in D-3, not generic values. |
 | T7 | **Rewrite.** QR/solvePnP/precision-docking → `station_id_node` + wide-covariance `/initialpose` seeding. Docking servo is out of scope until a camera exists. |
-| T9 | **Halves.** No `wheel_encoder_node`; one drive node reading `6064h`/`606Ch`. Port from `canworker.py` rather than writing fresh. Delete `KincoScaler`. |
+| T9 | **Halves.** No `wheel_encoder_node`; one drive node reading `6064h`/`606Ch`. Port from `canworker.py` rather than writing fresh. Delete `DriveScaler`. |
 | T10 | **Halves.** No IMU serial driver (D-3), no camera calibration (D-4). Add: MLS IMU TPDO configuration. |
 | — | **New T12:** Modbus DIO node from `agv_core/drivers/dio.py` (D-5). |
 | — | **New T0:** CAN bitrate migration to 1 Mbps (§5). Blocks T9. |
@@ -427,7 +427,7 @@ everything on CAN.
 
 The generic plan is sound and most of it stands. The reconciliation is:
 
-**Cheaper than planned:** no Kinco scaling layer, no external encoder node, no
+**Cheaper than planned:** no DEC scaling layer, no external encoder node, no
 IMU serial driver, no camera or illumination BOM, no camera calibration
 procedure, ~200 f/s less bus traffic, and a working CAN adapter plus measured
 vehicle geometry already in hand.

@@ -34,7 +34,6 @@
     "solution_scope": ["Hardware unit", "Fleet management software (i-Prime)", "Infrastructure consulting", "Maintenance SLA", "CE marking for European JV customer (internal policy request)"],
     "active_projects": {
       "agv_controller": "Migrating AGV control from Mitsubishi PLC to Ubuntu + Python asyncio — repo `agv-kim2a-controller`, branch `clean02`; positioned strategically as the enabler for an AMR-class product",
-      "evoty": "AGV installation at PT Evoluzione Tyres, Subang — 2-AGV MQTT dispatch, 38 tire-building machines, 4 zones; calling-station LED logic, state machines, WebSocket HMI",
       "gantry": "3-axis gantry, EtherCAT + IPC (Ubuntu + pysoem master) instead of SSCNET III/H; Indonesian technical proposal under revision",
       "iprime": "Fleet software + ERP/MES/WMS/WCS integration layer; pygame proposal/simulation tool (`iprime-presentation-tool`)",
       "swd_partnership": "Proposed lifting-AMR partnership with a welding-equipment supplier on ez-Wheel SWD Starter Kit — competitive/IP risk under evaluation"
@@ -57,7 +56,7 @@
   "tech_stack": {
     "software": ["Python (asyncio)", "ROS / ROS 2 Jazzy", "Nav2", "Cartographer", "pysoem", "Flask", "MQTT", "WebSocket", "pygame", "JavaScript (userscripts)", "Git / GitHub", "Bash / Ubuntu admin (systemd, netplan)", "Windows", "Excel"],
     "protocols": ["EtherCAT", "Modbus TCP", "CANopen", "MQTT", "Ethernet/Cat6"],
-    "hardware": ["Mitsubishi PLCs & HMIs", "Industrial PCs (NEXCOM Neu-X102-N97, BKHD-1264-SFP)", "Keyence sensors", "SICK NanoScan3 / GLS6", "IDEC SE2L", "Xsens MTi-320 IMU", "Kinco iWMC wheel motors", "Leadshine EL7-ECN servo", "ez-Wheel SWD", "Moxa / TP-Link / Ubiquiti network gear", "LFP battery packs 51.2V 40–80Ah"],
+    "hardware": ["Mitsubishi PLCs & HMIs", "Industrial PCs (NEXCOM Neu-X102-N97, BKHD-1264-SFP)", "Keyence sensors", "SICK NanoScan3 / GLS6", "IDEC SE2L", "Xsens MTi-320 IMU", "Leadshine EL7-ECN servo", "ez-Wheel SWD", "Moxa / TP-Link / Ubiquiti network gear", "LFP battery packs 51.2V 40–80Ah"],
     "components_sourced_from": ["Japan", "China", "Europe (SICK, Germany)"],
     "locally_made": ["Steel chassis", "Wiring", "Basic electrical"]
   },

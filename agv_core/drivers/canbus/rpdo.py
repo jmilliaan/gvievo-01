@@ -108,7 +108,7 @@ def pack(controlword, velocity_rpm):
     """(controlword, r/min) -> the 6 payload bytes. Pure; no bus, no state.
 
     60FFh on the BLV-R is signed r/min directly - there is no DEC unit and no
-    encoder-resolution term, which is the Kinco scaling layer the generic SLAM
+    encoder-resolution term, which is the vendor DEC scaling layer the generic SLAM
     plan specifies and this vehicle does not need (hardware-reconciliation D-1).
 
     Raises on a value that will not fit rather than truncating: a velocity that

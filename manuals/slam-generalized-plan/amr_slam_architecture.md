@@ -1,6 +1,6 @@
 # SLAM-Based AMR — Software Architecture (Prototype → Production-Grade)
 
-**Platform:** Differential-drive AMR, Kinco CANopen servo drives, SICK NanoScan3, absolute wheel encoders (CAN), Yahboom IMU, floor-facing QR camera, Intel i3-N300 mini PC, Ubuntu + ROS 2.
+**Platform:** Differential-drive AMR, CiA-402 CANopen servo drives, SICK NanoScan3, absolute wheel encoders (CAN), Yahboom IMU, floor-facing QR camera, Intel i3-N300 mini PC, Ubuntu + ROS 2.
 **Application:** Factory floor, single production line section (500–3000 m²), fixed building structure with movable trolleys/pallets.
 **Scope:** SLAM-related software + electronics architecture. Power electronics excluded.
 
@@ -14,7 +14,7 @@
 | D2 | Runtime localizer | **AMCL (nav2_amcl) on static map**, with slam_toolbox localization-mode as fallback option | AMCL is the most battle-tested 2D localizer, tolerant of partial map mismatch (trolleys/pallets) via its beam mixture model. slam_toolbox localization mode kept as a config-switchable alternative if AMCL struggles with clutter ratio. |
 | D3 | Map creation | **slam_toolbox (sync mode) during survey runs** | De-facto ROS 2 standard, loop closure, serialized pose-graph allows later map extension/continuation — mirrors Hikrobot "map stitching" workflow. |
 | D4 | Nav LiDAR source | **Single NanoScan3: safety fields (hardwired OSSD) + measurement data over Ethernet** | NanoScan3 streams full scan data (UDP, ~30 ms) alongside safety function. One sensor, two consumers. Safety path stays hardwired and software-independent. |
-| D5 | Motor control | **Kinco drives in CiA-402 Profile Velocity mode; PC sends wheel velocity setpoints over CANopen** | Drive closes torque + velocity loops at kHz rate; PC only does kinematics + path tracking at 20–50 Hz. Matches your existing Kinco FD EDS/CANopen work. |
+| D5 | Motor control | **CiA-402 drives in Profile Velocity mode; PC sends wheel velocity setpoints over CANopen** | Drive closes torque + velocity loops at kHz rate; PC only does kinematics + path tracking at 20–50 Hz. Matches the existing drive EDS/CANopen work. |
 | D6 | CAN topology | **One shared 1 Mbps CAN bus: 2× drives + 2× absolute encoders** | Bus load analysis at 100 Hz PDO traffic stays well under 40% at 1 Mbps (consistent with your earlier CAN load analysis). |
 | D7 | Floor camera | **QR/DataMatrix code reading at stations — absolute position fix + sequence/station verification** | Not continuous visual odometry. QR codes act as ground-truth anchors at pick/drop/charge stations, correcting accumulated localization error exactly where precision matters. Same pattern as Hikrobot/Geek+ hybrid "laser SLAM + QR" navigation. |
 | D8 | Fleet interface | **Standalone; reserve a thin MQTT topic namespace for later** | No dispatch integration now; mission layer designed so a VDA5050/MQTT adapter can be bolted on without touching nav internals. |
@@ -31,7 +31,7 @@ Your listed hardware is sufficient for SLAM, but the following are needed to mak
 | Floor camera | **Required (spec)** | Global-shutter mono USB3/MIPI camera, 1.2–2 MP (e.g., Daheng MER2, Arducam global shutter), wide-angle lens, **ring/diffuse LED illumination**, mounted 100–200 mm above floor in shrouded housing | Rolling shutter + motion = unreadable codes. Controlled illumination is non-negotiable on factory floors (oil sheen, shadows). |
 | Floor codes | Required (consumable) | Laminated DataMatrix or QR labels, ~100×100 mm, at stations + optionally along corridors every 5–10 m | DataMatrix tolerates partial damage better than QR; both supported by the same pipeline. |
 | Wi-Fi | Required (dev) | If the mini PC ships with Intel AX211 (CNVio2), verify chipset compatibility — swap to AX210NGW if needed | Same issue you hit on the previous IPC. Needed for SSH/Foxglove/teleop during commissioning. |
-| E-stop chain | Required (interface only) | NanoScan3 OSSD pair → Kinco drive STO inputs, hardwired; software only *reads* status via NanoScan3 Ethernet telegram | Keeps safety independent of the SW stack — prerequisite for later ISO 3691-4 / PL d work you're already doing on the tow tractor. |
+| E-stop chain | Required (interface only) | NanoScan3 OSSD pair → drive STO inputs, hardwired; software only *reads* status via NanoScan3 Ethernet telegram | Keeps safety independent of the SW stack — prerequisite for later ISO 3691-4 / PL d work you're already doing on the tow tractor. |
 | RTC / time sync | Recommended | chrony, PC as local clock master | Sensor fusion needs monotonic, consistent timestamps; no NTP guaranteed on the floor. |
 | Rear coverage | Deferred | NanoScan3 covers 275°. Rear blind spot acceptable for forward-dominant prototype; flag for production (2nd scanner or ultrasonics) | Affects safety case later, not SLAM. |
 | Wheel encoder mounting | Already planned | Absolute encoders external to gearbox — confirm CANopen encoder profile CiA 406 support | Your encoder coupling design work applies directly. |
@@ -60,7 +60,7 @@ Five layers. Arrows are topic/service flows (described in tables — no diagram 
 
 | Node | Package | Language | Function | Key topics out | Key topics in |
 |------|---------|----------|----------|----------------|---------------|
-| `kinco_drive_node` | **ros2_canopen** (`canopen_402_driver`) *or* custom rclpy node wrapping `python-canopen` | C++ (upstream) / Python (custom) | CiA-402 state machine (NMT, op-enable), Profile Velocity setpoints via RPDO, actual velocity/status via TPDO, fault readout | `/drives/status`, joint states | `/cmd_wheel_vel` (rad/s L,R) |
+| `drive_node` | **ros2_canopen** (`canopen_402_driver`) *or* custom rclpy node wrapping `python-canopen` | C++ (upstream) / Python (custom) | CiA-402 state machine (NMT, op-enable), Profile Velocity setpoints via RPDO, actual velocity/status via TPDO, fault readout | `/drives/status`, joint states | `/cmd_wheel_vel` (rad/s L,R) |
 | `wheel_encoder_node` | custom rclpy + `python-canopen` (CiA 406) | Python | Reads absolute encoder TPDOs @ 100 Hz, computes Δposition with wrap handling, publishes per-wheel position/velocity | `/wheel_states` | — |
 | `diff_drive_odom_node` | custom rclpy (or `diff_drive_controller` if going ros2_control route) | Python | Forward kinematics from **external encoders** (not motor encoders — eliminates gearbox backlash/slip ambiguity), publishes odometry + TF `odom→base_link` (TF optionally delegated to EKF) | `/odom_raw` | `/wheel_states` |
 | `cmd_vel_mux_kinematics` | custom rclpy | Python | Inverse kinematics `cmd_vel → wheel velocities`, velocity/accel limiting, command timeout watchdog (stop on 200 ms silence) | `/cmd_wheel_vel` | `/cmd_vel` (from nav2), `/cmd_vel_teleop` |
@@ -68,7 +68,7 @@ Five layers. Arrows are topic/service flows (described in tables — no diagram 
 | `imu_node` | Yahboom vendor serial driver (rclpy) + **imu_filter_madgwick** | Python + C++ | Raw 9-axis @ ≥100 Hz → Madgwick orientation filter → `sensor_msgs/Imu` with covariance | `/imu/data` | — |
 | `floor_camera_node` | `v4l2_camera` or vendor SDK wrapper | C++/Python | Raw image stream, hardware-triggered or free-running 15–30 fps, ROI cropped | `/floor_cam/image_raw`, `/floor_cam/camera_info` | — |
 
-**ros2_canopen vs custom Python CANopen — recommendation:** start with **custom rclpy node using `python-canopen`** (you already have working Kinco FD EDS parsing and asyncio CANopen code — reuse it), structured behind a clean `/cmd_wheel_vel` interface. Migrate to `ros2_canopen` + `ros2_control` only if you later want controller-chain features (it's a heavier integration with real configuration cost). The interface boundary makes the swap invisible to everything above.
+**ros2_canopen vs custom Python CANopen — recommendation:** start with **custom rclpy node using `python-canopen`** (you already have working drive EDS parsing and asyncio CANopen code — reuse it), structured behind a clean `/cmd_wheel_vel` interface. Migrate to `ros2_canopen` + `ros2_control` only if you later want controller-chain features (it's a heavier integration with real configuration cost). The interface boundary makes the swap invisible to everything above.
 
 ### 4.2 Layer 2 — State Estimation
 
@@ -197,14 +197,14 @@ All under git; robot pulls a tagged config release. This versioning discipline i
 
 1. nav2 RPP controller → `/cmd_vel` (20 Hz)
 2. `cmd_vel_mux_kinematics`: priority mux (teleop > nav), accel/jerk limits, inverse kinematics → `/cmd_wheel_vel`
-3. `kinco_drive_node`: rad/s → drive units, RPDO Target Velocity @ 50 Hz, SYNC-driven TPDO feedback @ 100 Hz
+3. `drive_node`: rad/s → drive units, RPDO Target Velocity @ 50 Hz, SYNC-driven TPDO feedback @ 100 Hz
 4. Drive: internal velocity + current loops (kHz)
 5. Watchdogs: (a) node-level 200 ms cmd_vel timeout → zero velocity, (b) drive-side CANopen heartbeat consumer → drive faults to safe stop on PC death, (c) NanoScan3 OSSD → STO, fully hardwired, software not in loop.
 
 Sample PDO mapping sketch (only code in this document, per your note):
 
 ```python
-# kinco_drive_node core loop (python-canopen)
+# drive_node core loop (python-canopen)
 node.rpdo[1]['Target velocity'].raw = int(wheel_rad_s * RADS_TO_COUNTS)
 node.rpdo[1].transmit()
 # feedback via tpdo callback -> publish joint state
@@ -247,7 +247,7 @@ Rules: no RViz on robot (Foxglove bridge instead), CycloneDDS, image transport k
 amr_ws/src/
   amr_bringup/        # launch profiles: mapping.launch.py, nav.launch.py, drivers.launch.py
   amr_description/    # URDF/xacro, static TFs
-  amr_base/           # kinco_drive_node, encoder_node, odom, kinematics/mux  (Python)
+  amr_base/           # drive_node, encoder_node, odom, kinematics/mux  (Python)
   amr_localization/   # EKF + AMCL configs, qr_pose_node
   amr_navigation/     # nav2 params, costmap filters, BT XML
   amr_mission/        # mission_executor, station_registry, mission YAMLs
