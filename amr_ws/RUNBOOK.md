@@ -54,6 +54,24 @@ pgrep -af 'amr_|nav2|slam_toolbox|foxglove' || true
 Do not use process-name kills during normal operation. The supervisor owns the
 child process groups and performs bounded SIGINT → SIGTERM → SIGKILL cleanup.
 
+### Tape or trackless: the profile's `tracked` key
+
+One vehicle, two products, chosen by a single top-level key in
+`profiles/<name>.json` and read once at boot:
+
+| `"tracked"` | boots to | offered | refused with |
+|---|---|---|---|
+| `false` (default, the SLAM AMR) | `IDLE` | surveys, maps, routes | LINE: "this vehicle is trackless (profile tracked=false)" |
+| `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (arm, then Start under AUTO) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
+
+The Status header's mode shows `LINE` and `/api/state` carries `product`
+(`"tape"` / `"slam"`). Switching = edit the key, then
+`sudo systemctl restart amr.service` (the key is missing → the profile refuses
+to load and the service does not start; the error names it). On a tape AGV the
+boot entry into LINE happens once; requesting `IDLE` afterwards (to jog under
+MANUAL) is honoured and not undone — request LINE again when done, by
+`ros2 service call /amr/mode/request` with target 7, until the UI has a button.
+
 ## 2. Survey → draw a route → run it
 
 The complete workflow, in order. Only step C moves the vehicle on its own, and

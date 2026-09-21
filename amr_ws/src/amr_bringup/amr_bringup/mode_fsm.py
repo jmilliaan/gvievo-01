@@ -54,6 +54,9 @@ class Params:
     still_dwell_s: float = 0.5
     wheels_fresh_s: float = 0.10
     panel_fresh_s: float = 0.20
+    # The profile's top-level `tracked`: True = tape AGV (LINE only), False =
+    # trackless (MAPPING/NAVIGATION only). None = no product gate (tests, bench).
+    tracked: bool | None = None
 
 
 DEFAULT = Params()
@@ -122,6 +125,10 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
         return Decision(False, f"unknown request {request!r}")
     if request == REQ_IDLE and state == IDLE:
         return Decision(True, "already IDLE")
+    if p.tracked is True and request in (REQ_NAVIGATION, REQ_SURVEY_START):
+        return Decision(False, "this vehicle is a tape AGV (profile tracked=true): no maps or routes")
+    if p.tracked is False and request == REQ_LINE:
+        return Decision(False, "this vehicle is trackless (profile tracked=false): no tape following")
     if not wheels_still(c, p):
         return Decision(False, "vehicle not proven stopped (fresh, still wheels for 0.5 s)")
     if not panel_manual(c, p):

@@ -29,6 +29,7 @@ import time
 import uuid
 
 import rclpy
+from agv_core import config
 from nav2_msgs.srv import ManageLifecycleNodes
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -122,6 +123,13 @@ class Supervisor(Node):
                 "survey_rpc_s",
             )
         }
+
+        # The product, from the profile's top-level `tracked` (config.py note 5):
+        # a tape AGV enters LINE by itself once the base is up and refuses maps and
+        # routes; a trackless one boots to IDLE and refuses LINE. Read once, here.
+        self.tracked = bool(config.TRACKED)
+        self.admit_params = fsm.Params(tracked=self.tracked)
+        self._auto_line_done = False
 
         self.instance = uuid.uuid4().hex
         self.generation = 1
@@ -309,6 +317,7 @@ class Supervisor(Node):
             m.line_available = bool(allowed & LEASE_LINE)
             m.fault_code = self.fault_code
             m.reason = self.reason
+            m.product = "tape" if self.tracked else "slam"
             m.last_survey_map_id, m.last_survey_revision = self.last_survey
         self._pub_mode.publish(m)
 
@@ -340,7 +349,7 @@ class Supervisor(Node):
             if existing is not None:
                 res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
                 return res
-            d = fsm.admit(self.mode, kind, self._conditions())
+            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
             if not d.ok:
                 res.accepted, res.message = False, d.reason
                 return res
@@ -386,7 +395,7 @@ class Supervisor(Node):
             if existing is not None:
                 res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
                 return res
-            d = fsm.admit(self.mode, kind, self._conditions())
+            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
             if not d.ok:
                 res.accepted, res.message = False, d.reason
                 return res
@@ -467,6 +476,19 @@ class Supervisor(Node):
         self.txn.notes.append("from_fault" if from_fault else "")
         self.requested = target
         self._set(fsm.TRANSITIONING, "inhibiting")
+
+    def _auto_enter_line(self) -> None:
+        """A tape AGV's default mode is LINE: start the swap right after boot, once.
+        No panel rule here - nothing can be moving at boot, the mux inhibits
+        through the transition, and the follower still needs arm + Start under
+        AUTO before a wheel turns. Leaving LINE later (to jog) is the operator's
+        request and is not undone."""
+        if not self.tracked or self._auto_line_done or self.txn is not None:
+            return
+        self._auto_line_done = True
+        op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)
+        self.get_logger().info("profile tracked=true: entering LINE (the tape AGV's default mode)")
+        self._begin_transaction(op, fsm.LINE, "", 0, "")
 
     def _fail_active(self, code: str, why: str) -> None:
         """Terminal failure of whatever is in flight (review R25): the transaction's or the
@@ -881,6 +903,7 @@ class Supervisor(Node):
         if self.mode == fsm.STARTING:
             if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
                 self._set(fsm.IDLE, "", "")
+                self._auto_enter_line()
             elif now > self._boot_deadline:
                 self._set(fsm.FAULT, "base not ready", rd.base_missing(self.snap, now), "BASE_NOT_READY")
             return

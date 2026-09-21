@@ -1,5 +1,6 @@
 {
   "profile_name": "agv-01",
+  "tracked": false,
   "autopilot": {
     "dry_run": false,
     "invert_error": true,

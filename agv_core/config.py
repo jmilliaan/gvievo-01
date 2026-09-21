@@ -33,6 +33,11 @@ Four rules the loader enforces, in order of how much trouble they save:
      vehicle and not renamed would report the old identity in the event log and
      in every run CSV header, and nothing would look wrong until two runs were
      compared weeks later.
+  5. `tracked` (top level, true/false) says which product this vehicle is.
+     false = trackless: the SLAM AMR, boots to IDLE, MAPPING/NAVIGATION are
+     offered and LINE is refused. true = the magnetic-tape AGV: the supervisor
+     enters LINE by itself once the base is up, and NAVIGATION/surveys are
+     refused. It is read at boot; changing it means restarting amr.service.
 
 load() is written as an atomic swap - parse and validate into a fresh namespace,
 publish only on success - so nothing observes a half-applied profile. Only
@@ -559,7 +564,7 @@ _SCHEMA = {
     },
 }
 
-_TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str)}
+_TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
 
 
 def _coerce(value, want, where):

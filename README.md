@@ -209,7 +209,9 @@ Everything tunable lives in `profiles/<name>.json`, selected by `AGV_PROFILE`.
 4. **`profile_name` must match the filename.**
 
 Speeds, ramps, the jog and pendant limits, the PP lock and the tape engine's
-35 gains (`autopilot`) are all there. The web UI's Params page shows every
+35 gains (`autopilot`) are all there — and the product: top-level
+`"tracked": false` is the SLAM AMR, `true` the tape AGV that boots into LINE
+and refuses maps and routes (RUNBOOK §1). The web UI's Params page shows every
 value the running nodes actually use beside the profile's.
 
 ---
