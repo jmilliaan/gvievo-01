@@ -451,6 +451,36 @@ def test_pages_fonts_and_style_guards(env):
             assert radius.strip() in ("50%", "2px", "0"), f"{f.name}: border-radius {radius}"
 
 
+def test_one_layout_three_sizes(env):
+    """amr.css "one layout, three sizes": the laptop and the 7-inch HMI report near-identical
+    CSS viewports, so the app scales itself through the root font size. Every length in
+    the stylesheet must be rem (a px font or width would not follow the knob), the knob
+    must be applied before the stylesheet loads (no flash at the wrong size), and every
+    page must carry the Aa control that cycles it."""
+    import pathlib  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "amr_web"
+    css = (root / "static" / "amr.css").read_text()
+    for size in ("s", "m", "l"):
+        assert f'html[data-ui="{size}"]' in css or (size == "s" and "html { font-size:10px; }" in css)
+    # borders (1-4px hairlines) and the two real-pixel @media breakpoints are the exceptions
+    prop = r"(?:font-size|font|width|height|padding|margin|gap)"
+    lengths = re.finditer(prop + r"\s*:[^;{}]*?\b(\d+(?:\.\d+)?)px", css)
+    px = [m.group(0) for m in lengths if float(m.group(1)) > 4 and not m.group(0).startswith("font-size:1")]
+    px = [x for x in px if x not in ("width:820px", "width:760px")]
+    assert not px, f"px lengths in amr.css do not follow the size knob: {px}"
+    assert "rem" in css and "@media (pointer:coarse)" in css
+
+    base = (root / "templates" / "base.html").read_text()
+    assert base.index("dataset.ui") < base.index('href="/static/amr.css"')
+    assert "(pointer:coarse)" in base and "amr.ui" in base
+    client = env[0]
+    for page in ("/status", "/manual", "/run", "/alarms"):
+        html = client.get(page).data.decode()
+        assert 'id="ui-size"' in html and 'id="pill-link"' in html, page
+
+
 def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
     """web-style §6: no JS runtime in CI - an id renamed in a template must not silently
     break its handler. Collects $('id') / getElementById('id') / tile|tiles('id') from the

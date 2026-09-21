@@ -13,19 +13,20 @@
 </section>
 <div id="st-fault" class="warn-box stop" hidden></div>
 
+{# Actions before the readiness detail: on a 7" panel the buttons must be above the fold. #}
 <section>
-  <h2>Readiness <small>supervisor · panel · drives · mux · localisation</small></h2>
-  <div id="st-ready" class="tel-grid"></div>
-</section>
-
-<section>
-  <div class="bar">
+  <div class="bar" style="margin-top:0">
     <a class="big" href="/maps">Survey a new map</a>
     <a class="big" href="/run">Use a saved map</a>
     <button id="btn-idle" class="big">Return to idle</button>
     <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
   </div>
-  <p class="note">Changing mode replaces only the mapping/navigation software; the drives, panel, lidar and this page stay up. A change needs the vehicle <b>stopped</b> and the selector in <b>MANUAL</b>, and never starts a route or a survey by itself.</p>
+  <p class="note">A mode change needs the vehicle <b>stopped</b> and the selector in <b>MANUAL</b>; it replaces only the mapping/navigation software and never starts a route or a survey by itself.</p>
+</section>
+
+<section>
+  <h2>Readiness <small>supervisor · panel · drives · mux · localisation</small></h2>
+  <div id="st-ready" class="tel-grid"></div>
 </section>
 {% endblock %}
 {% block scripts %}<script>

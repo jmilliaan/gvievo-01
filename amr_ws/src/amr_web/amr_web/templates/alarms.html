@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}AMR — alarms{% endblock %}
 {% block body %}
-<section>
+<section class="al-standing">
   <h2>Standing now <small>against the vehicle</small></h2>
   <div id="active" class="al-log"><div class="none">connecting…</div></div>
   <p class="note">This page cannot clear anything. A drive alarm is cleared by a drive <b>power cycle</b>; a latched supervisor FAULT by <b>Recover</b> on the Status page after the cause is fixed; an executor FAULT by <b>Acknowledge</b> on the Run page. Software never resets a drive alarm or ETO (deny-listed).</p>
 </section>
-<section>
+<section class="grow al-fill">
   <h2>Events <small>newest first · last 200</small></h2>
   <div id="events" class="al-log"><div class="none">no events yet</div></div>
 </section>

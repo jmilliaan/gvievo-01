@@ -65,7 +65,8 @@ function rail(st) {
   const d = st.drives;
   if (!d) tile('tel-drives', '–', 'no drive status', 'bad');
   else if (d.age_s > FRESH_S) tile('tel-drives', 'STALE', `${num(d.age_s, 1)} s old`, 'bad');
-  else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', `${d.left || '?'} · ${d.right || '?'}`, d.operational ? '' : 'warn');
+  // both drives in the same state is the normal case: say it once, the rail row is one line
+  else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`, d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
   tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
   tile('tel-wheels', mx ? `${num(mx.left_rad_s, 2)} / ${num(mx.right_rad_s, 2)}` : '–', 'rad/s · L / R', '', mxStale);
@@ -157,4 +158,36 @@ async function followOperation(id, onDone) {
   log(`operation ${id}: still pending after 5 min (outcome unknown)`, 'bad');
   if (onDone) onDone(null);
   return null;
+}
+
+// Display size knob (amr.css "one layout, three sizes"): s -> m -> l -> s. Stored per
+// device; base.html applies the stored value before first paint. The canvases size
+// themselves from their box, so a resize event makes them follow the new scale.
+(function () {
+  const btn = document.getElementById('ui-size');
+  if (!btn) return;
+  const NEXT = { s: 'm', m: 'l', l: 's' };
+  const show = () => { btn.textContent = { s: 'Aa', m: 'Aa+', l: 'Aa++' }[document.documentElement.dataset.ui] || 'Aa'; };
+  btn.onclick = () => {
+    const u = NEXT[document.documentElement.dataset.ui] || 's';
+    document.documentElement.dataset.ui = u;
+    try { localStorage.setItem('amr.ui', u); } catch (e) { /* storage blocked: this page only */ }
+    show();
+    window.dispatchEvent(new Event('resize'));
+  };
+  show();
+})();
+
+// In-page tabs: <div class="tabs" id=X><button class="tab" data-tab="a">…</button></div>
+// followed by sibling <div class="tabpane" data-tab="a"> panes. Presentation only.
+function tabs(id) {
+  const bar = document.getElementById(id); if (!bar) return;
+  const panes = [...bar.parentElement.querySelectorAll('.tabpane')];
+  const pick = name => {
+    bar.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+    panes.forEach(p => { p.hidden = p.dataset.tab !== name; });
+  };
+  bar.querySelectorAll('.tab').forEach(b => { b.onclick = () => pick(b.dataset.tab); });
+  const on = bar.querySelector('.tab.on') || bar.querySelector('.tab');
+  if (on) pick(on.dataset.tab);
 }
