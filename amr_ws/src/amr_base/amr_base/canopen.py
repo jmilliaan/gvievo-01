@@ -580,8 +580,11 @@ class DriveLink:
         self.cleanup_owed = True
         self._reset_stop()
         try:
-            # PDO mapping and NMT error control belong in PRE-OPERATIONAL.
-            self.nmt(0x80)
+            # PDO mapping and NMT error control belong in PRE-OPERATIONAL. Per
+            # drive, not broadcast: a broadcast (node 0) also silenced the MLS
+            # on node 10, whose TPDO1 only flows in Operational (2026-09-21).
+            for nid in self.nodes:
+                self.nmt(0x80, nid)
             self.configure_pdos(feedback_period_ms)
             if pc_node is not None and pc_loss_ms:
                 self.set_pc_loss_guard(pc_node, pc_loss_ms)
@@ -666,7 +669,8 @@ class DriveLink:
                 if not ok:
                     failed.append(f"node {nid}: 6040h=0x{cw:04X} ({detail})")
         try:
-            self.nmt(0x80)
+            for nid in self.nodes:
+                self.nmt(0x80, nid)
         except Exception as e:  # noqa: BLE001
             failed.append(f"NMT pre-operational ({e})")
         self.fault_reason = None if was != FAULT else self.fault_reason

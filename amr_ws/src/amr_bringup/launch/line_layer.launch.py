@@ -22,10 +22,17 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from amr_base import gating
 from amr_bringup.launch_helpers import required
 
 
 def _compose(context):
+    generation = int(LaunchConfiguration("generation").perform(context))
+    # The follower publishes on plain /amr/line_cmd; the mux of THIS generation
+    # listens on the generation-private topic (unified plan §4.3 item 4), like
+    # Nav2's cmd_vel in navigation_layer.launch.py. Without this remap the mux
+    # sees "line: no fresh command" for the whole run (found in sim, 2026-09-21).
+    line_cmd = gating.nav_topic("/amr/line_cmd", generation)
     return required(
         Node(
             package="amr_line",
@@ -34,12 +41,13 @@ def _compose(context):
             output="screen",
             parameters=[
                 {
-                    "generation": LaunchConfiguration("generation"),
+                    "generation": generation,
                     # Increment 1 is a bench and first-floor-run increment.
                     # The mux applies the same ceiling independently.
                     "v_max_mps": 0.30,
                 }
             ],
+            remappings=[("/amr/line_cmd", line_cmd)],
         ),
         "line_follow",
     )

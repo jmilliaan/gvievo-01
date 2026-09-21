@@ -70,6 +70,9 @@ def _walk(entities, context, out: dict, depth=0):
             exe = "".join(s.perform(context) for s in exe) if isinstance(exe, list) else str(exe)
             out.setdefault("exes", []).append(exe)
             out.setdefault("params", {})[exe] = list(e._Node__parameters or [])
+            out.setdefault("remaps", {})[exe] = [
+                (_text(a, context), _text(b, context)) for a, b in (e._Node__remappings or [])
+            ]
             continue
         if isinstance(e, IncludeLaunchDescription):
             raw = e.launch_description_source._LaunchDescriptionSource__location  # unexpanded substitutions
@@ -128,6 +131,9 @@ def test_line_layer_is_only_the_follower():
     assert set(c["exes"]) == LINE_EXES
     assert c["includes"] == []
     assert c["handlers"] == 1  # the follower is required: no follower, no layer
+    # The mux of generation 3 subscribes to the generation-private line_cmd
+    # topic; the follower must publish there or the mux never sees a command.
+    assert c["remaps"]["line_follow_node"] == [("/amr/line_cmd", "/amr/layers/g3/amr/line_cmd")]
 
 
 def test_navigation_layer_has_no_base_web_or_sim(tmp_path):

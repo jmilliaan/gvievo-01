@@ -221,6 +221,16 @@ def test_an_estop_hold_waits_for_a_human():
     assert job.state == lj.RUNNING
 
 
+def test_reset_ends_a_run_at_once():
+    """Physical Reset while RUNNING -> IDLE, zero wheels, this tick (vehicle
+    finding 2026-09-21: Reset was ignored while running)."""
+    job = run(make())
+    assert job.state == lj.RUNNING
+    left, right = job.tick(inputs(now=102.0, reset_edge=True))
+    assert job.state == lj.IDLE and (left, right) == (0.0, 0.0) and job.reason == "reset"
+    assert not job.arm(inputs(now=102.1))[0] or job.state == lj.ARMED  # a fresh arm is allowed
+
+
 def test_reset_clears_a_hold_to_idle():
     job = run(make())
     job.tick(inputs(now=102.0, torque_off=True))

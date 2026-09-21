@@ -1,6 +1,7 @@
 """The track (line) reading of the SICK MLS (CAN node 10), for /amr/line_track.
 
-Line-follow plan §1.1. Read-only: nothing here writes an object or sends NMT.
+Line-follow plan §1.1. Writes nothing to the sensor's objects; the one command it
+sends is NMT Start addressed to the MLS node, so TPDO1 flows (see _nmt_start).
 Decoding is drivers/canbus/read_mls.py's (TPDO1 layout, Standard/Combi, #LCP).
 
 Acquisition, chosen by `mode`:
@@ -98,6 +99,9 @@ class MlsTrack:
         self.tpdo_frames = 0
         self.misses = 0
         self.stale_periods = 0
+        self.nmt_starts = 0
+        self._next_nmt = 0.0
+        self._last_tpdo_t: float | None = None
         self.variant_mismatches = 0
         self._stale = True
         self._t_start = 0.0
@@ -131,6 +135,7 @@ class MlsTrack:
             self.cob_id = raw & 0x7FF
         if self.want in ("tpdo", "auto") and self.tpdo_enabled:
             self.link.router.add(self.cob_id, self._on_tpdo)
+            self._nmt_start(self._t_start)
         self._snapshot()
         if self.want == "sdo" or (self.want == "auto" and not self.tpdo_enabled):
             self.mode = "sdo"
@@ -167,11 +172,24 @@ class MlsTrack:
         if r is None:
             return
         self.tpdo_frames += 1
+        self._last_tpdo_t = self.clock()
         if self.mode != "tpdo":
             self.log(f"MLS TPDO1 frames on 0x{self.cob_id:03X}: track reading by TPDO")
             self.mode = "tpdo"
             self._cycle = _SdoCycle()
         self._emit(r, "tpdo", self.clock())
+
+    def _nmt_start(self, now: float) -> None:
+        """NMT Start addressed to the MLS only. TPDO1 flows in Operational and
+        nothing else on this bus puts node 10 there: the sensor boots
+        Operational but the drive link's Pre-operational at arm used to take
+        it down (2026-09-21). The drives are not addressed. Rate-limited so a
+        sensor that will not start is asked every 2 s, not every bus tick."""
+        if now < self._next_nmt:
+            return
+        self._next_nmt = now + 2.0
+        self.nmt_starts += 1
+        self.link.nmt(0x01, self.node)
 
     def stale_after(self) -> float:
         return self.stale_tpdo_s if self.mode == "tpdo" else 3.0 * self.sdo_period
@@ -185,17 +203,20 @@ class MlsTrack:
         if (a is None or a > self.stale_after()) and not self._stale:
             self._stale = True
             self.stale_periods += 1
-        if (
-            self.mode == "tpdo"
-            and self.want == "auto"
-            and self.tpdo_frames == 0
-            and now - self._t_start >= self.tpdo_wait_s
-        ):
-            self.log(
-                f"MLS: no TPDO1 on 0x{self.cob_id:03X} in {self.tpdo_wait_s:.1f} s "
-                "(Pre-operational?): polling by SDO"
-            )
-            self.mode = "sdo"
+        want_tpdo = self.want in ("tpdo", "auto") and self.tpdo_enabled and self.mode != "off"
+        no_stream = self._last_tpdo_t is None or now - self._last_tpdo_t > self.tpdo_wait_s
+        if want_tpdo and no_stream and now - self._t_start >= self.tpdo_wait_s:
+            # The stream never came, or died (the sensor was put back to
+            # Pre-operational): ask node 10 to start, again and again, and in
+            # auto mode poll by SDO meanwhile so the reading is not lost. The
+            # first TPDO1 frame switches back (see _on_tpdo).
+            self._nmt_start(now)
+            if self.mode == "tpdo" and self.want == "auto":
+                self.log(
+                    f"MLS: no TPDO1 on 0x{self.cob_id:03X} for {self.tpdo_wait_s:.1f} s "
+                    "(Pre-operational?): polling by SDO"
+                )
+                self.mode = "sdo"
         if self.mode != "sdo":
             return
         c = self._cycle
@@ -247,6 +268,7 @@ class MlsTrack:
             ("samples", str(self.samples)),
             ("tpdo_frames", str(self.tpdo_frames)),
             ("stale_periods", str(self.stale_periods)),
+            ("nmt_starts", str(self.nmt_starts)),
             ("sdo_misses", str(self.misses)),
             ("variant", self._variant_text()),
             ("variant_mismatches", str(self.variant_mismatches)),

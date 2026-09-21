@@ -32,7 +32,7 @@ def test_lock_dies_with_its_process_and_is_not_inherited(lockdir):
     spawned by the holder must not keep it (close-on-exec)."""
     code = (
         "import os, sys, time, subprocess\n"
-        "sys.path.insert(0, sys.argv[1]); import ownerlock\n"
+        "sys.path.insert(0, sys.argv[1]); from agv_core import ownerlock\n"
         "l = ownerlock.acquire('can', 'holder')\n"
         "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
         "print(child.pid, flush=True)\n"

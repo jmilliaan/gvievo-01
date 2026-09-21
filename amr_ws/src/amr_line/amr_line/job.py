@@ -191,7 +191,11 @@ class FollowJob:
     # -- the tick ----------------------------------------------------------
     def tick(self, i: Inputs):
         """Returns (left_rpm, right_rpm). Zero unless actually following."""
-        if i.reset_edge and self.state in (DONE, FAULT, HOLD):
+        # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
+        # did nothing while RUNNING and the wheels kept turning until the
+        # follower was cleared by service. The node zeroes the command on
+        # the falling edge out of RUNNING.
+        if i.reset_edge and self.state in (RUNNING, HOLD, DONE, FAULT):
             self.reset()
             self.reason = "reset"
             return 0.0, 0.0

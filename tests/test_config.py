@@ -106,8 +106,12 @@ def test_config_profile():
           or (all(v is not None for v in config.PP_EXPECT.values())
               and config.PP_VENDOR_REF.strip() != ""),
           f"enabled={config.PP_ENABLED} expect={config.PP_EXPECT}")
-    refuses("pp enabled with unset drive values is refused",
-            lambda d: d["pp"].update(enabled=True, vendor_ref="OM ticket 1"), "null value")
+    # The vehicle's own profile may already carry every value (agv-01 does since
+    # 2026-09-18), so the test unsets them itself rather than assume a locked base.
+    def pp_unset(d):
+        d["pp"]["expect"] = {k: None for k in d["pp"]["expect"]}
+        d["pp"].update(enabled=True, vendor_ref="OM ticket 1")
+    refuses("pp enabled with unset drive values is refused", pp_unset, "null value")
 
     def pp_all_set(d, ref):
         d["pp"]["expect"] = {k: 1 for k in d["pp"]["expect"]}

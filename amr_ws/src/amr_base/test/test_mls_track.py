@@ -12,14 +12,18 @@ TPDO1 = (0x1800, 1)
 
 
 class FakeLink:
-    """SDO reads from a dict; records every read and route. No write method at all,
-    so a write attempt would raise."""
+    """SDO reads from a dict; records every read, route and NMT command. No write
+    method at all, so an object write attempt would raise."""
 
     def __init__(self, objects):
         self.objects = objects
         self.router = self
         self.routes = {}
         self.reads = []
+        self.nmts = []
+
+    def nmt(self, command, node=0):
+        self.nmts.append((command, node))
 
     def read(self, node, index, sub=0, timeout=0.4):
         self.reads.append((index, sub))
@@ -74,13 +78,57 @@ def test_tpdo_registers_0x18a_and_keeps_the_latest_sample_with_its_age():
     assert t.samples == 2
 
 
-def test_only_reads_nothing_is_written():
+def test_only_reads_and_nmt_start_to_the_mls_nothing_is_written():
     t, link, _, _ = make(objs())
     t.start()
     for k in range(30):
         t.poll(100.0 + 1.1 + k * 0.02)
-    assert not hasattr(link, "write") and not hasattr(link, "nmt")
+    assert not hasattr(link, "write")
     assert {r[0] for r in link.reads} <= {0x2006, 0x1800, 0x2021, 0x2022}
+    # NMT Start (0x01) addressed to node 10 only - never a broadcast (node 0),
+    # never a drive, never another command
+    assert link.nmts and set(link.nmts) == {(0x01, 10)}
+
+
+def test_tpdo_mode_starts_the_mls_and_asks_again_every_2_s_while_the_stream_is_missing():
+    t, link, _, clk = make(objs(), mode="tpdo")
+    assert t.start() == "tpdo" and link.nmts == [(0x01, 10)]  # once at start
+    for k in range(50):  # 100.0 .. 105.0, no frames at all
+        t.poll(100.0 + k * 0.1)
+    assert t.mode == "tpdo"  # tpdo mode does not fall back
+    assert link.nmts == [(0x01, 10)] * 3  # start, then at ~102.0 and ~104.0
+    assert t.nmt_starts == 3
+    clk.t = 105.0
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 7, 0, 2, 1)))
+    for k in range(50):  # frames flowing: no more asking
+        t.poll(105.0 + k * 0.1)
+        clk.t = 105.0 + k * 0.1
+        link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 7, 0, 2, 1)))
+    assert t.nmt_starts == 3
+
+
+def test_a_stream_that_dies_after_frames_falls_back_and_is_restarted():
+    """The vehicle case of 2026-09-21: the MLS boots Operational, frames arrive,
+    then a Pre-operational reaches it and the stream dies. The old fallback only
+    looked at tpdo_frames == 0 and left the reading stale for good."""
+    t, link, got, clk = make(objs(lcp2=20), sdo_hz=10.0)
+    assert t.start() == "tpdo"
+    for k in range(8):
+        clk.t = 100.1 + k * 0.01
+        link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 7, 0, 2, 1)))
+    assert t.tpdo_frames == 8 and t.mode == "tpdo"
+    n_nmt = len(link.nmts)
+    t.poll(100.5)
+    assert t.mode == "tpdo"
+    t.poll(101.3)  # > tpdo_wait_s (1.0) since the last frame at 100.17
+    assert t.mode == "sdo" and len(link.nmts) == n_nmt  # the start's ask is < 2 s old
+    for k in range(1, 30):
+        t.poll(101.3 + k * 0.1)
+    assert got[-1].source == "sdo" and got[-1].lcp_mm[1] == 20  # reading kept alive by SDO
+    assert link.nmts[n_nmt:] == [(0x01, 10)] * 2  # asked again at ~102.0 and ~104.0
+    clk.t = 104.3
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 9, 0, 2, 1)))
+    assert t.mode == "tpdo" and t.last.source == "tpdo" and t.last.lcp_mm[1] == 9
 
 
 def test_disabled_tpdo1_start_reports_off_in_tpdo_mode():

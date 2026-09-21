@@ -199,9 +199,12 @@ def test_arm_configures_pdos_guard_and_enables_both_drives():
     # 0x000F: motion extension (bit 13 = 0), required for the 400 W geared motor
     assert cws == [(1, 0x06), (1, 0x07), (1, 0x000F), (2, 0x06), (2, 0x07), (2, 0x000F)]
     assert (1, 0x60FF, 0, 0) in w  # armed with a zero target
-    # PDO config happened while pre-operational (NMT 0x80 broadcast came before)
+    # PDO config happened while pre-operational (NMT 0x80 PER DRIVE came before;
+    # a broadcast would also silence the MLS on node 10, whose TPDO1 only flows
+    # in Operational)
     nmt = [(m.data[0], m.data[1]) for m in bus.sent if m.arbitration_id == 0]
-    assert nmt[0] == (0x80, 0) and (0x01, 1) in nmt and (0x01, 2) in nmt
+    assert nmt[:2] == [(0x80, 1), (0x80, 2)] and (0x01, 1) in nmt and (0x01, 2) in nmt
+    assert all(node in (1, 2) for _, node in nmt)  # never a broadcast, never node 10
 
 
 def test_failed_enable_rolls_back_both_drives():
