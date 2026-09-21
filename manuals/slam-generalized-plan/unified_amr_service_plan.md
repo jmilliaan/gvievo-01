@@ -597,6 +597,17 @@ Exit gate: all mandatory acceptance rows have evidence or a documented unresolve
 
 Dependencies: U10, **and the ported LINE mode accepted on the vehicle** (2026-09-20).
 
+> **Done 2026-09-21.** LINE Increment 1 accepted on the vehicle (sections 0–3 of
+> `VEHICLE-TEST-line-layer.txt`; floor run deferred by the operator). Deleted:
+> `canworker.py`, `main.py`, `app/`, `agv_core/health.py`, `runlog.py`,
+> `drivers/lidar_scan.py`, `drivers/modbus_io.py`, `amr_base/legacy_guard.py`,
+> the `amr_nav`/`amr_mapping` units and `amr_legacy.env`, and the legacy-only
+> tests (`tests/run_all.py` re-pinned 898 → 531 with the migration note). Kept
+> after the import audit: everything `amr_ws/src` or a bench tool imports,
+> plus `drivers/rfid.py` for Increment 2. Tag `legacy-final`; run logs under
+> `manuals/obsolete/legacy-runs/`. Report:
+> `manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md`.
+
 > 2026-09-19: the detailed U11 file lists, test migration and the line-following carve-out (MLS track
 > stays, now owned by the ROS stack) are in [`line-follow-u11-layout-plan.md`](line-follow-u11-layout-plan.md) Part 2.
 >

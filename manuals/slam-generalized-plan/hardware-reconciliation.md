@@ -9,6 +9,12 @@ what each divergence costs or saves.
 no certification scope; no fleet integration; MLS *hardware stays installed* —
 only the magnetic-tape-following feature is retired.
 
+> **2026-09-21 (U11):** the legacy controller this document reuses from —
+> `canworker.py`, `app/`, `main.py` — is deleted; the reusable parts live in
+> `agv_core/` and `amr_base.canopen`, and tape following is back as the `LINE`
+> layer (`amr_line`, dual-product plan). References below to `canworker.py`
+> are historical; the last revision that has it is the git tag `legacy-final`.
+
 Read the architecture doc first. Where this document contradicts it, the hardware
 wins. Hardware steps that follow from it are written up in
 [`bench-checklists.md`](bench-checklists.md).

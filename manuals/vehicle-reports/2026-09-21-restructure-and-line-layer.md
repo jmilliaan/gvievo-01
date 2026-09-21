@@ -77,3 +77,45 @@ Test state: `tests/run_all.py` 898 checks pass; amr_base 206, amr_line 54, amr_b
 - The acceptance file's polarity sentence (3.1) should read "positive when the tape is to the LEFT".
 - Web UI has no LINE mode button; mode LINE is requested by service.
 - Drive alarm 0x11 after stopping the service: worth understanding why the stop leaves the PC-loss alarm latched.
+
+## U11 — legacy retired (same day, after acceptance)
+
+Operator decision: Increment 1 accepted on sections 0–3; Increments 2–4 skipped
+for now; U11 executed. Tag `legacy-final` = `aa02ec7`.
+
+Deleted after the import audit (no importer under `amr_ws/src`, `agv_core` or a
+bench tool): `canworker.py`, `main.py`, `app/`, `agv_core/health.py`,
+`agv_core/runlog.py`, `agv_core/drivers/lidar_scan.py`,
+`agv_core/drivers/modbus_io.py`, `amr_ws/src/amr_base/amr_base/legacy_guard.py`
+(the owner lock is the exclusion now), `amr_ws/deploy/amr_nav.service`,
+`amr_mapping.service`, `amr_legacy.env`, `tests/test_canworker.py`,
+`test_web.py`, `test_health.py`. Kept although only legacy used them:
+`drivers/rfid.py` (Increment 2), `blindrun.py` (commissioning imports it),
+`rpdo.py` (canopen imports it), `lss.py`/`verify_bus.py` (bench tools).
+Archived: `logs/00xx-*` → `manuals/obsolete/legacy-runs/`.
+
+`tests/run_all.py` per-module checks, before → after:
+
+| module | before | after | what went |
+|---|---|---|---|
+| test_config | 82 | 82 | — |
+| test_canworker | 70 | — | module |
+| test_invariants | 29 | 8 | three Controller cases |
+| test_health | 32 | — | module |
+| test_canmon | 50 | 50 | guard-bypass scan moved to canopen.py |
+| test_lss | 55 | 55 | — |
+| test_imu | 46 | 46 | — |
+| test_rpdo | 58 | 56 | wiring check moved to canopen.py (4 checks, was 6) |
+| test_rfid | 18 | 18 | — |
+| test_dio | 65 | 61 | legacy health-monitor case |
+| test_lidar | 47 | 41 | lidar_scan bench tool |
+| test_panel | 85 | 48 | four Controller-driven cases |
+| test_blindrun | 65 | 32 | Controller, app page, runlog cases |
+| test_web | 129 | — | module |
+| test_layout | 43 | 10 | main.py entry point, app/ assets, runlog anchor |
+| test_mls | 24 | 24 | — |
+| **total** | **898** | **531** | |
+
+ROS side: `amr_base` + `amr_bringup` 241 tests pass, ruff clean,
+`deploy/validate.sh` passes. Docs: README rewritten, RUNBOOK §6/§7,
+`hardware-reconciliation.md` note, unified plan U11 note, package docstrings.

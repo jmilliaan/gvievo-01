@@ -189,32 +189,10 @@ def test_dio_health():
     was = config.DIO_ENABLED
     try:
         config.DIO_ENABLED = False
-        check("disabled reports a None verdict, which health.py reads as "
-              "'not in use' rather than as a fault",
+        check("disabled reports a None verdict: 'not in use' rather than a fault",
               _link(FakeClient()).snapshot()["comms_ok"] is None)
     finally:
         config.DIO_ENABLED = was
-
-
-def test_dio_health_source():
-    """The PullSource wiring: non-critical, so auto stops and manual does not."""
-    from agv_core import health
-    print("\ndio: health integration")
-
-    link = _link(FakeClient())
-    link._scan()
-    mon = health.HealthMonitor([(health.PullSource("dio", link.snapshot),
-                                 config.DIO_SILENT_WARN_S)])
-    r = mon.evaluate(now=time.monotonic())
-    check("a scanning module is healthy", r["sources"]["dio"]["ok"] is True)
-
-    with link._lock:
-        link._last_ok = time.monotonic() - 99.0
-    r = mon.evaluate(now=time.monotonic())
-    check("a dead module is reported", r["sources"]["dio"]["ok"] is False)
-    check("as a SENSOR error - auto stops", r["sensor_error"] is True)
-    check("not a system error - manual keeps jogging",
-          r["system_error"] is False)
 
 
 def test_dio_events_are_edge_only():
@@ -445,6 +423,8 @@ def test_dio_stop_de_energises():
     check("the socket is closed afterwards", fake.closed >= 1)
 
 
+# test_dio_health_source went with agv_core.health (legacy monitor) at U11,
+# 2026-09-21; the ROS side judges DIO freshness in panel_node/readiness.
 TESTS = [
     test_dio_scan,
     test_dio_flipped,
@@ -454,7 +434,6 @@ TESTS = [
     test_dio_write_failure_is_not_silent,
     test_dio_stop_de_energises,
     test_dio_health,
-    test_dio_health_source,
     test_dio_events_are_edge_only,
     test_dio_profile,
 ]

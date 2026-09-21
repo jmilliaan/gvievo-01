@@ -23,9 +23,7 @@ import helpers  # noqa: E402
 
 MODULES = [
     "test_config",
-    "test_canworker",
     "test_invariants",
-    "test_health",
     "test_canmon",
     "test_lss",
     "test_imu",
@@ -35,7 +33,6 @@ MODULES = [
     "test_lidar",
     "test_panel",
     "test_blindrun",
-    "test_web",
     "test_layout",
     "test_mls",
 ]
@@ -46,7 +43,16 @@ MODULES = [
 # flat sys.path namespace (4 checks) and started pinning the package boundary
 # instead (9), split across one extra test function: the library is a package,
 # it imports neither ROS nor Flask, and no module in it imports a sibling bare.
-EXPECTED_CHECKS = 898
+# 898 - 367 (2026-09-21, U11): the legacy controller is gone. Removed, legacy
+# only: test_canworker (70), test_web (129), test_health (32) as modules, and
+# the Controller/app/runlog cases inside test_panel (37), test_blindrun (33),
+# test_layout (33), test_invariants (21), test_lidar (6, the lidar_scan bench
+# tool), test_dio (4, the legacy health monitor), test_rpdo (2). Moved, shared
+# library: the guard-bypass checks in test_canmon (3) and the RPDO wiring
+# checks in test_rpdo (4) now read amr_base/canopen.py, the bus owner that
+# replaced canworker. Nothing added. Per-module counts before/after are in
+# manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md.
+EXPECTED_CHECKS = 531
 
 
 # An exception on a helper thread only prints a traceback by default - the

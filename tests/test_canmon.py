@@ -114,19 +114,18 @@ def test_can_monitoring():
     check("the PDO ranges stop where CiA 301 says they do",
           not any(guard.is_allowed(i) for i in (0x13FF, 0x1C00)))
 
-    # Every write in canworker must go through the guard, not around it.
-    cw = (ROOT / "canworker.py").read_text(encoding="utf-8")
-    check("_write() calls the guard", "guard_write(index, value, sub)" in cw)
-    direct = [ln.strip() for ln in cw.splitlines()
-              if "sdo_write(" in ln and "def " not in ln and "guard" not in ln
-              and not ln.strip().startswith(("#", "*", '"'))
-              and "only ever call" not in ln]
-    # _do_disarm calls sdo_write directly on the shutdown path, where raising
-    # would leave the motors energised. Those are 6040h/60FFh only; the count
-    # is pinned so a new bypass cannot slip in unnoticed.
-    check("direct sdo_write calls are only the disarm path",
-          len(direct) == 3, f"{len(direct)}: " + "; ".join(direct)[:110])
-    check("no direct write targets a forbidden index",
+    # Every write by the bus owner (amr_base.canopen since U11 retired canworker)
+    # must go through the guard, not around it. _raw_write is the shutdown path,
+    # where raising would leave the motors energised: 6040h/60FFh only, and the
+    # call count is pinned so a new bypass cannot slip in unnoticed.
+    co = (ROOT / "amr_ws/src/amr_base/amr_base/canopen.py").read_text(encoding="utf-8")
+    check("DriveLink.write() calls the guard", "guard.check(index, value, sub)" in co)
+    direct = [ln.strip() for ln in co.splitlines()
+              if "_raw_write(" in ln and "def " not in ln
+              and not ln.strip().startswith(("#", "*", '"'))]
+    check("raw writes are only the disarm path",
+          len(direct) == 2, f"{len(direct)}: " + "; ".join(direct)[:110])
+    check("no raw write targets a forbidden index",
           not any(f"0x{i:04X}" in "".join(direct) for i in guard.FORBIDDEN))
 
     # -- round-robin poller -------------------------------------------------

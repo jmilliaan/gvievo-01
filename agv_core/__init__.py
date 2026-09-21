@@ -1,9 +1,9 @@
 """Vehicle library: profile loader, kinematics, bus ownership, device drivers.
 
 This package holds everything that is neither a ROS node nor a web page — the
-code the ROS 2 stack under `amr_ws/` and the legacy standalone controller
-(`main.py`, `app/`, `canworker.py`) both import. It has no ROS dependency and
-no Flask dependency, and nothing in it may acquire one.
+code the ROS 2 stack under `amr_ws/` imports (until 2026-09-21 the legacy
+standalone controller imported it too; U11 retired that). It has no ROS
+dependency and no Flask dependency, and nothing in it may acquire one.
 
 Import it by package path, never by bare module name:
 

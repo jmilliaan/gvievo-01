@@ -6,7 +6,7 @@ set -euo pipefail
 
 DEPLOY_DIR=$(cd "$(dirname "$0")" && pwd)
 BACKUP_DIR="/var/backups/amr-units/$(date +%Y%m%d-%H%M%S)"
-UNITS=(amr.service amr_nav.service amr_mapping.service)
+UNITS=(amr.service)
 
 if [[ ${EUID} -ne 0 ]]; then
   echo "run with sudo: sudo $0" >&2
@@ -21,7 +21,7 @@ for unit in "${UNITS[@]}"; do
   fi
   install -m 0644 "$DEPLOY_DIR/$unit" "/etc/systemd/system/$unit"
 done
-systemctl list-unit-files 'agv_controller.service' 'amr*.service' --no-legend \
+systemctl list-unit-files 'amr*.service' --no-legend \
   >"$BACKUP_DIR/enabled-state.txt" || true
 systemctl daemon-reload
 

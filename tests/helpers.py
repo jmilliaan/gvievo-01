@@ -23,7 +23,7 @@ import sys
 # Repo root, so a check that reads a source file keeps working wherever the
 # suite is run from and wherever the module it inspects has been moved to.
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-# The repo root, so `agv_core`, `app` and `canworker` all resolve however the
+# The repo root, so `agv_core` resolves however the
 # suite was started: run_all.py, `pytest tests/test_x.py`, or a single module
 # run directly. Nothing else goes on the path - the layer directories that used
 # to be inserted here are a package now.

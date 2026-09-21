@@ -3,8 +3,8 @@
 Hardware Layer 1 plus the estimation chain: drive_node on can0, panel_node on
 the DIO island (panel:=fake is a SIMULATED panel, bench only - never with the
 vehicle on the floor and people nearby), nanoScan3, mux/odom/bias/EKF, URDF.
-drive_node and panel_node refuse to start while the agv_controller unit is
-active (amr_base.legacy_guard). Needs ROS_DOMAIN_ID=10 (env/vehicle.sh).
+drive_node and panel_node take the can/dio owner locks (agv_core.ownerlock), so a
+second owner refuses to start. Needs ROS_DOMAIN_ID=10 (env/vehicle.sh).
 """
 
 from launch import LaunchDescription

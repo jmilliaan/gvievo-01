@@ -29,8 +29,8 @@ zero setpoint. Independent supervisor gate (unified plan §4.3 item 7): with
 command's is needed for any nonzero setpoint - so a mux that keeps publishing
 after its own control-plane subscription stalled cannot move the vehicle.
 Independent PC-loss response on the drive side: see
-amr_base.canopen (1016h). Never runs beside agv_controller - both would own
-can0 - and refuses to start if the bus cannot be opened.
+amr_base.canopen (1016h). Never runs beside another can0 owner (ownerlock)
+and refuses to start if the bus cannot be opened.
 """
 
 from __future__ import annotations
@@ -55,7 +55,6 @@ from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import canopen, gating, pp
-from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
 from amr_interfaces.msg import (
@@ -276,7 +275,7 @@ class DriveNode(Node):
         try:
             raw, how = open_bus(config.CAN_BITRATE, config.CAN_CHANNEL, config.CAN_ADAPTER_SERIAL)
         except Exception as e:  # noqa: BLE001
-            self.get_logger().error(f"CAN bus unavailable: {e} (is agv_controller stopped?)")
+            self.get_logger().error(f"CAN bus unavailable: {e} (another CAN owner running?)")
             self._status_snapshot = {"state": "no bus", "reason": str(e), "mode": "off"}
             return
         router = canopen.Router(raw)
@@ -818,7 +817,6 @@ class DriveNode(Node):
 
 
 def main(args=None) -> None:
-    refuse_if_legacy_running("drive_node")
     rclpy.init(args=args)
     node = DriveNode()
     try:

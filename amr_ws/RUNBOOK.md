@@ -545,46 +545,45 @@ Record the printed `/var/backups/amr-units/<timestamp>` path. Confirm the
 installer preserved current state with:
 
 ```bash
-systemctl is-enabled agv_controller amr_nav amr_mapping amr
-systemctl is-active agv_controller amr_nav amr_mapping amr
+systemctl is-enabled amr
+systemctl is-active amr
 ```
 
-## 6. Witnessed first cutover
+## 6. Cutover history and retirement (U11, 2026-09-21)
 
-Perform this only after the U10 K1–K5 vehicle session passes on the same build.
-Keep a person at the vehicle, clear the area, select MANUAL and engage E-stop
-before changing services.
+The first witnessed cutover from the legacy `agv_controller` unit to
+`amr.service` was done during U10, and the legacy controller (`main.py`,
+`app/`, `canworker.py`) and the interim `amr_nav.service` / `amr_mapping.service`
+units were deleted at U11 after the ported LINE mode was accepted on the vehicle
+(`manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md`). The last
+deployable legacy revision is the git tag `legacy-final`.
+
+On a vehicle that still carries the old units, retire them once:
 
 ```bash
-sudo systemctl disable --now agv_controller.service amr_nav.service amr_mapping.service
-sudo systemctl enable --now amr.service
-systemctl status amr.service --no-pager
+sudo systemctl disable --now agv_controller.service amr_nav.service amr_mapping.service 2>/dev/null
+sudo rm -f /etc/systemd/system/agv_controller.service /etc/systemd/system/amr_nav.service /etc/systemd/system/amr_mapping.service
+sudo systemctl daemon-reload
+systemctl list-unit-files 'agv_controller*' 'amr*'    # amr.service is the only one left
 ```
 
-Expected observations:
+`amr.service` is the only AGV application boot service. Nothing else on the PC
+opens `can0` or the I/O island; the bench tools take the owner lock and refuse
+while the service runs.
 
-1. Only `amr.service` is enabled and active.
-2. The web app opens on port 5001 and reaches `IDLE`.
-3. No mapping/navigation layer or prior job is active.
-4. Exactly one drive owner, panel owner and scanner owner exist.
-5. Release E-stop only for the short K1 boot/ownership recheck.
+## 7. Rollback
 
-Do not delete the legacy source or unit files during this step. Full retirement
-is U11 and starts only after accepted hardware evidence.
-
-## 7. Rollback during the migration window
-
-Engage E-stop and stop the unified service. Restore the previously approved
-unit choice; `amr_nav` is shown below. The legacy units read
-`deploy/amr_legacy.env` (map selection) since 2026-09-16: if the installed copy
-predates that, run `sudo ./deploy/install.sh` first or `amr_nav` fails at
-launch with `malformed launch argument 'map_id:='`. Starting a conflicting unit stops
-`amr.service` as an additional guard.
+There is no second controller to fall back to. A rollback is a rollback of the
+*build*: engage E-stop, stop the service, check out the previous known-good
+commit (tags and `manuals/vehicle-reports/` record which builds were accepted),
+rebuild, and start again:
 
 ```bash
-sudo systemctl disable --now amr.service
-sudo systemctl enable --now amr_nav.service
-systemctl status amr_nav.service --no-pager
+sudo systemctl stop amr.service
+cd ~/agv_can && git checkout <known-good>
+cd amr_ws && rm -rf build install log && colcon build --symlink-install
+sudo ./deploy/install.sh        # if the unit or env files changed
+sudo systemctl start amr.service
 ```
 
 If unit contents themselves must be restored, copy them from the backup path
@@ -595,12 +594,7 @@ sudo cp /var/backups/amr-units/<timestamp>/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-Re-run the prior service's documented boot check before releasing E-stop. A
-rollback does not authorize automatic motion or resume any interrupted job.
-
-What a rollback gives you is the LEGACY controller and its own operator
-interface, as a set. The unified web pages are not part of it: without the
-supervisor they have no lease, mode or active-map context, so jog, survey,
-initial-pose and mission controls are refused by design. Do not try to pair the
-unified web app with a legacy or standalone launch; `nav.launch.py` and
-`mapping.launch.py` are diagnostics and simulation entry points only.
+Re-run the boot check (section 2) before releasing E-stop. A rollback does not
+authorize automatic motion or resume any interrupted job. `nav.launch.py` and
+`mapping.launch.py` are diagnostics and simulation entry points only; the
+unified web app needs the supervisor for any lease, mode or map context.

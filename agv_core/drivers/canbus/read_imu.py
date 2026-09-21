@@ -16,9 +16,9 @@ and wheel odometry own translation only.
   see manuals/slam-generalized-plan/hardware-reconciliation.md, D-2 and D-3
 
 *** So the gyro is a NAVIGATION component that happens to live inside the line
-sensor. *** Retiring tape-following retires the MLS's primary feature but must
-NOT retire the hardware, or the mitigation goes with it. That is a BOM note as
-much as a code note.
+sensor. *** Tape following is back as the LINE layer (amr_line, 2026-09-21), so
+the MLS now serves both products: its track reading (TPDO1 0x18A, mls_track.py)
+and this gyro. Neither product may retire the hardware.
 
 WHAT IS MEASURED, AND WHAT IS ASSUMED
 -------------------------------------

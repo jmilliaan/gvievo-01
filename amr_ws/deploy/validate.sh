@@ -4,7 +4,7 @@ set -euo pipefail
 
 DEPLOY_DIR=$(cd "$(dirname "$0")" && pwd)
 WORKSPACE=$(cd "$DEPLOY_DIR/.." && pwd)
-UNITS=(amr.service amr_nav.service amr_mapping.service)
+UNITS=(amr.service)
 
 for path in \
   "$DEPLOY_DIR/amr-supervisor.sh" \
@@ -21,8 +21,8 @@ for unit in "${UNITS[@]}"; do
 done
 
 # Every ${VAR} a unit's Exec lines use must be defined by that unit's EnvironmentFile
-# (or Environment=). Found 2026-09-16: amr.env lost AMR_MAP_ID while amr_nav.service
-# still used it, and the installed unit restart-looped on "malformed launch argument".
+# (or Environment=). Found 2026-09-16: amr.env lost AMR_MAP_ID while the (since
+# retired) amr_nav.service still used it, and the installed unit restart-looped.
 for unit in "${UNITS[@]}"; do
   envfile=$(sed -n 's/^EnvironmentFile=-\{0,1\}//p' "$DEPLOY_DIR/$unit" | head -1)
   envfile_local="$DEPLOY_DIR/$(basename "${envfile:-/nonexistent}")"

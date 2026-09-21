@@ -13,7 +13,7 @@ takes authority from /amr/panel_state, the executor needs a Start edge under
 AUTO). This node reports what the operator did; it decides nothing about
 motion. It has no services and no parameters that could fake an edge.
 
-Never runs beside agv_controller: two writers on the same coil.
+Never runs beside another DIO owner: two writers on the same coil (ownerlock).
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import panel_io
-from amr_base.legacy_guard import refuse_if_legacy_running
 from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, WheelVelocities
 
 RELIABLE_1 = QoSProfile(
@@ -163,7 +162,6 @@ class PanelNode(Node):
 
 
 def main(args=None) -> None:
-    refuse_if_legacy_running("panel_node")
     rclpy.init(args=args)
     node = PanelNode()
     try:
