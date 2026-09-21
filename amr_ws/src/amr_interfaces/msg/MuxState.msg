@@ -8,6 +8,7 @@ uint8 ROTATE=3
 uint8 MANUAL=4          # /amr/manual_command (stamped browser jog)
 uint8 COMMISSIONING=5
 uint8 PENDANT=6          # physical jog pendant levels carried in PanelState
+uint8 LINE=7             # /amr/line_cmd, magnetic tape following (dual-product plan)
 std_msgs/Header header
 string instance             # lease instance the mux is applying
 uint32 generation

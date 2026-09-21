@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# ModeState.mode values (frozen in amr_interfaces/msg/ModeState.msg)
-STARTING, IDLE, MAPPING, NAVIGATION, TRANSITIONING, FAULT, STOPPING = range(7)
+# ModeState.mode values (frozen in amr_interfaces/msg/ModeState.msg).
+# APPEND ONLY: this is positional unpacking against wire constants. Inserting a name
+# mid-list renumbers every value after it, silently, with no error anywhere.
+STARTING, IDLE, MAPPING, NAVIGATION, TRANSITIONING, FAULT, STOPPING, LINE = range(8)
 MODE_NAMES = {
     STARTING: "STARTING",
     IDLE: "IDLE",
@@ -22,11 +24,16 @@ MODE_NAMES = {
     TRANSITIONING: "TRANSITIONING",
     FAULT: "FAULT",
     STOPPING: "STOPPING",
+    LINE: "LINE",
 }
+# Modes that own the one swappable layer slot. A mode here needs an entry in the
+# supervisor's _START and _READY dispatch tables.
+LAYER_MODES = (MAPPING, NAVIGATION, LINE)
 
 # request kinds
 REQ_IDLE = "idle"
 REQ_NAVIGATION = "navigation"
+REQ_LINE = "line"
 REQ_SURVEY_START = "survey_start"
 REQ_SURVEY_RETURNED = "survey_returned"
 REQ_SURVEY_SAVE = "survey_save"
@@ -66,6 +73,7 @@ class Conditions:
     survey_state: int | None = None  # MappingState.state, current generation only
     operation_pending: bool = False
     commissioning_active: bool = False
+    line_active: bool = False  # line follower armed or running, current generation only
 
 
 @dataclass(frozen=True)
@@ -109,8 +117,8 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
             return Decision(False, "no survey in progress")
         return Decision(True)
 
-    # mode replacement: idle / navigation / survey_start
-    if request not in (REQ_IDLE, REQ_NAVIGATION, REQ_SURVEY_START):
+    # mode replacement: idle / navigation / line / survey_start
+    if request not in (REQ_IDLE, REQ_NAVIGATION, REQ_LINE, REQ_SURVEY_START):
         return Decision(False, f"unknown request {request!r}")
     if request == REQ_IDLE and state == IDLE:
         return Decision(True, "already IDLE")
@@ -124,6 +132,8 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
         return Decision(False, "a mission is READY/EXECUTING/PAUSED/BLOCKED; abort it first")
     if state == NAVIGATION and c.run_state == RUN_FAULT:
         return Decision(False, "executor FAULT: acknowledge it first")
+    if state == LINE and c.line_active:
+        return Decision(False, "the line follower is armed or running; disarm it first")
     if state == MAPPING:
         if c.survey_state in SURVEY_UNSAVED:
             return Decision(False, "survey not saved: save or abort it first")
@@ -153,7 +163,7 @@ class Transaction:
     deadlines in the node's monotonic clock, set when a step is entered."""
 
     operation_id: str
-    target: int  # IDLE | MAPPING | NAVIGATION
+    target: int  # IDLE | MAPPING | NAVIGATION | LINE
     from_mode: int
     generation: int  # the NEW generation, rotated at INHIBIT
     step: str = INHIBIT

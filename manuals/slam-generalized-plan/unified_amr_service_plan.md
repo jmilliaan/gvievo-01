@@ -595,13 +595,25 @@ Exit gate: all mandatory acceptance rows have evidence or a documented unresolve
 
 ### U11 — Retire legacy and close documentation
 
-Dependencies: U10.
+Dependencies: U10, **and the ported LINE mode accepted on the vehicle** (2026-09-20).
 
 > 2026-09-19: the detailed U11 file lists, test migration and the line-following carve-out (MLS track
 > stays, now owned by the ROS stack) are in [`line-follow-u11-layout-plan.md`](line-follow-u11-layout-plan.md) Part 2.
+>
+> **2026-09-20 — U11 is rescheduled behind the tape-AGV port.** The vehicle now ships as a
+> magnetic-tape AGV with RFID stations, with the SLAM AMR as a paid upgrade
+> ([`dual-product-plan.md`](dual-product-plan.md)). Until the ported LINE mode is accepted
+> on the vehicle, the `gy-demo` branch **is** the shippable tape product, deployed as its own
+> image — so `canworker.py`, `main.py` and `app/` must stay. The deletions below run as
+> Increment 5 of that plan, not on U10's completion.
+>
+> Note the port makes this cheaper, not dearer: the legacy controller could never have shipped
+> beside the ROS stack anyway (both claim `can0` exclusively, behind `ownerlock`,
+> `amr_base/legacy_guard.py` and systemd `Conflicts=`), which is why the engine is being ported
+> rather than revived.
 
 - Remove `canworker.py`, old `app/`, root `main.py` and legacy deployment references only after import/use audits show migrated equivalents.
-- Preserve runtime libraries still imported through `amr_base.agv_repo`: profile loader/data, kinematics, CAN helpers/guards/decoders, DIO/RFID, panel and reused commissioning logic. Do not delete `drivers/` or `core/` as a category.
+- Preserve the runtime libraries the ROS stack imports: profile loader/data, kinematics, CAN helpers/guards/decoders, DIO/RFID, panel and reused commissioning logic. Do not delete `agv_core/` or `agv_core/drivers/` as a category. *(Updated for `dc9f608`: these moved out of the repo root into the `agv_core` package and `amr_base/agv_repo.py` is deleted — nodes now say `from agv_core import config`.)*
 - Split or migrate legacy tests that still cover shared libraries. Update `tests/run_all.py`'s pinned module/check count deliberately with a coverage-migration explanation; do not lower it merely to make the test runner pass.
 - Archive historical bench evidence/run logs and revise obsolete README claims; preserve the last deployable legacy revision/tag for engineering rollback history.
 - Remove obsolete installed units and boot choices, confirm new service boot behavior, and update the ownership diagram/table in the spec using text/table form.

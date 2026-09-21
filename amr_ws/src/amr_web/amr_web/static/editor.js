@@ -180,7 +180,7 @@ function showResult(d) {
   const parts = [];
   const prov = (d.issues || []).filter(i => i.code === 'provisional').length;
   parts.push(`<div class="chips" style="margin-bottom:8px"><span class="chip ${d.ok ? 'ok' : 'bad'}">${d.ok ? 'valid' : 'invalid'}</span>` +
-    (prov ? `<span class="chip warn" title="crosses mapped objects in dynamic areas: a scan return there stops the run">${prov} provisional</span>` : '') + '</div>');
+    (prov ? `<span class="chip warn" title="crosses mapped objects in dynamic areas: cleared on the assumption they are empty, and nothing but the safety scanner will stop the vehicle if they are not">${prov} provisional</span>` : '') + '</div>');
   if (d.compiled) {
     const fast = d.compiled.steps.filter(s => s.type === 'straight' && s.v_mps != null && s.v_mps > route.limits.linear_mps);
     parts.push(`<div class="tel-grid">${[['Length', num(d.compiled.total_length_m, 2), 'm'], ['Turns', num(d.compiled.total_turn_deg, 0), '°'],

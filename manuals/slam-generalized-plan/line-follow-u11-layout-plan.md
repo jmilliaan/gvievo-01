@@ -2,6 +2,31 @@
 
 > **Status 2026-09-19:** plan only. Nothing is built, restarted or deleted yet.
 > Decisions below were taken with the operator on 2026-09-19.
+>
+> ### AMENDED 2026-09-20 — see `dual-product-plan.md`
+>
+> The product decision changed: the vehicle **ships** as a tape AGV with RFID stations
+> and the SLAM AMR becomes a paid upgrade. Line following is therefore a **product**,
+> not an engineering feature, and four decisions in Part 1 are superseded.
+>
+> | This doc says | Now |
+> |---|---|
+> | §1.1 sensor reading | **Stands — already built and shipped** (`read_mls.py`, `mls_track.py`, `LineTrack.msg`, `tests/test_mls.py`) |
+> | §1.2 write a new cut-down PID | **Superseded** — port `gy-demo:core/autopilot.py` instead; it carries the run-0020 lateral-rate fix and the run-0023 continuity fix that a rewrite would lose, plus a 428-line pure test suite |
+> | §1.2 out of scope: `branch.py`, RFID stations, stops at tags | **Superseded** — deferred to Increments 2–3, not dropped |
+> | §1.3 node lives in the base launch, armed from the CLI | **Superseded** — the node moves into a new **LINE layer**; arming becomes mode entry plus a layer-local service |
+> | §1.3 `LEASE_LINE = 8`, source `LINE = 7`, and every authority rule | **Kept verbatim** |
+> | §1.3 safety note (no software obstacle check; scanner + E-stop only) | **Kept, and now true of both modes** — the executor's own obstacle check was removed 2026-09-20 |
+> | §1.4 "not shown in the UI" | **Superseded** — the tape UI *is* the product's UI |
+> | **Part 2 (U11)** | **Kept, but rescheduled**: `gy-demo` ships as the interim tape product, so U11's deletions wait until the ported LINE mode is accepted on the vehicle |
+> | **Part 3 (plant-layout background)** | **Unaffected** |
+>
+> **Paths below predate the `agv_core` restructure (`dc9f608`, 2026-09-20).** Everything this
+> doc calls `config.py`, `core/*.py` or `drivers/**` now lives under `agv_core/`, and
+> `amr_base/agv_repo.py` is deleted (`from agv_core import config`). The text is left as
+> written because it is the 2026-09-19 decision record; read it with that substitution.
+> `git show 8403dcb^:...` and `git show gy-demo:...` paths are unaffected — those commits
+> predate the move.
 
 ## Context
 

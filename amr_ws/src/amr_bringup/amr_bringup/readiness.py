@@ -72,6 +72,8 @@ class Snapshots:
         self.run_state = None
         self.loc_gen = None
         self.loc_state = None
+        self.line_gen = None
+        self.line_state = None
         self.commissioning_phase = 0
         self.commissioning_t = None
 
@@ -123,6 +125,11 @@ class Snapshots:
             self.loc_gen = int(m.generation)
             self.loc_state = int(m.state)
 
+    def on_line(self, m) -> None:
+        with self._lock:
+            self.line_gen = int(m.generation)
+            self.line_state = int(m.state)
+
     def on_commissioning(self, m) -> None:
         with self._lock:
             self.commissioning_phase = int(m.phase)
@@ -148,6 +155,7 @@ class Snapshots:
             self.mapping_map_id = ""
             self.run_gen = self.run_state = None
             self.loc_gen = self.loc_state = None
+            self.line_gen = self.line_state = None
 
     def mux_acknowledged(self, generation: int, now: float, fresh_s: float = 0.5) -> bool:
         with self._lock:
@@ -165,6 +173,14 @@ class Snapshots:
         with self._lock:
             return self.loc_gen == generation and self.loc_state is not None
 
+    def line_state_for(self, generation: int) -> bool:
+        with self._lock:
+            return self.line_gen == generation and self.line_state is not None
+
+    def _line_active_locked(self, generation: int) -> bool:
+        """ARMED / RUNNING / HOLD (1..3) of THIS generation: a job that holds the vehicle."""
+        return self.line_gen == generation and self.line_state in (1, 2, 3)
+
     def conditions(self, now: float, generation: int, operation_pending: bool) -> fsm.Conditions:
         with self._lock:
             return fsm.Conditions(
@@ -178,6 +194,7 @@ class Snapshots:
                 survey_state=self.mapping_state if self.mapping_gen == generation else None,
                 operation_pending=operation_pending,
                 commissioning_active=self._commissioning_active_locked(now),  # lock already held
+                line_active=self._line_active_locked(generation),
             )
 
 

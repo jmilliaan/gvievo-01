@@ -56,6 +56,7 @@ MODE_NAMES = {
     ModeState.TRANSITIONING: "TRANSITIONING",
     ModeState.FAULT: "FAULT",
     ModeState.STOPPING: "STOPPING",
+    ModeState.LINE: "LINE",
 }
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL

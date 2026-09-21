@@ -71,9 +71,19 @@ MODE_NAMES = {
     4: "TRANSITIONING",
     5: "FAULT",
     6: "STOPPING",
+    7: "LINE",
 }
 OP_NAMES = {0: "PENDING", 1: "SUCCEEDED", 2: "FAILED", 3: "INTERRUPTED"}
-MUX_NAMES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning", 6: "pendant"}
+MUX_NAMES = {
+    0: "none",
+    1: "teleop",
+    2: "follow",
+    3: "rotate",
+    4: "manual",
+    5: "commissioning",
+    6: "pendant",
+    7: "line",
+}
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
@@ -443,6 +453,8 @@ class RosAdapter(Node):
             return True, ""
         if lease["allowed"] & 4:
             return False, "a commissioning job is held or running; clear it first"
+        if lease["allowed"] & 8:
+            return False, "the line follower holds the vehicle; leave LINE mode to jog"
         return False, f"manual control withheld by the supervisor ({mode['mode_name'] if mode else '?'})"
 
     def state(self) -> dict[str, Any]:

@@ -169,11 +169,17 @@ transform exists, to keep them off the tf2 code path that hung on 2026-09-17.
 
 The survey cannot wait for an empty floor, so a saved map contains trolleys,
 parked forklifts and pallets that later move. Without a mark, the map treats
-them as walls. A route through a spot where a trolley stood is refused, and a
-scan return from a trolley that is still there counts as the map, not as an
-obstacle. Mark such places as **dynamic areas** (2026-09-19, dynamic-mapping
-plan Increment 1). Nothing on this page moves the vehicle, and the mode can
-stay `IDLE`.
+them as walls, and a route through a spot where a trolley stood is refused.
+Mark such places as **dynamic areas** (2026-09-19, dynamic-mapping plan
+Increment 1). Nothing on this page moves the vehicle, and the mode can stay
+`IDLE`.
+
+> **A dynamic area is a statement about the MAP, not a guard during the run.**
+> Since 2026-09-20 the executor makes no scan check of its own, so marking an
+> area only lets a route be validated through it. If the trolley is still
+> standing there when the run comes past, the only thing that will stop the
+> vehicle is the nanoScan3 protective field. **Check the area is clear before
+> you Start.**
 
 1. On **Maps**, press **Edit areas** on the revision. The Review page opens
    with that revision. Areas already marked are drawn with yellow hatching.
@@ -202,10 +208,11 @@ What a dynamic area does:
   block a route. The result shows a yellow **provisional** line for the step
   ("passable only if the live scan agrees"). Keepout still blocks, and cells
   outside the mark still block.
-- **During a run**: any scan return inside a dynamic area, within the step's
-  envelope, counts as an obstacle, even where the map shows a trolley. A
-  trolley that is still there therefore stops the run (**BLOCKED**). Move it,
-  then press Start.
+- **During a run**: nothing. The executor no longer compares the scan against
+  the route (operator decision 2026-09-20: obstacles belong to the safety
+  chain), so an object still standing in a marked area is stopped only by the
+  protective field, and only if it is in front of the vehicle. The run log
+  warns at load which steps cross dynamic areas.
 - **Localisation monitor**: beams that end in a dynamic area, or where the map
   expects a wall inside one, are left out of the scan match.
 - **AMCL** by default still localises against the full map. With
@@ -352,18 +359,22 @@ The route editor moves nothing. The mode can stay `IDLE`.
      - **E-stop**: the drives lost torque with the field clear (the E-stop
        button). Release it; the run waits for a physical **Start** (no
        Prepare resume needed).
-     - **obstacle**: points in the path ahead (the executor's own check).
-       Continues by itself 2 s after the path is clear.
      - **controller stop**: Nav2 gave up on the move (usually "collision
        ahead"). Continues by itself when clear, at most 3 times per step,
        then FAULT.
+     - There is no **obstacle** hold any more (2026-09-20). The executor does
+       not look at the scan, so nothing but the protective field and the
+       E-stop will stop the vehicle for something in the way — and the field
+       looks forward only, so a reverse step or a spin has no cover at all.
      - Every hold waits until the vehicle is still, on its segment and in
-       the corridor, the path is clear and localisation is READY; the reason
-       says what it is waiting for. MANUAL during a hold aborts the run.
-       **Prepare resume** + Start still works as an override.
+       the corridor, the drives have torque, the field is clear and
+       localisation is READY; the reason says what it is waiting for. MANUAL
+       during a hold aborts the run. **Prepare resume** + Start still works
+       as an override.
      - Executor parameters: `auto_resume_enabled` (false = the old
        Prepare resume + Start), `auto_resume_clear_s` 2.0,
-       `auto_resume_estop` false, `controller_abort_retries` 3.
+       `auto_resume_estop` false, `controller_abort_retries` 3,
+       `prereq_grace_s` 0.5.
    - **Abort** ends the run. The mission must be loaded again.
 8. **Finished.** The run state is `DONE`. Load the same or another mission and
    press Start again for another run. Every run needs its own physical Start.
@@ -378,8 +389,8 @@ Mode changes (a new survey, another map) are refused while a run is `READY`,
 | `READY` | Mission loaded, waiting for AUTO + physical Start. |
 | `EXECUTING` | Driving the route. |
 | `PAUSED` | Operator pause. **Prepare resume**, then physical Start. |
-| `BLOCKED` | A hold: lidar stop, obstacle or controller stop continue by themselves once clear; after the E-stop button press Start. See "While running". |
-| `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault** (or the physical **Reset** button, with the vehicle at rest: it does exactly the same and nothing more - no motion, no resume, no drive or supervisor fault clearing). That does not resume: localise again if needed, reposition, load, Start. A run whose Nav2 goal never reported an outcome stays barred until navigation is stopped and started again, acknowledgement or not. |
+| `BLOCKED` | A hold: lidar stop or controller stop continue by themselves once clear; after the E-stop button press Start. See "While running". |
+| `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). A sensor prerequisite must fail continuously for `prereq_grace_s` (0.5 s) before it counts, so one dropped frame is not a fault; losing wheel feedback while moving still stops at once (a `BLOCKED` hold, not a fault). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault** (or the physical **Reset** button, with the vehicle at rest: it does exactly the same and nothing more - no motion, no resume, no drive or supervisor fault clearing). That does not resume: localise again if needed, reposition, load, Start. A run whose Nav2 goal never reported an outcome stays barred until navigation is stopped and started again, acknowledgement or not. |
 | `DONE` | Route complete. Load a mission again for another run, or Return to idle. |
 
 | Localisation | Meaning |

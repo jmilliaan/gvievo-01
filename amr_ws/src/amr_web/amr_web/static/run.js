@@ -1,6 +1,6 @@
 // Run page: localisation state + initial pose tool, mission load and the coordinator
 // controls. Motion itself is authorised only by the physical panel.
-const HOLD_NAMES = { field: 'lidar stop', estop: 'E-stop', obstacle: 'obstacle', controller: 'controller stop', pending: 'stopping' };
+const HOLD_NAMES = { field: 'lidar stop', estop: 'E-stop', controller: 'controller stop', pending: 'stopping' };
 const view = new MapView(document.getElementById('run-canvas'));
 const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, footprint = null, preview = null;

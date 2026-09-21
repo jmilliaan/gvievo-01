@@ -99,3 +99,40 @@ def test_transaction_steps_in_order():
     while not t.done:
         seen.append(t.advance())
     assert seen == fsm.STEPS
+
+
+def test_mode_names_cover_every_mode_and_layer_modes_are_named():
+    """fsm.MODE_NAMES[...] is subscripted unguarded in the supervisor's serial loop, and
+    these values are frozen in ModeState.msg -- a mode added without a name faults the loop."""
+    modes = {
+        fsm.STARTING,
+        fsm.IDLE,
+        fsm.MAPPING,
+        fsm.NAVIGATION,
+        fsm.TRANSITIONING,
+        fsm.FAULT,
+        fsm.STOPPING,
+        fsm.LINE,
+    }
+    assert modes == set(fsm.MODE_NAMES)
+    assert len(set(fsm.MODE_NAMES.values())) == len(fsm.MODE_NAMES)
+    # the wire values must not drift: ModeState.msg pins these numbers
+    assert (fsm.STARTING, fsm.IDLE, fsm.MAPPING, fsm.NAVIGATION) == (0, 1, 2, 3)
+    assert (fsm.TRANSITIONING, fsm.FAULT, fsm.STOPPING, fsm.LINE) == (4, 5, 6, 7)
+    assert set(fsm.LAYER_MODES) == {fsm.MAPPING, fsm.NAVIGATION, fsm.LINE}
+    assert all(m in fsm.MODE_NAMES for m in fsm.LAYER_MODES)
+
+
+def test_line_mode_is_admitted_and_an_active_follower_blocks_leaving_it():
+    assert fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond()).ok
+    assert fsm.admit(fsm.NAVIGATION, fsm.REQ_LINE, cond(run_state=fsm.RUN_IDLE)).ok
+    # an unknown kind is still refused
+    assert not fsm.admit(fsm.IDLE, "tape", cond()).ok
+    # leaving LINE while the follower holds the vehicle is refused, like a held mission
+    busy = fsm.admit(fsm.LINE, fsm.REQ_IDLE, cond(line_active=True))
+    assert not busy.ok and "disarm" in busy.reason
+    assert fsm.admit(fsm.LINE, fsm.REQ_IDLE, cond(line_active=False)).ok
+    # the stillness and panel rules apply to a LINE request like any other
+    assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(wheels_still_since=None)).ok
+    assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(panel_manual=False)).ok
+    assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(commissioning_active=True)).ok
