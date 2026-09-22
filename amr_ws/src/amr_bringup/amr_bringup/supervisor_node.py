@@ -37,7 +37,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import Trigger
 
-from amr_bringup import domains, sdnotify
+from amr_bringup import domains, logs, sdnotify, uptime
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
 from amr_bringup import readiness as rd
@@ -74,6 +74,9 @@ LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
 RESPAWN_TRIES = 3
+# How long a boot-time event waits for a listener (the web is spawned by this process
+# and takes a few seconds to subscribe) before it is given up on and only logged.
+DEFER_EVENT_S = 60.0
 
 # Mode replacement targets a client may ask for. MAPPING is absent deliberately: a survey
 # starts through /amr/supervisor/survey, not here. Keep the two dicts inverse of each other.
@@ -135,6 +138,11 @@ class Supervisor(Node):
         self.admit_params = fsm.Params(tracked=self.tracked)
         self._auto_line_done = False
         self._boot_reported = False  # the end-of-boot operator event fires once per boot
+        self._verdict: uptime.Verdict | None = None  # how the PREVIOUS run ended
+        self.disk = rd.DiskStatus(-1, rd.DISK_OK, "")
+        self._disk_level = rd.DISK_OK
+        self._t_disk = 0.0
+        self._deferred: list[tuple[int, str, str, float]] = []
         # Optional groups the supervisor brings back by itself (plan phase 3.1).
         self._respawnable: dict[str, list[str]] = {}
         self._respawn_at: dict[str, float] = {}
@@ -238,7 +246,38 @@ class Supervisor(Node):
         argv = ["ros2", "launch", "amr_bringup", file] + [f"{k}:={v}" for k, v in args.items()]
         g = Group.spawn(role, argv, env=self._env(), log_path=os.path.join(self._logs, f"{role}.log"))
         self.get_logger().info(f"spawned {g.describe()}: {' '.join(argv[3:])}")
+        # The layer about to start owns THIS generation's footprint file; earlier ones
+        # belong to layers that are gone (power-loss plan W2).
+        logs.sweep_generation_files(self.state_dir, self.generation)
         return g
+
+    def _event_when_heard(self, level: int, code: str, text: str) -> None:
+        """Hold a BOOT-TIME event until somebody is listening.
+
+        /amr/events is volatile: a late joiner gets nothing. The web is started BY this
+        supervisor and subscribes seconds after boot, so the two events that matter most
+        - "power was lost last time" and the boot report - were published into an empty
+        room and lost (caught in sim, 2026-09-22). Held until the topic has a subscriber,
+        or logged alone after the deadline if nothing ever listens."""
+        self._deferred.append((level, code, text, self._now() + DEFER_EVENT_S))
+        self._flush_deferred()
+
+    def _flush_deferred(self) -> None:
+        if not self._deferred:
+            return
+        try:
+            heard = self._pub_event.get_subscription_count() > 0
+        except Exception:  # noqa: BLE001 - a counting failure must not lose the event
+            heard = True
+        now, keep = self._now(), []
+        for level, code, text, deadline in self._deferred:
+            if heard:
+                self._event(level, code, text)
+            elif now < deadline:
+                keep.append((level, code, text, deadline))
+            else:
+                self.get_logger().warn(f"{code} not delivered (nobody subscribed): {text}")
+        self._deferred = keep
 
     def _event(self, level: int, code: str, text: str) -> None:
         m = Event()
@@ -268,6 +307,7 @@ class Supervisor(Node):
                 self.fault_code = fault
             elif mode != fsm.FAULT:
                 self.fault_code = ""
+        self._mark()
         self._publish_mode()
 
     def _allowed(self) -> int:
@@ -409,6 +449,15 @@ class Supervisor(Node):
             if not d.ok:
                 res.accepted, res.message = False, d.reason
                 return res
+            # No room to write the result (power-loss plan W3). Refused for the two
+            # operations that CREATE a map; never for anything that is already running.
+            if kind in (fsm.REQ_SURVEY_START, fsm.REQ_SURVEY_SAVE) and self.disk.blocks_new_work:
+                res.accepted, res.message = (
+                    False,
+                    f"disk full: {self.disk.free_mb} MB free on {self.disk.path}; "
+                    "delete old maps or reports first",
+                )
+                return res
             if kind == fsm.REQ_SURVEY_START:
                 try:
                     rd.check_map_id(req.map_id)
@@ -502,6 +551,33 @@ class Supervisor(Node):
         self.get_logger().info("profile tracked=true: entering LINE (the tape AGV's default mode)")
         self._begin_transaction(op, fsm.LINE, "", 0, "")
 
+    def _mark(self) -> None:
+        """Rewrite the running marker (power-loss plan W1). One small atomic write per
+        mode change; a cut between writes costs at most the last transition."""
+        pend = self.book.pending
+        uptime.write(
+            self.state_dir,
+            self.instance,
+            fsm.MODE_NAMES.get(self.mode, str(self.mode)),
+            pend.operation_id if pend else "",
+            getattr(self.snap, "run_mission", ""),
+        )
+
+    def _check_disk(self) -> None:
+        """Watch the state and maps filesystems (power-loss plan W3). Edges only, and
+        the level is published in ModeState so the web can raise the standing alarm."""
+        st = rd.disk_status([self.state_dir, self.maps_dir])
+        self.disk = st
+        if st.level == self._disk_level:
+            return
+        was, self._disk_level = self._disk_level, st.level
+        if st.level == rd.DISK_STOP:
+            self._event(Event.ERROR, "DISK_FULL", f"{st.free_mb} MB free on {st.path}")
+        elif st.level == rd.DISK_WARN:
+            self._event(Event.WARN, "DISK_LOW", f"{st.free_mb} MB free on {st.path}")
+        elif was != rd.DISK_OK:
+            self._event(Event.INFO, "DISK_LOW", f"storage is no longer low ({st.free_mb} MB free)")
+
     def _boot_report(self, now: float, missing: str) -> None:
         """One event at the end of boot, in words the operator can act on. `missing` is
         base_missing()'s list; each item is named with what the operator does about it,
@@ -509,8 +585,11 @@ class Supervisor(Node):
         if self._boot_reported:
             return
         self._boot_reported = True
+        after = ""
+        if self._verdict is not None and self._verdict.kind == uptime.POWER_LOSS:
+            after = "after a power loss, "
         if not missing:
-            self._event(Event.INFO, "BOOT_READY", "the vehicle is ready")
+            self._event_when_heard(Event.INFO, "BOOT_READY", f"{after}the vehicle is ready")
             return
         actions = {
             "drives": "press the safety reset on the cabinet",
@@ -519,7 +598,7 @@ class Supervisor(Node):
             "mux": "call the engineer: the command mux did not start",
         }
         parts = [f"{item} ({actions.get(item, 'see the Alarms page')})" for item in missing.split(", ")]
-        self._event(Event.WARN, "BASE_NOT_READY", "not ready: " + "; ".join(parts))
+        self._event_when_heard(Event.WARN, "BASE_NOT_READY", f"{after}not ready: " + "; ".join(parts))
 
     def _fail_active(self, code: str, why: str) -> None:
         """Terminal failure of whatever is in flight (review R25): the transaction's or the
@@ -857,6 +936,23 @@ class Supervisor(Node):
     # ------------------------------------------------------------------ the loop
 
     def _boot(self) -> None:
+        # Before anything else: what happened last time? A marker that survived is the
+        # only evidence a power cut leaves, and the operator needs it in the first
+        # sentence, not after a failed arm (power-loss plan W1).
+        self._verdict = uptime.verdict(self.state_dir)
+        if self._verdict is not None:
+            self._event_when_heard(
+                Event.ERROR if self._verdict.kind == uptime.POWER_LOSS else Event.WARN,
+                "UNCLEAN_SHUTDOWN" if self._verdict.kind == uptime.POWER_LOSS else "SERVICE_CRASHED",
+                self._verdict.sentence(),
+            )
+            self.get_logger().warn(self._verdict.sentence())
+        self._mark()
+        # Nothing is live at boot, so every per-generation costmap footprint left behind
+        # is stale (power-loss plan W2); they accumulated one per mode change.
+        stale = logs.sweep_generation_files(self.state_dir)
+        if stale:
+            self.get_logger().info(f"swept {len(stale)} stale generation files")
         p = self.get_parameter
         if p("web").value:
             argv = [
@@ -950,9 +1046,20 @@ class Supervisor(Node):
         # groups are spawned, and WatchdogSec restarts a WEDGED loop (plan phase 3.2).
         self._notify.ready()
         period = 0.1
+        t_cap = 0.0
         while not self._stop.is_set():
             t0 = self._now()
             self._notify.watchdog()
+            self._flush_deferred()
+            if t0 - self._t_disk >= 30.0:
+                self._t_disk = t0
+                self._check_disk()
+            if t0 - t_cap >= 60.0:
+                t_cap = t0
+                # A single bad run can fill the disk between restarts; children append,
+                # so truncating underneath them is safe (power-loss plan W2).
+                for name in logs.cap_dir(self._logs):
+                    self.get_logger().warn(f"{name} passed the size cap and was truncated")
             with self._lock:
                 try:
                     self._tick(t0)
@@ -1037,6 +1144,9 @@ class Supervisor(Node):
         pend = self.book.pending
         if pend:
             self.book.finish(pend.operation_id, ops.INTERRUPTED, "service stopped")
+        # LAST, after the children are down: a kill during teardown must still read as
+        # unclean next time (power-loss plan W1). Nothing may be added below this line.
+        uptime.clear(self.state_dir)
 
 
 def main(args=None) -> None:

@@ -60,9 +60,15 @@ def ensure(state_dir: str) -> dict:
         path = _path(state_dir)
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            # tmp + fsync + replace: a cut during the first run must not leave a
+            # half-written PIN file that locks the engineer out (power-loss plan W4).
+            tmp = path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, indent=2)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
         except OSError:
             pass  # read-only state dir: the PIN still works for this process
     return data

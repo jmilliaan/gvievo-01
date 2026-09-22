@@ -101,6 +101,19 @@ def _rows() -> tuple[Alarm, ...]:
           "Switch the drives off and on, then press Recover.",
           "CiA-402 Fault state on a node while armed."),
 
+        # ---- the laser scanner ----
+        a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
+          "The vehicle can still be driven by hand. Call the engineer before running a mission.",
+          "No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, "
+          "netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults "
+          "and nothing else reports it - this row is the only place it shows. The vehicle's STOP is "
+          "the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, "
+          "navigation and localisation are dead without it."),
+        a("SCANNER_STALE", WARN, "engineer", "The safety scanner stopped sending data",
+          "The vehicle can still be driven by hand. Call the engineer before running a mission.",
+          "/scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. "
+          "Expected rate is 34 Hz."),
+
         # ---- the panel and the command mux ----
         a("PANEL_STALE", ERROR, "engineer", "The control panel is not answering",
           "Call the engineer: the panel wiring or the I/O island is down.",
@@ -187,6 +200,16 @@ def _rows() -> tuple[Alarm, ...]:
           "Fix what the Alarms page lists, then start the survey again.",
           "mapping_session refused: sensor ages or mode preconditions not met."),
 
+        # ---- the disk ----
+        a("DISK_LOW", WARN, "engineer", "The vehicle is running out of storage",
+          "Call the engineer: old maps and reports need deleting.",
+          "Under 1 GB free on the state or maps filesystem. Surveys and saves still run; "
+          "at 200 MB they are refused (DISK_FULL)."),
+        a("DISK_FULL", ERROR, "engineer", "No storage left: new maps cannot be saved",
+          "Call the engineer: the disk is full. A route already running is not affected.",
+          "Under 200 MB free. Survey start and map save are refused; navigation and LINE are "
+          "deliberately NOT gated - a full disk must not stop a vehicle that is already moving."),
+
         # ---- the supervisor and the service ----
         a("BASE_NOT_READY", WARN, "recover", "Not ready: the vehicle's basics did not come up",
           "Press the safety reset on the cabinet. The vehicle becomes ready by itself.",
@@ -240,6 +263,16 @@ def _rows() -> tuple[Alarm, ...]:
         a("LOOP_ERROR", ERROR, "recover", "Internal error in the vehicle software",
           "Press Recover on the Status page. If it repeats, save a report and call the engineer.",
           "The supervisor caught an exception in its loop and failed the running operation."),
+        a("UNCLEAN_SHUTDOWN", WARN, "power_cycle", "The vehicle lost power last time",
+          "Switch the drives off and on, then press the safety reset on the cabinet.",
+          "A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives "
+          "lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from "
+          "the SAME boot is a service crash instead and needs no drive action."),
+        a("SERVICE_CRASHED", WARN, "auto", "The vehicle software restarted itself",
+          "Nothing to do. Tell the engineer if it keeps happening.",
+          "A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure "
+          "or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by "
+          "their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason."),
         a("SUPERVISOR_DOWN", ERROR, "restart_service", "Needs service: the vehicle software is not running",
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "No ModeState/lease reaching the web. systemd restarts on failure and on a watchdog timeout."),

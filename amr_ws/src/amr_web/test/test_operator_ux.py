@@ -93,22 +93,43 @@ def test_no_supervisor_is_the_only_thing_reported():
 
 def test_switch_on_disabled_reads_as_the_cabinet_reset_not_a_broken_drive():
     """The 2026-09-22 case: the safety chain holds STO, the drives are fine."""
-    st = merged(drives={"operational": False, "left": "Switch on disabled",
-                        "right": "Switch on disabled", "age_s": 0.05})
+    st = merged(
+        drives={
+            "operational": False,
+            "left": "Switch on disabled",
+            "right": "Switch on disabled",
+            "age_s": 0.05,
+        }
+    )
     rows = view.standing(st)
     assert rows[0]["code"] == "SAFETY_RESET_NEEDED"
     assert "reset" in rows[0]["action"].lower()
 
 
 def test_a_disarmed_drive_at_idle_is_not_an_alarm():
-    st = merged(drives={"operational": False, "left": "Ready to switch on",
-                        "right": "Ready to switch on", "age_s": 0.05})
+    st = merged(
+        drives={
+            "operational": False,
+            "left": "Ready to switch on",
+            "right": "Ready to switch on",
+            "age_s": 0.05,
+        }
+    )
     assert view.standing(st) == []
 
 
 def test_a_field_stop_says_it_resumes_by_itself_and_offers_no_button():
-    st = merged(run={"state_name": "BLOCKED", "hold_cause": "field", "fault_code": "FIELD_BLOCKED",
-                     "auto_resume": True, "reason": "safety stop", "mission_id": "m1", "step_index": 2})
+    st = merged(
+        run={
+            "state_name": "BLOCKED",
+            "hold_cause": "field",
+            "fault_code": "FIELD_BLOCKED",
+            "auto_resume": True,
+            "reason": "safety stop",
+            "mission_id": "m1",
+            "step_index": 2,
+        }
+    )
     rows = view.standing(st)
     h = view.headline(st, rows)
     assert rows[0]["code"] == "FIELD_BLOCKED"
@@ -116,8 +137,17 @@ def test_a_field_stop_says_it_resumes_by_itself_and_offers_no_button():
 
 
 def test_an_estop_hold_tells_the_operator_to_press_start():
-    st = merged(run={"state_name": "BLOCKED", "hold_cause": "estop", "fault_code": "ESTOP",
-                     "auto_resume": False, "reason": "safety stop", "mission_id": "m1", "step_index": 0})
+    st = merged(
+        run={
+            "state_name": "BLOCKED",
+            "hold_cause": "estop",
+            "fault_code": "ESTOP",
+            "auto_resume": False,
+            "reason": "safety stop",
+            "mission_id": "m1",
+            "step_index": 0,
+        }
+    )
     h = view.headline(st, view.standing(st))
     assert h["state"] == view.STOPPED_NEEDS_YOU and "Start" in h["action"]
 
@@ -129,8 +159,15 @@ def test_an_executor_fault_offers_acknowledge():
 
 
 def test_a_dead_base_offers_restart_and_says_needs_service():
-    st = merged(mode={"mode_name": "FAULT", "fault_code": "BASE_EXITED", "reason": "base died",
-                      "base_ready": False, "generation": 1})
+    st = merged(
+        mode={
+            "mode_name": "FAULT",
+            "fault_code": "BASE_EXITED",
+            "reason": "base died",
+            "base_ready": False,
+            "generation": 1,
+        }
+    )
     h = view.headline(st, view.standing(st))
     assert h["state"] == view.NEEDS_SERVICE and h["button"] == "Restart"
 
@@ -150,11 +187,48 @@ def test_localisation_is_not_the_operators_problem_outside_navigation():
     assert view.standing(st) == []
 
 
+def test_an_unplugged_scanner_is_reported_at_all():
+    """It reports nothing itself: the driver is an optional launch member, so the
+    supervisor stays IDLE, the drives still jog, and before 2026-09-22 the operator had
+    no way to learn the lidar was unplugged."""
+    st = merged(scan_age_s=None, up_s=120.0)
+    rows = view.standing(st)
+    assert [r["code"] for r in rows] == ["SCANNER_SILENT"]
+    assert "hand" in rows[0]["action"]  # manual driving is unaffected, and says so
+    assert view.headline(st, rows)["state"] == view.READY  # a warning, not a stop
+
+
+def test_a_scanner_that_dies_mid_run_is_reported_separately():
+    st = merged(scan_age_s=30.0, up_s=300.0)
+    assert [r["code"] for r in view.standing(st)] == ["SCANNER_STALE"]
+    assert view.standing(merged(scan_age_s=0.1, up_s=300.0)) == []
+
+
+def test_a_page_loaded_during_boot_does_not_accuse_the_scanner():
+    assert view.standing(merged(scan_age_s=None, up_s=3.0)) == []
+
+
+def test_a_low_disk_warns_and_a_full_one_is_an_error():
+    warn = merged(disk={"free_mb": 800, "level": "warn", "path": "/home"})
+    rows = view.standing(warn)
+    assert [r["code"] for r in rows] == ["DISK_LOW"] and rows[0]["level"] == "warn"
+    full = merged(disk={"free_mb": 100, "level": "stop", "path": "/home"})
+    rows = view.standing(full)
+    assert rows[0]["code"] == "DISK_FULL" and rows[0]["level"] == "error"
+    assert "already running" in rows[0]["action"]  # a moving vehicle is not stopped
+    assert view.standing(merged(disk={"free_mb": 9000, "level": "ok", "path": "/home"})) == []
+
+
 def test_the_worst_alarm_is_first_and_a_code_is_never_repeated():
     st = merged(
         panel={"valid": False, "mode_auto": False, "age_s": 0.05},
-        mux={"inhibited": True, "source": "none", "reason": "no panel authority",
-             "code": "PANEL_STALE", "age_s": 0.05},
+        mux={
+            "inhibited": True,
+            "source": "none",
+            "reason": "no panel authority",
+            "code": "PANEL_STALE",
+            "age_s": 0.05,
+        },
     )
     rows = view.standing(st)
     assert [r["code"] for r in rows] == ["PANEL_STALE"]
@@ -163,8 +237,13 @@ def test_the_worst_alarm_is_first_and_a_code_is_never_repeated():
 
 def test_every_standing_row_carries_an_action_the_operator_can_perform():
     st = merged(
-        mode={"mode_name": "FAULT", "fault_code": "MUX_ACK_TIMEOUT", "reason": "no ack",
-              "base_ready": True, "generation": 1},
+        mode={
+            "mode_name": "FAULT",
+            "fault_code": "MUX_ACK_TIMEOUT",
+            "reason": "no ack",
+            "base_ready": True,
+            "generation": 1,
+        },
         run={"state_name": "FAULT", "fault_code": "EXEC_PREREQ_LOST", "reason": "wheels"},
     )
     for row in view.standing(st):
@@ -220,6 +299,15 @@ def test_the_engineer_pin_opens_the_engineering_nav(tmp_path):
     assert "/params" not in client.get("/home").get_data(as_text=True)
 
 
+def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
+    """The operator gets Restart on Home only when an alarm says the base cannot be
+    rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env)."""
+    client, _ = app_for(merged(), tmp_path)
+    assert 'id="btn-restart"' not in client.get("/status").get_data(as_text=True)
+    client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
+    assert 'id="btn-restart"' in client.get("/status").get_data(as_text=True)
+
+
 def test_the_pin_lives_outside_the_repository_and_can_be_overridden(tmp_path, monkeypatch):
     state_dir = str(tmp_path / "state")
     assert role.pin(state_dir) == role.DEFAULT_PIN
@@ -230,8 +318,17 @@ def test_the_pin_lives_outside_the_repository_and_can_be_overridden(tmp_path, mo
 
 
 def test_restart_is_refused_while_the_wheels_turn(tmp_path):
-    st = merged(mux={"inhibited": False, "source": "manual", "reason": "", "code": "",
-                     "left_rad_s": 1.2, "right_rad_s": 1.2, "age_s": 0.05})
+    st = merged(
+        mux={
+            "inhibited": False,
+            "source": "manual",
+            "reason": "",
+            "code": "",
+            "left_rad_s": 1.2,
+            "right_rad_s": 1.2,
+            "age_s": 0.05,
+        }
+    )
     client, _ = app_for(st, tmp_path)
     r = client.post("/api/service/restart")
     assert r.status_code == 409 and "turning" in r.get_json()["message"]
@@ -297,6 +394,28 @@ def test_the_event_log_survives_a_restart_and_rotates(tmp_path):
     tail = log.tail(100)
     assert tail[-1]["text"] == "event 39"
     assert len(EventLog(path, max_bytes=400, keep=2).tail(100)) == len(tail)  # reread = same history
+
+
+def test_an_error_event_is_forced_to_the_platter(tmp_path, monkeypatch):
+    """W4: after a cut the line you need is the last error, so that one is synced and
+    the chatty info events are not."""
+    synced = []
+    real = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (synced.append(fd), real(fd))[1])
+    log = EventLog(str(tmp_path / "logs" / "events.jsonl"))
+    log.append({"level": "info", "code": "MUX_SOURCE", "text": "t"})
+    assert synced == []
+    log.append({"level": "error", "code": "DRIVE_SILENT", "text": "t"}, sync=True)
+    assert len(synced) == 1
+    assert len(log.tail()) == 2  # both are in the file either way
+
+
+def test_the_role_file_is_written_atomically(tmp_path):
+    """A cut during the first run must not leave a half-written PIN file."""
+    state = str(tmp_path / "state")
+    role.ensure(state)
+    assert sorted(p.name for p in (tmp_path / "state").iterdir()) == ["web.json"]  # no .tmp left
+    assert role.check(state, role.DEFAULT_PIN)
 
 
 def test_a_half_written_line_is_skipped_not_raised(tmp_path):

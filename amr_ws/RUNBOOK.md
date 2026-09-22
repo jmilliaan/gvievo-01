@@ -567,6 +567,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. |
 | `PP_ABANDONED` | warn | A blind move was abandoned | Nothing to do. | Blind-run move dropped (authority lost or the owner disarmed). |
 | `PP_REFUSED` | warn | A blind move was refused | Nothing to do; ask the engineer if it was expected. | Blind-run move refused by the drive owner. |
+| `SERVICE_CRASHED` | warn | The vehicle software restarted itself | Nothing to do. Tell the engineer if it keeps happening. | A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason. |
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
@@ -642,6 +643,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `DRIVE_FAULT` | error | A drive is in fault | Switch the drives off and on, then press Recover. | CiA-402 Fault state on a node while armed. |
 | `DRIVE_SILENT` | error | A drive stopped answering | Switch the drives off and on, then press Recover. | No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive logic power before blaming the PC. |
 | `DRIVE_STOP_UNCONFIRMED` | error | The vehicle cannot confirm it stopped | Stay clear. Switch the drives off and on, then press Recover. | Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so each drive's own 1016h trips. |
+| `UNCLEAN_SHUTDOWN` | warn | The vehicle lost power last time | Switch the drives off and on, then press the safety reset on the cabinet. | A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from the SAME boot is a service crash instead and needs no drive action. |
 
 ### Cleared by: restart service
 
@@ -660,9 +662,13 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
+| `DISK_FULL` | error | No storage left: new maps cannot be saved | Call the engineer: the disk is full. A route already running is not affected. | Under 200 MB free. Survey start and map save are refused; navigation and LINE are deliberately NOT gated - a full disk must not stop a vehicle that is already moving. |
 | `LOC_GATE_FAILED` | error | The position check stopped running | Call the engineer: the map/scan check failed. | Scan-consistency gate or the transform it needs failed; no evidence either way, so LOST. |
 | `LOC_STREAM_STALE` | error | A sensor the vehicle navigates by went quiet | Call the engineer: a sensor stopped (see the detail for which). | scan/wheels/imu/tf/amcl age over the spec 2.4 limits. |
 | `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion authority at all without it. |
+| `DISK_LOW` | warn | The vehicle is running out of storage | Call the engineer: old maps and reports need deleting. | Under 1 GB free on the state or maps filesystem. Surveys and saves still run; at 200 MB they are refused (DISK_FULL). |
+| `SCANNER_SILENT` | warn | The safety scanner is not sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults and nothing else reports it - this row is the only place it shows. The vehicle's STOP is the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, navigation and localisation are dead without it. |
+| `SCANNER_STALE` | warn | The safety scanner stopped sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | /scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. Expected rate is 34 Hz. |
 | `TRACK_RATE_LOW` | warn | Stopped: the tape sensor is too slow | Call the engineer: the tape sensor is not keeping up. | Line hold cause 'rate': track_hz below the PID's rate gate (SDO fallback reads ~10 Hz). |
 
 <!-- END GENERATED -->
@@ -731,6 +737,69 @@ sudo visudo -c
 The **Restart** button is refused by the page while the wheels are turning or a
 run is live; the sudo rule itself does not check that, which is why the command
 list is kept this narrow.
+
+### Power-loss hardening (optional, install once)
+
+`sudo ./deploy/install.sh` now also installs two drop-ins and reports them:
+
+| File | Where | What it does |
+|---|---|---|
+| `deploy/sysctl-amr.conf` | `/etc/sysctl.d/60-amr.conf` | dirty pages expire after 5 s instead of 30 s, `swappiness=0` |
+| `deploy/journald-amr.conf` | `/etc/systemd/journald.conf.d/amr.conf` | journal capped at 300 M (it was uncapped, 896 M on 2026-09-22) |
+
+Two manual steps the installer deliberately leaves alone:
+
+```bash
+sudo systemctl restart systemd-journald       # apply the cap
+sudo journalctl --vacuum-size=300M            # shrink what is already there
+sudo swapoff -a && sudo sed -i '/swap.img/d' /etc/fstab && sudo rm -f /swap.img
+```
+
+### Data on its own volume (W8, optional)
+
+The VG has ~130 G unallocated, so `/` does not need resizing. With the service
+**stopped**:
+
+```bash
+sudo lvcreate -L 40G -n amr-data ubuntu-vg
+sudo mkfs.ext4 -L amr-data /dev/ubuntu-vg/amr-data
+sudo mkdir -p /data/amr
+echo 'LABEL=amr-data /data/amr ext4 defaults,data=journal,commit=5,nofail,x-systemd.device-timeout=10 0 2' \
+  | sudo tee -a /etc/fstab
+sudo mount /data/amr
+sudo install -d -o $USER -g $USER /data/amr/state /data/amr/maps
+rsync -a ~/.amr/ /data/amr/state/ && rsync -a ~/amr_maps/ /data/amr/maps/
+mv ~/.amr ~/.amr.pre-volume && mv ~/amr_maps ~/amr_maps.pre-volume
+ln -sfn /data/amr/state ~/.amr && ln -sfn /data/amr/maps ~/amr_maps
+sudo install -o root -g root -m 0644 -D deploy/amr-data-volume.conf \
+  /etc/systemd/system/amr.service.d/data-volume.conf
+sudo systemctl daemon-reload && sudo systemctl start amr.service
+findmnt -no OPTIONS /data/amr        # must contain data=journal
+./deploy/validate.sh                 # prints "state on /data/amr with data=journal"
+```
+
+The drop-in is separate from `amr.service` on purpose: `RequiresMountsFor` on a
+mount that does not exist stops the service from starting at all, so it must be
+installed **after** the volume is mounted. To undo, delete the drop-in and
+`daemon-reload`; the `~/.amr` and `~/amr_maps` symlinks keep every path working.
+
+### Pull-the-plug acceptance (W9)
+
+Three cuts at the wall switch, each followed by a boot and a read of the Home line
+and the Alarms history. PASS means the operator can say what happened without help.
+
+1. **Mid-mission** (NAVIGATION, moving in a clear aisle). Expect: drives stop within
+   the heartbeat timeout; after boot Home says **Needs service / The vehicle lost
+   power last time** naming the mission, the drives need an off/on, and Recover or
+   Restart reaches IDLE.
+2. **During a map save** (press Save, cut within 1 s). Expect: no revision directory
+   without a manifest; the previous revision still loads on the Run page; a
+   `.staging-` or `.draft-` directory is left behind, which is evidence, not damage.
+3. **Idle with the web open.** Expect: boot to IDLE inside the budget with no operator
+   action, and the Alarms history still holds the events from before the cut —
+   including the last error, which is the one that is fsynced.
+
+Record each in the acceptance file with the Home line quoted verbatim.
 
 ### After changing the alarm catalogue
 

@@ -17,6 +17,10 @@ from typing import Any
 from agv_core import alarms as cat
 
 FRESH_S = 0.5  # panel / drives / mux samples older than this are not current
+# The scanner runs at 34 Hz. A gap this long is a dead link, not a late frame; the grace
+# period stops a page loaded during boot from accusing a scanner that is still starting.
+SCAN_STALE_S = 5.0
+SCAN_GRACE_S = 20.0
 
 # The headline the operator reads first. Worst wins; the order here IS the priority.
 NEEDS_SERVICE = "NEEDS SERVICE"
@@ -76,11 +80,31 @@ def standing(state: dict[str, Any]) -> list[dict]:
     if line and line.get("code"):
         add(line["code"], line.get("message", ""))
 
+    # The scanner is the one failure nothing else reports: its driver is an optional
+    # launch member, so an unplugged sensor kills mapping, navigation and localisation
+    # while the supervisor still says IDLE and the drives still jog (vehicle, 2026-09-22 -
+    # the operator had no way at all to find out). Absence is the evidence, so it is
+    # reported after a grace period from web start, not on the first empty poll.
+    scan_age = state.get("scan_age_s")
+    if (state.get("up_s") or 0.0) > SCAN_GRACE_S:
+        if scan_age is None:
+            add("SCANNER_SILENT", "no scan since this page's server started")
+        elif scan_age > SCAN_STALE_S:
+            add("SCANNER_STALE", f"last scan {scan_age:.0f} s ago")
+
     loc = state.get("localization")
     # Localisation only matters where the vehicle navigates by it: in IDLE (no layer)
     # an UNLOCALIZED monitor is not something the operator has to fix.
     if loc and loc.get("code") and mode.get("mode_name") == "NAVIGATION":
         add(loc["code"], loc.get("reason", ""))
+
+    # Storage (power-loss plan W3). Warned a gigabyte early, because the cure - deleting
+    # old maps and reports - is an engineer's job and takes a visit.
+    d = state.get("disk") or {}
+    if d.get("level") == "stop":
+        add("DISK_FULL", f"{d.get('free_mb')} MB free on {d.get('path')}")
+    elif d.get("level") == "warn":
+        add("DISK_LOW", f"{d.get('free_mb')} MB free on {d.get('path')}")
 
     mux = state.get("mux")
     if mux and mux.get("inhibited") and mux.get("code"):

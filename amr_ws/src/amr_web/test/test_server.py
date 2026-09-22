@@ -493,6 +493,10 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
     client = env[0]
     static = pathlib.Path(__file__).resolve().parents[1] / "amr_web" / "static"
     pat = re.compile(r"""(?:\$|getElementById|tiles?)\(\s*'([A-Za-z][\w-]*)'""")
+    # Some ids exist only in one role (the engineer's Restart button), so a page is
+    # rendered in BOTH and the ids unioned - a handler must match the markup it ships with.
+    from amr_web import role as rolemod  # noqa: PLC0415
+
     for page in (
         "/status",
         "/manual",
@@ -506,10 +510,15 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
         "/params",
         "/commissioning",
     ):
+        client.post("/api/role", json={"role": "operator"})
         html = client.get(page).data.decode()
         ids = set(re.findall(r'\bid="([^"]+)"', html))
+        client.post("/api/role", json={"role": "engineer", "pin": rolemod.DEFAULT_PIN})
+        eng = client.get(page).data.decode()
+        ids |= set(re.findall(r'\bid="([^"]+)"', eng))
+        html += eng
         code = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
-        for src in re.findall(r'<script src="/static/([\w.]+)"', html):
+        for src in sorted(set(re.findall(r'<script src="/static/([\w.]+)"', html))):
             code += (static / src).read_text()  # amr.js too: the rail ids must exist on every page
         missing = {i for i in pat.findall(code) if i not in ids}
         assert not missing, f"{page}: scripts use ids not on the page: {sorted(missing)}"

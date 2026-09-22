@@ -26,6 +26,12 @@
     <a class="big" href="/run">Use a saved map</a>
     <button id="btn-idle" class="big">Return to idle</button>
     <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
+    {% if role == ENGINEER %}
+    {# The operator only gets this on Home, and only when an alarm says the base cannot
+       be rebuilt. An engineer restarts for other reasons (a rebuilt overlay, a changed
+       amr.env), so it lives here unconditionally - with the same server-side refusals. #}
+    <button id="btn-restart" class="danger" title="sudo systemctl restart amr.service">Restart service</button>
+    {% endif %}
   </div>
   <p class="note">A mode change needs the vehicle <b>stopped</b> and the selector in <b>MANUAL</b>; it replaces only the mapping/navigation software and never starts a route or a survey by itself.</p>
 </section>
@@ -39,6 +45,10 @@
 document.getElementById('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
 document.getElementById('btn-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 const $ = id => document.getElementById(id);
+if ($('btn-restart')) $('btn-restart').onclick = () => {
+  if (!confirm('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.')) return;
+  api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+};
 const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
 onAlarms(d => {
   const rows = d.alarms || [];

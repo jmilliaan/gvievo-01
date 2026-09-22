@@ -13,9 +13,18 @@ import re
 import threading
 import time
 
+from agv_core import disk
+
 from amr_bringup import mode_fsm as fsm
 
 MAP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+# Disk thresholds live in agv_core.disk: the supervisor and the web both need the
+# same answer, and the web must not import the supervisor's internals to get it.
+DISK_WARN_MB, DISK_STOP_MB = disk.WARN_MB, disk.STOP_MB
+DISK_OK, DISK_WARN, DISK_STOP = disk.OK, disk.WARN, disk.STOP
+DiskStatus = disk.DiskStatus
+disk_status = disk.status
 
 
 def check_map_id(map_id: str) -> str:
@@ -70,6 +79,7 @@ class Snapshots:
         self.mapping_map_id = ""
         self.run_gen = None
         self.run_state = None
+        self.run_mission = ""
         self.loc_gen = None
         self.loc_state = None
         self.line_gen = None
@@ -119,6 +129,9 @@ class Snapshots:
         with self._lock:
             self.run_gen = int(m.generation)
             self.run_state = int(m.state)
+            # Kept only so the unclean-shutdown marker can name the interrupted mission
+            # (power-loss plan W1); nothing gates on it.
+            self.run_mission = str(getattr(m, "mission_id", "") or "")
 
     def on_loc(self, m) -> None:
         with self._lock:
@@ -154,6 +167,7 @@ class Snapshots:
             self.mapping_gen = self.mapping_state = None
             self.mapping_map_id = ""
             self.run_gen = self.run_state = None
+            self.run_mission = ""
             self.loc_gen = self.loc_state = None
             self.line_gen = self.line_state = None
 

@@ -27,6 +27,22 @@ def _dir(state_dir: str) -> str:
     return os.path.join(os.path.expanduser(state_dir), DIRNAME)
 
 
+def _role_logs(state_dir: str) -> list[str]:
+    """The live role logs AND the previous run's (`*.log.1`): after a crash or a power
+    cut the interesting one is usually the run that ended, not the one that started
+    (power-loss plan W2)."""
+    log_dir = os.path.join(os.path.expanduser(state_dir), "logs")
+    try:
+        names = sorted(os.listdir(log_dir))
+    except OSError:
+        return []
+    return [
+        os.path.join(log_dir, n)
+        for n in names
+        if (n.endswith(".log") or n.endswith(".log.1")) and not n.startswith("events")
+    ]
+
+
 def _journal() -> str:
     cmd = ["sudo", "-n", "journalctl", "-u", "amr.service", "--since", JOURNAL_SINCE, "--no-pager"]
     try:
@@ -61,7 +77,7 @@ def build(
         z.writestr("events.json", json.dumps(events, indent=2, default=str))
         z.writestr("diagnostics.json", json.dumps(diagnostics, indent=2, default=str))
         z.writestr("journal.txt", _journal())
-        for src in event_files:
+        for src in list(event_files) + _role_logs(state_dir):
             try:
                 z.write(src, os.path.join("logs", os.path.basename(src)))
             except OSError as e:

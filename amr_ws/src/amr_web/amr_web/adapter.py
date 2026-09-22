@@ -16,6 +16,7 @@ import traceback
 from typing import Any
 
 import rclpy
+from agv_core import disk
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
@@ -128,6 +129,7 @@ class RosAdapter(Node):
     def __init__(self) -> None:
         super().__init__("amr_web")
         self._lock = threading.Lock()
+        self._started_t = time.monotonic()
         self._mapping: dict | None = None
         self._survey_move: dict | None = None  # preset survey moves (survey_move_node)
         self._survey_move_t = 0.0
@@ -166,6 +168,10 @@ class RosAdapter(Node):
         # The ring survives a restart: every event is appended to disk, and the tail is
         # read back here at start so the Alarms history is not empty after a reboot.
         state_dir = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
+        self._state_dir = state_dir
+        self._maps_dir = os.environ.get("AMR_MAPS_DIR", os.path.expanduser("~/amr_maps"))
+        self._disk_cache: dict | None = None
+        self._disk_t = 0.0
         self._log = EventLog(os.path.join(state_dir, "logs", "events.jsonl"))
         for e in self._log.tail(300):
             self._event_n += 1
@@ -184,6 +190,7 @@ class RosAdapter(Node):
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
         self._scan_seen_t = 0.0
+        self._scan_recv_t: float | None = None  # last /scan of any kind; None = never seen
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
         self.create_subscription(OccupancyGrid, "/map", self.live.on_grid, LATCHED, callback_group=g)
@@ -241,6 +248,17 @@ class RosAdapter(Node):
     def _now(self) -> float:
         return time.monotonic()
 
+    def _disk(self, now: float) -> dict:
+        """Free space on the state and maps filesystems (power-loss plan W3). Cached for
+        30 s: this is polled twice a second by every open page and statvfs is a syscall
+        per call. Computed here rather than carried in a message - the web runs on the
+        same machine as the disks it reports."""
+        if now - self._disk_t > 30.0 or self._disk_cache is None:
+            st = disk.status([self._state_dir, self._maps_dir])
+            self._disk_cache = {"free_mb": st.free_mb, "level": st.level, "path": st.path}
+            self._disk_t = now
+        return self._disk_cache
+
     def _on_mapping(self, m: MappingState) -> None:
         d = _msg_to_dict(m)
         d["state_name"] = STATE_NAMES.get(m.state, str(m.state))
@@ -287,6 +305,7 @@ class RosAdapter(Node):
     def _on_scan(self, m: LaserScan) -> None:
         # The live view redraws at 5 Hz; projecting 1152 beams 34 times a second is waste.
         now = time.monotonic()
+        self._scan_recv_t = now  # every scan, before the throttle: this is the liveness clock
         if now - self._scan_seen_t < SCAN_PERIOD_S:
             return
         self._scan_seen_t = now
@@ -407,7 +426,9 @@ class RosAdapter(Node):
             self._event_n += 1
             self._events.append(dict(e, n=self._event_n))
             del self._events[:-300]
-        self._log.append(e)  # outside the lock: a slow disk must not stall the callback
+        # Outside the lock: a slow disk must not stall the callback. Errors are forced
+        # to the platter (W4) - after a power cut they are the line you need.
+        self._log.append(e, sync=(e["level"] == "error"))
 
     def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None:
         """An event raised by the web itself (a page error, a give-up on a restart).
@@ -424,7 +445,7 @@ class RosAdapter(Node):
             self._event_n += 1
             self._events.append(dict(e, n=self._event_n))
             del self._events[:-300]
-        self._log.append(e)
+        self._log.append(e, sync=(e["level"] == "error"))
 
     def event_log_files(self) -> list[str]:
         return self._log.files()
@@ -523,6 +544,11 @@ class RosAdapter(Node):
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
+                # None = no scan has EVER arrived (an unplugged scanner says nothing at all,
+                # so only the absence can be reported). Seconds otherwise.
+                "scan_age_s": None if self._scan_recv_t is None else now - self._scan_recv_t,
+                "up_s": now - self._started_t,
+                "disk": self._disk(now),
                 "mapping": mapping,
                 "mapping_age_s": mapping_age,
                 "mapping_stale": mapping_stale,

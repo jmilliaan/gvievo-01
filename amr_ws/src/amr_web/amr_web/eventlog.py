@@ -33,13 +33,22 @@ class EventLog:
         except OSError:
             self.errors += 1
 
-    def append(self, event: dict) -> None:
+    def append(self, event: dict, sync: bool = False) -> None:
+        """Append one event. `sync` forces it to the platter before returning.
+
+        Only ERROR events are synced (power-loss plan W4): they are exactly the ones
+        you want to read after a cut, and they are rare. Syncing every info event would
+        put an fsync on a path that fires on each jog and mode change, for a record
+        nobody reads."""
         line = json.dumps(event, separators=(",", ":"), default=str)
         with self._lock:
             try:
                 self._rotate_if_needed(len(line) + 1)
                 with open(self.path, "a", encoding="utf-8") as fh:
                     fh.write(line + "\n")
+                    if sync:
+                        fh.flush()
+                        os.fsync(fh.fileno())
             except OSError:
                 self.errors += 1
 

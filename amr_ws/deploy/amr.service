@@ -14,6 +14,10 @@ StartLimitBurst=3
 Type=notify
 NotifyAccess=main
 WatchdogSec=30
+# Boot can legitimately take a while: the base budget is 30 s and the drives sat at
+# "Switch on disabled" for 70 s waiting for the cabinet reset (2026-09-22). READY=1 is
+# sent whatever the outcome, but the margin costs nothing.
+TimeoutStartSec=180
 User=gvipc-evo-01
 Group=gvipc-evo-01
 WorkingDirectory=/home/gvipc-evo-01/agv_can/amr_ws
