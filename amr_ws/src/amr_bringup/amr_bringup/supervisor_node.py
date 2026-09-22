@@ -666,7 +666,9 @@ class Supervisor(Node):
         )
 
     def _start_line(self, t: fsm.Transaction):
-        return self._launch("layer", "line_layer.launch.py", generation=self.generation)
+        return self._launch(
+            "layer", "line_layer.launch.py", generation=self.generation, real=str(self.real).lower()
+        )
 
     def _ready_line(self, t: fsm.Transaction, now: float) -> None:
         """The line layer is ready as soon as it reports its own state on THIS generation.

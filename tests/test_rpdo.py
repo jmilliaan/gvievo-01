@@ -215,7 +215,6 @@ def test_configure_runs_the_sequence():
 
     # The guard runs before the first frame, so a bad sequence sends nothing.
     nothing = []
-    bad = list(rpdo.configuration_steps(1))
     original = rpdo.configuration_steps
     rpdo.configuration_steps = lambda node, base=rpdo.RPDO1_COB_BASE: [
         (rpdo.RPDO1_MAP, 1, (0x403E << 16) | 0x0010, 4, "map FREE")]

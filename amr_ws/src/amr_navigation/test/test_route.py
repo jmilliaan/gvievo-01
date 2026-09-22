@@ -249,6 +249,76 @@ def test_route_store_revisions(tmp_path):
         store.save_mission(str(tmp_path), "../x", "sim_factory", 1, "a", "r1", 1, "b")
 
 
+# ---- F10: the read boundary refuses what the write boundary refuses ------------------
+
+
+def test_store_readers_refuse_escaping_names(tmp_path):
+    """load_mission(maps, "../../outside") used to open that file."""
+    maps = tmp_path / "maps"
+    (maps / "missions").mkdir(parents=True)
+    (tmp_path / "outside.yaml").write_text(
+        "mission_id: outside\nmap: {id: m, revision: 1}\nroute: {id: r, revision: 1}\n"
+    )
+    for bad in ("../outside", "../../outside", "/etc/passwd", ".hidden", "", "a/b", "a\\b"):
+        with pytest.raises(store.StoreError):
+            store.load_mission(str(maps), bad)
+        with pytest.raises(store.StoreError):
+            store.load_route(str(maps), bad, "r1", 1)
+        with pytest.raises(store.StoreError):
+            store.load_route(str(maps), "sim_factory", bad, 1)
+    for bad_rev in (0, -1, True, "1"):
+        with pytest.raises(store.StoreError):
+            store.load_route(str(maps), "sim_factory", "r1", bad_rev)
+
+
+def test_store_readers_refuse_symlinks_out_of_the_store(tmp_path):
+    maps = tmp_path / "maps"
+    (maps / "missions").mkdir(parents=True)
+    (tmp_path / "outside.yaml").write_text(
+        "mission_id: esc\nmap: {id: m, revision: 1}\nroute: {id: r, revision: 1}\n"
+    )
+    os.symlink(tmp_path / "outside.yaml", maps / "missions" / "esc.yaml")
+    with pytest.raises(store.StoreError, match="escapes"):
+        store.load_mission(str(maps), "esc")
+
+
+def test_store_readers_give_bounded_refusals_on_bad_yaml(tmp_path):
+    maps = tmp_path / "maps"
+    (maps / "missions").mkdir(parents=True)
+    (maps / "missions" / "scalar.yaml").write_text("just a string\n")
+    (maps / "missions" / "broken.yaml").write_text("mission_id: [\n")
+    (maps / "missions" / "wrong.yaml").write_text(
+        "mission_id: other\nmap: {id: m, revision: 1}\nroute: {id: r, revision: 1}\n"
+    )
+    (maps / "missions" / "badrev.yaml").write_text(
+        "mission_id: badrev\nmap: {id: m, revision: 0}\nroute: {id: r, revision: 1}\n"
+    )
+    for mid in ("scalar", "broken", "wrong", "badrev"):
+        with pytest.raises(store.StoreError):
+            store.load_mission(str(maps), mid)
+    assert store.list_missions(str(maps)) == [
+        {"mission_id": "badrev", "map": {"id": "m", "revision": 0}, "route": {"id": "r", "revision": 1}},
+        {"mission_id": "other", "map": {"id": "m", "revision": 1}, "route": {"id": "r", "revision": 1}},
+    ]
+
+
+def test_a_route_file_must_carry_the_identity_it_was_asked_for(tmp_path):
+    import shutil  # noqa: PLC0415
+
+    d = str(tmp_path)
+    _, path, _ = store.save_route(d, route([straight("s1", 1.0, 0.0)]))
+    # copy rev1 in as rev2 (identity inside still says rev1) and under another route id
+    shutil.copy(path, os.path.join(os.path.dirname(path), "rev2.yaml"))
+    other = store.routes_dir(d, "sim_factory", "r9")
+    os.makedirs(other)
+    shutil.copy(path, os.path.join(other, "rev1.yaml"))
+    with pytest.raises(store.StoreError, match="identity"):
+        store.load_route(d, "sim_factory", "r1", 2)
+    with pytest.raises(store.StoreError, match="identity"):
+        store.load_route(d, "sim_factory", "r9", 1)
+    assert store.load_route(d, "sim_factory", "r1", 1)[0].revision == 1
+
+
 # ---- R10: map bounds are never "clear" -------------------------------------------------
 
 SMALL = GridMeta(0.05, -2.5, -2.5)  # 5 m x 5 m, x and y in [-2.5, 2.5]

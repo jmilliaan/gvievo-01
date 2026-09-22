@@ -67,6 +67,12 @@ class MlsTrack:
     from within the bus loop with every decoded sample."""
 
     MISSES_BEFORE_BACKOFF = 5
+    # A sensor that did not answer at start (or whose TPDO1 configuration
+    # could not be read) is probed again this often with ONE short SDO
+    # timeout, so a late-booting MLS is acquired without restarting the bus
+    # owner and without starving the wheel loop.
+    REDISCOVER_S = 5.0
+    PROBE_TIMEOUT_S = 0.05
 
     def __init__(
         self,
@@ -100,6 +106,8 @@ class MlsTrack:
         self.misses = 0
         self.stale_periods = 0
         self.nmt_starts = 0
+        self.restarts = 0  # rediscoveries after an incomplete start (F08)
+        self._rediscover_at: float | None = None
         self._next_nmt = 0.0
         self._last_tpdo_t: float | None = None
         self.variant_mismatches = 0
@@ -113,13 +121,15 @@ class MlsTrack:
 
     def start(self) -> str:
         self._t_start = self.clock()
+        self._rediscover_at = None
         if self.want == "off":
             self.mode = "off"
             return self.mode
         v = self.link.read(self.node, *read_mls.OBJ_VARIANT)
         if v is None:
-            self.log(f"MLS node {self.node} did not answer 2006h:01 - track reading off")
+            self.log(f"MLS node {self.node} did not answer 2006h:01 - track reading off, probing again")
             self.mode = "off"
+            self._rediscover_at = self._t_start + self.REDISCOVER_S
             return self.mode
         self.variant, self.combi = v, v in read_mls.COMBI_VARIANTS
         if self.expected_variant is not None and v != self.expected_variant:
@@ -129,6 +139,11 @@ class MlsTrack:
                 f"commissioned {self.expected_variant}: decoding as reported"
             )
         raw = self.link.read(self.node, read_mls.TPDO1_COMM, 1)
+        if raw is None:
+            # One failed read must not pin the reader to SDO for the rest of
+            # the run: try the whole discovery again later.
+            self.log("MLS 1800h:01 did not answer: TPDO1 unknown, rediscovering later")
+            self._rediscover_at = self._t_start + self.REDISCOVER_S
         self.tpdo_enabled = raw is not None and not (raw & read_mls.COB_DISABLED)
         if self.tpdo_enabled and (raw & 0x7FF) != self.cob_id:
             self.log(f"MLS TPDO1 COB-ID 0x{raw & 0x7FF:03X}, not 0x{self.cob_id:03X}: listening there")
@@ -197,8 +212,21 @@ class MlsTrack:
     def age(self, now: float) -> float | None:
         return None if self.last is None else now - self.last.t_mono
 
+    def _rediscover(self, now: float) -> bool:
+        """Probe an absent/partly-read sensor; a full start() when it answers."""
+        if self._rediscover_at is None or now < self._rediscover_at or self.want == "off":
+            return False
+        self._rediscover_at = now + self.REDISCOVER_S
+        if self.link.read(self.node, *read_mls.OBJ_VARIANT, timeout=self.PROBE_TIMEOUT_S) is None:
+            return True
+        self.restarts += 1
+        self.start()
+        return True
+
     def poll(self, now: float) -> None:
         """Once per bus tick: stale bookkeeping, auto fallback, at most ONE SDO read."""
+        if self._rediscover(now):
+            return
         a = self.age(now)
         if (a is None or a > self.stale_after()) and not self._stale:
             self._stale = True
@@ -269,6 +297,7 @@ class MlsTrack:
             ("tpdo_frames", str(self.tpdo_frames)),
             ("stale_periods", str(self.stale_periods)),
             ("nmt_starts", str(self.nmt_starts)),
+            ("restarts", str(self.restarts)),
             ("sdo_misses", str(self.misses)),
             ("variant", self._variant_text()),
             ("variant_mismatches", str(self.variant_mismatches)),

@@ -87,6 +87,38 @@ def _result(ok: bool, message: str, status_fail: int = 409, **extra):
     return jsonify(body), (200 if ok else status_fail)
 
 
+def _body():
+    """The request's JSON object, or (None, a 400 response).
+
+    `request.get_json(force=True) or {}` let a truthy list, string or number
+    through to `.get(...)` and the handler crashed with a 500 before touching
+    the adapter (review 2026-09-21, F12). Shape is a 400 everywhere; an empty
+    body is the empty object so "field required" checks answer for it.
+    """
+    raw = request.get_data()
+    if not raw.strip():
+        return {}, None
+    d = request.get_json(force=True, silent=True)
+    if d is None:
+        return None, _result(False, "malformed JSON", 400)
+    if not isinstance(d, dict):
+        return None, _result(False, "a JSON object is required", 400)
+    return d, None
+
+
+def _finite(x, what: str) -> float:
+    """A finite number field. Booleans are not numbers here."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(float(x)):
+        raise ValueError(f"{what} must be a finite number")
+    return float(x)
+
+
+def _positive_int(x, what: str) -> int:
+    if isinstance(x, bool) or not isinstance(x, int) or x < 1:
+        raise ValueError(f"{what} must be a positive integer")
+    return x
+
+
 def _op_kind(op) -> str:
     """dynamic | undynamic | free | unknown | occupied, for an edits.json op."""
     if not isinstance(op, dict):
@@ -315,9 +347,9 @@ def create_app(
         """Operator edits (mark/clear dynamic areas, paint free/unknown) -> a NEW revision
         derived from this one (dynamic-mapping plan §1.1). Nothing is modified in place:
         routes and missions on this revision keep meaning what they meant."""
-        d = request.get_json(force=True, silent=True)
-        if not isinstance(d, dict):
-            return _result(False, "a JSON object {ops, note} is required", 400)
+        d, err = _body()
+        if err:
+            return err
         note = d.get("note", "")
         if not isinstance(note, str):
             return _result(False, "note must be text", 400)
@@ -375,7 +407,10 @@ def create_app(
     @app.post("/api/maps/<map_id>/<int:rev>/routes/validate")
     def api_route_validate(map_id: str, rev: int):
         try:
-            route, v = _validate_payload(map_id, rev, request.get_json(force=True) or {})
+            d, err = _body()
+            if err:
+                return err
+            route, v = _validate_payload(map_id, rev, d)
         except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         except RouteError as e:
@@ -392,7 +427,10 @@ def create_app(
     @app.post("/api/maps/<map_id>/<int:rev>/routes/save")
     def api_route_save(map_id: str, rev: int):
         try:
-            route, v = _validate_payload(map_id, rev, request.get_json(force=True) or {})
+            d, err = _body()
+            if err:
+                return err
+            route, v = _validate_payload(map_id, rev, d)
         except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         except RouteError as e:
@@ -438,9 +476,9 @@ def create_app(
 
     @app.post("/api/missions")
     def api_mission_create():
-        d = request.get_json(force=True) or {}
-        if not isinstance(d, dict):
-            d = {}
+        d, err = _body()
+        if err:
+            return err
         req = (d.get("map_id"), d.get("map_revision"), d.get("route_id"), d.get("route_revision"))
         if not (
             isinstance(req[0], str)
@@ -525,7 +563,9 @@ def create_app(
 
     @app.post("/api/commissioning/plan")
     def api_commissioning_plan():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         plan = d.get("plan")
         if not isinstance(plan, dict):
             return _result(False, "plan object required", 400)
@@ -581,9 +621,9 @@ def create_app(
 
     @app.post("/api/commissioning/measurement")
     def api_commissioning_measurement():
-        d = request.get_json(force=True) or {}
-        if not isinstance(d, dict):
-            return _result(False, "object required", 400)
+        d, err = _body()
+        if err:
+            return err
         try:
             row = clog.save_measurement(app.config["EVIDENCE_DIR"], d.get("run"), d)
         except clog.LogError as e:
@@ -628,7 +668,9 @@ def create_app(
 
     @app.post("/api/mode")
     def api_mode():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION}.get(str(d.get("target", "")).lower())
         if target is None:
             return _result(False, "target must be idle or navigation", 400)
@@ -645,7 +687,9 @@ def create_app(
     def api_survey(op: str):
         if op not in SURVEY_OPS:
             return _result(False, "unknown survey operation", 404)
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         rid = str(d.get("request_id") or uuid.uuid4().hex)
         desc = str(d.get("description", d.get("note", "")))
         return _accepted(*adapter.survey_request(SURVEY_OPS[op], str(d.get("map_id", "")), desc, rid))
@@ -654,13 +698,15 @@ def create_app(
     # the MANUAL authority; a refused move answers 409 with the node's reason
     @app.post("/api/survey_move")
     def api_survey_move():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         kind = str(d.get("kind", ""))
         try:
-            value = float(d.get("value"))
-        except (TypeError, ValueError):
-            return _result(False, "value must be a number", 422)
-        if kind not in ("straight", "rotate") or not math.isfinite(value):
+            value = _finite(d.get("value"), "value")
+        except ValueError as e:
+            return _result(False, str(e), 422)
+        if kind not in ("straight", "rotate"):
             return _result(False, "kind must be straight or rotate, value a finite number", 422)
         return _result(*adapter.survey_move(kind, value))
 
@@ -690,7 +736,9 @@ def create_app(
 
     @app.post("/api/manual/press")
     def api_manual_press():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         owner = str(d.get("owner", ""))[:64]
         if not owner:
             return _result(False, "owner token required", 400)
@@ -717,7 +765,9 @@ def create_app(
 
     @app.post("/api/manual/refresh")
     def api_manual_refresh():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         inst, gen = adapter.supervisor_identity()
         with jog_lock:
             try:
@@ -739,7 +789,9 @@ def create_app(
 
     @app.post("/api/manual/release")
     def api_manual_release():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         inst, gen = adapter.supervisor_identity()
         with jog_lock:
             had = sessions.release(str(d.get("session", "")))
@@ -772,20 +824,28 @@ def create_app(
 
     @app.post("/api/localization/initialpose")
     def api_loc_initialpose():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         try:
-            x, y, yaw = float(d["x_m"]), float(d["y_m"]), float(d["yaw_rad"])
-            map_id, map_rev, gen = str(d["map_id"]), int(d["map_revision"]), int(d["generation"])
-        except (KeyError, ValueError, TypeError):
-            return _result(False, "x_m, y_m, yaw_rad, map_id, map_revision, generation required", 400)
-        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(yaw)):
-            return _result(False, "x_m, y_m, yaw_rad must be finite", 400)
+            x, y, yaw = (_finite(d.get(k), k) for k in ("x_m", "y_m", "yaw_rad"))
+            map_id = d.get("map_id")
+            if not isinstance(map_id, str) or not map_id:
+                raise ValueError("map_id must be text")
+            map_rev = _positive_int(d.get("map_revision"), "map_revision")
+            gen = d.get("generation")
+            if isinstance(gen, bool) or not isinstance(gen, int) or gen < 0:
+                raise ValueError("generation must be a non-negative integer")
+        except ValueError as e:
+            return _result(False, f"{e} (x_m, y_m, yaw_rad, map_id, map_revision, generation required)", 400)
         # the adapter re-checks the identity against the live ModeState right before publishing (R12)
         return _call(adapter.set_initial_pose, x, y, yaw, map_id, map_rev, gen, str(d.get("sha256", "")))
 
     @app.post("/api/mission/run")
     def api_mission_run():
-        d = request.get_json(force=True) or {}
+        d, err = _body()
+        if err:
+            return err
         return _call(adapter.run_mission, str(d.get("mission_id", "")))
 
     @app.post("/api/mission/pause")

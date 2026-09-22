@@ -768,6 +768,9 @@ class DriveNode(Node):
                 KeyValue(key="mode", value=imu.mode),
                 KeyValue(key="samples", value=str(imu.samples)),
                 KeyValue(key="misses", value=str(imu.misses)),
+                KeyValue(key="rejected", value=str(imu.rejected)),
+                KeyValue(key="last_reject", value=imu.last_reject),
+                KeyValue(key="restarts", value=str(imu.restarts)),
                 KeyValue(key="gyro_sign", value=str(self.get_parameter("gyro_sign").value)),
             ]
             arr.status.append(im)

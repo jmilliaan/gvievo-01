@@ -156,3 +156,34 @@ def test_the_lease_bit_is_exclusive_of_the_others():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# ---- F07: the ceiling holds at the mux, not only in the follower ----------
+
+
+def test_the_line_branch_caps_body_speed_and_keeps_the_arc():
+    """The follower's own cap is one line of defence; the last arbitration
+    point must hold the increment's ceiling by itself. Before, a LINE command
+    of 0.8 m/s went through unchanged (only the motor limit applied)."""
+    sel = select(line=gating.Stamped(NOW, 0.8, 0.4))
+    assert sel.source == gating.LINE
+    assert sel.v == pytest.approx(0.30) and sel.w == pytest.approx(0.15)
+    rev = select(line=gating.Stamped(NOW, -0.8, 0.4))
+    assert rev.v == pytest.approx(-0.30) and rev.w == pytest.approx(0.15)
+    slow = select(line=gating.Stamped(NOW, 0.2, 0.1))
+    assert (slow.v, slow.w) == (0.2, 0.1)
+
+
+def test_the_line_yaw_cap_is_separate_and_off_by_default():
+    import dataclasses
+
+    assert select(line=gating.Stamped(NOW, 0.1, 3.0)).w == 3.0
+    p = dataclasses.replace(SUPERVISED, line_w_max=0.5)
+    sel = select(line=gating.Stamped(NOW, 0.1, 3.0), p=p)
+    assert (sel.v, sel.w) == (0.1, 0.5)
+
+
+def test_line_cap_treats_a_bad_limit_as_no_limit():
+    assert gating.line_cap(0.8, 0.4, 0.0, 0.0) == (0.8, 0.4)
+    assert gating.line_cap(0.8, 0.4, float("nan"), 0.0) == (0.8, 0.4)
+    assert gating.line_cap(0.0, 0.0, 0.3, 0.0) == (0.0, 0.0)

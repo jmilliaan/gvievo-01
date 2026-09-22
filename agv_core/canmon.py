@@ -156,9 +156,9 @@ class MonitorPoller:
                 if val is not None:
                     hi_t, hi_w = limits.get("trip"), limits.get("warn")
                     lo_t, lo_w = limits.get("trip_low"), limits.get("warn_low")
-                    if (hi_t is not None and val >= hi_t) or                        (lo_t is not None and val <= lo_t):
+                    if (hi_t is not None and val >= hi_t) or (lo_t is not None and val <= lo_t):
                         d["state"] = "trip"
-                    elif (hi_w is not None and val >= hi_w) or                          (lo_w is not None and val <= lo_w):
+                    elif (hi_w is not None and val >= hi_w) or (lo_w is not None and val <= lo_w):
                         d["state"] = "warn"
                 node_out[key] = d
             out[str(node)] = node_out

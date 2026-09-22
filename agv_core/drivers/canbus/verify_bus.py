@@ -78,7 +78,7 @@ def passive_listen(bus, seconds):
 
 
 def scan(bus, timeout):
-    print(f"\n[2] scanning Node-IDs 1..127 (SDO read of 1000h)")
+    print("\n[2] scanning Node-IDs 1..127 (SDO read of 1000h)")
     found = {}
     for nid in SCAN_RANGE:
         st, val, note, lat = sdo_read(bus, nid, 0x1000, 0, timeout=timeout)

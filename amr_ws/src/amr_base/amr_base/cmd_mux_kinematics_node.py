@@ -104,6 +104,10 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("survey_w_max_rad_s", 0.27)
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
+        # LINE ceiling at the mux, independent of the follower's own v_max_mps
+        # (dual-product plan Increment 1). 0 = no yaw cap.
+        self.declare_parameter("line_v_max_m_s", 0.30)
+        self.declare_parameter("line_w_max_rad_s", 0.0)
 
         p = self.get_parameter
         self.geom = Geometry(p("wheel_radius_m").value, p("track_width_m").value)
@@ -134,6 +138,8 @@ class CmdMuxKinematics(Node):
             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
             pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
             track_m=float(p("track_width_m").value),
+            line_v_max=self._finite_or(float(p("line_v_max_m_s").value), 0.30),
+            line_w_max=self._finite_or(float(p("line_w_max_rad_s").value), 0.0),
         )
         self.dt = 1.0 / p("rate_hz").value
         self.survey_w_max = max(0.0, float(p("survey_w_max_rad_s").value))
@@ -299,6 +305,12 @@ class CmdMuxKinematics(Node):
             )
         self._surveying = surveying
 
+    @staticmethod
+    def _finite_or(x: float, default: float) -> float:
+        """A limit parameter must be a finite non-negative number; anything
+        else falls back to the shipped default rather than becoming 'no limit'."""
+        return x if math.isfinite(x) and x >= 0.0 else default
+
     def _tick(self) -> None:
         sel = gating.select(
             self._now(),
@@ -350,6 +362,10 @@ class CmdMuxKinematics(Node):
         else:
             self._v = slew_asym(self._v, sel.v, self.a_max, self.d_max, self.dt)
             self._wz = slew_asym(self._wz, sel.w, self.alpha_max, self.delta_max, self.dt)
+            if sel.source == gating.LINE:
+                # The slew state may still carry a faster source's speed on
+                # entry; the ceiling holds on the OUTPUT, not just the target.
+                self._v, self._wz = gating.line_cap(self._v, self._wz, self.gp.line_v_max, self.gp.line_w_max)
             self._a = self._alpha = 0.0
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)

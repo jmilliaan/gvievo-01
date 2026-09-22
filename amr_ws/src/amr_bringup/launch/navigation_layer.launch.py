@@ -92,7 +92,7 @@ def _compose(context):
         revision = revs[-1]
     revision = int(revision)
     rev_dir = mb.revision_dir(maps_dir, map_id, revision)
-    manifest = mb.verify(rev_dir)  # raises BundleError on any mismatch
+    manifest = mb.load_manifest(rev_dir, map_id, revision)  # raises BundleError on any mismatch
     map_yaml = os.path.join(rev_dir, "map.yaml")
     autostart = cfg("autostart").perform(context).lower() == "true"
     generation = int(cfg("generation").perform(context))

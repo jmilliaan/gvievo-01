@@ -1,28 +1,31 @@
 {% extends "base.html" %}
 {% block title %}AMR — manual{% endblock %}
 {% block body %}
-{# Two columns that fill the height: the pad left, the vehicle state right. No section
-   below them, so the page fits a 7" panel without scrolling; the pad grows to the space. #}
+{# Built for the HMI's height: the pad is a square sized by the viewport on the left, and
+   everything else - vehicle state as one-line rows, speed, jog status, the arming note -
+   is a column on the right. Nothing sits below, so the page never scrolls. #}
 <section class="manual grow">
   <div id="jog"></div>
-  <div>
+  <div class="side" id="manual-side">
     <h2>Vehicle <small>supervisor · mux</small></h2>
-    <div id="manual-state" class="tel-grid"></div>
+    <div id="manual-state" class="tel-grid rows"></div>
     <p id="manual-reason" class="note"></p>
-    <p class="note"><b>Arming is the physical panel's job</b>: the selector resting in MANUAL energises the drives at zero. This page cannot arm, clear a drive alarm or change the operating mode; the drives de-energise on a service stop.</p>
+    <p class="note"><b>Arming is the physical panel's job</b>: the selector resting in MANUAL energises the drives at zero. This page cannot arm, clear a drive alarm or change the mode.</p>
   </div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="/static/jogpad.js"></script>
 <script>
 jogpad(document.getElementById('jog'));
+// Speed + jog status go under the vehicle rows on the right; the pad keeps the whole left column.
+document.getElementById('manual-side').insertBefore(document.querySelector('#jog .jog-foot'), document.getElementById('manual-reason'));
 onState(st => {
   const m = st.mode, mx = st.mux, l = st.lease;
   tiles('manual-state', [
     ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
-    ['Manual allowed', yesno(m && m.manual_available), 'by supervisor', m && m.manual_available ? '' : 'warn'],
-    ['Command source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
-    ['Generation', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
+    ['Manual', yesno(m && m.manual_available), 'allowed by supervisor', m && m.manual_available ? '' : 'warn'],
+    ['Command', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
+    ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
   document.getElementById('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
 });

@@ -307,7 +307,7 @@ class DioLink:
                 # Same treatment as a failed read: raise, so _run() counts the
                 # error and drops the connection. A write that silently failed
                 # would leave the horn's state a matter of opinion.
-                raise IOError(f"coil {ch} <- {want}: {r}")
+                raise OSError(f"coil {ch} <- {want}: {r}")
             wrote += 1
 
         if self._quiesce.is_set() and not wrote:
@@ -319,10 +319,10 @@ class DioLink:
     def _read_bits(self, fn, address, count, what):
         r = fn(address, count=count, device_id=config.DIO_DEVICE_ID)
         if r.isError():
-            raise IOError(f"{what} read at {address}: {r}")
+            raise OSError(f"{what} read at {address}: {r}")
         bits = list(r.bits[:count])
         if len(bits) != count:
             # pymodbus pads to a byte boundary, so a short reply means the
             # module answered for fewer channels than the profile claims.
-            raise IOError(f"{what}: asked {count}, got {len(bits)}")
+            raise OSError(f"{what}: asked {count}, got {len(bits)}")
         return [bool(b) for b in bits]

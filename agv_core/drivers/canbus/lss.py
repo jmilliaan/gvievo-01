@@ -297,8 +297,8 @@ def _cmd_scan(args):
     bus, how = open_bus(args.bitrate, args.channel)
     print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
     try:
-        print(f"[1] passive listen for LSS traffic, 2 s "
-              f"(silence is EXPECTED - LSS is master-driven)")
+        print("[1] passive listen for LSS traffic, 2 s "
+              "(silence is EXPECTED - LSS is master-driven)")
         for cob, data in listen(bus, 2.0):
             print(f"    {cob:03X}  " + " ".join(f"{b:02X}" for b in data))
 

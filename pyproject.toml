@@ -36,6 +36,7 @@ known-first-party = ["agv_core"]
 [tool.pytest.ini_options]
 # The offline suite is driven by tests/run_all.py, which prints a check count.
 # pytest is here for single-file runs; both need tests/ importable for helpers.
+# That path setup lives in conftest.py: the `pythonpath` ini option needs
+# pytest >= 7 and the vehicle image ships 6.2 ("Unknown config option").
 testpaths = ["tests"]
-pythonpath = [".", "tests"]
 python_files = ["test_*.py"]

@@ -260,7 +260,7 @@ def read_tpdo_state(bus, node=SENSOR_NODE):
 def _fmt3(vals, unit, scale=1.0, width=9, prec=4):
     return "  ".join(
         f"{a}={'--':>{width}}" if v is None else f"{a}={v * scale:{width}.{prec}f}"
-        for a, v in zip(AXES, vals)) + f"  {unit}"
+        for a, v in zip(AXES, vals, strict=False)) + f"  {unit}"
 
 
 def show(bus, node=SENSOR_NODE):
@@ -284,7 +284,7 @@ def show(bus, node=SENSOR_NODE):
     if r["quaternion"]:
         print("    quat   (2031h)  "
               + "  ".join(f"{a}={v:9.5f}"
-                          for a, v in zip("wxyz", r["quaternion"])))
+                          for a, v in zip("wxyz", r["quaternion"], strict=False)))
 
     g_err = gravity_error(r["accel_g"])
     if g_err is not None:
@@ -295,7 +295,7 @@ def show(bus, node=SENSOR_NODE):
 
     print("\n    TPDO slots (at most "
           f"{MAX_ACTIVE_TPDOS} active at once on this sensor):")
-    for name, st in read_tpdo_state(bus, node).items():
+    for st in read_tpdo_state(bus, node).values():
         if st["raw"] is None:
             print(f"      {st['index']:04X}h {st['label']:<14} no reply")
             continue

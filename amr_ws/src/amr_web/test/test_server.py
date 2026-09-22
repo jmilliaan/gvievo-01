@@ -685,3 +685,80 @@ def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
     page = client.get("/maps").data
     for el in (b'id="sm-dist"', b'id="sm-fwd"', b'id="sm-rev"', b'id="sm-stop"', b'data-deg="-135"'):
         assert el in page
+
+
+# ---- F12: payload shape is a 400, never a 500, and never an adapter call -------------
+
+_JSON_POSTS = [
+    "/api/mode",
+    "/api/survey/start",
+    "/api/survey_move",
+    "/api/manual/press",
+    "/api/manual/refresh",
+    "/api/manual/release",
+    "/api/localization/initialpose",
+    "/api/mission/run",
+    "/api/missions",
+    "/api/commissioning/plan",
+    "/api/commissioning/measurement",
+    "/api/maps/sim_factory/1/edit",
+    "/api/maps/sim_factory/1/routes/validate",
+    "/api/maps/sim_factory/1/routes/save",
+]
+
+
+@pytest.mark.parametrize("path", _JSON_POSTS)
+@pytest.mark.parametrize("raw", ["[1]", '"text"', "7", "null", "{not json", "true"])
+def test_wrong_shaped_json_is_a_400_before_any_adapter_call(env, path, raw):
+    """POST [1] to /api/mode used to be a 500 from `.get` on a list."""
+    client, stub, *_ = env
+    before = list(stub.calls)
+    r = client.post(path, data=raw, content_type="application/json")
+    assert r.status_code == 400, (path, raw, r.status_code, r.get_data(as_text=True)[:200])
+    assert r.is_json and r.get_json()["ok"] is False
+    assert stub.calls == before, "an invalid payload reached the adapter"
+
+
+def test_initialpose_rejects_booleans_nonfinite_and_bad_revisions(env):
+    client, stub, *_ = env
+    good = {
+        "x_m": 1.0,
+        "y_m": 2.0,
+        "yaw_rad": 0.1,
+        "map_id": "sim_factory",
+        "map_revision": 1,
+        "generation": 3,
+    }
+    for k, v in (
+        ("x_m", True),
+        ("y_m", "1"),
+        ("yaw_rad", None),
+        ("map_revision", 0),
+        ("map_revision", True),
+        ("map_revision", 1.5),
+        ("map_revision", 10**30 * 1.0),
+        ("generation", -1),
+        ("map_id", 5),
+        ("map_id", ""),
+    ):
+        bad = {**good, k: v}
+        r = client.post("/api/localization/initialpose", json=bad)
+        assert r.status_code == 400, (k, v, r.get_json())
+    r = client.post(
+        "/api/localization/initialpose",
+        data='{"x_m": 1e999, "y_m": 0, "yaw_rad": 0, "map_id": "m", "map_revision": 1, "generation": 0}',
+        content_type="application/json",
+    )
+    assert r.status_code == 400
+
+
+def test_survey_move_value_must_be_a_finite_number(env):
+    client, stub, *_ = env
+    for v in (True, "1", None, [1]):
+        r = client.post("/api/survey_move", json={"kind": "straight", "value": v})
+        assert r.status_code == 422, (v, r.get_json())
+    r = client.post(
+        "/api/survey_move", data='{"kind": "straight", "value": 1e999}', content_type="application/json"
+    )
+    assert r.status_code == 422
+    assert not any(c[0] == "survey_move" for c in stub.calls)

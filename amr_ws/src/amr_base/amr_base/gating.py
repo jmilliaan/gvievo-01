@@ -63,6 +63,12 @@ class Params:
     pendant_w: float = 0.39  # body rad/s for a spin in place (0.30 until 2026-09-19, +30 %)
     pendant_turn_ratio: float = 0.75  # slow wheel / fast wheel while driving and turning
     track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
+    # LINE ceiling at the last arbitration point, independent of the follower's
+    # own cap (dual-product plan Increment 1: 0.30 m/s). Body speed is scaled
+    # with its yaw rate so the arc the follower asked for is kept; the yaw cap
+    # is separate and 0 = none.
+    line_v_max: float = 0.30
+    line_w_max: float = 0.0
 
 
 def survey_spin_cap(w: float, surveying: bool, cap: float) -> float:
@@ -207,6 +213,16 @@ def capped(x: float, limit: float) -> float:
     return x
 
 
+def line_cap(v: float, w: float, v_max: float, w_max: float) -> tuple[float, float]:
+    """The LINE ceiling: |v| held at v_max by scaling v AND w together (the
+    arc is preserved - scaling only v would straighten every curve), then
+    |w| at w_max on its own. A non-positive or non-finite limit is no limit."""
+    if math.isfinite(v_max) and v_max > 0.0 and abs(v) > v_max:
+        k = v_max / abs(v)
+        v, w = v * k, w * k
+    return v, capped(w, w_max)
+
+
 @dataclass
 class Panel:
     t_recv: float
@@ -323,7 +339,8 @@ def select(
     # topic this mux is not subscribed to and cannot look fresh.
     if p.require_supervisor and (lease.allowed & LEASE_LINE):
         if line is not None and _fresh(line.t, now, p.cmd_timeout_s):
-            return Selection(LINE, line.v, line.w, "line", gen)
+            v, w = line_cap(line.v, line.w, p.line_v_max, p.line_w_max)
+            return Selection(LINE, v, w, "line", gen)
         return Selection(NONE, 0.0, 0.0, "line: no fresh command", gen)
 
     if p.require_supervisor and not (lease.allowed & LEASE_AUTONOMOUS):

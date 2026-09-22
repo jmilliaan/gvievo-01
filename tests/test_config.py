@@ -245,7 +245,8 @@ def test_derived_constants():
     would just break the suite every time someone edits the profile, which is
     the whole point of the profile existing."""
     print("\nderived constants follow their inputs")
-    close = lambda a, b: abs(a - b) < abs(b) * 1e-6
+    def close(a, b):
+        return abs(a - b) < abs(b) * 1e-6
     check("MPS_PER_RPM", close(config.MPS_PER_RPM, 3.14159265e-4),
           f"{config.MPS_PER_RPM:.6e}")
     check("RPM_PER_MPS", close(config.RPM_PER_MPS, 3183.0989),

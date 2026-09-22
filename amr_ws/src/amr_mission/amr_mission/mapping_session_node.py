@@ -311,35 +311,14 @@ class MappingSession(Node):
             res.ok, res.message = False, "not ready: " + "; ".join(problems)
             return res
         self._set(MappingState.SAVING, "pausing SLAM and serialising")
-        stage = None
+        stage_holder: list[str] = []
         try:
             # allocation and staging are part of the transaction (review R27): an unwritable
             # maps dir must return a failed save and RETURN_REVIEW, not leave SAVING behind
-            revision = mb.next_revision(self.maps_dir, self._map_id)
-            stage = mb.staging_dir(self.maps_dir, self._map_id, revision)
-            self._pause_slam(True)
-            pause_t = self._now()
-            self._call(self._serialize, SerializePoseGraph.Request(filename=os.path.join(stage, "posegraph")))
-            grid_msg = self._wait_for_map(after=pause_t, timeout=2.5)
-            grid = gridio.from_occupancy_grid_msg(grid_msg)
-            review = mb.ReturnReview(**{**asdict(self._review), "note": req.note})
-            manifest = mb.Manifest(
-                map_id=self._map_id,
-                revision=revision,
-                created=mb.now_iso(),
-                frame_id=grid_msg.header.frame_id or "map",
-                resolution=grid.meta.resolution,
-                origin=[grid.meta.origin_x, grid.meta.origin_y, grid.meta.origin_yaw],
-                width=grid.width,
-                height=grid.height,
-                start=asdict(self._start),
-                review=asdict(review),
-                software={"slam": "slam_toolbox online_async", "profile": "slam_mapping.yaml"},
-            )
-            mb.stage_bundle(stage, grid, os.path.join(stage, "posegraph"), manifest)
-            mb.verify(stage)
-            dest = mb.publish(stage, self.maps_dir, self._map_id, revision)
+            with mb.map_lock(self.maps_dir, self._map_id):  # allocate..publish: ONE hold (F03)
+                revision, dest, manifest = self._save_locked(req, stage_holder)
         except Exception as e:  # noqa: BLE001 - any failure keeps the draft, never a revision
+            stage = stage_holder[0] if stage_holder else None
             draft = stage.replace(".staging-", ".draft-") if stage else None
             if stage:
                 try:
@@ -359,6 +338,37 @@ class MappingSession(Node):
         self._set(MappingState.SAVED, f"published {dest} (bundle {manifest.sha256[:12]})")
         res.ok, res.path, res.revision, res.message = True, dest, revision, self._message
         return res
+
+    def _save_locked(self, req: SaveMap.Request, stage_holder: list):
+        """The save transaction proper; runs under the map's writer lock.
+        `stage_holder` receives the stage path as soon as it exists so the
+        caller can keep it as a draft on failure."""
+        revision = mb.next_revision(self.maps_dir, self._map_id)
+        stage = mb.staging_dir(self.maps_dir, self._map_id, revision)
+        stage_holder.append(stage)
+        self._pause_slam(True)
+        pause_t = self._now()
+        self._call(self._serialize, SerializePoseGraph.Request(filename=os.path.join(stage, "posegraph")))
+        grid_msg = self._wait_for_map(after=pause_t, timeout=2.5)
+        grid = gridio.from_occupancy_grid_msg(grid_msg)
+        review = mb.ReturnReview(**{**asdict(self._review), "note": req.note})
+        manifest = mb.Manifest(
+            map_id=self._map_id,
+            revision=revision,
+            created=mb.now_iso(),
+            frame_id=grid_msg.header.frame_id or "map",
+            resolution=grid.meta.resolution,
+            origin=[grid.meta.origin_x, grid.meta.origin_y, grid.meta.origin_yaw],
+            width=grid.width,
+            height=grid.height,
+            start=asdict(self._start),
+            review=asdict(review),
+            software={"slam": "slam_toolbox online_async", "profile": "slam_mapping.yaml"},
+        )
+        mb.stage_bundle(stage, grid, os.path.join(stage, "posegraph"), manifest)
+        mb.verify(stage)
+        dest = mb.publish(stage, self.maps_dir, self._map_id, revision)
+        return revision, dest, manifest
 
     # ---- slam_toolbox helpers ----------------------------------------------
 

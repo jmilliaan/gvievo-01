@@ -24,7 +24,12 @@ WHAT HOLDS THE VEHICLE, and how each resumes:
   rate        samples are fresh but too slow, or the MLS fell back to SDO.
               sensor_timeout_s cannot see this - see track.TrackReader
   authority   lease, generation or panel selector changed under the run.
-              Never auto-resumes: something above this layer took control
+              Never auto-resumes: something above this layer took control.
+              An explicit act - the selector leaving AUTO on a valid panel,
+              LEASE_LINE withdrawn from a fresh lease, the lease replaced -
+              ends the run at once (FAULT, Reset to clear), as the executor's
+              manual takeover does. A MISSING signal (stale panel, stale
+              lease) is a comms question and goes through the debounce
 
 The asymmetry between debounced and immediate is deliberate and copied from
 the executor: a prerequisite must fail CONTINUOUSLY for prereq_grace_s before
@@ -74,7 +79,7 @@ class Inputs:
 
     # safety chain
     torque_off: bool
-    field_clear: bool
+    field_clear: bool | None       # None = no fresh /output_paths: UNKNOWN, not clear
     drives_fresh: bool
 
 
@@ -149,6 +154,8 @@ class FollowJob:
             return "no fresh drive report"
         if i.torque_off:
             return "drive torque is off"
+        if i.field_clear is None:
+            return "protective field state unknown (no fresh /output_paths)"
         if not i.field_clear:
             return "protective field is violated"
         if not i.track_ok:
@@ -157,8 +164,20 @@ class FollowJob:
         return ""
 
     def _safety_cause(self, i: Inputs):
-        """Which safety story a torque loss belongs to."""
-        return "field" if not i.field_clear else "estop"
+        """Which safety story a torque loss belongs to. Unknown field evidence
+        cannot prove a stop was only the field, so it is an E-stop: the hold
+        that waits for a human."""
+        return "field" if i.field_clear is False else "estop"
+
+    def _taken_over(self, i: Inputs):
+        """An explicit withdrawal of authority, or "". Not debounced: a
+        selector flick to MANUAL and back inside the grace window must not
+        leave the run entitled to resume the moment the mux re-opens."""
+        if i.panel_valid and not i.panel_auto:
+            return "manual takeover: selector left AUTO"
+        if i.authority is not None and not (i.lease_allowed & i.lease_line):
+            return "LEASE_LINE withdrawn by the supervisor"
+        return ""
 
     def _auto_causes(self):
         return _AUTO_CAUSES + (("estop",) if self.auto_resume_estop else ())
@@ -195,7 +214,10 @@ class FollowJob:
         # did nothing while RUNNING and the wheels kept turning until the
         # follower was cleared by service. The node zeroes the command on
         # the falling edge out of RUNNING.
-        if i.reset_edge and self.state in (RUNNING, HOLD, DONE, FAULT):
+        # ARMED too: an armed layer that Reset cannot cancel would run on
+        # the next Start with nobody having asked for it. Reset wins over a
+        # Start seen in the same tick.
+        if i.reset_edge and self.state != IDLE:
             self.reset()
             self.reason = "reset"
             return 0.0, 0.0
@@ -210,13 +232,18 @@ class FollowJob:
             self._hold("authority", "the control lease was replaced")
             self.state = FAULT
             return 0.0, 0.0
+        taken = self._taken_over(i)
+        if taken:
+            self._hold("authority", taken)
+            self.state = FAULT
+            return 0.0, 0.0
 
         pre = self._prerequisite(i)
 
         # An immediate stop for anything meaning the vehicle may be moving
         # without the feedback or the torque to do it safely.
         if self.state == RUNNING:
-            if i.torque_off or not i.field_clear:
+            if i.torque_off or i.field_clear is False:
                 self._hold(self._safety_cause(i), "drive torque removed")
                 return 0.0, 0.0
             if not i.drives_fresh:
@@ -255,6 +282,14 @@ class FollowJob:
 
     def _hold_tick(self, i: Inputs, pre):
         """Wait for the cause to clear, then resume - or wait for a human."""
+        # A torque loss arriving DURING a hold for some other reason takes the
+        # safety cause (executor rule): a hold for stale feedback must not
+        # auto-resume through an E-stop that happened while it waited. A hold
+        # already on the field's or the E-stop's terms keeps them.
+        if self.hold_cause not in ("field", "estop") and (i.torque_off or i.field_clear is False):
+            self._hold(self._safety_cause(i), "drive torque removed while held")
+            return 0.0, 0.0
+
         if self.hold_cause not in self._auto_causes():
             # estop (by default) and authority: a physical Start, not a timer.
             if i.start_edge and not pre:
@@ -306,8 +341,9 @@ class FollowJob:
         """Hold the body speed at v_max_mps, scaling BOTH wheels together.
 
         Scaling one wheel changes the arc; scaling both preserves it. The mux
-        applies the same ceiling independently - this increment is a bench and
-        first-floor-run increment and 0.30 m/s is the agreed limit for it.
+        applies its own ceiling independently (gating.line_cap, parameter
+        line_v_max_m_s) - this increment is a bench and first-floor-run
+        increment and 0.30 m/s is the agreed limit for it.
         """
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
 

@@ -125,15 +125,28 @@ def test_mapping_layer_is_only_slam_and_coordinator():
 
 
 def test_line_layer_is_only_the_follower():
-    # generation is the ONLY argument _start_line passes; anything else required
-    # here would make the supervisor's spawn fail as SPAWN_FAILED.
-    c = compose("line_layer.launch.py", generation=3)
+    # generation and real are the ONLY arguments _start_line passes; anything
+    # else required here would make the supervisor's spawn fail as SPAWN_FAILED.
+    c = compose("line_layer.launch.py", generation=3, real="true")
     assert set(c["exes"]) == LINE_EXES
     assert c["includes"] == []
     assert c["handlers"] == 1  # the follower is required: no follower, no layer
     # The mux of generation 3 subscribes to the generation-private line_cmd
     # topic; the follower must publish there or the mux never sees a command.
     assert c["remaps"]["line_follow_node"] == [("/amr/line_cmd", "/amr/layers/g3/amr/line_cmd")]
+    params = [_param_dict(p) for p in c["params"]["line_follow_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "scanner" for p in params)
+
+
+def test_line_layer_assumes_the_field_clear_only_in_sim():
+    """The sim has no scanner. A vehicle launch must never carry assume_clear:
+    there a stale /output_paths is UNKNOWN and the layer refuses to arm."""
+    c = compose("line_layer.launch.py", generation=3, real="false")
+    params = [_param_dict(p) for p in c["params"]["line_follow_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "assume_clear" for p in params)
+    d = compose("line_layer.launch.py", generation=3)  # default = real
+    params = [_param_dict(p) for p in d["params"]["line_follow_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "scanner" for p in params)
 
 
 def test_navigation_layer_has_no_base_web_or_sim(tmp_path):

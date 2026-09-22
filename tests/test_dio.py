@@ -139,7 +139,7 @@ def test_dio_faults():
     raised = False
     try:
         link._scan()
-    except IOError:
+    except OSError:
         raised = True
     check("a Modbus error raises out of the scan", raised)
 
@@ -152,7 +152,7 @@ def test_dio_faults():
     raised = False
     try:
         link._scan()
-    except IOError:
+    except OSError:
         raised = True
     check("a short reply is refused, not zero-padded into the image", raised)
 
@@ -375,7 +375,7 @@ def test_dio_write_failure_is_not_silent():
     raised = False
     try:
         link._scan()
-    except IOError:
+    except OSError:
         raised = True
     check("a refused write raises out of the scan rather than being assumed "
           "to have landed", raised)

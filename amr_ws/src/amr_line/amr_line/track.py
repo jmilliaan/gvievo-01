@@ -79,8 +79,11 @@ class TrackReader:
         if not self.accept_sdo and self.last.source != "tpdo":
             # Not a fault of the tape: the sensor is in the wrong mode.
             return False, "rate"
+        # An unmeasured rate is not a good rate: three samples at 100 Hz is
+        # 20 ms of waiting, and a stream that never gets there was never
+        # usable for control.
         rate = self.hz()
-        if rate is not None and rate < self.min_hz:
+        if rate is None or rate < self.min_hz:
             return False, "rate"
         return True, ""
 

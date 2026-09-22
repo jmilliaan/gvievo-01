@@ -82,6 +82,7 @@ def test_arming_refuses_without_each_prerequisite():
         ("no drive report", {"drives_fresh": False}),
         ("torque off", {"torque_off": True}),
         ("field violated", {"field_clear": False}),
+        ("field unknown", {"field_clear": None}),
         ("unusable tape", {"track_ok": False, "track_cause": "track"}),
         ("tape too slow", {"track_ok": False, "track_cause": "rate"}),
     ):
@@ -187,6 +188,111 @@ def test_the_grace_timer_is_about_anything_wrong_not_one_message():
     job.tick(inputs(now=102.3, panel_valid=False))
     job.tick(inputs(now=102.7, track_ok=False, track_cause="rate"))
     assert job.state == lj.HOLD
+
+
+def test_the_selector_leaving_auto_ends_the_run_at_once():
+    """Acceptance 3.6: MANUAL mid-run stops at once, "authority", FAULT,
+    Reset to clear. Not debounced - a flick to MANUAL and back inside the
+    grace window used to leave the job RUNNING, entitled to move again the
+    moment the mux re-opened, with nobody having pressed Start."""
+    job = run(make())
+    left, right = job.tick(inputs(now=102.0, panel_auto=False))
+    assert (left, right) == (0.0, 0.0)
+    assert job.state == lj.FAULT and job.hold_cause == "authority", job.reason
+    job.tick(inputs(now=102.2))  # back in AUTO, no Start
+    assert job.state == lj.FAULT
+    job.tick(inputs(now=102.3, start_edge=True, start_edge_t=102.25))
+    assert job.state == lj.FAULT, "a Start alone revived a taken-over run"
+    job.tick(inputs(now=102.4, reset_edge=True))
+    assert job.state == lj.IDLE
+
+
+def test_lease_line_withdrawn_ends_the_run_at_once():
+    job = run(make())
+    job.tick(inputs(now=102.0, lease_allowed=1))
+    assert job.state == lj.FAULT and job.hold_cause == "authority"
+
+
+def test_manual_takeover_faults_an_armed_layer_too():
+    job = armed(make())
+    job.tick(inputs(now=100.1, panel_auto=False))
+    assert job.state == lj.FAULT and job.hold_cause == "authority"
+
+
+def test_a_stale_panel_is_still_debounced():
+    """Missing evidence is a comms question, not an operator act: one stale
+    panel frame must not fault the run (the 2026-09-20 grace rule). A stale
+    LEASE is different and already immediate: authority None is not the
+    binding the run was accepted under."""
+    job = run(make())
+    job.tick(inputs(now=102.0, panel_valid=False, panel_auto=False))
+    assert job.state == lj.RUNNING
+    job.tick(inputs(now=102.1))
+    assert job.state == lj.RUNNING
+
+
+@pytest.mark.parametrize("first", [
+    {"drives_fresh": False},
+    {"track_ok": False, "track_cause": "rate"},
+    {"track_ok": False, "track_cause": "track"},
+])
+def test_a_torque_loss_during_an_auto_hold_takes_the_safety_cause(first):
+    """drives/rate/track -> torque off with the field clear is an E-stop, and
+    an E-stop waits for a human. Before: the hold kept its first cause and
+    resumed by itself two seconds after everything came back."""
+    job = run(make())
+    for t in (102.0, 102.6):
+        job.tick(inputs(now=t, **first))
+    assert job.state == lj.HOLD and job.hold_cause in ("drives", "rate", "track")
+    job.tick(inputs(now=103.0, torque_off=True, field_clear=True))
+    assert job.hold_cause == "estop" and not job.auto_resume()
+    for t in (104.0, 106.0, 110.0):
+        job.tick(inputs(now=t))
+        assert job.state == lj.HOLD, "resumed without Start after an E-stop"
+    job.tick(inputs(now=111.0, start_edge=True, start_edge_t=110.9))
+    assert job.state == lj.RUNNING
+
+
+def test_unknown_field_evidence_is_an_estop_not_a_field_stop():
+    """F09: no fresh /output_paths cannot prove a torque loss was only the
+    field, so the hold waits for a human; and it never auto-resumes while
+    the field is still unknown."""
+    job = run(make())
+    job.tick(inputs(now=102.0, torque_off=True, field_clear=None))
+    assert job.hold_cause == "estop" and not job.auto_resume()
+    # a field hold does not resume on unknown evidence either
+    job2 = run(make())
+    job2.tick(inputs(now=102.0, torque_off=True, field_clear=False))
+    assert job2.hold_cause == "field"
+    for t in (103.0, 104.0, 106.0):
+        job2.tick(inputs(now=t, field_clear=None))
+    assert job2.state == lj.HOLD and "unknown" in job2.reason
+
+
+def test_a_field_hold_keeps_the_fields_terms():
+    """A field hold sees torque off until the safety relay restarts; that is
+    the field's own recovery, not a new E-stop."""
+    job = run(make())
+    job.tick(inputs(now=102.0, torque_off=True, field_clear=False))
+    assert job.hold_cause == "field"
+    job.tick(inputs(now=102.5, torque_off=True, field_clear=True))
+    assert job.hold_cause == "field" and job.auto_resume()
+
+
+def test_reset_cancels_an_armed_layer():
+    """Arm, Reset, Start: before, Start ran the follower off an arm nobody
+    still wanted."""
+    job = armed(make())
+    job.tick(inputs(now=100.2, reset_edge=True))
+    assert job.state == lj.IDLE
+    job.tick(inputs(now=100.3, start_edge=True, start_edge_t=100.25))
+    assert job.state == lj.IDLE
+
+
+def test_reset_wins_over_a_start_in_the_same_tick():
+    job = armed(make())
+    job.tick(inputs(now=100.2, reset_edge=True, start_edge=True, start_edge_t=100.15))
+    assert job.state == lj.IDLE
 
 
 # ---------------------------------------------------------------------------

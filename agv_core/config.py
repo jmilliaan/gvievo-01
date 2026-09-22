@@ -1086,12 +1086,12 @@ def load(path=None):
     try:
         with open(path) as fh:
             doc = json.load(fh, parse_constant=_json_constant)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         raise ConfigError(
             f"no vehicle profile at {path}. Set {PROFILE_ENV_VAR} to one of "
-            f"{_available() or ['(none found)']}, or add the file.")
+            f"{_available() or ['(none found)']}, or add the file.") from e
     except json.JSONDecodeError as e:
-        raise ConfigError(f"{os.path.basename(path)} is not valid JSON: {e}")
+        raise ConfigError(f"{os.path.basename(path)} is not valid JSON: {e}") from e
 
     # The name inside the file has to agree with the file it came from. A
     # profile copied for a second vehicle and not renamed would otherwise

@@ -106,13 +106,17 @@ kbd {
 .warn-box.stop b { color:var(--stop); }
 
 /* ---- header: title, tabs, size knob. Link state lives in the rail. ---- */
+/* One row, always: the header never wraps, so the pages under it keep their height on a
+   narrow panel. When the tabs do not fit, the nav scrolls sideways (the operator tabs are
+   first; the engineering tabs are a swipe away). */
 header {
-  display:flex; align-items:center; gap:1.2rem; padding:.5rem 1.2rem; flex-wrap:wrap;
+  display:flex; align-items:center; gap:1.2rem; padding:.5rem 1.2rem; flex-wrap:nowrap;
   background:var(--surface); border-bottom:2px solid var(--ink); flex:0 0 auto;
 }
-nav { display:flex; gap:.2rem; flex-wrap:wrap; }
+header h1 { flex:0 0 auto; }
+nav { display:flex; gap:.2rem; flex-wrap:nowrap; flex:1 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; }
 nav a {
-  display:inline-flex; align-items:center; min-height:3.4rem;
+  display:inline-flex; align-items:center; min-height:3.4rem; white-space:nowrap; flex:0 0 auto;
   padding:.4rem .9rem; text-decoration:none; color:var(--ink-3); border:1px solid transparent;
   font:600 1.15rem var(--mono); letter-spacing:.05em; text-transform:uppercase;
 }
@@ -120,7 +124,7 @@ nav a:hover { color:var(--accent-2); }
 nav a.on { color:var(--accent-2); background:var(--accent-wash); border-color:var(--rule); }
 /* Aa: cycles the size knob (s -> m -> l). The one control that is about the display, not the vehicle. */
 button.ui-size {
-  margin-left:auto; min-height:3.4rem; padding:.3rem .9rem; border:1px solid var(--rule);
+  margin-left:auto; flex:0 0 auto; min-height:3.4rem; padding:.3rem .9rem; border:1px solid var(--rule);
   background:var(--surface-2); color:var(--ink-2); font:600 1.2rem var(--mono); letter-spacing:.06em;
 }
 button.ui-size:hover { color:var(--accent-2); border-color:var(--accent-2); }
@@ -207,17 +211,17 @@ main > .grow { flex:1 1 auto; min-height:0; }
 .tel.bad b { color:var(--stop); }
 /* Stale: last-known, not current. Dimmed and desaturated, never a calm live look. */
 .tel.stale, .stale-block { opacity:.38; filter:grayscale(1); }
-/* In the rail a tile is ONE line: label | value | note, the note clipped with an ellipsis.
-   Eight lines fit the HMI's height with room for the log; same markup as everywhere else,
-   and the full note is on the Status page. */
-#telemetry .tel-grid { grid-template-columns:minmax(0,1fr); gap:.3rem; }
-#telemetry .tel {
+/* .tel-grid.rows: a tile is ONE line: label | value | note, the note clipped with an
+   ellipsis. The rail uses it (eight lines fit the HMI's height with room for the log) and
+   so does the Manual page's vehicle state; same markup as everywhere else. */
+.tel-grid.rows { grid-template-columns:minmax(0,1fr); gap:.3rem; }
+.tel-grid.rows .tel {
   display:grid; grid-template-columns:6.4rem auto minmax(0,1fr); grid-template-areas:"k v n";
   column-gap:.6rem; padding:.45rem .8rem; align-items:baseline;
 }
-#telemetry .tel span { grid-area:k; }
-#telemetry .tel b { grid-area:v; font-size:1.45rem; line-height:1.2; white-space:nowrap; min-width:0; max-width:12rem; overflow:hidden; text-overflow:ellipsis; }
-#telemetry .tel i { grid-area:n; font-size:1.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tel-grid.rows .tel span { grid-area:k; }
+.tel-grid.rows .tel b { grid-area:v; font-size:1.45rem; line-height:1.2; white-space:nowrap; min-width:0; max-width:12rem; overflow:hidden; text-overflow:ellipsis; }
+.tel-grid.rows .tel i { grid-area:n; font-size:1.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* ---- chips ---- */
 .chips { display:flex; gap:.6rem; flex-wrap:wrap; }
@@ -403,11 +407,18 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 /* "holding f: v 0.20 m/s, w 0.30 rad/s" has to fit a side column */
 .jog-foot .tel b { font-size:1.3rem; }
 .legend { color:var(--ink-2); font-size:1.25rem; line-height:1.8; max-width:56rem; margin:.8rem auto 0; flex:0 0 auto; }
-/* Manual page: the pad takes the height that is left; the vehicle state stands beside it. */
-.manual { display:grid; grid-template-columns:repeat(auto-fit,minmax(28rem,1fr)); gap:1.2rem; align-items:stretch; }
+/* Manual page, built for the HMI's height: pad left, everything else right. The pad is a
+   square sized by the viewport height (header + paddings ~11rem), so it can never push the
+   page below the fold; the right column is one-line rows and scrolls by itself if it has to.
+   Speed + jog status render inside the pad component and are moved to the right column by
+   manual.html. */
+.manual { display:grid; grid-template-columns:minmax(0,3fr) minmax(22rem,2fr); grid-template-rows:minmax(0,1fr); gap:1.2rem; align-items:stretch; }
 .manual > * { min-width:0; min-height:0; }
-.manual .pad { flex:1 1 auto; min-height:20rem; max-height:48rem; }
-.manual .tel-grid { grid-template-columns:repeat(auto-fit,minmax(12rem,1fr)); }
+.manual .jog { display:grid; place-items:center; }
+.manual .pad { width:min(100%, calc(100vh - 11rem)); height:auto; aspect-ratio:1/1; max-height:100%; min-height:0; max-width:56rem; margin:0 auto; }
+.manual .side { overflow:auto; display:flex; flex-direction:column; gap:.6rem; }
+.manual .side > * { flex:0 0 auto; margin:0; }
+.manual .side .jog-foot { grid-template-columns:minmax(0,1fr); }
 /* A touch panel has no keyboard: the key hints and the key legend are noise there. */
 @media (pointer:coarse) {
   button.dir .key, .legend.keys { display:none; }
@@ -460,7 +471,8 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
   #log { max-height:9rem; }
   .editor { grid-template-columns:minmax(0,1fr); }
   .editor .canvas-wrap { height:60vh; }
-  .manual .pad { min-height:0; max-height:none; }
+  .manual { grid-template-columns:minmax(0,1fr); grid-template-rows:none; }
+  .manual .pad { width:100%; }
   button.dir { aspect-ratio:1/1; }
   .pad.compact button.dir { aspect-ratio:auto; }
 }

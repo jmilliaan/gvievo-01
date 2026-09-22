@@ -38,7 +38,7 @@ def resolve_map(maps_dir: str, map_id: str, revision: int) -> tuple[str, int, st
         raise ValueError("map path escapes the map store")
     if not os.path.isdir(rev_dir):
         raise ValueError(f"no such map revision: {map_id} rev{revision}")
-    manifest = mb.verify(rev_dir)  # raises BundleError on any mismatch
+    manifest = mb.load_manifest(rev_dir, map_id, revision)  # raises BundleError on any mismatch
     return map_id, revision, manifest.sha256
 
 

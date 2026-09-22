@@ -199,14 +199,14 @@ def test_pendant():
           lv.scan(di(fwd=True), True) is None)
     check("a short image reports nothing", lv.scan([True] * 4, True) is None)
 
-    I = panel.pendant_intent
-    check("nothing held asks for nothing", I(False, False, False, False) == panel.PENDANT_IDLE)
-    check("fwd", I(True, False, False, False) == (True, False, False, False))
-    check("right", I(False, False, False, True) == (False, False, False, True))
+    intent = panel.pendant_intent
+    check("nothing held asks for nothing", intent(False, False, False, False) == panel.PENDANT_IDLE)
+    check("fwd", intent(True, False, False, False) == (True, False, False, False))
+    check("right", intent(False, False, False, True) == (False, False, False, True))
     check("fwd with rvs cancels the axis, the other axis survives",
-          I(True, True, True, False) == (False, False, True, False))
+          intent(True, True, True, False) == (False, False, True, False))
     check("left with right cancels the axis",
-          I(True, False, True, True) == (True, False, False, False))
+          intent(True, False, True, True) == (True, False, False, False))
 
 
 # The four controller-driven cases (Reset means ready, the manual watchdog,

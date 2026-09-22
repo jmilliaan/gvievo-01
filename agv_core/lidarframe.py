@@ -217,7 +217,7 @@ def valid_mask(status, dist):
     the picture where the room is simply empty.
     """
     return [bool(s & STATUS_VALID) and 0 < d < NO_ECHO_MM
-            for s, d in zip(status, dist)]
+            for s, d in zip(status, dist, strict=False)]
 
 
 def zones(tel, table, spec):

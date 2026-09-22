@@ -270,7 +270,7 @@ class RfidLink:
             # for anything is neither necessary nor supported.
             try:
                 chunk = sock.recv(4096)
-            except socket.timeout:
+            except TimeoutError:
                 # Normal: no tag in the antenna field. Not a fault, and the
                 # recv timeout is only here so the loop can notice _stop.
                 continue
@@ -314,7 +314,7 @@ class RfidLink:
                 if not chunk:
                     break
                 blob += chunk
-        except socket.timeout:
+        except TimeoutError:
             pass
         finally:
             sock.settimeout(config.RFID_RECV_TIMEOUT_S)

@@ -175,7 +175,7 @@ def test_beam_count_comes_from_the_wire():
     check("a zero-distance point is not marked valid",
           all(not (m["status"][i] & lf.STATUS_VALID) for i in zero), str(zero))
     check("no-echo returns are excluded from the mask",
-          all(not v for v, d in zip(valid, m["dist_mm"]) if d >= lf.NO_ECHO_MM))
+          all(not v for v, d in zip(valid, m["dist_mm"], strict=False) if d >= lf.NO_ECHO_MM))
 
     # Decimation must sample, not resample onto a different geometry: the
     # browser reconstructs bearings as start + i*res*step.

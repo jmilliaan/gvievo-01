@@ -32,6 +32,7 @@ from __future__ import annotations
 import time
 
 import rclpy
+from agv_core import config as vehicle_config
 from agv_core import kinematics
 from geometry_msgs.msg import Twist
 from rclpy.executors import ExternalShutdownException
@@ -95,13 +96,20 @@ class LineFollowNode(Node):
         self.declare_parameter("generation", 0)
         self.declare_parameter("v_max_mps", 0.30)
         self.declare_parameter("prereq_grace_s", 0.5)
-        self.declare_parameter("auto_resume_clear_s", 2.0)
+        # -1 = the profile's auto_resume_hold_s; a value here overrides it.
+        self.declare_parameter("auto_resume_clear_s", -1.0)
         self.declare_parameter("auto_resume_estop", False)
         self.declare_parameter("accept_sdo_track", False)
         self.declare_parameter("panel_fresh_s", 0.2)
         self.declare_parameter("lease_fresh_s", 0.3)
         self.declare_parameter("drives_fresh_s", 0.5)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]
+        # "scanner": the protective field is what a FRESH /output_paths says,
+        # and unknown otherwise (the layer will not arm and a torque loss is
+        # an E-stop). "assume_clear": the sim, which has no scanner. The launch
+        # file picks by the supervisor's `real`; never assume on a vehicle.
+        self.declare_parameter("field_source", "scanner")
+        self.declare_parameter("field_fresh_s", 0.5)  # /output_paths rides every scan (~34 Hz)
 
         self.dt = 1.0 / float(self.get_parameter("rate_hz").value)
         self._generation = int(self.get_parameter("generation").value)
@@ -109,19 +117,32 @@ class LineFollowNode(Node):
         self.lease_fresh = float(self.get_parameter("lease_fresh_s").value)
         self.drives_fresh_s = float(self.get_parameter("drives_fresh_s").value)
         self.field_index = int(self.get_parameter("field_output_index").value)
+        if self.field_index < 0:
+            raise ValueError(f"field_output_index {self.field_index} < 0")
+        self.field_source = str(self.get_parameter("field_source").value)
+        if self.field_source not in ("scanner", "assume_clear"):
+            raise ValueError(f"field_source {self.field_source!r}: scanner or assume_clear")
+        self.field_fresh = float(self.get_parameter("field_fresh_s").value)
 
         # The engine is handed its constants; it never reads a profile itself.
+        # `runtime` carries ONLY the names the engine reads. The layer's own
+        # settings (rate floor, auto-resume window) come straight from the
+        # profile: a getattr-with-default on `runtime` silently read 40 Hz
+        # whatever the profile said (review finding 2026-09-21, F06).
         runtime.load_from_profile()
+        auto_clear = float(self.get_parameter("auto_resume_clear_s").value)
+        if auto_clear < 0:
+            auto_clear = float(vehicle_config.AUTO_RESUME_HOLD_S)
         self.job = lj.FollowJob(
             autopilot.LineFollower(),
             prereq_grace_s=float(self.get_parameter("prereq_grace_s").value),
-            auto_resume_clear_s=float(self.get_parameter("auto_resume_clear_s").value),
+            auto_resume_clear_s=auto_clear,
             auto_resume_estop=bool(self.get_parameter("auto_resume_estop").value),
             v_max_mps=float(self.get_parameter("v_max_mps").value),
         )
         self.reader = tk.TrackReader(
             timeout_s=runtime.SENSOR_TIMEOUT_S,
-            min_hz=getattr(runtime, "LINE_MIN_TRACK_HZ", 40.0),
+            min_hz=float(vehicle_config.LINE_MIN_TRACK_HZ),
             accept_sdo=bool(self.get_parameter("accept_sdo_track").value),
         )
 
@@ -133,7 +154,8 @@ class LineFollowNode(Node):
         self._lease_t = None
         self._drives_t = None
         self._torque_off_msg = False
-        self._field_clear = True
+        self._field_clear: bool | None = None  # last /output_paths verdict
+        self._field_t: float | None = None     # ...and when it arrived (monotonic)
         self._t_last = time.monotonic()
         self._published_zero = True
 
@@ -142,13 +164,18 @@ class LineFollowNode(Node):
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
-        if OutputPaths is not None:
+        if self.field_source == "assume_clear":
+            self.get_logger().warning(
+                "field_source=assume_clear: the protective field is ASSUMED clear "
+                "(simulation contract). Never run a vehicle like this."
+            )
+        elif OutputPaths is not None:
             self.create_subscription(OutputPaths, "/output_paths", self._on_output_paths, SENSOR)
         else:
-            self.get_logger().warning(
+            self.get_logger().error(
                 "sick_safetyscanners2_interfaces is not installed: the protective "
-                "field is assumed clear and only the drives' torque report can "
-                "stop this layer. Do not run the vehicle like this."
+                "field stays UNKNOWN and this layer will not arm. Install the "
+                "scanner driver, or launch with field_source:=assume_clear in a sim."
             )
 
         self._pub_cmd = self.create_publisher(Twist, "/amr/line_cmd", RELIABLE_1)
@@ -163,7 +190,8 @@ class LineFollowNode(Node):
         self.get_logger().info(
             f"line layer up, generation {self._generation}: "
             f"k_ratio={runtime.K_RATIO} kd={runtime.KD} "
-            f"cap={self.job.v_max_mps} m/s rate floor={self.reader.min_hz} Hz"
+            f"cap={self.job.v_max_mps} m/s rate floor={self.reader.min_hz} Hz "
+            f"auto-resume clear={self.job.auto_resume_clear_s} s"
         )
 
     # -- intake ------------------------------------------------------------
@@ -198,9 +226,19 @@ class LineFollowNode(Node):
         self._drives_t = time.monotonic()
 
     def _on_output_paths(self, m) -> None:
-        if len(m.status) <= self.field_index:
-            return
-        self._field_clear = bool(m.status[self.field_index])
+        status = getattr(m, "status", None)
+        if status is None or len(status) <= self.field_index:
+            return  # a malformed array is no evidence at all: the old one ages out
+        self._field_clear = bool(status[self.field_index])
+        self._field_t = time.monotonic()
+
+    def _field(self, now: float) -> bool | None:
+        """clear / violated / None (unknown: no sample, or the stream stalled)."""
+        if self.field_source == "assume_clear":
+            return True
+        if self._field_t is None or now - self._field_t > self.field_fresh:
+            return None
+        return self._field_clear
 
     # -- authority ---------------------------------------------------------
     def _authority(self, now: float):
@@ -238,7 +276,7 @@ class LineFollowNode(Node):
                 and self._drives_t is not None
                 and now - self._drives_t <= self.drives_fresh_s
             ),
-            field_clear=self._field_clear,
+            field_clear=self._field(now),
             drives_fresh=bool(
                 self._drives_t is not None and now - self._drives_t <= self.drives_fresh_s
             ),

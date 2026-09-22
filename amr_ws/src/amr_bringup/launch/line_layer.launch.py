@@ -28,6 +28,7 @@ from amr_bringup.launch_helpers import required
 
 def _compose(context):
     generation = int(LaunchConfiguration("generation").perform(context))
+    real = LaunchConfiguration("real").perform(context).lower() == "true"
     # The follower publishes on plain /amr/line_cmd; the mux of THIS generation
     # listens on the generation-private topic (unified plan §4.3 item 4), like
     # Nav2's cmd_vel in navigation_layer.launch.py. Without this remap the mux
@@ -43,8 +44,13 @@ def _compose(context):
                 {
                     "generation": generation,
                     # Increment 1 is a bench and first-floor-run increment.
-                    # The mux applies the same ceiling independently.
+                    # The mux applies its own ceiling independently
+                    # (cmd_mux line_v_max_m_s, also 0.30).
                     "v_max_mps": 0.30,
+                    # The sim has no scanner: the field is assumed clear there
+                    # and ONLY there. On the vehicle a stale /output_paths is
+                    # "unknown" and the layer refuses to arm.
+                    "field_source": "scanner" if real else "assume_clear",
                 }
             ],
             remappings=[("/amr/line_cmd", line_cmd)],
@@ -57,6 +63,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("generation", default_value="0"),
+            DeclareLaunchArgument("real", default_value="true"),
             OpaqueFunction(function=_compose),
         ]
     )

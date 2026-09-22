@@ -212,3 +212,45 @@ def test_bad_mode_is_refused():
     with pytest.raises(ValueError):
         MlsTrack(FakeLink({}), 10, lambda s: None, mode="nmt")
     assert mls_track.MODES == ("tpdo", "sdo", "auto", "off")
+
+
+# ---- F08: a sensor absent at boot is picked up later -----------------------
+
+
+def test_absent_sensor_is_rediscovered_and_streams():
+    t, link, got, clk = make({}, mode="auto")
+    assert t.start() == "off"
+    n = len(link.reads)
+    t.poll(clk.t + 1.0)
+    assert len(link.reads) == n, "polled an absent sensor before the period"
+    t.poll(clk.t + 5.0)
+    assert len(link.reads) == n + 1 and t.mode == "off"
+    t.poll(clk.t + 6.0)
+    assert len(link.reads) == n + 1, "more than one probe per period"
+    link.objects.update(objs())
+    clk.t += 10.0
+    t.poll(clk.t)
+    assert t.mode == "tpdo" and t.restarts == 1 and 0x18A in link.routes
+    assert link.nmts[-1] == (0x01, 10)  # NMT Start still to the MLS only
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, -37, 0, 2, 0x01 | (4 << 1))))
+    assert got and got[-1].source == "tpdo"
+
+
+def test_a_failed_tpdo1_read_at_start_is_rediscovered_later():
+    o = objs()
+    del o[TPDO1]
+    t, link, _, clk = make(o, mode="auto")
+    assert t.start() == "sdo"  # unknown TPDO1: poll meanwhile
+    o[TPDO1] = 0x18A
+    clk.t += 5.0
+    t.poll(clk.t)
+    assert t.mode == "tpdo" and t.restarts == 1 and 0x18A in link.routes
+
+
+def test_a_configured_off_mode_stays_off():
+    t, link, _, clk = make(objs(), mode="off")
+    assert t.start() == "off"
+    n = len(link.reads)
+    for k in range(4):
+        t.poll(clk.t + 5.0 * (k + 1))
+    assert t.mode == "off" and len(link.reads) == n

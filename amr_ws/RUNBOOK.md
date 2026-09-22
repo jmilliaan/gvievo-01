@@ -72,6 +72,23 @@ boot entry into LINE happens once; requesting `IDLE` afterwards (to jog under
 MANUAL) is honoured and not undone — request LINE again when done, by
 `ros2 service call /amr/mode/request` with target 7, until the UI has a button.
 
+**The LINE follower's rules (after the 2026-09-21 review fixes):**
+
+| Event | Follower | To continue |
+|---|---|---|
+| `/amr/line/arm` | ARMED (moves nothing) | physical Start under AUTO |
+| selector leaves AUTO, or the supervisor withdraws LEASE_LINE | FAULT `authority` at once, not after the 0.5 s grace | Reset, arm again, Start |
+| Reset (any state but IDLE, including ARMED) | IDLE | arm again |
+| field violated | HOLD `field` | resumes by itself 2 s after clear (`auto_resume_hold_s`) |
+| torque lost with the field clear — also while already held for `drives`/`rate`/`track` | HOLD `estop` | physical Start |
+| no fresh `/output_paths` (0.5 s) | will not arm ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
+| tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | will not arm / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
+
+Speed: the follower caps at `v_max_mps` (launch, 0.30) and the mux caps
+again at `line_v_max_m_s` (0.30; `line_w_max_rad_s` 0 = no yaw cap),
+scaling v and ω together so the arc is kept. In the sim the launch passes
+`field_source:=assume_clear` (no scanner there); never on a vehicle.
+
 ## 2. Survey → draw a route → run it
 
 The complete workflow, in order. Only step C moves the vehicle on its own, and

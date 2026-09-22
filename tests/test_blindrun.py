@@ -131,7 +131,8 @@ def test_closed_loop_and_odometry():
     check("both wheels end within the stop tolerance",
           all(abs(e) <= TOL_COUNTS + 1 for e in r["error_counts"]), str(r["error_counts"]))
     check("encoder distance agrees with the counts it came from",
-          abs(r["encoder_distance_m"] - (r["final_counts"][0] + r["final_counts"][1]) / 2 * M_PER_COUNT) < 1e-9)
+          abs(r["encoder_distance_m"]
+              - (r["final_counts"][0] + r["final_counts"][1]) / 2 * M_PER_COUNT) < 1e-9)
 
     run, worst = fly([{"kind": "arc", "radius_m": 1.0, "angle_deg": 90}])
     r = run.results[0]

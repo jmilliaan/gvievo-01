@@ -119,3 +119,33 @@ Archived: `logs/00xx-*` → `manuals/obsolete/legacy-runs/`.
 ROS side: `amr_base` + `amr_bringup` 241 tests pass, ruff clean,
 `deploy/validate.sh` passes. Docs: README rewritten, RUNBOOK §6/§7,
 `hardware-reconciliation.md` note, unified plan U11 note, package docstrings.
+
+## Review fixes (same day, gpt6-analysis-doc.md), not yet on the vehicle
+
+Implemented and unit-tested only — nothing below has run on agv-01. All
+workspace suites pass (809), `tests/run_all.py` 531, both ruff commands clean,
+`deploy/validate.sh` passes. Vehicle steps that now need re-running: LINE 3.3
+(Reset, also from ARMED) and 3.6 (selector → MANUAL is FAULT `authority` at
+once, Reset to clear — the acceptance file's wording is now what the code
+does).
+
+| ID | Done | Where |
+|---|---|---|
+| F01 | selector leaving AUTO / LEASE_LINE withdrawn → FAULT `authority` on the first tick (a stale panel still goes through the 0.5 s grace) | `amr_line/job.py` `_taken_over` |
+| F02 | a torque loss during a `drives`/`rate`/`track`/`pending` hold takes the safety cause; `estop` then waits for Start | `job.py` `_hold_tick` |
+| F03 | per-map writer lock (`map_lock`), unique `mkdtemp` stages, fsync before the rename, publish checks the stage manifest's identity; survey save, edits and the fixture writer all run inside one lock hold | `map_bundle.py`, `mapping_session_node.py`, `fixtures.py` |
+| F04 | short IMU PDOs are rejected (no sample, no stamp, no receipt time); mapping width checked at start; `rejected`/`last_reject` in diagnostics | `mls_imu.py` |
+| F05 | Reset cancels ARMED; Reset wins over Start in the same tick | `job.py` |
+| F06 | the node reads `line_min_track_hz` and `auto_resume_hold_s` from `agv_core.config`; an unmeasured rate (< 3 samples) is not usable | `line_follow_node.py`, `track.py` |
+| F07 | mux LINE ceiling `line_v_max_m_s` 0.30 (+ optional `line_w_max_rad_s`), curvature-preserving, applied to the slewed output too | `gating.line_cap`, `cmd_mux_kinematics_node.py` |
+| F08 | MLS absent (or 1800h:01 unread) at start is probed every 5 s with one 50 ms SDO and re-acquired; `restarts` in diagnostics; `mode: off` stays off | `mls_track.py`, `mls_imu.py` |
+| F09 | `/output_paths` has a receipt time (`field_fresh_s` 0.5); no fresh sample = unknown: refuses to arm, torque loss = `estop`; sim launches `field_source:=assume_clear` via the supervisor's `real` | `line_follow_node.py`, `line_layer.launch.py`, `supervisor_node.py` |
+| F10 | store readers validate names/revisions and containment (symlinks too); `load_mission` checks its schema; `load_route` and `map_bundle.load` compare the file's identity with the one asked for | `store.py`, `map_bundle.load_manifest`, `readiness.resolve_map`, `navigation_layer.launch.py` |
+| F12 | one `_body()` parser: list/string/number/null/malformed JSON → 400 before any adapter call; initialpose and survey_move reject booleans, non-finite and bad revisions | `amr_web/server.py` |
+| F13 | core ruff clean (24 → 0, `zip(strict=False)` keeps behaviour); `pythonpath` ini → `conftest.py` (pytest 6.2 on the image) | `pyproject.toml`, `conftest.py` |
+
+Not done: **F11** (LINE in the web UI — Increment 4, a feature, not a fix),
+the executor side of F09 (its `None`-unknown handling and classification window
+are the 2026-09-19/20 operator decisions; left as they are), and the §4
+investigations. F08's bus-occupancy figure and F09's `/output_paths` rate
+(assumed ~34 Hz from the scan datagram) need the vehicle.
