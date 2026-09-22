@@ -68,6 +68,9 @@ class Readiness:
     limits: Limits = field(default_factory=Limits)
     state: int = UNLOCALIZED
     reason: str = "no initial pose"
+    # Alarm catalogue code for `reason` (agv_core/alarms.py): what the operator is told
+    # and which button clears it. "" only while READY.
+    code: str = "LOC_NOT_SET"
     confirmed: bool = False
     can_confirm: bool = False
     cov: tuple[float, float, float] | None = None  # xx, yy, yaw
@@ -88,6 +91,7 @@ class Readiness:
     def on_initialpose(self, t: float) -> None:
         """Operator (or explicit seed) estimate: (re)start validation."""
         self.state, self.reason = CHECKING, "initial pose received; converging"
+        self.code = "LOC_NOT_CONFIRMED"
         self.confirmed, self.can_confirm = False, False
         self._clear_evidence()
         self._initial_t = t
@@ -132,7 +136,9 @@ class Readiness:
         if self._match_bad_since is None:
             self._match_bad_since = t
         elif self.state == READY and t - self._match_bad_since >= self.limits.match_hold_s:
-            self._lose(f"scan passes through mapped obstacles ({100 * long:.0f} % of beams)")
+            self._lose(
+                f"scan passes through mapped obstacles ({100 * long:.0f} % of beams)", "LOC_SCAN_MISMATCH"
+            )
 
     def on_map_odom(
         self,
@@ -171,7 +177,7 @@ class Readiness:
         self._stable_since = None
         why = f"localisation corrected by {d:.2f} m / {math.degrees(a):.1f} deg"
         if self.state == READY:
-            self._lose(why)
+            self._lose(why, "LOC_JUMP")
         elif self.state == CHECKING:
             self.reason = why + "; waiting to settle"
 
@@ -207,15 +213,18 @@ class Readiness:
             # while stationary, so its age is not a READY condition - the scan check is.
             match_stale = self.scan_match_t is None or t - self.scan_match_t > self.limits.match_age_max_s
             if stale:
-                self._lose("stale: " + ", ".join(stale))
+                self._lose("stale: " + ", ".join(stale), "LOC_STREAM_STALE")
             elif match_stale:
-                self._lose("scan-consistency check against the map stopped (gate or transform failure)")
+                self._lose(
+                    "scan-consistency check against the map stopped (gate or transform failure)",
+                    "LOC_GATE_FAILED",
+                )
             elif not cov_ok:
                 # A single wide sample during a turn is a transient; sustained growth is a loss.
                 if self._cov_bad_since is None:
                     self._cov_bad_since = t
                 elif t - self._cov_bad_since >= self.limits.cov_hold_s:
-                    self._lose(f"covariance grew: {self._cov_text()}")
+                    self._lose(f"covariance grew: {self._cov_text()}", "LOC_COV_GREW")
             else:
                 self._cov_bad_since = None
             return self.state
@@ -272,12 +281,12 @@ class Readiness:
         if self.state != CHECKING or not self.can_confirm:
             return False
         self.state, self.confirmed = READY, True
-        self.reason = "operator confirmed scan alignment"
+        self.reason, self.code = "operator confirmed scan alignment", ""
         return True
 
     def reset(self, reason: str = "reset by operator") -> None:
         """Back to UNLOCALIZED; every piece of readiness proof is dropped."""
-        self.state, self.reason = UNLOCALIZED, reason
+        self.state, self.reason, self.code = UNLOCALIZED, reason, "LOC_NOT_SET"
         self.confirmed, self.can_confirm = False, False
         self._clear_evidence()
 
@@ -290,8 +299,10 @@ class Readiness:
         self.scan_match = self.scan_long = self.scan_match_t = self._match_bad_since = None
         self._prev_map_odom = self._prev_map_odom_t = self.last_jump = None
 
-    def _lose(self, why: str) -> None:
-        self.state, self.reason = LOST, why
+    def _lose(self, why: str, code: str = "LOC_LOST") -> None:
+        """Lose the fix. `code` is the alarm-catalogue code the operator surface looks up
+        (agv_core/alarms.py); `why` stays the engineer's sentence."""
+        self.state, self.reason, self.code = LOST, why, code
         self.confirmed, self.can_confirm = False, False
 
     def _cov_text(self) -> str:

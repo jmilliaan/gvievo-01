@@ -24,20 +24,31 @@
 <body>
 <header>
   <h1>AMR control</h1>
+  {# Two navs, one page. The operator gets four tabs (everything they can act on);
+     the engineer keeps all ten. Hidden pages stay reachable by URL - the PIN is a
+     mistake guard, not security (amr_web/role.py). #}
   <nav>
-    <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
-    <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
+    <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
     <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
+    <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
+    {% if role == ENGINEER %}
+    <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
     <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps</a>
     <a href="/editor" class="{{ 'on' if page == 'editor' }}">Routes</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
     <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
+    {% endif %}
   </nav>
+  <button id="role-btn" class="ui-size role-btn" type="button"
+          title="{{ 'Engineer view: press to go back to the operator view' if role == ENGINEER else 'Engineer view (PIN)' }}"
+          data-role="{{ role }}">{{ 'Eng' if role == ENGINEER else 'Op' }}</button>
   <button id="ui-size" class="ui-size" type="button" title="Display size: small (desk) · medium · large (vehicle panel)">Aa</button>
 </header>
+
+<div id="page-error" class="page-error" hidden></div>
 
 <div class="shell">
   {# The shared rail: what somebody standing next to the vehicle needs on every
@@ -58,6 +69,7 @@
       <div class="tel" id="tel-wheels"><span>Wheels</span><b>–</b><i>rad/s · L / R</i></div>
       <div class="tel" id="tel-gen"><span>Gen.</span><b>–</b><i>—</i></div>
     </div>
+    <div id="rail-alarm" class="rail-alarm" hidden></div>
     <pre id="log"></pre>
   </aside>
   <main class="{% block main_class %}{% endblock %}">{% block body %}{% endblock %}</main>

@@ -18,6 +18,7 @@ import math
 
 import numpy as np
 import rclpy
+from agv_core import alarms
 from amr_maps.raycast import ScanGeometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
@@ -28,7 +29,7 @@ from sensor_msgs.msg import Imu, LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_interfaces.msg import DriveStatus, LocalizationState, WheelStates
+from amr_interfaces.msg import DriveStatus, Event, LocalizationState, WheelStates
 from amr_localization import readiness as rd
 from amr_localization import scan_consistency as consistency
 from amr_maps import grid as gridio
@@ -135,6 +136,10 @@ class LocalizationMonitor(Node):
         self.create_service(Trigger, "/amr/localization/confirm", self._srv_confirm)
         self.create_service(Trigger, "/amr/localization/reset", self._srv_reset)
         self._pub = self.create_publisher(LocalizationState, "/amr/localization_state", LATCHED)
+        # Operator events on STATE CHANGES only (the tick runs at 2 Hz and _evaluate
+        # is called per sample): UNLOCALIZED -> CHECKING -> READY -> LOST.
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
         self.create_timer(0.1, self._tick)
         self.create_timer(0.5, self._publish)
         self.get_logger().info("UNLOCALIZED: waiting for /initialpose")
@@ -244,8 +249,22 @@ class LocalizationMonitor(Node):
         if self.rd.state != self._last_state or self.rd.reason != self._last_reason:
             if self.rd.state != self._last_state:
                 self.get_logger().info(f"{rd.NAMES[self.rd.state]}: {self.rd.reason}")
+                self._event()
             self._last_state, self._last_reason = self.rd.state, self.rd.reason
             self._publish()
+
+    def _event(self) -> None:
+        code = self.rd.code or "MODE_CHANGE"
+        row = alarms.get(code)
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source = "localization_monitor"
+        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
+        m.code = code
+        m.text = f"localisation {rd.NAMES[self.rd.state]}: {self.rd.reason}"
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._pub_event.publish(m)
 
     def _publish(self) -> None:
         t = self._now()
@@ -273,6 +292,7 @@ class LocalizationMonitor(Node):
         m.scan_match = self.rd.scan_match if self.rd.scan_match is not None else -1.0
         m.scan_long = self.rd.scan_long if self.rd.scan_long is not None else -1.0
         m.reason = self.rd.reason
+        m.code = self.rd.code
         self._pub.publish(m)
 
     def _srv_confirm(self, _req, res: Trigger.Response):

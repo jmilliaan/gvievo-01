@@ -8,7 +8,12 @@ StartLimitIntervalSec=60
 StartLimitBurst=3
 
 [Service]
-Type=simple
+# Type=notify + WatchdogSec: the supervisor pings every loop tick (amr_bringup/
+# sdnotify.py). A WEDGED loop - alive process, dead loop - is restarted like a
+# crash; Restart=on-failure alone never caught that case.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
 User=gvipc-evo-01
 Group=gvipc-evo-01
 WorkingDirectory=/home/gvipc-evo-01/agv_can/amr_ws
@@ -28,6 +33,7 @@ ExecStart=/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-supervisor.sh
 KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=55
+# The teardown sends STOPPING=1, so a slow, bounded stop is not a watchdog kill.
 SendSIGKILL=yes
 
 Restart=on-failure

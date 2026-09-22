@@ -31,3 +31,5 @@ float64 pose_x
 float64 pose_y
 float64 pose_yaw
 string reason
+string fault_code           # alarm catalogue code (agv_core/alarms.py); "" when not FAULT/BLOCKED.
+                            # BLOCKED carries the hold's code too, so one lookup explains any stop.

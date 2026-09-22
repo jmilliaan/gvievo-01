@@ -17,3 +17,4 @@ bool inhibited
 float64 left_rad_s          # output setpoint this tick
 float64 right_rad_s
 string reason
+string code                 # alarm catalogue code for `reason`; "" when a source is selected

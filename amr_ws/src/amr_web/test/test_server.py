@@ -93,7 +93,9 @@ def env(tmp_path):
     fp = tmp_path / "footprint.yaml"
     fp.write_text(FOOTPRINT_YAML)
     stub = Stub()
-    app = create_app(stub, str(maps), str(fp))
+    # state_dir in the tmp tree: the app writes web.json (the engineer PIN and the
+    # session secret) there, and a test must never touch the vehicle's real ~/.amr.
+    app = create_app(stub, str(maps), str(fp), state_dir=str(tmp_path / "state"))
     app.config["TESTING"] = True
     return app.test_client(), stub, str(maps), rev_dir, mb.verify(rev_dir)
 

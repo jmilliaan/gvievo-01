@@ -42,6 +42,7 @@ import time
 
 import rclpy
 from agv_core import (
+    alarms,  # noqa: E402
     canmon,  # noqa: E402
     config,
     ownerlock,  # noqa: E402
@@ -76,6 +77,16 @@ RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
 BIG = 1e6
+
+
+def _fault_code(reason: str) -> str:
+    """canopen.decide()'s fault reason -> the catalogue code the operator sees."""
+    r = (reason or "").lower()
+    if "silent" in r:
+        return "DRIVE_SILENT"
+    if "alarm" in r:
+        return "DRIVE_ALARM"
+    return "DRIVE_FAULT"
 
 
 class DriveNode(Node):
@@ -146,6 +157,8 @@ class DriveNode(Node):
         self._cursor = canopen.MonitorCursor(self._mon, config.NODES) if self._mon is not None else None
         self._bus_stats = {"sdo_timeouts": 0, "monitor_reads": 0}
         self._event_seq = 0
+        self._operational = False
+        self._edges: dict[str, tuple[str, int, str]] = {}  # slot -> (code, level, detail)
         self._requests: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._status_snapshot: dict = {"state": "starting", "reason": "", "mode": "off"}
@@ -373,8 +386,14 @@ class DriveNode(Node):
                         config.INVERT_RIGHT,
                     )
                     self._log("armed (targets zero)")
+                    self._edge("arm", None)
                 except Exception as e:  # noqa: BLE001 - a condition, retried
                     self.get_logger().warn(f"cannot arm: {e} - retrying in {self.arm_retry:.0f} s")
+                    # "Switch on disabled" on every node is the safety chain holding STO,
+                    # not a broken drive: the operator's answer is the cabinet's Reset
+                    # button (2026-09-22). Edge-triggered - arming retries every 2 s.
+                    self._edge("arm", ("SAFETY_RESET_NEEDED", 1, f"{e}")
+                               if "Switch on disabled" in str(e) else ("DRIVE_FAULT", 2, f"{e}"))
             elif d.action == "disarm":
                 self.get_logger().warn(f"disarming: {d.reason}")
                 if not link.disarm():
@@ -390,6 +409,7 @@ class DriveNode(Node):
             elif d.action == "fault":
                 self.get_logger().error(f"FAULT: {d.reason}")
                 link.fault(d.reason)
+                self._edge("fault", (_fault_code(d.reason), 2, d.reason))
             if link.state == canopen.FAULT:
                 link.fault_tick(now, max_age)
                 # R04 fallback: a stop we could not deliver or confirm must not be
@@ -402,6 +422,7 @@ class DriveNode(Node):
                         f"fault stop unconfirmed ({'; '.join(link.stop_unconfirmed)}): "
                         "withholding the PC heartbeat so the drives trip 1016h"
                     )
+                    self._edge("stop", ("DRIVE_STOP_UNCONFIRMED", 2, "; ".join(link.stop_unconfirmed)))
 
             # Setpoint at rate_hz; the command watchdog is independent of the mux.
             if self._pp.active and link.state != canopen.ARMED:
@@ -669,6 +690,17 @@ class DriveNode(Node):
             link.state == canopen.ARMED and fresh and tl.operation_enabled and tr.operation_enabled
         )
         self._safe_publish(self._pub_status, m)
+        # Latched CANopen alarms and the operational edge, as operator events. Both are
+        # edge-guarded by _edge, so this 10 Hz path emits only on a change.
+        alarmed = [
+            f"node {n} {(t.alarm or {}).get('hex', '')} {(t.alarm or {}).get('name', '')}".strip()
+            for n, t in sorted(link.telemetry.items())
+            if t.alarm
+        ]
+        self._edge("alarm", ("DRIVE_ALARM", 2, "; ".join(alarmed)) if alarmed else None)
+        if m.operational != self._operational:
+            self._operational = bool(m.operational)
+            self.event(0, "MODE_CHANGE", "drives are powered" if m.operational else "drives are not powered")
         snap = {"state": link.state, "reason": link.fault_reason or "", "mode": imu.mode if imu else "off"}
         if snap != self._status_snapshot:
             self._status_snapshot = snap
@@ -680,6 +712,21 @@ class DriveNode(Node):
         self._cursor.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05), canmon._decode)
         self._bus_stats["monitor_reads"] = self._cursor.reads
         self._bus_stats["sdo_timeouts"] = self._cursor.timeouts
+
+    def _edge(self, slot: str, what: tuple[str, int, str] | None) -> None:
+        """Emit an operator event only when `slot` CHANGES (agv_core/events: edges,
+        never per tick). `what` is (code, level, detail); None means the slot cleared,
+        which emits a cleared event if something was standing."""
+        prev = self._edges.get(slot)
+        if what is None:
+            if prev is not None:
+                self._edges.pop(slot, None)
+                self.event(0, prev[0], f"cleared: {alarms.get(prev[0]).title.lower()}")
+            return
+        if prev is not None and prev[0] == what[0] and prev[2] == what[2]:
+            return
+        self._edges[slot] = what
+        self.event(what[1], what[0], f"{alarms.get(what[0]).title}: {what[2]}")
 
     def event(self, level: int, code: str, text: str) -> None:
         m = Event()

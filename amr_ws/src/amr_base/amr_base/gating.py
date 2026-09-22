@@ -259,6 +259,10 @@ class Selection:
     generation: int = 0  # the lease generation applied (0 unsupervised)
     inhibited: bool = False  # true when the supervisor/drives gate closed, not merely "no command"
     wheels: bool = False  # v/w are per-wheel rad/s (COMMISSIONING), not a body twist
+    # Alarm catalogue code for `reason` (agv_core/alarms.py). KEYWORD ONLY at every call
+    # site: select() returns are read positionally by tests, and `reason` stays the
+    # engineer's wording - the code is what the operator surface looks up.
+    code: str = ""
 
 
 def _fresh(t: float | None, now: float, limit: float) -> bool:
@@ -286,16 +290,18 @@ def select(
     gen = 0
     if p.require_supervisor:
         if lease is None or not _fresh(lease.t_recv, now, p.lease_timeout_s):
-            return Selection(NONE, 0.0, 0.0, "no supervisor lease", 0, True)
+            return Selection(NONE, 0.0, 0.0, "no supervisor lease", 0, True, code="NOT_LEASED")
         gen = lease.generation
         if lease.allowed == 0:
-            return Selection(NONE, 0.0, 0.0, "inhibited by supervisor", gen, True)
+            return Selection(NONE, 0.0, 0.0, "inhibited by supervisor", gen, True, code="INHIBITED")
         if drives is None or not _fresh(drives.t_recv, now, p.drives_timeout_s) or not drives.operational:
-            return Selection(NONE, 0.0, 0.0, "drives not operational or stale", gen, True)
+            return Selection(
+                NONE, 0.0, 0.0, "drives not operational or stale", gen, True, code="DRIVES_NOT_READY"
+            )
 
     panel_ok = panel is not None and panel.valid and _fresh(panel.t_recv, now, p.panel_timeout_s)
     if not panel_ok:
-        return Selection(NONE, 0.0, 0.0, "no panel authority", gen)
+        return Selection(NONE, 0.0, 0.0, "no panel authority", gen, code="PANEL_STALE")
 
     if not panel.auto:
         # Commissioning: the supervisor grants this class INSTEAD of MANUAL while a
@@ -304,9 +310,11 @@ def select(
             c = commissioning
             if c is not None and c.generation == lease.generation and _fresh(c.t, now, p.cmd_timeout_s):
                 return Selection(COMMISSIONING, c.left, c.right, "commissioning", gen, False, True)
-            return Selection(NONE, 0.0, 0.0, "commissioning: no fresh wheel command", gen)
+            return Selection(
+                NONE, 0.0, 0.0, "commissioning: no fresh wheel command", gen, code="SOURCE_TIMED_OUT"
+            )
         if p.require_supervisor and not (lease.allowed & LEASE_MANUAL):
-            return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True)
+            return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True, code="NOT_LEASED")
         # Physical pendant: a held deadman outranks any browser or keyboard stream.
         # Its freshness is the panel image's own (panel_ok above).
         if panel.fwd or panel.rvs or panel.left or panel.right:
@@ -321,8 +329,8 @@ def select(
         if p.teleop_enabled and teleop is not None and now - teleop.t <= p.teleop_window_s:
             if now - teleop.t <= p.cmd_timeout_s:
                 return Selection(TELEOP, teleop.v, teleop.w, "teleop", gen)
-            return Selection(TELEOP, 0.0, 0.0, "teleop command timed out", gen)
-        return Selection(NONE, 0.0, 0.0, "MANUAL, no fresh command", gen)
+            return Selection(TELEOP, 0.0, 0.0, "teleop command timed out", gen, code="SOURCE_TIMED_OUT")
+        return Selection(NONE, 0.0, 0.0, "MANUAL, no fresh command", gen, code="NO_SOURCE")
 
     # Line following: the supervisor grants LEASE_LINE exclusively in LINE mode,
     # so this is checked BEFORE the AUTONOMOUS bit - a line lease carries no
@@ -341,28 +349,32 @@ def select(
         if line is not None and _fresh(line.t, now, p.cmd_timeout_s):
             v, w = line_cap(line.v, line.w, p.line_v_max, p.line_w_max)
             return Selection(LINE, v, w, "line", gen)
-        return Selection(NONE, 0.0, 0.0, "line: no fresh command", gen)
+        return Selection(NONE, 0.0, 0.0, "line: no fresh command", gen, code="SOURCE_TIMED_OUT")
 
     if p.require_supervisor and not (lease.allowed & LEASE_AUTONOMOUS):
-        return Selection(NONE, 0.0, 0.0, "AUTO not allowed by supervisor", gen, True)
+        return Selection(NONE, 0.0, 0.0, "AUTO not allowed by supervisor", gen, True, code="NOT_LEASED")
     permit_ok = permit is not None and permit.enabled and _fresh(permit.t_recv, now, p.permit_timeout_s)
     if not permit_ok:
-        return Selection(NONE, 0.0, 0.0, "AUTO, no motion permit", gen)
+        return Selection(NONE, 0.0, 0.0, "AUTO, no motion permit", gen, code="NO_PERMIT")
     if p.require_supervisor and (permit.instance != lease.instance or permit.generation != lease.generation):
-        return Selection(NONE, 0.0, 0.0, "permit from another generation", gen, True)
+        return Selection(
+            NONE, 0.0, 0.0, "permit from another generation", gen, True, code="GENERATION_MISMATCH"
+        )
     # The route's authored limits travel with the permit and are enforced HERE, the last
     # software arbitration point (review Q04): Nav2 keeps its configured speeds.
     if permit.source == FOLLOW:
         if follow is not None and now - follow.t <= p.cmd_timeout_s:
             v, w = capped(follow.v, permit.v_max), capped(follow.w, permit.w_max)
             return Selection(FOLLOW, v, w, "follow", gen)
-        return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel", gen)
+        return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel", gen, code="SOURCE_TIMED_OUT")
     if permit.source == ROTATE:
         if rotate is not None and now - rotate.t <= p.cmd_timeout_s:
             v, w = capped(rotate.v, permit.v_max), capped(rotate.w, permit.w_max)
             return Selection(ROTATE, v, w, "rotate", gen)
-        return Selection(NONE, 0.0, 0.0, "permit ROTATE, no fresh /cmd_vel_rotate", gen)
-    return Selection(NONE, 0.0, 0.0, "permit NONE", gen)
+        return Selection(
+            NONE, 0.0, 0.0, "permit ROTATE, no fresh /cmd_vel_rotate", gen, code="SOURCE_TIMED_OUT"
+        )
+    return Selection(NONE, 0.0, 0.0, "permit NONE", gen, code="NO_PERMIT")
 
 
 def nav_topic(base: str, generation: int) -> str:

@@ -23,6 +23,7 @@ import time
 from dataclasses import asdict
 
 import rclpy
+from agv_core import alarms
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -34,7 +35,7 @@ from slam_toolbox.srv import Pause, SerializePoseGraph
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_interfaces.msg import MappingState, WheelStates
+from amr_interfaces.msg import Event, MappingState, WheelStates
 from amr_interfaces.srv import SaveMap, StartSurvey
 from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
@@ -112,6 +113,9 @@ class MappingSession(Node):
         )
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED, callback_group=io_group)
         self._pub = self.create_publisher(MappingState, "/amr/mapping_state", LATCHED)
+        # Operator events: one per session-state change, plus an explicit save outcome.
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
         self.create_timer(1.0, self._publish_state, callback_group=io_group)
 
         self._pause = self.create_client(
@@ -219,7 +223,19 @@ class MappingSession(Node):
             old, self._state, self._message = self._state, state, message
         if old != state:
             self.get_logger().info(f"{STATE_NAMES[old]} -> {STATE_NAMES[state]}: {message}")
+            self.event("MODE_CHANGE", f"survey {STATE_NAMES[old]} -> {STATE_NAMES[state]}: {message}")
         self._publish_state()
+
+    def event(self, code: str, text: str) -> None:
+        row = alarms.get(code)
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source = "mapping_session"
+        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
+        m.code, m.text = code, text
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._pub_event.publish(m)
 
     def _publish_state(self) -> None:
         self._check_slam()
@@ -309,6 +325,7 @@ class MappingSession(Node):
         problems = self._readiness()
         if problems:
             res.ok, res.message = False, "not ready: " + "; ".join(problems)
+            self.event("SURVEY_NOT_READY", "; ".join(problems))
             return res
         self._set(MappingState.SAVING, "pausing SLAM and serialising")
         stage_holder: list[str] = []
@@ -331,6 +348,7 @@ class MappingSession(Node):
                 self.get_logger().error(f"could not resume SLAM after failed save: {e2}")
             kept = f"; draft kept at {draft}" if draft else "; nothing was staged"
             self._set(MappingState.RETURN_REVIEW, f"save failed: {e}{kept}")
+            self.event("MAP_SAVE_FAILED", f"{e}{kept}")
             res.ok, res.message = False, self._message
             return res
         with self._lock:

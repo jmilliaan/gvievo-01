@@ -89,6 +89,9 @@ def test_drive_status_operational_needs_fresh_feedback():
         _pub_status=None,
         _status_snapshot={},
         _log=lambda s: None,
+        _operational=False,
+        _edge=lambda *_a: None,
+        event=lambda *_a: None,
     )
     _feed(link, time.monotonic() - 1.0)  # cached Operation enabled, but old
     DriveNode._publish_status(node, link, None)

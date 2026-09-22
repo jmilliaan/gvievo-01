@@ -40,3 +40,4 @@ float32 sample_age_s
 string track_source         # "tpdo" (control-rate) | "sdo" (polled, monitor only)
 
 string message              # last result / block reason, for the operator
+string code                 # alarm catalogue code for the hold/fault in `message`; "" when driving

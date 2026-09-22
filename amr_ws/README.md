@@ -268,6 +268,22 @@ margin 0.20 m = cross-track limit 0.10 + localisation allowance 0.10.
 canvas editor (map metres persisted, pixel↔world identical to `amr_maps.grid`)
 and the run page. No endpoint publishes a velocity.
 
+**One catalogue, two audiences (2026-09-22).** Every stop, hold and fault in the
+stack carries a CODE; `agv_core/alarms.py` maps it to what the operator reads and
+the one thing they do about it, while the node's own `reason` stays the
+engineer's detail. Codes travel in `RunState.fault_code`, `LocalizationState.code`,
+`LineState.code` and `MuxState.code`, and every owner emits an `/amr/events` edge
+with its code. `/api/alarms` turns the state snapshot into that list ONCE,
+server-side (`amr_web/alarms.py`): the rail, Home, Status and Alarms pages render
+it and derive nothing. Events are appended to `~/.amr/logs/events.jsonl` and
+reloaded at start, so the history survives a restart, and RUNBOOK section 4 is
+generated from the same rows (`python3 -m agv_core.alarms --md`).
+
+The pages open in an **operator** view (Home · Run · Manual · Alarms); the
+engineering pages are behind a PIN from `~/.amr/web.json` — a mistake guard, not
+security. Home shows one state line, one action sentence and one button, chosen
+from the top standing alarm's `clears_by`.
+
 **Execution (T7).** `route_executor_node` runs one Nav2 action at a time:
 `FollowPath` (RPP, `desired_linear_vel 0.30`, no rotate-to-heading, no
 reversing, goal checker **0.025 m** — at 0.05 the checker fires the instant it

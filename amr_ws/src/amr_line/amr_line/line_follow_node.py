@@ -32,8 +32,8 @@ from __future__ import annotations
 import time
 
 import rclpy
+from agv_core import alarms, kinematics
 from agv_core import config as vehicle_config
-from agv_core import kinematics
 from geometry_msgs.msg import Twist
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -43,6 +43,7 @@ from std_srvs.srv import Trigger
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
+    Event,
     LineState,
     LineTrack,
     ModeState,
@@ -180,6 +181,10 @@ class LineFollowNode(Node):
 
         self._pub_cmd = self.create_publisher(Twist, "/amr/line_cmd", RELIABLE_1)
         self._pub_state = self.create_publisher(LineState, "/amr/line_state", LATCHED)
+        # Operator events on LINE-STATE changes only: the tick runs at 50 Hz.
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
+        self._event_state: int | None = None
 
         self.create_service(Trigger, "/amr/line/arm", self._srv_arm)
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
@@ -353,7 +358,32 @@ class LineFollowNode(Node):
         m.sample_age_s = float(self.reader.age_s(time.monotonic()) or 0.0)
         m.track_source = "" if self.reader.last is None else str(self.reader.last.source)
         m.message = self.job.reason
+        m.code = self._code()
         self._pub_state.publish(m)
+        if self.job.state != self._event_state:
+            self._event_state = self.job.state
+            self._event(m.code, m.message)
+
+    def _code(self) -> str:
+        """Alarm catalogue code for the current hold or fault; "" while it is driving."""
+        if self.job.state in (lj.HOLD, lj.FAULT):
+            if self.job.hold_cause:
+                return alarms.hold_code(self.job.hold_cause)
+            return "EXEC_PREREQ_LOST" if self.job.state == lj.FAULT else "WAITING_FOR_PREREQ"
+        return ""
+
+    def _event(self, code: str, detail: str) -> None:
+        code = code or "MODE_CHANGE"
+        row = alarms.get(code)
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source = "line_follow"
+        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
+        m.code = code
+        m.text = f"line {lj.STATE_NAMES[self.job.state]}: {detail}"
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._pub_event.publish(m)
 
 
 def main() -> None:

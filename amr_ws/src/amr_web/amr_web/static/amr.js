@@ -80,6 +80,30 @@ function rail(st) {
 }
 function railStale(on) { const e = document.getElementById('telemetry'); if (e) e.classList.toggle('stale', on); }
 
+// One alarms poll for every page (amr_web/alarms.py decides; nothing is re-derived
+// client-side). Pages register with onAlarms(); the rail always shows the top row.
+const alarmListeners = [];
+function onAlarms(fn) { alarmListeners.push(fn); }
+async function pollAlarms() {
+  try {
+    const { status, data } = await apiGet('/api/alarms');
+    if (status === 200) {
+      const top = (data.alarms || [])[0];
+      const el = document.getElementById('rail-alarm');
+      if (el) {
+        el.hidden = !top;
+        if (top) {
+          el.className = 'rail-alarm ' + (top.level === 'error' ? 'bad' : top.level === 'warn' ? 'warn' : '');
+          el.innerHTML = `<b>${esc(top.title)}</b><i>${esc(top.action)}</i>`;
+        }
+      }
+      alarmListeners.forEach(fn => fn(data));
+    }
+  } catch (e) { /* the state poll already reports the disconnection */ }
+  setTimeout(pollAlarms, 1000);
+}
+pollAlarms();
+
 async function poll() {
   try {
     const { status, data } = await apiGet('/api/state');
@@ -159,6 +183,44 @@ async function followOperation(id, onDone) {
   if (onDone) onDone(null);
   return null;
 }
+
+// Page error boundary (plan phase 3.4): a bug in a page script used to leave buttons
+// silently dead. Now it says so, keeps the rail polling, and gives the operator a
+// reference to read out. Reported to the server so it lands in the event log too.
+(function () {
+  let reported = false;
+  function show(what) {
+    const el = document.getElementById('page-error');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = `Page error — reload this page. (${what})`;
+    if (!reported) {
+      reported = true;  // one report per page load: a loop of errors must not flood the log
+      try { api('/api/page-error', { where: location.pathname, what: String(what).slice(0, 300) }); } catch (e) { /* offline */ }
+    }
+  }
+  window.addEventListener('error', e => show(e.message || 'script error'));
+  window.addEventListener('unhandledrejection', e => show((e.reason && e.reason.message) || 'request failed'));
+})();
+
+// Role switch (amr_web/role.py): operator <-> engineer. The PIN is typed here and
+// checked on the server; it is a mistake guard, not security.
+(function () {
+  const btn = document.getElementById('role-btn');
+  if (!btn) return;
+  btn.onclick = async () => {
+    if (btn.dataset.role === 'engineer') {
+      await api('/api/role', { role: 'operator' });
+      location.href = '/home';
+      return;
+    }
+    const pin = prompt('Engineer PIN');
+    if (!pin) return;
+    const { status, data } = await api('/api/role', { role: 'engineer', pin });
+    if (status === 200) location.href = '/status';
+    else log(data.message || 'wrong PIN', 'bad');
+  };
+})();
 
 // Display size knob (amr.css "one layout, three sizes"): s -> m -> l -> s. Stored per
 // device; base.html applies the stored value before first paint. The canvases size

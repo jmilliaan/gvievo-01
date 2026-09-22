@@ -9,6 +9,7 @@ instead of hanging.
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 import traceback
@@ -34,6 +35,7 @@ from amr_interfaces.msg import (
     DriveStatus,
     Event,
     IoImage,
+    LineState,
     LocalizationState,
     ManualCommand,
     MappingState,
@@ -54,6 +56,7 @@ from amr_interfaces.srv import (
     SurveyMove,
 )
 from amr_web import live
+from amr_web.eventlog import EventLog
 
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
@@ -74,6 +77,7 @@ MODE_NAMES = {
     7: "LINE",
 }
 OP_NAMES = {0: "PENDING", 1: "SUCCEEDED", 2: "FAILED", 3: "INTERRUPTED"}
+LINE_NAMES = {0: "IDLE", 1: "ARMED", 2: "RUNNING", 3: "HOLD", 4: "DONE", 5: "FAULT"}
 MUX_NAMES = {
     0: "none",
     1: "teleop",
@@ -140,6 +144,8 @@ class RosAdapter(Node):
         self._drives_t = 0.0
         self._mux: dict | None = None
         self._mux_t = 0.0
+        self._line: dict | None = None
+        self._line_t = 0.0
         g = ReentrantCallbackGroup()
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED, callback_group=g)
         self.create_subscription(
@@ -148,6 +154,8 @@ class RosAdapter(Node):
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10, callback_group=g)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1, callback_group=g)
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1, callback_group=g)
+        # The tape product's layer: its holds and faults are standing alarms like any other.
+        self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED, callback_group=g)
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
         self._diag: dict[str, dict] = {}
@@ -155,6 +163,13 @@ class RosAdapter(Node):
         self._io_t = 0.0
         self._events: list[dict] = []
         self._event_n = 0
+        # The ring survives a restart: every event is appended to disk, and the tail is
+        # read back here at start so the Alarms history is not empty after a reboot.
+        state_dir = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
+        self._log = EventLog(os.path.join(state_dir, "logs", "events.jsonl"))
+        for e in self._log.tail(300):
+            self._event_n += 1
+            self._events.append(dict(e, n=self._event_n, restored=True))
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
         self._commissioning: dict | None = None
         self._commissioning_t = 0.0
@@ -346,11 +361,18 @@ class RosAdapter(Node):
                 "source": MUX_NAMES.get(m.source, str(m.source)),
                 "inhibited": bool(m.inhibited),
                 "reason": m.reason,
+                "code": m.code,
                 "generation": int(m.generation),
                 "left_rad_s": float(m.left_rad_s),
                 "right_rad_s": float(m.right_rad_s),
             }
             self._mux_t = self._now()
+
+    def _on_line(self, m: LineState) -> None:
+        d = _msg_to_dict(m)
+        d["state_name"] = LINE_NAMES.get(m.state, str(m.state))
+        with self._lock:
+            self._line, self._line_t = d, self._now()
 
     def _on_diag(self, m: DiagnosticArray) -> None:
         now = self._now()
@@ -373,20 +395,39 @@ class RosAdapter(Node):
             self._io_t = self._now()
 
     def _on_event(self, m: Event) -> None:
+        e = {
+            "t": time.time(),
+            "source": m.source,
+            "level": ["info", "warn", "error"][min(int(m.level), 2)],
+            "code": m.code,
+            "text": m.text,
+            "seq": int(m.seq),
+        }
         with self._lock:
             self._event_n += 1
-            self._events.append(
-                {
-                    "n": self._event_n,
-                    "t": time.time(),
-                    "source": m.source,
-                    "level": ["info", "warn", "error"][min(int(m.level), 2)],
-                    "code": m.code,
-                    "text": m.text,
-                    "seq": int(m.seq),
-                }
-            )
+            self._events.append(dict(e, n=self._event_n))
             del self._events[:-300]
+        self._log.append(e)  # outside the lock: a slow disk must not stall the callback
+
+    def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None:
+        """An event raised by the web itself (a page error, a give-up on a restart).
+        Same ring, same disk log, so the Alarms page shows it beside the vehicle's own."""
+        e = {
+            "t": time.time(),
+            "source": source,
+            "level": level if level in ("info", "warn", "error") else "info",
+            "code": code,
+            "text": text,
+            "seq": 0,
+        }
+        with self._lock:
+            self._event_n += 1
+            self._events.append(dict(e, n=self._event_n))
+            del self._events[:-300]
+        self._log.append(e)
+
+    def event_log_files(self) -> list[str]:
+        return self._log.files()
 
     def _on_commissioning(self, m: CommissioningState) -> None:
         d = _msg_to_dict(m)
@@ -481,6 +522,7 @@ class RosAdapter(Node):
                 "panel": dict(self._panel, age_s=now - self._panel_t) if self._panel else None,
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
+                "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 "mapping": mapping,
                 "mapping_age_s": mapping_age,
                 "mapping_stale": mapping_stale,

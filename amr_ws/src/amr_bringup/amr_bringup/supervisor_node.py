@@ -37,7 +37,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import Trigger
 
-from amr_bringup import domains
+from amr_bringup import domains, sdnotify
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
 from amr_bringup import readiness as rd
@@ -70,6 +70,10 @@ SENSOR = QoSProfile(
 )
 
 LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
+# The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
+# operator is told to restart the service rather than watching a dead page for ever.
+RESPAWN_BACKOFF_S = 10.0
+RESPAWN_TRIES = 3
 
 # Mode replacement targets a client may ask for. MAPPING is absent deliberately: a survey
 # starts through /amr/supervisor/survey, not here. Keep the two dicts inverse of each other.
@@ -130,6 +134,12 @@ class Supervisor(Node):
         self.tracked = bool(config.TRACKED)
         self.admit_params = fsm.Params(tracked=self.tracked)
         self._auto_line_done = False
+        self._boot_reported = False  # the end-of-boot operator event fires once per boot
+        # Optional groups the supervisor brings back by itself (plan phase 3.1).
+        self._respawnable: dict[str, list[str]] = {}
+        self._respawn_at: dict[str, float] = {}
+        self._respawn_tries: dict[str, int] = {}
+        self._notify = sdnotify.Notifier()
 
         self.instance = uuid.uuid4().hex
         self.generation = 1
@@ -430,8 +440,10 @@ class Supervisor(Node):
         base = self.groups.get("base")
         if base is None or base.poll() is not None:
             return "the base layer (drives, mux, panel, EKF) is not running"
-        if self.fault_code in ("BASE_EXITED", "BOOT_ERROR", "BASE_NOT_READY"):
+        if self.fault_code in ("BASE_EXITED", "BOOT_ERROR"):
             return f"fault {self.fault_code}: the base layer failed"
+        # BASE_NOT_READY with the group alive is a late base, not a dead one: the
+        # tick returns to IDLE by itself once it is ready, and Recover may try too.
         return None
 
     def _srv_recover(self, req, res):
@@ -489,6 +501,25 @@ class Supervisor(Node):
         op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)
         self.get_logger().info("profile tracked=true: entering LINE (the tape AGV's default mode)")
         self._begin_transaction(op, fsm.LINE, "", 0, "")
+
+    def _boot_report(self, now: float, missing: str) -> None:
+        """One event at the end of boot, in words the operator can act on. `missing` is
+        base_missing()'s list; each item is named with what the operator does about it,
+        so the 70 s safety-reset case (2026-09-22) reads as a sentence, not a FAULT screen."""
+        if self._boot_reported:
+            return
+        self._boot_reported = True
+        if not missing:
+            self._event(Event.INFO, "BOOT_READY", "the vehicle is ready")
+            return
+        actions = {
+            "drives": "press the safety reset on the cabinet",
+            "panel": "check the control panel and its I/O island",
+            "wheel feedback": "press the safety reset on the cabinet",
+            "mux": "call the engineer: the command mux did not start",
+        }
+        parts = [f"{item} ({actions.get(item, 'see the Alarms page')})" for item in missing.split(", ")]
+        self._event(Event.WARN, "BASE_NOT_READY", "not ready: " + "; ".join(parts))
 
     def _fail_active(self, code: str, why: str) -> None:
         """Terminal failure of whatever is in flight (review R25): the transaction's or the
@@ -836,6 +867,7 @@ class Supervisor(Node):
                 "-p",
                 f"maps_dir:={self.maps_dir}",
             ]
+            self._respawnable["web"] = argv
             self.groups["web"] = Group.spawn(
                 "web", argv, env=self._env(), log_path=os.path.join(self._logs, "web.log")
             )
@@ -853,10 +885,12 @@ class Supervisor(Node):
         self.groups["base"] = self._launch("base", "base.launch.py", **base_args)
         if p("foxglove").value:
             argv = ["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"]
+            self._respawnable["foxglove"] = argv
             self.groups["foxglove"] = Group.spawn(
                 "foxglove", argv, env=self._env(), log_path=os.path.join(self._logs, "foxglove.log")
             )
         self._boot_deadline = self._now() + self.budget["base_ready_s"]
+        self._boot_reported = False
 
     def _reap(self, now: float) -> None:
         """An unrequested exit of base or the layer is a fault - once. The dead
@@ -868,9 +902,41 @@ class Supervisor(Node):
             g.requested_stop = True  # handled; never reap it again
             if role in ("base", "layer"):
                 self._fail_active(f"{role.upper()}_EXITED", f"{g.describe()} exited unrequested")
+            elif role in self._respawnable:
+                # The web is the operator's only window and was the least protected
+                # process in the stack: bring it back on a bounded backoff, then say
+                # loudly that it is gone (plan phase 3.1).
+                self.get_logger().warn(f"{g.describe()} exited; respawning in {RESPAWN_BACKOFF_S:.0f} s")
+                self.groups.pop(role, None)
+                self._respawn_at[role] = now + RESPAWN_BACKOFF_S
             else:
                 self.get_logger().warn(f"{g.describe()} exited; optional group, not restarted")
                 self.groups.pop(role, None)
+        self._respawn_due(now)
+
+    def _respawn_due(self, now: float) -> None:
+        for role, when in list(self._respawn_at.items()):
+            if now < when:
+                continue
+            del self._respawn_at[role]
+            tries = self._respawn_tries.get(role, 0) + 1
+            self._respawn_tries[role] = tries
+            if tries > RESPAWN_TRIES:
+                self.get_logger().error(f"{role} died {tries - 1} times; not restarting it again")
+                self._event(Event.ERROR, "WEB_DOWN" if role == "web" else "SPAWN_FAILED",
+                            f"{role} keeps stopping; restart the service")
+                continue
+            try:
+                self.groups[role] = Group.spawn(
+                    role,
+                    self._respawnable[role],
+                    env=self._env(),
+                    log_path=os.path.join(self._logs, f"{role}.log"),
+                )
+                self.get_logger().warn(f"{role} respawned (attempt {tries} of {RESPAWN_TRIES})")
+            except Exception as e:  # noqa: BLE001 - an optional group must never fault the vehicle
+                self.get_logger().error(f"{role} respawn failed: {e!r}")
+                self._respawn_at[role] = now + RESPAWN_BACKOFF_S
 
     def _loop(self) -> None:
         with self._lock:
@@ -880,9 +946,13 @@ class Supervisor(Node):
                 self.get_logger().error(f"boot error: {e!r}")
                 self._boot_deadline = self._now()
                 self._fail_active("BOOT_ERROR", f"boot failed: {e!r}")
+        # systemd: the unit is Type=notify, so nothing downstream starts until the
+        # groups are spawned, and WatchdogSec restarts a WEDGED loop (plan phase 3.2).
+        self._notify.ready()
         period = 0.1
         while not self._stop.is_set():
             t0 = self._now()
+            self._notify.watchdog()
             with self._lock:
                 try:
                     self._tick(t0)
@@ -904,13 +974,27 @@ class Supervisor(Node):
         self._reap(now)
         if self.mode == fsm.STARTING:
             if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
+                self._boot_report(now, "")
                 self._set(fsm.IDLE, "", "")
                 self._auto_enter_line()
             elif now > self._boot_deadline:
-                self._set(fsm.FAULT, "base not ready", rd.base_missing(self.snap, now), "BASE_NOT_READY")
+                missing = rd.base_missing(self.snap, now)
+                self._boot_report(now, missing)
+                self._set(fsm.FAULT, "base not ready", missing, "BASE_NOT_READY")
             return
         if self.mode == fsm.STOPPING:
             return
+        if self.mode == fsm.FAULT and self.fault_code == "BASE_NOT_READY" and self.txn is None:
+            # The base came up after the boot budget (2026-09-22: the drives sat in
+            # "Switch on disabled" until the safety reset was pressed 70 s after boot).
+            # The group is alive and healthy, nothing needs rebuilding: enter IDLE the
+            # same way STARTING does instead of demanding a service restart.
+            if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
+                self.get_logger().info("base ready after the boot budget")
+                self._boot_report(now, "")
+                self._set(fsm.IDLE, "", "")
+                self._auto_enter_line()
+                return
         if self.txn is not None:
             self._step_transaction(now)
         elif self.survey_op is not None:
@@ -929,6 +1013,7 @@ class Supervisor(Node):
         actually revokes motion."""
         self._stop.set()
         self._stopping = True
+        self._notify.stopping()
         got = self._lock.acquire(timeout=2.0)
         try:
             self.mode, self.phase = fsm.STOPPING, "stopping"

@@ -12,6 +12,12 @@
   </div>
 </section>
 <div id="st-fault" class="warn-box stop" hidden></div>
+{# Engineer view of the same server-side list the operator's Home page shows, with the
+   codes visible. Nothing here is derived in this page (amr_web/alarms.py owns it). #}
+<section class="al-standing">
+  <h2>Standing now <small>code · what the operator is told · what clears it</small></h2>
+  <div id="st-standing" class="al-log"><div class="none">connecting…</div></div>
+</section>
 
 {# Actions before the readiness detail: on a 7" panel the buttons must be above the fold. #}
 <section>
@@ -33,6 +39,15 @@
 document.getElementById('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
 document.getElementById('btn-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 const $ = id => document.getElementById(id);
+const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
+onAlarms(d => {
+  const rows = d.alarms || [];
+  $('st-standing').innerHTML = rows.length ? rows.map(a =>
+    `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.code)}</span>` +
+    `<span class="al-msg"><span class="al-what">${esc(a.title)}</span>${esc(a.action)}` +
+    `<i class="al-detail">clears by ${esc(a.clears_by)} · ${esc(a.detail)}</i></span></div>`).join('')
+    : '<div class="none">nothing standing</div>';
+});
 onState(st => {
   const m = st.mode;
   $('st-mode').textContent = m ? m.mode_name : 'NO SUPERVISOR';

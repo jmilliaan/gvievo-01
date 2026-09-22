@@ -32,6 +32,8 @@ def _node(dt=0.02):
     n._commissioning = None
     n._v = n._wz = n._wl = n._wr = n._a = n._alpha = 0.0
     n._source, n._reason, n._applied_gen = "none", "", 0
+    n._inhibited, n._event_seq = False, 0
+    n._pub_event = SimpleNamespace(publish=lambda _m: None)
     n._last = gating.Selection(gating.NONE, 0.0, 0.0, "", 0, False)
     n._now = lambda: 10.0
     n.get_logger = lambda: _Logger()

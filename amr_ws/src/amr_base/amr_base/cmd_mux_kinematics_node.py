@@ -36,6 +36,7 @@ from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, s
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
+    Event,
     ManualCommand,
     ModeState,
     MotionPermit,
@@ -179,6 +180,11 @@ class CmdMuxKinematics(Node):
         )
         self._pub = self.create_publisher(WheelVelocities, "/cmd_wheel_vel", RELIABLE_1)
         self._pub_state = self.create_publisher(MuxState, "/amr/mux_state", RELIABLE_1)
+        # Operator events: EDGES only (the tick runs at 50 Hz). One per source change and
+        # one per inhibit change - the same guard the source log already uses.
+        self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._event_seq = 0
+        self._inhibited = False
         self.create_timer(self.dt, self._tick)
         self.create_timer(0.1, self._publish_state)
         if not self.gp.require_supervisor:
@@ -329,7 +335,19 @@ class CmdMuxKinematics(Node):
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
             self.get_logger().info(f"command source: {self._source} -> {name} ({sel.reason})")
+            self._event(
+                Event.WARN if sel.inhibited else Event.INFO,
+                (sel.code or "NO_SOURCE") if sel.source == gating.NONE else "MUX_SOURCE",
+                f"command source {self._source} -> {name}: {sel.reason}",
+            )
             self._source, self._reason = name, sel.reason
+        if bool(sel.inhibited) != self._inhibited:
+            self._inhibited = bool(sel.inhibited)
+            self._event(
+                Event.WARN if self._inhibited else Event.INFO,
+                sel.code or "INHIBITED",
+                ("motion inhibited: " + sel.reason) if self._inhibited else "motion no longer inhibited",
+            )
 
         if sel.source == gating.NONE or (sel.v == 0.0 and sel.w == 0.0 and sel.reason.endswith("timed out")):
             self._v = self._wz = 0.0  # loss of authority or an expired command: zero at once, never a ramp
@@ -394,7 +412,16 @@ class CmdMuxKinematics(Node):
         m.inhibited = bool(self._last.inhibited)
         m.left_rad_s, m.right_rad_s = self._out
         m.reason = self._last.reason
+        m.code = self._last.code
         self._pub_state.publish(m)
+
+    def _event(self, level: int, code: str, text: str) -> None:
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source, m.level, m.code, m.text = "cmd_mux_kinematics", level, code, text
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._pub_event.publish(m)
 
 
 def main(args=None) -> None:

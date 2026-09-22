@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}AMR — home{% endblock %}
+{% block body %}
+{# The operator's whole page: what the vehicle is doing, the one sentence about what
+   holds it, and the one button that clears it. Everything else is behind "More".
+   Fits 1280x720 at ui=l with nothing below the fold. #}
+<section class="home">
+  <div class="home-state">
+    <div id="home-line" class="home-big">connecting…</div>
+    <div id="home-detail" class="home-detail"></div>
+  </div>
+  <div class="home-act">
+    <div id="home-title" class="home-title">—</div>
+    <div id="home-action" class="home-action"></div>
+    <div class="bar" id="home-buttons">
+      <button id="home-primary" class="big run" hidden></button>
+      <button id="home-pause" class="big" hidden>Pause</button>
+      <button id="home-abort" class="danger" hidden>Abort</button>
+    </div>
+  </div>
+  <div class="home-load" id="home-load" hidden>
+    <label class="field">Mission <select id="home-mission"></select></label>
+    <div class="bar"><button id="home-run" class="big run">Load mission</button></div>
+    <p class="note">Loading only prepares the run. <b>Motion starts from the panel</b>: selector AUTO, then Start.</p>
+  </div>
+  <details class="home-more">
+    <summary>More <small>everything standing against the vehicle</small></summary>
+    <div id="home-list" class="al-log"><div class="none">nothing standing</div></div>
+  </details>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+const $ = id => document.getElementById(id);
+const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
+let headline = null;
+
+// The primary button is whatever the top alarm's clears_by says. One button, never two.
+const ACTIONS = {
+  Acknowledge: () => api('/api/mission/ack').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
+  Recover:     () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
+  'Set position': () => { location.href = '/run'; },
+  Restart:     () => {
+    if (!confirm('Restart the vehicle software?\n\nSwitch the drives off and on first if a drive alarm is standing. Nothing moves during a restart.')) return;
+    api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+  },
+};
+
+$('home-primary').onclick = () => { const fn = ACTIONS[$('home-primary').textContent]; if (fn) fn(); };
+$('home-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+$('home-abort').onclick = () => { if (confirm('Abort the run?')) api('/api/mission/abort').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')); };
+$('home-run').onclick = () => {
+  const id = $('home-mission').value;
+  if (!id) return;
+  api('/api/mission/run', { mission_id: id }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+};
+
+// Only missions drawn on the map the vehicle is actually running can load; the
+// executor refuses the rest, so offering them is a trap.
+let activeMap = null;
+async function missions() {
+  const { status, data } = await apiGet('/api/missions');
+  if (status !== 200) return;
+  const sel = $('home-mission'), had = sel.value;
+  const usable = activeMap ? data.filter(m => m.map.id === activeMap.id && +m.map.revision === +activeMap.rev) : [];
+  sel.innerHTML = usable.length
+    ? usable.map(m => `<option value="${esc(m.mission_id)}">${esc(m.mission_id)}</option>`).join('')
+    : `<option value="">${activeMap ? 'no missions for ' + esc(activeMap.id) : 'no map is active'}</option>`;
+  if (had && usable.some(m => m.mission_id === had)) sel.value = had;
+}
+onState(st => {
+  const m = st.mode;
+  const next = m && m.active_map_id ? { id: m.active_map_id, rev: m.active_map_revision } : null;
+  const same = (next && activeMap && next.id === activeMap.id && next.rev === activeMap.rev) || (!next && !activeMap);
+  if (!same) { activeMap = next; missions(); }
+});
+
+// One poll for the whole page: the server already decided what is standing and what
+// the button is (amr_web/alarms.py), so nothing is re-derived here.
+async function alarms() {
+  try {
+    const { status, data } = await apiGet('/api/alarms');
+    if (status === 200) render(data);
+  } catch (e) { /* the rail's own poll reports the disconnection */ }
+  setTimeout(alarms, 1000);
+}
+function render(d) {
+  headline = d.headline;
+  const h = d.headline;
+  $('home-line').textContent = h.state;
+  $('home-line').className = 'home-big ' + (LV[h.level] || '');
+  $('home-detail').textContent = h.detail || '';
+  $('home-title').textContent = h.title;
+  $('home-action').textContent = h.action;
+  const btn = $('home-primary');
+  btn.hidden = !h.button;
+  if (h.button) btn.textContent = h.button;
+  $('home-pause').hidden = !h.run_active;
+  $('home-abort').hidden = !h.run_active;
+  $('home-load').hidden = h.run_active || h.state.indexOf('NEEDS SERVICE') === 0;
+  const rows = d.alarms || [];
+  $('home-list').innerHTML = rows.length ? rows.map(a =>
+    `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.level)}</span>` +
+    `<span class="al-msg"><span class="al-what">${esc(a.title)}</span>${esc(a.action)}` +
+    `<i class="al-detail">${esc(a.code)} · ${esc(a.detail)}</i></span></div>`).join('')
+    : '<div class="none">nothing standing</div>';
+}
+alarms();
+</script>{% endblock %}
