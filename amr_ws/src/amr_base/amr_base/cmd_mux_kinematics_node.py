@@ -45,6 +45,9 @@ from amr_interfaces.msg import (
     WheelVelocities,
 )
 
+# Sources a person drives by hand: switching between these is not operator history.
+HAND_SOURCES = {"none", "manual", "pendant", "teleop"}
+
 RELIABLE_1 = QoSProfile(
     depth=1,
     reliability=QoSReliabilityPolicy.RELIABLE,
@@ -335,17 +338,25 @@ class CmdMuxKinematics(Node):
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
             self.get_logger().info(f"command source: {self._source} -> {name} ({sel.reason})")
-            self._event(
-                Event.WARN if sel.inhibited else Event.INFO,
-                (sel.code or "NO_SOURCE") if sel.source == gating.NONE else "MUX_SOURCE",
-                f"command source {self._source} -> {name}: {sel.reason}",
-            )
+            # A jog is a hundred edges: every press and release flips manual <-> none, and
+            # at 300 entries the ring would hold nothing but somebody's thumb (vehicle,
+            # 2026-09-22: 18 of 27 events in the first minute were jog flaps). Only a
+            # change that involves an AUTONOMOUS source, or an inhibit, is history.
+            if sel.inhibited or {name, self._source} - HAND_SOURCES:
+                self._event(
+                    Event.WARN if sel.inhibited else Event.INFO,
+                    (sel.code or "NO_SOURCE") if sel.source == gating.NONE else "MUX_SOURCE",
+                    f"command source {self._source} -> {name}: {sel.reason}",
+                )
             self._source, self._reason = name, sel.reason
         if bool(sel.inhibited) != self._inhibited:
             self._inhibited = bool(sel.inhibited)
+            # The CLEARING event carries INHIBITED too: it is the end of that condition,
+            # and a "no longer inhibited" line filed under whatever came next (NO_SOURCE)
+            # is exactly the code/text drift the catalogue exists to prevent.
             self._event(
                 Event.WARN if self._inhibited else Event.INFO,
-                sel.code or "INHIBITED",
+                (sel.code or "INHIBITED") if self._inhibited else "INHIBITED",
                 ("motion inhibited: " + sel.reason) if self._inhibited else "motion no longer inhibited",
             )
 
