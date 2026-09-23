@@ -41,6 +41,8 @@
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
     <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
     {% endif %}
+    {# both roles: the visitors' page (demo.py). It has no nav of its own; hold its ✕ to come back. #}
+    <a href="/demo" class="demo-link">Demo</a>
   </nav>
   <button id="role-btn" class="ui-size role-btn" type="button"
           title="{{ 'Engineer view: press to go back to the operator view' if role == ENGINEER else 'Engineer view (PIN)' }}"

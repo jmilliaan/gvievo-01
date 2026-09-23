@@ -22,11 +22,18 @@ def main(args=None) -> None:
     maps_dir = adapter.get_parameter("maps_dir").value
     host, port = adapter.get_parameter("host").value, int(adapter.get_parameter("port").value)
     spinner = start_spinning(adapter)
+    try:  # the profile's wheel, for the DEMO page's speed; the page still works without it
+        from agv_core import config
+
+        wheel_radius_m = float(config.WHEEL_DIA_M) / 2.0
+    except Exception:  # noqa: BLE001
+        wheel_radius_m = 0.09
     app = create_app(
         adapter,
         maps_dir,
         wifi_iface=str(adapter.get_parameter("wifi_iface").value),
         state_dir=str(adapter.get_parameter("state_dir").value),
+        wheel_radius_m=wheel_radius_m,
     )
     adapter.get_logger().info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
     try:

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ c.product }}</title>
+{# The visitors' page (manuals/plans/2026-09-23-demo-page.md). Deliberately NOT base.html:
+   no nav, no rail, no role button, so nobody on a show floor can tap into Manual.
+   Read-only - the only request it makes is GET /api/demo. Text comes from
+   static/demo/content.json. Fits 1280x720 with nothing below the fold. #}
+<link rel="stylesheet" href="/static/demo.css">
+</head>
+<body class="demo">
+<header class="d-head">
+  <div class="d-brand">
+    <div class="d-product">{{ c.product }}</div>
+    <div class="d-expansion">{{ c.expansion }}</div>
+  </div>
+  <div class="d-tagline">{{ c.tagline }}</div>
+  <button id="d-exit" class="d-exit" type="button" aria-label="Hold to leave the demo">
+    <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="d-ring" cx="20" cy="20" r="17"/>
+      <path d="M14 14 L26 26 M26 14 L14 26"/></svg>
+  </button>
+</header>
+
+<main class="d-main">
+  <section class="d-live" aria-live="polite">
+    <div class="d-status" data-status="standby">
+      <span class="d-dot"></span>
+      <span id="d-sentence" class="d-sentence">Standing by for the next demonstration</span>
+    </div>
+    <div class="d-tiles">
+      <div class="d-tile"><div class="d-num"><span id="d-speed">0.00</span></div><div class="d-unit">m/s right now</div></div>
+      <div class="d-tile"><div class="d-num"><span id="d-dist">0</span><small> m</small></div><div class="d-unit">driven in this demo</div></div>
+      <div class="d-tile"><div class="d-num"><span id="d-stops">0</span></div><div class="d-unit">safe stops for people</div></div>
+      <div class="d-tile"><div class="d-num d-word"><span id="d-mode">Standing by</span></div><div class="d-unit">navigation</div></div>
+    </div>
+  </section>
+
+  <section class="d-story">
+    <div class="d-cards" id="d-cards" data-rotate="{{ c.rotate_s or 8 }}">
+      {% for card in c.cards %}
+      <article class="d-card{{ ' on' if loop.first }}">
+        <div class="d-kicker"><span>{{ '%02d' % loop.index }}</span>{{ card.kicker }}</div>
+        <h2>{{ card.title }}</h2>
+        {% if card.specs %}
+        <div class="d-specs">
+          {% for sp in card.specs %}
+          <div class="d-spec"><b>{{ sp.value }}</b><span>{{ sp.label }}</span></div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p>{{ card.body }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    <div class="d-dots" id="d-dots">
+      {% for card in c.cards %}<button type="button" class="{{ 'on' if loop.first }}" aria-label="{{ card.kicker }}"></button>{% endfor %}
+    </div>
+  </section>
+</main>
+<script src="/static/demo.js"></script>
+</body>
+</html>

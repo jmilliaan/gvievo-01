@@ -37,6 +37,7 @@ from amr_navigation import footprint as fpmod
 from amr_navigation import store
 from amr_web import alarms as alarmview
 from amr_web import commissioning_log as clog
+from amr_web import demo as demomod
 from amr_web import jog, netcheck, reports, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
@@ -157,6 +158,7 @@ def create_app(
     wifi_iface: str = "wlp1s0",
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
+    wheel_radius_m: float = 0.09,
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -283,6 +285,30 @@ def create_app(
     @app.get("/api/state")
     def api_state():
         return jsonify(adapter.state())
+
+    # ---- DEMO page: visitors, not operators (manuals/plans/2026-09-23-demo-page.md) ----
+    # Open to both roles, read-only. Everything it may say is decided in demo.py.
+    demo_counters = demomod.Counters()
+    demo_lock = threading.Lock()
+    demo_path = os.path.join(app.static_folder or "", "demo", "content.json")
+    try:
+        with open(demo_path, encoding="utf-8") as fh:
+            demo_content = json.load(fh)
+    except (OSError, ValueError):
+        demo_content = {"product": "AGV", "cards": []}  # the page must still serve
+
+    @app.get("/demo")
+    def page_demo():
+        if request.args.get("reset") == "1":
+            with demo_lock:
+                demo_counters.reset()
+        return render_template("demo.html", c=demo_content)
+
+    @app.get("/api/demo")
+    def api_demo():
+        with demo_lock:
+            body = demomod.view(adapter.state(), wheel_radius_m, demo_counters, time.monotonic())
+        return jsonify(body)
 
     wifi_reader = wifi.WifiReader(wifi_iface)
 
