@@ -11,7 +11,11 @@
 The panel is the ONLY thing that can authorise motion on the ROS side (the mux
 takes authority from /amr/panel_state, the executor needs a Start edge under
 AUTO). This node reports what the operator did; it decides nothing about
-motion. It has no services and no parameters that could fake an edge.
+motion. Its one service picks WHERE the buttons are read (panel_io):
+
+    /amr/panel/web_buttons (std_srvs/SetBool)  PHYSICAL (false, the boot default)
+                                               or the Manual page (true)
+    /amr/virtual_panel (VirtualPanel, web)  -> the web levels, and the web E-stop
 
 Never runs beside another DIO owner: two writers on the same coil (ownerlock).
 """
@@ -29,9 +33,12 @@ from agv_core.drivers import dio  # repo module: drivers/dio.py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from std_srvs.srv import SetBool
 
 from amr_base import panel_io
-from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, WheelVelocities
+from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, VirtualPanel, WheelVelocities
+
+VIRTUAL_TIMEOUT_S = 0.5  # the web publishes at 20 Hz
 
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
@@ -60,6 +67,9 @@ class PanelNode(Node):
         self._armed = False
         self._armed_t: float | None = None  # a stale "armed" is not armed (unified plan §7.1)
         self._horn = None
+        self._virtual: tuple[float, VirtualPanel] | None = None
+        self.create_subscription(VirtualPanel, "/amr/virtual_panel", self._on_virtual, 10)
+        self.create_service(SetBool, "/amr/panel/web_buttons", self._srv_web)
 
         if not config.DIO_ENABLED:
             self.get_logger().warn("dio.enabled is false in the profile: no panel, no horn, valid=false")
@@ -91,16 +101,39 @@ class PanelNode(Node):
         self._armed = bool(m.operational)
         self._armed_t = time.monotonic()
 
+    def _on_virtual(self, m: VirtualPanel) -> None:
+        self._virtual = (time.monotonic(), m)
+
+    def _virtual_now(self) -> panel_io.Virtual:
+        if self._virtual is None or time.monotonic() - self._virtual[0] > VIRTUAL_TIMEOUT_S:
+            return panel_io.VIRTUAL_NONE
+        m = self._virtual[1]
+        return panel_io.Virtual(True, bool(m.start), bool(m.reset), bool(m.auto), bool(m.estop))
+
+    def _srv_web(self, req, res):
+        """Switch the button source. Refused while the wheels are being commanded."""
+        now = time.monotonic()
+        moving = (
+            self._cmd_t is not None and now - self._cmd_t <= self.cmd_timeout and self._cmd != (0.0, 0.0)
+        )
+        if moving and bool(req.data) != self.adapter.web:
+            res.success, res.message = False, "refused: the vehicle is being driven; stop first"
+            return res
+        changed = self.adapter.set_web(bool(req.data))
+        src = "web (Manual page)" if self.adapter.web else "physical panel"
+        res.success, res.message = True, (f"buttons: {src}" if changed else f"already {src}")
+        return res
+
     # -- tick --
 
     def _tick(self) -> None:
         snap = self.link.snapshot()
         if not config.PANEL_ENABLED:
             snap = dict(snap, comms_ok=False)
-        frame = self.adapter.tick(snap)
+        frame = self.adapter.tick(snap, self._virtual_now())
         if frame.changed:
             self.get_logger().info(frame.changed)
-            lvl = Event.WARN if "LOST" in frame.changed or "invalid" in frame.changed else Event.INFO
+            lvl = Event.WARN if any(w in frame.changed for w in ("LOST", "invalid", "E-STOP")) else Event.INFO
             self._event(lvl, "PANEL", frame.changed)
         self._io_n = (self._io_n + 1) % self._io_every
         if self._io_n == 0:
@@ -113,6 +146,7 @@ class PanelNode(Node):
         m.reset_edge = frame.reset_edge
         m.seq = frame.seq
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
+        m.estop, m.web_buttons = frame.estop, frame.web
         self._pub.publish(m)
 
         if config.HORN_ENABLED:

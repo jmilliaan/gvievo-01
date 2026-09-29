@@ -233,6 +233,7 @@ class Panel:
     rvs: bool = False
     left: bool = False
     right: bool = False
+    estop: bool = False  # PanelState.estop: the web E-stop latch
 
 
 @dataclass
@@ -302,6 +303,8 @@ def select(
     panel_ok = panel is not None and panel.valid and _fresh(panel.t_recv, now, p.panel_timeout_s)
     if not panel_ok:
         return Selection(NONE, 0.0, 0.0, "no panel authority", gen, code="PANEL_STALE")
+    if panel.estop:
+        return Selection(NONE, 0.0, 0.0, "E-stop", gen, True, code="ESTOP")
 
     if not panel.auto:
         # Commissioning: the supervisor grants this class INSTEAD of MANUAL while a

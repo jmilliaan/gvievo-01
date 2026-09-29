@@ -256,7 +256,8 @@ class DemoAdapter:
 
     def _reset(self) -> None:
         self.mode = mode_dict()
-        self.panel = {"valid": True, "mode_auto": False}
+        self.panel = {"valid": True, "mode_auto": False, "estop": False, "web_buttons": False}
+        self.vpanel = {"auto": False, "estop": False}
         self.drives = {"operational": True, "left": "Operation enabled", "right": "Operation enabled"}
         self.mapping = None
         self.loc = None
@@ -496,6 +497,49 @@ class DemoAdapter:
                 return "reset"
         return "?"
 
+    # ---- the Manual page's button panel (panel_node's web source, simulated) --------
+
+    def panel_source(self, web: bool) -> tuple[bool, str]:
+        with self.lock:
+            self.panel["web_buttons"] = bool(web)
+            if web:
+                self.vpanel["auto"] = False
+                if self.panel["mode_auto"]:
+                    self.panel_action("selector")
+        return True, "buttons: " + ("web (Manual page)" if web else "physical panel")
+
+    def panel_button(self, button: str) -> tuple[bool, str]:
+        with self.lock:
+            web = self.panel["web_buttons"]
+            if button == "estop":
+                self.vpanel["estop"] = True
+                if not self.panel["estop"]:
+                    self.panel["estop"] = True
+                    if self.drives["operational"]:
+                        self.panel_action("estop")
+                return True, "E-stop pressed"
+            if button == "release":
+                self.vpanel["estop"] = False
+                return True, "E-stop released: press Reset to clear it"
+            if not web:
+                return True, f"{button} (ignored: buttons are on the physical panel)"
+            if button in ("auto", "manual"):
+                self.vpanel["auto"] = button == "auto"
+                if self.panel["mode_auto"] != self.vpanel["auto"]:
+                    self.panel_action("selector")
+                return True, f"selector {button.upper()}"
+            if button == "reset":
+                if self.panel["estop"] and not self.vpanel["estop"]:
+                    self.panel["estop"] = False
+                    if not self.drives["operational"]:
+                        self.panel_action("estop")
+                return True, self.panel_action("reset")
+            if button == "start":
+                if self.panel["estop"]:
+                    return True, "Start ignored: E-stop active"
+                return True, self.panel_action("start")
+        return False, f"unknown button {button!r}"
+
     # ---- executor ---------------------------------------------------------------------
 
     def _start_exec(self, resume: bool = False) -> None:
@@ -668,6 +712,7 @@ class DemoAdapter:
                     "allowed": (1 if self.mode["manual_available"] else 0) | (2 if self.exec_plan else 0),
                 },
                 "panel": dict(self.panel, age_s=0.02),
+                "vpanel": dict(self.vpanel),
                 "drives": dict(self.drives, age_s=0.05),
                 "mux": {
                     "source": src,

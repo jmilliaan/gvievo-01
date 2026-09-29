@@ -15,7 +15,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 from amr_bringup.launch_helpers import default_world, foxglove, include
@@ -70,6 +70,7 @@ def generate_launch_description() -> LaunchDescription:
                 map_id=cfg("map_id"),
                 revision=cfg("revision"),
                 footprint_yaml=cfg("footprint_yaml"),
+                real=PythonExpression(["'false' if '", cfg("sim"), "'.lower() == 'true' else 'true'"]),
             ),
             foxglove(IfCondition(cfg("foxglove"))),
         ]

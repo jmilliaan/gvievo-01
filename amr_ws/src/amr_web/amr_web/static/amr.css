@@ -423,6 +423,16 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .manual .side { overflow:auto; display:flex; flex-direction:column; gap:.6rem; }
 .manual .side > * { flex:0 0 auto; margin:0; }
 .manual .side .jog-foot { grid-template-columns:minmax(0,1fr); }
+/* The Manual page's button panel: source toggle, Start/Reset, selector, E-stop. */
+.pb-source, .pb-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+.pb-source button, .pb-grid button { width:100%; }
+button.estop {
+  font:700 1.6rem var(--mono); letter-spacing:.1em; text-transform:uppercase; width:100%; min-height:5.6rem;
+  border:3px solid var(--stop); background:var(--stop); color:#fff; border-radius:999px;
+}
+button.estop:hover { filter:brightness(1.1); }
+button.estop.pressed { background:var(--stop-wash); color:var(--stop); }
+button.estop:focus-visible { outline:2px solid var(--stop); outline-offset:3px; }
 /* A touch panel has no keyboard: the key hints and the key legend are noise there. */
 @media (pointer:coarse) {
   button.dir .key, .legend.keys { display:none; }

@@ -11,6 +11,11 @@
 
 Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
 
+E-stop (PanelState.estop, the web E-stop latch): the drives are disarmed - zero
+on the drive's own decel ramp (6084h), standstill, then Shutdown / Disable
+voltage - and stay disarmed until a PanelState says the latch was cleared by a
+Reset. A stale panel keeps the last word: silence never releases an E-stop.
+
 Profile position (amr_base/pp.py) is LOCKED by the profile (pp.enabled false)
 until the decision to run it on this motor is recorded (pp.vendor_ref). While a pp move is active the
 bus thread sends the pp controller's controlwords instead of /cmd_wheel_vel, and
@@ -171,6 +176,7 @@ class DriveNode(Node):
         self._pp_req: pp.Request | None = None
         self._pp_bad = ""  # why the last PpMove was not accepted as a request
         self._panel: tuple[float, bool, bool] | None = None  # (t_mono, valid, mode_auto)
+        self._estop = False  # last PanelState.estop, kept while the panel is silent
         self._track: MlsTrack | None = None  # built on the bus thread
         # /amr/line_track is best-effort, so a dropped sample is invisible
         # without this. Touched only on the bus thread, the sole publisher.
@@ -233,6 +239,7 @@ class DriveNode(Node):
     def _on_panel(self, msg: PanelState) -> None:
         with self._lock:
             self._panel = (time.monotonic(), bool(msg.valid), bool(msg.mode_auto))
+            self._estop = bool(msg.estop)
 
     def _on_pp(self, msg: PpMove) -> None:
         """Every hold replaces the last. A malformed one counts as no hold at all."""
@@ -364,9 +371,12 @@ class DriveNode(Node):
                     set(link.silent_nodes(now, self.driver_timeout))
                     | set(link.missing_feedback(now, self.driver_timeout))
                 )
+            with self._lock:
+                estop = self._estop
+            self._edge("estop", ("ESTOP", 1, "drives disarmed until released and Reset") if estop else None)
             d = canopen.decide(
                 link.state,
-                self.want_armed,
+                self.want_armed and not estop,
                 now,
                 retry_at,
                 silent,
@@ -485,7 +495,10 @@ class DriveNode(Node):
             try:
                 if what == "arm":
                     self.want_armed = True
-                    box["ok"], box["msg"] = True, "arm requested"
+                    with self._lock:
+                        estop = self._estop
+                    box["ok"] = True
+                    box["msg"] = "arm requested (held off: E-stop active)" if estop else "arm requested"
                 elif what == "disarm":
                     self.want_armed = False
                     box["ok"], box["msg"] = self._disarm_result(link, "disarmed")

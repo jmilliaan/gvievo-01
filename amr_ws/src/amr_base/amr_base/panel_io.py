@@ -25,6 +25,14 @@ Policy that lives here, and nowhere else on the ROS side:
     move (README, safety model).
   * A stale wheel command (older than cmd_timeout_s) counts as zero, so the
     horn cannot outlive the command stream that asked for it.
+  * Button source: PHYSICAL (the DIO contacts, the boot default) or WEB (the
+    Manual page's VirtualPanel levels, written into a synthetic DI image at the
+    same channels so PanelScan's debounce, anti-tie-down and re-baseline rules
+    apply unchanged). A stale VirtualPanel is a comms loss. Switching re-baselines,
+    so a switch never produces an edge. The pendant is read only in PHYSICAL.
+  * E-stop latch: the web E-stop (either source mode) sets it; it clears only on
+    a Reset edge after the E-stop is released. While set, Start edges and the
+    pendant are withheld and PanelState.estop tells every motion owner to stop.
 """
 
 from __future__ import annotations
@@ -46,6 +54,31 @@ class PanelFrame:
     comms_ok: bool
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
+    estop: bool = False
+    web: bool = False
+
+
+@dataclass(frozen=True)
+class Virtual:
+    """The Manual page's button levels as last received, and whether that is fresh."""
+
+    fresh: bool
+    start: bool = False
+    reset: bool = False
+    auto: bool = False
+    estop: bool = False
+
+
+VIRTUAL_NONE = Virtual(fresh=False)
+
+
+def synthetic_di(v: Virtual, num_di: int | None = None) -> list[bool]:
+    """A DI image with the web levels at the panel's own channels, everything else low."""
+    chans = (config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO)
+    n = max(num_di if num_di is not None else config.DIO_NUM_DI, max(chans) + 1)
+    di = [False] * n
+    di[config.PANEL_DI_RESET], di[config.PANEL_DI_START], di[config.PANEL_DI_AUTO] = v.reset, v.start, v.auto
+    return di
 
 
 class PanelAdapter:
@@ -84,18 +117,46 @@ class PanelAdapter:
                 scans,
             )
         self.seq = 0
+        self.web = False  # boot default: the physical buttons
+        self.estop_latched = False
+        self._switch_note: str | None = None
         self._last_valid: bool | None = None
         self._last_mode: str | None = None
         self._last_comms: bool | None = None
         self._last_pendant: panel_core.PendantIntent | None = None
 
-    def tick(self, snapshot: dict) -> PanelFrame:
-        comms = bool(snapshot.get("comms_ok"))
-        intent = self.scan.scan(snapshot.get("di"), comms)
+    def set_web(self, on: bool) -> bool:
+        """Select the button source. Returns True if it changed. Re-baselines."""
+        on = bool(on)
+        if on == self.web:
+            return False
+        self.web = on
+        self.scan.reset()
+        if self.pendant is not None:
+            self.pendant.reset()
+        self._held, self._held_for = None, 0
+        self._last_comms = None  # report the new source's link state on the next tick
+        self._switch_note = "buttons: " + ("WEB (Manual page)" if on else "PHYSICAL (panel)")
+        return True
+
+    def tick(self, snapshot: dict, virtual: Virtual = VIRTUAL_NONE) -> PanelFrame:
+        if self.web:
+            comms = virtual.fresh
+            di = synthetic_di(virtual)
+        else:
+            comms = bool(snapshot.get("comms_ok"))
+            di = snapshot.get("di")
+        intent = self.scan.scan(di, comms)
         self.seq += 1
         notes = []
+        if self._switch_note:
+            notes.append(self._switch_note)
+            self._switch_note = None
         if comms != self._last_comms:
-            notes.append("DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})"))
+            if self.web:
+                notes.append("web buttons " + ("ok" if comms else "LOST (Manual page not sending)"))
+            else:
+                notes.append("DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})"))
             self._last_comms = comms
         if intent.valid != self._last_valid:
             notes.append("panel image " + ("valid" if intent.valid else "invalid"))
@@ -106,11 +167,15 @@ class PanelAdapter:
         if intent.reset:
             notes.append("RESET edge")
 
+        estop = self._estop(virtual, intent, notes)
+
         pend = panel_core.PENDANT_IDLE
-        if self.pendant is not None:
+        if self.pendant is not None and not self.web:
             levels = self.pendant.scan(snapshot.get("di"), comms)
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
+        if estop:
+            pend = panel_core.PENDANT_IDLE
         mode, pend = self._coincidence(intent, pend, notes)
         if self.pendant is not None and pend != self._last_pendant:
             held = [n for n in pend._fields if getattr(pend, n)]
@@ -119,13 +184,26 @@ class PanelAdapter:
         return PanelFrame(
             valid=bool(intent.valid),
             mode_auto=mode == panel_core.AUTO,
-            start_edge=bool(intent.start),
+            start_edge=bool(intent.start) and not estop,
             reset_edge=bool(intent.reset),
             seq=self.seq,
             comms_ok=comms,
             changed="; ".join(notes) or None,
             pendant=pend,
+            estop=estop,
+            web=self.web,
         )
+
+    def _estop(self, virtual: Virtual, intent, notes: list) -> bool:
+        """Latch on the web E-stop; clear on a Reset edge once it is released."""
+        pressed = virtual.fresh and virtual.estop
+        if pressed and not self.estop_latched:
+            self.estop_latched = True
+            notes.append("E-STOP pressed (web)")
+        elif self.estop_latched and not pressed and intent.reset:
+            self.estop_latched = False
+            notes.append("E-stop cleared by Reset")
+        return self.estop_latched
 
     def _coincidence(self, intent, pend, notes) -> tuple[str, panel_core.PendantIntent]:
         """The (mode, pendant) to publish this scan, withholding a simultaneous change."""

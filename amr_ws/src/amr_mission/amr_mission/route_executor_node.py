@@ -18,6 +18,12 @@ action result alone:
              the REMAINING signed angle only;
   always     localisation READY, fresh sensors and panel, no /initialpose.
 
+SOFTWARE FIELD STOP (safety-lite build, 2026-09-29). There is no safety PLC: the nanoScan3's
+OSSD pair drives nothing and the drives' STO is jumpered. So in AUTO the executor holds the run
+itself (cause `field`) the moment /output_paths reports the protective field violated, and a
+missing or stale /output_paths is a prerequisite failure (no run starts, a running one faults
+after the grace). Manual jog has no scanner stop. The paragraph below describes the full build.
+
 OBSTACLES ARE NOT THE EXECUTOR'S JOB (operator decision 2026-09-20). The scan-vs-envelope
 check that used to stop a run was removed: stopping for something in the way is the safety
 chain's work - the nanoScan3 protective field and the E-stop, which take the drives' torque
@@ -201,6 +207,8 @@ class RouteExecutor(Node):
         self.declare_parameter("safety_window_s", 1.0)
         self.declare_parameter("drives_age_limit_s", 0.5)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]: protective field
+        self.declare_parameter("software_field_stop", True)  # module docstring: no safety PLC
+        self.declare_parameter("field_age_limit_s", 0.5)
         self.declare_parameter("controller_abort_retries", 3)
         # R08: bound on waiting for a goal's acceptance, and for an obsolete (cancelled) goal to
         # report terminal before a replacement goal may be issued.
@@ -238,6 +246,8 @@ class RouteExecutor(Node):
         self.safety_window = float(p("safety_window_s").value)
         self.drives_age = float(p("drives_age_limit_s").value)
         self.field_index = int(p("field_output_index").value)
+        self.software_field_stop = bool(p("software_field_stop").value)
+        self.field_age = float(p("field_age_limit_s").value)
         self.abort_retries = int(p("controller_abort_retries").value)
         self._init_hold_state()
         self.goal_accept_timeout = p("goal_accept_timeout_s").value
@@ -384,6 +394,7 @@ class RouteExecutor(Node):
         self._last_off_t: float | None = None  # last time the drive report said torque off
         self._field_clear: bool | None = None
         self._field_trip_t: float | None = None  # last time the protective field was violated
+        self._field_t: float | None = None  # last /output_paths receipt
 
     def _on_drives(self, m: DriveStatus) -> None:
         t = self._now()
@@ -397,11 +408,15 @@ class RouteExecutor(Node):
         if len(m.status) <= self.field_index:
             return
         self._field_clear = bool(m.status[self.field_index])
+        self._field_t = self._now()
         if not self._field_clear:
             self._field_trip_t = self._now()
 
     def _torque_off(self, now: float) -> bool:
         return self._torque_off_msg and self._drives_t is not None and now - self._drives_t <= self.drives_age
+
+    def _field_fresh(self, now: float) -> bool:
+        return self._field_t is not None and now - self._field_t <= self.field_age
 
     def _field_tripped(self, now: float) -> bool:
         if self._field_clear is False:
@@ -579,6 +594,8 @@ class RouteExecutor(Node):
             return "panel stale or invalid"
         if self._scan is None or now - self._scan_t > self.scan_age:
             return "no fresh scan"
+        if self.software_field_stop and not self._field_fresh(now):
+            return "no fresh protective field status (/output_paths)"
         return None
 
     def _prereq_held(self, now: float, pre: str | None) -> bool:
@@ -932,6 +949,13 @@ class RouteExecutor(Node):
                 if manual and (self.hold_cause in ("pending", "field", "estop") or pre is None):
                     self.fsm.abort("manual takeover: selector left AUTO")
                     self._interrupt("manual takeover")
+                elif (
+                    self.software_field_stop
+                    and state == fsm.EXECUTING
+                    and self._field_clear is False
+                    and self._field_fresh(now)
+                ):
+                    self._hold("field", "protective field violated")
                 elif self._torque_off(now) and (
                     state == fsm.EXECUTING
                     or (state == fsm.BLOCKED and self.hold_cause not in ("field", "estop"))

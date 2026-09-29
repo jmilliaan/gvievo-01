@@ -60,8 +60,9 @@ function rail(st) {
   const p = st.panel;
   if (!p) tile('tel-selector', '–', 'no panel image', 'bad');
   else if (p.age_s > FRESH_S) tile('tel-selector', 'STALE', `${num(p.age_s, 1)} s old`, 'bad');
-  else if (!p.valid) tile('tel-selector', 'INVALID', `${num(p.age_s, 2)} s`, 'bad');
-  else tile('tel-selector', p.mode_auto ? 'AUTO' : 'MANUAL', `${num(p.age_s, 2)} s`);
+  else if (p.estop) tile('tel-selector', 'E-STOP', 'release, then Reset', 'bad');
+  else if (!p.valid) tile('tel-selector', 'INVALID', p.web_buttons ? 'web buttons not sending' : `${num(p.age_s, 2)} s`, 'bad');
+  else tile('tel-selector', p.mode_auto ? 'AUTO' : 'MANUAL', p.web_buttons ? 'web buttons' : `${num(p.age_s, 2)} s`);
   const d = st.drives;
   if (!d) tile('tel-drives', '–', 'no drive status', 'bad');
   else if (d.age_s > FRESH_S) tile('tel-drives', 'STALE', `${num(d.age_s, 1)} s old`, 'bad');

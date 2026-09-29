@@ -88,7 +88,7 @@ var BR = (function () {
     const v = Number(f.speed);
     const warn = [];
     if (isFinite(v) && v > caps.field_check_above_mps) {
-      warn.push(`Above ${caps.field_check_above_mps} m/s: confirm the nanoScan3/FX3 protective field is sized for this speed. ` +
+      warn.push(`Above ${caps.field_check_above_mps} m/s: the scanner does not stop blind moves; keep the whole path clear. ` +
         `A ramped stop takes about ${num(BR.stopDistance(v, caps.decel_mps2), 2)} m, before any reaction time.`);
     }
     $('br-warn').hidden = !warn.length;

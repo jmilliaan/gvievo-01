@@ -31,7 +31,7 @@ function jogpad(root, opts) {
         <div class="tel"><span>Jog</span><b class="jog-status">not held</b><i>held, not latched · release = stop</i></div>
       </div>
       <p class="legend keys">Hold a button or <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>); <kbd>Space</kbd> stops.
-        Works only with the physical selector in <b>MANUAL</b> and the supervisor allowing manual control.</p>
+        Works only with the selector (panel or web buttons) in <b>MANUAL</b> and the supervisor allowing manual control.</p>
     </div>`;
   // Presentational only: which cell is being held. Session logic below does not read it.
   const cells = root.querySelectorAll('.jog-grid button');

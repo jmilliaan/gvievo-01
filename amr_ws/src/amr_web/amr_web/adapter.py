@@ -26,7 +26,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
-from std_srvs.srv import Trigger
+from std_srvs.srv import SetBool, Trigger
 from tf2_ros import Buffer, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -45,6 +45,7 @@ from amr_interfaces.msg import (
     PanelState,
     PpStatus,
     SurveyMoveState,
+    VirtualPanel,
 )
 from amr_interfaces.srv import (
     GetOperation,
@@ -92,6 +93,9 @@ MUX_NAMES = {
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
+VPANEL_PERIOD_S = 0.05  # panel_node treats the web buttons as gone after 0.5 s
+VPANEL_PULSE_S = 0.3  # a Start/Reset click is held this long: several debounced scans
+VPANEL_BUTTONS = ("start", "reset", "auto", "manual", "estop", "release")
 
 
 def _msg_to_dict(msg) -> dict[str, Any]:
@@ -159,6 +163,11 @@ class RosAdapter(Node):
         # The tape product's layer: its holds and faults are standing alarms like any other.
         self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED, callback_group=g)
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
+        # The Manual page's button panel: levels held here, published at 20 Hz. Boots
+        # MANUAL and released; Start/Reset are pulses.
+        self._vpanel = {"auto": False, "estop": False, "start_until": 0.0, "reset_until": 0.0}
+        self._vpanel_pub = self.create_publisher(VirtualPanel, "/amr/virtual_panel", 10)
+        self.create_timer(VPANEL_PERIOD_S, self._publish_vpanel, callback_group=g)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
         self._diag: dict[str, dict] = {}
         self._io: dict | None = None
@@ -241,6 +250,7 @@ class RosAdapter(Node):
             "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
+            "panel_source": self.create_client(SetBool, "/amr/panel/web_buttons", callback_group=g),
         }
 
     # ---- subscriptions --------------------------------------------------------------
@@ -366,7 +376,12 @@ class RosAdapter(Node):
 
     def _on_panel(self, m: PanelState) -> None:
         with self._lock:
-            self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto)}
+            self._panel = {
+                "valid": bool(m.valid),
+                "mode_auto": bool(m.mode_auto),
+                "estop": bool(m.estop),
+                "web_buttons": bool(m.web_buttons),
+            }
             self._panel_t = self._now()
 
     def _on_drives(self, m: DriveStatus) -> None:
@@ -541,6 +556,7 @@ class RosAdapter(Node):
                 "mode_age_s": (now - self._mode_t) if self._mode else None,
                 "lease": self._lease if self._lease and now - self._lease_t <= 1.0 else None,
                 "panel": dict(self._panel, age_s=now - self._panel_t) if self._panel else None,
+                "vpanel": {"auto": self._vpanel["auto"], "estop": self._vpanel["estop"]},
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
@@ -608,6 +624,55 @@ class RosAdapter(Node):
 
     def recover(self) -> tuple[bool, str]:
         return self._trigger("recover")
+
+    def _publish_vpanel(self) -> None:
+        now = self._now()
+        with self._lock:
+            v = dict(self._vpanel)
+        m = VirtualPanel()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.start, m.reset = now < v["start_until"], now < v["reset_until"]
+        m.auto, m.estop = bool(v["auto"]), bool(v["estop"])
+        self._vpanel_pub.publish(m)
+
+    def panel_button(self, button: str) -> tuple[bool, str]:
+        """A click on the Manual page's button panel. The E-stop works in both source
+        modes; Start/Reset/selector only count while the source is the web
+        (panel_node reads them from the DIO otherwise)."""
+        if button not in VPANEL_BUTTONS:
+            return False, f"unknown button {button!r}"
+        now = self._now()
+        with self._lock:
+            v = self._vpanel
+            if button == "estop":
+                v["estop"] = True
+            elif button == "release":
+                v["estop"] = False
+            elif button in ("auto", "manual"):
+                v["auto"] = button == "auto"
+            else:
+                v[f"{button}_until"] = now + VPANEL_PULSE_S
+        self._publish_vpanel()
+        return True, {
+            "estop": "E-stop pressed",
+            "release": "E-stop released: press Reset to clear it",
+            "auto": "selector AUTO",
+            "manual": "selector MANUAL",
+            "start": "Start",
+            "reset": "Reset",
+        }[button]
+
+    def panel_source(self, web: bool) -> tuple[bool, str]:
+        """Physical panel (False) or the Manual page's buttons (True). Entering web
+        mode puts the web selector in MANUAL first, so a switch never lands in AUTO."""
+        if web:
+            with self._lock:
+                self._vpanel["auto"] = False
+            self._publish_vpanel()
+        r = self._call("panel_source", SetBool.Request(data=bool(web)), timeout=3.0)
+        if r is None:
+            return False, "/amr/panel/web_buttons unavailable (panel_node not running?)"
+        return bool(r.success), r.message
 
     def manual_publish(self, cmd) -> None:
         """One ManualCommand per accepted browser refresh. No timer repeats it."""

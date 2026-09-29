@@ -236,6 +236,7 @@ class CmdMuxKinematics(Node):
             bool(msg.pendant_rvs),
             bool(msg.pendant_left),
             bool(msg.pendant_right),
+            bool(msg.estop),
         )
 
     def _on_commissioning(self, msg: WheelVelocities) -> None:

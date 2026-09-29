@@ -57,10 +57,12 @@ def _rows() -> tuple[Alarm, ...]:
         # ---- safety stops and holds: the vehicle is fine, something is in the way ----
         a("FIELD_BLOCKED", INFO, "auto", "Stopped: something is in the safety field",
           "Clear the area. The vehicle starts again by itself.",
-          "Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window."),
-        a("ESTOP", WARN, "start_button", "Stopped: emergency stop or safety chain",
-          "Release the E-stop, then press Reset and Start on the panel.",
-          "Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile."),
+          "AUTO only: the executor/line layer reads the protective field from /output_paths (Ethernet) "
+          "and holds with cause 'field'; auto-resume after the hold window. Manual jog has no scanner stop."),
+        a("ESTOP", WARN, "start_button", "Stopped: emergency stop",
+          "Release the E-stop, then press Reset (and Start to continue a mission).",
+          "Web E-stop latched in panel_node (PanelState.estop): mux zero, drives disarmed until released "
+          "+ Reset. The physical mushroom cuts power instead. Hold cause 'estop'."),
         a("PATH_BLOCKED", WARN, "auto", "Stopped: the way ahead is blocked",
           "Clear the route. The vehicle tries again by itself.",
           "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT."),
@@ -77,14 +79,14 @@ def _rows() -> tuple[Alarm, ...]:
           "Put the selector back to AUTO and press Start.",
           "Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO."),
         a("DRIVES_NOT_READY", WARN, "start_button", "Stopped: the motors are not powered",
-          "Press the safety reset on the cabinet, then Start.",
+          "Release the E-stop if pressed, press Reset, then Start.",
           "Hold cause 'drives': DriveStatus not operational while the follower wanted to move."),
 
         # ---- the drives ----
-        a("SAFETY_RESET_NEEDED", WARN, "start_button", "Motors are off: the safety circuit needs a reset",
-          "Press the blue Reset button on the cabinet.",
-          "Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries "
-          "every 2 s and succeeds the moment the chain closes."),
+        a("SAFETY_RESET_NEEDED", WARN, "start_button", "Motors are off: they did not switch on",
+          "Check the E-stop is released and the drives have power. The vehicle retries by itself.",
+          "Both drives in 'Switch on disabled' (statusword 0x1270) at arm. The drives' STO inputs are "
+          "jumpered in this build, so look at drive power and the HWTO jumpers. Arming retries every 2 s."),
         a("DRIVE_ALARM", ERROR, "power_cycle", "Drive alarm",
           "Switch the drives off and on, then press Recover.",
           "CANopen EMCY latched; 40C0h (alarm reset) is on the write deny-list, so only a power cycle "
@@ -106,9 +108,9 @@ def _rows() -> tuple[Alarm, ...]:
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, "
           "netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults "
-          "and nothing else reports it - this row is the only place it shows. The vehicle's STOP is "
-          "the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, "
-          "navigation and localisation are dead without it."),
+          "and nothing else reports it - this row is the only place it shows. AUTO runs need the "
+          "scanner's /output_paths (the executor's field stop), so no mission starts without it; "
+          "mapping, navigation and localisation are dead without it too."),
         a("SCANNER_STALE", WARN, "engineer", "The safety scanner stopped sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "/scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. "
@@ -212,7 +214,7 @@ def _rows() -> tuple[Alarm, ...]:
 
         # ---- the supervisor and the service ----
         a("BASE_NOT_READY", WARN, "recover", "Not ready: the vehicle's basics did not come up",
-          "Press the safety reset on the cabinet. The vehicle becomes ready by itself.",
+          "Release the E-stop if pressed and press Reset. The vehicle becomes ready by itself.",
           "Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the "
           "supervisor leaves FAULT on its own once the base reports ready."),
         a("BASE_EXITED", ERROR, "restart_service", "Needs service: the vehicle software stopped",
@@ -264,7 +266,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Recover on the Status page. If it repeats, save a report and call the engineer.",
           "The supervisor caught an exception in its loop and failed the running operation."),
         a("UNCLEAN_SHUTDOWN", WARN, "power_cycle", "The vehicle lost power last time",
-          "Switch the drives off and on, then press the safety reset on the cabinet.",
+          "Switch the drives off and on, then press Reset.",
           "A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives "
           "lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from "
           "the SAME boot is a service crash instead and needs no drive action."),
@@ -286,7 +288,8 @@ def _rows() -> tuple[Alarm, ...]:
         a("MUX_SOURCE", INFO, "auto", "The vehicle is taking commands from somewhere else",
           "Nothing to do.", "Command-source edge in the mux (pendant, manual, follow, line...)."),
         a("PANEL", INFO, "auto", "The control panel changed",
-          "Nothing to do.", "Selector, Start/Reset edge or pendant change from panel_node."),
+          "Nothing to do.",
+          "Selector, Start/Reset edge, pendant, button source or E-stop change from panel_node."),
         a("BOOT_READY", INFO, "auto", "The vehicle is ready",
           "Nothing to do.", "End-of-boot report from the supervisor; the text lists anything missing."),
         a("RUN_SUMMARY", INFO, "auto", "A mission finished",
@@ -401,7 +404,8 @@ def card() -> str:
     out += [f"| **{CATALOGUE[c].title}** | {CATALOGUE[c].action} |" for c in CARD_CODES if c in CATALOGUE]
     out += ["",
             "Buttons: **Restart** is on the Home page, **Recover** on Status, "
-            "**Acknowledge** on Run. Reset and Start are on the cabinet.",
+            "**Acknowledge** on Run. Reset and Start are on the panel "
+            "(or the Manual page in web-button mode).",
             "", "Anything else: save a report from the Alarms page and call the engineer.", ""]
     return "\n".join(out)
 

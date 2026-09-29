@@ -773,6 +773,7 @@ class Supervisor(Node):
             revision=t.map_revision,
             generation=self.generation,
             autostart="false",
+            real=str(self.real).lower(),
         )
 
     def _start_line(self, t: fsm.Transaction):

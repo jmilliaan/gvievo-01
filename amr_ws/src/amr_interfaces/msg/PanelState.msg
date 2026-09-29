@@ -12,3 +12,8 @@ bool pendant_fwd
 bool pendant_rvs
 bool pendant_left
 bool pendant_right
+# E-stop active: the web E-stop pressed, or released but not yet cleared by a
+# Reset. Every motion owner treats it as stop; the drives disarm while it is set.
+# The physical mushroom cuts power in hardware and never appears here.
+bool estop
+bool web_buttons      # Start/Reset/selector come from the Manual page, not the DIO

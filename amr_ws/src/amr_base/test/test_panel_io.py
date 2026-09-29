@@ -198,3 +198,102 @@ def test_separate_selector_and_pendant_changes_are_immediate():
     # and back to AUTO with the pendant released together (a normal end of jogging) is immediate too
     f = _settle(ad, _cdi(auto=True))
     assert f.mode_auto and not any(f.pendant)
+
+
+# ---- web button source and the web E-stop latch (safety-lite build) ----
+
+
+def _v(fresh=True, start=False, reset=False, auto=False, estop=False):
+    return panel_io.Virtual(fresh, start, reset, auto, estop)
+
+
+def _vsettle(ad, v, n=2, di=None):
+    f = None
+    for _ in range(n):
+        f = ad.tick(_snap(di if di is not None else _di()), v)
+    return f
+
+
+def test_boots_on_the_physical_panel_and_ignores_the_web_levels():
+    ad = _adapter()
+    f = _vsettle(ad, _v(auto=True), di=_di())
+    assert not ad.web and not f.web and f.valid and not f.mode_auto
+
+
+def test_web_source_reads_the_web_levels_with_the_same_edge_rules():
+    ad = _adapter()
+    _settle(ad, _di())
+    assert ad.set_web(True)
+    f = _vsettle(ad, _v(start=True))  # held Start at the switch: a baseline, not an edge
+    assert f.web and f.valid and not f.start_edge
+    _vsettle(ad, _v())
+    f = _vsettle(ad, _v(start=True))
+    assert f.start_edge
+    f = _vsettle(ad, _v(auto=True))
+    assert f.mode_auto
+
+
+def test_switching_source_never_makes_an_edge_even_if_the_physical_start_is_held():
+    ad = _adapter()
+    _vsettle(ad, _v(), di=_di())
+    ad.set_web(True)
+    _vsettle(ad, _v())
+    ad.set_web(False)
+    f = _vsettle(ad, _v(), di=_di(start=True))
+    assert f.valid and not f.start_edge
+
+
+def test_stale_web_buttons_are_no_panel_image():
+    ad = _adapter()
+    ad.set_web(True)
+    _vsettle(ad, _v())
+    f = _vsettle(ad, _v(fresh=False))
+    assert not f.valid and not f.comms_ok
+
+
+def test_web_pendant_is_not_read():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=0)
+    ad.set_web(True)
+    di = [False] * 16
+    di[config.PENDANT_DI_FWD] = True
+    f = _vsettle(ad, _v(), di=di)
+    assert not any(f.pendant)
+
+
+def test_estop_latches_until_released_and_reset_in_either_source():
+    ad = _adapter()
+    _settle(ad, _di())
+    f = _vsettle(ad, _v(fresh=True, estop=True))  # web E-stop while on the physical panel
+    assert f.estop
+    f = _vsettle(ad, _v(), di=_di(reset=True))  # released on the page, physical Reset pressed
+    assert not f.estop
+
+
+def test_estop_needs_release_before_reset_counts():
+    ad = _adapter()
+    ad.set_web(True)
+    _vsettle(ad, _v())
+    _vsettle(ad, _v(estop=True))
+    f = _vsettle(ad, _v(estop=True, reset=True))  # reset while still pressed: stays latched
+    assert f.estop
+    _vsettle(ad, _v())  # released, reset let go
+    f = _vsettle(ad, _v())
+    assert f.estop  # released is not cleared
+    f = _vsettle(ad, _v(reset=True))
+    assert not f.estop and f.reset_edge
+
+
+def test_estop_withholds_start_and_the_pendant():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=0)
+    _vsettle(ad, _v(estop=True), di=_di())
+    di = _di(start=True)
+    di[config.PENDANT_DI_FWD] = True
+    f = _vsettle(ad, _v(estop=True), di=di)
+    assert f.estop and not f.start_edge and not any(f.pendant)
+
+
+def test_silent_web_does_not_release_a_latched_estop():
+    ad = _adapter()
+    _vsettle(ad, _v(estop=True))
+    f = _vsettle(ad, _v(fresh=False))
+    assert f.estop

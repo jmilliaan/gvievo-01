@@ -103,3 +103,13 @@ def test_names_cover_every_source_and_the_lease_bits_are_distinct():
     bits = [g.LEASE_MANUAL, g.LEASE_AUTONOMOUS, g.LEASE_COMMISSIONING, g.LEASE_LINE]
     assert bits == [1, 2, 4, 8]
     assert all(b and not (b & (b - 1)) for b in bits)  # each is one bit
+
+
+def test_estop_is_zero_whatever_is_asking():
+    from amr_base.gating import PENDANT
+
+    held = Panel(t_recv=10.0, valid=True, auto=False, fwd=True)
+    assert select(10.0, None, None, None, None, held).source == PENDANT
+    stopped = Panel(t_recv=10.0, valid=True, auto=False, fwd=True, estop=True)
+    s = select(10.0, None, None, None, None, stopped)
+    assert (s.source, s.v, s.w, s.code, s.inhibited) == (NONE, 0.0, 0.0, "ESTOP", True)

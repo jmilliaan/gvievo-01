@@ -4,9 +4,11 @@ testable with a stub.
 
 One endpoint publishes a velocity: /api/manual/refresh, one ManualCommand per
 accepted request, held not latched (unified plan §6.3) - the mux accepts it only
-under the physical selector MANUAL with a fresh supervisor lease, and it expires
+under the selector MANUAL with a fresh supervisor lease, and it expires
 0.2 s after it was sent. Everything else only selects, draws, validates, saves or
-asks the supervisor / coordinators; the physical panel authorises motion.
+asks the supervisor / coordinators; the panel authorises motion - the physical
+one, or the Manual page's button panel once panel_node's source is switched to it
+(/api/panel/*: levels only, debounced and edge-detected in panel_node).
 
 Mode and survey operations are asynchronous: 202 + operation_id, then
 GET /api/operations/<id> until it is terminal.
@@ -86,6 +88,9 @@ class Adapter(Protocol):
     def commissioning(self) -> dict | None: ...
     def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
     def commissioning_clear(self) -> tuple[bool, str]: ...
+    # the Manual page's button panel (panel_node: /amr/virtual_panel, /amr/panel/web_buttons)
+    def panel_button(self, button: str) -> tuple[bool, str]: ...
+    def panel_source(self, web: bool) -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -870,6 +875,24 @@ def create_app(
                 jog.Command(inst, gen, str(d.get("session", "")), 0, 0.0, 0.0, 0.0, "", 0.0)
             )
         return jsonify({"ok": True, "released": had})
+
+    # ---- the Manual page's button panel: Start, Reset, selector, E-stop, and the source ----
+
+    @app.post("/api/panel/button")
+    def api_panel_button():
+        d, err = _body()
+        if err:
+            return err
+        return _result(*adapter.panel_button(str(d.get("button", ""))))
+
+    @app.post("/api/panel/source")
+    def api_panel_source():
+        d, err = _body()
+        if err:
+            return err
+        if not isinstance(d.get("web"), bool):
+            return _result(False, "web must be true or false", 400)
+        return _result(*adapter.panel_source(d["web"]))
 
     @app.post("/api/stop")
     def api_stop():

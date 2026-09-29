@@ -64,6 +64,7 @@ def make_node(steps, passes=1):
     n._pose = lambda: (0.0, 0.0, 0.0)
     n.auto_resume_enabled, n.auto_clear_s, n.auto_resume_estop = True, 2.0, False
     n.safety_window, n.drives_age, n.field_index, n.abort_retries = 1.0, 0.5, 0, 3
+    n.software_field_stop, n.field_age = False, 0.5  # the safety-lite tests switch it on
     n._init_hold_state()
     n._reset_step_state()
     n.wheels(0.0, valid=True)

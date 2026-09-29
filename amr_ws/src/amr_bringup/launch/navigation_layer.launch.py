@@ -227,7 +227,16 @@ def _compose(context):
             executable="route_executor_node",
             name="route_executor",
             output="screen",
-            parameters=[{"maps_dir": maps_dir, "footprint_yaml": footprint_yaml, **active_map}],
+            parameters=[
+                {
+                    "maps_dir": maps_dir,
+                    "footprint_yaml": footprint_yaml,
+                    **active_map,
+                    # No safety PLC on this build: the executor stops for the protective
+                    # field itself. The sim has no scanner, so ONLY there it is off.
+                    "software_field_stop": cfg("real").perform(context).lower() == "true",
+                }
+            ],
         ),
         "route_executor",
     )
@@ -247,6 +256,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("footprint_yaml", default_value=""),
             DeclareLaunchArgument("generation", default_value="0"),
             DeclareLaunchArgument("autostart", default_value="true"),
+            DeclareLaunchArgument("real", default_value="true"),
             DeclareLaunchArgument(
                 "blank_dynamic", default_value=os.environ.get("AMR_LOC_BLANK_DYNAMIC", "false")
             ),

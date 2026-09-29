@@ -2,15 +2,28 @@
 {% block title %}AMR — manual{% endblock %}
 {% block body %}
 {# Built for the HMI's height: the pad is a square sized by the viewport on the left, and
-   everything else - vehicle state as one-line rows, speed, jog status, the arming note -
+   everything else - the button panel, vehicle state as one-line rows, speed, jog status -
    is a column on the right. Nothing sits below, so the page never scrolls. #}
 <section class="manual grow">
   <div id="jog"></div>
   <div class="side" id="manual-side">
+    <h2>Buttons <small id="pb-source-note">–</small></h2>
+    <div class="pb-source" role="group" aria-label="Button source">
+      <button class="tool" id="pb-phys" data-web="false">Physical panel</button>
+      <button class="tool" id="pb-web" data-web="true">Web buttons</button>
+    </div>
+    <div class="pb-grid">
+      <button class="big" id="pb-start" data-b="start">Start</button>
+      <button class="big" id="pb-reset" data-b="reset">Reset</button>
+      <button class="tool" id="pb-manual" data-b="manual">Manual</button>
+      <button class="tool" id="pb-auto" data-b="auto">Auto</button>
+    </div>
+    <button class="estop" id="pb-estop">E-STOP</button>
+    <p id="pb-note" class="note"></p>
     <h2>Vehicle <small>supervisor · mux</small></h2>
     <div id="manual-state" class="tel-grid rows"></div>
     <p id="manual-reason" class="note"></p>
-    <p class="note"><b>Arming is the physical panel's job</b>: the selector resting in MANUAL energises the drives at zero. This page cannot arm, clear a drive alarm or change the mode.</p>
+    <p class="note">The drives energise at zero by themselves. An E-stop disarms them until it is released and <b>Reset</b>. This page cannot clear a drive alarm or change the mode.</p>
   </div>
 </section>
 {% endblock %}
@@ -19,7 +32,43 @@
 jogpad(document.getElementById('jog'));
 // Speed + jog status go under the vehicle rows on the right; the pad keeps the whole left column.
 document.getElementById('manual-side').insertBefore(document.querySelector('#jog .jog-foot'), document.getElementById('manual-reason'));
+
+const $ = id => document.getElementById(id);
+let vEstop = false;  // the web E-stop as the server holds it
+async function pbSource(web) {
+  const r = await api('/api/panel/source', { web });
+  log(r.data.message || (r.data.ok ? 'ok' : 'refused'), r.data.ok ? '' : 'bad');
+}
+async function pbButton(button) {
+  const r = await api('/api/panel/button', { button });
+  if (r.data.ok) log(r.data.message);
+}
+$('pb-phys').onclick = () => pbSource(false);
+$('pb-web').onclick = () => pbSource(true);
+document.querySelectorAll('.pb-grid button').forEach(b => { b.onclick = () => pbButton(b.dataset.b); });
+// Pressing is one click; releasing is a deliberate second one, like twisting the mushroom out.
+$('pb-estop').onclick = () => pbButton(vEstop ? 'release' : 'estop');
+
 onState(st => {
+  const p = st.panel, fresh = p && p.age_s <= FRESH_S;
+  const web = !!(fresh && p.web_buttons);
+  const v = st.vpanel || {};
+  vEstop = !!v.estop;
+  $('pb-phys').classList.toggle('on', fresh && !web);
+  $('pb-web').classList.toggle('on', web);
+  $('pb-source-note').textContent = !fresh ? 'no panel state' : (web ? 'web buttons' : 'physical panel');
+  ['pb-start', 'pb-reset', 'pb-manual', 'pb-auto'].forEach(id => { $(id).disabled = !web; });
+  $('pb-manual').classList.toggle('on', web && !v.auto);
+  $('pb-auto').classList.toggle('on', web && !!v.auto);
+  const latched = !!(fresh && p.estop);
+  $('pb-estop').textContent = vEstop ? 'Release E-stop' : 'E-STOP';
+  $('pb-estop').classList.toggle('pressed', vEstop);
+  $('pb-note').textContent = vEstop ? 'E-stop pressed: the drives are disarmed.'
+    : latched ? 'E-stop released: press Reset to clear it.'
+    : web ? 'Start, Reset and the selector act exactly like the panel.'
+    : 'Start, Reset and the selector are read from the panel.';
+  $('pb-note').className = 'note' + (vEstop || latched ? ' bad' : '');
+
   const m = st.mode, mx = st.mux, l = st.lease;
   tiles('manual-state', [
     ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
@@ -27,6 +76,6 @@ onState(st => {
     ['Command', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
     ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
-  document.getElementById('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
+  $('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
 });
 </script>{% endblock %}

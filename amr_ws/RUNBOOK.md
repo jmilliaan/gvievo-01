@@ -5,11 +5,19 @@ operator web app and optional Foxglove bridge, then stays in **IDLE**. It does
 not load a map, start a survey, resume a commissioning job or run a route after
 boot. The operator selects mapping or navigation from the web app.
 
-The physical controls remain authoritative:
+The panel controls remain authoritative:
 
 - **MANUAL** permits bounded browser jog or a held commissioning plan.
-- **AUTO** permits a loaded route only after a fresh physical **Start** edge.
-- E-stop and the FX3/STO chain remain the immediate physical stop path.
+- **AUTO** permits a loaded route only after a fresh **Start** edge.
+- Start, Reset and the selector are read from the physical panel (boot default)
+  or, after **Buttons → Web buttons** on the Manual page, from that page. The
+  switch is refused while the wheels are commanded and never produces an edge.
+- The physical E-stop cuts drive power directly. The Manual page's **E-STOP**
+  (either button mode) zeroes the mux at once and disarms the drives on their
+  decel ramp; it stays latched until released on the page and **Reset** pressed.
+- In AUTO the executor stops for the scanner's protective field itself
+  (`/output_paths`); manual jog has no scanner stop. A run needs fresh
+  `/output_paths` to start.
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
 The web app is `http://192.168.2.20:5001/`. Its tabs are **Status**, **Manual**,
@@ -409,12 +417,12 @@ The route editor moves nothing. The mode can stay `IDLE`.
    - `BLOCKED` is a hold with a cause, shown on the State tile (2026-09-19,
      auto-resume). It keeps its progress and continues from where it stopped:
      - **lidar stop**: a person or object entered the nanoScan3 protective
-       field and the safety chain took the drives' torque. Once the field is
+       field and the executor held the run. Once the field is
        clear and the drives are back, the run **continues by itself** after
        2 s of all-clear. No button.
-     - **E-stop**: the drives lost torque with the field clear (the E-stop
-       button). Release it; the run waits for a physical **Start** (no
-       Prepare resume needed).
+     - **E-stop**: the drives lost torque with the field clear (the E-stop,
+       web or physical). Release it and press **Reset**; the run waits for a
+       **Start** (no Prepare resume needed).
      - **controller stop**: Nav2 gave up on the move (usually "collision
        ahead"). Continues by itself when clear, at most 3 times per step,
        then FAULT.
@@ -475,7 +483,7 @@ It is an exclusive IDLE substate:
    - **Straight**: forward/reverse and distance (m).
    - **Rotate**: CCW/CW and angle (°).
    - **Arc**: left/right, angle (°) and radius (m). An arc always goes forwards, and its radius must be at least half the track (0.244 m); tighter, use Rotate.
-   - **Speed**: 0.05–0.80 m/s. Above 0.40 m/s the page warns and shows the ramped stopping distance. Confirm the nanoScan3/FX3 protective field is sized for the speed before going above 0.40.
+   - **Speed**: 0.05–0.80 m/s. Above 0.40 m/s the page warns and shows the ramped stopping distance. The scanner does not stop blind moves: keep the whole path clear above 0.40.
    - **Backend**: **PV** (profile velocity, the default) or **PP** (profile position, executed inside the drives). PP is greyed out with the reason while it is locked (see below).
 3. Tick the checklist (area clear, E-stop in reach, speed within the field
    sizing), then **Hold move**. This validates the move and moves nothing.
@@ -571,13 +579,13 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
-| `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
+| `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | AUTO only: the executor/line layer reads the protective field from /output_paths (Ethernet) and holds with cause 'field'; auto-resume after the hold window. Manual jog has no scanner stop. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, line...). |
 | `NO_PERMIT` | info | Waiting for a mission step | Nothing to do; the executor drives this. | AUTO with no MotionPermit, or a permit whose source has no fresh /cmd_vel. |
 | `NO_SOURCE` | info | Nothing is asking the vehicle to move | Nothing to do. Press Start, or jog from the Manual page. | Selector position is fine but no fresh command stream is selected. |
-| `PANEL` | info | The control panel changed | Nothing to do. | Selector, Start/Reset edge or pendant change from panel_node. |
+| `PANEL` | info | The control panel changed | Nothing to do. | Selector, Start/Reset edge, pendant, button source or E-stop change from panel_node. |
 | `PP_START` | info | A blind move started | Nothing to do. | Profile-position (blind-run) move accepted by the drive owner. |
 | `RUN_SUMMARY` | info | A mission finished | Nothing to do. | One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause. |
 | `WAITING_FOR_PREREQ` | info | Waiting: a sensor or the panel is not ready yet | Wait a moment. If it stays, look at the Alarms page. | Hold cause 'pending': a prerequisite went stale inside the grace window. |
@@ -587,9 +595,9 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `AUTHORITY_LOST` | warn | Stopped: the vehicle lost permission to drive | Put the selector back to AUTO and press Start. | Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO. |
-| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Press the safety reset on the cabinet, then Start. | Hold cause 'drives': DriveStatus not operational while the follower wanted to move. |
-| `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
-| `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
+| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Release the E-stop if pressed, press Reset, then Start. | Hold cause 'drives': DriveStatus not operational while the follower wanted to move. |
+| `ESTOP` | warn | Stopped: emergency stop | Release the E-stop, then press Reset (and Start to continue a mission). | Web E-stop latched in panel_node (PanelState.estop): mux zero, drives disarmed until released + Reset. The physical mushroom cuts power instead. Hold cause 'estop'. |
+| `SAFETY_RESET_NEEDED` | warn | Motors are off: they did not switch on | Check the E-stop is released and the drives have power. The vehicle retries by itself. | Both drives in 'Switch on disabled' (statusword 0x1270) at arm. The drives' STO inputs are jumpered in this build, so look at drive power and the HWTO jumpers. Arming retries every 2 s. |
 | `TRACK_LOST` | warn | Stopped: the tape is not under the sensor | Push the vehicle back onto the tape, then press Start. | Line layer hold cause 'track': MLS reports no track for longer than the loss grace. |
 
 ### Cleared by: ack
@@ -633,7 +641,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOOP_ERROR` | error | Internal error in the vehicle software | Press Recover on the Status page. If it repeats, save a report and call the engineer. | The supervisor caught an exception in its loop and failed the running operation. |
 | `MUX_ACK_TIMEOUT` | error | The mode change did not finish | Press Recover on the Status page. | The mux never acknowledged the new generation inside the barrier budget. |
 | `SURVEY_RPC_TIMEOUT` | error | The survey command got no answer | Check the Maps page for a new revision, then press Recover. | returned/abort/save RPC passed its deadline; a late answer is ignored. |
-| `BASE_NOT_READY` | warn | Not ready: the vehicle's basics did not come up | Press the safety reset on the cabinet. The vehicle becomes ready by itself. | Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the supervisor leaves FAULT on its own once the base reports ready. |
+| `BASE_NOT_READY` | warn | Not ready: the vehicle's basics did not come up | Release the E-stop if pressed and press Reset. The vehicle becomes ready by itself. | Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the supervisor leaves FAULT on its own once the base reports ready. |
 
 ### Cleared by: power cycle
 
@@ -643,7 +651,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `DRIVE_FAULT` | error | A drive is in fault | Switch the drives off and on, then press Recover. | CiA-402 Fault state on a node while armed. |
 | `DRIVE_SILENT` | error | A drive stopped answering | Switch the drives off and on, then press Recover. | No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive logic power before blaming the PC. |
 | `DRIVE_STOP_UNCONFIRMED` | error | The vehicle cannot confirm it stopped | Stay clear. Switch the drives off and on, then press Recover. | Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so each drive's own 1016h trips. |
-| `UNCLEAN_SHUTDOWN` | warn | The vehicle lost power last time | Switch the drives off and on, then press the safety reset on the cabinet. | A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from the SAME boot is a service crash instead and needs no drive action. |
+| `UNCLEAN_SHUTDOWN` | warn | The vehicle lost power last time | Switch the drives off and on, then press Reset. | A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from the SAME boot is a service crash instead and needs no drive action. |
 
 ### Cleared by: restart service
 
@@ -667,7 +675,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOC_STREAM_STALE` | error | A sensor the vehicle navigates by went quiet | Call the engineer: a sensor stopped (see the detail for which). | scan/wheels/imu/tf/amcl age over the spec 2.4 limits. |
 | `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion authority at all without it. |
 | `DISK_LOW` | warn | The vehicle is running out of storage | Call the engineer: old maps and reports need deleting. | Under 1 GB free on the state or maps filesystem. Surveys and saves still run; at 200 MB they are refused (DISK_FULL). |
-| `SCANNER_SILENT` | warn | The safety scanner is not sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults and nothing else reports it - this row is the only place it shows. The vehicle's STOP is the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, navigation and localisation are dead without it. |
+| `SCANNER_SILENT` | warn | The safety scanner is not sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults and nothing else reports it - this row is the only place it shows. AUTO runs need the scanner's /output_paths (the executor's field stop), so no mission starts without it; mapping, navigation and localisation are dead without it too. |
 | `SCANNER_STALE` | warn | The safety scanner stopped sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | /scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. Expected rate is 34 Hz. |
 | `TRACK_RATE_LOW` | warn | Stopped: the tape sensor is too slow | Call the engineer: the tape sensor is not keeping up. | Line hold cause 'rate': track_hz below the PID's rate gate (SDO fallback reads ~10 Hz). |
 

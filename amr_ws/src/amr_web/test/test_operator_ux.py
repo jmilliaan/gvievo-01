@@ -91,8 +91,8 @@ def test_no_supervisor_is_the_only_thing_reported():
     assert view.headline({"mode": None}, rows)["button"] == "Restart"
 
 
-def test_switch_on_disabled_reads_as_the_cabinet_reset_not_a_broken_drive():
-    """The 2026-09-22 case: the safety chain holds STO, the drives are fine."""
+def test_switch_on_disabled_reads_as_not_switched_on_not_a_broken_drive():
+    """Both drives refusing to switch on is a named condition, not a drive fault."""
     st = merged(
         drives={
             "operational": False,
@@ -103,7 +103,7 @@ def test_switch_on_disabled_reads_as_the_cabinet_reset_not_a_broken_drive():
     )
     rows = view.standing(st)
     assert rows[0]["code"] == "SAFETY_RESET_NEEDED"
-    assert "reset" in rows[0]["action"].lower()
+    assert "e-stop" in rows[0]["action"].lower()
 
 
 def test_a_disarmed_drive_at_idle_is_not_an_alarm():

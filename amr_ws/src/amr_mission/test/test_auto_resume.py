@@ -312,3 +312,28 @@ def test_the_grace_timer_does_not_survive_into_the_next_mission():
     assert n.fsm.ack() and n.fsm.load("m2", len(n.compiled.steps))
     run_for(n, 0.3, torque=True, field=True)  # still not READY, but inside a fresh grace period
     assert n.fsm.state == fsm.READY
+
+
+# ---- safety-lite: no FX3/STO, the executor holds on the field itself (AUTO only) ----
+
+
+def test_software_field_stop_holds_with_torque_still_on_then_resumes():
+    n = node()
+    n.software_field_stop = True
+    tick(n, torque=True, field=True)
+    assert n.fsm.state == fsm.EXECUTING
+    tick(n, torque=True, field=False)  # nothing drops the torque: the executor must stop
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "field"
+    run_for(n, 3.0, torque=True, field=False)
+    assert n.fsm.state == fsm.BLOCKED and "protective field not clear" in n.fsm.reason
+    run_for(n, 2.3, torque=True, field=True)
+    assert n.fsm.state == fsm.EXECUTING
+
+
+def test_software_field_stop_needs_fresh_field_status():
+    n = node()
+    n.software_field_stop = True
+    tick(n, torque=True, field=True)
+    assert n._prereqs() is None
+    n.clock[0] += 1.0  # /output_paths silent past field_age_limit_s
+    assert "protective field status" in (n._prereqs() or "")
