@@ -1,128 +1,122 @@
-"""The DEMO page's live panel: a vehicle on display, explained to visitors.
+"""The DEMO page's live panel: a STATIONARY vehicle on display, explained to visitors.
+
+The display unit never moves, so nothing about driving is shown. What a visitor can
+see live is the safety laser scanner: the page draws what it sees around the
+vehicle's outline, and says so when someone walks up.
 
 The audience is purchasing, plant management and people shopping for material
-handling - not engineers. So the whole vocabulary is the five sentences below,
+handling - not engineers. So the whole vocabulary is the three sentences below,
 decided HERE, on the server. The browser never receives a fault code, a reason
 string, a hold cause or a hex number, and a test scans the output for them.
 
-*** A fault reads as "standing by", on purpose. *** This page diagnoses nothing.
-The operator's Home page still tells the truth; this one only has to avoid a red
-screen in front of a customer.
+*** Anything missing reads as "standing by", on purpose. *** This page diagnoses
+nothing. The operator's Home page still tells the truth.
 
-Pure: no Flask, no rclpy. `view()` takes the dict `adapter.state()` returns.
+Pure: no Flask, no rclpy. `view()` takes `adapter.live.pose_scan()` and the
+footprint polygon.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
 
-DRIVING, WAITING, READY, PAUSED, STANDBY = "driving", "waiting", "ready", "paused", "standby"
+WATCHING, NEAR, STANDBY = "watching", "near", "standby"
 
 SENTENCES = {
-    DRIVING: "Driving the route",
-    WAITING: "Someone is in the way. It waits, then continues by itself.",
-    READY: "Ready. Press Start on the vehicle to begin.",
-    PAUSED: "Paused between runs",
+    WATCHING: "Watching all around. Walk closer and see yourself appear.",
+    NEAR: "It sees you. On the move, it would stop and wait for you.",
     STANDBY: "Standing by for the next demonstration",
 }
 
-MODE_TEXT = {"LINE": "Tape guided", "NAVIGATION": "Tape-free"}
-
-# Older than this, a layer's state is not evidence of anything.
+# Older than this, a scan or pose is not evidence of anything.
 FRESH_S = 2.0
-# A gap between polls longer than this adds no distance: nobody saw the speed then.
-MAX_STEP_S = 2.0
+# The radar shows this far from the vehicle centre; farther points are not sent.
+VIEW_M = 4.0
+# Default "someone is close" distance from the vehicle outline; content.json near_m overrides.
+NEAR_M = 1.0
 
 
-@dataclass
-class Counters:
-    """What the demo has shown since it started. Lives as long as the web process
-    (or until /demo?reset=1)."""
-
-    distance_m: float = 0.0
-    safety_stops: int = 0
-    last_t: float | None = None
-    in_field_hold: bool = False
-
-    def reset(self) -> None:
-        self.distance_m, self.safety_stops = 0.0, 0
-        self.last_t, self.in_field_hold = None, False
-
-
-def _fresh(d: dict | None, stale: bool = False) -> dict | None:
-    if not d or stale:
+def _fresh(d: dict | None) -> dict | None:
+    if not d:
         return None
     age = d.get("age_s")
-    if age is not None and age > FRESH_S:
+    if age is None or age > FRESH_S:
         return None
     return d
 
 
-def speed_mps(state: dict, wheel_radius_m: float) -> float:
-    """Body speed from the mux's commanded wheel rates. A pivot reads 0, which is
-    what a visitor sees too. Stale or missing = 0."""
-    mux = _fresh(state.get("mux"))
-    if not mux:
+def _seg_dist(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _inside(px: float, py: float, poly) -> bool:
+    n, hit = len(poly), False
+    for i in range(n):
+        (ax, ay), (bx, by) = poly[i], poly[(i + 1) % n]
+        if (ay > py) != (by > py) and px < ax + (py - ay) * (bx - ax) / (by - ay):
+            hit = not hit
+    return hit
+
+
+def outline_distance(px: float, py: float, poly) -> float:
+    """Distance from a body-frame point to the vehicle outline; 0 inside it."""
+    if _inside(px, py, poly):
         return 0.0
+    n = len(poly)
+    return min(_seg_dist(px, py, *poly[i], *poly[(i + 1) % n]) for i in range(n))
+
+
+def body_points(pose_scan: dict | None) -> list[tuple[float, float]] | None:
+    """Scan points in the vehicle's own frame (x forward, y left), or None when the
+    scan or the pose is missing, stale, or in a different frame."""
+    if not pose_scan:
+        return None
+    pose, scan = _fresh(pose_scan.get("pose")), _fresh(pose_scan.get("scan"))
+    if not pose or not scan or pose.get("frame") != scan.get("frame"):
+        return None
     try:
-        wl, wr = float(mux.get("left_rad_s") or 0.0), float(mux.get("right_rad_s") or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-    v = abs((wl + wr) / 2.0) * wheel_radius_m
-    return v if v < 10.0 else 0.0  # nonsense is not shown
+        x0, y0, yaw = float(pose["x"]), float(pose["y"]), float(pose["yaw"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    c, s = math.cos(yaw), math.sin(yaw)
+    out = []
+    for p in scan.get("points") or []:
+        try:
+            dx, dy = float(p[0]) - x0, float(p[1]) - y0
+        except (IndexError, TypeError, ValueError):
+            continue
+        bx, by = c * dx + s * dy, -s * dx + c * dy
+        if math.hypot(bx, by) <= VIEW_M:
+            out.append((round(bx, 2), round(by, 2)))
+    return out
 
 
-def status(state: dict) -> str:
-    """One of the five. Order matters: a person in the field explains a stop better
-    than anything else, so it is checked before faults and drive state."""
-    mode = state.get("mode")
-    if not mode:
-        return STANDBY
-    run = _fresh(state.get("run"), bool(state.get("run_stale")))
-    line = _fresh(state.get("line"))
-    rs = (run or {}).get("state_name", "")
-    ls = (line or {}).get("state_name", "")
-
-    if (rs == "BLOCKED" and (run or {}).get("hold_cause") == "field") or (
-        ls == "HOLD" and (line or {}).get("hold_cause") == "field"
-    ):
-        return WAITING
-    if "FAULT" in (rs, ls) or mode.get("mode_name") == "FAULT":
-        return STANDBY
-    drives = _fresh(state.get("drives"))
-    if not drives or not drives.get("operational"):
-        return STANDBY
-    if rs == "EXECUTING" or ls == "RUNNING":
-        return DRIVING
-    if rs == "READY" or ls == "ARMED":
-        return READY
-    if rs in ("PAUSED", "BLOCKED", "DONE") or ls in ("HOLD", "DONE"):
-        return PAUSED
-    return STANDBY
-
-
-def view(state: dict, wheel_radius_m: float, counters: Counters, now: float) -> dict:
-    """The /api/demo body. Advances the counters by one poll."""
-    st = status(state)
-    v = speed_mps(state, wheel_radius_m) if st == DRIVING else 0.0
-
-    if counters.last_t is not None:
-        dt = now - counters.last_t
-        if 0.0 < dt <= MAX_STEP_S:
-            counters.distance_m += v * dt
-    counters.last_t = now
-
-    held = st == WAITING
-    if held and not counters.in_field_hold:
-        counters.safety_stops += 1
-    counters.in_field_hold = held
-
-    mode = (state.get("mode") or {}).get("mode_name", "")
+def view(pose_scan: dict | None, outline, near_m: float = NEAR_M) -> dict:
+    """The /api/demo body."""
+    pts = body_points(pose_scan)
+    if pts is None:
+        return {
+            "status": STANDBY,
+            "sentence": SENTENCES[STANDBY],
+            "points": [],
+            "near_points": [],
+            "nearest_m": None,
+        }
+    # a return from inside the outline is the vehicle's own body: not shown, not counted
+    far, near, nearest = [], [], None
+    for x, y in pts:
+        if _inside(x, y, outline):
+            continue
+        d = outline_distance(x, y, outline)
+        nearest = d if nearest is None else min(nearest, d)
+        (near if d <= near_m else far).append((x, y))
     return {
-        "status": st,
-        "sentence": SENTENCES[st],
-        "speed_mps": round(v, 2),
-        "distance_m": round(counters.distance_m, 1),
-        "safety_stops": counters.safety_stops,
-        "mode": MODE_TEXT.get(mode, "Standing by"),
+        "status": NEAR if near else WATCHING,
+        "sentence": SENTENCES[NEAR if near else WATCHING],
+        "points": far,
+        "near_points": near,
+        "nearest_m": None if nearest is None else round(nearest, 1),
     }

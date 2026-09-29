@@ -19,8 +19,9 @@ rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
 Generation, with the event log below. A tile with a yellow bar needs attention and
 a red bar means a fault or stale data. If the whole rail is greyed out and the
 header pill says `DISCONNECTED`, the values are last known, not live. After a
-software update, hard-refresh the browser (Ctrl+Shift+R) so it does not keep old
-styles or scripts.
+software update, hard-refresh the browser so it does not keep old styles or
+scripts: the **↻** button at the top right of every page (next to ✕ on Demo) does
+it from the touch panel; Ctrl+Shift+R with a keyboard.
 
 ## 1. Normal service operation
 
@@ -78,11 +79,13 @@ child process groups and performs bounded SIGINT → SIGTERM → SIGKILL cleanup
 ### Demo page (visitors)
 
 `Demo` (last tab, both views, no PIN) is a full-screen page for when the vehicle is
-on display: product story plus four live numbers (speed, distance, stops for people,
-navigation mode). It is read-only and says nothing technical: any fault reads as
-"Standing by". It has no tabs; **hold the ✕ in the corner for 2 s** to return to
-Home. `/demo?reset=1` zeroes its distance and stop count. Wording and specs:
-`amr_web/static/demo/content.json` (restart the service after editing).
+on display, **stationary**: product story, fixed spec strip, and a live top-down view
+of what the safety laser scanner sees around the vehicle outline. When someone comes
+within `near_m` (default 1.0 m from the outline) it says "It sees you". It is
+read-only and says nothing technical: no scan, no pose or any fault reads as
+"Standing by". It has no tabs; **tap the ✕ in the corner** to return to Home.
+Wording, specs and `near_m`: `amr_web/static/demo/content.json` (restart the
+service after editing). The view needs `/scan` and the odom TF (EKF) running.
 
 ### Tape or trackless: the profile's `tracked` key
 

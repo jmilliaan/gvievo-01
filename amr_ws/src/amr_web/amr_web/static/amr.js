@@ -240,6 +240,19 @@ async function followOperation(id, onDone) {
   show();
 })();
 
+// Reload (↻): the touch panel has no keyboard and no browser toolbar. Like Ctrl+Shift+R:
+// re-download this page's CSS and JS into the cache first, so a software update shows.
+(function () {
+  const btn = document.getElementById('reload-btn');
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    const urls = [...document.querySelectorAll('link[rel="stylesheet"][href], script[src]')].map(e => e.href || e.src);
+    await Promise.allSettled(urls.map(u => fetch(u, { cache: 'reload' })));
+    location.reload();
+  };
+})();
+
 // In-page tabs: <div class="tabs" id=X><button class="tab" data-tab="a">…</button></div>
 // followed by sibling <div class="tabpane" data-tab="a"> panes. Presentation only.
 function tabs(id) {

@@ -447,6 +447,8 @@ def test_pages_fonts_and_style_guards(env):
         text = f.read_text()
         assert not re.search(r"https?://", text), f"external URL in {f.name}"
         assert not re.search(r"@media[^{]*prefers-color-scheme", text), f"dark-mode query in {f.name}"
+        if f.stem == "demo":
+            continue  # the visitors' page has its own brochure look (plan 2026-09-23-demo-page §5)
         assert "box-shadow" not in text, f.name
         assert "gradient(" not in text, f.name
         for radius in re.findall(r"border-radius\s*:\s*([^;}]+)", text):

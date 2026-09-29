@@ -1,11 +1,13 @@
 """The DEMO page (manuals/plans/2026-09-23-demo-page.md).
 
-The contract is about what a visitor can and cannot see or do: five sentences and
-four numbers, no fault vocabulary, no way to command the vehicle, and open to both
+The display unit is stationary. The contract is about what a visitor can and cannot
+see or do: the safety scanner's view around the vehicle outline, three sentences and
+one number, no fault vocabulary, no way to command the vehicle, and open to both
 roles without a PIN.
 """
 
 import json
+import math
 import os
 import re
 
@@ -56,9 +58,18 @@ def line(name, cause="", **kw):
     return d
 
 
+class Live:
+    def __init__(self, ps):
+        self.ps = ps
+
+    def pose_scan(self):
+        return self.ps
+
+
 class Stub:
-    def __init__(self, state):
+    def __init__(self, state, ps=None):
         self.state_ = state
+        self.live = Live(ps)
 
     def state(self):
         return self.state_
@@ -82,49 +93,85 @@ class Stub:
         return fn
 
 
-def client_for(state, tmp_path):
+def client_for(state, tmp_path, ps=None):
     maps = tmp_path / "maps"
     maps.mkdir(exist_ok=True)
-    app = create_app(Stub(state), str(maps), state_dir=str(tmp_path / "state"), wheel_radius_m=0.09)
+    app = create_app(Stub(state, ps), str(maps), state_dir=str(tmp_path / "state"))
     app.config["TESTING"] = True
     return app.test_client()
 
 
-# ---- the vocabulary -------------------------------------------------------------
+# ---- the scanner view -----------------------------------------------------------
+
+# a 1.0 x 0.6 m box around the pivot
+BOX = ((0.5, 0.3), (0.5, -0.3), (-0.5, -0.3), (-0.5, 0.3))
 
 
-def test_every_row_of_the_status_table():
+def ps(points, x=0.0, y=0.0, yaw=0.0, pose_age=0.1, scan_age=0.1, pose_frame="odom", scan_frame="odom"):
+    return {
+        "generation": 1,
+        "pose": {"x": x, "y": y, "yaw": yaw, "frame": pose_frame, "age_s": pose_age},
+        "scan": {"points": points, "frame": scan_frame, "age_s": scan_age},
+    }
+
+
+def test_points_come_back_in_the_vehicle_frame():
+    # vehicle at (10, 5) facing +y (world); a point 2 m ahead of it in the world is at (10, 7)
+    d = demo.view(ps([(10.0, 7.0)], x=10.0, y=5.0, yaw=math.pi / 2), BOX)
+    assert d["points"] == [(2.0, 0.0)]
+    assert d["nearest_m"] == 1.5  # from the front edge at x=0.5
+    assert d["status"] == demo.WATCHING
+
+
+def test_someone_close_reads_as_near():
+    d = demo.view(ps([(1.2, 0.0), (3.0, 0.0)]), BOX)
+    assert d["status"] == demo.NEAR and d["nearest_m"] == 0.7
+    assert d["near_points"] == [(1.2, 0.0)] and d["points"] == [(3.0, 0.0)]
+    assert demo.view(ps([(1.2, 0.0)]), BOX, near_m=0.5)["status"] == demo.WATCHING
+
+
+def test_the_vehicles_own_body_is_not_someone():
+    d = demo.view(ps([(0.1, 0.1), (3.0, 0.0)]), BOX)
+    assert d["status"] == demo.WATCHING and d["points"] == [(3.0, 0.0)]
+
+
+def test_far_points_are_not_sent():
+    d = demo.view(ps([(demo.VIEW_M + 1.0, 0.0), (2.0, 0.0)]), BOX)
+    assert d["points"] == [(2.0, 0.0)]
+
+
+def test_an_empty_scan_is_still_watching():
+    d = demo.view(ps([]), BOX)
+    assert d["status"] == demo.WATCHING and d["nearest_m"] is None
+
+
+def test_missing_stale_or_mismatched_data_is_standby():
     cases = [
-        (st(run=run("EXECUTING")), demo.DRIVING),
-        (st(line=line("RUNNING"), mode="LINE"), demo.DRIVING),
-        (st(run=run("BLOCKED", "field")), demo.WAITING),
-        (st(line=line("HOLD", "field"), mode="LINE"), demo.WAITING),
-        (st(run=run("READY")), demo.READY),
-        (st(line=line("ARMED"), mode="LINE"), demo.READY),
-        (st(run=run("PAUSED")), demo.PAUSED),
-        (st(run=run("DONE")), demo.PAUSED),
-        (st(run=run("BLOCKED", "controller")), demo.PAUSED),
-        (st(line=line("HOLD", "track"), mode="LINE"), demo.PAUSED),
-        (st(run=run("FAULT")), demo.STANDBY),
-        (st(line=line("FAULT"), mode="LINE"), demo.STANDBY),
-        (st(run=run("EXECUTING"), drives={"operational": False, "age_s": 0.1}), demo.STANDBY),
-        (st(run=run("EXECUTING"), drives=None), demo.STANDBY),
-        (st(mode=None), demo.STANDBY),
-        (st(mode="IDLE"), demo.STANDBY),
-        (st(run=run("EXECUTING"), run_stale=True), demo.STANDBY),
-        (st(line=line("RUNNING", age_s=9.0), mode="LINE"), demo.STANDBY),
+        None,
+        {"generation": 1, "pose": None, "scan": None},
+        ps([(2.0, 0.0)], scan_age=5.0),
+        ps([(2.0, 0.0)], pose_age=5.0),
+        ps([(2.0, 0.0)], pose_frame="map", scan_frame="odom"),
+        {
+            "generation": 1,
+            "pose": {"x": "bad", "y": 0, "yaw": 0, "frame": "odom", "age_s": 0.1},
+            "scan": {"points": [(2.0, 0.0)], "frame": "odom", "age_s": 0.1},
+        },
     ]
-    for state, want in cases:
-        assert demo.status(state) == want, (state, want)
+    for c in cases:
+        d = demo.view(c, BOX)
+        assert d["status"] == demo.STANDBY and d["points"] == d["near_points"] == [], c
+        assert d["nearest_m"] is None, c
 
 
-def test_a_person_in_the_field_is_explained_even_with_torque_off():
-    """The field trips STO; the visitor should still hear why it stopped."""
-    s = st(run=run("BLOCKED", "field"), drives={"operational": False, "age_s": 0.1})
-    assert demo.status(s) == demo.WAITING
+def test_outline_distance():
+    assert demo.outline_distance(0.0, 0.0, BOX) == 0.0
+    assert abs(demo.outline_distance(1.5, 0.0, BOX) - 1.0) < 1e-9
+    assert abs(demo.outline_distance(0.0, -1.3, BOX) - 1.0) < 1e-9
 
 
-def test_no_fault_vocabulary_ever_reaches_the_page():
+def test_no_fault_vocabulary_ever_reaches_the_page(tmp_path):
+    """Whatever the vehicle state, /api/demo speaks only the three sentences."""
     codes = set(cat.CATALOGUE)
     faults = [
         st(run=run("FAULT")),
@@ -134,79 +181,23 @@ def test_no_fault_vocabulary_ever_reaches_the_page():
         st(drives={"operational": False, "left": "Fault", "right": "Fault", "age_s": 0.1}),
     ]
     for s in faults:
-        body = json.dumps(demo.view(s, 0.09, demo.Counters(), 1.0))
-        assert not re.search(r"0x[0-9A-Fa-f]+|\b[0-9A-F]{4}h\b", body), body
-        for word in ("PATH_BLOCKED", "DRIVE_ALARM", "cross-track", "heartbeat", "estop", "FAULT", *codes):
-            assert word not in body, (word, body)
-    assert set(demo.SENTENCES) == {demo.DRIVING, demo.WAITING, demo.READY, demo.PAUSED, demo.STANDBY}
-
-
-def test_the_mode_tile_names_the_product_in_plain_words():
-    assert demo.view(st(mode="LINE"), 0.09, demo.Counters(), 0)["mode"] == "Tape guided"
-    assert demo.view(st(mode="NAVIGATION"), 0.09, demo.Counters(), 0)["mode"] == "Tape-free"
-    assert demo.view(st(mode="MAPPING"), 0.09, demo.Counters(), 0)["mode"] == "Standing by"
-
-
-# ---- the numbers ----------------------------------------------------------------
-
-
-def moving(v_rad_s=10.0, state="EXECUTING", **kw):
-    return st(run=run(state), mux={"left_rad_s": v_rad_s, "right_rad_s": v_rad_s, "age_s": 0.05}, **kw)
-
-
-def test_speed_and_distance_from_the_commanded_wheels():
-    c = demo.Counters()
-    d = demo.view(moving(), 0.09, c, 0.0)
-    assert d["speed_mps"] == 0.9
-    for t in (1.0, 2.0, 3.0):
-        d = demo.view(moving(), 0.09, c, t)
-    assert abs(d["distance_m"] - 2.7) < 1e-6
-
-
-def test_a_pivot_reads_as_zero_speed():
-    s = st(run=run("EXECUTING"), mux={"left_rad_s": -5.0, "right_rad_s": 5.0, "age_s": 0.05})
-    assert demo.view(s, 0.09, demo.Counters(), 0)["speed_mps"] == 0.0
-
-
-def test_a_gap_between_polls_adds_no_distance():
-    c = demo.Counters()
-    demo.view(moving(), 0.09, c, 0.0)
-    demo.view(moving(), 0.09, c, 5.0)  # nobody polled for 5 s
-    assert c.distance_m == 0.0
-
-
-def test_speed_is_zero_unless_driving_and_when_the_mux_is_stale():
-    assert demo.view(moving(state="PAUSED"), 0.09, demo.Counters(), 0)["speed_mps"] == 0.0
-    stale = st(run=run("EXECUTING"), mux={"left_rad_s": 10.0, "right_rad_s": 10.0, "age_s": 5.0})
-    assert demo.view(stale, 0.09, demo.Counters(), 0)["speed_mps"] == 0.0
-
-
-def test_safety_stops_count_rising_edges_only():
-    c = demo.Counters()
-    hold = st(run=run("BLOCKED", "field"))
-    t = 0.0
-    for _ in range(30):  # one hold lasting 30 s is one stop
-        demo.view(hold, 0.09, c, t)
-        t += 1.0
-    demo.view(moving(), 0.09, c, t)
-    demo.view(hold, 0.09, c, t + 1)
-    assert c.safety_stops == 2
-
-
-def test_reset_clears_the_counters():
-    c = demo.Counters(distance_m=12.0, safety_stops=3, last_t=1.0, in_field_hold=True)
-    c.reset()
-    assert (c.distance_m, c.safety_stops, c.last_t, c.in_field_hold) == (0.0, 0, None, False)
+        for p in (None, ps([(1.0, 0.0)])):
+            body = client_for(s, tmp_path, p).get("/api/demo").get_data(as_text=True)
+            assert not re.search(r"0x[0-9A-Fa-f]+|\b[0-9A-F]{4}h\b", body), body
+            for word in ("PATH_BLOCKED", "DRIVE_ALARM", "cross-track", "heartbeat", "estop", "FAULT", *codes):
+                assert word not in body, (word, body)
+            assert json.loads(body)["sentence"] in demo.SENTENCES.values()
+    assert set(demo.SENTENCES) == {demo.WATCHING, demo.NEAR, demo.STANDBY}
 
 
 # ---- the page -------------------------------------------------------------------
 
 
 def test_both_roles_reach_the_page_and_see_the_link(tmp_path):
-    cl = client_for(moving(), tmp_path)
+    cl = client_for(st(), tmp_path, ps([(3.0, 0.0)]))
     assert 'href="/demo"' in cl.get("/home").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
-    assert cl.get("/api/demo").get_json()["status"] == demo.DRIVING
+    assert cl.get("/api/demo").get_json()["status"] == demo.WATCHING
     assert cl.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
     assert 'href="/demo"' in cl.get("/status").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
@@ -214,21 +205,17 @@ def test_both_roles_reach_the_page_and_see_the_link(tmp_path):
 
 def test_the_page_says_what_the_product_is(tmp_path):
     body = client_for(st(), tmp_path).get("/demo").get_data(as_text=True)
-    want = ("AGV I-PRIME", "Autonomous Guided Vehicle", "Smart material handling solution system")
-    want += ("2 T", "1 m/s")
+    want = ("AGV I-PRIME", "Automated Guided Vehicle", "Smart material handling solution system")
+    want += ("2 T", "1 m/s", "data-outline=")
     for s in want:
         assert s in body, s
+    assert "stands for" not in body
+    # a stationary unit: nothing about driving
+    for s in ("m/s right now", "driven in this demo", "Driving the route"):
+        assert s not in body, s
     # a visitor cannot navigate into the operator pages from here
     for href in ('href="/manual"', 'href="/run"', 'href="/params"', 'href="/home"'):
         assert href not in body, href
-
-
-def test_reset_query_zeroes_the_counters(tmp_path):
-    cl = client_for(moving(), tmp_path)
-    cl.get("/api/demo")
-    cl.get("/api/demo")
-    cl.get("/demo?reset=1")
-    assert cl.get("/api/demo").get_json()["distance_m"] == 0.0
 
 
 def test_the_page_can_only_read():
@@ -245,6 +232,9 @@ def test_content_file_is_complete():
     with open(os.path.join(WEB, "static", "demo", "content.json"), encoding="utf-8") as fh:
         c = json.load(fh)
     assert c["product"] and c["expansion"] and c["tagline"]
-    assert c["cards"]
+    assert c["cards"] and c["specs"]
     for card in c["cards"]:
-        assert card["kicker"] and card["title"] and (card.get("body") or card.get("specs"))
+        assert card["kicker"] and card["title"] and card["body"]
+    for sp in c["specs"]:
+        assert sp["value"] and sp["label"]
+    assert float(c["near_m"]) > 0

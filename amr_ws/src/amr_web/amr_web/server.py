@@ -158,7 +158,6 @@ def create_app(
     wifi_iface: str = "wlp1s0",
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
-    wheel_radius_m: float = 0.09,
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -288,27 +287,26 @@ def create_app(
 
     # ---- DEMO page: visitors, not operators (manuals/plans/2026-09-23-demo-page.md) ----
     # Open to both roles, read-only. Everything it may say is decided in demo.py.
-    demo_counters = demomod.Counters()
-    demo_lock = threading.Lock()
     demo_path = os.path.join(app.static_folder or "", "demo", "content.json")
     try:
         with open(demo_path, encoding="utf-8") as fh:
             demo_content = json.load(fh)
     except (OSError, ValueError):
-        demo_content = {"product": "AGV", "cards": []}  # the page must still serve
+        demo_content = {"product": "AGV", "cards": [], "specs": []}  # the page must still serve
+    demo_outline = [list(p) for p in fp.polygon]
+    try:
+        demo_near_m = float(demo_content.get("near_m", demomod.NEAR_M))
+    except (TypeError, ValueError):
+        demo_near_m = demomod.NEAR_M
 
     @app.get("/demo")
     def page_demo():
-        if request.args.get("reset") == "1":
-            with demo_lock:
-                demo_counters.reset()
-        return render_template("demo.html", c=demo_content)
+        return render_template("demo.html", c=demo_content, outline=demo_outline, view_m=demomod.VIEW_M)
 
     @app.get("/api/demo")
     def api_demo():
-        with demo_lock:
-            body = demomod.view(adapter.state(), wheel_radius_m, demo_counters, time.monotonic())
-        return jsonify(body)
+        ps = adapter.live.pose_scan() if hasattr(adapter, "live") else None
+        return jsonify(demomod.view(ps, fp.polygon, demo_near_m))
 
     wifi_reader = wifi.WifiReader(wifi_iface)
 
