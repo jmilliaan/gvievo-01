@@ -89,6 +89,8 @@ def _fault_code(reason: str) -> str:
     return "DRIVE_FAULT"
 
 
+TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
+
 class DriveNode(Node):
     def __init__(self) -> None:
         super().__init__("drive_node")
@@ -183,6 +185,10 @@ class DriveNode(Node):
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
         self._pub_pp = self.create_publisher(PpStatus, "/drives/pp_status", RELIABLE_1)
         self._pub_track = self.create_publisher(LineTrack, "/amr/line_track", SENSOR_DATA)
+        # A 5 Hz copy for displays (CPU, 2026-10-02): the web shows it at 2 Hz and was
+        # deserialising all 100 samples a second in Python. Control stays on the full topic.
+        self._pub_track_ui = self.create_publisher(LineTrack, "/amr/line_track_ui", SENSOR_DATA)
+        self._track_ui_t = 0.0
         self.create_subscription(PpMove, "/amr/commissioning_pp", self._on_pp, RELIABLE_1)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
@@ -854,6 +860,10 @@ class DriveNode(Node):
         m.marker, m.marker_intro = int(r["marker"]["code"]), r["marker"]["intro"]
         m.source = s.source
         self._safe_publish(self._pub_track, m)
+        now = time.monotonic()
+        if now - self._track_ui_t >= TRACK_UI_PERIOD_S:
+            self._track_ui_t = now
+            self._safe_publish(self._pub_track_ui, m)
 
     def _publish_imu(self, s: ImuSample) -> None:
         m = Imu()

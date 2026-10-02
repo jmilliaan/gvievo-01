@@ -48,6 +48,10 @@ class PanelNode(Node):
         self.link = link or dio.DioLink()
         self.adapter = panel_io.PanelAdapter()
         self._pub = self.create_publisher(PanelState, "/amr/panel_state", 10)
+        # 10 Hz copy for displays (CPU, 2026-10-02): the web shows the selector at 2 Hz.
+        # Edges ride only the full topic - nothing that acts on Start/Reset reads this one.
+        self._pub_ui = self.create_publisher(PanelState, "/amr/panel_state_ui", 10)
+        self._ui_t = 0.0
         self._pub_io = self.create_publisher(IoImage, "/amr/io", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
@@ -115,6 +119,9 @@ class PanelNode(Node):
         m.seq = frame.seq
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
         self._pub.publish(m)
+        if time.monotonic() - self._ui_t >= 0.1:
+            self._ui_t = time.monotonic()
+            self._pub_ui.publish(m)
 
         if config.HORN_ENABLED:
             now = time.monotonic()

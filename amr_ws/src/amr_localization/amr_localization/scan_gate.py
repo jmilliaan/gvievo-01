@@ -62,6 +62,13 @@ class ScanGate:
             # the source clock went backwards (bag/sim restart): the old epoch's thinning
             # reference would silence every scan until the stamps caught up (review Q13)
             self._last_out = None
+        # Dropped at the door (CPU, 2026-10-02): a scan inside min_period_s of the last
+        # RELEASE can only ever be thinned - _last_out only moves forward (a rewind is
+        # handled above) - so queueing it buys TF queries for nothing.
+        if (self._last_out is not None and stamp >= self._last_out
+                and stamp - self._last_out < self.min_period_s - 1e-9):
+            self.stats.thinned += 1
+            return
         self._pending.append((stamp, msg, now))
         while len(self._pending) > self.max_pending:
             self._pending.popleft()

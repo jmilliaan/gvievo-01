@@ -222,14 +222,16 @@ class RosAdapter(Node):
         self.create_subscription(
             ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1, callback_group=g
         )
-        self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10, callback_group=g)
+        # The 10 Hz display copy, not the 50 Hz control stream (CPU, 2026-10-02).
+        self.create_subscription(PanelState, "/amr/panel_state_ui", self._on_panel, 10, callback_group=g)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1, callback_group=g)
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1, callback_group=g)
         # The tape product's layer: its holds and faults are standing alarms like any other.
         self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED, callback_group=g)
-        # The raw MLS reading, in every mode (drive_node publishes it from boot): display only.
+        # The raw MLS reading, in every mode (drive_node publishes it from boot): display only,
+        # so the 5 Hz display copy, not the 100 Hz control topic.
         self.create_subscription(
-            LineTrack, "/amr/line_track", self._on_track, qos_profile_sensor_data, callback_group=g
+            LineTrack, "/amr/line_track_ui", self._on_track, qos_profile_sensor_data, callback_group=g
         )
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
@@ -474,7 +476,7 @@ class RosAdapter(Node):
             self._line, self._line_t = d, self._now()
 
     def _on_track(self, m: LineTrack) -> None:
-        # 100 Hz: keep it to a small dict, the pages poll at 2 Hz.
+        # 5 Hz display copy; the pages poll at 2 Hz.
         d = {
             "lcp_mm": [int(v) for v in m.lcp_mm],
             "valid": [bool(v) for v in m.valid],
