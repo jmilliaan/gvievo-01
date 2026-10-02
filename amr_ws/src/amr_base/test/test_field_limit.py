@@ -4,6 +4,7 @@ warning 2 (inner) x0.1 with the lower winning, unknown zeroes, every change ramp
 import os
 
 import pytest
+
 from amr_base.gating import (
     FOLLOW,
     LINE,

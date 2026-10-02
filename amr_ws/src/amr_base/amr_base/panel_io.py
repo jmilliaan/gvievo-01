@@ -88,15 +88,44 @@ class PanelAdapter:
                 scans,
             )
         self.seq = 0
+        self._last_scans: int | None = None  # DIO acquisition count behind the last evaluated frame
+        self._last_frame: PanelFrame | None = None
         self._last_valid: bool | None = None
         self._last_mode: str | None = None
         self._last_comms: bool | None = None
         self._last_pendant: panel_core.PendantIntent | None = None
 
+    @staticmethod
+    def source_fresh(snapshot: dict) -> bool:
+        """Is the DIO image CURRENT physical input? Connected, and a successful scan within
+        PANEL_SOURCE_MAX_AGE_S - not the 2 s diagnostic silence age (audit R01)."""
+        age = snapshot.get("rx_age_s")
+        return (
+            bool(snapshot.get("comms_ok"))
+            and bool(snapshot.get("connected", True))
+            and age is not None
+            and age <= config.PANEL_SOURCE_MAX_AGE_S
+        )
+
     def tick(self, snapshot: dict) -> PanelFrame:
-        comms = bool(snapshot.get("comms_ok"))
-        intent = self.scan.scan(snapshot.get("di"), comms)
+        comms = self.source_fresh(snapshot)
+        scans = snapshot.get("scans")
         self.seq += 1
+        # The node ticks at 50 Hz, the DIO scans at 20 Hz. Debounce, edges and the
+        # coincidence hold count ACQUISITIONS: a tick on an image already evaluated
+        # republishes the last frame, edges spent.
+        if comms and self._last_frame is not None and scans is not None and scans == self._last_scans:
+            return PanelFrame(
+                valid=self._last_frame.valid,
+                mode_auto=self._last_frame.mode_auto,
+                start_edge=False,
+                reset_edge=False,
+                seq=self.seq,
+                comms_ok=True,
+                pendant=self._last_frame.pendant,
+            )
+        self._last_scans = scans
+        intent = self.scan.scan(snapshot.get("di"), comms)
         notes = []
         if comms != self._last_comms:
             notes.append("DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})"))
@@ -120,7 +149,7 @@ class PanelAdapter:
             held = [n for n in pend._fields if getattr(pend, n)]
             notes.append("pendant " + (" ".join(held).upper() if held else "released"))
             self._last_pendant = pend
-        return PanelFrame(
+        frame = PanelFrame(
             valid=bool(intent.valid),
             mode_auto=mode == panel_core.AUTO,
             start_edge=bool(intent.start),
@@ -130,6 +159,8 @@ class PanelAdapter:
             changed="; ".join(notes) or None,
             pendant=pend,
         )
+        self._last_frame = frame
+        return frame
 
     def _coincidence(self, intent, pend, notes) -> tuple[str, panel_core.PendantIntent]:
         """The (mode, pendant) to publish this scan, withholding a simultaneous change."""

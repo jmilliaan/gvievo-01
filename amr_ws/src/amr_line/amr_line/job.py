@@ -418,9 +418,10 @@ class FollowJob:
 
     def _uturn_tick(self, i: Inputs, tags):
         """Stop over the tag, pivot by encoder, centre on the tape, settle."""
+        from agv_core import config as vehicle  # noqa: PLC0415
+
         from amr_line import uturn  # noqa: PLC0415
         from amr_line.tape_run import u_turn_error  # noqa: PLC0415
-        from agv_core import config as vehicle  # noqa: PLC0415
 
         t = self.tape
         if i.sensor_age_s is None or i.sensor_age_s > vehicle.SENSOR_TIMEOUT_S:

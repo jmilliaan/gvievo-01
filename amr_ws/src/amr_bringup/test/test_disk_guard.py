@@ -47,7 +47,7 @@ def test_an_unreadable_path_never_blocks_the_vehicle(monkeypatch):
 
     monkeypatch.setattr(disk.shutil, "disk_usage", boom)
     st = disk.status(["/gone"])
-    assert st.level == disk.OK and not st.blocks_new_work  # silence, not a refusal
+    assert st.level == disk.UNKNOWN and not st.blocks_new_work  # reported, not a refusal (audit R19)
 
 
 def test_readiness_still_exposes_the_helper():

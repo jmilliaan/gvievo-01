@@ -33,6 +33,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
 from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
+
 try:
     # The scanner's field outputs come from the SICK driver. Optional at import so a
     # bench without the package still starts; field_source then decides (see below).

@@ -815,6 +815,12 @@ def _derive(ns):
     # jitter can expire a command that is still being renewed.
     ns["HORN_HOLD_S"] = max(5.0 * ns["LOOP_PERIOD_S"],
                             2.0 * ns["DIO_SCAN_PERIOD_S"])
+
+    # How old the last SUCCESSFUL DIO acquisition may be and still count as panel
+    # input (selector, Start/Reset, pendant). silent_warn_s (2 s) is the diagnostic
+    # "the module has gone quiet" age; a pendant FWD held in a 2 s old image is not a
+    # hand on the pendant now (audit R01, 2026-10-02). Four scans, at least 0.2 s.
+    ns["PANEL_SOURCE_MAX_AGE_S"] = max(4.0 * ns["DIO_SCAN_PERIOD_S"], 0.2)
     return ns
 
 

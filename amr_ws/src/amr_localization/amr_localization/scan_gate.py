@@ -18,6 +18,7 @@ This module is the pure decision logic; scan_gate_node wraps it with ROS I/O.
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -51,7 +52,7 @@ class ScanGate:
     def __post_init__(self) -> None:
         for name in ("min_period_s", "settle_s", "hold_max_s", "rewind_s"):
             v = getattr(self, name)
-            if not (isinstance(v, (int, float)) and v >= 0.0 and v == v):
+            if not (isinstance(v, (int, float)) and math.isfinite(v) and v >= 0.0):
                 raise ValueError(f"{name} must be a finite non-negative number, got {v!r}")
         if self.max_pending < 1:
             raise ValueError("max_pending must be >= 1")

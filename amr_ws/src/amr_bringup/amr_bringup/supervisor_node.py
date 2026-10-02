@@ -577,6 +577,8 @@ class Supervisor(Node):
             self._event(Event.ERROR, "DISK_FULL", f"{st.free_mb} MB free on {st.path}")
         elif st.level == rd.DISK_WARN:
             self._event(Event.WARN, "DISK_LOW", f"{st.free_mb} MB free on {st.path}")
+        elif st.level == rd.DISK_UNKNOWN:
+            self._event(Event.WARN, "DISK_LOW", "storage free space unknown: no watched filesystem could be read")
         elif was != rd.DISK_OK:
             self._event(Event.INFO, "DISK_LOW", f"storage is no longer low ({st.free_mb} MB free)")
 

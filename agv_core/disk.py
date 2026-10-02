@@ -20,12 +20,13 @@ from dataclasses import dataclass
 WARN_MB = 1000
 STOP_MB = 200
 OK, WARN, STOP = "ok", "warn", "stop"
+UNKNOWN = "unknown"  # no watched filesystem could be read (audit R19): not healthy, not a refusal
 
 
 @dataclass(frozen=True)
 class DiskStatus:
     free_mb: int
-    level: str  # ok | warn | stop
+    level: str  # ok | warn | stop | unknown
     path: str  # the fullest of the watched filesystems
 
     @property
@@ -35,8 +36,8 @@ class DiskStatus:
 
 def status(paths, warn_mb: int = WARN_MB, stop_mb: int = STOP_MB) -> DiskStatus:
     """The worst of the given filesystems. Unreadable paths are skipped; if none can be
-    read the answer is OK, because refusing to work over a failed statvfs would be a
-    worse failure than the one it guards against."""
+    read the answer is UNKNOWN - reported, never a refusal, because refusing to work over
+    a failed statvfs would be a worse failure than the one it guards against."""
     worst: DiskStatus | None = None
     for path in paths:
         if not path:
@@ -48,4 +49,4 @@ def status(paths, warn_mb: int = WARN_MB, stop_mb: int = STOP_MB) -> DiskStatus:
         level = STOP if free_mb <= stop_mb else WARN if free_mb <= warn_mb else OK
         if worst is None or free_mb < worst.free_mb:
             worst = DiskStatus(free_mb, level, path)
-    return worst or DiskStatus(-1, OK, "")
+    return worst or DiskStatus(-1, UNKNOWN, "")

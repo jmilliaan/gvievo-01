@@ -7,8 +7,8 @@ and distinct tag encounters supplied by the caller.
 Speed zones were removed 2026-10-02: tracked AUTO has one cruise speed (the
 profile's auto_rpm) plus the branch_latch slow zones, which branch.py owns.
 """
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 
 class RouteError(RuntimeError):

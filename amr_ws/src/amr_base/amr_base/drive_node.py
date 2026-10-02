@@ -593,6 +593,16 @@ class DriveNode(Node):
                 self.get_logger().warn(f"pp move {self._pp.run_id} refused: {why}")
                 self.event(1, "PP_REFUSED", why)
                 return False
+            # Audit R02: re-read authority NOW - setup blocked for several SDO transactions.
+            with self._lock:
+                latest = self._pp_req
+            t = time.monotonic()
+            veto = self._pp.veto_start(latest, self._pp_gate(link, t, self._pp.generation), t)
+            if veto is not None:
+                self.get_logger().warn(f"pp move {self._pp.run_id} not started: {veto.reason}")
+                self.event(1, "PP_VETOED", f"{self._pp.run_id}: {veto.reason}")
+                link.send_controlwords(*veto.controlwords)
+                return True
             self._log(f"pp move {self._pp.run_id} started: targets {targets}")
             self.event(0, "PP_START", f"{self._pp.run_id} targets {targets}")
             link.send_controlwords(pp.CW_START, pp.CW_START)

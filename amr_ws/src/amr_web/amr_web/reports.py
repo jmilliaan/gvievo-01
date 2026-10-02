@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 import time
 import zipfile
 
@@ -57,6 +58,10 @@ def _journal() -> str:
     return p.stdout
 
 
+_NAME_LOCK = threading.Lock()
+_CLAIMED: set[str] = set()  # names being written right now
+
+
 def build(
     state_dir: str,
     state: dict,
@@ -69,9 +74,19 @@ def build(
     directory itself cannot be written - a missing input is recorded, not fatal."""
     out_dir = _dir(state_dir)
     os.makedirs(out_dir, exist_ok=True)
-    name = f"report-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+    # Unique even for two requests in the same second, and written to a staging name that
+    # listing() ignores, then renamed: a listed report is always complete (audit R18).
+    with _NAME_LOCK:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        name = f"report-{stamp}.zip"
+        n = 1
+        while os.path.exists(os.path.join(out_dir, name)) or name in _CLAIMED:
+            n += 1
+            name = f"report-{stamp}-{n}.zip"
+        _CLAIMED.add(name)
     path = os.path.join(out_dir, name)
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+    staging = os.path.join(out_dir, f".{name}.{os.getpid()}.{threading.get_ident()}.part")
+    with zipfile.ZipFile(staging, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("note.txt", note or "(no note)")
         z.writestr("state.json", json.dumps(state, indent=2, default=str))
         z.writestr("events.json", json.dumps(events, indent=2, default=str))
@@ -91,6 +106,9 @@ def build(
                     z.write(src, os.path.basename(src))
                 except OSError:
                     pass
+    os.replace(staging, path)
+    with _NAME_LOCK:
+        _CLAIMED.discard(name)
     _prune(out_dir)
     return name
 

@@ -62,9 +62,9 @@ recording it as the device identity, removes the need for that magic entirely.
 unsolicited queries; it streams continuously once started. Do not add polling.
 """
 import socket
-from collections import deque
 import threading
 import time
+from collections import deque
 
 from agv_core import config, events
 

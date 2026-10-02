@@ -22,7 +22,7 @@ MAP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 # Disk thresholds live in agv_core.disk: the supervisor and the web both need the
 # same answer, and the web must not import the supervisor's internals to get it.
 DISK_WARN_MB, DISK_STOP_MB = disk.WARN_MB, disk.STOP_MB
-DISK_OK, DISK_WARN, DISK_STOP = disk.OK, disk.WARN, disk.STOP
+DISK_OK, DISK_WARN, DISK_STOP, DISK_UNKNOWN = disk.OK, disk.WARN, disk.STOP, disk.UNKNOWN
 DiskStatus = disk.DiskStatus
 disk_status = disk.status
 
