@@ -84,6 +84,24 @@ function rail(st) {
        r ? RUN_LEVEL[r.state_name] : '', st.run_stale);
   tile('tel-gen', m ? String(m.generation) : '–', st.lease ? 'lease' : 'no lease', st.lease ? '' : 'warn');
 }
+// Header chips beside NET: drive supply voltage and IPC CPU temperature (both <10 s old).
+function headerChips(st) {
+  const sv = document.getElementById('supply'), tc = document.getElementById('ipc-temp');
+  const s = st.drive_supply;
+  if (sv) {
+    const vals = s ? ['left', 'right'].map(k => s[k]).filter(v => typeof v === 'number') : [];
+    const stale = !s || s.age_s > 10;
+    sv.textContent = vals.length && !stale ? `${num(Math.min(...vals), 1)} V` : '– V';
+    sv.title = s ? `Drive main supply: left ${num(s.left, 1)} V · right ${num(s.right, 1)} V (${num(s.age_s, 0)} s ago)` : 'Drive main supply: no report';
+    sv.className = 'chip' + (stale ? ' stale' : '');
+  }
+  if (tc) {
+    const t = st.ipc_temp;
+    tc.textContent = t ? `${num(t.package_c, 0)} °C` : '– °C';
+    tc.title = t ? `IPC CPU: package ${num(t.package_c, 0)} °C, hottest core ${num(t.core_max_c, 0)} °C` : 'IPC CPU temperature unavailable';
+    tc.className = 'chip' + (t && t.package_c >= 85 ? ' bad' : t && t.package_c >= 75 ? ' warn' : '');
+  }
+}
 function railStale(on) { const e = document.getElementById('telemetry'); if (e) e.classList.toggle('stale', on); }
 
 // One alarms poll for every page (amr_web/alarms.py decides; nothing is re-derived
@@ -118,6 +136,7 @@ async function poll() {
       pill('pill-link', 'connected', 'ok');
       railStale(false);
       rail(data);
+      headerChips(data);
       stateListeners.forEach(fn => fn(data));
     } else { pill('pill-link', 'error ' + status, 'bad'); railStale(true); }
   } catch (e) { pill('pill-link', 'disconnected', 'bad'); railStale(true); }

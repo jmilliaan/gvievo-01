@@ -44,9 +44,11 @@ def test_held_job_unsaved_survey_and_stale_wheels_refuse_replacement():
     assert not fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond(wheels_t=99.8)).ok
     assert not fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond(wheels_still_since=99.8)).ok
     assert not fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond(wheels_still_since=None)).ok
-    # selector AUTO is not consent to discard anything
-    assert not fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond(panel_manual=False)).ok
-    assert not fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond(panel_t=99.5)).ok
+    # 2026-10-02: the selector does not gate a mode change; an emergency does
+    assert fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond(panel_manual=False)).ok
+    assert fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond(panel_t=99.5)).ok
+    estop = fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond(drives_ok=False))
+    assert not estop.ok and "emergency" in estop.reason
     # save needs stillness, returned does not
     assert not fsm.admit(fsm.MAPPING, fsm.REQ_SURVEY_SAVE, cond(survey_state=1, wheels_still_since=None)).ok
     assert fsm.admit(fsm.MAPPING, fsm.REQ_SURVEY_RETURNED, cond(survey_state=1, wheels_still_since=None)).ok
@@ -132,7 +134,9 @@ def test_line_mode_is_admitted_and_an_active_follower_blocks_leaving_it():
     busy = fsm.admit(fsm.LINE, fsm.REQ_IDLE, cond(line_active=True))
     assert not busy.ok and "disarm" in busy.reason
     assert fsm.admit(fsm.LINE, fsm.REQ_IDLE, cond(line_active=False)).ok
-    # the stillness and panel rules apply to a LINE request like any other
+    # the stillness and emergency rules apply to a LINE request like any other;
+    # the selector does not (AUTO or MANUAL alike)
     assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(wheels_still_since=None)).ok
-    assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(panel_manual=False)).ok
+    assert fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(panel_manual=False)).ok
+    assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(drives_ok=False)).ok
     assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(commissioning_active=True)).ok

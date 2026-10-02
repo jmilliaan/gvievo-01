@@ -397,6 +397,10 @@ class FieldParams:
     warning_indices: tuple[int, ...] = (1, 2)
     warning_active_level: bool = False  # status[i] while that warning field is occupied
     warning_scale: float = 0.5
+    # Clear <-> warning is a RAMP in time, not a step (operator, 2026-10-02): the speed
+    # factor moves between 1.0 and warning_scale over these many seconds.
+    warning_decel_s: float = 1.5
+    warning_accel_s: float = 1.5
     fresh_s: float = 0.5  # /output_paths rides every scan, ~34 Hz
     assume_clear: bool = False  # the sim, which has no scanner; NEVER on the vehicle
 
@@ -429,8 +433,36 @@ def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
     return FieldView(True, bool(st[fp.protective_index]), warned)
 
 
+def warning_target(view: FieldView, fp: FieldParams) -> float:
+    """The speed factor the fields ask for: warning_scale while warned, else 1.0."""
+    return min(1.0, max(0.0, fp.warning_scale)) if view.warning_active else 1.0
+
+
+def ramp_scale(current: float, target: float, dt: float, fp: FieldParams) -> float:
+    """Move the speed factor toward `target` at a fixed rate in TIME: the whole
+    1.0 <-> warning_scale span takes warning_decel_s down and warning_accel_s up,
+    whatever the vehicle's speed. A zero time is a step."""
+    span = 1.0 - min(1.0, max(0.0, fp.warning_scale))
+    if target < current:
+        step = span / fp.warning_decel_s * dt if fp.warning_decel_s > 0 else float("inf")
+        return max(target, current - step)
+    step = span / fp.warning_accel_s * dt if fp.warning_accel_s > 0 else float("inf")
+    return min(target, current + step)
+
+
+def apply_scale(sel: Selection, k: float) -> Selection:
+    """Scale an AUTO selection's v and w together (the commanded arc is kept)."""
+    if sel.source not in AUTO_SOURCES or k >= 1.0:
+        return sel
+    return Selection(sel.source, sel.v * k, sel.w * k, f"{sel.reason} (warning field: x{k:.2f})", sel.generation)
+
+
 def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> tuple[Selection, float]:
-    """Apply the field rules to an AUTO selection. Returns (selection, speed scale)."""
+    """Apply the field rules to an AUTO selection. Returns (selection, speed scale).
+
+    The warning scale returned here is the TARGET; the mux ramps toward it in time
+    (ramp_scale) and applies the ramped factor with apply_scale. Only the protective
+    and unknown cases act at once - a stop is never ramped."""
     if sel.source not in AUTO_SOURCES:
         return sel, 1.0
     if not view.fresh and p.require_supervisor:
@@ -439,12 +471,7 @@ def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> 
         ), 0.0
     if view.fresh and not view.protective_clear:
         return Selection(NONE, 0.0, 0.0, "protective field violated", sel.generation, code="FIELD_PROTECTIVE"), 0.0
-    if view.warning_active:
-        k = min(1.0, max(0.0, fp.warning_scale))
-        return Selection(
-            sel.source, sel.v * k, sel.w * k, f"{sel.reason} (warning field: x{k:g})", sel.generation
-        ), k
-    return sel, 1.0
+    return sel, warning_target(view, fp)
 
 
 def nav_topic(base: str, generation: int) -> str:

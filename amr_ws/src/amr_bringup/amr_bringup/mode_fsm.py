@@ -77,6 +77,9 @@ class Conditions:
     operation_pending: bool = False
     commissioning_active: bool = False
     line_active: bool = False  # line follower armed or running, current generation only
+    # Drive torque: False = fresh /drives/status says not operational (E-stop / safety
+    # chain / drive fault). Defaults True so a caller that predates it is unchanged.
+    drives_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -129,10 +132,14 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
         return Decision(False, "this vehicle is a tape AGV (profile tracked=true): no maps or routes")
     if p.tracked is False and request == REQ_LINE:
         return Decision(False, "this vehicle is trackless (profile tracked=false): no tape following")
+    # 2026-10-02 (operator): the selector does not gate a mode change - MANUAL or AUTO
+    # alike. What does: an emergency, or the vehicle running in any form (moving, a
+    # mission or survey held, the tape follower armed or running, a commissioning job).
+    # Entering a layer moves nothing by itself; every layer still needs its own Start.
+    if not c.drives_ok:
+        return Decision(False, "emergency: the drives have no torque (E-stop / safety chain); reset first")
     if not wheels_still(c, p):
         return Decision(False, "vehicle not proven stopped (fresh, still wheels for 0.5 s)")
-    if not panel_manual(c, p):
-        return Decision(False, "mode change needs a valid panel in MANUAL")
     if c.commissioning_active:
         return Decision(False, "a commissioning job is prepared or running; clear it first")
     if state == NAVIGATION and c.run_state in JOB_HELD:

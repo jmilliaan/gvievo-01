@@ -82,6 +82,7 @@ class CmdMuxKinematics(Node):
     fp = gating.FieldParams(assume_clear=True)
     _view = gating.FieldView(True, True, False)
     _scale = 1.0
+    _ramp = 1.0
     _warned = False
 
     def __init__(self) -> None:
@@ -133,6 +134,8 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("warning_indices", [1, 2])
         self.declare_parameter("warning_active_level", False)
         self.declare_parameter("warning_scale", 0.5)
+        self.declare_parameter("warning_decel_s", 1.5)  # clear -> warning ramp, seconds
+        self.declare_parameter("warning_accel_s", 1.5)  # warning -> clear ramp, seconds
         self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter
@@ -172,6 +175,8 @@ class CmdMuxKinematics(Node):
             warning_indices=tuple(int(i) for i in p("warning_indices").value),
             warning_active_level=bool(p("warning_active_level").value),
             warning_scale=min(1.0, self._finite_or(float(p("warning_scale").value), 0.5)),
+            warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.5),
+            warning_accel_s=self._finite_or(float(p("warning_accel_s").value), 1.5),
             fresh_s=self._finite_or(float(p("field_fresh_s").value), 0.5),
             assume_clear=str(p("field_source").value) == "assume_clear",
         )
@@ -192,6 +197,7 @@ class CmdMuxKinematics(Node):
         self._field: gating.Field | None = None
         self._view = gating.FieldView(False, False, False)
         self._scale = 1.0
+        self._ramp = 1.0  # the ramped warning factor actually applied to AUTO
         self._warned = False
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
@@ -386,8 +392,18 @@ class CmdMuxKinematics(Node):
             line=self._line,
         )
         self._view = gating.field_view(self._now(), self._field, self.fp)
-        sel, scale = gating.field_limit(sel, self._view, self.gp, self.fp)
-        warned = sel.source != gating.NONE and scale < 1.0
+        sel, target = gating.field_limit(sel, self._view, self.gp, self.fp)
+        if sel.source in gating.AUTO_SOURCES:
+            # Ramp the factor in time toward what the fields ask for, then apply it.
+            self._ramp = gating.ramp_scale(self._ramp, target, self.dt, self.fp)
+            sel = gating.apply_scale(sel, self._ramp)
+            scale = self._ramp
+        else:
+            # Nothing autonomous is driving: no speed to ramp. Track the fields directly
+            # so an AUTO start under a warning begins at the reduced factor.
+            self._ramp = gating.warning_target(self._view, self.fp)
+            scale = 0.0 if sel.code.startswith("FIELD_") else 1.0
+        warned = sel.source != gating.NONE and target < 1.0
         if warned != self._warned:
             # Edges only, and only while an AUTO source is affected: a warning field
             # that reaches a wall flickers all day under MANUAL and is nobody's history.
@@ -395,7 +411,9 @@ class CmdMuxKinematics(Node):
             self._event(
                 Event.INFO,
                 "FIELD_WARNING",
-                f"warning field: auto speed x{scale:g}" if warned else "warning field clear: full auto speed",
+                f"warning field: auto speed ramping to x{target:g} over {self.fp.warning_decel_s:g} s"
+                if warned
+                else f"warning field clear: auto speed ramping back over {self.fp.warning_accel_s:g} s",
             )
         self._scale = scale
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick

@@ -209,6 +209,7 @@ class Snapshots:
                 operation_pending=operation_pending,
                 commissioning_active=self._commissioning_active_locked(now),  # lock already held
                 line_active=self._line_active_locked(generation),
+                drives_ok=bool(self.drives_t is not None and now - self.drives_t <= 1.0 and self.drives_ok),
             )
 
 

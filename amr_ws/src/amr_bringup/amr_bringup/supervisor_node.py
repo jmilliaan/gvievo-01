@@ -318,9 +318,11 @@ class Supervisor(Node):
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
         if self.mode == fsm.LINE:
-            # Exclusive, like commissioning: a browser jog must not be able to fight the
-            # tape follower for the wheels. Leave LINE mode to jog.
-            return LEASE_LINE
+            # The selector decides who drives (2026-10-02): MANUAL jogs (pendant, browser)
+            # in LINE mode too, AUTO is the tape follower's. The two cannot fight - the mux
+            # reads the panel first, and the follower ends its run when the selector
+            # leaves AUTO.
+            return LEASE_MANUAL | LEASE_LINE
         if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
             return LEASE_COMMISSIONING  # exclusive IDLE substate: no ordinary jog meanwhile
         return LEASE_MANUAL

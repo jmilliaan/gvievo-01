@@ -98,3 +98,12 @@ def test_both_products_boot_to_idle_and_offer_every_mode():
     both = fsm.Params(tracked=None)
     for req in (fsm.REQ_LINE, fsm.REQ_NAVIGATION, fsm.REQ_SURVEY_START):
         assert "tracked=" not in fsm.admit(fsm.IDLE, req, cond(), both).reason
+
+
+def test_line_mode_leases_manual_too_so_the_selector_decides_who_drives():
+    """2026-10-02: selector MANUAL jogs in LINE mode; AUTO is the follower's."""
+    sv = types.SimpleNamespace(txn=None, mode=fsm.LINE, inhibit_manual=False)
+    allowed = Supervisor._allowed(sv)
+    from amr_bringup.supervisor_node import LEASE_LINE, LEASE_MANUAL
+
+    assert allowed == LEASE_MANUAL | LEASE_LINE

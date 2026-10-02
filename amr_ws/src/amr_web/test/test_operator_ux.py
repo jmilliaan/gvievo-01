@@ -498,3 +498,25 @@ def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
     assert client.post("/api/line/arm").status_code == 200
     assert client.post("/api/line/clear").status_code == 200
     assert [c[0] for c in stub.calls] == ["line_mission", "line_arm", "line_clear"]
+
+
+def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
+    from amr_web.adapter import read_ipc_temp
+
+    h = tmp_path / "hwmon" / "hwmon0"
+    h.mkdir(parents=True)
+    (tmp_path / "thermal").mkdir()
+    (h / "name").write_text("coretemp\n")
+    for i, (label, milli) in enumerate((("Package id 0", 66000), ("Core 0", 64000), ("Core 1", 71000)), 1):
+        (h / f"temp{i}_label").write_text(label)
+        (h / f"temp{i}_input").write_text(str(milli))
+    assert read_ipc_temp(str(tmp_path)) == {"package_c": 66.0, "core_max_c": 71.0}
+    assert read_ipc_temp(str(tmp_path / "missing")) is None
+
+
+def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
+    client, _ = app_for(merged(), tmp_path)
+    for page in ("/home", "/status", "/manual"):
+        body = client.get(page).get_data(as_text=True)
+        net = body.index('id="net"')
+        assert net < body.index('id="supply"') < body.index('id="ipc-temp"'), page

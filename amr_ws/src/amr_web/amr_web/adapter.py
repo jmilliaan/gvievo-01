@@ -1,7 +1,7 @@
 """The ROS side of the web app: one rclpy node, explicit typed calls, no wheels.
 
 Services are called with a bounded wait from Flask's request threads while a
-MultiThreadedExecutor spins the node in the background. A service that is not
+SingleThreadedExecutor spins the node in the background. A service that is not
 running (e.g. the executor before nav.launch) answers (False, "... unavailable")
 instead of hanging.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import threading
 import time
 import traceback
@@ -96,6 +97,57 @@ RELIABLE_1 = QoSProfile(
 )
 
 
+IPC_TEMP_PERIOD_S = 5.0  # sysfs is cheap, but a CPU temperature moves over tens of seconds
+
+
+def read_ipc_temp(root: str = "/sys/class") -> dict | None:
+    """The IPC's CPU temperature from the coretemp hwmon (package, hottest core), deg C.
+
+    Falls back to the x86_pkg_temp thermal zone. None when neither exists (a VM).
+    """
+    try:
+        for h in sorted(os.listdir(os.path.join(root, "hwmon"))):
+            d = os.path.join(root, "hwmon", h)
+            try:
+                with open(os.path.join(d, "name")) as f:
+                    if f.read().strip() != "coretemp":
+                        continue
+            except OSError:
+                continue
+            package, cores = None, []
+            for name in os.listdir(d):
+                if not (name.startswith("temp") and name.endswith("_input")):
+                    continue
+                with open(os.path.join(d, name)) as f:
+                    c = int(f.read().strip()) / 1000.0
+                try:
+                    with open(os.path.join(d, name.replace("_input", "_label"))) as f:
+                        label = f.read().strip()
+                except OSError:
+                    label = ""
+                if label.startswith("Package"):
+                    package = c
+                else:
+                    cores.append(c)
+            if package is not None or cores:
+                return {"package_c": package if package is not None else max(cores),
+                        "core_max_c": max(cores) if cores else package}
+        for z in sorted(os.listdir(os.path.join(root, "thermal"))):
+            d = os.path.join(root, "thermal", z)
+            try:
+                with open(os.path.join(d, "type")) as f:
+                    if f.read().strip() != "x86_pkg_temp":
+                        continue
+                with open(os.path.join(d, "temp")) as f:
+                    c = int(f.read().strip()) / 1000.0
+                return {"package_c": c, "core_max_c": c}
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return None
+
+
 def _sensor_max_mm() -> float:
     """The profile's line.sensor_max_mm, the scale of the manual page's track bar."""
     try:
@@ -163,6 +215,8 @@ class RosAdapter(Node):
         self._track: dict | None = None
         self._track_t = 0.0
         self._sensor_max_mm = _sensor_max_mm()
+        self._ipc_temp: dict | None = None
+        self._ipc_temp_t = -1e9
         g = ReentrantCallbackGroup()
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED, callback_group=g)
         self.create_subscription(
@@ -436,6 +490,30 @@ class RosAdapter(Node):
         with self._lock:
             self._track, self._track_t = d, self._now()
 
+    def _ipc(self, now: float) -> dict | None:
+        """CPU temperature, re-read at most every IPC_TEMP_PERIOD_S. Caller holds the lock."""
+        if now - self._ipc_temp_t >= IPC_TEMP_PERIOD_S:
+            self._ipc_temp, self._ipc_temp_t = read_ipc_temp(), now
+        return self._ipc_temp
+
+    def _drive_supply(self, now: float) -> dict | None:
+        """Main supply voltage (40A4h) per drive, from drive_node's 1 Hz /diagnostics.
+        Caller holds the lock. None until a drive has reported one."""
+        out, newest = {}, None
+        for label in ("left", "right"):
+            d = self._diag.get(f"drive/{label}")
+            if not d:
+                continue
+            raw = d["values"].get("bus_v [V]", "")
+            try:
+                out[label] = float(raw)
+            except ValueError:
+                continue
+            newest = d["t"] if newest is None else max(newest, d["t"])
+        if not out:
+            return None
+        return dict(out, age_s=now - newest)
+
     def _on_diag(self, m: DiagnosticArray) -> None:
         now = self._now()
         with self._lock:
@@ -588,6 +666,8 @@ class RosAdapter(Node):
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
+                "ipc_temp": self._ipc(now),
+                "drive_supply": self._drive_supply(now),
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,
                 # so only the absence can be reported). Seconds otherwise.
                 "scan_age_s": None if self._scan_recv_t is None else now - self._scan_recv_t,
@@ -826,7 +906,12 @@ class Spinner:
     dying with the process while a request is mid-call."""
 
     def __init__(self, adapter: RosAdapter) -> None:
-        self.executor = rclpy.executors.MultiThreadedExecutor(num_threads=4)
+        # Single-threaded on purpose: ~290 msg/s arrive here (line_track 100 Hz, panel 50 Hz,
+        # tf, scan), and rclpy's MultiThreadedExecutor costs a thread-pool future per callback;
+        # it held 60% of an N97 core and drove the IPC into thermal throttling (2026-10-02).
+        # Safe because no callback blocks (TF lookups never wait) and service calls are made
+        # from Flask's threads, not from callbacks.
+        self.executor = rclpy.executors.SingleThreadedExecutor()
         self.executor.add_node(adapter)
         self._log = adapter.get_logger()
         self._stop = threading.Event()
@@ -841,6 +926,12 @@ class Spinner:
             except Exception:  # noqa: BLE001
                 self._log.error(f"adapter executor: callback raised; continuing: {traceback.format_exc()}")
                 time.sleep(0.05)
+        if not self._stop.is_set():
+            # rclpy's own SIGINT/SIGTERM handler shut the context down, but Flask keeps
+            # serving: the pages would show a frozen snapshot forever (2026-10-02). Exit so
+            # the supervisor respawns a whole web node.
+            print("amr_web: ROS context shut down; exiting", file=sys.stderr, flush=True)
+            os._exit(0)
 
     def start(self) -> Spinner:
         self.thread.start()

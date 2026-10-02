@@ -9,6 +9,8 @@ from amr_base.gating import (
     ROTATE,
     Field,
     FieldParams,
+    apply_scale,
+    ramp_scale,
     FieldView,
     Params,
     Selection,
@@ -48,10 +50,28 @@ def test_protective_zeroes_every_auto_source():
         assert (out.source, out.v, out.w, out.code, k) == (NONE, 0.0, 0.0, "FIELD_PROTECTIVE", 0.0)
 
 
-def test_warning_halves_v_and_w_keeping_the_curvature():
+def test_warning_asks_for_half_and_the_scale_keeps_the_curvature():
     out, k = field_limit(sel(LINE, 0.30, 0.10), FieldView(True, True, True), SUP, FP)
-    assert (out.source, out.v, out.w, k) == (LINE, 0.15, 0.05, 0.5)
-    assert out.generation == 3
+    assert (out.source, out.v, out.w, k) == (LINE, 0.30, 0.10, 0.5), "the target, not yet applied"
+    half = apply_scale(out, 0.5)
+    assert (half.v, half.w, half.generation) == (0.15, 0.05, 3)
+
+
+def test_clear_to_warning_ramps_in_1_5_s_and_back_in_1_5_s():
+    """Operator, 2026-10-02: a time ramp both ways, not a step and not a distance."""
+    dt, k = 0.025, 1.0
+    for _ in range(30):
+        k = ramp_scale(k, 0.5, dt, FP)
+    assert abs(k - 0.75) < 1e-9, "halfway down at half the time"
+    for _ in range(31):
+        k = ramp_scale(k, 0.5, dt, FP)
+    assert k == 0.5, "fully down at 1.5 s, and it never undershoots"
+    for _ in range(60):
+        k = ramp_scale(k, 1.0, dt, FP)
+    assert abs(k - 1.0) < 1e-9
+    assert ramp_scale(1.0, 1.0, dt, FP) == 1.0
+    step = FieldParams(warning_decel_s=0.0)
+    assert ramp_scale(1.0, 0.5, dt, step) == 0.5, "a zero time is a step"
 
 
 def test_unknown_fields_zero_auto_only_when_supervised():
