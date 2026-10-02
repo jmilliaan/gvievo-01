@@ -158,32 +158,13 @@ if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
 
 
-# ---- F07: the ceiling holds at the mux, not only in the follower ----------
+# ---- 2026-10-02: no LINE ceiling at the mux; the follower's profile speeds rule --------
 
 
-def test_the_line_branch_caps_body_speed_and_keeps_the_arc():
-    """The follower's own cap is one line of defence; the last arbitration
-    point must hold the increment's ceiling by itself. Before, a LINE command
-    of 0.8 m/s went through unchanged (only the motor limit applied)."""
-    sel = select(line=gating.Stamped(NOW, 0.8, 0.4))
+def test_the_line_branch_passes_the_followers_command_through():
+    """Tracked AUTO cruises at 0.85 m/s (autopilot.auto_rpm). The F07 ceiling of
+    0.30 m/s is gone; only the motor limit and the field rules apply after select."""
+    sel = select(line=gating.Stamped(NOW, 0.85, 0.4))
     assert sel.source == gating.LINE
-    assert sel.v == pytest.approx(0.30) and sel.w == pytest.approx(0.15)
-    rev = select(line=gating.Stamped(NOW, -0.8, 0.4))
-    assert rev.v == pytest.approx(-0.30) and rev.w == pytest.approx(0.15)
-    slow = select(line=gating.Stamped(NOW, 0.2, 0.1))
-    assert (slow.v, slow.w) == (0.2, 0.1)
-
-
-def test_the_line_yaw_cap_is_separate_and_off_by_default():
-    import dataclasses
-
-    assert select(line=gating.Stamped(NOW, 0.1, 3.0)).w == 3.0
-    p = dataclasses.replace(SUPERVISED, line_w_max=0.5)
-    sel = select(line=gating.Stamped(NOW, 0.1, 3.0), p=p)
-    assert (sel.v, sel.w) == (0.1, 0.5)
-
-
-def test_line_cap_treats_a_bad_limit_as_no_limit():
-    assert gating.line_cap(0.8, 0.4, 0.0, 0.0) == (0.8, 0.4)
-    assert gating.line_cap(0.8, 0.4, float("nan"), 0.0) == (0.8, 0.4)
-    assert gating.line_cap(0.0, 0.0, 0.3, 0.0) == (0.0, 0.0)
+    assert (sel.v, sel.w) == (0.85, 0.4)
+    assert not hasattr(gating, "line_cap")

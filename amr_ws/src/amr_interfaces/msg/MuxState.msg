@@ -23,4 +23,5 @@ string code                 # alarm catalogue code for `reason`; "" when a sourc
 bool field_fresh            # a fresh /output_paths sample (or the sim's assume_clear)
 bool protective_clear       # protective field clear; AUTO is zeroed while it is not
 bool warning_active         # warning field occupied; AUTO is scaled by speed_scale
-float32 speed_scale         # 1.0, warning_scale while warned, 0.0 while stopped by a field
+float32 speed_scale         # applied AUTO factor: 1.0 clear, ramping to 0.5 / 0.1 under warning 1 / 2, 0.0 stopped by a field
+uint8 warning_level         # 0 clear, 1 warning 1 (outer, x0.5), 2 warning 2 (inner, x0.1); appended 2026-10-02

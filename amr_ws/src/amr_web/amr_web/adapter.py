@@ -8,6 +8,7 @@ instead of hanging.
 
 from __future__ import annotations
 
+import collections
 import math
 import os
 import sys
@@ -46,6 +47,7 @@ from amr_interfaces.msg import (
     MuxState,
     PanelState,
     PpStatus,
+    StationDetection,
     SurveyMoveState,
 )
 from amr_interfaces.srv import (
@@ -92,6 +94,9 @@ MUX_NAMES = {
     6: "pendant",
     7: "line",
 }
+RFID_RECENT = 8  # tag passes the pages show
+# = rfid_node ENCOUNTERS: every pass is a message, none may be dropped behind a newer one.
+RFID_QOS = QoSProfile(depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE)
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
@@ -214,6 +219,10 @@ class RosAdapter(Node):
         self._line_t = 0.0
         self._track: dict | None = None
         self._track_t = 0.0
+        # RFID (2026-10-02): the link from the 2 Hz heartbeat, and the last few tag passes.
+        self._rfid: dict | None = None
+        self._rfid_t = 0.0
+        self._rfid_tags: collections.deque = collections.deque(maxlen=RFID_RECENT)
         self._sensor_max_mm = _sensor_max_mm()
         self._ipc_temp: dict | None = None
         self._ipc_temp_t = -1e9
@@ -233,6 +242,8 @@ class RosAdapter(Node):
         self.create_subscription(
             LineTrack, "/amr/line_track_ui", self._on_track, qos_profile_sensor_data, callback_group=g
         )
+        # RFID tag passes and the reader link, in every mode (rfid_node, base layer): display only.
+        self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, RFID_QOS, callback_group=g)
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
         self._diag: dict[str, dict] = {}
@@ -466,6 +477,7 @@ class RosAdapter(Node):
                 "protective_clear": bool(m.protective_clear),
                 "warning_active": bool(m.warning_active),
                 "speed_scale": float(m.speed_scale),
+                "warning_level": int(getattr(m, "warning_level", 0)),
             }
             self._mux_t = self._now()
 
@@ -491,6 +503,29 @@ class RosAdapter(Node):
         }
         with self._lock:
             self._track, self._track_t = d, self._now()
+
+    def _on_rfid(self, m: StationDetection) -> None:
+        now = self._now()
+        with self._lock:
+            if m.heartbeat:
+                self._rfid = {
+                    "comms_ok": bool(m.comms_ok),
+                    "seq": int(m.encounter_seq),
+                    "generation": int(m.generation),
+                    "rx_age_s": float(m.rx_age_s),
+                    "tag_age_s": float(m.tag_age_s),
+                }
+                self._rfid_t = now
+            elif m.rfid_tag:
+                self._rfid_tags.appendleft(
+                    {"tag": m.rfid_tag, "seq": int(m.encounter_seq), "t": now, "wall": time.time()}
+                )
+
+    def _rfid_state(self, now: float) -> dict:
+        """Caller holds the lock. Link None until a heartbeat; tags newest first."""
+        link = dict(self._rfid, age_s=now - self._rfid_t) if self._rfid else None
+        tags = [dict(t, age_s=now - t["t"]) for t in self._rfid_tags]
+        return {"link": link, "tags": tags}
 
     def _ipc(self, now: float) -> dict | None:
         """CPU temperature, re-read at most every IPC_TEMP_PERIOD_S. Caller holds the lock."""
@@ -668,6 +703,7 @@ class RosAdapter(Node):
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
+                "rfid": self._rfid_state(now),
                 "ipc_temp": self._ipc(now),
                 "drive_supply": self._drive_supply(now),
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,

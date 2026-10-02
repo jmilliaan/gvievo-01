@@ -24,7 +24,7 @@ from launch.conditions import IfCondition, LaunchConfigurationEquals
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from amr_bringup import domains
+from amr_bringup import domains, scanner_fields
 from amr_bringup.launch_helpers import default_world, include, required
 
 
@@ -128,12 +128,13 @@ def _compose(context):
             executable="cmd_mux_kinematics_node",
             name="cmd_mux_kinematics",
             output="screen",
-            # Gentle autonomous starts on the vehicle (3.3 s to 0.5 m/s, 0.85 s to 0.34 rad/s); stops
+            # Autonomous starts at 0.3 m/s^2 (2026-10-02, was 0.15): 2.0 s to the 0.60 trackless
+            # speed, 2.8 s to the 0.85 tracked cruise; 0.85 s to 0.34 rad/s. Stops
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
             # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve to 0.3 m/s^2 with
-            # 1.0 m/s^3 (1.9 s to full speed); driving + turning arcs with the slow wheel at 75 %
+            # 1.0 m/s^3 (1.9 s to full speed); driving + turning arcs with the slow wheel at 66 %
             # of the fast one; a spin in place stays at 0.3 rad/s.
             parameters=[
                 {
@@ -142,7 +143,9 @@ def _compose(context):
                     # Scanner fields gate AUTO (2026-10-02). The sim has no scanner, so there
                     # and ONLY there the fields are assumed clear.
                     "field_source": "scanner" if real else "assume_clear",
-                    "a_max": 0.15,
+                    # path indices, polarity and the x0.5 / x0.2 factors: config/scanner_fields.yaml
+                    **scanner_fields.mux_params(scanner_fields.load()),
+                    "a_max": 0.3,
                     "alpha_max": 0.4,
                     "d_max": 0.5,
                     "delta_max": 1.0,
@@ -150,7 +153,7 @@ def _compose(context):
                     "manual_jerk": 1.0,
                     "pendant_v_m_s": 0.5,
                     "pendant_w_rad_s": 0.39,
-                    "pendant_turn_ratio": 0.75,
+                    "pendant_turn_ratio": 0.66,  # manual corner: inner wheel 66 % of the outer
                     "survey_w_max_rad_s": 0.27,  # manual spin cap while surveying (pendant + jog)
                 }
             ],

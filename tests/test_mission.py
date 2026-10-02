@@ -35,7 +35,7 @@ def test_empty_and_listing():
     check("empty loads with nothing site-specific",
           m["ROUTE"] == [] and m["STOP_TAGS"] == {} and m["U_TURN_TAGS"] == {}
           and m["BRANCH_LATCH"] == [] and m["BRANCH_DEFAULT"] == "straight")
-    check("...and no site speeds", m["AUTO_RPM_HIGH"] is None and m["SPEED_SWITCH_RPM_S"] is None)
+    check("...and no speed keys: tracked speeds are the profile's", not any("SPEED" in k or "RPM" in k for k in m))
     check("empty is always offered", "empty" in mission.list_missions())
     tmp = tempfile.mkdtemp()
     with open(os.path.join(tmp, "a.json"), "w") as f:
@@ -63,13 +63,12 @@ def test_refusals():
     refused("a branch tag reused as a station tag is refused",
             base(branch_latch=[{"entry_tag": "0010", "exit_tag": "0011", "branch": "left"}],
                  stop_until_start_button=[stop]), "another rule type")
-    refused("high-speed rules need the site speeds",
+    refused("a high_speed_mode table (removed 2026-10-02) is refused, not ignored",
             base(high_speed_mode=[{"entry_tag": "0020", "exit_tag": "0021", "direction": "outbound"}]),
-            "required")
-    refused("auto_rpm_high must exceed auto_rpm",
-            base(speed={"auto_rpm_high": 500.0, "speed_switch_accel_decel_s": 3.0},
-                 high_speed_mode=[{"entry_tag": "0020", "exit_tag": "0021", "direction": "outbound"}]),
-            "exceed auto_rpm")
+            "unknown key")
+    refused("a mission speed section (removed 2026-10-02) is refused, not ignored",
+            base(speed={"auto_rpm_high": 2000.0, "speed_switch_accel_decel_s": 3.0}),
+            "unknown key")
     refused("a U-turn direction other than cw/ccw is refused",
             base(u_turn=[{"tag": "0030", "direction": "left"}]), "cw or ccw")
     refused("route-less, one station tag cannot carry two distances",

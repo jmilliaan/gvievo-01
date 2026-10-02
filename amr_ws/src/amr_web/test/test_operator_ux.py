@@ -459,6 +459,47 @@ def test_the_manual_page_shows_the_line_reading_above_the_pad(tmp_path):
     assert body.index('id="line-track"') < body.index('id="jog"')
 
 
+def test_rfid_tags_show_on_the_manual_and_run_tracked_pages(tmp_path):
+    client, _ = app_for(merged(), tmp_path)
+    for page in ("/manual", "/run-tracked"):
+        body = client.get(page).get_data(as_text=True)
+        assert 'id="rf-status"' in body and 'id="rf-tags"' in body, page
+        assert "rfidTags(st.rfid)" in body, page
+
+
+def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
+    """Heartbeats set the link; each encounter is one pass, newest first, at most RFID_RECENT."""
+    import threading
+    from types import SimpleNamespace
+
+    from amr_web import adapter as ad
+
+    a = ad.RosAdapter.__new__(ad.RosAdapter)
+    a._lock = threading.Lock()
+    a._rfid, a._rfid_t = None, 0.0
+    import collections
+
+    a._rfid_tags = collections.deque(maxlen=ad.RFID_RECENT)
+    clock = [100.0]
+    a._now = lambda: clock[0]
+
+    def msg(**kw):
+        base = dict(heartbeat=False, rfid_tag="", encounter_seq=0, generation=0, comms_ok=True, rx_age_s=0.1, tag_age_s=-1.0)
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    assert a._rfid_state(100.0) == {"link": None, "tags": []}
+    a._on_rfid(msg(heartbeat=True, encounter_seq=0))
+    for n in range(1, ad.RFID_RECENT + 3):
+        clock[0] += 1.0
+        a._on_rfid(msg(rfid_tag=f"{n:04X}", encounter_seq=n))
+    a._on_rfid(msg(heartbeat=False, rfid_tag="", encounter_seq=99))  # no tag: not a pass
+    st = a._rfid_state(clock[0] + 0.5)
+    assert st["link"]["comms_ok"] and st["link"]["age_s"] == pytest.approx(ad.RFID_RECENT + 2 + 0.5)
+    assert [t["tag"] for t in st["tags"]][:2] == [f"{ad.RFID_RECENT + 2:04X}", f"{ad.RFID_RECENT + 1:04X}"]
+    assert len(st["tags"]) == ad.RFID_RECENT and st["tags"][0]["age_s"] == pytest.approx(0.5)
+
+
 def _product_app(product, tmp_path):
     maps = tmp_path / "maps"
     maps.mkdir(exist_ok=True)

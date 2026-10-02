@@ -1,8 +1,8 @@
 """Tape-AGV missions: missions/<name>.json, validated against the vehicle profile.
 
 Ported 2026-10-02 from gy-demo's config.py, where the mission document was the
-SITE half of the profile (branch_latch, stop_until_start_button,
-high_speed_mode, route, route_guard, u_turn, branch_default, site speeds). The
+SITE half of the profile (branch_latch, stop_until_start_button, route,
+route_guard, u_turn, branch_default). The
 validators below are COPIED, not re-derived - the tag-namespace disjointness
 and hex-string-not-number rules are the reason this table cannot fail silently -
 with one signature change: they read the vehicle from a passed `vehicle`
@@ -11,9 +11,13 @@ with one signature change: they read the vehicle from a passed `vehicle`
     list_missions()          -> ["empty", "gy-demo", ...]
     load(name, vehicle=None) -> dict of the names below, or MissionError
 
-MISSION_NAME, AUTO_RPM_HIGH, SPEED_SWITCH_S, SPEED_SWITCH_RPM_S, BRANCH_DEFAULT,
-BRANCH_LATCH, STOP_TAGS {(direction, tag): rule}, STOP_TAGS_ANY {tag: rule}
-(route-less only), ROUTE, HIGH_SPEED_MODE, ROUTE_GUARD, U_TURN_TAGS {tag: cw|ccw}.
+MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, STOP_TAGS {(direction, tag): rule},
+STOP_TAGS_ANY {tag: rule} (route-less only), ROUTE, ROUTE_GUARD,
+U_TURN_TAGS {tag: cw|ccw}.
+
+Speeds are NOT mission data (2026-10-02): tracked AUTO cruises at the profile's
+autopilot.auto_rpm and drops to auto_slow_rpm in a branch_latch slow zone. The
+gy-demo high-speed tier (speed, high_speed_mode, high_speed_to_next) is gone.
 
 "empty" (or no mission at all) is plain line following: no stations, no zones.
 Free of ROS; the line layer and the web both read it.
@@ -149,10 +153,9 @@ def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
     return out
 
 
-def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
+def _read_route(rows, stops, tag_len, ignored, branch_tags):
     stations, ids = [], set()
-    for row, loc in _rule_rows(rows, ("id", "tag", "direction", "high_speed_to_next"),
-                               "route"):
+    for row, loc in _rule_rows(rows, ("id", "tag", "direction"), "route"):
         ident = _coerce(row["id"], str, loc + ".id")
         if not ident.strip() or ident in ids:
             raise ConfigError(f"{loc}.id must be nonempty and unique")
@@ -161,9 +164,7 @@ def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
         tag = _tag(row["tag"], tag_len * 2, loc, ignored | branch_tags)
         if (direction, tag) not in stops:
             raise ConfigError(f"{loc}: no matching direction/tag stop rule")
-        high = _coerce(row["high_speed_to_next"], bool, loc + ".high_speed_to_next")
-        stations.append(dict(id=ident, tag=tag, direction=direction,
-                             high_speed_to_next=high))
+        stations.append(dict(id=ident, tag=tag, direction=direction))
     # An empty route is a mission without one: plain line-following. A real
     # route needs a starting position and somewhere to go.
     if len(stations) == 1:
@@ -171,29 +172,11 @@ def _read_route(rows, speed_rows, stops, tag_len, ignored, branch_tags):
                           "first is initial position")
     if stations and stations[0]["direction"] != "outbound":
         raise ConfigError("route first station must be outbound")
-    speed, contacts = [], set()
-    stop_tags = {tag for direction, tag in stops}
-    for row, loc in _rule_rows(speed_rows, ("entry_tag", "exit_tag", "direction"),
-                               "high_speed_mode"):
-        direction = _travel_direction(row["direction"], loc)
-        tags = [_tag(row[k], tag_len * 2, loc + "." + k,
-                     ignored | branch_tags | stop_tags)
-                for k in ("entry_tag", "exit_tag")]
-        for tag in tags:
-            if (direction, tag) in contacts:
-                raise ConfigError(f"{loc}: duplicate/ambiguous high-speed contact in {direction}")
-            contacts.add((direction, tag))
-        speed.append(dict(entry_tag=tags[0], exit_tag=tags[1], direction=direction))
-    for i, station in enumerate(stations):
-        departure = stations[(i + 1) % len(stations)]["direction"]
-        if station["high_speed_to_next"] and not any(
-                r["direction"] == departure for r in speed):
-            raise ConfigError(f"route[{i}]: high-speed leg has no {departure} speed rule")
-    return stations, speed
+    return stations
 
 
 def _read_route_guard(raw, stations):
-    keys = {'enabled', 'legs', 'high_speed_max_m', 'station_decel_limit_rpm_s'}
+    keys = {'enabled', 'legs', 'station_decel_limit_rpm_s'}
     if not isinstance(raw, dict) or set(raw) != keys:
         raise ConfigError(f"route_guard: expected exactly {sorted(keys)}")
     enabled = _coerce(raw['enabled'], bool, 'route_guard.enabled')
@@ -221,13 +204,8 @@ def _read_route_guard(raw, stations):
         legs.append(dict(from_station=ident, min_m=lo, max_m=hi))
     if ids != {r['id'] for r in stations}:
         raise ConfigError('route_guard.legs: require exactly one row per route station')
-    high = raw['high_speed_max_m']
-    if not isinstance(high, dict) or set(high) != {'outbound', 'inbound'}:
-        raise ConfigError('route_guard.high_speed_max_m: require outbound and inbound')
-    high = {k: measured(v, 'route_guard.high_speed_max_m.' + k) for k, v in high.items()}
     limit = measured(raw['station_decel_limit_rpm_s'], 'route_guard.station_decel_limit_rpm_s')
-    return dict(enabled=enabled, legs=legs, high_speed_max_m=high,
-                station_decel_limit_rpm_s=limit)
+    return dict(enabled=enabled, legs=legs, station_decel_limit_rpm_s=limit)
 
 
 def _read_u_turn(rows, tag_len, forbidden):
@@ -245,18 +223,8 @@ def _read_u_turn(rows, tag_len, forbidden):
 
 
 
-_MISSION_KEYS = ("mission_name", "speed", "branch_default", "branch_latch",
-                 "stop_until_start_button", "high_speed_mode", "route",
-                 "route_guard", "u_turn")
-
-
-def _optional_float(value, where):
-    if value is None:
-        return None
-    value = _coerce(value, float, where)
-    if not math.isfinite(value):
-        raise ConfigError(f"{where}: expected a finite number or null")
-    return value
+_MISSION_KEYS = ("mission_name", "branch_default", "branch_latch",
+                 "stop_until_start_button", "route", "route_guard", "u_turn")
 
 
 def _parse_mission(doc, ns):
@@ -275,12 +243,6 @@ def _parse_mission(doc, ns):
         raise ConfigError(f"mission: missing key(s) {sorted(missing)}")
 
     out = {"MISSION_NAME": _coerce(doc["mission_name"], str, "mission_name")}
-    speed, keys = doc["speed"], {"auto_rpm_high", "speed_switch_accel_decel_s"}
-    if not isinstance(speed, dict) or set(speed) != keys:
-        raise ConfigError(f"mission speed: expected exactly {sorted(keys)}")
-    out["AUTO_RPM_HIGH"] = _optional_float(speed["auto_rpm_high"], "speed.auto_rpm_high")
-    out["SPEED_SWITCH_S"] = _optional_float(speed["speed_switch_accel_decel_s"],
-                                            "speed.speed_switch_accel_decel_s")
     out["BRANCH_DEFAULT"] = _coerce(doc["branch_default"], str, "branch_default")
 
     tag_len, ignored = ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"])
@@ -288,14 +250,12 @@ def _parse_mission(doc, ns):
     branch_tags = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
     out["STOP_TAGS"] = _read_stop_tags(doc["stop_until_start_button"], tag_len,
                                        ignored, branch_tags)
-    out["ROUTE"], out["HIGH_SPEED_MODE"] = _read_route(
-        doc["route"], doc["high_speed_mode"], out["STOP_TAGS"], tag_len,
-        ignored, branch_tags)
+    out["ROUTE"] = _read_route(doc["route"], out["STOP_TAGS"], tag_len,
+                               ignored, branch_tags)
     out["ROUTE_GUARD"] = _read_route_guard(doc["route_guard"], out["ROUTE"])
-    speed_tags = {r[k] for r in out["HIGH_SPEED_MODE"] for k in ("entry_tag", "exit_tag")}
     out["U_TURN_TAGS"] = _read_u_turn(
         doc["u_turn"], tag_len,
-        ignored | branch_tags | {tag for _, tag in out["STOP_TAGS"]} | speed_tags)
+        ignored | branch_tags | {tag for _, tag in out["STOP_TAGS"]})
     out["STOP_TAGS_ANY"] = {} if out["ROUTE"] else _routeless(out)
     return out
 
@@ -314,46 +274,25 @@ def _routeless(out):
                               f"distances; without a route there is no direction "
                               f"to choose between them")
         stops[tag] = {"stop_distance_m": rule["stop_distance_m"]}
-    entries = {r["entry_tag"] for r in out["HIGH_SPEED_MODE"]}
-    exits = {r["exit_tag"] for r in out["HIGH_SPEED_MODE"]}
-    both = sorted(entries & exits)
-    if both:
-        raise ConfigError(f"high_speed_mode: tag(s) {both} both set and reset high "
-                          f"speed; without a route there is no direction, so each "
-                          f"tag must be entry-only or exit-only")
     return stops
 
 
 
 def _speeds(out, vehicle):
-    """gy-demo's _derive/_validate rules for the site speeds and the guard."""
+    """gy-demo's _validate rules for the guard, at the one tracked cruise speed."""
     guard = out["ROUTE_GUARD"]
-    auto = float(vehicle.AUTO_RPM)
     if guard["enabled"]:
         if not vehicle.RFID_ENABLED:
             raise ConfigError("route_guard requires RFID enabled")
         limit = guard["station_decel_limit_rpm_s"]
         if limit > vehicle.RAMP["auto"]["decel"]:
             raise ConfigError("route_guard: station deceleration limit exceeds auto drive deceleration")
-        cruise = out["AUTO_RPM_HIGH"] if out["HIGH_SPEED_MODE"] else auto
+        cruise = float(vehicle.AUTO_RPM)
         for rule in out["STOP_TAGS"].values():
             rate = cruise ** 2 * vehicle.MPS_PER_RPM / (2 * rule["stop_distance_m"])
             if rate > limit:
-                raise ConfigError("route_guard: high-speed station stop exceeds measured deceleration limit; "
-                                  "reduce auto_rpm_high or commission a longer stop_distance_m")
-    high, switch = out["AUTO_RPM_HIGH"], out["SPEED_SWITCH_S"]
-    if out["HIGH_SPEED_MODE"] and (high is None or switch is None):
-        raise ConfigError("mission speed.auto_rpm_high and "
-                          "speed.speed_switch_accel_decel_s are required when "
-                          "high_speed_mode has rules")
-    if switch is not None and switch <= 0:
-        raise ConfigError("speed_switch_accel_decel_s must be > 0")
-    if high is not None and not auto < high <= vehicle.MOTOR_MAX_RPM:
-        raise ConfigError("auto_rpm_high must exceed auto_rpm and not exceed motor_max_rpm")
-    out["SPEED_SWITCH_RPM_S"] = ((high - auto) / switch
-                                 if high is not None and switch is not None else None)
-    if out["SPEED_SWITCH_RPM_S"] is not None and out["SPEED_SWITCH_RPM_S"] > vehicle.RAMP_ACCEL_RPM_S:
-        raise ConfigError("speed_switch_accel_decel_s requests a rate above ramp_accel_rpm_s")
+                raise ConfigError("route_guard: a station stop from cruise exceeds the measured "
+                                  "deceleration limit; commission a longer stop_distance_m")
     if out["BRANCH_DEFAULT"] not in ("straight", "left", "right"):
         raise ConfigError(f"mission branch_default ({out['BRANCH_DEFAULT']!r}) must be "
                           "straight, left or right")
@@ -371,15 +310,11 @@ def list_missions(directory=None):
 
 EMPTY = {
     "mission_name": "empty",
-    "speed": {"auto_rpm_high": None, "speed_switch_accel_decel_s": None},
     "branch_default": "straight",
     "branch_latch": [],
     "stop_until_start_button": [],
-    "high_speed_mode": [],
     "route": [],
-    "route_guard": {"enabled": False, "legs": [],
-                    "high_speed_max_m": {"outbound": None, "inbound": None},
-                    "station_decel_limit_rpm_s": None},
+    "route_guard": {"enabled": False, "legs": [], "station_decel_limit_rpm_s": None},
     "u_turn": [],
 }
 

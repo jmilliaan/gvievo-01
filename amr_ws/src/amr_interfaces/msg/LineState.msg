@@ -46,7 +46,6 @@ string code                 # alarm catalogue code for the hold/fault in `messag
 string mission              # "" = plain line following
 string station              # route stage: current station id
 string next_station
-bool high_speed             # high-speed latch (still under the LINE ceiling)
 string branch_intent        # straight | left | right
 bool slow_zone
 string uturn_phase          # "" | stopping | spin | center | settle

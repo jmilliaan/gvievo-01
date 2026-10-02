@@ -43,8 +43,6 @@ def _compose(context):
             parameters=[
                 {
                     "generation": generation,
-                    # The speed ceiling is the profile's autopilot.line_v_max_mps,
-                    # read by the node and by cmd_mux (2026-10-02, was 0.30 in both).
                     # The sim has no scanner: the field is assumed clear there
                     # and ONLY there. On the vehicle a stale /output_paths is
                     # "unknown" and the layer refuses to arm.

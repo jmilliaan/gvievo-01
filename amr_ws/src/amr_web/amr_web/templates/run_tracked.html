@@ -74,7 +74,7 @@ onState(st => {
       ['State', ln.state_name, ln.hold_cause ? `hold: ${ln.hold_cause}` : (ln.engine_state || '—'), LINE_LEVEL[ln.state_name] || ''],
       ['Mission', ln.mission || 'none', ln.mission ? 'tape mission' : 'plain line following', ''],
       ['Station', ln.station || '–', ln.next_station ? `next ${ln.next_station}` : (ln.stop_where || '—'), ''],
-      ['Speed', ln.slow_zone ? 'SLOW' : (ln.high_speed ? 'HIGH' : 'NORMAL'), `${num(ln.v_mps, 2)} m/s`, ''],
+      ['Speed', ln.slow_zone ? 'SLOW' : 'CRUISE', `${num(ln.v_mps, 2)} m/s`, ''],
       ['Branch', (ln.branch_intent || 'straight').toUpperCase(), uturn || '—', uturn ? 'warn' : ''],
       ['Last tag', ln.last_tag || '–', ln.last_tag_action || '—', ''],
       ['Travel', `${num(ln.followed_m, 1)} m`, `track ${num(ln.track_hz, 0)} Hz`, ''],
@@ -82,5 +82,6 @@ onState(st => {
     $('lt-reason').textContent = ln.message || '';
   }
   lineTrack(st.line_track);
+  rfidTags(st.rfid);
 });
 </script>{% endblock %}

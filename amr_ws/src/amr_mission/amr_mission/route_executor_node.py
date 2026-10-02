@@ -815,9 +815,8 @@ class RouteExecutor(Node):
 
     def _step_speed(self, st: CompiledStep, pose) -> float:
         """The speed the vehicle may run at HERE on a forward step: its compiled speed, tapered
-        to the NEXT chained step's speed (or, for a boosted last step, the base speed) early
-        enough that the mux decel reaches it at the boundary. The controller's own approach
-        ramp then only ever starts from the base speed or less."""
+        to the NEXT chained step's speed (a tight arc runs below the trackless speed) early
+        enough that the mux decel reaches it at the boundary."""
         v = float(st.v_mps)
         if pose is None:
             return v

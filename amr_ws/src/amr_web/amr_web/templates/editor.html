@@ -32,10 +32,7 @@
     <div class="sep"></div>
     <h3>Limits</h3>
     <label class="field">Repeat count <input id="ed-repeat" type="number" min="1" max="100" value="1"></label>
-    <label class="field">Speed cap m/s <input id="ed-speed" type="number" step="0.05" min="0.05" max="0.60" value="0.55"></label>
-    <label class="field">Long straight speed m/s <small>empty = no boost</small> <input id="ed-speed-long" type="number" step="0.05" min="0.05" max="0.85" value="0.85"></label>
-    <label class="field">Arc speed m/s <small>at most the cap</small> <input id="ed-speed-arc" type="number" step="0.05" min="0.05" max="0.60" value="0.40"></label>
-    <label class="field">Long straight from m <small>strictly longer</small> <input id="ed-long-min" type="number" step="0.5" min="1" max="100" value="4"></label>
+    <p class="note">Speed <b id="ed-speed" data-v="{{ '%.2f' % trackless_v }}">{{ '%.2f' % trackless_v }}</b> m/s — the vehicle's trackless speed, not a route setting. Reverse runs at half; a tight arc slower.</p>
     <div class="bar">
       <button id="btn-validate" class="big">Validate</button>
       <button id="btn-save" class="big run">Save revision</button>

@@ -680,6 +680,7 @@ class DemoAdapter:
                     "protective_clear": True,
                     "warning_active": False,
                     "speed_scale": 1.0,
+                    "warning_level": 0,
                     "age_s": 0.02,
                 },
                 "mapping": self.mapping and dict(self.mapping),

@@ -117,9 +117,9 @@ MANUAL) is honoured and not undone — request LINE again when done, by
 | no fresh `/output_paths` (0.5 s) | will not arm ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
 | tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | will not arm / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
 
-Speed: the follower caps at `v_max_mps` (launch, 0.30) and the mux caps
-again at `line_v_max_m_s` (0.30; `line_w_max_rad_s` 0 = no yaw cap),
-scaling v and ω together so the arc is kept. In the sim the launch passes
+Speed: two tracked speeds from the profile, cruise `autopilot.auto_rpm`
+(2706 r/min = 0.85 m/s) and slow zone `auto_slow_rpm` (1592 = 0.50 m/s);
+no separate LINE ceiling. A warning field halves either. In the sim the launch passes
 `field_source:=assume_clear` (no scanner there); never on a vehicle.
 
 ## 2. Survey → draw a route → run it

@@ -193,13 +193,14 @@ def test_no_fault_vocabulary_ever_reaches_the_page(tmp_path):
 # ---- the page -------------------------------------------------------------------
 
 
-def test_both_roles_reach_the_page_and_see_the_link(tmp_path):
+def test_deprecated_page_has_no_link_but_still_serves(tmp_path):
+    """Deprecated 2026-10-02: out of the nav for both roles; the URL still works."""
     cl = client_for(st(), tmp_path, ps([(3.0, 0.0)]))
-    assert 'href="/demo"' in cl.get("/home").get_data(as_text=True)
+    assert 'href="/demo"' not in cl.get("/home").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
     assert cl.get("/api/demo").get_json()["status"] == demo.WATCHING
     assert cl.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    assert 'href="/demo"' in cl.get("/status").get_data(as_text=True)
+    assert 'href="/demo"' not in cl.get("/status").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
 
 

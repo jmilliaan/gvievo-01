@@ -57,7 +57,7 @@ MODULES = [
 # - 3 + 1 (2026-10-02): dead speed params removed (manual.*, motion.py, MANUAL_HALF_RPM);
 # one check that the retired manual section is refused.
 # + 17 (2026-10-02): test_mission, the tape-mission validator ported from gy-demo.
-EXPECTED_CHECKS = 559
+EXPECTED_CHECKS = 565
 
 
 # An exception on a helper thread only prints a traceback by default - the

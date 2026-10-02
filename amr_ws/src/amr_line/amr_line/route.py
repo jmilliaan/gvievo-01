@@ -1,8 +1,11 @@
-"""Logical route position and speed zones. Owned exclusively by the CAN thread.
+"""Logical route position. Owned exclusively by the line job.
 
 RFID values are not location IDs: the expected stage identifies a station.
 No clocks, I/O or configuration imports; inputs are validated profile records
 and distinct tag encounters supplied by the caller.
+
+Speed zones were removed 2026-10-02: tracked AUTO has one cruise speed (the
+profile's auto_rpm) plus the branch_latch slow zones, which branch.py owns.
 """
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -17,27 +20,19 @@ class Station:
     id: str
     tag: str
     direction: str
-    high_speed_to_next: bool
 
 
 class Route:
-    def __init__(self, stations: Sequence[Mapping], speed_rules: Sequence[Mapping],
-                 guard: Mapping | None = None):
+    def __init__(self, stations: Sequence[Mapping], guard: Mapping | None = None):
         self.stations = tuple(Station(**row) for row in stations)
-        self.speed_rules = tuple(dict(row) for row in speed_rules)
         self.index = 0
-        # No stations: a mission without a route. Plain line-following, with
-        # speed rules applied by tag alone (validation made them unambiguous).
+        # No stations: a mission without a route. Plain line-following.
         self.enabled = bool(self.stations)
         self.parked = self.enabled
         self.direction = self.stations[0].direction if self.enabled else None
-        self.high = False
         self.laps = 0
         self.guard = guard or {'enabled': False}
         self.distance_m = 0.0
-        self.zone_distance_m = 0.0
-        self.zone_active = False
-        self.zone_expired = False
         self.guard_error = None
         self.notice = None
         self.initial_assumption = self.enabled
@@ -47,7 +42,6 @@ class Route:
         return self.guard['enabled']
 
     def invalidate(self, reason: str) -> None:
-        self.clear_speed()
         self.guard_error = self.guard_error or reason
 
     def advance(self, distance_m: float) -> str | None:
@@ -55,8 +49,6 @@ class Route:
         if self.parked or self.guard_error:
             return None
         self.distance_m += max(0.0, distance_m)
-        if self.zone_active:
-            self.zone_distance_m += max(0.0, distance_m)
         if not self.guarded:
             return None
         leg = next(r for r in self.guard['legs'] if r['from_station'] == self.current.id)
@@ -64,11 +56,6 @@ class Route:
             reason = f"route distance exceeded; expected station {self.next.id}"
             self.invalidate(reason)
             raise RouteError(reason)
-        if (self.zone_active and not self.zone_expired
-                and self.zone_distance_m >= self.guard['high_speed_max_m'][self.direction]):
-            self.zone_expired = True
-            self.clear_speed()
-            return f"high-speed distance exceeded ({self.direction}); normal speed until exit tag"
         return None
 
     @property
@@ -81,9 +68,6 @@ class Route:
             return None
         return self.stations[(self.index + 1) % len(self.stations)]
 
-    def clear_speed(self) -> None:
-        self.high = False
-
     def depart(self) -> None:
         """Commit departure only when Start's delay has completed."""
         if self.guard_error:
@@ -91,18 +75,12 @@ class Route:
         if self.parked:
             self.direction = self.next.direction
             self.parked = False
-            self.distance_m = self.zone_distance_m = 0.0
-            self.zone_active = self.zone_expired = False
-        self.clear_speed()
+            self.distance_m = 0.0
 
     def encounter(self, tag: str) -> Station | None:
         """Process one new encounter, returning a station only on arrival."""
         self.notice = None
         if not self.enabled:
-            if any(r['exit_tag'] == tag for r in self.speed_rules):
-                self.high = False
-            elif any(r['entry_tag'] == tag for r in self.speed_rules):
-                self.high = True
             return None
         if self.parked or self.guard_error:
             return None
@@ -117,38 +95,20 @@ class Route:
             self.initial_assumption = False
             self.laps += int(self.index == 0)
             self.parked = True
-            self.clear_speed()
             return self.current
-        if not self.current.high_speed_to_next:
-            self.clear_speed()
-            return None
-        # Reset wins should more than one rule match; validation normally
-        # rejects that ambiguity within a direction.
-        rules = [r for r in self.speed_rules if r['direction'] == self.direction]
-        if any(r['exit_tag'] == tag for r in rules):
-            self.high = False
-            self.zone_active = self.zone_expired = False
-            self.zone_distance_m = 0.0
-        elif any(r['entry_tag'] == tag for r in rules):
-            if not self.zone_active:
-                self.zone_active = True
-                self.zone_distance_m = 0.0
-            self.high = not self.zone_expired
         return None
 
     def snapshot(self) -> dict:
         if not self.enabled:
             return {'enabled': False, 'station': None, 'next_station': None,
                     'travel_direction': None, 'parked': False,
-                    'high_speed': self.high, 'laps': 0,
+                    'laps': 0,
                     'guard_enabled': False, 'guard_error': self.guard_error,
                     'initial_assumption': False,
-                    'distance_estimate_m': self.distance_m,
-                    'high_distance_estimate_m': 0.0}
+                    'distance_estimate_m': self.distance_m}
         return {'enabled': True, 'station': self.current.id, 'next_station': self.next.id,
                 'travel_direction': self.direction, 'parked': self.parked,
-                'high_speed': self.high, 'laps': self.laps,
+                'laps': self.laps,
                 'guard_enabled': self.guarded, 'guard_error': self.guard_error,
                 'initial_assumption': self.initial_assumption,
-                'distance_estimate_m': self.distance_m,
-                'high_distance_estimate_m': self.zone_distance_m}
+                'distance_estimate_m': self.distance_m}

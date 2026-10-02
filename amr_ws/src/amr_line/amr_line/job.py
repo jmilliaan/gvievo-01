@@ -94,12 +94,11 @@ class FollowJob:
     """Arm, run, hold, stop. Owns the engine; the node owns the messages."""
 
     def __init__(self, follower, *, prereq_grace_s=0.5, auto_resume_clear_s=2.0,
-                 auto_resume_estop=False, v_max_mps=0.30, auto_start_delay_s=0.6):
+                 auto_resume_estop=False, auto_start_delay_s=0.6):
         self.f = follower
         self.prereq_grace_s = float(prereq_grace_s)
         self.auto_resume_clear_s = float(auto_resume_clear_s)
         self.auto_resume_estop = bool(auto_resume_estop)
-        self.v_max_mps = float(v_max_mps)
         self.auto_start_delay_s = max(0.0, float(auto_start_delay_s))
         # The mission the next run uses (agv_core.mission.load output), or None for
         # plain line following. Set only while IDLE - see set_mission().
@@ -429,8 +428,7 @@ class FollowJob:
         if t.uturn is None:
             # Stopping over the tag: the follower steers all the way down.
             choice, slow = t.steer(i.sensor, tags, self.f.followed_mm)
-            left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, False, choice, slow,
-                                              high=t.route.high)
+            left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, False, choice, slow)
             self.diag = diag
             if diag["state"] == "line_lost":
                 return self._uturn_fault("line lost while stopping for the U-turn")
@@ -438,7 +436,7 @@ class FollowJob:
                 why = t.begin_spin(i.sensor, i.counts, i.counts_per_rev)
                 if why:
                     return self._uturn_fault(why)
-            return self._cap(left, right)
+            return left, right
         if i.counts is None:
             return self._uturn_fault("encoder counts unavailable")
         e_mm, level = u_turn_error(i.sensor)
@@ -462,8 +460,7 @@ class FollowJob:
             return self._uturn_tick(i, tags)
         choice, slow = t.steer(i.sensor, tags, self.f.followed_mm)
         stopping = t.stop is not None
-        left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, slow,
-                                          high=t.route.high)
+        left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, slow)
         self.diag = diag
 
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
@@ -489,22 +486,6 @@ class FollowJob:
             self.f.hard_stop()
             return 0.0, 0.0
 
-        return self._cap(left, right)
-
-    def _cap(self, left, right):
-        """Hold the body speed at v_max_mps, scaling BOTH wheels together.
-
-        Scaling one wheel changes the arc; scaling both preserves it. The mux
-        applies its own ceiling independently (gating.line_cap, parameter
-        line_v_max_m_s) - this increment is a bench and first-floor-run
-        increment and 0.30 m/s is the agreed limit for it.
-        """
-        from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
-
-        v, _omega = kinematics.wheels_to_body(left, right)
-        if abs(v) > self.v_max_mps > 0:
-            scale = self.v_max_mps / abs(v)
-            left, right = left * scale, right * scale
         return left, right
 
     # -- reporting ---------------------------------------------------------
@@ -517,7 +498,6 @@ class FollowJob:
             "mission": t.name if self.mission else "",
             "station": r.get("station") or "",
             "next_station": r.get("next_station") or "",
-            "high_speed": bool(r.get("high_speed")),
             "branch_intent": t.branch.ladder.intent(),
             "slow_zone": bool(t.branch.slow),
             "uturn_phase": (u.get("phase") or "") if u.get("active") else "",

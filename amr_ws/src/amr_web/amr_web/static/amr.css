@@ -441,6 +441,14 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .lt-lcps b { color:var(--ink); }
 .line-track.stale .lt-bar { opacity:.45; }
 .line-track.stale .lt-head span { color:var(--hazard-ink); }
+.lt-rfid { margin-top:.5rem; padding-top:.4rem; border-top:1px solid var(--rule); }
+.lt-rfid.down .lt-head span { color:var(--hazard-ink); }
+.rf-tags { display:flex; gap:.5rem; margin-top:.35rem; overflow:hidden; min-height:2.1rem; font:400 1.05rem var(--mono); color:var(--ink-2); }
+.rf-tags .none { color:var(--ink-3); }
+.rf-tag { flex:0 0 auto; padding:.2rem .55rem; border:1px solid var(--rule); background:var(--surface-2); white-space:nowrap; }
+.rf-tag b { color:var(--ink); font-weight:600; }
+.rf-tag.fresh { border-color:var(--ok); background:var(--ok); color:var(--surface); }
+.rf-tag.fresh b { color:var(--surface); }
 /* A touch panel has no keyboard: the key hints and the key legend are noise there. */
 @media (pointer:coarse) {
   button.dir .key, .legend.keys { display:none; }

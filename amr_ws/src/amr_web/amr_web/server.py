@@ -26,7 +26,7 @@ from typing import Any, Protocol
 
 import numpy as np
 from agv_core import alarms as catalogue
-from amr_navigation.route import Route, RouteError
+from amr_navigation.route import VEHICLE_V_MAX, Route, RouteError
 from amr_navigation.validate import load_dynamic, load_keepout, validate
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
 
@@ -301,7 +301,7 @@ def create_app(
     @app.get("/editor")
     def page_editor():
         _need(trackless_ok)
-        return render_template("editor.html", page="run", sub="editor")
+        return render_template("editor.html", page="run", sub="editor", trackless_v=VEHICLE_V_MAX)
 
     @app.get("/review")
     def page_review():
@@ -355,6 +355,7 @@ def create_app(
         return jsonify(adapter.state())
 
     # ---- DEMO page: visitors, not operators (manuals/plans/2026-09-23-demo-page.md) ----
+    # DEPRECATED 2026-10-02 (operator): no nav link any more; the route stays until removed.
     # Open to both roles, read-only. Everything it may say is decided in demo.py.
     demo_path = os.path.join(app.static_folder or "", "demo", "content.json")
     try:

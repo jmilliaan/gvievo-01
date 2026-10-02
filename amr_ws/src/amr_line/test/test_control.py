@@ -84,15 +84,23 @@ def test_a_track_swap_cannot_become_a_yaw_spike():
 
     f = autopilot.LineFollower()
     f.reset()
-    f._v_rpm = config.AUTO_SLOW_RPM
+    # Run 0020's speed (800 r/min, the slow zone then). The slow zone is 0.50 m/s since
+    # 2026-10-02 and Kp = K_RATIO*v scales with it, so the same swap asks ~2.5 rad/s
+    # there; this check pins the D-term mechanism at the speed the log was taken.
+    slow_now = config.AUTO_SLOW_RPM
+    config.configure(AUTO_SLOW_RPM=800.0)
+    f._v_rpm = 800.0
     peak_omega = 0.0
     peak_d = 0.0
-    for mm in seq:
-        # 300 mm is beyond sensor_max_mm, which is how the real frames read.
-        _, _, d = f.update(sensor(300.0 if mm is None else mm), 0.0, 0.02,
-                           True, "left", True)
-        peak_omega = max(peak_omega, abs(d["omega_cmd"]))
-        peak_d = max(peak_d, abs(d["d"]))
+    try:
+        for mm in seq:
+            # 300 mm is beyond sensor_max_mm, which is how the real frames read.
+            _, _, d = f.update(sensor(300.0 if mm is None else mm), 0.0, 0.02,
+                               True, "left", True)
+            peak_omega = max(peak_omega, abs(d["omega_cmd"]))
+            peak_d = max(peak_d, abs(d["d"]))
+    finally:
+        config.configure(AUTO_SLOW_RPM=slow_now)
 
     check("the 120 mm swap does not produce the logged 6.66 rad/s",
           peak_omega < 2.0, f"peak |omega| {peak_omega:.2f} rad/s")

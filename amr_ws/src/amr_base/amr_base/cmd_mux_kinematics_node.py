@@ -82,8 +82,9 @@ class CmdMuxKinematics(Node):
     fp = gating.FieldParams(assume_clear=True)
     _view = gating.FieldView(True, True, False)
     _scale = 1.0
-    _ramp = 1.0
-    _warned = False
+    _speed_ramp: gating.SpeedRamp | None = None
+    line_alpha_max = 0.0  # 0 here = use alpha_max (tests built with __new__)
+    _target = 1.0
 
     def __init__(self) -> None:
         super().__init__("cmd_mux_kinematics")
@@ -108,6 +109,11 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("manual_jerk", 1.0)  # m/s^3: 0.3 s to full acceleration
         self.declare_parameter("manual_alpha_max", 0.0)  # 0 = same as alpha_max
         self.declare_parameter("manual_jerk_w", 2.0)  # rad/s^3
+        # LINE steering slews its yaw rate at the drive's own limit, not at the gentle Nav2
+        # alpha_max (2026-10-02): at the 0.85 m/s tape cruise the follower's corrections
+        # need ~27 rad/s^2 per metre of wobble, so 0.4 rad/s^2 rate-limited any wobble over
+        # ~15 mm and the loop oscillated. gy-demo drove the wheels with only the drive ramp.
+        self.declare_parameter("line_alpha_max", 0.0)  # 0 = the hardware yaw limit
         self.declare_parameter("teleop_timeout_s", 0.5)
         self.declare_parameter("cmd_timeout_s", 0.2)
         self.declare_parameter("permit_timeout_s", 0.3)
@@ -117,25 +123,21 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
         self.declare_parameter("pendant_v_m_s", 0.50)
         self.declare_parameter("pendant_w_rad_s", 0.39)  # spin in place (0.30 until 2026-09-19, +30 %)
-        self.declare_parameter("pendant_turn_ratio", 0.75)  # slow wheel / fast wheel while driving + turning
+        self.declare_parameter("pendant_turn_ratio", 0.66)  # slow wheel / fast wheel while driving + turning
         # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
         # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
         self.declare_parameter("survey_w_max_rad_s", 0.27)
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
-        # LINE ceiling at the mux, independent of the follower's own v_max_mps
-        # (dual-product plan Increment 1). 0 = no yaw cap.
-        self.declare_parameter("line_v_max_m_s", float(config.LINE_V_MAX_MPS))  # profile autopilot.line_v_max_mps
-        self.declare_parameter("line_w_max_rad_s", 0.0)
         # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
-        # any warning field is occupied. Indices and polarity from the walk-in test.
+        # a warning field is occupied. base.launch fills these from scanner_fields.yaml.
         self.declare_parameter("field_source", "scanner")  # scanner | assume_clear (sim only)
         self.declare_parameter("protective_index", 0)
-        self.declare_parameter("warning_indices", [1, 2])
+        self.declare_parameter("warning_indices", [2, 1])  # outer (warning 1) first
+        self.declare_parameter("warning_scales", [0.5, 0.1])  # one factor per warning index
         self.declare_parameter("warning_active_level", False)
-        self.declare_parameter("warning_scale", 0.5)
-        self.declare_parameter("warning_decel_s", 1.5)  # clear -> warning ramp, seconds
-        self.declare_parameter("warning_accel_s", 1.5)  # warning -> clear ramp, seconds
+        self.declare_parameter("warning_decel_s", 1.0)  # each step down, seconds
+        self.declare_parameter("warning_accel_s", 1.0)  # each step up, seconds
         self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter
@@ -147,6 +149,7 @@ class CmdMuxKinematics(Node):
         self.delta_max = min(p("delta_max").value or self.alpha_max, hw_alpha_max)
         self.manual_a_max = min(p("manual_a_max").value, hw_a_max)
         self.manual_alpha_max = min(p("manual_alpha_max").value or self.alpha_max, hw_alpha_max)
+        self.line_alpha_max = min(p("line_alpha_max").value or hw_alpha_max, hw_alpha_max)
         self.manual_jerk = max(1e-3, float(p("manual_jerk").value))
         self.manual_jerk_w = max(1e-3, float(p("manual_jerk_w").value))
         if self.a_max < p("a_max").value or self.alpha_max < p("alpha_max").value:
@@ -167,16 +170,15 @@ class CmdMuxKinematics(Node):
             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
             pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
             track_m=float(p("track_width_m").value),
-            line_v_max=min(self._finite_or(float(p("line_v_max_m_s").value), 0.30), float(config.LINE_V_MAX_MPS)),
-            line_w_max=self._finite_or(float(p("line_w_max_rad_s").value), 0.0),
         )
         self.fp = gating.FieldParams(
             protective_index=int(p("protective_index").value),
             warning_indices=tuple(int(i) for i in p("warning_indices").value),
             warning_active_level=bool(p("warning_active_level").value),
-            warning_scale=min(1.0, self._finite_or(float(p("warning_scale").value), 0.5)),
-            warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.5),
-            warning_accel_s=self._finite_or(float(p("warning_accel_s").value), 1.5),
+            warning_scales=tuple(min(1.0, max(0.0, self._finite_or(float(k), 0.0)))
+                                 for k in p("warning_scales").value),
+            warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.0),
+            warning_accel_s=self._finite_or(float(p("warning_accel_s").value), 1.0),
             fresh_s=self._finite_or(float(p("field_fresh_s").value), 0.5),
             assume_clear=str(p("field_source").value) == "assume_clear",
         )
@@ -197,8 +199,8 @@ class CmdMuxKinematics(Node):
         self._field: gating.Field | None = None
         self._view = gating.FieldView(False, False, False)
         self._scale = 1.0
-        self._ramp = 1.0  # the ramped warning factor actually applied to AUTO
-        self._warned = False
+        self._speed_ramp = gating.SpeedRamp()  # the ramped warning factor actually applied to AUTO
+        self._target = 1.0
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
@@ -393,27 +395,31 @@ class CmdMuxKinematics(Node):
         )
         self._view = gating.field_view(self._now(), self._field, self.fp)
         sel, target = gating.field_limit(sel, self._view, self.gp, self.fp)
+        if self._speed_ramp is None:
+            self._speed_ramp = gating.SpeedRamp()
         if sel.source in gating.AUTO_SOURCES:
             # Ramp the factor in time toward what the fields ask for, then apply it.
-            self._ramp = gating.ramp_scale(self._ramp, target, self.dt, self.fp)
-            sel = gating.apply_scale(sel, self._ramp)
-            scale = self._ramp
+            k = self._speed_ramp.tick(target, self.dt, self.fp)
+            sel = gating.apply_scale(sel, k)
+            scale = k
         else:
             # Nothing autonomous is driving: no speed to ramp. Track the fields directly
             # so an AUTO start under a warning begins at the reduced factor.
-            self._ramp = gating.warning_target(self._view, self.fp)
+            self._speed_ramp.snap(gating.warning_target(self._view, self.fp))
             scale = 0.0 if sel.code.startswith("FIELD_") else 1.0
-        warned = sel.source != gating.NONE and target < 1.0
-        if warned != self._warned:
-            # Edges only, and only while an AUTO source is affected: a warning field
+        affected = target if sel.source != gating.NONE else 1.0
+        if affected != self._target:
+            # Changes only, and only while an AUTO source is affected: a warning field
             # that reaches a wall flickers all day under MANUAL and is nobody's history.
-            self._warned = warned
+            down = affected < self._target
+            self._target = affected
             self._event(
                 Event.INFO,
                 "FIELD_WARNING",
-                f"warning field: auto speed ramping to x{target:g} over {self.fp.warning_decel_s:g} s"
-                if warned
-                else f"warning field clear: auto speed ramping back over {self.fp.warning_accel_s:g} s",
+                f"warning field {self._view.warning_level}: auto speed ramping to x{affected:g} "
+                f"over {self.fp.warning_decel_s:g} s"
+                if affected < 1.0 and down
+                else f"auto speed ramping up to x{affected:g} over {self.fp.warning_accel_s:g} s",
             )
         self._scale = scale
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
@@ -471,11 +477,11 @@ class CmdMuxKinematics(Node):
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         else:
             self._v = slew_asym(self._v, sel.v, self.a_max, self.d_max, self.dt)
-            self._wz = slew_asym(self._wz, sel.w, self.alpha_max, self.delta_max, self.dt)
-            if sel.source == gating.LINE:
-                # The slew state may still carry a faster source's speed on
-                # entry; the ceiling holds on the OUTPUT, not just the target.
-                self._v, self._wz = gating.line_cap(self._v, self._wz, self.gp.line_v_max, self.gp.line_w_max)
+            if sel.source == gating.LINE and self.line_alpha_max:
+                yaw_up = yaw_down = self.line_alpha_max
+            else:
+                yaw_up, yaw_down = self.alpha_max, self.delta_max
+            self._wz = slew_asym(self._wz, sel.w, yaw_up, yaw_down, self.dt)
             self._a = self._alpha = 0.0
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
@@ -508,6 +514,7 @@ class CmdMuxKinematics(Node):
         m.field_fresh = self._view.fresh
         m.protective_clear = self._view.protective_clear
         m.warning_active = self._view.warning_active
+        m.warning_level = int(self._view.warning_level)
         m.speed_scale = float(self._scale)
         self._pub_state.publish(m)
 

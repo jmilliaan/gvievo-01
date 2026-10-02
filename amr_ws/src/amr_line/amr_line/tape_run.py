@@ -46,13 +46,8 @@ class TapeRun:
 
         m = mission or missions.parse(missions.EMPTY)
         self.mission = m
-        # The site speeds are the MISSION's (gy-demo split); the engine reads them
-        # from runtime at call time, so they are installed with the mission.
-        from amr_line import runtime  # noqa: PLC0415
-
-        runtime.configure(AUTO_RPM_HIGH=m["AUTO_RPM_HIGH"], SPEED_SWITCH_RPM_S=m["SPEED_SWITCH_RPM_S"])
         self.name = m["MISSION_NAME"]
-        self.route = route.Route(m["ROUTE"], m["HIGH_SPEED_MODE"], m["ROUTE_GUARD"])
+        self.route = route.Route(m["ROUTE"], m["ROUTE_GUARD"])
         self.branch = branch.BranchEngine(
             m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=m["BRANCH_DEFAULT"]
         )
@@ -78,7 +73,7 @@ class TapeRun:
     def active(self):
         """Does this run carry anything beyond plain line following?"""
         m = self.mission
-        return bool(m["ROUTE"] or m["STOP_TAGS"] or m["HIGH_SPEED_MODE"] or m["BRANCH_LATCH"] or m["U_TURN_TAGS"])
+        return bool(m["ROUTE"] or m["STOP_TAGS"] or m["BRANCH_LATCH"] or m["U_TURN_TAGS"])
 
     # -- RFID cursor -------------------------------------------------------
     def sync(self, rfid):
@@ -149,7 +144,6 @@ class TapeRun:
             self._reconnect_pending = False
         if changed or not connected:
             self._generation, self._cursor = generation, seq
-            self.route.clear_speed()
             return []
         self._generation = generation
         pending = [(n, t) for n, t in rfid.get("encounters", ()) if n > self._cursor]
@@ -181,9 +175,8 @@ class TapeRun:
             if tag in self.u_turn_tags:
                 self._u_turn_tag(now, number, tag, follower)
                 continue
-            was_high = self.route.high
             station = self.route.encounter(tag)
-            high, notice = self.route.high, self.route.notice
+            notice = self.route.notice
             if notice:
                 self.events.append((WARN, notice))
             # A mission without a route still stops at its station tags, by tag.
@@ -193,12 +186,9 @@ class TapeRun:
             action = ("fault" if self.route.guard_error else
                       "station accepted" if station is not None or routeless_stop else
                       "early arrival rejected" if notice else
-                      ("high selected" if high else "normal selected") if high != was_high else
                       "no route action")
             self._record(now, number, tag, action, notice or self.route.guard_error,
                          station.id if station else None)
-            if high != was_high:
-                self.events.append((INFO, f"speed mode {'high' if high else 'normal'} (tag {tag})"))
         if self.route.guard_error and not self.fault:
             self._fail(self.route.guard_error)
         return tags
@@ -219,7 +209,6 @@ class TapeRun:
             self._fail(f"missing stop rule: {self.route.direction} tag {tag}")
             return
         dist = rule["stop_distance_m"]
-        self.route.clear_speed()
         rate = follower.begin_measured_stop(dist)
         self.stop = {"kind": "station", "tag": tag, "where": where, "distance_m": dist}
         self.events.append((INFO, f"{where} - stopping over {dist:.2f} m"

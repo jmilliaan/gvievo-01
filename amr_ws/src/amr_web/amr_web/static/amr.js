@@ -69,11 +69,11 @@ function rail(st) {
   else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`, d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
   tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
-  // Scanner fields as the mux applies them: protective stops AUTO, warning halves it.
+  // Scanner fields as the mux applies them: protective stops AUTO, warning 1 x0.5, warning 2 x0.1.
   if (!mx) tile('tel-field', '–', 'no mux state', 'bad');
   else if (!mx.field_fresh) tile('tel-field', 'NO DATA', 'auto held at zero', 'bad', mxStale);
   else if (!mx.protective_clear) tile('tel-field', 'PROTECT', 'protective field: auto stopped', 'bad', mxStale);
-  else if (mx.warning_active) tile('tel-field', 'WARNING', 'auto speed halved', 'warn', mxStale);
+  else if (mx.warning_active) tile('tel-field', `WARNING ${mx.warning_level || ''}`.trim(), `auto speed x${num(mx.speed_scale, 2)}`, 'warn', mxStale);
   else tile('tel-field', 'CLEAR', 'fields clear', '', mxStale);
   tile('tel-wheels', mx ? `${num(mx.left_rad_s, 2)} / ${num(mx.right_rad_s, 2)}` : '–', 'rad/s · L / R', '', mxStale);
   const l = st.localization;

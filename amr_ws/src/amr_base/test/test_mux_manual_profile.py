@@ -95,3 +95,15 @@ def test_manual_spin_is_capped_while_surveying():
     for _ in range(300):
         _run(n, gating.Selection(gating.PENDANT, 0.0, 0.39, "pendant", 0), 1)
     assert n._wz == pytest.approx(0.39)
+
+
+def test_line_steering_slews_at_line_alpha_max_not_the_nav2_limit():
+    """2026-10-02: tape cruise 0.85 m/s oscillated with LINE yaw slewed at the Nav2 0.4 rad/s^2."""
+    n = _node()
+    n.line_alpha_max = 3.0
+    _run(n, gating.Selection(gating.LINE, 0.0, 0.3, "line", 0), 5)  # 0.1 s
+    assert n._wz == pytest.approx(0.3)  # 3.0 rad/s^2 x 0.1 s reaches it
+    m = _node()
+    m.line_alpha_max = 3.0
+    _run(m, gating.Selection(gating.FOLLOW, 0.0, 0.3, "follow", 0), 5)
+    assert m._wz == pytest.approx(0.4 * 0.1)  # Nav2 keeps its gentle yaw ramp

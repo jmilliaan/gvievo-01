@@ -61,14 +61,10 @@ class Params:
     # fast one (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
     pendant_v: float = 0.50  # body m/s while FWD or RVS is held (0.60 tried and reverted 09-19)
     pendant_w: float = 0.39  # body rad/s for a spin in place (0.30 until 2026-09-19, +30 %)
-    pendant_turn_ratio: float = 0.75  # slow wheel / fast wheel while driving and turning
+    pendant_turn_ratio: float = 0.66  # slow wheel / fast wheel while driving and turning (0.75 until 2026-10-02)
     track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
-    # LINE ceiling at the last arbitration point, independent of the follower's
-    # own cap (dual-product plan Increment 1: 0.30 m/s). Body speed is scaled
-    # with its yaw rate so the arc the follower asked for is kept; the yaw cap
-    # is separate and 0 = none.
-    line_v_max: float = 0.30
-    line_w_max: float = 0.0
+    # No LINE ceiling here since 2026-10-02: the follower's two profile speeds
+    # (autopilot.auto_rpm / auto_slow_rpm) are the tracked speeds.
 
 
 def survey_spin_cap(w: float, surveying: bool, cap: float) -> float:
@@ -213,16 +209,6 @@ def capped(x: float, limit: float) -> float:
     return x
 
 
-def line_cap(v: float, w: float, v_max: float, w_max: float) -> tuple[float, float]:
-    """The LINE ceiling: |v| held at v_max by scaling v AND w together (the
-    arc is preserved - scaling only v would straighten every curve), then
-    |w| at w_max on its own. A non-positive or non-finite limit is no limit."""
-    if math.isfinite(v_max) and v_max > 0.0 and abs(v) > v_max:
-        k = v_max / abs(v)
-        v, w = v * k, w * k
-    return v, capped(w, w_max)
-
-
 @dataclass
 class Panel:
     t_recv: float
@@ -347,8 +333,7 @@ def select(
     # topic this mux is not subscribed to and cannot look fresh.
     if p.require_supervisor and (lease.allowed & LEASE_LINE):
         if line is not None and _fresh(line.t, now, p.cmd_timeout_s):
-            v, w = line_cap(line.v, line.w, p.line_v_max, p.line_w_max)
-            return Selection(LINE, v, w, "line", gen)
+            return Selection(LINE, line.v, line.w, "line", gen)
         return Selection(NONE, 0.0, 0.0, "line: no fresh command", gen, code="SOURCE_TIMED_OUT")
 
     if p.require_supervisor and not (lease.allowed & LEASE_AUTONOMOUS):
@@ -381,8 +366,8 @@ def select(
 #
 # The nanoScan3's OSSD pair into the FX3 is the STOP; nothing here replaces it.
 # This is the software side that also tries: an AUTO source is zeroed while the
-# protective field is violated, and scaled by warning_scale while the warning
-# field is occupied. Manual sources are untouched - a person is driving, and the
+# protective field is violated, and scaled while a warning field is occupied
+# (warning 1, outer: x0.5; warning 2, inner: x0.1; the lower wins). Manual sources are untouched - a person is driving, and the
 # physical chain still acts on them.
 
 AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
@@ -391,17 +376,17 @@ AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
 @dataclass(frozen=True)
 class FieldParams:
     protective_index: int = 0  # /output_paths status[i] of the protective field (OSSD)
-    # The warning fields' /output_paths indices. Walk-in test 2026-10-02 (agv-01): three
-    # nested fields - path 2 outermost, path 1 inside it, path 0 the protective field -
-    # each reading False while occupied. Either warning field occupied halves AUTO.
-    warning_indices: tuple[int, ...] = (1, 2)
+    # The warning fields, OUTER first, and the AUTO speed factor each asks for while it is
+    # occupied (operator, 2026-10-02: warning 1 = 50 %, warning 2 = 10 %; the lower wins).
+    # Indices/polarity: amr_bringup/config/scanner_fields.yaml, which base.launch reads.
+    warning_indices: tuple[int, ...] = (2, 1)
+    warning_scales: tuple[float, ...] = (0.5, 0.1)
     warning_active_level: bool = False  # status[i] while that warning field is occupied
-    warning_scale: float = 0.5
-    # Clear <-> warning is a RAMP in time, not a step (operator, 2026-10-02): the speed
-    # factor moves between 1.0 and warning_scale over these many seconds.
-    warning_decel_s: float = 1.5
-    warning_accel_s: float = 1.5
-    fresh_s: float = 0.5  # /output_paths rides every scan, ~34 Hz
+    # Every change of the speed factor is a RAMP in time, not a step (operator,
+    # 2026-10-02): clear -> warning 1 -> warning 2 and back each take these many seconds.
+    warning_decel_s: float = 1.0
+    warning_accel_s: float = 1.0
+    fresh_s: float = 0.5  # /output_paths rides every forwarded scan, ~17 Hz
     assume_clear: bool = False  # the sim, which has no scanner; NEVER on the vehicle
 
 
@@ -418,6 +403,8 @@ class FieldView:
     fresh: bool
     protective_clear: bool
     warning_active: bool
+    warning_level: int = 0  # 0 none, else 1 + the index into warning_indices of the strictest occupied field
+    warning_scale: float = 1.0  # the factor the occupied warning fields ask for
 
 
 def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
@@ -429,25 +416,46 @@ def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
     st = field.status
     if len(st) <= max((fp.protective_index, *fp.warning_indices)):
         return FieldView(False, False, False)
-    warned = any(bool(st[i]) == fp.warning_active_level for i in fp.warning_indices)
-    return FieldView(True, bool(st[fp.protective_index]), warned)
+    level, scale = 0, 1.0
+    for n, (i, k) in enumerate(zip(fp.warning_indices, fp.warning_scales), start=1):
+        k = min(1.0, max(0.0, k))
+        if bool(st[i]) == fp.warning_active_level and k <= scale:
+            level, scale = n, k
+    return FieldView(True, bool(st[fp.protective_index]), level > 0, level, scale)
 
 
 def warning_target(view: FieldView, fp: FieldParams) -> float:
-    """The speed factor the fields ask for: warning_scale while warned, else 1.0."""
-    return min(1.0, max(0.0, fp.warning_scale)) if view.warning_active else 1.0
+    """The speed factor the fields ask for: the strictest occupied warning field's, else 1.0."""
+    return view.warning_scale if view.warning_active else 1.0
 
 
-def ramp_scale(current: float, target: float, dt: float, fp: FieldParams) -> float:
-    """Move the speed factor toward `target` at a fixed rate in TIME: the whole
-    1.0 <-> warning_scale span takes warning_decel_s down and warning_accel_s up,
-    whatever the vehicle's speed. A zero time is a step."""
-    span = 1.0 - min(1.0, max(0.0, fp.warning_scale))
-    if target < current:
-        step = span / fp.warning_decel_s * dt if fp.warning_decel_s > 0 else float("inf")
-        return max(target, current - step)
-    step = span / fp.warning_accel_s * dt if fp.warning_accel_s > 0 else float("inf")
-    return min(target, current + step)
+class SpeedRamp:
+    """The applied warning factor, moved toward its target in TIME. Each change of
+    target restarts the ramp from where the factor stands, so every step (clear ->
+    50 % -> 10 % and back, or straight 100 % -> 10 %) takes warning_decel_s down or
+    warning_accel_s up, whatever the vehicle's speed. A zero time is a step."""
+
+    def __init__(self, value: float = 1.0):
+        self.value = value
+        self.target = value
+        self._rate = float("inf")
+
+    def snap(self, value: float) -> None:
+        self.value = self.target = value
+        self._rate = float("inf")
+
+    def tick(self, target: float, dt: float, fp: FieldParams) -> float:
+        if target != self.target:
+            self.target = target
+            t = fp.warning_decel_s if target < self.value else fp.warning_accel_s
+            span = abs(target - self.value)
+            self._rate = span / t if t > 0 else float("inf")
+        step = self._rate * dt
+        if self.target < self.value:
+            self.value = max(self.target, self.value - step)
+        else:
+            self.value = min(self.target, self.value + step)
+        return self.value
 
 
 def apply_scale(sel: Selection, k: float) -> Selection:
@@ -461,7 +469,7 @@ def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> 
     """Apply the field rules to an AUTO selection. Returns (selection, speed scale).
 
     The warning scale returned here is the TARGET; the mux ramps toward it in time
-    (ramp_scale) and applies the ramped factor with apply_scale. Only the protective
+    (SpeedRamp) and applies the ramped factor with apply_scale. Only the protective
     and unknown cases act at once - a stop is never ramped."""
     if sel.source not in AUTO_SOURCES:
         return sel, 1.0

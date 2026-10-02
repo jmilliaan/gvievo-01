@@ -180,6 +180,18 @@ def test_config_profile():
     # mis-wiring it in the profile are refused: a channel the module does not
     # have would write nothing, and a horn enabled without the DIO scan has
     # nobody to write it.
+    # dio.motion_on (2026-10-02): DO00 and DO08 on while the motors turn.
+    check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
+    check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
+    refuses("one channel as both a motion and an alarm output is refused",
+            lambda d: d["dio"].update(motion_on=[0, 1], alarm_on=[1]), "share a channel")
+    refuses("a motion channel past the end of the module is refused",
+            lambda d: d["dio"].update(motion_on=[0, d["dio"]["num_do"]]), "dio.motion_on")
+    refuses("a motion channel listed twice is refused",
+            lambda d: d["dio"].update(motion_on=[8, 8]), "listed twice")
+    refuses("the horn's channel is refused as a motion channel while the horn is enabled",
+            lambda d: (d["horn"].update(enabled=True, do_channel=0), d["dio"].update(motion_on=[0])),
+            "horn's channel")
     refuses("a horn channel past the end of the module is refused",
             lambda d: d["horn"].update(do_channel=d["dio"]["num_do"]),
             "horn.do_channel")
@@ -189,7 +201,7 @@ def test_config_profile():
             lambda d: (d["dio"].update(enabled=False),
                        d["panel"].update(enabled=False),
                        d["pendant"].update(enabled=False),
-                       d["horn"].update(enabled=True)),
+                       d["horn"].update(enabled=True, do_channel=2)),
             "horn.enabled")
     check("HORN_HOLD_S outlasts both the tick and the DIO scan",
           config.HORN_HOLD_S >= 5 * config.LOOP_PERIOD_S

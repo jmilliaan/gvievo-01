@@ -372,26 +372,14 @@ def test_clear_stops_a_running_follow():
 
 
 # ---------------------------------------------------------------------------
-# the speed cap
+# speed: no job-level cap since 2026-10-02
 # ---------------------------------------------------------------------------
 
-def test_the_increment_1_speed_cap_holds_and_keeps_the_arc():
-    """0.30 m/s is the agreed ceiling for this increment. Both wheels scale by
-    one factor: scaling one would change the turn the follower asked for."""
-    from agv_core import kinematics
-
+def test_the_job_has_no_speed_cap_of_its_own():
+    """Tracked speeds are the follower's two profile values; the job no longer
+    clips them (the 0.30 m/s Increment 1 cap is gone)."""
     job = make()
-    fast = runtime.AUTO_RPM * 4
-    left, right = job._cap(fast, fast * 0.5)
-    v, _ = kinematics.wheels_to_body(left, right)
-    assert abs(v) <= job.v_max_mps + 1e-9, f"cap breached: {v} m/s"
-    assert abs(left / right - 2.0) < 1e-9, "the arc changed under the cap"
-
-
-def test_the_cap_leaves_a_slow_command_alone():
-    job = make()
-    left, right = job._cap(10.0, 10.0)
-    assert (left, right) == (10.0, 10.0)
+    assert not hasattr(job, "_cap") and not hasattr(job, "v_max_mps")
 
 
 # ---------------------------------------------------------------------------

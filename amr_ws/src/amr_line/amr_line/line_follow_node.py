@@ -99,9 +99,6 @@ class LineFollowNode(Node):
 
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("generation", 0)
-        # The LINE ceiling is ONE profile key (autopilot.line_v_max_mps), read here and by
-        # cmd_mux; a parameter may lower it for a session, never raise it.
-        self.declare_parameter("v_max_mps", float(vehicle_config.LINE_V_MAX_MPS))
         self.declare_parameter("prereq_grace_s", 0.5)
         # -1 = the profile's auto_resume_hold_s; a value here overrides it.
         self.declare_parameter("auto_resume_clear_s", -1.0)
@@ -149,7 +146,6 @@ class LineFollowNode(Node):
             prereq_grace_s=float(self.get_parameter("prereq_grace_s").value),
             auto_resume_clear_s=auto_clear,
             auto_resume_estop=bool(self.get_parameter("auto_resume_estop").value),
-            v_max_mps=min(float(self.get_parameter("v_max_mps").value), float(vehicle_config.LINE_V_MAX_MPS)),
             auto_start_delay_s=float(vehicle_config.AUTO_START_DELAY_S),
         )
         self.reader = tk.TrackReader(
@@ -221,7 +217,7 @@ class LineFollowNode(Node):
         self.get_logger().info(
             f"line layer up, generation {self._generation}: "
             f"k_ratio={runtime.K_RATIO} kd={runtime.KD} "
-            f"cap={self.job.v_max_mps} m/s rate floor={self.reader.min_hz} Hz "
+            f"cruise={vehicle_config.AUTO_RPM:g} rpm slow={vehicle_config.AUTO_SLOW_RPM:g} rpm rate floor={self.reader.min_hz} Hz "
             f"auto-resume clear={self.job.auto_resume_clear_s} s"
         )
 

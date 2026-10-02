@@ -162,6 +162,22 @@ class PanelAdapter:
         return intent.mode, pend
 
 
+# AUTO runs that count for the alarm horn: tracked line RUNNING / HOLD, trackless
+# EXECUTING / BLOCKED (amr_interfaces LineState / RunState values).
+LINE_ACTIVE = (2, 3)
+RUN_ACTIVE = (2, 4)
+
+
+def alarm_wanted(
+    mode_auto: bool, line_state: int | None, run_state: int | None,
+    field_fresh: bool, protective_clear: bool, warning_active: bool,
+) -> bool:
+    """dio.alarm_on (operator, 2026-10-02): AUTO RUNNING and (protective stop, warning 1 or
+    warning 2). Field state comes from the mux; stale field data does not sound it."""
+    running = mode_auto and (line_state in LINE_ACTIVE or run_state in RUN_ACTIVE)
+    return running and field_fresh and (not protective_clear or warning_active)
+
+
 def horn_wanted(
     armed: bool, left_rad_s: float, right_rad_s: float, cmd_age_s: float | None, cmd_timeout_s: float
 ) -> bool:

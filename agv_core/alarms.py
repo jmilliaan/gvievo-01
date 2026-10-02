@@ -142,10 +142,11 @@ def _rows() -> tuple[Alarm, ...]:
           "Clear the area in front of the vehicle; it continues by itself.",
           "The mux zeroes every AUTO source while /output_paths says the protective field is "
           "violated - the software side of a stop the scanner's OSSD pair already makes."),
-        a("FIELD_WARNING", INFO, "auto", "Slowed: something is in the warning field",
-          "Nothing to do; auto speed is halved until the warning field clears.",
-          "cmd_mux scales every AUTO source by warning_scale (0.5) while the warning field is "
-          "occupied: paths 1 (inner) and 2 (outer), False = occupied (walk-in test 2026-10-02)."),
+        a("FIELD_WARNING", INFO, "auto", "Slowed: something is in a warning field",
+          "Nothing to do; auto speed is reduced until the warning fields clear.",
+          "cmd_mux scales every AUTO source while a warning field is occupied: warning 1 "
+          "(outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) x0.1, the lower winning, each "
+          "change ramped over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
           "Tape mission station stop (stop_until_start_button): a measured stop over "

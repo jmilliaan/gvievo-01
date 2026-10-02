@@ -73,15 +73,7 @@ _FROM_PROFILE = {
 # holding a dt band that disagrees with its own dt_nominal_s.
 _DERIVED = ("DT_MIN_S", "DT_MAX_S", "LINE_LOSS_GRACE_MAX_S")
 
-# Read only on paths Increment 1 does not take: AUTO_RPM_HIGH on the `high`
-# branch and SPEED_SWITCH_RPM_S across a normal<->high switch. On gy-demo both
-# came from the MISSION document, which does not exist yet, and both were
-# legitimately None there. They are set to None rather than left unset, because
-# an AttributeError from inside a 50 Hz tick is a worse failure than a None
-# that the engine already guards.
-_MISSION_PENDING = ("AUTO_RPM_HIGH", "SPEED_SWITCH_RPM_S")
-
-REQUIRED = tuple(_FROM_PROFILE) + _DERIVED + _MISSION_PENDING
+REQUIRED = tuple(_FROM_PROFILE) + _DERIVED
 
 _loaded = False
 
@@ -146,9 +138,6 @@ def load_from_profile(config=None):
     ns["LINE_LOSS_GRACE_MAX_S"] = (
         5.0 * ns["LINE_LOSS_GRACE_M"] / max(slowest * ns["MPS_PER_RPM"], 1e-6)
     )
-
-    for name in _MISSION_PENDING:
-        ns.setdefault(name, getattr(config, name, None))
 
     globals().update(ns)
     _loaded = True

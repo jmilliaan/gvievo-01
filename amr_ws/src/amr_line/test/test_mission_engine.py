@@ -1,5 +1,5 @@
-"""The mission engine on the line layer (2026-10-02): stop-and-go, speed zones,
-U-turn, RFID continuity. No ROS: the real job, follower and TapeRun, fed
+"""The mission engine on the line layer (2026-10-02): stop-and-go, the two tracked
+speeds (cruise, slow zone), U-turn, RFID continuity. No ROS: the real job, follower and TapeRun, fed
 dataclass inputs.
 
 The missions here are TEST documents, built inline and validated by the real
@@ -36,10 +36,7 @@ def doc(**over):
 
 
 STATION = doc(stop_until_start_button=[{"tag": "0010", "stop_distance_m": 0.3, "direction": "outbound"}])
-ZONES = doc(
-    speed={"auto_rpm_high": 2000.0, "speed_switch_accel_decel_s": 3.0},
-    high_speed_mode=[{"entry_tag": "0020", "exit_tag": "0021", "direction": "outbound"}],
-)
+ZONES = doc(branch_latch=[{"entry_tag": "0020", "exit_tag": "0021", "branch": "left", "slow_speed": True}])
 UTURN = doc(u_turn=[{"tag": "0030", "direction": "cw"}])
 
 
@@ -144,19 +141,24 @@ def test_a_prerequisite_during_the_start_delay_cancels_it():
     assert w.job.state == lj.HOLD and "press Start" in w.job.reason
 
 
-def test_speed_zone_latches_high_and_the_exit_tag_clears_it():
+def test_two_tracked_speeds_cruise_then_slow_zone_then_cruise():
     w = World(ZONES)
-    assert runtime.AUTO_RPM_HIGH == 2000.0, "the mission's site speed is installed for the engine"
+    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.85) < 0.005, "tracked cruise is 0.85 m/s"
+    assert abs(vehicle.AUTO_SLOW_RPM * vehicle.MPS_PER_RPM - 0.50) < 0.005, "tracked slow is 0.50 m/s"
     w.start()
     w.drive(1.0)
+    assert w.job.diag["speed_mode"] == "normal"
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM
     w.read("0020")
     w.tick()
-    assert w.job.mission_snapshot()["high_speed"] is True
+    assert w.job.mission_snapshot()["slow_zone"] is True
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_SLOW_RPM
     w.drive(1.0)
-    assert w.job.diag["speed_mode"] == "high"
     w.read("0021")
     w.tick()
-    assert w.job.mission_snapshot()["high_speed"] is False
+    assert w.job.mission_snapshot()["slow_zone"] is False
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM
+    assert "high_speed" not in w.job.mission_snapshot()
 
 
 def test_an_encounter_gap_is_an_overrun_and_ends_the_run():

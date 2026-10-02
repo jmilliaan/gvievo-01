@@ -32,6 +32,7 @@ onState(st => {
     ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
   lineTrack(st.line_track);
+  rfidTags(st.rfid);
   document.getElementById('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
 });
 </script>{% endblock %}

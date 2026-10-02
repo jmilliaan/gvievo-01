@@ -28,10 +28,27 @@ from agv_core import (
 from agv_core.drivers import dio  # repo module: drivers/dio.py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 
 from amr_base import panel_io
-from amr_interfaces.msg import DriveStatus, Event, IoImage, PanelState, WheelVelocities
+from amr_interfaces.msg import (
+    DriveStatus,
+    Event,
+    IoImage,
+    LineState,
+    MuxState,
+    PanelState,
+    RunState,
+    WheelStates,
+    WheelVelocities,
+)
+
+WHEELS_FRESH_S = 0.3
+MUX_FRESH_S = 0.5  # /amr/mux_state is 10 Hz
+LATCHED = QoSProfile(
+    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
+)
+TURNING_RAD_S = 0.01  # wheel speed above which a motor counts as turning (feedback noise floor)
 
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
@@ -59,6 +76,19 @@ class PanelNode(Node):
         self._io_n = 0
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
+        # dio.motion_on outputs follow the measured wheels (drive_node feedback).
+        self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, qos_profile_sensor_data)
+        self._turning = False
+        self._wheels_t: float | None = None
+        # dio.alarm_on: the run states and the scanner fields as the mux sees them.
+        self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1)
+        self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED)
+        self.create_subscription(RunState, "/amr/run_state", self._on_run, LATCHED)
+        self._mux: MuxState | None = None
+        self._mux_t: float | None = None
+        self._line_state: int | None = None
+        self._run_state: int | None = None
+        self._alarm = False
         self._cmd = (0.0, 0.0)
         self._cmd_t: float | None = None
         self._armed = False
@@ -92,6 +122,21 @@ class PanelNode(Node):
         self._cmd = (float(m.left_rad_s), float(m.right_rad_s))
         self._cmd_t = time.monotonic()
 
+    def _on_mux(self, m: MuxState) -> None:
+        self._mux, self._mux_t = m, time.monotonic()
+
+    def _on_line(self, m: LineState) -> None:
+        self._line_state = int(m.state)
+
+    def _on_run(self, m: RunState) -> None:
+        self._run_state = int(m.state)
+
+    def _on_wheels(self, m: WheelStates) -> None:
+        self._turning = (m.left_valid and abs(m.left_vel_rad_s) > TURNING_RAD_S) or (
+            m.right_valid and abs(m.right_vel_rad_s) > TURNING_RAD_S
+        )
+        self._wheels_t = time.monotonic()
+
     def _on_drives(self, m: DriveStatus) -> None:
         self._armed = bool(m.operational)
         self._armed_t = time.monotonic()
@@ -122,6 +167,27 @@ class PanelNode(Node):
         if time.monotonic() - self._ui_t >= 0.1:
             self._ui_t = time.monotonic()
             self._pub_ui.publish(m)
+
+        # dio.motion_on (DO00, DO08): on while the motors turn, off when they do not, in any
+        # mode. Feedback older than WHEELS_FRESH_S counts as not turning.
+        fresh = self._wheels_t is not None and time.monotonic() - self._wheels_t <= WHEELS_FRESH_S
+        for ch in config.DIO_MOTION_ON:
+            self.link.set_coil(ch, self._turning and fresh, config.HORN_HOLD_S)
+
+        # dio.alarm_on (DO01): AUTO run active and a scanner field occupied.
+        mux = self._mux
+        mux_fresh = mux is not None and time.monotonic() - self._mux_t <= MUX_FRESH_S
+        alarm = panel_io.alarm_wanted(
+            frame.valid and frame.mode_auto, self._line_state, self._run_state,
+            mux_fresh and mux.field_fresh,
+            bool(mux.protective_clear) if mux_fresh else True,
+            bool(mux.warning_active) if mux_fresh else False,
+        )
+        for ch in config.DIO_ALARM_ON:
+            self.link.set_coil(ch, alarm, config.HORN_HOLD_S)
+        if alarm != self._alarm:
+            self._alarm = alarm
+            self.get_logger().info(f"alarm horn {'on' if alarm else 'off'}")
 
         if config.HORN_ENABLED:
             now = time.monotonic()

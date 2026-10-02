@@ -412,7 +412,6 @@ _SCHEMA = {
         # MLS SDO fallback measured 9.8 Hz against a 50 Hz PID. This is the
         # rate floor the follower refuses to run below.
         "line_min_track_hz":   ("LINE_MIN_TRACK_HZ", float),
-        "line_v_max_mps":      ("LINE_V_MAX_MPS", float),
     },
     "vehicle": {
         "track_m":            ("TRACK_M", float),
@@ -615,6 +614,24 @@ def _read_io_names(raw, count, where):
     return [v.strip() for v in raw]
 
 
+def _read_do_list(raw, count, where):
+    """dio.motion_on / dio.alarm_on -> sorted DO channel numbers, distinct, in 0..num_do-1.
+
+    Operator, 2026-10-02:
+      motion_on  DO00 (movement horn) and DO08: on while the motors turn, any mode.
+      alarm_on   DO01 (alarm horn): on while an AUTO run is active and the protective
+                 field is violated or warning field 1 or 2 is occupied.
+    """
+    if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
+        raise ConfigError(f"{where}: expected a list of DO channel numbers")
+    if len(set(raw)) != len(raw):
+        raise ConfigError(f"{where}: a channel is listed twice")
+    bad = [v for v in raw if not 0 <= v < count]
+    if bad:
+        raise ConfigError(f"{where}: channel(s) {bad} outside 0..{count - 1}")
+    return sorted(raw)
+
+
 def _read_zone_bytes(raw, where):
     """lidar.zone_bytes -> one byte offset per cut-off path, in path order.
 
@@ -719,7 +736,7 @@ def _parse(doc):
         if section == "drivers":
             allowed.add("ramp")
         if section == "dio":
-            allowed |= {"di_names", "do_names"}
+            allowed |= {"di_names", "do_names", "motion_on", "alarm_on"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
         if section == "pp":
@@ -745,6 +762,10 @@ def _parse(doc):
         doc["dio"]["di_names"], ns["DIO_NUM_DI"], "dio.di_names")
     ns["DIO_DO_NAMES"] = _read_io_names(
         doc["dio"]["do_names"], ns["DIO_NUM_DO"], "dio.do_names")
+    ns["DIO_MOTION_ON"] = _read_do_list(
+        doc["dio"]["motion_on"], ns["DIO_NUM_DO"], "dio.motion_on")
+    ns["DIO_ALARM_ON"] = _read_do_list(
+        doc["dio"]["alarm_on"], ns["DIO_NUM_DO"], "dio.alarm_on")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
     return ns
@@ -926,6 +947,12 @@ def _validate(ns):
           "panel.enabled is true while dio.enabled is false - the panel is read "
           "from the DI image, so the buttons would never respond")
 
+    # -- motion outputs ----------------------------------------------------
+    check(not (g("HORN_ENABLED") and g("HORN_DO_CHANNEL") in g("DIO_MOTION_ON") + g("DIO_ALARM_ON")),
+          f"dio.motion_on/alarm_on include the horn's channel {g('HORN_DO_CHANNEL')}: one coil, two owners")
+    check(not set(g("DIO_MOTION_ON")) & set(g("DIO_ALARM_ON")),
+          "dio.motion_on and dio.alarm_on share a channel: one coil, two owners")
+
     # -- horn -------------------------------------------------------------
     check(0 <= g("HORN_DO_CHANNEL") < g("DIO_NUM_DO"),
           f"horn.do_channel ({g('HORN_DO_CHANNEL')}) must be a channel in "
@@ -966,9 +993,10 @@ def _validate(ns):
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
-    # -- LINE ceiling (read by line_follow_node and cmd_mux) ---------------
-    check(0 < g("LINE_V_MAX_MPS") <= g("MAX_SPEED_MPS"),
-          "autopilot.line_v_max_mps must be in (0, motor top speed]")
+    # -- tracked AUTO speeds (2026-10-02): cruise 0.85 m/s, slow zone 0.5 m/s.
+    # The only two tracked speeds; there is no separate LINE ceiling.
+    check(0 < g("AUTO_SLOW_RPM") <= g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
+          "autopilot: need 0 < auto_slow_rpm <= auto_rpm <= vehicle.motor_max_rpm")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
@@ -1350,6 +1378,14 @@ def describe():
                           + " \u00b7 ".join(named)) if named
                          else f"none of {len(names)} named",
                     unit=""))
+            on = g["DIO_MOTION_ON"]
+            rows.append(_row(section, "motion_on", "DIO_MOTION_ON", on, notes,
+                             text=(" \u00b7 ".join(f"DO{c:02d}" for c in on) + " on while the motors turn") if on else "none",
+                             unit=""))
+            al = g["DIO_ALARM_ON"]
+            rows.append(_row(section, "alarm_on", "DIO_ALARM_ON", al, notes,
+                             text=(" \u00b7 ".join(f"DO{c:02d}" for c in al) + " on in an AUTO run with a field occupied") if al else "none",
+                             unit=""))
         if section == "lidar":
             rows.append(_row(section, "zone_bytes", "LIDAR_ZONE_BYTES",
                              g["LIDAR_ZONE_BYTES"], notes,
