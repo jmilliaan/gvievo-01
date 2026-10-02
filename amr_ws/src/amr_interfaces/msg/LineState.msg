@@ -41,3 +41,15 @@ string track_source         # "tpdo" (control-rate) | "sdo" (polled, monitor onl
 
 string message              # last result / block reason, for the operator
 string code                 # alarm catalogue code for the hold/fault in `message`; "" when driving
+
+# Mission engine (2026-10-02). APPEND ONLY. All empty/false with no mission.
+string mission              # "" = plain line following
+string station              # route stage: current station id
+string next_station
+bool high_speed             # high-speed latch (still under the LINE ceiling)
+string branch_intent        # straight | left | right
+bool slow_zone
+string uturn_phase          # "" | stopping | spin | center | settle
+string last_tag             # last RFID encounter and what the engine did with it
+string last_tag_action
+string stop_where           # the station being stopped at / parked at

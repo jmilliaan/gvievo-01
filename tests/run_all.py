@@ -35,6 +35,7 @@ MODULES = [
     "test_blindrun",
     "test_layout",
     "test_mls",
+    "test_mission",
 ]
 
 # 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
@@ -52,7 +53,11 @@ MODULES = [
 # checks in test_rpdo (4) now read amr_base/canopen.py, the bus owner that
 # replaced canworker. Nothing added. Per-module counts before/after are in
 # manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md.
-EXPECTED_CHECKS = 536
+# + 8 (2026-10-02): test_mls calibration summary (read_mls calibrate).
+# - 3 + 1 (2026-10-02): dead speed params removed (manual.*, motion.py, MANUAL_HALF_RPM);
+# one check that the retired manual section is refused.
+# + 17 (2026-10-02): test_mission, the tape-mission validator ported from gy-demo.
+EXPECTED_CHECKS = 559
 
 
 # An exception on a helper thread only prints a traceback by default - the
@@ -75,7 +80,6 @@ def main():
     print(f"profile {helpers.config.PROFILE_NAME}: "
           f"can {helpers.config.CAN_BITRATE // 1000} kbps "
           f"use_rpdo={helpers.config.CAN_USE_RPDO} "
-          f"jog {helpers.config.MANUAL_FULL_RPM} r/min "
           f"6083h={helpers.config.ACCEL_RPM_S}")
 
     ran = 0

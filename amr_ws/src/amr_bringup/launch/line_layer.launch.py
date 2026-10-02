@@ -43,10 +43,8 @@ def _compose(context):
             parameters=[
                 {
                     "generation": generation,
-                    # Increment 1 is a bench and first-floor-run increment.
-                    # The mux applies its own ceiling independently
-                    # (cmd_mux line_v_max_m_s, also 0.30).
-                    "v_max_mps": 0.30,
+                    # The speed ceiling is the profile's autopilot.line_v_max_mps,
+                    # read by the node and by cmd_mux (2026-10-02, was 0.30 in both).
                     # The sim has no scanner: the field is assumed clear there
                     # and ONLY there. On the vehicle a stale /output_paths is
                     # "unknown" and the layer refuses to arm.

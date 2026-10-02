@@ -29,13 +29,14 @@
      mistake guard, not security (amr_web/role.py). #}
   <nav>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
-    <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
+    {# Two navigation types, two run tabs (2026-10-02). A tab for a product the profile
+       does not carry is not offered at all (its pages answer 404). #}
+    {% if tracked_ok %}<a href="/run-tracked" class="{{ 'on' if page == 'run_tracked' }}">Run tracked</a>{% endif %}
+    {% if trackless_ok %}<a href="/run" class="{{ 'on' if page == 'run' }}">Run trackless</a>{% endif %}
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     {% if role == ENGINEER %}
     <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
-    <a href="/maps"   class="{{ 'on' if page == 'maps' }}">Maps</a>
-    <a href="/editor" class="{{ 'on' if page == 'editor' }}">Routes</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
@@ -67,6 +68,7 @@
       <div class="tel" id="tel-selector"><span>Selector</span><b>–</b><i>—</i></div>
       <div class="tel" id="tel-drives"><span>Drives</span><b>–</b><i>—</i></div>
       <div class="tel" id="tel-source"><span>Command</span><b>–</b><i>—</i></div>
+      <div class="tel" id="tel-field"><span>Scanner</span><b>–</b><i>—</i></div>
       <div class="tel" id="tel-loc"><span>Localis.</span><b>–</b><i>—</i></div>
       <div class="tel" id="tel-run"><span>Run</span><b>–</b><i>—</i></div>
       <div class="tel" id="tel-wheels"><span>Wheels</span><b>–</b><i>rad/s · L / R</i></div>
@@ -75,8 +77,34 @@
     <div id="rail-alarm" class="rail-alarm" hidden></div>
     <pre id="log"></pre>
   </aside>
-  <main class="{% block main_class %}{% endblock %}">{% block body %}{% endblock %}</main>
+  <main class="{% block main_class %}{% endblock %}">
+    {% if sub %}{# Maps and Routes are SLAM things: they live inside Run trackless. #}
+    <nav class="subnav">
+      <a href="/run" class="{{ 'on' if sub == 'run' }}">Run</a>
+      {% if role == ENGINEER %}
+      <a href="/maps" class="{{ 'on' if sub == 'maps' }}">Maps</a>
+      <a href="/editor" class="{{ 'on' if sub == 'editor' }}">Routes</a>
+      {% endif %}
+    </nav>
+    {% endif %}
+    {% block body %}{% endblock %}</main>
 </div>
+
+{# Engineer PIN pad. The kiosk is bare X11 + matchbox with no on-screen keyboard, and
+   desktop Chromium has none of its own, so a prompt() box cannot be typed into on
+   the touch panel. Digits are buttons; a USB keyboard still works too. #}
+<dialog id="pin-pad" class="pin-pad" aria-label="Engineer PIN">
+  <div class="pin-title">Engineer PIN</div>
+  <div id="pin-dots" class="pin-dots" aria-live="polite"></div>
+  <div id="pin-msg" class="pin-msg"></div>
+  <div class="pin-keys">
+    {% for k in ['1','2','3','4','5','6','7','8','9'] %}<button type="button" data-k="{{ k }}">{{ k }}</button>{% endfor %}
+    <button type="button" data-k="back" aria-label="Delete">⌫</button>
+    <button type="button" data-k="0">0</button>
+    <button type="button" data-k="ok" class="pin-ok">OK</button>
+  </div>
+  <button type="button" data-k="cancel" class="pin-cancel">Cancel</button>
+</dialog>
 <script src="/static/amr.js"></script>
 {% block scripts %}{% endblock %}
 </body>

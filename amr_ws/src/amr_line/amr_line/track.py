@@ -104,10 +104,13 @@ class TrackReader:
         # empty list exactly as "no line", which is what this is.
         if not m.line_good:
             tracks = []
-        return {"tracks": tracks, "has_track": bool(tracks)}
+        # nlcp drives the branch ladder's ForkPassed contact and track_level the
+        # U-turn's reacquisition test (2026-10-02, mission engine).
+        return {"tracks": tracks, "has_track": bool(tracks),
+                "nlcp": int(m.nlcp), "track_level": int(m.track_level)}
 
     def nlcp(self):
         return 0 if self.last is None else int(self.last.nlcp)
 
 
-NO_TRACK = {"tracks": [], "has_track": False}
+NO_TRACK = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": None}

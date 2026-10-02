@@ -4,7 +4,7 @@ import os
 
 from helpers import check
 
-from agv_core import config, kinematics, motion
+from agv_core import config, kinematics
 
 
 def rows_by_path(sections):
@@ -66,10 +66,10 @@ def test_config_profile():
     check("the real profile loads", config.PROFILE_NAME == "agv-01",
           config.PROFILE_NAME)
     refuses("a typo'd key is refused",
-            lambda d: d["manual"].update({"full_rmp": d["manual"].pop("full_rpm")}),
+            lambda d: d["vehicle"].update({"track_mm": d["vehicle"].pop("track_m")}),
             "unknown key")
     refuses("a missing key is refused",
-            lambda d: d["manual"].pop("half_ratio"), "missing key")
+            lambda d: d["vehicle"].pop("gear_ratio"), "missing key")
     refuses("an unknown section is refused",
             lambda d: d.update({"extra": {}}), "unknown top-level")
     # *** A whole retired section must not come back by accident. *** The
@@ -91,10 +91,15 @@ def test_config_profile():
             "unknown top-level")
     refuses("a leftover auto watchdog is refused",
             lambda d: d["timing"].update(auto_watchdog_s=1.5), "unknown key")
-    refuses("a jog speed above the motor limit is refused",
-            lambda d: d["manual"].update(full_rpm=9000), "manual.full_rpm")
+    refuses("a blind-run speed above the motor limit is refused",
+            lambda d: d["blind_run"].update(max_rpm=9000), "blind_run.max_rpm")
     refuses("a bool where a number belongs is refused",
-            lambda d: d["manual"].update(half_ratio=True), "expected a number")
+            lambda d: d["vehicle"].update(gear_ratio=True), "expected a number")
+    # 2026-10-02: manual.* (read only by the deleted motion.py) and drivers.ramp.manual
+    # (drive_node always arms with "auto") were removed as dead speed parameters.
+    refuses("the retired manual section is refused",
+            lambda d: d.update({"manual": {"full_rpm": 1200, "half_ratio": 0.6}}),
+            "unknown top-level")
     # *** Profile position is LOCKED until the vendor has answered. *** The
     # 400 W geared motor needs motion extension, which pp cannot select; a pp
     # section switched on without the verified drive values or the vendor
@@ -231,10 +236,10 @@ def test_config_profile():
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
-    load_with(lambda d: d["manual"].update(full_rpm=9000))
+    load_with(lambda d: d["blind_run"].update(max_rpm=9000))
     check("a rejected profile leaves the live one intact",
-          config.MANUAL_FULL_RPM == 1200,
-          f"MANUAL_FULL_RPM={config.MANUAL_FULL_RPM}")
+          config.BLIND_MAX_RPM != 9000,
+          f"BLIND_MAX_RPM={config.BLIND_MAX_RPM}")
 
 
 def test_derived_constants():
@@ -258,11 +263,6 @@ def test_derived_constants():
           f"{config.RAD_S_PER_RPM_DIFF:.6e} (track {config.TRACK_M} m)")
     check("MAX_SPEED_MPS", close(config.MAX_SPEED_MPS, 1.2566371),
           f"{config.MAX_SPEED_MPS:.4f}")
-    check("MANUAL_HALF_RPM is full_rpm * half_ratio, rounded",
-          config.MANUAL_HALF_RPM
-          == round(config.MANUAL_FULL_RPM * config.MANUAL_HALF_RATIO),
-          f"{config.MANUAL_FULL_RPM} x {config.MANUAL_HALF_RATIO} "
-          f"-> {config.MANUAL_HALF_RPM}")
     check("ACCEL/DECEL track the auto ramp block",
           config.ACCEL_RPM_S == config.RAMP["auto"]["accel"]
           and config.DECEL_RPM_S == config.RAMP["auto"]["decel"],
@@ -277,13 +277,6 @@ def test_derived_constants():
     check("NODES maps the configured driver IDs",
           config.NODES == {config.LEFT: "left", config.RIGHT: "right"},
           str(config.NODES))
-    # motion's table is built from the profile now, not from module literals.
-    full, half = config.MANUAL_FULL_RPM, config.MANUAL_HALF_RPM
-    check("manual jog table is built from the profile",
-          motion.velocities("forward_left") == (half, full)
-          and motion.velocities("forward") == (full, full)
-          and motion.velocities("stop") == (0, 0),
-          f"fwd-left {motion.velocities('forward_left')}")
 
 
 def test_params_view():
@@ -315,7 +308,7 @@ def test_params_view():
 
     derived = {r["key"] for s in sections if s["name"] == "derived"
                for r in s["rows"]}
-    for const in ("MPS_PER_RPM", "MAX_SPEED_MPS", "MANUAL_HALF_RPM",
+    for const in ("MPS_PER_RPM", "MAX_SPEED_MPS",
                   "ACCEL_RPM_S", "RAD_S_PER_RPM_DIFF"):
         check(f"{const} is shown as derived", const in derived)
     # Derived values cannot be edited, so they must not be offered as if they
@@ -325,9 +318,9 @@ def test_params_view():
               for s in sections if s["name"] == "derived" for r in s["rows"]))
 
     check("the profile's own values are shown",
-          rows["manual.full_rpm"]["value"] == config._fmt(config.MANUAL_FULL_RPM)
+          rows["vehicle.track_m"]["value"] == config._fmt(config.TRACK_M)
           and rows["can.channel"]["value"] == config.CAN_CHANNEL,
-          rows["manual.full_rpm"]["value"])
+          rows["vehicle.track_m"]["value"])
 
     # Units are read off the exported name's suffix. The ones worth pinning are
     # the ones a naive suffix rule gets wrong.

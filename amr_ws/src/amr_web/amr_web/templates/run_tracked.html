@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}AMR — run tracked{% endblock %}
+{% block body %}
+{# Run tracked (2026-10-02): the magnetic-tape product. Pick a mission (or none for plain
+   line following), arm, then the PHYSICAL Start under AUTO runs it. Nothing on this page
+   moves the vehicle: LINE mode and arming only make it ready. #}
+<section class="manual grow">
+  <div class="side">
+    <h2>Line mode <small>supervisor</small></h2>
+    <div id="lt-mode" class="tel-grid rows"></div>
+    <div class="bar">
+      <button id="btn-line-mode" class="big run">Enter LINE mode</button>
+      <button id="btn-line-idle" class="big">Return to idle</button>
+    </div>
+    <p class="note">A mode change needs the vehicle stopped and the selector in <b>MANUAL</b>.</p>
+    <div class="sep"></div>
+    <h2>Mission <small>tape</small></h2>
+    <label class="field">Mission <select id="lt-mission"></select></label>
+    <div class="bar">
+      <button id="btn-line-select" class="big">Use mission</button>
+    </div>
+    <div class="bar">
+      <button id="btn-line-arm" class="big run">Arm</button>
+      <button id="btn-line-clear" class="danger">Clear</button>
+    </div>
+    <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a station, Start goes on after the start delay.</div>
+  </div>
+  <div class="side">
+    <h2>Follower <small>line layer</small></h2>
+    <div id="lt-state" class="tel-grid rows"></div>
+    <p id="lt-reason" class="note"></p>
+    {% include "_line_track.html" %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/linetrack.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
+
+async function loadMissions() {
+  const { status, data } = await apiGet('/api/line/missions');
+  if (status !== 200) return;
+  $('lt-mission').innerHTML = ['<option value="">none — plain line following</option>']
+    .concat(data.missions.map(n => `<option value="${esc(n)}">${esc(n)}</option>`)).join('');
+
+}
+loadMissions();
+
+$('btn-line-mode').onclick = () => operation('/api/mode', { target: 'line' });
+$('btn-line-idle').onclick = () => operation('/api/mode', { target: 'idle' });
+$('btn-line-select').onclick = async () => {
+  const { data } = await api('/api/line/mission', { name: $('lt-mission').value });
+  log(data.message, data.ok ? '' : 'bad');
+};
+$('btn-line-arm').onclick = async () => { const { data } = await api('/api/line/arm'); log(data.message, data.ok ? '' : 'bad'); };
+$('btn-line-clear').onclick = async () => { const { data } = await api('/api/line/clear'); log(data.message, data.ok ? '' : 'bad'); };
+
+onState(st => {
+  const m = st.mode, ln = st.line;
+  const inLine = m && m.mode_name === 'LINE';
+  tiles('lt-mode', [
+    ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
+    ['Product', m ? (m.product || '–') : '–', 'profile tracked', ''],
+  ]);
+  $('btn-line-mode').disabled = !!inLine;
+  for (const id of ['btn-line-select', 'btn-line-arm', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
+  if (!ln) {
+    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'enter LINE mode', 'warn']]);
+    $('lt-reason').textContent = '';
+  } else {
+    const uturn = ln.uturn_phase ? `U-turn ${ln.uturn_phase}` : '';
+    tiles('lt-state', [
+      ['State', ln.state_name, ln.hold_cause ? `hold: ${ln.hold_cause}` : (ln.engine_state || '—'), LINE_LEVEL[ln.state_name] || ''],
+      ['Mission', ln.mission || 'none', ln.mission ? 'tape mission' : 'plain line following', ''],
+      ['Station', ln.station || '–', ln.next_station ? `next ${ln.next_station}` : (ln.stop_where || '—'), ''],
+      ['Speed', ln.slow_zone ? 'SLOW' : (ln.high_speed ? 'HIGH' : 'NORMAL'), `${num(ln.v_mps, 2)} m/s`, ''],
+      ['Branch', (ln.branch_intent || 'straight').toUpperCase(), uturn || '—', uturn ? 'warn' : ''],
+      ['Last tag', ln.last_tag || '–', ln.last_tag_action || '—', ''],
+      ['Travel', `${num(ln.followed_m, 1)} m`, `track ${num(ln.track_hz, 0)} Hz`, ''],
+    ]);
+    $('lt-reason').textContent = ln.message || '';
+  }
+  lineTrack(st.line_track);
+});
+</script>{% endblock %}

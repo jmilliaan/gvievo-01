@@ -33,6 +33,13 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
 from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
+try:
+    # The scanner's field outputs come from the SICK driver. Optional at import so a
+    # bench without the package still starts; field_source then decides (see below).
+    from sick_safetyscanners2_interfaces.msg import OutputPaths
+except ImportError:  # pragma: no cover - present on the vehicle
+    OutputPaths = None
+
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -69,6 +76,13 @@ class CmdMuxKinematics(Node):
     # a new cache attribute turns every one of those into an AttributeError
     # from inside the tick, which is a poor way to learn about it.
     _line: gating.Stamped | None = None
+    # Same reason: the field state the tick reads (2026-10-02). Assume-clear by default
+    # so a test built with __new__ that never sets fp keeps its old behaviour.
+    _field: gating.Field | None = None
+    fp = gating.FieldParams(assume_clear=True)
+    _view = gating.FieldView(True, True, False)
+    _scale = 1.0
+    _warned = False
 
     def __init__(self) -> None:
         super().__init__("cmd_mux_kinematics")
@@ -110,8 +124,16 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("drives_timeout_s", 0.3)
         # LINE ceiling at the mux, independent of the follower's own v_max_mps
         # (dual-product plan Increment 1). 0 = no yaw cap.
-        self.declare_parameter("line_v_max_m_s", 0.30)
+        self.declare_parameter("line_v_max_m_s", float(config.LINE_V_MAX_MPS))  # profile autopilot.line_v_max_mps
         self.declare_parameter("line_w_max_rad_s", 0.0)
+        # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
+        # any warning field is occupied. Indices and polarity from the walk-in test.
+        self.declare_parameter("field_source", "scanner")  # scanner | assume_clear (sim only)
+        self.declare_parameter("protective_index", 0)
+        self.declare_parameter("warning_indices", [1, 2])
+        self.declare_parameter("warning_active_level", False)
+        self.declare_parameter("warning_scale", 0.5)
+        self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter
         self.geom = Geometry(p("wheel_radius_m").value, p("track_width_m").value)
@@ -142,8 +164,16 @@ class CmdMuxKinematics(Node):
             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
             pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
             track_m=float(p("track_width_m").value),
-            line_v_max=self._finite_or(float(p("line_v_max_m_s").value), 0.30),
+            line_v_max=min(self._finite_or(float(p("line_v_max_m_s").value), 0.30), float(config.LINE_V_MAX_MPS)),
             line_w_max=self._finite_or(float(p("line_w_max_rad_s").value), 0.0),
+        )
+        self.fp = gating.FieldParams(
+            protective_index=int(p("protective_index").value),
+            warning_indices=tuple(int(i) for i in p("warning_indices").value),
+            warning_active_level=bool(p("warning_active_level").value),
+            warning_scale=min(1.0, self._finite_or(float(p("warning_scale").value), 0.5)),
+            fresh_s=self._finite_or(float(p("field_fresh_s").value), 0.5),
+            assume_clear=str(p("field_source").value) == "assume_clear",
         )
         self.dt = 1.0 / p("rate_hz").value
         self.survey_w_max = max(0.0, float(p("survey_w_max_rad_s").value))
@@ -159,6 +189,10 @@ class CmdMuxKinematics(Node):
         self._drives: gating.Drives | None = None
         self._commissioning: gating.Wheels | None = None
         self._line: gating.Stamped | None = None
+        self._field: gating.Field | None = None
+        self._view = gating.FieldView(False, False, False)
+        self._scale = 1.0
+        self._warned = False
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
@@ -181,6 +215,16 @@ class CmdMuxKinematics(Node):
         self.create_subscription(
             WheelVelocities, "/amr/commissioning_wheels", self._on_commissioning, RELIABLE_1
         )
+        if self.fp.assume_clear:
+            self.get_logger().warning("field_source=assume_clear: scanner fields ASSUMED clear (sim only)")
+        elif OutputPaths is not None:
+            sensor = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT,
+                                durability=QoSDurabilityPolicy.VOLATILE)
+            self.create_subscription(OutputPaths, "/output_paths", self._on_output_paths, sensor)
+        else:
+            self.get_logger().error(
+                "sick_safetyscanners2_interfaces missing: fields unknown, supervised AUTO stays zero"
+            )
         self._pub = self.create_publisher(WheelVelocities, "/cmd_wheel_vel", RELIABLE_1)
         self._pub_state = self.create_publisher(MuxState, "/amr/mux_state", RELIABLE_1)
         # Operator events: EDGES only (the tick runs at 50 Hz). One per source change and
@@ -320,6 +364,12 @@ class CmdMuxKinematics(Node):
         else falls back to the shipped default rather than becoming 'no limit'."""
         return x if math.isfinite(x) and x >= 0.0 else default
 
+    def _on_output_paths(self, m) -> None:
+        status = getattr(m, "status", None)
+        if status is None:
+            return  # no evidence at all: the previous sample ages out
+        self._field = gating.Field(self._now(), tuple(bool(x) for x in status))
+
     def _tick(self) -> None:
         sel = gating.select(
             self._now(),
@@ -335,6 +385,19 @@ class CmdMuxKinematics(Node):
             commissioning=self._commissioning,
             line=self._line,
         )
+        self._view = gating.field_view(self._now(), self._field, self.fp)
+        sel, scale = gating.field_limit(sel, self._view, self.gp, self.fp)
+        warned = sel.source != gating.NONE and scale < 1.0
+        if warned != self._warned:
+            # Edges only, and only while an AUTO source is affected: a warning field
+            # that reaches a wall flickers all day under MANUAL and is nobody's history.
+            self._warned = warned
+            self._event(
+                Event.INFO,
+                "FIELD_WARNING",
+                f"warning field: auto speed x{scale:g}" if warned else "warning field clear: full auto speed",
+            )
+        self._scale = scale
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
             self.get_logger().info(f"command source: {self._source} -> {name} ({sel.reason})")
@@ -424,6 +487,10 @@ class CmdMuxKinematics(Node):
         m.left_rad_s, m.right_rad_s = self._out
         m.reason = self._last.reason
         m.code = self._last.code
+        m.field_fresh = self._view.fresh
+        m.protective_clear = self._view.protective_clear
+        m.warning_active = self._view.warning_active
+        m.speed_scale = float(self._scale)
         self._pub_state.publish(m)
 
     def _event(self, level: int, code: str, text: str) -> None:

@@ -2,6 +2,11 @@
 
 No URDF here - base.launch.py owns the one robot_state_publisher. For a
 standalone scanner + TF session use lidar.launch.py. ROS owns UDP 6060.
+
+The driver aborts (exit -6) if the scanner is unreachable when it starts - a
+cable out at boot left it dead until the next service restart (2026-10-02). It
+respawns instead, so plugging the cable back in recovers the data link by itself.
+The STOP path (OSSD pair into the FX3) does not depend on this node.
 """
 
 import os
@@ -22,6 +27,8 @@ def generate_launch_description() -> LaunchDescription:
                 output="screen",
                 emulate_tty=True,
                 parameters=[params],
+                respawn=True,
+                respawn_delay=5.0,
             ),
         ]
     )

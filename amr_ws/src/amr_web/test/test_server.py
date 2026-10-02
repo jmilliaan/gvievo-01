@@ -429,6 +429,7 @@ def test_pages_fonts_and_style_guards(env):
         "/editor",
         "/review",
         "/run",
+        "/run-tracked",
         "/monitor",
         "/io",
         "/alarms",

@@ -79,6 +79,18 @@ def _compose(context):
         )
         if cfg("lidar").perform(context).lower() == "true":
             actions.append(include("amr_bringup", "scanner.launch.py"))
+        # RFID reader (2026-10-02): optional - a missing reader leaves plain line
+        # following and SLAM untouched; respawns so a late cable recovers by itself.
+        actions.append(
+            Node(
+                package="amr_base",
+                executable="rfid_node",
+                name="rfid_node",
+                output="screen",
+                respawn=True,
+                respawn_delay=5.0,
+            )
+        )
     else:
         actions += required(
             Node(
@@ -127,6 +139,9 @@ def _compose(context):
                 {
                     **gate,
                     "teleop_enabled": not supervised,
+                    # Scanner fields gate AUTO (2026-10-02). The sim has no scanner, so there
+                    # and ONLY there the fields are assumed clear.
+                    "field_source": "scanner" if real else "assume_clear",
                     "a_max": 0.15,
                     "alpha_max": 0.4,
                     "d_max": 0.5,

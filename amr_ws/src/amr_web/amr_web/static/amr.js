@@ -69,6 +69,12 @@ function rail(st) {
   else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`, d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
   tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
+  // Scanner fields as the mux applies them: protective stops AUTO, warning halves it.
+  if (!mx) tile('tel-field', '–', 'no mux state', 'bad');
+  else if (!mx.field_fresh) tile('tel-field', 'NO DATA', 'auto held at zero', 'bad', mxStale);
+  else if (!mx.protective_clear) tile('tel-field', 'PROTECT', 'protective field: auto stopped', 'bad', mxStale);
+  else if (mx.warning_active) tile('tel-field', 'WARNING', 'auto speed halved', 'warn', mxStale);
+  else tile('tel-field', 'CLEAR', 'fields clear', '', mxStale);
   tile('tel-wheels', mx ? `${num(mx.left_rad_s, 2)} / ${num(mx.right_rad_s, 2)}` : '–', 'rad/s · L / R', '', mxStale);
   const l = st.localization;
   tile('tel-loc', l ? l.state_name : '–', st.localization_stale ? 'stale (replaced layer)' : (l ? '—' : 'no layer'),
@@ -214,12 +220,48 @@ async function followOperation(id, onDone) {
       location.href = '/home';
       return;
     }
-    const pin = prompt('Engineer PIN');
-    if (!pin) return;
-    const { status, data } = await api('/api/role', { role: 'engineer', pin });
-    if (status === 200) location.href = '/status';
-    else log(data.message || 'wrong PIN', 'bad');
+    openPinPad();
   };
+
+  // On-page keypad, not a browser prompt: the kiosk has no on-screen keyboard.
+  const pad = document.getElementById('pin-pad');
+  const dots = document.getElementById('pin-dots');
+  const msg = document.getElementById('pin-msg');
+  const MAX = 8;
+  let pin = '';
+  let busy = false;
+  const draw = () => { dots.textContent = pin ? '●'.repeat(pin.length) : '–'; };
+  function openPinPad() {
+    pin = ''; msg.textContent = ''; draw();
+    pad.showModal();
+  }
+  async function submit() {
+    if (!pin || busy) return;
+    busy = true;
+    const { status, data } = await api('/api/role', { role: 'engineer', pin });
+    busy = false;
+    if (status === 200) { pad.close(); location.href = '/status'; return; }
+    pin = ''; draw();
+    msg.textContent = (data && data.message) || 'wrong PIN';
+  }
+  function key(k) {
+    if (k === 'cancel') { pad.close(); return; }
+    if (k === 'ok') { submit(); return; }
+    if (k === 'back') pin = pin.slice(0, -1);
+    else if (/^[0-9]$/.test(k) && pin.length < MAX) pin += k;
+    msg.textContent = ''; draw();
+  }
+  pad.addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]');
+    if (b) key(b.dataset.k);
+  });
+  pad.addEventListener('keydown', e => {
+    if (/^[0-9]$/.test(e.key)) key(e.key);
+    else if (e.key === 'Backspace') key('back');
+    else if (e.key === 'Enter') key('ok');
+    else return;                       // Escape: the dialog's own cancel
+    e.preventDefault();
+  });
 })();
 
 // Display size knob (amr.css "one layout, three sizes"): s -> m -> l -> s. Stored per

@@ -34,7 +34,7 @@ BASE_EXES = {
     "ekf_node",
     "robot_state_publisher",
 }
-HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node"}
+HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node", "rfid_node"}
 SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
 MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
 LINE_EXES = {"line_follow_node"}
@@ -164,6 +164,17 @@ def test_navigation_layer_has_no_base_web_or_sim(tmp_path):
 def test_scanner_layer_has_no_description():
     c = compose("scanner.launch.py")
     assert c["exes"] == ["sick_safetyscanners2_node"] and c["includes"] == []
+
+
+def test_scanner_driver_respawns():
+    """It aborts when the scanner is unreachable at start; a cable plugged in later must recover."""
+    ld = get_launch_description_from_any_launch_file(
+        os.path.join(get_package_share_directory("amr_bringup"), "launch", "scanner.launch.py")
+    )
+    nodes = [e for e in ld.entities if isinstance(e, Node)]
+    # launch keeps these private (ExecuteLocal); no public getter in Humble
+    assert len(nodes) == 1 and nodes[0]._ExecuteLocal__respawn is True
+    assert nodes[0]._ExecuteLocal__respawn_delay > 0
 
 
 def test_sim_base_is_fakes_plus_estimation_and_one_description():

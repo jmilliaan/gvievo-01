@@ -22,7 +22,7 @@ from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
@@ -37,6 +37,7 @@ from amr_interfaces.msg import (
     Event,
     IoImage,
     LineState,
+    LineTrack,
     LocalizationState,
     ManualCommand,
     MappingState,
@@ -53,6 +54,7 @@ from amr_interfaces.srv import (
     RequestSurvey,
     RunMission,
     SaveMap,
+    SelectMission,
     StartSurvey,
     SurveyMove,
 )
@@ -92,6 +94,16 @@ MUX_NAMES = {
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
+
+
+def _sensor_max_mm() -> float:
+    """The profile's line.sensor_max_mm, the scale of the manual page's track bar."""
+    try:
+        from agv_core import config  # noqa: PLC0415 - needs AGV_PROFILE, absent on a dev box
+
+        return float(config.SENSOR_MAX_MM)
+    except Exception:  # noqa: BLE001 - display scale only
+        return 100.0
 
 
 def _msg_to_dict(msg) -> dict[str, Any]:
@@ -148,6 +160,9 @@ class RosAdapter(Node):
         self._mux_t = 0.0
         self._line: dict | None = None
         self._line_t = 0.0
+        self._track: dict | None = None
+        self._track_t = 0.0
+        self._sensor_max_mm = _sensor_max_mm()
         g = ReentrantCallbackGroup()
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED, callback_group=g)
         self.create_subscription(
@@ -158,6 +173,10 @@ class RosAdapter(Node):
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1, callback_group=g)
         # The tape product's layer: its holds and faults are standing alarms like any other.
         self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED, callback_group=g)
+        # The raw MLS reading, in every mode (drive_node publishes it from boot): display only.
+        self.create_subscription(
+            LineTrack, "/amr/line_track", self._on_track, qos_profile_sensor_data, callback_group=g
+        )
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
         self._diag: dict[str, dict] = {}
@@ -239,6 +258,9 @@ class RosAdapter(Node):
             "survey": self.create_client(RequestSurvey, "/amr/supervisor/survey", callback_group=g),
             "operation": self.create_client(GetOperation, "/amr/operations/get", callback_group=g),
             "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
+            "line_arm": self.create_client(Trigger, "/amr/line/arm", callback_group=g),
+            "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
+            "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
         }
@@ -384,6 +406,10 @@ class RosAdapter(Node):
                 "generation": int(m.generation),
                 "left_rad_s": float(m.left_rad_s),
                 "right_rad_s": float(m.right_rad_s),
+                "field_fresh": bool(m.field_fresh),
+                "protective_clear": bool(m.protective_clear),
+                "warning_active": bool(m.warning_active),
+                "speed_scale": float(m.speed_scale),
             }
             self._mux_t = self._now()
 
@@ -392,6 +418,23 @@ class RosAdapter(Node):
         d["state_name"] = LINE_NAMES.get(m.state, str(m.state))
         with self._lock:
             self._line, self._line_t = d, self._now()
+
+    def _on_track(self, m: LineTrack) -> None:
+        # 100 Hz: keep it to a small dict, the pages poll at 2 Hz.
+        d = {
+            "lcp_mm": [int(v) for v in m.lcp_mm],
+            "valid": [bool(v) for v in m.valid],
+            "nlcp": int(m.nlcp),
+            "nlcp_label": m.nlcp_label,
+            "line_good": bool(m.line_good),
+            "track_level": int(m.track_level),
+            "polarity": m.polarity,
+            "marker": int(m.marker),
+            "source": m.source,
+            "sensor_max_mm": self._sensor_max_mm,
+        }
+        with self._lock:
+            self._track, self._track_t = d, self._now()
 
     def _on_diag(self, m: DiagnosticArray) -> None:
         now = self._now()
@@ -544,6 +587,7 @@ class RosAdapter(Node):
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
+                "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,
                 # so only the absence can be reported). Seconds otherwise.
                 "scan_age_s": None if self._scan_recv_t is None else now - self._scan_recv_t,
@@ -608,6 +652,18 @@ class RosAdapter(Node):
 
     def recover(self) -> tuple[bool, str]:
         return self._trigger("recover")
+
+    def line_arm(self) -> tuple[bool, str]:
+        return self._trigger("line_arm")
+
+    def line_clear(self) -> tuple[bool, str]:
+        return self._trigger("line_clear")
+
+    def line_mission(self, name: str) -> tuple[bool, str]:
+        r = self._call("line_mission", SelectMission.Request(name=name))
+        if r is None:
+            return False, "line layer unavailable (enter LINE mode first)"
+        return bool(r.ok), r.message
 
     def manual_publish(self, cmd) -> None:
         """One ManualCommand per accepted browser refresh. No timer repeats it."""

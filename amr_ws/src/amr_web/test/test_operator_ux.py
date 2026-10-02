@@ -438,3 +438,63 @@ def test_every_catalogue_row_renders_for_the_operator(code):
     row = cat.describe(code, "detail")
     assert row["title"] and row["action"] and row["level"] in ("info", "warn", "error")
     assert cat.BUTTON[row["clears_by"]] in ("", "Acknowledge", "Recover", "Restart", "Set position")
+
+
+def test_the_engineer_pin_is_typed_on_an_on_page_keypad(tmp_path):
+    """The kiosk has no on-screen keyboard, so prompt() cannot be typed into on the panel."""
+    client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
+    body = client.get("/home").get_data(as_text=True)
+    assert 'id="pin-pad"' in body
+    assert all(f'data-k="{d}"' in body for d in "0123456789")
+    js = client.get("/static/amr.js").get_data(as_text=True)
+    assert "prompt(" not in js
+
+
+def test_the_manual_page_shows_the_line_reading_above_the_pad(tmp_path):
+    """The MLS reading is read in every mode; the engineer jogs over tape and watches LCP1..3."""
+    client, _ = app_for(merged(), tmp_path)
+    body = client.get("/manual").get_data(as_text=True)
+    assert 'id="line-track"' in body and 'id="lt-lcps"' in body
+    assert body.index('id="line-track"') < body.index('id="jog"')
+
+
+def _product_app(product, tmp_path):
+    maps = tmp_path / "maps"
+    maps.mkdir(exist_ok=True)
+    stub = Stub(merged())
+    app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"), product=product)
+    app.config["TESTING"] = True
+    return app.test_client(), stub
+
+
+def test_two_run_tabs_and_maps_routes_live_under_run_trackless(tmp_path):
+    """2026-10-02: "Run" was ambiguous with two navigation types."""
+    client, _ = _product_app("both", tmp_path)
+    body = client.get("/status").get_data(as_text=True)
+    assert ">Run tracked<" in body and ">Run trackless<" in body
+    nav = body.split('<nav>')[1].split('</nav>')[0]
+    assert "/maps" not in nav and "/editor" not in nav, "Maps/Routes left the top nav"
+    sub = client.get("/maps").get_data(as_text=True)
+    assert 'class="subnav"' in sub and 'href="/editor"' in sub
+    assert client.get("/run-trackless").status_code == 200
+
+
+def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
+    client, _ = _product_app("slam", tmp_path)
+    assert ">Run tracked<" not in client.get("/status").get_data(as_text=True)
+    assert client.get("/run-tracked").status_code == 404
+    assert client.post("/api/line/arm").status_code == 404
+    client, _ = _product_app("tape", tmp_path)
+    for path in ("/run", "/maps", "/editor"):
+        assert client.get(path).status_code == 404, path
+    assert client.get("/run-tracked").status_code == 200
+
+
+def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
+    client, stub = _product_app("both", tmp_path)
+    assert client.get("/api/line/missions").get_json() == {"missions": []}, "no site mission ships"
+    assert client.post("/api/line/mission", json={"name": ""}).status_code == 200
+    assert client.post("/api/line/arm").status_code == 200
+    assert client.post("/api/line/clear").status_code == 200
+    assert [c[0] for c in stub.calls] == ["line_mission", "line_arm", "line_clear"]

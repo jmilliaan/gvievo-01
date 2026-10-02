@@ -1,0 +1,7 @@
+# Choose the tape mission for the next LINE run (line_follow_node, /amr/line/mission).
+# Accepted only while the layer is IDLE. "" or "none" = plain line following;
+# otherwise agv_core.mission.load(name) must accept missions/<name>.json.
+string name
+---
+bool ok
+string message

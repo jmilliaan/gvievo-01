@@ -134,7 +134,7 @@ class Supervisor(Node):
         # The product, from the profile's top-level `tracked` (config.py note 5):
         # a tape AGV enters LINE by itself once the base is up and refuses maps and
         # routes; a trackless one boots to IDLE and refuses LINE. Read once, here.
-        self.tracked = bool(config.TRACKED)
+        self.tracked = config.TRACKED  # True tape | False slam | None both
         self.admit_params = fsm.Params(tracked=self.tracked)
         self._auto_line_done = False
         self._boot_reported = False  # the end-of-boot operator event fires once per boot
@@ -367,7 +367,7 @@ class Supervisor(Node):
             m.line_available = bool(allowed & LEASE_LINE)
             m.fault_code = self.fault_code
             m.reason = self.reason
-            m.product = "tape" if self.tracked else "slam"
+            m.product = {True: "tape", False: "slam"}.get(self.tracked, "both")
             m.last_survey_map_id, m.last_survey_revision = self.last_survey
         self._pub_mode.publish(m)
 
@@ -544,7 +544,7 @@ class Supervisor(Node):
         through the transition, and the follower still needs arm + Start under
         AUTO before a wheel turns. Leaving LINE later (to jog) is the operator's
         request and is not undone."""
-        if not self.tracked or self._auto_line_done or self.txn is not None:
+        if self.tracked is not True or self._auto_line_done or self.txn is not None:
             return
         self._auto_line_done = True
         op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)

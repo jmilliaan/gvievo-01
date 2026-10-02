@@ -1,6 +1,6 @@
 {
   "profile_name": "agv-01",
-  "tracked": false,
+  "tracked": null,
   "autopilot": {
     "dry_run": false,
     "invert_error": true,
@@ -37,7 +37,8 @@
     "dt_nominal_s": 0.02,
     "inner_wheel_min_rpm": 0.0,
     "branch_positive_is_left": true,
-    "line_min_track_hz": 40.0
+    "line_min_track_hz": 40.0,
+    "line_v_max_mps": 0.3
   },
   "vehicle": {
     "track_m": 0.487,
@@ -48,22 +49,13 @@
     "invert_left": false,
     "invert_right": false
   },
-  "manual": {
-    "full_rpm": 1200,
-    "half_ratio": 0.6
-  },
   "drivers": {
     "ramp": {
-      "manual": {
-        "accel": 800,
-        "decel": 1600
-      },
       "auto": {
         "accel": 2400,
         "decel": 3200
       }
-    },
-    "target_deadband_rpm": 5
+    }
   },
   "rfid": {
     "enabled": true,
@@ -81,7 +73,8 @@
     "banner_wait_s": 0.6,
     "silent_warn_s": 60.0,
     "reconnect_period_s": 2.0,
-    "tag_hold_s": 2.0
+    "tag_hold_s": 2.0,
+    "tag_clear_s": 0.5
   },
   "dio": {
     "enabled": true,

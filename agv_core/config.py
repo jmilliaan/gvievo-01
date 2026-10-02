@@ -33,11 +33,13 @@ Four rules the loader enforces, in order of how much trouble they save:
      vehicle and not renamed would report the old identity in the event log and
      in every run CSV header, and nothing would look wrong until two runs were
      compared weeks later.
-  5. `tracked` (top level, true/false) says which product this vehicle is.
+  5. `tracked` (top level, true/false/null) says which product this vehicle is.
      false = trackless: the SLAM AMR, boots to IDLE, MAPPING/NAVIGATION are
      offered and LINE is refused. true = the magnetic-tape AGV: the supervisor
      enters LINE by itself once the base is up, and NAVIGATION/surveys are
-     refused. It is read at boot; changing it means restarting amr.service.
+     refused. null = both (2026-10-02): boots to IDLE, every mode is offered,
+     and the web shows Run tracked and Run trackless. It is read at boot;
+     changing it means restarting amr.service.
 
 load() is written as an atomic swap - parse and validate into a fresh namespace,
 publish only on success - so nothing observes a half-applied profile. Only
@@ -52,17 +54,14 @@ self-evident lives here. Read this before editing a profile.
 vehicle.invert_left / invert_right
     Both drivers take a POSITIVE 60FFh to travel forward on this AGV. If you swap
     a motor, re-flash a driver or remount a wheel, re-verify on blocks and set
-    these rather than editing motion.py's table - the table stays in vehicle terms.
+    these rather than editing kinematics - everything above it stays in vehicle terms.
 
 drivers.ramp
-    6083h/6084h per mode, written at arm time. The two modes want opposite things
-    from the driver:
-      manual : a hand-jogged pad. The driver does all the shaping, so it is set
-               gentle. Decel stays faster than accel because releasing the button
-               is the safety-relevant direction.
-      auto   : reserved for whatever navigates next. Set as transparent as is
-               safe, on the assumption that the motion profile is shaped in
-               software above it. A STOP falls through to this decel rate.
+    6083h/6084h, written at arm time. One mode, "auto" (2026-10-02: the "manual"
+    block went with canworker - drive_node always arms with this one, and the
+    manual S-curve lives in cmd_mux). Set as transparent as is safe, on the
+    assumption that the motion profile is shaped in software above it. A STOP
+    falls through to this decel rate.
     CAUTION: with a 400 W motor on a gearhead the Function Edition warns the motor
     can be damaged by a hard decel while demand and actual velocity differ a lot
     (opman_fun:2951). This vehicle IS that combination (BLMR6400SKM-GFV-B, 1:30):
@@ -75,11 +74,6 @@ drivers.ramp
     to diverges, so derive the limit from this rather than hardcoding one; and
     raising this without re-checking traction is a different kind of mistake.
 
-drivers.target_deadband_rpm
-    The PID rewrites the setpoint nearly every tick, and each write is a blocking
-    SDO round-trip (~1.8 ms x 2 nodes). Only resend when the command has actually
-    moved; 5 r/min out of 800 is 0.6% and well inside the driver's own resolution.
-    A target of exactly (0, 0) is never deadbanded away.
 
 timing.manual_watchdog_s
     A held button re-POSTs every ~100 ms. Miss six in a row and the setpoint is
@@ -418,6 +412,7 @@ _SCHEMA = {
         # MLS SDO fallback measured 9.8 Hz against a 50 Hz PID. This is the
         # rate floor the follower refuses to run below.
         "line_min_track_hz":   ("LINE_MIN_TRACK_HZ", float),
+        "line_v_max_mps":      ("LINE_V_MAX_MPS", float),
     },
     "vehicle": {
         "track_m":            ("TRACK_M", float),
@@ -428,12 +423,7 @@ _SCHEMA = {
         "invert_left":        ("INVERT_LEFT", bool),
         "invert_right":       ("INVERT_RIGHT", bool),
     },
-    "manual": {
-        "full_rpm":   ("MANUAL_FULL_RPM", int),
-        "half_ratio": ("MANUAL_HALF_RATIO", float),
-    },
     "drivers": {
-        "target_deadband_rpm": ("TARGET_DEADBAND_RPM", int),
         # "ramp" is a nested dict; handled separately in _read_ramp().
     },
     "rfid": {
@@ -451,6 +441,7 @@ _SCHEMA = {
         "silent_warn_s":      ("RFID_SILENT_WARN_S", float),
         "reconnect_period_s": ("RFID_RECONNECT_PERIOD_S", float),
         "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
+        "tag_clear_s":        ("RFID_TAG_CLEAR_S", float),
     },
     "dio": {
         "enabled":            ("DIO_ENABLED", bool),
@@ -566,6 +557,7 @@ _SCHEMA = {
 }
 
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
+_NULLABLE_TOP_LEVEL = {"tracked"}
 
 
 def _coerce(value, want, where):
@@ -645,15 +637,15 @@ def _read_zone_bytes(raw, where):
 
 
 def _read_ramp(raw):
-    """drivers.ramp -> {"manual": {...}, "auto": {...}} of ints."""
+    """drivers.ramp -> {"auto": {...}} of ints."""
     ramp = raw.get("ramp")
     if not isinstance(ramp, dict):
         raise ConfigError("drivers.ramp: missing or not an object")
-    unknown = set(ramp) - {"manual", "auto"}
+    unknown = set(ramp) - {"auto"}
     if unknown:
         raise ConfigError(f"drivers.ramp: unknown mode(s) {sorted(unknown)}")
     out = {}
-    for mode in ("manual", "auto"):
+    for mode in ("auto",):
         block = ramp.get(mode)
         if not isinstance(block, dict):
             raise ConfigError(f"drivers.ramp.{mode}: missing or not an object")
@@ -716,7 +708,8 @@ def _parse(doc):
 
     ns = {}
     for key, (name, want) in _TOP_LEVEL_SCALARS.items():
-        ns[name] = _coerce(doc[key], want, key)
+        # tracked: null is a value, not a missing key - it means both products.
+        ns[name] = None if key in _NULLABLE_TOP_LEVEL and doc[key] is None else _coerce(doc[key], want, key)
 
     for section, fields in _SCHEMA.items():
         block = doc[section]
@@ -769,9 +762,6 @@ def _derive(ns):
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
 
-    # Inner wheel of a curve, and both wheels of a spin.
-    ns["MANUAL_HALF_RPM"] = round(ns["MANUAL_FULL_RPM"] * ns["MANUAL_HALF_RATIO"])
-
     # 6083h caps both the forward ramp and the rate at which the wheel
     # DIFFERENCE can slew, so it is also the ceiling on yaw acceleration -
     # kinematics.max_yaw_accel() turns it into rad/s^2. Whatever produces
@@ -822,17 +812,10 @@ def _validate(ns):
     check(g("SENSOR_LOOKAHEAD_M") > 0, "vehicle.sensor_lookahead_m must be > 0")
 
 
-    # -- manual jog -------------------------------------------------------
-    check(0 < g("MANUAL_FULL_RPM") <= g("MOTOR_MAX_RPM"),
-          f"manual.full_rpm must be in (0, {g('MOTOR_MAX_RPM')}]")
-    check(0.0 < g("MANUAL_HALF_RATIO") <= 1.0,
-          "manual.half_ratio must be a fraction in (0, 1]")
-
     # -- drivers ----------------------------------------------------------
     for mode, block in g("RAMP").items():
         check(block["accel"] > 0 and block["decel"] > 0,
               f"drivers.ramp.{mode} accel and decel must be > 0")
-    check(g("TARGET_DEADBAND_RPM") >= 0, "target_deadband_rpm must be >= 0")
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
@@ -981,14 +964,20 @@ def _validate(ns):
           f"imu.retry_period_s ({g('IMU_RETRY_PERIOD_S')}) must exceed "
           f"poll_period_s ({g('IMU_PERIOD_S')})")
 
+    check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
+
+    # -- LINE ceiling (read by line_follow_node and cmd_mux) ---------------
+    check(0 < g("LINE_V_MAX_MPS") <= g("MAX_SPEED_MPS"),
+          "autopilot.line_v_max_mps must be in (0, motor top speed]")
+
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
           "blind_run.max_distance_m must be in (0, 50] m")
     check(0 < g("BLIND_MAX_RPM") <= g("MOTOR_MAX_RPM"),
           "blind_run.max_rpm must be in (0, motor_max_rpm]")
-    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["manual"]["accel"],
-          "blind_run.accel_rpm_s must be > 0 and within the manual drive ramp "
-          "(drivers.ramp.manual.accel), or the drive lags the plan")
+    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["auto"]["accel"],
+          "blind_run.accel_rpm_s must be > 0 and within the drive ramp "
+          "(drivers.ramp.auto.accel), or the drive lags the plan")
     check(g("BLIND_SETTLE_S") >= 0, "blind_run.settle_s must be >= 0")
     check(0 < g("BLIND_STOP_TOLERANCE_MM") <= 50,
           "blind_run.stop_tolerance_mm must be in (0, 50] mm")
@@ -1155,7 +1144,6 @@ _DERIVED = (
     ("RPM_PER_MPS", "1 / MPS_PER_RPM"),
     ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
-    ("MANUAL_HALF_RPM", "manual.full_rpm \u00b7 manual.half_ratio"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
     ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "
@@ -1249,10 +1237,6 @@ def tuning_notes():
 #
 # (section, key) pairs, in the order they should read.
 _SPEED_ROWS = [
-    ("manual", "full_rpm"),
-    ("manual", "half_ratio"),
-    ("drivers", "ramp.manual.accel"),
-    ("drivers", "ramp.manual.decel"),
     ("drivers", "ramp.auto.accel"),
     ("drivers", "ramp.auto.decel"),
 ]
@@ -1350,7 +1334,7 @@ def describe():
         # The three things _SCHEMA's flat table cannot express, in the same
         # order the profile writes them.
         if section == "drivers":
-            for mode in ("manual", "auto"):
+            for mode in ("auto",):
                 for k in ("accel", "decel"):
                     key = f"ramp.{mode}.{k}"
                     if (section, key) not in _MOVED:

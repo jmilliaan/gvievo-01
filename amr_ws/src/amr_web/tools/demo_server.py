@@ -676,6 +676,10 @@ class DemoAdapter:
                     "generation": self.mode["generation"],
                     "left_rad_s": wl,
                     "right_rad_s": wr,
+                    "field_fresh": True,
+                    "protective_clear": True,
+                    "warning_active": False,
+                    "speed_scale": 1.0,
                     "age_s": 0.02,
                 },
                 "mapping": self.mapping and dict(self.mapping),
@@ -805,6 +809,15 @@ class DemoAdapter:
 
     def get_operation(self, operation_id):
         return self.ops.get(operation_id)
+
+    def line_arm(self):
+        return False, "demo: there is no line layer"
+
+    def line_clear(self):
+        return True, "cleared"
+
+    def line_mission(self, name):
+        return False, "demo: there is no line layer"
 
     def recover(self):
         with self.lock:

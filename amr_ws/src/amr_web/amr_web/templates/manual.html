@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% block title %}AMR — manual{% endblock %}
 {% block body %}
-{# Built for the HMI's height: the pad is a square sized by the viewport on the left, and
-   everything else - vehicle state as one-line rows, speed, jog status, the arming note -
-   is a column on the right. Nothing sits below, so the page never scrolls. #}
+{# Built for the HMI's height: the line reading and the pad (a square sized by the viewport)
+   on the left, and everything else - vehicle state as one-line rows, speed, jog status, the
+   arming note - is a column on the right. Nothing sits below, so the page never scrolls. #}
 <section class="manual grow">
-  <div id="jog"></div>
+  <div class="manual-left">
+    {% include "_line_track.html" %}
+    <div id="jog"></div>
+  </div>
   <div class="side" id="manual-side">
     <h2>Vehicle <small>supervisor · mux</small></h2>
     <div id="manual-state" class="tel-grid rows"></div>
@@ -14,7 +17,8 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/jogpad.js"></script>
+{% block scripts %}<script src="/static/linetrack.js"></script>
+<script src="/static/jogpad.js"></script>
 <script>
 jogpad(document.getElementById('jog'));
 // Speed + jog status go under the vehicle rows on the right; the pad keeps the whole left column.
@@ -27,6 +31,7 @@ onState(st => {
     ['Command', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
     ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
+  lineTrack(st.line_track);
   document.getElementById('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
 });
 </script>{% endblock %}

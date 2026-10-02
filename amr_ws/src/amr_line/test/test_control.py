@@ -20,10 +20,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-# `motion` and `ROOT` are unused here but are part of what the original module
-# imported; they are kept so a later ported check does not have to re-derive
-# where they live.
-from agv_core import kinematics, motion  # noqa: E402,F401
+# `ROOT` is unused here but is part of what the original module imported; it is
+# kept so a later ported check does not have to re-derive where it lives.
+# (agv_core.motion was deleted 2026-10-02 with the dead manual.* speed keys.)
+from agv_core import kinematics  # noqa: E402,F401
 from harness import FAIL, NO_TRACK, ROOT, check, sensor, simulate  # noqa: E402,F401
 
 from amr_line import autopilot  # noqa: E402

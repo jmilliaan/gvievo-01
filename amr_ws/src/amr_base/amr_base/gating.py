@@ -377,6 +377,76 @@ def select(
     return Selection(NONE, 0.0, 0.0, "permit NONE", gen, code="NO_PERMIT")
 
 
+# --- scanner fields (2026-10-02) ----------------------------------------------
+#
+# The nanoScan3's OSSD pair into the FX3 is the STOP; nothing here replaces it.
+# This is the software side that also tries: an AUTO source is zeroed while the
+# protective field is violated, and scaled by warning_scale while the warning
+# field is occupied. Manual sources are untouched - a person is driving, and the
+# physical chain still acts on them.
+
+AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
+
+
+@dataclass(frozen=True)
+class FieldParams:
+    protective_index: int = 0  # /output_paths status[i] of the protective field (OSSD)
+    # The warning fields' /output_paths indices. Walk-in test 2026-10-02 (agv-01): three
+    # nested fields - path 2 outermost, path 1 inside it, path 0 the protective field -
+    # each reading False while occupied. Either warning field occupied halves AUTO.
+    warning_indices: tuple[int, ...] = (1, 2)
+    warning_active_level: bool = False  # status[i] while that warning field is occupied
+    warning_scale: float = 0.5
+    fresh_s: float = 0.5  # /output_paths rides every scan, ~34 Hz
+    assume_clear: bool = False  # the sim, which has no scanner; NEVER on the vehicle
+
+
+@dataclass
+class Field:
+    """One /output_paths sample as received."""
+
+    t_recv: float
+    status: tuple[bool, ...]
+
+
+@dataclass(frozen=True)
+class FieldView:
+    fresh: bool
+    protective_clear: bool
+    warning_active: bool
+
+
+def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
+    """What the fields say now. Stale or malformed is not clear: fresh=False."""
+    if fp.assume_clear:
+        return FieldView(True, True, False)
+    if field is None or not _fresh(field.t_recv, now, fp.fresh_s):
+        return FieldView(False, False, False)
+    st = field.status
+    if len(st) <= max((fp.protective_index, *fp.warning_indices)):
+        return FieldView(False, False, False)
+    warned = any(bool(st[i]) == fp.warning_active_level for i in fp.warning_indices)
+    return FieldView(True, bool(st[fp.protective_index]), warned)
+
+
+def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> tuple[Selection, float]:
+    """Apply the field rules to an AUTO selection. Returns (selection, speed scale)."""
+    if sel.source not in AUTO_SOURCES:
+        return sel, 1.0
+    if not view.fresh and p.require_supervisor:
+        return Selection(
+            NONE, 0.0, 0.0, "scanner fields unknown (no fresh /output_paths)", sel.generation, code="FIELD_UNKNOWN"
+        ), 0.0
+    if view.fresh and not view.protective_clear:
+        return Selection(NONE, 0.0, 0.0, "protective field violated", sel.generation, code="FIELD_PROTECTIVE"), 0.0
+    if view.warning_active:
+        k = min(1.0, max(0.0, fp.warning_scale))
+        return Selection(
+            sel.source, sel.v * k, sel.w * k, f"{sel.reason} (warning field: x{k:g})", sel.generation
+        ), k
+    return sel, 1.0
+
+
 def nav_topic(base: str, generation: int) -> str:
     """Generation-private Nav2 output topic (unified plan §4.3 item 4).
 

@@ -18,3 +18,9 @@ float64 left_rad_s          # output setpoint this tick
 float64 right_rad_s
 string reason
 string code                 # alarm catalogue code for `reason`; "" when a source is selected
+
+# Scanner fields as the mux applies them (2026-10-02). APPEND ONLY.
+bool field_fresh            # a fresh /output_paths sample (or the sim's assume_clear)
+bool protective_clear       # protective field clear; AUTO is zeroed while it is not
+bool warning_active         # warning field occupied; AUTO is scaled by speed_scale
+float32 speed_scale         # 1.0, warning_scale while warned, 0.0 while stopped by a field

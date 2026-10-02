@@ -24,8 +24,8 @@ def cond(**kw):
     return fsm.Conditions(**base)
 
 
-def test_the_profile_carries_the_flag_and_it_is_a_bool():
-    assert config.TRACKED in (True, False)
+def test_the_profile_carries_the_flag_and_it_is_a_bool_or_null():
+    assert config.TRACKED in (True, False, None)
     assert "tracked" in config._TOP_LEVEL_SCALARS
 
 
@@ -88,3 +88,13 @@ def test_boot_entry_waits_if_a_transaction_is_already_in_flight():
     sv.txn = object()
     sv._auto_enter_line()
     assert sv.begun == [] and not sv._auto_line_done
+
+
+def test_both_products_boot_to_idle_and_offer_every_mode():
+    """tracked: null (2026-10-02): one vehicle, Run tracked and Run trackless."""
+    sv = fake(tracked=None)
+    sv._auto_enter_line()
+    assert sv.begun == []
+    both = fsm.Params(tracked=None)
+    for req in (fsm.REQ_LINE, fsm.REQ_NAVIGATION, fsm.REQ_SURVEY_START):
+        assert "tracked=" not in fsm.admit(fsm.IDLE, req, cond(), both).reason

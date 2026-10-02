@@ -29,6 +29,7 @@ and it puts LINE on the same accel path the mux already gives FOLLOW.
 
 from __future__ import annotations
 
+import collections
 import time
 
 import rclpy
@@ -48,7 +49,10 @@ from amr_interfaces.msg import (
     LineTrack,
     ModeState,
     PanelState,
+    StationDetection,
+    WheelStates,
 )
+from amr_interfaces.srv import SelectMission
 from amr_line import autopilot, runtime
 from amr_line import job as lj
 from amr_line import track as tk
@@ -95,7 +99,9 @@ class LineFollowNode(Node):
 
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("generation", 0)
-        self.declare_parameter("v_max_mps", 0.30)
+        # The LINE ceiling is ONE profile key (autopilot.line_v_max_mps), read here and by
+        # cmd_mux; a parameter may lower it for a session, never raise it.
+        self.declare_parameter("v_max_mps", float(vehicle_config.LINE_V_MAX_MPS))
         self.declare_parameter("prereq_grace_s", 0.5)
         # -1 = the profile's auto_resume_hold_s; a value here overrides it.
         self.declare_parameter("auto_resume_clear_s", -1.0)
@@ -111,6 +117,10 @@ class LineFollowNode(Node):
         # file picks by the supervisor's `real`; never assume on a vehicle.
         self.declare_parameter("field_source", "scanner")
         self.declare_parameter("field_fresh_s", 0.5)  # /output_paths rides every scan (~34 Hz)
+        # Mission engine inputs (2026-10-02)
+        self.declare_parameter("rfid_fresh_s", 1.5)  # heartbeat is 2 Hz
+        self.declare_parameter("wheels_fresh_s", 0.1)
+        self.declare_parameter("still_wheel_rad_s", 0.02)
 
         self.dt = 1.0 / float(self.get_parameter("rate_hz").value)
         self._generation = int(self.get_parameter("generation").value)
@@ -139,7 +149,8 @@ class LineFollowNode(Node):
             prereq_grace_s=float(self.get_parameter("prereq_grace_s").value),
             auto_resume_clear_s=auto_clear,
             auto_resume_estop=bool(self.get_parameter("auto_resume_estop").value),
-            v_max_mps=float(self.get_parameter("v_max_mps").value),
+            v_max_mps=min(float(self.get_parameter("v_max_mps").value), float(vehicle_config.LINE_V_MAX_MPS)),
+            auto_start_delay_s=float(vehicle_config.AUTO_START_DELAY_S),
         )
         self.reader = tk.TrackReader(
             timeout_s=runtime.SENSOR_TIMEOUT_S,
@@ -159,12 +170,26 @@ class LineFollowNode(Node):
         self._field_t: float | None = None     # ...and when it arrived (monotonic)
         self._t_last = time.monotonic()
         self._published_zero = True
+        # RFID: the encounter stream rebuilt as the driver's snapshot shape.
+        self.rfid_fresh = float(self.get_parameter("rfid_fresh_s").value)
+        self._rfid_t: float | None = None
+        self._rfid_status = {"comms_ok": False, "encounter_seq": 0, "generation": 0, "tag_age_s": None}
+        self._rfid_encounters: collections.deque = collections.deque(maxlen=256)
+        # wheels: encoder counts for the U-turn and a stillness test
+        self.wheels_fresh = float(self.get_parameter("wheels_fresh_s").value)
+        self.still_w = float(self.get_parameter("still_wheel_rad_s").value)
+        self._wheels: WheelStates | None = None
+        self._wheels_t: float | None = None
 
         self.create_subscription(LineTrack, "/amr/line_track", self._on_track, SENSOR)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
+        rfid_qos = QoSProfile(depth=50, reliability=QoSReliabilityPolicy.RELIABLE,
+                              durability=QoSDurabilityPolicy.VOLATILE)
+        self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, rfid_qos)
+        self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
         if self.field_source == "assume_clear":
             self.get_logger().warning(
                 "field_source=assume_clear: the protective field is ASSUMED clear "
@@ -188,6 +213,7 @@ class LineFollowNode(Node):
 
         self.create_service(Trigger, "/amr/line/arm", self._srv_arm)
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
+        self.create_service(SelectMission, "/amr/line/mission", self._srv_mission)
 
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
@@ -219,6 +245,44 @@ class LineFollowNode(Node):
             if int(m.generation) == int(cur.generation) and int(m.seq) <= int(cur.seq):
                 return
         self._lease, self._lease_t = m, time.monotonic()
+
+    def _on_rfid(self, m: StationDetection) -> None:
+        now = time.monotonic()
+        if int(m.generation) != self._rfid_status["generation"]:
+            self._rfid_encounters.clear()  # the driver cleared its buffer on reconnect
+        if not m.heartbeat and m.rfid_tag:
+            self._rfid_encounters.append((int(m.encounter_seq), str(m.rfid_tag)))
+        self._rfid_status = {
+            "comms_ok": bool(m.comms_ok),
+            "encounter_seq": max(int(m.encounter_seq), self._rfid_status["encounter_seq"])
+            if int(m.generation) == self._rfid_status["generation"] else int(m.encounter_seq),
+            "generation": int(m.generation),
+            "tag_age_s": None if m.tag_age_s < 0 else float(m.tag_age_s),
+        }
+        self._rfid_t = now
+
+    def _rfid(self, now: float) -> dict:
+        """agv_core.drivers.rfid snapshot shape. A silent node is a link that is down."""
+        fresh = self._rfid_t is not None and now - self._rfid_t <= self.rfid_fresh
+        st = dict(self._rfid_status)
+        st["comms_ok"] = bool(fresh and st["comms_ok"])
+        if st["tag_age_s"] is not None and self._rfid_t is not None:
+            st["tag_age_s"] += now - self._rfid_t
+        st["encounters"] = list(self._rfid_encounters)
+        return st
+
+    def _on_wheels(self, m: WheelStates) -> None:
+        self._wheels, self._wheels_t = m, time.monotonic()
+
+    def _wheel_inputs(self, now: float):
+        """(counts, counts_per_rev, still) from a FRESH /wheel_states, else nothing."""
+        w = self._wheels
+        if w is None or self._wheels_t is None or now - self._wheels_t > self.wheels_fresh:
+            return None, 0.0, False
+        still = (w.left_valid and w.right_valid and abs(w.left_vel_rad_s) <= self.still_w
+                 and abs(w.right_vel_rad_s) <= self.still_w)
+        counts = (int(w.left_counts), int(w.right_counts)) if w.counts_valid else None
+        return counts, float(w.counts_per_wheel_rev), bool(still)
 
     def _on_mode(self, m: ModeState) -> None:
         self._mode = m
@@ -261,6 +325,7 @@ class LineFollowNode(Node):
         start_edge_t, self._start_edge_t = self._start_edge_t, None
         reset_edge, self._reset_edge = self._reset_edge, False
         track_ok, track_cause = self.reader.usable(now)
+        counts, per_rev, still = self._wheel_inputs(now)
         return lj.Inputs(
             now=now,
             dt=dt,
@@ -285,6 +350,10 @@ class LineFollowNode(Node):
             drives_fresh=bool(
                 self._drives_t is not None and now - self._drives_t <= self.drives_fresh_s
             ),
+            rfid=self._rfid(now),
+            counts=counts,
+            counts_per_rev=per_rev,
+            wheels_still=still,
         )
 
     # -- services ----------------------------------------------------------
@@ -306,6 +375,20 @@ class LineFollowNode(Node):
         self._publish_state()
         return res
 
+    def _srv_mission(self, req, res):
+        from agv_core import mission  # noqa: PLC0415
+
+        name = (req.name or "").strip()
+        try:
+            doc = None if name in ("", "none") else mission.load(name)
+        except mission.MissionError as e:
+            res.ok, res.message = False, f"mission {name!r} refused: {e}"
+        else:
+            res.ok, res.message = self.job.set_mission(doc)
+        self.get_logger().info(f"mission: {res.message}")
+        self._publish_state()
+        return res
+
     # -- the tick ----------------------------------------------------------
     def _tick(self) -> None:
         now = time.monotonic()
@@ -313,6 +396,11 @@ class LineFollowNode(Node):
         before = self.job.state
 
         left, right = self.job.tick(self._inputs(now, min(dt, 5 * self.dt)))
+        engine_events = self.job.tape.drain_events()
+        for level, text in engine_events:
+            self._event("LINE_MISSION", text, Event.WARN if level == "warn" else Event.INFO)
+        if engine_events:
+            self._publish_state()
 
         if self.job.state == lj.RUNNING:
             v, omega = kinematics.wheels_to_body(left, right)
@@ -359,6 +447,8 @@ class LineFollowNode(Node):
         m.track_source = "" if self.reader.last is None else str(self.reader.last.source)
         m.message = self.job.reason
         m.code = self._code()
+        for k, v in self.job.mission_snapshot().items():
+            setattr(m, k, v)
         self._pub_state.publish(m)
         if self.job.state != self._event_state:
             self._event_state = self.job.state
@@ -372,13 +462,14 @@ class LineFollowNode(Node):
             return "EXEC_PREREQ_LOST" if self.job.state == lj.FAULT else "WAITING_FOR_PREREQ"
         return ""
 
-    def _event(self, code: str, detail: str) -> None:
+    def _event(self, code: str, detail: str, level: int | None = None) -> None:
         code = code or "MODE_CHANGE"
         row = alarms.get(code)
         m = Event()
         m.header.stamp = self.get_clock().now().to_msg()
         m.source = "line_follow"
-        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
+        m.level = level if level is not None else {
+            alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
         m.code = code
         m.text = f"line {lj.STATE_NAMES[self.job.state]}: {detail}"
         self._event_seq += 1

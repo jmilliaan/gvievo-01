@@ -15,6 +15,12 @@ The sensor is node 10 at 125 kbps. Two ways to get measurements out of it:
   stream    decode TPDO1 at 10 ms. TPDOs only flow in Operational. With --nmt
             this sends NMT Start addressed to node 10 only and puts it back to
             Pre-operational on exit; without it, it only listens.
+  calibrate two-step field survey, still read-only: --step background with the
+            sensor over bare floor, then --step tape with it centred over the
+            tape. Each step samples by SDO and saves to ~/.amr/mls_cal/; once
+            both exist it prints the comparison and a suggested 2025h min.
+            level and the measured zero offset. It suggests, never writes:
+            the sensor's parameters stay a deliberate, separate act.
 
 TPDO1 (COB-ID 0x180+NodeID, SICK MLS operating instructions 8021642 table 6):
 
@@ -45,6 +51,9 @@ window at once.
 Deliberately free of `config`, like the rest of canbus/.
 """
 import argparse
+import json
+import os
+import statistics
 import struct
 import sys
 import time
@@ -271,6 +280,177 @@ def poll(bus, node, seconds, interval):
     return 0
 
 
+# --- calibrate: background vs tape ----------------------------------------
+
+CAL_DIR = os.path.expanduser("~/.amr/mls_cal")
+CAL_STEPS = ("background", "tape")
+# A tape step must see one track this often, and its weakest field must clear the
+# strongest background by this ratio. Engineering margins, not SICK figures.
+CAL_DETECT_MIN = 0.95
+CAL_RATIO_MIN = 2.0
+
+
+def cal_sample(bus, node, combi):
+    """One SDO sample of everything the comparison needs, or None."""
+    r = live_values(bus, node, combi)
+    field = rd(bus, node, 0x2024, 0)
+    if r is None or field is None:
+        return None
+    levels = [rd(bus, node, OBJ_LCP, sub, signed=True) for sub in (0x0B, 0x0C, 0x0D)]
+    return {
+        "field": field,
+        "line_levels": levels,
+        "nlcp": r["nlcp"],
+        "lcp_mm": [pos for pos, _ in r["lcp"]],
+        "valid": list(r["valid"]),
+        "line_good": r["status"]["line_good"],
+        "track_level": r["status"]["track_level"],
+        "polarity": r["status"]["polarity"],
+    }
+
+
+def cal_record(bus, node, step, samples, interval):
+    """Sample one step and save it with the sensor's current settings."""
+    variant, combi = read_variant(bus, node)
+    settings = {
+        "min_level_2025h": rd(bus, node, 0x2025, 0),
+        "zero_offset_mm_2026h": rd(bus, node, 0x2026, 0, signed=True),
+        "flipped_2027h": rd(bus, node, 0x2027, 0),
+        "variant_2006h": variant,
+    }
+    print(f"[{step}] sampling {samples}x by SDO, every {interval:.2f} s - keep the vehicle still")
+    got, missed = [], 0
+    for _ in range(samples):
+        x = cal_sample(bus, node, combi)
+        if x is None:
+            missed += 1
+        else:
+            got.append(x)
+        time.sleep(interval)
+    if not got:
+        print(f"    {BAD} no response from node {node}")
+        return None
+    rec = {"step": step, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "node": node,
+           "settings": settings, "missed": missed, "samples": got}
+    os.makedirs(CAL_DIR, exist_ok=True)
+    path = os.path.join(CAL_DIR, f"{step}.json")
+    with open(path, "w") as f:
+        json.dump(rec, f, indent=1)
+    print(f"    {OK} {len(got)} samples ({missed} missed) -> {path}")
+    return rec
+
+
+def _stats(xs):
+    xs = [x for x in xs if x is not None]
+    if not xs:
+        return None
+    return {"min": min(xs), "max": max(xs), "mean": round(statistics.fmean(xs), 2),
+            "sd": round(statistics.pstdev(xs), 2)}
+
+
+def cal_summary(bg, tape):
+    """Compare a background and a tape record. Pure: the tests feed it dicts."""
+    b, t = bg["samples"], tape["samples"]
+    bf, tf = _stats([s["field"] for s in b]), _stats([s["field"] for s in t])
+    lcp2 = _stats([s["lcp_mm"][1] for s in t if 2 in s["valid"]])
+    out = {
+        "background": {
+            "field": bf,
+            "line_level_max": max((abs(v) for s in b for v in s["line_levels"] if v is not None), default=None),
+            "false_track_rate": round(sum(s["nlcp"] != 0 for s in b) / len(b), 3),
+        },
+        "tape": {
+            "field": tf,
+            "line_level_max": max((abs(v) for s in t for v in s["line_levels"] if v is not None), default=None),
+            "one_track_rate": round(sum(s["nlcp"] == 2 for s in t) / len(t), 3),
+            "line_good_rate": round(sum(s["line_good"] for s in t) / len(t), 3),
+            "track_level": _stats([s["track_level"] for s in t]),
+            "lcp2_mm": lcp2,
+            "polarity": sorted({s["polarity"] for s in t if s["nlcp"]}),
+        },
+        "settings": tape["settings"],
+    }
+    ratio = (tf["min"] / bf["max"]) if bf["max"] > 0 else None
+    out["ratio_tape_min_to_background_max"] = None if ratio is None else round(ratio, 2)
+    # Midway between the strongest background and the weakest tape reading. Only
+    # meaningful when the two do not overlap.
+    out["suggested_min_level_2025h"] = (round((bf["max"] + tf["min"]) / 2)
+                                        if tf["min"] > bf["max"] else None)
+    problems = []
+    if out["background"]["false_track_rate"] > 0:
+        problems.append("a track was reported over bare floor (steel, rebar or a magnet nearby?)")
+    if out["tape"]["one_track_rate"] < CAL_DETECT_MIN:
+        problems.append(f"one track seen in only {out['tape']['one_track_rate']:.0%} of tape samples")
+    if out["suggested_min_level_2025h"] is None:
+        problems.append("tape and background field levels overlap")
+    elif ratio is not None and ratio < CAL_RATIO_MIN:
+        problems.append(f"tape/background ratio {ratio:.2f} below {CAL_RATIO_MIN}")
+    if len(out["tape"]["polarity"]) > 1:
+        problems.append("polarity changed during the tape step")
+    out["problems"] = problems
+    out["verdict"] = "OK" if not problems else "CHECK"
+    return out
+
+
+def cal_print(s):
+    bf, tf, st = s["background"]["field"], s["tape"]["field"], s["settings"]
+    mt = lambda v: f"{v} ({v * FIELD_LEVEL_MT:.2f} mT)"
+    print("\n[report] 2024h field level, digits")
+    print(f"    background  min {bf['min']}  mean {bf['mean']}  max {mt(bf['max'])}")
+    print(f"    tape        min {mt(tf['min'])}  mean {tf['mean']}  max {tf['max']}")
+    print(f"    ratio tape min / background max   {s['ratio_tape_min_to_background_max']}")
+    print(f"    line level |max|  background {s['background']['line_level_max']}  "
+          f"tape {s['tape']['line_level_max']}  (x{LINE_LEVEL_MT} mT)")
+    t = s["tape"]
+    print(f"    tape: one track {t['one_track_rate']:.0%}, line_good {t['line_good_rate']:.0%}, "
+          f"track level {t['track_level']['mean'] if t['track_level'] else '-'}/7, "
+          f"polarity {'/'.join(t['polarity']) or '-'}")
+    print(f"    background: false track {s['background']['false_track_rate']:.0%}")
+    print("\n[report] settings")
+    sug = s["suggested_min_level_2025h"]
+    print(f"    2025h min. level   now {st['min_level_2025h']}   suggested {sug if sug is not None else '-'}"
+          "   (midway; not written)")
+    lcp2 = t["lcp2_mm"]
+    if lcp2:
+        print(f"    LCP2 over the tape {lcp2['mean']:+.1f} mm (sd {lcp2['sd']})   "
+              f"2026h zero offset now {st['zero_offset_mm_2026h']} mm")
+        print("      if the tape was centred under the sensor, that LCP2 is the mounting offset")
+    print(f"\n    verdict: {OK if s['verdict'] == 'OK' else WARN + ' CHECK'}")
+    for p in s["problems"]:
+        print(f"      - {p}")
+
+
+def cal_load(step):
+    try:
+        with open(os.path.join(CAL_DIR, f"{step}.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def calibrate(bus, node, step, samples, interval):
+    """--step background | tape | both (prompts between) | report (no bus)."""
+    steps = CAL_STEPS if step == "both" else (() if step == "report" else (step,))
+    for i, st in enumerate(steps):
+        if step == "both":
+            where = "bare floor, no tape within 0.5 m" if st == "background" else "centred over the tape"
+            input(f"\n{'' if i == 0 else 'Move the vehicle. '}Put the sensor {where}, then press Enter ")
+        if cal_record(bus, node, st, samples, interval) is None:
+            return 1
+    bg, tape = cal_load("background"), cal_load("tape")
+    if not bg or not tape:
+        print(f"\n    next: --step {'tape' if bg else 'background'} (have: "
+              f"{', '.join(k for k, v in (('background', bg), ('tape', tape)) if v) or 'none'})")
+        return 0
+    s = cal_summary(bg, tape)
+    cal_print(s)
+    path = os.path.join(CAL_DIR, f"report-{time.strftime('%Y%m%d-%H%M%S')}.json")
+    with open(path, "w") as f:
+        json.dump(s, f, indent=1)
+    print(f"\n    saved {path}")
+    return 0 if s["verdict"] == "OK" else 1
+
+
 # --- PDO path ---------------------------------------------------------------
 
 def nmt(bus, command, node):
@@ -323,7 +503,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Read the SICK MLS magnetic line sensor (read-only).")
     ap.add_argument("mode", nargs="?", default="snapshot",
-                    choices=("snapshot", "poll", "stream"))
+                    choices=("snapshot", "poll", "stream", "calibrate"))
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--seconds", type=float, default=10.0,
                     help="duration for poll/stream (default 10)")
@@ -331,7 +511,22 @@ def main():
                     help="poll period in seconds (default 0.2)")
     ap.add_argument("--nmt", action="store_true",
                     help="stream: send NMT Start to this node first (and Pre-operational on exit)")
+    ap.add_argument("--step", default="both", choices=("both",) + CAL_STEPS + ("report",),
+                    help="calibrate: which step (default both, with a prompt between)")
+    ap.add_argument("--samples", type=int, default=40, help="calibrate: samples per step (default 40)")
     args = ap.parse_args()
+
+    if args.mode == "calibrate" and args.step == "report":
+        return calibrate(None, args.node, "report", 0, 0.0)
+    if args.mode == "calibrate":
+        # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
+        # IMU poll) would read the other's replies. Take the bus owner lock first.
+        from agv_core import ownerlock  # noqa: PLC0415
+        try:
+            lock = ownerlock.acquire("can")  # noqa: F841 - held until exit
+        except ownerlock.OwnerBusy as e:
+            print(f"{BAD}: can0 is owned ({e}). Stop it first: sudo systemctl stop amr.service")
+            return 2
 
     try:
         bus, how = open_bus()
@@ -345,6 +540,8 @@ def main():
             return snapshot(bus, args.node)
         if args.mode == "poll":
             return poll(bus, args.node, args.seconds, args.interval)
+        if args.mode == "calibrate":
+            return calibrate(bus, args.node, args.step, args.samples, args.interval)
         return stream(bus, args.node, args.seconds, args.nmt)
     except KeyboardInterrupt:
         print("\n    interrupted")

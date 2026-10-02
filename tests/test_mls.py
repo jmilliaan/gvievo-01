@@ -82,5 +82,36 @@ def test_short_frames_and_sdo_equivalence():
     check("the TPDO1 COB-ID for node 10 is 0x18A", mls.TPDO1_COB + mls.SENSOR_NODE == 0x18A)
 
 
+def _cal(step, fields, nlcp, lcp2=0, good=True, polarity="north"):
+    samples = [{"field": f, "line_levels": [0, f // 10, 0], "nlcp": nlcp,
+                "lcp_mm": [0, lcp2, 0], "valid": [2] if nlcp == 2 else [],
+                "line_good": good, "track_level": 5 if nlcp else 0, "polarity": polarity}
+               for f in fields]
+    return {"step": step, "settings": {"min_level_2025h": 100, "zero_offset_mm_2026h": 0},
+            "samples": samples}
+
+
+def test_calibration_summary():
+    print("\nMLS: background-vs-tape calibration summary")
+
+    s = mls.cal_summary(_cal("background", [40, 50, 60], 0), _cal("tape", [400, 420, 440], 2, lcp2=-3))
+    check("a clean pair is OK", s["verdict"] == "OK" and not s["problems"], str(s["problems"]))
+    check("the ratio is weakest tape over strongest background", s["ratio_tape_min_to_background_max"] == 6.67)
+    check("the min level is suggested midway", s["suggested_min_level_2025h"] == 230)
+    check("LCP2 over the tape is the measured offset", s["tape"]["lcp2_mm"]["mean"] == -3)
+
+    s = mls.cal_summary(_cal("background", [40, 300], 0), _cal("tape", [250, 400], 2))
+    check("overlapping fields: no suggestion, CHECK",
+          s["suggested_min_level_2025h"] is None and s["verdict"] == "CHECK")
+    s = mls.cal_summary(_cal("background", [40, 50], 2), _cal("tape", [400, 400], 2))
+    check("a track over bare floor is a problem", any("bare floor" in p for p in s["problems"]))
+    s = mls.cal_summary(_cal("background", [40, 50], 0), _cal("tape", [400, 400, 400], 0))
+    check("a tape step that never sees one track is a problem",
+          any("one track" in p for p in s["problems"]))
+    s = mls.cal_summary(_cal("background", [100, 100], 0), _cal("tape", [150, 150], 2))
+    check("separated but under the ratio is a problem", any("ratio" in p for p in s["problems"]))
+
+
 TESTS = [test_standard_decoding, test_combi_decoding, test_nlcp_table,
-         test_status_and_marker_bits, test_short_frames_and_sdo_equivalence]
+         test_status_and_marker_bits, test_short_frames_and_sdo_equivalence,
+         test_calibration_summary]

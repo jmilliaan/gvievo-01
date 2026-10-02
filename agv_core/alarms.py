@@ -138,6 +138,26 @@ def _rows() -> tuple[Alarm, ...]:
         a("NO_PERMIT", INFO, "auto", "Waiting for a mission step",
           "Nothing to do; the executor drives this.",
           "AUTO with no MotionPermit, or a permit whose source has no fresh /cmd_vel."),
+        a("FIELD_PROTECTIVE", WARN, "auto", "Stopped: something is in the protective field",
+          "Clear the area in front of the vehicle; it continues by itself.",
+          "The mux zeroes every AUTO source while /output_paths says the protective field is "
+          "violated - the software side of a stop the scanner's OSSD pair already makes."),
+        a("FIELD_WARNING", INFO, "auto", "Slowed: something is in the warning field",
+          "Nothing to do; auto speed is halved until the warning field clears.",
+          "cmd_mux scales every AUTO source by warning_scale (0.5) while the warning field is "
+          "occupied: paths 1 (inner) and 2 (outer), False = occupied (walk-in test 2026-10-02)."),
+        a("AT_STATION", INFO, "start_button", "Parked at a station",
+          "Press Start when the station work is done; it moves after the start delay.",
+          "Tape mission station stop (stop_until_start_button): a measured stop over "
+          "stop_distance_m after the tag, then a LineState HOLD with cause 'station'."),
+        a("LINE_MISSION", INFO, "auto", "Tape mission event",
+          "Nothing to do; this records what the mission engine did with a tag.",
+          "amr_line.tape_run events: stations, speed zones, branch orders, U-turns, "
+          "RFID reconnects. The text names the tag and the action."),
+        a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
+          "Check the scanner cable and that its driver is running (Status page).",
+          "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "
+          "is not clear. The OSSD stop path does not depend on this data link."),
 
         # ---- localisation ----
         a("LOC_LOST", ERROR, "operator", "The vehicle lost its position",
@@ -343,6 +363,7 @@ def describe(code: str, detail: str = "", since: float | None = None) -> dict:
 # hold_cause (RunState / LineState) -> catalogue code. Both products share the hold
 # vocabulary, so both products explain a stop with the same words.
 HOLD_CODES = {
+    "station": "AT_STATION",
     "field": "FIELD_BLOCKED",
     "estop": "ESTOP",
     "controller": "PATH_BLOCKED",

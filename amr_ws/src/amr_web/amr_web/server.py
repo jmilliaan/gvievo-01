@@ -42,7 +42,7 @@ from amr_web import jog, netcheck, reports, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
 
-MODE_IDLE, MODE_NAVIGATION = 1, 3
+MODE_IDLE, MODE_NAVIGATION, MODE_LINE = 1, 3, 7
 SURVEY_OPS = {"start": 0, "returned": 1, "save": 2, "abort": 3}
 
 
@@ -87,6 +87,10 @@ class Adapter(Protocol):
     def commissioning(self) -> dict | None: ...
     def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
     def commissioning_clear(self) -> tuple[bool, str]: ...
+    # tape layer (2026-10-02): arm/clear move nothing; only physical Start runs
+    def line_arm(self) -> tuple[bool, str]: ...
+    def line_clear(self) -> tuple[bool, str]: ...
+    def line_mission(self, name: str) -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -158,6 +162,7 @@ def create_app(
     wifi_iface: str = "wlp1s0",
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
+    product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -200,11 +205,33 @@ def create_app(
         # Default is the engineer view (2026-10-02, commissioning); operator only once chosen.
         return rolemod.OPERATOR if session.get("role") == rolemod.OPERATOR else rolemod.ENGINEER
 
+    def _product() -> str:
+        """The profile's `tracked`: tape | slam | both. A dev box without a profile is both."""
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            return {True: "tape", False: "slam"}.get(config.TRACKED, "both")
+        except Exception:  # noqa: BLE001
+            return "both"
+
+    product = product or _product()
+    tracked_ok = product in ("tape", "both")
+    trackless_ok = product in ("slam", "both")
+
     @app.context_processor
     def _inject_role():
         """Every template knows the role, so base.html can show the operator's three
-        tabs or the engineer's ten without a second request."""
-        return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER}
+        tabs or the engineer's ten without a second request - and the product, so a
+        tab for the other product is not offered at all."""
+        return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER,
+                "product": product, "tracked_ok": tracked_ok, "trackless_ok": trackless_ok}
+
+    def _need(ok: bool):
+        """A page or API of the other product is 404, not hidden (dual-product plan Inc. 4)."""
+        if not ok:
+            from flask import abort  # noqa: PLC0415
+
+            abort(404)
 
     @app.get("/")
     def index():
@@ -264,21 +291,62 @@ def create_app(
     def page_manual():
         return render_template("manual.html", page="manual")
 
+    # Maps and Routes live under Run trackless (2026-10-02): `page` lights that tab and
+    # `sub` the strip inside it.
     @app.get("/maps")
     def page_maps():
-        return render_template("maps.html", page="maps")
+        _need(trackless_ok)
+        return render_template("maps.html", page="run", sub="maps")
 
     @app.get("/editor")
     def page_editor():
-        return render_template("editor.html", page="editor")
+        _need(trackless_ok)
+        return render_template("editor.html", page="run", sub="editor")
 
     @app.get("/review")
     def page_review():
-        return render_template("review.html", page="maps")
+        _need(trackless_ok)
+        return render_template("review.html", page="run", sub="maps")
 
     @app.get("/run")
+    @app.get("/run-trackless")
     def page_run():
-        return render_template("run.html", page="run")
+        _need(trackless_ok)
+        return render_template("run.html", page="run", sub="run")
+
+    @app.get("/run-tracked")
+    def page_run_tracked():
+        _need(tracked_ok)
+        return render_template("run_tracked.html", page="run_tracked")
+
+    # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
+    # a run starts only on the physical Start under AUTO (line_follow_node). ----
+
+    @app.get("/api/line/missions")
+    def api_line_missions():
+        _need(tracked_ok)
+        from agv_core import mission as missions  # noqa: PLC0415
+
+        names = [n for n in missions.list_missions() if n != "empty"]
+        return jsonify({"missions": names})
+
+    @app.post("/api/line/mission")
+    def api_line_mission():
+        _need(tracked_ok)
+        d, err = _body()
+        if err:
+            return err
+        return _call(adapter.line_mission, str(d.get("name", "") or ""))
+
+    @app.post("/api/line/arm")
+    def api_line_arm():
+        _need(tracked_ok)
+        return _call(adapter.line_arm)
+
+    @app.post("/api/line/clear")
+    def api_line_clear():
+        _need(tracked_ok)
+        return _call(adapter.line_clear)
 
     # ---- state -------------------------------------------------------------------
 
@@ -763,9 +831,11 @@ def create_app(
         d, err = _body()
         if err:
             return err
-        target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION}.get(str(d.get("target", "")).lower())
+        target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION, "line": MODE_LINE}.get(
+            str(d.get("target", "")).lower()
+        )
         if target is None:
-            return _result(False, "target must be idle or navigation", 400)
+            return _result(False, "target must be idle, navigation or line", 400)
         try:
             rev = int(d.get("map_revision", 0))
         except (TypeError, ValueError):
