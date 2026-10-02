@@ -8,8 +8,9 @@ R, S, A = config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO
 
 
 def _di(reset=False, start=False, auto=False):
+    """`auto` is the selector POSITION; the wire level follows panel.auto_when_on."""
     bits = [False] * 16
-    bits[R], bits[S], bits[A] = reset, start, auto
+    bits[R], bits[S], bits[A] = reset, start, auto == config.PANEL_AUTO_WHEN_ON
     return bits
 
 

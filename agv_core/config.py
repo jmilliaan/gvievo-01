@@ -495,6 +495,7 @@ _SCHEMA = {
         "di_reset":       ("PANEL_DI_RESET", int),
         "di_start":       ("PANEL_DI_START", int),
         "di_auto":        ("PANEL_DI_AUTO", int),
+        "auto_when_on":   ("PANEL_AUTO_WHEN_ON", bool),
         "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),

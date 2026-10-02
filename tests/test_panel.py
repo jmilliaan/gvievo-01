@@ -67,6 +67,15 @@ def test_selector():
           out[3].mode == MANUAL and out[3].mode_changed is True)
     check("mode() reports it for the UI", sc.mode() == MANUAL)
 
+    # auto_when_on=False: the same contact, wired so ON = MANUAL (agv-01).
+    sc = panel.PanelScan(R, S, A, 1, auto_when_on=False)
+    out = run(sc, [image(), image(auto=True), image()])
+    check("inverted: low reads AUTO", out[0].mode == AUTO)
+    check("inverted: high reads MANUAL",
+          out[1].mode == MANUAL and out[1].mode_changed is True)
+    check("inverted: back to low reads AUTO", out[2].mode == AUTO)
+    check("inverted: mode() agrees", sc.mode() == AUTO)
+
 
 def test_debounce():
     """A level must read the same on N consecutive scans to be believed."""
@@ -150,13 +159,17 @@ def test_panel_profile():
     # DI image: DI00 is empty, Start is DI01, Reset is DI02, the selector is
     # DI03. The profile shipped as 0/1/2 until then, which read a Reset press
     # as the selector flicking to AUTO and never saw the real selector at all.
-    check("the shipped profile matches the wiring: DI01 start, DI02 reset, "
-          "DI03 auto",
+    # 2026-10-02: remapped to documentation/electrical/01-schematic/io-mapping.md
+    # (DI00 start, DI01 reset, DI02 selector, DI03-06 pendant), and the selector
+    # reads ON = MANUAL (panel.auto_when_on false), per the operator at the panel.
+    check("the shipped profile matches io-mapping.md: DI00 start, DI01 reset, "
+          "DI02 selector",
           (config.PANEL_DI_RESET, config.PANEL_DI_START,
-           config.PANEL_DI_AUTO) == (2, 1, 3))
+           config.PANEL_DI_AUTO) == (1, 0, 2))
     check("...and the DI names say the same",
-          (config.DIO_DI_NAMES[1], config.DIO_DI_NAMES[2], config.DIO_DI_NAMES[3])
+          (config.DIO_DI_NAMES[0], config.DIO_DI_NAMES[1], config.DIO_DI_NAMES[2])
           == ("PB Start", "PB Reset", "SS Auto/Manual"))
+    check("the selector reads ON = MANUAL", config.PANEL_AUTO_WHEN_ON is False)
 
     refused("a pendant channel on a panel channel is refused",
             lambda d: d["pendant"].update(di_fwd=d["panel"]["di_start"]), "collide")
@@ -168,11 +181,12 @@ def test_panel_profile():
             lambda d: (d["dio"].update(enabled=False),
                        d["panel"].update(enabled=False),
                        d["horn"].update(enabled=False)), "pendant")
-    check("the shipped pendant wiring: DI04 fwd, DI05 rvs, DI06 left, DI07 right",
+    check("the shipped pendant wiring (io-mapping.md): DI03 fwd, DI04 rvs, "
+          "DI05 left, DI06 right",
           (config.PENDANT_DI_FWD, config.PENDANT_DI_RVS, config.PENDANT_DI_LEFT,
-           config.PENDANT_DI_RIGHT) == (4, 5, 6, 7))
+           config.PENDANT_DI_RIGHT) == (3, 4, 5, 6))
     check("...and the DI names say the same",
-          [config.DIO_DI_NAMES[i] for i in (4, 5, 6, 7)]
+          [config.DIO_DI_NAMES[i] for i in (3, 4, 5, 6)]
           == ["Pendant FWD", "Pendant RVS", "Pendant LEFT", "Pendant RIGHT"])
 
 

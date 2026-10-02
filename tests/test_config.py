@@ -182,7 +182,9 @@ def test_config_profile():
             lambda d: d["horn"].update(do_channel=-1), "horn.do_channel")
     refuses("a horn without the DIO scan that writes it is refused",
             lambda d: (d["dio"].update(enabled=False),
-                       d["panel"].update(enabled=False)),
+                       d["panel"].update(enabled=False),
+                       d["pendant"].update(enabled=False),
+                       d["horn"].update(enabled=True)),
             "horn.enabled")
     check("HORN_HOLD_S outlasts both the tick and the DIO scan",
           config.HORN_HOLD_S >= 5 * config.LOOP_PERIOD_S

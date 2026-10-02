@@ -197,7 +197,8 @@ def create_app(
     # ---- pages -------------------------------------------------------------------
 
     def _role() -> str:
-        return rolemod.ENGINEER if session.get("role") == rolemod.ENGINEER else rolemod.OPERATOR
+        # Default is the engineer view (2026-10-02, commissioning); operator only once chosen.
+        return rolemod.OPERATOR if session.get("role") == rolemod.OPERATOR else rolemod.ENGINEER
 
     @app.context_processor
     def _inject_role():

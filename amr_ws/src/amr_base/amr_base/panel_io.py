@@ -70,7 +70,11 @@ class PanelAdapter:
         self._held: tuple[str, panel_core.PendantIntent] | None = None  # (mode, pendant) being withheld
         self._held_for = 0
         self.scan = panel_core.PanelScan(
-            config.PANEL_DI_RESET, config.PANEL_DI_START, config.PANEL_DI_AUTO, scans
+            config.PANEL_DI_RESET,
+            config.PANEL_DI_START,
+            config.PANEL_DI_AUTO,
+            scans,
+            auto_when_on=config.PANEL_AUTO_WHEN_ON,
         )
         self.pendant = None
         if config.PENDANT_ENABLED if pendant is None else pendant:

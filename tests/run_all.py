@@ -52,7 +52,7 @@ MODULES = [
 # checks in test_rpdo (4) now read amr_base/canopen.py, the bus owner that
 # replaced canworker. Nothing added. Per-module counts before/after are in
 # manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md.
-EXPECTED_CHECKS = 531
+EXPECTED_CHECKS = 536
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -278,8 +278,15 @@ def test_events_carry_the_catalogue_title(tmp_path):
     assert rows[0]["title"] == cat.CATALOGUE["ESTOP"].title
 
 
+def test_a_fresh_session_lands_on_the_engineer_view(tmp_path):
+    client, _ = app_for(merged(), tmp_path)
+    assert client.get("/").headers["Location"].endswith("/status")
+    assert client.get("/api/role").get_json()["role"] == role.ENGINEER
+
+
 def test_the_home_page_is_the_operators_landing_page(tmp_path):
     client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
     assert client.get("/").headers["Location"].endswith("/home")
     body = client.get("/home").get_data(as_text=True)
     assert 'id="home-primary"' in body
@@ -303,6 +310,7 @@ def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
     """The operator gets Restart on Home only when an alarm says the base cannot be
     rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env)."""
     client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
     assert 'id="btn-restart"' not in client.get("/status").get_data(as_text=True)
     client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
     assert 'id="btn-restart"' in client.get("/status").get_data(as_text=True)

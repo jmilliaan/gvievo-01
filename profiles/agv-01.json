@@ -98,7 +98,6 @@
     "num_do": 16,
     "di_flipped": false,
     "di_names": [
-      "[SPARE]",
       "PB Start",
       "PB Reset",
       "SS Auto/Manual",
@@ -106,8 +105,9 @@
       "Pendant RVS",
       "Pendant LEFT",
       "Pendant RIGHT",
-      "EDM BLDC L",
-      "EDM BLDC R",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -116,7 +116,7 @@
       "[SPARE]"
     ],
     "do_names": [
-      "Horn + lights",
+      "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -151,23 +151,24 @@
   },
   "panel": {
     "enabled": true,
-    "di_reset": 2,
-    "di_start": 1,
-    "di_auto": 3,
+    "di_reset": 1,
+    "di_start": 0,
+    "di_auto": 2,
+    "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,
     "manual_auto_arm": true
   },
   "horn": {
-    "enabled": true,
+    "enabled": false,
     "do_channel": 0
   },
   "pendant": {
     "enabled": true,
-    "di_fwd": 4,
-    "di_rvs": 5,
-    "di_left": 6,
-    "di_right": 7
+    "di_fwd": 3,
+    "di_rvs": 4,
+    "di_left": 5,
+    "di_right": 6
   },
   "can": {
     "bitrate": 125000,

@@ -4,7 +4,8 @@ Three devices on the DIO module drive the vehicle's state:
 
     DI_RESET   momentary pushbutton, rising edge
     DI_START   momentary pushbutton, rising edge
-    DI_AUTO    maintained selector, level. HIGH = AUTO, low = manual
+    DI_AUTO    maintained selector, level. Which level means AUTO is the
+               profile's panel.auto_when_on (true: ON = AUTO; false: ON = MANUAL)
 
 This module reports what the operator ASKED FOR - a Reset edge, a Start edge,
 the selector position. It deliberately does not decide what the vehicle should
@@ -55,8 +56,10 @@ IDLE_INTENT = PanelIntent(valid=False, reset=False, start=False,
 class PanelScan:
     """Debounced edge detector over three channels of the DI image."""
 
-    def __init__(self, reset_ch, start_ch, auto_ch, debounce_scans=2):
+    def __init__(self, reset_ch, start_ch, auto_ch, debounce_scans=2,
+                 auto_when_on=True):
         self.channels = (int(reset_ch), int(start_ch), int(auto_ch))
+        self.auto_when_on = bool(auto_when_on)
         self.debounce_scans = max(1, int(debounce_scans))
         self._stable = None         # last accepted sample; None = not baselined
         self._candidate = None      # sample being debounced
@@ -85,11 +88,14 @@ class PanelScan:
         was_comms, self._comms = self._comms, True
 
         try:
-            sample = tuple(bool(di[c]) for c in self.channels)
+            reset_on, start_on, auto_on = (bool(di[c]) for c in self.channels)
         except (IndexError, TypeError):
             # A short or malformed image is not a button press.
             self.reset()
             return IDLE_INTENT
+
+        # The selector is stored as "is AUTO", so everything below is polarity-free.
+        sample = (reset_on, start_on, auto_on == self.auto_when_on)
 
         if not was_comms:
             self.reset()            # re-baseline on reconnect, see hazard 3

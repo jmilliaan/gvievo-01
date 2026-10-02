@@ -70,7 +70,8 @@ class PanelNode(Node):
         self.create_timer(1.0 / float(self.get_parameter("rate_hz").value), self._tick)
         self.get_logger().info(
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
-            f"start DI{config.PANEL_DI_START}, auto DI{config.PANEL_DI_AUTO}; "
+            f"start DI{config.PANEL_DI_START}, selector DI{config.PANEL_DI_AUTO} "
+            f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}); "
             f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}; "
             + (
                 f"pendant fwd DI{config.PENDANT_DI_FWD}, "
