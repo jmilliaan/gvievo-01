@@ -336,4 +336,6 @@ def test_software_field_stop_needs_fresh_field_status():
     tick(n, torque=True, field=True)
     assert n._prereqs() is None
     n.clock[0] += 1.0  # /output_paths silent past field_age_limit_s
+    n._panel_t = n._loc_t = n._scan_t = n.clock[0]  # everything else stays fresh
+    n.wheels(0.0, valid=True)
     assert "protective field status" in (n._prereqs() or "")

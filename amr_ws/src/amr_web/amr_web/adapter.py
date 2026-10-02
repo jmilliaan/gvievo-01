@@ -632,7 +632,7 @@ class RosAdapter(Node):
         m = VirtualPanel()
         m.header.stamp = self.get_clock().now().to_msg()
         m.start, m.reset = now < v["start_until"], now < v["reset_until"]
-        m.auto, m.estop = bool(v["auto"]), bool(v["estop"])
+        m.mode_auto, m.estop = bool(v["auto"]), bool(v["estop"])
         self._vpanel_pub.publish(m)
 
     def panel_button(self, button: str) -> tuple[bool, str]:

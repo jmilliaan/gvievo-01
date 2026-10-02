@@ -108,7 +108,7 @@ class PanelNode(Node):
         if self._virtual is None or time.monotonic() - self._virtual[0] > VIRTUAL_TIMEOUT_S:
             return panel_io.VIRTUAL_NONE
         m = self._virtual[1]
-        return panel_io.Virtual(True, bool(m.start), bool(m.reset), bool(m.auto), bool(m.estop))
+        return panel_io.Virtual(True, bool(m.start), bool(m.reset), bool(m.mode_auto), bool(m.estop))
 
     def _srv_web(self, req, res):
         """Switch the button source. Refused while the wheels are being commanded."""

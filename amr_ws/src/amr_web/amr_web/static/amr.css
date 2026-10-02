@@ -428,7 +428,7 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .pb-source button, .pb-grid button { width:100%; }
 button.estop {
   font:700 1.6rem var(--mono); letter-spacing:.1em; text-transform:uppercase; width:100%; min-height:5.6rem;
-  border:3px solid var(--stop); background:var(--stop); color:#fff; border-radius:999px;
+  border:3px solid var(--stop); background:var(--stop); color:#fff; border-radius:2px;
 }
 button.estop:hover { filter:brightness(1.1); }
 button.estop.pressed { background:var(--stop-wash); color:var(--stop); }

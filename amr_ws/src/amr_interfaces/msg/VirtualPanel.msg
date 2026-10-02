@@ -4,5 +4,5 @@
 std_msgs/Header header
 bool start            # momentary, held for one pulse per click
 bool reset            # momentary, held for one pulse per click
-bool auto             # selector: true = AUTO, false = MANUAL
+bool mode_auto        # selector: true = AUTO, false = MANUAL
 bool estop            # E-stop pressed (latching, until released on the page)
