@@ -29,11 +29,12 @@ Everything is in **millimetres** on an A4 portrait sheet (`viewBox 0 0 210 297`)
 
 ```js
 {
-  company, companyJp,          // top-left cell, two lines
-  content,                     // 内容 row, e.g. 'POWER CIRCUIT'
+  customer,                    // top-left cell, upper half: customer name
+  designer,                    // top-left cell, lower half: designer company
+  content,                     // CONTENT row, e.g. 'POWER CIRCUIT'
   approval, checked, designed, // names
   date, scale, drawn,
-  title, titleJp,              // 'ELECTRIC DIAGRAM', '電気回路図'
+  title,                       // 'ELECTRIC DIAGRAM'
   model, dwg,                  // 'FW30HS-T', '-00-91-'
   sheet, of,                   // 7, 57
   note,                        // vertical margin note ('' = none)
@@ -57,12 +58,12 @@ Empty string = cell left blank. `«…»` = placeholder (renders red). Keep the 
 | `X.wout` 127 | Cable spec to the motor |
 | `X.term` 140.1 | Motor terminals |
 | `X.mcx` 148.4, `X.mr` 5.2 | Motor circle centre and radius |
-| `X.desc` 163 | Load description (English over Japanese) |
+| `X.desc` 163 | Load description (one line, optional second line) |
 | ~150–153 | End of outgoing conductors, then `endLabels` |
 
 Phase spacing inside a branch is 4.2 mm: `s.phases(y)` → `[y, y+4.2, y+8.4]`.
 A motor branch needs about **2 rows** of height; the original drawings usually space branches **3 rows** apart.
-Description text: English ≤ 28 characters, Japanese ≤ 16 characters, or it runs past the frame.
+Description text: ≤ 28 characters per line, or it runs past the frame. Longer → split over `en` / `en2`.
 
 ## Column plan — control sheets
 
@@ -90,7 +91,7 @@ One rung per line number. A parallel (OR) branch runs 6 mm below its rung, so le
 | `ring(x, y, r)` | Terminal circle |
 | `knock(x1, y1, x2, y2)` | White-out a gap in a conductor (symbols do this themselves) |
 | `text(x, y, str, { size, anchor, weight, sans, rotate })` | Text. Default size 2.2 mm mono. Prefix `?` → red "uncertain". `«…»` → red placeholder. |
-| `desc(x, y, en, jp)` | Two-line load description |
+| `desc(x, y, en, en2?)` | Load description, optional second line |
 | `endLabels(x, ys, labels)` | Labels at the end of outgoing conductors |
 
 ### Power symbols
@@ -118,7 +119,7 @@ b = {
   wout: 'KIV2mm²',                   // optional different cable to the motor
   t: ['U3L', 'V3L', 'W3L'],          // terminal names
   m: 'M3L', kw: '0.4kW-4P',          // motor name + rating
-  en: 'L. SPINDLE LUB. PUMP MOTOR', jp: '左主軸潤滑ポンプモーター',
+  en: 'L. SPINDLE LUB. PUMP MOTOR',  // description; en2 = optional second line
 }
 from = { xs: [x1, x2, x3], tap: true } // where the three conductors start; tap → junction dots
 xo   = { ms: 102 }                      // optional per-branch column overrides
@@ -129,7 +130,7 @@ xo   = { ms: 102 }                      // optional per-branch column overrides
 | Call | Draws |
 |---|---|
 | `rails(xL, xR, y1, y2, [labelL, labelR])` | Two vertical rails |
-| `rung(y, [xL, xR], items, { en, jp }?)` | Conductor between the rails with junction dots, items on it, description right of the right rail |
+| `rung(y, [xL, xR], items, { en, en2 }?)` | Conductor between the rails with junction dots, items on it, description right of the right rail |
 | `seg(y, x1, x2, items)` | Plain conductor segment with items (no rail dots) |
 | `parallel(y, yb, x1, x2, items)` | OR branch: drops at x1, runs at yb, rises at x2 |
 | `item(it, y)` | One item (normally called by rung/seg/parallel) |

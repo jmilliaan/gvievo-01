@@ -30,11 +30,11 @@
 <script src="../kit/jis-sheet.js"></script>
 <script>
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: '«CONTROL CIRCUIT»',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: '«N»', of: '«TOTAL»',
     note: '',
     refs: [],
@@ -52,14 +52,14 @@
         { k: 'nc', x: 95, name: '«OL1»', ref: '«0402»' },
         { k: 'coil', x: 138, name: '«MS1»', refs: ['«0402»', '«0703»'] },
       ],
-      desc: { en: '«PUMP MOTOR RUN»', jp: '«ポンプ運転»' },
+      desc: { en: '«PUMP MOTOR RUN»' },
       // self-hold contact in parallel with START
       parallel: { x1: 63, x2: 81, items: [{ k: 'no', x: 72, name: '«MS1»', ref: '«0401»' }] } },
     { row: 3, items: [
         { k: 'no', x: 72, name: '«MS1»', ref: '«0401»' },
         { k: 'lamp', x: 138, name: '«GL»', color: '«GREEN»' },
       ],
-      desc: { en: '«RUN INDICATOR»', jp: '«運転表示»' } },
+      desc: { en: '«RUN INDICATOR»' } },
   ];
 
   JIS.render(document.getElementById('sheet'), {

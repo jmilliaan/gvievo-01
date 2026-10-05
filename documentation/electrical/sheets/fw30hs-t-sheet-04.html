@@ -24,11 +24,11 @@
 <script src="../kit/jis-sheet.js"></script>
 <script>
   const META = {
-    company: 'IZUMI MACHINE MFG. CO., LTD', companyJp: 'イヅミ工業株式会社',
+    customer: '«CUSTOMER»', designer: 'IZUMI MACHINE MFG. CO., LTD',
     content: 'POWER CIRCUIT',
     approval: 'H. Suzumura', checked: 'S. Miura', designed: 'Y. Tsujioka', drawn: 'J. Nakamura',
     date: '13/06/17', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: 'FW30HS-T', dwg: '-00-91-', sheet: 4, of: 57,
     note: 'IZUMI MACHINE MFG. CO. has property of this drawing and the design shown shall not be disclosed to any third party without permission of IZUMI MACHINE MFG. Corporation.',
     // breaker auxiliary contacts are drawn on sheet 12, line 01
@@ -37,15 +37,15 @@
 
   // spindle drive supplies leave the sheet to the right
   const FEEDERS = [
-    { row: 7.3,  cb: 'CBSPL', aux: '?1M1', out: ['RSL', 'SSL', 'TSL'], en: 'L SPINDLE POWER SUPPLY', jp: '左主軸電源' },
-    { row: 10.3, cb: 'CBSPR', aux: '?1M2', out: ['RSR', 'SSR', 'TSR'], en: 'R SPINDLE POWER SUPPLY', jp: '右主軸電源' },
+    { row: 7.3,  cb: 'CBSPL', aux: '?1M1', out: ['RSL', 'SSL', 'TSL'], en: 'L SPINDLE POWER SUPPLY' },
+    { row: 10.3, cb: 'CBSPR', aux: '?1M2', out: ['RSR', 'SSR', 'TSR'], en: 'R SPINDLE POWER SUPPLY' },
   ];
 
   // hydraulic pump motors behind CB2
   const MOTORS = [
-    { row: 14,   ms: 'MS1L', ref: '3308', ol: 'OL1L', amps: '42.8A', sk: 'SK1L', w: 'KIV14mm²',  t: ['U1L', 'V1L', 'W1L'], m: 'M1L', kw: '11kW-4P',  en: 'L. HYDRAULIC PUMP MOTOR',   jp: '左作動油ポンプモーター' },
-    { row: 16.2, ms: 'MS1R', ref: '3309', ol: 'OL1R', amps: '42.8A', sk: 'SK1R', w: 'KIV14mm²',  t: ['U1R', 'V1R', 'W1R'], m: 'M1R', kw: '11kW-4P',  en: 'R. HYDRAULIC PUMP MOTOR',   jp: '右作動油ポンプモーター' },
-    { row: 18.3, ms: 'MS2',  ref: '3310', ol: 'OL2',  amps: '22A',   sk: 'SK2',  w: 'KIV5.5mm²', t: ['U2', 'V2', 'W2'],    m: 'M2',  kw: '5.5kW-4P', en: 'AUX. HYDRAULIC PUMP MOTOR', jp: '補助作動油ポンプモーター' },
+    { row: 14,   ms: 'MS1L', ref: '3308', ol: 'OL1L', amps: '42.8A', sk: 'SK1L', w: 'KIV14mm²',  t: ['U1L', 'V1L', 'W1L'], m: 'M1L', kw: '11kW-4P',  en: 'L. HYDRAULIC PUMP MOTOR' },
+    { row: 16.2, ms: 'MS1R', ref: '3309', ol: 'OL1R', amps: '42.8A', sk: 'SK1R', w: 'KIV14mm²',  t: ['U1R', 'V1R', 'W1R'], m: 'M1R', kw: '11kW-4P',  en: 'R. HYDRAULIC PUMP MOTOR' },
+    { row: 18.3, ms: 'MS2',  ref: '3310', ol: 'OL2',  amps: '22A',   sk: 'SK2',  w: 'KIV5.5mm²', t: ['U2', 'V2', 'W2'],    m: 'M2',  kw: '5.5kW-4P', en: 'AUX. HYDRAULIC PUMP MOTOR' },
   ];
 
   JIS.render(document.getElementById('sheet'), {
@@ -58,7 +58,7 @@
 
       // incoming supply → CB1 → R1/S1/T1 (continues on sheet 5 onward)
       s.text(44, 14.8, 'POWER 3φ AC200V 50Hz 162kVA', { size: 2.2, weight: 600 });
-      s.text(44, 18.8, '電源 3相 AC200V 50Hz 162kVA', { size: 2.2 });
+      s.text(44, 18.8, 'POWER SUPPLY 3PH AC200V 50Hz 162kVA', { size: 2.2 });
       s.bus(bus, 23, 206, ['R', 'S', 'T'], 'arrow');
       bus.forEach(x => s.line(x - 0.9, 23, x + 0.9, 23, 0.3));
       s.text(36.4, 22.2, 'E', { size: 1.9, anchor: 'middle' });
@@ -81,7 +81,7 @@
       s.noSwitch(90, lt[0], 'DSW');
       s.wire(99, lt, 'KIV2mm²', 'YELLOW');
       s.text(111, lt[0] - 0.6, 'R0A', { size: 1.9 });
-      s.desc(163, 42.3, 'INNER PANEL LIGHTING', '盤内照明');
+      s.desc(163, 42.3, 'INNER PANEL LIGHTING');
 
       s.mccbV(bus, 64, 'CB1', '600AF/500AT');
       bus.forEach((x, i) => s.text(x + 0.5, 72.5, ['R1', 'S1', 'T1'][i], { size: 1.7 }));
@@ -96,7 +96,7 @@
         s.wire(38.5, ys, 'MLFC60mm²', 'BLACK');
         s.mccb(56, ys, f.cb, '225AF/200AT', f.aux);
         s.wire(92, ys, 'MLFC60mm²', 'BLACK');
-        s.desc(163, ys[0] + 0.3, f.en, f.jp);
+        s.desc(163, ys[0] + 0.3, f.en);
       });
 
       // CB2 → R2/S2/T2 sub-bus → three motor branches

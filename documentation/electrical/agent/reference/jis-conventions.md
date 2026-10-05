@@ -1,12 +1,12 @@
 # Reading JIS-style electrical drawings
 
-The reference drawings are Japanese machine-tool electrical manuals (e.g. IZUMI FW30HS-T, 57 sheets). Most Japanese panel builders follow the same conventions.
+The reference drawings are machine-tool electrical manuals drawn to JIS conventions (e.g. IZUMI FW30HS-T, 57 sheets). Our sheets follow the same conventions, in English only.
 
 ## Sheet anatomy
 - **Portrait A4/A3.** Title block across the bottom; revision / cross-reference grid directly above it.
 - **Line numbers 00–21** down the left edge. Every device location is "sheet + line": `3311` = sheet 33, line 11.
 - **Current flows top → bottom and left → right.** Supply buses run down the left; loads sit on the right with their description text at the far right.
-- **Descriptions are bilingual**: English (capitals) on top, Japanese underneath.
+- **Descriptions are in English** (capitals). Source drawings may add a second language underneath; translate, do not copy it.
 - Proprietary note printed vertically in the margin.
 
 ## Power circuits
@@ -53,7 +53,7 @@ Typical chain for one motor, left to right:
 Written next to a small crossing mark with arrowheads on each conductor, e.g. `KIV2mm²` over `BLACK`.
 - **KIV**: PVC-insulated flexible panel wire. **IV**: solid panel wire. **MLFC**: flame-retardant flexible cable for large currents. **VCT**: cab-tyre cable to field devices.
 - Size in mm² (2, 5.5, 14, 60 …).
-- Colours commonly used in Japanese panels (the drawing always wins):
+- Colours commonly used in these panels (the drawing always wins):
   - black — main AC power;
   - red — AC control;
   - blue — DC control;

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../kit/jis-sheet.css">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
 </head>
 <body>
 
@@ -21,15 +21,15 @@
 <main class="wrap"><div class="sheet" id="sheet"></div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
-<script src="../../kit/jis-sheet.js"></script>
+<script src="../kit/jis-sheet.js"></script>
 <script>
   // source: input-sketch/proj01/page08.jpg (upright) + FX3-XTIO front view from the SICK manual
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'SAFETY PLC XTIO WIRING',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: 8, of: '«XX»',
     note: '',
     refs: [],
@@ -61,12 +61,14 @@
     { t: 'Q2', w: 'HWTO2', tb: ['TB46', 'TB52'],
       end: ['(HWTO2+) LEFT / DRIVER 01', '(HWTO2+) RIGHT / DRIVER 02'] },
   ];
+  // Q3 → DI08 of the digital IO module (non-safety status signal)
+  const Q3 = { t: 'Q3', w: 'DI08', tb: 'TB72', end: 'DI08 (SH.09)' };
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
     file: 'PROJ01-08',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Safety PLC FX3-XTIO wiring: 2NC E-stop on X1/X2 → I1/I2, driver EDM on I3/I4, lidar OSSD on I5/I6, 2NO MANUAL/AUTO selector on I7 and DI02, 2NO reset push-button on I8, Q1/Q2 to the driver HWTO inputs.',
+    label: 'Safety PLC FX3-XTIO wiring: 2NC E-stop on X1/X2 → I1/I2, driver EDM on I3/I4, lidar OSSD on I5/I6, 2NO MANUAL/AUTO selector on I7 and DI02, 2NO reset push-button on I8, Q1/Q2 to the driver HWTO inputs, Q3 to DI08 of the digital IO module.',
     draw(s) {
       const SX = 36, TBX = 88, EX = 150, JX = 100;
       const Y = {};
@@ -149,7 +151,7 @@
       // straight from Q1 / Q2; the jumpered terminal sits 5 mm under its line
       HWTO.forEach(h => { h.y1 = Y[h.t]; h.y2 = h.y1 + 5; });
       const hy = HWTO.flatMap(h => [h.y1, h.y2]);
-      s.wire(66, HWTO.map(h => h.y1), ...SAFE);        // XTIO → TB
+      s.wire(66, HWTO.map(h => h.y1).concat(Y.Q3), ...SAFE);   // XTIO → TB
       HWTO.forEach(h => {
         const { y1, y2 } = h;
         s.line(SX, y1, EX, y1); s.line(TBX, y2, EX, y2);
@@ -157,13 +159,19 @@
         wl(48, y1, h.w);
         wl(132, y1, h.w); wl(132, y2, h.w);
       });
-      s.wire(118, hy, ...SAFE);                         // TB → drivers
+      // Q3 → TB72 → DI08 (sheet 09)
+      s.line(SX, Y.Q3, EX, Y.Q3);
+      wl(48, Y.Q3, Q3.w); wl(132, Y.Q3, Q3.w);
+      s.endLabels(EX, [Y.Q3], [Q3.end]);
+      s.text(48, Y.Q4 + 0.7, 'Q3: TEST PULSES OFF IN FLEXI SOFT CONFIG (FEEDS A STANDARD DI)', { size: 1.6 });
+      s.wire(118, hy.concat(Y.Q3), ...SAFE);            // TB → drivers / DI08
       HWTO.forEach(h => {
         const { y1, y2 } = h;
         tb(TBX, y1, h.tb[0]);
         tb(TBX, y2, h.tb[1], true);
         s.endLabels(EX, [y1, y2], h.end);
       });
+      tb(TBX, Y.Q3, Q3.tb);
 
       /* ---- terminals last, over the conductor ends ---- */
       TERMS.forEach(t => {

@@ -31,11 +31,11 @@
 <script>
   // ---- title block (leave a field '' if the source has it blank) ----
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: '«POWER CIRCUIT»',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: '«N»', of: '«TOTAL»',
     note: '',                                   // margin note, only if legible in the source
     refs: [],                                   // grid cross-refs, e.g. { name: 'CB2', ref: '1201' }
@@ -44,9 +44,9 @@
   // ---- motor branches, top to bottom. Omit ol / sk / w to leave that device out ----
   const BRANCHES = [
     { row: 1, ms: '«MS1»', ref: '«3301»', ol: '«OL1»', amps: '«0.0A»', sk: '«SK1»', w: '«KIV2mm²»',
-      t: ['«U1»', '«V1»', '«W1»'], m: '«M1»', kw: '«0.4kW-4P»', en: '«LOAD NAME»', jp: '«負荷名»' },
+      t: ['«U1»', '«V1»', '«W1»'], m: '«M1»', kw: '«0.4kW-4P»', en: '«LOAD NAME»' },
     { row: 4, ms: '«MS2»', ref: '«3302»', ol: '«OL2»', amps: '«0.0A»', sk: '«SK2»', w: '«KIV2mm²»',
-      t: ['«U2»', '«V2»', '«W2»'], m: '«M2»', kw: '«0.4kW-4P»', en: '«LOAD NAME»', jp: '«負荷名»' },
+      t: ['«U2»', '«V2»', '«W2»'], m: '«M2»', kw: '«0.4kW-4P»', en: '«LOAD NAME»' },
   ];
 
   JIS.render(document.getElementById('sheet'), {

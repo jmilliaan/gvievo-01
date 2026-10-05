@@ -5,7 +5,7 @@ description: Draw JIS-style electrical diagrams (power circuits and control/ladd
 
 # JIS electrical sheets
 
-You turn a **photo of an existing drawing** or a **hand sketch** into a clean A4 electrical sheet in Japanese (JIS) drafting style: line-number gutter 00–21 on the left, revision/cross-reference grid, title block at the bottom, black-on-white.
+You turn a **photo of an existing drawing** or a **hand sketch** into a clean A4 electrical sheet in JIS drafting style: line-number gutter 00–21 on the left, revision/cross-reference grid, title block at the bottom, black-on-white.
 
 The drawing engine already exists. Your job is **reading the source correctly and filling in data**, not designing graphics. You should almost never write new geometry.
 
@@ -40,7 +40,7 @@ The drawing engine already exists. Your job is **reading the source correctly an
 4. **Use the templates and the engine.** Copy a template, fill data, use `s.row(n)` for vertical placement and the column plan in `api.md` for horizontal placement. Do not hand-position every element; do not restyle.
 5. **One sheet per HTML file**, named `<model>-sheet-<NN>.html` (lower-case model, two-digit sheet number). Default folder is `sheets/`; if the user names another place (e.g. "same directory as the source"), put it there and fix the relative `kit/` paths (`../../kit/` from `input-sketch/<proj>/`).
 6. **HTML is the deliverable.** Do not write PNG or PDF files into the project during a run. Use `preview.ps1` for checking; run `export.ps1` only when the user asks for PNG/PDF.
-7. **Keep JIS style**: black on white, A4 portrait, English + Japanese labels as in the source (a sketch with English only → English only). No colour, no modernised layout, unless the user asks.
+7. **Keep JIS style**: black on white, A4 portrait, **English only**. If the source has Japanese text, translate it to English and list each translation in the interpretation for confirmation. No colour, no modernised layout, unless the user asks.
 8. **Never publish or upload** the sheets or source photos anywhere. They may be proprietary drawings.
 
 ## Workflow

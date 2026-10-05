@@ -17,7 +17,7 @@ Run `agent/scripts/preview.ps1 <path-to-sheet.html>`, open the PNG it prints (`%
 - [ ] No text runs past the frame (right edge x ≈ 201 mm). Long descriptions → shorten only with the user's consent, otherwise reduce by moving to `desc` two lines.
 - [ ] Nothing is cut off at the grid (y 240.5) or overlaps the title block. Title-block values fit their cell (the sheet-total cell is narrow: use `'«XX»'`, not `'«TOTAL»'`).
 - [ ] Breaker ratings clear the thermal-element jog (single-pole `mccb` on a lone conductor is the usual offender).
-- [ ] Japanese characters rendered (not boxes). If they are boxes, the preview ran without internet; re-run when online.
+- [ ] No Japanese text anywhere on the sheet (title block included); every source label is in English.
 
 ## Output
 - [ ] Only the HTML file(s) were written to the project — no PNG/PDF unless the user asked.

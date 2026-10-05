@@ -86,7 +86,8 @@ The selector and the reset button each have two NO poles. Pole 1 goes to the saf
 |---|---|---|
 | Q1 | HWTO1+ on Driver 01 **and** Driver 02 | Safe torque-off channel 1 |
 | Q2 | HWTO2+ on Driver 01 **and** Driver 02 | Safe torque-off channel 2 |
-| Q3, Q4 | not connected | spare |
+| Q3 | Digital IO module **DI08** (sheet 09) | Non-safety status signal. Test pulses must be off for Q3 in the Flexi Soft config. AWG22 orange. |
+| Q4 | not connected | spare |
 
 ### Safety lidars (sheet 03)
 
@@ -97,6 +98,8 @@ Two SICK nanoScan3 safety lidars (01, 02) are powered from 1P24 / 1N24 through t
 ## 3. Digital IO module (CK-EC5163, 16 DI + 12 relay DO, Ethernet)
 
 Sheets 03, 08, 09. Field wiring is AWG22 blue.
+
+The audio horn (sheet 03, PATLITE) is powered from 1P24 / 1N24. Its COM is jumpered to 1N24 at the horn; a sound plays while its sound input is connected to COM, which DO0 / DO1 do.
 
 ### Supply and Ethernet
 
@@ -122,20 +125,23 @@ COM0 is tied to 1P24. Each input is a normally-open contact that pulls the input
 | DI05 | Pendant **LEFT** (NO) | |
 | DI06 | Pendant **RIGHT** (NO) | |
 | DI07 | not used | |
-| DI08–DI0F | not used | This is the COM1 group |
+| DI08 | Safety PLC **Q3** | COM1 group: Q3 switches 24 V onto the input. AWG22 orange. |
+| DI09–DI0F | not used | |
 | COM0 | 1P24 | Common for DI00–DI07 |
-| COM1 | 1N24 | Wired, but its group has no inputs |
+| COM1 | 1N24 | Common for DI08–DI0F |
 
 ### Relay outputs
 
 | Output | Status |
 |---|---|
-| DO0–DO7 | **Spare, nothing connected.** Only the commons are wired (below). |
+| DO0 | **Audio horn 01, sound 1** (closes 1N24 onto the horn's sound 1 input) |
+| DO1 | **Audio horn 01, sound 2** (closes 1N24 onto the horn's sound 2 input) |
+| DO2–DO7 | **Spare, nothing connected.** Only the commons are wired (below). |
 | DO8–DOB and their commons | Not used |
 
 | Relay common | Goes to |
 |---|---|
-| C of DO0 / DO1 | 1P24 |
+| C of DO0 / DO1 | 1N24 |
 | C of DO2 / DO3 | 1P24 |
 | C of DO4 / DO5 | 1N24 |
 | C of DO6 / DO7 | 1N24 |

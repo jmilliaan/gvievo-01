@@ -11,7 +11,7 @@ A second, hand-sketch example with two-wire DC circuits (battery → 2-pole MCB 
 - Three bus lines R1 S1 T1 run down the full left side and stop at the grid (they continue on later sheets).
 - Line 01: a tap off R1/S1/T1 with cable mark "(AC200V) KIV1.25mm² BLACK" → breaker CB3 50AF/50AT. After CB3 the three lines are R3/S3/T3: they continue straight into the first motor branch **and** drop down the page as a sub-bus.
 - Six identical motor branches on lines 01, 04, 07, 10, 13, 16 (every 3 lines). Each: KIV2mm² BLACK → MSx → OLx (setting) → SKx → KIV2mm² BLACK → Ux Vx Wx → motor Mx with rating, description on the right. The number under each MS is its coil location (3311 … 3316).
-- R3/S3/T3 turn right at lines 18–20 and leave as "AC200V CONTROL POWER / AC200V制御電源".
+- R3/S3/T3 turn right at lines 18–20 and leave as "AC200V CONTROL POWER".
 
 ## 2. Interpretation (as sent to the user, shortened)
 
@@ -34,7 +34,7 @@ Doubtful: the wire size on line 01 (1.25 mm²?). Assumption: surge-killer intern
 const BRANCHES = [
   { ms: 'MS3L', ref: '3311', ol: 'OL3L', amps: '2.2A', sk: 'SK3L', w: 'KIV2mm²',
     t: ['U3L', 'V3L', 'W3L'], m: 'M3L', kw: '0.4kW-4P',
-    en: 'L. SPINDLE LUB. PUMP MOTOR', jp: '左主軸潤滑ポンプモーター' },
+    en: 'L. SPINDLE LUB. PUMP MOTOR' },
   // … five more rows, same shape
 ];
 
@@ -53,7 +53,7 @@ draw(s) {
     s.text(x + 1.3, top[i] - 0.6, ['R3', 'S3', 'T3'][i], { size: 1.9 });
     s.text(154.2, busBEnd[i] + 0.7, ['R3', 'S3', 'T3'][i], { size: 2 });
   });
-  s.desc(163, 212.6, 'AC200V CONTROL POWER', 'AC200V制御電源');
+  s.desc(163, 212.6, 'AC200V CONTROL POWER');
 
   // first branch runs straight on from CB3; the others tap the R3/S3/T3 sub-bus
   BRANCHES.forEach((b, k) =>

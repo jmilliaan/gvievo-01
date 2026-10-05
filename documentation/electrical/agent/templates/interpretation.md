@@ -5,8 +5,9 @@ Source: «file name(s)» · orientation: «as photographed / rotated 90° clockw
 ## Title block
 | Field | Value |
 |---|---|
-| Company | «» |
-| Content (内容) | «» |
+| Customer (top-left, upper) | «» |
+| Designer company (top-left, lower) | «» |
+| Content | «» |
 | Approval / Checked / Designed / Drawn | «» / «» / «» / «» |
 | Date / Scale | «» / «» |
 | Model / Drawing no. / Sheet | «» / «» / «N» of «TOTAL» |
@@ -21,7 +22,10 @@ Source: «file name(s)» · orientation: «as photographed / rotated 90° clockw
 | Line | Taps from | Devices, left → right (with values) | Load / description |
 |---|---|---|---|
 | «01» | «R1 S1 T1» | «KIV2mm² BLACK → CB3 50AF/50AT» | «feeds R3 S3 T3» |
-| «01» | «R3 S3 T3» | «KIV2mm² BLACK → MS3L (3311) → OL3L 2.2A → SK3L → KIV2mm² BLACK → U3L V3L W3L» | «M3L 0.4kW-4P · L. SPINDLE LUB. PUMP MOTOR / 左主軸潤滑ポンプモーター» |
+| «01» | «R3 S3 T3» | «KIV2mm² BLACK → MS3L (3311) → OL3L 2.2A → SK3L → KIV2mm² BLACK → U3L V3L W3L» | «M3L 0.4kW-4P · L. SPINDLE LUB. PUMP MOTOR» |
+
+## Translations (source text not in English → English used on the sheet)
+- «source text → ENGLISH TEXT»
 
 ## Doubtful readings (will render red with `?`)
 - «line 01: KIV1.25mm² — could be KIV1.6mm²»

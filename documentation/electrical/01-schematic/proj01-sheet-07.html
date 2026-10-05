@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../kit/jis-sheet.css">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
 </head>
 <body>
 
@@ -21,16 +21,16 @@
 <main class="wrap"><div class="sheet" id="sheet"></div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
-<script src="../../kit/jis-sheet.js"></script>
+<script src="../kit/jis-sheet.js"></script>
 <script>
   // source: input-sketch/proj01/page07.jpg (upright) + BLVD-KRD pinout table from the user
   // layout loosely follows the manufacturer pinout: connector face, two pin tables, notes
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'MOTOR DRIVER WIRING',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: 7, of: '«XX»',
     note: '',
     refs: [],

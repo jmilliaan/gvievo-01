@@ -6,8 +6,8 @@
   const NS = 'http://www.w3.org/2000/svg';
   const INK = '#111';
   const FONT = {
-    mono: '"IBM Plex Mono", "Noto Sans JP", ui-monospace, monospace',
-    sans: '"IBM Plex Sans", "Noto Sans JP", Arial, sans-serif',
+    mono: '"IBM Plex Mono", ui-monospace, monospace',
+    sans: '"IBM Plex Sans", Arial, sans-serif',
   };
 
   // sheet grid
@@ -34,7 +34,7 @@
 
   const FLAG = '#c0392b';
 
-  function Sheet(svg) { this.svg = svg; this.jp = new Set(); this.flags = []; }
+  function Sheet(svg) { this.svg = svg; this.flags = []; }
   const P = Sheet.prototype;
 
   /* ---------------- primitives ---------------- */
@@ -78,7 +78,6 @@
     }, this.svg);
     if (o.rotate) t.setAttribute('transform', `rotate(${o.rotate} ${x} ${y})`);
     t.textContent = s;
-    for (const ch of s) if (ch.charCodeAt(0) > 0x2ff) this.jp.add(ch);
     return t;
   };
 
@@ -194,10 +193,10 @@
     });
   };
 
-  // load description, English over Japanese
-  P.desc = function (x, y, en, jp) {
+  // load description; en2 = optional second line
+  P.desc = function (x, y, en, en2) {
     this.text(x, y, en, { size: 2.25, weight: 600 });
-    if (jp) this.text(x, y + 4.2, jp, { size: 2.25 });
+    if (en2) this.text(x, y + 4.2, en2, { size: 2.25 });
   };
 
   // motor with terminals, earth and rating (x = branch positions, defaults to X)
@@ -234,7 +233,7 @@
     if (b.sk) this.surge(x.sk, ys, b.sk);
     if (b.w) this.wire(x.wout, ys, b.wout || b.w, b.wc || 'BLACK');
     this.motor(b, ys, x);
-    this.desc(x.desc, ys[0] + 0.3, b.en, b.jp);
+    this.desc(x.desc, ys[0] + 0.3, b.en, b.en2);
   };
 
   // labels at the right-hand end of outgoing conductors
@@ -317,7 +316,7 @@
   P.rung = function (y, rails, items = [], desc) {
     this.seg(y, rails[0], rails[1], items);
     this.dot(rails[0], y); this.dot(rails[1], y);
-    if (desc) this.desc(rails[1] + 4, y + 0.3, desc.en, desc.jp);
+    if (desc) this.desc(rails[1] + 4, y + 0.3, desc.en, desc.en2);
   };
   // parallel (OR) branch: leaves the rung at x1, rejoins at x2, runs at yb
   P.parallel = function (y, yb, x1, x2, items = []) {
@@ -407,27 +406,23 @@
     el('rect', { x: tx[0], y: ty[0], width: tx[6] - tx[0], height: ty[3] - ty[0], fill: '#fff', stroke: INK, 'stroke-width': 0.35 }, s.svg);
     for (let i = 1; i <= 5; i++) s.line(tx[i], ty[0], tx[i], ty[3], 0.25);
     [ty[1], ty[2]].forEach(y => s.line(tx[1], y, tx[5], y, 0.2));
-    s.line(tx[0], ty[2], tx[1], ty[2], 0.2);
+    [ty[1], ty[2]].forEach(y => s.line(tx[0], y, tx[1], y, 0.2));   // customer / designer / content
     s.line(tx[5], ty[2], tx[6], ty[2], 0.2);
-    s.line(21, ty[2], 21, ty[3], 0.2);
 
-    s.text(41.5, 274.3, m.company, { size: 2.6, weight: 600, anchor: 'middle', sans: true });
-    s.text(41.5, 281.2, m.companyJp, { size: 3, weight: 600, anchor: 'middle', sans: true });
-    s.text(19.4, 286.8, '内', { size: 2, anchor: 'middle' });
-    s.text(19.4, 290, '容', { size: 2, anchor: 'middle' });
-    s.text(23, 288.8, m.content, { size: 2.4, sans: true });
+    // left column: caption top-left, value centred below it
+    const cap = (x, row, t) => s.text(x, ty[row] + 2.2, t, { size: 1.3, weight: 600 });
+    cap(18.6, 0, 'CUSTOMER'); cap(18.6, 1, 'DESIGNER'); cap(18.6, 2, 'CONTENT');
+    s.text(41.5, ty[0] + 6.1, m.customer, { size: 2.5, weight: 600, anchor: 'middle', sans: true });
+    s.text(41.5, ty[1] + 6.1, m.designer, { size: 2.5, weight: 600, anchor: 'middle', sans: true });
+    s.text(41.5, ty[2] + 6.1, m.content, { size: 2.4, anchor: 'middle', sans: true });
 
-    const cell = (x, row, en, jp) => {
-      s.text(x, ty[row] + 2.8, en, { size: 1.45, weight: 600 });
-      s.text(x, ty[row] + 5.9, jp, { size: 1.45 });
-    };
-    cell(66.2, 0, 'APPROVAL', '承認'); cell(66.2, 1, 'CHECKED', '検図'); cell(66.2, 2, 'DESIGNED', '設計');
-    cell(102.4, 0, 'DATE', '作成日'); cell(102.4, 1, 'SCALE', '尺度'); cell(102.4, 2, 'DRAWN', '製図');
+    const cell = (x, row, t) => s.text(x, ty[row] + 4.3, t, { size: 1.45, weight: 600 });
+    cell(66.2, 0, 'APPROVAL'); cell(66.2, 1, 'CHECKED'); cell(66.2, 2, 'DESIGNED');
+    cell(102.4, 0, 'DATE'); cell(102.4, 1, 'SCALE'); cell(102.4, 2, 'DRAWN');
     [m.approval, m.checked, m.designed].forEach((v, i) => v && s.text(88.75, ty[i] + 5, v, { size: 2.5, anchor: 'middle', sans: true }));
     [m.date, m.scale, m.drawn].forEach((v, i) => v && s.text(124.65, ty[i] + 5, v, { size: 2.5, anchor: 'middle', sans: true }));
 
-    s.text(139.5, 274.3, m.title, { size: 2.7, weight: 600 });
-    s.text(139.5, 282, m.titleJp, { size: 3.8, weight: 600 });
+    s.text(139.5, 278.3, m.title, { size: 3.4, weight: 600 });
     s.text(183, 274.6, String(m.sheet), { size: 2.8, anchor: 'middle' });
     s.line(186.5, 282.2, 193.5, 271.6, 0.3);
     s.text(197.5, 281, String(m.of), { size: 2.8, anchor: 'middle' });
@@ -435,16 +430,6 @@
     s.text(166, 289.4, m.dwg, { size: 3.1, sans: true });
     s.text(197, 289.4, String(m.sheet), { size: 3.1, anchor: 'middle', sans: true });
   };
-
-  // Japanese glyphs come from Noto Sans JP, subset to exactly the characters on this sheet
-  function loadJapanese(chars) {
-    if (!chars.size) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;600&display=swap&text=' +
-      encodeURIComponent([...chars].join(''));
-    document.head.appendChild(link);
-  }
 
   /* ---------------- render + export ---------------- */
   function render(host, spec) {
@@ -455,7 +440,6 @@
     sheet.frame(spec.meta);
     sheet.textScale = spec.textScale || 1;   // drawing text only; frame and title block stay fixed
     spec.draw(sheet, X);
-    loadJapanese(sheet.jp);
 
     const status = document.getElementById('status');
     if (sheet.flags.length) {

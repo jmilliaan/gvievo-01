@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../kit/jis-sheet.css">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
 </head>
 <body>
 
@@ -21,16 +21,16 @@
 <main class="wrap"><div class="sheet" id="sheet"></div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
-<script src="../../kit/jis-sheet.js"></script>
+<script src="../kit/jis-sheet.js"></script>
 <script>
   // source: page 09 sketch (DI / DO list), switch sketch (PB START, PB RESET, SS MAN/AUTO 2NO),
   // photos of the CK-EC5163 front (DI / DO blocks) and top (IN / OUT ports, PE 0V 24V)
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'DIGITAL IO MODULE WIRING',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: 9, of: '«XX»',
     note: '',
     refs: [],
@@ -47,9 +47,11 @@
 
   // DI group 0–7 (COM0 → 1P24): inputs are switched to 1N24 by 1NO contacts
   const DI = {
-    DI00: 64, DI01: 73, DI02: 82, DI03: 91, DI04: 100, DI05: 109, DI06: 118, DI07: 127,
-    COM0: 136, COM1: 145,
+    DI00: 64, DI01: 72, DI02: 80, DI03: 88, DI04: 96, DI05: 104, DI06: 112, DI07: 120,
+    DI08: 128, COM0: 137, COM1: 146,
   };
+  // DI08 (COM1 group, COM1 → 1N24): switched to 24 V by safety PLC Q3 (sheet 08), orange safety wire
+  const Q3 = { t: 'DI08', tb: 'TB72', end: 'SAFETY PLC Q3 (SH.08)' };
   const START = { t: 'DI00', tb: ['TB56', 'TB57'], name: 'PB START' };
   const REMOTE = [                                   // contacts drawn on sheet 08
     { t: 'DI01', tb: 'TB58', end: 'PB RESET 23 (SH.08)' },
@@ -69,10 +71,15 @@
     { t: 'COM1', tb: 'TB65', end: '1N24' },
   ];
 
-  // relay outputs DO0–DO7 in pairs with a common; only the commons are wired
+  // relay outputs DO0–DO7 in pairs with a common
   const DO = ['DO0', 'DO1', 'C', 'DO2', 'DO3', 'C', 'DO4', 'DO5', 'C', 'DO6', 'DO7', 'C'];
+  // horn sound select: DO0 / DO1 close to 1N24 (horn COM is jumpered to 1N24 at the horn)
+  const HORN = [
+    { t: 'DO0', tb: 'TB70', end: 'AUDIO HORN 01 SOUND 1 (SH.03)' },
+    { t: 'DO1', tb: 'TB71', end: 'AUDIO HORN 01 SOUND 2 (SH.03)' },
+  ];
   const DO_COM = [
-    { tb: 'TB66', end: '1P24' },   // C of DO0 / DO1
+    { tb: 'TB66', end: '1N24' },   // C of DO0 / DO1 (horn sound select)
     { tb: 'TB67', end: '1P24' },   // C of DO2 / DO3
     { tb: 'TB68', end: '1N24' },   // C of DO4 / DO5
     { tb: 'TB69', end: '1N24' },   // C of DO6 / DO7
@@ -82,7 +89,7 @@
     meta: META,
     file: 'PROJ01-09',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Digital IO module CK-EC5163 wiring: Ethernet IN to the IPC and OUT to the RFID reader, 24 V supply, PB START, reset and selector inputs, four pendant buttons, DI and relay commons through TB55–TB69.',
+    label: 'Digital IO module CK-EC5163 wiring: Ethernet IN to the IPC and OUT to the RFID reader, 24 V supply, PB START, reset and selector inputs, four pendant buttons, safety PLC Q3 on DI08, horn sound 1 / 2 on DO0 / DO1, DI and relay commons through TB55–TB72.',
     draw(s) {
       const SX = 38, TB1 = 60, PBX = 112, BUSX = 128, TB2 = 138, EX = 150, SHORT = 100;
       const wl = (x, y, t) => s.text(x, y - 0.6, t, { size: 1.9 });
@@ -96,7 +103,7 @@
       const dash = (x, y, w, h) => s.path(`M${x} ${y} h${w} v${h} h${-w} Z`, 0.2).setAttribute('stroke-dasharray', '1.6 1');
 
       s.text(24, 17, 'DIGITAL IO MODULE CK-EC5163', { size: 2.2, weight: 600 });
-      s.text(80, 17, 'ALL WIRING AWG22 BLUE EXCEPT ETHERNET', { size: 1.6 });
+      s.text(80, 17, 'ALL WIRING AWG22 BLUE EXCEPT ETHERNET AND DI08', { size: 1.6 });
       const W = ['AWG22', 'BLUE'], M1 = 46, M2 = 74;   // cable marks: terminal → TB, TB → field
 
       /* ---- module top: Ethernet + supply ---- */
@@ -155,8 +162,15 @@
       s.wire(M1, dis.map(t => DI[t]), ...W); s.wire(M2, dis.map(t => DI[t]), ...W);
       const cy = COMS.map(c => DI[c.t]);
       s.wire(M1, cy, ...W); s.wire(M2, cy, ...W);
+      // DI08 ← safety PLC Q3
+      const yq = DI[Q3.t];
+      s.line(SX, yq, SHORT, yq);
+      tb(TB1, yq, Q3.tb);
+      s.endLabels(SHORT, [yq], [Q3.end]);
+      wl(63.4, yq, Q3.t);
+      s.wire(M1 - 4, [yq], 'AWG22', 'ORANGE'); s.wire(M2, [yq], 'AWG22', 'ORANGE');
       Object.keys(DI).forEach(t => term(DI[t], t));
-      s.text(24, 154.6, 'DI07 AND DI08–DI0F (COM1 GROUP): NOT USED', { size: 1.6 });
+      s.text(24, 154.6, 'DI07 AND DI09–DI0F (COM1 GROUP): NOT USED', { size: 1.6 });
 
       /* ---- DO (relay) ---- */
       const DY0 = 165, DP = 5.5;
@@ -171,10 +185,17 @@
           s.endLabels(90, [y], [c.end]);
         }
       });
-      const dc = DO.map((t, i) => (t === 'C' ? DY0 + DP * i : null)).filter(y => y !== null);
+      HORN.forEach(h => {
+        const y = DY0 + DP * DO.indexOf(h.t);
+        s.line(SX, y, 90, y);
+        tb(TB1, y, h.tb);
+        wl(63.4, y, h.t);
+        s.endLabels(90, [y], [h.end]);
+      });
+      const dc = DO.map((t, i) => (t === 'C' || HORN.some(h => h.t === t) ? DY0 + DP * i : null)).filter(y => y !== null);
       s.wire(M1, dc, ...W); s.wire(M2 - 4, dc, ...W);
       DO.forEach((t, i) => term(DY0 + DP * i, t));
-      s.text(24, 234.2, 'DO0–DO7: SPARE (COMMONS WIRED) · DO8–DOB AND COMMONS: NOT USED', { size: 1.6 });
+      s.text(24, 234.2, 'DO0 / DO1: HORN SOUND 1 / 2 · DO2–DO7: SPARE (COMMONS WIRED) · DO8–DOB AND COMMONS: NOT USED', { size: 1.6 });
 
       /* ---- CK-EC5163 top view (after photo) ---- */
       s.rect(150, 16, 48, 24, 0.3);

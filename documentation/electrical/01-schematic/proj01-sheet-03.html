@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../kit/jis-sheet.css">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
 </head>
 <body>
 
@@ -21,15 +21,15 @@
 <main class="wrap"><div class="sheet" id="sheet"></div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
-<script src="../../kit/jis-sheet.js"></script>
+<script src="../kit/jis-sheet.js"></script>
 <script>
   // source: input-sketch/proj01/page03.jpg (upright)
   const META = {
-    company: '«COMPANY»', companyJp: '«COMPANY JP»',
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: '24V POWER DISTRIBUTION (PART 1)',
     approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
     date: '«DD/MM/YY»', scale: '',
-    title: 'ELECTRIC DIAGRAM', titleJp: '電気回路図',
+    title: 'ELECTRIC DIAGRAM',
     model: '«MODEL»', dwg: '«-00-00-»', sheet: 3, of: '«XX»',
     note: '',
     refs: [],
@@ -109,6 +109,11 @@
       s.line(dropP, cpu[0], DX, cpu[0]);
       s.line(dropN, cpu[1], DX, cpu[1]);
       box(cpu, CPU.t, CPU.name);
+
+      // horn sound select is wired from the digital IO module (sheet 09)
+      const hy = s.row(15.5) + 5;
+      s.text(DX, hy + 9.2, 'SOUND 1 / 2 ← DO0 / DO1 (SH.09)', { size: 1.6 });
+      s.text(DX, hy + 12, 'HORN COM JUMPERED TO 1N24', { size: 1.6 });
 
       // cable marks, breaker and terminals last, so they cut the conductors
       s.mccbV(bus, 36, 'MCB-04', '2P 10A');
