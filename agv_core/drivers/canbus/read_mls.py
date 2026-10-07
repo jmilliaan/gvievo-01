@@ -21,6 +21,14 @@ The sensor is node 10 at 125 kbps. Two ways to get measurements out of it:
             both exist it prints the comparison and a suggested 2025h min.
             level and the measured zero offset. It suggests, never writes:
             the sensor's parameters stay a deliberate, separate act.
+  set-variant  the ONE write in this tool (2026-10-07): 2006h:01 Variant TPDO1,
+            e.g. --value 3 (Standard enhanced: SICK p.49-50, ON for FLUSH
+            diverters). Dry run unless --go. With --go it writes, stores
+            (1010h:01 "save"), resets node 10 only (NMT 0x81) and reads the
+            value back, so a value that did not survive the reset is visible.
+            Standard values only (0, 2, 3, 4): a Combi value repacks TPDO1 and
+            drive_node would decode it on its next start, but this tool keeps
+            that a separate decision. Needs amr.service stopped.
 
 TPDO1 (COB-ID 0x180+NodeID, SICK MLS operating instructions 8021642 table 6):
 
@@ -40,13 +48,16 @@ signed position plus a 6-bit track width. This script reads 2006h:01 and
 decodes accordingly rather than assuming. This unit ships set to 3 (Standard
 enhanced), i.e. plain INT16.
 
-*** Commissioned to 0 (Standard), NOT the factory 3. *** The "enhanced" values
-are the improved diverter detection, and p.49 table 21 / p.50 recommend that
-ON for FLUSH diverters and OFF for NON-FLUSH ones - a separate tape running
-parallel to the main track and then curving away, which is how this route is
-laid. Both 0 and 3 are Standard packing, so the decode below is the same
-either way; what changes is how the sensor behaves where two tapes are in the
-window at once.
+*** Set to 3 (Standard enhanced) on 2026-10-07, from 0. *** The "enhanced"
+values are the improved diverter detection, and p.49 table 21 / p.50 recommend
+it ON for FLUSH diverters and OFF for NON-FLUSH ones (a separate tape running
+parallel and then curving away). It had been 0 on the belief the route was
+non-flush; every branch on this site is FLUSH (joined to the line being
+driven), so it is now 3, written with `set-variant --value 3 --go`. The MLS
+refuses 1010h store (abort 06010002, read-only) and keeps SDO writes by itself:
+the value survived an NMT reset. Both 0 and 3 are Standard packing, so the
+decode below is the same either way; what changes is how the sensor behaves
+where two tapes are in the window at once.
 
 Deliberately free of `config`, like the rest of canbus/.
 """
@@ -453,6 +464,50 @@ def calibrate(bus, node, step, samples, interval):
 
 # --- PDO path ---------------------------------------------------------------
 
+STORE_SIGNATURE = 0x65766173   # "save", little-endian (CiA 301 1010h)
+STANDARD_VARIANTS = (0, 2, 3, 4)
+
+
+def set_variant(bus, node, value, go=False, store=True):
+    """Write 2006h:01, store, reset the node, read back. Dry run unless go."""
+    from agv_core.drivers.canbus.drive_forward import sdo_write  # noqa: PLC0415
+
+    if value not in STANDARD_VARIANTS:
+        print(f"{BAD} {value} is not a Standard variant {STANDARD_VARIANTS}; refusing.")
+        return 2
+    now = rd(bus, node, *OBJ_VARIANT)
+    if now is None:
+        print(f"{BAD} node {node} did not answer 2006h:01 - is the sensor powered and on can0?")
+        return 1
+    print(f"    2006h:01 now  {now} ({VARIANT_NAMES.get(now, '?')})")
+    print(f"    2006h:01 want {value} ({VARIANT_NAMES[value]})")
+    if now == value:
+        print(f"    {OK} already set; nothing written.")
+        return 0
+    if not go:
+        print(f"\n{WARN} this writes to the sensor (2006h:01, then 1010h:01 store, then NMT reset "
+              f"of node {node}). Re-run with --go. Nothing has been changed.")
+        return 2
+
+    ok, detail = sdo_write(bus, node, OBJ_VARIANT[0], OBJ_VARIANT[1], value, 1)
+    if not ok:
+        print(f"{BAD} write 2006h:01 refused: {detail}")
+        return 1
+    print(f"    {OK} wrote 2006h:01 = {value}; reads back {rd(bus, node, *OBJ_VARIANT)}")
+    if store:
+        ok, detail = sdo_write(bus, node, 0x1010, 1, STORE_SIGNATURE, 4)
+        print(f"    {OK if ok else WARN} store 1010h:01 \"save\": {detail}")
+    print(f"[nmt] Reset Node -> node {node} only")
+    nmt(bus, 0x81, node)
+    time.sleep(3.0)
+    after = rd(bus, node, *OBJ_VARIANT)
+    if after == value:
+        print(f"    {OK} after reset 2006h:01 = {after} ({VARIANT_NAMES.get(after, '?')}): it persisted.")
+        return 0
+    print(f"    {BAD} after reset 2006h:01 = {after}: the value did NOT survive the reset.")
+    return 1
+
+
 def nmt(bus, command, node):
     bus.send(can.Message(arbitration_id=0x000, data=[command, node],
                          is_extended_id=False))
@@ -503,7 +558,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Read the SICK MLS magnetic line sensor (read-only).")
     ap.add_argument("mode", nargs="?", default="snapshot",
-                    choices=("snapshot", "poll", "stream", "calibrate"))
+                    choices=("snapshot", "poll", "stream", "calibrate", "set-variant"))
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--seconds", type=float, default=10.0,
                     help="duration for poll/stream (default 10)")
@@ -514,11 +569,16 @@ def main():
     ap.add_argument("--step", default="both", choices=("both",) + CAL_STEPS + ("report",),
                     help="calibrate: which step (default both, with a prompt between)")
     ap.add_argument("--samples", type=int, default=40, help="calibrate: samples per step (default 40)")
+    ap.add_argument("--value", type=int, help="set-variant: the 2006h:01 value (Standard: 0, 2, 3, 4)")
+    ap.add_argument("--go", action="store_true", help="set-variant: actually write")
+    ap.add_argument("--no-store", action="store_true", help="set-variant: skip the 1010h store")
     args = ap.parse_args()
 
     if args.mode == "calibrate" and args.step == "report":
         return calibrate(None, args.node, "report", 0, 0.0)
-    if args.mode == "calibrate":
+    if args.mode == "set-variant" and args.value is None:
+        ap.error("set-variant needs --value")
+    if args.mode in ("calibrate", "set-variant"):
         # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
         # IMU poll) would read the other's replies. Take the bus owner lock first.
         from agv_core import ownerlock  # noqa: PLC0415
@@ -542,6 +602,8 @@ def main():
             return poll(bus, args.node, args.seconds, args.interval)
         if args.mode == "calibrate":
             return calibrate(bus, args.node, args.step, args.samples, args.interval)
+        if args.mode == "set-variant":
+            return set_variant(bus, args.node, args.value, go=args.go, store=not args.no_store)
         return stream(bus, args.node, args.seconds, args.nmt)
     except KeyboardInterrupt:
         print("\n    interrupted")

@@ -56,7 +56,7 @@ two wired LANs never carry a default route — a third would blackhole traffic.
 | Device | Setting | Tool |
 |---|---|---|
 | Oriental Motor BLV-R ×2 | CANopen node IDs 1 (left) / 2 (right), 125 kbps, `1016h` volatile | MEXE02 over USB |
-| SICK MLS | node ID 10, 125 kbps, TPDO1 `0x18A` @100 Hz track; yaw-rate TPDO disabled | SOPAS / dip switches |
+| SICK MLS | node ID 10, 125 kbps, TPDO1 `0x18A` @100 Hz track; yaw-rate TPDO disabled | CANopen SDO (no SOPAS used); 2006h:01 = 3 Standard enhanced for flush diverters, set with `read_mls set-variant --value 3 --go` (2026-10-07) |
 | SICK nanoScan3 | IP `192.168.3.10`; fields, monitoring cases | Safety Designer (read-only for us) |
 | Modbus I/O island | IP `192.168.1.30`, unit 1 | vendor web page |
 | RFID reader (Chafon) | IP `192.168.1.200`, TCP 2022 | vendor tool |
