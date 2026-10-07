@@ -14,7 +14,7 @@
     "sr_rate_frac": 0.001875,
     "sr_cap": 0.45,
     "sr_tau_s": 0.12,
-    "auto_rpm": 2706.0,
+    "auto_rpm": 1751.0,
     "auto_u_turn_rpm": 200.0,
     "u_turn_stop_distance_m": 0.4,
     "u_turn_center_tol_mm": 10.0,

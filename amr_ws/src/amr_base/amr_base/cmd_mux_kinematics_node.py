@@ -91,6 +91,10 @@ class CmdMuxKinematics(Node):
         super().__init__("cmd_mux_kinematics")
         hw_a_max = config.ACCEL_RPM_S * config.MPS_PER_RPM
         hw_alpha_max = kinematics.max_yaw_accel(config.ACCEL_RPM_S)
+        # A warning-field stop brakes at what the distance needs, up to the drive's own
+        # deceleration ramp (6084h), not the gentle d_max: 0.85 m/s in 0.47 m would be 0.77 m/s^2.
+        self.stop_d_max = config.DECEL_RPM_S * config.MPS_PER_RPM
+        self.stop_delta_max = kinematics.max_yaw_accel(config.DECEL_RPM_S)
 
         self.declare_parameter("wheel_radius_m", config.WHEEL_DIA_M / 2.0)
         self.declare_parameter("track_width_m", config.TRACK_M)
@@ -135,10 +139,11 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("field_source", "scanner")  # scanner | assume_clear (sim only)
         self.declare_parameter("protective_index", 0)
         self.declare_parameter("warning_indices", [2, 1])  # outer (warning 1) first
-        self.declare_parameter("warning_scales", [0.5, 0.1])  # one factor per warning index
+        self.declare_parameter("warning_scales", [0.5, 0.0])  # one factor per warning index; 0 = stop
         self.declare_parameter("warning_active_level", False)
         self.declare_parameter("warning_decel_s", 1.0)  # each step down, seconds
         self.declare_parameter("warning_accel_s", 1.0)  # each step up, seconds
+        self.declare_parameter("warning_stop_m", 0.47)  # a factor-0 warning stops in this distance
         self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter
@@ -180,6 +185,7 @@ class CmdMuxKinematics(Node):
                                  for k in p("warning_scales").value),
             warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.0),
             warning_accel_s=self._finite_or(float(p("warning_accel_s").value), 1.0),
+            warning_stop_m=max(0.0, self._finite_or(float(p("warning_stop_m").value), 0.47)),
             fresh_s=self._finite_or(float(p("field_fresh_s").value), 0.5),
             assume_clear=str(p("field_source").value) == "assume_clear",
         )
@@ -400,7 +406,7 @@ class CmdMuxKinematics(Node):
             self._speed_ramp = gating.SpeedRamp()
         if sel.source in gating.AUTO_SOURCES:
             # Ramp the factor in time toward what the fields ask for, then apply it.
-            k = self._speed_ramp.tick(target, self.dt, self.fp)
+            k = self._speed_ramp.tick(target, self.dt, self.fp, v_now=self._v)
             sel = gating.apply_scale(sel, k)
             scale = k
         else:
@@ -417,7 +423,9 @@ class CmdMuxKinematics(Node):
             self._event(
                 Event.INFO,
                 "FIELD_WARNING",
-                f"warning field {self._view.warning_level}: auto speed ramping to x{affected:g} "
+                f"warning field {self._view.warning_level}: auto stopping within {self.fp.warning_stop_m:g} m"
+                if affected == 0.0 and down and self.fp.warning_stop_m > 0.0
+                else f"warning field {self._view.warning_level}: auto speed ramping to x{affected:g} "
                 f"over {self.fp.warning_decel_s:g} s"
                 if affected < 1.0 and down
                 else f"auto speed ramping up to x{affected:g} over {self.fp.warning_accel_s:g} s",
@@ -477,11 +485,17 @@ class CmdMuxKinematics(Node):
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         else:
-            self._v = slew_asym(self._v, sel.v, self.a_max, self.d_max, self.dt)
+            # the warning-field stop sets its own deceleration through the factor ramp;
+            # the slew must not stretch it, so only the drive's ramp bounds it then
+            stopping = self._speed_ramp.stopping
+            d_max = max(self.d_max, getattr(self, "stop_d_max", 0.0)) if stopping else self.d_max
+            self._v = slew_asym(self._v, sel.v, self.a_max, d_max, self.dt)
             if sel.source == gating.LINE and self.line_alpha_max:
                 yaw_up = yaw_down = self.line_alpha_max
             else:
                 yaw_up, yaw_down = self.alpha_max, self.delta_max
+            if stopping:
+                yaw_down = max(yaw_down, getattr(self, "stop_delta_max", 0.0))
             self._wz = slew_asym(self._wz, sel.w, yaw_up, yaw_down, self.dt)
             self._a = self._alpha = 0.0
             self._wl = self._wr = 0.0

@@ -23,3 +23,7 @@ logs/
 build/
 install/
 log/
+
+# Agent instruction files are per-developer, not source.
+AGENTS.md
+CLAUDE.md

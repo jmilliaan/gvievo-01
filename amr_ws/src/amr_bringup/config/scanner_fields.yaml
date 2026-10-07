@@ -12,9 +12,12 @@
 # active = the path's status while the field is OCCUPIED (all three read False then)
 # scale  = AUTO speed factor while occupied; the protective field is a stop (0.0).
 #          With both warning fields occupied the lower factor wins.
+# stop_m = a warning field with scale 0.0 is a DECELERATION STOP that ends this far after
+#          entry (constant decel v^2 / 2 stop_m, capped by the drive's ramp). It may not
+#          exceed the gap to the protective field: warning_2 0.97 - protective 0.50 = 0.47 m.
 #
 # base.launch.py reads protective/warning_1/warning_2 into the mux parameters, so the
-# indices, polarity and factors live here only.
+# indices, polarity, factors and the stop distance live here only.
 monitoring_case: 1
 fields:
   protective:
@@ -30,5 +33,6 @@ fields:
   warning_2:          # inner
     path: 1
     active: false
-    scale: 0.1          # 0.2 until 2026-10-02
+    scale: 0.0          # stop (2026-10-07); x0.2 until 2026-10-02, x0.1 until 2026-10-07
+    stop_m: 0.47
     rect: {x_min: -0.02, x_max: 0.97, y_min: -0.60, y_max: 0.60}

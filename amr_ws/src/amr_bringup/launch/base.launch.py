@@ -129,7 +129,7 @@ def _compose(context):
             name="cmd_mux_kinematics",
             output="screen",
             # Autonomous starts at 0.3 m/s^2 (2026-10-02, was 0.15): 2.0 s to the 0.60 trackless
-            # speed, 2.8 s to the 0.85 tracked cruise; 0.85 s to 0.34 rad/s. Stops
+            # speed, 1.8 s to the 0.55 tracked cruise; 0.85 s to 0.34 rad/s. Stops
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
@@ -143,7 +143,7 @@ def _compose(context):
                     # Scanner fields gate AUTO (2026-10-02). The sim has no scanner, so there
                     # and ONLY there the fields are assumed clear.
                     "field_source": "scanner" if real else "assume_clear",
-                    # path indices, polarity and the x0.5 / x0.2 factors: config/scanner_fields.yaml
+                    # path indices, polarity, the x0.5 factor and the warning-2 stop distance: config/scanner_fields.yaml
                     **scanner_fields.mux_params(scanner_fields.load()),
                     "a_max": 0.3,
                     "alpha_max": 0.4,

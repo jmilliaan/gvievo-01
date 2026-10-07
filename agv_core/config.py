@@ -999,7 +999,7 @@ def _validate(ns):
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
-    # -- tracked AUTO speeds (2026-10-02): cruise 0.85 m/s, slow zone 0.5 m/s.
+    # -- tracked AUTO speeds: cruise 0.55 m/s (2026-10-07; 0.85 from 10-02), slow zone 0.5 m/s.
     # The only two tracked speeds; there is no separate LINE ceiling.
     check(0 < g("AUTO_SLOW_RPM") <= g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           "autopilot: need 0 < auto_slow_rpm <= auto_rpm <= vehicle.motor_max_rpm")

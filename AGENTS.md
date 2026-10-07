@@ -29,7 +29,7 @@
     "secondary": "SLAM-based AMR development — leads a 4-person HIKROBOT Q7-1000E reverse-engineering effort (3–4 months)",
     "tertiary": "Internal factory automation (robot integration, conveyors, 3-axis EtherCAT gantry, PLC systems)",
     "agv_tech_now": "Line-following tow-tractor AGV (kim2a)",
-    "agv_next": "SLAM/QR hybrid AMR — ROS 2 Jazzy, Nav2, Cartographer",
+    "agv_next": "SLAM/QR hybrid AMR — this repo runs ROS 2 Humble, Nav2, slam_toolbox + AMCL (Jazzy/Cartographer = Q7 effort / future target)",
     "technical_ownership": ["Control software architecture", "Navigation & path planning", "Firmware / embedded software", "Fleet & dispatch software", "AI / perception layer", "Electronics & electrical design", "System integration & testing", "Functional safety & CE conformity", "Component sourcing / RFQ / BOQ"],
     "solution_scope": ["Hardware unit", "Fleet management software (i-Prime)", "Infrastructure consulting", "Maintenance SLA", "CE marking for European JV customer (internal policy request)"],
     "active_projects": {

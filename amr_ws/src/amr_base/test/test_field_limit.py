@@ -1,10 +1,12 @@
-"""Scanner fields gate AUTO (2026-10-02): protective zeroes, warning 1 (outer) x0.5,
-warning 2 (inner) x0.1 with the lower winning, unknown zeroes, every change ramped in 1 s."""
+"""Scanner fields gate AUTO (2026-10-02): protective zeroes, warning 1 (outer) x0.5 ramped
+in 1 s, warning 2 (inner) a deceleration stop within 0.47 m (2026-10-07), the stricter
+winning, unknown zeroes."""
 
 import os
 
 import pytest
 
+from amr_base.diff_drive import slew_asym
 from amr_base.gating import (
     FOLLOW,
     LINE,
@@ -18,13 +20,15 @@ from amr_base.gating import (
     Params,
     Selection,
     SpeedRamp,
+    stop_time,
     apply_scale,
     field_limit,
     field_view,
 )
 
 # agv-01 (config/scanner_fields.yaml): path 0 protective, path 2 outer warning, path 1 inner.
-FP = FieldParams(protective_index=0, warning_indices=(2, 1), warning_scales=(0.5, 0.1), warning_active_level=False)
+FP = FieldParams(protective_index=0, warning_indices=(2, 1), warning_scales=(0.5, 0.0), warning_active_level=False,
+                 warning_stop_m=0.47)
 SUP = Params(require_supervisor=True)
 
 
@@ -36,10 +40,10 @@ def test_view_on_a_walk_in():
     """Walking in reads (paths 0,1,2) 111 -> 110 -> 100 -> 000: outer, then inner, then protective."""
     assert field_view(1.0, Field(0.9, (True, True, True)), FP) == FieldView(True, True, False, 0, 1.0)
     assert field_view(1.0, Field(0.9, (True, True, False)), FP) == FieldView(True, True, True, 1, 0.5)
-    assert field_view(1.0, Field(0.9, (True, False, False)), FP) == FieldView(True, True, True, 2, 0.1)
-    assert field_view(1.0, Field(0.9, (False, False, False)), FP) == FieldView(True, False, True, 2, 0.1)
-    # the inner field alone (something entering from the side) still asks for its own 10 %
-    assert field_view(1.0, Field(0.9, (True, False, True)), FP).warning_scale == 0.1
+    assert field_view(1.0, Field(0.9, (True, False, False)), FP) == FieldView(True, True, True, 2, 0.0)
+    assert field_view(1.0, Field(0.9, (False, False, False)), FP) == FieldView(True, False, True, 2, 0.0)
+    # the inner field alone (something entering from the side) still asks for its stop
+    assert field_view(1.0, Field(0.9, (True, False, True)), FP).warning_scale == 0.0
     inverted = FieldParams(warning_indices=(1,), warning_scales=(0.5,), warning_active_level=True)
     assert field_view(1.0, Field(0.9, (True, True)), inverted).warning_active
 
@@ -52,7 +56,7 @@ def test_stale_short_or_missing_is_not_clear():
 
 
 def test_protective_zeroes_every_auto_source():
-    v = FieldView(True, False, True, 2, 0.1)
+    v = FieldView(True, False, True, 2, 0.0)
     for src in (FOLLOW, ROTATE, LINE):
         out, k = field_limit(sel(src), v, SUP, FP)
         assert (out.source, out.v, out.w, out.code, k) == (NONE, 0.0, 0.0, "FIELD_PROTECTIVE", 0.0)
@@ -61,8 +65,8 @@ def test_protective_zeroes_every_auto_source():
 def test_warning_targets_and_the_scale_keeps_the_curvature():
     out, k = field_limit(sel(LINE, 0.30, 0.10), FieldView(True, True, True, 1, 0.5), SUP, FP)
     assert (out.source, out.v, out.w, k) == (LINE, 0.30, 0.10, 0.5), "the target, not yet applied"
-    _, k = field_limit(sel(LINE), FieldView(True, True, True, 2, 0.1), SUP, FP)
-    assert k == 0.1
+    _, k = field_limit(sel(LINE), FieldView(True, True, True, 2, 0.0), SUP, FP)
+    assert k == 0.0
     half = apply_scale(out, 0.5)
     assert (half.v, half.w, half.generation) == (0.15, 0.05, 3)
 
@@ -109,7 +113,7 @@ def test_unknown_fields_zero_auto_only_when_supervised():
 def test_manual_sources_are_untouched():
     for src in (MANUAL, PENDANT, NONE):
         s = sel(src)
-        assert field_limit(s, FieldView(True, False, True, 2, 0.1), SUP, FP) == (s, 1.0)
+        assert field_limit(s, FieldView(True, False, True, 2, 0.0), SUP, FP) == (s, 1.0)
 
 
 def test_the_saved_field_set_matches_the_scanner_and_feeds_these_params():
@@ -127,6 +131,61 @@ def test_the_saved_field_set_matches_the_scanner_and_feeds_these_params():
     p = sf.mux_params(doc)
     got = (p["protective_index"], tuple(p["warning_indices"]), tuple(p["warning_scales"]), p["warning_active_level"])
     assert got == (FP.protective_index, FP.warning_indices, FP.warning_scales, FP.warning_active_level)
-    bad = {**doc, "fields": {**doc["fields"], "warning_2": {**doc["fields"]["warning_2"], "scale": 0.7}}}
-    with pytest.raises(ValueError, match="inner is the slower"):
-        sf.validate(bad)
+    assert p["warning_stop_m"] == FP.warning_stop_m == 0.47
+    w2 = doc["fields"]["warning_2"]
+
+    def with_w2(**kw):
+        return {**doc, "fields": {**doc["fields"], "warning_2": {**w2, **kw}}}
+
+    with pytest.raises(ValueError, match="only warning_2"):
+        sf.validate({**doc, "fields": {**doc["fields"], "warning_1": {**doc["fields"]["warning_1"], "scale": 0.0, "stop_m": 0.4}}})
+    with pytest.raises(ValueError, match="gap to protective"):
+        sf.validate(with_w2(stop_m=0.48))  # past the protective field's front edge
+    no_stop = {k: v for k, v in w2.items() if k != "stop_m"}
+    with pytest.raises(ValueError, match="exactly when"):
+        sf.validate({**doc, "fields": {**doc["fields"], "warning_2": no_stop}})
+    with pytest.raises(ValueError, match="exactly when"):
+        sf.validate(with_w2(scale=0.1))  # a slow field with a stop distance
+
+
+def _run_stop(v_cmd, k0=1.0, d_max=0.5, stop_d_max=0.7540 * 4 / 3, dt=0.02):
+    """The mux AUTO path: factor ramp -> scaled command -> slew (drive decel during a stop).
+    Returns (distance travelled after warning 2 is seen, peak decel)."""
+    r = SpeedRamp(k0)
+    r.target = k0
+    v = v_cmd * k0
+    dist, peak = 0.0, 0.0
+    for _ in range(2000):
+        k = r.tick(0.0, dt, FP, v_now=v)
+        nv = slew_asym(v, v_cmd * k, 0.3, max(d_max, stop_d_max) if r.stopping else d_max, dt)
+        peak = max(peak, (v - nv) / dt)
+        dist += 0.5 * (v + nv) * dt
+        v = nv
+        if v == 0.0:
+            return dist, peak
+    raise AssertionError("never stopped")
+
+
+@pytest.mark.parametrize("v_cmd,k0", [(0.85, 1.0), (0.55, 1.0), (0.6, 1.0), (0.5, 1.0), (0.85, 0.5), (0.6, 0.5)])
+def test_warning_2_stops_within_the_gap_to_the_protective_field(v_cmd, k0):
+    """Operator, 2026-10-07: warning 2 front edge 0.97 m, protective 0.50 m: the stop takes
+    ~0.47 m from any AUTO cruise (tracked 0.55 / 0.5, trackless 0.6; 0.85 kept as the old cruise), straight in or
+    already slowed by warning 1."""
+    dist, peak = _run_stop(v_cmd, k0)
+    assert dist == pytest.approx(0.47, abs=0.01), dist
+    v0 = v_cmd * k0
+    assert peak == pytest.approx(v0 * v0 / (2 * 0.47), rel=0.05), "a constant decel, no harder"
+
+
+def test_stop_timing_falls_back_for_a_spin_or_no_distance():
+    assert stop_time(0.85, FP) == pytest.approx(2 * 0.47 / 0.85)
+    assert stop_time(-0.6, FP) == pytest.approx(2 * 0.47 / 0.6), "reversing stops the same"
+    assert stop_time(0.01, FP) is None, "spinning in place: warning_decel_s"
+    assert stop_time(0.85, FieldParams()) is None, "no stop distance set"
+    r = SpeedRamp()
+    for _ in range(40):
+        r.tick(0.0, 0.025, FP, v_now=0.0)
+    assert r.value == pytest.approx(0.0) and r.stopping, "time-ramped to 0 in 1 s"
+    for _ in range(41):
+        r.tick(1.0, 0.025, FP)
+    assert r.value == pytest.approx(1.0) and not r.stopping, "clear: back up in 1 s"

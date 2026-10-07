@@ -30,7 +30,7 @@ on port 5001, and one *mode layer* at a time.
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
 | Manual | pendant 0.50 m/s, web jog 0.40 m/s, only under selector MANUAL |
-| Auto | routes ≤ 0.55 m/s (0.85 on long straights), tape ≤ 0.30 m/s (Increment 1) |
+| Auto | tracked 0.55 m/s (slow zone 0.50), trackless 0.60 m/s |
 | Tests | `tests/run_all.py` 531 checks + `pytest` per ROS package, no hardware |
 
 ---

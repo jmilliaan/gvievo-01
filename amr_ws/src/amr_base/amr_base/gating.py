@@ -367,8 +367,10 @@ def select(
 # The nanoScan3's OSSD pair into the FX3 is the STOP; nothing here replaces it.
 # This is the software side that also tries: an AUTO source is zeroed while the
 # protective field is violated, and scaled while a warning field is occupied
-# (warning 1, outer: x0.5; warning 2, inner: x0.1; the lower wins). Manual sources are untouched - a person is driving, and the
-# physical chain still acts on them.
+# (warning 1, outer: x0.5; the lower wins). A warning field whose factor is 0 is a
+# DECELERATION STOP over warning_stop_m (warning 2, inner, 2026-10-07: the 0.47 m between
+# its front edge and the protective field's). Manual sources are untouched - a person is
+# driving, and the physical chain still acts on them.
 
 AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
 
@@ -377,15 +379,21 @@ AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
 class FieldParams:
     protective_index: int = 0  # /output_paths status[i] of the protective field (OSSD)
     # The warning fields, OUTER first, and the AUTO speed factor each asks for while it is
-    # occupied (operator, 2026-10-02: warning 1 = 50 %, warning 2 = 10 %; the lower wins).
+    # occupied (operator: warning 1 = 50 %; warning 2 = 0, a stop within warning_stop_m, 2026-10-07).
     # Indices/polarity: amr_bringup/config/scanner_fields.yaml, which base.launch reads.
     warning_indices: tuple[int, ...] = (2, 1)
-    warning_scales: tuple[float, ...] = (0.5, 0.1)
+    warning_scales: tuple[float, ...] = (0.5, 0.0)
     warning_active_level: bool = False  # status[i] while that warning field is occupied
     # Every change of the speed factor is a RAMP in time, not a step (operator,
     # 2026-10-02): clear -> warning 1 -> warning 2 and back each take these many seconds.
     warning_decel_s: float = 1.0
     warning_accel_s: float = 1.0
+    # A ramp to factor 0 (a warning-field stop) is timed by DISTANCE instead: from the speed
+    # at entry v0 the factor falls linearly to 0 in T = 2 * warning_stop_m / v0, i.e. a
+    # constant deceleration v0^2 / (2 * warning_stop_m) that ends warning_stop_m later.
+    # 0 = no distance stop (warning_decel_s applies). Below STOP_MIN_V the speed is too
+    # small to time by (a spin in place), and warning_decel_s applies too.
+    warning_stop_m: float = 0.0
     fresh_s: float = 0.5  # /output_paths rides every forwarded scan, ~17 Hz
     assume_clear: bool = False  # the sim, which has no scanner; NEVER on the vehicle
 
@@ -429,11 +437,24 @@ def warning_target(view: FieldView, fp: FieldParams) -> float:
     return view.warning_scale if view.warning_active else 1.0
 
 
+STOP_MIN_V = 0.05  # m/s: below this a warning stop is timed by warning_decel_s, not distance
+
+
+def stop_time(v0: float, fp: FieldParams) -> float | None:
+    """Seconds a warning-field stop from v0 takes to end warning_stop_m later, or None
+    when it is not distance-timed (no stop distance set, or barely moving)."""
+    v0 = abs(v0)
+    if fp.warning_stop_m > 0.0 and math.isfinite(v0) and v0 >= STOP_MIN_V:
+        return 2.0 * fp.warning_stop_m / v0
+    return None
+
+
 class SpeedRamp:
     """The applied warning factor, moved toward its target in TIME. Each change of
     target restarts the ramp from where the factor stands, so every step (clear ->
-    50 % -> 10 % and back, or straight 100 % -> 10 %) takes warning_decel_s down or
-    warning_accel_s up, whatever the vehicle's speed. A zero time is a step."""
+    50 % and back) takes warning_decel_s down or warning_accel_s up, whatever the
+    vehicle's speed. A zero time is a step. A step DOWN TO 0 is a stop: given the
+    speed now (v_now), it takes stop_time() so it ends warning_stop_m later."""
 
     def __init__(self, value: float = 1.0):
         self.value = value
@@ -444,10 +465,19 @@ class SpeedRamp:
         self.value = self.target = value
         self._rate = float("inf")
 
-    def tick(self, target: float, dt: float, fp: FieldParams) -> float:
+    @property
+    def stopping(self) -> bool:
+        """A warning-field stop is in force (ramping to, or held at, factor 0)."""
+        return self.target == 0.0
+
+    def tick(self, target: float, dt: float, fp: FieldParams, v_now: float = 0.0) -> float:
         if target != self.target:
             self.target = target
             t = fp.warning_decel_s if target < self.value else fp.warning_accel_s
+            if target == 0.0 and self.value > 0.0:
+                t_stop = stop_time(v_now, fp)
+                if t_stop is not None:
+                    t = t_stop
             span = abs(target - self.value)
             self._rate = span / t if t > 0 else float("inf")
         step = self._rate * dt

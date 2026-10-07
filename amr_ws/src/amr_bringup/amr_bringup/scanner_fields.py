@@ -63,6 +63,16 @@ def validate(doc: dict) -> dict:
         raise ValueError("scanner_fields: need warning_2.scale <= warning_1.scale < 1 (inner is the slower)")
     if not (_inside(f["protective"]["rect"], f["warning_2"]["rect"]) and _inside(f["warning_2"]["rect"], f["warning_1"]["rect"])):
         raise ValueError("scanner_fields: fields must nest protective in warning_2 in warning_1")
+    stops = [r for r in ("warning_1", "warning_2") if f[r]["scale"] == 0.0]
+    if stops != [r for r in ("warning_1", "warning_2") if "stop_m" in f[r]]:
+        raise ValueError("scanner_fields: a warning field has stop_m exactly when its scale is 0.0 (a stop)")
+    if stops:
+        if stops != ["warning_2"]:
+            raise ValueError("scanner_fields: only warning_2 (inner) may be a stop; warning_1 slows first")
+        stop_m = f["warning_2"]["stop_m"]
+        gap = f["warning_2"]["rect"]["x_max"] - f["protective"]["rect"]["x_max"]
+        if not isinstance(stop_m, (int, float)) or isinstance(stop_m, bool) or not 0.0 < stop_m <= gap + 1e-9:
+            raise ValueError(f"scanner_fields.warning_2.stop_m must be in (0, {gap:.2f}] (the gap to protective)")
     if len({f[r]["active"] for r in ROLES}) != 1:
         raise ValueError("scanner_fields: the mux takes one polarity for all paths; they disagree")
     return doc
@@ -80,4 +90,5 @@ def mux_params(doc: dict) -> dict:
         "warning_indices": [f["warning_1"]["path"], f["warning_2"]["path"]],
         "warning_scales": [float(f["warning_1"]["scale"]), float(f["warning_2"]["scale"])],
         "warning_active_level": f["warning_1"]["active"],
+        "warning_stop_m": float(f["warning_2"].get("stop_m", 0.0)),
     }

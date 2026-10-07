@@ -143,7 +143,7 @@ def test_a_prerequisite_during_the_start_delay_cancels_it():
 
 def test_two_tracked_speeds_cruise_then_slow_zone_then_cruise():
     w = World(ZONES)
-    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.85) < 0.005, "tracked cruise is 0.85 m/s"
+    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.55) < 0.005, "tracked cruise is 0.55 m/s"
     assert abs(vehicle.AUTO_SLOW_RPM * vehicle.MPS_PER_RPM - 0.50) < 0.005, "tracked slow is 0.50 m/s"
     w.start()
     w.drive(1.0)
