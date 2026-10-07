@@ -811,9 +811,6 @@ class DemoAdapter:
     def get_operation(self, operation_id):
         return self.ops.get(operation_id)
 
-    def line_arm(self):
-        return False, "demo: there is no line layer"
-
     def line_clear(self):
         return True, "cleared"
 

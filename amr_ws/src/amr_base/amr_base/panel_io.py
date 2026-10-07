@@ -209,6 +209,13 @@ def alarm_wanted(
     return running and field_fresh and (not protective_clear or warning_active)
 
 
+def motion_outputs(turning: bool, alarm: bool, channels, movement_horn) -> dict[int, bool]:
+    """dio.motion_on with the horn switch (operator, 2026-10-07): while the alarm horn sounds
+    (protective, warning 1 or warning 2 in an AUTO run) the movement horn is OFF, so the
+    sound changes; the other motion outputs (DO08) keep following the motors."""
+    return {ch: turning and not (alarm and ch in movement_horn) for ch in channels}
+
+
 def horn_wanted(
     armed: bool, left_rad_s: float, right_rad_s: float, cmd_age_s: float | None, cmd_timeout_s: float
 ) -> bool:

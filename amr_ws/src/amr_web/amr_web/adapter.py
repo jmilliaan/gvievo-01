@@ -163,6 +163,19 @@ def _sensor_max_mm() -> float:
         return 100.0
 
 
+def _wheel_radius_m() -> float | None:
+    """The profile's wheel radius, to show wheel speeds in m/s (None on a dev box)."""
+    try:
+        from agv_core import config  # noqa: PLC0415 - needs AGV_PROFILE, absent on a dev box
+
+        return float(config.WHEEL_DIA_M) / 2.0
+    except Exception:  # noqa: BLE001 - display only
+        return None
+
+
+WHEEL_RADIUS_M = _wheel_radius_m()
+
+
 def _msg_to_dict(msg) -> dict[str, Any]:
     out = {}
     for name in msg.get_fields_and_field_types():
@@ -325,7 +338,6 @@ class RosAdapter(Node):
             "survey": self.create_client(RequestSurvey, "/amr/supervisor/survey", callback_group=g),
             "operation": self.create_client(GetOperation, "/amr/operations/get", callback_group=g),
             "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
-            "line_arm": self.create_client(Trigger, "/amr/line/arm", callback_group=g),
             "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
             "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
@@ -473,6 +485,9 @@ class RosAdapter(Node):
                 "generation": int(m.generation),
                 "left_rad_s": float(m.left_rad_s),
                 "right_rad_s": float(m.right_rad_s),
+                # rim speed, what the operator reads (2026-10-07); None without a profile
+                "left_mps": float(m.left_rad_s) * WHEEL_RADIUS_M if WHEEL_RADIUS_M else None,
+                "right_mps": float(m.right_rad_s) * WHEEL_RADIUS_M if WHEEL_RADIUS_M else None,
                 "field_fresh": bool(m.field_fresh),
                 "protective_clear": bool(m.protective_clear),
                 "warning_active": bool(m.warning_active),
@@ -770,9 +785,6 @@ class RosAdapter(Node):
 
     def recover(self) -> tuple[bool, str]:
         return self._trigger("recover")
-
-    def line_arm(self) -> tuple[bool, str]:
-        return self._trigger("line_arm")
 
     def line_clear(self) -> tuple[bool, str]:
         return self._trigger("line_clear")

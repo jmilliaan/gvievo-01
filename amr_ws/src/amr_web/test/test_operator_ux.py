@@ -465,6 +465,9 @@ def test_rfid_tags_show_on_the_manual_and_run_tracked_pages(tmp_path):
         body = client.get(page).get_data(as_text=True)
         assert 'id="rf-status"' in body and 'id="rf-tags"' in body, page
         assert "rfidTags(st.rfid)" in body, page
+    # the last tag, large for the HMI: Run tracked only (operator, 2026-10-07)
+    assert 'id="rf-last"' in client.get("/run-tracked").get_data(as_text=True)
+    assert 'id="rf-last"' not in client.get("/manual").get_data(as_text=True)
 
 
 def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
@@ -525,7 +528,7 @@ def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
     client, _ = _product_app("slam", tmp_path)
     assert ">Run tracked<" not in client.get("/status").get_data(as_text=True)
     assert client.get("/run-tracked").status_code == 404
-    assert client.post("/api/line/arm").status_code == 404
+    assert client.post("/api/line/clear").status_code == 404
     client, _ = _product_app("tape", tmp_path)
     for path in ("/run", "/maps", "/editor"):
         assert client.get(path).status_code == 404, path
@@ -536,9 +539,15 @@ def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
     client, stub = _product_app("both", tmp_path)
     assert client.get("/api/line/missions").get_json() == {"missions": []}, "no site mission ships"
     assert client.post("/api/line/mission", json={"name": ""}).status_code == 200
-    assert client.post("/api/line/arm").status_code == 200
     assert client.post("/api/line/clear").status_code == 200
-    assert [c[0] for c in stub.calls] == ["line_mission", "line_arm", "line_clear"]
+    assert [c[0] for c in stub.calls] == ["line_mission", "line_clear"]
+
+
+def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):
+    """2026-10-07: the physical Start runs from IDLE; motor arming is drive_node's."""
+    client, _ = _product_app("tape", tmp_path)
+    assert "btn-line-arm" not in client.get("/run-tracked").get_data(as_text=True)
+    assert client.post("/api/line/arm").status_code in (404, 405)
 
 
 def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):

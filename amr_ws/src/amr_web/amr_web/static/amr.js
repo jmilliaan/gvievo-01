@@ -75,7 +75,7 @@ function rail(st) {
   else if (!mx.protective_clear) tile('tel-field', 'PROTECT', 'protective field: auto stopped', 'bad', mxStale);
   else if (mx.warning_active) tile('tel-field', `WARNING ${mx.warning_level || ''}`.trim(), (mx.speed_scale < 0.01 ? 'auto stopped' : `auto speed x${num(mx.speed_scale, 2)}`), 'warn', mxStale);
   else tile('tel-field', 'CLEAR', 'fields clear', '', mxStale);
-  tile('tel-wheels', mx ? `${num(mx.left_rad_s, 2)} / ${num(mx.right_rad_s, 2)}` : '–', 'rad/s · L / R', '', mxStale);
+  tile('tel-wheels', mx ? `${num(mx.left_mps, 2)} / ${num(mx.right_mps, 2)}` : '–', 'm/s · L / R', '', mxStale);
   const l = st.localization;
   tile('tel-loc', l ? l.state_name : '–', st.localization_stale ? 'stale (replaced layer)' : (l ? '—' : 'no layer'),
        l ? LOC_LEVEL[l.state_name] : '', st.localization_stale);

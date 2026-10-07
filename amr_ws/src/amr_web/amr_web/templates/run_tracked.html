@@ -2,8 +2,9 @@
 {% block title %}AMR — run tracked{% endblock %}
 {% block body %}
 {# Run tracked (2026-10-02): the magnetic-tape product. Pick a mission (or none for plain
-   line following), arm, then the PHYSICAL Start under AUTO runs it. Nothing on this page
-   moves the vehicle: LINE mode and arming only make it ready. #}
+   line following), then the PHYSICAL Start under AUTO runs it - no software arm since
+   2026-10-07 (motor arming is drive_node's, in every mode). Nothing on this page moves
+   the vehicle. #}
 <section class="manual grow">
   <div class="side">
     <h2>Line mode <small>supervisor</small></h2>
@@ -20,7 +21,6 @@
       <button id="btn-line-select" class="big">Use mission</button>
     </div>
     <div class="bar">
-      <button id="btn-line-arm" class="big run">Arm</button>
       <button id="btn-line-clear" class="danger">Clear</button>
     </div>
     <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a station, Start goes on after the start delay.</div>
@@ -29,7 +29,7 @@
     <h2>Follower <small>line layer</small></h2>
     <div id="lt-state" class="tel-grid rows"></div>
     <p id="lt-reason" class="note"></p>
-    {% include "_line_track.html" %}
+    {% with rfid_big = true %}{% include "_line_track.html" %}{% endwith %}
   </div>
 </section>
 {% endblock %}
@@ -53,7 +53,6 @@ $('btn-line-select').onclick = async () => {
   const { data } = await api('/api/line/mission', { name: $('lt-mission').value });
   log(data.message, data.ok ? '' : 'bad');
 };
-$('btn-line-arm').onclick = async () => { const { data } = await api('/api/line/arm'); log(data.message, data.ok ? '' : 'bad'); };
 $('btn-line-clear').onclick = async () => { const { data } = await api('/api/line/clear'); log(data.message, data.ok ? '' : 'bad'); };
 
 onState(st => {
@@ -64,7 +63,7 @@ onState(st => {
     ['Product', m ? (m.product || '–') : '–', 'profile tracked', ''],
   ]);
   $('btn-line-mode').disabled = !!inLine;
-  for (const id of ['btn-line-select', 'btn-line-arm', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
+  for (const id of ['btn-line-select', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
   if (!ln) {
     tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'enter LINE mode', 'warn']]);
     $('lt-reason').textContent = '';

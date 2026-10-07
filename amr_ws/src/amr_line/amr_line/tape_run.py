@@ -1,4 +1,4 @@
-"""One LINE run's mission state: route stage, speed latch, branches, stops, U-turn.
+"""One LINE run's mission state: route stage, speed latch + toggle, branches, stops, U-turn.
 
 Ported 2026-10-02 from gy-demo's canworker (`_scan_route`, `_branch_scan`,
 `_begin_station_stop`, `_resume_from_stop`, `_depart_route`, `_u_turn_tag`),
@@ -24,9 +24,19 @@ anything, and the follower runs at AUTO_RPM with a STRAIGHT branch order.
 
 from agv_core import config as vehicle
 
-from amr_line import branch, route, uturn
+from amr_line import branch, route, speed_toggle, uturn
 
 INFO, WARN = "info", "warn"
+
+# *** TRIAL ONLY (2026-10-07; LEFT -> RIGHT same day) - REMOVE AFTER THE TRIAL. ***
+# Every run takes the RIGHT track wherever the sensor sees more than one, whatever
+# the mission's branch_default (plain line following included). It is the
+# branch ladder's standing DEFAULT, so a mission's explicit branch_latch order
+# still wins while its coil is sealed in. Known exposure (branch.py, Run 0023):
+# a standing side is followed at merges too - after a U-turn the main line can
+# be the rightmost tape and the vehicle will take it. Set False, or delete this
+# block and the two uses below, to restore the mission's branch_default.
+TRIAL_ALWAYS_BRANCH_RIGHT = True
 
 
 def u_turn_error(sensor):
@@ -48,9 +58,12 @@ class TapeRun:
         self.mission = m
         self.name = m["MISSION_NAME"]
         self.route = route.Route(m["ROUTE"], m["ROUTE_GUARD"])
+        default = branch.RIGHT if TRIAL_ALWAYS_BRANCH_RIGHT else m["BRANCH_DEFAULT"]  # TRIAL ONLY
         self.branch = branch.BranchEngine(
-            m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=m["BRANCH_DEFAULT"]
+            m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=default
         )
+        # Vehicle data, not mission data: the toggle works in plain line following too.
+        self.speed = speed_toggle.SpeedToggle(vehicle.SPEED_TOGGLE_TAGS, vehicle.SPEED_TOGGLE_LOCKOUT_S)
         self.u_turn_tags = dict(m["U_TURN_TAGS"])
         self.stop_tags = dict(m["STOP_TAGS"])
         self.stop_tags_any = dict(m["STOP_TAGS_ANY"])
@@ -68,6 +81,7 @@ class TapeRun:
         self._reconnect_pending = False
         self._departure_tag: str | None = None
         self._departure_at: float | None = None
+        self._trial_noted = False  # TRIAL ONLY: the always-right warning, once per run
 
     @property
     def active(self):
@@ -104,6 +118,9 @@ class TapeRun:
             self._departure_tag, self._departure_at = resumed_tag, now
         self.route.depart()
         self.stop = None
+        if TRIAL_ALWAYS_BRANCH_RIGHT and not self._trial_noted:  # TRIAL ONLY
+            self._trial_noted = True
+            self.events.append((WARN, "TRIAL policy: always branch RIGHT at every diverter and merge"))
         if self.route.enabled:
             self.events.append(
                 (INFO, f"departing station {self.route.current.id}, {self.route.direction} toward {self.route.next.id}")
@@ -167,6 +184,11 @@ class TapeRun:
                     self._record(now, number, tag, "suppressed", "departed station repeat")
                     continue
                 self._departure_tag = None
+            # Speed toggle tags are not route input: honoured held or driving, like
+            # the branch ladder's tags, and never seen by the route stage.
+            if tag in self.speed.tags:
+                self._speed_tag(now, number, tag)
+                continue
             # Reads while stopped cannot advance logical position: a dwell or a
             # recovery must not accumulate future stops.
             if not driving or self.stop is not None or self.uturn_req is not None:
@@ -214,6 +236,21 @@ class TapeRun:
         self.events.append((INFO, f"{where} - stopping over {dist:.2f} m"
                             + (f" ({rate:.0f} r/min/s)" if rate else "") + ", press Start to go on"))
 
+    # -- speed toggle ----------------------------------------------------------
+    def _speed_tag(self, now, number, tag):
+        result = self.speed.scan(now, tag)
+        if result == "lockout":
+            left = self.speed.lockout_s - (now - self.speed.changed_at)
+            self._record(now, number, tag, "speed toggle ignored", f"lockout, {left:.1f} s left")
+            return
+        self._record(now, number, tag, f"speed {result}")
+        self.events.append((INFO, f"speed {'SLOW' if self.speed.slow else 'CRUISE'} (toggle tag {tag})"))
+
+    @property
+    def slow(self):
+        """Either reason to run at auto_slow_rpm: a junction slow zone or the toggle."""
+        return self.branch.slow or self.speed.slow
+
     # -- branches ------------------------------------------------------------
     def steer(self, sensor, tags, followed_mm):
         """Scan each new tag, then the no-tag fork scan. Returns (choice, slow)."""
@@ -226,7 +263,7 @@ class TapeRun:
         if self.branch.unhonoured and not was:
             self.events.append((WARN, f"branch {choice} ordered, but that side is not in this "
                                       f"diverter - carrying straight on"))
-        return choice, self.branch.slow
+        return choice, self.slow
 
     def _branch_scan(self, nlcp, tag):
         was, was_slow, was_forks = self.branch.ladder.intent(), self.branch.slow, self.branch.forks

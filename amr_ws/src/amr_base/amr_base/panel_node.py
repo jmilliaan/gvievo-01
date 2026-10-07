@@ -171,8 +171,6 @@ class PanelNode(Node):
         # dio.motion_on (DO00, DO08): on while the motors turn, off when they do not, in any
         # mode. Feedback older than WHEELS_FRESH_S counts as not turning.
         fresh = self._wheels_t is not None and time.monotonic() - self._wheels_t <= WHEELS_FRESH_S
-        for ch in config.DIO_MOTION_ON:
-            self.link.set_coil(ch, self._turning and fresh, config.HORN_HOLD_S)
 
         # dio.alarm_on (DO01): AUTO run active and a scanner field occupied.
         mux = self._mux
@@ -185,6 +183,10 @@ class PanelNode(Node):
         )
         for ch in config.DIO_ALARM_ON:
             self.link.set_coil(ch, alarm, config.HORN_HOLD_S)
+        # the movement horn (dio.movement_horn, DO00) gives way to the alarm horn
+        outs = panel_io.motion_outputs(self._turning and fresh, alarm, config.DIO_MOTION_ON, config.DIO_MOVEMENT_HORN)
+        for ch, on in outs.items():
+            self.link.set_coil(ch, on, config.HORN_HOLD_S)
         if alarm != self._alarm:
             self._alarm = alarm
             self.get_logger().info(f"alarm horn {'on' if alarm else 'off'}")

@@ -53,25 +53,22 @@ def make():
     return lj.FollowJob(autopilot.LineFollower())
 
 
-def armed(job, t=100.0):
-    ok, _ = job.arm(inputs(now=t))
-    assert ok
-    return job
+def start(job, t=101.0, **over):
+    """One physical Start edge from IDLE (or DONE). There is no software arm."""
+    return job.tick(inputs(now=t, start_edge=True, start_edge_t=t - 0.05, **over))
 
 
 def run(job, t=101.0):
-    """Arm, then present a Start edge stamped AFTER the arm."""
-    armed(job, t=t)
-    job.tick(inputs(now=t + 0.1, start_edge=True, start_edge_t=t + 0.05))
+    start(job, t=t)
     assert job.state == lj.RUNNING, job.reason
     return job
 
 
 # ---------------------------------------------------------------------------
-# arming
+# starting: the physical Start from IDLE, no arm step (2026-10-07)
 # ---------------------------------------------------------------------------
 
-def test_arming_refuses_without_each_prerequisite():
+def test_start_refuses_without_each_prerequisite():
     """Every one of these alone must be enough to refuse. A prerequisite that
     is checked only in combination is not a prerequisite."""
     for name, broken in (
@@ -86,31 +83,56 @@ def test_arming_refuses_without_each_prerequisite():
         ("unusable tape", {"track_ok": False, "track_cause": "track"}),
         ("tape too slow", {"track_ok": False, "track_cause": "rate"}),
     ):
-        ok, msg = make().arm(inputs(**broken))
-        assert not ok, f"{name} was allowed to arm"
-        assert msg.startswith("cannot arm:"), msg
+        job = make()
+        assert start(job, **broken) == (0.0, 0.0)
+        assert job.state == lj.IDLE, f"{name} was allowed to start"
+        assert job.reason.startswith("Start refused:"), job.reason
+        assert job.refused, "the refusal is handed to the node for an operator event"
 
 
-def test_arming_moves_nothing():
-    job = armed(make())
-    assert job.state == lj.ARMED
-    assert job.tick(inputs(now=100.5)) == (0.0, 0.0)
-    assert job.state == lj.ARMED
-
-
-def test_a_start_pressed_before_arming_is_ignored():
-    """The commissioning hazard, and the same guard: a press that predates the
-    arm must not run the vehicle when the layer later becomes ready."""
+def test_a_refused_start_does_not_run_later():
+    """The commissioning hazard, kept without an arm: a press refused while the
+    field was blocked must not run the vehicle when the field clears."""
     job = make()
-    armed(job, t=200.0)
-    job.tick(inputs(now=200.2, start_edge=True, start_edge_t=199.0))
-    assert job.state == lj.ARMED
-    assert "before the layer was armed" in job.reason
+    start(job, t=200.0, field_clear=False)
+    assert job.state == lj.IDLE
+    for t in (200.1, 201.0, 205.0):
+        assert job.tick(inputs(now=t)) == (0.0, 0.0)
+        assert job.state == lj.IDLE
+    assert job.reason.startswith("ready:")
 
 
-def test_a_start_pressed_after_arming_runs():
+def test_idle_shows_live_readiness_and_never_enters_armed():
+    job = make()
+    job.tick(inputs(now=100.0, panel_auto=False))
+    assert job.state == lj.IDLE and job.reason == "not ready: selector is not in AUTO"
+    job.tick(inputs(now=100.1))
+    assert job.state == lj.IDLE and job.reason.startswith("ready:")
+    run(job, t=100.2)
+    assert job.state != lj.ARMED
+
+
+def test_a_start_from_idle_runs():
     job = run(make())
-    assert job.state == lj.RUNNING
+    assert job.state == lj.RUNNING and job._binding == ("sup-1", 3)
+
+
+def test_a_start_from_done_runs_a_fresh_run():
+    job = run(make())
+    job.state = lj.DONE
+    job.followed_m = 12.0
+    run(job, t=110.0)
+    assert job.state == lj.RUNNING and job.followed_m == 0.0
+
+
+def test_a_start_in_fault_is_ignored_until_reset():
+    job = run(make())
+    job.tick(inputs(now=102.0, lease_allowed=1))
+    assert job.state == lj.FAULT
+    start(job, t=103.0)
+    assert job.state == lj.FAULT
+    job.tick(inputs(now=104.0, reset_edge=True))
+    run(job, t=105.0)
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +235,12 @@ def test_lease_line_withdrawn_ends_the_run_at_once():
     assert job.state == lj.FAULT and job.hold_cause == "authority"
 
 
-def test_manual_takeover_faults_an_armed_layer_too():
-    job = armed(make())
-    job.tick(inputs(now=100.1, panel_auto=False))
-    assert job.state == lj.FAULT and job.hold_cause == "authority"
+def test_a_start_under_manual_is_refused_not_faulted():
+    """Without an arm there is no armed layer to take over: a Start under
+    MANUAL is a refusal, and the job stays IDLE."""
+    job = make()
+    start(job, panel_auto=False)
+    assert job.state == lj.IDLE and "selector is not in AUTO" in job.reason
 
 
 def test_a_stale_panel_is_still_debounced():
@@ -279,19 +303,9 @@ def test_a_field_hold_keeps_the_fields_terms():
     assert job.hold_cause == "field" and job.auto_resume()
 
 
-def test_reset_cancels_an_armed_layer():
-    """Arm, Reset, Start: before, Start ran the follower off an arm nobody
-    still wanted."""
-    job = armed(make())
-    job.tick(inputs(now=100.2, reset_edge=True))
-    assert job.state == lj.IDLE
-    job.tick(inputs(now=100.3, start_edge=True, start_edge_t=100.25))
-    assert job.state == lj.IDLE
-
-
 def test_reset_wins_over_a_start_in_the_same_tick():
-    job = armed(make())
-    job.tick(inputs(now=100.2, reset_edge=True, start_edge=True, start_edge_t=100.15))
+    job = run(make())
+    job.tick(inputs(now=102.0, reset_edge=True, start_edge=True, start_edge_t=101.95))
     assert job.state == lj.IDLE
 
 
@@ -334,7 +348,7 @@ def test_reset_ends_a_run_at_once():
     assert job.state == lj.RUNNING
     left, right = job.tick(inputs(now=102.0, reset_edge=True))
     assert job.state == lj.IDLE and (left, right) == (0.0, 0.0) and job.reason == "reset"
-    assert not job.arm(inputs(now=102.1))[0] or job.state == lj.ARMED  # a fresh arm is allowed
+    run(job, t=102.1)  # a fresh Start is allowed
 
 
 def test_reset_clears_a_hold_to_idle():
@@ -389,7 +403,8 @@ def test_the_job_has_no_speed_cap_of_its_own():
 def test_state_values_match_the_message():
     """readiness.py holds `line_state in (1, 2, 3)` for ARMED/RUNNING/HOLD and
     mode_fsm refuses to leave LINE while that is true. If these drift, a layer
-    swap stops being blocked under a moving vehicle - silently."""
+    swap stops being blocked under a moving vehicle - silently. ARMED is never
+    entered since 2026-10-07 but keeps its number on the wire."""
     assert (lj.IDLE, lj.ARMED, lj.RUNNING, lj.HOLD) == (0, 1, 2, 3)
     assert (lj.DONE, lj.FAULT) == (4, 5)
     assert set(lj.STATE_NAMES) == {0, 1, 2, 3, 4, 5}

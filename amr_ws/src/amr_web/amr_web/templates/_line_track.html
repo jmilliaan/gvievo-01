@@ -7,6 +7,9 @@
   <div class="lt-lcps" id="lt-lcps"></div>
   <div class="lt-rfid">
     <div class="lt-head"><b>RFID <small>tags</small></b><span id="rf-status">no reader data</span></div>
+    {% if rfid_big %}{# run tracked: the last tag, large enough to read on the HMI from the floor #}
+    <div class="rf-last" id="rf-last"><b>––</b><span>no tag read yet</span></div>
+    {% endif %}
     <div class="rf-tags" id="rf-tags"></div>
   </div>
 </div>

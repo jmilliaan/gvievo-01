@@ -80,4 +80,21 @@ def test_refusals():
     check("...and the U-turn table is keyed by tag", m["U_TURN_TAGS"] == {"0030": "ccw"})
 
 
-TESTS = [test_empty_and_listing, test_refusals]
+def test_speed_toggle_tags_are_their_own_namespace():
+    print("\nmission: profile speed-toggle tags")
+    from agv_core import config
+    saved = config.SPEED_TOGGLE_TAGS
+    config.SPEED_TOGGLE_TAGS = ("0040", "0041")
+    try:
+        refused("a station tag that is also a speed toggle tag is refused",
+                base(stop_until_start_button=[{"tag": "0041", "stop_distance_m": 0.4,
+                                               "direction": "outbound"}]), "speed_toggle_tags")
+        refused("a U-turn tag that is also a speed toggle tag is refused",
+                base(u_turn=[{"tag": "0040", "direction": "cw"}]), "speed_toggle_tags")
+        m = mission.parse(base(u_turn=[{"tag": "0030", "direction": "cw"}]))
+        check("disjoint tags load", m["U_TURN_TAGS"] == {"0030": "cw"})
+    finally:
+        config.SPEED_TOGGLE_TAGS = saved
+
+
+TESTS = [test_empty_and_listing, test_refusals, test_speed_toggle_tags_are_their_own_namespace]

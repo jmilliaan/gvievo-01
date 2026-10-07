@@ -264,6 +264,17 @@ class LineFollower:
         limit = config.RAMP_ACCEL_RPM_S if accel_limit is None else accel_limit
         err = target_rpm - self._v_rpm
         a_want = _clamp(err / dt, -limit, limit)
+        if accel_limit is None:
+            # The tail of the S (2026-10-07): ask only for the acceleration that,
+            # ramped back down at the jerk limit, lands on target: a^2/2j + a*dt/2 = |dv|,
+            # the discrete form of sqrt(2 j |dv|) (the continuous one lags a tick and
+            # leaves a 0.1 m/s^2 step at the end). Without it the acceleration stayed
+            # at `limit` until the overshoot clamp below cut it to zero in one tick
+            # (~14 m/s^3 at 0.75 m/s). A measured station stop keeps the constant
+            # rate it was solved for: tapering it would carry the vehicle past the tag.
+            half = 0.5 * config.RAMP_JERK_RPM_S2 * dt
+            taper = math.sqrt(half * half + 2.0 * config.RAMP_JERK_RPM_S2 * abs(err)) - half
+            a_want = _clamp(a_want, -taper, taper)
         step = config.RAMP_JERK_RPM_S2 * dt
         self._a_rpm_s += _clamp(a_want - self._a_rpm_s, -step, step)
         self._v_rpm += self._a_rpm_s * dt

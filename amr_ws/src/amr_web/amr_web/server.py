@@ -87,8 +87,7 @@ class Adapter(Protocol):
     def commissioning(self) -> dict | None: ...
     def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
     def commissioning_clear(self) -> tuple[bool, str]: ...
-    # tape layer (2026-10-02): arm/clear move nothing; only physical Start runs
-    def line_arm(self) -> tuple[bool, str]: ...
+    # tape layer (2026-10-02): clear moves nothing; only physical Start runs (no arm, 2026-10-07)
     def line_clear(self) -> tuple[bool, str]: ...
     def line_mission(self, name: str) -> tuple[bool, str]: ...
 
@@ -337,11 +336,6 @@ def create_app(
         if err:
             return err
         return _call(adapter.line_mission, str(d.get("name", "") or ""))
-
-    @app.post("/api/line/arm")
-    def api_line_arm():
-        _need(tracked_ok)
-        return _call(adapter.line_arm)
 
     @app.post("/api/line/clear")
     def api_line_clear():

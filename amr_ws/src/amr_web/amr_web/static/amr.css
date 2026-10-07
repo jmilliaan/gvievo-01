@@ -449,6 +449,13 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .rf-tag b { color:var(--ink); font-weight:600; }
 .rf-tag.fresh { border-color:var(--ok); background:var(--ok); color:var(--surface); }
 .rf-tag.fresh b { color:var(--surface); }
+/* run tracked: the last tag read, big for the 7" HMI */
+.rf-last { display:flex; align-items:baseline; gap:1rem; margin-top:.4rem; padding:.3rem .8rem;
+  border:1px solid var(--rule); background:var(--surface-2); }
+.rf-last b { font:700 4.8rem/1 var(--mono); color:var(--ink); letter-spacing:.04em; }
+.rf-last span { font:400 1.3rem var(--mono); color:var(--ink-2); }
+.rf-last.fresh { border-color:var(--ok); background:var(--ok); }
+.rf-last.fresh b, .rf-last.fresh span { color:var(--surface); }
 /* A touch panel has no keyboard: the key hints and the key legend are noise there. */
 @media (pointer:coarse) {
   button.dir .key, .legend.keys { display:none; }

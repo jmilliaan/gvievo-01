@@ -394,9 +394,16 @@ _SCHEMA = {
         "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
         "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
         "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
-        "auto_slow_rpm":       ("AUTO_SLOW_RPM", float),
+        # Slow speed as a fraction of auto_rpm (2026-10-07): retuning cruise moves
+        # slow with it. AUTO_SLOW_RPM is derived in _derive().
+        "auto_slow_ratio":     ("AUTO_SLOW_RATIO", float),
         "slow_k_ratio":        ("SLOW_K_RATIO", float),
         "slow_kd":             ("SLOW_KD", float),
+        # RFID speed toggle (2026-10-07): any of these tags flips tracked AUTO
+        # between auto_rpm and the derived slow speed, then ignores them for the lockout.
+        # Written exactly as the RFID panel shows them (uppercase hex).
+        "speed_toggle_tags":   ("SPEED_TOGGLE_TAGS", list),
+        "speed_toggle_lockout_s": ("SPEED_TOGGLE_LOCKOUT_S", float),
         "gain_blend_s":        ("GAIN_BLEND_S", float),
         "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
         "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
@@ -621,6 +628,8 @@ def _read_do_list(raw, count, where):
       motion_on  DO00 (movement horn) and DO08: on while the motors turn, any mode.
       alarm_on   DO01 (alarm horn): on while an AUTO run is active and the protective
                  field is violated or warning field 1 or 2 is occupied.
+      movement_horn  the motion_on channels that ARE the movement horn (DO00): off while
+                 the alarm horn sounds, so a field switches the sound (2026-10-07).
     """
     if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
         raise ConfigError(f"{where}: expected a list of DO channel numbers")
@@ -736,7 +745,7 @@ def _parse(doc):
         if section == "drivers":
             allowed.add("ramp")
         if section == "dio":
-            allowed |= {"di_names", "do_names", "motion_on", "alarm_on"}
+            allowed |= {"di_names", "do_names", "motion_on", "alarm_on", "movement_horn"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
         if section == "pp":
@@ -766,9 +775,35 @@ def _parse(doc):
         doc["dio"]["motion_on"], ns["DIO_NUM_DO"], "dio.motion_on")
     ns["DIO_ALARM_ON"] = _read_do_list(
         doc["dio"]["alarm_on"], ns["DIO_NUM_DO"], "dio.alarm_on")
+    ns["DIO_MOVEMENT_HORN"] = _read_do_list(
+        doc["dio"].get("movement_horn", []), ns["DIO_NUM_DO"], "dio.movement_horn")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
+    ns["SPEED_TOGGLE_TAGS"] = _read_toggle_tags(
+        ns["SPEED_TOGGLE_TAGS"], ns["RFID_TAG_LEN"], ns["RFID_IGNORE_TAGS"])
     return ns
+
+
+def _read_toggle_tags(raw, tag_len, ignore_tags):
+    """autopilot.speed_toggle_tags -> uppercase hex ids, the way rfid.tag_of
+    and the RFID panel spell them. A tag that can never match is refused here,
+    because a dead toggle tag fails silently: the vehicle just keeps its speed."""
+    where = "autopilot.speed_toggle_tags"
+    width = 2 * tag_len
+    ignored = {t.upper() for t in ignore_tags}
+    out = []
+    for i, t in enumerate(raw):
+        tag = t.strip().upper()
+        if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
+            raise ConfigError(f"{where}[{i}]: expected {width} hex characters as the "
+                              f"RFID panel shows them (e.g. \"00A1\"), got {t!r}")
+        if tag in ignored:
+            raise ConfigError(f"{where}[{i}]: {tag} is also in rfid.ignore_tags, "
+                              f"so the reader discards it before it can toggle")
+        if tag in out:
+            raise ConfigError(f"{where}[{i}]: {tag} is listed twice")
+        out.append(tag)
+    return tuple(out)
 
 
 def _derive(ns):
@@ -782,6 +817,8 @@ def _derive(ns):
     # Yaw rate from a left/right difference: omega = (v_right - v_left) / TRACK.
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
+    # The tracked slow speed (junction slow zone, RFID speed toggle) follows cruise.
+    ns["AUTO_SLOW_RPM"] = ns["AUTO_RPM"] * ns["AUTO_SLOW_RATIO"]
 
     # 6083h caps both the forward ramp and the rate at which the wheel
     # DIFFERENCE can slew, so it is also the ceiling on yaw acceleration -
@@ -956,6 +993,8 @@ def _validate(ns):
     # -- motion outputs ----------------------------------------------------
     check(not (g("HORN_ENABLED") and g("HORN_DO_CHANNEL") in g("DIO_MOTION_ON") + g("DIO_ALARM_ON")),
           f"dio.motion_on/alarm_on include the horn's channel {g('HORN_DO_CHANNEL')}: one coil, two owners")
+    check(set(g("DIO_MOVEMENT_HORN")) <= set(g("DIO_MOTION_ON")),
+          "dio.movement_horn must be among dio.motion_on (it is a motion output that yields to the alarm)")
     check(not set(g("DIO_MOTION_ON")) & set(g("DIO_ALARM_ON")),
           "dio.motion_on and dio.alarm_on share a channel: one coil, two owners")
 
@@ -999,10 +1038,15 @@ def _validate(ns):
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
-    # -- tracked AUTO speeds: cruise 0.55 m/s (2026-10-07; 0.85 from 10-02), slow zone 0.5 m/s.
-    # The only two tracked speeds; there is no separate LINE ceiling.
-    check(0 < g("AUTO_SLOW_RPM") <= g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
-          "autopilot: need 0 < auto_slow_rpm <= auto_rpm <= vehicle.motor_max_rpm")
+    # -- tracked AUTO speeds: cruise 0.75 m/s (2026-10-07; 0.55 earlier that day, 0.85 from
+    # 10-02), slow = auto_slow_ratio x cruise (0.5 -> 0.375 m/s), used by both the junction
+    # slow zone and the RFID speed toggle. The only two tracked speeds; no separate LINE ceiling.
+    check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
+          "autopilot: need 0 < auto_rpm <= vehicle.motor_max_rpm")
+    check(0 < g("AUTO_SLOW_RATIO") <= 1,
+          "autopilot.auto_slow_ratio must be in (0, 1]: slow is that fraction of auto_rpm")
+    check(0 < g("SPEED_TOGGLE_LOCKOUT_S") <= 10,
+          "autopilot.speed_toggle_lockout_s must be in (0, 10] seconds")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
@@ -1178,6 +1222,7 @@ _DERIVED = (
     ("RPM_PER_MPS", "1 / MPS_PER_RPM"),
     ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
+    ("AUTO_SLOW_RPM", "autopilot.auto_rpm \u00b7 auto_slow_ratio - the tracked slow speed"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
     ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "
@@ -1391,6 +1436,10 @@ def describe():
             al = g["DIO_ALARM_ON"]
             rows.append(_row(section, "alarm_on", "DIO_ALARM_ON", al, notes,
                              text=(" \u00b7 ".join(f"DO{c:02d}" for c in al) + " on in an AUTO run with a field occupied") if al else "none",
+                             unit=""))
+            mh = g["DIO_MOVEMENT_HORN"]
+            rows.append(_row(section, "movement_horn", "DIO_MOVEMENT_HORN", mh, notes,
+                             text=(" \u00b7 ".join(f"DO{c:02d}" for c in mh) + " off while the alarm horn sounds") if mh else "none",
                              unit=""))
         if section == "lidar":
             rows.append(_row(section, "zone_bytes", "LIDAR_ZONE_BYTES",

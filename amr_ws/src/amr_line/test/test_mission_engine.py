@@ -79,8 +79,6 @@ class World:
         return self.job.tick(self.inputs(**over))
 
     def start(self):
-        ok, why = self.job.arm(self.inputs())
-        assert ok, why
         self.t += 0.1
         self.job.tick(self.inputs(start_edge=True, start_edge_t=self.t - 0.05))
         assert self.job.state == lj.RUNNING, self.job.reason
@@ -143,8 +141,9 @@ def test_a_prerequisite_during_the_start_delay_cancels_it():
 
 def test_two_tracked_speeds_cruise_then_slow_zone_then_cruise():
     w = World(ZONES)
-    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.55) < 0.005, "tracked cruise is 0.55 m/s"
-    assert abs(vehicle.AUTO_SLOW_RPM * vehicle.MPS_PER_RPM - 0.50) < 0.005, "tracked slow is 0.50 m/s"
+    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.75) < 0.005, "tracked cruise is 0.75 m/s"
+    assert vehicle.AUTO_SLOW_RPM == vehicle.AUTO_RPM * vehicle.AUTO_SLOW_RATIO, "slow is derived from cruise"
+    assert vehicle.AUTO_SLOW_RATIO == 0.5, "tracked slow is 50% of cruise"
     w.start()
     w.drive(1.0)
     assert w.job.diag["speed_mode"] == "normal"

@@ -1,11 +1,13 @@
 """line_follow_node (dual-product plan, Increment 1): magnetic-tape following.
 
-    /amr/line/arm        Trigger            arm the layer (moves nothing)
-    /amr/line/clear      Trigger            disarm / abort a running follow
+    /amr/line/clear      Trigger            abort a running follow (back to IDLE)
     /amr/line_state      LineState          latched, on change + 1 Hz
     /amr/line_cmd        Twist              body command while following,
                                             to the mux's LINE source
     /amr/line_track      LineTrack  (in)    the MLS reading from drive_node
+
+There is no software arm (2026-10-07): the physical Start from IDLE checks the
+prerequisites and runs in one step (FollowJob._start). Motor arming is drive_node's.
 
 The vehicle follows only on a fresh physical Start edge, under a valid AUTO
 panel, while the supervisor's lease carries LEASE_LINE - which it grants
@@ -109,7 +111,7 @@ class LineFollowNode(Node):
         self.declare_parameter("drives_fresh_s", 0.5)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]
         # "scanner": the protective field is what a FRESH /output_paths says,
-        # and unknown otherwise (the layer will not arm and a torque loss is
+        # and unknown otherwise (a Start is refused and a torque loss is
         # an E-stop). "assume_clear": the sim, which has no scanner. The launch
         # file picks by the supervisor's `real`; never assume on a vehicle.
         self.declare_parameter("field_source", "scanner")
@@ -196,7 +198,7 @@ class LineFollowNode(Node):
         else:
             self.get_logger().error(
                 "sick_safetyscanners2_interfaces is not installed: the protective "
-                "field stays UNKNOWN and this layer will not arm. Install the "
+                "field stays UNKNOWN and this layer will not start. Install the "
                 "scanner driver, or launch with field_source:=assume_clear in a sim."
             )
 
@@ -207,7 +209,6 @@ class LineFollowNode(Node):
         self._event_seq = 0
         self._event_state: int | None = None
 
-        self.create_service(Trigger, "/amr/line/arm", self._srv_arm)
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
         self.create_service(SelectMission, "/amr/line/mission", self._srv_mission)
 
@@ -353,21 +354,13 @@ class LineFollowNode(Node):
         )
 
     # -- services ----------------------------------------------------------
-    def _srv_arm(self, req, res):
-        now = time.monotonic()
-        ok, msg = self.job.arm(self._inputs(now, self.dt))
-        res.success, res.message = ok, msg
-        self.get_logger().info(f"arm: {msg}")
-        self._publish_state()
-        return res
-
     def _srv_clear(self, req, res):
         if self.job.clear():
             # Do not leave the last nonzero command live until the mux's
             # freshness timeout: zero it now.
             self._publish_cmd(0.0, 0.0)
         res.success, res.message = True, "cleared"
-        self.get_logger().info("clear: the layer is disarmed")
+        self.get_logger().info("clear: the run is cleared")
         self._publish_state()
         return res
 
@@ -396,6 +389,10 @@ class LineFollowNode(Node):
         for level, text in engine_events:
             self._event("LINE_MISSION", text, Event.WARN if level == "warn" else Event.INFO)
         if engine_events:
+            self._publish_state()
+        if self.job.refused:
+            self._event("LINE_MISSION", f"Start refused: {self.job.refused}", Event.WARN)
+            self.job.refused = None
             self._publish_state()
 
         if self.job.state == lj.RUNNING:

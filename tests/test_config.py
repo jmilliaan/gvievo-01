@@ -183,6 +183,9 @@ def test_config_profile():
     # dio.motion_on (2026-10-02): DO00 and DO08 on while the motors turn.
     check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
     check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
+    check("DO00 is the movement horn", config.DIO_MOVEMENT_HORN == [0], str(config.DIO_MOVEMENT_HORN))
+    refuses("a movement horn that is not a motion output is refused",
+            lambda d: d["dio"].update(movement_horn=[2]), "among dio.motion_on")
     refuses("one channel as both a motion and an alarm output is refused",
             lambda d: d["dio"].update(motion_on=[0, 1], alarm_on=[1]), "share a channel")
     refuses("a motion channel past the end of the module is refused",
@@ -245,6 +248,18 @@ def test_config_profile():
     finally:
         del os.environ[config.PROFILE_ENV_VAR]
         config.load()
+
+    # RFID speed toggle tags: typed as the RFID panel shows them; a dead one fails silently.
+    tog = lambda tags: lambda d: d["autopilot"].update(speed_toggle_tags=tags)  # noqa: E731
+    refuses("a toggle tag of the wrong width is refused", tog(["A1"]), "hex characters")
+    refuses("a non-hex toggle tag is refused", tog(["00G1"]), "hex characters")
+    refuses("a toggle tag written as a number is refused", tog([161]), "list of strings")
+    refuses("a toggle tag listed twice is refused", tog(["00A1", "00a1"]), "listed twice")
+    refuses("an ignored tag cannot toggle", tog(["3130"]), "ignore_tags")
+    refuses("a zero lockout is refused",
+            lambda d: d["autopilot"].update(speed_toggle_lockout_s=0), "(0, 10]")
+    check("a lower-case toggle tag loads, normalised to the panel's uppercase",
+          load_with(tog(["00a1", " 00B2 "])) is None)
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.

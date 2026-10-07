@@ -16,7 +16,8 @@ STOP_TAGS_ANY {tag: rule} (route-less only), ROUTE, ROUTE_GUARD,
 U_TURN_TAGS {tag: cw|ccw}.
 
 Speeds are NOT mission data (2026-10-02): tracked AUTO cruises at the profile's
-autopilot.auto_rpm and drops to auto_slow_rpm in a branch_latch slow zone. The
+autopilot.auto_rpm and drops to auto_slow_rpm in a branch_latch slow zone or
+when a profile autopilot.speed_toggle_tags tag toggles it (amr_line.speed_toggle). The
 gy-demo high-speed tier (speed, high_speed_mode, high_speed_to_next) is gone.
 
 "empty" (or no mission at all) is plain line following: no stations, no zones.
@@ -298,6 +299,16 @@ def _speeds(out, vehicle):
                           "straight, left or right")
 
 
+def _toggle_disjoint(out, toggle_tags):
+    """A profile speed-toggle tag is not also a mission tag: one tag, one meaning."""
+    used = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
+    used |= {tag for _, tag in out["STOP_TAGS"]} | set(out["U_TURN_TAGS"])
+    clash = sorted(used & set(toggle_tags))
+    if clash:
+        raise ConfigError(f"mission tag(s) {clash} are also autopilot.speed_toggle_tags "
+                          "in the vehicle profile - one tag cannot mean two things")
+
+
 def list_missions(directory=None):
     """Mission names on disk, sorted. "empty" is always offered."""
     d = directory or MISSION_DIR
@@ -327,6 +338,7 @@ def parse(doc, vehicle=None):
     try:
         out = _parse_mission(doc, ns)
         _speeds(out, vehicle)
+        _toggle_disjoint(out, getattr(vehicle, "SPEED_TOGGLE_TAGS", ()))
     except MissionError:
         raise
     except ConfigError as e:

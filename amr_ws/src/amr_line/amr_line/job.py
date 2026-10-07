@@ -8,7 +8,10 @@ command. Everything it knows arrives in a frozen `Inputs`.
 
 STATE VALUES ARE ON THE WIRE. They are LineState.msg's constants, and
 readiness.py holds `_line_active_locked` as `line_state in (1, 2, 3)` - ARMED,
-RUNNING, HOLD. mode_fsm refuses to leave LINE while that is true. Renumbering
+RUNNING, HOLD. mode_fsm refuses to leave LINE while that is true. ARMED is
+reserved on the wire but never entered since 2026-10-07: the physical Start
+under AUTO checks the prerequisites and starts the run in one step, so there is
+no separate software arm (motor arming is drive_node's, in every mode). Renumbering
 these silently breaks the guard that stops a layer swap under a moving
 vehicle, so the constants are asserted against the message in the node.
 
@@ -111,7 +114,8 @@ class FollowJob:
         self.state = IDLE
         self.hold_cause = ""
         self.reason = ""
-        self.accepted_t = None      # when arm() was accepted
+        self.accepted_t = None      # when the Start that began this run was accepted
+        self.refused = None         # why the last Start was refused, until the node reports it
         self._binding = None        # (instance, generation) the run belongs to
         self._prereq_since = None
         self._auto_since = None
@@ -140,21 +144,34 @@ class FollowJob:
         name = mission["MISSION_NAME"] if mission else "none"
         return True, f"mission {name}" + ("" if mission else " (plain line following)")
 
-    def arm(self, i: Inputs):
-        """Hold the vehicle ready for a Start press. Moves nothing."""
-        if self.state in (RUNNING, HOLD):
-            return False, "already running: clear it first"
+    def _start(self, i: Inputs):
+        """The physical Start from IDLE or DONE: check, then run - one step.
+
+        The press itself is the operator's intent; there is no software arm in
+        front of it. A refused press is dropped, not remembered: the node hands
+        each edge to exactly one tick, so a Start pressed while the field was
+        blocked cannot run the vehicle later when the field clears.
+        """
         pre = self._prerequisite(i)
         if pre:
-            return False, f"cannot arm: {pre}"
+            self.reason = f"Start refused: {pre}"
+            self.refused = pre      # the node turns this into one operator event
+            return 0.0, 0.0
         self.f.reset()
         self.tape = self._new_tape()
-        self.state = ARMED
+        self.followed_m = 0.0
         self.accepted_t = i.now
         self._binding = i.authority
         self.hold_cause = ""
-        self.reason = "armed: press physical Start under AUTO to run"
-        return True, self.reason
+        self._prereq_since = self._auto_since = None
+        self._resume_pending = False
+        self._resume_at = None
+        self.state = RUNNING
+        self.reason = "running"
+        self.tape.depart(i.now, i.rfid)
+        if self.tape.fault:
+            return self._tape_fault()
+        return 0.0, 0.0
 
     def clear(self):
         """Disarm. The node zeroes the command immediately on this."""
@@ -245,7 +262,7 @@ class FollowJob:
         if cause != "station" and self.tape is not None and self.tape.uturn_req is not None:
             self.tape.abort_u_turn()
             self.state = FAULT
-            self.reason = f"U-turn interrupted ({why}); align the AGV on the tape and re-arm"
+            self.reason = f"U-turn interrupted ({why}); align the AGV on the tape, Reset, then Start"
 
     # -- the tick ----------------------------------------------------------
     def tick(self, i: Inputs):
@@ -254,15 +271,22 @@ class FollowJob:
         # did nothing while RUNNING and the wheels kept turning until the
         # follower was cleared by service. The node zeroes the command on
         # the falling edge out of RUNNING.
-        # ARMED too: an armed layer that Reset cannot cancel would run on
-        # the next Start with nobody having asked for it. Reset wins over a
-        # Start seen in the same tick.
+        # Reset wins over a Start seen in the same tick.
         if i.reset_edge and self.state != IDLE:
             self.reset()
             self.reason = "reset"
             return 0.0, 0.0
 
-        if self.state in (IDLE, DONE, FAULT):
+        # FAULT needs Reset first; IDLE and DONE start on the physical Start.
+        if self.state in (IDLE, DONE):
+            if i.start_edge:
+                return self._start(i)
+            if self.state == IDLE:
+                # Live, not latched: what a Start pressed now would meet.
+                pre = self._prerequisite(i)
+                self.reason = f"not ready: {pre}" if pre else "ready: press the physical Start under AUTO"
+            return 0.0, 0.0
+        if self.state == FAULT:
             return 0.0, 0.0
 
         # Authority is re-checked every tick and never debounced: if the lease
@@ -289,30 +313,6 @@ class FollowJob:
             if not i.drives_fresh:
                 self._hold("drives", "wheel feedback stopped while running")
                 return 0.0, 0.0
-
-        if self.state == ARMED:
-            if pre:
-                self.reason = f"not ready: {pre}"
-                if self._prereq_held(i.now, pre):
-                    self.state = FAULT
-                    self.reason = f"faulted while armed: {pre}"
-                return 0.0, 0.0
-            self._prereq_since = None
-            # A press made BEFORE the arm was accepted must not run the
-            # vehicle - the same hazard commissioning guards against.
-            if i.start_edge:
-                if i.start_edge_t is None or self.accepted_t is None \
-                        or i.start_edge_t <= self.accepted_t:
-                    self.reason = "Start ignored: pressed before the layer was armed"
-                    return 0.0, 0.0
-                self.state = RUNNING
-                self.reason = "running"
-                self.tape.depart(i.now, i.rfid)
-                if self.tape.fault:
-                    return self._tape_fault()
-            else:
-                self.tape.sync(i.rfid)
-            return 0.0, 0.0
 
         if self.state == HOLD:
             # Tags read while held are still delivered exactly once - a branch or
@@ -412,7 +412,7 @@ class FollowJob:
         self.tape.abort_u_turn()
         self.state = FAULT
         self.hold_cause = ""
-        self.reason = f"U-turn: {why}; align the AGV on the tape and re-arm"
+        self.reason = f"U-turn: {why}; align the AGV on the tape, Reset, then Start"
         self.f.hard_stop()
         return 0.0, 0.0
 
@@ -500,7 +500,7 @@ class FollowJob:
             "station": r.get("station") or "",
             "next_station": r.get("next_station") or "",
             "branch_intent": t.branch.ladder.intent(),
-            "slow_zone": bool(t.branch.slow),
+            "slow_zone": bool(t.slow),      # junction slow zone OR the RFID speed toggle
             "uturn_phase": (u.get("phase") or "") if u.get("active") else "",
             "last_tag": (t.last_encounter or {}).get("tag") or "",
             "last_tag_action": (t.last_encounter or {}).get("action") or "",

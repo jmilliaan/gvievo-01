@@ -47,7 +47,7 @@ string mission              # "" = plain line following
 string station              # route stage: current station id
 string next_station
 string branch_intent        # straight | left | right
-bool slow_zone
+bool slow_zone              # running at auto_slow_rpm: junction slow zone or RFID speed toggle
 string uturn_phase          # "" | stopping | spin | center | settle
 string last_tag             # last RFID encounter and what the engine did with it
 string last_tag_action

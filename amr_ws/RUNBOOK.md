@@ -95,7 +95,7 @@ One vehicle, two products, chosen by a single top-level key in
 | `"tracked"` | boots to | offered | refused with |
 |---|---|---|---|
 | `false` (default, the SLAM AMR) | `IDLE` | surveys, maps, routes | LINE: "this vehicle is trackless (profile tracked=false)" |
-| `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (arm, then Start under AUTO) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
+| `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
 
 The Status header's mode shows `LINE` and `/api/state` carries `product`
 (`"tape"` / `"slam"`). Switching = edit the key, then
@@ -109,16 +109,20 @@ MANUAL) is honoured and not undone — request LINE again when done, by
 
 | Event | Follower | To continue |
 |---|---|---|
-| `/amr/line/arm` | ARMED (moves nothing) | physical Start under AUTO |
-| selector leaves AUTO, or the supervisor withdraws LEASE_LINE | FAULT `authority` at once, not after the 0.5 s grace | Reset, arm again, Start |
-| Reset (any state but IDLE, including ARMED) | IDLE | arm again |
+| physical Start under AUTO from IDLE or DONE (2026-10-07: no Arm button; motor arming is `drive_node`'s, in every mode) | RUNNING if every prerequisite holds; otherwise stays IDLE, "Start refused: …" in the event log | fix the cause, press Start again (a refused press is dropped, never remembered) |
+| selector leaves AUTO, or the supervisor withdraws LEASE_LINE | FAULT `authority` at once, not after the 0.5 s grace | Reset, Start |
+| Reset (any state but IDLE) | IDLE | Start |
 | field violated | HOLD `field` | resumes by itself 2 s after clear (`auto_resume_hold_s`) |
 | torque lost with the field clear — also while already held for `drives`/`rate`/`track` | HOLD `estop` | physical Start |
-| no fresh `/output_paths` (0.5 s) | will not arm ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
-| tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | will not arm / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
+| no fresh `/output_paths` (0.5 s) | Start refused ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
+| tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | Start refused / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
+
+> **TRIAL ONLY (2026-10-07):** every run takes the RIGHT track at every diverter and merge,
+> whatever the mission's `branch_default` (`amr_line/tape_run.py`, `TRIAL_ALWAYS_BRANCH_RIGHT`).
+> The event log says so at each start. Remove the flag after the trial.
 
 Speed: two tracked speeds from the profile, cruise `autopilot.auto_rpm`
-(2706 r/min = 0.85 m/s) and slow zone `auto_slow_rpm` (1592 = 0.50 m/s);
+(2387 r/min = 0.75 m/s) and slow = `auto_rpm × auto_slow_ratio` (0.5 → 0.375 m/s);
 no separate LINE ceiling. A warning field halves either. In the sim the launch passes
 `field_source:=assume_clear` (no scanner there); never on a vehicle.
 
