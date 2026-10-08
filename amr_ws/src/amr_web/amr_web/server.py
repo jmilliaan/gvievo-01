@@ -89,7 +89,7 @@ class Adapter(Protocol):
     def commissioning_clear(self) -> tuple[bool, str]: ...
     # tape layer (2026-10-02): clear moves nothing; only physical Start runs (no arm, 2026-10-07)
     def line_clear(self) -> tuple[bool, str]: ...
-    def line_mission(self, name: str) -> tuple[bool, str]: ...
+    def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -326,8 +326,19 @@ def create_app(
         _need(tracked_ok)
         from agv_core import mission as missions  # noqa: PLC0415
 
-        names = [n for n in missions.list_missions() if n != "empty"]
-        return jsonify({"missions": names})
+        # Each mission's destination stops, so the page can offer them as a list
+        # rather than free text. A file that does not validate is listed with its
+        # error: selecting it is refused by the layer anyway, with the same words.
+        names, dests, errors = [], {}, {}
+        for n in missions.list_missions():
+            if n == "empty":
+                continue
+            names.append(n)
+            try:
+                dests[n] = missions.destinations(missions.load(n))
+            except missions.MissionError as e:
+                errors[n] = str(e)
+        return jsonify({"missions": names, "destinations": dests, "errors": errors})
 
     @app.post("/api/line/mission")
     def api_line_mission():
@@ -335,7 +346,7 @@ def create_app(
         d, err = _body()
         if err:
             return err
-        return _call(adapter.line_mission, str(d.get("name", "") or ""))
+        return _call(adapter.line_mission, str(d.get("name", "") or ""), str(d.get("destination", "") or ""))
 
     @app.post("/api/line/clear")
     def api_line_clear():

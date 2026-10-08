@@ -57,7 +57,11 @@ MODULES = [
 # - 3 + 1 (2026-10-02): dead speed params removed (manual.*, motion.py, MANUAL_HALF_RPM);
 # one check that the retired manual section is refused.
 # + 17 (2026-10-02): test_mission, the tape-mission validator ported from gy-demo.
-EXPECTED_CHECKS = 577
+# + 9 (2026-10-08): mission schema v2, the RFID tag table. test_mission 20 -> 32 (v1 route,
+# stop and profile-toggle checks replaced by the tag-table rules and the site file);
+# test_config 7 -> 4 (the profile toggle-tag rules became refusals of the retired keys,
+# plus the U-turn window).
+EXPECTED_CHECKS = 636
 
 
 # An exception on a helper thread only prints a traceback by default - the

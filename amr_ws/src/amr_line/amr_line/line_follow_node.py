@@ -1,6 +1,7 @@
 """line_follow_node (dual-product plan, Increment 1): magnetic-tape following.
 
     /amr/line/clear      Trigger            abort a running follow (back to IDLE)
+    /amr/line/mission    SelectMission      the next run's job: mission + destination
     /amr/line_state      LineState          latched, on change + 1 Hz
     /amr/line_cmd        Twist              body command while following,
                                             to the mux's LINE source
@@ -218,7 +219,8 @@ class LineFollowNode(Node):
         self.get_logger().info(
             f"line layer up, generation {self._generation}: "
             f"k_ratio={runtime.K_RATIO} kd={runtime.KD} "
-            f"cruise={vehicle_config.AUTO_RPM:g} rpm slow={vehicle_config.AUTO_SLOW_RPM:g} rpm rate floor={self.reader.min_hz} Hz "
+            f"cruise={vehicle_config.AUTO_RPM:g} rpm slow={vehicle_config.AUTO_SLOW_RPM:g} rpm "
+            f"rate floor={self.reader.min_hz} Hz "
             f"auto-resume clear={self.job.auto_resume_clear_s} s"
         )
 
@@ -373,7 +375,7 @@ class LineFollowNode(Node):
         except mission.MissionError as e:
             res.ok, res.message = False, f"mission {name!r} refused: {e}"
         else:
-            res.ok, res.message = self.job.set_mission(doc)
+            res.ok, res.message = self.job.set_mission(doc, (req.destination or "").strip())
         self.get_logger().info(f"mission: {res.message}")
         self._publish_state()
         return res

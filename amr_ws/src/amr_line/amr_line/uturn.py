@@ -25,9 +25,10 @@ CENTER_LOST_S = 0.5
 # Spin time allowed, as a multiple of the nominal time to u_turn_max_deg. A
 # frozen or wrongly scaled counter would otherwise never reach the angle limit.
 TIME_MARGIN = 2.0
-# After turning, the vehicle drives back over its own U-turn tag, which lies
-# about u_turn_stop_distance_m ahead. That one read is ignored within this much
-# further travel; beyond it the tag re-arms in case the read was missed.
+# After turning, the vehicle drives back over its own U-turn tag, which lies the
+# measured approach distance ahead (tape_run.finish_u_turn). That one read is
+# ignored within this much further travel; beyond it the tag re-arms in case the
+# read was missed.
 REARM_MARGIN_M = 1.0
 
 

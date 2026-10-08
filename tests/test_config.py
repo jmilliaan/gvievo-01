@@ -249,17 +249,17 @@ def test_config_profile():
         del os.environ[config.PROFILE_ENV_VAR]
         config.load()
 
-    # RFID speed toggle tags: typed as the RFID panel shows them; a dead one fails silently.
-    tog = lambda tags: lambda d: d["autopilot"].update(speed_toggle_tags=tags)  # noqa: E731
-    refuses("a toggle tag of the wrong width is refused", tog(["A1"]), "hex characters")
-    refuses("a non-hex toggle tag is refused", tog(["00G1"]), "hex characters")
-    refuses("a toggle tag written as a number is refused", tog([161]), "list of strings")
-    refuses("a toggle tag listed twice is refused", tog(["00A1", "00a1"]), "listed twice")
-    refuses("an ignored tag cannot toggle", tog(["3130"]), "ignore_tags")
-    refuses("a zero lockout is refused",
-            lambda d: d["autopilot"].update(speed_toggle_lockout_s=0), "(0, 10]")
-    check("a lower-case toggle tag loads, normalised to the panel's uppercase",
-          load_with(tog(["00a1", " 00B2 "])) is None)
+    # 2026-10-08: tag meanings moved to the mission's tag table (agv_core.mission v2).
+    # A profile still carrying them is refused, not silently ignored: its toggle
+    # tags would otherwise look configured and never fire.
+    refuses("a leftover autopilot.speed_toggle_tags is refused",
+            lambda d: d["autopilot"].update(speed_toggle_tags=["00A1"]), "unknown key")
+    refuses("a leftover autopilot.speed_toggle_lockout_s is refused",
+            lambda d: d["autopilot"].update(speed_toggle_lockout_s=4.0), "unknown key")
+    refuses("a leftover autopilot.u_turn_stop_distance_m is refused",
+            lambda d: d["autopilot"].update(u_turn_stop_distance_m=0.4), "unknown key")
+    refuses("a U-turn window with min >= max is refused",
+            lambda d: d["autopilot"].update(u_turn_min_deg=230.0), "u_turn_min_deg")
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
@@ -370,8 +370,8 @@ def test_params_view():
     check("a whole float drops its .0",
           rows["vehicle.motor_max_rpm"]["value"] == "4000",
           rows["vehicle.motor_max_rpm"]["value"])
-    # An empty string is a SETTING here (rfid.init_hex empty means the reader is
-    # never told to start), so it must never render as a blank cell.
+    # An empty value is a SETTING here (rfid.ignore_tags empty means nothing is
+    # discarded), so it must never render as a blank cell.
     check("no cell is blank", all(r["value"] for s in sections
                                   for r in s["rows"]))
 

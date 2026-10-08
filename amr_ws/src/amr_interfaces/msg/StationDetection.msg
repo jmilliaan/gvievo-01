@@ -19,3 +19,10 @@ uint32 generation
 bool comms_ok
 float32 rx_age_s         # since any byte from the reader; -1 = never
 float32 tag_age_s        # since the last tag read; -1 = never
+# Appended 2026-10-08. APPEND ONLY. The driver's latest tag read at publish time,
+# and the reader's own configuration as read back on connect.
+float32 rssi_dbm         # 0 = no read yet (a real read is always negative)
+int16 channel            # hop channel of that read; -1 = no read yet
+float32 freq_mhz         # channel as a frequency; 0 = unknown (no read or no params)
+string reader            # e.g. "active RS232 US 902.75-927.25 MHz 30 dBm", "" until read
+string[] config_mismatch # reader vs profile rfid.expect_*; empty = as expected

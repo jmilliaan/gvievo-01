@@ -1,54 +1,93 @@
 """Tape-AGV missions: missions/<name>.json, validated against the vehicle profile.
 
-Ported 2026-10-02 from gy-demo's config.py, where the mission document was the
-SITE half of the profile (branch_latch, stop_until_start_button, route,
-route_guard, u_turn, branch_default). The
-validators below are COPIED, not re-derived - the tag-namespace disjointness
-and hex-string-not-number rules are the reason this table cannot fail silently -
-with one signature change: they read the vehicle from a passed `vehicle`
-(agv_core.config by default) instead of a namespace being built.
+Schema v2 (2026-10-08): the mission IS the site's RFID tag reference table. One
+row per tag, and the row says everything the tag does:
 
-    list_missions()          -> ["empty", "gy-demo", ...]
+    stop          decelerate to rest over stop_distance_m, then by role:
+                    home         the run ends there (DONE); the next run is a new job
+                    always       wait for the physical Start, every pass
+                    destination  stop only when it is the job's destination, and
+                                 only until it has been served once
+    u_turn        creep at approach_mps until the tape ends, stop, pivot
+                  (cw|ccw) until the tape is reacquired near 180 deg
+    speed_toggle  flip cruise <-> slow, the change ramped over ramp_s
+
+    ignore_s      after a read is ACTED ON, the same tag is ignored this long.
+                  Speed toggles share one window (two toggle tags read close
+                  together must not flip twice); a stop's window restarts at
+                  departure, since a parked vehicle outlasts any window.
+
+Branching stays its own table (branch_latch + branch_default) and its own engine
+(amr_line.branch): speed, stops and branch orders never share a tag.
+
+v1 (gy-demo's route sequence, route_guard, stop_until_start_button, u_turn,
+outbound/inbound direction) is retired: a v1 document is refused by name rather
+than half-loaded. The repo ships no site mission; "empty" (or no mission) is
+plain line following.
+
+    list_missions()          -> ["empty", ...]
     load(name, vehicle=None) -> dict of the names below, or MissionError
+    destinations(m)          -> the destination labels, in table order
 
-MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, STOP_TAGS {(direction, tag): rule},
-STOP_TAGS_ANY {tag: rule} (route-less only), ROUTE, ROUTE_GUARD,
-U_TURN_TAGS {tag: cw|ccw}.
+MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, TAGS {tag: row}, HOME (row | None),
+DESTINATIONS (labels), TOGGLE_TAGS (tags).
 
-Speeds are NOT mission data (2026-10-02): tracked AUTO cruises at the profile's
-autopilot.auto_rpm and drops to auto_slow_rpm in a branch_latch slow zone or
-when a profile autopilot.speed_toggle_tags tag toggles it (amr_line.speed_toggle). The
-gy-demo high-speed tier (speed, high_speed_mode, high_speed_to_next) is gone.
-
-"empty" (or no mission at all) is plain line following: no stations, no zones.
 Free of ROS; the line layer and the web both read it.
 """
 import json
-import math
 import os
 
 from agv_core.config import ConfigError, _coerce
 
 MISSION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "missions")
 
+ACTIONS = ("stop", "u_turn", "speed_toggle")
+ROLES = ("home", "always", "destination")
+
+# Keys per action, beyond the common tag/action/ignore_s. "label" is optional on
+# u_turn and speed_toggle rows, required on stops (the operator picks by it).
+_KEYS = {
+    "stop": {"stop_distance_m", "role", "label"},
+    "u_turn": {"direction", "approach_mps", "max_approach_m"},
+    "speed_toggle": {"ramp_s"},
+}
+_COMMON = {"tag", "action", "ignore_s"}
+_OPTIONAL = {"stop": set(), "u_turn": {"label"}, "speed_toggle": {"label"}}
+
+_V1_KEYS = ("route", "route_guard", "stop_until_start_button", "u_turn")
+
 
 class MissionError(ConfigError):
     """A mission file that cannot be run as written."""
 
 
+def _tag(raw, width, where, ignored):
+    """The reader hands tags over as hex text (rfid.tag_of): a JSON number, a
+    wrong width or an ignored tag is a rule that never fires, and fails silently."""
+    if not isinstance(raw, str):
+        raise ConfigError(f"{where}: expected a {width}-character hex string like \"0010\", "
+                          f"got {raw!r}. Tag ids come from rfid.tag_of() as hex text, "
+                          f"so a number never matches.")
+    tag = raw.strip().upper()
+    if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
+        raise ConfigError(f"{where}: expected {width} hex characters as the RFID panel "
+                          f"shows them, got {raw!r}")
+    if tag in ignored:
+        raise ConfigError(f"{where}: {tag} is also in rfid.ignore_tags, so the reader "
+                          f"discards it before any rule can see it")
+    return tag
+
+
 def _read_branch_latch(rows, tag_len, ignore_tags):
-    """branch_latch -> validated rows, or [] when there are no junctions yet.
+    """branch_latch -> validated rows, or [] when there are no junctions.
 
     An entry tag sets a direction and an exit tag clears it (branch.Ladder).
-    Every check here exists to stop a rung being silently DEAD, which is the
-    only failure mode this table has: a tag that never matches produces no
-    error, no log line and no motion - the AGV simply drives past the junction.
+    Every check here exists to stop a rung being silently DEAD: a tag that never
+    matches produces no error, no log line and no motion - the AGV simply drives
+    past the junction.
 
-    slow_speed is OPTIONAL and defaults to false, because most junctions do not
-    need it and a table of diverters written before the flag existed must keep
-    loading. It is the one key here that changes how fast the vehicle arrives at
-    the diverter, so it is still type-checked like everything else: the string
-    "True" is refused, not silently accepted as truthy.
+    slow_speed is OPTIONAL and defaults to false. It is still type-checked: the
+    string "True" is refused, not silently accepted as truthy.
     """
     if not isinstance(rows, list):
         raise ConfigError("branch_latch: expected a list")
@@ -68,174 +107,137 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
         if missing:
             raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
 
-        slow = _coerce(row.get("slow_speed", False), bool,
-                       f"{where}.slow_speed")
-
+        slow = _coerce(row.get("slow_speed", False), bool, f"{where}.slow_speed")
         side = _coerce(row["branch"], str, f"{where}.branch")
         if side not in ("left", "right"):
-            raise ConfigError(f"{where}.branch: expected 'left' or 'right', "
-                              f"got {side!r}")
+            raise ConfigError(f"{where}.branch: expected 'left' or 'right', got {side!r}")
 
-        tags = {}
-        for key in ("entry_tag", "exit_tag"):
-            raw = row[key]
-            # The reader hands tags over as hex text (rfid.tag_of), so a JSON
-            # number here can never match one - and would fail silently.
-            if not isinstance(raw, str):
-                raise ConfigError(
-                    f"{where}.{key}: expected a {width}-character hex string "
-                    f"like \"000A\", got {raw!r}. Tag ids come from "
-                    f"rfid.tag_of() as hex text, so a number never matches.")
-            tag = raw.upper()
-            if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
-                raise ConfigError(f"{where}.{key}: expected {width} hex "
-                                  f"characters, got {raw!r}")
-            if tag in ignore_tags:
-                raise ConfigError(f"{where}.{key}: {tag} is also in "
-                                  f"rfid.ignore_tags, so it is discarded before "
-                                  f"the ladder can see it")
-            tags[key] = tag
-
+        tags = {key: _tag(row[key], width, f"{where}.{key}", ignore_tags)
+                for key in ("entry_tag", "exit_tag")}
         if tags["entry_tag"] == tags["exit_tag"]:
-            raise ConfigError(f"{where}: entry_tag and exit_tag are both "
-                              f"{tags['entry_tag']} - the same read cannot both "
-                              f"set and clear the latch")
+            raise ConfigError(f"{where}: entry_tag and exit_tag are both {tags['entry_tag']} - "
+                              f"the same read cannot both set and clear the latch")
         for key, tag in tags.items():
             if tag in seen:
-                raise ConfigError(f"{where}.{key}: tag {tag} is already used by "
-                                  f"{seen[tag]} - one tag cannot mean two things")
+                raise ConfigError(f"{where}.{key}: tag {tag} is already used by {seen[tag]} - "
+                                  f"one tag cannot mean two things")
             seen[tag] = f"{where}.{key}"
-        out.append({"entry_tag": tags["entry_tag"],
-                    "exit_tag": tags["exit_tag"], "branch": side,
-                    "slow_speed": slow})
+        out.append({"entry_tag": tags["entry_tag"], "exit_tag": tags["exit_tag"],
+                    "branch": side, "slow_speed": slow})
     return out
 
 
-def _rule_rows(rows, keys, where):
+def _bounded(row, key, where, lo, hi, lo_open=True):
+    v = _coerce(row[key], float, f"{where}.{key}")
+    ok = (lo < v if lo_open else lo <= v) and v <= hi
+    if not ok:
+        raise ConfigError(f"{where}.{key} must be in {'(' if lo_open else '['}{lo:g}, {hi:g}], got {v:g}")
+    return v
+
+
+def _read_tags(rows, vehicle, branch_tags):
+    """tags -> {tag: normalised row}. Every rule a tag can carry, one row each."""
     if not isinstance(rows, list):
-        raise ConfigError(f"{where}: expected a list")
+        raise ConfigError("tags: expected a list")
+    width = 2 * vehicle.RFID_TAG_LEN
+    ignored = {t.upper() for t in vehicle.RFID_IGNORE_TAGS}
+    out, labels = {}, {}
     for i, row in enumerate(rows):
-        loc = f"{where}[{i}]"
-        if not isinstance(row, dict) or set(row) != set(keys):
-            raise ConfigError(f"{loc}: expected exactly {sorted(keys)}")
-        yield row, loc
+        where = f"tags[{i}]"
+        if not isinstance(row, dict):
+            raise ConfigError(f"{where}: expected an object")
+        action = row.get("action")
+        if action not in ACTIONS:
+            raise ConfigError(f"{where}.action: expected one of {list(ACTIONS)}, got {action!r}")
+        allowed = _COMMON | _KEYS[action] | _OPTIONAL[action]
+        unknown = set(row) - allowed
+        if unknown:
+            raise ConfigError(f"{where}: unknown key(s) {sorted(unknown)} for a {action} row")
+        missing = (_COMMON | _KEYS[action]) - set(row)
+        if missing:
+            raise ConfigError(f"{where}: missing key(s) {sorted(missing)} for a {action} row")
 
-
-def _tag(raw, width, where, forbidden):
-    if not isinstance(raw, str) or len(raw) != width or any(
-            c not in "0123456789ABCDEF" for c in raw.upper()):
-        raise ConfigError(f"{where}: expected {width} hex characters")
-    tag = raw.upper()
-    if tag in forbidden:
-        raise ConfigError(f"{where}: tag {tag} is ignored or assigned to another rule type")
-    return tag
-
-
-def _travel_direction(raw, where):
-    if raw not in ("outbound", "inbound"):
-        raise ConfigError(f"{where}.direction must be outbound or inbound")
-    return raw
-
-
-def _read_stop_tags(rows, tag_len, ignore_tags, branch_tags):
-    """Direction-qualified stop parameters; physical stations live in route."""
-    out = {}
-    for row, loc in _rule_rows(rows, ("tag", "direction", "stop_distance_m"),
-                               "stop_until_start_button"):
-        direction = _travel_direction(row["direction"], loc)
-        tag = _tag(row["tag"], tag_len * 2, loc, ignore_tags | branch_tags)
-        dist = _coerce(row["stop_distance_m"], float, loc + ".stop_distance_m")
-        if not 0 < dist <= 5:
-            raise ConfigError(f"{loc}.stop_distance_m must be in (0, 5] m")
-        key = (direction, tag)
-        if key in out:
-            raise ConfigError(f"{loc}: duplicate direction/tag stop rule")
-        out[key] = {"stop_distance_m": dist}
-    return out
-
-
-def _read_route(rows, stops, tag_len, ignored, branch_tags):
-    stations, ids = [], set()
-    for row, loc in _rule_rows(rows, ("id", "tag", "direction"), "route"):
-        ident = _coerce(row["id"], str, loc + ".id")
-        if not ident.strip() or ident in ids:
-            raise ConfigError(f"{loc}.id must be nonempty and unique")
-        ids.add(ident)
-        direction = _travel_direction(row["direction"], loc)
-        tag = _tag(row["tag"], tag_len * 2, loc, ignored | branch_tags)
-        if (direction, tag) not in stops:
-            raise ConfigError(f"{loc}: no matching direction/tag stop rule")
-        stations.append(dict(id=ident, tag=tag, direction=direction))
-    # An empty route is a mission without one: plain line-following. A real
-    # route needs a starting position and somewhere to go.
-    if len(stations) == 1:
-        raise ConfigError("route must contain at least two stations, or none; "
-                          "first is initial position")
-    if stations and stations[0]["direction"] != "outbound":
-        raise ConfigError("route first station must be outbound")
-    return stations
-
-
-def _read_route_guard(raw, stations):
-    keys = {'enabled', 'legs', 'station_decel_limit_rpm_s'}
-    if not isinstance(raw, dict) or set(raw) != keys:
-        raise ConfigError(f"route_guard: expected exactly {sorted(keys)}")
-    enabled = _coerce(raw['enabled'], bool, 'route_guard.enabled')
-
-    def measured(value, where):
-        if value is None:
-            if enabled:
-                raise ConfigError(f"{where}: measurement required before enabling route_guard")
-            return None
-        value = _coerce(value, float, where)
-        if not math.isfinite(value) or value <= 0:
-            raise ConfigError(f"{where}: expected a positive finite measurement")
-        return value
-
-    legs, ids = [], set()
-    for row, loc in _rule_rows(raw['legs'], ('from_station', 'min_m', 'max_m'),
-                               'route_guard.legs'):
-        ident = _coerce(row['from_station'], str, loc + '.from_station')
-        if ident in ids:
-            raise ConfigError(f"{loc}: duplicate from_station")
-        ids.add(ident)
-        lo, hi = (measured(row[k], loc + '.' + k) for k in ('min_m', 'max_m'))
-        if (lo is None) != (hi is None) or (lo is not None and lo >= hi):
-            raise ConfigError(f"{loc}: provide both bounds with min_m < max_m")
-        legs.append(dict(from_station=ident, min_m=lo, max_m=hi))
-    if ids != {r['id'] for r in stations}:
-        raise ConfigError('route_guard.legs: require exactly one row per route station')
-    limit = measured(raw['station_decel_limit_rpm_s'], 'route_guard.station_decel_limit_rpm_s')
-    return dict(enabled=enabled, legs=legs, station_decel_limit_rpm_s=limit)
-
-
-def _read_u_turn(rows, tag_len, forbidden):
-    """u_turn -> {tag: "cw" | "ccw"}. AUTO only; never a route station."""
-    out = {}
-    for row, loc in _rule_rows(rows, ("tag", "direction"), "u_turn"):
-        tag = _tag(row["tag"], tag_len * 2, loc + ".tag", forbidden)
-        if row["direction"] not in ("cw", "ccw"):
-            raise ConfigError(f"{loc}.direction must be cw or ccw")
+        tag = _tag(row["tag"], width, f"{where}.tag", ignored)
+        where = f"tags[{i}] ({tag})"
         if tag in out:
-            raise ConfigError(f"{loc}.tag: {tag} is listed twice")
-        out[tag] = row["direction"]
+            raise ConfigError(f"{where}: tag {tag} is listed twice - one tag cannot mean two things")
+        if tag in branch_tags:
+            raise ConfigError(f"{where}: tag {tag} is also a branch_latch tag - "
+                              f"one tag cannot mean two things")
+        rec = {"tag": tag, "action": action,
+               "ignore_s": _bounded(row, "ignore_s", where, 0.0, 30.0, lo_open=False),
+               "label": ""}
+        if "label" in row:
+            rec["label"] = _coerce(row["label"], str, f"{where}.label").strip()
+
+        if action == "stop":
+            rec["stop_distance_m"] = _bounded(row, "stop_distance_m", where, 0.0, 5.0)
+            role = row["role"]
+            if role not in ROLES:
+                raise ConfigError(f"{where}.role: expected one of {list(ROLES)}, got {role!r}")
+            rec["role"] = role
+            if not rec["label"]:
+                raise ConfigError(f"{where}.label: a stop needs a name the operator recognises")
+            if rec["label"] in labels:
+                raise ConfigError(f"{where}.label: {rec['label']!r} is already {labels[rec['label']]}")
+            labels[rec["label"]] = tag
+        elif action == "u_turn":
+            if row["direction"] not in ("cw", "ccw"):
+                raise ConfigError(f"{where}.direction must be cw or ccw")
+            rec["direction"] = row["direction"]
+            slow_mps = vehicle.AUTO_SLOW_RPM * vehicle.MPS_PER_RPM
+            rec["approach_mps"] = _bounded(row, "approach_mps", where, 0.0, round(slow_mps, 3))
+            rec["max_approach_m"] = _bounded(row, "max_approach_m", where, 0.0, 5.0)
+        else:
+            rec["ramp_s"] = _bounded(row, "ramp_s", where, 0.5, 10.0, lo_open=False)
+        out[tag] = rec
     return out
 
 
+def _check_table(tags, vehicle):
+    """Rules that span rows: one home, one toggle window, stops the drives can make."""
+    homes = [r for r in tags.values() if r["action"] == "stop" and r["role"] == "home"]
+    if len(homes) > 1:
+        raise ConfigError(f"tags: {len(homes)} home stops ({', '.join(r['tag'] for r in homes)}); "
+                          f"a run ends at exactly one place")
+    dests = [r for r in tags.values() if r["action"] == "stop" and r["role"] == "destination"]
+    if dests and not homes:
+        raise ConfigError("tags: destination stops need a home stop - the run starts and ends there")
+
+    windows = {r["ignore_s"] for r in tags.values() if r["action"] == "speed_toggle"}
+    if len(windows) > 1:
+        raise ConfigError(f"tags: speed_toggle rows have different ignore_s {sorted(windows)}; "
+                          f"toggles share one lockout window")
+    ramps = {r["ramp_s"] for r in tags.values() if r["action"] == "speed_toggle"}
+    if len(ramps) > 1:
+        raise ConfigError(f"tags: speed_toggle rows have different ramp_s {sorted(ramps)}; "
+                          f"one speed change has one duration")
+
+    # A measured stop from cruise must be within what the drives decelerate at:
+    # beyond it, 6084h clips the profile and the vehicle stops past the mark.
+    decel = float(vehicle.RAMP["auto"]["decel"])
+    cruise = float(vehicle.AUTO_RPM)
+    for r in tags.values():
+        if r["action"] != "stop":
+            continue
+        rate = cruise ** 2 * vehicle.MPS_PER_RPM / (2.0 * r["stop_distance_m"])
+        if rate > decel:
+            raise ConfigError(f"tags ({r['tag']}): stopping from cruise in {r['stop_distance_m']:g} m "
+                              f"needs {rate:.0f} r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}; "
+                              f"commission a longer stop_distance_m")
+    return homes[0] if homes else None
 
 
-_MISSION_KEYS = ("mission_name", "branch_default", "branch_latch",
-                 "stop_until_start_button", "route", "route_guard", "u_turn")
+_MISSION_KEYS = ("mission_name", "branch_default", "branch_latch", "tags")
 
 
-def _parse_mission(doc, ns):
-    """Mission document -> namespace entries, checked against the parsed profile.
-
-    Tags are validated with the profile's reader settings (tag length, ignore
-    list), because a mission tag the reader discards is a rule that never fires.
-    """
+def _parse_mission(doc, vehicle):
     if not isinstance(doc, dict):
         raise ConfigError("mission must be a JSON object")
+    v1 = sorted(set(doc) & set(_V1_KEYS))
+    if v1:
+        raise ConfigError(f"mission: {v1} are the retired v1 route schema (2026-10-08); "
+                          f"write the site's tag reference as the 'tags' table")
     unknown = set(doc) - set(_MISSION_KEYS)
     if unknown:
         raise ConfigError(f"mission: unknown key(s) {sorted(unknown)}")
@@ -244,69 +246,24 @@ def _parse_mission(doc, ns):
         raise ConfigError(f"mission: missing key(s) {sorted(missing)}")
 
     out = {"MISSION_NAME": _coerce(doc["mission_name"], str, "mission_name")}
-    out["BRANCH_DEFAULT"] = _coerce(doc["branch_default"], str, "branch_default")
-
-    tag_len, ignored = ns["RFID_TAG_LEN"], set(ns["RFID_IGNORE_TAGS"])
-    out["BRANCH_LATCH"] = _read_branch_latch(doc["branch_latch"], tag_len, ignored)
+    default = _coerce(doc["branch_default"], str, "branch_default")
+    if default not in ("straight", "left", "right"):
+        raise ConfigError(f"branch_default ({default!r}) must be straight, left or right")
+    out["BRANCH_DEFAULT"] = default
+    out["BRANCH_LATCH"] = _read_branch_latch(doc["branch_latch"], vehicle.RFID_TAG_LEN,
+                                             {t.upper() for t in vehicle.RFID_IGNORE_TAGS})
     branch_tags = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
-    out["STOP_TAGS"] = _read_stop_tags(doc["stop_until_start_button"], tag_len,
-                                       ignored, branch_tags)
-    out["ROUTE"] = _read_route(doc["route"], out["STOP_TAGS"], tag_len,
-                               ignored, branch_tags)
-    out["ROUTE_GUARD"] = _read_route_guard(doc["route_guard"], out["ROUTE"])
-    out["U_TURN_TAGS"] = _read_u_turn(
-        doc["u_turn"], tag_len,
-        ignored | branch_tags | {tag for _, tag in out["STOP_TAGS"]})
-    out["STOP_TAGS_ANY"] = {} if out["ROUTE"] else _routeless(out)
+    out["TAGS"] = _read_tags(doc["tags"], vehicle, branch_tags)
+    out["HOME"] = _check_table(out["TAGS"], vehicle)
+    out["DESTINATIONS"] = [r["label"] for r in out["TAGS"].values()
+                           if r["action"] == "stop" and r["role"] == "destination"]
+    out["TOGGLE_TAGS"] = tuple(t for t, r in out["TAGS"].items() if r["action"] == "speed_toggle")
     return out
 
 
-def _routeless(out):
-    """Without a route there is no travel direction, so a tag must mean one thing.
-
-    Returns {tag: stop rule} for station stops matched by tag alone.
-    """
-    if out["ROUTE_GUARD"]["enabled"]:
-        raise ConfigError("route_guard cannot be enabled without a route")
-    stops = {}
-    for (_direction, tag), rule in sorted(out["STOP_TAGS"].items()):
-        if tag in stops and stops[tag]["stop_distance_m"] != rule["stop_distance_m"]:
-            raise ConfigError(f"stop_until_start_button: tag {tag} has two stop "
-                              f"distances; without a route there is no direction "
-                              f"to choose between them")
-        stops[tag] = {"stop_distance_m": rule["stop_distance_m"]}
-    return stops
-
-
-
-def _speeds(out, vehicle):
-    """gy-demo's _validate rules for the guard, at the one tracked cruise speed."""
-    guard = out["ROUTE_GUARD"]
-    if guard["enabled"]:
-        if not vehicle.RFID_ENABLED:
-            raise ConfigError("route_guard requires RFID enabled")
-        limit = guard["station_decel_limit_rpm_s"]
-        if limit > vehicle.RAMP["auto"]["decel"]:
-            raise ConfigError("route_guard: station deceleration limit exceeds auto drive deceleration")
-        cruise = float(vehicle.AUTO_RPM)
-        for rule in out["STOP_TAGS"].values():
-            rate = cruise ** 2 * vehicle.MPS_PER_RPM / (2 * rule["stop_distance_m"])
-            if rate > limit:
-                raise ConfigError("route_guard: a station stop from cruise exceeds the measured "
-                                  "deceleration limit; commission a longer stop_distance_m")
-    if out["BRANCH_DEFAULT"] not in ("straight", "left", "right"):
-        raise ConfigError(f"mission branch_default ({out['BRANCH_DEFAULT']!r}) must be "
-                          "straight, left or right")
-
-
-def _toggle_disjoint(out, toggle_tags):
-    """A profile speed-toggle tag is not also a mission tag: one tag, one meaning."""
-    used = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
-    used |= {tag for _, tag in out["STOP_TAGS"]} | set(out["U_TURN_TAGS"])
-    clash = sorted(used & set(toggle_tags))
-    if clash:
-        raise ConfigError(f"mission tag(s) {clash} are also autopilot.speed_toggle_tags "
-                          "in the vehicle profile - one tag cannot mean two things")
+def destinations(m):
+    """The destination labels of a parsed mission (or None), in table order."""
+    return list(m["DESTINATIONS"]) if m else []
 
 
 def list_missions(directory=None):
@@ -323,10 +280,7 @@ EMPTY = {
     "mission_name": "empty",
     "branch_default": "straight",
     "branch_latch": [],
-    "stop_until_start_button": [],
-    "route": [],
-    "route_guard": {"enabled": False, "legs": [], "station_decel_limit_rpm_s": None},
-    "u_turn": [],
+    "tags": [],
 }
 
 
@@ -334,16 +288,12 @@ def parse(doc, vehicle=None):
     """A mission document -> the validated names. MissionError on any problem."""
     if vehicle is None:
         from agv_core import config as vehicle  # noqa: PLC0415
-    ns = {"RFID_TAG_LEN": vehicle.RFID_TAG_LEN, "RFID_IGNORE_TAGS": vehicle.RFID_IGNORE_TAGS}
     try:
-        out = _parse_mission(doc, ns)
-        _speeds(out, vehicle)
-        _toggle_disjoint(out, getattr(vehicle, "SPEED_TOGGLE_TAGS", ()))
+        return _parse_mission(doc, vehicle)
     except MissionError:
         raise
     except ConfigError as e:
         raise MissionError(str(e)) from None
-    return out
 
 
 def load(name, vehicle=None, directory=None):

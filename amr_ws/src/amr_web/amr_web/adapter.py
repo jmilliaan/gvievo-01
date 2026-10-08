@@ -550,11 +550,16 @@ class RosAdapter(Node):
                     "generation": int(m.generation),
                     "rx_age_s": float(m.rx_age_s),
                     "tag_age_s": float(m.tag_age_s),
+                    "rssi_dbm": float(m.rssi_dbm) if m.channel >= 0 else None,
+                    "channel": int(m.channel) if m.channel >= 0 else None,
+                    "reader": str(m.reader),
+                    "config_mismatch": [str(x) for x in m.config_mismatch],
                 }
                 self._rfid_t = now
             elif m.rfid_tag:
                 self._rfid_tags.appendleft(
-                    {"tag": m.rfid_tag, "seq": int(m.encounter_seq), "t": now, "wall": time.time()}
+                    {"tag": m.rfid_tag, "seq": int(m.encounter_seq), "t": now, "wall": time.time(),
+                     "rssi_dbm": float(m.rssi_dbm) if m.channel >= 0 else None}
                 )
 
     def _rfid_state(self, now: float) -> dict:
@@ -811,8 +816,8 @@ class RosAdapter(Node):
     def line_clear(self) -> tuple[bool, str]:
         return self._trigger("line_clear")
 
-    def line_mission(self, name: str) -> tuple[bool, str]:
-        r = self._call("line_mission", SelectMission.Request(name=name))
+    def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]:
+        r = self._call("line_mission", SelectMission.Request(name=name, destination=destination))
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
         return bool(r.ok), r.message

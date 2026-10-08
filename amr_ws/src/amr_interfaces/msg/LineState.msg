@@ -52,3 +52,10 @@ string uturn_phase          # "" | stopping | spin | center | settle
 string last_tag             # last RFID encounter and what the engine did with it
 string last_tag_action
 string stop_where           # the station being stopped at / parked at
+
+# Tag-table job (2026-10-08). APPEND ONLY. Empty/false with no destination mission.
+# station / next_station above now carry: the stop being made, and the destination.
+string destination          # the job's destination stop label; "" = none (spent at Home)
+bool at_home                # last tag read was Home and the wheels have not left it
+string home_detail          # why not at Home, for the readiness list
+string job_result           # how the last run ended at Home: "MRU2 served" | "... MISSED ..."

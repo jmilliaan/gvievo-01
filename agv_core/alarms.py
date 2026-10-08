@@ -70,6 +70,11 @@ def _rows() -> tuple[Alarm, ...]:
         a("TRACK_LOST", WARN, "start_button", "Stopped: the tape is not under the sensor",
           "Push the vehicle back onto the tape, then press Start.",
           "Line layer hold cause 'track': MLS reports no track for longer than the loss grace."),
+        a("RFID_LINK_LOST", WARN, "start_button", "Stopped: the RFID tag reader is not reporting",
+          "Check the reader and its cable; once it is back, check where the vehicle is, then press Start.",
+          "Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving "
+          "(link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been "
+          "driven past. Never resumes by itself; Start is refused while the link is down."),
         a("TRACK_RATE_LOW", WARN, "engineer", "Stopped: the tape sensor is too slow",
           "Call the engineer: the tape sensor is not keeping up.",
           "Line hold cause 'rate': track_hz below the PID's rate gate (SDO fallback reads ~10 Hz)."),
@@ -149,12 +154,13 @@ def _rows() -> tuple[Alarm, ...]:
           "slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
-          "Tape mission station stop (stop_until_start_button): a measured stop over "
-          "stop_distance_m after the tag, then a LineState HOLD with cause 'station'."),
+          "Tape mission stop row (role always, or the job's destination): a measured stop over "
+          "stop_distance_m after the tag, then a LineState HOLD with cause 'station'. The Home "
+          "stop ends the run (DONE) instead."),
         a("LINE_MISSION", INFO, "auto", "Tape mission event",
           "Nothing to do; this records what the mission engine did with a tag.",
-          "amr_line.tape_run events: stations, speed zones, branch orders, U-turns, "
-          "RFID reconnects. The text names the tag and the action."),
+          "amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, "
+          "U-turns, the run's result at Home. The text names the tag and the action."),
         a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
           "Check the scanner cable and that its driver is running (Status page).",
           "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "
@@ -373,6 +379,7 @@ HOLD_CODES = {
     "track": "TRACK_LOST",
     "rate": "TRACK_RATE_LOW",
     "authority": "AUTHORITY_LOST",
+    "rfid": "RFID_LINK_LOST",
 }
 
 

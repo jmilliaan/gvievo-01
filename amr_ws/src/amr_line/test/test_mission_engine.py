@@ -1,9 +1,9 @@
-"""The mission engine on the line layer (2026-10-02): stop-and-go, the two tracked
-speeds (cruise, slow zone), U-turn, RFID continuity. No ROS: the real job, follower and TapeRun, fed
-dataclass inputs.
+"""The mission engine on the line layer (schema v2, 2026-10-08: the RFID tag table).
 
-The missions here are TEST documents, built inline and validated by the real
-agv_core.mission.parse - the repo ships no site mission.
+The real job, follower and TapeRun, fed dataclass inputs; no ROS. The missions
+are TEST documents validated by the real agv_core.mission.parse, shaped like the
+site's table (missions/line-a.json): Home, an always-stop, a track-end U-turn,
+a speed toggle and destination stops.
 """
 import copy
 import os
@@ -25,35 +25,61 @@ runtime.load_from_profile()
 LEASE_LINE = 8
 CENTRED = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}], "has_track": True, "nlcp": 2, "track_level": 5}
 NO_TAPE = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": 0}
-PER_REV = 10000.0 * vehicle.GEAR_RATIO
+COUNTS_PER_MOTOR_REV = 10000.0
+PER_REV = COUNTS_PER_MOTOR_REV * vehicle.GEAR_RATIO
+
+HOME, TROLLEY, UTURN, TOGGLE = "0010", "0020", "0030", "0040"
+MRU1, MRU2 = "0110", "0120"
 
 
-def doc(**over):
+def stop(tag, role, label, ignore_s=4):
+    return {"tag": tag, "action": "stop", "ignore_s": ignore_s, "stop_distance_m": 0.5,
+            "role": role, "label": label}
+
+
+SITE_ROWS = [
+    stop(HOME, "home", "Home", 2),
+    stop(TROLLEY, "always", "Trolley release", 2),
+    {"tag": UTURN, "action": "u_turn", "ignore_s": 2, "direction": "cw",
+     "approach_mps": 0.1, "max_approach_m": 2.0},
+    {"tag": TOGGLE, "action": "speed_toggle", "ignore_s": 5, "ramp_s": 2.0},
+    stop(MRU1, "destination", "MRU1"),
+    stop(MRU2, "destination", "MRU2"),
+]
+
+
+def doc(rows=(), **over):
     d = copy.deepcopy(missions.EMPTY)
     d["mission_name"] = "test"
+    d["tags"] = copy.deepcopy(list(rows))
     d.update(over)
     return missions.parse(d)
 
 
-STATION = doc(stop_until_start_button=[{"tag": "0010", "stop_distance_m": 0.3, "direction": "outbound"}])
-ZONES = doc(branch_latch=[{"entry_tag": "0020", "exit_tag": "0021", "branch": "left", "slow_speed": True}])
-UTURN = doc(u_turn=[{"tag": "0030", "direction": "cw"}])
+SITE = doc(SITE_ROWS)
 
 
 class World:
-    """Clock, RFID stream and wheel feedback around one job."""
+    """Clock, RFID stream and wheel feedback around one job.
 
-    def __init__(self, mission=None):
+    Wheel counts integrate the job's own command, so the travel-since-tag that
+    proves "at Home" is the travel the vehicle actually made. The U-turn test
+    drives the counts by hand instead (integrate=False).
+    """
+
+    def __init__(self, mission=None, destination=None):
         self.t = 100.0
         self.seq = 0
         self.gen = 0
         self.comms = True
         self.enc = []
         self.counts = (0, 0)
+        self.integrate = True
         self.still = False
         self.job = lj.FollowJob(autopilot.LineFollower(), auto_start_delay_s=0.6)
-        ok, _ = self.job.set_mission(mission)
-        assert ok
+        ok, why = self.job.set_mission(mission, destination)
+        assert ok, why
+        self.tick()  # the layer is up before anything is read, as on the vehicle
 
     def rfid(self):
         return {"comms_ok": self.comms, "encounter_seq": self.seq, "generation": self.gen,
@@ -76,17 +102,50 @@ class World:
 
     def tick(self, **over):
         self.t += 0.02
-        return self.job.tick(self.inputs(**over))
+        left, right = self.job.tick(self.inputs(**over))
+        if self.integrate:
+            step = lambda rpm: int(round(rpm / 60.0 * 0.02 * COUNTS_PER_MOTOR_REV))  # noqa: E731
+            self.counts = (self.counts[0] + step(left), self.counts[1] + step(right))
+        return left, right
 
-    def start(self):
+    def move(self, metres):
+        """A manual jog: wheel travel the job did not command."""
+        c = metres / (3.141592653589793 * vehicle.WHEEL_DIA_M) * PER_REV
+        self.counts = (self.counts[0] + int(c), self.counts[1] + int(c))
+        self.tick()
+
+    def press_start(self):
         self.t += 0.1
         self.job.tick(self.inputs(start_edge=True, start_edge_t=self.t - 0.05))
+
+    def start(self):
+        self.press_start()
         assert self.job.state == lj.RUNNING, self.job.reason
 
     def drive(self, seconds, **over):
         for _ in range(int(seconds / 0.02)):
             self.tick(**over)
 
+    def until(self, cond, seconds=10.0, **over):
+        for _ in range(int(seconds / 0.02)):
+            self.tick(**over)
+            if cond():
+                return True
+        return False
+
+    def park_at_home(self):
+        """Jog over the Home tag in IDLE, as an operator would."""
+        self.read(HOME)
+        self.tick()
+        self.move(0.2)
+        assert self.job.at_home()[0], self.job.at_home()
+
+
+def at_rest_stopped(w):
+    return w.until(lambda: w.job.state != lj.RUNNING)
+
+
+# -- plain line following --------------------------------------------------------
 
 def test_no_mission_is_plain_line_following():
     w = World(None)
@@ -97,135 +156,294 @@ def test_no_mission_is_plain_line_following():
     assert w.job.mission_snapshot()["mission"] == ""
 
 
-def test_station_stop_then_go_on_start_after_the_delay():
-    w = World(STATION)
+def test_plain_line_following_does_not_need_the_rfid_link():
+    w = World(None)
     w.start()
-    w.drive(3.0)  # up to cruise
-    w.read("0010")
-    w.tick()
-    assert w.job.tape.stop is not None, "the station tag starts a measured stop"
-    for _ in range(500):
-        w.tick()
-        if w.job.state == lj.HOLD:
-            break
-    assert w.job.state == lj.HOLD and w.job.hold_cause == "station", w.job.reason
-    assert not w.job.auto_resume(), "a station waits for a person"
-    w.drive(2.0)
-    assert w.job.state == lj.HOLD, "nothing but Start moves it on"
-
-    w.tick(start_edge=True, start_edge_t=w.t)
-    assert w.job.state == lj.HOLD, "Start begins the delay, it does not move at once"
-    w.drive(0.7)
-    assert w.job.state == lj.RUNNING and w.job.tape.stop is None, w.job.reason
-
-    w.read("0010")  # the tag just left, read again on the way out
-    w.tick()
-    assert w.job.tape.stop is None, "the departed tag does not stop it twice"
-    assert w.job.tape.last_encounter["action"] == "suppressed"
-
-
-def test_a_prerequisite_during_the_start_delay_cancels_it():
-    w = World(STATION)
-    w.start()
-    w.drive(3.0)
-    w.read("0010")
-    for _ in range(500):
-        w.tick()
-        if w.job.state == lj.HOLD:
-            break
-    w.tick(start_edge=True, start_edge_t=w.t)
-    w.tick(panel_auto=True, track_ok=False, track_cause="track")
+    w.comms = False
     w.drive(1.0)
-    assert w.job.state == lj.HOLD and "press Start" in w.job.reason
-
-
-def test_two_tracked_speeds_cruise_then_slow_zone_then_cruise():
-    w = World(ZONES)
-    assert abs(vehicle.AUTO_RPM * vehicle.MPS_PER_RPM - 0.75) < 0.005, "tracked cruise is 0.75 m/s"
-    assert vehicle.AUTO_SLOW_RPM == vehicle.AUTO_RPM * vehicle.AUTO_SLOW_RATIO, "slow is derived from cruise"
-    assert vehicle.AUTO_SLOW_RATIO == 0.5, "tracked slow is 50% of cruise"
-    w.start()
-    w.drive(1.0)
-    assert w.job.diag["speed_mode"] == "normal"
-    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM
-    w.read("0020")
-    w.tick()
-    assert w.job.mission_snapshot()["slow_zone"] is True
-    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_SLOW_RPM
-    w.drive(1.0)
-    w.read("0021")
-    w.tick()
-    assert w.job.mission_snapshot()["slow_zone"] is False
-    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM
-    assert "high_speed" not in w.job.mission_snapshot()
-
-
-def test_an_encounter_gap_is_an_overrun_and_ends_the_run():
-    w = World(STATION)
-    w.start()
-    w.seq = 5  # entries 1..4 never arrived
-    w.enc = [(5, "0010")]
-    w.tick()
-    assert w.job.state == lj.FAULT and "overrun" in w.job.reason
-
-
-def test_a_reconnect_mid_run_warns_but_an_unguarded_run_goes_on():
-    w = World(STATION)
-    w.start()
-    w.drive(0.5)
-    w.gen, w.enc = 1, []
-    w.tick()
-    events = w.job.tape.drain_events()
-    assert any("re-established" in text for _, text in events)
     assert w.job.state == lj.RUNNING
 
 
-def _counts(deg):
-    """Per-wheel counts for a cw pivot of `deg`: left forward, right back."""
-    c = uturn.counts_for_angle(deg, PER_REV)
-    return (int(round(c)), int(round(-c)))
+# -- the job: destination and Home --------------------------------------------------
+
+def test_a_destination_mission_refuses_start_without_a_destination():
+    w = World(SITE)
+    w.park_at_home()
+    w.press_start()
+    assert w.job.state == lj.IDLE and "no destination selected" in w.job.reason
 
 
-def test_u_turn_stops_pivots_reacquires_centres_and_resumes():
-    w = World(UTURN)
+def test_start_is_refused_away_from_home():
+    w = World(SITE, "MRU2")
+    w.press_start()
+    assert w.job.state == lj.IDLE and "not at Home" in w.job.reason
+    w.park_at_home()
+    w.move(1.0)  # pushed off Home
+    w.press_start()
+    assert w.job.state == lj.IDLE and "moved" in w.job.reason
+
+
+def test_an_unknown_destination_is_refused():
+    w = World(SITE)
+    ok, why = w.job.set_mission(SITE, "MRU9")
+    assert not ok and "not a stop of this mission" in why
+    ok, why = w.job.set_mission(None, "MRU1")
+    assert not ok
+
+
+def test_the_job_changes_only_in_idle_or_done():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
     w.start()
-    w.drive(3.0)
-    w.read("0030")
-    w.tick()
-    assert w.job.tape.uturn_req is not None
-    for _ in range(500):
-        w.tick()
-        if w.job.diag.get("v_base") == 0:
-            break
-    w.still = True
-    w.tick()
-    assert w.job.tape.uturn is not None, w.job.reason
-    left, right = w.tick()
-    assert left > 0 > right or left < 0 < right, "a pivot: wheels opposed"
+    ok, why = w.job.set_mission(SITE, "MRU2")
+    assert not ok and "clear first" in why
+    w.job.clear()
+    assert w.job.set_mission(SITE, "MRU2")[0]
 
+
+def _run_to(w, seconds=3.0):
+    w.drive(seconds)
+    assert w.job.state == lj.RUNNING, w.job.reason
+
+
+def _uturn(w):
+    """From the U-turn tag: creep, tape ends, stop, pivot cw, reacquire, resume."""
+    w.read(UTURN)
+    w.tick()
+    assert w.job.tape.uturn_req["phase"] == "approach"
+    w.drive(2.0)  # down to the creep
+    assert abs(w.job.diag["speed_target_rpm"] - 0.1 * vehicle.RPM_PER_MPS) < 1.0
+    assert w.job.state == lj.RUNNING
+    assert w.until(lambda: w.job.tape.uturn_req["phase"] == "stopping", 3.0, sensor=NO_TAPE), \
+        "the end of the tape is the trigger"
+    w.still = True
+    w.integrate = False
+    assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
+    base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
-        w.counts = _counts(deg)
+        c = uturn.counts_for_angle(deg, PER_REV)
+        w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     assert w.job.tape.uturn.phase in (uturn.CENTER, uturn.SETTLE), w.job.tape.uturn.phase
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
     assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
-    assert w.job.tape.uturn_skip == "0030", "its own tag, re-read on the way out, is ignored once"
+    w.still, w.integrate = False, True
 
 
-def test_a_hold_during_a_u_turn_faults_rather_than_resuming_mid_pivot():
-    w = World(UTURN)
+def test_a_full_job_home_to_mru2_and_back():
+    w = World(SITE, "MRU2")
+    w.park_at_home()
     w.start()
-    w.drive(3.0)
-    w.read("0030")
+    w.read(HOME)  # still in the field after Start
+    w.tick()
+    assert w.job.tape.stop is None and w.job.tape.last_encounter["action"] == "suppressed"
+    _run_to(w)
+
+    w.read(MRU1)
+    w.tick()
+    assert w.job.tape.stop is None, "not the destination: passed at speed"
+    assert w.job.tape.last_encounter["action"] == "passed MRU1"
+
+    w.drive(1.0)
+    w.read(MRU2)
+    w.tick()
+    assert w.job.tape.stop["where"] == "MRU2"
+    assert at_rest_stopped(w) and w.job.state == lj.HOLD and w.job.hold_cause == "station"
+    w.drive(1.0)
+    assert w.job.state == lj.HOLD, "only the physical Start moves it on"
+    w.tick(start_edge=True, start_edge_t=w.t)
+    w.drive(0.7)
+    assert w.job.state == lj.RUNNING, w.job.reason
+    _run_to(w)
+
+    _uturn(w)
+    _run_to(w, 1.0)
+    w.read(MRU2)  # the return leg
+    w.tick()
+    assert w.job.tape.stop is None and "already served" in w.job.tape.last_encounter["reason"]
+    w.drive(1.0)
+    w.read(HOME)
+    w.tick()
+    assert w.job.tape.stop["role"] == "home"
+    assert at_rest_stopped(w)
+    assert w.job.state == lj.DONE and "MRU2 served" in w.job.reason, w.job.reason
+    assert w.job.destination is None, "a finished job is spent"
+    assert w.job.at_home()[0], w.job.at_home()
+
+    w.press_start()
+    assert w.job.state == lj.DONE and "no destination" in w.job.reason, "one PB press cannot repeat a job"
+    assert w.job.set_mission(SITE, "MRU1")[0], "a new job is accepted at DONE"
+    w.start()
+
+
+def test_a_missed_destination_is_never_served_from_the_return_leg():
+    w = World(SITE, "MRU2")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    _uturn(w)  # MRU2's tag was never read outbound
+    events = [text for _, text in w.job.tape.drain_events()]
+    assert any("MRU2 not reached before the U-turn" in e for e in events)
+    w.read(MRU2)
+    w.tick()
+    assert w.job.tape.stop is None
+    w.drive(1.0)
+    w.read(HOME)
+    assert at_rest_stopped(w)
+    assert w.job.state == lj.DONE and "MISSED" in w.job.reason
+
+
+def test_the_always_stop_stops_every_pass():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(TROLLEY)
+    assert at_rest_stopped(w) and w.job.hold_cause == "station"
+    assert w.job.mission_snapshot()["stop_where"] == "Trolley release"
+
+
+def test_the_ignore_window_swallows_a_second_read():
+    w = World(SITE, "MRU2")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(MRU1)
+    w.tick()
+    w.drive(1.0)
+    w.read(MRU1)  # a second distinct encounter inside the 4 s window
+    w.tick()
+    assert w.job.tape.last_encounter["action"] == "ignored"
+    w.drive(3.5)
+    w.read(MRU1)
+    w.tick()
+    assert w.job.tape.last_encounter["action"] == "passed MRU1", "the window expired"
+
+
+# -- speed toggle --------------------------------------------------------------------
+
+def test_a_speed_toggle_is_ramped_over_ramp_s():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    w.drive(4.0)
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM
+    w.read(TOGGLE)
+    w.tick()
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_SLOW_RPM
+    w.drive(1.0)
+    drop = vehicle.AUTO_RPM - w.job.diag["v_base"]
+    full = vehicle.AUTO_RPM - vehicle.AUTO_SLOW_RPM
+    assert 0.3 * full < drop < 0.7 * full, f"half way through a 2 s change, dropped {drop:.0f} of {full:.0f}"
+    w.drive(1.5)
+    assert w.job.diag["v_base"] == vehicle.AUTO_SLOW_RPM
+    assert w.job.tape.speed_changing is False
+    w.read(TOGGLE)  # inside the 5 s lockout
+    w.tick()
+    assert w.job.tape.speed.slow is True
+
+
+# -- U-turn ----------------------------------------------------------------------------
+
+def test_the_u_turn_tag_is_ignored_once_on_the_way_back():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(MRU1)
+    assert at_rest_stopped(w)
+    w.tick(start_edge=True, start_edge_t=w.t)
+    w.drive(0.7)
+    _run_to(w)
+    _uturn(w)
+    assert w.job.tape.uturn_skip == UTURN
+    w.t += 3.0  # past its ignore window: only the re-pass rule holds it
+    w.read(UTURN)
+    w.tick()
+    assert w.job.tape.uturn_req is None and w.job.tape.last_encounter["action"] == "suppressed"
+
+
+def test_the_tape_that_never_ends_faults_the_u_turn():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(UTURN)
+    assert w.until(lambda: w.job.state == lj.FAULT, 40.0), "max_approach_m bounds the creep"
+    assert "did not end" in w.job.reason
+
+
+def test_a_silent_sensor_on_the_approach_is_a_fault_not_a_tape_end():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(UTURN)
+    w.tick()
+    w.tick(sensor_age_s=1.0)
+    assert w.job.state == lj.FAULT and "sensor silent" in w.job.reason
+
+
+def test_a_hold_during_the_u_turn_faults_rather_than_resuming_mid_manoeuvre():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(UTURN)
     w.tick()
     w.tick(torque_off=True)
     assert w.job.state == lj.FAULT and "U-turn" in w.job.reason
 
 
-def test_the_mission_changes_only_while_idle():
-    w = World(None)
+# -- RFID continuity ---------------------------------------------------------------------
+
+def test_rfid_link_loss_holds_for_a_person():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
     w.start()
-    ok, why = w.job.set_mission(STATION)
-    assert not ok and "clear first" in why
-    w.job.clear()
-    assert w.job.set_mission(STATION)[0]
+    _run_to(w)
+    w.comms = False
+    w.tick()
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid", w.job.reason
+    w.drive(1.0)
+    w.tick(start_edge=True, start_edge_t=w.t)
+    assert w.job.state == lj.HOLD, "Start is refused while the link is down"
+    w.comms = True
+    w.gen += 1
+    w.enc = []
+    w.drive(3.0)
+    assert w.job.state == lj.HOLD, "the link coming back does not resume by itself"
+    w.tick(start_edge=True, start_edge_t=w.t)
+    assert w.job.state == lj.RUNNING, w.job.reason
+    w.drive(0.5)
+    assert w.job.state == lj.RUNNING, "a reconnect seen while held is not a second hold"
+
+
+def test_an_encounter_gap_holds_the_vehicle():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    w.seq += 5  # entries never arrived
+    w.enc.append((w.seq, MRU1))
+    w.tick()
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid" and "overrun" in w.job.reason
+
+
+def test_rfid_loss_during_the_u_turn_is_a_fault():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(UTURN)
+    w.tick()
+    w.comms = False
+    w.tick()
+    assert w.job.state == lj.FAULT and "U-turn" in w.job.reason
+
+
+def test_start_needs_the_rfid_link_for_a_tag_mission():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.comms = False
+    w.press_start()
+    assert w.job.state == lj.IDLE and "RFID link down" in w.job.reason

@@ -523,7 +523,9 @@ def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
     a._now = lambda: clock[0]
 
     def msg(**kw):
-        base = dict(heartbeat=False, rfid_tag="", encounter_seq=0, generation=0, comms_ok=True, rx_age_s=0.1, tag_age_s=-1.0)
+        base = dict(heartbeat=False, rfid_tag="", encounter_seq=0, generation=0, comms_ok=True,
+                    rx_age_s=0.1, tag_age_s=-1.0,
+                    rssi_dbm=0.0, channel=-1, freq_mhz=0.0, reader="", config_mismatch=[])
         base.update(kw)
         return SimpleNamespace(**base)
 
@@ -537,6 +539,17 @@ def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
     assert st["link"]["comms_ok"] and st["link"]["age_s"] == pytest.approx(ad.RFID_RECENT + 2 + 0.5)
     assert [t["tag"] for t in st["tags"]][:2] == [f"{ad.RFID_RECENT + 2:04X}", f"{ad.RFID_RECENT + 1:04X}"]
     assert len(st["tags"]) == ad.RFID_RECENT and st["tags"][0]["age_s"] == pytest.approx(0.5)
+    assert st["link"]["rssi_dbm"] is None and st["tags"][0]["rssi_dbm"] is None  # no read yet: not 0 dBm
+
+    # Read quality and the reader's configuration ride along for display.
+    mism = ["region: reader 1, profile expects 0"]
+    a._on_rfid(msg(heartbeat=True, rssi_dbm=-74.0, channel=0,
+                   reader="active RS232 US 902.75-927.25 MHz 30 dBm", config_mismatch=mism))
+    a._on_rfid(msg(rfid_tag="0020", encounter_seq=200, rssi_dbm=-72.5, channel=3))
+    st = a._rfid_state(clock[0])
+    assert (st["link"]["rssi_dbm"], st["link"]["channel"]) == (-74.0, 0)
+    assert st["link"]["reader"].startswith("active") and st["link"]["config_mismatch"] == mism
+    assert st["tags"][0]["tag"] == "0020" and st["tags"][0]["rssi_dbm"] == -72.5
 
 
 def _product_app(product, tmp_path):
@@ -573,10 +586,12 @@ def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
 
 def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
     client, stub = _product_app("both", tmp_path)
-    assert client.get("/api/line/missions").get_json() == {"missions": []}, "no site mission ships"
-    assert client.post("/api/line/mission", json={"name": ""}).status_code == 200
+    listing = client.get("/api/line/missions").get_json()
+    assert "line-a" in listing["missions"] and "empty" not in listing["missions"]
+    assert listing["destinations"]["line-a"] == ["MRU1", "MRU2", "MRU3", "MRU4"], "offered as a list"
+    assert client.post("/api/line/mission", json={"name": "line-a", "destination": "MRU2"}).status_code == 200
     assert client.post("/api/line/clear").status_code == 200
-    assert [c[0] for c in stub.calls] == ["line_mission", "line_clear"]
+    assert stub.calls == [("line_mission", ("line-a", "MRU2")), ("line_clear", ())]
 
 
 def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):

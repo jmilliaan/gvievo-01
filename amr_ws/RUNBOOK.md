@@ -583,6 +583,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
+| `FIELD_PROTECTIVE` | warn | Stopped: something is in the protective field | Clear the area in front of the vehicle; it continues by itself. | The mux zeroes every AUTO source while /output_paths says the protective field is violated - the software side of a stop the scanner's OSSD pair already makes. |
 | `GENERATION_MISMATCH` | warn | Motion is held after a mode change | Wait. If it stays, press Restart on the Home page. | A command or permit carries a superseded generation; the mux drops it by design. |
 | `NOT_LEASED` | warn | Waiting for the supervisor | Wait. If it stays, press Restart on the Home page. | Mux has no fresh ControlLease (supervisor down, starting or in a transaction). |
 | `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. |
@@ -593,7 +594,9 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
+| `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.47 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
+| `LINE_MISSION` | info | Tape mission event | Nothing to do; this records what the mission engine did with a tag. | amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, U-turns, the run's result at Home. The text names the tag and the action. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, line...). |
 | `NO_PERMIT` | info | Waiting for a mission step | Nothing to do; the executor drives this. | AUTO with no MotionPermit, or a permit whose source has no fresh /cmd_vel. |
@@ -610,8 +613,10 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `AUTHORITY_LOST` | warn | Stopped: the vehicle lost permission to drive | Put the selector back to AUTO and press Start. | Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO. |
 | `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Press the safety reset on the cabinet, then Start. | Hold cause 'drives': DriveStatus not operational while the follower wanted to move. |
 | `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
+| `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
 | `TRACK_LOST` | warn | Stopped: the tape is not under the sensor | Push the vehicle back onto the tape, then press Start. | Line layer hold cause 'track': MLS reports no track for longer than the loss grace. |
+| `AT_STATION` | info | Parked at a station | Press Start when the station work is done; it moves after the start delay. | Tape mission stop row (role always, or the job's destination): a measured stop over stop_distance_m after the tag, then a LineState HOLD with cause 'station'. The Home stop ends the run (DONE) instead. |
 
 ### Cleared by: ack
 
@@ -688,6 +693,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOC_STREAM_STALE` | error | A sensor the vehicle navigates by went quiet | Call the engineer: a sensor stopped (see the detail for which). | scan/wheels/imu/tf/amcl age over the spec 2.4 limits. |
 | `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion authority at all without it. |
 | `DISK_LOW` | warn | The vehicle is running out of storage | Call the engineer: old maps and reports need deleting. | Under 1 GB free on the state or maps filesystem. Surveys and saves still run; at 200 MB they are refused (DISK_FULL). |
+| `FIELD_UNKNOWN` | warn | Stopped: no safety-scanner field data | Check the scanner cable and that its driver is running (Status page). | Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see is not clear. The OSSD stop path does not depend on this data link. |
 | `SCANNER_SILENT` | warn | The safety scanner is not sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults and nothing else reports it - this row is the only place it shows. The vehicle's STOP is the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, navigation and localisation are dead without it. |
 | `SCANNER_STALE` | warn | The safety scanner stopped sending data | The vehicle can still be driven by hand. Call the engineer before running a mission. | /scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. Expected rate is 34 Hz. |
 | `TRACK_RATE_LOW` | warn | Stopped: the tape sensor is too slow | Call the engineer: the tape sensor is not keeping up. | Line hold cause 'rate': track_hz below the PID's rate gate (SDO fallback reads ~10 Hz). |

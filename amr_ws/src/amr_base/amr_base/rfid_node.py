@@ -2,11 +2,14 @@
 
 Base layer, every mode, like the MLS track: the tape product's mission engine
 consumes the encounters, and a trackless vehicle can still see tags. The reader
-is TCP on enp2s0, not can0, so it takes no bus owner lock.
+is TCP on enp2s0, not can0; it takes the "rfid" owner lock so the read-only
+survey tool (agv_core.drivers.rfid_survey) cannot run beside it.
 
 Wire contract is StationDetection.msg: one message per DISTINCT tag pass
 (agv_core.drivers.rfid's encounter stream, numbered), plus a 2 Hz heartbeat with
 the link status, on the same RELIABLE topic so a consumer sees them in order.
+Both carry the driver's latest read quality (RSSI, channel) and the reader
+configuration it read back on connect, for display.
 Nothing here decides anything; the encounter rules (tag_clear_s, re-baseline on
 reconnect) are the driver's.
 """
@@ -14,7 +17,7 @@ reconnect) are the driver's.
 from __future__ import annotations
 
 import rclpy
-from agv_core import config
+from agv_core import config, ownerlock
 from agv_core.drivers import rfid
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -36,6 +39,7 @@ class RfidNode(Node):
         self._pub = self.create_publisher(StationDetection, "/amr/rfid", ENCOUNTERS)
         self._sent = 0  # highest encounter_seq published
         self._generation = None
+        self._rfid_lock = ownerlock.acquire("rfid", "rfid_node")  # before opening the reader socket
         self.link.start()
         self.create_timer(1.0 / float(self.get_parameter("poll_hz").value), self._poll)
         self.create_timer(1.0 / float(self.get_parameter("heartbeat_hz").value), self._heartbeat)
@@ -55,6 +59,12 @@ class RfidNode(Node):
         rx, tag_age = snap.get("rx_age_s"), snap.get("tag_age_s")
         m.rx_age_s = -1.0 if rx is None else float(rx)
         m.tag_age_s = -1.0 if tag_age is None else float(tag_age)
+        rssi, ch, freq = snap.get("rssi_dbm"), snap.get("channel"), snap.get("freq_mhz")
+        m.rssi_dbm = 0.0 if rssi is None else float(rssi)
+        m.channel = -1 if ch is None else int(ch)
+        m.freq_mhz = 0.0 if freq is None else float(freq)
+        m.reader = rfid.params_summary(snap.get("reader"))
+        m.config_mismatch = [str(x) for x in snap.get("config_mismatch", ())]
         return m
 
     def _poll(self) -> None:

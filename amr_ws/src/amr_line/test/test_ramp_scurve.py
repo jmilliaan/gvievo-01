@@ -62,3 +62,35 @@ def test_measured_station_stop_keeps_its_constant_rate():
     before = f._v_rpm
     f._ramp(0.0, DT, accel_limit=rate)
     assert abs((before - f._v_rpm) / DT - rate) < 1e-6
+
+
+def _ramp_rpm(rate_limit):
+    f = autopilot.LineFollower()
+    f._v_rpm, f._a_rpm_s = vehicle.AUTO_RPM, 0.0
+    v = [f._v_rpm]
+    for _ in range(int(10.0 / DT)):
+        v.append(f._ramp(vehicle.AUTO_SLOW_RPM, DT, rate_limit=rate_limit))
+        if v[-1] == vehicle.AUTO_SLOW_RPM and f._a_rpm_s == 0.0:
+            break
+    return v
+
+
+def test_change_rate_only_ever_slows_the_profile_ramp():
+    """The speed toggle's ramp_s (2026-10-08): None and a faster rate are the profile ramp."""
+    assert _ramp_rpm(None) == _ramp_rpm(10 * vehicle.RAMP_ACCEL_RPM_S)
+    full = vehicle.AUTO_RPM - vehicle.AUTO_SLOW_RPM
+    slow = _ramp_rpm(full / 2.0)
+    secs = (len(slow) - 1) * DT
+    assert 2.0 <= secs <= 2.6, f"a 2 s change took {secs:.2f} s"
+    worst = max(abs((slow[k] - slow[k - 1]) / DT) for k in range(1, len(slow)))
+    assert worst <= full / 2.0 + 1e-6
+
+
+def test_cruise_ceiling_never_raises_the_speed():
+    """The U-turn creep is a ceiling: a higher one leaves the zone's cruise alone."""
+    sensor = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}], "has_track": True, "nlcp": 2}
+    f = autopilot.LineFollower()
+    _, _, d = f.update(sensor, 0.0, DT, True, cruise_rpm=10 * vehicle.AUTO_RPM)
+    assert d["speed_target_rpm"] == vehicle.AUTO_RPM
+    _, _, d = f.update(sensor, 0.0, DT, True, cruise_rpm=300.0)
+    assert d["speed_target_rpm"] == 300.0

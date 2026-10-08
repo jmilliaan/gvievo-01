@@ -128,26 +128,34 @@ timing.loop_period_s / telemetry_period_s
     onto drive TPDOs is what removes it - see manuals/codebase-improvement.md.
 
 rfid.*  (Chafon CF821, UHF EPC Gen2, TCP 2022)
-    enabled ships FALSE. The link layer is commissioned and reboot-safe
-    (manuals/rfid-setup), but the wire protocol is NOT yet confirmed on this
-    reader, so the driver must not be trusted to produce real tags until it is.
+    CF821 protocol captured from this unit on 2026-10-08 and CRC-verified; the
+    framing and command codes are in agv_core/drivers/rfid.py. The reader streams tags on
+    its own because its WorkMode is "active" - nothing we send starts it. The
+    driver only ever QUERIES the reader (device info, parameters, heartbeat);
+    reader settings are changed with the vendor tool, never from this code.
 
-    inventory_cmd / epc_offset / handshake_hex are the UNVERIFIED parts, exposed
-    here precisely so they can be corrected from a packet capture without a code
-    change. The framing itself (A0 | Len | Addr | Cmd | Data | Checksum, two's
-    complement checksum) is the documented Chafon family layout.
+    tag_len is how many trailing EPC bytes form the tag id. Our tags carry a
+    4-byte EPC and the route tables use the last 2 ("0020").
 
-    poll_period_s = 0 means DO NOT POLL - the reader is in active mode and
-    streams on its own. Any positive value is command mode. The CF821 datasheet
-    lists "active mode / command mode / trigger mode", and which one this unit is
-    in has not been read yet; both are supported without a code change.
+    ignore_tags discards ids before they become encounters. It used to hold
+    "3130", an artifact of fixed-length framing chewing the device-info reply;
+    length + CRC framing cannot produce it, so the list is normally empty.
 
-    poll_period_s also sets positional accuracy, not just liveness: at 0.5 m/s a
-    100 ms poll means a tag's position is known to about 50 mm.
+rfid.heartbeat_s / heartbeat_timeout_s
+    heartbeat_s > 0 sends the 0x0050 "online" query that often. Once the reader
+    has answered one on a connection, a gap longer than heartbeat_timeout_s
+    drops and reconnects the link - that is how a reader wedged behind a live
+    TCP stack becomes rfid_comms_lost. A reader that never answers is reported
+    once and not asked again. Ships 0 (off) until a bench run confirms the query
+    does not interrupt active-mode streaming.
 
-    comms_timeout_s must exceed both poll_period_s and reply_timeout_s, or the
-    normal silence of an empty antenna field reads as a comms fault. _validate()
-    enforces that.
+rfid.expect_work_mode / expect_region / expect_power_dbm
+    What the reader is SUPPOSED to be configured as. The driver reads the real
+    values (0x0072) on every connect and raises a warning event per mismatch -
+    a swapped or factory-reset unit shows up on the dashboard. Never a stop.
+    work mode 0 answer / 1 active / 2 trigger; region 0 custom / 1 US / 2 Korea /
+    3 EU / 4 Japan / 5 Malaysia / 6 EU3 / 7-8 China. The unit shipped on US
+    (902.75-927.25 MHz); Indonesia permits 920-923 MHz, which needs region 0.
 
 timing.driver_timeout_s
     How long a driver may go without answering a telemetry read before it is
@@ -387,7 +395,6 @@ _SCHEMA = {
         "sr_tau_s":            ("SR_TAU_S", float),
         "auto_rpm":            ("AUTO_RPM", float),
         "auto_u_turn_rpm":     ("AUTO_U_TURN_RPM", float),
-        "u_turn_stop_distance_m": ("U_TURN_STOP_DISTANCE_M", float),
         "u_turn_center_tol_mm": ("U_TURN_CENTER_TOL_MM", float),
         "u_turn_resume_delay_s": ("U_TURN_RESUME_DELAY_S", float),
         "u_turn_min_deg":      ("U_TURN_MIN_DEG", float),
@@ -399,11 +406,9 @@ _SCHEMA = {
         "auto_slow_ratio":     ("AUTO_SLOW_RATIO", float),
         "slow_k_ratio":        ("SLOW_K_RATIO", float),
         "slow_kd":             ("SLOW_KD", float),
-        # RFID speed toggle (2026-10-07): any of these tags flips tracked AUTO
-        # between auto_rpm and the derived slow speed, then ignores them for the lockout.
-        # Written exactly as the RFID panel shows them (uppercase hex).
-        "speed_toggle_tags":   ("SPEED_TOGGLE_TAGS", list),
-        "speed_toggle_lockout_s": ("SPEED_TOGGLE_LOCKOUT_S", float),
+        # The RFID speed toggle tags and their lockout moved to the mission's tag
+        # table (2026-10-08, agv_core.mission v2): every tag meaning lives in one
+        # table, so the one-tag-one-meaning check is made in one place.
         "gain_blend_s":        ("GAIN_BLEND_S", float),
         "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
         "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
@@ -437,17 +442,18 @@ _SCHEMA = {
         "ip":                 ("RFID_IP", str),
         "port":               ("RFID_PORT", int),
         "interface":          ("RFID_INTERFACE", str),
-        "init_hex":           ("RFID_INIT_HEX", str),
-        "frame_len":          ("RFID_FRAME_LEN", int),
-        "tag_offset":         ("RFID_TAG_OFFSET", int),
         "tag_len":            ("RFID_TAG_LEN", int),
         "ignore_tags":        ("RFID_IGNORE_TAGS", list),
         "recv_timeout_s":     ("RFID_RECV_TIMEOUT_S", float),
-        "banner_wait_s":      ("RFID_BANNER_WAIT_S", float),
         "silent_warn_s":      ("RFID_SILENT_WARN_S", float),
         "reconnect_period_s": ("RFID_RECONNECT_PERIOD_S", float),
         "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
         "tag_clear_s":        ("RFID_TAG_CLEAR_S", float),
+        "heartbeat_s":        ("RFID_HEARTBEAT_S", float),
+        "heartbeat_timeout_s": ("RFID_HEARTBEAT_TIMEOUT_S", float),
+        "expect_work_mode":   ("RFID_EXPECT_WORK_MODE", int),
+        "expect_region":      ("RFID_EXPECT_REGION", int),
+        "expect_power_dbm":   ("RFID_EXPECT_POWER_DBM", int),
     },
     "dio": {
         "enabled":            ("DIO_ENABLED", bool),
@@ -779,31 +785,7 @@ def _parse(doc):
         doc["dio"].get("movement_horn", []), ns["DIO_NUM_DO"], "dio.movement_horn")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
-    ns["SPEED_TOGGLE_TAGS"] = _read_toggle_tags(
-        ns["SPEED_TOGGLE_TAGS"], ns["RFID_TAG_LEN"], ns["RFID_IGNORE_TAGS"])
     return ns
-
-
-def _read_toggle_tags(raw, tag_len, ignore_tags):
-    """autopilot.speed_toggle_tags -> uppercase hex ids, the way rfid.tag_of
-    and the RFID panel spell them. A tag that can never match is refused here,
-    because a dead toggle tag fails silently: the vehicle just keeps its speed."""
-    where = "autopilot.speed_toggle_tags"
-    width = 2 * tag_len
-    ignored = {t.upper() for t in ignore_tags}
-    out = []
-    for i, t in enumerate(raw):
-        tag = t.strip().upper()
-        if len(tag) != width or any(c not in "0123456789ABCDEF" for c in tag):
-            raise ConfigError(f"{where}[{i}]: expected {width} hex characters as the "
-                              f"RFID panel shows them (e.g. \"00A1\"), got {t!r}")
-        if tag in ignored:
-            raise ConfigError(f"{where}[{i}]: {tag} is also in rfid.ignore_tags, "
-                              f"so the reader discards it before it can toggle")
-        if tag in out:
-            raise ConfigError(f"{where}[{i}]: {tag} is listed twice")
-        out.append(tag)
-    return tuple(out)
 
 
 def _derive(ns):
@@ -1038,15 +1020,15 @@ def _validate(ns):
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
-    # -- tracked AUTO speeds: cruise 0.75 m/s (2026-10-07; 0.55 earlier that day, 0.85 from
-    # 10-02), slow = auto_slow_ratio x cruise (0.5 -> 0.375 m/s), used by both the junction
-    # slow zone and the RFID speed toggle. The only two tracked speeds; no separate LINE ceiling.
+    # -- tracked AUTO speeds: cruise = auto_rpm, slow = auto_slow_ratio x cruise, used by
+    # both the junction slow zone and the mission's RFID speed toggle. The only two tracked
+    # speeds; no separate LINE ceiling.
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           "autopilot: need 0 < auto_rpm <= vehicle.motor_max_rpm")
     check(0 < g("AUTO_SLOW_RATIO") <= 1,
           "autopilot.auto_slow_ratio must be in (0, 1]: slow is that fraction of auto_rpm")
-    check(0 < g("SPEED_TOGGLE_LOCKOUT_S") <= 10,
-          "autopilot.speed_toggle_lockout_s must be in (0, 10] seconds")
+    check(0 < g("U_TURN_MIN_DEG") < g("U_TURN_MAX_DEG") <= 270,
+          "autopilot: need 0 < u_turn_min_deg < u_turn_max_deg <= 270")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
@@ -1091,23 +1073,9 @@ def _validate(ns):
 
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
-    check(g("RFID_FRAME_LEN") > 0, "rfid.frame_len must be > 0")
-    check(g("RFID_TAG_LEN") > 0, "rfid.tag_len must be > 0")
-    check(g("RFID_TAG_OFFSET") >= 0, "rfid.tag_offset must be >= 0")
-    # The tag has to lie inside the frame, or every read silently yields nothing.
-    check(g("RFID_TAG_OFFSET") + g("RFID_TAG_LEN") <= g("RFID_FRAME_LEN"),
-          f"rfid.tag_offset + tag_len ({g('RFID_TAG_OFFSET')}+{g('RFID_TAG_LEN')}) "
-          f"must fit inside frame_len ({g('RFID_FRAME_LEN')})")
-    try:
-        init = bytes.fromhex(g("RFID_INIT_HEX") or "")
-    except ValueError:
-        init = None
-        check(False, "rfid.init_hex must be valid hex, or empty")
-    # Without the init command this reader never transmits. Empty is legal (a
-    # unit already left streaming) but is almost always a mistake.
-    check(init is None or len(init) > 0 or not g("RFID_ENABLED"),
-          "rfid.init_hex is empty while rfid.enabled is true - the reader will "
-          "stay silent until it is sent the start command")
+    # The tag id is the LAST tag_len bytes of the EPC; an EPC is at most 12 bytes
+    # here (96-bit), and our tags carry 4.
+    check(1 <= g("RFID_TAG_LEN") <= 12, "rfid.tag_len must be in 1..12 bytes")
     for t in g("RFID_IGNORE_TAGS"):
         try:
             bytes.fromhex(t)
@@ -1117,7 +1085,15 @@ def _validate(ns):
               f"rfid.ignore_tags: {t!r} must be {2 * g('RFID_TAG_LEN')} hex "
               f"chars to match tag_len")
     check(g("RFID_RECV_TIMEOUT_S") > 0, "rfid.recv_timeout_s must be > 0")
-    check(g("RFID_BANNER_WAIT_S") > 0, "rfid.banner_wait_s must be > 0")
+    check(g("RFID_HEARTBEAT_S") >= 0, "rfid.heartbeat_s must be >= 0 (0 = off)")
+    # The timeout has to cover at least one period, or a healthy reader answering
+    # on time is dropped as dead.
+    check(g("RFID_HEARTBEAT_TIMEOUT_S") > g("RFID_HEARTBEAT_S"),
+          "rfid.heartbeat_timeout_s must exceed heartbeat_s")
+    check(g("RFID_EXPECT_WORK_MODE") in (0, 1, 2),
+          "rfid.expect_work_mode must be 0 (answer), 1 (active) or 2 (trigger)")
+    check(0 <= g("RFID_EXPECT_REGION") <= 8, "rfid.expect_region must be in 0..8")
+    check(0 <= g("RFID_EXPECT_POWER_DBM") <= 30, "rfid.expect_power_dbm must be in 0..30 dBm")
     check(g("RFID_SILENT_WARN_S") > g("RFID_RECV_TIMEOUT_S"),
           "rfid.silent_warn_s must exceed recv_timeout_s")
     check(g("RFID_RECONNECT_PERIOD_S") > 0,
@@ -1245,8 +1221,7 @@ def _unit(const):
 def _fmt(value):
     """A value as it should read on screen. Never returns an empty string - a
     blank cell reads as "not set" when the setting is genuinely an empty
-    string, which for rfid.init_hex is the difference between a reader that
-    streams and one that never says anything."""
+    string or list, and those two mean different things."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):

@@ -254,14 +254,20 @@ class LineFollower:
         self._kd_now += alpha * (kd_t - self._kd_now)
         return self._k_now, self._kd_now
 
-    def _ramp(self, target_rpm, dt, accel_limit=None):
+    def _ramp(self, target_rpm, dt, accel_limit=None, rate_limit=None):
         """Jerk-limited approach to target_rpm. This is the whole S-curve.
 
         accel_limit overrides the profile's ramp for one caller only: a station
         stop, which has to arrive at rest after a set distance rather than at the
         profile's usual rate.
+
+        rate_limit (2026-10-08, mission speed toggle ramp_s) only ever SLOWS the
+        profile's ramp, and keeps its S-curve taper: a speed change spread over
+        the time the site asked for, never a harder one.
         """
         limit = config.RAMP_ACCEL_RPM_S if accel_limit is None else accel_limit
+        if accel_limit is None and rate_limit is not None and rate_limit > 0:
+            limit = min(limit, rate_limit)
         err = target_rpm - self._v_rpm
         a_want = _clamp(err / dt, -limit, limit)
         if accel_limit is None:
@@ -341,7 +347,7 @@ class LineFollower:
     # ---- the tick --------------------------------------------------------
 
     def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT,
-               slow=False):
+               slow=False, cruise_rpm=None, change_rate=None):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
@@ -350,6 +356,10 @@ class LineFollower:
         running      : False ramps down but keeps steering while it decelerates
         choice       : standing branch order (branch.STRAIGHT/LEFT/RIGHT)
         slow         : a slow zone is latched (branch.BranchEngine.slow)
+        cruise_rpm   : a lower ceiling for this tick (the U-turn approach creep);
+                       never raises the speed above the zone's cruise
+        change_rate  : r/min/s for a commanded speed change (speed toggle ramp_s);
+                       only slows the profile ramp. None = the profile's ramp
 
         Returns (left_rpm, right_rpm, diag).
         """
@@ -379,6 +389,8 @@ class LineFollower:
         # step in Kp*e is small with it - a few hundredths of a rad/s.
         # Two tracked speeds (2026-10-02): cruise, and the slow zone.
         cruise = config.AUTO_SLOW_RPM if slow else config.AUTO_RPM
+        if cruise_rpm is not None:
+            cruise = min(cruise, max(0.0, cruise_rpm))
         k_ratio, kd = self._blend_gains(slow, dt)
         dt = _clamp(dt if dt and dt > 0 else config.DT_NOMINAL_S,
                     config.DT_MIN_S, config.DT_MAX_S)
@@ -455,7 +467,7 @@ class LineFollower:
         if running:
             self._stop_rate = None
         rate = self._stop_rate if not running else None
-        v_base = self._ramp(target, dt, rate)
+        v_base = self._ramp(target, dt, rate, change_rate if running else None)
         red = self._reduce_speed(e_m if e_m is not None else 0.0, dt)
         left, right, scale = self._to_wheels(max(v_base - red, 0.0), self._omega)
 

@@ -107,7 +107,7 @@ function liveTiles(st) {
   }
   const r = rfidReading(st.rfid);
   if (!r.up) live('live-rfid', '––', r.why, 'off');
-  else if (r.tag) live('live-rfid', r.tag, 'reading now', 'ok');
+  else if (r.tag) live('live-rfid', r.tag, `reading now${rssiText(r.last.rssi_dbm)}`, 'ok');
   else live('live-rfid', '––', r.last ? `last ${r.last.tag} · ${ago(r.last.age_s)}` : 'no tag under the reader', '');
   const t = st.line_track, el = $('live-line');
   const fresh = !!t && t.age_s <= 1.0, max = (t && t.sensor_max_mm) || 100;

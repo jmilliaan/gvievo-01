@@ -26,6 +26,11 @@ WHAT HOLDS THE VEHICLE, and how each resumes:
               this hold is only for a reading that never arrives at all
   rate        samples are fresh but too slow, or the MLS fell back to SDO.
               sensor_timeout_s cannot see this - see track.TrackReader
+  rfid        the RFID stream broke while driving (link down, reconnect,
+              buffer overrun) on a mission with tags: a station or the U-turn
+              may have been driven past. Needs a physical Start once the link
+              is back; during a U-turn it is a FAULT like any other hold
+  station     parked at a stop: a physical Start, then auto_start_delay_s
   authority   lease, generation or panel selector changed under the run.
               Never auto-resumes: something above this layer took control.
               An explicit act - the selector leaving AUTO on a valid panel,
@@ -41,6 +46,8 @@ vehicle is moving without proper feedback stops on the first tick. Delaying a
 stop is the wrong direction.
 """
 import dataclasses
+
+from amr_line import tag_table
 
 # LineState.msg, and not free to change - see the module docstring.
 IDLE, ARMED, RUNNING, HOLD, DONE, FAULT = 0, 1, 2, 3, 4, 5
@@ -106,7 +113,13 @@ class FollowJob:
         # The mission the next run uses (agv_core.mission.load output), or None for
         # plain line following. Set only while IDLE - see set_mission().
         self.mission = None
+        # The job's destination (a mission DESTINATIONS label), or None. Cleared
+        # when a run ends at Home, so one PB press cannot repeat a finished job.
+        self.destination = None
+        self.result = ""            # how the last run ended at Home, for the operator
         self.tape = None
+        # Last tag and the travel since it: survives runs and mission changes.
+        self.odometer = tag_table.TagOdometer()
         self.reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -132,17 +145,58 @@ class FollowJob:
         """A fresh mission state for one run: stage, latches and cursor start over."""
         from amr_line.tape_run import TapeRun  # noqa: PLC0415  (profile-dependent)
 
-        return TapeRun(self.mission)
+        return TapeRun(self.mission, self.destination)
 
-    def set_mission(self, mission):
-        """Choose the mission for the next run. Refused unless IDLE: a run's route
-        stage and latches belong to the mission it started with."""
-        if self.state != IDLE:
-            return False, f"cannot change the mission while {STATE_NAMES[self.state]}: clear first"
+    def set_mission(self, mission, destination=None):
+        """Choose the job for the next run: mission and, when the mission has
+        destination stops, the destination. Refused unless IDLE or DONE: a run's
+        latches and destination belong to the job it started with."""
+        if self.state not in (IDLE, DONE):
+            return False, f"cannot change the job while {STATE_NAMES[self.state]}: clear first"
+        destination = (destination or "").strip() or None
+        dests = mission["DESTINATIONS"] if mission else []
+        if destination is not None and destination not in dests:
+            have = ", ".join(dests) if dests else "none in this mission"
+            return False, f"destination {destination!r} is not a stop of this mission ({have})"
         self.mission = mission
+        self.destination = destination
+        self.result = ""
         self.tape = self._new_tape()
         name = mission["MISSION_NAME"] if mission else "none"
-        return True, f"mission {name}" + ("" if mission else " (plain line following)")
+        if not mission:
+            return True, "mission none (plain line following)"
+        return True, f"mission {name}" + (f", destination {destination}" if destination else "")
+
+    def at_home(self):
+        """(at_home, why_not). (False, "") for a mission without a Home stop."""
+        home = self.mission["HOME"] if self.mission else None
+        if home is None:
+            return False, ""
+        return self.odometer.at(home["tag"], tag_table.home_window_m(home))
+
+    def _rfid_check(self, i: Inputs):
+        if self.tape is not None and self.tape.active and not (i.rfid or {}).get("comms_ok", False):
+            return "RFID link down (the mission needs its tags)"
+        return ""
+
+    def _job_check(self, i: Inputs):
+        """What a Start from IDLE/DONE needs beyond the vehicle prerequisites.
+
+        A destination job starts at Home: the tag table has no route stage, so
+        Home is the only place the run's position is proven.
+        """
+        rfid = self._rfid_check(i)
+        if rfid:
+            return rfid
+        m = self.mission
+        if m is None or m["HOME"] is None:
+            return ""
+        if m["DESTINATIONS"] and self.destination is None:
+            return "no destination selected"
+        ok, why = self.at_home()
+        if not ok:
+            return f"not at Home ({why}): jog the vehicle back over the Home tag"
+        return ""
 
     def _start(self, i: Inputs):
         """The physical Start from IDLE or DONE: check, then run - one step.
@@ -152,11 +206,12 @@ class FollowJob:
         each edge to exactly one tick, so a Start pressed while the field was
         blocked cannot run the vehicle later when the field clears.
         """
-        pre = self._prerequisite(i)
+        pre = self._prerequisite(i) or self._job_check(i)
         if pre:
             self.reason = f"Start refused: {pre}"
             self.refused = pre      # the node turns this into one operator event
             return 0.0, 0.0
+        self.result = ""
         self.f.reset()
         self.tape = self._new_tape()
         self.followed_m = 0.0
@@ -257,6 +312,8 @@ class FollowJob:
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
+        if self.tape is not None:
+            self.tape.speed_changing = False
         # A pivot cannot be resumed part-way (gy-demo rule): its start counts and
         # tape history describe a vehicle that has since been stopped by hand.
         if cause != "station" and self.tape is not None and self.tape.uturn_req is not None:
@@ -267,6 +324,8 @@ class FollowJob:
     # -- the tick ----------------------------------------------------------
     def tick(self, i: Inputs):
         """Returns (left_rpm, right_rpm). Zero unless actually following."""
+        # Every state, MANUAL jogs included: this is how "at Home" is proven.
+        self.odometer.update(i.now, i.rfid, i.counts, i.counts_per_rev)
         # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
         # did nothing while RUNNING and the wheels kept turning until the
         # follower was cleared by service. The node zeroes the command on
@@ -283,7 +342,7 @@ class FollowJob:
                 return self._start(i)
             if self.state == IDLE:
                 # Live, not latched: what a Start pressed now would meet.
-                pre = self._prerequisite(i)
+                pre = self._prerequisite(i) or self._job_check(i)
                 self.reason = f"not ready: {pre}" if pre else "ready: press the physical Start under AUTO"
             return 0.0, 0.0
         if self.state == FAULT:
@@ -317,8 +376,11 @@ class FollowJob:
         if self.state == HOLD:
             # Tags read while held are still delivered exactly once - a branch or
             # slow-zone exit passed during a hold must still clear its latch - but
-            # they cannot advance the route (TapeRun.scan, driving=False).
+            # they cannot start a stop or a U-turn (TapeRun.scan, driving=False).
             tags = self.tape.scan(i.now, i.rfid, False, self.f)
+            # Held, the vehicle is still: a link that dropped and came back cost
+            # no tags. A link still down is caught again on the first tick driving.
+            self.tape.link_lost = None
             if self.tape.fault:
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
@@ -346,7 +408,8 @@ class FollowJob:
             return self._station_tick(i, pre)
 
         if self.hold_cause not in self._auto_causes():
-            # estop (by default) and authority: a physical Start, not a timer.
+            # estop (by default), rfid and authority: a physical Start, not a timer.
+            pre = pre or self._rfid_check(i)
             if i.start_edge and not pre:
                 self.state = RUNNING
                 self.hold_cause = ""
@@ -378,6 +441,7 @@ class FollowJob:
         delay cancels it rather than starting into it.
         """
         where = (self.tape.stop or {}).get("where", "station")
+        pre = pre or self._rfid_check(i)
         if self._resume_at is None:
             if i.start_edge and not pre:
                 self._resume_at = i.now + self.auto_start_delay_s
@@ -401,6 +465,19 @@ class FollowJob:
         self.reason = f"departed {where}"
         return 0.0, 0.0
 
+    def _arrive_home(self):
+        """The run is over. The destination is spent: the next run is a new job."""
+        self.result = self.tape.table.result()
+        where = self.tape.stop["where"]
+        self.state = DONE
+        self.hold_cause = ""
+        self.reason = f"at {where}: {self.result}"
+        self.destination = None
+        self.f.hard_stop()
+        self.tape.events.append(("warn" if "MISSED" in self.result or "NOT" in self.result else "info",
+                                 f"run ended at {where}: {self.result}"))
+        return 0.0, 0.0
+
     def _tape_fault(self):
         self.state = FAULT
         self.hold_cause = ""
@@ -417,24 +494,34 @@ class FollowJob:
         return 0.0, 0.0
 
     def _uturn_tick(self, i: Inputs, tags):
-        """Stop over the tag, pivot by encoder, centre on the tape, settle."""
+        """Creep to the end of the tape, stop, pivot by encoder, centre, settle."""
         from agv_core import config as vehicle  # noqa: PLC0415
+        from agv_core import kinematics  # noqa: PLC0415
 
         from amr_line import uturn  # noqa: PLC0415
         from amr_line.tape_run import u_turn_error  # noqa: PLC0415
 
         t = self.tape
+        req = t.uturn_req
         if i.sensor_age_s is None or i.sensor_age_s > vehicle.SENSOR_TIMEOUT_S:
+            # A silent sensor is a comms fault, never the end of the tape.
             return self._uturn_fault("sensor silent during the U-turn")
         if t.uturn is None:
-            # Stopping over the tag: the follower steers all the way down.
             choice, slow = t.steer(i.sensor, tags, self.f.followed_mm)
-            left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, False, choice, slow)
+            approach = req["phase"] == "approach"
+            creep = req["approach_mps"] * vehicle.RPM_PER_MPS
+            left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, approach, choice, slow,
+                                              cruise_rpm=creep)
             self.diag = diag
-            if diag["state"] == "line_lost":
-                return self._uturn_fault("line lost while stopping for the U-turn")
-            if diag["v_base"] == 0 and i.wheels_still:
-                why = t.begin_spin(i.sensor, i.counts, i.counts_per_rev)
+            v_now, _ = kinematics.wheels_to_body(left, right)
+            self.followed_m += abs(v_now) * i.dt
+            if approach:
+                why = t.approach(i.sensor, diag["has_track"], diag["state"] == "line_lost",
+                                 abs(v_now) * i.dt)
+                if why:
+                    return self._uturn_fault(why)
+            elif diag["v_base"] == 0 and i.wheels_still:
+                why = t.begin_spin(i.counts, i.counts_per_rev)
                 if why:
                     return self._uturn_fault(why)
             return left, right
@@ -457,12 +544,19 @@ class FollowJob:
         tags = t.scan(i.now, i.rfid, True, self.f)
         if t.fault:
             return self._tape_fault()
+        if t.link_lost:
+            # Immediate, not debounced: the node already allows the heartbeat
+            # rfid_fresh_s, and every metre driven blind is a tag not read.
+            self._hold("rfid", t.link_lost + "; press Start once the link is back")
+            return 0.0, 0.0
         if t.uturn_req is not None:
             return self._uturn_tick(i, tags)
         choice, slow = t.steer(i.sensor, tags, self.f.followed_mm)
         stopping = t.stop is not None
-        left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, slow)
+        left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, slow,
+                                          change_rate=t.change_rate())
         self.diag = diag
+        t.speed_settled(diag["v_base"], diag["speed_target_rpm"])
 
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
         v_now, _ = kinematics.wheels_to_body(left, right)
@@ -471,8 +565,11 @@ class FollowJob:
         if t.fault:
             return self._tape_fault()
 
-        # A measured station stop that has come to rest: park, wait for Start.
+        # A measured stop that has come to rest. Home ends the run; any other
+        # stop parks and waits for Start.
         if stopping and diag["v_base"] == 0:
+            if t.stop.get("role") == "home":
+                return self._arrive_home()
             self._hold("station", f"at {t.stop['where']}: press Start to go on")
             return 0.0, 0.0
 
@@ -493,18 +590,22 @@ class FollowJob:
     def mission_snapshot(self):
         """What the mission engine is doing, for LineState and the web."""
         t = self.tape
-        r = t.route.snapshot()
         u = t.uturn_snapshot() or {}
+        at_home, why = self.at_home()
         return {
             "mission": t.name if self.mission else "",
-            "station": r.get("station") or "",
-            "next_station": r.get("next_station") or "",
+            "station": (t.stop or {}).get("where", ""),
+            "next_station": self.destination or "",
             "branch_intent": t.branch.ladder.intent(),
             "slow_zone": bool(t.slow),      # junction slow zone OR the RFID speed toggle
             "uturn_phase": (u.get("phase") or "") if u.get("active") else "",
             "last_tag": (t.last_encounter or {}).get("tag") or "",
             "last_tag_action": (t.last_encounter or {}).get("action") or "",
             "stop_where": (t.stop or {}).get("where", ""),
+            "destination": self.destination or "",
+            "at_home": at_home,
+            "home_detail": why,
+            "job_result": self.result,
         }
 
     def auto_resume(self):

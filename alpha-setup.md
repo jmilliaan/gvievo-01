@@ -59,7 +59,7 @@ two wired LANs never carry a default route — a third would blackhole traffic.
 | SICK MLS | node ID 10, 125 kbps, TPDO1 `0x18A` @100 Hz track; yaw-rate TPDO disabled | CANopen SDO (no SOPAS used); 2006h:01 = 3 Standard enhanced for flush diverters, set with `read_mls set-variant --value 3 --go` (2026-10-07) |
 | SICK nanoScan3 | IP `192.168.3.10`; fields, monitoring cases | Safety Designer (read-only for us) |
 | Modbus I/O island | IP `192.168.1.30`, unit 1 | vendor web page |
-| RFID reader (Chafon) | IP `192.168.1.200`, TCP 2022 | vendor tool |
+| RFID reader (Chafon CF821, CP-203910_V1.13 / RN370MU-910) | IP `192.168.1.200`/24, GW `192.168.1.1`, TCP 2022, MAC `8C:4B:41:3B:CC:A4`, device addr 1. Read back 2026-10-08: WorkMode 1 active, Interface `0x80` RS232 (tags still stream over TCP), Region 1 US 902.75–927.25 MHz (49 × 500 kHz), 30 dBm, Q 4, S0, filter 0, buffer off, remote push off. The profile's `rfid.expect_*` must match; the driver warns on drift. Region change to Indonesia 920–923 MHz (custom region 0) is pending | "UHF Even Reader" V1.6.3 (`~/uhf-even/Software`); the driver only queries |
 | Jog pendant / panel | DI1 Start, DI2 Reset, DI3 AUTO/MANUAL, DI4–7 FWD/RVS/LEFT/RIGHT, DO0 horn | wiring, `profiles/agv-01.json` |
 
 Nothing in this guide changes those. The profile (`profiles/agv-01.json`) must

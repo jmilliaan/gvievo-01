@@ -1,12 +1,10 @@
-"""RFID speed toggle (2026-10-07): any toggle tag flips cruise <-> slow, 2 s lockout.
+"""RFID speed toggle (2026-10-07): any toggle tag flips cruise <-> slow, then a lockout.
 
-The pure SpeedToggle, then the real FollowJob/TapeRun with the profile's toggle
-tags patched in - plain line following, no mission, which is how the vehicle runs.
+The pure SpeedToggle, then the real FollowJob/TapeRun with toggle-only mission
+(2026-10-08: toggle tags are rows of the mission's tag table, not profile keys).
 """
 import os
 import sys
-
-import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line"), os.path.dirname(__file__)):
@@ -15,7 +13,7 @@ for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line"), os.path.dirnam
 
 from agv_core import config as vehicle  # noqa: E402
 from amr_line.speed_toggle import SpeedToggle  # noqa: E402
-from test_mission_engine import World  # noqa: E402
+from test_mission_engine import World, doc  # noqa: E402
 
 from amr_line import job as lj  # noqa: E402
 
@@ -41,16 +39,11 @@ def test_lockout_holds_off_toggle_tags_for_two_seconds():
     assert s.scan(12.0, B) == "fast", "at exactly lockout_s it counts again"
 
 
-@pytest.fixture
-def toggle_tags():
-    saved = vehicle.SPEED_TOGGLE_TAGS, vehicle.SPEED_TOGGLE_LOCKOUT_S
-    vehicle.SPEED_TOGGLE_TAGS, vehicle.SPEED_TOGGLE_LOCKOUT_S = (A, B), 2.0
-    yield
-    vehicle.SPEED_TOGGLE_TAGS, vehicle.SPEED_TOGGLE_LOCKOUT_S = saved
+TOGGLES = doc([{"tag": t, "action": "speed_toggle", "ignore_s": 2, "ramp_s": 0.5} for t in (A, B)])
 
 
-def test_corner_from_either_end_in_plain_line_following(toggle_tags):
-    w = World(None)
+def test_corner_from_either_end():
+    w = World(TOGGLES)
     w.start()
     w.drive(1.0)
     assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM
@@ -80,8 +73,8 @@ def test_corner_from_either_end_in_plain_line_following(toggle_tags):
     assert any("speed SLOW (toggle tag 00B2)" in e for e in events)
 
 
-def test_a_new_run_starts_at_cruise(toggle_tags):
-    w = World(None)
+def test_a_new_run_starts_at_cruise():
+    w = World(TOGGLES)
     w.start()
     w.read(A)
     w.tick()

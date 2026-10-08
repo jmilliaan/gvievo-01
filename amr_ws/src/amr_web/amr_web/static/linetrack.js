@@ -45,10 +45,16 @@ function rfidTags(r) {
   if (!box) return;
   const { link, tags, up, last, reading } = rfidReading(r);
   box.classList.toggle('down', !up);
-  document.getElementById('rf-status').textContent = !link ? 'no reader data (rfid_node not publishing)'
+  // RSSI of the latest read, and a flag when the reader's own configuration (read back on
+  // connect) is not what the profile expects: a swapped or factory-reset unit. Display only.
+  const mism = (link && link.config_mismatch) || [];
+  const status = document.getElementById('rf-status');
+  status.textContent = (!link ? 'no reader data (rfid_node not publishing)'
     : link.age_s > 2.0 ? `reader silent ${link.age_s.toFixed(1)} s`
     : !link.comms_ok ? 'reader link down'
-    : reading ? `link ok · reading ${last.tag} · ${link.seq} read` : `link ok · no tag · ${link.seq} read`;
+    : reading ? `link ok · reading ${last.tag}${rssiText(last.rssi_dbm)} · ${link.seq} read`
+    : `link ok · no tag · ${link.seq} read`) + (mism.length ? ' · reader config ≠ profile' : '');
+  status.title = [link && link.reader, ...mism].filter(Boolean).join('\n');
   const big = box.querySelector('.rf-last');  // Run tracked only: optional
   if (big) {
     big.classList.toggle('fresh', reading);
@@ -56,8 +62,9 @@ function rfidTags(r) {
     big.querySelector('span').textContent = reading ? `reading · ${clock(last.wall)}` : 'no tag under the reader';
   }
   document.getElementById('rf-tags').innerHTML = tags.length
-    ? tags.map((t, k) => `<span class="rf-tag${k === 0 && t.age_s <= RF_FRESH_S ? ' fresh' : ''}" title="pass #${t.seq}"><b>${esc(t.tag)}</b> ${clock(t.wall)}</span>`).join('')
+    ? tags.map((t, k) => `<span class="rf-tag${k === 0 && t.age_s <= RF_FRESH_S ? ' fresh' : ''}" title="pass #${t.seq}${rssiText(t.rssi_dbm)}"><b>${esc(t.tag)}</b> ${clock(t.wall)}</span>`).join('')
     : '<span class="none">pass a tag under the reader</span>';
 }
+function rssiText(dbm) { return typeof dbm === 'number' ? ` · ${dbm.toFixed(1)} dBm` : ''; }
 function ago(s) { return s < 60 ? `${Math.round(s)} s ago` : `${Math.round(s / 60)} min ago`; }
 function clock(wall) { const d = new Date(wall * 1000); return d.toTimeString().slice(0, 8); }

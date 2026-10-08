@@ -1,6 +1,5 @@
-"""Tape-mission validation (agv_core/mission.py, ported from gy-demo 2026-10-02).
+"""Tape-mission validation (agv_core/mission.py, schema v2 2026-10-08: the tag table).
 
-The repo ships no site mission: "empty" is built in and is plain line following.
 Every refusal below is a rule that would otherwise fail SILENTLY on the floor - a
 tag that never matches produces no error, only a vehicle driving past.
 """
@@ -14,9 +13,23 @@ from helpers import check
 from agv_core import mission
 
 
-def base(**over):
+def stop(tag="0110", role="destination", label="MRU1", **over):
+    row = {"tag": tag, "action": "stop", "ignore_s": 4, "stop_distance_m": 0.5,
+           "role": role, "label": label}
+    row.update(over)
+    return row
+
+
+HOME = stop("0010", "home", "Home", ignore_s=2)
+UTURN = {"tag": "0030", "action": "u_turn", "ignore_s": 2, "direction": "cw",
+         "approach_mps": 0.1, "max_approach_m": 2.0}
+TOGGLE = {"tag": "0040", "action": "speed_toggle", "ignore_s": 5, "ramp_s": 2.0}
+
+
+def base(tags=(), **over):
     d = copy.deepcopy(mission.EMPTY)
     d["mission_name"] = "t"
+    d["tags"] = [copy.deepcopy(r) for r in tags]
     d.update(over)
     return d
 
@@ -33,9 +46,8 @@ def test_empty_and_listing():
     print("\nmission: the built-in empty mission")
     m = mission.load("empty")
     check("empty loads with nothing site-specific",
-          m["ROUTE"] == [] and m["STOP_TAGS"] == {} and m["U_TURN_TAGS"] == {}
+          m["TAGS"] == {} and m["HOME"] is None and m["DESTINATIONS"] == []
           and m["BRANCH_LATCH"] == [] and m["BRANCH_DEFAULT"] == "straight")
-    check("...and no speed keys: tracked speeds are the profile's", not any("SPEED" in k or "RPM" in k for k in m))
     check("empty is always offered", "empty" in mission.list_missions())
     tmp = tempfile.mkdtemp()
     with open(os.path.join(tmp, "a.json"), "w") as f:
@@ -53,48 +65,53 @@ def test_empty_and_listing():
             check(f"name {bad!r} refused", True)
 
 
+def test_the_site_table_loads():
+    print("\nmission: missions/line-a.json, the site's RFID tag reference")
+    m = mission.load("line-a")
+    check("home is 0010", m["HOME"]["tag"] == "0010" and m["HOME"]["role"] == "home")
+    check("four destinations, in table order", m["DESTINATIONS"] == ["MRU1", "MRU2", "MRU3", "MRU4"])
+    check("trolley release stops every pass", m["TAGS"]["0020"]["role"] == "always")
+    check("the U-turn is cw at 0.1 m/s", m["TAGS"]["0030"]["direction"] == "cw"
+          and m["TAGS"]["0030"]["approach_mps"] == 0.1)
+    check("the toggle ramps over 2 s and locks out 5 s",
+          m["TOGGLE_TAGS"] == ("0040",) and m["TAGS"]["0040"]["ramp_s"] == 2.0
+          and m["TAGS"]["0040"]["ignore_s"] == 5.0)
+
+
 def test_refusals():
     print("\nmission: refusals")
-    stop = {"tag": "0010", "stop_distance_m": 0.4, "direction": "outbound"}
     refused("a tag written as a number never matches the reader's hex text",
-            base(stop_until_start_button=[dict(stop, tag=10)]), "hex")
-    refused("a stop distance past 5 m is refused",
-            base(stop_until_start_button=[dict(stop, stop_distance_m=9)]), "(0, 5]")
-    refused("a branch tag reused as a station tag is refused",
-            base(branch_latch=[{"entry_tag": "0010", "exit_tag": "0011", "branch": "left"}],
-                 stop_until_start_button=[stop]), "another rule type")
-    refused("a high_speed_mode table (removed 2026-10-02) is refused, not ignored",
-            base(high_speed_mode=[{"entry_tag": "0020", "exit_tag": "0021", "direction": "outbound"}]),
-            "unknown key")
-    refused("a mission speed section (removed 2026-10-02) is refused, not ignored",
-            base(speed={"auto_rpm_high": 2000.0, "speed_switch_accel_decel_s": 3.0}),
-            "unknown key")
+            base([stop(tag=10)]), "hex")
+    refused("a tag of the wrong width is refused", base([stop(tag="010")]), "hex characters")
+    refused("a tag listed twice is refused", base([HOME, stop(tag="0010", label="X")]), "listed twice")
+    refused("a branch tag reused as a stop tag is refused",
+            base([HOME], branch_latch=[{"entry_tag": "0010", "exit_tag": "0011", "branch": "left"}]),
+            "branch_latch")
+    refused("an unknown action is refused", base([dict(TOGGLE, action="slow")]), "action")
+    refused("an unknown role is refused", base([stop(role="sometimes")]), "role")
+    refused("a key from another action is refused", base([dict(TOGGLE, direction="cw")]), "unknown key")
+    refused("a missing key is refused",
+            base([{k: v for k, v in UTURN.items() if k != "max_approach_m"}]), "missing key")
+    refused("a stop distance past 5 m is refused", base([HOME, stop(stop_distance_m=9)]), "(0, 5]")
+    refused("a negative ignore window is refused", base([dict(TOGGLE, ignore_s=-1)]), "[0, 30]")
+    refused("a stop needs a label", base([stop(label=" ")]), "label")
+    refused("two stops with one label are refused",
+            base([HOME, stop(), stop(tag="0120")]), "already")
+    refused("two homes are refused", base([HOME, stop("0011", "home", "Home 2")]), "home stops")
+    refused("destinations without a home are refused", base([stop()]), "need a home")
     refused("a U-turn direction other than cw/ccw is refused",
-            base(u_turn=[{"tag": "0030", "direction": "left"}]), "cw or ccw")
-    refused("route-less, one station tag cannot carry two distances",
-            base(stop_until_start_button=[stop, dict(stop, direction="inbound", stop_distance_m=0.6)]),
-            "two stop")
+            base([dict(UTURN, direction="left")]), "cw or ccw")
+    refused("a U-turn approach faster than slow speed is refused",
+            base([dict(UTURN, approach_mps=5.0)]), "approach_mps")
+    refused("speed toggles with different windows are refused",
+            base([TOGGLE, dict(TOGGLE, tag="0041", ignore_s=3)]), "lockout")
+    refused("a stop shorter than the drives can decelerate is refused",
+            base([HOME, stop(stop_distance_m=0.01)]), "decel")
     refused("an unknown key is refused", base(extra=1), "unknown key")
-    m = mission.parse(base(stop_until_start_button=[stop], u_turn=[{"tag": "0030", "direction": "ccw"}]))
-    check("a route-less station stops by tag alone", m["STOP_TAGS_ANY"] == {"0010": {"stop_distance_m": 0.4}})
-    check("...and the U-turn table is keyed by tag", m["U_TURN_TAGS"] == {"0030": "ccw"})
+    refused("a v1 route document is refused by name, not half-loaded",
+            base(route=[], route_guard={}), "retired v1")
+    m = mission.parse(base([HOME, stop(tag="0110"), UTURN, dict(TOGGLE, tag="00a4")]))
+    check("a lower-case tag loads, normalised to the panel's uppercase", "00A4" in m["TAGS"])
 
 
-def test_speed_toggle_tags_are_their_own_namespace():
-    print("\nmission: profile speed-toggle tags")
-    from agv_core import config
-    saved = config.SPEED_TOGGLE_TAGS
-    config.SPEED_TOGGLE_TAGS = ("0040", "0041")
-    try:
-        refused("a station tag that is also a speed toggle tag is refused",
-                base(stop_until_start_button=[{"tag": "0041", "stop_distance_m": 0.4,
-                                               "direction": "outbound"}]), "speed_toggle_tags")
-        refused("a U-turn tag that is also a speed toggle tag is refused",
-                base(u_turn=[{"tag": "0040", "direction": "cw"}]), "speed_toggle_tags")
-        m = mission.parse(base(u_turn=[{"tag": "0030", "direction": "cw"}]))
-        check("disjoint tags load", m["U_TURN_TAGS"] == {"0030": "cw"})
-    finally:
-        config.SPEED_TOGGLE_TAGS = saved
-
-
-TESTS = [test_empty_and_listing, test_refusals, test_speed_toggle_tags_are_their_own_namespace]
+TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals]
