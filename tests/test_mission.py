@@ -55,6 +55,10 @@ def test_empty_and_listing():
     check("missions/empty.json is plain line following with the U-turn tags only",
           turns == {"0180": "cw", "0190": "ccw"} and m["HOME"] is None and m["HIGH_ZONE"] is None
           and all(r["action"] == "u_turn" for r in m["TAGS"].values()), str(turns))
+    # 2026-10-08 (operator): always branch left - the site missions, not the built-in fallback.
+    check("both site missions branch left at every diverter and merge",
+          m["BRANCH_DEFAULT"] == "left" and mission.load("line-a")["BRANCH_DEFAULT"] == "left"
+          and m["BRANCH_LATCH"] == [] and mission.load("line-a")["BRANCH_LATCH"] == [])
     tmp = tempfile.mkdtemp()
     check("without the file, empty is the built-in one", mission.load("empty", directory=tmp)["TAGS"] == {})
     check("empty is always offered", "empty" in mission.list_missions())

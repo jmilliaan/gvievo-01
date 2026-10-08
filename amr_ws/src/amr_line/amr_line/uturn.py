@@ -14,11 +14,19 @@ Field run 2026-10-08 (tag 0180): the spin handed over to centring the moment the
 tape reached the sensor's edge, centring commanded zero on every tick the tape
 was outside the usable +/-100 mm, and the vehicle stalled with the tape at
 -101 mm until "tape lost while centring" - short of 180 deg. Hence:
-  - the spin keeps going until the tape is within CAPTURE_MM, not merely seen;
+  - the spin keeps going until the tape is near the centre, not merely seen;
   - centring never stops for a missing reading: it turns slowly toward the side
     the tape was last seen, for at most CENTER_LOST_DEG by encoder;
   - centring has a speed floor (CENTER_MIN_FRACTION) so a 150 kg pivot cannot
     stall short of the band on a vanishing P command.
+
+Field run 2026-10-08 (later): handing over to proportional centring at 60 mm
+slowed the last ~30 deg to 20-50 % of the spin speed, and the front wheels stuck
+on the tape's bulge. Now the spin runs at FULL speed until the tape is inside the
+centring band and stops there: near 180 deg the reading moves ~1.75 mm per degree,
+so stopping from the spin speed overshoots ~5 mm and stays in the band. Centring
+is only the correction for a stop outside the band, and never below half the
+spin speed.
 """
 import math
 
@@ -29,13 +37,11 @@ SPIN, CENTER, SETTLE, DONE, FAILED = "spin", "center", "settle", "done", "failed
 # Travel against the commanded direction beyond this means the count sign or
 # wiring is not what the geometry assumes; stop rather than spin on.
 REVERSE_LIMIT_DEG = 20.0
-# The spin hands over to centring only this close to the centre: at the sensor's
-# edge the reading comes and goes, and the spin itself is bringing the tape in.
-CAPTURE_MM = 60.0
-# Centring speed limits, as fractions of the spin speed: a ceiling for control,
-# a floor so the pivot never stalls short of the band.
-CENTER_MAX_FRACTION = 0.5
-CENTER_MIN_FRACTION = 0.2
+# Centring (only a correction after the spin stopped outside the band) speed limits,
+# as fractions of the spin speed: a floor high enough that a 150 kg pivot does not
+# stall on the tape's bulge (field run 2026-10-08), the spin speed as the ceiling.
+CENTER_MAX_FRACTION = 1.0
+CENTER_MIN_FRACTION = 0.5
 # Tape not seen while centring: keep turning toward where it was last seen, at
 # most this far by encoder (or CENTER_LOST_S standing), then fail.
 CENTER_LOST_DEG = 15.0
@@ -147,10 +153,14 @@ class UTurn:
             if not seen:
                 self.lost = True
             elif (self.lost and angle >= config.U_TURN_MIN_DEG
-                  and abs(e_mm) <= CAPTURE_MM
+                  and abs(e_mm) <= config.U_TURN_CENTER_TOL_MM
                   and level is not None
                   and level >= self.start_level - config.U_TURN_LEVEL_TOLERANCE):
-                self.phase, self._last_e = CENTER, e_mm
+                # Inside the band at full spin speed: stop here and settle.
+                self.phase, self._settled_s, self._last_e = SETTLE, 0.0, e_mm
+                return 0.0, 0.0
+            elif seen:
+                self._last_e = e_mm     # the side the tape is on, should the spin overshoot
             if self.phase == SPIN:
                 if angle >= config.U_TURN_MAX_DEG:
                     return self._fail(f"U-turn tape not reacquired within "

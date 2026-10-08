@@ -123,9 +123,9 @@ vehicle is stopped, nothing is running and there is no emergency.
 | no fresh `/output_paths` (0.5 s) | Start refused ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
 | tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | Start refused / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
 
-> **TRIAL ONLY (2026-10-07):** every run takes the RIGHT track at every diverter and merge,
-> whatever the mission's `branch_default` (`amr_line/tape_run.py`, `TRIAL_ALWAYS_BRANCH_RIGHT`).
-> The event log says so at each start. Remove the flag after the trial.
+> **Branching (2026-10-08):** every run takes the LEFT track at every diverter and merge:
+> `branch_default` is `left` in both `missions/line-a.json` and `missions/empty.json` (plain
+> line following), with no branch-latch tags. The RIGHT trial flag is gone.
 
 Speed: two tracked speeds from the profile, cruise `autopilot.auto_rpm`
 (2387 r/min = 0.75 m/s) and slow = `auto_rpm × auto_slow_ratio` (0.5 → 0.375 m/s);

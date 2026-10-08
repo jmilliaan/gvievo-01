@@ -64,7 +64,7 @@ MODULES = [
 # + 18 (2026-10-08): tracked-speed-plan-1. test_config + 8 (the slow-zone keys refused,
 # HIGH ratio / motor limit / curve guard / high ramp bounds); test_mission + 10 (the
 # high_zone block: budget, entry window, refusals; the toggle check became its refusal).
-EXPECTED_CHECKS = 663
+EXPECTED_CHECKS = 664
 
 
 # An exception on a helper thread only prints a traceback by default - the

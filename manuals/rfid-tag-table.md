@@ -20,7 +20,7 @@ One tag id has one meaning per mission. Tags only do three independent things: *
 | `0130` | stop, role `destination` | MRU3 | as MRU1 | 4 s | as MRU1 |
 | `0140` | stop, role `destination` | MRU4 | as MRU1 | 4 s | as MRU1 |
 
-`branch_default` for `line-a` is `right`; no branch-latch tags yet.
+`branch_default` for `line-a` (and `empty`) is `left` (2026-10-08); no branch-latch tags yet.
 
 ## Speed zone tags (in `line-a` since 2026-10-08: shortest straight 10 m, HIGH budget 7.65 m)
 

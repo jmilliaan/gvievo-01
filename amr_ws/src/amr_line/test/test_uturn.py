@@ -129,3 +129,36 @@ def test_a_tape_that_never_comes_back_while_centring_fails_by_angle():
     p.dropouts = set(range(0, 100000))
     p.run()
     assert p.u.phase == uturn.FAILED and "lost while centring" in p.u.reason
+
+
+def test_the_pivot_never_crawls_it_runs_at_spin_speed_then_stops():
+    """Field run 2026-10-08: proportional centring crawled the last ~30 deg and the front
+    wheels stuck on the tape's bulge. The commanded yaw is full spin speed or zero."""
+    p = Pivot("cw")
+    full = uturn.spin_omega(config.AUTO_U_TURN_RPM)
+    seen = set()
+    for tick in range(5000):
+        e = p.reading(tick)
+        left, right = p.u.update(tuple(p.counts), e, START_LEVEL if e is not None else None, DT)
+        if not p.u.active:
+            break
+        _, omega = kinematics.wheels_to_body(left, right)
+        seen.add(round(abs(omega) / full, 3))
+        p.step(left, right)
+    assert p.u.phase == uturn.DONE and centred(p)
+    assert seen <= {0.0, 1.0}, seen
+
+
+def test_a_stop_that_lags_the_command_still_lands_in_the_band():
+    """The drives decelerate after the zero command: model 0.1 s of full-speed lag."""
+    p = Pivot("cw")
+    queue = [(0.0, 0.0)] * 5
+    for tick in range(5000):
+        e = p.reading(tick)
+        cmd = p.u.update(tuple(p.counts), e, START_LEVEL if e is not None else None, DT)
+        if not p.u.active:
+            break
+        queue.append(cmd)
+        p.step(*queue.pop(0))
+    assert p.u.phase == uturn.DONE, p.u.reason
+    assert centred(p), p.reading(-1)

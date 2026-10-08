@@ -1,6 +1,6 @@
 {
   "mission_name": "empty",
-  "branch_default": "straight",
+  "branch_default": "left",
   "branch_latch": [],
   "high_zone": null,
   "tags": [
