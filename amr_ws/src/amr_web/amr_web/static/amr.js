@@ -66,7 +66,8 @@ function rail(st) {
   if (!d) tile('tel-drives', '–', 'no drive status', 'bad');
   else if (d.age_s > FRESH_S) tile('tel-drives', 'STALE', `${num(d.age_s, 1)} s old`, 'bad');
   // both drives in the same state is the normal case: say it once, the rail row is one line
-  else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`, d.operational ? '' : 'warn');
+  // off in standby is normal (powered on demand, 2026-10-08): say why instead of the statuswords
+  else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', (!d.operational && d.link === 'standby' && d.power_reason) ? d.power_reason : (d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`), d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
   tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
   // Scanner fields as the mux applies them: protective stops AUTO, warning 1 x0.5, warning 2 a deceleration stop (factor 0).

@@ -77,7 +77,6 @@ def test_start_refuses_without_each_prerequisite():
         ("no lease", {"authority": None}),
         ("lease without LEASE_LINE", {"lease_allowed": 1}),
         ("no drive report", {"drives_fresh": False}),
-        ("torque off", {"torque_off": True}),
         ("field violated", {"field_clear": False}),
         ("field unknown", {"field_clear": None}),
         ("unusable tape", {"track_ok": False, "track_cause": "track"}),
@@ -419,3 +418,106 @@ def test_the_engine_is_real_not_a_stub():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# ---------------------------------------------------------------------------
+# the pre-move warning (ARMED, 2026-10-08): drives in standby until a Start
+# ---------------------------------------------------------------------------
+
+def warned():
+    return lj.FollowJob(autopilot.LineFollower(), premove_s=2.0, premove_timeout_s=8.0)
+
+
+def test_idle_asks_for_no_power_and_a_start_does_not_need_torque():
+    job = warned()
+    job.tick(inputs(now=100.0, torque_off=True))
+    assert job.state == lj.IDLE and not job.wants_power()
+    assert "torque" not in job.reason, "standby is the normal idle state, not a readiness problem"
+    assert start(job, torque_off=True) == (0.0, 0.0)
+    assert job.state == lj.ARMED and job.wants_power(), job.reason
+
+
+def test_the_warning_runs_its_full_time_and_waits_for_torque():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    assert job.tick(inputs(now=101.5)) == (0.0, 0.0)            # torque already, warning still on
+    assert job.state == lj.ARMED, "moved before the warning had run"
+    job.tick(inputs(now=103.0, torque_off=True))                 # warning done, no torque yet
+    assert job.state == lj.ARMED and "power up" in job.reason
+    job.tick(inputs(now=103.4))
+    assert job.state == lj.RUNNING and job.wants_power()
+
+
+def test_no_torque_within_the_timeout_cancels_the_start():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=108.9, torque_off=True))
+    assert job.state == lj.ARMED
+    job.tick(inputs(now=109.1, torque_off=True))
+    assert job.state == lj.IDLE and not job.wants_power()
+    assert "did not power up" in job.reason and job.refused
+
+
+def test_a_field_trip_during_the_warning_cancels_at_once():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=101.5, field_clear=False))
+    assert job.state == lj.IDLE and "field" in job.reason
+
+
+def test_a_lapsing_prerequisite_during_the_warning_is_debounced_then_cancels():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=101.2, track_ok=False, track_cause="track"))
+    assert job.state == lj.ARMED, "one bad tick cancels nothing"
+    job.tick(inputs(now=101.8, track_ok=False, track_cause="track"))
+    assert job.state == lj.IDLE and "tape" in job.reason
+
+
+def test_reset_and_the_selector_end_the_warning():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=101.5, reset_edge=True))
+    assert job.state == lj.IDLE
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=101.5, panel_auto=False))
+    assert job.state == lj.FAULT, "an explicit takeover ends it like a run"
+
+
+def test_a_hold_waiting_for_start_drops_power_and_resumes_through_the_warning():
+    job = warned()
+    start(job, t=101.0, torque_off=True)
+    job.tick(inputs(now=103.1))
+    assert job.state == lj.RUNNING
+    job.tick(inputs(now=104.0, torque_off=True, field_clear=True))   # E-stop
+    assert job.hold_cause == "estop" and not job.wants_power()
+    job.tick(inputs(now=110.0, torque_off=True))
+    assert job.hold_cause == "estop", "standby is not a second E-stop"
+    job.tick(inputs(now=111.0, torque_off=True, start_edge=True, start_edge_t=110.9))
+    assert job.state == lj.ARMED and job.wants_power()
+    job.tick(inputs(now=112.0))
+    assert job.state == lj.ARMED
+    job.tick(inputs(now=113.1))
+    assert job.state == lj.RUNNING and job.reason == "resumed on Start"
+
+
+def test_an_auto_hold_keeps_power_and_no_warning():
+    job = warned()
+    start(job, t=101.0)
+    job.tick(inputs(now=103.1))
+    job.tick(inputs(now=104.0, torque_off=True, field_clear=False))
+    assert job.hold_cause == "field" and job.wants_power(), "the field's own recovery needs the drives"
+    for t in (105.0, 106.0, 107.1):
+        job.tick(inputs(now=t))
+    assert job.state == lj.RUNNING, "auto-resume does not go through ARMED"
+
+
+def test_a_cancelled_resume_returns_to_its_hold():
+    job = warned()
+    start(job, t=101.0)
+    job.tick(inputs(now=103.1))
+    job.tick(inputs(now=104.0, torque_off=True, field_clear=True))
+    job.tick(inputs(now=111.0, torque_off=True, start_edge=True, start_edge_t=110.9))
+    job.tick(inputs(now=119.5, torque_off=True))
+    assert job.state == lj.HOLD and job.hold_cause == "estop" and "did not power up" in job.reason

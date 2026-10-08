@@ -312,3 +312,69 @@ def test_the_grace_timer_does_not_survive_into_the_next_mission():
     assert n.fsm.ack() and n.fsm.load("m2", len(n.compiled.steps))
     run_for(n, 0.3, torque=True, field=True)  # still not READY, but inside a fresh grace period
     assert n.fsm.state == fsm.READY
+
+
+# -- the pre-move warning (2026-10-08): drives in standby until a Start --------------------
+
+def started(premove_s=2.0):
+    """A run started from READY by the physical Start, with the drives in standby."""
+    n = node(start=False)
+    n._pose = lambda: (0.0, 0.0, 0.0)  # at the route start
+    n.premove_s, n.premove_timeout_s = premove_s, 8.0
+    tick(n, torque=False, field=True)
+    assert n.fsm.state == fsm.READY and not n.drive_power()
+    n._start_edge()
+    return n
+
+
+def state_msg(n):
+    out = {}
+    n._state_pub = SimpleNamespace(publish=lambda m: out.setdefault("m", m))
+    n.manifest = None
+    if not hasattr(n.route, "route_id"):
+        n.route = SimpleNamespace(**vars(n.route), route_id="r", revision=1)
+    n._publish_state()
+    return out["m"]
+
+
+def test_a_start_warns_then_moves_once_the_drives_have_torque():
+    n = started()
+    assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE
+    m = state_msg(n)
+    assert m.premove and m.drive_power
+    run_for(n, 1.0, torque=False, field=True)
+    assert n.phase == ren.PHASE_PREMOVE and n.fsm.state == fsm.EXECUTING, "torque off here is no stop"
+    assert n.sent == [], "no goal during the warning"
+    run_for(n, 0.5, torque=True, field=True)
+    assert n.phase == ren.PHASE_PREMOVE, "the warning runs its full time"
+    run_for(n, 0.8, torque=True, field=True)
+    assert n.sent == ["s1"] and not state_msg(n).premove
+
+
+def test_no_torque_within_the_timeout_holds_for_a_human():
+    n = started()
+    run_for(n, 8.2, torque=False, field=True)
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop" and "did not power up" in n.fsm.reason
+    assert not n.drive_power() and n.sent == []
+
+
+def test_holds_that_wait_for_start_drop_power_and_resume_through_the_warning():
+    n = node()
+    n.premove_s = 2.0
+    tick(n, torque=True, field=True)
+    tick(n, torque=False, wheels=False, field=True)          # the E-stop button
+    assert n.hold_cause == "estop" and not n.drive_power()
+    run_for(n, 1.0, torque=False, field=True)                # standby: torque off on purpose
+    n._start_edge()                                           # no "drives have no torque" refusal
+    assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE and n.drive_power()
+
+
+def test_holds_that_resume_by_themselves_keep_power_and_skip_the_warning():
+    n = node()
+    n.premove_s = 2.0
+    tick(n, torque=True, field=True)
+    tick(n, field=False)
+    tick(n, torque=False, wheels=False)
+    assert n.hold_cause == "field" and n.drive_power()
+    run_for(n, 2.5, torque=True, field=True)
+    assert n.fsm.state == fsm.EXECUTING and n.phase != ren.PHASE_PREMOVE

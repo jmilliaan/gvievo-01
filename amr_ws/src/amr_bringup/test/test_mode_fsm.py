@@ -140,3 +140,19 @@ def test_line_mode_is_admitted_and_an_active_follower_blocks_leaving_it():
     assert fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(panel_manual=False)).ok
     assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(drives_ok=False)).ok
     assert not fsm.admit(fsm.IDLE, fsm.REQ_LINE, cond(commissioning_active=True)).ok
+
+
+def test_drive_standby_is_not_an_emergency():
+    """2026-10-08: the drives are powered only on demand, so a mode change in standby must
+    not read as "the drives have no torque"; STO, a fault or no link still does."""
+    from amr_bringup.readiness import drives_ok
+
+    ready = "Ready to switch on"
+    assert drives_ok(True, "armed", "Operation enabled", "Operation enabled")
+    assert drives_ok(False, "standby", ready, ready)
+    assert not drives_ok(False, "standby", "Switch on disabled", ready), "STO held"
+    assert not drives_ok(False, "standby", ready, "FAULT")
+    assert not drives_ok(False, "fault", ready, ready)
+    assert not drives_ok(False, "disarmed", ready, ready)
+    assert not drives_ok(False, "armed", ready, ready), "armed but not operational: stale or dropped"
+    assert not drives_ok(False, "", ready, ready), "a drive report without a link state"

@@ -171,7 +171,7 @@ class SurveyMoveNode(Node):
         if ls is None or now - self._lease_t > self.input_age or not (ls.allowed & LEASE_MANUAL):
             return "no manual lease from the supervisor"
         if now - self._drives_t > self.input_age or not self._drives_ok:
-            return "drives have no torque (E-stop?)"
+            return "drives have no torque (Manual Arm DI08 off, or E-stop)"
         if self._odom is None or now - self._odom_t > self.input_age:
             return "no odometry"
         return ""

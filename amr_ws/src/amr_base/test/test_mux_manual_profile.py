@@ -107,3 +107,27 @@ def test_line_steering_slews_at_line_alpha_max_not_the_nav2_limit():
     m.line_alpha_max = 3.0
     _run(m, gating.Selection(gating.FOLLOW, 0.0, 0.3, "follow", 0), 5)
     assert m._wz == pytest.approx(0.4 * 0.1)  # Nav2 keeps its gentle yaw ramp
+
+
+def test_line_decelerates_at_line_d_max_and_others_keep_d_max():
+    """2026-10-08: a measured stop / late high-zone exit from 0.85 m/s must not be
+    stretched by the Nav2 d_max 0.5 m/s^2. LINE alone decelerates at line_d_max;
+    acceleration stays at a_max for everyone."""
+    n = _node()
+    n.line_d_max = 1.0
+    n._v = 0.85
+    _run(n, gating.Selection(gating.LINE, 0.5, 0.0, "line", 0), 5)  # 0.1 s
+    assert n._v == pytest.approx(0.85 - 1.0 * 0.1)
+    m = _node()
+    m.line_d_max = 1.0
+    m._v = 0.85
+    _run(m, gating.Selection(gating.FOLLOW, 0.5, 0.0, "follow", 0), 5)
+    assert m._v == pytest.approx(0.85 - 0.5 * 0.1)  # Nav2 keeps d_max
+    up = _node()
+    up.line_d_max = 1.0
+    _run(up, gating.Selection(gating.LINE, 0.85, 0.0, "line", 0), 5)
+    assert up._v == pytest.approx(0.15 * 0.1)  # LINE still accelerates at a_max
+    off = _node()  # line_d_max 0 = no override (today's behaviour)
+    off._v = 0.85
+    _run(off, gating.Selection(gating.LINE, 0.5, 0.0, "line", 0), 5)
+    assert off._v == pytest.approx(0.85 - 0.5 * 0.1)

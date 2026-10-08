@@ -8,7 +8,7 @@
 # be exactly 1..3: renumber them and leaving LINE mode is either wrongly
 # refused, or wrongly ALLOWED while the vehicle is still moving. Append only.
 uint8 IDLE=0            # layer up, not armed; safe to swap the layer out
-uint8 ARMED=1           # armed and waiting for a physical Start edge
+uint8 ARMED=1           # pre-move warning after a Start: drives powering, alarm horn on
 uint8 RUNNING=2         # following tape
 uint8 HOLD=3            # stopped, progress retained; see hold_cause
 uint8 DONE=4            # run finished or stopped itself; Reset clears
@@ -47,7 +47,7 @@ string mission              # "" = plain line following
 string station              # route stage: current station id
 string next_station
 string branch_intent        # straight | left | right
-bool slow_zone              # running at auto_slow_rpm: junction slow zone or RFID speed toggle
+bool slow_zone              # junction slow zone (branch_latch slow_speed): no HIGH through it
 string uturn_phase          # "" | stopping | spin | center | settle
 string last_tag             # last RFID encounter and what the engine did with it
 string last_tag_action
@@ -59,3 +59,12 @@ string destination          # the job's destination stop label; "" = none (spent
 bool at_home                # last tag read was Home and the wheels have not left it
 string home_detail          # why not at Home, for the readiness list
 string job_result           # how the last run ended at Home: "MRU2 served" | "... MISSED ..."
+
+# Tracked speeds (tracked-speed-plan-1, 2026-10-08). APPEND ONLY.
+bool high_speed             # HIGH granted (RFID high zone), else NORMAL
+string speed_reason         # why: zone entry, budget used, late exit, curve guard, hold...
+
+# Drive power (2026-10-08). APPEND ONLY. What the follower asks of drive_node's power
+# policy under AUTO: ARMED (the pre-move warning), RUNNING, and holds that resume by
+# themselves. False when idle and in holds that wait for a physical Start.
+bool drive_power

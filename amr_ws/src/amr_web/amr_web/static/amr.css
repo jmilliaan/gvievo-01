@@ -536,7 +536,16 @@ label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem
 .seg button.tool { min-height:3.4rem; padding:.5rem 1.6rem; font-size:1.3rem; }
 .seg button.tool + button.tool { margin-left:-1px; }
 .home-nav-hint { color:var(--ink-2); font-size:1.2rem; }
-.home-state { border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; }
+.home-state { min-width:0; border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; }
+/* Job and status side by side, the job wider (2026-10-08) */
+.home-top { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:.8rem; }
+.home-job { border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; display:flex; flex-direction:column; min-width:0; }
+.home-job > span { font:500 1rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
+.home-job > b { font:700 2.4rem/1.1 var(--disp); letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.home-job > i { font-style:normal; color:var(--ink-2); font-size:1.3rem; overflow-wrap:anywhere; }
+.home-job.warn { border-left:3px solid var(--hazard); background:var(--hazard-wash); }
+.home-job.warn > b { color:var(--hazard-ink); }
+.home-job.off > b { color:var(--ink-3); }
 .home-big { font:700 3rem/1.02 var(--disp); letter-spacing:-.02em; overflow-wrap:anywhere; }
 .home-big.warn { color:var(--hazard-ink); }
 .home-big.error { color:var(--stop); }

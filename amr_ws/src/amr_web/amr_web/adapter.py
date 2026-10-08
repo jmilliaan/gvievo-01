@@ -480,7 +480,10 @@ class RosAdapter(Node):
 
     def _on_drives(self, m: DriveStatus) -> None:
         with self._lock:
-            self._drives = {"operational": bool(m.operational), "left": m.left_state, "right": m.right_state}
+            self._drives = {
+                "operational": bool(m.operational), "left": m.left_state, "right": m.right_state,
+                "link": m.link_state, "power_reason": m.power_reason,
+            }
             self._drives_t = self._now()
 
     def _on_mux(self, m: MuxState) -> None:

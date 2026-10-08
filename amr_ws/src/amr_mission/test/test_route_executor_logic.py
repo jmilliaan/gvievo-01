@@ -9,7 +9,7 @@ import pytest
 from amr_navigation.compiler import ROTATE, STRAIGHT, CompiledStep
 from test_goal_attempts import Client, Handle, Result
 
-from amr_interfaces.msg import LocalizationState, MotionPermit, PanelState, WheelStates
+from amr_interfaces.msg import DriveStatus, LocalizationState, MotionPermit, PanelState, WheelStates
 from amr_mission import goal_attempts as ga
 from amr_mission import route_executor_node as ren
 from amr_mission import run_fsm as fsm
@@ -64,6 +64,9 @@ def make_node(steps, passes=1):
     n._pose = lambda: (0.0, 0.0, 0.0)
     n.auto_resume_enabled, n.auto_clear_s, n.auto_resume_estop = True, 2.0, False
     n.safety_window, n.drives_age, n.field_index, n.abort_retries = 1.0, 0.5, 0, 3
+    # No warning by default (2026-10-08): these tests are about what follows it. The
+    # pre-move phase still needs a fresh drive report with torque - see drives().
+    n.premove_s, n.premove_timeout_s, n._premove_since = 0.0, 8.0, None
     n._init_hold_state()
     n._reset_step_state()
     n.wheels(0.0, valid=True)
@@ -78,6 +81,16 @@ def _wheels(self, vel, valid=True):
 
 
 ren.RouteExecutor.wheels = _wheels
+
+
+def _drives(self, torque=True):
+    m = DriveStatus()
+    m.operational = torque
+    m.left_state = m.right_state = "Operation enabled" if torque else "Ready to switch on"
+    self._on_drives(m)
+
+
+ren.RouteExecutor.drives = _drives
 
 
 def rotate(angle, sid="t1"):
@@ -166,7 +179,9 @@ def test_r08_resume_waits_for_the_interrupted_goal_then_faults_after_the_bound()
     n._interrupt("paused")
     n.fsm.prepare_resume(True, "")
     n._start_edge()
-    assert n.fsm.state == fsm.EXECUTING
+    assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE
+    n.drives(True)
+    n._execute(n.clock[0])  # the warning ends: the drives have torque
     n._execute(n.clock[0])
     assert n.phase == ren.PHASE_INIT and len(c.sent) == 1  # no replacement goal yet
     h = Handle()
@@ -261,6 +276,8 @@ def test_q06_acknowledged_fault_keeps_the_unresolved_goal_barrier_across_a_new_r
     n._start_edge()
     n.clock[0] += 6.0  # the cancellation bound passes with the goal's acceptance still pending
     n._loc_t = n._panel_t = n.clock[0]
+    n.drives(True)
+    n._execute(n.clock[0])  # the pre-move warning ends
     n._execute(n.clock[0])
     assert n.fsm.state == fsm.FAULT and "not terminated" in n.fsm.reason
     assert n.fsm.ack() if hasattr(n.fsm, "ack") else n.fsm.acknowledge()

@@ -30,7 +30,7 @@ on port 5001, and one *mode layer* at a time.
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
 | Manual | pendant 0.50 m/s, web jog 0.40 m/s, only under selector MANUAL |
-| Auto | tracked 0.75 m/s (slow = `auto_slow_ratio` 0.5 → 0.375: slow zone, RFID speed toggle), trackless 0.60 m/s |
+| Auto | tracked NORMAL 0.50 m/s, HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an RFID high zone; trackless 0.60 m/s |
 | Tests | `tests/run_all.py` 531 checks + `pytest` per ROS package, no hardware |
 
 ---
@@ -273,8 +273,12 @@ move in the profile.
   panel shows; stop positions, the 2 s speed change, the tape-end overshoot and the
   pivot reacquisition angle are settled on the floor.
 - **No floor run of the tape follower yet** (LINE acceptance section 4).
-- **The nanoScan3 field set is not validated for 0.85 m/s**
-  (`lidar.zones_validated` false): long-straight boost stays capped.
+- **0.85 m/s (tracked HIGH) runs with no software gate, unvalidated** (operator
+  decision 2026-10-08, manuals/tracked-speed-plan-1-no-slam.md D2): the nanoScan3
+  field set (`lidar.zones_validated` false) and the STO stopping distance from 0.85 m/s
+  are a floor check before the first HIGH run. There is no FX3 encoder speed monitoring
+  yet. HIGH needs a mission `high_zone`; `line-a` has none until the shortest straight
+  is surveyed, so it runs at NORMAL.
 - **`6064h` scaling is unverified** beyond the commissioning runs.
 - **Backlash is unmeasured.** The encoders are motor-side of a 30:1 gearhead.
 - **RFID reader is still on the US region (902.75–927.25 MHz)** and every read so far reports channel 0;

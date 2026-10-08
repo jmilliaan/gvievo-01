@@ -36,16 +36,16 @@ from amr_line import branch
 from amr_line import runtime as config
 
 
-def predicted_zeta(k_ratio=None, kd=None, slow=False):
+def predicted_zeta(k_ratio=None, kd=None, high=False):
     """Closed-loop damping for the current gains. Speed-independent by design.
 
-    slow=True reports the slow-zone pair instead, which is a different operating
-    point and wants its own number rather than being assumed to match.
+    high=True reports the HIGH (straight) pair instead of the NORMAL (corner)
+    pair, which is a different operating point and wants its own number.
     """
     if k_ratio is None:
-        k_ratio = config.SLOW_K_RATIO if slow else config.K_RATIO
+        k_ratio = config.HIGH_K_RATIO if high else config.K_RATIO
     if kd is None:
-        kd = config.SLOW_KD if slow else config.KD
+        kd = config.HIGH_KD if high else config.KD
     k = k_ratio
     d = kd
     ls = config.SENSOR_LOOKAHEAD_M
@@ -94,11 +94,6 @@ class LineFollower:
         # The derivative is only meaningful between two such samples - see the
         # discontinuity handling in update().
         self._track_continuous = False
-        # Live gains, blended toward whichever set the zone calls for. None
-        # means "not primed yet" - the first tick snaps to the target rather
-        # than sliding up to it from nowhere.
-        self._k_now = None
-        self._kd_now = None
         # Deceleration rate for a station stop, r/min per second, or None for
         # the ordinary profile ramp. Set once at the tag - see begin_measured_stop.
         self._stop_rate = None
@@ -232,44 +227,54 @@ class LineFollower:
 
         return -(p + i + d), p, i, d
 
-    def _blend_gains(self, slow, dt):
-        """The gains for this tick, eased toward the zone's pair.
+    def _gains(self):
+        """The gains for this tick, interpolated on the CURRENT base speed.
 
-        A zone boundary is a tag, and a tag is wherever somebody stuck it - not
-        necessarily where the vehicle has finished converging. Stepping the gain
-        there changes steering authority in one tick, which is the second of the
-        two breaks visible in run 0020. The speed change across the same
-        boundary is already shaped by the ramp; this gives the gains the same
-        treatment, with the same first-order form used for the D filter and the
-        speed reduction.
+        tracked-speed-plan-1 (2026-10-08): NORMAL (auto_rpm) is the corner speed and
+        carries the corner pair k_ratio/kd; HIGH (auto_high_rpm) is the straight speed
+        and carries high_k_ratio/high_kd. Between them the gains follow the speed, not
+        a timer: a 2 s HIGH -> NORMAL ramp must not hold the corner gain near 0.85 m/s
+        (Kp = K*v, and the binding limit on K is how fast 6083h slews the wheel
+        difference - large K diverges near 0.8 m/s), and no gain/speed pair is ever
+        reachable that was not tuned at one end. Below NORMAL (start, stops, the
+        U-turn creep) it is the corner pair. This replaces the 2026-10-07 time blend
+        across a slow-zone tag (run 0020): a tag step in speed is already shaped by
+        the ramp, and the gain now rides the same ramp.
         """
-        k_t = config.SLOW_K_RATIO if slow else config.K_RATIO
-        kd_t = config.SLOW_KD if slow else config.KD
-        tau = config.GAIN_BLEND_S
-        if self._k_now is None or tau <= 0:
-            self._k_now, self._kd_now = k_t, kd_t
-            return k_t, kd_t
-        alpha = dt / (tau + dt)
-        self._k_now += alpha * (k_t - self._k_now)
-        self._kd_now += alpha * (kd_t - self._kd_now)
-        return self._k_now, self._kd_now
+        lo, hi = config.AUTO_RPM, config.AUTO_HIGH_RPM
+        if hi <= lo:
+            return config.K_RATIO, config.KD
+        t = _clamp((self._v_rpm - lo) / (hi - lo), 0.0, 1.0)
+        return (config.K_RATIO + t * (config.HIGH_K_RATIO - config.K_RATIO),
+                config.KD + t * (config.HIGH_KD - config.KD))
 
-    def _ramp(self, target_rpm, dt, accel_limit=None, rate_limit=None):
+    def _ramp(self, target_rpm, dt, accel_limit=None, rate_limit=None, no_jerk=False):
         """Jerk-limited approach to target_rpm. This is the whole S-curve.
 
         accel_limit overrides the profile's ramp for one caller only: a station
         stop, which has to arrive at rest after a set distance rather than at the
         profile's usual rate.
 
-        rate_limit (2026-10-08, mission speed toggle ramp_s) only ever SLOWS the
+        rate_limit (2026-10-08, autopilot.high_ramp_s) only ever SLOWS the
         profile's ramp, and keeps its S-curve taper: a speed change spread over
         the time the site asked for, never a harder one.
+
+        no_jerk (2026-10-08, with accel_limit): a late HIGH -> NORMAL exit at a zone
+        tag or a curve-guard trip. The deceleration is applied at once rather than
+        built at the jerk limit: building 1.0 m/s^2 at 4000 r/min/s^2 takes 0.8 s and
+        ~0.2 m more than the 0.5 m an outer-tag exit has before the corner.
         """
         limit = config.RAMP_ACCEL_RPM_S if accel_limit is None else accel_limit
         if accel_limit is None and rate_limit is not None and rate_limit > 0:
             limit = min(limit, rate_limit)
         err = target_rpm - self._v_rpm
         a_want = _clamp(err / dt, -limit, limit)
+        if no_jerk:
+            self._a_rpm_s = a_want
+            self._v_rpm += a_want * dt
+            if (err > 0 and self._v_rpm > target_rpm) or (err < 0 and self._v_rpm < target_rpm):
+                self._v_rpm, self._a_rpm_s = target_rpm, 0.0
+            return self._v_rpm
         if accel_limit is None:
             # The tail of the S (2026-10-07): ask only for the acceleration that,
             # ramped back down at the jerk limit, lands on target: a^2/2j + a*dt/2 = |dv|,
@@ -347,7 +352,7 @@ class LineFollower:
     # ---- the tick --------------------------------------------------------
 
     def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT,
-               slow=False, cruise_rpm=None, change_rate=None):
+               high=False, cruise_rpm=None, change_rate=None, urgent_rate=None):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
@@ -355,43 +360,27 @@ class LineFollower:
         dt           : measured seconds since the previous update()
         running      : False ramps down but keeps steering while it decelerates
         choice       : standing branch order (branch.STRAIGHT/LEFT/RIGHT)
-        slow         : a slow zone is latched (branch.BranchEngine.slow)
+        high         : HIGH is granted (amr_line.speed_zone): aim at AUTO_HIGH_RPM
         cruise_rpm   : a lower ceiling for this tick (the U-turn approach creep);
                        never raises the speed above the zone's cruise
-        change_rate  : r/min/s for a commanded speed change (speed toggle ramp_s);
-                       only slows the profile ramp. None = the profile's ramp
+        change_rate  : r/min/s for a move BETWEEN the two cruise speeds
+                       (high_ramp_s); only slows the profile ramp. Below NORMAL
+                       (starting, stopping) the profile's ramp applies
+        urgent_rate  : r/min/s, a late drop from HIGH to NORMAL: constant, no jerk
+                       build-up (see _ramp no_jerk)
 
         Returns (left_rpm, right_rpm, diag).
         """
-        # A slow zone changes two things: the speed the ramp is aimed at, and
-        # the steering gains.
-        #
-        # The speed is the obvious one and the gains are the one that actually
-        # makes a corner. Cross-track error on a curve settles at
-        #
-        #     e_ss = kappa / K_RATIO
-        #
-        # in which SPEED DOES NOT APPEAR - it cancels, because Kp = K_RATIO*v
-        # and holding a curve needs omega = v*kappa. Slowing down therefore buys
-        # nothing at all for cornering; it only makes the error develop more
-        # slowly. Run 0018 is the evidence: it lost the tape on a ~0.5 m U-turn
-        # while already down at 441 r/min, because 0.5 m at K_RATIO 11.3 needs
-        # 177 mm of error to hold and the sensor stops at 100 mm.
-        #
-        # So the zone carries its own K_RATIO/KD. This is also the right place
-        # for a high gain: the binding limit on K_RATIO is how fast 6083h will
-        # slew the wheel DIFFERENCE, and a lower speed needs proportionally less
-        # yaw rate for the same curvature, so the headroom is largest exactly
-        # where the tight corners are.
-        #
-        # The switch is a step, not a ramp. It lands at the entry tag, which is
-        # on the straight before a diverter where the error is small, so the
-        # step in Kp*e is small with it - a few hundredths of a rad/s.
-        # Two tracked speeds (2026-10-02): cruise, and the slow zone.
-        cruise = config.AUTO_SLOW_RPM if slow else config.AUTO_RPM
+        # Two tracked speeds (2026-10-08): NORMAL (auto_rpm, corners) by default,
+        # HIGH (auto_high_rpm, straights) only while the high zone grants it. Corner
+        # tracking is a GAIN question, not a speed one - steady error on a curve is
+        # kappa / K_RATIO with no v in it (Kp = K_RATIO*v, holding a curve needs
+        # omega = v*kappa), so run 0018 lost a 0.5 m U-turn at 441 r/min with K 11.3.
+        # Hence the corner pair at NORMAL and _gains() riding the speed.
+        cruise = config.AUTO_HIGH_RPM if high else config.AUTO_RPM
         if cruise_rpm is not None:
             cruise = min(cruise, max(0.0, cruise_rpm))
-        k_ratio, kd = self._blend_gains(slow, dt)
+        k_ratio, kd = self._gains()
         dt = _clamp(dt if dt and dt > 0 else config.DT_NOMINAL_S,
                     config.DT_MIN_S, config.DT_MAX_S)
 
@@ -467,7 +456,12 @@ class LineFollower:
         if running:
             self._stop_rate = None
         rate = self._stop_rate if not running else None
-        v_base = self._ramp(target, dt, rate, change_rate if running else None)
+        if running and urgent_rate and target < self._v_rpm:
+            v_base = self._ramp(target, dt, accel_limit=urgent_rate, no_jerk=True)
+        else:
+            # The comfort rate only between the cruise speeds: from rest, the profile's.
+            between = running and min(self._v_rpm, target) >= config.AUTO_RPM - 1.0
+            v_base = self._ramp(target, dt, rate, change_rate if between else None)
         red = self._reduce_speed(e_m if e_m is not None else 0.0, dt)
         left, right, scale = self._to_wheels(max(v_base - red, 0.0), self._omega)
 
@@ -486,10 +480,10 @@ class LineFollower:
             "n_tracks": n_tracks,
             "guard": guard,
             "branch": choice,
-            "slow": bool(slow),
+            "high": bool(high),
             # Which gain set produced this row. The header line records both
             # sets, but they now vary WITHIN a run, so the row has to say.
             "k_used": k_ratio,
-            "speed_mode": "slow" if slow else "normal",
+            "speed_mode": "high" if high else "normal",
             "speed_target_rpm": target,
         }

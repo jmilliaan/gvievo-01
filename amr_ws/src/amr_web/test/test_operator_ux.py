@@ -480,6 +480,15 @@ def test_home_shows_speed_rfid_and_line_tiles_and_loads_no_mission(tmp_path):
     assert "/static/linetrack.js" in body, "the RFID 'reading now' rule is shared, not copied"
 
 
+def test_home_shows_the_job_beside_the_status_and_cannot_set_it(tmp_path):
+    """2026-10-08: the job is shown on Home, wider than the status block; set on Run tracked."""
+    client, _ = app_for(merged(), tmp_path)
+    body = client.get("/home").get_data(as_text=True)
+    top = body.index('class="home-top"')
+    assert top < body.index('id="home-job"') < body.index('id="home-line"')
+    assert "/api/line/mission" not in body and "<select" not in body
+
+
 def test_the_adapter_reports_measured_wheel_speed_as_body_speed(monkeypatch):
     """/wheel_states_ui is the measured 606Ch feedback; v is the mean of the two rims."""
     import threading

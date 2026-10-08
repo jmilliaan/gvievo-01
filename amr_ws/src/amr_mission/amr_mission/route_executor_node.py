@@ -42,6 +42,14 @@ itself is a BLOCKED hold with a cause, not a FAULT:
 A hold resumes once every resume check (on the segment, wheels still, ...), drives with
 torque and a clear protective field have held for auto_resume_clear_s.
 
+Pre-move warning (2026-10-08). The drives sit in standby (no power) while nothing asks
+for them. Every Start - a new run from READY, or a resume of a PAUSED/BLOCKED run - goes
+EXECUTING in PHASE_PREMOVE: RunState.drive_power asks drive_node for power, RunState.premove
+sounds the panel's alarm horn, and no goal is sent and no permit given until premove_s has
+passed AND the drives report torque. Without torque within premove_timeout_s the run holds
+(estop: Start again once the safety chain is reset). Auto-resumed holds keep their power and
+skip the warning: nobody pressed anything.
+
 Prerequisites are debounced (operator decision 2026-09-20): a prerequisite must FAIL
 CONTINUOUSLY for prereq_grace_s before it faults a run or unreadies a loaded mission, so one
 dropped frame is not a fault. This does not extend motion authority - the mux enforces panel,
@@ -56,6 +64,7 @@ import threading
 
 import rclpy
 from agv_core import alarms
+from agv_core import config as vehicle_config
 from amr_navigation.compiler import ARC, ROTATE, CompiledStep, wrap
 from amr_navigation.route import VEHICLE_ARC_W_MAX
 from amr_navigation.validate import load_dynamic, load_keepout, validate
@@ -105,7 +114,7 @@ RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
 
-PHASE_INIT, PHASE_GOAL, PHASE_SETTLE = "init", "goal", "settle"
+PHASE_INIT, PHASE_GOAL, PHASE_SETTLE, PHASE_PREMOVE = "init", "goal", "settle", "premove"
 
 
 def _yaw(q) -> float:
@@ -202,6 +211,9 @@ class RouteExecutor(Node):
         self.declare_parameter("drives_age_limit_s", 0.5)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]: protective field
         self.declare_parameter("controller_abort_retries", 3)
+        # The pre-move warning after a Start (module docstring); the profile's timing block.
+        self.declare_parameter("premove_s", float(vehicle_config.AUTO_START_DELAY_S))
+        self.declare_parameter("premove_timeout_s", float(vehicle_config.PREMOVE_TIMEOUT_S))
         # R08: bound on waiting for a goal's acceptance, and for an obsolete (cancelled) goal to
         # report terminal before a replacement goal may be issued.
         self.declare_parameter("goal_accept_timeout_s", 5.0)
@@ -237,6 +249,9 @@ class RouteExecutor(Node):
         self.auto_resume_estop = bool(p("auto_resume_estop").value)
         self.safety_window = float(p("safety_window_s").value)
         self.drives_age = float(p("drives_age_limit_s").value)
+        self.premove_s = max(0.0, float(p("premove_s").value))
+        self.premove_timeout_s = max(self.premove_s, float(p("premove_timeout_s").value))
+        self._premove_since: float | None = None
         self.field_index = int(p("field_output_index").value)
         self.abort_retries = int(p("controller_abort_retries").value)
         self._init_hold_state()
@@ -619,14 +634,14 @@ class RouteExecutor(Node):
                 gate_ok, why = False, pre
             if self.fsm.start(self._auto(), gate_ok, why):
                 self._reset_step_state()
+                self._begin_premove()
             self._log_state()
         elif self.fsm.state in (fsm.PAUSED, fsm.BLOCKED):
             if self.fsm.state == fsm.BLOCKED and not self.fsm.resume_prepared and self._auto():
                 # a hold continues on Start alone (operator decision 2026-09-19: after the E-stop
                 # button, Start without a Resume click) when every resume check holds right now
+                # No torque check: the drives are in standby until this Start powers them.
                 ok, why = self._resume_checks()
-                if ok and self._torque_off(self._now()):
-                    ok, why = False, "drives have no torque"
                 if not ok:
                     self.fsm.reason = f"Start ignored: {why}"
                     self._log_state()
@@ -641,9 +656,42 @@ class RouteExecutor(Node):
                     self._log_state()
                     return
             if self.fsm.start(self._auto(), True):
-                self.phase = PHASE_INIT
                 self.hold_cause, self._auto_since = "", None
+                self._begin_premove()
             self._log_state()
+
+    def _begin_premove(self) -> None:
+        self.phase, self._premove_since = PHASE_PREMOVE, self._now()
+        self.fsm.reason = f"{self.fsm.reason}: warning, moving in {self.premove_s:.1f} s"
+
+    def _premove_tick(self, now: float) -> None:
+        """EXECUTING before the first goal after a Start: alarm horn, power asked for. Go once
+        the warning has run and the drives have torque; hold (estop) if they never do."""
+        waited = now - (self._premove_since if self._premove_since is not None else now)
+        drives_fresh = self._drives_t is not None and now - self._drives_t <= self.drives_age
+        if waited >= self.premove_s and drives_fresh and not self._torque_off(now):
+            self.phase, self._premove_since = PHASE_INIT, None
+            self.fsm.reason = f"moving: {self.fsm.progress()}"
+            return
+        if waited >= self.premove_timeout_s:
+            self._premove_since = None
+            self._hold(
+                "estop",
+                f"drives did not power up within {self.premove_timeout_s:.0f} s "
+                "(safety chain open? release the E-stop, Reset, then Start)",
+            )
+
+    def drive_power(self) -> bool:
+        """RunState.drive_power: what this run asks of drive_node's power policy. EXECUTING
+        (the pre-move warning included), and BLOCKED holds that keep their power: those that
+        resume by themselves, and a pending hold, whose torque reading is its evidence."""
+        state = self.fsm.state
+        if state == fsm.EXECUTING:
+            return True
+        if state != fsm.BLOCKED:
+            return False
+        auto = self.auto_resume_enabled and self.hold_cause in self._auto_causes()
+        return auto or self.hold_cause == "pending"
 
     def _resume_checks(self) -> tuple[bool, str]:
         pre = self._prereqs()
@@ -932,7 +980,7 @@ class RouteExecutor(Node):
                     self.fsm.abort("manual takeover: selector left AUTO")
                     self._interrupt("manual takeover")
                 elif self._torque_off(now) and (
-                    state == fsm.EXECUTING
+                    (state == fsm.EXECUTING and self.phase != PHASE_PREMOVE)
                     or (state == fsm.BLOCKED and self.hold_cause not in ("field", "estop"))
                 ):
                     # the safety chain took the torque: hold, don't fault (auto-resume plan);
@@ -946,7 +994,12 @@ class RouteExecutor(Node):
                         # a momentary lapse while waiting must not throw the loaded mission away
                         if held:
                             self.fsm.unready(pre)
-                    elif self._wheel_prereq(pre) and state == fsm.EXECUTING and self.auto_resume_enabled:
+                    elif (
+                        self._wheel_prereq(pre)
+                        and state == fsm.EXECUTING
+                        and self.phase != PHASE_PREMOVE  # nothing moves yet: debounced below
+                        and self.auto_resume_enabled
+                    ):
                         # stop now, WITHOUT the grace period: losing wheel feedback while moving
                         # is stopped at once and recovers by itself. The drive report (10 Hz)
                         # then says within safety_window_s whether this was the safety chain (a
@@ -1023,6 +1076,9 @@ class RouteExecutor(Node):
         pose = self._pose()
         if st is None or pose is None:
             self._fault("no step or no pose", "EXEC_PREREQ_LOST")
+            return
+        if self.phase == PHASE_PREMOVE:
+            self._premove_tick(now)
             return
         if self.phase == PHASE_INIT:
             stale = self.goals.obsolete_outstanding()
@@ -1319,6 +1375,8 @@ class RouteExecutor(Node):
             else (self.fault_code if self.fsm.state == fsm.FAULT else "")
         )
         m.auto_resume = blocked and self.auto_resume_enabled and self.hold_cause in self._auto_causes()
+        m.drive_power = self.drive_power()
+        m.premove = self.fsm.state == fsm.EXECUTING and self.phase == PHASE_PREMOVE
         pose = self._pose()
         if pose is not None:
             m.pose_valid, m.pose_x, m.pose_y, m.pose_yaw = True, pose[0], pose[1], pose[2]

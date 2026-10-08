@@ -8,8 +8,8 @@ is ACTED ON, given the row's ignore window and the job's destination:
     ignore window   after an acted-on read the same tag is ignored for ignore_s.
                     A stop's window restarts at departure: a vehicle parked for
                     ten minutes has outlived any window measured from the read.
-                    Speed toggles keep their own group-wide lockout
-                    (speed_toggle.SpeedToggle), so they are not windowed here.
+                    High-zone tags are windowed like any other, with at most
+                    1 s (agv_core.mission): one corner reads the outer id twice.
     destination     a destination stop applies only to the job's destination,
                     and only until it has been served once - the same MRU tags are
                     passed again on the way back from the U-turn. Reaching the

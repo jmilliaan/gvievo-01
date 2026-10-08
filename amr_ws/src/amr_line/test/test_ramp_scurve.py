@@ -38,7 +38,7 @@ def profile(start_rpm, target_rpm):
 
 
 @pytest.mark.parametrize("start,target", [
-    (0.0, "AUTO_RPM"), ("AUTO_RPM", "AUTO_SLOW_RPM"), ("AUTO_SLOW_RPM", "AUTO_RPM"), ("AUTO_RPM", 0.0)])
+    (0.0, "AUTO_RPM"), ("AUTO_RPM", "AUTO_HIGH_RPM"), ("AUTO_HIGH_RPM", "AUTO_RPM"), ("AUTO_RPM", 0.0)])
 def test_jerk_limited_at_both_ends(start, target):
     s = getattr(vehicle, start) if isinstance(start, str) else start
     t = getattr(vehicle, target) if isinstance(target, str) else target
@@ -66,19 +66,19 @@ def test_measured_station_stop_keeps_its_constant_rate():
 
 def _ramp_rpm(rate_limit):
     f = autopilot.LineFollower()
-    f._v_rpm, f._a_rpm_s = vehicle.AUTO_RPM, 0.0
+    f._v_rpm, f._a_rpm_s = vehicle.AUTO_HIGH_RPM, 0.0
     v = [f._v_rpm]
     for _ in range(int(10.0 / DT)):
-        v.append(f._ramp(vehicle.AUTO_SLOW_RPM, DT, rate_limit=rate_limit))
-        if v[-1] == vehicle.AUTO_SLOW_RPM and f._a_rpm_s == 0.0:
+        v.append(f._ramp(vehicle.AUTO_RPM, DT, rate_limit=rate_limit))
+        if v[-1] == vehicle.AUTO_RPM and f._a_rpm_s == 0.0:
             break
     return v
 
 
 def test_change_rate_only_ever_slows_the_profile_ramp():
-    """The speed toggle's ramp_s (2026-10-08): None and a faster rate are the profile ramp."""
+    """high_ramp_s (2026-10-08): None and a faster rate are the profile ramp."""
     assert _ramp_rpm(None) == _ramp_rpm(10 * vehicle.RAMP_ACCEL_RPM_S)
-    full = vehicle.AUTO_RPM - vehicle.AUTO_SLOW_RPM
+    full = vehicle.AUTO_HIGH_RPM - vehicle.AUTO_RPM
     slow = _ramp_rpm(full / 2.0)
     secs = (len(slow) - 1) * DT
     assert 2.0 <= secs <= 2.6, f"a 2 s change took {secs:.2f} s"
@@ -94,3 +94,16 @@ def test_cruise_ceiling_never_raises_the_speed():
     assert d["speed_target_rpm"] == vehicle.AUTO_RPM
     _, _, d = f.update(sensor, 0.0, DT, True, cruise_rpm=300.0)
     assert d["speed_target_rpm"] == 300.0
+
+
+def test_an_urgent_drop_has_no_jerk_build_up():
+    """A late high-zone exit (2026-10-08): the full rate from the first tick, constant,
+    and it lands on NORMAL without overshoot."""
+    f = autopilot.LineFollower()
+    f._v_rpm, f._a_rpm_s = vehicle.AUTO_HIGH_RPM, 0.0
+    rate = 0.95 * vehicle.DECEL_RPM_S
+    v1 = f._ramp(vehicle.AUTO_RPM, DT, accel_limit=rate, no_jerk=True)
+    assert vehicle.AUTO_HIGH_RPM - v1 == pytest.approx(rate * DT)
+    for _ in range(100):
+        v = f._ramp(vehicle.AUTO_RPM, DT, accel_limit=rate, no_jerk=True)
+    assert v == vehicle.AUTO_RPM and f._a_rpm_s == 0.0

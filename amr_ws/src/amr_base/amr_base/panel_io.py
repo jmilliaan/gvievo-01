@@ -46,6 +46,7 @@ class PanelFrame:
     comms_ok: bool
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
+    manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
 
 
 class PanelAdapter:
@@ -87,6 +88,10 @@ class PanelAdapter:
                 ),
                 scans,
             )
+        # Manual Arm (DI08): a debounced LEVEL, like the pendant. A switch already on at
+        # power-on powers the drives once the image is valid - power is not motion.
+        self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
+        self._last_arm: bool | None = None
         self.seq = 0
         self._last_scans: int | None = None  # DIO acquisition count behind the last evaluated frame
         self._last_frame: PanelFrame | None = None
@@ -123,6 +128,7 @@ class PanelAdapter:
                 seq=self.seq,
                 comms_ok=True,
                 pendant=self._last_frame.pendant,
+                manual_arm=self._last_frame.manual_arm,
             )
         self._last_scans = scans
         intent = self.scan.scan(snapshot.get("di"), comms)
@@ -145,6 +151,12 @@ class PanelAdapter:
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
         mode, pend = self._coincidence(intent, pend, notes)
+        arm_levels = self.manual_arm.scan(snapshot.get("di"), comms)
+        arm = bool(intent.valid and arm_levels is not None and arm_levels[0])
+        if arm != self._last_arm:
+            if self._last_arm is not None or arm:
+                notes.append(f"Manual Arm {'on' if arm else 'off'}")
+            self._last_arm = arm
         if self.pendant is not None and pend != self._last_pendant:
             held = [n for n in pend._fields if getattr(pend, n)]
             notes.append("pendant " + (" ".join(held).upper() if held else "released"))
@@ -158,6 +170,7 @@ class PanelAdapter:
             comms_ok=comms,
             changed="; ".join(notes) or None,
             pendant=pend,
+            manual_arm=arm,
         )
         self._last_frame = frame
         return frame
@@ -197,14 +210,22 @@ class PanelAdapter:
 # EXECUTING / BLOCKED (amr_interfaces LineState / RunState values).
 LINE_ACTIVE = (2, 3)
 RUN_ACTIVE = (2, 4)
+LINE_PREMOVE = 1  # LineState.ARMED: the pre-move warning after a Start
 
 
 def alarm_wanted(
     mode_auto: bool, line_state: int | None, run_state: int | None,
     field_fresh: bool, protective_clear: bool, warning_active: bool,
+    run_premove: bool = False,
 ) -> bool:
     """dio.alarm_on (operator, 2026-10-02): AUTO RUNNING and (protective stop, warning 1 or
-    warning 2). Field state comes from the mux; stale field data does not sound it."""
+    warning 2). Field state comes from the mux; stale field data does not sound it.
+
+    And the pre-move warning (2026-10-08): from a Start until the vehicle moves (line ARMED,
+    RunState.premove) the alarm horn sounds whatever the fields say, then gives way to the
+    movement horn once the wheels turn."""
+    if mode_auto and (line_state == LINE_PREMOVE or run_premove):
+        return True
     running = mode_auto and (line_state in LINE_ACTIVE or run_state in RUN_ACTIVE)
     return running and field_fresh and (not protective_clear or warning_active)
 

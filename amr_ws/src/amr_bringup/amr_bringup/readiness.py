@@ -19,6 +19,21 @@ from amr_bringup import mode_fsm as fsm
 
 MAP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
+# drive_node's standby (2026-10-08): linked, power stage off on purpose. Not an emergency.
+STANDBY_STATES = ("Ready to switch on", "Switched on")
+
+
+def drives_ok(operational: bool, link_state: str, left_state: str, right_state: str) -> bool:
+    """mode_fsm.Conditions.drives_ok: False means an emergency (E-stop / safety chain / fault).
+
+    Since the drives are powered only on demand (amr_base.arm_policy), "not operational" is
+    the normal idle state: standby with both drives Ready to switch on is fine. Switch on
+    disabled (STO held by the FX3), a fault, a fully disarmed link or anything unknown is not.
+    """
+    if operational:
+        return True
+    return link_state == "standby" and left_state in STANDBY_STATES and right_state in STANDBY_STATES
+
 # Disk thresholds live in agv_core.disk: the supervisor and the web both need the
 # same answer, and the web must not import the supervisor's internals to get it.
 DISK_WARN_MB, DISK_STOP_MB = disk.WARN_MB, disk.STOP_MB
@@ -98,7 +113,9 @@ class Snapshots:
     def on_drives(self, m) -> None:
         with self._lock:
             self.drives_t = time.monotonic()
-            self.drives_ok = bool(m.operational)
+            self.drives_ok = drives_ok(
+                bool(m.operational), str(m.link_state), str(m.left_state), str(m.right_state)
+            )
 
     def on_wheels(self, m) -> None:
         with self._lock:

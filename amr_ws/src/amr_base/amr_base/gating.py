@@ -369,7 +369,8 @@ def select(
 # protective field is violated, and scaled while a warning field is occupied
 # (warning 1, outer: x0.5; the lower wins). A warning field whose factor is 0 is a
 # DECELERATION STOP over warning_stop_m (warning 2, inner, 2026-10-07: the 0.47 m between
-# its front edge and the protective field's). Manual sources are untouched - a person is
+# its front edge and the protective field's; 0.40 since 2026-10-08, leaving 0.07 m for
+# detection latency). Manual sources are untouched - a person is
 # driving, and the physical chain still acts on them.
 
 AUTO_SOURCES = frozenset({FOLLOW, ROTATE, LINE})
@@ -432,9 +433,40 @@ def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
     return FieldView(True, bool(st[fp.protective_index]), level > 0, level, scale)
 
 
-def warning_target(view: FieldView, fp: FieldParams) -> float:
-    """The speed factor the fields ask for: the strictest occupied warning field's, else 1.0."""
-    return view.warning_scale if view.warning_active else 1.0
+def warning_target(view: FieldView, fp: FieldParams, slow_exempt: bool = False) -> float:
+    """The speed factor the fields ask for: the strictest occupied warning field's, else 1.0.
+
+    slow_exempt (line_uturn_exempt): a SLOW-DOWN factor (> 0, warning 1) is not applied;
+    a stop (factor 0, warning 2) always is, and the protective field never reaches here.
+    """
+    if not view.warning_active:
+        return 1.0
+    if slow_exempt and view.warning_scale > 0.0:
+        return 1.0
+    return view.warning_scale
+
+
+# The line follower's U-turn phases (LineState.uturn_phase; "approach" is the creep to the
+# tape end after the tag).
+UTURN_PHASES = ("approach", "stopping", "spin", "center", "settle")
+
+
+def line_uturn_exempt(
+    sel: Selection, line_uturn: tuple[float, str] | None, now: float, fresh_s: float, max_v: float
+) -> bool:
+    """Warning 1 does not slow a U-turn (operator, 2026-10-08): the pivot and the creep
+    keep the U-turn speed instead of halving it.
+
+    Only for the LINE source, a fresh LineState saying a U-turn is in progress, and a
+    commanded body speed at or below max_v (the creep, or a pivot at 0) - so the
+    exemption can never carry a cruising vehicle into a warning field, even if the
+    phase were wrong. max_v 0 turns it off. Warning 2 (stop) and the protective field
+    still apply (warning_target, field_limit).
+    """
+    if max_v <= 0.0 or sel.source != LINE or line_uturn is None:
+        return False
+    t, phase = line_uturn
+    return now - t <= fresh_s and phase in UTURN_PHASES and abs(sel.v) <= max_v
 
 
 STOP_MIN_V = 0.05  # m/s: below this a warning stop is timed by warning_decel_s, not distance
@@ -495,7 +527,9 @@ def apply_scale(sel: Selection, k: float) -> Selection:
     return Selection(sel.source, sel.v * k, sel.w * k, f"{sel.reason} (warning field: x{k:.2f})", sel.generation)
 
 
-def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> tuple[Selection, float]:
+def field_limit(
+    sel: Selection, view: FieldView, p: Params, fp: FieldParams, slow_exempt: bool = False
+) -> tuple[Selection, float]:
     """Apply the field rules to an AUTO selection. Returns (selection, speed scale).
 
     The warning scale returned here is the TARGET; the mux ramps toward it in time
@@ -509,7 +543,7 @@ def field_limit(sel: Selection, view: FieldView, p: Params, fp: FieldParams) -> 
         ), 0.0
     if view.fresh and not view.protective_clear:
         return Selection(NONE, 0.0, 0.0, "protective field violated", sel.generation, code="FIELD_PROTECTIVE"), 0.0
-    return sel, warning_target(view, fp)
+    return sel, warning_target(view, fp, slow_exempt)
 
 
 def nav_topic(base: str, generation: int) -> str:

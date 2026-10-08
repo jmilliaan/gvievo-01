@@ -20,9 +20,18 @@
     <span id="nav-hint" class="home-nav-hint"></span>
   </div>
   {% endif %}
-  <div class="home-state">
-    <div id="home-line" class="home-big">connecting…</div>
-    <div id="home-detail" class="home-detail"></div>
+  {# Job beside the status (2026-10-08), the job wider: what the vehicle was told to do,
+     then whether anything holds it. Display only; the job is set on Run tracked. #}
+  <div class="home-top">
+    <div class="home-job" id="home-job">
+      <span>Job</span>
+      <b id="home-job-what">–</b>
+      <i id="home-job-detail">no job state yet</i>
+    </div>
+    <div class="home-state">
+      <div id="home-line" class="home-big">connecting…</div>
+      <div id="home-detail" class="home-detail"></div>
+    </div>
   </div>
   {# Live readings (2026-10-08), big enough to read from the floor: measured wheel speed,
      the tag under the RFID reader, the MLS line position. Display only, in every mode. #}
@@ -125,8 +134,37 @@ function liveTiles(st) {
        `${t.nlcp_label} · level ${t.track_level}/7${t.line_good ? '' : ' · weak'}`, t.line_good ? '' : 'warn');
 }
 
+// The job: in LINE the tape mission and destination with where it stands, otherwise the
+// trackless run. Display only.
+function job(st) {
+  const m = st.mode, ln = st.line;
+  let what = '–', sub = 'no job state yet', level = 'off';
+  if (m && m.mode_name === 'LINE') {
+    if (!ln) sub = 'no line state yet';
+    else if (!ln.mission) { what = 'Plain line following'; sub = 'no mission · set one on Run tracked'; level = ''; }
+    else {
+      what = ln.destination ? `${ln.mission} → ${ln.destination}` : ln.mission;
+      const result = ln.job_result || '';
+      sub = ln.stop_where ? `at ${ln.stop_where}`
+        : result ? result
+        : ln.state_name === 'RUNNING' ? `running · ${num(ln.followed_m, 1)} m`
+        : ln.at_home ? 'at Home · press Start on the panel'
+        : `not at Home${ln.home_detail ? ' · ' + ln.home_detail : ''}`;
+      level = /MISSED|NOT/.test(result) ? 'warn' : '';
+    }
+  } else if (st.run && st.run.mission_id) {
+    what = st.run.mission_id;
+    sub = `${st.run.state_name}${st.run.step_id ? ' · step ' + st.run.step_id : ''}`;
+    level = '';
+  } else if (m) sub = 'no trackless run';
+  $('home-job-what').textContent = what;
+  $('home-job-detail').textContent = sub;
+  $('home-job').className = 'home-job' + (level ? ' ' + level : '');
+}
+
 onState(st => {
   navSwitch(st.mode);
+  job(st);
   liveTiles(st);
 });
 

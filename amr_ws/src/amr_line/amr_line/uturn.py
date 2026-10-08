@@ -9,6 +9,16 @@ Encoder travel only GATES the manoeuvre; the tape decides where it ends. The
 sensor sits ahead of the axle, so a pivot sweeps it off the tape and back on
 near 180 degrees. A reacquisition counts only after the tape was lost, past
 u_turn_min_deg, at a track level close to the one the spin started on.
+
+Field run 2026-10-08 (tag 0180): the spin handed over to centring the moment the
+tape reached the sensor's edge, centring commanded zero on every tick the tape
+was outside the usable +/-100 mm, and the vehicle stalled with the tape at
+-101 mm until "tape lost while centring" - short of 180 deg. Hence:
+  - the spin keeps going until the tape is within CAPTURE_MM, not merely seen;
+  - centring never stops for a missing reading: it turns slowly toward the side
+    the tape was last seen, for at most CENTER_LOST_DEG by encoder;
+  - centring has a speed floor (CENTER_MIN_FRACTION) so a 150 kg pivot cannot
+    stall short of the band on a vanishing P command.
 """
 import math
 
@@ -19,9 +29,17 @@ SPIN, CENTER, SETTLE, DONE, FAILED = "spin", "center", "settle", "done", "failed
 # Travel against the commanded direction beyond this means the count sign or
 # wiring is not what the geometry assumes; stop rather than spin on.
 REVERSE_LIMIT_DEG = 20.0
-# The tape may flicker at a stripe edge while centring. Longer than this with
-# nothing under the sensor is a lost tape, not a flicker.
-CENTER_LOST_S = 0.5
+# The spin hands over to centring only this close to the centre: at the sensor's
+# edge the reading comes and goes, and the spin itself is bringing the tape in.
+CAPTURE_MM = 60.0
+# Centring speed limits, as fractions of the spin speed: a ceiling for control,
+# a floor so the pivot never stalls short of the band.
+CENTER_MAX_FRACTION = 0.5
+CENTER_MIN_FRACTION = 0.2
+# Tape not seen while centring: keep turning toward where it was last seen, at
+# most this far by encoder (or CENTER_LOST_S standing), then fail.
+CENTER_LOST_DEG = 15.0
+CENTER_LOST_S = 3.0
 # Spin time allowed, as a multiple of the nominal time to u_turn_max_deg. A
 # frozen or wrongly scaled counter would otherwise never reach the angle limit.
 TIME_MARGIN = 2.0
@@ -70,6 +88,8 @@ class UTurn:
         self.elapsed_s = 0.0
         self._settled_s = 0.0
         self._unseen_s = 0.0
+        self._unseen_from = None    # encoder angle where centring lost the tape
+        self._last_e = None         # last centring error seen, for the side to turn to
         self._budget_s = (TIME_MARGIN * math.radians(config.U_TURN_MAX_DEG)
                           / spin_omega(config.AUTO_U_TURN_RPM))
 
@@ -105,11 +125,17 @@ class UTurn:
             self._fail(reason)
         return 0.0, 0.0
 
-    def update(self, counts, e_mm, level, dt):
-        """One tick. Returns (left_rpm, right_rpm) in driver terms."""
+    def update(self, counts, e_mm, level, dt, paused=False):
+        """One tick. Returns (left_rpm, right_rpm) in driver terms.
+
+        paused: a warning field is slowing or holding the pivot in the mux; the
+        spin's time budget stands still meanwhile (2026-10-08) instead of faulting
+        a turn the fields stopped. The angle and reverse limits still apply.
+        """
         if not self.active:
             return 0.0, 0.0
-        self.elapsed_s += dt
+        if not paused:
+            self.elapsed_s += dt
         self._integrate(counts)
         angle = self.angle_deg
         seen = e_mm is not None
@@ -121,9 +147,10 @@ class UTurn:
             if not seen:
                 self.lost = True
             elif (self.lost and angle >= config.U_TURN_MIN_DEG
+                  and abs(e_mm) <= CAPTURE_MM
                   and level is not None
                   and level >= self.start_level - config.U_TURN_LEVEL_TOLERANCE):
-                self.phase = CENTER
+                self.phase, self._last_e = CENTER, e_mm
             if self.phase == SPIN:
                 if angle >= config.U_TURN_MAX_DEG:
                     return self._fail(f"U-turn tape not reacquired within "
@@ -134,12 +161,20 @@ class UTurn:
                 return kinematics.body_to_wheels(
                     0.0, self.sign * spin_omega(config.AUTO_U_TURN_RPM))
 
+        floor = CENTER_MIN_FRACTION * config.AUTO_U_TURN_RPM
         if not seen:
-            self._unseen_s += dt
-            if self._unseen_s > CENTER_LOST_S:
-                return self._fail("U-turn tape lost while centring")
-            return 0.0, 0.0
-        self._unseen_s = 0.0
+            # Never stop on a missing reading (that stalled the field run at the
+            # sensor edge): turn slowly toward the side the tape was last seen.
+            if self._unseen_from is None:
+                self._unseen_from = angle
+            if not paused:
+                self._unseen_s += dt
+            if abs(angle - self._unseen_from) > CENTER_LOST_DEG or self._unseen_s > CENTER_LOST_S:
+                return self._fail(f"U-turn tape lost while centring (at {angle:.0f} deg by encoder)")
+            self.phase = CENTER
+            side = 1.0 if (self._last_e or 0.0) >= 0.0 else -1.0
+            return kinematics.body_to_wheels(0.0, -spin_omega(side * floor))
+        self._unseen_s, self._unseen_from, self._last_e = 0.0, None, e_mm
 
         if abs(e_mm) <= config.U_TURN_CENTER_TOL_MM:
             if self.phase == CENTER:
@@ -150,10 +185,11 @@ class UTurn:
                     self.phase = DONE
             return 0.0, 0.0
 
-        # Outside the band: centre, at no more than half the spin speed.
+        # Outside the band: centre, between the floor and the ceiling.
         self.phase = CENTER
-        half = config.AUTO_U_TURN_RPM / 2.0
-        rpm = max(-half, min(half, config.U_TURN_CENTER_KP_RPM_PER_MM * e_mm))
+        ceiling = CENTER_MAX_FRACTION * config.AUTO_U_TURN_RPM
+        mag = max(floor, min(ceiling, config.U_TURN_CENTER_KP_RPM_PER_MM * abs(e_mm)))
+        rpm = mag if e_mm > 0 else -mag
         # The follower's omega = -K*e sign: in a pivot de/dt = Ls*omega.
         return kinematics.body_to_wheels(0.0, -spin_omega(rpm))
 

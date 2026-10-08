@@ -7,10 +7,11 @@ what it asks for:
 
     stop          {"kind": "station", "tag", "where", "role", "distance_m"} while
                   a measured stop is in progress or parked at a stop
-    uturn_req     {"tag", "direction", "approach_mps", "max_approach_m", "phase",
-                  "travel_m", "level"} from the U-turn tag until the turn ends.
-                  phase: approach (creep until the tape ends) -> stopping -> the
-                  pivot (self.uturn, amr_line.uturn)
+    uturn_req     {"tag", "direction", "approach_mps", "decel_m", "decel_rpm_s",
+                  "max_approach_m", "phase", "travel_m", "level", "gone"} from the
+                  U-turn tag until the turn ends. phase: approach (slow to the
+                  creep within decel_m, follow until the tape is gone) -> stopping
+                  (command zeroed at once) -> the pivot (self.uturn, amr_line.uturn)
     link_lost     why the RFID stream can no longer be trusted while driving
                   (link down, reconnect, buffer overrun): the job holds the
                   vehicle for a person. A missed tag here means a station or the
@@ -25,10 +26,18 @@ Which reads count:
     U-turn re-pass  the U-turn's own tag, driven back over after the pivot, is
                   suppressed once within the approach distance plus a margin
     ignore_s      the table row's window (amr_line.tag_table.TagTable)
-    held          reads while stopped or held cannot start a stop or a U-turn
+    held          reads while stopped or held cannot start a stop, a U-turn or
+                  a high-zone entry
 
-Speed toggles and branch tags are honoured held or driving: a toggle or a
-branch exit passed during a hold must still take effect.
+Speed (tracked-speed-plan-1, 2026-10-08): NORMAL unless the high zone
+(amr_line.speed_zone) grants HIGH. Zone tags are acted on only while driving.
+Any stop, U-turn, hold, junction slow zone or curve-guard trip takes HIGH away;
+every distance it counts is WHEEL travel handed in by the job (advance()). A
+station stop (not Home) keeps the budget left and departs HIGH when it arrived
+HIGH (SpeedZone.park/resume); anything else in between forgets it.
+
+Branch tags are honoured held or driving: a branch exit passed during a hold must
+still clear its latch.
 
 No mission (or "empty") is plain line following: nothing here ever asks for
 anything, and the follower runs at AUTO_RPM with the default branch order.
@@ -36,9 +45,24 @@ anything, and the follower runs at AUTO_RPM with the default branch order.
 
 from agv_core import config as vehicle
 
-from amr_line import branch, speed_toggle, tag_table, uturn
+from amr_line import branch, speed_zone, tag_table, uturn
 
 INFO, WARN = "info", "warn"
+
+# Consecutive ticks with no track under the sensor that mean "the tape ended" on a
+# U-turn approach: 2 ticks at 50 Hz is 4 mm at 0.1 m/s - a flicker is not an end.
+TAPE_GONE_TICKS = 2
+# The approach slowdown stays below the drives' own deceleration (6084h) so the
+# drive never reshapes it; arriving faster than planned it simply takes longer.
+APPROACH_FRACTION_OF_DRIVE = 0.95
+
+
+def approach_rate(v_rpm, creep_rpm, decel_m):
+    """r/min/s that takes v_rpm down to creep_rpm over decel_m (None: already there)."""
+    if v_rpm <= creep_rpm or decel_m <= 0:
+        return None
+    rate = (v_rpm ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * decel_m)
+    return min(rate, APPROACH_FRACTION_OF_DRIVE * vehicle.DECEL_RPM_S)
 
 
 def u_turn_error(sensor):
@@ -63,10 +87,10 @@ class TapeRun:
         self.branch = branch.BranchEngine(
             m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=m["BRANCH_DEFAULT"]
         )
-        toggles = [r for r in m["TAGS"].values() if r["action"] == "speed_toggle"]
-        self.speed = speed_toggle.SpeedToggle(m["TOGGLE_TAGS"], toggles[0]["ignore_s"] if toggles else 0.0)
-        self.ramp_s = toggles[0]["ramp_s"] if toggles else None
-        self.speed_changing = False
+        self.speed = speed_zone.SpeedZone(m["HIGH_ZONE"], normal_rpm=vehicle.AUTO_RPM,
+                                          rpm_per_mps=vehicle.RPM_PER_MPS,
+                                          drive_decel_rpm_s=vehicle.DECEL_RPM_S)
+        self.guard = speed_zone.CurveGuard(vehicle.CURVE_GUARD_KAPPA, vehicle.CURVE_GUARD_E_MM)
         self.events: list[tuple[str, str]] = []
         self.fault: str | None = None
         self.link_lost: str | None = None
@@ -85,8 +109,20 @@ class TapeRun:
 
     @property
     def active(self):
-        """Does this run carry anything beyond plain line following?"""
+        """Does this run act on any tag at all?"""
         return bool(self.mission["TAGS"] or self.mission["BRANCH_LATCH"])
+
+    @property
+    def needs_link(self):
+        """Must the RFID link be up to start and to keep driving?
+
+        Stops, zones and branches: a missed tag is a station driven past or a
+        wrong turn. U-turn tags alone (plain line following, missions/empty.json)
+        do not: a missed U-turn tag ends at the tape end, where the follower's
+        line-loss stop already halts the vehicle.
+        """
+        return bool(self.mission["BRANCH_LATCH"]
+                    or any(r["action"] != "u_turn" for r in self.mission["TAGS"].values()))
 
     # -- RFID cursor -------------------------------------------------------
     def sync(self, rfid):
@@ -115,17 +151,24 @@ class TapeRun:
             self._departure_tag, self._departure_at = resumed_tag, now
             self.table.departed(now, resumed_tag)
         self.stop = None
+        ev = self.speed.resume()
+        if ev:
+            self.events.append(ev)
         if self.table.destination:
             self.events.append((INFO, f"departing for {self.table.destination}"))
 
     def advance(self, distance_m):
+        """Wheel travel since the last tick (encoder; commanded only as a fallback)."""
+        ev = self.speed.travel(distance_m)
+        if ev:
+            self.events.append(ev)
         if self.uturn_skip is not None:
             self.uturn_skip_m += max(0.0, distance_m)
             if self.uturn_skip_m > self.uturn_rearm_m:
                 self.uturn_skip = None
 
     def _lose_link(self, why):
-        if self.active and self.link_lost is None:
+        if self.needs_link and self.link_lost is None:
             self.link_lost = why
 
     def scan(self, now, rfid, driving, follower):
@@ -166,9 +209,6 @@ class TapeRun:
             if row is None:
                 self._record(now, number, tag, "no tag rule")
                 continue
-            if row["action"] == "speed_toggle":
-                self._speed_tag(now, number, tag, driving and self.stop is None)
-                continue
             left = self.table.window_left(now, tag)
             if left > 0:
                 self._record(now, number, tag, "ignored", f"ignore window, {left:.1f} s left")
@@ -181,6 +221,11 @@ class TapeRun:
             if row["action"] == "u_turn":
                 self._u_turn_tag(now, number, row)
                 continue
+            if row["action"] in ("zone_inner", "zone_outer"):
+                self._zone_tag(now, number, tag)
+                continue
+            # Station tags never touch the speed zone (operator, 2026-10-08): passing a
+            # machine is not a speed event, and a stop parks HIGH for the departure.
             applies, why = self.table.stop_applies(row)
             self.table.acted(now, tag)
             if not applies:
@@ -197,47 +242,57 @@ class TapeRun:
     # -- stops ---------------------------------------------------------------
     def _begin_stop(self, row, follower):
         dist = row["stop_distance_m"]
+        if row["role"] == "home":
+            self.drop_high(f"stop {row['label']}")
+        elif self.speed.park(f"stop {row['label']}"):
+            self.events.append((INFO, f"speed NORMAL: {self.speed.reason}"))
         rate = follower.begin_measured_stop(dist)
         if row["role"] == "destination":
             self.table.reached = True
-        self.speed_changing = False
         self.stop = {"kind": "station", "tag": row["tag"], "where": row["label"], "role": row["role"],
                      "distance_m": dist}
         then = "run complete" if row["role"] == "home" else "press Start to go on"
         self.events.append((INFO, f"{row['label']} (tag {row['tag']}) - stopping over {dist:.2f} m"
                             + (f" ({rate:.0f} r/min/s)" if rate else "") + f", {then}"))
 
-    # -- speed toggle ----------------------------------------------------------
-    def _speed_tag(self, now, number, tag, moving):
-        result = self.speed.scan(now, tag)
-        if result == "lockout":
-            left = self.speed.lockout_s - (now - self.speed.changed_at)
-            self._record(now, number, tag, "speed toggle ignored", f"lockout, {left:.1f} s left")
+    # -- speed ------------------------------------------------------------------
+    def _zone_tag(self, now, number, tag):
+        self.table.acted(now, tag)
+        ev = self.speed.tag(tag)
+        if ev:
+            self.events.append(ev)
+        self._record(now, number, tag, f"zone: {self.speed.state.upper()}", self.speed.reason)
+
+    def parked(self, distance_m):
+        """Wheel travel while parked at a station: taken off the kept budget, and
+        without counts the budget cannot be trusted any more."""
+        if self.speed.parked_left is None:
             return
-        # Only a change made while cruising is spread over ramp_s; from rest the
-        # vehicle accelerates on the profile ramp like any other start.
-        self.speed_changing = moving
-        self._record(now, number, tag, f"speed {result}")
-        self.events.append((INFO, f"speed {'SLOW' if self.speed.slow else 'CRUISE'} (toggle tag {tag})"))
+        if distance_m is None:
+            self.speed.drop("wheel travel unavailable while stopped")
+            self.events.append((INFO, "departs NORMAL: wheel travel unavailable while stopped"))
+        else:
+            self.speed.travel(distance_m)
 
-    def change_rate(self):
-        """r/min/s for a speed change in progress, None when the profile ramp applies."""
-        if not self.speed_changing or not self.ramp_s:
-            return None
-        return abs(vehicle.AUTO_RPM - vehicle.AUTO_SLOW_RPM) / self.ramp_s
-
-    def speed_settled(self, v_base, target):
-        if self.speed_changing and abs(v_base - target) < 1.0:
-            self.speed_changing = False
+    def drop_high(self, reason, urgent=False):
+        why = self.speed.drop(reason, urgent=urgent)
+        if why:
+            self.events.append((WARN if urgent else INFO, f"speed NORMAL: {why}"))
 
     @property
-    def slow(self):
-        """Either reason to run at auto_slow_rpm: a junction slow zone or the toggle."""
-        return self.branch.slow or self.speed.slow
+    def high(self):
+        """HIGH granted by the zone and no junction slow zone in force."""
+        return self.speed.high and not self.branch.slow
+
+    def change_rate(self):
+        """r/min/s between NORMAL and HIGH (high_ramp_s), None without a high zone."""
+        if not self.speed.enabled:
+            return None
+        return abs(vehicle.AUTO_HIGH_RPM - vehicle.AUTO_RPM) / vehicle.HIGH_RAMP_S
 
     # -- branches ------------------------------------------------------------
     def steer(self, sensor, tags, followed_mm):
-        """Scan each new tag, then the no-tag fork scan. Returns (choice, slow)."""
+        """Scan each new tag, then the no-tag fork scan. Returns (choice, high)."""
         nlcp = (sensor or {}).get("nlcp")
         for tag in tags:
             self._branch_scan(nlcp, tag)
@@ -247,7 +302,9 @@ class TapeRun:
         if self.branch.unhonoured and not was:
             self.events.append((WARN, f"branch {choice} ordered, but that side is not in this "
                                       f"diverter - carrying straight on"))
-        return choice, self.slow
+        if self.branch.slow:
+            self.drop_high("junction slow zone")
+        return choice, self.high
 
     def _branch_scan(self, nlcp, tag):
         was, was_slow, was_forks = self.branch.ladder.intent(), self.branch.slow, self.branch.forks
@@ -274,31 +331,40 @@ class TapeRun:
         if missed:
             self.events.append((WARN, f"destination {missed} not reached before the U-turn: its tag "
                                       f"was missed. It will not be served from the return leg."))
-        self.speed_changing = False
+        self.drop_high("U-turn")
         self.uturn_req = {"tag": tag, "direction": row["direction"], "approach_mps": row["approach_mps"],
+                          "decel_m": row["decel_m"], "decel_rpm_s": None,
                           "max_approach_m": row["max_approach_m"], "phase": "approach",
-                          "travel_m": 0.0, "level": None}
+                          "travel_m": 0.0, "level": None, "gone": 0}
         self.uturn = None
         self.uturn_last = None
         self._record(now, number, tag, f"u-turn {row['direction']}")
-        self.events.append((INFO, f"U-turn tag {tag} - creeping at {row['approach_mps']:.2f} m/s "
-                                  f"to the end of the tape"))
+        self.events.append((INFO, f"U-turn tag {tag} - slowing to {row['approach_mps']:.2f} m/s within "
+                                  f"{row['decel_m']:.2f} m, stopping where the tape ends"))
 
-    def approach(self, sensor, has_track, line_lost, distance_m):
-        """One tick of the creep to the tape end. Returns a fault reason or None."""
+    def approach(self, sensor, has_track, distance_m):
+        """One tick of the approach to the tape end. Returns a fault reason or None.
+
+        The tape is gone after TAPE_GONE_TICKS ticks without a track: phase
+        'stopping', and the job zeroes the command that same tick - whether or
+        not the creep speed was reached (no line-loss grace, no ramp).
+        """
         req = self.uturn_req
         if req["phase"] != "approach":
             return None
+        req["travel_m"] += max(0.0, distance_m)
         if has_track:
+            req["gone"] = 0
             level = (sensor or {}).get("track_level")
             if level is not None:
                 req["level"] = level
-        req["travel_m"] += max(0.0, distance_m)
-        if line_lost:
-            req["phase"] = "stopping"
-            self.events.append((INFO, f"tape ended {req['travel_m']:.2f} m after the U-turn tag - "
-                                      f"stopping to pivot {req['direction']}"))
-            return None
+        else:
+            req["gone"] += 1
+            if req["gone"] >= TAPE_GONE_TICKS:
+                req["phase"] = "stopping"
+                self.events.append((INFO, f"tape ended {req['travel_m']:.2f} m after the U-turn tag - "
+                                          f"stopping now to pivot {req['direction']}"))
+                return None
         if req["travel_m"] > req["max_approach_m"]:
             return (f"U-turn: the tape did not end within {req['max_approach_m']:.1f} m of tag "
                     f"{req['tag']}")

@@ -82,8 +82,11 @@ def _rows() -> tuple[Alarm, ...]:
           "Put the selector back to AUTO and press Start.",
           "Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO."),
         a("DRIVES_NOT_READY", WARN, "start_button", "Stopped: the motors are not powered",
-          "Press the safety reset on the cabinet, then Start.",
-          "Hold cause 'drives': DriveStatus not operational while the follower wanted to move."),
+          "MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety "
+          "reset if the E-stop was used).",
+          "DriveStatus not operational while something wanted to move: the hold cause 'drives', "
+          "or the mux gating a command. Since 2026-10-08 the drives are powered only on demand "
+          "(DriveStatus.power_reason says why not)."),
 
         # ---- the drives ----
         a("SAFETY_RESET_NEEDED", WARN, "start_button", "Motors are off: the safety circuit needs a reset",
@@ -150,7 +153,7 @@ def _rows() -> tuple[Alarm, ...]:
         a("FIELD_WARNING", INFO, "auto", "Slowed or stopped: something is in a warning field",
           "Clear the area ahead; auto speed returns by itself when the warning fields clear.",
           "cmd_mux scales every AUTO source while a warning field is occupied: warning 1 "
-          "(outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.47 m, the stricter winning; the "
+          "(outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the "
           "slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",

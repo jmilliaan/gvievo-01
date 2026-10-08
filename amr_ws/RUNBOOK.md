@@ -114,11 +114,12 @@ vehicle is stopped, nothing is running and there is no emergency.
 
 | Event | Follower | To continue |
 |---|---|---|
-| physical Start under AUTO from IDLE or DONE (2026-10-07: no Arm button; motor arming is `drive_node`'s, in every mode) | RUNNING if every prerequisite holds; otherwise stays IDLE, "Start refused: …" in the event log | fix the cause, press Start again (a refused press is dropped, never remembered) |
+| physical Start under AUTO from IDLE or DONE (2026-10-07: no Arm button) | ARMED if every prerequisite holds: the drives power up and the alarm horn sounds for `timing.auto_start_delay_s` (2 s), then RUNNING with the movement horn; otherwise stays IDLE, "Start refused: …" in the event log | fix the cause, press Start again (a refused press is dropped, never remembered) |
+| drives not powered within `timing.premove_timeout_s` (8 s) of a Start | back where the Start came from, "Start cancelled: drives did not power up" | release the E-stop, Reset the safety relay, Start |
 | selector leaves AUTO, or the supervisor withdraws LEASE_LINE | FAULT `authority` at once, not after the 0.5 s grace | Reset, Start |
 | Reset (any state but IDLE) | IDLE | Start |
 | field violated | HOLD `field` | resumes by itself 2 s after clear (`auto_resume_hold_s`) |
-| torque lost with the field clear — also while already held for `drives`/`rate`/`track` | HOLD `estop` | physical Start |
+| torque lost with the field clear — also while already held for `drives`/`rate`/`track` | HOLD `estop`, drives to standby | physical Start (the 2 s warning again) |
 | no fresh `/output_paths` (0.5 s) | Start refused ("protective field state unknown"); a torque loss counts as `estop` | scanner driver up |
 | tape samples under `line_min_track_hz` (profile), or fewer than 3 seen, or SDO | Start refused / HOLD `rate` | MLS TPDO stream (`nmt_starts` in diagnostics) |
 
@@ -166,8 +167,16 @@ of it. Left/Right spin at 1.95 × the selected speed in rad/s, at most 0.39 rad/
 Surveys may use any setting; check the survey's return review (see below) after the first
 fast one.
 
+**Drive power (2026-10-08).** The drives are not powered while idle: they sit in
+standby (CANopen up, wheel counts read, power stage off). Under **MANUAL** they are
+powered only while the **Manual Arm** switch (DI08) is on; jog pad, pendant, survey
+moves and commissioning moves do nothing with it off (Status shows Drives `OFF`,
+reason "Manual Arm (DI08) off"). Under **AUTO** they are powered by a run: every
+move after a Start first sounds the alarm horn for 2 s (tape and trackless alike),
+holds that wait for Start drop to standby, holds that clear by themselves keep power.
+
 **Pendant.** The hard-wired jog pendant on the DIO island works under the same
-authority as the jog pad (selector **MANUAL**, drives armed, no fault) and
+authority as the jog pad (selector **MANUAL**, Manual Arm on, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
 vehicle. Opposing buttons pressed together cancel each other. The pendant
 outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
@@ -594,7 +603,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
-| `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.47 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
+| `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
 | `LINE_MISSION` | info | Tape mission event | Nothing to do; this records what the mission engine did with a tag. | amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, U-turns, the run's result at Home. The text names the tag and the action. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |

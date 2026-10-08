@@ -1,5 +1,5 @@
 """Scanner fields gate AUTO (2026-10-02): protective zeroes, warning 1 (outer) x0.5 ramped
-in 1 s, warning 2 (inner) a deceleration stop within 0.47 m (2026-10-07), the stricter
+in 1 s, warning 2 (inner) a deceleration stop within 0.40 m (0.47 2026-10-07, 0.40 2026-10-08), the stricter
 winning, unknown zeroes."""
 
 import os
@@ -24,11 +24,12 @@ from amr_base.gating import (
     apply_scale,
     field_limit,
     field_view,
+    line_uturn_exempt,
 )
 
 # agv-01 (config/scanner_fields.yaml): path 0 protective, path 2 outer warning, path 1 inner.
 FP = FieldParams(protective_index=0, warning_indices=(2, 1), warning_scales=(0.5, 0.0), warning_active_level=False,
-                 warning_stop_m=0.47)
+                 warning_stop_m=0.40)
 SUP = Params(require_supervisor=True)
 
 
@@ -131,7 +132,9 @@ def test_the_saved_field_set_matches_the_scanner_and_feeds_these_params():
     p = sf.mux_params(doc)
     got = (p["protective_index"], tuple(p["warning_indices"]), tuple(p["warning_scales"]), p["warning_active_level"])
     assert got == (FP.protective_index, FP.warning_indices, FP.warning_scales, FP.warning_active_level)
-    assert p["warning_stop_m"] == FP.warning_stop_m == 0.47
+    assert p["warning_stop_m"] == FP.warning_stop_m == 0.40
+    gap = doc["fields"]["warning_2"]["rect"]["x_max"] - doc["fields"]["protective"]["rect"]["x_max"]
+    assert gap - p["warning_stop_m"] == pytest.approx(0.07), "latency margin before the protective field"
     w2 = doc["fields"]["warning_2"]
 
     def with_w2(**kw):
@@ -169,17 +172,17 @@ def _run_stop(v_cmd, k0=1.0, d_max=0.5, stop_d_max=0.7540 * 4 / 3, dt=0.02):
 @pytest.mark.parametrize("v_cmd,k0", [(0.85, 1.0), (0.55, 1.0), (0.6, 1.0), (0.5, 1.0), (0.85, 0.5), (0.6, 0.5)])
 def test_warning_2_stops_within_the_gap_to_the_protective_field(v_cmd, k0):
     """Operator, 2026-10-07: warning 2 front edge 0.97 m, protective 0.50 m: the stop takes
-    ~0.47 m from any AUTO cruise (tracked 0.55 / 0.5, trackless 0.6; 0.85 kept as the old cruise), straight in or
-    already slowed by warning 1."""
+    ~0.40 m from any AUTO speed (tracked NORMAL 0.5 / HIGH 0.85, trackless 0.6), straight in or
+    already slowed by warning 1; 0.07 m of the 0.47 m gap is left for detection latency."""
     dist, peak = _run_stop(v_cmd, k0)
-    assert dist == pytest.approx(0.47, abs=0.01), dist
+    assert dist == pytest.approx(0.40, abs=0.01), dist
     v0 = v_cmd * k0
-    assert peak == pytest.approx(v0 * v0 / (2 * 0.47), rel=0.05), "a constant decel, no harder"
+    assert peak == pytest.approx(v0 * v0 / (2 * 0.40), rel=0.05), "a constant decel, no harder"
 
 
 def test_stop_timing_falls_back_for_a_spin_or_no_distance():
-    assert stop_time(0.85, FP) == pytest.approx(2 * 0.47 / 0.85)
-    assert stop_time(-0.6, FP) == pytest.approx(2 * 0.47 / 0.6), "reversing stops the same"
+    assert stop_time(0.85, FP) == pytest.approx(2 * 0.40 / 0.85)
+    assert stop_time(-0.6, FP) == pytest.approx(2 * 0.40 / 0.6), "reversing stops the same"
     assert stop_time(0.01, FP) is None, "spinning in place: warning_decel_s"
     assert stop_time(0.85, FieldParams()) is None, "no stop distance set"
     r = SpeedRamp()
@@ -189,3 +192,33 @@ def test_stop_timing_falls_back_for_a_spin_or_no_distance():
     for _ in range(41):
         r.tick(1.0, 0.025, FP)
     assert r.value == pytest.approx(1.0) and not r.stopping, "clear: back up in 1 s"
+
+
+# -- U-turn: warning 1 does not slow it (operator, 2026-10-08) ------------------------------
+
+W1 = FieldView(True, True, True, 1, 0.5)
+W2 = FieldView(True, True, True, 2, 0.0)
+PROT = FieldView(True, False, True, 2, 0.0)
+
+
+def test_an_exempt_u_turn_ignores_warning_1_but_still_stops_on_warning_2_and_protective():
+    pivot = sel(LINE, 0.0, -0.26)
+    assert field_limit(pivot, W1, SUP, FP, slow_exempt=True) == (pivot, 1.0), "keeps the U-turn speed"
+    assert field_limit(pivot, W1, SUP, FP)[1] == 0.5, "not exempt: halved as before"
+    assert field_limit(pivot, W2, SUP, FP, slow_exempt=True)[1] == 0.0, "warning 2 still stops it"
+    out, k = field_limit(pivot, PROT, SUP, FP, slow_exempt=True)
+    assert (out.source, k) == (NONE, 0.0), "the protective field still zeroes it"
+
+
+def test_the_exemption_needs_line_a_fresh_u_turn_phase_and_u_turn_speed():
+    fresh = (10.0, "spin")
+    assert line_uturn_exempt(sel(LINE, 0.0, -0.26), fresh, 11.0, 2.5, 0.12)
+    for phase in ("approach", "stopping", "spin", "center", "settle"):
+        assert line_uturn_exempt(sel(LINE, 0.10, 0.0), (10.0, phase), 10.5, 2.5, 0.12), phase
+    assert not line_uturn_exempt(sel(LINE, 0.0, -0.26), (10.0, ""), 10.5, 2.5, 0.12), "not in a U-turn"
+    assert not line_uturn_exempt(sel(LINE, 0.0, -0.26), fresh, 13.0, 2.5, 0.12), "stale line state"
+    assert not line_uturn_exempt(sel(LINE, 0.0, -0.26), None, 10.5, 2.5, 0.12), "no line state yet"
+    assert not line_uturn_exempt(sel(LINE, 0.30, 0.0), (10.0, "approach"), 10.5, 2.5, 0.12), \
+        "still slowing from cruise on the approach: warning 1 applies"
+    assert not line_uturn_exempt(sel(FOLLOW, 0.0, -0.26), fresh, 10.5, 2.5, 0.12), "LINE only"
+    assert not line_uturn_exempt(sel(LINE, 0.0, -0.26), fresh, 10.5, 2.5, 0.0), "0 turns it off"

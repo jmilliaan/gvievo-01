@@ -153,6 +153,29 @@ def test_pendant_is_held_at_power_on_and_dropped_on_comms_loss():
     assert f.pendant.fwd
 
 
+def test_manual_arm_is_a_debounced_level_and_dies_with_the_image():
+    """DI08 (panel.di_manual_arm): under MANUAL the drives are powered only while it is HIGH."""
+    ad = _adapter()
+
+    def di(arm):
+        bits = _di()
+        bits[config.PANEL_DI_MANUAL_ARM] = arm
+        return bits
+
+    f = _settle(ad, di(False))
+    assert f.valid and not f.manual_arm and "Manual Arm" not in (f.changed or "")
+    f = ad.tick(_snap(di(True)))
+    assert not f.manual_arm  # one scan: not yet believed
+    f = ad.tick(_snap(di(True)))
+    assert f.manual_arm and "Manual Arm on" in f.changed
+    f = ad.tick(_snap(di(True), new=False))
+    assert f.manual_arm  # a repeated image keeps the level
+    f = ad.tick(_snap(di(True), comms=False))
+    assert not f.valid and not f.manual_arm and "Manual Arm off" in f.changed
+    f = _settle(ad, di(False))
+    assert not f.manual_arm
+
+
 def test_pendant_disabled_in_profile_publishes_nothing():
     ad = panel_io.PanelAdapter(debounce_scans=2, pendant=False)
     f = _settle(ad, _pdi(fwd=True))

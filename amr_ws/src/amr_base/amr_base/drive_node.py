@@ -11,6 +11,13 @@
 
 Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
 
+Drive power (2026-10-08). The link and the power stage are separate levels:
+STANDBY (CANopen up, TPDOs flowing, power stage off) whenever the link is wanted,
+ARMED (Operation enabled) only while amr_base.arm_policy wants power - under MANUAL
+while the Manual Arm input (DI08) is high, under AUTO while the line or the
+trackless run asks for it (LineState / RunState.drive_power). /drives/arm and
+/drives/disarm set the LINK (standby or fully disarmed), not the power.
+
 Profile position (amr_base/pp.py) is LOCKED by the profile (pp.enabled false)
 until the decision to run it on this motor is recorded (pp.vendor_ref). While a pp move is active the
 bus thread sends the pp controller's controlwords instead of /cmd_wheel_vel, and
@@ -55,17 +62,19 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import canopen, gating, pp
+from amr_base import arm_policy, canopen, gating, pp
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
+    LineState,
     LineTrack,
     PanelState,
     PpMove,
     PpStatus,
+    RunState,
     WheelStates,
     WheelVelocities,
 )
@@ -75,6 +84,9 @@ SENSOR_DATA = QoSProfile(
 )
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
+)
+LATCHED = QoSProfile(
+    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
 BIG = 1e6
 
@@ -100,7 +112,9 @@ class DriveNode(Node):
         dp("cmd_timeout_s", 0.2)
         dp("feedback_hz", 50.0)  # TPDO event timer; 100 Hz once the 125 kbps bus is proven to carry it
         dp("driver_timeout_s", config.DRIVER_TIMEOUT_S)
-        dp("auto_arm", True)
+        dp("auto_arm", True)  # bring the link up (STANDBY) at start; power follows arm_policy
+        dp("power_panel_timeout_s", 1.0)  # arm_policy: a panel image older than this = no power
+        dp("power_ask_timeout_s", 2.5)  # arm_policy: a LineState/RunState request older than this
         dp("arm_retry_s", 2.0)
         dp("pc_node_id", 100)
         dp("pc_heartbeat_ms", 100)
@@ -131,7 +145,14 @@ class DriveNode(Node):
         self.cmd_timeout = p("cmd_timeout_s").value
         self.feedback_ms = max(1, int(round(1000.0 / p("feedback_hz").value)))
         self.driver_timeout = p("driver_timeout_s").value
-        self.want_armed = bool(p("auto_arm").value)
+        self.want_link = bool(p("auto_arm").value)
+        self._power_params = arm_policy.Params(
+            panel_timeout_s=float(p("power_panel_timeout_s").value),
+            ask_timeout_s=float(p("power_ask_timeout_s").value),
+        )
+        self._power: tuple[bool, str] = (False, "starting")
+        self._power_panel: arm_policy.Panel | None = None
+        self._asks: dict[str, arm_policy.Ask] = {}
         self.arm_retry = p("arm_retry_s").value
         self.pc_node = int(p("pc_node_id").value)
         self.pc_hb_s = p("pc_heartbeat_ms").value / 1000.0
@@ -195,6 +216,8 @@ class DriveNode(Node):
         self._track_ui_t = 0.0
         self.create_subscription(PpMove, "/amr/commissioning_pp", self._on_pp, RELIABLE_1)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
+        self.create_subscription(LineState, "/amr/line_state", lambda m: self._on_ask("line", m), LATCHED)
+        self.create_subscription(RunState, "/amr/run_state", lambda m: self._on_ask("run", m), LATCHED)
         self.create_subscription(WheelVelocities, "/cmd_wheel_vel", self._on_cmd, RELIABLE_1)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_service(Trigger, "/drives/arm", lambda q, r: self._request("arm", r))
@@ -241,8 +264,20 @@ class DriveNode(Node):
             )
 
     def _on_panel(self, msg: PanelState) -> None:
+        t = time.monotonic()
         with self._lock:
-            self._panel = (time.monotonic(), bool(msg.valid), bool(msg.mode_auto))
+            self._panel = (t, bool(msg.valid), bool(msg.mode_auto))
+            self._power_panel = arm_policy.Panel(
+                t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm)
+            )
+
+    def _on_ask(self, source: str, msg) -> None:
+        """A layer's drive_power, timed by its own stamp: a latched message from a layer that
+        has since died arrives fresh but is not (arm_policy.Ask)."""
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        age = self.get_clock().now().nanoseconds * 1e-9 - stamp if stamp > 0 else BIG
+        with self._lock:
+            self._asks[source] = arm_policy.Ask(source, time.monotonic() - age, bool(msg.drive_power))
 
     def _on_pp(self, msg: PpMove) -> None:
         """Every hold replaces the last. A malformed one counts as no hold at all."""
@@ -365,18 +400,20 @@ class DriveNode(Node):
             now = time.monotonic()
             self._serve_requests(link)
 
-            # Arm policy: the pure table decides, this thread acts. Silent = no
+            # Link/power policy: the pure tables decide, this thread acts. Silent = no
             # frames at all, OR a required TPDO stopped while heartbeats and SDO
-            # replies still arrive (R07).
+            # replies still arrive (R07) - in STANDBY too, where the counts still flow.
             silent = []
-            if link.state == canopen.ARMED:
+            if link.state in (canopen.ARMED, canopen.STANDBY):
                 silent = sorted(
                     set(link.silent_nodes(now, self.driver_timeout))
                     | set(link.missing_feedback(now, self.driver_timeout))
                 )
+            self._update_power(now)
             d = canopen.decide(
                 link.state,
-                self.want_armed,
+                self.want_link,
+                self._power[0],
                 now,
                 retry_at,
                 silent,
@@ -384,10 +421,10 @@ class DriveNode(Node):
                 link.faulted_nodes(),
                 link.cleanup_owed,
             )
-            if d.action == "arm":
+            if d.action == "prepare":
                 retry_at = now + self.arm_retry
                 try:
-                    link.arm(
+                    link.prepare(
                         self.feedback_ms,
                         self.pc_node if self.pc_loss_ms else None,
                         self.pc_loss_ms,
@@ -395,15 +432,35 @@ class DriveNode(Node):
                         config.INVERT_LEFT,
                         config.INVERT_RIGHT,
                     )
-                    self._log("armed (targets zero)")
+                    self._log("drives in standby (linked, power stage off)")
                     self._edge("arm", None)
                 except Exception as e:  # noqa: BLE001 - a condition, retried
-                    self.get_logger().warn(f"cannot arm: {e} - retrying in {self.arm_retry:.0f} s")
+                    self.get_logger().warn(
+                        f"cannot link the drives: {e} - retrying in {self.arm_retry:.0f} s"
+                    )
+                    self._edge("arm", ("DRIVE_FAULT", 2, f"{e}"))
+            elif d.action == "engage":
+                retry_at = now + self.arm_retry
+                try:
+                    link.engage()
+                    self._log(f"drives powered (targets zero): {self._power[1]}")
+                    self._edge("arm", None)
+                except Exception as e:  # noqa: BLE001 - a condition, retried
+                    self.get_logger().warn(
+                        f"cannot power the drives: {e} - retrying in {self.arm_retry:.0f} s"
+                    )
                     # "Switch on disabled" on every node is the safety chain holding STO,
                     # not a broken drive: the operator's answer is the cabinet's Reset
-                    # button (2026-09-22). Edge-triggered - arming retries every 2 s.
+                    # button (2026-09-22). Edge-triggered - engaging retries every 2 s.
                     self._edge("arm", ("SAFETY_RESET_NEEDED", 1, f"{e}")
                                if "Switch on disabled" in str(e) else ("DRIVE_FAULT", 2, f"{e}"))
+            elif d.action == "release":
+                if link.release():
+                    self._log(f"drives in standby (power off): {d.reason}; {self._power[1]}")
+                else:
+                    self.get_logger().error(f"FAULT: {link.fault_reason}")
+                    self._edge("fault", ("DRIVE_FAULT", 2, link.fault_reason or "power-off incomplete"))
+                retry_at = now + self.arm_retry
             elif d.action == "disarm":
                 self.get_logger().warn(f"disarming: {d.reason}")
                 if not link.disarm():
@@ -494,10 +551,11 @@ class DriveNode(Node):
                 return
             try:
                 if what == "arm":
-                    self.want_armed = True
-                    box["ok"], box["msg"] = True, "arm requested"
+                    self.want_link = True
+                    box["ok"] = True
+                    box["msg"] = f"link requested; power follows the panel ({self._power[1]})"
                 elif what == "disarm":
-                    self.want_armed = False
+                    self.want_link = False
                     box["ok"], box["msg"] = self._disarm_result(link, "disarmed")
                 elif what == "ack":
                     if link.state != canopen.FAULT:
@@ -505,7 +563,7 @@ class DriveNode(Node):
                     else:
                         reason = link.fault_reason
                         box["ok"], box["msg"] = self._disarm_result(
-                            link, f"fault acknowledged ({reason}); re-arming if wanted"
+                            link, f"fault acknowledged ({reason}); relinking if wanted"
                         )
             finally:
                 done.set()
@@ -517,6 +575,14 @@ class DriveNode(Node):
         if link.disarm():
             return True, ok_msg
         return False, "disarm incomplete, cleanup owed and retrying: " + "; ".join(link.cleanup_failures)
+
+    def _update_power(self, now: float) -> None:
+        with self._lock:
+            panel, asks = self._power_panel, tuple(self._asks.values())
+        power = arm_policy.want_power(now, panel, asks, self._power_params)
+        if power != self._power:
+            self._log(f"drive power {'wanted' if power[0] else 'not wanted'}: {power[1]}")
+            self._power = power
 
     def _target(self, now: float, scale: canopen.WheelScale) -> tuple[int, int]:
         # `now` is sampled by the caller immediately before this call (review Q03): the
@@ -712,6 +778,8 @@ class DriveNode(Node):
         m.operational = bool(
             link.state == canopen.ARMED and fresh and tl.operation_enabled and tr.operation_enabled
         )
+        m.link_state = link.state
+        m.power_wanted, m.power_reason = bool(self._power[0]), self._power[1]
         self._safe_publish(self._pub_status, m)
         # Latched CANopen alarms and the operational edge, as operator events. Both are
         # edge-guarded by _edge, so this 10 Hz path emits only on a change.
@@ -810,6 +878,8 @@ class DriveNode(Node):
         bus.message = f"{link.state}"
         bus.values = [
             KeyValue(key="link_state", value=link.state),
+            KeyValue(key="power_wanted", value=str(self._power[0])),
+            KeyValue(key="power_reason", value=self._power[1]),
             KeyValue(key="fault_reason", value=link.fault_reason or ""),
             KeyValue(key="monitor_reads", value=str(self._bus_stats["monitor_reads"])),
             KeyValue(key="sdo_timeouts", value=str(self._bus_stats["sdo_timeouts"])),

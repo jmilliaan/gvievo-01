@@ -18,9 +18,23 @@ def test_no_field_no_alarm():
 
 
 def test_not_running_or_not_auto_is_silent():
-    for line, run in ((ARMED, None), (DONE, None), (None, PAUSED), (None, None)):
+    for line, run in ((DONE, None), (None, PAUSED), (None, None)):
         assert not alarm_wanted(True, line, run, True, False, True), (line, run)
     assert not alarm_wanted(False, RUNNING, None, True, False, True), "selector MANUAL"
+
+
+def test_the_pre_move_warning_sounds_it_whatever_the_fields_say():
+    """2026-10-08: a Start under AUTO sounds the alarm horn before the vehicle moves - tape
+    in LineState ARMED, trackless while RunState.premove - with no field data at all."""
+    assert alarm_wanted(True, ARMED, None, False, True, False)
+    assert alarm_wanted(True, None, EXECUTING, False, True, False, run_premove=True)
+    assert not alarm_wanted(True, None, EXECUTING, True, True, False, run_premove=False)
+    assert not alarm_wanted(False, ARMED, None, True, True, False), "selector MANUAL"
+    # nothing turns during it, so the movement horn stays off; once moving, it takes over
+    assert motion_outputs(False, True, [0, 8], [0]) == {0: False, 8: False}
+    assert motion_outputs(True, alarm_wanted(True, RUNNING, None, True, True, False), [0, 8], [0]) == {
+        0: True, 8: True
+    }
 
 
 def test_stale_field_data_does_not_sound_it():

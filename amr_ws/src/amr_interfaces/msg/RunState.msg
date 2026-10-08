@@ -33,3 +33,9 @@ float64 pose_yaw
 string reason
 string fault_code           # alarm catalogue code (agv_core/alarms.py); "" when not FAULT/BLOCKED.
                             # BLOCKED carries the hold's code too, so one lookup explains any stop.
+# Drive power (2026-10-08). APPEND ONLY. drive_power: what this run asks of drive_node's
+# power policy under AUTO (EXECUTING, including the pre-move warning, and holds that
+# resume by themselves). premove: EXECUTING but still in the pre-move warning after a
+# Start (alarm horn on, no goal sent yet).
+bool drive_power
+bool premove

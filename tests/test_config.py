@@ -184,6 +184,17 @@ def test_config_profile():
     check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
     check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
     check("DO00 is the movement horn", config.DIO_MOVEMENT_HORN == [0], str(config.DIO_MOVEMENT_HORN))
+    # Drive power (2026-10-08): under MANUAL the drives are powered only while DI08 is HIGH.
+    check("DI08 is the Manual Arm input", config.PANEL_DI_MANUAL_ARM == 8, str(config.PANEL_DI_MANUAL_ARM))
+    refuses("a Manual Arm input shared with a panel button is refused",
+            lambda d: d["panel"].update(di_manual_arm=d["panel"]["di_start"]), "distinct")
+    refuses("a Manual Arm input on a pendant channel is refused",
+            lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
+    refuses("the retired panel.manual_auto_arm is refused",
+            lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
+    refuses("a pre-move timeout not above the warning is refused",
+            lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
+            "premove_timeout_s")
     refuses("a movement horn that is not a motion output is refused",
             lambda d: d["dio"].update(movement_horn=[2]), "among dio.motion_on")
     refuses("one channel as both a motion and an alarm output is refused",
@@ -258,6 +269,19 @@ def test_config_profile():
             lambda d: d["autopilot"].update(speed_toggle_lockout_s=4.0), "unknown key")
     refuses("a leftover autopilot.u_turn_stop_distance_m is refused",
             lambda d: d["autopilot"].update(u_turn_stop_distance_m=0.4), "unknown key")
+    # 2026-10-08 (tracked-speed-plan-1): the slow zone's keys went with the toggle.
+    for key, val in (("auto_slow_ratio", 0.5), ("slow_k_ratio", 25.0), ("slow_kd", 5.0),
+                     ("gain_blend_s", 0.4)):
+        refuses(f"a leftover autopilot.{key} is refused",
+                lambda d, k=key, v=val: d["autopilot"].update({k: v}), "unknown key")
+    refuses("HIGH at or below NORMAL is refused",
+            lambda d: d["autopilot"].update(auto_high_ratio=1.0), "auto_high_ratio")
+    refuses("HIGH above the motor limit is refused",
+            lambda d: d["autopilot"].update(auto_rpm=3000, auto_high_ratio=1.7), "motor_max_rpm")
+    refuses("a curve guard error limit beyond the sensor range is refused",
+            lambda d: d["autopilot"].update(curve_guard_e_mm=150.0), "curve_guard_e_mm")
+    refuses("a zero high ramp is refused",
+            lambda d: d["autopilot"].update(high_ramp_s=0.0), "high_ramp_s")
     refuses("a U-turn window with min >= max is refused",
             lambda d: d["autopilot"].update(u_turn_min_deg=230.0), "u_turn_min_deg")
 

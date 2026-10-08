@@ -94,28 +94,20 @@ timing.manual_watchdog_s
     following did. Whatever navigates next must make that choice deliberately
     rather than inherit this one.
 
-panel.manual_auto_arm
-    MANUAL is an ARMED STATE. With this set, the selector sitting in MANUAL is
-    itself the arm command: the drives energise without anyone pressing Reset,
-    and re-energise on their own if something de-energised them.
+panel.di_manual_arm
+    The Manual Arm input (DI08 on agv-01). Under MANUAL the drives are powered
+    only while this input is HIGH; LOW leaves them in standby (CANopen up,
+    encoders read, power stage off), so a jog, a pendant press, a survey move
+    or a commissioning pp move does nothing until it is switched on. Under
+    AUTO it is ignored: power follows the run (amr_base/arm_policy.py).
 
-    The point is the operator's hands. Reset had become a button pressed
-    reflexively before every jog, and a control pressed by reflex is a control
-    that has stopped being a decision.
+    It replaces manual_auto_arm (the selector in MANUAL was itself the arm
+    command, 2026-10-08): the drives are no longer powered while idle.
 
-    *** Arming is not motion. *** An armed manual vehicle is excited and holding
-    zero; every millimetre of travel still needs a jog button HELD, re-POSTed
-    every ~100 ms, with manual_watchdog_s to stop it the moment they are
-    released. What this changes is that the vehicle is live whenever the
-    selector says MANUAL - including at power-up with the selector already
-    there, which is a level, not an edge, and so is not covered by the panel's
-    anti-tie-down rule.
-
-    It cannot arm through the safety chain. An FX3 demand leaves the drives in
-    ETO and the arm attempt simply fails; it is retried on a slow backoff rather
-    than latched, so the vehicle comes back on its own once the chain is
-    restored and acknowledged. No latched fault is cleared this way - a fault
-    still blocks arming until somebody presses Reset.
+    *** Power is not motion. *** A powered manual vehicle holds zero; every
+    millimetre still needs a jog HELD (manual_watchdog_s). And nothing here can
+    power through the safety chain: an FX3 demand leaves the drives in ETO, the
+    enable fails, and it is retried on a slow backoff, never latched.
 
 timing.loop_period_s / telemetry_period_s
     50 Hz bus loop; 5 Hz statusword + rpm + error register (6 fast reads).
@@ -298,11 +290,20 @@ pp.*
     max_speed_mps is the pp cap, at most blind_run.max_speed_mps.
 
 timing.auto_start_delay_s
-    The pause between PB Start and the wheels being commanded. It gives whoever
-    pressed the button a beat to step back, and it is the window in which a
-    Reset, a selector move or web Stop cancels the start outright. Today only a
-    blind run is started this way; whatever navigates next inherits the same
-    delay and the same cancellation rules.
+    The pre-move warning (2026-10-08): every move that follows an operator's
+    Start under AUTO - a run from Home, a station departure, a resume after an
+    E-stop or an RFID hold - first powers the drives and sounds the ALARM horn
+    for at least this long, then switches to the movement horn and moves. Tape
+    (LineState ARMED) and trackless (RunState.premove) alike. A Reset, a
+    selector move or a lapsed prerequisite during it cancels the start.
+    Holds that resume by themselves (protective field, controller abort) keep
+    their power and do not repeat the warning: nobody pressed anything.
+
+timing.premove_timeout_s
+    How long the pre-move phase waits for the drives to report Operation
+    enabled before the start is refused ("drives did not power up"). Usually
+    the safety chain: E-stop pressed or not yet reset. Must exceed
+    auto_start_delay_s; the enable retry backoff is 2 s, so give it two tries.
 
 imu.*
     The IMU inside the SICK MLS on can.sensor_node, read over SDO by the bus
@@ -401,15 +402,21 @@ _SCHEMA = {
         "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
         "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
         "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
-        # Slow speed as a fraction of auto_rpm (2026-10-07): retuning cruise moves
-        # slow with it. AUTO_SLOW_RPM is derived in _derive().
-        "auto_slow_ratio":     ("AUTO_SLOW_RATIO", float),
-        "slow_k_ratio":        ("SLOW_K_RATIO", float),
-        "slow_kd":             ("SLOW_KD", float),
+        # Tracked speeds (2026-10-08, tracked-speed-plan-1): auto_rpm is NORMAL, the
+        # default and the corner speed; HIGH = auto_rpm x auto_high_ratio, granted only
+        # inside an RFID high zone (amr_line.speed_zone). AUTO_HIGH_RPM is derived.
+        # k_ratio/kd are the NORMAL (corner) gains, high_k_ratio/high_kd the HIGH
+        # (straight) gains; the follower interpolates between them on its own speed.
+        "auto_high_ratio":     ("AUTO_HIGH_RATIO", float),
+        "high_k_ratio":        ("HIGH_K_RATIO", float),
+        "high_kd":             ("HIGH_KD", float),
+        "high_ramp_s":         ("HIGH_RAMP_S", float),
+        "high_margin_m":       ("HIGH_MARGIN_M", float),
+        "curve_guard_kappa":   ("CURVE_GUARD_KAPPA", float),
+        "curve_guard_e_mm":    ("CURVE_GUARD_E_MM", float),
         # The RFID speed toggle tags and their lockout moved to the mission's tag
-        # table (2026-10-08, agv_core.mission v2): every tag meaning lives in one
-        # table, so the one-tag-one-meaning check is made in one place.
-        "gain_blend_s":        ("GAIN_BLEND_S", float),
+        # table (2026-10-08, agv_core.mission v2), and the toggle itself became the
+        # mission's high zone (v2.1). gain_blend_s went with the slow zone's gains.
         "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
         "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
         "sensor_max_mm":       ("SENSOR_MAX_MM", float),
@@ -499,7 +506,7 @@ _SCHEMA = {
         "di_start":       ("PANEL_DI_START", int),
         "di_auto":        ("PANEL_DI_AUTO", int),
         "auto_when_on":   ("PANEL_AUTO_WHEN_ON", bool),
-        "manual_auto_arm": ("PANEL_MANUAL_AUTO_ARM", bool),
+        "di_manual_arm":  ("PANEL_DI_MANUAL_ARM", int),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
     },
@@ -565,6 +572,7 @@ _SCHEMA = {
         "manual_watchdog_s":  ("MANUAL_WATCHDOG_S", float),
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
+        "premove_timeout_s":  ("PREMOVE_TIMEOUT_S", float),
     },
 }
 
@@ -800,7 +808,7 @@ def _derive(ns):
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
     # The tracked slow speed (junction slow zone, RFID speed toggle) follows cruise.
-    ns["AUTO_SLOW_RPM"] = ns["AUTO_RPM"] * ns["AUTO_SLOW_RATIO"]
+    ns["AUTO_HIGH_RPM"] = ns["AUTO_RPM"] * ns["AUTO_HIGH_RATIO"]
 
     # 6083h caps both the forward ramp and the rate at which the wheel
     # DIFFERENCE can slew, so it is also the ceiling on yaw acceleration -
@@ -951,15 +959,20 @@ def _validate(ns):
 
     # -- panel ------------------------------------------------------------
     chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
-             "di_auto": g("PANEL_DI_AUTO")}
+             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM")}
     for key, ch in chans.items():
         check(0 <= ch < g("DIO_NUM_DI"),
               f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
     # Two functions on one channel is a wiring or config error that would
     # otherwise present as phantom presses - a Reset edge every time Start is
     # pushed - which is a miserable thing to debug from the vehicle.
-    check(len(set(chans.values())) == 3,
+    check(len(set(chans.values())) == 4,
           f"panel channels must be distinct, got {chans}")
+    if g("PENDANT_ENABLED"):
+        jog = {g("PENDANT_DI_FWD"), g("PENDANT_DI_RVS"), g("PENDANT_DI_LEFT"), g("PENDANT_DI_RIGHT")}
+        check(g("PANEL_DI_MANUAL_ARM") not in jog,
+              f"panel.di_manual_arm ({g('PANEL_DI_MANUAL_ARM')}) is a pendant channel: "
+              "every jog press would also power the drives")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
     # A selector change and a pendant press landing in the SAME scan is not a hand: on
     # 2026-09-17 the DIO image showed MANUAL+FWD for 1.02 s mid-route with nobody at the
@@ -1020,13 +1033,23 @@ def _validate(ns):
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
-    # -- tracked AUTO speeds: cruise = auto_rpm, slow = auto_slow_ratio x cruise, used by
-    # both the junction slow zone and the mission's RFID speed toggle. The only two tracked
-    # speeds; no separate LINE ceiling.
+    # -- tracked AUTO speeds (2026-10-08): NORMAL = auto_rpm (0.50 m/s), HIGH = NORMAL x
+    # auto_high_ratio (1.7 -> 0.85 m/s) inside an RFID high zone only. Raising either is a
+    # speed-cap change: README status table, and the operator's explicit say-so.
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           "autopilot: need 0 < auto_rpm <= vehicle.motor_max_rpm")
-    check(0 < g("AUTO_SLOW_RATIO") <= 1,
-          "autopilot.auto_slow_ratio must be in (0, 1]: slow is that fraction of auto_rpm")
+    check(1 < g("AUTO_HIGH_RATIO") <= 2,
+          "autopilot.auto_high_ratio must be in (1, 2]: HIGH is that multiple of auto_rpm")
+    check(g("AUTO_RPM") * g("AUTO_HIGH_RATIO") <= g("MOTOR_MAX_RPM"),
+          "autopilot: auto_rpm x auto_high_ratio must not exceed vehicle.motor_max_rpm")
+    check(g("HIGH_K_RATIO") > 0 and g("HIGH_KD") >= 0,
+          "autopilot: need high_k_ratio > 0 and high_kd >= 0")
+    check(0.5 <= g("HIGH_RAMP_S") <= 10, "autopilot.high_ramp_s must be in [0.5, 10] s")
+    check(0.3 <= g("HIGH_MARGIN_M") <= 5, "autopilot.high_margin_m must be in [0.3, 5] m")
+    check(0 < g("CURVE_GUARD_KAPPA") <= 2,
+          "autopilot.curve_guard_kappa must be in (0, 2] 1/m")
+    check(0 < g("CURVE_GUARD_E_MM") < g("SENSOR_MAX_MM"),
+          "autopilot.curve_guard_e_mm must be in (0, sensor_max_mm)")
     check(0 < g("U_TURN_MIN_DEG") < g("U_TURN_MAX_DEG") <= 270,
           "autopilot: need 0 < u_turn_min_deg < u_turn_max_deg <= 270")
 
@@ -1070,6 +1093,9 @@ def _validate(ns):
           f"timing.auto_start_delay_s ({g('AUTO_START_DELAY_S')} s) is a long "
           f"time to stand still after a button press - an operator will press "
           f"it again")
+    check(g("AUTO_START_DELAY_S") < g("PREMOVE_TIMEOUT_S") <= 30.0,
+          f"timing.premove_timeout_s ({g('PREMOVE_TIMEOUT_S')} s) must exceed "
+          f"auto_start_delay_s ({g('AUTO_START_DELAY_S')} s) and be at most 30 s")
 
     # -- rfid -------------------------------------------------------------
     check(1 <= g("RFID_PORT") <= 65535, "rfid.port must be in 1..65535")
@@ -1198,7 +1224,7 @@ _DERIVED = (
     ("RPM_PER_MPS", "1 / MPS_PER_RPM"),
     ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
-    ("AUTO_SLOW_RPM", "autopilot.auto_rpm \u00b7 auto_slow_ratio - the tracked slow speed"),
+    ("AUTO_HIGH_RPM", "autopilot.auto_rpm \u00b7 auto_high_ratio - the tracked HIGH speed"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
     ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "

@@ -15,6 +15,8 @@
 # stop_m = a warning field with scale 0.0 is a DECELERATION STOP that ends this far after
 #          entry (constant decel v^2 / 2 stop_m, capped by the drive's ramp). It may not
 #          exceed the gap to the protective field: warning_2 0.97 - protective 0.50 = 0.47 m.
+#          0.40 (2026-10-08, tracked-speed-plan-1 D8): 0.07 m left for detection latency
+#          (scanner response, /output_paths at ~17 Hz, the mux tick) - ~0.08 s at 0.85 m/s.
 #
 # base.launch.py reads protective/warning_1/warning_2 into the mux parameters, so the
 # indices, polarity, factors and the stop distance live here only.
@@ -34,5 +36,5 @@ fields:
     path: 1
     active: false
     scale: 0.0          # stop (2026-10-07); x0.2 until 2026-10-02, x0.1 until 2026-10-07
-    stop_m: 0.47
+    stop_m: 0.40
     rect: {x_min: -0.02, x_max: 0.97, y_min: -0.60, y_max: 0.60}

@@ -32,16 +32,25 @@ from amr_line import runtime as config  # noqa: E402
 
 def test_step_response():
     print("\nstep response (30 mm), real slew limit + 20 ms transport delay")
-    zeta = autopilot.predicted_zeta()
-    print(f"  gains K_RATIO={config.K_RATIO} KD={config.KD} "
-          f"-> predicted zeta {zeta:.3f}")
-    for rpm, label in ((config.AUTO_RPM, "cruise"), (2546.0, "0.8 m/s target")):
-        over, settle, rms = simulate(rpm)
-        d = (f"overshoot {over:.1f} mm, settle "
-             f"{f'{settle:.2f} s' if settle else 'NEVER'}, tail {rms:.2f} mm")
-        check(f"converges at {rpm:.0f} r/min ({label})", settle is not None, d)
-        check(f"overshoot bounded at {rpm:.0f} r/min", over < 25.0, "")
-        check(f"tail settled at {rpm:.0f} r/min", rms < 3.0, "")
+    # Each gain pair at the speed it is used at (2026-10-08): the corner pair at NORMAL,
+    # the straight pair at HIGH. simulate() pins AUTO_RPM to the speed under test, and
+    # at or above AUTO_HIGH_RPM the follower uses K_RATIO/KD - so the pair is set there.
+    k, kd = config.K_RATIO, config.KD
+    cases = ((config.AUTO_RPM, "NORMAL", k, kd),
+             (config.AUTO_HIGH_RPM, "HIGH", config.HIGH_K_RATIO, config.HIGH_KD))
+    try:
+        for rpm, label, kr, kdd in cases:
+            config.K_RATIO, config.KD = kr, kdd
+            zeta = autopilot.predicted_zeta()
+            print(f"  {label}: K_RATIO={kr} KD={kdd} -> predicted zeta {zeta:.3f}")
+            over, settle, rms = simulate(rpm)
+            d = (f"overshoot {over:.1f} mm, settle "
+                 f"{f'{settle:.2f} s' if settle else 'NEVER'}, tail {rms:.2f} mm")
+            check(f"converges at {rpm:.0f} r/min ({label})", settle is not None, d)
+            check(f"overshoot bounded at {rpm:.0f} r/min", over < 25.0, d)
+            check(f"tail settled at {rpm:.0f} r/min", rms < 3.0, d)
+    finally:
+        config.K_RATIO, config.KD = k, kd
 
 
 def test_divergence_is_detectable():
@@ -84,11 +93,11 @@ def test_a_track_swap_cannot_become_a_yaw_spike():
 
     f = autopilot.LineFollower()
     f.reset()
-    # Run 0020's speed (800 r/min, the slow zone then). The slow zone is 0.50 m/s since
-    # 2026-10-02 and Kp = K_RATIO*v scales with it, so the same swap asks ~2.5 rad/s
-    # there; this check pins the D-term mechanism at the speed the log was taken.
-    slow_now = config.AUTO_SLOW_RPM
-    config.configure(AUTO_SLOW_RPM=800.0)
+    # Run 0020's speed (800 r/min, the slow zone then, with the corner gains K 25 / Kd 5 -
+    # which is what the follower uses below NORMAL since 2026-10-08). Kp = K_RATIO*v, so
+    # this pins the D-term mechanism at the speed the log was taken.
+    saved = config.AUTO_RPM
+    config.configure(AUTO_RPM=800.0)
     f._v_rpm = 800.0
     peak_omega = 0.0
     peak_d = 0.0
@@ -96,11 +105,11 @@ def test_a_track_swap_cannot_become_a_yaw_spike():
         for mm in seq:
             # 300 mm is beyond sensor_max_mm, which is how the real frames read.
             _, _, d = f.update(sensor(300.0 if mm is None else mm), 0.0, 0.02,
-                               True, "left", True)
+                               True, "left", False)
             peak_omega = max(peak_omega, abs(d["omega_cmd"]))
             peak_d = max(peak_d, abs(d["d"]))
     finally:
-        config.configure(AUTO_SLOW_RPM=slow_now)
+        config.configure(AUTO_RPM=saved)
 
     check("the 120 mm swap does not produce the logged 6.66 rad/s",
           peak_omega < 2.0, f"peak |omega| {peak_omega:.2f} rad/s")
@@ -132,7 +141,7 @@ def test_a_track_swap_cannot_become_a_yaw_spike():
     # And a gap must not be differentiated over one tick's dt either.
     f4 = autopilot.LineFollower()
     f4.reset()
-    f4._v_rpm = config.AUTO_SLOW_RPM
+    f4._v_rpm = config.AUTO_RPM
     for _ in range(6):
         f4.update(sensor(10.0), 0.0, 0.02, True)
     for _ in range(5):
@@ -142,56 +151,34 @@ def test_a_track_swap_cannot_become_a_yaw_spike():
           d_after["d"] == 0.0, f"d {d_after['d']:.4f}")
 
 
-def test_gains_blend_across_a_zone_boundary():
-    """A tag lands where somebody stuck it, not where the vehicle has settled.
+def test_gains_follow_the_speed():
+    """2026-10-08: the gains ride the speed between the corner pair at NORMAL and the
+    straight pair at HIGH - no timer, so no gain/speed pair outside the two tuned ends.
 
-    Run 0020 read its exit tag while still 44 mm off line: k_ratio fell
-    25 -> 11.3 in one tick, halving steering authority exactly as the vehicle
-    began accelerating 800 -> 1200 r/min.
+    The zone-tag step that run 0020 showed (k_ratio 25 -> 11.3 in one tick at a tag)
+    cannot recur: the speed change is a ramp, and the gain moves with it.
     """
-    print("\ngains blend across a zone boundary")
-
-    on_tape = {"tracks": [{"index": 2, "pos_mm": 5.0, "width": 10}],
-               "has_track": True}
-    f = autopilot.LineFollower()
-    f.reset()
-    f._v_rpm = config.AUTO_SLOW_RPM
-
-    f.update(on_tape, 0.0, 0.02, True, "left", True)
-    check("the first tick snaps to the zone's gains rather than sliding up "
-          "from nothing", abs(f._k_now - config.SLOW_K_RATIO) < 1e-9,
-          f"{f._k_now}")
-
-    # Leaving the zone: the gain must move, but not in one tick.
-    _, _, d1 = f.update(on_tape, 0.0, 0.02, True, "left", False)
-    check("leaving a zone does not step the gain",
-          config.K_RATIO < d1["k_used"] < config.SLOW_K_RATIO,
-          f"k_used {d1['k_used']:.2f} between {config.K_RATIO} and "
-          f"{config.SLOW_K_RATIO}")
-
-    for _ in range(int(6 * config.GAIN_BLEND_S / 0.02)):
-        _, _, d2 = f.update(on_tape, 0.0, 0.02, True, "left", False)
-    check("...and it does arrive", abs(d2["k_used"] - config.K_RATIO) < 0.1,
-          f"k_used {d2['k_used']:.3f}")
-
-    check("gain_blend_s = 0 keeps the old instant switch",
-          _snap_with_zero_blend() is True)
-
-
-def _snap_with_zero_blend():
-    saved = config.GAIN_BLEND_S
-    config.GAIN_BLEND_S = 0.0
-    try:
-        on_tape = {"tracks": [{"index": 2, "pos_mm": 5.0, "width": 10}],
-                   "has_track": True}
+    print("\ngains follow the speed")
+    on_tape = {"tracks": [{"index": 2, "pos_mm": 5.0, "width": 10}], "has_track": True}
+    lo, hi = config.AUTO_RPM, config.AUTO_HIGH_RPM
+    seen = []
+    for v in (0.0, lo, (lo + hi) / 2.0, hi, hi * 1.2):
         f = autopilot.LineFollower()
         f.reset()
-        f._v_rpm = config.AUTO_SLOW_RPM
-        f.update(on_tape, 0.0, 0.02, True, "left", True)
-        _, _, d = f.update(on_tape, 0.0, 0.02, True, "left", False)
-        return d["k_used"] == config.K_RATIO
-    finally:
-        config.GAIN_BLEND_S = saved
+        f._v_rpm = v
+        _, _, d = f.update(on_tape, 0.0, 0.02, True)
+        seen.append(d["k_used"])
+    check("below and at NORMAL: the corner pair", seen[0] == seen[1] == config.K_RATIO, str(seen))
+    check("half way: half way", abs(seen[2] - (config.K_RATIO + config.HIGH_K_RATIO) / 2) < 0.2,
+          f"{seen[2]:.2f}")
+    check("at and above HIGH: the straight pair", abs(seen[3] - config.HIGH_K_RATIO) < 0.05
+          and abs(seen[4] - config.HIGH_K_RATIO) < 1e-9, str(seen))
+    f = autopilot.LineFollower()
+    f.reset()
+    f._v_rpm = hi
+    _, _, d = f.update(on_tape, 0.0, 0.02, True, high=False)
+    check("dropping HIGH does not step the gain: it waits for the speed",
+          abs(d["k_used"] - config.HIGH_K_RATIO) < 0.5, f"{d['k_used']:.2f}")
 
 
 def test_no_derivative_kick_on_reset():
@@ -423,7 +410,7 @@ TESTS = [
     test_step_response,
     test_divergence_is_detectable,
     test_a_track_swap_cannot_become_a_yaw_spike,
-    test_gains_blend_across_a_zone_boundary,
+    test_gains_follow_the_speed,
     test_no_derivative_kick_on_reset,
     test_sensor_slew_guard,
     test_conditional_integration,

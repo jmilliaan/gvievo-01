@@ -198,10 +198,16 @@ Measured with the vehicle parked, drives armed at zero (`ros2 run amr_base drive
 | bus load | ~440 f/s total ≈ 45 % of 125 kbps. **Inhibit time must equal the event timer**: with inhibit 0 the servo-locked position counter dithering one count fired TPDO2 on every drive cycle, ~1200 f/s, and the MLS SDO replies missed their 50 ms window |
 | exit (SIGINT) | zero setpoint → speed-zero wait → Shutdown/Disable voltage → NMT Pre-op; drives read `0x1A50` Switch on disabled afterwards |
 
-Policy (`canopen.decide`, tabled in `test_canopen.py`): armed automatically with zero
-targets (`auto_arm`), retry every 2 s if the enable fails (usually ETO); a drive that
-leaves Operation enabled while armed → disarm and re-arm with zero (the safety chain
-took it, exactly canworker's level-held MANUAL); a drive that goes **silent** (0.6 s
+Policy (`canopen.decide`, tabled in `test_canopen.py`): linked automatically
+(`auto_arm`) into **STANDBY** — NMT operational, PDOs mapped, `1016h` set, Shutdown
+(power stage off), TPDOs flowing so `/wheel_states` stays valid — and **powered**
+(Operation enabled, zero target) only while `amr_base.arm_policy` wants it (2026-10-08):
+under MANUAL while the Manual Arm input (DI08, `panel.di_manual_arm`) is high, under AUTO
+while `LineState`/`RunState.drive_power` asks; a stale panel or request is no power.
+Engage retries every 2 s if the enable fails (usually ETO); power no longer wanted →
+release (zero, standstill wait, Shutdown) back to STANDBY, a release that cannot finish
+latches FAULT. A drive that leaves Operation enabled while powered → release and engage
+again with zero (the safety chain took it); a drive that goes **silent** (0.6 s
 without frames, *or* without TPDO1 or TPDO2 on its own even while heartbeats/SDO replies
 still arrive) or raises an **alarm** → FAULT, setpoint zero at once (sent to each drive
 independently, a failed send retried 5 ticks), latched until

@@ -88,6 +88,7 @@ class PanelNode(Node):
         self._mux_t: float | None = None
         self._line_state: int | None = None
         self._run_state: int | None = None
+        self._run_premove = False
         self._alarm = False
         self._cmd = (0.0, 0.0)
         self._cmd_t: float | None = None
@@ -105,7 +106,8 @@ class PanelNode(Node):
         self.get_logger().info(
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, selector DI{config.PANEL_DI_AUTO} "
-            f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}); "
+            f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}), "
+            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}; "
             f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}; "
             + (
                 f"pendant fwd DI{config.PENDANT_DI_FWD}, "
@@ -130,6 +132,7 @@ class PanelNode(Node):
 
     def _on_run(self, m: RunState) -> None:
         self._run_state = int(m.state)
+        self._run_premove = bool(m.premove)
 
     def _on_wheels(self, m: WheelStates) -> None:
         self._turning = (m.left_valid and abs(m.left_vel_rad_s) > TURNING_RAD_S) or (
@@ -163,6 +166,7 @@ class PanelNode(Node):
         m.reset_edge = frame.reset_edge
         m.seq = frame.seq
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
+        m.manual_arm = frame.manual_arm
         self._pub.publish(m)
         if time.monotonic() - self._ui_t >= 0.1:
             self._ui_t = time.monotonic()
@@ -172,7 +176,8 @@ class PanelNode(Node):
         # mode. Feedback older than WHEELS_FRESH_S counts as not turning.
         fresh = self._wheels_t is not None and time.monotonic() - self._wheels_t <= WHEELS_FRESH_S
 
-        # dio.alarm_on (DO01): AUTO run active and a scanner field occupied.
+        # dio.alarm_on (DO01): AUTO run active and a scanner field occupied, or the
+        # pre-move warning after a Start.
         mux = self._mux
         mux_fresh = mux is not None and time.monotonic() - self._mux_t <= MUX_FRESH_S
         alarm = panel_io.alarm_wanted(
@@ -180,6 +185,7 @@ class PanelNode(Node):
             mux_fresh and mux.field_fresh,
             bool(mux.protective_clear) if mux_fresh else True,
             bool(mux.warning_active) if mux_fresh else False,
+            run_premove=self._run_premove,
         )
         for ch in config.DIO_ALARM_ON:
             self.link.set_coil(ch, alarm, config.HORN_HOLD_S)

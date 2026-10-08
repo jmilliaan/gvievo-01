@@ -36,9 +36,8 @@ _FROM_PROFILE = {
     "K_RATIO": "K_RATIO",
     "KD": "KD",
     "KI": "KI",
-    "SLOW_K_RATIO": "SLOW_K_RATIO",
-    "SLOW_KD": "SLOW_KD",
-    "GAIN_BLEND_S": "GAIN_BLEND_S",
+    "HIGH_K_RATIO": "HIGH_K_RATIO",
+    "HIGH_KD": "HIGH_KD",
     "TAU_D_S": "TAU_D_S",
     "TI_DEADBAND_MM": "TI_DEADBAND_MM",
     "I_CLAMP": "I_CLAMP",
@@ -49,7 +48,7 @@ _FROM_PROFILE = {
     "SR_TAU_S": "SR_TAU_S",
     # speeds and the software ramp
     "AUTO_RPM": "AUTO_RPM",
-    "AUTO_SLOW_RPM": "AUTO_SLOW_RPM",
+    "AUTO_HIGH_RPM": "AUTO_HIGH_RPM",
     "RAMP_ACCEL_RPM_S": "RAMP_ACCEL_RPM_S",
     "RAMP_JERK_RPM_S2": "RAMP_JERK_RPM_S2",
     "INNER_WHEEL_MIN_RPM": "INNER_WHEEL_MIN_RPM",
@@ -132,9 +131,9 @@ def load_from_profile(config=None):
 
     # A standstill backstop for the line-loss budget, which is a DISTANCE: a
     # stopped vehicle accrues no distance and would otherwise wait for ever.
-    # Keyed off the SLOWER cruise speed, since travel through a slow zone is
-    # the case the ceiling has to tolerate.
-    slowest = min(ns["AUTO_RPM"], ns["AUTO_SLOW_RPM"])
+    # Keyed off the SLOWER cruise speed (NORMAL), the case the ceiling has to
+    # tolerate.
+    slowest = min(ns["AUTO_RPM"], ns["AUTO_HIGH_RPM"])
     ns["LINE_LOSS_GRACE_MAX_S"] = (
         5.0 * ns["LINE_LOSS_GRACE_M"] / max(slowest * ns["MPS_PER_RPM"], 1e-6)
     )

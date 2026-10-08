@@ -9,12 +9,15 @@ import copy
 import os
 import sys
 
+import pytest
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from agv_core import config as vehicle  # noqa: E402
+from agv_core import kinematics  # noqa: E402
 from agv_core import mission as missions  # noqa: E402
 
 from amr_line import autopilot, runtime, uturn  # noqa: E402
@@ -28,7 +31,8 @@ NO_TAPE = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": 0}
 COUNTS_PER_MOTOR_REV = 10000.0
 PER_REV = COUNTS_PER_MOTOR_REV * vehicle.GEAR_RATIO
 
-HOME, TROLLEY, UTURN, TOGGLE = "0010", "0020", "0030", "0040"
+HOME, TROLLEY, UTURN = "0010", "0020", "0180"
+INNER, OUTER = "0040", "0060"
 MRU1, MRU2 = "0110", "0120"
 
 
@@ -41,8 +45,7 @@ SITE_ROWS = [
     stop(HOME, "home", "Home", 2),
     stop(TROLLEY, "always", "Trolley release", 2),
     {"tag": UTURN, "action": "u_turn", "ignore_s": 2, "direction": "cw",
-     "approach_mps": 0.1, "max_approach_m": 2.0},
-    {"tag": TOGGLE, "action": "speed_toggle", "ignore_s": 5, "ramp_s": 2.0},
+     "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0},
     stop(MRU1, "destination", "MRU1"),
     stop(MRU2, "destination", "MRU2"),
 ]
@@ -57,6 +60,10 @@ def doc(rows=(), **over):
 
 
 SITE = doc(SITE_ROWS)
+# The same table with a high zone: shared ids, an 8 m shortest straight -> a 5.65 m budget.
+ZONED = doc(SITE_ROWS + [{"tag": INNER, "action": "zone_inner", "ignore_s": 1},
+                         {"tag": OUTER, "action": "zone_outer", "ignore_s": 1}],
+            high_zone={"shortest_straight_m": 8.0, "pair_spacing_m": 0.5})
 
 
 class World:
@@ -76,7 +83,9 @@ class World:
         self.counts = (0, 0)
         self.integrate = True
         self.still = False
-        self.job = lj.FollowJob(autopilot.LineFollower(), auto_start_delay_s=0.6)
+        self.yaw = 0.0          # gyro yaw rate fed to the curve guard; None = stale
+        self.v_meas = 0.0       # odometry speed: the body speed of the last command
+        self.job = lj.FollowJob(autopilot.LineFollower(), premove_s=0.6)
         ok, why = self.job.set_mission(mission, destination)
         assert ok, why
         self.tick()  # the layer is up before anything is read, as on the vehicle
@@ -96,6 +105,7 @@ class World:
             lease_allowed=LEASE_LINE, lease_line=LEASE_LINE, authority=("sup", 1), torque_off=False,
             field_clear=True, drives_fresh=True, rfid=self.rfid(), counts=self.counts,
             counts_per_rev=PER_REV, wheels_still=self.still,
+            yaw_rate=self.yaw, v_meas=self.v_meas,
         )
         base.update(over)
         return lj.Inputs(**base)
@@ -103,6 +113,7 @@ class World:
     def tick(self, **over):
         self.t += 0.02
         left, right = self.job.tick(self.inputs(**over))
+        self.v_meas = kinematics.wheels_to_body(left, right)[0]
         if self.integrate:
             step = lambda rpm: int(round(rpm / 60.0 * 0.02 * COUNTS_PER_MOTOR_REV))  # noqa: E731
             self.counts = (self.counts[0] + step(left), self.counts[1] + step(right))
@@ -119,8 +130,10 @@ class World:
         self.job.tick(self.inputs(start_edge=True, start_edge_t=self.t - 0.05))
 
     def start(self):
+        """Start, then the pre-move warning (ARMED, nothing commanded), then RUNNING."""
         self.press_start()
-        assert self.job.state == lj.RUNNING, self.job.reason
+        assert self.job.state == lj.ARMED, self.job.reason
+        assert self.until(lambda: self.job.state == lj.RUNNING, 1.0), self.job.reason
 
     def drive(self, seconds, **over):
         for _ in range(int(seconds / 0.02)):
@@ -320,27 +333,225 @@ def test_the_ignore_window_swallows_a_second_read():
     assert w.job.tape.last_encounter["action"] == "passed MRU1", "the window expired"
 
 
-# -- speed toggle --------------------------------------------------------------------
+# -- speed: NORMAL / HIGH zones (tracked-speed-plan-1) ---------------------------------
 
-def test_a_speed_toggle_is_ramped_over_ramp_s():
-    w = World(SITE, "MRU1")
+def _zoned_at_normal():
+    w = World(ZONED, "MRU2")
+    w.park_at_home()
+    w.start()
+    w.drive(4.0)
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM, "a run starts and cruises at NORMAL"
+    assert w.job.mission_snapshot()["high_speed"] is False
+    return w
+
+
+def _enter(w):
+    w.read(OUTER)
+    w.tick()
+    w.drive(0.3)
+    w.read(INNER)
+    w.tick()
+    assert w.job.tape.speed.high, w.job.tape.speed.reason
+    return w
+
+
+def test_normal_is_the_default_and_a_mission_without_a_zone_never_goes_high():
+    w = World(SITE, "MRU2")
     w.park_at_home()
     w.start()
     w.drive(4.0)
     assert w.job.diag["v_base"] == vehicle.AUTO_RPM
-    w.read(TOGGLE)
+    w.read(INNER)
     w.tick()
-    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_SLOW_RPM
     w.drive(1.0)
-    drop = vehicle.AUTO_RPM - w.job.diag["v_base"]
-    full = vehicle.AUTO_RPM - vehicle.AUTO_SLOW_RPM
-    assert 0.3 * full < drop < 0.7 * full, f"half way through a 2 s change, dropped {drop:.0f} of {full:.0f}"
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM
+
+
+def test_a_zone_entry_ramps_to_high_and_the_budget_brings_it_back():
+    w = _enter(_zoned_at_normal())
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_HIGH_RPM
+    w.drive(1.0)
+    up = w.job.diag["v_base"] - vehicle.AUTO_RPM
+    full = vehicle.AUTO_HIGH_RPM - vehicle.AUTO_RPM
+    assert 0.3 * full < up < 0.7 * full, f"half way through the 2 s ramp: {up:.0f} of {full:.0f}"
     w.drive(1.5)
-    assert w.job.diag["v_base"] == vehicle.AUTO_SLOW_RPM
-    assert w.job.tape.speed_changing is False
-    w.read(TOGGLE)  # inside the 5 s lockout
+    assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
+    snap = w.job.mission_snapshot()
+    assert snap["high_speed"] is True and "entered" in snap["speed_reason"]
+    assert w.until(lambda: not w.job.tape.speed.high, 15.0), "the budget ends HIGH"
+    assert "budget" in w.job.tape.speed.reason
+    w.drive(2.5)
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM
+
+
+def _at_high():
+    w = _enter(_zoned_at_normal())
+    w.drive(2.6)
+    assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
+    return w
+
+
+def test_passing_machine_tags_never_changes_the_speed():
+    """Operator, 2026-10-08: only zone tags change the speed. Machines that are not the
+    destination are passed at HIGH, and one read between a 60 and its 40 does not cancel
+    the entry."""
+    w = World(missions.load("line-a"), "MRU4")
+    w.park_at_home()
+    w.start()
+    w.drive(2.0)
+    w.read(OUTER)
     w.tick()
-    assert w.job.tape.speed.slow is True
+    w.drive(0.2)
+    w.read("0110")
+    w.tick()
+    w.drive(0.2)
+    w.read(INNER)
+    w.tick()
+    assert w.job.tape.speed.high, w.job.tape.speed.reason
+    w.drive(2.5)
+    for tag in ("0120", "0130"):
+        w.read(tag)
+        w.tick()
+        w.drive(0.3)
+        assert w.job.tape.speed.high and w.job.tape.stop is None, (tag, w.job.tape.speed.reason)
+    assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
+
+
+def test_the_field_run_read_gaps_still_enter_high():
+    """Run 2026-10-08 15:48 (line-a, 0.5 m pairs): first reads 0040 -> 0060 0.65 m apart into
+    the corner, 0060 -> 0040 0.99 m apart out of it. The 0.7 m window missed the entry."""
+    w = World(missions.load("line-a"), "MRU4")
+    w.park_at_home()
+    w.start()
+    w.drive(2.0)
+
+    def travel(m):
+        start = w.job.tape.speed.at_m
+        while w.job.tape.speed.at_m - start < m:
+            w.tick()
+
+    w.read(INNER)
+    w.tick()
+    travel(0.65)
+    w.read(OUTER)
+    w.tick()
+    assert w.job.tape.speed.state == "normal" and "leaving" in w.job.tape.speed.reason
+    travel(8.7)
+    w.read(OUTER)
+    w.tick()
+    travel(0.99)
+    w.read(INNER)
+    w.tick()
+    assert w.job.tape.speed.high, w.job.tape.speed.reason
+
+
+def test_inner_while_high_drops_at_half_a_metre_per_s2_without_a_jerk_ramp():
+    w = _at_high()
+    w.read(INNER)
+    w.tick()
+    v0 = w.job.diag["v_base"]
+    w.drive(0.3)
+    dropped = v0 - w.job.diag["v_base"]
+    assert dropped == pytest.approx(0.3 * 0.5 * vehicle.RPM_PER_MPS, rel=0.1), dropped
+    events = [t for _, t in w.job.tape.drain_events()]
+    assert any("late drop" in e for e in events)
+
+
+def test_outer_while_high_drops_at_the_urgent_rate():
+    w = _at_high()
+    w.read(OUTER)
+    w.tick()
+    v0 = w.job.diag["v_base"]
+    w.drive(0.2)
+    dropped = v0 - w.job.diag["v_base"]
+    assert dropped == pytest.approx(0.2 * 0.95 * vehicle.DECEL_RPM_S, rel=0.1), dropped
+    assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_RPM, 1.0)
+
+
+def test_the_curve_guard_drops_high_on_measured_curvature():
+    w = _at_high()
+    w.yaw = 1.0                     # ~1.2 1/m at 0.85 m/s: a corner
+    w.drive(0.1)
+    assert not w.job.tape.speed.high and "curve guard" in w.job.tape.speed.reason
+    assert w.job.tape.speed.exit_rate is not None, "an urgent drop"
+
+
+def test_high_needs_fresh_guard_inputs_and_encoder_counts():
+    w = _at_high()
+    w.yaw = None
+    w.tick()
+    assert not w.job.tape.speed.high and "stale" in w.job.tape.speed.reason
+    w = _at_high()
+    w.tick(counts=None)
+    assert not w.job.tape.speed.high and "wheel travel" in w.job.tape.speed.reason
+
+
+def test_a_stop_tag_at_high_goes_normal_and_still_stops():
+    w = _at_high()
+    w.read(MRU2)
+    w.tick()
+    assert not w.job.tape.speed.high and w.job.tape.stop["where"] == "MRU2"
+    assert w.until(lambda: w.job.state == lj.HOLD, 5.0) and w.job.hold_cause == "station"
+
+
+def _parked_at_mru2_from_high():
+    w = _at_high()
+    w.read(MRU2)
+    w.tick()
+    assert w.until(lambda: w.job.state == lj.HOLD, 5.0) and w.job.hold_cause == "station"
+    assert w.job.tape.speed.parked_left is not None, w.job.tape.speed.reason
+    return w
+
+
+def test_a_station_reached_at_high_departs_at_high():
+    """2026-10-08: a station on a straight goes on at the speed it arrived at."""
+    w = _parked_at_mru2_from_high()
+    left = w.job.tape.speed.parked_left - w.job.tape.speed.parked_m
+    w.drive(2.0)
+    w.tick(start_edge=True, start_edge_t=w.t)
+    assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason
+    assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
+    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.01)
+    assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM, 4.0)
+
+
+def test_a_safety_hold_at_the_station_makes_the_departure_normal():
+    """Parked, the drives are in standby (2026-10-08): torque off is expected and a field
+    trip stops nothing, so the station hold stays - but it still costs the parked HIGH."""
+    w = _parked_at_mru2_from_high()
+    w.tick(torque_off=True, field_clear=False)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "station"
+    assert w.job.tape.speed.parked_left is None
+    w.drive(1.0, torque_off=True)
+    w.tick(start_edge=True, start_edge_t=w.t, torque_off=True)
+    assert w.job.state == lj.ARMED, w.job.reason
+    assert w.until(lambda: w.job.state == lj.RUNNING, 1.0), w.job.reason
+    w.drive(1.5)
+    assert not w.job.tape.speed.high
+
+
+def test_a_run_from_home_starts_normal_even_after_arriving_high():
+    w = _at_high()
+    w.job.tape.speed.park("stop Home")                # what a HIGH Home arrival would keep...
+    w.job.tape._begin_stop(w.job.tape.table.row(HOME), w.job.f)
+    assert w.job.tape.speed.parked_left is None       # ...Home drops it instead
+
+
+def test_a_warning_field_hold_does_not_use_up_the_budget():
+    """The mux slows the vehicle where the follower cannot see it; the budget counts
+    wheel travel, so a held vehicle keeps its HIGH budget."""
+    w = _at_high()
+    w.integrate = False             # wheels stopped by the field, command still HIGH
+    w.tick()                        # the last integrated step lands one tick late
+    used = w.job.tape.speed.used_m
+    w.drive(10.0)
+    assert w.job.tape.speed.high and w.job.tape.speed.used_m == pytest.approx(used)
+
+
+def test_any_hold_drops_high():
+    w = _at_high()
+    w.tick(torque_off=True, field_clear=False)
+    assert w.job.state == lj.HOLD and not w.job.tape.speed.high
 
 
 # -- U-turn ----------------------------------------------------------------------------
@@ -361,6 +572,92 @@ def test_the_u_turn_tag_is_ignored_once_on_the_way_back():
     w.read(UTURN)
     w.tick()
     assert w.job.tape.uturn_req is None and w.job.tape.last_encounter["action"] == "suppressed"
+
+
+def test_the_u_turn_slows_to_the_creep_within_decel_m():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM
+    w.read(UTURN)
+    w.tick()
+    m0, creep = w.job.followed_m, 0.1 * vehicle.RPM_PER_MPS
+    assert w.until(lambda: w.job.diag["v_base"] <= creep + 1.0, 3.0)
+    assert w.job.followed_m - m0 == pytest.approx(0.3, abs=0.03), w.job.followed_m - m0
+
+
+def test_the_u_turn_stops_the_moment_the_tape_is_gone_creep_reached_or_not():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.read(UTURN)
+    w.tick()
+    w.drive(0.2)                                     # still slowing, well above the creep
+    assert w.job.diag["v_base"] > 2 * 0.1 * vehicle.RPM_PER_MPS
+    w.tick(sensor=NO_TAPE)                           # one tick: a flicker, keeps going
+    assert w.job.tape.uturn_req["phase"] == "approach" and w.job.diag["v_base"] > 0
+    left, right = w.tick(sensor=NO_TAPE)             # second tick: the tape ended
+    assert w.job.tape.uturn_req["phase"] == "stopping"
+    assert (left, right) == (0.0, 0.0) and w.job.diag["v_base"] == 0.0
+
+
+def _plain():
+    w = World(missions.load("empty"))
+    w.comms = False                                  # U-turn tags alone do not need the link:
+    w.start()                                        # it starts, and keeps driving, without it
+    _run_to(w)
+    w.comms = True
+    w.tick()
+    return w
+
+
+def test_plain_line_following_u_turns_cw_on_0180():
+    w = _plain()
+    w.read("0180")
+    w.tick()
+    assert w.job.tape.uturn_req is not None and w.job.tape.uturn_req["direction"] == "cw"
+    assert w.job.mission_snapshot()["mission"] == "", "still shown as plain line following"
+
+
+def test_plain_line_following_u_turns_ccw_on_0190_and_completes():
+    w = _plain()
+    w.read("0190")
+    w.tick()
+    assert w.job.tape.uturn_req["direction"] == "ccw"
+    assert w.until(lambda: w.job.tape.uturn_req["phase"] == "stopping", 4.0, sensor=NO_TAPE)
+    w.still, w.integrate = True, False
+    assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
+    base = w.counts
+    for deg, sensor in ((90, NO_TAPE), (170, CENTRED)):
+        c = uturn.counts_for_angle(deg, PER_REV)
+        w.counts = (base[0] - int(round(c)), base[1] + int(round(c)))   # ccw: right wheel forward
+        w.tick(sensor=sensor)
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
+    assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
+
+
+def test_right_after_the_u_turn_it_is_regular_line_following():
+    """No creep ceiling, no leftover U-turn state: NORMAL speed, live steering, and its
+    own tag driven back over is not a second U-turn."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    _uturn(w)
+    assert w.job.tape.uturn_req is None and w.job.tape.uturn is None
+    assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_RPM, 4.0), w.job.diag["v_base"]
+    assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_RPM, "the approach creep is not carried over"
+    assert w.job.diag["state"] == "run" and w.job.state == lj.RUNNING
+    off = dict(CENTRED, tracks=[{"index": 2, "pos_mm": 30, "width": 10}])
+    left, right = w.tick(sensor=off)
+    w.drive(0.2, sensor=off)
+    left, right = w.tick(sensor=off)
+    assert abs(left - right) > 1.0, "steering is live after the turn"
+    w.read(UTURN)
+    w.tick()
+    assert w.job.tape.uturn_req is None, "its own tag on the way back does not start another U-turn"
 
 
 def test_the_tape_that_never_ends_faults_the_u_turn():
@@ -414,7 +711,8 @@ def test_rfid_link_loss_holds_for_a_person():
     w.drive(3.0)
     assert w.job.state == lj.HOLD, "the link coming back does not resume by itself"
     w.tick(start_edge=True, start_edge_t=w.t)
-    assert w.job.state == lj.RUNNING, w.job.reason
+    assert w.job.state == lj.ARMED, w.job.reason
+    assert w.until(lambda: w.job.state == lj.RUNNING, 1.0), w.job.reason
     w.drive(0.5)
     assert w.job.state == lj.RUNNING, "a reconnect seen while held is not a second hold"
 

@@ -75,7 +75,7 @@ onState(st => {
   tiles('st-ready', [
     ['Base ready', yesno(m && m.base_ready), 'drives · panel · lidar · mux', m && m.base_ready ? '' : 'bad'],
     ['Panel', panelVal, p ? `${num(p.age_s, 2)} s` : 'no image', panelVal === 'AUTO' || panelVal === 'MANUAL' ? '' : 'bad'],
-    ['Drives', d ? (d.operational ? 'ARMED' : 'OFF') : '–', d ? `${num(d.age_s, 2)} s` : 'no status', d && d.age_s <= FRESH_S ? (d.operational ? '' : 'warn') : 'bad'],
+    ['Drives', d ? (d.operational ? 'ARMED' : (d.link === 'standby' ? 'STANDBY' : 'OFF')) : '–', d ? (d.power_reason || `${num(d.age_s, 2)} s`) : 'no status', d && d.age_s <= FRESH_S ? (d.operational ? '' : 'warn') : 'bad'],
     ['Command source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
     ['Localisation', l ? l.state_name : (st.localization_stale ? 'STALE' : '–'), st.localization_stale ? 'old layer' : '—', l ? LOC_LEVEL[l.state_name] : ''],
     ['Manual available', yesno(m && m.manual_available), '—'],

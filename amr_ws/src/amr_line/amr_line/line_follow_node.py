@@ -39,9 +39,11 @@ import rclpy
 from agv_core import alarms, kinematics
 from agv_core import config as vehicle_config
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_interfaces.msg import (
@@ -51,6 +53,7 @@ from amr_interfaces.msg import (
     LineState,
     LineTrack,
     ModeState,
+    MuxState,
     PanelState,
     StationDetection,
     WheelStates,
@@ -121,6 +124,11 @@ class LineFollowNode(Node):
         self.declare_parameter("rfid_fresh_s", 1.5)  # heartbeat is 2 Hz
         self.declare_parameter("wheels_fresh_s", 0.1)
         self.declare_parameter("still_wheel_rad_s", 0.02)
+        # Speed engine inputs (tracked-speed-plan-1, 2026-10-08): the curve guard's yaw
+        # rate and speed, and the mux's warning-field factor for the U-turn budget.
+        self.declare_parameter("imu_fresh_s", 0.1)
+        self.declare_parameter("odom_fresh_s", 0.1)
+        self.declare_parameter("mux_fresh_s", 0.3)  # /amr/mux_state is 10 Hz
 
         self.dt = 1.0 / float(self.get_parameter("rate_hz").value)
         self._generation = int(self.get_parameter("generation").value)
@@ -149,8 +157,12 @@ class LineFollowNode(Node):
             prereq_grace_s=float(self.get_parameter("prereq_grace_s").value),
             auto_resume_clear_s=auto_clear,
             auto_resume_estop=bool(self.get_parameter("auto_resume_estop").value),
-            auto_start_delay_s=float(vehicle_config.AUTO_START_DELAY_S),
+            premove_s=float(vehicle_config.AUTO_START_DELAY_S),
+            premove_timeout_s=float(vehicle_config.PREMOVE_TIMEOUT_S),
         )
+        # No job yet is plain line following, with the site's U-turn tags.
+        _ok, msg = self.job.set_mission(self._plain_mission())
+        self.get_logger().info(f"mission at start: {msg}")
         self.reader = tk.TrackReader(
             timeout_s=runtime.SENSOR_TIMEOUT_S,
             min_hz=float(vehicle_config.LINE_MIN_TRACK_HZ),
@@ -179,6 +191,15 @@ class LineFollowNode(Node):
         self.still_w = float(self.get_parameter("still_wheel_rad_s").value)
         self._wheels: WheelStates | None = None
         self._wheels_t: float | None = None
+        self.imu_fresh = float(self.get_parameter("imu_fresh_s").value)
+        self.odom_fresh = float(self.get_parameter("odom_fresh_s").value)
+        self.mux_fresh = float(self.get_parameter("mux_fresh_s").value)
+        self._imu_wz: float | None = None
+        self._imu_t: float | None = None
+        self._odom: tuple[float, float] | None = None  # (v, wz)
+        self._odom_t: float | None = None
+        self._mux_scale = 1.0
+        self._mux_t: float | None = None
 
         self.create_subscription(LineTrack, "/amr/line_track", self._on_track, SENSOR)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
@@ -189,6 +210,9 @@ class LineFollowNode(Node):
                               durability=QoSDurabilityPolicy.VOLATILE)
         self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, rfid_qos)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
+        self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
+        self.create_subscription(Odometry, "/odom_raw", self._on_odom, SENSOR)
+        self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1)
         if self.field_source == "assume_clear":
             self.get_logger().warning(
                 "field_source=assume_clear: the protective field is ASSUMED clear "
@@ -209,6 +233,7 @@ class LineFollowNode(Node):
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
         self._event_state: int | None = None
+        self._power_published: bool | None = None  # LineState.drive_power last sent
 
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
         self.create_service(SelectMission, "/amr/line/mission", self._srv_mission)
@@ -219,7 +244,7 @@ class LineFollowNode(Node):
         self.get_logger().info(
             f"line layer up, generation {self._generation}: "
             f"k_ratio={runtime.K_RATIO} kd={runtime.KD} "
-            f"cruise={vehicle_config.AUTO_RPM:g} rpm slow={vehicle_config.AUTO_SLOW_RPM:g} rpm "
+            f"normal={vehicle_config.AUTO_RPM:g} rpm high={vehicle_config.AUTO_HIGH_RPM:g} rpm "
             f"rate floor={self.reader.min_hz} Hz "
             f"auto-resume clear={self.job.auto_resume_clear_s} s"
         )
@@ -273,6 +298,27 @@ class LineFollowNode(Node):
     def _on_wheels(self, m: WheelStates) -> None:
         self._wheels, self._wheels_t = m, time.monotonic()
 
+    def _on_imu(self, m: Imu) -> None:
+        self._imu_wz, self._imu_t = float(m.angular_velocity.z), time.monotonic()
+
+    def _on_odom(self, m: Odometry) -> None:
+        self._odom = (float(m.twist.twist.linear.x), float(m.twist.twist.angular.z))
+        self._odom_t = time.monotonic()
+
+    def _on_mux(self, m: MuxState) -> None:
+        self._mux_scale, self._mux_t = float(m.speed_scale), time.monotonic()
+
+    def _motion_inputs(self, now: float):
+        """(yaw_rate, v_meas, warning_scale). Gyro first, odometry as the fallback;
+        None when neither is fresh, which takes HIGH away. A stale mux reads as no
+        warning: the U-turn budget then runs, which faults rather than waits."""
+        odom_ok = self._odom_t is not None and now - self._odom_t <= self.odom_fresh
+        imu_ok = self._imu_t is not None and now - self._imu_t <= self.imu_fresh
+        v = self._odom[0] if odom_ok else None
+        yaw = self._imu_wz if imu_ok else (self._odom[1] if odom_ok else None)
+        mux_ok = self._mux_t is not None and now - self._mux_t <= self.mux_fresh
+        return yaw, v, (self._mux_scale if mux_ok else 1.0)
+
     def _wheel_inputs(self, now: float):
         """(counts, counts_per_rev, still) from a FRESH /wheel_states, else nothing."""
         w = self._wheels
@@ -325,6 +371,7 @@ class LineFollowNode(Node):
         reset_edge, self._reset_edge = self._reset_edge, False
         track_ok, track_cause = self.reader.usable(now)
         counts, per_rev, still = self._wheel_inputs(now)
+        yaw, v_meas, scale = self._motion_inputs(now)
         return lj.Inputs(
             now=now,
             dt=dt,
@@ -353,6 +400,9 @@ class LineFollowNode(Node):
             counts=counts,
             counts_per_rev=per_rev,
             wheels_still=still,
+            yaw_rate=yaw,
+            v_meas=v_meas,
+            warning_scale=scale,
         )
 
     # -- services ----------------------------------------------------------
@@ -366,12 +416,23 @@ class LineFollowNode(Node):
         self._publish_state()
         return res
 
+    def _plain_mission(self):
+        """missions/empty.json (the site's U-turn tags), or None - no tags at all -
+        when it is missing or refused, so a bad file never blocks line following."""
+        from agv_core import mission  # noqa: PLC0415
+
+        try:
+            return mission.load("empty")
+        except mission.MissionError as e:
+            self.get_logger().error(f"plain line following without U-turn tags: {e}")
+            return None
+
     def _srv_mission(self, req, res):
         from agv_core import mission  # noqa: PLC0415
 
         name = (req.name or "").strip()
         try:
-            doc = None if name in ("", "none") else mission.load(name)
+            doc = self._plain_mission() if name in ("", "none") else mission.load(name)
         except mission.MissionError as e:
             res.ok, res.message = False, f"mission {name!r} refused: {e}"
         else:
@@ -410,6 +471,8 @@ class LineFollowNode(Node):
                 f" {self.job.reason}"
             )
             self._publish_state()
+        elif self.job.wants_power() != self._power_published:
+            self._publish_state()  # a hold changing cause can change drive_power: say so now
 
     # -- output ------------------------------------------------------------
     def _publish_cmd(self, v: float, omega: float) -> None:
@@ -429,6 +492,8 @@ class LineFollowNode(Node):
         m.state = self.job.state
         m.hold_cause = self.job.hold_cause
         m.auto_resume = self.job.auto_resume()
+        m.drive_power = bool(self.job.wants_power())
+        self._power_published = m.drive_power
         m.engine_state = str(d.get("state", "idle"))
         m.has_track = bool(d.get("has_track", False))
         m.error_mm = float(d.get("e_mm") or 0.0)
