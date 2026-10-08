@@ -529,15 +529,40 @@ label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */
 .home { display:flex; flex-direction:column; gap:1rem; min-height:0; }
-.home-state { border:2px solid var(--rule); background:var(--surface); padding:1rem 1.6rem; }
-.home-big { font:700 4.4rem/1.02 var(--disp); letter-spacing:-.02em; overflow-wrap:anywhere; }
+/* Home: tracked / trackless, a two-way segmented switch (2026-10-08) */
+.home-nav { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+.home-nav-label { font:600 1.1rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); }
+.seg { display:inline-flex; }
+.seg button.tool { min-height:3.4rem; padding:.5rem 1.6rem; font-size:1.3rem; }
+.seg button.tool + button.tool { margin-left:-1px; }
+.home-nav-hint { color:var(--ink-2); font-size:1.2rem; }
+.home-state { border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; }
+.home-big { font:700 3rem/1.02 var(--disp); letter-spacing:-.02em; overflow-wrap:anywhere; }
 .home-big.warn { color:var(--hazard-ink); }
 .home-big.error { color:var(--stop); }
-.home-detail { color:var(--ink-2); font-size:1.5rem; min-height:1.4em; margin-top:.3rem; }
+.home-detail { color:var(--ink-2); font-size:1.3rem; min-height:1.4em; margin-top:.2rem; }
+/* Home live tiles (2026-10-08): three readings, read from the floor */
+/* speed and RFID side by side, the line sensor full width under them with its strip
+   beside the value (a wide strip reads better and keeps the tile short) */
+.home-live { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.8rem; }
+#live-line { grid-column:1 / -1; display:grid; grid-template-columns:minmax(16rem, auto) minmax(0, 1fr); column-gap:1.6rem; }
+#live-line > span, #live-line > b, #live-line > i { grid-column:1; }
+#live-line > .live-bar { grid-column:2; grid-row:1 / 4; align-self:center; height:2rem; margin-top:0; }
+.live { border:1px solid var(--rule); background:var(--surface); padding:.45rem 1.2rem; display:flex; flex-direction:column; min-width:0; }
+.live > span { font:500 1rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
+.live > b { font:700 2.7rem/1.05 var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.live > i { font:400 1.1rem var(--mono); font-style:normal; color:var(--ink-2); overflow-wrap:anywhere; }
+.live.ok { border-color:var(--ok); background:var(--ok); }
+.live.ok > b, .live.ok > i, .live.ok > span { color:var(--surface); }
+.live.warn { border-left:3px solid var(--hazard); background:var(--hazard-wash); }
+.live.warn > b { color:var(--hazard-ink); }
+.live.off > b { color:var(--ink-3); }
+.live-bar { position:relative; height:1.4rem; margin-top:.5rem; background:var(--surface-2); border:1px solid var(--rule); }
+.live-bar em { position:absolute; top:50%; width:1.1rem; height:1.1rem; transform:translate(-50%,-50%); background:var(--ink-3); }
+.live-bar em[data-i="1"] { background:var(--ok); }
 .home-act { border:1px solid var(--rule); background:var(--surface); padding:1rem 1.6rem; }
 .home-title { font:600 2rem/1.15 var(--disp); }
 .home-action { color:var(--ink-2); font-size:1.5rem; margin:.4rem 0 1rem; overflow-wrap:anywhere; }
-.home-load { border:1px solid var(--rule); background:var(--surface); padding:1rem 1.6rem; }
 .home-more { border:1px solid var(--rule); background:var(--surface); }
 .home-more > summary {
   cursor:pointer; padding:.8rem 1.6rem; font:600 1.4rem var(--sans); min-height:3.4rem;
@@ -580,7 +605,11 @@ button.ui-size + button.ui-size, button.role-btn + button.ui-size { margin-left:
 .steps .step.done b::after { content:" ✓"; }
 @media (max-width:820px) {
   .steps { grid-template-columns:minmax(0,1fr); }
-  .home-big { font-size:3.4rem; }
+  .home-big { font-size:2.4rem; }
+  .home-live { grid-template-columns:minmax(0,1fr); }
+  #live-line { display:flex; }
+  #live-line > .live-bar { height:1.4rem; margin-top:.4rem; }
+  .live > b { font-size:2.3rem; }
 }
 
 /* Engineer PIN pad (base.html #pin-pad). Keys sized for a gloved finger on the

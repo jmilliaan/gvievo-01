@@ -5,9 +5,33 @@
    holds it, and the one button that clears it. Everything else is behind "More".
    Fits 1280x720 at ui=l with nothing below the fold. #}
 <section class="home">
+  {# Level 1 of the navigation hierarchy (2026-10-08): tracked (LINE) or trackless (IDLE
+     and its two steps, mapping then navigation, on Run trackless). Tracked is the boot
+     default, so this is only pressed to leave it. A mode change moves nothing; the
+     supervisor refuses it unless the vehicle is stopped, idle and out of emergency.
+     Only a vehicle that carries both products has a choice to make. #}
+  {% if tracked_ok and trackless_ok %}
+  <div class="home-nav">
+    <span class="home-nav-label">Navigation</span>
+    <div class="seg" role="radiogroup" aria-label="Navigation type">
+      <button id="nav-tracked" class="tool" role="radio" data-target="line">Tracked</button>
+      <button id="nav-trackless" class="tool" role="radio" data-target="idle">Trackless</button>
+    </div>
+    <span id="nav-hint" class="home-nav-hint"></span>
+  </div>
+  {% endif %}
   <div class="home-state">
     <div id="home-line" class="home-big">connecting…</div>
     <div id="home-detail" class="home-detail"></div>
+  </div>
+  {# Live readings (2026-10-08), big enough to read from the floor: measured wheel speed,
+     the tag under the RFID reader, the MLS line position. Display only, in every mode. #}
+  <div class="home-live">
+    <div class="live" id="live-speed"><span>Speed</span><b>–</b><i>no wheel feedback</i></div>
+    <div class="live" id="live-rfid"><span>RFID tag</span><b>––</b><i>no reader data</i></div>
+    <div class="live" id="live-line"><span>Line position</span><b>–</b><i>no reading</i>
+      <div class="live-bar"><i class="lt-zero"></i><em data-i="0"></em><em data-i="1"></em><em data-i="2"></em></div>
+    </div>
   </div>
   <div class="home-act">
     <div id="home-title" class="home-title">—</div>
@@ -18,18 +42,14 @@
       <button id="home-abort" class="danger" hidden>Abort</button>
     </div>
   </div>
-  <div class="home-load" id="home-load" hidden>
-    <label class="field">Mission <select id="home-mission"></select></label>
-    <div class="bar"><button id="home-run" class="big run">Load mission</button></div>
-    <p class="note">Loading only prepares the run. <b>Motion starts from the panel</b>: selector AUTO, then Start.</p>
-  </div>
   <details class="home-more">
     <summary>More <small>everything standing against the vehicle</small></summary>
     <div id="home-list" class="al-log"><div class="none">nothing standing</div></div>
   </details>
 </section>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}<script src="/static/linetrack.js"></script>
+<script>
 const $ = id => document.getElementById(id);
 const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
 let headline = null;
@@ -48,30 +68,66 @@ const ACTIONS = {
 $('home-primary').onclick = () => { const fn = ACTIONS[$('home-primary').textContent]; if (fn) fn(); };
 $('home-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 $('home-abort').onclick = () => { if (confirm('Abort the run?')) api('/api/mission/abort').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')); };
-$('home-run').onclick = () => {
-  const id = $('home-mission').value;
-  if (!id) return;
-  api('/api/mission/run', { mission_id: id }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+// Navigation switch. During a swap it shows where the vehicle is going, not where it was.
+let navBusy = false;
+for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
+  if (b.classList.contains('on') || navBusy) return;
+  navBusy = true;
+  operation('/api/mode', { target: b.dataset.target }, () => { navBusy = false; });
 };
-
-// Only missions drawn on the map the vehicle is actually running can load; the
-// executor refuses the rest, so offering them is a trap.
-let activeMap = null;
-async function missions() {
-  const { status, data } = await apiGet('/api/missions');
-  if (status !== 200) return;
-  const sel = $('home-mission'), had = sel.value;
-  const usable = activeMap ? data.filter(m => m.map.id === activeMap.id && +m.map.revision === +activeMap.rev) : [];
-  sel.innerHTML = usable.length
-    ? usable.map(m => `<option value="${esc(m.mission_id)}">${esc(m.mission_id)}</option>`).join('')
-    : `<option value="">${activeMap ? 'no missions for ' + esc(activeMap.id) : 'no map is active'}</option>`;
-  if (had && usable.some(m => m.mission_id === had)) sel.value = had;
+function navSwitch(m) {
+  if (!$('nav-tracked')) return;
+  const settled = m && ['IDLE', 'MAPPING', 'NAVIGATION', 'LINE'].includes(m.mode_name);
+  const where = m ? (m.mode_name === 'TRANSITIONING' ? m.requested_name : m.mode_name) : '';
+  const tracked = where === 'LINE';
+  $('nav-tracked').classList.toggle('on', !!m && tracked);
+  $('nav-trackless').classList.toggle('on', !!m && !tracked && settled);
+  $('nav-tracked').setAttribute('aria-checked', String(!!m && tracked));
+  $('nav-trackless').setAttribute('aria-checked', String(!!m && !tracked && settled));
+  for (const id of ['nav-tracked', 'nav-trackless']) $(id).disabled = !settled || navBusy;
+  $('nav-hint').textContent = !m ? 'no supervisor'
+    : !settled ? (m.mode_name === 'TRANSITIONING' ? `switching to ${tracked ? 'tracked' : 'trackless'}…` : m.mode_name)
+    : tracked ? 'magnetic tape · Run tracked' : `${m.mode_name === 'IDLE' ? 'no map in use' : m.mode_name.toLowerCase()} · Run trackless`;
 }
+
+// One live tile: big value, one line under it, and a level ('' / 'warn' / 'off').
+function live(id, value, sub, level) {
+  const el = $(id);
+  el.querySelector('b').textContent = value;
+  el.querySelector(':scope > i').textContent = sub;
+  el.className = 'live' + (level ? ' ' + level : '');
+}
+function liveTiles(st) {
+  const w = st.wheels;
+  if (!w || w.age_s > 1.0) live('live-speed', '–', w ? `stale ${num(w.age_s, 1)} s` : 'no wheel feedback', 'off');
+  else if (!w.valid) live('live-speed', '–', 'wheel feedback invalid', 'warn');
+  else {
+    const v = Math.abs(w.v_mps) < 0.005 ? 0 : w.v_mps;
+    live('live-speed', `${num(Math.abs(v), 2)} m/s`, `${v < 0 ? 'reverse · ' : ''}L ${num(w.left_mps, 2)} · R ${num(w.right_mps, 2)}`, '');
+  }
+  const r = rfidReading(st.rfid);
+  if (!r.up) live('live-rfid', '––', r.why, 'off');
+  else if (r.tag) live('live-rfid', r.tag, 'reading now', 'ok');
+  else live('live-rfid', '––', r.last ? `last ${r.last.tag} · ${ago(r.last.age_s)}` : 'no tag under the reader', '');
+  const t = st.line_track, el = $('live-line');
+  const fresh = !!t && t.age_s <= 1.0, max = (t && t.sensor_max_mm) || 100;
+  el.querySelectorAll('.live-bar em').forEach(d => {
+    const i = +d.dataset.i, on = fresh && t.valid[i];
+    d.hidden = !on;
+    if (on) d.style.left = `${50 + 50 * Math.max(-1, Math.min(1, t.lcp_mm[i] / max))}%`;
+  });
+  if (!fresh) { live('live-line', '–', t ? `stale ${num(t.age_s, 1)} s` : 'no reading', 'off'); return; }
+  // One track is always LCP2 (MLS manual); at a diverter LCP2 is still the middle one.
+  const k = t.valid[1] ? 1 : t.valid.indexOf(true);
+  if (k < 0) { live('live-line', 'NO LINE', `level ${t.track_level}/7`, 'warn'); return; }
+  const mm = t.lcp_mm[k];
+  live('live-line', `${mm > 0 ? '+' : mm < 0 ? '−' : ''}${Math.abs(mm)} mm`,
+       `${t.nlcp_label} · level ${t.track_level}/7${t.line_good ? '' : ' · weak'}`, t.line_good ? '' : 'warn');
+}
+
 onState(st => {
-  const m = st.mode;
-  const next = m && m.active_map_id ? { id: m.active_map_id, rev: m.active_map_revision } : null;
-  const same = (next && activeMap && next.id === activeMap.id && next.rev === activeMap.rev) || (!next && !activeMap);
-  if (!same) { activeMap = next; missions(); }
+  navSwitch(st.mode);
+  liveTiles(st);
 });
 
 // One poll for the whole page: the server already decided what is standing and what
@@ -96,7 +152,6 @@ function render(d) {
   if (h.button) btn.textContent = h.button;
   $('home-pause').hidden = !h.run_active;
   $('home-abort').hidden = !h.run_active;
-  $('home-load').hidden = h.run_active || h.state.indexOf('NEEDS SERVICE') === 0;
   const rows = d.alarms || [];
   $('home-list').innerHTML = rows.length ? rows.map(a =>
     `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.level)}</span>` +

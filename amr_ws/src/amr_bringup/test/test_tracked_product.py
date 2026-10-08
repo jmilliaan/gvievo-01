@@ -90,11 +90,14 @@ def test_boot_entry_waits_if_a_transaction_is_already_in_flight():
     assert sv.begun == [] and not sv._auto_line_done
 
 
-def test_both_products_boot_to_idle_and_offer_every_mode():
-    """tracked: null (2026-10-02): one vehicle, Run tracked and Run trackless."""
+def test_both_products_boot_to_line_and_offer_every_mode():
+    """tracked: null (2026-10-02): one vehicle, Run tracked and Run trackless. Tracked
+    is the default (2026-10-08): it boots to LINE; trackless is the Home switch."""
     sv = fake(tracked=None)
     sv._auto_enter_line()
-    assert sv.begun == []
+    assert sv.begun == [(fsm.REQ_LINE, fsm.LINE)]
+    sv._auto_enter_line()
+    assert len(sv.begun) == 1, "once per boot: switching to trackless is not undone"
     both = fsm.Params(tracked=None)
     for req in (fsm.REQ_LINE, fsm.REQ_NAVIGATION, fsm.REQ_SURVEY_START):
         assert "tracked=" not in fsm.admit(fsm.IDLE, req, cond(), both).reason

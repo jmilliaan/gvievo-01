@@ -470,6 +470,42 @@ def test_rfid_tags_show_on_the_manual_and_run_tracked_pages(tmp_path):
     assert 'id="rf-last"' not in client.get("/manual").get_data(as_text=True)
 
 
+def test_home_shows_speed_rfid_and_line_tiles_and_loads_no_mission(tmp_path):
+    """2026-10-08: setting a mission is not a Home thing. Home shows three live readings."""
+    client, _ = app_for(merged(), tmp_path)
+    body = client.get("/home").get_data(as_text=True)
+    for tile in ("live-speed", "live-rfid", "live-line"):
+        assert f'id="{tile}"' in body, tile
+    assert "home-mission" not in body and "/api/mission/run" not in body
+    assert "/static/linetrack.js" in body, "the RFID 'reading now' rule is shared, not copied"
+
+
+def test_the_adapter_reports_measured_wheel_speed_as_body_speed(monkeypatch):
+    """/wheel_states_ui is the measured 606Ch feedback; v is the mean of the two rims."""
+    import threading
+    from types import SimpleNamespace
+
+    from amr_web import adapter as ad
+
+    monkeypatch.setattr(ad, "WHEEL_RADIUS_M", 0.1)
+    a = ad.RosAdapter.__new__(ad.RosAdapter)
+    a._lock = threading.Lock()
+    a._now = lambda: 5.0
+
+    def msg(left, right, valid=True):
+        return SimpleNamespace(
+            left_vel_rad_s=left, right_vel_rad_s=right, left_valid=valid, right_valid=valid
+        )
+
+    a._on_wheels(msg(5.0, 3.0))
+    assert a._wheels["v_mps"] == pytest.approx(0.4)
+    assert (a._wheels["left_mps"], a._wheels["right_mps"]) == (pytest.approx(0.5), pytest.approx(0.3))
+    a._on_wheels(msg(-2.0, -2.0))
+    assert a._wheels["v_mps"] == pytest.approx(-0.2), "reverse is negative"
+    a._on_wheels(msg(9.0, 9.0, valid=False))
+    assert a._wheels["valid"] is False and a._wheels["v_mps"] is None
+
+
 def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
     """Heartbeats set the link; each encounter is one pass, newest first, at most RFID_RECENT."""
     import threading
@@ -548,6 +584,22 @@ def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):
     client, _ = _product_app("tape", tmp_path)
     assert "btn-line-arm" not in client.get("/run-tracked").get_data(as_text=True)
     assert client.post("/api/line/arm").status_code in (404, 405)
+
+
+def test_tracked_trackless_is_one_switch_on_home(tmp_path):
+    """2026-10-08: level 1 of navigation is a Home switch (tracked = LINE, the boot
+    default; trackless = IDLE and its mapping/navigation steps). Run tracked no longer
+    carries mode buttons, and a single-product vehicle has nothing to switch."""
+    client, _ = _product_app("both", tmp_path)
+    home = client.get("/home").get_data(as_text=True)
+    assert 'id="nav-tracked"' in home and 'data-target="line"' in home
+    assert 'id="nav-trackless"' in home and 'data-target="idle"' in home
+    tracked = client.get("/run-tracked").get_data(as_text=True)
+    assert "btn-line-mode" not in tracked and "btn-line-idle" not in tracked
+    for product in ("tape", "slam"):
+        (tmp_path / product).mkdir()
+        client, _ = _product_app(product, tmp_path / product)
+        assert 'id="nav-tracked"' not in client.get("/home").get_data(as_text=True), product
 
 
 def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):

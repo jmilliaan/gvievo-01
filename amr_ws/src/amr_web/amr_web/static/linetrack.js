@@ -1,4 +1,4 @@
-// The MLS line strip (_line_track.html): Manual and Run tracked only, so the rail's
+// The MLS line strip (_line_track.html): Manual, Run tracked and Home's live tiles, so the rail's
 // shared amr.js does not reference ids other pages lack.
 // LCP1..3 on a bar scaled to the profile's sensor_max_mm. Older than 1 s = no reading.
 function lineTrack(t) {
@@ -30,14 +30,21 @@ function lineTrack(t) {
 // The reader's own tag_age_s (since its last read of any tag) plus the heartbeat's age.
 const RF_FRESH_S = 3.0;
 const RF_HOLD_S = 1.0;
+// The one rule for "a tag is under the reader now", shared by this strip and Home's tile.
+function rfidReading(r) {
+  const link = r && r.link, tags = (r && r.tags) || [];
+  const up = !!link && link.age_s <= 2.0 && link.comms_ok;
+  const last = tags[0];
+  const reading = up && !!last && link.tag_age_s >= 0 && link.tag_age_s + link.age_s <= RF_HOLD_S;
+  const why = !link ? 'no reader data' : link.age_s > 2.0 ? `reader silent ${link.age_s.toFixed(1)} s`
+    : !link.comms_ok ? 'reader link down' : '';
+  return { link, tags, up, last, reading, tag: reading ? last.tag : null, why };
+}
 function rfidTags(r) {
   const box = document.querySelector('.lt-rfid');
   if (!box) return;
-  const link = r && r.link, tags = (r && r.tags) || [];
-  const up = !!link && link.age_s <= 2.0 && link.comms_ok;
+  const { link, tags, up, last, reading } = rfidReading(r);
   box.classList.toggle('down', !up);
-  const last = tags[0];
-  const reading = up && !!last && link.tag_age_s >= 0 && link.tag_age_s + link.age_s <= RF_HOLD_S;
   document.getElementById('rf-status').textContent = !link ? 'no reader data (rfid_node not publishing)'
     : link.age_s > 2.0 ? `reader silent ${link.age_s.toFixed(1)} s`
     : !link.comms_ok ? 'reader link down'

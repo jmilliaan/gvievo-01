@@ -49,6 +49,7 @@ from amr_interfaces.msg import (
     PpStatus,
     StationDetection,
     SurveyMoveState,
+    WheelStates,
 )
 from amr_interfaces.srv import (
     GetOperation,
@@ -235,6 +236,8 @@ class RosAdapter(Node):
         # RFID (2026-10-02): the link from the 2 Hz heartbeat, and the last few tag passes.
         self._rfid: dict | None = None
         self._rfid_t = 0.0
+        self._wheels: dict | None = None
+        self._wheels_t = 0.0
         self._rfid_tags: collections.deque = collections.deque(maxlen=RFID_RECENT)
         self._sensor_max_mm = _sensor_max_mm()
         self._ipc_temp: dict | None = None
@@ -254,6 +257,11 @@ class RosAdapter(Node):
         # so the 5 Hz display copy, not the 100 Hz control topic.
         self.create_subscription(
             LineTrack, "/amr/line_track_ui", self._on_track, qos_profile_sensor_data, callback_group=g
+        )
+        # Measured wheel speeds (606Ch), the 5 Hz display copy of /wheel_states: Home's speed
+        # tile (2026-10-08). The mux's left/right_mps are the SETPOINT, not what the wheels do.
+        self.create_subscription(
+            WheelStates, "/wheel_states_ui", self._on_wheels, qos_profile_sensor_data, callback_group=g
         )
         # RFID tag passes and the reader link, in every mode (rfid_node, base layer): display only.
         self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, RFID_QOS, callback_group=g)
@@ -519,6 +527,19 @@ class RosAdapter(Node):
         with self._lock:
             self._track, self._track_t = d, self._now()
 
+    def _on_wheels(self, m: WheelStates) -> None:
+        r = WHEEL_RADIUS_M
+        valid = bool(m.left_valid and m.right_valid) and r is not None
+        d = {
+            "valid": valid,
+            "left_mps": float(m.left_vel_rad_s) * r if valid else None,
+            "right_mps": float(m.right_vel_rad_s) * r if valid else None,
+            # body speed of a differential drive: the mean of the two rims, + = forward
+            "v_mps": 0.5 * (float(m.left_vel_rad_s) + float(m.right_vel_rad_s)) * r if valid else None,
+        }
+        with self._lock:
+            self._wheels, self._wheels_t = d, self._now()
+
     def _on_rfid(self, m: StationDetection) -> None:
         now = self._now()
         with self._lock:
@@ -719,6 +740,7 @@ class RosAdapter(Node):
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 "rfid": self._rfid_state(now),
+                "wheels": dict(self._wheels, age_s=now - self._wheels_t) if self._wheels else None,
                 "ipc_temp": self._ipc(now),
                 "drive_supply": self._drive_supply(now),
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,

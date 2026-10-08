@@ -1,9 +1,11 @@
 # Unified AMR operator and cutover runbook
 
 `amr.service` is the intended production service. It starts the hardware base,
-operator web app and optional Foxglove bridge, then stays in **IDLE**. It does
+operator web app and optional Foxglove bridge, then enters **LINE** (tracked, the
+default) unless the profile is trackless-only, which stays in **IDLE**. It does
 not load a map, start a survey, resume a commissioning job or run a route after
-boot. The operator selects mapping or navigation from the web app.
+boot, and LINE moves nothing until the physical Start under AUTO. The operator
+switches to trackless on Home, then selects mapping or navigation from Run trackless.
 
 The physical controls remain authoritative:
 
@@ -96,14 +98,17 @@ One vehicle, two products, chosen by a single top-level key in
 |---|---|---|---|
 | `false` (default, the SLAM AMR) | `IDLE` | surveys, maps, routes | LINE: "this vehicle is trackless (profile tracked=false)" |
 | `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
+| `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the **Navigation** switch on Home picks tracked (LINE) or trackless (IDLE, then mapping → navigation on Run trackless) | nothing by product |
 
 The Status header's mode shows `LINE` and `/api/state` carries `product`
 (`"tape"` / `"slam"`). Switching = edit the key, then
 `sudo systemctl restart amr.service` (the key is missing → the profile refuses
-to load and the service does not start; the error names it). On a tape AGV the
-boot entry into LINE happens once; requesting `IDLE` afterwards (to jog under
-MANUAL) is honoured and not undone — request LINE again when done, by
-`ros2 service call /amr/mode/request` with target 7, until the UI has a button.
+to load and the service does not start; the error names it). The boot entry
+into LINE happens once; leaving it afterwards is honoured and not undone. Jogging
+needs no mode change (MANUAL jogs in LINE too). On a `null` vehicle the Home
+**Navigation** switch is the way between the two: Tracked requests LINE, Trackless
+requests IDLE. Like every mode change it moves nothing and is refused unless the
+vehicle is stopped, nothing is running and there is no emergency.
 
 **The LINE follower's rules (after the 2026-09-21 review fixes):**
 
@@ -811,7 +816,7 @@ and the Alarms history. PASS means the operator can say what happened without he
 2. **During a map save** (press Save, cut within 1 s). Expect: no revision directory
    without a manifest; the previous revision still loads on the Run page; a
    `.staging-` or `.draft-` directory is left behind, which is evidence, not damage.
-3. **Idle with the web open.** Expect: boot to IDLE inside the budget with no operator
+3. **Idle with the web open.** Expect: boot to LINE (IDLE on a trackless-only profile) inside the budget with no operator
    action, and the Alarms history still holds the events from before the cut —
    including the last error, which is the one that is fsynced.
 

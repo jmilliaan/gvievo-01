@@ -3,8 +3,9 @@
 Owns four process groups - web, base, an optional Foxglove bridge, and at most
 one mode layer (mapping or navigation) - and the single source of motion
 authority, /amr/control_lease. Boots STARTING -> IDLE with base and web up and
-no layer. Mode changes and survey operations are asynchronous operations
-(OperationState) driven by one serial loop; every step has a deadline and a
+no layer, then on to LINE unless the profile is trackless-only (tracked false).
+Mode changes and survey operations are asynchronous operations (OperationState)
+driven by one serial loop; every step has a deadline and a
 failure lands in FAULT with motion inhibited, never in a half-switched stack.
 
     /amr/mode_state        ModeState, transient-local, on change + 2 Hz
@@ -133,7 +134,9 @@ class Supervisor(Node):
 
         # The product, from the profile's top-level `tracked` (config.py note 5):
         # a tape AGV enters LINE by itself once the base is up and refuses maps and
-        # routes; a trackless one boots to IDLE and refuses LINE. Read once, here.
+        # routes; a trackless one boots to IDLE and refuses LINE; a vehicle carrying
+        # both boots to LINE too (2026-10-08: tracked is the default product, trackless
+        # is the operator's switch on Home). Read once, here.
         self.tracked = config.TRACKED  # True tape | False slam | None both
         self.admit_params = fsm.Params(tracked=self.tracked)
         self._auto_line_done = False
@@ -541,16 +544,18 @@ class Supervisor(Node):
         self._set(fsm.TRANSITIONING, "inhibiting")
 
     def _auto_enter_line(self) -> None:
-        """A tape AGV's default mode is LINE: start the swap right after boot, once.
+        """LINE is the default mode of every vehicle that carries the tape product
+        (tracked true, and since 2026-10-08 tracked null = both): start the swap right
+        after boot, once. Only a trackless-only vehicle (tracked false) stays in IDLE.
         No panel rule here - nothing can be moving at boot, the mux inhibits
-        through the transition, and the follower still needs arm + Start under
-        AUTO before a wheel turns. Leaving LINE later (to jog) is the operator's
-        request and is not undone."""
-        if self.tracked is not True or self._auto_line_done or self.txn is not None:
+        through the transition, and the follower still needs the physical Start under
+        AUTO before a wheel turns. Leaving LINE later (the Home switch to trackless) is
+        the operator's request and is not undone."""
+        if self.tracked is False or self._auto_line_done or self.txn is not None:
             return
         self._auto_line_done = True
         op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)
-        self.get_logger().info("profile tracked=true: entering LINE (the tape AGV's default mode)")
+        self.get_logger().info(f"profile tracked={self.tracked}: entering LINE (the default mode)")
         self._begin_transaction(op, fsm.LINE, "", 0, "")
 
     def _mark(self) -> None:

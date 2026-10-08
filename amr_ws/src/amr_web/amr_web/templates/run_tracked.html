@@ -9,11 +9,7 @@
   <div class="side">
     <h2>Line mode <small>supervisor</small></h2>
     <div id="lt-mode" class="tel-grid rows"></div>
-    <div class="bar">
-      <button id="btn-line-mode" class="big run">Enter LINE mode</button>
-      <button id="btn-line-idle" class="big">Return to idle</button>
-    </div>
-    <p class="note">A mode change needs the vehicle stopped, not running, and no emergency; MANUAL or AUTO alike. With the selector in MANUAL you can jog in LINE mode too.</p>
+    <p class="note">The vehicle boots into LINE. Tracked / trackless is the switch on <a href="/home">Home</a>. With the selector in MANUAL you can jog in LINE mode too.</p>
     <div class="sep"></div>
     <h2>Mission <small>tape</small></h2>
     <label class="field">Mission <select id="lt-mission"></select></label>
@@ -47,8 +43,6 @@ async function loadMissions() {
 }
 loadMissions();
 
-$('btn-line-mode').onclick = () => operation('/api/mode', { target: 'line' });
-$('btn-line-idle').onclick = () => operation('/api/mode', { target: 'idle' });
 $('btn-line-select').onclick = async () => {
   const { data } = await api('/api/line/mission', { name: $('lt-mission').value });
   log(data.message, data.ok ? '' : 'bad');
@@ -62,10 +56,9 @@ onState(st => {
     ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
     ['Product', m ? (m.product || '–') : '–', 'profile tracked', ''],
   ]);
-  $('btn-line-mode').disabled = !!inLine;
   for (const id of ['btn-line-select', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
   if (!ln) {
-    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'enter LINE mode', 'warn']]);
+    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'switch to tracked on Home', 'warn']]);
     $('lt-reason').textContent = '';
   } else {
     const uturn = ln.uturn_phase ? `U-turn ${ln.uturn_phase}` : '';

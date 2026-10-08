@@ -46,7 +46,7 @@ R1 = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE)
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
-NAMES = ["STARTING", "IDLE", "MAPPING", "NAVIGATION", "TRANSITIONING", "FAULT", "STOPPING"]
+NAMES = ["STARTING", "IDLE", "MAPPING", "NAVIGATION", "TRANSITIONING", "FAULT", "STOPPING", "LINE"]
 
 
 class Probe(Node):
@@ -292,7 +292,11 @@ def settled_lease(p: Probe, expect_allowed: int):
 
 def test_unified_workflow_and_layer_restart(stack):
     p, proc, state = stack
-    assert p.wait_mode(1, 60), "IDLE"
+    # The default profile carries both products (tracked null): it boots into LINE
+    # (2026-10-08), and trackless starts from IDLE - the Home switch's request.
+    assert p.wait_mode(7, 90), "LINE at boot"
+    r = p.request_mode(1)
+    assert r.accepted and p.wait_mode(1, 40) and p.wait_op(r.operation_id, 5).status == 1
     settled_lease(p, 1)
     pids0 = base_pids(proc.pid)
     assert len(pids0) >= 4

@@ -90,6 +90,7 @@ def _fault_code(reason: str) -> str:
 
 
 TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
+WHEELS_UI_PERIOD_S = 0.2  # /wheel_states_ui, the display copy (Home speed tile, 2026-10-08)
 
 class DriveNode(Node):
     def __init__(self) -> None:
@@ -179,6 +180,9 @@ class DriveNode(Node):
         self._track_seq = 0
 
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
+        # 5 Hz copy for displays, as /amr/line_track_ui. Nothing in control reads it.
+        self._pub_wheels_ui = self.create_publisher(WheelStates, "/wheel_states_ui", SENSOR_DATA)
+        self._wheels_ui_t = 0.0
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
@@ -689,6 +693,9 @@ class DriveNode(Node):
             m.counts_valid = bool(m.left_valid and m.right_valid)
         m.counts_per_wheel_rev = float(scale.counts_per_wheel_rev or 0.0) if scale else 0.0
         self._safe_publish(self._pub_wheels, m)
+        if now - self._wheels_ui_t >= WHEELS_UI_PERIOD_S:
+            self._wheels_ui_t = now
+            self._safe_publish(self._pub_wheels_ui, m)
 
     def _publish_status(self, link, imu) -> None:
         m = DriveStatus()
