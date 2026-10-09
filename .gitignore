@@ -11,6 +11,9 @@ agv-kim2a-controller/
 # Deployment and environment scripts are part of the product (unified plan U0).
 !amr_ws/deploy/*.sh
 !amr_ws/env/*.sh
+# The run recorder (run_log.sh) and its kin are tooling, not artifacts: bag_report.py
+# and the marker plan depend on what run_log.sh records (fix plan 001 A3).
+!tools/*.sh
 
 # Blind-run logs are evidence, not source: keep them out of the tree.
 logs/
@@ -23,6 +26,13 @@ logs/
 build/
 install/
 log/
+
+# Vendor UHF reader SDK: keep the API, sources and guides, not C# build output or
+# zips of folders that are committed unpacked (fix plan 001 A5).
+tools/uhf-even/**/bin/
+tools/uhf-even/**/obj/
+tools/uhf-even/**/*.zip
+tools/uhf-even/Sample/python/uhf/uhf_sample_Code/
 
 # Agent instruction files are per-developer, not source.
 AGENTS.md

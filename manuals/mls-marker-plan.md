@@ -1,7 +1,9 @@
 # MLS marker plan: read marker codes 1-3 (tracked / LINE mode)
 
 Status: IMPLEMENTED in software 2026-10-09 (steps 0, 2, 3 and 6.1; section 11). The bench
-session B0 and B2-B7 is open, and `mls.markers_enabled` stays false until it passes. Aligned with
+session B0 and B2-B7 is open. `mls.markers_enabled` is the bench switch: it may be true during a
+bench session (the Home tile and the sensor check need it), and goes back to false at the end of
+any session that does not end in PASS (fix plan `0910-fix-plan-001.md` B4). Aligned with
 the live sensor and re-audited against the whole manual and the code the same day (section 10). Scope is **reading** codes 1-3 reliably and
 handing them to the tape engine as events. What each code makes the vehicle do is a separate,
 later decision (section 8); this plan wires no behaviour to a marker.
@@ -140,7 +142,7 @@ top-level key); agv-01 is the only profile today.
 | Key | Config name | Validation (refused at load) |
 |---|---|---|
 | `mls.variant` | `MLS_VARIANT` | int 0-7. Replaces drive_node's `mls_track_variant` parameter (default 0, wrong since 2026-10-07: every start logs a mismatch today) |
-| `mls.markers_enabled` | `MLS_MARKERS` | bool. `false` until B0-B7 pass |
+| `mls.markers_enabled` | `MLS_MARKERS` | bool. The bench switch: `true` only during a bench session or after B0-B7 pass, otherwise `false` |
 | `mls.marker_codes` | `MLS_MARKER_CODES` | own reader: non-empty list of unique ints, each 1-7 (standard mode), no bools |
 | `mls.polarity_lock` | `MLS_POLARITY_LOCK` | bool: whether the check expects 202Dh:05 = 1. `false` until B0 |
 | `mls.teach_lock` | `MLS_TEACH_LOCK` | bool: whether the check expects 2029h = 1 |
@@ -312,7 +314,8 @@ node contract test that `/amr/line_marker` QoS is reliable/volatile.
 1. Step 0 (bench tooling) - offline tests only.
 2. Bench B0-B7 with the operator. Stop if B3, B4 or B7 fails: report and decide (narrower
    detection level, wider spacing, or no markers).
-3. Step 2, then step 3 - profile `mls.markers_enabled` stays false until the bench note says PASS.
+3. Step 2, then step 3 - profile `mls.markers_enabled` is on only for bench sessions until the
+   bench note says PASS.
 4. Enable on the vehicle, one lap with markers laid; the operator's observation is the
    acceptance.
 
@@ -344,7 +347,7 @@ Checked and unaffected:
 - **Drives:** guard's drive `check()` and its tests are unchanged.
 - **Sim:** sim and unified-sim tests have no `/amr/line_marker`, so `markers_ok` is false and nothing in the engine acts on it.
 - **Web:** no new endpoint, no command and no new engineer action. The Marker tile on Home (6.1) is display-only, appears only once `mls.markers_enabled` is true, and keeps Home within 1280×720 at scale `l`.
-- **Profile load:** `markers_enabled` stays false until the bench passes, so a profile with the new block loads and runs exactly as today.
+- **Profile load:** with `markers_enabled` false a profile with the new block loads and runs exactly as today. With it true and the sensor not yet written, the check reports misconfigured: no marker events, Home shows "sensor not set up", motion unaffected.
 
 ## 11. Implementation notes (2026-10-09)
 
@@ -364,8 +367,8 @@ Code as planned unless listed here.
 | Engine | `amr_line/marker_reader.py`; `FollowJob.markers`, `drain_marker_events`, `marker_snapshot` | a test proves a marker changes neither the state nor the wheel command |
 | Events | new catalogue code `LINE_MARKER` (info), RUNBOOK section 4 regenerated | the regeneration also brought in the 2026-10-08 `DRIVES_NOT_READY` text |
 | Home | `.home-live.three`, `#live-marker`, `linetrack.js markerReading` | the code is shown for `MK_HOLD_S` = 2 s (the RFID tile's `RF_HOLD_S` is 1 s, not 2 as 6.1 said). Checked at 1280×720, scale `l`: one row of three tiles, no scroll |
-| Recorder | `tools/run_log.sh` TOPICS + `line_marker` | |
-| Not done | `tools/bag_report.py` | waits for the uncommitted RFID work in that file (A12) |
+| Recorder | `tools/run_log.sh` TOPICS + `line_marker` | edited on the vehicle only: `.gitignore` hid `*.sh` there until fix plan 001 A3; committing it is B1 |
+| Report | `tools/bag_report.py` | (fix plan 001 A2) `marker`, `marker_intro` in `line_track.csv`; `line_marker.csv`; an MLS MARKERS section and `MARKER` timeline rows. Proven on a real bag in B3 |
 
 Tests:
 

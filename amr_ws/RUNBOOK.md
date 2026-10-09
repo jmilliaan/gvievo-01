@@ -595,7 +595,8 @@ python3 -m agv_core.drivers.canbus.read_mls marker-level           # Hall profil
 python3 -m agv_core.drivers.canbus.read_mls set-markers            # dry run; --go writes, resets node 10, reads back
 ```
 
-- **Enabling:** `profiles/agv-01.json` `mls.markers_enabled` stays `false` until B0–B7 pass.
+- **Enabling:** `profiles/agv-01.json` `mls.markers_enabled` is the bench switch: `true` during
+  a bench session, and back to `false` after any session that does not end with B0–B7 passed.
   When it is `true` and the sensor is not configured to match, drive_node publishes no marker
   events, and Home shows "sensor not set up".
 - **Polarity lock:** `set-markers --polarity-lock` (202Dh:05) only after a full lap with
@@ -628,6 +629,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. |
 | `PP_ABANDONED` | warn | A blind move was abandoned | Nothing to do. | Blind-run move dropped (authority lost or the owner disarmed). |
 | `PP_REFUSED` | warn | A blind move was refused | Nothing to do; ask the engineer if it was expected. | Blind-run move refused by the drive owner. |
+| `PP_VETOED` | warn | A blind move was stopped before it started | Nothing to do; ask the engineer if it was expected. | Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) no longer allowed it; the veto's controlwords were sent. |
 | `SERVICE_CRASHED` | warn | The vehicle software restarted itself | Nothing to do. Tell the engineer if it keeps happening. | A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason. |
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |

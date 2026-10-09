@@ -11,7 +11,9 @@ Writes <run>/csv/*.csv and prints:
   - per U-turn: approach length, overrun past the tape end, pivot angle by the
     encoders and by the gyro, how long it took to centre and the error it ended on;
   - per RFID tag pass (rfid_node's "RFID pass" log lines): reads, duration, speed,
-    read-zone length and RSSI - the read margin behind a missed tag.
+    read-zone length and RSSI - the read margin behind a missed tag;
+  - per MLS marker (/amr/line_marker events): code, track position at the read,
+    then the count per code and the stream's last status, rejects and aborts.
 Time is seconds from the first recorded message (bag receive time).
 """
 import csv
@@ -33,6 +35,9 @@ PASS_RE = re.compile(r"RFID pass (\w+): (\d+) reads in ([\d.]+) s, RSSI peak (-?
                      r"mean (-?[\d.]+) min (-?[\d.]+) dBm")
 # A pass with this few reads was nearly a missed tag.
 MARGINAL_READS = 2
+# line_track.csv's lateral_mm column; the marker columns come after it. (Until 2026-10-09 the
+# U-turn report read column 11 here, one past the end of the row: an IndexError.)
+LAT = 10
 MUX_SOURCES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning",
                6: "pendant", 7: "line"}
 
@@ -137,9 +142,9 @@ def main(run):
 
     # -- tape --------------------------------------------------------------------------
     track = [(t - t0, *m.lcp_mm, *[int(x) for x in m.valid], m.nlcp, m.track_level, int(m.line_good),
-              lateral(m)) for t, m in bag.get("/amr/line_track", [])]
+              lateral(m), m.marker, int(m.marker_intro)) for t, m in bag.get("/amr/line_track", [])]
     write_csv(csvd, "line_track.csv", ["t", "lcp1", "lcp2", "lcp3", "v1", "v2", "v3", "nlcp", "level",
-                                       "line_good", "lateral_mm"], track)
+                                       "line_good", "lateral_mm", "marker", "marker_intro"], track)
 
     # -- commands ----------------------------------------------------------------------
     write_csv(csvd, "line_cmd.csv", ["t", "v_mps", "w_rad_s"],
@@ -182,6 +187,17 @@ def main(run):
                             + (f", odo {d:.2f} m" if d is not None else "") + gap + ")"))
         if d is not None:
             last_d = {"tag": tag, "d": d}
+
+    # -- MLS markers: events, and the last heartbeat's status --------------------------
+    mk_msgs = bag.get("/amr/line_marker", [])
+    mk = [(t - t0, m.seq, m.generation, m.code, m.raw, m.direction, m.lcp2_mm, m.nlcp, int(m.line_good))
+          for t, m in mk_msgs if not m.heartbeat]
+    write_csv(csvd, "line_marker.csv", ["t", "seq", "generation", "code", "raw", "direction", "lcp2_mm",
+                                        "nlcp", "line_good"], mk)
+    mk_beat = next((m for _, m in reversed(mk_msgs) if m.heartbeat), None)
+    for t, seq, gen, code, _raw, _dir, lcp2, _nlcp, good in mk:
+        timeline.append((t, f"MARKER {code} (#{seq} gen {gen}, LCP2 {lcp2:+d} mm"
+                            + ("" if good else ", line not good") + ")"))
 
     # -- mux, drives, panel, I/O -------------------------------------------------------
     mux, was = [], None
@@ -235,7 +251,6 @@ def main(run):
     for t, what in sorted(timeline):
         print(f"  {t:8.2f}  {what}")
 
-    # Segments: consecutive line_state rows with the same (state, uturn_phase).
     print("\nRFID PASSES (a pass ends tag_clear_s after its last read; logged when it ends)")
     passes = []
     for t, m in bag.get("/rosout", []):
@@ -265,6 +280,24 @@ def main(run):
         print(f"  moving passes {len(moving)}: reads min {n[0]} median {n[len(n) // 2]}, "
               f"{sum(1 for x in n if x <= MARGINAL_READS)} marginal (<= {MARGINAL_READS} reads)")
 
+    print("\nMLS MARKERS")
+    if not mk_msgs:
+        print("  not recorded (no /amr/line_marker: tools/run_log.sh TOPICS, or drive_node older "
+              "than 2026-10-09)")
+    for t, seq, gen, code, raw, direction, lcp2, nlcp, good in mk:
+        print(f"  {t:8.2f}  code {code}  raw {raw:05b}  LCP2 {lcp2:+4d} mm  nlcp {nlcp}"
+              + ("" if good else "  line not good"))
+    if mk_msgs:
+        counts = {}
+        for row in mk:
+            counts[row[3]] = counts.get(row[3], 0) + 1
+        print(f"  events {len(mk)}" + (": " + ", ".join(f"code {c} x{n}" for c, n in sorted(counts.items()))
+                                       if counts else ""))
+        if mk_beat is not None:
+            print(f"  last status: {mk_beat.status} (markers_ok {mk_beat.markers_ok}), "
+                  f"rejects {mk_beat.rejects}, aborts {mk_beat.aborts}")
+
+    # Segments: consecutive line_state rows with the same (state, uturn_phase).
     print("\nSEGMENTS (RUNNING, by U-turn phase)")
     segs, cur = [], None
     for row in rows:
@@ -278,7 +311,7 @@ def main(run):
     for (state, phase), a, b in segs:
         if state != "RUNNING" or b - a < 0.2:
             continue
-        lat = [(row[0], row[-1]) for row in track if a <= row[0] < b and row[-1] is not None]
+        lat = [(row[0], row[LAT]) for row in track if a <= row[0] < b and row[LAT] is not None]
         sp = [row[1] for row in wheels if a <= row[0] < b]
         d0, d1 = at(wheels, a, 3), at(wheels, b, 3)
         line = f"  {a:8.2f}-{b:8.2f}  {phase or 'follow':9s} {b - a:6.1f} s"
@@ -326,11 +359,11 @@ def main(run):
                 print(f"    pivot by encoders {y1 - y0:+.1f} deg"
                       + (f", by gyro {g1 - g0:+.1f} deg" if g0 is not None and g1 is not None else "")
                       + f", {end - spin:.1f} s")
-            seen = [row for row in track if spin <= row[0] <= end and row[-1] is not None]
+            seen = [row for row in track if spin <= row[0] <= end and row[LAT] is not None]
             if seen:
-                print(f"    tape back at {seen[0][0]:.2f} s ({seen[0][-1]:+d} mm, "
+                print(f"    tape back at {seen[0][0]:.2f} s ({seen[0][LAT]:+d} mm, "
                       f"encoder {at(wheels, seen[0][0], 4) - y0:+.1f} deg); ended on "
-                      f"{at(track, end, 11)} mm")
+                      f"{at(track, end, LAT)} mm")
         i = j
 
 

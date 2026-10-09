@@ -332,6 +332,10 @@ def _rows() -> tuple[Alarm, ...]:
         a("PP_REFUSED", WARN, "auto", "A blind move was refused",
           "Nothing to do; ask the engineer if it was expected.",
           "Blind-run move refused by the drive owner."),
+        a("PP_VETOED", WARN, "auto", "A blind move was stopped before it started",
+          "Nothing to do; ask the engineer if it was expected.",
+          "Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) "
+          "no longer allowed it; the veto's controlwords were sent."),
         a("PP_FAULTED", WARN, "ack", "A blind move failed",
           "Press Acknowledge on the Run page.", "Blind-run move faulted mid-flight."),
         a("PP_ABANDONED", WARN, "auto", "A blind move was abandoned",
