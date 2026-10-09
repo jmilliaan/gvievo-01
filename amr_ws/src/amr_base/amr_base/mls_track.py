@@ -18,8 +18,20 @@ Acquisition, chosen by `mode`:
 
 Whatever the mode, start() reads the variant (2006h:01), the TPDO1 COB-ID
 (1800h:01) and one live SDO sample, so a restart alone shows whether a tape is
-under the sensor. Every sample carries its `source`; the line follower accepts
-only fresh ones, which the SDO path cannot deliver at control rate.
+under the sensor.
+
+Marker configuration (mls-marker-plan 5.2, 2026-10-09). When the profile turns
+markers on, the sensor's marker objects (2028h:01-03, 2029h, 202Dh:05) are READ
+and compared with what the profile expects - never written. Not in start(): start()
+also runs from _rediscover() inside poll() while the drives may be moving, and its
+reads block up to 0.4 s each. The check is a queue drained ONE read per poll, with
+the short probe timeout, and only in tpdo mode (sdo mode already spends its read).
+It runs after every start, again whenever the TPDO stream returns after a gap (a
+sensor reboot never reaches _rediscover), and every MARKER_RECHECK_S.
+`markers_ok` is true only when the check passed and the stream is TPDO.
+
+Every sample carries its `source`; the line follower accepts only fresh ones,
+which the SDO path cannot deliver at control rate.
 """
 
 from __future__ import annotations
@@ -73,6 +85,8 @@ class MlsTrack:
     # owner and without starving the wheel loop.
     REDISCOVER_S = 5.0
     PROBE_TIMEOUT_S = 0.05
+    MARKER_RECHECK_S = 60.0
+    MARKER_RETRY_S = 5.0
 
     def __init__(
         self,
@@ -84,6 +98,7 @@ class MlsTrack:
         tpdo_wait_s: float = 1.0,
         stale_tpdo_s: float = 0.1,
         expected_variant: int | None = 0,
+        markers: dict | None = None,
         clock=time.monotonic,
         log=print,
     ):
@@ -111,6 +126,15 @@ class MlsTrack:
         self._next_nmt = 0.0
         self._last_tpdo_t: float | None = None
         self.variant_mismatches = 0
+        self.start_count = 0  # every start() is a new marker generation
+        # marker configuration check: {(index, sub): wanted value} or None (markers off)
+        self.marker_expect = dict(markers) if markers else None
+        self.marker_status = "off" if not markers else "checking"
+        self.marker_checks = 0
+        self._mq: list = []
+        self._mvals: dict = {}
+        self._mnext: float | None = None
+        self._mrearm = False
         self._stale = True
         self._t_start = 0.0
         self._next_cycle = 0.0
@@ -122,6 +146,9 @@ class MlsTrack:
     def start(self) -> str:
         self._t_start = self.clock()
         self._rediscover_at = None
+        self.start_count += 1
+        if self.marker_expect:
+            self._arm_marker_check(self._t_start, reset=True)
         if self.want == "off":
             self.mode = "off"
             return self.mode
@@ -188,6 +215,12 @@ class MlsTrack:
             return
         self.tpdo_frames += 1
         self._last_tpdo_t = self.clock()
+        if self._mrearm:
+            # The stream is back after a gap: the sensor may have rebooted (to other
+            # settings). Untrusted until re-read.
+            self._mrearm = False
+            if self.marker_expect:
+                self._arm_marker_check(self._last_tpdo_t, reset=True)
         if self.mode != "tpdo":
             self.log(f"MLS TPDO1 frames on 0x{self.cob_id:03X}: track reading by TPDO")
             self.mode = "tpdo"
@@ -239,12 +272,15 @@ class MlsTrack:
             # auto mode poll by SDO meanwhile so the reading is not lost. The
             # first TPDO1 frame switches back (see _on_tpdo).
             self._nmt_start(now)
+            self._mrearm = True
             if self.mode == "tpdo" and self.want == "auto":
                 self.log(
                     f"MLS: no TPDO1 on 0x{self.cob_id:03X} for {self.tpdo_wait_s:.1f} s "
                     "(Pre-operational?): polling by SDO"
                 )
                 self.mode = "sdo"
+        if self.mode == "tpdo":
+            self._marker_poll(now)
         if self.mode != "sdo":
             return
         c = self._cycle
@@ -268,6 +304,67 @@ class MlsTrack:
             self._cycle = _SdoCycle()
             vals = c.values
             self._emit(read_mls.decode_sdo(vals[:3], vals[3], vals[4], self.combi), "sdo", self.clock())
+
+    # -- marker configuration (read-only) --
+
+    def _arm_marker_check(self, now: float, reset: bool) -> None:
+        self._mq = list(self.marker_expect)
+        self._mvals = {}
+        self._mnext = None
+        if reset:
+            self.marker_status = "checking"
+
+    def _marker_poll(self, now: float) -> None:
+        """At most ONE short SDO read: the next marker object, or nothing."""
+        if not self.marker_expect:
+            return
+        if not self._mq:
+            if self._mnext is not None and now >= self._mnext:
+                self._arm_marker_check(now, reset=False)  # periodic: keep the verdict meanwhile
+            return
+        key = self._mq[0]
+        v = self.link.read(self.node, *key, timeout=self.PROBE_TIMEOUT_S)
+        if v is None:
+            self._mq = []
+            self._mnext = now + self.MARKER_RETRY_S
+            new = f"unverified: {key[0]:04X}h:{key[1]:02X} did not answer"
+            if new != self.marker_status:
+                self.log(f"MLS markers {new}; retrying in {self.MARKER_RETRY_S:.0f} s")
+            self.marker_status = new
+            return
+        self._mvals[key] = v
+        self._mq.pop(0)
+        if self._mq:
+            return
+        self.marker_checks += 1
+        self._mnext = now + self.MARKER_RECHECK_S
+        diffs = [
+            f"{i:04X}h:{sb:02X} = {self._mvals[(i, sb)]} (want {w})"
+            for (i, sb), w in self.marker_expect.items()
+            if self._mvals.get((i, sb)) != w
+        ]
+        new = "ok" if not diffs else "misconfigured: " + "; ".join(diffs)
+        if new != self.marker_status:
+            if diffs:
+                self.log(f"MLS markers {new} - no marker events. Fix with the service stopped: "
+                         "python3 -m agv_core.drivers.canbus.read_mls set-markers --go")
+            else:
+                self.log("MLS markers: sensor configured as the profile expects")
+        self.marker_status = new
+
+    @property
+    def markers_ok(self) -> bool:
+        return self.marker_status == "ok" and self.mode == "tpdo"
+
+    def marker_status_text(self) -> str:
+        """What /amr/line_marker's heartbeat says."""
+        if not self.marker_expect:
+            return "off"
+        if self.mode == "sdo":
+            return "no stream (sdo)"
+        if self.mode == "off":
+            return "no sensor"
+        return self.marker_status
 
     # -- diagnostics (pure; drive_node wraps it in a DiagnosticStatus) --
 
@@ -301,6 +398,8 @@ class MlsTrack:
             ("sdo_misses", str(self.misses)),
             ("variant", self._variant_text()),
             ("variant_mismatches", str(self.variant_mismatches)),
+            ("markers", self.marker_status_text()),
+            ("marker_checks", str(self.marker_checks)),
         ]
         if self.mode == "off":
             return ERROR, "off", kv

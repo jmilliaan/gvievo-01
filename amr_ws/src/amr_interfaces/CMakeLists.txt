@@ -30,6 +30,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PpStatus.msg"
   "msg/LineTrack.msg"
   "msg/LineState.msg"
+  "msg/MarkerEvent.msg"
   "msg/SurveyMoveState.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"

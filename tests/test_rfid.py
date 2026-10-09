@@ -178,6 +178,34 @@ def test_rfid():
     hb.reset(40.0)
     check("a reconnect starts the heartbeat fresh", hb.state() == "waiting" and hb.due(40.0))
 
+    # -- pass statistics (clock-fed) ---------------------------------------------
+    ps = rfid.PassStats(0.5)
+    for t, r in ((0.0, -72.0), (0.1, -70.0), (0.3, -76.0)):
+        ps.read("0040", r, t)
+    check("reads inside clear_s are one open pass", not ps.closed)
+    ps.expire(0.7)
+    check("a pass stays open until clear_s after its last read", not ps.closed)
+    ps.expire(0.8)
+    p = ps.closed[-1][1] if ps.closed else {}
+    check("a closed pass carries reads, duration and the RSSI spread",
+          (p.get("tag"), p.get("reads"), round(p.get("duration_s", 0), 2), p.get("rssi_peak"),
+           round(p.get("rssi_mean", 0), 2), p.get("rssi_min")) == ("0040", 3, 0.3, -70.0, -72.67, -76.0),
+          str(p))
+    ps.read("0060", -70.0, 1.0)
+    ps.read("0040", -71.0, 1.1)
+    ps.read("0060", -69.0, 1.4)
+    ps.expire(1.7)
+    check("overlapping passes of two tags close independently",
+          [c[1]["tag"] for c in ps.closed] == ["0040", "0040"] and ps.seq == 2,
+          str([c[1]["tag"] for c in ps.closed]))
+    ps.expire(1.8, force=True)
+    check("a forced expiry (reconnect) closes every open pass, numbered on",
+          [(c[0], c[1]["tag"], c[1]["reads"]) for c in ps.closed][-1] == (3, "0060", 2))
+    check("the pass log line keeps the format bag_report parses",
+          rfid.pass_summary(ps.closed[0][1])
+          == "RFID pass 0040: 3 reads in 0.30 s, RSSI peak -70.0 mean -72.7 min -76.0 dBm",
+          rfid.pass_summary(ps.closed[0][1]))
+
     # -- link state from captured frames (no socket) ---------------------------
     link = rfid.RfidLink()
     snap = link.snapshot()
@@ -189,6 +217,11 @@ def test_rfid():
     snap = link.snapshot(encounters=True)
     check("five reads of one tag are ONE encounter",
           snap["encounters"] == [(1, "0020")] and snap["tags_seen"] == 5, str(snap["encounters"]))
+    link.passes.expire(float("inf"))
+    snap = link.snapshot(encounters=True)
+    check("the five captured reads are one pass with their RSSI spread",
+          [(c[1]["reads"], c[1]["rssi_peak"], c[1]["rssi_min"]) for c in snap["passes"]]
+          == [(5, -72.0, -76.0)], str(snap["passes"]))
     check("snapshot carries RSSI, channel and frequency of the last read",
           (snap["rssi_dbm"], snap["channel"], snap["freq_mhz"]) == (-74.0, 0, 902.75),
           f"{snap['rssi_dbm']} {snap['channel']} {snap['freq_mhz']}")

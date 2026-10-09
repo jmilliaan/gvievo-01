@@ -1,0 +1,45 @@
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csprojAssemblyReference.cache
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Form1.resources
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Properties.Resources.resources
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.GenerateResource.cache
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.CoreCompileInputs.cache
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.exe
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.pdb
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.exe
+F:\codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csprojAssemblyReference.cache
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Form1.resources
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Properties.Resources.resources
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.GenerateResource.cache
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.CoreCompileInputs.cache
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\3.codelocal\Reader_demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.pdb
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.exe
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.pdb
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csprojAssemblyReference.cache
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Form1.resources
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Properties.Resources.resources
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.GenerateResource.cache
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.CoreCompileInputs.cache
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.exe
+E:\Code\Reader_Demo\UHF_READER_Prime\Prime Reader Demo\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csprojAssemblyReference.cache
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Form1.resources
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Properties.Resources.resources
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.GenerateResource.cache
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.CoreCompileInputs.cache
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\0.发布版本\0.PrimeReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\bin\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Form1.resources
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.Properties.Resources.resources
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.GenerateResource.cache
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csproj.CoreCompileInputs.cache
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.exe
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.pdb
+E:\BaiduSyncdisk\工作\0.发布版本\5.AccessReader\Sample\C#\WindowsFormsApp1\obj\Debug\WindowsFormsApp1.csprojAssemblyReference.cache

@@ -4,6 +4,7 @@
     TPDO1/TPDO2 from both drives                   ->  /wheel_states  (WheelStates)
     MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
     MLS TPDO1 track (or SDO poll, read-only)       ->  /amr/line_track (LineTrack)
+    MLS TPDO1 marker code (profile mls.*)          ->  /amr/line_marker (MarkerEvent)
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
 
     /amr/commissioning_pp (PpMove, held 50 Hz)     ->  profile-position blind move
@@ -63,6 +64,7 @@ from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import arm_policy, canopen, gating, pp
+from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
 from amr_interfaces.msg import (
@@ -71,6 +73,7 @@ from amr_interfaces.msg import (
     Event,
     LineState,
     LineTrack,
+    MarkerEvent,
     PanelState,
     PpMove,
     PpStatus,
@@ -88,7 +91,26 @@ RELIABLE_1 = QoSProfile(
 LATCHED = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
 )
+# /amr/line_marker (mls-marker-plan 5.4): every marker is a message, none may be dropped
+# behind a newer one, and a replayed old one must never look new.
+MARKER_QOS = QoSProfile(
+    depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
+)
 BIG = 1e6
+
+
+def marker_expectation(markers_enabled: bool, polarity_lock: bool, teach_lock: bool) -> dict | None:
+    """Profile mls.* -> the MLS objects and values the sensor must hold for markers to be
+    trusted (read-only check in MlsTrack). None = markers off. The same values the bench
+    tool writes (read_mls.MARKER_SETTINGS)."""
+    if not markers_enabled:
+        return None
+    want = {(0x2028, 1): 1, (0x2028, 2): 1, (0x2028, 3): 1}
+    if teach_lock:
+        want[(0x2029, 0)] = 1
+    if polarity_lock:
+        want[(0x202D, 5)] = 1
+    return want
 
 
 def _fault_code(reason: str) -> str:
@@ -130,7 +152,7 @@ class DriveNode(Node):
         # auto listens for TPDO1 and polls by SDO (monitor rate) while none arrive.
         dp("mls_track_mode", "auto")
         dp("mls_track_sdo_hz", 10.0)
-        dp("mls_track_variant", 0)  # 2006h:01 as commissioned (Standard); a mismatch is reported
+        dp("mls_track_variant", config.MLS_VARIANT)  # 2006h:01 as commissioned (profile mls.variant)
         dp("require_supervisor", False)  # production: True (unified plan §4.2)
         dp("lease_timeout_s", 0.3)
         # Diagnostic monitoring (unified plan §7.1): ONE bounded SDO read per slot on the
@@ -214,6 +236,11 @@ class DriveNode(Node):
         # deserialising all 100 samples a second in Python. Control stays on the full topic.
         self._pub_track_ui = self.create_publisher(LineTrack, "/amr/line_track_ui", SENSOR_DATA)
         self._track_ui_t = 0.0
+        # Marker codes (mls-marker-plan): events made on the bus thread, a 1 Hz status heartbeat.
+        self._pub_marker = self.create_publisher(MarkerEvent, "/amr/line_marker", MARKER_QOS)
+        self._markers = MarkerDetector(config.MLS_MARKER_CODES)
+        self._marker_gen_seen = 0
+        self.create_timer(1.0, self._marker_heartbeat)
         self.create_subscription(PpMove, "/amr/commissioning_pp", self._on_pp, RELIABLE_1)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
         self.create_subscription(LineState, "/amr/line_state", lambda m: self._on_ask("line", m), LATCHED)
@@ -361,6 +388,7 @@ class DriveNode(Node):
             mode=str(self.get_parameter("mls_track_mode").value),
             sdo_hz=float(self.get_parameter("mls_track_sdo_hz").value),
             expected_variant=int(self.get_parameter("mls_track_variant").value),
+            markers=marker_expectation(config.MLS_MARKERS, config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
             log=self._log,
         )
         try:
@@ -922,6 +950,12 @@ class DriveNode(Node):
         levels = {ERROR: DiagnosticStatus.ERROR, WARN: DiagnosticStatus.WARN}
         tr.level = levels.get(level, DiagnosticStatus.OK)
         tr.message = message
+        kv += [
+            ("marker_events", str(self._markers.seq)),
+            ("marker_generation", str(self._markers.generation)),
+            ("marker_rejects", str(self._markers.rejects)),
+            ("marker_aborts", str(self._markers.aborts)),
+        ]
         tr.values = [KeyValue(key=k, value=v) for k, v in kv]
         arr.status.append(tr)
         self._safe_publish(self._pub_diag, arr)
@@ -947,10 +981,44 @@ class DriveNode(Node):
         m.marker, m.marker_intro = int(r["marker"]["code"]), r["marker"]["intro"]
         m.source = s.source
         self._safe_publish(self._pub_track, m)
+        self._marker_sample(s)
         now = time.monotonic()
         if now - self._track_ui_t >= TRACK_UI_PERIOD_S:
             self._track_ui_t = now
             self._safe_publish(self._pub_track_ui, m)
+
+    def _marker_sample(self, s: TrackSample) -> None:
+        """Bus thread, every decoded MLS sample: the detector, and one message per marker."""
+        track = getattr(self, "_track", None)
+        if track is None:
+            return  # still inside start(): its snapshot sample predates any check
+        if track.start_count != self._marker_gen_seen:
+            self._marker_gen_seen = track.start_count
+            self._markers.new_generation()
+        ev = self._markers.feed(s.t_mono, s.reading, s.source, track.markers_ok)
+        if ev is None:
+            return
+        m = self._marker_msg(track, heartbeat=False)
+        m.seq, m.code, m.raw, m.direction = ev.seq, ev.code, ev.raw, ev.direction
+        m.lcp2_mm = max(-32768, min(32767, ev.lcp2_mm))
+        m.nlcp, m.line_good = ev.nlcp, ev.line_good
+        self._safe_publish(self._pub_marker, m)
+
+    def _marker_msg(self, track, heartbeat: bool) -> MarkerEvent:
+        m = MarkerEvent()
+        m.stamp = self.get_clock().now().to_msg()
+        m.heartbeat = heartbeat
+        m.generation = self._markers.generation
+        m.seq = self._markers.seq
+        m.markers_ok = bool(track is not None and track.markers_ok)
+        m.status = track.marker_status_text() if track is not None else "no sensor"
+        m.rejects, m.aborts = self._markers.rejects, self._markers.aborts
+        return m
+
+    def _marker_heartbeat(self) -> None:
+        """1 Hz: the marker stream's status, so "no marker passed" differs from "no stream".
+        Executor thread; reads counters the bus thread writes (ints, a stale read is harmless)."""
+        self._safe_publish(self._pub_marker, self._marker_msg(getattr(self, "_track", None), heartbeat=True))
 
     def _publish_imu(self, s: ImuSample) -> None:
         m = Imu()

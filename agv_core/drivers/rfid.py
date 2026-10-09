@@ -332,6 +332,56 @@ class Heartbeat:
         return None
 
 
+class PassStats:
+    """Read statistics per tag pass, clock-fed so it is testable without a socket.
+
+    The consumer needs one read per pass, so a pass that produced one read and a
+    pass that produced none differ only by luck. Reads per pass and the RSSI spread
+    are the read MARGIN that a "tag missed" report cannot show (2026-10-09).
+
+    A pass of a tag ends once it has not been read for clear_s (rfid.tag_clear_s,
+    the encounter rule). Passes of different tags overlap independently.
+    """
+
+    def __init__(self, clear_s, keep=64):
+        self.clear_s = clear_s
+        self._open = {}                     # tag -> [first, last, reads, sum, peak, low]
+        self.closed = deque(maxlen=keep)    # (seq, summary dict), oldest first
+        self.seq = 0
+
+    def read(self, tag, rssi_dbm, now):
+        p = self._open.get(tag)
+        if p is not None and now - p[1] >= self.clear_s:
+            self._close(tag)
+            p = None
+        if p is None:
+            self._open[tag] = [now, now, 1, rssi_dbm, rssi_dbm, rssi_dbm]
+            return
+        p[1] = now
+        p[2] += 1
+        p[3] += rssi_dbm
+        p[4] = max(p[4], rssi_dbm)
+        p[5] = min(p[5], rssi_dbm)
+
+    def expire(self, now, force=False):
+        """Close the passes that ended by now (all of them with force: a reconnect)."""
+        for tag in [t for t, p in self._open.items() if force or now - p[1] >= self.clear_s]:
+            self._close(tag)
+
+    def _close(self, tag):
+        first, last, n, total, peak, low = self._open.pop(tag)
+        self.seq += 1
+        self.closed.append((self.seq, {
+            "tag": tag, "reads": n, "duration_s": last - first,
+            "rssi_peak": peak, "rssi_mean": total / n, "rssi_min": low}))
+
+
+def pass_summary(p):
+    """One log line per pass. tools/bag_report.py parses it: change both together."""
+    return (f"RFID pass {p['tag']}: {p['reads']} reads in {p['duration_s']:.2f} s, "
+            f"RSSI peak {p['rssi_peak']:.1f} mean {p['rssi_mean']:.1f} min {p['rssi_min']:.1f} dBm")
+
+
 class RfidLink:
     """Owns the reader socket on its own thread. start() once, read snapshot()."""
 
@@ -340,6 +390,7 @@ class RfidLink:
         self.tag_len = config.RFID_TAG_LEN
         self.ignore = {t.upper() for t in config.RFID_IGNORE_TAGS}
         self.heartbeat = Heartbeat(config.RFID_HEARTBEAT_S, config.RFID_HEARTBEAT_TIMEOUT_S)
+        self.passes = PassStats(config.RFID_TAG_CLEAR_S)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
@@ -440,6 +491,7 @@ class RfidLink:
                 "encounter_seq": self._encounter_seq,
                 "generation": self._generation,
                 "encounters": list(self._encounters) if encounters else [],
+                "passes": list(self.passes.closed) if encounters else [],
             }
 
     def _comms_ok(self):
@@ -507,6 +559,8 @@ class RfidLink:
         buf = b""
         while not self._stop.is_set():
             now = time.monotonic()
+            with self._lock:
+                self.passes.expire(now)
             if params_due is not None and (now >= params_due or self._identity_seen):
                 sock.sendall(command(CMD_GET_PARAMS))
                 params_due = None
@@ -555,6 +609,7 @@ class RfidLink:
             if not reads:
                 return
             for r in reads:
+                self.passes.read(r.tag, r.rssi_dbm, now)
                 # A reconnect first establishes a baseline. It is not evidence
                 # of departure, and must not synthesize a second station visit.
                 if self._rebaseline:
@@ -609,6 +664,7 @@ class RfidLink:
             self._connected = False
             self._generation += 1
             self._encounters.clear()
+            self.passes.expire(time.monotonic(), force=True)
             self._rebaseline = True
         if was:
             events.warn("RFID link lost")

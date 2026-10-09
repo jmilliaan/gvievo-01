@@ -9,12 +9,15 @@ Writes <run>/csv/*.csv and prints:
   - per segment (between line-state/U-turn changes): duration, distance, mean and
     max speed, lateral error RMS / max and the dominant oscillation period;
   - per U-turn: approach length, overrun past the tape end, pivot angle by the
-    encoders and by the gyro, how long it took to centre and the error it ended on.
+    encoders and by the gyro, how long it took to centre and the error it ended on;
+  - per RFID tag pass (rfid_node's "RFID pass" log lines): reads, duration, speed,
+    read-zone length and RSSI - the read margin behind a missed tag.
 Time is seconds from the first recorded message (bag receive time).
 """
 import csv
 import math
 import os
+import re
 import sys
 
 import rosbag2_py
@@ -25,6 +28,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from agv_core import config  # noqa: E402
 
 LINE_STATES = {0: "IDLE", 1: "ARMED", 2: "RUNNING", 3: "HOLD", 4: "DONE", 5: "FAULT"}
+# agv_core.drivers.rfid.pass_summary(); change both together.
+PASS_RE = re.compile(r"RFID pass (\w+): (\d+) reads in ([\d.]+) s, RSSI peak (-?[\d.]+) "
+                     r"mean (-?[\d.]+) min (-?[\d.]+) dBm")
+# A pass with this few reads was nearly a missed tag.
+MARGINAL_READS = 2
 MUX_SOURCES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning",
                6: "pendant", 7: "line"}
 
@@ -56,10 +64,11 @@ def write_csv(d, name, header, rows):
 
 def lateral(track):
     """The followed track's offset (LCP2 when valid, else the nearest valid one), mm."""
-    vals = [track.lcp_mm[i] for i in range(3) if track.valid[i]]
+    # int(): the message arrays are numpy int16, whose squares overflow in the RMS.
+    vals = [int(track.lcp_mm[i]) for i in range(3) if track.valid[i]]
     if not vals:
         return None
-    return track.lcp_mm[1] if track.valid[1] else min(vals, key=abs)
+    return int(track.lcp_mm[1]) if track.valid[1] else min(vals, key=abs)
 
 
 def osc_period(ts, xs):
@@ -227,6 +236,35 @@ def main(run):
         print(f"  {t:8.2f}  {what}")
 
     # Segments: consecutive line_state rows with the same (state, uturn_phase).
+    print("\nRFID PASSES (a pass ends tag_clear_s after its last read; logged when it ends)")
+    passes = []
+    for t, m in bag.get("/rosout", []):
+        g = PASS_RE.search(m.msg)
+        if not g:
+            continue
+        reads, dur = int(g[2]), float(g[3])
+        end = t - t0
+        mid = end - config.RFID_TAG_CLEAR_S - dur / 2.0   # logged clear_s after the last read
+        v = at(wheels, mid, 1)
+        passes.append((round(mid, 2), g[1], reads, dur, v, None if v is None else abs(v) * dur,
+                       float(g[4]), float(g[5]), float(g[6])))
+    write_csv(csvd, "rfid_passes.csv", ["t_mid", "tag", "reads", "duration_s", "v_mps", "zone_m",
+                                        "rssi_peak", "rssi_mean", "rssi_min"], passes)
+    if not passes:
+        print("  none logged (rfid_node older than 2026-10-09, or no tag passed)")
+    for mid, tag, reads, dur, v, zone, peak, mean, low in passes:
+        moving = v is not None and abs(v) > 0.05
+        flag = "  MARGINAL" if moving and reads <= MARGINAL_READS else ""
+        print(f"  {mid:8.2f}  {tag}  {reads:4d} reads  {dur:5.2f} s"
+              + (f"  {abs(v):.2f} m/s  zone {zone:.2f} m" if moving else "  standing      ")
+              + f"  rate {reads / dur if dur > 0 else 0:5.1f}/s"
+              + f"  RSSI {peak:.0f}/{mean:.0f}/{low:.0f} dBm{flag}")
+    moving = [p for p in passes if p[4] is not None and abs(p[4]) > 0.05]
+    if moving:
+        n = sorted(p[2] for p in moving)
+        print(f"  moving passes {len(moving)}: reads min {n[0]} median {n[len(n) // 2]}, "
+              f"{sum(1 for x in n if x <= MARGINAL_READS)} marginal (<= {MARGINAL_READS} reads)")
+
     print("\nSEGMENTS (RUNNING, by U-turn phase)")
     segs, cur = [], None
     for row in rows:

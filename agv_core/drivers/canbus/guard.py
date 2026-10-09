@@ -211,3 +211,48 @@ def is_allowed(index, value=None, sub=None):
         return True
     except ForbiddenWrite:
         return False
+
+
+# ---------------------------------------------------------------------------
+# THE LINE SENSOR (SICK MLS, can.sensor_node) - a separate, node-specific list
+# ---------------------------------------------------------------------------
+# The MLS is configured by the bench tool read_mls (set-variant, set-markers), never
+# by the bus owner, which only reads it. Those writes used to go straight through
+# drive_forward.sdo_write with no check at all (set-variant even attempted 1010h,
+# which FORBIDDEN names). They now pass check_sensor().
+#
+# Kept apart from check() on purpose: the drive allow-list stays exactly the set of
+# objects motion writes, and nothing here can make a drive object writable - these
+# indices mean something else on the drives (2xxxh is manufacturer-specific). Only
+# configuration of the TRACK reading is reachable: marker detection (mls-marker-plan
+# section 2) and the TPDO1 variant. Zero point, offset calibration, factory reset,
+# inversion and store are not.
+SENSOR_ALLOWED = {
+    (0x2006, 1): "variant TPDO1 (track data packing, diverter detection)",
+    (0x2028, 1): "use markers",
+    (0x2028, 2): "marker style",
+    (0x2028, 3): "marker FailSafe mode",
+    (0x202D, 5): "tape polarity",
+    (0x2029, 0): "lock teach key",
+}
+
+
+def check_sensor(index, sub=0):
+    """Raise ForbiddenWrite unless the line sensor's (index, sub) may be written."""
+    if index in FORBIDDEN:
+        raise ForbiddenWrite(
+            f"write to MLS {index:04X}h refused: {FORBIDDEN[index]} "
+            f"(can-monitoring-plan.txt section 8)")
+    if (index, sub) not in SENSOR_ALLOWED:
+        raise ForbiddenWrite(
+            f"write to MLS {index:04X}h:{sub:02X} refused: not on the line-sensor list "
+            f"{sorted(f'{i:04X}h:{s:02X}' for i, s in SENSOR_ALLOWED)}")
+    return None
+
+
+def is_sensor_allowed(index, sub=0):
+    try:
+        check_sensor(index, sub)
+        return True
+    except ForbiddenWrite:
+        return False

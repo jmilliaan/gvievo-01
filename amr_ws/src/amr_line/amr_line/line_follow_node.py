@@ -52,6 +52,7 @@ from amr_interfaces.msg import (
     Event,
     LineState,
     LineTrack,
+    MarkerEvent,
     ModeState,
     MuxState,
     PanelState,
@@ -186,6 +187,10 @@ class LineFollowNode(Node):
         self._rfid_t: float | None = None
         self._rfid_status = {"comms_ok": False, "encounter_seq": 0, "generation": 0, "tag_age_s": None}
         self._rfid_encounters: collections.deque = collections.deque(maxlen=256)
+        # MLS markers (mls-marker-plan 6): the same snapshot shape, rebuilt from /amr/line_marker.
+        self._marker_t: float | None = None
+        self._marker_status = {"ok": False, "status": "no marker data", "generation": None, "base": 0}
+        self._marker_events: collections.deque = collections.deque(maxlen=64)
         # wheels: encoder counts for the U-turn and a stillness test
         self.wheels_fresh = float(self.get_parameter("wheels_fresh_s").value)
         self.still_w = float(self.get_parameter("still_wheel_rad_s").value)
@@ -209,6 +214,8 @@ class LineFollowNode(Node):
         rfid_qos = QoSProfile(depth=50, reliability=QoSReliabilityPolicy.RELIABLE,
                               durability=QoSDurabilityPolicy.VOLATILE)
         self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, rfid_qos)
+        # Same QoS as RFID: reliable, volatile - every marker is a message, a replay never new.
+        self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, rfid_qos)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
         self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
         self.create_subscription(Odometry, "/odom_raw", self._on_odom, SENSOR)
@@ -284,6 +291,28 @@ class LineFollowNode(Node):
             "tag_age_s": None if m.tag_age_s < 0 else float(m.tag_age_s),
         }
         self._rfid_t = now
+
+    def _on_marker(self, m: MarkerEvent) -> None:
+        gen = int(m.generation)
+        st = self._marker_status
+        if gen != st["generation"]:
+            # drive_node restarted its marker stream: what came before is not continuous.
+            self._marker_events.clear()
+            st["generation"] = gen
+            st["base"] = int(m.seq) if m.heartbeat else max(0, int(m.seq) - 1)
+        if not m.heartbeat and m.code:
+            self._marker_events.append((int(m.seq), int(m.code), int(m.direction), int(m.lcp2_mm)))
+        st["ok"], st["status"] = bool(m.markers_ok), str(m.status)
+        self._marker_t = time.monotonic()
+
+    def _markers(self, now: float) -> dict:
+        """The marker snapshot. A silent stream (no heartbeat for 2.5 s) is not ok."""
+        fresh = self._marker_t is not None and now - self._marker_t <= 2.5
+        st = dict(self._marker_status)
+        if not fresh:
+            st["ok"], st["status"] = False, "no marker data"
+        st["encounters"] = list(self._marker_events)
+        return st
 
     def _rfid(self, now: float) -> dict:
         """agv_core.drivers.rfid snapshot shape. A silent node is a link that is down."""
@@ -397,6 +426,7 @@ class LineFollowNode(Node):
                 self._drives_t is not None and now - self._drives_t <= self.drives_fresh_s
             ),
             rfid=self._rfid(now),
+            markers=self._markers(now),
             counts=counts,
             counts_per_rev=per_rev,
             wheels_still=still,
@@ -451,7 +481,10 @@ class LineFollowNode(Node):
         engine_events = self.job.tape.drain_events()
         for level, text in engine_events:
             self._event("LINE_MISSION", text, Event.WARN if level == "warn" else Event.INFO)
-        if engine_events:
+        marker_events = self.job.drain_marker_events()
+        for level, text in marker_events:
+            self._event("LINE_MARKER", text, Event.WARN if level == "warn" else Event.INFO)
+        if engine_events or marker_events:
             self._publish_state()
         if self.job.refused:
             self._event("LINE_MISSION", f"Start refused: {self.job.refused}", Event.WARN)
@@ -508,6 +541,8 @@ class LineFollowNode(Node):
         m.message = self.job.reason
         m.code = self._code()
         for k, v in self.job.mission_snapshot().items():
+            setattr(m, k, v)
+        for k, v in self.job.marker_snapshot().items():
             setattr(m, k, v)
         self._pub_state.publish(m)
         if self.job.state != self._event_state:

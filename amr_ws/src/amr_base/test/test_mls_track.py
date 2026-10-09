@@ -254,3 +254,86 @@ def test_a_configured_off_mode_stays_off():
     for k in range(4):
         t.poll(clk.t + 5.0 * (k + 1))
     assert t.mode == "off" and len(link.reads) == n
+
+
+# -- marker configuration check (mls-marker-plan 5.2, 2026-10-09) --------------------
+
+EXPECT = {(0x2028, 1): 1, (0x2028, 2): 1, (0x2028, 3): 1, (0x2029, 0): 1}
+
+
+def configured(over=None, **kw):
+    o = objs(variant=3, **kw)
+    o.update(EXPECT)
+    o.update(over or {})
+    return o
+
+
+def start_streaming(o, **kw):
+    t, link, got, clk = make(o, mode="tpdo", expected_variant=3, markers=EXPECT, **kw)
+    t.start()
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 12, 0, 2, 0x01)))
+    return t, link, clk
+
+
+def test_the_marker_check_reads_one_object_per_poll_and_never_in_start():
+    t, link, clk = start_streaming(configured())
+    start_reads = list(link.reads)
+    assert not any(k in EXPECT for k in start_reads), "start() must not read marker objects"
+    assert t.marker_status == "checking" and not t.markers_ok
+    for _ in EXPECT:
+        before = len(link.reads)
+        t.poll(clk.t)
+        assert len(link.reads) - before == 1
+    assert t.marker_status == "ok" and t.markers_ok and t.marker_checks == 1
+
+
+def test_a_wrong_value_is_misconfigured_and_names_it():
+    t, link, clk = start_streaming(configured({(0x2028, 3): 0}))
+    for _ in EXPECT:
+        t.poll(clk.t)
+    assert t.marker_status.startswith("misconfigured") and "2028h:03 = 0 (want 1)" in t.marker_status
+    assert not t.markers_ok
+
+
+def test_an_unanswered_read_is_unverified_and_retried_later_not_at_once():
+    o = configured()
+    del o[(0x2028, 2)]
+    t, link, clk = start_streaming(o)
+    for _ in range(3):
+        t.poll(clk.t)
+    assert t.marker_status.startswith("unverified") and not t.markers_ok
+    before = len(link.reads)
+    t.poll(clk.t)
+    assert len(link.reads) == before  # waits MARKER_RETRY_S
+    o[(0x2028, 2)] = 1
+    clk.t += MlsTrack.MARKER_RETRY_S
+    for _ in range(len(EXPECT) + 1):
+        t.poll(clk.t)
+    assert t.markers_ok
+
+
+def test_a_stream_gap_makes_the_markers_untrusted_until_re_read():
+    t, link, clk = start_streaming(configured())
+    for _ in EXPECT:
+        t.poll(clk.t)
+    assert t.markers_ok
+    clk.t += 2.0  # TPDO1 stops: the poll asks node 10 to start again
+    t.poll(clk.t)
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 12, 0, 2, 0x01)))
+    assert t.marker_status == "checking" and not t.markers_ok
+
+
+def test_markers_off_in_the_profile_read_nothing():
+    t, link, got, clk = make(configured(), mode="tpdo", expected_variant=3)
+    t.start()
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 12, 0, 2, 0x01)))
+    for _ in range(10):
+        t.poll(clk.t)
+    assert not any(k in EXPECT for k in link.reads)
+    assert t.marker_status_text() == "off" and not t.markers_ok
+
+
+def test_the_sdo_fallback_reports_no_stream_and_no_markers():
+    t, link, got, clk = make(configured(tpdo=0x8000018A), mode="auto", expected_variant=3, markers=EXPECT)
+    assert t.start() == "sdo"
+    assert t.marker_status_text() == "no stream (sdo)" and not t.markers_ok

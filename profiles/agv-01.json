@@ -186,6 +186,13 @@
     "bus_v_warn_low": 42.0,
     "bus_v_warn_high": 56.0
   },
+  "mls": {
+    "variant": 3,
+    "markers_enabled": true,
+    "marker_codes": [1, 2, 3],
+    "polarity_lock": false,
+    "teach_lock": true
+  },
   "imu": {
     "enabled": true,
     "poll_period_s": 0.04,

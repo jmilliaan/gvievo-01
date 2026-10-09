@@ -40,6 +40,22 @@ function rfidReading(r) {
     : !link.comms_ok ? 'reader link down' : '';
   return { link, tags, up, last, reading, tag: reading ? last.tag : null, why };
 }
+// MLS markers (mls-marker-plan 6.1): the same "up / reading now / last" rule for Home's
+// Marker tile. A marker passes under the sensor in ~0.2 s, so the code stays MK_HOLD_S.
+const MK_HOLD_S = 2.0;
+function markerReading(m) {
+  const link = m && m.link, events = (m && m.events) || [];
+  const up = !!link && link.age_s <= 2.5 && link.markers_ok;
+  const last = events[0];
+  const code = up && !!last && last.age_s <= MK_HOLD_S ? last.code : null;
+  const status = link ? link.status || '' : '';
+  const misconfigured = status.startsWith('misconfigured') || status.startsWith('unverified');
+  const why = !link ? 'no marker data' : link.age_s > 2.5 ? `marker stream silent ${link.age_s.toFixed(1)} s`
+    : misconfigured ? 'sensor not set up: read_mls set-markers'
+    : status === 'no stream (sdo)' ? 'MLS on SDO fallback: markers not read'
+    : status === 'off' ? 'markers off in the profile' : status || 'markers down';
+  return { link, events, up, last, code, misconfigured, why };
+}
 function rfidTags(r) {
   const box = document.querySelector('.lt-rfid');
   if (!box) return;

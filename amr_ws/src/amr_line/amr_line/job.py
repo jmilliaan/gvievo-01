@@ -54,7 +54,7 @@ stop is the wrong direction.
 """
 import dataclasses
 
-from amr_line import tag_table
+from amr_line import marker_reader, tag_table
 
 # LineState.msg, and not free to change - see the module docstring.
 IDLE, ARMED, RUNNING, HOLD, DONE, FAULT = 0, 1, 2, 3, 4, 5
@@ -110,6 +110,9 @@ class Inputs:
     yaw_rate: float | None = None    # rad/s, vehicle frame
     v_meas: float | None = None      # m/s, wheel odometry
     warning_scale: float = 1.0       # the mux's applied warning-field factor (/amr/mux_state)
+    # MLS markers (mls-marker-plan, 2026-10-09): the /amr/line_marker snapshot, or None.
+    # Display only: no marker changes the state or the speed.
+    markers: dict | None = None
 
 
 class FollowJob:
@@ -134,6 +137,10 @@ class FollowJob:
         self.tape = None
         # Last tag and the travel since it: survives runs and mission changes.
         self.odometer = tag_table.TagOdometer()
+        # Marker codes read by the MLS: counted and logged in every state, acted on in none.
+        self.markers = marker_reader.MarkerReader()
+        self.markers_ok = False
+        self._marker_log = []
         self.reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -435,6 +442,7 @@ class FollowJob:
         """Returns (left_rpm, right_rpm). Zero unless actually following."""
         # Every state, MANUAL jogs included: this is how "at Home" is proven.
         self.odometer.update(i.now, i.rfid, i.counts, i.counts_per_rev)
+        self._markers_tick(i.markers)
         self.step_m = self._wheel_travel(i)
         # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
         # did nothing while RUNNING and the wheels kept turning until the
@@ -742,6 +750,27 @@ class FollowJob:
         return left, right
 
     # -- reporting ---------------------------------------------------------
+    def _markers_tick(self, snap):
+        """Drain new markers into the operator log. Never touches state or speed."""
+        ok = bool(snap and snap.get("ok"))
+        if snap is not None and ok != self.markers_ok:
+            self._marker_log.append(("info" if ok else "warn",
+                                     f"markers {'up' if ok else 'down'}: {snap.get('status', '')}"))
+        self.markers_ok = ok
+        for code, _direction, lcp2, gap in self.markers.scan(snap):
+            note = f" ({gap} missed before it)" if gap else ""
+            self._marker_log.append(("warn" if gap else "info", f"marker {code} at {lcp2:+d} mm{note}"))
+
+    def drain_marker_events(self):
+        out, self._marker_log = self._marker_log, []
+        return out
+
+    def marker_snapshot(self):
+        """LineState's marker fields."""
+        last = self.markers.last or {}
+        return {"markers_ok": self.markers_ok, "last_marker": int(last.get("code", 0)),
+                "marker_count": self.markers.count, "marker_missed": self.markers.missed}
+
     def mission_snapshot(self):
         """What the mission engine is doing, for LineState and the web."""
         t = self.tape

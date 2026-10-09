@@ -164,6 +164,12 @@ def _rows() -> tuple[Alarm, ...]:
           "Nothing to do; this records what the mission engine did with a tag.",
           "amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, "
           "U-turns, the run's result at Home. The text names the tag and the action."),
+        a("LINE_MARKER", INFO, "auto", "Track marker read",
+          "Nothing to do; this records a marker code the line sensor read beside the tape.",
+          "MLS marker codes (manuals/mls-marker-plan.md): the sensor decodes the code, drive_node "
+          "publishes /amr/line_marker, the line follower logs it. Display only - no marker changes "
+          "speed or state. Also logged: the marker stream going up or down, and markers lost on "
+          "the topic (warn)."),
         a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
           "Check the scanner cable and that its driver is running (Status page).",
           "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "

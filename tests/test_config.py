@@ -192,6 +192,24 @@ def test_config_profile():
             lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
+    # Line sensor (mls-marker-plan, 2026-10-09): markers off until the bench passes.
+    # markers_enabled is the bench switch (on for the 2026-10-09 trial): only its type is pinned.
+    check("the MLS is expected on variant 3 with codes 1-3",
+          config.MLS_VARIANT == 3 and isinstance(config.MLS_MARKERS, bool)
+          and config.MLS_MARKER_CODES == [1, 2, 3] and config.MLS_POLARITY_LOCK is False,
+          f"{config.MLS_VARIANT} {config.MLS_MARKERS} {config.MLS_MARKER_CODES}")
+    refuses("an MLS variant outside 2006h:01's 0..7 is refused",
+            lambda d: d["mls"].update(variant=8), "mls.variant")
+    for bad, why in (([], "at least one"), ([1, 1], "duplicate"), ([0], "1..7"), ([8], "1..7"),
+                     (["2"], "integers"), ([True], "integers"), (2, "integers")):
+        refuses(f"mls.marker_codes {bad!r} is refused",
+                lambda d, bad=bad: d["mls"].update(marker_codes=bad), why)
+    refuses("a non-boolean mls.markers_enabled is refused",
+            lambda d: d["mls"].update(markers_enabled=1), "true/false")
+    refuses("an unknown key in the mls block is refused",
+            lambda d: d["mls"].update(marker_width_mm=15), "unknown key")
+    refuses("a profile without the mls block is refused",
+            lambda d: d.pop("mls"), "missing top-level")
     refuses("a pre-move timeout not above the warning is refused",
             lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
             "premove_timeout_s")

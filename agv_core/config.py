@@ -305,6 +305,26 @@ timing.premove_timeout_s
     the safety chain: E-stop pressed or not yet reset. Must exceed
     auto_start_delay_s; the enable retry backoff is 2 s, so give it two tries.
 
+mls.*  (SICK MLS line sensor, can.sensor_node; manuals/mls-marker-plan.md)
+    What the sensor is expected to be configured as. drive_node only READS these
+    objects and compares; the bench tool read_mls writes them (set-variant,
+    set-markers), through guard.check_sensor.
+
+    variant is 2006h:01, the TPDO1 packing (3 = Standard enhanced since
+    2026-10-07). A difference is logged and decoded as reported.
+
+    markers_enabled turns marker events on: the sensor's own decoded code
+    (2028h, standard mode, FailSafe) becomes /amr/line_marker events. Off until
+    the bench session (plan B0-B7) has passed. On, but the sensor not configured
+    as below, means NO events and a warning naming the fix - never a guess.
+    marker_codes lists the codes laid on the floor (1-3 with the MLSE-0200,
+    15 mm markers); any other code read is a reject, counted, never an event.
+    polarity_lock expects 202Dh:05 = 1 (only north track seen): leave false until
+    a full lap has shown north-up tape everywhere, because south-up track
+    becomes invisible with it. teach_lock expects 2029h = 1 (keypad locked).
+
+    Nothing here is in the safety path or changes motion.
+
 imu.*
     The IMU inside the SICK MLS on can.sensor_node, read over SDO by the bus
     thread and shown on /monitor and the rail. DISPLAY ONLY today: nothing
@@ -544,6 +564,13 @@ _SCHEMA = {
         "bus_v_warn_low":     ("MON_BUS_V_WARN_LOW", float),
         "bus_v_warn_high":    ("MON_BUS_V_WARN_HIGH", float),
     },
+    "mls": {
+        "variant":         ("MLS_VARIANT", int),
+        "markers_enabled": ("MLS_MARKERS", bool),
+        "polarity_lock":   ("MLS_POLARITY_LOCK", bool),
+        "teach_lock":      ("MLS_TEACH_LOCK", bool),
+        # "marker_codes" is a list of ints; handled separately in _read_marker_codes().
+    },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
         "poll_period_s":  ("IMU_PERIOD_S", float),
@@ -676,6 +703,23 @@ def _read_zone_bytes(raw, where):
     return list(raw)
 
 
+def _read_marker_codes(raw, where):
+    """mls.marker_codes -> the SICK standard-mode marker codes laid on the floor.
+
+    Standard mode decodes 1-7 (manual 8021642 p. 52); which of them are usable
+    depends on the sensor length and marker width (MLSE-0200 + 15 mm: 1-3)."""
+    if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool)
+                                            for v in raw):
+        raise ConfigError(f"{where}: expected a list of integers")
+    if not raw:
+        raise ConfigError(f"{where}: expected at least one code")
+    if len(set(raw)) != len(raw):
+        raise ConfigError(f"{where}: duplicate code in {raw}")
+    if any(not 1 <= v <= 7 for v in raw):
+        raise ConfigError(f"{where}: standard-mode codes are 1..7, got {raw}")
+    return sorted(raw)
+
+
 def _read_ramp(raw):
     """drivers.ramp -> {"auto": {...}} of ints."""
     ramp = raw.get("ramp")
@@ -762,6 +806,8 @@ def _parse(doc):
             allowed |= {"di_names", "do_names", "motion_on", "alarm_on", "movement_horn"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
+        if section == "mls":
+            allowed.add("marker_codes")
         if section == "pp":
             allowed.add("expect")
         unknown = set(block) - allowed
@@ -793,6 +839,8 @@ def _parse(doc):
         doc["dio"].get("movement_horn", []), ns["DIO_NUM_DO"], "dio.movement_horn")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
+    ns["MLS_MARKER_CODES"] = _read_marker_codes(
+        doc["mls"]["marker_codes"], "mls.marker_codes")
     return ns
 
 
@@ -870,6 +918,9 @@ def _validate(ns):
     for mode, block in g("RAMP").items():
         check(block["accel"] > 0 and block["decel"] > 0,
               f"drivers.ramp.{mode} accel and decel must be > 0")
+
+    # -- line sensor (mls-marker-plan) -----------------------------------
+    check(0 <= g("MLS_VARIANT") <= 7, f"mls.variant is 2006h:01, 0..7, got {g('MLS_VARIANT')}")
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
@@ -1442,6 +1493,11 @@ def describe():
             rows.append(_row(section, "movement_horn", "DIO_MOVEMENT_HORN", mh, notes,
                              text=(" \u00b7 ".join(f"DO{c:02d}" for c in mh) + " off while the alarm horn sounds") if mh else "none",
                              unit=""))
+        if section == "mls":
+            rows.append(_row(section, "marker_codes", "MLS_MARKER_CODES",
+                             g["MLS_MARKER_CODES"], notes,
+                             text=", ".join(str(c) for c in g["MLS_MARKER_CODES"]),
+                             unit="code"))
         if section == "lidar":
             rows.append(_row(section, "zone_bytes", "LIDAR_ZONE_BYTES",
                              g["LIDAR_ZONE_BYTES"], notes,

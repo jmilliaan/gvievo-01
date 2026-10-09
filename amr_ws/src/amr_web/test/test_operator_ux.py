@@ -646,3 +646,87 @@ def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
         body = client.get(page).get_data(as_text=True)
         net = body.index('id="net"')
         assert net < body.index('id="supply"') < body.index('id="ipc-temp"'), page
+
+
+# ---- MLS markers on Home (mls-marker-plan 6.1, 2026-10-09) ----------------------------
+
+
+def _home(tmp_path, markers_enabled):
+    maps = tmp_path / "maps"
+    maps.mkdir(exist_ok=True)
+    app = create_app(Stub(merged()), str(maps), state_dir=str(tmp_path / "state"),
+                     markers_enabled=markers_enabled)
+    app.config["TESTING"] = True
+    return app.test_client().get("/home").get_data(as_text=True)
+
+
+def test_home_has_no_marker_tile_while_markers_are_off(tmp_path):
+    body = _home(tmp_path, False)
+    assert 'id="live-marker"' not in body and "home-live three" not in body
+
+
+def test_home_puts_the_marker_tile_right_after_rfid_when_markers_are_on(tmp_path):
+    body = _home(tmp_path, True)
+    assert 'class="home-live three"' in body
+    rfid, marker, line = (body.index(f'id="{t}"') for t in ("live-rfid", "live-marker", "live-line"))
+    assert rfid < marker < line, "Speed · RFID · Marker on the first row, the line sensor under them"
+    assert "markerReading(" in body, "the marker rule is shared in linetrack.js, not copied"
+
+
+def test_the_adapter_keeps_the_marker_status_and_the_last_markers():
+    import collections
+    import threading
+    from types import SimpleNamespace
+
+    from amr_web import adapter as ad
+
+    a = ad.RosAdapter.__new__(ad.RosAdapter)
+    a._lock = threading.Lock()
+    a._marker, a._marker_t, a._marker_gen = None, 0.0, None
+    a._marker_reads = collections.deque(maxlen=ad.RFID_RECENT)
+    clock = [100.0]
+    a._now = lambda: clock[0]
+
+    def msg(**kw):
+        base = dict(heartbeat=False, seq=0, generation=0, code=0, raw=0, direction=0, lcp2_mm=0,
+                    nlcp=2, line_good=True, markers_ok=True, status="ok", rejects=0, aborts=0)
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    assert a._marker_state(100.0) == {"link": None, "events": []}
+    a._on_marker(msg(heartbeat=True))
+    clock[0] += 1.0
+    a._on_marker(msg(seq=1, code=2, raw=4, lcp2_mm=-3))
+    clock[0] += 1.0
+    a._on_marker(msg(seq=2, code=1, raw=2, lcp2_mm=5, aborts=1))
+    st = a._marker_state(clock[0] + 0.5)
+    assert [e["code"] for e in st["events"]] == [1, 2] and st["events"][0]["age_s"] == pytest.approx(0.5)
+    assert st["link"]["count"] == 2 and st["link"]["aborts"] == 1 and st["link"]["markers_ok"]
+    a._on_marker(msg(heartbeat=True, generation=1, seq=0, status="misconfigured: 2028h:03 = 0 (want 1)",
+                     markers_ok=False))
+    st = a._marker_state(clock[0])
+    assert st["events"] == [] and st["link"]["status"].startswith("misconfigured")
+
+
+def test_the_adapter_never_assigns_one_attribute_twice_in_init():
+    """2026-10-09: the marker deque was named `_markers`, and the route-marker publisher
+    created later in __init__ took the name - /api/state answered 500 on the vehicle while
+    every unit test (which skips __init__) passed."""
+    import ast
+    import pathlib
+
+    from amr_web import adapter as ad
+
+    tree = ast.parse(pathlib.Path(ad.__file__).read_text())
+    init = next(f for c in tree.body if isinstance(c, ast.ClassDef) and c.name == "RosAdapter"
+                for f in c.body if isinstance(f, ast.FunctionDef) and f.name == "__init__")
+    names = []
+    for node in ast.walk(init):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(
+            node, ast.AnnAssign) else []
+        for t in targets:
+            for e in (t.elts if isinstance(t, ast.Tuple) else [t]):
+                if isinstance(e, ast.Attribute) and isinstance(e.value, ast.Name) and e.value.id == "self":
+                    names.append(e.attr)
+    dup = sorted({n for n in names if names.count(n) > 1})
+    assert not dup, f"assigned twice in RosAdapter.__init__: {dup}"

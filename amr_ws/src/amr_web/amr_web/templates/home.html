@@ -35,9 +35,12 @@
   </div>
   {# Live readings (2026-10-08), big enough to read from the floor: measured wheel speed,
      the tag under the RFID reader, the MLS line position. Display only, in every mode. #}
-  <div class="home-live">
+  {# The MLS marker code beside the RFID tag (mls-marker-plan 6.1, 2026-10-09), once the
+     profile turns markers on. Display only. #}
+  <div class="home-live{{ ' three' if markers_enabled }}">
     <div class="live" id="live-speed"><span>Speed</span><b>–</b><i>no wheel feedback</i></div>
     <div class="live" id="live-rfid"><span>RFID tag</span><b>––</b><i>no reader data</i></div>
+    {% if markers_enabled %}<div class="live" id="live-marker"><span>Marker</span><b>––</b><i>no marker data</i></div>{% endif %}
     <div class="live" id="live-line"><span>Line position</span><b>–</b><i>no reading</i>
       <div class="live-bar"><i class="lt-zero"></i><em data-i="0"></em><em data-i="1"></em><em data-i="2"></em></div>
     </div>
@@ -118,6 +121,13 @@ function liveTiles(st) {
   if (!r.up) live('live-rfid', '––', r.why, 'off');
   else if (r.tag) live('live-rfid', r.tag, `reading now${rssiText(r.last.rssi_dbm)}`, 'ok');
   else live('live-rfid', '––', r.last ? `last ${r.last.tag} · ${ago(r.last.age_s)}` : 'no tag under the reader', '');
+  if ($('live-marker')) {
+    const k = markerReading(st.markers), n = k.link ? k.link.count : 0;
+    const aborted = k.link && k.link.aborts ? ` · ${k.link.aborts} aborted` : '';
+    if (!k.up) live('live-marker', '––', k.why, k.misconfigured ? 'warn' : 'off');
+    else if (k.code) live('live-marker', String(k.code), `read now · ${k.last.lcp2_mm >= 0 ? '+' : ''}${k.last.lcp2_mm} mm${aborted}`, aborted ? 'warn' : 'ok');
+    else live('live-marker', '––', (k.last ? `last ${k.last.code} · ${ago(k.last.age_s)} · ${n} read` : 'no marker read yet') + aborted, aborted ? 'warn' : '');
+  }
   const t = st.line_track, el = $('live-line');
   const fresh = !!t && t.age_s <= 1.0, max = (t && t.sensor_max_mm) || 100;
   el.querySelectorAll('.live-bar em').forEach(d => {

@@ -43,6 +43,7 @@ from amr_interfaces.msg import (
     LocalizationState,
     ManualCommand,
     MappingState,
+    MarkerEvent,
     ModeState,
     MuxState,
     PanelState,
@@ -239,6 +240,11 @@ class RosAdapter(Node):
         self._wheels: dict | None = None
         self._wheels_t = 0.0
         self._rfid_tags: collections.deque = collections.deque(maxlen=RFID_RECENT)
+        # MLS markers (mls-marker-plan 6.1): the 1 Hz status and the last few markers read.
+        self._marker: dict | None = None
+        self._marker_t = 0.0
+        self._marker_gen: int | None = None
+        self._marker_reads: collections.deque = collections.deque(maxlen=RFID_RECENT)
         self._sensor_max_mm = _sensor_max_mm()
         self._ipc_temp: dict | None = None
         self._ipc_temp_t = -1e9
@@ -265,6 +271,8 @@ class RosAdapter(Node):
         )
         # RFID tag passes and the reader link, in every mode (rfid_node, base layer): display only.
         self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, RFID_QOS, callback_group=g)
+        # MLS marker codes (drive_node, mls-marker-plan): every marker is a message, like RFID.
+        self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, RFID_QOS, callback_group=g)
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
         # diagnostics (unified plan §7): owner-published snapshots and a bounded event ring
         self._diag: dict[str, dict] = {}
@@ -565,6 +573,32 @@ class RosAdapter(Node):
                      "rssi_dbm": float(m.rssi_dbm) if m.channel >= 0 else None}
                 )
 
+    def _on_marker(self, m: MarkerEvent) -> None:
+        now = self._now()
+        with self._lock:
+            if int(m.generation) != self._marker_gen:
+                self._marker_gen = int(m.generation)
+                self._marker_reads.clear()  # drive_node restarted the stream
+            self._marker = {
+                "markers_ok": bool(m.markers_ok),
+                "status": str(m.status),
+                "generation": int(m.generation),
+                "count": int(m.seq),
+                "rejects": int(m.rejects),
+                "aborts": int(m.aborts),
+            }
+            self._marker_t = now
+            if not m.heartbeat and m.code:
+                self._marker_reads.appendleft({
+                    "code": int(m.code), "raw": int(m.raw), "direction": int(m.direction),
+                    "lcp2_mm": int(m.lcp2_mm), "seq": int(m.seq), "t": now,
+                })
+
+    def _marker_state(self, now: float) -> dict:
+        """Caller holds the lock. Link None until the first message; markers newest first."""
+        link = dict(self._marker, age_s=now - self._marker_t) if self._marker else None
+        return {"link": link, "events": [dict(e, age_s=now - e["t"]) for e in self._marker_reads]}
+
     def _rfid_state(self, now: float) -> dict:
         """Caller holds the lock. Link None until a heartbeat; tags newest first."""
         link = dict(self._rfid, age_s=now - self._rfid_t) if self._rfid else None
@@ -748,6 +782,7 @@ class RosAdapter(Node):
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 "rfid": self._rfid_state(now),
+                "markers": self._marker_state(now),
                 "wheels": dict(self._wheels, age_s=now - self._wheels_t) if self._wheels else None,
                 "ipc_temp": self._ipc(now),
                 "drive_supply": self._drive_supply(now),

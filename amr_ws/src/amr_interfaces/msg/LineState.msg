@@ -68,3 +68,10 @@ string speed_reason         # why: zone entry, budget used, late exit, curve gua
 # policy under AUTO: ARMED (the pre-move warning), RUNNING, and holds that resume by
 # themselves. False when idle and in holds that wait for a physical Start.
 bool drive_power
+
+# MLS markers (manuals/mls-marker-plan.md, 2026-10-09). APPEND ONLY. Display only: no
+# marker changes the state or the speed (yet).
+bool markers_ok             # the marker stream is up and the sensor configured
+uint8 last_marker           # code of the last marker read; 0 = none since start
+uint32 marker_count         # markers read since the node started
+uint32 marker_missed        # sequence gaps on /amr/line_marker

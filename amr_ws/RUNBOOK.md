@@ -576,6 +576,36 @@ generation change, an encoder-scale change, stale counts or panel loss aborts
 the job, or drops a held plan. `DONE` or `ABORTED` cannot replay on another Start edge; upload
 a new plan.
 
+### MLS marker codes (bench, 2026-10-09)
+
+Markers are short 15 mm strips of south-up tape beside the north-up track. The MLS
+decodes them itself (SICK standard mode). Codes 1–3 are used: 30 mm, 60 mm, and 60 + 30 mm
+from the track centre. The plan, the bench tests B0–B7 and the reasoning are in
+`manuals/mls-marker-plan.md`, and the layout drawing is
+`documentation/layout-reference/mls-marker-codes-standard.html`. Markers are display only:
+they appear on Home beside the RFID tag and in the event log (`LINE_MARKER`), and they never
+change speed or state.
+
+Every command below needs `amr.service` stopped, and every write goes through `guard.py`:
+
+```bash
+python3 -m agv_core.drivers.canbus.read_mls snapshot              # marker objects, polarity, teach lock
+python3 -m agv_core.drivers.canbus.read_mls markers --nmt --seconds 60   # every marker / polarity change
+python3 -m agv_core.drivers.canbus.read_mls marker-level           # Hall profile: marker peak vs the 30 % level
+python3 -m agv_core.drivers.canbus.read_mls set-markers            # dry run; --go writes, resets node 10, reads back
+```
+
+- **Enabling:** `profiles/agv-01.json` `mls.markers_enabled` stays `false` until B0–B7 pass.
+  When it is `true` and the sensor is not configured to match, drive_node publishes no marker
+  events, and Home shows "sensor not set up".
+- **Polarity lock:** `set-markers --polarity-lock` (202Dh:05) only after a full lap with
+  `markers` has shown `north` everywhere. With the lock, south-up track is invisible to the
+  sensor.
+- **Teach key:** `set-markers` locks the sensor's capacitive teach key (2029h = 1). Any
+  future zero-point, inversion or offset-calibration step done on the keypad must first
+  unlock it with an SDO write of 2029h = 0. Don't run an offset calibration over tape
+  (manual p. 44).
+
 ## 4. Fault recovery
 
 Every code below is a row in `agv_core/alarms.py`; the operator sees the title and
@@ -605,6 +635,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
 | `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
+| `LINE_MARKER` | info | Track marker read | Nothing to do; this records a marker code the line sensor read beside the tape. | MLS marker codes (manuals/mls-marker-plan.md): the sensor decodes the code, drive_node publishes /amr/line_marker, the line follower logs it. Display only - no marker changes speed or state. Also logged: the marker stream going up or down, and markers lost on the topic (warn). |
 | `LINE_MISSION` | info | Tape mission event | Nothing to do; this records what the mission engine did with a tag. | amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, U-turns, the run's result at Home. The text names the tag and the action. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, line...). |
@@ -620,7 +651,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `AUTHORITY_LOST` | warn | Stopped: the vehicle lost permission to drive | Put the selector back to AUTO and press Start. | Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO. |
-| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Press the safety reset on the cabinet, then Start. | Hold cause 'drives': DriveStatus not operational while the follower wanted to move. |
+| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while something wanted to move: the hold cause 'drives', or the mux gating a command. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
 | `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
 | `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |

@@ -21,11 +21,25 @@ The sensor is node 10 at 125 kbps. Two ways to get measurements out of it:
             both exist it prints the comparison and a suggested 2025h min.
             level and the measured zero offset. It suggests, never writes:
             the sensor's parameters stay a deliberate, separate act.
-  set-variant  the ONE write in this tool (2026-10-07): 2006h:01 Variant TPDO1,
+  markers   (2026-10-09, mls-marker-plan) stream TPDO1 and print every CHANGE of
+            the marker field (byte 7 bits 3-7, raw) and the "reading code" status
+            bit, with the polarity: the bench instrument for B0 and B4-B7.
+  marker-level  SDO-read the raw Hall elements (2000h) and report the main peak
+            and every opposite-sign peak as a % of it, against the 30 % detection
+            level (202Dh:01): will a marker strip be detected, and does the track's
+            own overshoot look like one? Read-only.
+  set-markers  the second write (2026-10-09): 2028h:01-03 (markers on, standard,
+            FailSafe), 2029h (teach key locked) and, with --polarity-lock,
+            202Dh:05 = 1. Dry run unless --go; resets node 10 and reads back.
+  set-variant  a write in this tool (2026-10-07): 2006h:01 Variant TPDO1,
             e.g. --value 3 (Standard enhanced: SICK p.49-50, ON for FLUSH
-            diverters). Dry run unless --go. With --go it writes, stores
-            (1010h:01 "save"), resets node 10 only (NMT 0x81) and reads the
-            value back, so a value that did not survive the reset is visible.
+            diverters). Dry run unless --go. With --go it writes, resets node 10
+            only (NMT 0x81) and reads the value back, so a value that did not
+            survive the reset is visible. (Until 2026-10-09 it also tried a 1010h
+            store, which guard.py forbids and the sensor refuses anyway.)
+
+Every write goes through guard.check_sensor() (_guarded_write); the line sensor
+has its own allow-list there, apart from the drives'.
             Standard values only (0, 2, 3, 4): a Combi value repacks TPDO1 and
             drive_node would decode it on its next start, but this tool keeps
             that a separate decision. Needs amr.service stopped.
@@ -71,6 +85,7 @@ import time
 
 import can  # noqa: E402
 
+from agv_core.drivers.canbus import guard  # noqa: E402
 from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, open_bus, sdo_read  # noqa: E402
 
 SENSOR_NODE = 10
@@ -134,8 +149,12 @@ def decode_status(b):
 
 
 def decode_marker(b):
-    """byte 6 bits 3-7: bit 3 is the introductory character, bits 4-7 the code."""
-    return {"intro": bool(b & 0x08), "code": (b >> 4) & 0x0F}
+    """byte 6 bits 3-7: bit 3 is the introductory character, bits 4-7 the code.
+
+    `raw` is the whole 5-bit field. The manual types it INT5 (signed) yet describes
+    bit 0 as the intro and bits 1-4 as code 1-15, and never says where the travel
+    direction goes: the raw value is kept so the bench (plan B6) can settle it."""
+    return {"intro": bool(b & 0x08), "code": (b >> 4) & 0x0F, "raw": (b >> 3) & 0x1F}
 
 
 def decode_tpdo1(data, combi):
@@ -244,6 +263,11 @@ def snapshot(bus, node):
         (0x2027, 0, "2027h sensor flipped", False, ""),
         (0x2028, 1, "2028h:01 use markers", False, ""),
         (0x2028, 2, "2028h:02 marker style", False, ""),
+        (0x2028, 3, "2028h:03 marker FailSafe", False, ""),
+        (0x2029, 0, "2029h lock teach key", False, ""),
+        (0x202D, 1, "202Dh:01 first level", False, "% of main peak"),
+        (0x202D, 2, "202Dh:02 last level", False, "% of main peak"),
+        (0x202D, 5, "202Dh:05 tape polarity", False, "(0 both, 1 north, 2 south)"),
     ):
         v = rd(bus, node, index, sub, signed)
         if v is not None:
@@ -464,14 +488,23 @@ def calibrate(bus, node, step, samples, interval):
 
 # --- PDO path ---------------------------------------------------------------
 
-STORE_SIGNATURE = 0x65766173   # "save", little-endian (CiA 301 1010h)
 STANDARD_VARIANTS = (0, 2, 3, 4)
 
 
-def set_variant(bus, node, value, go=False, store=True):
-    """Write 2006h:01, store, reset the node, read back. Dry run unless go."""
+def _guarded_write(bus, node, index, sub, value, size):
+    """The ONLY MLS write path in this tool: guard.check_sensor first, then the SDO.
+    Returns (ok, detail); a refused object never reaches the bus."""
     from agv_core.drivers.canbus.drive_forward import sdo_write  # noqa: PLC0415
 
+    try:
+        guard.check_sensor(index, sub)
+    except guard.ForbiddenWrite as e:
+        return False, str(e)
+    return sdo_write(bus, node, index, sub, value, size)
+
+
+def set_variant(bus, node, value, go=False):
+    """Write 2006h:01, reset the node, read back. Dry run unless go."""
     if value not in STANDARD_VARIANTS:
         print(f"{BAD} {value} is not a Standard variant {STANDARD_VARIANTS}; refusing.")
         return 2
@@ -485,18 +518,15 @@ def set_variant(bus, node, value, go=False, store=True):
         print(f"    {OK} already set; nothing written.")
         return 0
     if not go:
-        print(f"\n{WARN} this writes to the sensor (2006h:01, then 1010h:01 store, then NMT reset "
-              f"of node {node}). Re-run with --go. Nothing has been changed.")
+        print(f"\n{WARN} this writes to the sensor (2006h:01, then NMT reset of node {node}). "
+              "Re-run with --go. Nothing has been changed.")
         return 2
 
-    ok, detail = sdo_write(bus, node, OBJ_VARIANT[0], OBJ_VARIANT[1], value, 1)
+    ok, detail = _guarded_write(bus, node, OBJ_VARIANT[0], OBJ_VARIANT[1], value, 1)
     if not ok:
         print(f"{BAD} write 2006h:01 refused: {detail}")
         return 1
     print(f"    {OK} wrote 2006h:01 = {value}; reads back {rd(bus, node, *OBJ_VARIANT)}")
-    if store:
-        ok, detail = sdo_write(bus, node, 0x1010, 1, STORE_SIGNATURE, 4)
-        print(f"    {OK if ok else WARN} store 1010h:01 \"save\": {detail}")
     print(f"[nmt] Reset Node -> node {node} only")
     nmt(bus, 0x81, node)
     time.sleep(3.0)
@@ -506,6 +536,243 @@ def set_variant(bus, node, value, go=False, store=True):
         return 0
     print(f"    {BAD} after reset 2006h:01 = {after}: the value did NOT survive the reset.")
     return 1
+
+
+# --- markers (mls-marker-plan, 2026-10-09) ----------------------------------
+
+# (index, sub, size, value, label). Standard mode, FailSafe, teach key locked; the
+# polarity lock only on request (plan B0: south-up track would vanish with it).
+MARKER_SETTINGS = (
+    (0x2028, 1, 1, 1, "use markers"),
+    (0x2028, 2, 1, 1, "marker style: SICK standard"),
+    (0x2028, 3, 1, 1, "FailSafe"),
+    (0x2029, 0, 1, 1, "lock teach key"),
+)
+POLARITY_LOCK = (0x202D, 5, 1, 1, "tape polarity: north track, south markers")
+
+
+def marker_writes(current, polarity_lock=False):
+    """[(index, sub, size, want, label, now)] still to write. `current` maps
+    (index, sub) -> the value read back (None = unread). Pure: the tests feed it."""
+    wanted = MARKER_SETTINGS + ((POLARITY_LOCK,) if polarity_lock else ())
+    return [(i, s, size, want, label, current.get((i, s)))
+            for i, s, size, want, label in wanted if current.get((i, s)) != want]
+
+
+def set_markers(bus, node, go=False, polarity_lock=False):
+    """Write the marker configuration, reset node 10, read every value back."""
+    keys = [(i, s) for i, s, *_ in MARKER_SETTINGS + (POLARITY_LOCK,)]
+    current = {k: rd(bus, node, *k) for k in keys}
+    if current[(0x2028, 1)] is None:
+        print(f"{BAD} node {node} did not answer 2028h:01 - is the sensor powered and on can0?")
+        return 1
+    todo = marker_writes(current, polarity_lock)
+    for i, s, _size, want, label, _now in marker_writes({}, polarity_lock):
+        print(f"    {i:04X}h:{s:02X} {label:<42} now {current[(i, s)]}  want {want}")
+    if not polarity_lock:
+        print(f"    202Dh:05 {'tape polarity (left alone: --polarity-lock after B0)':<42} "
+              f"now {current[(0x202D, 5)]}")
+    if not todo:
+        print(f"    {OK} already set; nothing written.")
+        return 0
+    if not go:
+        print(f"\n{WARN} this writes {len(todo)} value(s) to the sensor, then resets node {node}. "
+              "Re-run with --go. Nothing has been changed.")
+        return 2
+    for i, s, size, want, label, _now in todo:
+        ok, detail = _guarded_write(bus, node, i, s, want, size)
+        if not ok:
+            print(f"{BAD} write {i:04X}h:{s:02X} ({label}) refused: {detail}")
+            return 1
+        print(f"    {OK} wrote {i:04X}h:{s:02X} = {want}")
+    print(f"[nmt] Reset Node -> node {node} only")
+    nmt(bus, 0x81, node)
+    time.sleep(3.0)
+    after = {k: rd(bus, node, *k) for k in keys}
+    left = marker_writes(after, polarity_lock)
+    for i, s, _size, want, _label, _now in marker_writes({}, polarity_lock):
+        print(f"    after reset {i:04X}h:{s:02X} = {after[(i, s)]} (want {want})")
+    if left:
+        print(f"    {BAD} {len(left)} value(s) did NOT survive the reset.")
+        return 1
+    print(f"    {OK} every value persisted. Power-cycle the sensor and run snapshot (plan B2).")
+    return 0
+
+
+class MarkerWatch:
+    """Edges of the marker field and the reading-code bit, from decoded readings.
+    Pure: feed(t, reading) returns a line to print or None; summary() at the end."""
+
+    def __init__(self):
+        self.prev = None          # (raw, reading_code)
+        self.counts = {}          # code -> times reported
+        self.aborts = 0           # reading-code episodes that ended with no code
+        self.polarity = set()     # seen while a track was present
+        self._seen_code = False
+
+    def feed(self, t, r):
+        st, mk = r["status"], r["marker"]
+        if r["nlcp"]:
+            self.polarity.add(st["polarity"])
+        cur = (mk["raw"], st["reading_code"])
+        if cur == self.prev:
+            return None
+        prev, self.prev = self.prev, cur
+        if mk["code"] and (prev is None or prev[0] != mk["raw"]):
+            self.counts[mk["code"]] = self.counts.get(mk["code"], 0) + 1
+        if st["reading_code"] or mk["code"]:
+            self._seen_code = self._seen_code or bool(mk["code"])
+        if prev is not None and prev[1] and not st["reading_code"]:
+            if not self._seen_code and not mk["code"]:
+                self.aborts += 1
+            self._seen_code = False
+        lcp2 = r["lcp"][1][0] if 2 in r["valid"] else None
+        return (f"{t:9.3f}s  raw {mk['raw']:05b} ({mk['raw']:2d})  intro {int(mk['intro'])}  "
+                f"code {mk['code']:2d}  reading {int(st['reading_code'])}  "
+                f"LCP2 {'--' if lcp2 is None else f'{lcp2:+d}'}  #LCP {r['nlcp']}  {st['polarity']}")
+
+    def summary(self):
+        return {"codes": dict(sorted(self.counts.items())), "aborts": self.aborts,
+                "polarity": sorted(self.polarity)}
+
+
+def markers(bus, node, seconds, start_nmt):
+    """Stream TPDO1 and print every marker / reading-code change. Read-only."""
+    _variant, combi = read_variant(bus, node)
+    cob = TPDO1_COB + node
+    if start_nmt:
+        print(f"[nmt] Start Remote Node -> node {node} only")
+        nmt(bus, 0x01, node)
+    print(f"watching markers on 0x{cob:03X} for {seconds:.0f} s. Ctrl-C to stop.\n")
+    w, n, t0 = MarkerWatch(), 0, time.time()
+    t_end = t0 + seconds
+    try:
+        while time.time() < t_end:
+            m = bus.recv(timeout=max(0.0, t_end - time.time()))
+            if m is None:
+                break
+            if m.arbitration_id != cob:
+                continue
+            r = decode_tpdo1(bytes(m.data), combi)
+            if r is None:
+                continue
+            n += 1
+            line = w.feed(time.time() - t0, r)
+            if line:
+                print(f"    {line}")
+    except KeyboardInterrupt:
+        print("\n    interrupted")
+    s = w.summary()
+    if n == 0:
+        print(f"    {BAD} no TPDO1 seen on 0x{cob:03X} (Pre-operational? try --nmt)")
+        return 1
+    print(f"\n    {n} frames · codes {s['codes'] or 'none'} · aborted reads {s['aborts']} · "
+          f"polarity {'/'.join(s['polarity']) or '-'}")
+    return 0
+
+
+HALL_OBJ = 0x2000
+# Hall elements per sensor length (manual p. 44). 2000h answers all 168 sub-indices on
+# every length - the MLSE-0200 here returned 36 values and 132 zeros (2026-10-09) - so
+# the count cannot be found by reading until an abort.
+HALL_ELEMENTS = {200: 36, 300: 54, 400: 66, 500: 84, 600: 102}
+
+
+def hall_profile(values, range_mm, detection_pct=30, min_level=0):
+    """The raw Hall elements across the sensor -> main peak and opposite-sign peaks.
+
+    values: element readings left to right (2000h:01..n). The main peak is the largest
+    absolute value; every local extremum of the opposite sign is listed with its
+    position and its size as % of the main peak, flagged when it clears the detection
+    level (a marker should; the track's own overshoot must not). Pure.
+
+    Below `min_level` (2025h, the sensor's own "a line is present" threshold, in the same
+    digits) there is no track to measure against: `no_track` is set and no peak is listed,
+    because a percentage of noise is noise (2026-10-09, bare floor: +-20 digits)."""
+    n = len(values)
+    if n < 3:
+        return None
+    pitch = range_mm / n
+    pos = [round((k + 0.5) * pitch - range_mm / 2, 1) for k in range(n)]
+    k_main = max(range(n), key=lambda k: abs(values[k]))
+    main = values[k_main]
+    if main == 0 or abs(main) < min_level:
+        return {"main": main, "main_mm": pos[k_main], "opposite": [], "elements": n, "no_track": True}
+    sign = 1 if main > 0 else -1
+    opp = []
+    for k in range(n):
+        v = values[k] * -sign       # opposite polarity, made positive
+        if v <= 0:
+            continue
+        left = values[k - 1] * -sign if k > 0 else float("-inf")
+        right = values[k + 1] * -sign if k < n - 1 else float("-inf")
+        if v >= left and v >= right:
+            pct = round(100.0 * v / abs(main), 1)
+            opp.append({"mm": pos[k], "pct": pct, "detected": pct >= detection_pct})
+    opp.sort(key=lambda o: -o["pct"])
+    # Which sign a north-up tape gives is not stated in the manual: report the sign only.
+    return {"main": main, "main_mm": pos[k_main], "opposite": opp, "elements": n,
+            "pitch_mm": round(pitch, 2), "no_track": False}
+
+
+def hall_mean(samples):
+    """Element-wise mean of equal-length Hall readings (rounded ints)."""
+    return [round(sum(col) / len(col)) for col in zip(*samples, strict=True)]
+
+
+def marker_level(bus, node, samples, interval, range_mm=200, save=None, baseline=None):
+    """Read the Hall elements `samples` times and report hall_profile() of their mean.
+
+    The mounted sensor sees a standing field of its own (manual p. 45, figure 20: on this
+    vehicle about +150 falling to -30 across the sensor with no tape), which hides a
+    marker's peak. Save a bare-floor profile once (--save floor, sensor over no tape), then
+    measure with --baseline floor: the floor is subtracted element by element."""
+    n = HALL_ELEMENTS.get(int(range_mm))
+    if n is None:
+        print(f"{BAD} no Hall element count for a {range_mm:.0f} mm sensor {sorted(HALL_ELEMENTS)}")
+        return 2
+    first = rd(bus, node, 0x202D, 1)
+    detect = first if first is not None else 30
+    min_level = rd(bus, node, 0x2025, 0) or 0
+    base = None
+    if baseline:
+        rec = cal_load(f"hall-{baseline}")
+        if not rec or len(rec.get("mean", [])) != n:
+            print(f"{BAD} no saved {n}-element profile 'hall-{baseline}' (record it with --save {baseline})")
+            return 2
+        base = rec["mean"]
+    print(f"    {n} Hall elements over {range_mm:.0f} mm, detection level {detect} % (202Dh:01)"
+          + (f", minus the saved '{baseline}' profile" if base else ""))
+    got = []
+    for i in range(samples):
+        vals = [rd(bus, node, HALL_OBJ, k, signed=True) for k in range(1, n + 1)]
+        if any(v is None for v in vals):
+            print(f"    {WARN} sample {i + 1}: an element did not answer")
+            continue
+        got.append(vals)
+        if base:
+            vals = [v - b for v, b in zip(vals, base, strict=True)]
+        p = hall_profile(vals, range_mm, detect, min_level)
+        if p["no_track"]:
+            print(f"    main {p['main']:+6d} at {p['main_mm']:+6.1f} mm   below min. level {min_level} "
+                  "(2025h): no track under the sensor, nothing to compare a marker with")
+            time.sleep(interval)
+            continue
+        top = p["opposite"][:3]
+        print(f"    main {p['main']:+6d} at {p['main_mm']:+6.1f} mm   opposite peaks: "
+              + (", ".join(f"{o['pct']:5.1f} % at {o['mm']:+6.1f} mm{' DETECTED' if o['detected'] else ''}"
+                           for o in top) or "none"))
+        time.sleep(interval)
+    if not got:
+        return 1
+    if save:
+        os.makedirs(CAL_DIR, exist_ok=True)
+        path = os.path.join(CAL_DIR, f"hall-{save}.json")
+        with open(path, "w") as f:
+            json.dump({"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "range_mm": range_mm,
+                       "samples": len(got), "mean": hall_mean(got)}, f, indent=1)
+        print(f"    {OK} mean of {len(got)} samples saved -> {path}")
+    return 0
 
 
 def nmt(bus, command, node):
@@ -558,7 +825,8 @@ def main():
     ap = argparse.ArgumentParser(
         description="Read the SICK MLS magnetic line sensor (read-only).")
     ap.add_argument("mode", nargs="?", default="snapshot",
-                    choices=("snapshot", "poll", "stream", "calibrate", "set-variant"))
+                    choices=("snapshot", "poll", "stream", "calibrate", "set-variant",
+                             "markers", "marker-level", "set-markers"))
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--seconds", type=float, default=10.0,
                     help="duration for poll/stream (default 10)")
@@ -570,15 +838,20 @@ def main():
                     help="calibrate: which step (default both, with a prompt between)")
     ap.add_argument("--samples", type=int, default=40, help="calibrate: samples per step (default 40)")
     ap.add_argument("--value", type=int, help="set-variant: the 2006h:01 value (Standard: 0, 2, 3, 4)")
-    ap.add_argument("--go", action="store_true", help="set-variant: actually write")
-    ap.add_argument("--no-store", action="store_true", help="set-variant: skip the 1010h store")
+    ap.add_argument("--go", action="store_true", help="set-variant / set-markers: actually write")
+    ap.add_argument("--polarity-lock", action="store_true",
+                    help="set-markers: also 202Dh:05 = 1 (only after the B0 lap showed north everywhere)")
+    ap.add_argument("--range-mm", type=float, default=200.0,
+                    help="marker-level: sensor measuring range (MLSE-0200 = 200)")
+    ap.add_argument("--save", help="marker-level: save the mean profile as ~/.amr/mls_cal/hall-NAME.json")
+    ap.add_argument("--baseline", help="marker-level: subtract the saved profile NAME (e.g. floor)")
     args = ap.parse_args()
 
     if args.mode == "calibrate" and args.step == "report":
         return calibrate(None, args.node, "report", 0, 0.0)
     if args.mode == "set-variant" and args.value is None:
         ap.error("set-variant needs --value")
-    if args.mode in ("calibrate", "set-variant"):
+    if args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers"):
         # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
         # IMU poll) would read the other's replies. Take the bus owner lock first.
         from agv_core import ownerlock  # noqa: PLC0415
@@ -603,13 +876,20 @@ def main():
         if args.mode == "calibrate":
             return calibrate(bus, args.node, args.step, args.samples, args.interval)
         if args.mode == "set-variant":
-            return set_variant(bus, args.node, args.value, go=args.go, store=not args.no_store)
+            return set_variant(bus, args.node, args.value, go=args.go)
+        if args.mode == "set-markers":
+            return set_markers(bus, args.node, go=args.go, polarity_lock=args.polarity_lock)
+        if args.mode == "marker-level":
+            return marker_level(bus, args.node, max(1, args.samples // 8), args.interval, args.range_mm,
+                                save=args.save, baseline=args.baseline)
+        if args.mode == "markers":
+            return markers(bus, args.node, args.seconds, args.nmt)
         return stream(bus, args.node, args.seconds, args.nmt)
     except KeyboardInterrupt:
         print("\n    interrupted")
         return 1
     finally:
-        if args.mode == "stream" and args.nmt:
+        if args.mode in ("stream", "markers") and args.nmt:
             # Leave the bus as we found it: PDO traffic off.
             try:
                 nmt(bus, 0x80, args.node)

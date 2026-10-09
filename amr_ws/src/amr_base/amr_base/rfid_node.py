@@ -12,6 +12,9 @@ Both carry the driver's latest read quality (RSSI, channel) and the reader
 configuration it read back on connect, for display.
 Nothing here decides anything; the encounter rules (tag_clear_s, re-baseline on
 reconnect) are the driver's.
+
+Each finished tag pass is logged (rosout INFO, "RFID pass ...": reads, duration,
+RSSI) so a run bag shows the read margin; tools/bag_report.py tabulates it.
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ class RfidNode(Node):
         self.link = rfid.RfidLink()
         self._pub = self.create_publisher(StationDetection, "/amr/rfid", ENCOUNTERS)
         self._sent = 0  # highest encounter_seq published
+        self._pass_logged = 0  # highest pass seq logged
         self._generation = None
         self._rfid_lock = ownerlock.acquire("rfid", "rfid_node")  # before opening the reader socket
         self.link.start()
@@ -77,6 +81,10 @@ class RfidNode(Node):
             if seq > self._sent:
                 self._pub.publish(self._msg(snap, False, seq, tag))
                 self._sent = seq
+        for seq, p in snap.get("passes", ()):
+            if seq > self._pass_logged:
+                self.get_logger().info(rfid.pass_summary(p))
+                self._pass_logged = seq
 
     def _heartbeat(self) -> None:
         snap = self.link.snapshot()

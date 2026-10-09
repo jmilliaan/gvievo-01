@@ -64,7 +64,12 @@ MODULES = [
 # + 18 (2026-10-08): tracked-speed-plan-1. test_config + 8 (the slow-zone keys refused,
 # HIGH ratio / motor limit / curve guard / high ramp bounds); test_mission + 10 (the
 # high_zone block: budget, entry window, refusals; the toggle check became its refusal).
-EXPECTED_CHECKS = 664
+# + 31 (2026-10-09): MLS markers (manuals/mls-marker-plan.md). test_canmon + 4 (guard's
+# line-sensor list, read_mls writes only through it); test_mls + 15 (raw marker field,
+# set-markers, marker watch, Hall profile, no-track gate, element count, baseline); test_config + 12 (the mls
+# block and its refusals).
+# Counted on top of the uncommitted RFID work in this tree (671).
+EXPECTED_CHECKS = 702
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -162,6 +162,7 @@ def create_app(
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
     product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
+    markers_enabled: bool | None = None,  # Home's Marker tile; None = the profile's mls.markers_enabled
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -214,6 +215,17 @@ def create_app(
             return "both"
 
     product = product or _product()
+
+    def _markers_enabled() -> bool:
+        """The profile's mls.markers_enabled. A dev box without a profile has no markers."""
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            return bool(config.MLS_MARKERS)
+        except Exception:  # noqa: BLE001
+            return False
+
+    markers_enabled = _markers_enabled() if markers_enabled is None else bool(markers_enabled)
     tracked_ok = product in ("tape", "both")
     trackless_ok = product in ("slam", "both")
 
@@ -238,7 +250,7 @@ def create_app(
 
     @app.get("/home")
     def page_home():
-        return render_template("home.html", page="home")
+        return render_template("home.html", page="home", markers_enabled=markers_enabled)
 
     @app.post("/api/role")
     def api_role():
