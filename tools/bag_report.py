@@ -284,7 +284,7 @@ def main(run):
     if not mk_msgs:
         print("  not recorded (no /amr/line_marker: tools/run_log.sh TOPICS, or drive_node older "
               "than 2026-10-09)")
-    for t, seq, gen, code, raw, direction, lcp2, nlcp, good in mk:
+    for t, _seq, _gen, code, raw, _direction, lcp2, nlcp, good in mk:
         print(f"  {t:8.2f}  code {code}  raw {raw:05b}  LCP2 {lcp2:+4d} mm  nlcp {nlcp}"
               + ("" if good else "  line not good"))
     if mk_msgs:

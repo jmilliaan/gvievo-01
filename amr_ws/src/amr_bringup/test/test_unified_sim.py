@@ -367,13 +367,22 @@ def test_unified_workflow_and_layer_restart(stack):
     for _ in range(3):
         p.init_pub.publish(m)
         p.spin(0.2)
-    p.jog_for(1.2, 0.15, 0.0)
+    jog_peak = p.jog_for(1.2, 0.15, 0.0)
     p.spin(0.5)
-    p.wait_until(
-        lambda: p.loc is not None and p.loc.generation == p.mode.generation and p.loc.can_confirm,
-        40,
-        "can_confirm",
-    )
+    try:
+        p.wait_until(
+            lambda: p.loc is not None and p.loc.generation == p.mode.generation and p.loc.can_confirm,
+            40,
+            "can_confirm",
+        )
+    except AssertionError:
+        # say which readiness rule held it back (fix plan 001 B5: timeout vs refusal)
+        if p.loc is not None:
+            print(f"   readiness: state {p.loc.state} gen {p.loc.generation}/{p.mode.generation} "
+                  f"reason {p.loc.reason!r} code {p.loc.code!r}; jog wheel peak {jog_peak:.2f}, "
+                  f"ages amcl {p.loc.amcl_age_s:.1f} scan {p.loc.scan_age_s:.1f} "
+                  f"wheels {p.loc.wheels_age_s:.1f} tf {p.loc.tf_age_s:.1f} s")
+        raise
     assert p.call(p.c_confirm, Trigger.Request()).success
     p.jog_for(1.2, -0.15, 0.0)
     p.spin(1.0)
