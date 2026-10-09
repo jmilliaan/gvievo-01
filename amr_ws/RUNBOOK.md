@@ -582,9 +582,13 @@ Markers are short 15 mm strips of south-up tape beside the north-up track. The M
 decodes them itself (SICK standard mode). Codes 1–3 are used: 30 mm, 60 mm, and 60 + 30 mm
 from the track centre. The plan, the bench tests B0–B7 and the reasoning are in
 `manuals/mls-marker-plan.md`, and the layout drawing is
-`documentation/layout-reference/mls-marker-codes-standard.html`. Markers are display only:
-they appear on Home beside the RFID tag and in the event log (`LINE_MARKER`), and they never
-change speed or state.
+`documentation/layout-reference/mls-marker-codes-standard.html`. Markers appear on Home
+beside the RFID tag and in the event log (`LINE_MARKER`). Since 2026-10-09 **the markers
+decide speed and RFID decides where to stop**: the mission's `high_zone` names an outer and an
+inner marker code (`line-a`: outer 2, inner 1), and that pair grants HIGH (`manuals/rfid-tag-table.md`,
+"Speed zones"). A zone marker counts only while RUNNING, line good and within 30 mm of the
+tape centre; the marker stream going down or losing events drops to NORMAL. With
+`mls.markers_enabled` false a zone mission runs NORMAL. No marker changes the run's state.
 
 Every command below needs `amr.service` stopped, and every write goes through `guard.py`:
 
@@ -637,7 +641,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
 | `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
-| `LINE_MARKER` | info | Track marker read | Nothing to do; this records a marker code the line sensor read beside the tape. | MLS marker codes (manuals/mls-marker-plan.md): the sensor decodes the code, drive_node publishes /amr/line_marker, the line follower logs it. Display only - no marker changes speed or state. Also logged: the marker stream going up or down, and markers lost on the topic (warn). |
+| `LINE_MARKER` | info | Track marker read | Nothing to do; this records a marker code the line sensor read beside the tape. | MLS marker codes (manuals/mls-marker-plan.md): the sensor decodes the code, drive_node publishes /amr/line_marker, the line follower logs it. The mission's high-zone codes also set the speed (2026-10-09); no marker changes the run's state. Also logged: the marker stream going up or down, and markers lost on the topic (warn). |
 | `LINE_MISSION` | info | Tape mission event | Nothing to do; this records what the mission engine did with a tag. | amr_line.tape_run events: stops, passed destinations, speed toggles, branch orders, U-turns, the run's result at Home. The text names the tag and the action. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, line...). |

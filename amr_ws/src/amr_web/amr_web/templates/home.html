@@ -159,7 +159,7 @@ function job(st) {
         : result ? result
         : ln.state_name === 'RUNNING' ? `running · ${num(ln.followed_m, 1)} m`
         : ln.at_home ? 'at Home · press Start on the panel'
-        : `not at Home${ln.home_detail ? ' · ' + ln.home_detail : ''}`;
+        : 'away from Home · press Start on the panel';
       level = /MISSED|NOT/.test(result) ? 'warn' : '';
     }
   } else if (st.run && st.run.mission_id) {

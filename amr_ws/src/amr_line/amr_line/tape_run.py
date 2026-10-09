@@ -1,4 +1,4 @@
-"""One LINE run's mission state: the RFID tag table, branches, speed, stops, U-turn.
+"""One LINE run's mission state: the RFID tag table, branches, marker speed zone, stops, U-turn.
 
 Schema v2 (2026-10-08): the mission is the site's tag reference table
 (agv_core.mission). Pure: no ROS, no clock of its own, no I/O. FollowJob owns
@@ -26,15 +26,21 @@ Which reads count:
     U-turn re-pass  the U-turn's own tag, driven back over after the pivot, is
                   suppressed once within the approach distance plus a margin
     ignore_s      the table row's window (amr_line.tag_table.TagTable)
-    held          reads while stopped or held cannot start a stop, a U-turn or
-                  a high-zone entry
+    held          reads while stopped or held cannot start a stop or a U-turn
 
-Speed (tracked-speed-plan-1, 2026-10-08): NORMAL unless the high zone
-(amr_line.speed_zone) grants HIGH. Zone tags are acted on only while driving.
-Any stop, U-turn, hold, junction slow zone or curve-guard trip takes HIGH away;
-every distance it counts is WHEEL travel handed in by the job (advance()). A
-station stop (not Home) keeps the budget left and departs HIGH when it arrived
-HIGH (SpeedZone.park/resume); anything else in between forgets it.
+Speed (tracked-speed-plan-1, 2026-10-08; MLS markers since 2026-10-09): NORMAL unless
+the high zone (amr_line.speed_zone) grants HIGH. RFID never touches the speed: the
+zone is a pair of MLS marker codes, fed by markers() and acted on only while driving,
+on a clean read (line good, within MARKER_MAX_LCP2_MM of the tape centre - a pivot
+over a marker reads a code off the tape, seen 2026-10-09). The marker stream going
+down, or a marker event lost on the way, takes ARMED or HIGH away. With
+mls.markers_enabled false a zone mission runs NORMAL and says so.
+No RFID tag sets the speed (2026-10-09): a stop parks HIGH and the departure resumes it,
+an RFID-link or protective-field hold parks it and the resume restores it
+(park_high/resume_high). The U-turn tag is the one exception: the pivot reverses the
+vehicle, so the run goes on NORMAL until the markers grant HIGH again. A U-turn, any
+other hold or a curve-guard trip takes HIGH away. Every distance it counts is WHEEL
+travel handed in by the job (advance()).
 
 Branch tags are honoured held or driving: a branch exit passed during a hold must
 still clear its latch.
@@ -55,6 +61,9 @@ TAPE_GONE_TICKS = 2
 # The approach slowdown stays below the drives' own deceleration (6084h) so the
 # drive never reshapes it; arriving faster than planned it simply takes longer.
 APPROACH_FRACTION_OF_DRIVE = 0.95
+# A zone marker counts only this close to the tape centre (LCP2). A straight pass reads
+# within a few mm (2026-10-09: +2, -3, -1 mm); a read during a pivot came at +121 mm.
+MARKER_MAX_LCP2_MM = 30
 
 
 def approach_rate(v_rpm, creep_rpm, decel_m):
@@ -87,11 +96,15 @@ class TapeRun:
         self.branch = branch.BranchEngine(
             m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=m["BRANCH_DEFAULT"]
         )
-        self.speed = speed_zone.SpeedZone(m["HIGH_ZONE"], normal_rpm=vehicle.AUTO_RPM,
+        self.events: list[tuple[str, str]] = []
+        zone = m["HIGH_ZONE"]
+        if zone is not None and not vehicle.MLS_MARKERS:
+            self.events.append((WARN, "the high zone needs mls.markers_enabled: this run stays NORMAL"))
+            zone = None
+        self.speed = speed_zone.SpeedZone(zone, normal_rpm=vehicle.AUTO_RPM,
                                           rpm_per_mps=vehicle.RPM_PER_MPS,
                                           drive_decel_rpm_s=vehicle.DECEL_RPM_S)
         self.guard = speed_zone.CurveGuard(vehicle.CURVE_GUARD_KAPPA, vehicle.CURVE_GUARD_E_MM)
-        self.events: list[tuple[str, str]] = []
         self.fault: str | None = None
         self.link_lost: str | None = None
         self.stop: dict | None = None
@@ -116,10 +129,11 @@ class TapeRun:
     def needs_link(self):
         """Must the RFID link be up to start and to keep driving?
 
-        Stops, zones and branches: a missed tag is a station driven past or a
-        wrong turn. U-turn tags alone (plain line following, missions/empty.json)
-        do not: a missed U-turn tag ends at the tape end, where the follower's
-        line-loss stop already halts the vehicle.
+        Stops and branches: a missed tag is a station driven past or a wrong
+        turn. Never the speed zone: that is the MLS markers' (markers()). U-turn
+        tags alone (plain line following, missions/empty.json) do not: a missed
+        U-turn tag ends at the tape end, where the follower's line-loss stop
+        already halts the vehicle.
         """
         return bool(self.mission["BRANCH_LATCH"]
                     or any(r["action"] != "u_turn" for r in self.mission["TAGS"].values()))
@@ -221,9 +235,6 @@ class TapeRun:
             if row["action"] == "u_turn":
                 self._u_turn_tag(now, number, row)
                 continue
-            if row["action"] in ("zone_inner", "zone_outer"):
-                self._zone_tag(now, number, tag)
-                continue
             # Station tags never touch the speed zone (operator, 2026-10-08): passing a
             # machine is not a speed event, and a stop parks HIGH for the departure.
             applies, why = self.table.stop_applies(row)
@@ -242,9 +253,9 @@ class TapeRun:
     # -- stops ---------------------------------------------------------------
     def _begin_stop(self, row, follower):
         dist = row["stop_distance_m"]
-        if row["role"] == "home":
-            self.drop_high(f"stop {row['label']}")
-        elif self.speed.park(f"stop {row['label']}"):
+        # Every stop parks HIGH the same way, Home included: the stop tag decides where to
+        # stop, never the speed. A run from Home is a new run and starts NORMAL anyway.
+        if self.speed.park(f"stop {row['label']}"):
             self.events.append((INFO, f"speed NORMAL: {self.speed.reason}"))
         rate = follower.begin_measured_stop(dist)
         if row["role"] == "destination":
@@ -256,12 +267,37 @@ class TapeRun:
                             + (f" ({rate:.0f} r/min/s)" if rate else "") + f", {then}"))
 
     # -- speed ------------------------------------------------------------------
-    def _zone_tag(self, now, number, tag):
-        self.table.acted(now, tag)
-        ev = self.speed.tag(tag)
-        if ev:
-            self.events.append(ev)
-        self._record(now, number, tag, f"zone: {self.speed.state.upper()}", self.speed.reason)
+    def markers(self, reads, ok, driving):
+        """This tick's new MLS markers, [(code, direction, lcp2_mm, gap, line_good)] in
+        order (amr_line.marker_reader), and whether the stream is up.
+
+        Only the zone's two codes act, and only a clean read while driving. Anything
+        that may have hidden a zone marker - the stream down, events lost - takes ARMED
+        and HIGH away: every failure ends at NORMAL.
+        """
+        z = self.speed
+        if not z.enabled:
+            return
+        zone = (z.cfg["outer"], z.cfg["inner"])
+        if not ok:
+            if z.state != speed_zone.NORMAL:
+                self.drop_high("MLS markers down: a zone marker could be missed")
+            return
+        for code, _direction, lcp2, gap, line_good in reads:
+            if gap and z.state != speed_zone.NORMAL:
+                self.drop_high(f"{gap} marker event(s) lost: a zone marker may have been missed")
+            if code not in zone:
+                continue
+            if not driving or self.stop is not None or self.uturn_req is not None:
+                continue
+            if not line_good or abs(lcp2) > MARKER_MAX_LCP2_MM:
+                why = ("line not good" if not line_good
+                       else f"{lcp2:+d} mm off the tape centre (> {MARKER_MAX_LCP2_MM} mm)")
+                self.events.append((WARN, f"zone marker {code} ignored: {why}"))
+                continue
+            ev = z.cue(code)
+            if ev:
+                self.events.append(ev)
 
     def parked(self, distance_m):
         """Wheel travel while parked at a station: taken off the kept budget, and
@@ -274,6 +310,23 @@ class TapeRun:
         else:
             self.speed.travel(distance_m)
 
+    def park_high(self, reason):
+        """A protective-field or RFID-link hold while running (operator, 2026-10-09): HIGH comes back on
+        the resume, like a station departure, with the budget less the wheel travel while
+        held. A measured station stop in progress already parked its budget: left alone."""
+        if self.stop is not None:
+            return
+        if self.speed.park(reason):
+            self.events.append((INFO, f"speed NORMAL: {self.speed.reason}"))
+
+    def resume_high(self):
+        """The hold park_high() began is over. Not mid-stop: a station departs on Start."""
+        if self.stop is not None:
+            return
+        ev = self.speed.resume()
+        if ev:
+            self.events.append(ev)
+
     def drop_high(self, reason, urgent=False):
         why = self.speed.drop(reason, urgent=urgent)
         if why:
@@ -281,8 +334,9 @@ class TapeRun:
 
     @property
     def high(self):
-        """HIGH granted by the zone and no junction slow zone in force."""
-        return self.speed.high and not self.branch.slow
+        """HIGH granted by the marker zone. No RFID tag touches it (2026-10-09): junction
+        slow zones are refused by the mission loader."""
+        return self.speed.high
 
     def change_rate(self):
         """r/min/s between NORMAL and HIGH (high_ramp_s), None without a high zone."""
@@ -302,8 +356,6 @@ class TapeRun:
         if self.branch.unhonoured and not was:
             self.events.append((WARN, f"branch {choice} ordered, but that side is not in this "
                                       f"diverter - carrying straight on"))
-        if self.branch.slow:
-            self.drop_high("junction slow zone")
         return choice, self.high
 
     def _branch_scan(self, nlcp, tag):

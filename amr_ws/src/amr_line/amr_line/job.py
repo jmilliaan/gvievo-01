@@ -68,6 +68,9 @@ STATE_NAMES = {
 # when auto_resume_estop is set, matching the executor's operator decision of
 # 2026-09-19 that an E-stop recovery is a deliberate human act.
 _AUTO_CAUSES = ("field", "drives", "rate", "track")
+# Holds that keep the HIGH budget for the resume (2026-10-09): the protective field (a
+# person stepped in) and the RFID link (no RFID event may change the speed).
+_PARK_CAUSES = ("field", "rfid")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -111,7 +114,8 @@ class Inputs:
     v_meas: float | None = None      # m/s, wheel odometry
     warning_scale: float = 1.0       # the mux's applied warning-field factor (/amr/mux_state)
     # MLS markers (mls-marker-plan, 2026-10-09): the /amr/line_marker snapshot, or None.
-    # Display only: no marker changes the state or the speed.
+    # Logged in every state; the mission's high-zone codes set the speed while RUNNING
+    # (TapeRun.markers). No marker changes the job's state.
     markers: dict | None = None
 
 
@@ -137,8 +141,10 @@ class FollowJob:
         self.tape = None
         # Last tag and the travel since it: survives runs and mission changes.
         self.odometer = tag_table.TagOdometer()
-        # Marker codes read by the MLS: counted and logged in every state, acted on in none.
+        # Marker codes read by the MLS: counted and logged in every state; this tick's new
+        # ones go to the speed zone while RUNNING, and are dropped in any other state.
         self.markers = marker_reader.MarkerReader()
+        self._marker_new: list = []
         self.markers_ok = False
         self._marker_log = []
         self.reset()
@@ -208,8 +214,10 @@ class FollowJob:
     def _job_check(self, i: Inputs):
         """What a Start from IDLE/DONE needs beyond the vehicle prerequisites.
 
-        A destination job starts at Home: the tag table has no route stage, so
-        Home is the only place the run's position is proven.
+        A run may start anywhere on the line (operator, 2026-10-09: demo runs of the speed
+        zones, stopped by a person). Away from Home the leg is unknown, so the U-turn
+        rule still applies as written: a destination not reached before the U-turn is
+        reported missed and not served from the return leg, and the run ends at Home.
         """
         rfid = self._rfid_check(i)
         if rfid:
@@ -219,9 +227,6 @@ class FollowJob:
             return ""
         if m["DESTINATIONS"] and self.destination is None:
             return "no destination selected"
-        ok, why = self.at_home()
-        if not ok:
-            return f"not at Home ({why}): jog the vehicle back over the Home tag"
         return ""
 
     def _start(self, i: Inputs):
@@ -298,7 +303,7 @@ class FollowJob:
                 self._premove = None
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
-            if self.hold_cause == "station":
+            if self.hold_cause == "station" or self.hold_cause in _PARK_CAUSES:
                 self.tape.parked(self.step_m)
         pre = self._prerequisite(i, torque=False) or (
             self._job_check(i) if kind == "start" else self._rfid_check(i))
@@ -321,6 +326,7 @@ class FollowJob:
 
     def _premove_go(self, i: Inputs):
         kind = self._premove["kind"]
+        back_cause = self._premove["back"][1]
         self._premove = None
         self._prereq_since = None
         if kind == "start":
@@ -335,6 +341,8 @@ class FollowJob:
                 return self._tape_fault()
             self.reason = f"departed {where}"
             return 0.0, 0.0
+        if back_cause in _PARK_CAUSES:
+            self.tape.resume_high()
         self.hold_cause = ""
         self.reason = "resumed on Start"
         return 0.0, 0.0
@@ -426,9 +434,14 @@ class FollowJob:
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
-        # A station stop parked the HIGH budget (TapeRun._begin_stop); any other
-        # hold forgets it.
-        if self.tape is not None and cause != "station":
+        # A station stop parked the HIGH budget (TapeRun._begin_stop); a protective-field or
+        # RFID-link hold parks it (operator, 2026-10-09: back to HIGH after it, and no RFID
+        # event changes the speed); any other hold
+        # forgets it. Warning fields never reach here: the mux scales the command and the
+        # budget counts wheel travel, so HIGH carries on through them.
+        if self.tape is not None and cause in _PARK_CAUSES:
+            self.tape.park_high(f"hold ({cause})")
+        elif self.tape is not None and cause != "station":
             self.tape.drop_high(f"hold ({cause})")
         # A pivot cannot be resumed part-way (gy-demo rule): its start counts and
         # tape history describe a vehicle that has since been stopped by hand.
@@ -505,7 +518,7 @@ class FollowJob:
             if self.tape.fault:
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
-            if self.hold_cause == "station":
+            if self.hold_cause == "station" or self.hold_cause in _PARK_CAUSES:
                 self.tape.parked(self.step_m)
             return self._hold_tick(i, pre)
 
@@ -553,6 +566,8 @@ class FollowJob:
         if self._auto_since is None:
             self._auto_since = i.now
         if i.now - self._auto_since >= self.auto_resume_clear_s:
+            if self.hold_cause in _PARK_CAUSES:
+                self.tape.resume_high()
             self.state = RUNNING
             self.hold_cause = ""
             self._auto_since = None
@@ -711,6 +726,7 @@ class FollowJob:
             # rfid_fresh_s, and every metre driven blind is a tag not read.
             self._hold("rfid", t.link_lost + "; press Start once the link is back")
             return 0.0, 0.0
+        t.markers(self._marker_new, self.markers_ok, True)
         if t.uturn_req is not None:
             return self._uturn_tick(i, tags)
         self._speed_inputs(i)
@@ -751,13 +767,14 @@ class FollowJob:
 
     # -- reporting ---------------------------------------------------------
     def _markers_tick(self, snap):
-        """Drain new markers into the operator log. Never touches state or speed."""
+        """Drain new markers into the operator log and keep this tick's for _run."""
         ok = bool(snap and snap.get("ok"))
         if snap is not None and ok != self.markers_ok:
             self._marker_log.append(("info" if ok else "warn",
                                      f"markers {'up' if ok else 'down'}: {snap.get('status', '')}"))
         self.markers_ok = ok
-        for code, _direction, lcp2, gap in self.markers.scan(snap):
+        self._marker_new = self.markers.scan(snap)
+        for code, _direction, lcp2, gap, _good in self._marker_new:
             note = f" ({gap} missed before it)" if gap else ""
             self._marker_log.append(("warn" if gap else "info", f"marker {code} at {lcp2:+d} mm{note}"))
 

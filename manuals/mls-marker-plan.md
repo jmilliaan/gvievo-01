@@ -23,7 +23,7 @@ pp. 51-53. Drawing: `documentation/layout-reference/mls-marker-codes-standard.ht
 | D4 | FailSafe ON. Without it a skewed pass over 60 + 30 shows code 2 or 1 first; the decoder refuses markers when the sensor does not report FailSafe on | this plan |
 | D5 | The sensor decodes; the PC never reconstructs a code from LCPs. Sensor parameters are written by the bench tool only; drive_node only READS and compares. **Every bench write goes through `guard.py`** (a node-10 allow-list, section 3), and `set-variant` is brought under it too | existing rule (read_mls docstring); CLAUDE.md "every SDO write goes through guard.py" |
 | D6 | A fourth cue, if needed, is direction (the mirrored layout). Its encoding is unknown until bench B6; until then `direction` is reported as 0 (unknown) and nothing may depend on it | this plan |
-| D7 | Markers are not in the safety path and, until section 8 is decided, change nothing about motion | safety invariants |
+| D7 | Markers are not in the safety path. ~~Until section 8 is decided, they change nothing about motion~~ **2026-10-09 (operator): the markers decide speed, RFID decides where to stop.** The mission's `high_zone` outer/inner codes (line-a: outer 2, inner 1) replace the RFID zone tags; no marker changes the run's state | safety invariants; operator |
 
 **Principle (same as the speed plan): a missed marker must be harmless.** Any later use of a
 code must be one where not seeing it is safe (the vehicle carries on as if no marker were

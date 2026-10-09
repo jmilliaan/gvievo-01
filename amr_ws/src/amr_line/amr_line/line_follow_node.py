@@ -301,7 +301,8 @@ class LineFollowNode(Node):
             st["generation"] = gen
             st["base"] = int(m.seq) if m.heartbeat else max(0, int(m.seq) - 1)
         if not m.heartbeat and m.code:
-            self._marker_events.append((int(m.seq), int(m.code), int(m.direction), int(m.lcp2_mm)))
+            self._marker_events.append((int(m.seq), int(m.code), int(m.direction), int(m.lcp2_mm),
+                                        bool(m.line_good)))
         st["ok"], st["status"] = bool(m.markers_ok), str(m.status)
         self._marker_t = time.monotonic()
 

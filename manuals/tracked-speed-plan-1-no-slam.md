@@ -14,7 +14,7 @@ plan is proven on the vehicle. Nothing here depends on plan 2.
 | D2 | No software gate on 0.85 m/s. The nanoScan3 field set is not validated for it (`lidar.zones_validated` false) and there is no encoder speed monitoring in the FX3 yet: protective field and STO stopping distance at 0.85 are a floor check before the first HIGH run | operator |
 | D3 | Steering gains: NORMAL K 11.3 / Kd 0.95 (2026-10-08: the corner set K 25 / Kd 5 wobbled at 0.5 m/s), HIGH K 11.3 / Kd 0.94, interpolated on the current speed | operator |
 | D4 | LINE deceleration at the follower's rate: mux `line_d_max` = drive decel (~1.0 m/s^2) | operator |
-| D5 | HIGH is switched by outer/inner RFID tag pairs at each straight end, with an encoder distance budget. The single toggle tag is retired. **Shared ids: every inner tag is `0040`, every outer tag `0060`**; pair spacing 0.5 m (2026-10-08) | operator |
+| D5 | HIGH is switched by outer/inner ~~RFID tag~~ **MLS marker** pairs at each straight end, with an encoder distance budget. The single toggle tag is retired. ~~Shared ids: every inner tag is `0040`, every outer tag `0060`~~ **2026-10-09: shared codes, every outer marker code 2, every inner code 1 (swapped from 1/2 the same day)** (mission `high_zone.outer_code`/`inner_code`); pair spacing 0.5 m; entry window 0.65 m. RFID decides only where to stop. See section "2026-10-09" below | operator |
 | D6 | Corner radii 0.5-1.0 m; HIGH straights > 15 m | operator |
 | D7 | Curve guard on the IMU gyro (MLS), wheel odometry as fallback | operator |
 | D8 | Warning field 2 `stop_m` 0.47 -> 0.40 (latency margin before the protective field) | operator |
@@ -24,6 +24,24 @@ any missed read, hold, stop, fault, stale input or guard trip drops to NORMAL, a
 nothing but a fresh, correctly ordered zone entry raises it again. Nothing here is in
 the safety path (scanner -> FX3 -> STO stays hardware); this only decides how fast the
 follower asks to go.
+
+## 2026-10-09: the zone cue moves from RFID to MLS markers
+
+Operator decision: **MLS codes govern speed, RFID governs where to stop.** Speed zones must
+work independently of the RFID setting. Everything else in this plan stands (budget, ramps,
+curve guard, park/resume, every failure ends at NORMAL); only the cue changed:
+
+| Item | Change |
+|---|---|
+| `agv_core/mission.py` | schema v2.2: `high_zone` = `{shortest_straight_m, pair_spacing_m, outer_code, inner_code}`; codes must be in `mls.marker_codes` and differ. `zone_outer`/`zone_inner` rows are refused with a pointer; the v2.1 block without codes is refused. `ZONE_ARM_TOLERANCE_M` 1.0 -> 0.15 m |
+| `amr_line/speed_zone.py` | `SpeedZone.tag(id)` -> `cue(code)`; the state machine is unchanged |
+| `amr_line/tape_run.py` | RFID scan no longer touches the speed. `markers()` feeds the zone: only the two codes, only while driving (not stopped, not in a U-turn), line good, \|LCP2\| <= 30 mm. Stream down or events lost: ARMED/HIGH -> NORMAL. `markers_enabled` false: the zone is off, a warning, the run stays NORMAL (the mission still loads: stops do not depend on markers) |
+| `amr_line/job.py`, `marker_reader.py`, `line_follow_node.py` | the marker snapshot carries `line_good`; the job hands this tick's new markers to the run while RUNNING |
+| `missions/line-a.json` | zone rows removed; `outer_code` 2, `inner_code` 1 (operator swap, 2026-10-09: code 2 nearer the corner) |
+
+Before the first HIGH run, on top of section 6: marker plan B5 at 0.85 m/s (20 passes per
+code, centred and 25 mm off). The RFID `0060`/`0040` clusters on the floor are now unknown
+tags ("no tag rule"); lift them or leave them.
 
 ## 1. Why sensor-only curve detection is a backstop, not the trigger
 
@@ -55,7 +73,7 @@ autopilot as `sr_*`), curvature from yaw rate kappa = omega/v, tape heading-angl
 | Config | `AUTO_SLOW_RPM` -> `AUTO_HIGH_RPM` (derived); checks, comments, params view |
 | `runtime.py` | name map: `AUTO_HIGH_RPM`, `HIGH_K_RATIO`, `HIGH_KD`; line-loss standstill ceiling keyed off NORMAL |
 | `autopilot.py` (deliberate port edit) | `update(slow=)` -> `update(high=)`: cruise = `AUTO_HIGH_RPM` if high else `AUTO_RPM`. Gains **interpolated on the current base speed** between the NORMAL and HIGH pairs instead of the 0.4 s time blend: a 2 s high->normal ramp would otherwise carry K 25 near 0.85 m/s, past the yaw-slew limit the docstring warns about |
-| Junction `slow_speed` (branch_latch) | means "no HIGH through this junction" |
+| Junction `slow_speed` (branch_latch) | meant "no HIGH through this junction"; refused since 2026-10-09 (no RFID tag sets the speed: keep the junction outside the marker zone) |
 | U-turn creep | `approach_mps` <= NORMAL |
 | Mission validator | stop rate checked from the fastest reachable speed (HIGH if the mission has high zones) against drive decel: 0.85 m/s in 0.5 m = 2300 r/min/s <= 3200 |
 | Mux (`cmd_mux_kinematics_node.py`) | `line_d_max` param, 0 = drive decel; LINE source only (like `line_alpha_max`). **Failure mode:** any LINE command drop (stale, hold, fault) decelerates at up to ~1.0 m/s^2 instead of 0.5 - harder, never longer. **Recovery:** none needed; `line_d_max: 0.5` restores today. Test next to the `line_alpha_max` test |
@@ -138,7 +156,7 @@ straight S1 ======== [40]--0.5 m--[60]--0.5 m--T1 ) corner R ( T2--0.5 m--[60]--
 | HIGH | budget used up | NORMAL, comfort ramp (2 s) | the planned exit: done >= 1.0 m before the far I |
 | HIGH | I | NORMAL at **0.5 m/s^2** | late exit (budget too long: survey or encoder scale wrong) - WARN event |
 | HIGH | O | NORMAL at **drive decel ~1.0 m/s^2** | I also missed - WARN event |
-| HIGH | stop begins, U-turn, any HOLD, RFID link lost, Reset, new run, junction slow zone, curve guard trip, IMU+odometry stale | NORMAL | reason recorded |
+| HIGH | stop begins (parked, departs HIGH), U-turn, any HOLD but a protective stop or RFID link loss (parked, resume HIGH, 2026-10-09), Reset, new run, curve guard trip, IMU+odometry stale | NORMAL | reason recorded |
 
 The entry window (1.5 m) is shorter than the shortest exit-O to entry-I distance
 (0.5 + pi R/2 + 0.5 + 0.5 = 2.29 m at R 0.5), so an O left armed on the way OUT of a

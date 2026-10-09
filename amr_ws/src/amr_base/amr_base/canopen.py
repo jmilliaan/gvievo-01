@@ -350,6 +350,12 @@ class DriveLink:
     pc_node: int | None = None
     pc_heartbeat_s: float = 0.1
     heartbeat_withheld: bool = False  # R04 fallback: let the drives' 1016h trip
+    # Bus-thread work kept running between the SDOs of a blocking sequence, like the PC
+    # heartbeat (2026-10-09: the MLS IMU poll; a 0.35 s engage starved it and localisation
+    # went LOST at Start). Runs from read()/write() only - never from _raw_write, so it
+    # never sits in front of a stop or teardown write - and not in FAULT. Must not block long.
+    idle_hook: callable = None
+    _in_idle: bool = False
     cleanup_owed: bool = False  # arm touched the drives; a disarm has not fully undone it
     cleanup_failures: list = field(default_factory=list)
     arm_epoch: int = 0  # bumped by every prepare; WheelPosition rebaselines on it
@@ -454,8 +460,21 @@ class DriveLink:
             except Exception:  # noqa: BLE001 - the caller's own write will report the bus
                 pass
 
+    def idle(self) -> None:
+        """Run idle_hook unless already inside it (its own SDOs come back through here)."""
+        if self.idle_hook is None or self._in_idle or self.state == FAULT:
+            return
+        self._in_idle = True
+        try:
+            self.idle_hook()
+        except Exception:  # noqa: BLE001 - a sensor poll must not break a drive sequence
+            pass
+        finally:
+            self._in_idle = False
+
     def read(self, node, index, sub=0, timeout=0.4):
         self.keepalive()
+        self.idle()
         st, val, _, _ = sdo_read(self.router, node, index, sub, timeout=timeout, collision_window=0.0)
         if st:
             self._alive(node)
@@ -470,6 +489,7 @@ class DriveLink:
     def write(self, node, index, sub, value, size, what):
         guard.check(index, value, sub)
         self.keepalive()
+        self.idle()
         ok, detail = sdo_write(self.router, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")

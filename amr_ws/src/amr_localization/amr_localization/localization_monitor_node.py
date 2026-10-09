@@ -7,6 +7,10 @@ Feeds amr_localization.readiness with /amcl_pose covariance, map->odom samples
   /amr/localization/confirm  Trigger  operator: scans align with fixed structure -> READY
   /amr/localization/reset    Trigger  back to UNLOCALIZED
 
+While CHECKING it calls AMCL's /request_nomotion_update every nomotion_period_s, so a
+parked vehicle converges on its scan without being nudged (AMCL otherwise only updates
+after update_min_d / update_min_a of motion). Confirmation stays with the operator.
+
 /initialpose is only observed here; AMCL subscribes to it itself. The
 executor (T7) faults if one arrives during a segment.
 """
@@ -26,7 +30,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu, LaserScan
-from std_srvs.srv import Trigger
+from std_srvs.srv import Empty, Trigger
 from tf2_ros import Buffer, TransformListener
 
 from amr_interfaces.msg import DriveStatus, Event, LocalizationState, WheelStates
@@ -76,6 +80,7 @@ class LocalizationMonitor(Node):
         # safety stop (auto-resume plan): wheel feedback is excused while a /drives/status no
         # older than this says both drives have their torque off
         self.declare_parameter("drives_age_limit_s", 0.5)
+        self.declare_parameter("nomotion_period_s", 0.5)  # 0 = never ask AMCL for an in-place update
         p = self.get_parameter
         self._drives_age = float(p("drives_age_limit_s").value)
         self._torque_off_t: float | None = None  # when /drives/status last said torque off
@@ -140,6 +145,10 @@ class LocalizationMonitor(Node):
         # is called per sample): UNLOCALIZED -> CHECKING -> READY -> LOST.
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
+        self._nomotion = self.create_client(Empty, "/request_nomotion_update")
+        self._nomotion_period = float(p("nomotion_period_s").value)
+        self._nomotion_t = 0.0
+        self._nomotion_pending = None
         self.create_timer(0.1, self._tick)
         self.create_timer(0.5, self._publish)
         self.get_logger().info("UNLOCALIZED: waiting for /initialpose")
@@ -210,6 +219,18 @@ class LocalizationMonitor(Node):
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self.rd.on_scan_match(t, match_frac, long_frac, stamp)
 
+    def _request_nomotion(self, t: float) -> None:
+        if self._nomotion_period <= 0.0 or not self.rd.wants_nomotion_update():
+            return
+        if t - self._nomotion_t < self._nomotion_period:
+            return
+        if self._nomotion_pending is not None and not self._nomotion_pending.done():
+            return  # AMCL busy (or inactive): never queue requests behind it
+        if not self._nomotion.service_is_ready():
+            return
+        self._nomotion_t = t
+        self._nomotion_pending = self._nomotion.call_async(Empty.Request())
+
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         c = msg.pose.covariance
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # its scan's time (Q07)
@@ -246,6 +267,7 @@ class LocalizationMonitor(Node):
         ages = {k: (t - self._last[k]) if k in self._last else None for k in ("scan", "wheels", "imu", "tf")}
         held = self._torque_off_t is not None and t - self._torque_off_t <= self._drives_age
         self.rd.evaluate(t, ages, frozenset({"wheels"}) if held else frozenset())
+        self._request_nomotion(t)
         if self.rd.state != self._last_state or self.rd.reason != self._last_reason:
             if self.rd.state != self._last_state:
                 self.get_logger().info(f"{rd.NAMES[self.rd.state]}: {self.rd.reason}")

@@ -268,8 +268,8 @@ move in the profile.
 - **Tracked jobs are sim-tested only** (2026-10-08): the mission is the site's RFID
   tag table (`missions/line-a.json`, schema in `agv_core/mission.py`) - Home, an
   always-stop, destination stops (MRU1-4), a track-end U-turn and a speed toggle.
-  The job (mission + destination) is set on Run tracked; the vehicle must be at Home,
-  then the physical Start runs it. Tag ids `0010`... are assumed to be what the RFID
+  The job (mission + destination) is set on Run tracked; the vehicle may start anywhere
+  on the line, then the physical Start runs it. Tag ids `0010`... are assumed to be what the RFID
   panel shows; stop positions, the 2 s speed change, the tape-end overshoot and the
   pivot reacquisition angle are settled on the floor.
 - **No floor run of the tape follower yet** (LINE acceptance section 4).

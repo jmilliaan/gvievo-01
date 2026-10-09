@@ -381,6 +381,8 @@ class DriveNode(Node):
                 log=self._log,
             )
             imu.start()
+            # polled between the SDOs of blocking arm/engage/release sequences too
+            link.idle_hook = lambda: imu.poll(time.monotonic())
         track = MlsTrack(
             link,
             config.SENSOR_NODE,
@@ -534,8 +536,7 @@ class DriveNode(Node):
                 t_hb = now
                 link.send_pc_heartbeat(self.pc_node)
 
-            if imu is not None:
-                imu.poll(now)
+            link.idle()  # the IMU poll (link.idle_hook), guarded against re-entry
             if self._track is not None:
                 self._track.poll(now)
 

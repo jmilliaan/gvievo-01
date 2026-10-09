@@ -1,5 +1,5 @@
-"""MLS marker intake (mls-marker-plan 6, 2026-10-09): the cursor, and that a marker is
-display only - it never changes the job's state or its wheel command."""
+"""MLS marker intake (mls-marker-plan 6, 2026-10-09): the cursor, and that a marker never
+changes the job's state - nor, without a high zone in the mission, its wheel command."""
 
 from amr_line.marker_reader import MarkerReader
 
@@ -15,28 +15,32 @@ def snap(encounters, gen=0, base=0, ok=True, status="ok"):
 
 def test_each_marker_is_read_once_in_order():
     r = MarkerReader()
-    assert r.scan(snap([(1, 2, 0, -3)])) == [(2, 0, -3, 0)]
-    assert r.scan(snap([(1, 2, 0, -3), (2, 1, 0, 4)])) == [(1, 0, 4, 0)]
-    assert r.scan(snap([(1, 2, 0, -3), (2, 1, 0, 4)])) == []
+    assert r.scan(snap([(1, 2, 0, -3, True)])) == [(2, 0, -3, 0, True)]
+    assert r.scan(snap([(1, 2, 0, -3, True), (2, 1, 0, 4, True)])) == [(1, 0, 4, 0, True)]
+    assert r.scan(snap([(1, 2, 0, -3, True), (2, 1, 0, 4, True)])) == []
     assert r.count == 2 and r.last == {"code": 1, "direction": 0, "lcp2_mm": 4}
 
 
 def test_a_sequence_gap_is_counted_as_missed():
     r = MarkerReader()
-    assert r.scan(snap([(1, 2, 0, 0), (4, 3, 0, 0)])) == [(2, 0, 0, 0), (3, 0, 0, 2)]
+    assert r.scan(snap([(1, 2, 0, 0, True), (4, 3, 0, 0, True)])) == [(2, 0, 0, 0, True), (3, 0, 0, 2, True)]
     assert r.missed == 2
 
 
 def test_joining_a_running_stream_does_not_count_old_markers_as_missed():
     r = MarkerReader()
     assert r.scan(snap([], base=17)) == []
-    assert r.scan(snap([(18, 2, 0, 0)], base=17)) == [(2, 0, 0, 0)] and r.missed == 0
+    assert r.scan(snap([(18, 2, 0, 0, True)], base=17)) == [(2, 0, 0, 0, True)] and r.missed == 0
 
 
 def test_a_new_generation_restarts_the_cursor():
     r = MarkerReader()
-    r.scan(snap([(1, 2, 0, 0), (2, 2, 0, 0)]))
-    assert r.scan(snap([(1, 3, 0, 0)], gen=1)) == [(3, 0, 0, 0)] and r.missed == 0
+    r.scan(snap([(1, 2, 0, 0, True), (2, 2, 0, 0, True)]))
+    assert r.scan(snap([(1, 3, 0, 0, True)], gen=1)) == [(3, 0, 0, 0, True)] and r.missed == 0
+
+
+def test_an_entry_without_line_good_is_not_good():
+    assert MarkerReader().scan(snap([(1, 2, 0, 0)])) == [(2, 0, 0, 0, False)]
 
 
 def test_no_snapshot_is_nothing():
@@ -47,7 +51,7 @@ def test_a_marker_changes_neither_the_state_nor_the_wheel_command():
     plain, marked = run(lj.FollowJob(autopilot.LineFollower())), run(lj.FollowJob(autopilot.LineFollower()))
     for k in range(1, 40):
         t = 101.0 + 0.02 * k
-        enc = [(1, 2, 0, 3)] if k >= 10 else []
+        enc = [(1, 2, 0, 3, True)] if k >= 10 else []
         a = plain.tick(inputs(now=t))
         b = marked.tick(inputs(now=t, markers=snap(enc)))
         assert a == b and plain.state == marked.state == lj.RUNNING

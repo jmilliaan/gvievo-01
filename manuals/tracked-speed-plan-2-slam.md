@@ -2,7 +2,7 @@
 
 Status: PLAN, nothing implemented, **deferred**. Drafted 2026-10-08, split 2026-10-08.
 Starts only after plan 1 (`tracked-speed-plan-1-no-slam.md`) runs on the vehicle: it
-reuses plan 1's NORMAL/HIGH speeds, zone tags (`0040`/`0060`), distance budget and curve
+reuses plan 1's NORMAL/HIGH speeds, zone markers (MLS codes, outer 2 / inner 1, since 2026-10-09; RFID `0040`/`0060` before), distance budget and curve
 guard unchanged, and only ADDS a localization opinion. With localization off the vehicle
 behaves exactly as plan 1.
 

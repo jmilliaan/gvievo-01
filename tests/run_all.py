@@ -69,7 +69,10 @@ MODULES = [
 # set-markers, marker watch, Hall profile, no-track gate, element count, baseline); test_config + 12 (the mls
 # block and its refusals).
 # Counted on top of the uncommitted RFID work in this tree (671).
-EXPECTED_CHECKS = 702
+# + 3 (2026-10-09): speed zones on MLS markers, RFID stops only. test_mission high zone
+#   10 -> 13 (RFID zone row refused, v2.1 block refused, code not laid / text / same code
+#   refused, zone with no RFID row; the zone-tag ignore window refusal is gone).
+EXPECTED_CHECKS = 706
 
 
 # An exception on a helper thread only prints a traceback by default - the

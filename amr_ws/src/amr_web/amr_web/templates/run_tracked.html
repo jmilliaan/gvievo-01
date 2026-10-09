@@ -3,7 +3,7 @@
 {% block body %}
 {# Run tracked (2026-10-02): the magnetic-tape product. Pick a mission (or none for plain
    line following) and, for a mission with destination stops, the destination (2026-10-08).
-   The vehicle must be at Home; then the PHYSICAL Start under AUTO runs it - no software arm
+   Anywhere on the line (2026-10-09); then the PHYSICAL Start under AUTO runs it - no software arm
    since 2026-10-07 (motor arming is drive_node's, in every mode). Nothing on this page moves
    the vehicle. #}
 <section class="manual grow">
@@ -21,7 +21,7 @@
     <div class="bar">
       <button id="btn-line-clear" class="danger">Clear</button>
     </div>
-    <div class="warn-box"><b>Motion starts only from the physical panel</b>: at Home, selector AUTO, then Start. At a stop, Start goes on after the start delay.</div>
+    <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a stop, Start goes on after the start delay.</div>
   </div>
   <div class="side">
     <h2>Follower <small>line layer</small></h2>

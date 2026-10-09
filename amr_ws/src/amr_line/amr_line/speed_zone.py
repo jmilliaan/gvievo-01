@@ -1,20 +1,24 @@
-"""Tracked speed decision: NORMAL by default, HIGH only inside an RFID high zone.
+"""Tracked speed decision: NORMAL by default, HIGH only inside a marker high zone.
 
-tracked-speed-plan-1 section 3/4 (2026-10-08). Pure: no ROS, no clock, no I/O.
-Distances are WHEEL travel handed in by the job (encoder counts), never commanded
-speed: a warning-field hold must not burn a budget that was not driven.
+tracked-speed-plan-1 section 3/4 (2026-10-08); the cue moved from RFID tags to MLS
+marker codes on 2026-10-09 (operator: RFID decides where to stop, the markers decide
+speed). Pure: no ROS, no clock, no I/O. Distances are WHEEL travel handed in by the
+job (encoder counts), never commanded speed: a warning-field hold must not burn a
+budget that was not driven.
 
-SpeedZone - the high-zone state machine. Every straight end carries a tag pair,
-the OUTER tag (corner side) and the INNER tag (straight side), with one shared id
-for every outer tag and one for every inner tag: the read ORDER gives direction.
+SpeedZone - the high-zone state machine. Every straight end carries a marker pair,
+the OUTER code (corner side) and the INNER code (straight side), with one shared code
+for every outer marker and one for every inner marker: the read ORDER gives direction.
+cue() takes the code of one accepted marker (amr_line.tape_run filters them).
 
     NORMAL --outer--> ARMED --inner within arm_m--> HIGH (budget high_for_m)
-    ARMED  --arm_m travelled-->                     NORMAL   (other tags: no effect)
+    ARMED  --arm_m travelled-->                     NORMAL   (other codes: no effect)
     HIGH   --budget used up-->                      NORMAL, comfort ramp      (planned)
     HIGH   --inner-->                               NORMAL at LATE_INNER_MPS2 (late)
     HIGH   --outer-->                               NORMAL at the urgent rate (inner missed)
-    HIGH   --drop(reason) from the job-->           NORMAL (U-turn, hold, guard...)
+    HIGH   --drop(reason) from the job-->           NORMAL (U-turn, hold, guard, markers down...)
     HIGH   --park(reason) at a station stop-->      NORMAL, budget left kept
+                  or a protective-field hold
     parked --resume() on the departure-->           HIGH with what is left, less the
                                                     wheel travel since the stop began
 
@@ -23,21 +27,15 @@ HIGH); a missed inner lets the arm expire; a missed exit inner is covered by the
 budget, which ends brake_m + margin before it. Nothing but a fresh, ordered
 outer->inner raises HIGH again - or the departure from a planned station stop
 (2026-10-08: a station on a straight goes on at the speed it arrived at), and
-only while nothing else touched the zone in between: any drop or zone tag
+only while nothing else touched the zone in between: any drop or zone marker
 forgets the kept budget. Home is not parked: a run from Home starts NORMAL.
 
-Read zones (2026-10-08). A tag is read over an area, and each id is a cluster of
-redundant tags (4 in a 10 cm square), so the outer and inner clusters can be in
-the reader's field together. The driver opens a new encounter whenever the read
-id changes, so an overlap arrives as 60, 40, 60, 40... Two rules keep that from
-meaning anything:
-  - same pass: a zone id read again within arm_m of wheel travel since it was
-    last seen is the same cluster, not a new tag - ignored.
+Two pass rules, kept from the RFID read zones (harmless for a marker, which is
+reported once per pass):
+  - same pass: a zone code read again within arm_m of wheel travel since it was
+    last seen is the same marker - ignored.
   - exit pair: an outer read within arm_m after an inner is a straight being LEFT
-    (40 then 60) - it never arms. Without this, a 40 re-read after the 60 would
-    look like an entry and grant HIGH heading into the corner.
-First reads are unaffected: both clusters are first seen at the same edge of the
-field, so outer -> inner is still the pair spacing apart.
+    (inner then outer) - it never arms.
 
 CurveGuard - the backstop for when every exit failed: curvature kappa = |omega| / v
 from the gyro (odometry as fallback), or a lateral error beyond the limit,
@@ -48,14 +46,14 @@ damage.
 
 NORMAL, ARMED, HIGH = "normal", "armed", "high"
 
-# Late exit at the inner tag: 0.85 -> 0.50 m/s in 0.47 m, reaching NORMAL ~0.44 m before
+# Late exit at the inner marker: 0.85 -> 0.50 m/s in 0.47 m, reaching NORMAL ~0.44 m before
 # the tangent point at 0.5 m spacing (plan 1 section 3, corner-entry table).
 LATE_INNER_MPS2 = 0.5
 # Below the drive's 6084h deceleration and the mux line_d_max (both ~1.0 m/s^2), so
 # neither reshapes it.
 URGENT_FRACTION_OF_DRIVE = 0.95
 # An inner read this soon after an outer that did not grant HIGH is reported as a
-# near miss, with the measured distance (field run 2026-10-08: 60 then 40, no HIGH).
+# near miss, with the measured distance.
 SEEN_REPORT_M = 3.0
 
 
@@ -77,7 +75,7 @@ class SpeedZone:
         # and the wheel travel since, which the departure takes off it.
         self.parked_left = None
         self.parked_m = 0.0
-        # Wheel travel so far and where each zone id was last seen on it (read zones).
+        # Wheel travel so far and where each zone code was last seen on it.
         self.at_m = 0.0
         self.seen_at: dict[str, float] = {}
 
@@ -132,47 +130,48 @@ class SpeedZone:
         self.reason = f"departed HIGH, as arrived: {left:.1f} m of budget left"
         return "info", self.reason
 
-    def tag(self, tag):
-        """One acted-on tag read while driving. Returns (level, text) or None."""
+    def cue(self, code):
+        """One accepted zone marker read while driving. Returns (level, text) or None."""
         if not self.enabled:
             return None
         inner, outer = self.cfg["inner"], self.cfg["outer"]
-        if tag in (inner, outer):
+        if code in (inner, outer):
             self.parked_left = None     # the stop no longer sits inside the zone it entered
-            last = self.seen_at.get(tag)
-            self.seen_at[tag] = self.at_m
+            last = self.seen_at.get(code)
+            self.seen_at[code] = self.at_m
             if last is not None and self.at_m - last < self.cfg["arm_m"]:
-                return None             # same pass: overlapping read zones or a cluster re-read
-        if tag == outer and self.state != HIGH:
+                return None             # same pass: the same marker reported again
+        if code == outer and self.state != HIGH:
             last_inner = self.seen_at.get(inner)
             if last_inner is not None and self.at_m - last_inner < self.cfg["arm_m"]:
                 self.state = NORMAL
-                self.reason = (f"outer tag {tag} {self.at_m - last_inner:.2f} m after inner {inner}: "
+                self.reason = (f"outer marker {code} {self.at_m - last_inner:.2f} m after inner {inner}: "
                                f"leaving a high zone")
                 return "info", self.reason
-        if tag == outer:
+        if code == outer:
             if self.state == HIGH:
                 return "warn", self._normal(
-                    f"outer tag {tag} read while HIGH: inner tag missed - urgent drop", self.urgent_rpm_s)
+                    f"outer marker {code} read while HIGH: inner marker missed - urgent drop",
+                    self.urgent_rpm_s)
             self.state, self.armed_m = ARMED, 0.0
-            self.reason = f"outer tag {tag}: waiting for inner within {self.cfg['arm_m']:.2f} m"
+            self.reason = f"outer marker {code}: waiting for inner within {self.cfg['arm_m']:.2f} m"
             return "info", self.reason
-        if tag == inner:
+        if code == inner:
             if self.state == ARMED:
                 self.state, self.used_m, self.exit_rate = HIGH, 0.0, None
                 self.reason = f"high zone entered: HIGH for {self.cfg['high_for_m']:.1f} m"
                 return "info", self.reason
             if self.state == HIGH:
                 return "warn", self._normal(
-                    f"inner tag {tag} read while HIGH: budget did not end before the corner "
+                    f"inner marker {code} read while HIGH: budget did not end before the corner "
                     f"(survey or encoder scale) - late drop", self.late_inner_rpm_s)
             # Say how far the last outer was: an entry missed by a few cm reads as one.
             outer_at = self.seen_at.get(outer)
             if outer_at is not None and self.at_m - outer_at < SEEN_REPORT_M:
-                self.reason = (f"inner tag {tag} {self.at_m - outer_at:.2f} m after outer {outer} - "
+                self.reason = (f"inner marker {code} {self.at_m - outer_at:.2f} m after outer {outer} - "
                                f"outside the {self.cfg['arm_m']:.2f} m entry window: stays NORMAL")
                 return "warn", self.reason
-            self.reason = f"inner tag {tag} without outer: stays NORMAL"
+            self.reason = f"inner marker {code} without outer: stays NORMAL"
             return "info", self.reason
         return None
 
@@ -187,7 +186,7 @@ class SpeedZone:
             self.armed_m += metres
             if self.armed_m > self.cfg["arm_m"]:
                 self.state = NORMAL
-                self.reason = (f"inner tag not read within {self.cfg['arm_m']:.2f} m of the outer: "
+                self.reason = (f"inner marker not read within {self.cfg['arm_m']:.2f} m of the outer: "
                                f"entry window closed, stays NORMAL")
                 return "warn", self.reason
             return None

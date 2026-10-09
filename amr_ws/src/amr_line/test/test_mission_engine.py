@@ -2,8 +2,9 @@
 
 The real job, follower and TapeRun, fed dataclass inputs; no ROS. The missions
 are TEST documents validated by the real agv_core.mission.parse, shaped like the
-site's table (missions/line-a.json): Home, an always-stop, a track-end U-turn,
-a speed toggle and destination stops.
+site's table (missions/line-a.json): Home, an always-stop, a track-end U-turn
+and destination stops. The high zone is a pair of MLS marker codes (2026-10-09):
+RFID decides where to stop, the markers decide speed.
 """
 import copy
 import os
@@ -32,7 +33,7 @@ COUNTS_PER_MOTOR_REV = 10000.0
 PER_REV = COUNTS_PER_MOTOR_REV * vehicle.GEAR_RATIO
 
 HOME, TROLLEY, UTURN = "0010", "0020", "0180"
-INNER, OUTER = "0040", "0060"
+INNER, OUTER = 1, 2      # MLS marker codes of the zone pair (missions/line-a.json, swapped 2026-10-09)
 MRU1, MRU2 = "0110", "0120"
 
 
@@ -60,10 +61,15 @@ def doc(rows=(), **over):
 
 
 SITE = doc(SITE_ROWS)
-# The same table with a high zone: shared ids, an 8 m shortest straight -> a 5.65 m budget.
-ZONED = doc(SITE_ROWS + [{"tag": INNER, "action": "zone_inner", "ignore_s": 1},
-                         {"tag": OUTER, "action": "zone_outer", "ignore_s": 1}],
-            high_zone={"shortest_straight_m": 8.0, "pair_spacing_m": 0.5})
+# The same table with a high zone: shared codes, an 8 m shortest straight -> a 5.65 m budget.
+ZONE = {"shortest_straight_m": 8.0, "pair_spacing_m": 0.5, "outer_code": OUTER, "inner_code": INNER}
+ZONED = doc(SITE_ROWS, high_zone=ZONE)
+
+
+@pytest.fixture(autouse=True)
+def _markers_on(monkeypatch):
+    """The zone needs mls.markers_enabled; the profile's own value is a bench decision."""
+    monkeypatch.setattr(vehicle, "MLS_MARKERS", True)
 
 
 class World:
@@ -85,6 +91,9 @@ class World:
         self.still = False
         self.yaw = 0.0          # gyro yaw rate fed to the curve guard; None = stale
         self.v_meas = 0.0       # odometry speed: the body speed of the last command
+        self.mk_ok = True       # /amr/line_marker: the stream, and the events on it
+        self.mk_seq = 0
+        self.mk_enc = []
         self.job = lj.FollowJob(autopilot.LineFollower(), premove_s=0.6)
         ok, why = self.job.set_mission(mission, destination)
         assert ok, why
@@ -98,6 +107,15 @@ class World:
         self.seq += 1
         self.enc.append((self.seq, tag))
 
+    def markers(self):
+        return {"ok": self.mk_ok, "status": "ok" if self.mk_ok else "no marker data", "generation": 0,
+                "base": 0, "encounters": list(self.mk_enc)}
+
+    def mark(self, code, lcp2=0, line_good=True, lost=0):
+        """An MLS marker event; `lost` events vanish on the topic before it."""
+        self.mk_seq += 1 + lost
+        self.mk_enc.append((self.mk_seq, code, 0, lcp2, line_good))
+
     def inputs(self, **over):
         base = dict(
             now=self.t, dt=0.02, sensor=CENTRED, sensor_age_s=0.005, track_ok=True, track_cause="",
@@ -105,7 +123,7 @@ class World:
             lease_allowed=LEASE_LINE, lease_line=LEASE_LINE, authority=("sup", 1), torque_off=False,
             field_clear=True, drives_fresh=True, rfid=self.rfid(), counts=self.counts,
             counts_per_rev=PER_REV, wheels_still=self.still,
-            yaw_rate=self.yaw, v_meas=self.v_meas,
+            yaw_rate=self.yaw, v_meas=self.v_meas, markers=self.markers(),
         )
         base.update(over)
         return lj.Inputs(**base)
@@ -186,14 +204,19 @@ def test_a_destination_mission_refuses_start_without_a_destination():
     assert w.job.state == lj.IDLE and "no destination selected" in w.job.reason
 
 
-def test_start_is_refused_away_from_home():
+def test_start_is_accepted_away_from_home():
     w = World(SITE, "MRU2")
-    w.press_start()
-    assert w.job.state == lj.IDLE and "not at Home" in w.job.reason
+    assert not w.job.at_home()[0]
+    w.start()  # no tag read yet: anywhere on the line
+    _run_to(w)
+    w.read(MRU2)
+    w.tick()
+    assert w.job.tape.stop["where"] == "MRU2", "the destination is still served"
+    w = World(SITE, "MRU2")
     w.park_at_home()
     w.move(1.0)  # pushed off Home
-    w.press_start()
-    assert w.job.state == lj.IDLE and "moved" in w.job.reason
+    w.start()
+    assert w.job.state == lj.RUNNING
 
 
 def test_an_unknown_destination_is_refused():
@@ -346,10 +369,10 @@ def _zoned_at_normal():
 
 
 def _enter(w):
-    w.read(OUTER)
+    w.mark(OUTER)
     w.tick()
     w.drive(0.3)
-    w.read(INNER)
+    w.mark(INNER)
     w.tick()
     assert w.job.tape.speed.high, w.job.tape.speed.reason
     return w
@@ -361,7 +384,10 @@ def test_normal_is_the_default_and_a_mission_without_a_zone_never_goes_high():
     w.start()
     w.drive(4.0)
     assert w.job.diag["v_base"] == vehicle.AUTO_RPM
-    w.read(INNER)
+    w.mark(OUTER)
+    w.tick()
+    w.drive(0.3)
+    w.mark(INNER)
     w.tick()
     w.drive(1.0)
     assert w.job.diag["v_base"] == vehicle.AUTO_RPM
@@ -392,20 +418,19 @@ def _at_high():
 
 
 def test_passing_machine_tags_never_changes_the_speed():
-    """Operator, 2026-10-08: only zone tags change the speed. Machines that are not the
-    destination are passed at HIGH, and one read between a 60 and its 40 does not cancel
-    the entry."""
+    """Operator, 2026-10-08: machines that are not the destination are passed at HIGH,
+    and an RFID read between the outer and the inner marker does not cancel the entry."""
     w = World(missions.load("line-a"), "MRU4")
     w.park_at_home()
     w.start()
     w.drive(2.0)
-    w.read(OUTER)
+    w.mark(OUTER)
     w.tick()
     w.drive(0.2)
     w.read("0110")
     w.tick()
     w.drive(0.2)
-    w.read(INNER)
+    w.mark(INNER)
     w.tick()
     assert w.job.tape.speed.high, w.job.tape.speed.reason
     w.drive(2.5)
@@ -417,9 +442,9 @@ def test_passing_machine_tags_never_changes_the_speed():
     assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
 
 
-def test_the_field_run_read_gaps_still_enter_high():
-    """Run 2026-10-08 15:48 (line-a, 0.5 m pairs): first reads 0040 -> 0060 0.65 m apart into
-    the corner, 0060 -> 0040 0.99 m apart out of it. The 0.7 m window missed the entry."""
+def test_a_corner_on_the_site_markers_leaves_and_enters():
+    """line-a: leaving one straight (inner 1, outer 2), the corner, entering the next
+    (outer 2, inner 1). Marker positions are exact, so the 0.65 m window holds."""
     w = World(missions.load("line-a"), "MRU4")
     w.park_at_home()
     w.start()
@@ -430,24 +455,150 @@ def test_the_field_run_read_gaps_still_enter_high():
         while w.job.tape.speed.at_m - start < m:
             w.tick()
 
-    w.read(INNER)
+    w.mark(INNER)
     w.tick()
-    travel(0.65)
-    w.read(OUTER)
+    travel(0.5)
+    w.mark(OUTER)
     w.tick()
     assert w.job.tape.speed.state == "normal" and "leaving" in w.job.tape.speed.reason
-    travel(8.7)
-    w.read(OUTER)
+    travel(1.8)
+    w.mark(OUTER)
     w.tick()
-    travel(0.99)
-    w.read(INNER)
+    travel(0.5)
+    w.mark(INNER)
     w.tick()
     assert w.job.tape.speed.high, w.job.tape.speed.reason
 
 
+# -- speed is the markers', never RFID's (operator, 2026-10-09) -------------------------
+
+def test_the_zone_works_with_the_rfid_link_down():
+    """A zone-only mission does not need the RFID link, and the link being down changes
+    nothing about the speed."""
+    w = World(doc([], high_zone=ZONE))
+    w.comms = False
+    w.start()
+    w.drive(1.0)
+    _enter(w)
+    w.drive(2.6)
+    assert w.job.state == lj.RUNNING and w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
+
+
+def test_no_machine_tag_ever_resets_high():
+    """Operator, 2026-10-09: RFID decides where to stop, never the speed. At HIGH, every
+    machine tag of line-a is passed at HIGH - not the destination, or already served -
+    and a machine the vehicle does stop at departs HIGH with the budget it had left."""
+    line_a = missions.load("line-a")
+    machines = [t for t, r in line_a["TAGS"].items() if r["action"] == "stop" and r["role"] != "home"]
+    assert set(machines) == {"0020", "0110", "0120", "0130", "0140"}
+
+    def at_high(destination):
+        w = World(line_a, destination)
+        w.park_at_home()
+        w.start()
+        w.drive(2.0)
+        _enter(w)
+        w.drive(2.6)
+        assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
+        return w
+
+    w = at_high("MRU4")
+    for tag in ("0110", "0120", "0130"):               # destinations that are not this job's
+        w.read(tag)
+        w.tick()
+        w.drive(0.3)
+        assert w.job.tape.speed.high and w.job.tape.stop is None, (tag, w.job.tape.speed.reason)
+        assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM, tag
+
+    for tag in ("0020", "0140"):                        # the always-stop, and the destination
+        w = at_high("MRU4")
+        w.read(tag)
+        w.tick()
+        assert w.until(lambda w=w: w.job.state == lj.HOLD, 5.0) and w.job.hold_cause == "station", tag
+        assert w.job.tape.speed.parked_left is not None, (tag, w.job.tape.speed.reason)
+        w.tick(start_edge=True, start_edge_t=w.t)
+        assert w.until(lambda w=w: w.job.state == lj.RUNNING, 2.0), w.job.reason
+        assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason, tag
+        if tag == "0140":
+            w.read(tag)                                 # served: driven past on the way back
+            w.drive(3.0)
+            assert w.job.tape.stop is None
+
+
+def test_the_old_zone_tag_ids_are_just_unknown_tags():
+    w = _zoned_at_normal()
+    for tag in ("0060", "0040"):
+        w.read(tag)
+        w.tick()
+        w.drive(0.3)
+    assert w.job.tape.speed.state == "normal" and w.job.tape.last_encounter["action"] == "no tag rule"
+
+
+def test_a_zone_marker_read_off_the_tape_centre_is_ignored():
+    """2026-10-09: a pendant pivot read code 2 at +121 mm. Only a clean, centred read counts."""
+    w = _zoned_at_normal()
+    w.mark(OUTER, lcp2=45)
+    w.tick()
+    assert w.job.tape.speed.state == "normal"
+    w.mark(OUTER, line_good=False)
+    w.tick()
+    assert w.job.tape.speed.state == "normal"
+    events = [t for _, t in w.job.tape.drain_events()]
+    assert any("+45 mm off the tape centre" in e for e in events)
+    assert any("line not good" in e for e in events)
+    w.mark(OUTER, lcp2=-30)
+    w.tick()
+    assert w.job.tape.speed.state == "armed", "30 mm is still on the tape"
+
+
+def test_markers_down_or_lost_take_high_away():
+    w = _at_high()
+    w.mk_ok = False
+    w.tick()
+    assert not w.job.tape.speed.high and "markers down" in w.job.tape.speed.reason
+    w = _at_high()
+    w.mark(3, lost=1)
+    w.tick()
+    assert not w.job.tape.speed.high and "lost" in w.job.tape.speed.reason
+    w = _zoned_at_normal()
+    w.mark(OUTER)
+    w.tick()
+    assert w.job.tape.speed.state == "armed"
+    w.mk_ok = False
+    w.tick()
+    assert w.job.tape.speed.state == "normal", "an armed entry is forgotten too"
+
+
+def test_a_marker_seen_before_the_run_does_not_arm_it():
+    w = World(ZONED, "MRU2")
+    w.park_at_home()
+    w.mark(OUTER)                   # pushed over the outer marker while IDLE
+    w.tick()
+    w.start()
+    w.mark(INNER)
+    w.tick()
+    assert w.job.tape.speed.state == "normal"
+
+
+def test_markers_disabled_in_the_profile_run_normal_and_say_so(monkeypatch):
+    monkeypatch.setattr(vehicle, "MLS_MARKERS", False)
+    w = World(ZONED, "MRU2")
+    assert not w.job.tape.speed.enabled
+    w.park_at_home()
+    w.start()
+    w.drive(1.0)
+    w.mark(OUTER)
+    w.tick()
+    w.drive(0.3)
+    w.mark(INNER)
+    w.tick()
+    w.drive(2.6)
+    assert w.job.diag["v_base"] == vehicle.AUTO_RPM
+
+
 def test_inner_while_high_drops_at_half_a_metre_per_s2_without_a_jerk_ramp():
     w = _at_high()
-    w.read(INNER)
+    w.mark(INNER)
     w.tick()
     v0 = w.job.diag["v_base"]
     w.drive(0.3)
@@ -459,7 +610,7 @@ def test_inner_while_high_drops_at_half_a_metre_per_s2_without_a_jerk_ramp():
 
 def test_outer_while_high_drops_at_the_urgent_rate():
     w = _at_high()
-    w.read(OUTER)
+    w.mark(OUTER)
     w.tick()
     v0 = w.job.diag["v_base"]
     w.drive(0.2)
@@ -531,10 +682,34 @@ def test_a_safety_hold_at_the_station_makes_the_departure_normal():
 
 
 def test_a_run_from_home_starts_normal_even_after_arriving_high():
+    """The Home tag parks HIGH like any stop (no RFID tag sets the speed); the next run
+    is a new run, which starts NORMAL."""
     w = _at_high()
-    w.job.tape.speed.park("stop Home")                # what a HIGH Home arrival would keep...
-    w.job.tape._begin_stop(w.job.tape.table.row(HOME), w.job.f)
-    assert w.job.tape.speed.parked_left is None       # ...Home drops it instead
+    w.read(HOME)
+    w.tick()
+    assert w.job.tape.speed.parked_left is not None, "Home parks, it does not drop"
+    assert at_rest_stopped(w) and w.job.state == lj.DONE, w.job.reason
+    w.job.set_mission(w.job.mission, "MRU1")
+    w.start()
+    assert not w.job.tape.speed.high and w.job.tape.speed.parked_left is None
+
+
+def test_an_rfid_link_hold_at_high_resumes_high():
+    """2026-10-09: no RFID event changes the speed - the link hold parks HIGH like the
+    protective field, and the Start that resumes the run restores it."""
+    w = _at_high()
+    left = w.job.tape.speed.budget_left_m()
+    w.comms = False
+    w.tick()
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid", w.job.reason
+    assert w.job.tape.speed.parked_left is not None
+    w.comms = True
+    w.gen += 1
+    w.enc = []
+    w.drive(1.0)
+    w.tick(start_edge=True, start_edge_t=w.t)
+    assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason
+    assert w.job.tape.speed.high and w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
 
 
 def test_a_warning_field_hold_does_not_use_up_the_budget():
@@ -548,10 +723,49 @@ def test_a_warning_field_hold_does_not_use_up_the_budget():
     assert w.job.tape.speed.high and w.job.tape.speed.used_m == pytest.approx(used)
 
 
-def test_any_hold_drops_high():
+def test_a_protective_stop_at_high_resumes_high():
+    """Operator, 2026-10-09: after a protective stop the vehicle goes back to HIGH, with
+    the budget it had less any wheel travel while held - like a station departure."""
     w = _at_high()
+    left = w.job.tape.speed.budget_left_m()
     w.tick(torque_off=True, field_clear=False)
-    assert w.job.state == lj.HOLD and not w.job.tape.speed.high
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "field"
+    assert not w.job.tape.speed.high, "NORMAL while held"
+    assert w.job.tape.speed.parked_left is not None
+    w.drive(1.0, torque_off=True, field_clear=False)
+    assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
+    assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
+    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
+    assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM, 4.0)
+
+
+def test_travel_during_a_protective_stop_comes_off_the_budget():
+    w = _at_high()
+    left = w.job.tape.speed.budget_left_m()
+    w.tick(torque_off=True, field_clear=False)
+    w.move(2.0)  # pushed while held
+    assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
+    assert w.job.tape.speed.budget_left_m() == pytest.approx(left - 2.0, abs=0.05)
+    w = _at_high()
+    left = w.job.tape.speed.budget_left_m()
+    w.tick(torque_off=True, field_clear=False)
+    w.move(left + 0.5)  # pushed past the budget's end
+    assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
+    assert not w.job.tape.speed.high
+
+
+def test_other_holds_still_drop_high():
+    w = _at_high()
+    w.tick(torque_off=True)  # no field evidence: an E-stop story
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "estop"
+    assert w.job.tape.speed.parked_left is None and not w.job.tape.speed.high
+    w = _at_high()
+    w.tick(drives_fresh=False)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "drives"
+    assert w.job.tape.speed.parked_left is None and not w.job.tape.speed.high
+    assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
+    w.drive(0.5)
+    assert not w.job.tape.speed.high
 
 
 # -- U-turn ----------------------------------------------------------------------------

@@ -54,6 +54,10 @@ class Limits:
     # a stale wheel stream counts as a loss - the drive status (10 Hz) can trail the wheel
     # timeout (0.10 s) by a tick.
     wheels_grace_s: float = 0.4
+    # The MLS IMU is SDO-polled in drive_node's loop, which blocks while the drives power up
+    # (engage ~0.35 s, 2026-10-09: AUTO Start -> LOST "stale: imu" -> run FAULT). The EKF
+    # takes only yaw rate from it, so a gap this short is not a loss; the scan check stays strict.
+    imu_grace_s: float = 0.6
 
 
 @dataclass
@@ -191,10 +195,16 @@ class Readiness:
             for name, limit in self.limits.age_limits.items()
             if name not in excused and (ages.get(name) is None or ages[name] > limit)
         ]
-        if self.state == READY and stale == ["wheels"]:
-            a = ages.get("wheels")
-            if a is not None and a <= self.limits.age_limits["wheels"] + self.limits.wheels_grace_s:
-                stale = []  # a safety stop's drive report may still be on its way
+        if self.state == READY and stale:
+            # a safety stop's drive report may still be on its way (wheels); the drive loop is
+            # busy powering the drives (imu). Only these two streams are ever graced.
+            grace = {"wheels": self.limits.wheels_grace_s, "imu": self.limits.imu_grace_s}
+            stale = [
+                n for n in stale
+                if n not in grace
+                or ages.get(n) is None
+                or ages[n] > self.limits.age_limits[n] + grace[n]
+            ]
         if self.state == UNLOCALIZED:
             self.can_confirm = False
             return self.state
@@ -241,7 +251,7 @@ class Readiness:
             return self.state
         if not amcl_fresh:
             self._stable_since = None
-            self.reason = "no AMCL update yet - drive slowly so the filter updates"
+            self.reason = "no AMCL update yet - converging in place (or drive slowly)"
             self.can_confirm = False
             return self.state
         if not cov_ok:
@@ -274,6 +284,13 @@ class Readiness:
             else f"converged; settling ({t - self._stable_since:.1f}/{self.limits.settle_s:.1f} s)"
         )
         return self.state
+
+    def wants_nomotion_update(self) -> bool:
+        """While CHECKING, AMCL is asked to match the scan in place (2026-10-09: the operator
+        had to nudge the vehicle before AMCL would update at all). READY never asks: a forced
+        update while parked only re-weights the same particles, and READY holds on the
+        independent scan check, not on AMCL updates."""
+        return self.state == CHECKING
 
     # ---- operator ------------------------------------------------------------
 

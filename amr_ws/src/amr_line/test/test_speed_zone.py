@@ -1,7 +1,7 @@
 """amr_line.speed_zone: the high-zone state machine and the curve guard. Pure.
 
 tracked-speed-plan-1 section 3 (state table) and section 4 (guard), row by row,
-plus the corner passes with shared ids (inner 0040, outer 0060).
+plus the corner passes with shared codes (inner marker 1, outer marker 2).
 """
 import os
 import sys
@@ -14,8 +14,8 @@ for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
 import pytest  # noqa: E402
 from amr_line.speed_zone import ARMED, HIGH, NORMAL, CurveGuard, SpeedZone  # noqa: E402
 
-INNER, OUTER = "0040", "0060"
-CFG = {"inner": INNER, "outer": OUTER, "high_for_m": 10.0, "arm_m": 0.7, "spacing_m": 0.5, "brake_m": 1.35}
+INNER, OUTER = 1, 2  # MLS marker codes as in line-a (2026-10-09; RFID 0040/0060 before)
+CFG = {"inner": INNER, "outer": OUTER, "high_for_m": 10.0, "arm_m": 0.65, "spacing_m": 0.5, "brake_m": 1.35}
 RPM_PER_MPS, DRIVE_DECEL = 3183.1, 3200.0
 
 
@@ -24,48 +24,48 @@ def zone():
 
 
 def enter(z):
-    z.tag(OUTER)
+    z.cue(OUTER)
     z.travel(0.5)
-    level, text = z.tag(INNER)
+    level, text = z.cue(INNER)
     assert z.state == HIGH and level == "info", text
     return z
 
 
 def test_no_high_zone_means_normal_always():
     z = SpeedZone(None)
-    assert z.tag(OUTER) is None and z.tag(INNER) is None
+    assert z.cue(OUTER) is None and z.cue(INNER) is None
     assert z.state == NORMAL and not z.high
 
 
 def test_outer_then_inner_within_the_window_is_high():
     z = zone()
-    z.tag(OUTER)
+    z.cue(OUTER)
     assert z.state == ARMED
     enter(zone())
 
 
 def test_inner_alone_stays_normal():
     z = zone()
-    level, text = z.tag(INNER)
+    level, text = z.cue(INNER)
     assert z.state == NORMAL and level == "info" and "without outer" in text
 
 
 def test_the_entry_window_expires():
     z = zone()
-    z.tag(OUTER)
+    z.cue(OUTER)
     level, text = z.travel(0.71)
     assert z.state == NORMAL and level == "warn" and "entry window closed" in text
-    level, text = z.tag(INNER)
+    level, text = z.cue(INNER)
     assert z.state == NORMAL and level == "warn" and "0.71 m after outer" in text, text
 
 
-def test_a_station_tag_between_outer_and_inner_does_not_touch_the_entry():
-    """Machine tags are not speed events (operator, 2026-10-08)."""
+def test_another_code_between_outer_and_inner_does_not_touch_the_entry():
+    """Only the zone's two codes are speed cues."""
     z = zone()
-    z.tag(OUTER)
-    assert z.tag("0110") is None and z.state == ARMED
+    z.cue(OUTER)
+    assert z.cue(3) is None and z.state == ARMED
     z.travel(0.5)
-    z.tag(INNER)
+    z.cue(INNER)
     assert z.high
 
 
@@ -80,7 +80,7 @@ def test_budget_expiry_is_the_planned_exit_on_the_comfort_ramp():
 def test_inner_while_high_is_a_late_exit_at_half_a_metre_per_s2():
     z = enter(zone())
     z.travel(3.0)                           # the far end of the straight
-    level, text = z.tag(INNER)
+    level, text = z.cue(INNER)
     assert level == "warn" and z.state == NORMAL
     assert z.exit_rate == pytest.approx(0.5 * RPM_PER_MPS)
 
@@ -88,8 +88,8 @@ def test_inner_while_high_is_a_late_exit_at_half_a_metre_per_s2():
 def test_outer_while_high_is_an_urgent_exit_below_the_drive_limit():
     z = enter(zone())
     z.travel(3.0)
-    level, text = z.tag(OUTER)
-    assert level == "warn" and "inner tag missed" in text and z.state == NORMAL
+    level, text = z.cue(OUTER)
+    assert level == "warn" and "inner marker missed" in text and z.state == NORMAL
     assert z.exit_rate == pytest.approx(0.95 * DRIVE_DECEL)
     assert z.exit_rate < DRIVE_DECEL
 
@@ -97,7 +97,7 @@ def test_outer_while_high_is_an_urgent_exit_below_the_drive_limit():
 def test_an_urgent_rate_is_never_relaxed_mid_drop():
     z = enter(zone())
     z.travel(3.0)
-    z.tag(OUTER)
+    z.cue(OUTER)
     z.drop("hold")
     assert z.exit_rate == pytest.approx(0.95 * DRIVE_DECEL)
     z.settled(1592.0)
@@ -130,7 +130,7 @@ def test_a_station_reached_at_normal_departs_normal():
 
 
 def test_anything_between_arrival_and_departure_forgets_the_budget():
-    for spoil in (lambda z: z.drop("hold (field)"), lambda z: z.tag(OUTER), lambda z: z.tag(INNER)):
+    for spoil in (lambda z: z.drop("hold (field)"), lambda z: z.cue(OUTER), lambda z: z.cue(INNER)):
         z = enter(zone())
         z.park("stop MRU1")
         spoil(z)
@@ -151,27 +151,27 @@ def test_a_full_corner_pass_with_shared_ids():
     z = enter(zone())
     z.travel(10.0)                          # budget ends on S1
     assert z.state == NORMAL
-    z.tag(INNER)                            # exit inner: NORMAL already, no-op
+    z.cue(INNER)                            # exit inner: NORMAL already, no-op
     z.travel(0.5)
-    z.tag(OUTER)                            # exit outer after an inner: leaving, never arms
+    z.cue(OUTER)                            # exit outer after an inner: leaving, never arms
     assert z.state == NORMAL and "leaving" in z.reason
     z.travel(0.5 + 0.785 + 0.5)             # the corner (R 0.5)
-    z.tag(OUTER)                            # entry outer of S2
+    z.cue(OUTER)                            # entry outer of S2
     z.travel(0.5)
-    z.tag(INNER)                            # entry inner of S2
+    z.cue(INNER)                            # entry inner of S2
     assert z.high
 
 
 def interleave(z, first, second, overlap_m=0.3, step=0.02):
-    """Two clusters in the field together: reads alternate while the vehicle moves."""
-    z.tag(first)
+    """Both codes reported alternately while the vehicle moves (a worst case kept from RFID)."""
+    z.cue(first)
     z.travel(0.5)
-    z.tag(second)
+    z.cue(second)
     moved, which = 0.0, first
     while moved < overlap_m:
         z.travel(step)
         moved += step
-        z.tag(which)
+        z.cue(which)
         which = second if which == first else first
 
 
@@ -182,7 +182,7 @@ def test_overlapping_read_zones_on_entry_stay_high():
 
 
 def test_overlapping_read_zones_on_exit_never_grant_high():
-    """40 then 60 with the fields overlapping: the 40 re-read after the 60 is not an entry."""
+    """Inner then outer, reported alternately: an inner re-read after the outer is not an entry."""
     z = enter(zone())
     z.travel(10.0)                          # budget spent: NORMAL before the exit pair
     interleave(z, INNER, OUTER)
@@ -194,23 +194,23 @@ def test_overlapping_read_zones_on_exit_never_grant_high():
 
 def test_a_cluster_reread_after_a_read_gap_is_the_same_pass():
     z = zone()
-    z.tag(OUTER)
+    z.cue(OUTER)
     z.travel(0.15)
-    z.tag(OUTER)                            # tag_clear_s gap inside one cluster: no re-arm
+    z.cue(OUTER)                            # the same marker reported again: no re-arm
     assert z.armed_m == pytest.approx(0.15)
     z.travel(0.35)
-    z.tag(INNER)
+    z.cue(INNER)
     assert z.high
 
 
 def test_missed_entry_outer_after_a_corner_stays_normal():
     z = enter(zone())
     z.travel(10.0)
-    z.tag(INNER)
+    z.cue(INNER)
     z.travel(0.5)
-    z.tag(OUTER)
+    z.cue(OUTER)
     z.travel(0.5 + 0.785 + 0.5 + 0.5)       # S2's outer never read
-    z.tag(INNER)
+    z.cue(INNER)
     assert z.state == NORMAL
 
 

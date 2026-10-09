@@ -23,9 +23,9 @@ def stop(tag="0110", role="destination", label="MRU1", **over):
 HOME = stop("0010", "home", "Home", ignore_s=2)
 UTURN = {"tag": "0030", "action": "u_turn", "ignore_s": 2, "direction": "cw",
          "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0}
-INNER = {"tag": "0040", "action": "zone_inner", "ignore_s": 1}
-OUTER = {"tag": "0060", "action": "zone_outer", "ignore_s": 1}
-ZONE = {"shortest_straight_m": 18.0, "pair_spacing_m": 0.5}
+# v2.2 (2026-10-09): the zone is a pair of MLS marker codes; RFID only stops.
+ZONE = {"shortest_straight_m": 18.0, "pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
+OLD_ZONE_ROW = {"tag": "0040", "action": "zone_inner", "ignore_s": 1}
 
 
 def base(tags=(), **over):
@@ -89,8 +89,9 @@ def test_the_site_table_loads():
                   for t in ("0180", "0190")))
     from agv_core import config
     z = m["HIGH_ZONE"]
-    check("high zone 0060 outer -> 0040 inner, budget from the 10 m surveyed straight",
-          z["outer"] == "0060" and z["inner"] == "0040"
+    check("high zone: marker 2 outer -> marker 1 inner, budget from the 10 m surveyed straight",
+          z["outer"] == 2 and z["inner"] == 1 and not any(r["action"].startswith("zone") for r in
+                                                          m["TAGS"].values())
           and abs(z["high_for_m"] - (10.0 - z["brake_m"] - config.HIGH_MARGIN_M)) < 1e-9,
           f"{z['high_for_m']:.2f} m")
 
@@ -104,10 +105,9 @@ def test_refusals():
     refused("a branch tag reused as a stop tag is refused",
             base([HOME], branch_latch=[{"entry_tag": "0010", "exit_tag": "0011", "branch": "left"}]),
             "branch_latch")
-    refused("an unknown action is refused", base([dict(INNER, action="slow")]), "action")
+    refused("an unknown action is refused", base([dict(UTURN, action="slow")]), "action")
     refused("an unknown role is refused", base([stop(role="sometimes")]), "role")
-    refused("a key from another action is refused", base([dict(INNER, direction="cw")], high_zone=ZONE),
-            "unknown key")
+    refused("a key from another action is refused", base([dict(HOME, direction="cw")]), "unknown key")
     refused("a missing key is refused",
             base([{k: v for k, v in UTURN.items() if k != "max_approach_m"}]), "missing key")
     refused("a stop distance past 5 m is refused", base([HOME, stop(stop_distance_m=9)]), "(0, 5]")
@@ -126,37 +126,46 @@ def test_refusals():
     refused("a U-turn approach faster than slow speed is refused",
             base([dict(UTURN, approach_mps=5.0)]), "approach_mps")
     refused("the retired speed toggle is refused with a pointer to the zone pair",
-            base([{"tag": "0040", "action": "speed_toggle", "ignore_s": 5, "ramp_s": 2.0}]), "zone_outer")
+            base([{"tag": "0040", "action": "speed_toggle", "ignore_s": 5, "ramp_s": 2.0}]), "outer_code")
+    refused("a junction slow zone is refused: no RFID tag affects the speed",
+            base([HOME], branch_latch=[{"entry_tag": "0050", "exit_tag": "0051", "branch": "left",
+                                        "slow_speed": True}]), "no RFID tag affects the speed")
     refused("a stop shorter than the drives can decelerate is refused",
             base([HOME, stop(stop_distance_m=0.01)]), "decel")
     refused("an unknown key is refused", base(extra=1), "unknown key")
     refused("a v1 route document is refused by name, not half-loaded",
             base(route=[], route_guard={}), "retired v1")
-    m = mission.parse(base([HOME, stop(tag="0110"), UTURN, dict(INNER, tag="00a4"), OUTER], high_zone=ZONE))
+    m = mission.parse(base([HOME, stop(tag="0110"), dict(UTURN, tag="00a4")], high_zone=ZONE))
     check("a lower-case tag loads, normalised to the panel's uppercase", "00A4" in m["TAGS"])
 
 
 def test_high_zone():
-    print("\nmission: high zone (v2.1, tracked-speed-plan-1)")
+    print("\nmission: high zone (v2.2, MLS marker pair)")
     from agv_core import config
-    m = mission.parse(base([HOME, stop(), UTURN, INNER, OUTER], high_zone=ZONE))
+    m = mission.parse(base([HOME, stop(), UTURN], high_zone=ZONE))
     z = m["HIGH_ZONE"]
     v_n, v_h = config.AUTO_RPM * config.MPS_PER_RPM, config.AUTO_HIGH_RPM * config.MPS_PER_RPM
     brake = (v_n + v_h) / 2 * config.HIGH_RAMP_S
-    check("one shared inner and outer id", z["inner"] == "0040" and z["outer"] == "0060")
+    check("one shared outer and inner marker code", z["outer"] == 2 and z["inner"] == 1)
     check("the budget is derived: straight - braking - margin",
           abs(z["high_for_m"] - (18.0 - brake - config.HIGH_MARGIN_M)) < 1e-9, f"{z['high_for_m']:.3f}")
-    check("the entry window is the pair spacing plus a tolerance", abs(z["arm_m"] - 1.5) < 1e-9)
-    refused("zone rows without the high_zone block are refused", base([INNER, OUTER]), "high_zone")
-    refused("a high_zone without both tags is refused", base([INNER], high_zone=ZONE), "exactly one")
-    refused("a zone tag ignore window over 2 s is refused",
-            base([dict(INNER, ignore_s=5), OUTER], high_zone=ZONE), "<= 2")
+    check("the entry window is the pair spacing plus the marker tolerance", abs(z["arm_m"] - 0.65) < 1e-9)
+    check("a zone needs no RFID row at all", mission.parse(base(high_zone=ZONE))["HIGH_ZONE"] is not None)
+    refused("an RFID zone tag is refused with a pointer to the marker pair",
+            base([OLD_ZONE_ROW], high_zone=ZONE), "MLS marker codes decide speed")
+    refused("the v2.1 high_zone without marker codes is refused",
+            base(high_zone={"shortest_straight_m": 18.0, "pair_spacing_m": 0.5}), "outer_code")
+    refused("a zone code not laid on the floor is refused",
+            base(high_zone=dict(ZONE, inner_code=7)), "not laid on the floor")
+    refused("a zone code written as text is refused", base(high_zone=dict(ZONE, outer_code="2")), "integer")
+    refused("the same code for outer and inner is refused",
+            base(high_zone=dict(ZONE, inner_code=2)), "differ")
     refused("a straight too short for the budget is refused",
-            base([INNER, OUTER], high_zone=dict(ZONE, shortest_straight_m=4.0)), "not worth it")
+            base(high_zone=dict(ZONE, shortest_straight_m=4.0)), "not worth it")
     refused("a pair spacing outside [0.3, 1.0] m is refused",
-            base([INNER, OUTER], high_zone=dict(ZONE, pair_spacing_m=0.1)), "pair_spacing_m")
+            base(high_zone=dict(ZONE, pair_spacing_m=0.1)), "pair_spacing_m")
     refused("a stop the drives cannot make from HIGH is refused when the mission has a zone",
-            base([HOME, stop(stop_distance_m=0.1), INNER, OUTER], high_zone=ZONE), "decel")
+            base([HOME, stop(stop_distance_m=0.1)], high_zone=ZONE), "decel")
     refused("a U-turn creep faster than NORMAL is refused",
             base([dict(UTURN, approach_mps=0.6)]), "approach_mps")
 

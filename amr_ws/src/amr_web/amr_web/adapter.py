@@ -960,7 +960,7 @@ class RosAdapter(Node):
         self._initialpose.publish(m)
         return (
             True,
-            f"initial pose ({x:.2f}, {y:.2f}, {math.degrees(yaw):.0f} deg) sent; drive slowly, then confirm",
+            f"initial pose ({x:.2f}, {y:.2f}, {math.degrees(yaw):.0f} deg) sent; converging, then confirm",
         )
 
     def publish_route_preview(self, compiled, frame_id: str) -> None:

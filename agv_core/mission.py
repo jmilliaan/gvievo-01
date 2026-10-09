@@ -12,22 +12,26 @@ row per tag, and the row says everything the tag does:
                   ends, stop at once (at creep speed or not), pivot (cw|ccw) until
                   the tape is reacquired and centred - 180 deg by geometry, the
                   encoders only gate it (amr_line.uturn)
-    zone_outer    v2.1 (2026-10-08, tracked-speed-plan-1): the outer tag of a high-
-    zone_inner    zone pair at a straight's end. Outer then inner = entering the
-                  straight: HIGH for the mission's budget. Inner while HIGH =
-                  leaving. Shared ids: one outer and one inner id for every pair
-                  (amr_line.speed_zone). The v2 speed_toggle is refused.
-
     ignore_s      after a read is ACTED ON, the same tag is ignored this long.
                   A stop's window restarts at departure, since a parked vehicle
-                  outlasts any window. Zone tags allow at most 2 s: one corner
-                  reads the outer id twice, >= 1.8 m apart (3.6 s at NORMAL).
+                  outlasts any window.
 
-high_zone (v2.1): null (the run stays at NORMAL) or
-    {"shortest_straight_m": surveyed inner tag to inner tag, "pair_spacing_m": 0.5}
-from which the one HIGH budget for every straight is derived:
+RFID decides WHERE TO STOP; the MLS marker codes decide SPEED (operator, 2026-10-09).
+The v2.1 RFID zone rows (zone_outer/zone_inner) and the v2 speed_toggle are refused:
+speed zones work whatever the RFID setting is, and RFID never changes the speed.
+
+high_zone (v2.2, 2026-10-09): null (the run stays at NORMAL) or
+    {"shortest_straight_m": surveyed inner marker to inner marker,
+     "pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
+Every straight end carries two MLS markers: the OUTER code on the corner side, the
+INNER code on the straight side. Outer then inner = entering the straight: HIGH for
+the mission's budget. Inner while HIGH = leaving (amr_line.speed_zone). The codes
+are shared by every pair, must be laid on the floor (mls.marker_codes), and are
+reserved: nothing else may use them. The one HIGH budget for every straight:
     high_for_m = shortest_straight_m - brake_m - autopilot.high_margin_m
     brake_m    = (v_high + v_normal) / 2 x autopilot.high_ramp_s
+mls.markers_enabled false does not refuse the mission (its stops still run): the
+run stays NORMAL and says so (amr_line.tape_run).
 
 Branching stays its own table (branch_latch + branch_default) and its own engine
 (amr_line.branch): speed, stops and branch orders never share a tag.
@@ -44,8 +48,8 @@ at the tape ends (2026-10-08).
     destinations(m)          -> the destination labels, in table order
 
 MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, TAGS {tag: row}, HOME (row | None),
-DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer", "high_for_m", "arm_m",
-"spacing_m", "brake_m"} | None).
+DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer" (marker codes, int), "high_for_m",
+"arm_m", "spacing_m", "brake_m"} | None).
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -56,17 +60,14 @@ from agv_core.config import ConfigError, _coerce
 
 MISSION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "missions")
 
-ACTIONS = ("stop", "u_turn", "zone_inner", "zone_outer")
-ZONE_ACTIONS = ("zone_inner", "zone_outer")
-# 1 -> 2 s (2026-10-08, more leniency for cluster re-reads): through the tightest corner
-# the outer id is read twice >= 1.8 m apart, 3.6 s at NORMAL - still outside 2 s.
-ZONE_MAX_IGNORE_S = 2.0
-# The outer tag waits this far beyond the pair spacing for its inner tag. 0.2 -> 0.7
-# (field run 2026-10-08): with 4-tag clusters 0.5 m apart, the reader's FIRST reads were
-# 0.65 and 0.99 m apart (weak reads, -69..-74 dBm, land anywhere in the read zone). Wider
-# is safe: only outer -> inner grants HIGH, inner -> outer never arms, an expired arm is
-# NORMAL. It must stay below the exit-outer -> entry-outer distance through a corner.
-ZONE_ARM_TOLERANCE_M = 1.0  # 0.7 -> 1.0 the same day: slightly more leniency
+ACTIONS = ("stop", "u_turn")
+# The outer marker waits this far beyond the pair spacing for its inner marker. RFID
+# needed 1.0 m (first reads of a 0.5 m pair landed 0.65-0.99 m apart, 2026-10-08); an
+# MLS marker is reported at a fixed point - FailSafe, after the 100 mm marker plus the
+# t90 filter delay, the same lag for both - so 0.15 m covers encoder scale and skew.
+# Wider is safe (an expired arm is NORMAL) but it must stay below the exit-outer ->
+# entry-outer distance through a corner.
+ZONE_ARM_TOLERANCE_M = 0.15
 # A budget shorter than this is not worth the two ramps.
 ZONE_MIN_BUDGET_M = 3.0
 ROLES = ("home", "always", "destination")
@@ -76,11 +77,9 @@ ROLES = ("home", "always", "destination")
 _KEYS = {
     "stop": {"stop_distance_m", "role", "label"},
     "u_turn": {"direction", "approach_mps", "decel_m", "max_approach_m"},
-    "zone_inner": set(),
-    "zone_outer": set(),
 }
 _COMMON = {"tag", "action", "ignore_s"}
-_OPTIONAL = {"stop": set(), "u_turn": {"label"}, "zone_inner": {"label"}, "zone_outer": {"label"}}
+_OPTIONAL = {"stop": set(), "u_turn": {"label"}}
 
 _V1_KEYS = ("route", "route_guard", "stop_until_start_button", "u_turn")
 
@@ -114,8 +113,9 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
     matches produces no error, no log line and no motion - the AGV simply drives
     past the junction.
 
-    slow_speed is OPTIONAL and defaults to false. It is still type-checked: the
-    string "True" is refused, not silently accepted as truthy.
+    slow_speed is OPTIONAL and must be false (2026-10-09, operator: no RFID tag affects the
+    speed - the MLS marker codes do). It is still type-checked: the string "True" is
+    refused, not silently accepted as truthy.
     """
     if not isinstance(rows, list):
         raise ConfigError("branch_latch: expected a list")
@@ -136,6 +136,10 @@ def _read_branch_latch(rows, tag_len, ignore_tags):
             raise ConfigError(f"{where}: missing key(s) {sorted(missing)}")
 
         slow = _coerce(row.get("slow_speed", False), bool, f"{where}.slow_speed")
+        if slow:
+            raise ConfigError(f"{where}.slow_speed: retired 2026-10-09 - no RFID tag affects the speed; "
+                              f"a junction that must not be passed at HIGH lies outside the marker "
+                              f"high zone (high_zone.outer_code/inner_code)")
         side = _coerce(row["branch"], str, f"{where}.branch")
         if side not in ("left", "right"):
             raise ConfigError(f"{where}.branch: expected 'left' or 'right', got {side!r}")
@@ -177,8 +181,12 @@ def _read_tags(rows, vehicle, branch_tags):
         action = row.get("action")
         if action == "speed_toggle":
             raise ConfigError(f"{where}: speed_toggle is retired (2026-10-08): a missed read "
-                              f"carried HIGH into a corner. Use a zone_outer/zone_inner pair "
-                              f"and the mission's high_zone block")
+                              f"carried HIGH into a corner. Speed is the MLS marker pair: "
+                              f"high_zone.outer_code/inner_code")
+        if action in ("zone_inner", "zone_outer"):
+            raise ConfigError(f"{where}: RFID zone tags are retired (2026-10-09): RFID decides "
+                              f"where to stop, the MLS marker codes decide speed. Lay an "
+                              f"outer/inner marker pair and set high_zone.outer_code/inner_code")
         if action not in ACTIONS:
             raise ConfigError(f"{where}.action: expected one of {list(ACTIONS)}, got {action!r}")
         allowed = _COMMON | _KEYS[action] | _OPTIONAL[action]
@@ -213,7 +221,7 @@ def _read_tags(rows, vehicle, branch_tags):
             if rec["label"] in labels:
                 raise ConfigError(f"{where}.label: {rec['label']!r} is already {labels[rec['label']]}")
             labels[rec["label"]] = tag
-        elif action == "u_turn":
+        else:  # u_turn
             if row["direction"] not in ("cw", "ccw"):
                 raise ConfigError(f"{where}.direction must be cw or ccw")
             rec["direction"] = row["direction"]
@@ -231,10 +239,6 @@ def _read_tags(rows, vehicle, branch_tags):
                 raise ConfigError(f"{where}.decel_m: slowing from {vehicle.AUTO_RPM:.0f} r/min to "
                                   f"{rec['approach_mps']:g} m/s in {rec['decel_m']:g} m needs {rate:.0f} "
                                   f"r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}")
-        elif rec["ignore_s"] > ZONE_MAX_IGNORE_S:
-            raise ConfigError(f"{where}.ignore_s must be <= {ZONE_MAX_IGNORE_S:g} s for a zone tag: "
-                              f"one corner reads the outer id twice >= 1.8 m apart, and a longer "
-                              f"window swallows the entry of the next straight")
         out[tag] = rec
     return out
 
@@ -267,21 +271,27 @@ def _check_table(tags, vehicle, fastest_rpm):
 _MISSION_KEYS = ("mission_name", "branch_default", "branch_latch", "high_zone", "tags")
 
 
-def _read_high_zone(raw, tags, vehicle):
-    """high_zone + the zone rows -> the one budget every straight shares, or None."""
-    inner = [t for t, r in tags.items() if r["action"] == "zone_inner"]
-    outer = [t for t, r in tags.items() if r["action"] == "zone_outer"]
+def _read_high_zone(raw, vehicle):
+    """high_zone -> the marker pair and the one budget every straight shares, or None."""
     if raw is None:
-        if inner or outer:
-            raise ConfigError("tags: zone rows need the high_zone block (shortest_straight_m, "
-                              "pair_spacing_m); survey the shortest HIGH straight first")
         return None
-    keys = {"shortest_straight_m", "pair_spacing_m"}
+    keys = {"shortest_straight_m", "pair_spacing_m", "outer_code", "inner_code"}
     if not isinstance(raw, dict) or set(raw) != keys:
-        raise ConfigError(f"high_zone: expected null or exactly {sorted(keys)}")
-    if len(inner) != 1 or len(outer) != 1:
-        raise ConfigError(f"high_zone: needs exactly one zone_inner and one zone_outer tag "
-                          f"(shared by every pair), got {len(inner)} and {len(outer)}")
+        raise ConfigError(f"high_zone: expected null or exactly {sorted(keys)} (v2.2, 2026-10-09: "
+                          f"the zone pair is two MLS marker codes, not RFID tags)")
+    laid = list(vehicle.MLS_MARKER_CODES)
+    codes = {}
+    for key in ("outer_code", "inner_code"):
+        v = raw[key]
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ConfigError(f"high_zone.{key}: expected an integer marker code, got {v!r}")
+        if v not in laid:
+            raise ConfigError(f"high_zone.{key}: code {v} is not laid on the floor "
+                              f"(mls.marker_codes {laid}); the zone would never be entered")
+        codes[key] = v
+    if codes["outer_code"] == codes["inner_code"]:
+        raise ConfigError("high_zone: outer_code and inner_code must differ - the read ORDER "
+                          "tells entering from leaving")
     spacing = _bounded(raw, "pair_spacing_m", "high_zone", 0.3, 1.0, lo_open=False)
     shortest = _bounded(raw, "shortest_straight_m", "high_zone", 0.0, 500.0)
     v_normal = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
@@ -292,8 +302,8 @@ def _read_high_zone(raw, tags, vehicle):
         raise ConfigError(f"high_zone: {shortest:g} m straight leaves a {budget:.2f} m HIGH budget "
                           f"after {brake:.2f} m braking and {vehicle.HIGH_MARGIN_M:g} m margin "
                           f"(< {ZONE_MIN_BUDGET_M:g} m: not worth it)")
-    return {"inner": inner[0], "outer": outer[0], "high_for_m": budget, "brake_m": brake,
-            "spacing_m": spacing, "arm_m": spacing + ZONE_ARM_TOLERANCE_M}
+    return {"inner": codes["inner_code"], "outer": codes["outer_code"], "high_for_m": budget,
+            "brake_m": brake, "spacing_m": spacing, "arm_m": spacing + ZONE_ARM_TOLERANCE_M}
 
 
 def _parse_mission(doc, vehicle):
@@ -319,7 +329,7 @@ def _parse_mission(doc, vehicle):
                                              {t.upper() for t in vehicle.RFID_IGNORE_TAGS})
     branch_tags = {r[k] for r in out["BRANCH_LATCH"] for k in ("entry_tag", "exit_tag")}
     out["TAGS"] = _read_tags(doc["tags"], vehicle, branch_tags)
-    out["HIGH_ZONE"] = _read_high_zone(doc["high_zone"], out["TAGS"], vehicle)
+    out["HIGH_ZONE"] = _read_high_zone(doc["high_zone"], vehicle)
     fastest = vehicle.AUTO_HIGH_RPM if out["HIGH_ZONE"] else vehicle.AUTO_RPM
     out["HOME"] = _check_table(out["TAGS"], vehicle, float(fastest))
     out["DESTINATIONS"] = [r["label"] for r in out["TAGS"].values()
