@@ -314,6 +314,10 @@ echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-
 sudo cp /etc/netplan/50-cloud-init.yaml ~/host-staging/50-cloud-init.yaml.installer   # keep the original
 ```
 
+If `/etc/netplan/` is empty (unit 2 was: the installer wrote no file and NM already
+had the Wi-Fi), there is nothing to keep: skip the `cp` and install the files below
+as they are.
+
 The file to install (on unit 1 it is 354 bytes and was last edited 2026-09-21;
 **RECONSTRUCTED**, the content below is the bare header):
 
@@ -541,10 +545,11 @@ candump -n 5 can0                       # frames flow once the drives are powere
 
 ```bash
 sudo apt install -y software-properties-common && sudo add-apt-repository -y universe
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-  -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-http://packages.ros.org/ros2/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/ros2.list
+# Each of these two is ONE line: pasted with a "\" continuation it can arrive as
+# "ros.key \ -o ..." on one line, which downloads nothing (seen on unit 2).
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/ros2.list
+ls -l /usr/share/keyrings/ros-archive-keyring.gpg     # must exist (~1-2 KB) before apt update
 sudo apt update
 
 sudo apt install -y \
@@ -872,9 +877,16 @@ sudo install -d -m 755 /var/www/amr
 sudo install -m 644 -o root -g root amr-waiting.html /var/www/amr/
 sudo ln -sf /etc/nginx/sites-available/amr-kiosk /etc/nginx/sites-enabled/amr-kiosk
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl enable --now nginx
-curl -s http://127.0.0.1/ | head -3        # holding page while amr.service is down
+sudo nginx -t && sudo systemctl enable nginx
+sudo systemctl restart nginx               # restart, not reload: see below
+curl -s http://127.0.0.1/ | grep -c 'AMR system starting'   # 1 while amr.service is down
 ```
+
+`restart`, not `reload` or `enable --now`: the package starts nginx on install with
+the default site on `0.0.0.0:80`, and a reload cannot rebind that to
+`127.0.0.1:80`. It logs `bind() to 127.0.0.1:80 failed (98)` in
+`/var/log/nginx/error.log`, keeps the old config and keeps serving "Welcome to
+nginx!" (seen on unit 2). `ss -ltn | grep ':80 '` must show `127.0.0.1:80` only.
 
 If the web port ever changes, change it in **one** place: this nginx file.
 
