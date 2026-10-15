@@ -82,8 +82,8 @@ def _rows() -> tuple[Alarm, ...]:
           "Put the selector back to AUTO and press Start.",
           "Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO."),
         a("DRIVES_NOT_READY", WARN, "start_button", "Stopped: the motors are not powered",
-          "MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety "
-          "reset if the E-stop was used).",
+          "Press Arm on the Manual page (after the cabinet's safety reset if the E-stop was "
+          "used).",
           "DriveStatus not operational while something wanted to move: the hold cause 'drives', "
           "or the mux gating a command. Since 2026-10-08 the drives are powered only on demand "
           "(DriveStatus.power_reason says why not)."),
@@ -112,7 +112,7 @@ def _rows() -> tuple[Alarm, ...]:
         # ---- the laser scanner ----
         a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
-          "No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, "
+          "No /scan at all: the nanoScan3 driver could not reach 192.168.1.10:6060 (cable, power, "
           "netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults "
           "and nothing else reports it - this row is the only place it shows. The vehicle's STOP is "
           "the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, "
@@ -124,9 +124,9 @@ def _rows() -> tuple[Alarm, ...]:
 
         # ---- the panel and the command mux ----
         a("PANEL_STALE", ERROR, "engineer", "The control panel is not answering",
-          "Call the engineer: the panel wiring or the I/O island is down.",
-          "No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion "
-          "authority at all without it."),
+          "Call the engineer: the web panel node is down (restart the vehicle software).",
+          "No fresh, valid PanelState: web_panel_node (aop-demo-oct; panel_node on a vehicle with the "
+          "DIO island) down. No motion authority and no drive power without it."),
         a("NOT_LEASED", WARN, "auto", "Waiting for the supervisor",
           "Wait. If it stays, press Restart on the Home page.",
           "Mux has no fresh ControlLease (supervisor down, starting or in a transaction)."),

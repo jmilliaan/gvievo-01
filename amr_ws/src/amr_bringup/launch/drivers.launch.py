@@ -31,7 +31,9 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument("gyro_sign", default_value="1.0", description="+1 if CCW reads positive"),
             DeclareLaunchArgument(
-                "panel", default_value="real", description="real (DIO island) | fake (SIMULATED, bench only)"
+                "panel",
+                default_value="web",
+                description="web (the web app, aop-demo-oct) | real (DIO island) | fake (SIMULATED, bench)",
             ),
             include(
                 "amr_bringup",

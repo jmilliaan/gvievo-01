@@ -1,38 +1,126 @@
 {% extends "base.html" %}
 {% block title %}AMR — manual{% endblock %}
 {% block body %}
-{# Built for the HMI's height: the line reading and the pad (a square sized by the viewport)
-   on the left, and everything else - vehicle state as one-line rows, speed, jog status, the
-   arming note - is a column on the right. Nothing sits below, so the page never scrolls. #}
-<section class="manual grow">
+{# Built for the HMI's height: the pad (a square sized by the viewport) on the left, and
+   everything else - Arm / Disarm, vehicle state as one-line rows, speed, jog status, the
+   scanner's view - is a column on the right. Nothing sits below, so the page never scrolls.
+   aop-demo-oct: there is no physical panel. This page arms the drives (web_panel_node);
+   they boot disarmed, and a drive fault disarms them. #}
+<section class="manual grow" style="--lt-h:0rem">
   <div class="manual-left">
-    {% include "_line_track.html" %}
     <div id="jog"></div>
   </div>
   <div class="side" id="manual-side">
+    <h2>Drives <small>arm · disarm</small></h2>
+    <div class="bar">
+      <button id="arm-btn" class="big run" type="button" disabled>Arm</button>
+    </div>
+    <p id="arm-note" class="note">Armed = motors powered and holding at zero. A jog button must be held to move.</p>
     <h2>Vehicle <small>supervisor · mux</small></h2>
     <div id="manual-state" class="tel-grid rows"></div>
     <p id="manual-reason" class="note"></p>
-    <p class="note"><b>Arming is the physical panel's job</b>: the selector resting in MANUAL energises the drives at zero. This page cannot arm, clear a drive alarm or change the mode.</p>
+    <h2>Scanner <small>display only</small></h2>
+    <canvas id="radar" style="width:100%;height:16rem;display:block" aria-label="What the safety scanner sees around the vehicle"></canvas>
+    <p id="radar-note" class="note">–</p>
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/linetrack.js"></script>
-<script src="/static/jogpad.js"></script>
+{% block scripts %}<script src="/static/jogpad.js"></script>
 <script>
 jogpad(document.getElementById('jog'));
 // Speed + jog status go under the vehicle rows on the right; the pad keeps the whole left column.
 document.getElementById('manual-side').insertBefore(document.querySelector('#jog .jog-foot'), document.getElementById('manual-reason'));
+
+// ---- Arm / Disarm -------------------------------------------------------------------
+const armBtn = document.getElementById('arm-btn');
+let armed = false, armBusy = false;
+armBtn.onclick = async () => {
+  if (armBusy) return;
+  const want = !armed;
+  armBusy = true; armBtn.disabled = true;
+  try {
+    const r = await api('/api/arm', { arm: want });
+    if (r.status === 200) log(r.data.message);  // a refusal is logged by request() itself
+  } catch (e) {
+    log('/api/arm: no response (check the Drives row before retrying)', 'bad');
+  } finally { armBusy = false; }
+};
+function armView(st) {
+  const p = st.panel, d = st.drives;
+  const fresh = p && p.valid && p.age_s <= 1.0;
+  armed = !!(fresh && p.manual_arm);
+  armBtn.textContent = armed ? 'Disarm' : 'Arm';
+  armBtn.className = armed ? 'big danger' : 'big run';
+  armBtn.disabled = armBusy || !fresh;
+  const note = document.getElementById('arm-note');
+  if (!fresh) note.textContent = 'No web panel: arming is unavailable.';
+  else if (d && d.link === 'fault') note.textContent = 'Drive fault: disarmed. Clear it (see Alarms), then arm again.';
+  else if (armed && d && !d.operational) note.textContent = 'Arming… ' + (d.power_reason || '');
+  else if (armed) note.textContent = 'Armed: motors powered and holding at zero. Hold a jog button to move.';
+  else note.textContent = 'Disarmed: power stage off, wheels still measured. Arm to jog.';
+}
+
 onState(st => {
-  const m = st.mode, mx = st.mux, l = st.lease;
+  const m = st.mode, mx = st.mux, l = st.lease, d = st.drives;
+  armView(st);
   tiles('manual-state', [
     ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
+    ['Drives', d ? (d.operational ? 'POWERED' : (d.link || '–').toUpperCase()) : '–', d ? (d.power_reason || '—') : 'no drive status', d && d.operational ? '' : 'warn'],
     ['Manual', yesno(m && m.manual_available), 'allowed by supervisor', m && m.manual_available ? '' : 'warn'],
     ['Command', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
     ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
-  lineTrack(st.line_track);
-  rfidTags(st.rfid);
   document.getElementById('manual-reason').textContent = [mx && mx.reason ? `mux: ${mx.reason}` : '', m && m.reason ? m.reason : ''].filter(Boolean).join(' · ');
 });
+
+// ---- Scanner view: the vehicle outline at the centre, forward = up (GET /api/demo) ----
+(function () {
+  const canvas = document.getElementById('radar'), ctx = canvas.getContext('2d');
+  const VIEW_M = 4;
+  let outline = [], pts = [], near = [], fresh = false;
+  const css = getComputedStyle(document.body);
+  const color = (name, dflt) => (css.getPropertyValue(name).trim() || dflt);
+  apiGet('/api/footprint').then(r => { if (r.status === 200) { outline = r.data.polygon || []; draw(); } }).catch(() => {});
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, k = (Math.min(w, h) / 2 - 4) / VIEW_M;
+    const sx = (x, y) => cx - y * k, sy = (x, y) => cy - x * k;  // body x forward -> up, y left -> left
+    ctx.strokeStyle = color('--rule', '#888'); ctx.lineWidth = 1;
+    for (let r = 1; r <= VIEW_M; r++) { ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, Math.PI * 2); ctx.stroke(); }
+    if (outline.length > 2) {
+      ctx.beginPath();
+      outline.forEach((p, i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, sx(p[0], p[1]), sy(p[0], p[1])));
+      ctx.closePath();
+      ctx.fillStyle = color('--surface-2', '#ddd'); ctx.fill();
+      ctx.strokeStyle = color('--ink', '#000'); ctx.lineWidth = 2; ctx.stroke();
+    }
+    const dot = (list, c) => { ctx.fillStyle = c; for (const p of list) ctx.fillRect(sx(p[0], p[1]) - 2, sy(p[0], p[1]) - 2, 4, 4); };
+    ctx.globalAlpha = fresh ? 1 : 0.35;
+    dot(pts, color('--ink-2', '#444'));
+    dot(near, color('--hazard', '#e60'));
+    ctx.globalAlpha = 1;
+  }
+  async function poll() {
+    try {
+      if (!document.hidden) {
+        const { status, data } = await apiGet('/api/demo');
+        if (status === 200) {
+          fresh = data.status !== 'standby';
+          if (fresh) { pts = data.points || []; near = data.near_points || []; }
+          document.getElementById('radar-note').textContent = !fresh ? 'no fresh scan'
+            : data.nearest_m === null ? 'nothing within 4 m' : `closest ${num(data.nearest_m, 1)} m from the outline`;
+          draw();
+        }
+      }
+    } catch (e) { fresh = false; draw(); }
+    setTimeout(poll, 500);
+  }
+  window.addEventListener('resize', draw);
+  poll();
+})();
 </script>{% endblock %}

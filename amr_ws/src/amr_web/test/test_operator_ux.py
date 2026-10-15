@@ -280,7 +280,7 @@ def test_events_carry_the_catalogue_title(tmp_path):
 
 def test_a_fresh_session_lands_on_the_engineer_view(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    assert client.get("/").headers["Location"].endswith("/status")
+    assert client.get("/").headers["Location"].endswith("/manual")
     assert client.get("/api/role").get_json()["role"] == role.ENGINEER
 
 
@@ -290,17 +290,19 @@ def test_the_home_page_is_the_operators_landing_page(tmp_path):
     assert client.get("/").headers["Location"].endswith("/home")
     body = client.get("/home").get_data(as_text=True)
     assert 'id="home-primary"' in body
-    # the operator's nav: no Params, no Monitor, no Commission
+    # the operator's nav (aop-demo-oct): Home, Manual, Alarms - no Params, no Monitor
     assert "/params" not in body and "/monitor" not in body
-    assert "/run" in body and "/alarms" in body
+    assert "/manual" in body and "/alarms" in body
+    for gone in ("/run", "/status", "/io", "/commissioning"):
+        assert f'href="{gone}"' not in body, gone
 
 
 def test_the_engineer_pin_opens_the_engineering_nav(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     assert client.post("/api/role", json={"role": "engineer", "pin": "0000"}).status_code == 403
     assert client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    body = client.get("/status").get_data(as_text=True)
-    assert "/params" in body and "/commissioning" in body
+    body = client.get("/manual").get_data(as_text=True)
+    assert "/params" in body and "/monitor" in body
     # and the way back is always open: a guard you cannot leave is a trap
     assert client.post("/api/role", json={"role": "operator"}).status_code == 200
     assert "/params" not in client.get("/home").get_data(as_text=True)
@@ -311,9 +313,9 @@ def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
     rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env)."""
     client, _ = app_for(merged(), tmp_path)
     client.post("/api/role", json={"role": "operator"})
-    assert 'id="btn-restart"' not in client.get("/status").get_data(as_text=True)
+    assert 'id="btn-restart"' not in client.get("/monitor").get_data(as_text=True)
     client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
-    assert 'id="btn-restart"' in client.get("/status").get_data(as_text=True)
+    assert 'id="btn-restart"' in client.get("/monitor").get_data(as_text=True)
 
 
 def test_the_pin_lives_outside_the_repository_and_can_be_overridden(tmp_path, monkeypatch):
@@ -451,42 +453,26 @@ def test_the_engineer_pin_is_typed_on_an_on_page_keypad(tmp_path):
     assert "prompt(" not in js
 
 
-def test_the_manual_page_shows_the_line_reading_above_the_pad(tmp_path):
-    """The MLS reading is read in every mode; the engineer jogs over tape and watches LCP1..3."""
+def test_the_manual_page_arms_jogs_and_shows_the_scanner(tmp_path):
+    """aop-demo-oct: no DIO island - the Manual page carries Arm/Disarm (/api/arm), the jog
+    pad and the scanner's view (/api/demo); no MLS line reading, no RFID."""
     client, _ = app_for(merged(), tmp_path)
     body = client.get("/manual").get_data(as_text=True)
-    assert 'id="line-track"' in body and 'id="lt-lcps"' in body
-    assert body.index('id="line-track"') < body.index('id="jog"')
+    for el in ('id="arm-btn"', 'id="arm-note"', 'id="radar"', 'id="jog"'):
+        assert el in body, el
+    assert "/api/arm" in body and "/api/demo" in body
+    assert 'id="line-track"' not in body and "rf-tags" not in body and "linetrack.js" not in body
 
 
-def test_rfid_tags_show_on_the_manual_and_run_tracked_pages(tmp_path):
-    client, _ = app_for(merged(), tmp_path)
-    for page in ("/manual", "/run-tracked"):
-        body = client.get(page).get_data(as_text=True)
-        assert 'id="rf-status"' in body and 'id="rf-tags"' in body, page
-        assert "rfidTags(st.rfid)" in body, page
-    # the last tag, large for the HMI: Run tracked only (operator, 2026-10-07)
-    assert 'id="rf-last"' in client.get("/run-tracked").get_data(as_text=True)
-    assert 'id="rf-last"' not in client.get("/manual").get_data(as_text=True)
-
-
-def test_home_shows_speed_rfid_and_line_tiles_and_loads_no_mission(tmp_path):
-    """2026-10-08: setting a mission is not a Home thing. Home shows three live readings."""
+def test_home_shows_speed_and_drive_power_and_nothing_tracked(tmp_path):
+    """aop-demo-oct: Home shows the speed and whether the drives are armed. No job, no
+    navigation switch, no RFID/line/marker tiles."""
     client, _ = app_for(merged(), tmp_path)
     body = client.get("/home").get_data(as_text=True)
-    for tile in ("live-speed", "live-rfid", "live-line"):
+    for tile in ("live-speed", "live-arm"):
         assert f'id="{tile}"' in body, tile
-    assert "home-mission" not in body and "/api/mission/run" not in body
-    assert "/static/linetrack.js" in body, "the RFID 'reading now' rule is shared, not copied"
-
-
-def test_home_shows_the_job_beside_the_status_and_cannot_set_it(tmp_path):
-    """2026-10-08: the job is shown on Home, wider than the status block; set on Run tracked."""
-    client, _ = app_for(merged(), tmp_path)
-    body = client.get("/home").get_data(as_text=True)
-    top = body.index('class="home-top"')
-    assert top < body.index('id="home-job"') < body.index('id="home-line"')
-    assert "/api/line/mission" not in body and "<select" not in body
+    for gone in ("live-rfid", "live-line", "live-marker", "home-job", "nav-tracked", "/api/mission/run"):
+        assert gone not in body, gone
 
 
 def test_the_adapter_reports_measured_wheel_speed_as_body_speed(monkeypatch):
@@ -561,71 +547,6 @@ def test_the_adapter_keeps_the_rfid_link_and_the_last_tag_passes():
     assert st["tags"][0]["tag"] == "0020" and st["tags"][0]["rssi_dbm"] == -72.5
 
 
-def _product_app(product, tmp_path):
-    maps = tmp_path / "maps"
-    maps.mkdir(exist_ok=True)
-    stub = Stub(merged())
-    app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"), product=product)
-    app.config["TESTING"] = True
-    return app.test_client(), stub
-
-
-def test_two_run_tabs_and_maps_routes_live_under_run_trackless(tmp_path):
-    """2026-10-02: "Run" was ambiguous with two navigation types."""
-    client, _ = _product_app("both", tmp_path)
-    body = client.get("/status").get_data(as_text=True)
-    assert ">Run tracked<" in body and ">Run trackless<" in body
-    nav = body.split('<nav>')[1].split('</nav>')[0]
-    assert "/maps" not in nav and "/editor" not in nav, "Maps/Routes left the top nav"
-    sub = client.get("/maps").get_data(as_text=True)
-    assert 'class="subnav"' in sub and 'href="/editor"' in sub
-    assert client.get("/run-trackless").status_code == 200
-
-
-def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
-    client, _ = _product_app("slam", tmp_path)
-    assert ">Run tracked<" not in client.get("/status").get_data(as_text=True)
-    assert client.get("/run-tracked").status_code == 404
-    assert client.post("/api/line/clear").status_code == 404
-    client, _ = _product_app("tape", tmp_path)
-    for path in ("/run", "/maps", "/editor"):
-        assert client.get(path).status_code == 404, path
-    assert client.get("/run-tracked").status_code == 200
-
-
-def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
-    client, stub = _product_app("both", tmp_path)
-    listing = client.get("/api/line/missions").get_json()
-    assert "line-a" in listing["missions"] and "empty" not in listing["missions"]
-    assert listing["destinations"]["line-a"] == ["MRU1", "MRU2", "MRU3", "MRU4"], "offered as a list"
-    assert client.post("/api/line/mission", json={"name": "line-a", "destination": "MRU2"}).status_code == 200
-    assert client.post("/api/line/clear").status_code == 200
-    assert stub.calls == [("line_mission", ("line-a", "MRU2")), ("line_clear", ())]
-
-
-def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):
-    """2026-10-07: the physical Start runs from IDLE; motor arming is drive_node's."""
-    client, _ = _product_app("tape", tmp_path)
-    assert "btn-line-arm" not in client.get("/run-tracked").get_data(as_text=True)
-    assert client.post("/api/line/arm").status_code in (404, 405)
-
-
-def test_tracked_trackless_is_one_switch_on_home(tmp_path):
-    """2026-10-08: level 1 of navigation is a Home switch (tracked = LINE, the boot
-    default; trackless = IDLE and its mapping/navigation steps). Run tracked no longer
-    carries mode buttons, and a single-product vehicle has nothing to switch."""
-    client, _ = _product_app("both", tmp_path)
-    home = client.get("/home").get_data(as_text=True)
-    assert 'id="nav-tracked"' in home and 'data-target="line"' in home
-    assert 'id="nav-trackless"' in home and 'data-target="idle"' in home
-    tracked = client.get("/run-tracked").get_data(as_text=True)
-    assert "btn-line-mode" not in tracked and "btn-line-idle" not in tracked
-    for product in ("tape", "slam"):
-        (tmp_path / product).mkdir()
-        client, _ = _product_app(product, tmp_path / product)
-        assert 'id="nav-tracked"' not in client.get("/home").get_data(as_text=True), product
-
-
 def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
     from amr_web.adapter import read_ipc_temp
 
@@ -642,35 +563,10 @@ def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
 
 def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    for page in ("/home", "/status", "/manual"):
+    for page in ("/home", "/manual", "/alarms"):
         body = client.get(page).get_data(as_text=True)
         net = body.index('id="net"')
         assert net < body.index('id="supply"') < body.index('id="ipc-temp"'), page
-
-
-# ---- MLS markers on Home (mls-marker-plan 6.1, 2026-10-09) ----------------------------
-
-
-def _home(tmp_path, markers_enabled):
-    maps = tmp_path / "maps"
-    maps.mkdir(exist_ok=True)
-    app = create_app(Stub(merged()), str(maps), state_dir=str(tmp_path / "state"),
-                     markers_enabled=markers_enabled)
-    app.config["TESTING"] = True
-    return app.test_client().get("/home").get_data(as_text=True)
-
-
-def test_home_has_no_marker_tile_while_markers_are_off(tmp_path):
-    body = _home(tmp_path, False)
-    assert 'id="live-marker"' not in body and "home-live three" not in body
-
-
-def test_home_puts_the_marker_tile_right_after_rfid_when_markers_are_on(tmp_path):
-    body = _home(tmp_path, True)
-    assert 'class="home-live three"' in body
-    rfid, marker, line = (body.index(f'id="{t}"') for t in ("live-rfid", "live-marker", "live-line"))
-    assert rfid < marker < line, "Speed · RFID · Marker on the first row, the line sensor under them"
-    assert "markerReading(" in body, "the marker rule is shared in linetrack.js, not copied"
 
 
 def test_the_adapter_keeps_the_marker_status_and_the_last_markers():

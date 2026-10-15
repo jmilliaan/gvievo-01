@@ -2,9 +2,17 @@
 {% block title %}AMR — monitor{% endblock %}
 {% block body %}
 <p class="note">Diagnostic only — nothing here is in the safety path. Values come from the drive owner's own bus thread (one bounded read per slot); this page never opens a CAN client. A value shown as <b>not available</b> was never read or last timed out.</p>
+{# Moved here from the Status page (removed in aop-demo-oct). The operator only gets Restart on
+   Home, and only when an alarm says the base cannot be rebuilt; an engineer restarts for other
+   reasons (a rebuilt overlay, a changed amr.env) - with the same server-side refusals. #}
+{% if role == ENGINEER %}<div class="bar"><button id="btn-restart" class="danger" title="sudo systemctl restart amr.service">Restart service</button></div>{% endif %}
 <section id="mon" class="mon-grid"><div class="none">connecting…</div></section>
 {% endblock %}
 {% block scripts %}<script>
+if (document.getElementById('btn-restart')) document.getElementById('btn-restart').onclick = () => {
+  if (!confirm('Restart amr.service?\n\nThe drives disarm and this page reconnects in about 10 s. Refused while the wheels turn.')) return;
+  api('/api/service/restart').then(r => { if (r.status === 200) log(r.data.message); });
+};
 const LEVEL = [['OK', 'ok'], ['WARN', 'warn'], ['ERROR', 'bad'], ['STALE', 'bad']];
 async function tick() {
   const { status, data } = await apiGet('/api/diagnostics');

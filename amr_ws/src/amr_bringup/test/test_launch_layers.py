@@ -34,7 +34,8 @@ BASE_EXES = {
     "ekf_node",
     "robot_state_publisher",
 }
-HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node", "rfid_node"}
+# aop-demo-oct: no RFID reader; web_panel_node (the default) or panel_node on a DIO island
+HW_EXES = {"drive_node", "panel_node", "web_panel_node", "sick_safetyscanners2_node"}
 SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
 MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
 LINE_EXES = {"line_follow_node"}
@@ -187,7 +188,7 @@ def test_sim_base_is_fakes_plus_estimation_and_one_description():
 def test_real_base_composes_hardware_once(monkeypatch):
     monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
     c = compose("base.launch.py", real="true")
-    # fake_panel is conditional (panel:=fake); this walk ignores conditions
+    # the three panels are conditional (panel:=web|real|fake); this walk ignores conditions
     assert set(c["exes"]) == HW_EXES | BASE_EXES | {"fake_panel_node"}
     assert c["exes"].count("robot_state_publisher") == 1  # the scanner include no longer brings a second one
     assert c["includes"].count("scanner.launch.py") == 1

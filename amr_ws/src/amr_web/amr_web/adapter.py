@@ -28,7 +28,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
-from std_srvs.srv import Trigger
+from std_srvs.srv import SetBool, Trigger
 from tf2_ros import Buffer, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -358,6 +358,8 @@ class RosAdapter(Node):
             "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
+            # aop-demo-oct: the web app is the panel's Manual Arm (amr_base/web_panel_node)
+            "arm": self.create_client(SetBool, "/amr/panel/arm", callback_group=g),
         }
 
     # ---- subscriptions --------------------------------------------------------------
@@ -483,7 +485,9 @@ class RosAdapter(Node):
 
     def _on_panel(self, m: PanelState) -> None:
         with self._lock:
-            self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto)}
+            self._panel = {
+                "valid": bool(m.valid), "mode_auto": bool(m.mode_auto), "manual_arm": bool(m.manual_arm)
+            }
             self._panel_t = self._now()
 
     def _on_drives(self, m: DriveStatus) -> None:
@@ -745,9 +749,12 @@ class RosAdapter(Node):
         web; the mux enforces it regardless)."""
         with self._lock:
             lease, t, mode = self._lease, self._lease_t, self._mode
+            panel, panel_t = self._panel, self._panel_t
         if not lease or self._now() - t > 1.0:
             return False, "no supervisor lease"
         if lease["allowed"] & 1:
+            if not panel or self._now() - panel_t > 1.0 or not panel.get("manual_arm"):
+                return False, "the drives are disarmed: press Arm first"
             return True, ""
         if lease["allowed"] & 4:
             return False, "a commissioning job is held or running; clear it first"
@@ -1013,6 +1020,12 @@ class RosAdapter(Node):
 
     def ack_fault(self) -> tuple[bool, str]:
         return self._trigger("ack")
+
+    def set_arm(self, arm: bool) -> tuple[bool, str]:
+        r = self._call("arm", SetBool.Request(data=bool(arm)), timeout=5.0)
+        if r is None:
+            return False, f"{self._srv['arm'].srv_name} unavailable"
+        return bool(r.success), r.message
 
 
 class Spinner:

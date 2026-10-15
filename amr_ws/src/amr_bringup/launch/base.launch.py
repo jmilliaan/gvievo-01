@@ -3,7 +3,8 @@
     supervised:=true   mux and drive_node require the supervisor's ControlLease
                        and the keyboard teleop input is off (production);
                        false = unsupervised bench (wrappers), no lease needed
-    real:=true    drive_node (can0), panel_node (DIO) or fake panel, nanoScan3
+    real:=true    drive_node (can0), web_panel (default; panel_node on a DIO island,
+                  or fake panel), nanoScan3
     real:=false   fake_base, fake_imu, fake_panel, optional scan_synth
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
                   imu_bias, scan_gate, ekf_local
@@ -51,6 +52,8 @@ def _compose(context):
                         "pc_loss_ms": cfg("pc_loss_ms"),
                         "feedback_hz": cfg("feedback_hz"),
                         "gyro_sign": cfg("gyro_sign"),
+                        # aop-demo-oct: no MLS on can0 - no track reading, no markers.
+                        "mls_track_mode": "off",
                         **gate,
                     }
                 ],
@@ -67,6 +70,18 @@ def _compose(context):
             ),
             "panel_node",
         )
+        # aop-demo-oct: no DIO island. The web app is the panel (selector fixed at
+        # MANUAL, Arm/Disarm from the Manual page) - amr_base/web_panel_node.py.
+        actions += required(
+            Node(
+                package="amr_base",
+                executable="web_panel_node",
+                name="web_panel",
+                output="screen",
+                condition=LaunchConfigurationEquals("panel", "web"),
+            ),
+            "web_panel",
+        )
         actions.append(
             Node(
                 package="amr_sim",
@@ -79,18 +94,7 @@ def _compose(context):
         )
         if cfg("lidar").perform(context).lower() == "true":
             actions.append(include("amr_bringup", "scanner.launch.py"))
-        # RFID reader (2026-10-02): optional - a missing reader leaves plain line
-        # following and SLAM untouched; respawns so a late cable recovers by itself.
-        actions.append(
-            Node(
-                package="amr_base",
-                executable="rfid_node",
-                name="rfid_node",
-                output="screen",
-                respawn=True,
-                respawn_delay=5.0,
-            )
-        )
+        # aop-demo-oct: no RFID reader.
     else:
         actions += required(
             Node(
@@ -212,7 +216,10 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("feedback_hz", default_value="50.0"),
             DeclareLaunchArgument("gyro_sign", default_value="1.0"),
             DeclareLaunchArgument(
-                "panel", default_value="real", description="real: DIO island | fake: SIMULATED, bench only"
+                "panel",
+                default_value="web",
+                description="web: the web app is the panel (aop-demo-oct) | real: DIO island"
+                " | fake: SIMULATED, bench only",
             ),
             # simulation
             DeclareLaunchArgument("slip_noise_std", default_value="0.0"),

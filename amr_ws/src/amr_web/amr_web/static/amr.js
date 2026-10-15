@@ -50,8 +50,6 @@ const stateListeners = [];
 function onState(fn) { stateListeners.push(fn); }
 let lastState = null;
 const MODE_LEVEL = { STARTING: 'warn', TRANSITIONING: 'warn', FAULT: 'bad', STOPPING: 'bad' };
-const LOC_LEVEL = { CHECKING: 'warn', LOST: 'bad' };
-const RUN_LEVEL = { BLOCKED: 'warn', PAUSED: 'warn', FAULT: 'bad' };
 const FRESH_S = 0.5;  // panel / drives / mux samples older than this are not current
 
 function rail(st) {
@@ -61,7 +59,8 @@ function rail(st) {
   if (!p) tile('tel-selector', '–', 'no panel image', 'bad');
   else if (p.age_s > FRESH_S) tile('tel-selector', 'STALE', `${num(p.age_s, 1)} s old`, 'bad');
   else if (!p.valid) tile('tel-selector', 'INVALID', `${num(p.age_s, 2)} s`, 'bad');
-  else tile('tel-selector', p.mode_auto ? 'AUTO' : 'MANUAL', `${num(p.age_s, 2)} s`);
+  // aop-demo-oct: the web app is the panel; this row is its Arm (Manual page), not a selector
+  else tile('tel-selector', p.manual_arm ? 'ARMED' : 'DISARMED', p.manual_arm ? 'from the web' : 'press Arm on Manual', p.manual_arm ? '' : 'warn');
   const d = st.drives;
   if (!d) tile('tel-drives', '–', 'no drive status', 'bad');
   else if (d.age_s > FRESH_S) tile('tel-drives', 'STALE', `${num(d.age_s, 1)} s old`, 'bad');
@@ -70,19 +69,14 @@ function rail(st) {
   else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', (!d.operational && d.link === 'standby' && d.power_reason) ? d.power_reason : (d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`), d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
   tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
-  // Scanner fields as the mux applies them: protective stops AUTO, warning 1 x0.5, warning 2 a deceleration stop (factor 0).
+  // Scanner fields, display only (aop-demo-oct): manual jog ignores them in software; the
+  // protective field still stops the drives through the FX3 in hardware.
   if (!mx) tile('tel-field', '–', 'no mux state', 'bad');
-  else if (!mx.field_fresh) tile('tel-field', 'NO DATA', 'auto held at zero', 'bad', mxStale);
-  else if (!mx.protective_clear) tile('tel-field', 'PROTECT', 'protective field: auto stopped', 'bad', mxStale);
-  else if (mx.warning_active) tile('tel-field', `WARNING ${mx.warning_level || ''}`.trim(), (mx.speed_scale < 0.01 ? 'auto stopped' : `auto speed x${num(mx.speed_scale, 2)}`), 'warn', mxStale);
+  else if (!mx.field_fresh) tile('tel-field', 'NO DATA', 'no scanner fields', 'bad', mxStale);
+  else if (!mx.protective_clear) tile('tel-field', 'PROTECT', 'protective field occupied', 'bad', mxStale);
+  else if (mx.warning_active) tile('tel-field', `WARNING ${mx.warning_level || ''}`.trim(), 'warning field occupied', 'warn', mxStale);
   else tile('tel-field', 'CLEAR', 'fields clear', '', mxStale);
   tile('tel-wheels', mx ? `${num(mx.left_mps, 2)} / ${num(mx.right_mps, 2)}` : '–', 'm/s · L / R', '', mxStale);
-  const l = st.localization;
-  tile('tel-loc', l ? l.state_name : '–', st.localization_stale ? 'stale (replaced layer)' : (l ? '—' : 'no layer'),
-       l ? LOC_LEVEL[l.state_name] : '', st.localization_stale);
-  const r = st.run;
-  tile('tel-run', r ? r.state_name : '–', st.run_stale ? 'stale (replaced layer)' : (r ? (r.step_id || '—') : 'no executor'),
-       r ? RUN_LEVEL[r.state_name] : '', st.run_stale);
   tile('tel-gen', m ? String(m.generation) : '–', st.lease ? 'lease' : 'no lease', st.lease ? '' : 'warn');
 }
 // Header chips beside NET: drive supply voltage and IPC CPU temperature (both <10 s old).
@@ -173,42 +167,6 @@ async function pollNet() {
   setTimeout(pollNet, 4000);
 }
 pollNet();
-
-// Submit an asynchronous supervisor operation and follow it to a terminal status.
-// A refresh/reconnect recovers progress through /api/operations/<id>; nothing is resubmitted.
-// onDone is called EXACTLY once on every path - success, refusal, network failure, timeout -
-// so a page's busy state always unwinds (review Q11). A request that never got a response
-// may still have executed on the robot; it is not resubmitted, the outcome is "unknown".
-async function operation(path, body, onDone) {
-  const rid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
-  let status, data;
-  try { ({ status, data } = await api(path, Object.assign({ request_id: rid }, body || {}))); }
-  catch (e) { log(`${path}: no response (outcome unknown; check the state before retrying)`, 'bad'); if (onDone) onDone(null); return null; }
-  if (status !== 202) { log(data.message || `refused (${status})`, 'bad'); if (onDone) onDone(null); return null; }
-  log(`accepted: ${data.message} (operation ${data.operation_id})`);
-  return followOperation(data.operation_id, onDone);
-}
-async function followOperation(id, onDone) {
-  const deadline = Date.now() + 300000;
-  let gap = 500;
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, gap));
-    let status, data;
-    try { ({ status, data } = await apiGet(`/api/operations/${id}`)); }
-    catch (e) { gap = Math.min(gap * 2, 4000); continue; }  // offline: back off, keep following the same id
-    gap = 500;
-    if (status !== 200) continue;
-    if (data.status_name !== 'PENDING') {
-      log(`operation ${id}: ${data.status_name}${data.message ? ' — ' + data.message : ''}`, data.status_name === 'SUCCEEDED' ? '' : 'bad');
-      if (onDone) onDone(data);
-      return data;
-    }
-    if (data.phase) tile('tel-mode', '…', data.phase, 'warn');
-  }
-  log(`operation ${id}: still pending after 5 min (outcome unknown)`, 'bad');
-  if (onDone) onDone(null);
-  return null;
-}
 
 // Page error boundary (plan phase 3.4): a bug in a page script used to leave buttons
 // silently dead. Now it says so, keeps the rail polling, and gives the operator a
