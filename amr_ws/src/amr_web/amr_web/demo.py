@@ -32,6 +32,8 @@ SENTENCES = {
 FRESH_S = 2.0
 # The radar shows this far from the vehicle centre; farther points are not sent.
 VIEW_M = 4.0
+# The radar's display range, measured from the scanner (2026-10-15: zoomed in to 3 m).
+RADAR_M = 3.0
 # Default "someone is close" distance from the vehicle outline; content.json near_m overrides.
 NEAR_M = 1.0
 
@@ -91,6 +93,37 @@ def body_points(pose_scan: dict | None) -> list[tuple[float, float]] | None:
         bx, by = c * dx + s * dy, -s * dx + c * dy
         if math.hypot(bx, by) <= VIEW_M:
             out.append((round(bx, 2), round(by, 2)))
+    return out
+
+
+# The nanoScan3 mount in the body frame: on the centreline, facing forward, this far ahead of
+# base_link. Mirrors the laser_x default in amr_description/launch/description.launch.py (a test
+# pins the two together).
+SCANNER_X_M = 0.964
+
+# Field role (amr_bringup/config/scanner_fields.yaml) -> what the page draws, outer first.
+_ZONE_ORDER = ("warning_1", "warning_2", "protective")
+
+
+def zones(doc: dict | None, mount_x: float = SCANNER_X_M) -> list[dict]:
+    """The scanner's protective and warning fields as body-frame polygons, outer first so a
+    canvas draws them back to front. kind: protective | stop (a warning field with scale 0) |
+    slow. Display only - the page explains the fields, it decides nothing. A missing or
+    malformed document is no zones at all."""
+    fields = (doc or {}).get("fields") or {}
+    out = []
+    for role in _ZONE_ORDER:
+        f = fields.get(role)
+        try:
+            r = f["rect"]
+            x0, x1 = float(r["x_min"]) + mount_x, float(r["x_max"]) + mount_x
+            y0, y1 = float(r["y_min"]), float(r["y_max"])
+            kind = "protective" if role == "protective" else ("stop" if float(f["scale"]) == 0.0 else "slow")
+        except (KeyError, TypeError, ValueError):
+            continue
+        poly = [[round(x0, 3), round(y0, 3)], [round(x1, 3), round(y0, 3)],
+                [round(x1, 3), round(y1, 3)], [round(x0, 3), round(y1, 3)]]
+        out.append({"kind": kind, "poly": poly})
     return out
 
 

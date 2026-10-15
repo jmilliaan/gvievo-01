@@ -1,9 +1,9 @@
 {
-  "_comment": "Everything the DEMO page says. Edit text here; no code change needed. Restart amr.service after editing. near_m: how close (m, from the vehicle outline) counts as 'It sees you'; raise or lower it on site.",
-  "product": "AGV I-PRIME",
+  "_comment": "Everything the DEMO page says. Edit text here; no code change needed. Restart amr.service after editing. near_m: how close (m, from the vehicle outline) counts as 'It sees you'; raise or lower it on site. Each card: icon (scanner, layers, bolt, shield, stop, route, load, panel, speed, map, qr) and color (#RRGGBB, the slide's accent); tags (optional) are short pills under the text. Up to 8 cards.",
+  "product": "I-PRIME Trackless AGV",
   "expansion": "Automated Guided Vehicle",
   "tagline": "Smart material handling solution system",
-  "rotate_s": 8,
+  "rotate_s": 9,
   "near_m": 1.0,
   "specs": [
     {
@@ -19,40 +19,74 @@
       "label": "carrying method, built to your load"
     },
     {
-      "value": "2 modes",
-      "label": "tape guided or tape-free"
+      "value": "3 ways",
+      "label": "to navigate: tape, laser map, QR code"
     }
   ],
   "cards": [
     {
-      "kicker": "Safety first",
-      "title": "It watches where it goes",
-      "body": "The live view on the left is what its laser safety scanner sees right now. On the move, the AGV stops for people in its path and continues by itself once the way is clear."
+      "icon": "scanner",
+      "color": "#0EA5A4",
+      "kicker": "Safety · laser scanner",
+      "title": "It sees, slows, and stops",
+      "body": "The live view on the left is its SICK safety laser scanner. Layered fields ahead of the vehicle: in the outer zone it slows down, in the inner zone it stops, and the protective zone cuts motor power. Once the way is clear it carries on by itself.",
+      "tags": ["SICK nanoScan3", "3 safety fields", "automatic resume"]
     },
     {
-      "kicker": "One platform",
-      "title": "Two ways to find its way",
-      "body": "Start with magnetic tape on the floor today. When your layout changes, the same vehicle can move to tape-free navigation."
+      "icon": "bolt",
+      "color": "#7C3AED",
+      "kicker": "Safety · certified drives",
+      "title": "Safe Torque Off",
+      "body": "Its drives carry a TÜV SÜD-certified Safe Torque Off function: when the safety system says stop, the motors lose their power in hardware, not in software.",
+      "tags": ["SIL 2", "PL d · Cat. 3", "TÜV SÜD"]
     },
     {
-      "kicker": "Tape guided",
-      "title": "Follows a line, reliably",
-      "body": "The AGV follows a magnetic strip on the floor and stops at marked stations. Quick to install, easy to change: move the tape, change the route."
+      "icon": "shield",
+      "color": "#2563EB",
+      "kicker": "Safety · built to standard",
+      "title": "Designed to CE and ISO 3691-4",
+      "body": "Designed to CE machinery requirements and to ISO 3691-4, the safety standard for driverless industrial trucks. Emergency stops within reach from every side; after one is pressed, it waits for a person before it moves again.",
+      "tags": ["CE", "ISO 3691-4", "E-stop all round"]
     },
     {
-      "kicker": "Tape-free",
-      "title": "Learns your factory",
-      "body": "Drive it around the site once and it builds its own map. Routes are drawn on a screen. No floor work at all."
+      "icon": "speed",
+      "color": "#EA580C",
+      "kicker": "Speed & payload",
+      "title": "2 tonnes at up to 1 m/s",
+      "body": "Moves loads up to 2 tonnes at up to 1 metre per second, with smooth, jerk-limited starts and stops so the load stays where you put it.",
+      "tags": ["up to 2 T", "up to 1 m/s", "smooth ramps"]
     },
     {
-      "kicker": "Always in reach",
-      "title": "Stop it any time",
-      "body": "Emergency stop buttons sit on the vehicle, within reach from every side. One press stops the drive at once."
+      "icon": "load",
+      "color": "#DB2777",
+      "kicker": "Custom handling",
+      "title": "Built around your load",
+      "body": "Towing hitch, lifting top, roller conveyor or a fixture of your own: we build the carrying method around what you move, how you load it, and where it goes.",
+      "tags": ["tow", "lift", "conveyor", "custom top"]
     },
     {
-      "kicker": "Your factory",
-      "title": "Made for your material flow",
-      "body": "Tell us what you move, how far and how often. We configure AGV I-PRIME for your load, your route and your line."
+      "icon": "route",
+      "color": "#16A34A",
+      "kicker": "Tape guided & tape-free",
+      "title": "Tape today, tape-free tomorrow",
+      "body": "Start with magnetic tape on the floor: quick to lay, easy to change, with RFID tags marking the stations. When your layout grows, the same vehicle switches to tape-free navigation with no floor work at all.",
+      "tags": ["magnetic tape", "RFID stops", "same vehicle"]
+    },
+    {
+      "icon": "map",
+      "color": "#4F46E5",
+      "kicker": "Navigation · LiDAR SLAM",
+      "title": "It maps your factory",
+      "body": "Drive it around once: SLAM fuses the laser scans with wheel odometry and a gyro to build a 5 cm occupancy map. In service, a particle filter localises against that map and the planner follows routes you draw on screen.",
+      "tags": ["slam_toolbox", "EKF fusion", "AMCL", "Nav2", "ROS 2"]
+    },
+    {
+      "icon": "qr",
+      "color": "#0891B2",
+      "kicker": "Navigation · QR code",
+      "title": "Codes on the floor, exact stops",
+      "body": "For dense, repeatable layouts: a downward camera reads QR codes laid in a floor grid, each one an absolute position fix. Between codes the wheels and gyro carry the position, so stops at stations land in the same place every time.",
+      "tags": ["floor QR grid", "absolute fixes", "dead reckoning"]
     }
   ]
 }

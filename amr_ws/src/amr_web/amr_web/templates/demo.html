@@ -4,14 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ c.product }}</title>
-{# The visitors' page (manuals/plans/2026-09-23-demo-page.md). Deliberately NOT base.html:
-   no nav, no rail, no role button, so nobody on a show floor can tap into Manual.
-   Read-only - the only request it makes is GET /api/demo. Text comes from
-   static/demo/content.json. The display unit is stationary: the live side is the
-   safety scanner's view, not motion. Fits 1280x720 with nothing below the fold. #}
+{# The visitors' page and, since 2026-10-15, the landing page (manuals/plans/2026-09-23-demo-page.md).
+   Deliberately NOT base.html: no nav, no rail, no role button, so nobody on a show floor can tap
+   into Manual. Read-only - the only request it makes is GET /api/demo. Text and slide colours
+   come from static/demo/content.json. Left: what the safety scanner sees, with its real fields
+   (scanner_fields.yaml) drawn around the vehicle. Right: the feature slides. Fits 1280x720 with
+   nothing below the fold. #}
 <link rel="stylesheet" href="/static/demo.css">
 </head>
 <body class="demo">
+{# icon sprite: one <symbol> per content.json card icon #}
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-scanner" viewBox="0 0 48 48"><circle cx="24" cy="30" r="5"/><path d="M14 20a14 14 0 0 1 20 0M8 14a22 22 0 0 1 32 0"/><path d="M18 42h12"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 48 48"><path d="M24 6 42 16 24 26 6 16z"/><path d="M6 24l18 10 18-10"/><path d="M6 32l18 10 18-10"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 48 48"><path d="M27 4 10 27h12l-3 17 19-25H26z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 48 48"><path d="M24 4 40 10v12c0 10-7 18-16 22C15 40 8 32 8 22V10z"/><path d="m17 24 5 5 9-10"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 48 48"><path d="M17 4h14l13 13v14L31 44H17L4 31V17z"/><path d="M17 24h14"/></symbol>
+  <symbol id="i-route" viewBox="0 0 48 48"><circle cx="11" cy="37" r="5"/><circle cx="37" cy="11" r="5"/><path d="M16 37h14a7 7 0 0 0 0-14H18a7 7 0 0 1 0-14h14"/></symbol>
+  <symbol id="i-load" viewBox="0 0 48 48"><path d="M8 18h32v18H8z"/><path d="M14 18V10h20v8"/><circle cx="15" cy="40" r="3"/><circle cx="33" cy="40" r="3"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 48 48"><rect x="6" y="8" width="36" height="26" rx="3"/><path d="M18 42h12M24 34v8"/><path d="m14 22 5 5 9-10"/></symbol>
+  <symbol id="i-speed" viewBox="0 0 48 48"><path d="M8 34a16 16 0 1 1 32 0"/><path d="m24 34 9-11"/><circle cx="24" cy="34" r="3"/><path d="M12 22l3 2M24 14v4M36 22l-3 2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 48 48"><path d="M6 12l12-5 12 5 12-5v29l-12 5-12-5-12 5z"/><path d="M18 7v29M30 12v29"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 48 48"><path d="M8 8h12v12H8zM28 8h12v12H28zM8 28h12v12H8z"/><path d="M28 28h5v5h-5zM35 35h5v5h-5zM35 28h5M28 40h3"/></symbol>
+</svg>
+
 <header class="d-head">
   <div class="d-brand">
     <div class="d-product">{{ c.product }}</div>
@@ -36,25 +52,42 @@
           <span id="d-sentence" class="d-sentence">Standing by for the next demonstration</span>
         </div>
       </div>
-      <div class="d-near"><span id="d-nearest">–</span><small> m</small><div>closest to it</div></div>
     </div>
     <div class="d-radar-wrap">
-      <canvas id="d-radar" data-outline='{{ outline | tojson }}' data-view="{{ view_m }}"></canvas>
+      <canvas id="d-radar-bg" aria-hidden="true"></canvas>
+      <canvas id="d-radar" data-outline='{{ outline | tojson }}' data-zones='{{ zones | tojson }}'
+              data-view="{{ view_m }}" aria-label="Live view of the safety laser scanner"></canvas>
+    </div>
+    <div class="d-legend">
+      <span><i class="z-slow"></i>Slow-down zone</span>
+      <span><i class="z-stop"></i>Stop zone</span>
+      <span><i class="z-protective"></i>Protective zone</span>
+      <span><i class="z-point"></i>What it sees</span>
     </div>
   </section>
 
   <section class="d-story">
     <div class="d-cards" id="d-cards" data-rotate="{{ c.rotate_s or 8 }}">
-      {% for card in c.cards %}
-      <article class="d-card{{ ' on' if loop.first }}">
-        <div class="d-kicker"><span>{{ '%02d' % loop.index }}</span>{{ card.kicker }}</div>
-        <h2>{{ card.title }}</h2>
-        <p>{{ card.body }}</p>
-      </article>
-      {% endfor %}
+      <div class="d-track" id="d-track">
+        {% for card in c.cards[:8] %}
+        <article class="d-slide" style="--accent:{{ card.color or '#C8102E' }}">
+          <div class="d-slide-top">
+            <span class="d-icon"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#i-{{ card.icon or 'shield' }}"/></svg></span>
+            <span class="d-num">{{ '%02d' % loop.index }}<small> / {{ '%02d' % (c.cards[:8] | length) }}</small></span>
+          </div>
+          <div class="d-kicker">{{ card.kicker }}</div>
+          <h2>{{ card.title }}</h2>
+          <p>{{ card.body }}</p>
+          {% if card.tags %}<ul class="d-tags">{% for t in card.tags %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}
+        </article>
+        {% endfor %}
+      </div>
     </div>
-    <div class="d-dots" id="d-dots">
-      {% for card in c.cards %}<button type="button" class="{{ 'on' if loop.first }}" aria-label="{{ card.kicker }}"></button>{% endfor %}
+    <div class="d-nav">
+      <div class="d-dots" id="d-dots">
+        {% for card in c.cards[:8] %}<button type="button" class="{{ 'on' if loop.first }}" style="--accent:{{ card.color or '#C8102E' }}" aria-label="{{ card.kicker }}"></button>{% endfor %}
+      </div>
+      <div class="d-progress"><i id="d-progress"></i></div>
     </div>
     <div class="d-specs">
       {% for sp in c.specs %}

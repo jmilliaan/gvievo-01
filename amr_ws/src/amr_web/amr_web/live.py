@@ -23,6 +23,7 @@ import numpy as np
 from amr_web.png import encode_gray
 
 MAX_POINTS = 400
+BODY_FRAME = "base_footprint"
 
 
 def grid_to_gray(data: list[int] | np.ndarray, width: int, height: int) -> np.ndarray:
@@ -71,6 +72,11 @@ class LiveStore:
         self.scan = None  # list of (x, y)
         self.scan_frame = ""
         self.scan_t = 0.0
+        # The same scan in the vehicle's own frame (2026-10-15), through the static
+        # base_footprint -> laser_frame transform only: no odometry, so the demo radar works
+        # with the drives off or faulted. Not tied to a generation - the body frame never moves.
+        self.body_scan = None
+        self.body_scan_t = 0.0
 
     def set_generation(self, gen: int) -> None:
         with self._lock:
@@ -99,6 +105,25 @@ class LiveStore:
         with self._lock:
             self.scan, self.scan_frame = pts, frame
             self.scan_t = time.monotonic() - max(0.0, float(source_age_s))
+
+    def set_body_scan(self, pts, source_age_s: float = 0.0) -> None:
+        with self._lock:
+            self.body_scan = pts
+            self.body_scan_t = time.monotonic() - max(0.0, float(source_age_s))
+
+    def body_pose_scan(self) -> dict | None:
+        """The body-frame scan in pose_scan()'s shape (an identity pose in base_footprint), for
+        demo.view. None until a scan has been projected."""
+        now = time.monotonic()
+        with self._lock:
+            if self.body_scan is None:
+                return None
+            age = now - self.body_scan_t
+            return {
+                "generation": self.generation,
+                "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0, "frame": BODY_FRAME, "age_s": age},
+                "scan": {"points": self.body_scan, "frame": BODY_FRAME, "age_s": age},
+            }
 
     def map_meta(self) -> dict | None:
         with self._lock:

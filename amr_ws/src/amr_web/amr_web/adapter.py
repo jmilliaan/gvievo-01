@@ -428,6 +428,7 @@ class RosAdapter(Node):
         if now - self._scan_seen_t < SCAN_PERIOD_S:
             return
         self._scan_seen_t = now
+        self._body_scan(m)
         frame = self._world_frame()
         # Never wait here. The EKF's odom TF lands 20-40 ms after the scan it covers (more
         # under SLAM load), so a blocking lookup at the scan stamp missed every scan on the
@@ -446,6 +447,19 @@ class RosAdapter(Node):
             m.ranges, m.angle_min, m.angle_increment, m.range_min, m.range_max, tr.x, tr.y, live.yaw_of(q)
         )
         self.live.set_scan(pts, frame, self._stamp_age(m.header.stamp))
+
+    def _body_scan(self, m: LaserScan) -> None:
+        """The scan in base_footprint through the static mount transform alone, for the demo
+        radar: it needs no odometry, so it shows with the drives off or faulted (2026-10-15)."""
+        try:
+            t = self._tf_buffer.lookup_transform(live.BODY_FRAME, m.header.frame_id, Time())
+        except Exception:  # noqa: BLE001 - robot_state_publisher not up yet
+            return
+        tr, q = t.transform.translation, t.transform.rotation
+        pts = live.scan_points(
+            m.ranges, m.angle_min, m.angle_increment, m.range_min, m.range_max, tr.x, tr.y, live.yaw_of(q)
+        )
+        self.live.set_body_scan(pts, self._stamp_age(m.header.stamp))
 
     # A replaced layer's map->odom must not be drawn (plan §5.3 step 5). This used to
     # rebuild the TF listener on a generation change; destroying its subscriptions while

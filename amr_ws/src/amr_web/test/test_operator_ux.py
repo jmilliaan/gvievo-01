@@ -280,14 +280,14 @@ def test_events_carry_the_catalogue_title(tmp_path):
 
 def test_a_fresh_session_lands_on_the_engineer_view(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    assert client.get("/").headers["Location"].endswith("/manual")
+    assert client.get("/").headers["Location"].endswith("/demo")  # the landing page (2026-10-15)
     assert client.get("/api/role").get_json()["role"] == role.ENGINEER
 
 
 def test_the_home_page_is_the_operators_landing_page(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     client.post("/api/role", json={"role": "operator"})
-    assert client.get("/").headers["Location"].endswith("/home")
+    assert client.get("/").headers["Location"].endswith("/demo")  # the landing page (2026-10-15)
     body = client.get("/home").get_data(as_text=True)
     assert 'id="home-primary"' in body
     # the operator's nav (aop-demo-oct): Home, Manual, Alarms - no Params, no Monitor

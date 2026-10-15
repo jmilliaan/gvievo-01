@@ -801,8 +801,11 @@ The panel is a 6–7" touch display (Goodix `27c6:0818`, works with stock
 ```bash
 sudo apt install -y --no-install-recommends \
   xfce4 xfce4-session xfce4-terminal lightdm lightdm-gtk-greeter \
-  xserver-xorg-core x11-xserver-utils \
+  xserver-xorg-core xserver-xorg-input-libinput x11-xserver-utils \
   matchbox-window-manager nginx-light unclutter curl
+# xserver-xorg-input-libinput is mandatory: --no-install-recommends otherwise leaves
+# X with no input driver ("No input driver specified, ignoring this device" in
+# /var/log/Xorg.0.log) and the touchscreen does nothing.
 # Do NOT install xserver-xorg-video-intel (legacy DDX is unreliable on Alder Lake-N;
 # the xorg.conf.d file below forces modesetting) and do NOT install xfce4-power-manager
 # (blanking is disabled at the X server level instead).

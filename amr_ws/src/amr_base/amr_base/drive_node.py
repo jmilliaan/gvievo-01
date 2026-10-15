@@ -560,7 +560,10 @@ class DriveNode(Node):
                 self._publish_status(link, imu)
                 self._publish_pp(link, now)
 
-            if self._mon is not None and link.state != canopen.DISARMED:
+            # The monitor polls in EVERY link state, disarmed included (2026-10-15): SDO reads
+            # answer in any CiA 402 state, FAULT too, so a drive that fails preflight still
+            # reports its supply voltage and temperatures. Read-only, one upload per slot.
+            if self._mon is not None:
                 moving = link.applied is not None and link.applied != (0, 0)
                 if now - t_mon >= self._mon_periods[1 if moving else 0]:
                     t_mon = now

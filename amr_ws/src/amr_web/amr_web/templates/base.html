@@ -24,11 +24,12 @@
 <body>
 <header>
   <h1>AMR control</h1>
-  {# Two navs, one page. The operator gets three tabs (everything they can act on);
-     the engineer keeps all five. Hidden pages stay reachable by URL - the PIN is a
+  {# Two navs, one page. The operator gets four tabs (everything they can act on);
+     the engineer keeps all six. Hidden pages stay reachable by URL - the PIN is a
      mistake guard, not security (amr_web/role.py). aop-demo-oct: a manual-only
      vehicle - no Run tracked/trackless, Status, I/O or Commission. #}
   <nav>
+    <a href="/demo">Demo</a>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
@@ -36,8 +37,8 @@
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
     {% endif %}
-    {# The visitors' Demo page (/demo, demo.py) is DEPRECATED since 2026-10-02: no nav link;
-       the route still serves for anyone who has the URL. #}
+    {# Demo (/demo, demo.py) is the visitors' page and, since 2026-10-15, the landing page. It
+       has no nav of its own; its ✕ comes back to Home. #}
   </nav>
   <button id="role-btn" class="ui-size role-btn" type="button"
           title="{{ 'Engineer view: press to go back to the operator view' if role == ENGINEER else 'Engineer view (PIN)' }}"

@@ -73,6 +73,21 @@ def _body():
     return d, None
 
 
+def _demo_zones() -> list[dict]:
+    """The scanner's fields for the demo radar, from amr_bringup's scanner_fields.yaml (the file
+    base.launch gives the mux). Read as a file: amr_bringup exec_depends on amr_web, so importing
+    amr_bringup.scanner_fields here would be a dependency cycle. No file, no zones."""
+    try:
+        import yaml  # noqa: PLC0415
+        from ament_index_python.packages import get_package_share_directory  # noqa: PLC0415
+
+        path = os.path.join(get_package_share_directory("amr_bringup"), "config", "scanner_fields.yaml")
+        with open(path, encoding="utf-8") as fh:
+            return demomod.zones(yaml.safe_load(fh))
+    except Exception:  # noqa: BLE001 - a dev box without the bringup share: the radar draws no zones
+        return []
+
+
 def create_app(
     adapter: Adapter,
     maps_dir: str,
@@ -103,7 +118,9 @@ def create_app(
 
     @app.get("/")
     def index():
-        return redirect("/home" if _role() == rolemod.OPERATOR else "/manual")
+        # The demo is the landing page on start (2026-10-15): the kiosk opens / (through nginx,
+        # whose "starting" page refreshes / until the app answers) and so does the tablet.
+        return redirect("/demo")
 
     @app.get("/home")
     def page_home():
@@ -156,8 +173,8 @@ def create_app(
         return jsonify(adapter.state())
 
     # ---- DEMO page: visitors, not operators (manuals/plans/2026-09-23-demo-page.md) ----
-    # DEPRECATED 2026-10-02 (operator): no nav link any more; the route stays until removed.
-    # Open to both roles, read-only. Everything it may say is decided in demo.py.
+    # The landing page since 2026-10-15 (the Demo tab leads back to it). Open to both roles,
+    # read-only. Everything it may say is decided in demo.py.
     demo_path = os.path.join(app.static_folder or "", "demo", "content.json")
     try:
         with open(demo_path, encoding="utf-8") as fh:
@@ -169,14 +186,22 @@ def create_app(
         demo_near_m = float(demo_content.get("near_m", demomod.NEAR_M))
     except (TypeError, ValueError):
         demo_near_m = demomod.NEAR_M
+    demo_zones = _demo_zones()
 
     @app.get("/demo")
     def page_demo():
-        return render_template("demo.html", c=demo_content, outline=demo_outline, view_m=demomod.VIEW_M)
+        return render_template(
+            "demo.html", c=demo_content, outline=demo_outline, zones=demo_zones, view_m=demomod.RADAR_M
+        )
 
     @app.get("/api/demo")
     def api_demo():
-        ps = adapter.live.pose_scan() if hasattr(adapter, "live") else None
+        # The body-frame scan first: it needs no odometry, so the radar shows with the drives
+        # off or faulted. The odometry-projected one is the fallback (and the offline demo server).
+        ps = None
+        if hasattr(adapter, "live"):
+            body = getattr(adapter.live, "body_pose_scan", None)
+            ps = (body() if body else None) or adapter.live.pose_scan()
         return jsonify(demomod.view(ps, fp.polygon, demo_near_m))
 
     wifi_reader = wifi.WifiReader(wifi_iface)

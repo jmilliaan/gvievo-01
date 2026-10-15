@@ -1,4 +1,4 @@
-"""The DEMO page (manuals/plans/2026-09-23-demo-page.md).
+"""The DEMO page (manuals/plans/2026-09-23-demo-page.md), the landing page since 2026-10-15.
 
 The display unit is stationary. The contract is about what a visitor can and cannot
 see or do: the safety scanner's view around the vehicle outline, three sentences and
@@ -11,12 +11,15 @@ import math
 import os
 import re
 
+import yaml
 from agv_core import alarms as cat
 from amr_web.server import create_app
 
 from amr_web import demo, role
 
 WEB = os.path.join(os.path.dirname(__file__), "..", "amr_web")
+SRC = os.path.join(os.path.dirname(__file__), "..", "..")
+ICONS = {"scanner", "layers", "bolt", "shield", "stop", "route", "load", "panel", "speed", "map", "qr"}
 
 OK_DRIVES = {"operational": True, "left": "Operation enabled", "right": "Operation enabled", "age_s": 0.05}
 
@@ -193,21 +196,23 @@ def test_no_fault_vocabulary_ever_reaches_the_page(tmp_path):
 # ---- the page -------------------------------------------------------------------
 
 
-def test_deprecated_page_has_no_link_but_still_serves(tmp_path):
-    """Deprecated 2026-10-02: out of the nav for both roles; the URL still works."""
+def test_demo_is_the_landing_page(tmp_path):
+    """2026-10-15: / opens the demo for both roles (the kiosk starts on /); the Demo tab leads
+    back to it from the operator pages."""
     cl = client_for(st(), tmp_path, ps([(3.0, 0.0)]))
-    assert 'href="/demo"' not in cl.get("/home").get_data(as_text=True)
+    assert cl.get("/").headers["Location"].endswith("/demo")
+    assert 'href="/demo"' in cl.get("/home").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
     assert cl.get("/api/demo").get_json()["status"] == demo.WATCHING
     assert cl.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    assert 'href="/demo"' not in cl.get("/status").get_data(as_text=True)
-    assert cl.get("/demo").status_code == 200
+    assert cl.get("/").headers["Location"].endswith("/demo")
+    assert 'href="/demo"' in cl.get("/manual").get_data(as_text=True)
 
 
 def test_the_page_says_what_the_product_is(tmp_path):
     body = client_for(st(), tmp_path).get("/demo").get_data(as_text=True)
-    want = ("AGV I-PRIME", "Automated Guided Vehicle", "Smart material handling solution system")
-    want += ("2 T", "1 m/s", "data-outline=")
+    want = ("I-PRIME Trackless AGV", "Automated Guided Vehicle", "Smart material handling solution system")
+    want += ("2 T", "1 m/s", "data-outline=", "data-zones=", "ISO 3691-4")
     for s in want:
         assert s in body, s
     assert "stands for" not in body
@@ -217,6 +222,9 @@ def test_the_page_says_what_the_product_is(tmp_path):
     # a visitor cannot navigate into the operator pages from here
     for href in ('href="/manual"', 'href="/run"', 'href="/params"', 'href="/home"'):
         assert href not in body, href
+    # one sliding card per content.json card, eight at most, each in its own colour
+    assert body.count('class="d-slide"') == 8
+    assert body.count('style="--accent:#') >= 16  # slide + dot
 
 
 def test_the_page_can_only_read():
@@ -234,8 +242,90 @@ def test_content_file_is_complete():
         c = json.load(fh)
     assert c["product"] and c["expansion"] and c["tagline"]
     assert c["cards"] and c["specs"]
+    assert 1 <= len(c["cards"]) <= 8
     for card in c["cards"]:
         assert card["kicker"] and card["title"] and card["body"]
+        assert card["icon"] in ICONS, card["icon"]
+        assert re.fullmatch(r"#[0-9A-Fa-f]{6}", card["color"]), card["color"]
+    with open(os.path.join(WEB, "templates", "demo.html"), encoding="utf-8") as fh:
+        page = fh.read()
+    for icon in ICONS:
+        assert f'id="i-{icon}"' in page, icon
     for sp in c["specs"]:
         assert sp["value"] and sp["label"]
     assert float(c["near_m"]) > 0
+
+
+# ---- the scanner's fields on the radar (2026-10-15) ----------------------------------
+
+
+def _fields():
+    with open(os.path.join(SRC, "amr_bringup", "config", "scanner_fields.yaml"), encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+def test_zones_are_in_the_body_frame_and_ordered():
+    z = demo.zones(_fields())
+    assert [x["kind"] for x in z] == ["slow", "stop", "protective"], "outer first: drawn back to front"
+    prot = z[-1]["poly"]
+    assert math.isclose(min(p[0] for p in prot), -0.02 + demo.SCANNER_X_M, abs_tol=1e-3)
+    assert math.isclose(max(p[0] for p in prot), 0.50 + demo.SCANNER_X_M, abs_tol=1e-3)
+    assert {p[1] for p in prot} == {-0.40, 0.40}
+    assert demo.zones(None) == [] and demo.zones({"fields": {"protective": {"rect": "x"}}}) == []
+
+
+def test_the_page_draws_the_fields_it_was_given(tmp_path):
+    body = client_for(st(), tmp_path).get("/demo").get_data(as_text=True)
+    m = re.search(r"data-zones='([^']*)'", body)
+    assert m, "the radar carries its zones"
+    assert isinstance(json.loads(m.group(1)), list)
+
+
+def test_scanner_mount_matches_the_description():
+    path = os.path.join(SRC, "amr_description", "launch", "description.launch.py")
+    with open(path, encoding="utf-8") as fh:
+        m = re.search(r'\("laser_x", "([0-9.]+)"', fh.read())
+    assert m and float(m.group(1)) == demo.SCANNER_X_M
+    with open(os.path.join(WEB, "static", "demo.js"), encoding="utf-8") as fh:
+        assert f"SCANNER_X = {demo.SCANNER_X_M}" in fh.read(), "the sweep starts at the scanner"
+
+
+# ---- the radar needs no odometry (2026-10-15) ------------------------------------------
+
+
+class BodyLive(Live):
+    def __init__(self, body, ps=None):
+        super().__init__(ps)
+        self.body = body
+
+    def body_pose_scan(self):
+        return self.body
+
+
+def test_the_body_frame_scan_shows_with_no_odometry_at_all(tmp_path):
+    """Drives faulted, no wheel states, no odom TF: the odometry pose is None, but the scan
+    projected through the static mount transform still reaches the page."""
+    from amr_web.live import LiveStore
+
+    store = LiveStore()
+    assert store.body_pose_scan() is None
+    store.set_body_scan([(3.0, 0.0), (2.0, 1.0)], source_age_s=0.05)
+    body = store.body_pose_scan()
+    assert body["pose"]["frame"] == body["scan"]["frame"] == "base_footprint"
+
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    stub = Stub(st(drives={"operational": False, "left": "Fault", "right": "Fault", "age_s": 0.1}))
+    stub.live = BodyLive(body, ps=None)
+    app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"))
+    d = app.test_client().get("/api/demo").get_json()
+    assert d["status"] == demo.WATCHING and [3.0, 0.0] in d["points"]
+
+
+def test_the_odometry_scan_is_the_fallback(tmp_path):
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    stub = Stub(st())
+    stub.live = BodyLive(None, ps=ps([(3.0, 0.0)]))
+    app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"))
+    assert app.test_client().get("/api/demo").get_json()["status"] == demo.WATCHING
