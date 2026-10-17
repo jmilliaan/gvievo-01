@@ -380,7 +380,7 @@ Tests:
 | amr_web | 295 |
 | amr_mission, amr_navigation, amr_localization, amr_maps, amr_sim, amr_bringup | all pass |
 
-The unified sim fails at `can_confirm` (trackless localisation). The same failure occurs on a clean HEAD worktree, so it predates this work. `tests/test_alarms.py` flags `PP_VETOED`, which drive_node emits with no catalogue row; that is also already the case in HEAD.
+The unified sim fails at `can_confirm` (trackless localisation). The same failure occurs on a clean HEAD worktree, so it predates this work. Fixed 2026-10-17 (fix plan 001 B5: near-zero negative AMCL covariance); the unified sim passes. `tests/test_alarms.py` flags `PP_VETOED`, which drive_node emits with no catalogue row; that is also already the case in HEAD. Fixed in `7fc226e` (fix plan 001 A1).
 
 Read-only on the sensor, 2026-10-09:
 
