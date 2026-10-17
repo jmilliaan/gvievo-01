@@ -170,4 +170,54 @@ def test_high_zone():
             base([dict(UTURN, approach_mps=0.6)]), "approach_mps")
 
 
-TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals, test_high_zone]
+def _site(**over):
+    d = json.load(open(os.path.join(mission.MISSION_DIR, "site-103.json")))
+    d.update(over)
+    return d
+
+
+def _site_refused(name, mutate, needle):
+    d = _site()
+    mutate(d)
+    try:
+        mission.parse_site(d)
+    except mission.MissionError as e:
+        check(name, needle in str(e), str(e))
+    else:
+        check(name, False, "accepted!")
+
+
+def test_site_mission():
+    """Schema site-3 (tracked plan 3 section 2.5): designed data for tape-graph localization."""
+    print("\nmission: missions/site-103.json, the site mission (schema site-3)")
+    m = mission.load_site("site-103")
+    check("AGV-01's two groups: 4 MRU and 16 BTU machines, two calls a trip",
+          sorted(m["GROUPS"]) == ["BTU", "MRU"] and len(m["MACHINES"]) == 20 and m["TRIP_CALLS"] == 2)
+    check("facing BTU machines share one stop", m["GROUPS"]["BTU"]["machines"]["BTU24"]["swap"]
+          == m["GROUPS"]["BTU"]["machines"]["BTU16"]["swap"] == "R2-1")
+    legs = [leg["id"] for leg in m["CIRCUITS"]["C-MRU"]["legs"]]
+    check("C-MRU runs through the unlaid J-R2E: one leg each way between J-ML and the tape end",
+          "J-ML:merge>U-MRU" in legs and "U-MRU:pivot>J-ML" in legs, str(legs))
+    check("J-ML southbound is an explicit LEFT", "J-ML:left>J-STEM" in legs)
+    check("a site mission is not a tag-table job, nor listed as one",
+          "site-103" not in mission.list_missions() and mission.list_site_missions() == ["site-103"])
+    _site_refused("a junction without an order is refused",
+                  lambda d: d["circuits"]["C-MRU"][3].pop("order"), "without an order")
+    _site_refused("straight on from the stem of a T is refused",
+                  lambda d: d["circuits"]["C-BTU"][6].update(order="straight"), "no straight on")
+    _site_refused("a machine in two groups is refused",
+                  lambda d: d["groups"]["BTU"]["machines"].update(MRU1={"swap": "R2-1"}), "already in group")
+    _site_refused("a release after the U-turn is refused (never pivots with a trolley)",
+                  lambda d: d["groups"]["MRU"]["machines"]["MRU1"].update(release="ME-1", take="MW-1"),
+                  "never pivots")
+    _site_refused("a machine stop not on its group's circuit is refused",
+                  lambda d: d["groups"]["MRU"]["machines"]["MRU1"].update(release="R2-1"),
+                  "not a machine stop")
+    _site_refused("a circuit not starting at home is refused",
+                  lambda d: d["circuits"]["C-MRU"].pop(0), "start and end")
+    _site_refused("one station on two legs is refused",
+                  lambda d: d["circuits"]["C-BTU"].insert(4, {"stop": "MW-1"}), "one station, one place")
+    _site_refused("more than two calls a trip is refused", lambda d: d.update(trip_calls=3), "trip_calls")
+
+
+TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals, test_high_zone, test_site_mission]

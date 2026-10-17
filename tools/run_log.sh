@@ -81,11 +81,38 @@ cp "$REPO/profiles/${AGV_PROFILE:-agv-01}.json" "$OUT/profile.json" 2>/dev/null
 [ -n "$MISSION" ] && cp "$REPO/missions/$MISSION.json" "$OUT/mission.json" 2>/dev/null
 cp "$REPO/missions/empty.json" "$OUT/empty.json" 2>/dev/null
 
-# Every control-relevant topic. Not recorded: scans/raw scanner data, map, tf (CPU and
-# size); /output_paths carries the field states. line_cmd is generation-private.
-TOPICS='^/amr/(line_state|line_track|line_marker|rfid|mux_state|panel_state|io|events|mode_state|control_lease|run_state)$'
+# Every control-relevant topic. Not recorded: scans/raw scanner data, map, particle cloud
+# (CPU and size); /output_paths carries the field states. line_cmd is generation-private.
+# Localization (tracked plan 3, P0 tool T2): /amcl_pose, /tf (map->odom; odom->base is small
+# beside it) and the readiness state, whenever AMCL runs (p0_localization or tape_loc).
+TOPICS='^/amr/(line_state|line_track|line_marker|rfid|mux_state|panel_state|io|events|mode_state|control_lease|run_state|localization_state)$'
 TOPICS+='|^/amr/layers/g[0-9]+/amr/line_cmd$'
 TOPICS+='|^/(cmd_wheel_vel|wheel_states|drives/status|imu/data|odom_raw|output_paths|rosout|diagnostics)$'
+TOPICS+='|^/(amcl_pose|tf)$'
+
+# CPU and temperature beside the bag (P0 M5): pidstat per process every 5 s, the package
+# temperature every 5 s. Both stop with the recorder.
+if command -v pidstat >/dev/null; then
+    pidstat -u -h 5 > "$OUT/pidstat.txt" 2>&1 &
+    PIDSTAT=$!
+else
+    warn "pidstat not installed (apt install sysstat): no per-process CPU for P0 M5"
+    PIDSTAT=
+fi
+(
+    zone=$(grep -l -m1 -e x86_pkg_temp -e coretemp /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1)
+    zone=${zone%/type}
+    echo "t,cpu_busy_pct,temp_c" > "$OUT/cpu_temp.csv"
+    read -r _ a b c d e f g _ < /proc/stat
+    while sleep 5; do
+        read -r _ a2 b2 c2 d2 e2 f2 g2 _ < /proc/stat
+        busy=$(( (a2-a)+(b2-b)+(c2-c)+(f2-f)+(g2-g) )); idle=$(( (d2-d)+(e2-e) ))
+        temp=$([ -n "$zone" ] && awk '{printf "%.1f", $1/1000}' "$zone/temp" || echo "")
+        echo "$(date +%s),$(( 100*busy/(busy+idle) )),$temp" >> "$OUT/cpu_temp.csv"
+        a=$a2 b=$b2 c=$c2 d=$d2 e=$e2 f=$f2 g=$g2
+    done
+) &
+CPUMON=$!
 
 echo
 echo "recording to $OUT/bag  -  press Start on the panel when ready, Ctrl-C ONCE when done"
@@ -98,6 +125,7 @@ wait $REC
 trap - INT
 wait $REC 2>/dev/null
 T1=$(date +%s.%N)
+kill "$CPUMON" ${PIDSTAT:+"$PIDSTAT"} 2>/dev/null
 
 # Logs for the run window (events.jsonl lines by their own timestamp).
 python3 - "$T0" "$T1" "$OUT" <<'EOF'

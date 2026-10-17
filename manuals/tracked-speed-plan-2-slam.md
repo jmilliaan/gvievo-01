@@ -1,6 +1,8 @@
 # Tracked speed plan 2 of 2: SLAM / RFID / line-sensor redundancy
 
 Status: PLAN, nothing implemented, **deferred**. Drafted 2026-10-08, split 2026-10-08.
+2026-10-17: D10 (taped path drawn in the route editor) is superseded by `tracked-plan-3-tape-localization.md`
+(path recorded, never drawn). A later speed gate here consumes plan 3's locator `s`.
 Starts only after plan 1 (`tracked-speed-plan-1-no-slam.md`) runs on the vehicle: it
 reuses plan 1's NORMAL/HIGH speeds, zone markers (MLS codes, outer 2 / inner 1, since 2026-10-09; RFID `0040`/`0060` before), distance budget and curve
 guard unchanged, and only ADDS a localization opinion. With localization off the vehicle

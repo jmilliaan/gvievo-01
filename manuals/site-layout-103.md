@@ -7,6 +7,8 @@ The current `missions/line-a.json` and branch config do NOT implement this layou
 gave poor results, so the stops and junction orders here are to come from tape-graph localization,
 not from RFID.
 
+Localization plan: `manuals/tracked-plan-3-tape-localization.md`; procedures: `manuals/tape-localization-runbook.md`.
+
 Sources: the simplified site plan (operator image, 2026-10-17, not in the repo; partly outdated)
 and the HOME-area projection `documentation/layout-reference/homepos-area-projection/layout-projection.svg`.
 Where they disagree, the projection wins. The operator's correction of the same day removes the

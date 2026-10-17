@@ -210,6 +210,21 @@ def test_config_profile():
             lambda d: d["mls"].update(marker_width_mm=15), "unknown key")
     refuses("a profile without the mls block is refused",
             lambda d: d.pop("mls"), "missing top-level")
+    # Tape-graph localization (tracked plan 3): off until P1; thresholds provisional until P0.
+    check("tape localization is off and its station limit fits +-10 cm",
+          config.TAPE_LOC_ENABLED is False and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.05
+          and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
+          f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SIGMA_STATION_M}")
+    refuses("a station sigma limit above 5 cm is refused",
+            lambda d: d["tape_loc"].update(sigma_station_m=0.08), "+-10 cm")
+    refuses("a junction sigma limit not above the station limit is refused",
+            lambda d: d["tape_loc"].update(sigma_junction_m=0.02), "sigma_junction_m")
+    refuses("an unknown AMCL parameter set is refused",
+            lambda d: d["tape_loc"].update(amcl_params="fast"), "default or lean")
+    refuses("tape localization on a trackless profile is refused",
+            lambda d: (d.update(tracked=False), d["tape_loc"].update(enabled=True)), "trackless")
+    refuses("a profile without the tape_loc block is refused",
+            lambda d: d.pop("tape_loc"), "missing top-level")
     refuses("a pre-move timeout not above the warning is refused",
             lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
             "premove_timeout_s")

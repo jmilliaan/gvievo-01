@@ -193,6 +193,22 @@
     "polarity_lock": false,
     "teach_lock": true
   },
+  "tape_loc": {
+    "enabled": false,
+    "k_odo": 0.01,
+    "amcl_sigma_floor_m": 0.03,
+    "max_lateral_m": 0.1,
+    "innov_min_m": 0.1,
+    "pose_max_age_s": 0.5,
+    "sigma_station_m": 0.025,
+    "sigma_junction_m": 0.2,
+    "junction_lead_m": 1.0,
+    "lost_rejects": 5,
+    "sigma_lost_m": 0.5,
+    "healthy_window_m": 2.0,
+    "lost_fault_s": 30.0,
+    "amcl_params": "default"
+  },
   "imu": {
     "enabled": true,
     "poll_period_s": 0.04,

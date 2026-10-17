@@ -72,7 +72,10 @@ MODULES = [
 # + 3 (2026-10-09): speed zones on MLS markers, RFID stops only. test_mission high zone
 #   10 -> 13 (RFID zone row refused, v2.1 block refused, code not laid / text / same code
 #   refused, zone with no RFID row; the zone-tag ignore window refusal is gone).
-EXPECTED_CHECKS = 706
+# + 19 (2026-10-17): tracked plan 3, tape-graph localization. test_config + 6 (the tape_loc block:
+#   off, station limit within +-10 cm, refusals); test_mission + 13 (site-3 schema: the site-103
+#   file, its legs and listing, 8 refusals).
+EXPECTED_CHECKS = 725
 
 
 # An exception on a helper thread only prints a traceback by default - the

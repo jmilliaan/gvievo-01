@@ -349,6 +349,8 @@ def list_missions(directory=None):
         names = {f[:-5] for f in os.listdir(d) if f.endswith(".json")}
     except OSError:
         names = set()
+    # Site missions (schema site-3) are not tag-table jobs: listed by list_site_missions().
+    names -= set(list_site_missions(d))
     return sorted(names | {"empty"})
 
 
@@ -388,7 +390,318 @@ def load(name, vehicle=None, directory=None):
             raise MissionError(f"no mission {name!r} ({path}); have {list_missions(directory)}") from None
         except ValueError as e:
             raise MissionError(f"mission {name!r}: not valid JSON ({e})") from None
+    if is_site(doc):
+        raise MissionError(f"{name!r} is a site mission (tracked plan 3): it runs on tape-graph "
+                           f"localization, not as an RFID tag-table job")
     out = parse(doc, vehicle)
     if out["MISSION_NAME"] != name:
         raise MissionError(f"mission_name {out['MISSION_NAME']!r} does not match the file name {name!r}")
+    return out
+
+
+# -- site missions (schema "site-3", tracked plan 3 section 2.5) ---------------------
+#
+# A site mission is designed data: groups of machines, circuits with every junction
+# order written out, and what happens at each stop. WHERE things are (legs, stations)
+# is taught on the vehicle into the tape graph (amr_line.tape_graph), bound to a map
+# revision; the two meet in tape_graph.compile_route, which names anything not taught.
+#
+#   schema            "site-3"
+#   mission_name      the file name
+#   home, attach      station ids: the bay where the AGV parks empty, the attach stop
+#   trip_calls        calls of one group that form a trip (site D3/D4: 2)
+#   stop_distance_m   braking distance into every station
+#   junctions         {id: {"shape": "Y"|"T"|"X", "laid": bool}}. An unlaid junction is
+#                     not a node: the legs run through it until it is laid and re-taught
+#   uturns            {id: {"direction": "cw"|"ccw", "approach_mps", "decel_m",
+#                     "max_approach_m", "lead_m"}}: a tape-end pivot, empty only
+#   circuits          {id: [item, ...]}, items in travel order:
+#                       {"stop": id} | {"junction": id, "order": o} | {"uturn": id}
+#                     o: left | right | straight | merge (Y), cross (X). A T item also says
+#                     "approach": "stem" (left | right only: no straight on) or "bar" (as a Y)
+#                     A circuit starts and ends with {"stop": home} and passes attach once
+#   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
+#                     {"release": stop, "take": stop}}}}
+#
+# Parsed names: MISSION_NAME, SCHEMA, HOME, ATTACH, TRIP_CALLS, STOP_DISTANCE_M,
+# JUNCTIONS, UTURNS, CIRCUITS {id: {"items", "legs", "home_depart", "home_arrive"}}, GROUPS,
+# MACHINES {machine: group}, STATIONS {station: leg id}.
+
+SITE_SCHEMA = "site-3"
+_SITE_KEYS = ("schema", "mission_name", "home", "attach", "trip_calls", "stop_distance_m",
+              "junctions", "uturns", "circuits", "groups")
+SHAPES = ("Y", "T", "X")
+_ORDERS = {"Y": ("left", "right", "straight", "merge"), "X": ("cross",),
+           # A T from its stem has no straight on; along its bar it is a Y.
+           "T-stem": ("left", "right"), "T-bar": ("left", "right", "straight", "merge")}
+_UTURN_KEYS = {"direction", "approach_mps", "decel_m", "max_approach_m", "lead_m"}
+
+
+def is_site(doc):
+    return isinstance(doc, dict) and doc.get("schema") == SITE_SCHEMA
+
+
+def _ident(v, where):
+    if not isinstance(v, str) or not v.strip() or v != v.strip() or any(c in v for c in ":>/ "):
+        raise ConfigError(f"{where}: expected an id without spaces, ':', '>' or '/', got {v!r}")
+    return v
+
+
+def _site_uturn(name, row, vehicle):
+    where = f"uturns.{name}"
+    if not isinstance(row, dict) or set(row) != _UTURN_KEYS:
+        raise ConfigError(f"{where}: expected exactly {sorted(_UTURN_KEYS)}")
+    if row["direction"] not in ("cw", "ccw"):
+        raise ConfigError(f"{where}.direction must be cw or ccw")
+    out = {"direction": row["direction"]}
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    out["approach_mps"] = _bounded(row, "approach_mps", where, 0.0, round(normal_mps, 3))
+    out["max_approach_m"] = _bounded(row, "max_approach_m", where, 0.0, 5.0)
+    out["decel_m"] = _bounded(row, "decel_m", where, 0.0, 2.0)
+    out["lead_m"] = _bounded(row, "lead_m", where, 0.0, 10.0)
+    if out["lead_m"] < out["decel_m"]:
+        raise ConfigError(f"{where}.lead_m ({out['lead_m']:g}) must cover decel_m ({out['decel_m']:g}): "
+                          f"the approach starts lead_m before the taught tape end")
+    creep_rpm = out["approach_mps"] / vehicle.MPS_PER_RPM
+    rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * out["decel_m"])
+    if rate > float(vehicle.RAMP["auto"]["decel"]):
+        raise ConfigError(f"{where}.decel_m: {rate:.0f} r/min/s is beyond drivers.ramp.auto.decel")
+    return out
+
+
+def _site_items(cid, raw, junctions, uturns):
+    if not isinstance(raw, list) or len(raw) < 3:
+        raise ConfigError(f"circuits.{cid}: expected a list of at least three items")
+    items = []
+    for i, it in enumerate(raw):
+        where = f"circuits.{cid}[{i}]"
+        if not isinstance(it, dict):
+            raise ConfigError(f"{where}: expected an object")
+        if set(it) == {"stop"}:
+            items.append({"kind": "stop", "id": _ident(it["stop"], f"{where}.stop")})
+        elif set(it) == {"uturn"}:
+            if it["uturn"] not in uturns:
+                raise ConfigError(f"{where}: U-turn {it['uturn']!r} is not in uturns")
+            items.append({"kind": "uturn", "id": it["uturn"], "order": "pivot"})
+        elif "junction" in it:
+            if "order" not in it:
+                raise ConfigError(f"{where}: junction {it['junction']!r} without an order - every "
+                                  f"junction on a circuit says what to do there")
+            j = junctions.get(it["junction"])
+            if j is None:
+                raise ConfigError(f"{where}: junction {it['junction']!r} is not in junctions")
+            keys = {"junction", "order"} | ({"approach"} if j["shape"] == "T" else set())
+            if set(it) != keys:
+                raise ConfigError(f"{where}: expected exactly {sorted(keys)} at {it['junction']} "
+                                  f"(shape {j['shape']}" + ("; approach is stem or bar)" if j["shape"] == "T"
+                                                           else ")"))
+            shape = j["shape"]
+            if shape == "T":
+                if it["approach"] not in ("stem", "bar"):
+                    raise ConfigError(f"{where}.approach: expected stem or bar, got {it['approach']!r}")
+                shape = f"T-{it['approach']}"
+            allowed = _ORDERS[shape]
+            if it["order"] not in allowed:
+                raise ConfigError(f"{where}: order {it['order']!r} at {it['junction']} ({shape}): "
+                                  f"expected one of {list(allowed)}"
+                                  + (" - a T has no straight on from its stem" if shape == "T-stem" else ""))
+            items.append({"kind": "junction", "id": it["junction"], "order": it["order"]})
+        else:
+            raise ConfigError(f"{where}: expected {{'stop'}}, {{'uturn'}} or {{'junction', 'order'}}")
+    return items
+
+
+def _site_legs(cid, items, junctions, home):
+    """Items -> (legs with the home leg LAST, the home-leg stops of the departure, those
+    of the arrival)."""
+    nodes = [k for k, it in enumerate(items)
+             if it["kind"] == "uturn" or (it["kind"] == "junction" and junctions[it["id"]]["laid"])]
+    if not nodes:
+        raise ConfigError(f"circuits.{cid}: no laid junction or U-turn - nothing to split the tape at")
+    legs = []
+    for a, b in zip(nodes, nodes[1:], strict=False):
+        frm, to = items[a], items[b]
+        legs.append({"id": f"{frm['id']}:{frm['order']}>{to['id']}", "from": frm["id"],
+                     "order": frm["order"], "to": to["id"],
+                     "stops": [it["id"] for it in items[a + 1:b] if it["kind"] == "stop"]})
+    last, first = items[nodes[-1]], items[nodes[0]]
+    before = [it["id"] for it in items[:nodes[0]] if it["kind"] == "stop"]
+    after = [it["id"] for it in items[nodes[-1] + 1:] if it["kind"] == "stop"]
+    legs.append({"id": f"{last['id']}:{last['order']}>{first['id']}", "from": last["id"],
+                 "order": last["order"], "to": first["id"], "stops": after + before})
+    # The home leg is driven twice (out of the bay, back into it): `after` then `before`
+    # in tape order, but `before` is the trip's start.
+    return legs, before, after
+
+
+def _parse_site(doc, vehicle):
+    if not isinstance(doc, dict):
+        raise ConfigError("mission must be a JSON object")
+    unknown = set(doc) - set(_SITE_KEYS)
+    if unknown:
+        raise ConfigError(f"site mission: unknown key(s) {sorted(unknown)}")
+    missing = set(_SITE_KEYS) - set(doc)
+    if missing:
+        raise ConfigError(f"site mission: missing key(s) {sorted(missing)}")
+    out = {"SCHEMA": SITE_SCHEMA, "MISSION_NAME": _coerce(doc["mission_name"], str, "mission_name")}
+    home, attach = _ident(doc["home"], "home"), _ident(doc["attach"], "attach")
+    if home == attach:
+        raise ConfigError("home and attach must be different stations")
+    out["HOME"], out["ATTACH"] = home, attach
+    calls = doc["trip_calls"]
+    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 2:
+        raise ConfigError(f"trip_calls: expected 1 or 2 (site D3: at most two machines a trip), "
+                          f"got {calls!r}")
+    out["TRIP_CALLS"] = calls
+    out["STOP_DISTANCE_M"] = _bounded(doc, "stop_distance_m", "site mission", 0.0, 5.0)
+    rate = (vehicle.AUTO_RPM ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["STOP_DISTANCE_M"]))
+    if rate > float(vehicle.RAMP["auto"]["decel"]):
+        raise ConfigError(f"stop_distance_m: stopping from {vehicle.AUTO_RPM:.0f} r/min in "
+                          f"{out['STOP_DISTANCE_M']:g} m needs {rate:.0f} r/min/s, "
+                          f"beyond drivers.ramp.auto.decel")
+
+    if not isinstance(doc["junctions"], dict):
+        raise ConfigError("junctions: expected an object")
+    junctions = {}
+    for jid, row in doc["junctions"].items():
+        _ident(jid, f"junctions.{jid}")
+        if not isinstance(row, dict) or set(row) != {"shape", "laid"}:
+            raise ConfigError(f"junctions.{jid}: expected exactly ['laid', 'shape']")
+        if row["shape"] not in SHAPES:
+            raise ConfigError(f"junctions.{jid}.shape: expected one of {list(SHAPES)}, got {row['shape']!r}")
+        junctions[jid] = {"shape": row["shape"], "laid": _coerce(row["laid"], bool, f"junctions.{jid}.laid")}
+    if not isinstance(doc["uturns"], dict):
+        raise ConfigError("uturns: expected an object")
+    uturns = {_ident(k, f"uturns.{k}"): _site_uturn(k, v, vehicle) for k, v in doc["uturns"].items()}
+    clash = set(junctions) & set(uturns)
+    if clash:
+        raise ConfigError(f"{sorted(clash)} are both junctions and U-turns")
+    out["JUNCTIONS"], out["UTURNS"] = junctions, uturns
+
+    if not isinstance(doc["circuits"], dict) or not doc["circuits"]:
+        raise ConfigError("circuits: expected a non-empty object")
+    circuits, stations = {}, {}
+    for cid, raw in doc["circuits"].items():
+        _ident(cid, f"circuits.{cid}")
+        items = _site_items(cid, raw, junctions, uturns)
+        stops = [it["id"] for it in items if it["kind"] == "stop"]
+        if items[0] != {"kind": "stop", "id": home} or items[-1] != {"kind": "stop", "id": home}:
+            raise ConfigError(f"circuits.{cid}: must start and end with {{'stop': '{home}'}}")
+        if stops.count(home) != 2:
+            raise ConfigError(f"circuits.{cid}: {home} only at the start and the end")
+        if stops.count(attach) != 1:
+            raise ConfigError(f"circuits.{cid}: passes {attach} {stops.count(attach)} times, expected once")
+        inner = stops[1:-1]
+        dup = sorted({s for s in inner if inner.count(s) > 1})
+        if dup:
+            raise ConfigError(f"circuits.{cid}: stop(s) {dup} twice - one station is one place on one pass")
+        if stops.index(attach) != 1:
+            raise ConfigError(f"circuits.{cid}: {attach} must be the first stop after {home} "
+                              f"(trolleys attach before any machine)")
+        turns = [it["id"] for it in items if it["kind"] == "uturn"]
+        if len(set(turns)) != len(turns):
+            raise ConfigError(f"circuits.{cid}: a U-turn twice")
+        legs, before, after = _site_legs(cid, items, junctions, home)
+        for leg in legs:
+            for sid in leg["stops"]:
+                if sid in stations and stations[sid] != leg["id"]:
+                    raise ConfigError(f"circuits.{cid}: station {sid} lies on {leg['id']} here and on "
+                                      f"{stations[sid]} in another circuit - one station, one place")
+                stations[sid] = leg["id"]
+        circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after}
+    out["CIRCUITS"] = circuits
+    out["STATIONS"] = stations
+
+    if not isinstance(doc["groups"], dict) or not doc["groups"]:
+        raise ConfigError("groups: expected a non-empty object")
+    groups, machines = {}, {}
+    for name, g in doc["groups"].items():
+        where = f"groups.{name}"
+        _ident(name, where)
+        if not isinstance(g, dict) or set(g) != {"circuit", "machines"}:
+            raise ConfigError(f"{where}: expected exactly ['circuit', 'machines']")
+        cid = g["circuit"]
+        if cid not in circuits:
+            raise ConfigError(f"{where}.circuit: {cid!r} is not in circuits")
+        items = circuits[cid]["items"]
+        pos = {it["id"]: k for k, it in enumerate(items) if it["kind"] == "stop"}
+        pos[home] = 0
+        turn_at = [k for k, it in enumerate(items) if it["kind"] == "uturn"]
+        if not isinstance(g["machines"], dict) or not g["machines"]:
+            raise ConfigError(f"{where}.machines: expected a non-empty object")
+        rows = {}
+        for m, act in g["machines"].items():
+            mw = f"{where}.machines.{m}"
+            _ident(m, mw)
+            if m in machines:
+                raise ConfigError(f"{mw}: machine {m} is already in group {machines[m]} - a machine "
+                                  f"belongs to one group")
+            if not isinstance(act, dict) or set(act) not in ({"swap"}, {"release", "take"}):
+                raise ConfigError(f"{mw}: expected {{'swap': stop}} or {{'release': stop, 'take': stop}}")
+            for kind, sid in act.items():
+                if sid in (home, attach) or sid not in pos:
+                    raise ConfigError(f"{mw}.{kind}: stop {sid!r} is not a machine stop on {cid}")
+            if "release" in act:
+                if not turn_at:
+                    raise ConfigError(f"{mw}: release/take needs a U-turn on {cid} between them")
+                r, t = pos[act["release"]], pos[act["take"]]
+                if not r < turn_at[0] < t:
+                    raise ConfigError(f"{mw}: the release ({act['release']}) must come before the U-turn and "
+                                      f"the take-back ({act['take']}) after it - the AGV never pivots "
+                                      f"with a trolley attached")
+            rows[m] = dict(act)
+            machines[m] = name
+        groups[name] = {"circuit": cid, "machines": rows}
+    out["GROUPS"], out["MACHINES"] = groups, machines
+    return out
+
+
+def parse_site(doc, vehicle=None):
+    """A site mission document -> the validated names. MissionError on any problem."""
+    if vehicle is None:
+        from agv_core import config as vehicle  # noqa: PLC0415
+    if not is_site(doc):
+        raise MissionError(f"not a site mission (schema must be {SITE_SCHEMA!r})")
+    try:
+        return _parse_site(doc, vehicle)
+    except MissionError:
+        raise
+    except ConfigError as e:
+        raise MissionError(str(e)) from None
+
+
+def _read_doc(name, directory=None):
+    if not isinstance(name, str) or not name or "/" in name or name.startswith("."):
+        raise MissionError(f"not a mission name: {name!r}")
+    path = os.path.join(directory or MISSION_DIR, f"{name}.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except OSError:
+        raise MissionError(f"no mission {name!r} ({path})") from None
+    except ValueError as e:
+        raise MissionError(f"mission {name!r}: not valid JSON ({e})") from None
+
+
+def load_site(name, vehicle=None, directory=None):
+    """missions/<name>.json as a site mission."""
+    out = parse_site(_read_doc(name, directory), vehicle)
+    if out["MISSION_NAME"] != name:
+        raise MissionError(f"mission_name {out['MISSION_NAME']!r} does not match the file name {name!r}")
+    return out
+
+
+def list_site_missions(directory=None):
+    d = directory or MISSION_DIR
+    out = []
+    try:
+        names = sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
+    except OSError:
+        return out
+    for n in names:
+        try:
+            if is_site(_read_doc(n, d)):
+                out.append(n)
+        except MissionError:
+            continue
     return out

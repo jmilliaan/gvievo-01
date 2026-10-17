@@ -325,6 +325,32 @@ mls.*  (SICK MLS line sensor, can.sensor_node; manuals/mls-marker-plan.md)
 
     Nothing here is in the safety path or changes motion.
 
+tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
+    Tape-graph localization in LINE mode: AMCL on a frozen map revision, reduced to
+    the distance along the taught tape (amr_line.tape_locator). enabled starts the
+    localization group with the LINE layer (map_server, AMCL, localization monitor)
+    on the map of the active tape graph ($AMR_STATE_DIR/line_graph.json); off, LINE
+    runs exactly as before. Today it only TEACHES and SHADOWS (P1): the locator logs
+    where it would stop and branch, and nothing it says changes motion.
+
+    The rest are PROVISIONAL until P0 has measured them (plan section 5):
+      k_odo               sigma growth per metre of wheel travel (P0 M6)
+      amcl_sigma_floor_m  AMCL's along-track sigma floor; its covariance is optimistic (M1)
+      max_lateral_m       a pose farther from the taught path is rejected (M2)
+      innov_min_m         innovation gate floor; the gate is max(3 sigma, this)
+      pose_max_age_s      an older /amcl_pose is not used
+      sigma_station_m     a station stop needs sigma at most this when braking starts
+                          (2 sigma <= 5 cm of the operator's +-10 cm). At most 0.05
+      sigma_junction_m    a junction order needs sigma at most this by S_fork - junction_lead_m
+      lost_rejects        this many corrections rejected in a row = LOST
+      sigma_lost_m        sigma above this = LOST
+      healthy_window_m    HEALTHY needs an accepted correction within this much travel
+      lost_fault_s        LOST while held longer than this becomes a FAULT
+      amcl_params         "default" (amr_localization/config/amcl.yaml) or "lean" (fewer
+                          particles, update every 0.10 m: plan section 2.7)
+
+    Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
+
 imu.*
     The IMU inside the SICK MLS on can.sensor_node, read over SDO by the bus
     thread and shown on /monitor and the rail. DISPLAY ONLY today: nothing
@@ -570,6 +596,22 @@ _SCHEMA = {
         "polarity_lock":   ("MLS_POLARITY_LOCK", bool),
         "teach_lock":      ("MLS_TEACH_LOCK", bool),
         # "marker_codes" is a list of ints; handled separately in _read_marker_codes().
+    },
+    "tape_loc": {
+        "enabled":            ("TAPE_LOC_ENABLED", bool),
+        "k_odo":              ("TAPE_LOC_K_ODO", float),
+        "amcl_sigma_floor_m": ("TAPE_LOC_AMCL_SIGMA_FLOOR_M", float),
+        "max_lateral_m":      ("TAPE_LOC_MAX_LATERAL_M", float),
+        "innov_min_m":        ("TAPE_LOC_INNOV_MIN_M", float),
+        "pose_max_age_s":     ("TAPE_LOC_POSE_MAX_AGE_S", float),
+        "sigma_station_m":    ("TAPE_LOC_SIGMA_STATION_M", float),
+        "sigma_junction_m":   ("TAPE_LOC_SIGMA_JUNCTION_M", float),
+        "junction_lead_m":    ("TAPE_LOC_JUNCTION_LEAD_M", float),
+        "lost_rejects":       ("TAPE_LOC_LOST_REJECTS", int),
+        "sigma_lost_m":       ("TAPE_LOC_SIGMA_LOST_M", float),
+        "healthy_window_m":   ("TAPE_LOC_HEALTHY_WINDOW_M", float),
+        "lost_fault_s":       ("TAPE_LOC_LOST_FAULT_S", float),
+        "amcl_params":        ("TAPE_LOC_AMCL_PARAMS", str),
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
@@ -921,6 +963,26 @@ def _validate(ns):
 
     # -- line sensor (mls-marker-plan) -----------------------------------
     check(0 <= g("MLS_VARIANT") <= 7, f"mls.variant is 2006h:01, 0..7, got {g('MLS_VARIANT')}")
+
+    # -- tape localization (tracked plan 3) -------------------------------
+    for key, lo, hi in (("k_odo", 0.0, 0.1), ("amcl_sigma_floor_m", 0.0, 0.2), ("max_lateral_m", 0.0, 0.5),
+                        ("innov_min_m", 0.0, 1.0), ("pose_max_age_s", 0.0, 2.0),
+                        ("sigma_station_m", 0.0, 0.05), ("healthy_window_m", 0.0, 20.0),
+                        ("lost_fault_s", 0.0, 300.0)):
+        v = g(f"TAPE_LOC_{key.upper()}")
+        check(lo < v <= hi, f"tape_loc.{key} must be in ({lo:g}, {hi:g}], got {v:g}"
+              + (" - 2 sigma has to fit the operator's +-10 cm with the stop's own error"
+                 if key == "sigma_station_m" else ""))
+    check(g("TAPE_LOC_SIGMA_STATION_M") < g("TAPE_LOC_SIGMA_JUNCTION_M") <= 0.5,
+          "tape_loc.sigma_junction_m must be above sigma_station_m and at most 0.5")
+    check(g("TAPE_LOC_SIGMA_JUNCTION_M") < g("TAPE_LOC_SIGMA_LOST_M") <= 2.0,
+          "tape_loc.sigma_lost_m must be above sigma_junction_m and at most 2.0")
+    check(0.5 <= g("TAPE_LOC_JUNCTION_LEAD_M") <= 5.0, "tape_loc.junction_lead_m must be in [0.5, 5]")
+    check(2 <= g("TAPE_LOC_LOST_REJECTS") <= 50, "tape_loc.lost_rejects must be in 2..50")
+    check(g("TAPE_LOC_AMCL_PARAMS") in ("default", "lean"),
+          f"tape_loc.amcl_params must be default or lean, got {g('TAPE_LOC_AMCL_PARAMS')!r}")
+    check(not (g("TAPE_LOC_ENABLED") and g("TRACKED") is False),
+          "tape_loc.enabled on a trackless profile (tracked: false): there is no LINE layer to run it in")
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
