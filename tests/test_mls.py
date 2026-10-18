@@ -178,6 +178,39 @@ def test_marker_tooling():
           mls.hall_mean([[1, 2, 3], [3, 2, 1]]) == [2, 2, 2])
 
 
+
+def test_event_and_temperature_decoding():
+    print("\nMLS: event source/cause (2080h) and temperature (2070h), manual tables 22-24")
+
+    ev = mls.decode_event(2, 1, 0)
+    check("source 2 is a magnetic-field event, field code 1 below critical strength",
+          ev["field"] and not ev["temp"] and ev["field_text"] == "field below the critical strength", str(ev))
+    ev = mls.decode_event(6, 1, 2)
+    check("source 6 is both, temp code 2 above the upper threshold",
+          ev["field"] and ev["temp"] and ev["temp_text"] == "above the upper threshold", str(ev))
+    check("temp code 1 is below the lower threshold",
+          mls.decode_event(4, 0, 1)["temp_text"] == "below the lower threshold")
+    ev = mls.decode_event(3, 7, None)
+    check("an unlisted value is reported as unknown, not mapped to a listed one",
+          ev["source_text"] == "unknown (3)" and ev["field_text"] == "unknown (7)", str(ev))
+    ev = mls.decode_event(None, None, None)
+    check("an unread source is neither field nor temperature, and says unread",
+          not ev["field"] and not ev["temp"] and ev["source_text"] == "unread", str(ev))
+    check("the cause reads are 2080h:02, :04, :05 and the reset 2080h:01",
+          mls.EVENT_READS == ((0x2080, 2), (0x2080, 4), (0x2080, 5)) and mls.EVENT_RESET == (0x2080, 1))
+    tp = mls.decode_temp(0xF6, 70, 0xF6)  # -10 degC, thresholds -10 .. 70
+    check("2070h values are INT8: 0xF6 is -10 degC, on the threshold is not outside",
+          tp["temp_c"] == -10 and tp["lo_c"] == -10 and not tp["out"], str(tp))
+    check("above the upper threshold is outside", mls.decode_temp(71, 70, 0)["out"])
+    check("below the lower threshold is outside", mls.decode_temp(0xFB, 70, 0)["out"])
+    check("an unread threshold never makes a reading outside",
+          not mls.decode_temp(90, None, None)["out"] and mls.decode_temp(None, 70, 0)["temp_c"] is None)
+    check("the event reset is a guarded line-sensor write, the thresholds are not",
+          guard.is_sensor_allowed(0x2080, 1)
+          and not any(guard.is_sensor_allowed(0x2070, s) for s in (1, 6, 7))
+          and not any(guard.is_sensor_allowed(0x2080, s) for s in (2, 3, 4, 5)))
+
+
 TESTS = [test_standard_decoding, test_combi_decoding, test_nlcp_table,
          test_status_and_marker_bits, test_short_frames_and_sdo_equivalence,
-         test_calibration_summary, test_marker_tooling]
+         test_calibration_summary, test_marker_tooling, test_event_and_temperature_decoding]

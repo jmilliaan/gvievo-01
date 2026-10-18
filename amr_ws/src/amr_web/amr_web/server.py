@@ -330,6 +330,11 @@ def create_app(
         _need(tracked_ok)
         return render_template("run_tracked.html", page="run_tracked")
 
+    @app.get("/teach")
+    def page_teach():
+        _need(tracked_ok)
+        return render_template("teach.html", page="teach")
+
     # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
     # a run starts only on the physical Start under AUTO (line_follow_node). ----
 
@@ -364,6 +369,44 @@ def create_app(
     def api_line_clear():
         _need(tracked_ok)
         return _call(adapter.line_clear)
+
+    # ---- tape-graph localization (tracked plan 3, P1): teach and shadow. Nothing here
+    # moves the vehicle: a teach pass is driven by AUTO + the physical Start or under MANUAL.
+
+    @app.get("/api/line/site")
+    def api_line_site():
+        """The site mission's circuits and stations, for the Teach page's lists."""
+        _need(tracked_ok)
+        from agv_core import mission as missions  # noqa: PLC0415
+
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            name = config.TAPE_LOC_SITE_MISSION       # the one the line layer teaches and shadows
+        except Exception:  # noqa: BLE001 - a dev box without a profile
+            names = missions.list_site_missions()
+            name = names[0] if names else ""
+        try:
+            m = missions.load_site(name)
+        except missions.MissionError as e:
+            return jsonify({"mission": name, "circuits": [], "stations": [], "error": str(e)})
+        return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
+                        "stations": list(m["STATIONS"]), "error": ""})
+
+    @app.post("/api/line/teach")
+    def api_line_teach():
+        _need(tracked_ok)
+        if _role() != rolemod.ENGINEER:
+            return _result(False, "teaching needs the engineer view (PIN)", 403)
+        d, err = _body()
+        if err:
+            return err
+        return _call(adapter.line_teach, str(d.get("action", "") or ""), str(d.get("arg", "") or ""))
+
+    @app.post("/api/line/at_home")
+    def api_line_at_home():
+        _need(tracked_ok)
+        return _call(adapter.line_at_home)
 
     # ---- state -------------------------------------------------------------------
 

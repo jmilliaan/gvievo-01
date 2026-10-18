@@ -206,6 +206,10 @@ def test_config_profile():
                 lambda d, bad=bad: d["mls"].update(marker_codes=bad), why)
     refuses("a non-boolean mls.markers_enabled is refused",
             lambda d: d["mls"].update(markers_enabled=1), "true/false")
+    check("the MLS event-flag reset is off until the bench found its value (E0.5)",
+          config.MLS_EVENT_CLEAR == -1, str(config.MLS_EVENT_CLEAR))
+    refuses("an mls.event_clear other than -1, 0 or 1 is refused",
+            lambda d: d["mls"].update(event_clear=2), "mls.event_clear")
     refuses("an unknown key in the mls block is refused",
             lambda d: d["mls"].update(marker_width_mm=15), "unknown key")
     refuses("a profile without the mls block is refused",

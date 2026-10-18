@@ -31,6 +31,9 @@ The sensor is node 10 at 125 kbps. Two ways to get measurements out of it:
   set-markers  the second write (2026-10-09): 2028h:01-03 (markers on, standard,
             FailSafe), 2029h (teach key locked) and, with --polarity-lock,
             202Dh:05 = 1. Dry run unless --go; resets node 10 and reads back.
+  clear-event  (2026-10-18, mls-diagnostics-plan E0.5) read the event source and
+            cause (2080h:02/04/05), then write 2080h:01 (--value, 0 or 1) to reset
+            the latched event flag, and read the status bit back. Dry run unless --go.
   set-variant  a write in this tool (2026-10-07): 2006h:01 Variant TPDO1,
             e.g. --value 3 (Standard enhanced: SICK p.49-50, ON for FLUSH
             diverters). Dry run unless --go. With --go it writes, resets node 10
@@ -96,6 +99,15 @@ OBJ_LCP = 0x2021              # :01..:03 LCP1..3, :04 #LCP (+marker), :0B..:0D l
 OBJ_NLCP = (0x2021, 4)
 OBJ_STATUS = (0x2022, 0)
 COB_DISABLED = 1 << 31
+# Event detection and temperature, firmware V5 (manual 8.7, 8.8, pp. 57-58).
+OBJ_EVENT = 0x2080            # :01 reset the flag (write), :02 source, :04 field code, :05 temp code
+OBJ_TEMP = 0x2070             # :01 temperature INT8 degC, :06 upper threshold, :07 lower threshold
+EVENT_READS = ((OBJ_EVENT, 2), (OBJ_EVENT, 4), (OBJ_EVENT, 5))
+TEMP_READS = ((OBJ_TEMP, 1), (OBJ_TEMP, 6), (OBJ_TEMP, 7))
+EVENT_RESET = (OBJ_EVENT, 1)
+EVENT_SOURCE = {0: "none", 2: "magnetic field", 4: "temperature", 6: "magnetic field and temperature"}
+FIELD_CODES = {0: "no event", 1: "field below the critical strength"}
+TEMP_CODES = {0: "no event", 1: "below the lower threshold", 2: "above the upper threshold"}
 
 # 2006h:01 - which of these select the packed Combi track-data format (table 10).
 COMBI_VARIANTS = {1, 5, 6, 7}
@@ -155,6 +167,37 @@ def decode_marker(b):
     bit 0 as the intro and bits 1-4 as code 1-15, and never says where the travel
     direction goes: the raw value is kept so the bench (plan B6) can settle it."""
     return {"intro": bool(b & 0x08), "code": (b >> 4) & 0x0F, "raw": (b >> 3) & 0x1F}
+
+
+def s8(v):
+    return None if v is None else (v & 0xFF) - 0x100 if v & 0x80 else v & 0xFF
+
+
+def decode_event(source, field_code, temp_code):
+    """2080h:02/:04/:05 -> what raised the event flag (tables 22-24). An unlisted
+    value is reported as such, never mapped to the nearest listed one; a cause that
+    was not read (None) is unknown, not "no event"."""
+    def name(table, v):
+        return "unread" if v is None else table.get(v, f"unknown ({v})")
+
+    return {
+        "source": source,
+        "field": source is not None and bool(source & 2),
+        "temp": source is not None and bool(source & 4),
+        "source_text": name(EVENT_SOURCE, source),
+        "field_code": field_code,
+        "field_text": name(FIELD_CODES, field_code),
+        "temp_code": temp_code,
+        "temp_text": name(TEMP_CODES, temp_code),
+    }
+
+
+def decode_temp(raw_t, raw_hi, raw_lo):
+    """2070h:01/:06/:07 (INT8, degC) -> {"temp_c", "hi_c", "lo_c", "out"}. `out` is
+    True only when the temperature and the threshold it crossed were both read."""
+    t, hi, lo = s8(raw_t), s8(raw_hi), s8(raw_lo)
+    out = t is not None and ((hi is not None and t > hi) or (lo is not None and t < lo))
+    return {"temp_c": t, "hi_c": hi, "lo_c": lo, "out": out}
 
 
 def decode_tpdo1(data, combi):
@@ -300,7 +343,23 @@ def snapshot(bus, node):
         return 1
     print(f"\n    #LCP {r['nlcp']} - {r['nlcp_label']}")
     print(f"    {fmt_reading(r)}")
+
+    print("\n[4] events and temperature (firmware V5, manual 8.7-8.8)")
+    print_event_state(bus, node)
     return 0
+
+
+def print_event_state(bus, node):
+    """2080h source/cause, 2070h temperature and thresholds, as raw values and decoded."""
+    ev = decode_event(*(rd(bus, node, *k) for k in EVENT_READS))
+    tp = decode_temp(*(rd(bus, node, *k) for k in TEMP_READS))
+    print(f"    2080h:02 event source    {ev['source']} ({ev['source_text']})")
+    print(f"    2080h:04 field code      {ev['field_code']} ({ev['field_text']})")
+    print(f"    2080h:05 temp code       {ev['temp_code']} ({ev['temp_text']})")
+    print(f"    2070h:01 temperature     {tp['temp_c']} degC   thresholds "
+          f"{tp['lo_c']} .. {tp['hi_c']} degC (2070h:07 .. :06)"
+          + (f"   {WARN} outside" if tp["out"] else ""))
+    return ev, tp
 
 
 def poll(bus, node, seconds, interval):
@@ -671,6 +730,37 @@ def markers(bus, node, seconds, start_nmt):
     return 0
 
 
+def clear_event(bus, node, value, go=False):
+    """E0.5: which value written to 2080h:01 resets the latched event flag?"""
+    if value not in (0, 1):
+        print(f"{BAD} --value must be 0 or 1 (the manual does not say which resets 2080h:01)")
+        return 2
+    status = rd(bus, node, *OBJ_STATUS)
+    if status is None:
+        print(f"{BAD} node {node} did not answer 2022h - is the sensor powered and on can0?")
+        return 1
+    print(f"    2022h status             0x{status:02X}, event flag {int(bool(status & 0x80))}")
+    print_event_state(bus, node)
+    if not go:
+        print(f"\n{WARN} this writes 2080h:01 = {value} (reset the event flag). "
+              "Re-run with --go. Nothing has been changed.")
+        return 2
+    ok, detail = _guarded_write(bus, node, EVENT_RESET[0], EVENT_RESET[1], value, 1)
+    if not ok:
+        print(f"{BAD} write 2080h:01 refused: {detail}")
+        return 1
+    time.sleep(0.05)
+    after = rd(bus, node, *OBJ_STATUS)
+    flag = None if after is None else bool(after & 0x80)
+    print(f"    {OK} wrote 2080h:01 = {value}; status now "
+          f"{'unread' if after is None else f'0x{after:02X}'}, event flag {flag}")
+    print_event_state(bus, node)
+    if flag:
+        print(f"    {WARN} the flag is still set: the cause persists, or {value} is not the reset value")
+        return 1
+    return 0
+
+
 HALL_OBJ = 0x2000
 # Hall elements per sensor length (manual p. 44). 2000h answers all 168 sub-indices on
 # every length - the MLSE-0200 here returned 36 values and 132 zeros (2026-10-09) - so
@@ -826,7 +916,7 @@ def main():
         description="Read the SICK MLS magnetic line sensor (read-only).")
     ap.add_argument("mode", nargs="?", default="snapshot",
                     choices=("snapshot", "poll", "stream", "calibrate", "set-variant",
-                             "markers", "marker-level", "set-markers"))
+                             "markers", "marker-level", "set-markers", "clear-event"))
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--seconds", type=float, default=10.0,
                     help="duration for poll/stream (default 10)")
@@ -837,8 +927,10 @@ def main():
     ap.add_argument("--step", default="both", choices=("both",) + CAL_STEPS + ("report",),
                     help="calibrate: which step (default both, with a prompt between)")
     ap.add_argument("--samples", type=int, default=40, help="calibrate: samples per step (default 40)")
-    ap.add_argument("--value", type=int, help="set-variant: the 2006h:01 value (Standard: 0, 2, 3, 4)")
-    ap.add_argument("--go", action="store_true", help="set-variant / set-markers: actually write")
+    ap.add_argument("--value", type=int,
+                    help="set-variant: the 2006h:01 value (Standard: 0, 2, 3, 4); clear-event: 0 or 1")
+    ap.add_argument("--go", action="store_true",
+                    help="set-variant / set-markers / clear-event: actually write")
     ap.add_argument("--polarity-lock", action="store_true",
                     help="set-markers: also 202Dh:05 = 1 (only after the B0 lap showed north everywhere)")
     ap.add_argument("--range-mm", type=float, default=200.0,
@@ -849,9 +941,9 @@ def main():
 
     if args.mode == "calibrate" and args.step == "report":
         return calibrate(None, args.node, "report", 0, 0.0)
-    if args.mode == "set-variant" and args.value is None:
-        ap.error("set-variant needs --value")
-    if args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers"):
+    if args.mode in ("set-variant", "clear-event") and args.value is None:
+        ap.error(f"{args.mode} needs --value")
+    if args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers", "clear-event"):
         # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
         # IMU poll) would read the other's replies. Take the bus owner lock first.
         from agv_core import ownerlock  # noqa: PLC0415
@@ -884,6 +976,8 @@ def main():
                                 save=args.save, baseline=args.baseline)
         if args.mode == "markers":
             return markers(bus, args.node, args.seconds, args.nmt)
+        if args.mode == "clear-event":
+            return clear_event(bus, args.node, args.value, go=args.go)
         return stream(bus, args.node, args.seconds, args.nmt)
     except KeyboardInterrupt:
         print("\n    interrupted")

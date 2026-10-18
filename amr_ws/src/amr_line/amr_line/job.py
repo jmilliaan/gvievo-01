@@ -37,6 +37,9 @@ WHAT HOLDS THE VEHICLE, and how each resumes:
               buffer overrun) on a mission with tags: a station or the U-turn
               may have been driven past. Needs a physical Start once the link
               is back; during a U-turn it is a FAULT like any other hold
+  markers     a marker run (mission marker_run) lost its MLS marker stream, or marker
+              events, while driving: the home stop may have been driven past. Needs a
+              physical Start once the stream is back (2026-10-18)
   station     parked at a stop: a physical Start, then the pre-move warning
   authority   lease, generation or panel selector changed under the run.
               Never auto-resumes: something above this layer took control.
@@ -207,8 +210,16 @@ class FollowJob:
         return self.odometer.at(home["tag"], tag_table.home_window_m(home))
 
     def _rfid_check(self, i: Inputs):
+        """The mission's position sources: the RFID link, and a marker run's MLS markers."""
         if self.tape is not None and self.tape.needs_link and not (i.rfid or {}).get("comms_ok", False):
             return "RFID link down (the mission needs its tags)"
+        if self.tape is not None and self.tape.needs_markers:
+            from agv_core import config as vehicle  # noqa: PLC0415
+
+            if not vehicle.MLS_MARKERS:
+                return "the marker run needs mls.markers_enabled"
+            if not (i.markers or {}).get("ok", False):
+                return "MLS markers down (the run's U-turn and home stop are markers)"
         return ""
 
     def _job_check(self, i: Inputs):
@@ -298,7 +309,7 @@ class FollowJob:
         if kind != "start":
             # Held state carries on as in HOLD: tags still delivered once, never acted on.
             tags = self.tape.scan(i.now, i.rfid, False, self.f)
-            self.tape.link_lost = None
+            self.tape.link_lost = self.tape.marker_lost = None
             if self.tape.fault:
                 self._premove = None
                 return self._tape_fault()
@@ -514,7 +525,7 @@ class FollowJob:
             tags = self.tape.scan(i.now, i.rfid, False, self.f)
             # Held, the vehicle is still: a link that dropped and came back cost
             # no tags. A link still down is caught again on the first tick driving.
-            self.tape.link_lost = None
+            self.tape.link_lost = self.tape.marker_lost = None
             if self.tape.fault:
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
@@ -726,7 +737,13 @@ class FollowJob:
             # rfid_fresh_s, and every metre driven blind is a tag not read.
             self._hold("rfid", t.link_lost + "; press Start once the link is back")
             return 0.0, 0.0
-        t.markers(self._marker_new, self.markers_ok, True)
+        t.markers(self._marker_new, self.markers_ok, True, self.f)
+        if t.fault:
+            return self._tape_fault()
+        if t.marker_lost:
+            # Like the RFID link: every metre driven blind is a marker not read.
+            self._hold("markers", t.marker_lost + "; press Start once the markers are back")
+            return 0.0, 0.0
         if t.uturn_req is not None:
             return self._uturn_tick(i, tags)
         self._speed_inputs(i)

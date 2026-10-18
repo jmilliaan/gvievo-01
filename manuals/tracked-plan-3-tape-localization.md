@@ -1,7 +1,9 @@
 # Tracked plan 3: tape-graph localization (stops and junction orders without RFID)
 
-Status: PLAN 2026-10-17. **Implementation started and INTERRUPTED 2026-10-17; continue from
-section 6 ("Implementation status") in the next session.** Site and flow: `manuals/site-layout-103.md` (read it
+Status: P0 tooling and P1 (teach + shadow) BUILT 2026-10-18, tested offline, in the unified sim
+and on a private ROS domain; not yet run on the floor. Section 6 has the status and what is
+still needed. **The plant is not free yet: the first floor tests run on the ~10 m straight in
+front of MRU (section 7, stage 1).** Site and flow: `manuals/site-layout-103.md` (read it
 first). Procedures: `manuals/tape-localization-runbook.md`. Scope: **AGV-01**. AGV-02 and two-AGV
 traffic come later.
 
@@ -54,11 +56,11 @@ at `s_station − stop_distance_m`, as `TapeRun` does today after a tag read. Ov
 | `amr_line/line_follow_node.py` | thin, changed | subscribes `/amcl_pose` and `/amr/localization_state`; ticks the locator; serves calls and teach |
 | `amr_mission/tape_graph_store.py` | new | graph revisions under the map: staged, verified, published atomically, never rewritten (same transaction as `map_bundle.py`) |
 | `agv_core/mission.py` | changed | schema v3 for site missions (section 2.5); v2.1 (`line-a`) stays loadable |
-| `amr_bringup/launch/line_layer.launch.py` | changed | when the profile has `line.localization: true`: map_server, AMCL, lifecycle manager and localization monitor on the graph's map revision (bundle hashes verified, as `navigation_layer.launch.py` does). EKF and `scan_gate` already run in base |
+| `amr_bringup/launch/line_layer.launch.py` | changed | when the profile has `tape_loc.enabled: true`: map_server, AMCL, lifecycle manager and localization monitor on the graph's map revision (bundle hashes verified, as `navigation_layer.launch.py` does). EKF and `scan_gate` already run in base |
 | `amr_bringup/launch/p0_localization.launch.py` | new (P0) | the same localization group, started beside a running LINE layer, for measurement only |
 | `amr_interfaces` | changed | LineState: append locator and trip fields. New srvs: `LineCall`, `TeachStation`, `TeachEdge`, `AtHome`. **colcon build** |
 | `amr_web` | changed | operator **Calls** page; engineer **Teach** page (PIN); a **Locator** tile in the rail |
-| `profiles/agv-01.json`, `agv_core/config.py` | changed | `line.localization` (bool): schema, validation, refusal test in `tests/test_config.py` |
+| `profiles/agv-01.json`, `agv_core/config.py` | changed | block `tape_loc` (`enabled` + the locator thresholds): schema, validation, refusal tests in `tests/test_config.py` |
 | `tools/run_log.sh`, `tools/bag_report.py`, `tools/p0_report.py` | changed / new | record and report the localization topics (section 5) |
 
 The node stays thin and the decisions stay in pure modules, tested without ROS (CLAUDE.md conventions).
@@ -187,10 +189,13 @@ themselves. None of them extends a command's life, and none touches the lease or
 
 ## 4. Steps
 
+Until the plant is free, P0 and P1 run on the straight in front of MRU (section 7, stage 1).
+What needs corners and junctions waits for stage 2.
+
 | Step | Content | Done when |
 |---|---|---|
 | **P0** Measure | tooling T1–T3 (section 5) and one session on the laid MRU circuit (runbook section 2) | the M1–M6 table is filled and the decision rule applied |
-| **P1** Graph, teach, shadow | `tape_graph`, `tape_locator`, graph store, teach mode (edges by recorded runs, stations taught under MANUAL), Teach page, LineState fields, `line.localization` flag, LINE-layer localization group. **Shadow mode:** the locator runs during ordinary `line-a` runs and logs where it would have stopped and branched. Motion is unchanged | 50 passes of each MRU station in shadow: predicted vs taught `s`, 2σ ≤ 5 cm, no LOST, no unexpected fork |
+| **P1** Graph, teach, shadow | `tape_graph`, `tape_locator`, graph store, teach mode (edges by recorded runs, stations taught under MANUAL), Teach page, LineState fields, `tape_loc.enabled`, LINE-layer localization group. **Shadow mode:** the locator runs during ordinary `line-a` runs and logs where it would have stopped and branched. Motion is unchanged | 50 passes of each MRU station in shadow: predicted vs taught `s`, 2σ ≤ 5 cm, no LOST, no unexpected fork |
 | **P2** MRU circuit live | `trip.py` (MRU group), stops and U-turn approach by `s`, the payload guard, ATT and HOME-N stops, the new holds and faults | floor acceptance: 20 MRU trips with 2 calls each, every stop within ±10 cm (measured on floor marks), every provoked failure (section 3) ending in its hold |
 | **P3** Calls and trips | Calls page: queue, 2-call trip formation per group, "press Start at the bay", At home, trolleys-off confirm | operator acceptance of the flow in `site-layout-103.md` section 3 |
 | **P4** BTU circuit | when row 2, the left vertical and the middle line are laid: teach the new edges and stations; junction orders through the Ladder; `J-ML` explicit LEFT; wrong-branch FAULT; floor checks of X1 and X2 (MLS bench B7 style) | 20 BTU trips; every junction order and stop right; a provoked wrong branch (temporary order swap on a test mission) ends in FAULT within 2 m |
@@ -240,31 +245,24 @@ recorded as such.
 
 Results are appended below as **P0 results**, with the session date, the map revision and the run stamps.
 
-## 6. Implementation status (interrupted 2026-10-17, resume here)
+## 6. Implementation status (2026-10-18)
 
-The session stopped on the user's request partway through. Nothing is committed. Next session:
-start at "Next steps" below. `amr.service` was stopped by the user; nothing here needs it.
+Nothing is committed. P0 tooling and P1 are built; P2–P4 are not started (P2 waits for the P0
+results and P1 shadow acceptance, section 4).
 
-### Done and tested (offline)
+### Built
 
-| File | What | Tests |
+| Area | Files | Checked |
 |---|---|---|
-| `amr_line/tape_graph.py` | polyline, legs, stations, graph (binding check), `compile_route`, `ForkDetector` | `amr_line/test/test_tape_localization.py` (32 pass) |
-| `amr_line/tape_locator.py` | 1-D filter: latency roll-forward, gates, resyncs, health, wrong branch, `Shadow` logger | same |
-| `amr_line/tape_teach.py` | `PassRecorder`, pass split at nodes, pass averaging, station projection | same |
-| `amr_line/tape_graph_store.py` | immutable `g<N>`, teach workspace, active pointer | same |
-| `amr_line/trip.py` | call queue, trip formation in circuit order, shared stops, payload guard | same |
-| `agv_core/mission.py` | schema `site-3` (`parse_site`, `load_site`, `list_site_missions`); `load()` refuses site missions | `tests/test_mission.py` |
-| `missions/site-103.json` | AGV-01 groups, C-MRU, C-BTU | same |
-| `agv_core/config.py`, `profiles/agv-01.json` | profile block `tape_loc` (`enabled: false` + provisional thresholds) | `tests/test_config.py`; `EXPECTED_CHECKS` 706 → 725 |
-| `tools/run_log.sh` | T2: records `/amcl_pose`, `/tf`, `/amr/localization_state`; writes `cpu_temp.csv`, `pidstat.txt` | the CPU/temperature sampler was run for 11 s |
-
-### Written, not yet tested
-
-- `amr_bringup/amr_bringup/tape_loc.py`: the shared localization group.
-- `amr_bringup/launch/p0_localization.launch.py`: T1. Needs `colcon build`, then a launch on the vehicle.
-- `tools/p0_report.py`: T3. Compiles only; the planned `tools/test_p0_report.py` (synthetic runs through `analyse()`) is not written yet.
-- Lint left in them: `p0_report.py` B007 ×2 and E501 ×1; `tape_loc.py` UP031.
+| Pure core | `amr_line/tape_graph.py`, `tape_locator.py`, `tape_teach.py`, `tape_graph_store.py`, `trip.py`, `tape_runtime.py` | `amr_line/test/test_tape_localization.py`, `test_tape_runtime.py` (35 tests; amr_line suite 219 pass) |
+| Site mission | `agv_core/mission.py` schema `site-3`, `missions/site-103.json` | `tests/test_mission.py` |
+| Profile | block `tape_loc` (`enabled: false`, provisional thresholds; `site_mission`/`shadow_circuit` = the straight test) | `tests/test_config.py`; offline suite 725 checks |
+| T1 | `amr_bringup/launch/p0_localization.launch.py`, `amr_bringup/tape_loc.py` | launched on a private domain against `evo-mru-map-02`: bundle verified, lean params applied, lifecycle active, start pose received |
+| T2 | `tools/run_log.sh`: `/amcl_pose`, `/tf`, `/amr/localization_state`, `cpu_temp.csv`, `pidstat.txt` | CPU/temperature sampler run |
+| T3 | `tools/p0_report.py` | `tools/test_p0_report.py` (synthetic laps: M1, M3, M4, M6) |
+| P1 node | `line_follow_node`: `/amcl_pose`, `/amr/localization_state` in; `/amr/line/teach` (new `LineTeach.srv`), `/amr/line/at_home`, `/initialpose` out; LineState `loc_*`, `teach` fields; `LINE_LOC` events | LINE layer launched with `tape_loc.enabled` on a private domain: group up, services answer, fields published |
+| P1 launch | `line_layer.launch.py` runs the group from `$AMR_STATE_DIR/line_graph.json`; skipped with a reason, never blocking line following | same; unified sim (2 tests) passes with it off |
+| P1 web | Teach page (engineer nav; teach API 403 for the operator view), `/api/line/site`, `/api/line/at_home`, a Locator tile on Run tracked | `amr_web/test/test_teach_page.py`; web suite 301 pass. **Not yet looked at on the 1280×720 panel** |
 
 ### Changes from the plan text, made while implementing
 
@@ -277,31 +275,163 @@ start at "Next steps" below. `amr.service` was stopped by the user; nothing here
 - **Unlaid junctions:** `laid: false` takes a junction out of the legs until it is laid. J-LV and J-R2E are unlaid today, so C-BTU cannot be taught yet.
 - **Store location:** `tape_graph_store.py` lives in `amr_line`, not `amr_mission`, with a `manifest.json`.
 - **Re-acquiring after LOST:** needs readiness to leave READY and come back (a revalidation). AMCL that disagreed with the wheels is not trusted just because it stayed READY.
-- **Teaching:** whole-circuit passes from the HOME bay back to the HOME bay, split at the circuit's nodes. A pass whose fork/U-turn events don't match the circuit is refused.
+- **Teaching:** whole-circuit passes from the HOME bay back to the HOME bay, split at the circuit's nodes. A pass whose fork/U-turn events don't match the circuit is refused. Stations are taught from a 3 s standstill AMCL mean.
+- **Shadow mode:** runs on one circuit (node parameter `shadow_circuit`, default C-MRU). A lap completes at HOME and the next one starts there.
 
-### Next steps (in order)
+### Inputs needed (not decidable from the repo)
 
-1. **Finish P0 tooling:** fix the lint above, write `tools/test_p0_report.py`, `colcon build`, and dry-run T1 on the vehicle against an existing map (no motion).
-2. **P1 node wiring, shadow only (motion unchanged):**
-   - `line_follow_node`: subscribe `/amcl_pose` and `/amr/localization_state`; integrate signed wheel travel; run `ForkDetector`, `TapeLocator` and `Shadow`; record teach passes.
-   - New services: a teach service, and `At home` as a Trigger that publishes `/initialpose` from HOME-N.
-   - LineState: append the locator fields (`amr_interfaces`, so `colcon build`).
-   - `line_layer.launch.py`: start the `tape_loc` group from the active pointer when `tape_loc.enabled` (skip with a reason if the bundle doesn't verify; never block line following).
-   - Add `amr_line` as an `exec_depend` of `amr_bringup`.
-3. **Web:** the Teach page (engineer PIN) and the Locator tile.
-4. **Update the runbook:** P0 section; section 3 to match the whole-circuit passes.
-5. **P2 (motion):** only after the P0 results and P1 shadow acceptance (section 4).
-
-### Inputs needed later (not decidable from the repo)
-
-- **P0 numbers** for the `tape_loc` thresholds (`k_odo`, `amcl_sigma_floor_m`, `max_lateral_m`, …), and the M1 decision on whether code-3 anchors are needed. Anchor resync is not implemented: it depends on that decision.
+- **P0 results:**
+  - the `tape_loc` thresholds (`k_odo`, `amcl_sigma_floor_m`, `max_lateral_m`, …)
+  - the M1 decision on whether code-3 anchors stay; anchor resync is not implemented because it depends on that decision
 - **`site-103.json`:**
-  - U-MRU pivot direction (`cw` is a placeholder; `line-a` has both 0180 cw and 0190 ccw)
+  - U-MRU pivot direction: **CW** (operator, 2026-10-18)
   - `lead_m` and the approach values
   - whether J-S and X2 are laid today
-  - set `laid: true` for J-LV and J-R2E when row 2 is laid
-- **How to drive a C-MRU teach pass before localization exists:** does `line-a` follow exactly HOME-N → J-BMERGE → R717 → J-N right → X1 → J-ML → MRU → pivot → J-ML left → J-STEM → J-SPLIT left → HOME-N, and start and end in the north bay?
-- **The code-3 strip positions** (A1–A5) and the survey map id/revision.
-- **`sudo apt install sysstat`** on the vehicle for `pidstat` (P0 M5).
-- **Readiness confirmation in LINE mode:** the localization monitor's "confirm scans align" is a NAVIGATION-page action today; P1 needs it on the Teach/Calls page.
+  - `laid: true` for J-LV and J-R2E when row 2 is laid
+- **Teach route:** does `line-a` drive exactly the C-MRU route, starting and ending in the north bay? If not, the teach passes are refused (runbook 3.2).
+- **Floor and map:** the code-3 strip positions (A1–A5) and the survey map id/revision.
+- **On the vehicle:** `sudo apt install sysstat` (P0 M5 per-process CPU).
+- **Panel check:** the Teach page and the extra Run-tracked tile, at UI scale `l` on the panel.
 
+### Next steps
+
+1. **Stage 1 on the straight in front of MRU** (section 7.3, runbook 1A): P0, teach, shadow,
+   provoked failures. Its inputs are in section 7.4.
+2. **Stage 2 when the plant is free:** re-survey, `site-103` / `C-MRU` in the profile, teach,
+   shadow, and the junction features stage 1 cannot show.
+3. **P2 design pass with the P0 numbers:**
+   - the stop-by-`s` and junction-order wiring in `tape_run.py`/`job.py`
+   - the holds `position` and `payload`, and the fault `wrong_branch`
+   - the Calls page (P3)
+
+## 7. Staged floor tests: the straight in front of MRU first (2026-10-18)
+
+The plant is not free for testing. Only a straight of about 10 m in front of MRU is: no
+corners, no junctions. Stage 1 proves most of the stack there. Stage 2 is the plant, when the
+area is cleared.
+
+### 7.1 What the straight can and cannot show
+
+| Feature | Stage 1 (straight) | Waits for stage 2 (plant) |
+|---|---|---|
+| AMCL along-track repeatability, lateral residual, jumps, latency, CPU, odometry scale (P0 M1–M6) | yes. A straight aisle is the pessimistic case for along-track (fewest features along the travel) | M1 on corners, the trunk and the HOME complex |
+| Teach: passes, averaging, stations, publish, activate, binding refusal | yes, on `missions/test-mru-straight.json` | the site-103 legs |
+| At home, readiness confirm, locator start | yes (T-HOME) | HOME-N |
+| Shadow stops: release westbound, take back eastbound | yes (MW, ME, T-ATT, T-HOME) | R2 stops |
+| U-turn approach and resync at the tape end, payload logic | yes, if the section includes the MRU line's west tape end (input) | U-turn R717 |
+| LOST, re-acquire after revalidation, DEGRADED on odometry (provoked) | yes | — |
+| Junction orders, fork resyncs, unexpected fork, wrong branch, crossings X1/X2, J-ML | **no**: no junction on the straight | all |
+| P2 live stops by `s` | only after the P2 code and P0's numbers; on the straight first | the full circuits |
+
+### 7.2 The test layout
+
+- **Mission `test-mru-straight`** (schema site-3, circuit `C-STRAIGHT`):
+  T-HOME → T-ATT → MW-1…MW-4 → U-MRU pivot → ME-4…ME-1 → T-HOME.
+  - It has no junctions. Its one leg runs from the pivot, east to T-HOME, and back west to the pivot.
+- **T-HOME is the east end of the free section,** facing west. There is no tape end in the east, so:
+  - the run ends there: a temporary RFID home tag stops it (input)
+  - the operator turns the AGV round there by hand (MANUAL spin, empty)
+  - the turnaround is part of the taught leg; the locator handles the leg doubling back on
+    itself (tie-break by the predicted `s`, tested)
+- **T-ATT at least 2 m west of T-HOME.** Its braking point must lie beyond the start, where
+  AMCL has corrected the At-home sigma.
+- **Stations:** MW-*/ME-* only for the machines inside the section. Remove the others from the
+  test mission, otherwise the circuit does not compile.
+- **Profile:** `tape_loc.site_mission: test-mru-straight`, `tape_loc.shadow_circuit: C-STRAIGHT`.
+  - Stage 2 sets `site-103` / `C-MRU`.
+  - The straight's map and graph are not reused: the plant gets its own survey and teach. Only
+    the numbers carry over.
+
+### 7.3 Stage 1 steps (runbook section 1A)
+
+| Step | Content | Done when |
+|---|---|---|
+| S0 | Lay 2–3 code-3 strips ≥ 3 m apart, ≥ 1 m from any stop. Survey the free area. The temporary T-HOME tag mission | `bag_report` shows each strip both ways |
+| S1 P0 | 10 laps default, 10 laps lean (one lap = T-HOME → pivot → T-HOME), `tools/p0_report.py` | M1–M6 table in "P0 results", marked **straight** |
+| S2 P1 teach | 3 passes, 10 stations (fewer if fewer machines), publish, activate | Build says every circuit compiles; spread ≤ 5 cm |
+| S3 P1 shadow | 30 laps with At home once per session | every shadow decision "ok"; no LOST; predicted vs taught `s` at the code-3 strips 2σ ≤ 5 cm |
+| S4 provoked | people beside the lidar (DEGRADED, back to HEALTHY); localization reset (LOST → revalidate → re-acquired); a station taught facing the wrong way (refused); a graph for another map revision (refused) | each ends as section 3 says |
+| S5 (later) | P2 live stops by `s` on the straight, payload HOLD before the pivot | after the P2 code; ±10 cm on floor marks |
+
+### 7.4 Inputs for stage 1 (answered 2026-10-18)
+
+| Question | Answer | Effect |
+|---|---|---|
+| West tape end inside the section; which U-turn | yes, **CW** (tag 0180) | `uturns.U-MRU.direction: cw` in both missions, as set |
+| Which MRU machines lie inside | **only MRU4** | `test-mru-straight`: T-HOME, T-ATT, MW-4, U-MRU, ME-4, T-HOME; `trip_calls: 1` |
+| East-end stop | **no RFID for now** | below |
+
+### 7.5 Without RFID: marker triggers on the straight (agreed 2026-10-18)
+
+Today only RFID starts the U-turn (tag 0180) and ends a run at home. On the straight, RFID is
+omitted, so two MLS markers take over. The test needs no speed zone (10 m leaves no HIGH
+budget), so codes 1 and 2 are free there. Code 3 stays the P0 reference.
+
+MLS marker codes in use (profile `mls.marker_codes: [1, 2, 3]`; codes 4–7 cannot be read):
+
+| Code | Strips | Elsewhere (`line-a`) | On the straight test |
+|---|---|---|---|
+| 1 | 30 mm | speed-zone inner marker; zones work on the floor (tested the week of 2026-10-09; 100 mm gap between the strips of a pair) | **home stop**, on the way back only |
+| 2 | 60 mm | speed-zone outer marker | **U-turn approach**, on the way out only; on the way back, the **backstop** for a missed home marker |
+| 3 | 60 + 30 mm | nothing at runtime | P0 reference strips |
+
+**Behaviour: a marker run** (a new block in the v2 mission, `marker_run`, refused together with `high_zone`)
+
+1. **Out:** the first code 2 after departure starts the U-turn exactly as tag 0180 does today:
+   - slow to 0.1 m/s within 0.3 m
+   - stop at once when the tape is lost
+   - pivot CW
+   - Code 1 is ignored on the way out (the departure passes the home marker again).
+2. **Back,** after the pivot: the first code 1 ends the run at home (a measured stop over 0.5 m, DONE). Code 2 passed again behind the pivot point is ignored.
+3. **Backstop:** a code 2 on the way back, while home is still pending, means the home marker was missed:
+   - the command is zeroed at once (the drives' deceleration, about 0.13 m from 0.5 m/s)
+   - FAULT "home marker missed"
+4. **Missed U-turn marker:** the follower's line-loss stop at the tape end ends the run (safe, as a missed 0180 today).
+
+The operator turns the AGV round at T-HOME by hand, then presses Start for the next lap.
+
+**Layout** (x along the straight, 0 = the west tape end, eastward):
+
+| x | What | Rule |
+|---|---|---|
+| 0 | tape end | |
+| **1.0 m** | **code 2, U-turn** | ≥ 0.3 m (decel) + 0.1 m (sensor lead) + the creep; ≤ `max_approach_m` 2.0 m |
+| MRU4 | MW-4 / ME-4 (shadow only) | where the machine is |
+| | code 3 strips, 2 of them | ≥ 3 m apart, ≥ 1 m from every other strip and stop |
+| T-HOME − 2 m or less | T-ATT (shadow only) | ≥ 2 m west of T-HOME |
+| **east limit − 2.0 m** | **code 1, home** | the AGV parks 0.5 m east of it (stop distance): T-HOME = east limit − 1.5 m |
+| **east limit − 1.0 m** | **code 2, backstop** | 1.0 m past the home marker; a missed home ends about 0.15 m past it, still 0.85 m inside the free area |
+
+Strips 15 mm × 100 mm, south up, on the same side as the speed-zone strips. **No other code 1 or
+2 strip may lie between the backstop and the tape end.** If speed-zone pairs are laid on this
+straight, they would trigger the U-turn and the home stop. They have to be covered for the test,
+or the layout has to be built around them.
+
+No speed-zone pairs are laid on this straight (operator, 2026-10-18).
+
+**Built 2026-10-18** (motion code; offline tests only, not yet on the floor):
+- **`agv_core/mission.py`:** an optional `marker_run` block in the v2 schema. It is refused:
+  - together with a `high_zone`
+  - together with any RFID tag or branch row
+  - with the same code twice, or a code not laid
+  - with a missing key, or a U-turn or stop distance the drives cannot make
+
+  Tests: `tests/test_mission.py` (7 checks).
+- **`amr_line/tape_run.py`:** markers are routed by phase:
+  - out: code 2 starts the U-turn through the same path a tag uses
+  - back: code 1 ends the run at home; code 2 within the approach distance + 1.0 m after the pivot is the re-pass and is skipped; after that it is the backstop, a FAULT
+  - reads during a stop or the U-turn are ignored
+- **`amr_line/job.py`:**
+  - hold cause `markers`: the stream down or an event lost while driving; needs Start
+  - Start is refused without `mls.markers_enabled` or with the stream down
+  - alarm `MARKERS_LOST` (catalogue and RUNBOOK section 4 regenerated)
+- **`missions/mru-straight-markers.json`:** the straight's mission.
+- **Tests:** `amr_line/test/test_marker_run.py` (7 tests):
+  - a full lap with no RFID link
+  - the re-pass is skipped
+  - the backstop FAULT
+  - a missed U-turn marker ends at the tape end
+  - markers lost holds, and Start is refused while they are down
+  - markers during the U-turn approach are ignored
+
+The shadow locator and teaching are unchanged: the U-turn phases come from the engine, as with RFID.

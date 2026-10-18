@@ -5,6 +5,7 @@
     MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
     MLS TPDO1 track (or SDO poll, read-only)       ->  /amr/line_track (LineTrack)
     MLS TPDO1 marker code (profile mls.*)          ->  /amr/line_marker (MarkerEvent)
+    MLS event flag -> 2080h cause, 2070h temp      ->  /amr/events MLS_FIELD_WEAK / MLS_TEMP
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
 
     /amr/commissioning_pp (PpMove, held 50 Hz)     ->  profile-position blind move
@@ -66,7 +67,7 @@ from std_srvs.srv import Trigger
 from amr_base import arm_policy, canopen, gating, pp
 from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
-from amr_base.mls_track import ERROR, WARN, MlsTrack, TrackSample
+from amr_base.mls_track import ERROR, WARN, MlsTrack, RateLimit, TrackSample
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -124,6 +125,7 @@ def _fault_code(reason: str) -> str:
 
 
 TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
+FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
 WHEELS_UI_PERIOD_S = 0.2  # /wheel_states_ui, the display copy (Home speed tile, 2026-10-08)
 
 class DriveNode(Node):
@@ -205,6 +207,7 @@ class DriveNode(Node):
         self._event_seq = 0
         self._operational = False
         self._edges: dict[str, tuple[str, int, str]] = {}  # slot -> (code, level, detail)
+        self._field_events = RateLimit(FIELD_EVENT_MIN_S)
         self._requests: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._status_snapshot: dict = {"state": "starting", "reason": "", "mode": "off"}
@@ -391,6 +394,8 @@ class DriveNode(Node):
             sdo_hz=float(self.get_parameter("mls_track_sdo_hz").value),
             expected_variant=int(self.get_parameter("mls_track_variant").value),
             markers=marker_expectation(config.MLS_MARKERS, config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
+            on_event=self._on_mls_event,
+            event_clear=config.MLS_EVENT_CLEAR,
             log=self._log,
         )
         try:
@@ -946,6 +951,10 @@ class DriveNode(Node):
         if self._track is None:
             self._safe_publish(self._pub_diag, arr)
             return
+        temp = self._track.temp
+        if temp is not None and temp["temp_c"] is not None:
+            detail = f"{temp['temp_c']} degC, the sensor's range {temp['lo_c']}..{temp['hi_c']} degC"
+            self._edge("temperature", ("MLS_TEMP", 1, detail) if temp["out"] else None)
         level, message, kv = self._track.diagnostic(time.monotonic())
         tr = DiagnosticStatus(name="mls/track", hardware_id=f"node {config.SENSOR_NODE}")
         levels = {ERROR: DiagnosticStatus.ERROR, WARN: DiagnosticStatus.WARN}
@@ -960,6 +969,17 @@ class DriveNode(Node):
         tr.values = [KeyValue(key=k, value=v) for k, v in kv]
         arr.status.append(tr)
         self._safe_publish(self._pub_diag, arr)
+
+    def _on_mls_event(self, ev: dict) -> None:
+        """Bus thread: a magnetic-field event under a track (mls_track, E5 gate passed).
+        History only (plan E1): one INFO event, never a standing alarm, never motion."""
+        held = self._field_events.allow(ev["t_mono"])
+        if held is None:
+            return
+        where = "LCP2 --" if ev["lcp2_mm"] is None else f"LCP2 {ev['lcp2_mm']:+d} mm"
+        more = f"; +{held} more since the last report" if held else ""
+        text = f"{ev['field_text']} ({where}, track level {ev['track_level']}/7{more})"
+        self.event(0, "MLS_FIELD_WEAK", text)
 
     def _publish_track(self, s: TrackSample) -> None:
         r = s.reading

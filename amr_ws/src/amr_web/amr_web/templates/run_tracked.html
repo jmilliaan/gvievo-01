@@ -90,7 +90,11 @@ onState(st => {
       ['Branch', (ln.branch_intent || 'straight').toUpperCase(), uturn || '—', uturn ? 'warn' : ''],
       ['Last tag', ln.last_tag || '–', ln.last_tag_action || '—', ''],
       ['Travel', `${num(ln.followed_m, 1)} m`, `track ${num(ln.track_hz, 0)} Hz`, ''],
-    ]);
+    ].concat(ln.loc_health ? [
+      // Tape localization in shadow (tracked plan 3, P1): display only, it decides nothing yet.
+      ['Locator', ln.loc_health, ln.loc_leg ? `${ln.loc_leg} · σ ${num(ln.loc_sigma_m * 100, 1)} cm` : (ln.loc_detail || '—'),
+        { HEALTHY: 'ok', DEGRADED: 'warn', LOST: 'bad', WAITING: 'warn' }[ln.loc_health] || ''],
+    ] : []));
     $('lt-reason').textContent = ln.message || '';
   }
   lineTrack(st.line_track);

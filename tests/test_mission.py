@@ -200,7 +200,12 @@ def test_site_mission():
           "J-ML:merge>U-MRU" in legs and "U-MRU:pivot>J-ML" in legs, str(legs))
     check("J-ML southbound is an explicit LEFT", "J-ML:left>J-STEM" in legs)
     check("a site mission is not a tag-table job, nor listed as one",
-          "site-103" not in mission.list_missions() and mission.list_site_missions() == ["site-103"])
+          "site-103" not in mission.list_missions()
+          and mission.list_site_missions() == ["site-103", "test-mru-straight"])
+    t = mission.load_site("test-mru-straight")
+    check("the straight test (plan 3 section 7): one leg, pivot to pivot through the home turnaround",
+          [leg["id"] for leg in t["CIRCUITS"]["C-STRAIGHT"]["legs"]] == ["U-MRU:pivot>U-MRU"]
+          and t["CIRCUITS"]["C-STRAIGHT"]["home_arrive"][-1] == "T-HOME")
     _site_refused("a junction without an order is refused",
                   lambda d: d["circuits"]["C-MRU"][3].pop("order"), "without an order")
     _site_refused("straight on from the stem of a T is refused",
@@ -220,4 +225,29 @@ def test_site_mission():
     _site_refused("more than two calls a trip is refused", lambda d: d.update(trip_calls=3), "trip_calls")
 
 
-TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals, test_high_zone, test_site_mission]
+MARKER_RUN = {"uturn_code": 2, "home_code": 1, "direction": "cw", "approach_mps": 0.1, "decel_m": 0.3,
+              "max_approach_m": 2.0, "stop_distance_m": 0.5, "label": "T-HOME"}
+
+
+def test_marker_run():
+    """marker_run (plan 3 section 7.5): no RFID; code 2 the U-turn, code 1 home."""
+    print("\nmission: marker_run, the straight in front of MRU without RFID")
+    m = mission.load("mru-straight-markers")
+    check("the straight's marker run loads: U-turn on code 2 (cw), home on code 1, no tags",
+          m["MARKER_RUN"]["uturn_code"] == 2 and m["MARKER_RUN"]["home_code"] == 1
+          and m["MARKER_RUN"]["direction"] == "cw" and m["TAGS"] == {})
+    refused("a marker run with a high zone is refused (the codes would mean two things)",
+            base(marker_run=MARKER_RUN, high_zone=ZONE), "two things")
+    refused("a marker run with RFID tags is refused", base([HOME], marker_run=MARKER_RUN), "no RFID")
+    refused("the same code for U-turn and home is refused",
+            base(marker_run=dict(MARKER_RUN, home_code=2)), "must differ")
+    refused("a marker run code not laid on the floor is refused",
+            base(marker_run=dict(MARKER_RUN, home_code=5)), "not laid")
+    refused("a marker run block with a missing key is refused",
+            base(marker_run={k: v for k, v in MARKER_RUN.items() if k != "label"}), "exactly")
+    refused("a home stop shorter than the drives can decelerate is refused",
+            base(marker_run=dict(MARKER_RUN, stop_distance_m=0.05)), "decel")
+
+
+TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals, test_high_zone, test_site_mission,
+         test_marker_run]

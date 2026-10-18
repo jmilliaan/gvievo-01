@@ -122,6 +122,19 @@ def _rows() -> tuple[Alarm, ...]:
           "/scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. "
           "Expected rate is 34 Hz."),
 
+        # ---- the line sensor (manuals/mls-diagnostics-plan.md) ----
+        a("MLS_FIELD_WEAK", INFO, "auto", "Weak tape signal under the line sensor",
+          "Nothing to do now; the engineer checks the tape where this keeps happening.",
+          "The MLS raised its magnetic-field event (2080h:04 = 1, manual 8.8): the field fell below "
+          "the critical strength, so the unfiltered LCP is not within data-sheet spec. Worn, lifted "
+          "or dirty tape, or the sensor too high. Only counted with a track under the sensor on the "
+          "sample before; at most one per 2 s (the text counts the rest). History only, no motion "
+          "change. Per-position record: ~/.amr/reports/tape_health (tools/tape_health_report.py)."),
+        a("MLS_TEMP", WARN, "engineer", "The line sensor is outside its temperature range",
+          "Call the engineer: the line sensor is too hot or too cold.",
+          "2070h:01 outside the sensor's own thresholds 2070h:07..2070h:06 (manual 8.7), read every "
+          "60 s and at once after a temperature event. Clears itself when back inside."),
+
         # ---- the panel and the command mux ----
         a("PANEL_STALE", ERROR, "engineer", "The control panel is not answering",
           "Call the engineer: the panel wiring or the I/O island is down.",
@@ -155,6 +168,11 @@ def _rows() -> tuple[Alarm, ...]:
           "cmd_mux scales every AUTO source while a warning field is occupied: warning 1 "
           "(outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the "
           "slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml."),
+        a("MARKERS_LOST", WARN, "start_button", "Stopped: the line sensor's markers are not reporting",
+          "Check where the vehicle is (the home marker may have been passed), then press Start.",
+          "Line layer hold cause 'markers': a marker run (mission marker_run, no RFID) lost the MLS "
+          "marker stream, or marker events, while driving, so the U-turn or home marker may have been "
+          "driven past. Never resumes by itself; Start is refused while the stream is down."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
           "Tape mission stop row (role always, or the job's destination): a measured stop over "
@@ -170,6 +188,11 @@ def _rows() -> tuple[Alarm, ...]:
           "publishes /amr/line_marker, the line follower logs it. The mission's high-zone codes "
           "also set the speed (2026-10-09); no marker changes the run's state. Also logged: the "
           "marker stream going up or down, and markers lost on the topic (warn)."),
+        a("LINE_LOC", INFO, "auto", "Tape localization event",
+          "Nothing to do in shadow mode; a LOST or unexpected-fork entry is worth a look on the Teach page.",
+          "amr_line.tape_runtime (tracked plan 3, P1 shadow): where the locator would have stopped, "
+          "ordered a junction or approached the U-turn, and whether its uncertainty allowed it; "
+          "LOST and re-acquired; teach passes and stations. Nothing here changes motion yet."),
         a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
           "Check the scanner cable and that its driver is running (Status page).",
           "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "
@@ -393,6 +416,7 @@ HOLD_CODES = {
     "rate": "TRACK_RATE_LOW",
     "authority": "AUTHORITY_LOST",
     "rfid": "RFID_LINK_LOST",
+    "markers": "MARKERS_LOST",
 }
 
 

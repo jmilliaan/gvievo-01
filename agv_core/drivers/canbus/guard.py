@@ -217,7 +217,9 @@ def is_allowed(index, value=None, sub=None):
 # THE LINE SENSOR (SICK MLS, can.sensor_node) - a separate, node-specific list
 # ---------------------------------------------------------------------------
 # The MLS is configured by the bench tool read_mls (set-variant, set-markers), never
-# by the bus owner, which only reads it. Those writes used to go straight through
+# by the bus owner, which only reads its configuration. The one runtime write is
+# 2080h:01, the reset of the latched event flag (manuals/mls-diagnostics-plan.md
+# E2): a status object, not configuration. Those bench writes used to go straight through
 # drive_forward.sdo_write with no check at all (set-variant even attempted 1010h,
 # which FORBIDDEN names). They now pass check_sensor().
 #
@@ -225,8 +227,9 @@ def is_allowed(index, value=None, sub=None):
 # objects motion writes, and nothing here can make a drive object writable - these
 # indices mean something else on the drives (2xxxh is manufacturer-specific). Only
 # configuration of the TRACK reading is reachable: marker detection (mls-marker-plan
-# section 2) and the TPDO1 variant. Zero point, offset calibration, factory reset,
-# inversion and store are not.
+# section 2), the TPDO1 variant and the event-flag reset. Zero point, offset
+# calibration, factory reset, inversion, store and the event/temperature thresholds
+# (2070h:06/07) are not.
 SENSOR_ALLOWED = {
     (0x2006, 1): "variant TPDO1 (track data packing, diverter detection)",
     (0x2028, 1): "use markers",
@@ -234,6 +237,7 @@ SENSOR_ALLOWED = {
     (0x2028, 3): "marker FailSafe mode",
     (0x202D, 5): "tape polarity",
     (0x2029, 0): "lock teach key",
+    (0x2080, 1): "reset the latched event flag",
 }
 
 

@@ -49,7 +49,17 @@ at the tape ends (2026-10-08).
 
 MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, TAGS {tag: row}, HOME (row | None),
 DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer" (marker codes, int), "high_for_m",
-"arm_m", "spacing_m", "brake_m"} | None).
+"arm_m", "spacing_m", "brake_m"} | None), MARKER_RUN (dict | None, below).
+
+marker_run (optional, 2026-10-18, tracked plan 3 section 7.5): a run with no RFID at all,
+for the straight in front of MRU. Two MLS marker codes do what tags 0180 and Home did:
+    {"uturn_code": 2, "home_code": 1, "direction": "cw", "approach_mps": 0.1,
+     "decel_m": 0.3, "max_approach_m": 2.0, "stop_distance_m": 0.5, "label": "T-HOME"}
+Out: the first uturn_code starts the U-turn approach (as a u_turn tag row). Back, after
+the pivot: the first home_code ends the run at home (a measured stop, DONE); a uturn_code
+there means the home marker was missed - FAULT at once (the backstop strip). The codes
+mean nothing else, so the block is refused with a high_zone (the same codes are the speed
+zone elsewhere) and with any RFID tag or branch row.
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -269,6 +279,51 @@ def _check_table(tags, vehicle, fastest_rpm):
 
 
 _MISSION_KEYS = ("mission_name", "branch_default", "branch_latch", "high_zone", "tags")
+_OPTIONAL_MISSION_KEYS = ("marker_run",)
+_MARKER_RUN_KEYS = {"uturn_code", "home_code", "direction", "approach_mps", "decel_m", "max_approach_m",
+                    "stop_distance_m", "label"}
+
+
+def _read_marker_run(raw, vehicle):
+    """marker_run -> the validated block, or None."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != _MARKER_RUN_KEYS:
+        raise ConfigError(f"marker_run: expected null or exactly {sorted(_MARKER_RUN_KEYS)}")
+    laid = list(vehicle.MLS_MARKER_CODES)
+    out = {}
+    for key in ("uturn_code", "home_code"):
+        v = raw[key]
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ConfigError(f"marker_run.{key}: expected an integer marker code, got {v!r}")
+        if v not in laid:
+            raise ConfigError(f"marker_run.{key}: code {v} is not laid on the floor "
+                              f"(mls.marker_codes {laid})")
+        out[key] = v
+    if out["uturn_code"] == out["home_code"]:
+        raise ConfigError("marker_run: uturn_code and home_code must differ")
+    if raw["direction"] not in ("cw", "ccw"):
+        raise ConfigError("marker_run.direction must be cw or ccw")
+    out["direction"] = raw["direction"]
+    out["label"] = _coerce(raw["label"], str, "marker_run.label").strip()
+    if not out["label"]:
+        raise ConfigError("marker_run.label: the home stop needs a name the operator recognises")
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    out["approach_mps"] = _bounded(raw, "approach_mps", "marker_run", 0.0, round(normal_mps, 3))
+    out["max_approach_m"] = _bounded(raw, "max_approach_m", "marker_run", 0.0, 5.0)
+    out["decel_m"] = _bounded(raw, "decel_m", "marker_run", 0.0, 2.0)
+    out["stop_distance_m"] = _bounded(raw, "stop_distance_m", "marker_run", 0.0, 5.0)
+    decel = float(vehicle.RAMP["auto"]["decel"])
+    creep_rpm = out["approach_mps"] / vehicle.MPS_PER_RPM
+    rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * out["decel_m"])
+    if rate > decel:
+        raise ConfigError(f"marker_run.decel_m: {rate:.0f} r/min/s is beyond "
+                          f"drivers.ramp.auto.decel {decel:.0f}")
+    rate = vehicle.AUTO_RPM ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["stop_distance_m"])
+    if rate > decel:
+        raise ConfigError(f"marker_run.stop_distance_m: {rate:.0f} r/min/s is beyond drivers.ramp.auto.decel "
+                          f"{decel:.0f}")
+    return out
 
 
 def _read_high_zone(raw, vehicle):
@@ -313,7 +368,7 @@ def _parse_mission(doc, vehicle):
     if v1:
         raise ConfigError(f"mission: {v1} are the retired v1 route schema (2026-10-08); "
                           f"write the site's tag reference as the 'tags' table")
-    unknown = set(doc) - set(_MISSION_KEYS)
+    unknown = set(doc) - set(_MISSION_KEYS) - set(_OPTIONAL_MISSION_KEYS)
     if unknown:
         raise ConfigError(f"mission: unknown key(s) {sorted(unknown)}")
     missing = set(_MISSION_KEYS) - set(doc)
@@ -334,6 +389,14 @@ def _parse_mission(doc, vehicle):
     out["HOME"] = _check_table(out["TAGS"], vehicle, float(fastest))
     out["DESTINATIONS"] = [r["label"] for r in out["TAGS"].values()
                            if r["action"] == "stop" and r["role"] == "destination"]
+    out["MARKER_RUN"] = _read_marker_run(doc.get("marker_run"), vehicle)
+    if out["MARKER_RUN"] is not None:
+        if out["HIGH_ZONE"] is not None:
+            raise ConfigError("marker_run with a high_zone: the speed zone's codes and the marker run's "
+                              "would mean two things")
+        if out["TAGS"] or out["BRANCH_LATCH"]:
+            raise ConfigError("marker_run with RFID tag or branch rows: a marker run has no RFID; "
+                              "two triggers for one U-turn or home stop would race")
     return out
 
 

@@ -32,6 +32,10 @@ STEP_M = 0.05
 STATION_MAX_LATERAL_M = 0.10
 # The spread floor for junction resyncs: a single pass has no spread to measure.
 MIN_END_SPREAD_M = 0.02
+# Projection ties: points this close to equally near are one tie, broken by the hint (the
+# predicted s). A tape driven both ways inside one window - the turnaround at the end of a
+# straight - is equally near on both sides; the nearest point alone would pick at random.
+TIE_M = 0.03
 
 
 class GraphError(ValueError):
@@ -106,14 +110,19 @@ class Polyline:
         pts.append(self.point(s1)[:2])
         return pts
 
-    def project(self, x, y, s_lo=None, s_hi=None):
+    def project(self, x, y, s_lo=None, s_hi=None, hint=None):
         """Nearest point within [s_lo, s_hi] -> (s, d), d signed (+ = left of travel),
-        or None when the window misses the line."""
+        or None when the window misses the line. With a hint, of the points within TIE_M of
+        the nearest, the one closest to s = hint."""
+        hits = self._candidates(x, y, s_lo, s_hi)
+        return _pick(hits, hint)
+
+    def _candidates(self, x, y, s_lo, s_hi):
         lo = 0.0 if s_lo is None else max(0.0, s_lo)
         hi = self.length if s_hi is None else min(self.length, s_hi)
         if hi < lo:
-            return None
-        best = None
+            return []
+        out = []
         for i in range(self._seg(lo), self._seg(hi) + 1):
             (x0, y0), (x1, y1) = self.pts[i], self.pts[i + 1]
             dx, dy = x1 - x0, y1 - y0
@@ -123,10 +132,23 @@ class Polyline:
             s = min(max(s, lo), hi)
             px, py, _ = self.point(s)
             dist = math.hypot(x - px, y - py)
-            if best is None or dist < best[2]:
-                cross = dx * (y - py) - dy * (x - px)
-                best = (s, math.copysign(dist, cross) if dist > 0 else 0.0, dist)
-        return None if best is None else (best[0], best[1])
+            cross = dx * (y - py) - dy * (x - px)
+            out.append((s, math.copysign(dist, cross) if dist > 0 else 0.0, dist))
+        return out
+
+
+def _pick(hits, hint):
+    """(s, d) of the nearest hit; with a hint, the tied hit closest to it. Hits come in s
+    order, one per segment: only local minima of the distance are separate passes of the
+    tape (a neighbouring segment's clamped end is the same pass, slightly farther)."""
+    if not hits:
+        return None
+    best = min(h[2] for h in hits)
+    minima = [h for k, h in enumerate(hits)
+              if (k == 0 or h[2] <= hits[k - 1][2]) and (k == len(hits) - 1 or h[2] <= hits[k + 1][2])]
+    tied = [h for h in minima if h[2] <= best + TIE_M] if hint is not None else []
+    h = min(tied, key=lambda h: (abs(h[0] - hint), h[2])) if tied else min(hits, key=lambda h: h[2])
+    return h[0], h[1]
 
 
 class Leg:
@@ -292,20 +314,19 @@ class Route:
         _, leg, s = self.at(S)
         return leg.line.point(s)
 
-    def project(self, x, y, S_lo, S_hi):
+    def project(self, x, y, S_lo, S_hi, hint=None):
         """Nearest route point to (x, y) with S in [S_lo, S_hi] -> (S, d) or None.
 
         The window is what keeps the two passes over one tape apart (the MRU line west,
         then east): the same floor point has two S values, and only the predicted one is
-        inside the window."""
-        best = None
+        inside the window. Inside the window, the hint (the predicted S) breaks a tie: a
+        turnaround leaves both directions of the tape in one window."""
+        hits = []
         for s0, leg in self.segments:
             if s0 > S_hi or s0 + leg.length < S_lo:
                 continue
-            hit = leg.line.project(x, y, S_lo - s0, S_hi - s0)
-            if hit is not None and (best is None or abs(hit[1]) < abs(best[1])):
-                best = (s0 + hit[0], hit[1])
-        return best
+            hits += [(s0 + s, d, dist) for s, d, dist in leg.line._candidates(x, y, S_lo - s0, S_hi - s0)]
+        return _pick(hits, hint)
 
     def stop(self, ident):
         return next((s for s in self.stops if s["id"] == ident), None)

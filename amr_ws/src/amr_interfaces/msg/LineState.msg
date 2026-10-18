@@ -75,3 +75,15 @@ bool markers_ok             # the marker stream is up and the sensor configured
 uint8 last_marker           # code of the last marker read; 0 = none since start
 uint32 marker_count         # markers read since the node started
 uint32 marker_missed        # sequence gaps on /amr/line_marker
+
+# Tape-graph localization (tracked plan 3, P1 teach + shadow, 2026-10-18). APPEND ONLY.
+# Display only: nothing here changes the state, the stops or the branch orders yet.
+string loc_health           # "" off | IDLE | WAITING (At home, waiting for READY) | HEALTHY | DEGRADED | LOST
+string loc_circuit          # the shadow circuit, e.g. C-MRU
+string loc_leg              # tape leg the locator is on, e.g. "J-N:right>X1"
+float32 loc_s_m             # distance along the circuit's route
+float32 loc_sigma_m         # its uncertainty (1 sigma)
+uint32 loc_rejects          # AMCL corrections rejected since the locator started
+string loc_detail           # why not running, why LOST, or the last rejection
+string loc_graph            # active graph, "site103 rev4 g2"; "" = none
+string teach                # the pass being recorded; "" when not recording

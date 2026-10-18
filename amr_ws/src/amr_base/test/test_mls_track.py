@@ -337,3 +337,215 @@ def test_the_sdo_fallback_reports_no_stream_and_no_markers():
     t, link, got, clk = make(configured(tpdo=0x8000018A), mode="auto", expected_variant=3, markers=EXPECT)
     assert t.start() == "sdo"
     assert t.marker_status_text() == "no stream (sdo)" and not t.markers_ok
+
+
+# -- event detection and temperature (mls-diagnostics-plan M1/M2, 2026-10-18) ---------
+
+EVENT_FIELD = {(0x2080, 2): 2, (0x2080, 4): 1, (0x2080, 5): 0}
+EVENT_KEYS = {(0x2080, 2), (0x2080, 4), (0x2080, 5)}
+FLAG = 0x80
+
+
+class SensorLink(FakeLink):
+    """A link that can write the line sensor: records (index, sub, value), or fails."""
+
+    def __init__(self, objects, ok=True):
+        super().__init__(objects)
+        self.writes = []
+        self.ok = ok
+
+    def write_sensor(self, node, index, sub, value, size, timeout=0.05):
+        from agv_core.drivers.canbus import guard
+
+        guard.check_sensor(index, sub)
+        self.writes.append((index, sub, value))
+        if self.ok:
+            self.objects[(0x2022, 0)] = 0x01
+        return self.ok, "" if self.ok else "abort"
+
+
+def frame(lcp2=12, nlcp=2, status=0x01):
+    return Frame(struct.pack("<hhhBB", 0, lcp2, 0, nlcp, status))
+
+
+def streaming(o=None, link_cls=FakeLink, **kw):
+    o = {**objs(variant=3), **(o or {})}
+    got, ev, clk = [], [], Clock()
+    link = link_cls(o)
+    t = MlsTrack(link, 10, got.append, mode="tpdo", expected_variant=3, clock=clk, log=lambda s: None,
+                 on_event=ev.append, **kw)
+    t.start()
+    link.routes[0x18A](frame())
+    return t, link, ev, clk
+
+
+def test_a_rising_event_flag_reads_the_cause_one_object_per_poll_and_reports_a_field_event():
+    t, link, ev, clk = streaming(EVENT_FIELD)
+    link.routes[0x18A](frame(lcp2=-4, status=0x01 | (2 << 1) | FLAG))
+    for _ in range(3):
+        before = len(link.reads)
+        t.poll(clk.t)
+        assert len(link.reads) - before == 1
+    assert {k for k in link.reads if k[0] == 0x2080} == EVENT_KEYS
+    assert t.events_field == 1 and len(ev) == 1
+    assert ev[0]["field"] and ev[0]["lcp2_mm"] == -4 and ev[0]["track_level"] == 2
+    assert dict(t.diagnostic(clk.t)[2])["events_field"] == "1"
+
+
+def test_a_flag_held_high_is_one_event_and_nothing_is_written_without_event_clear():
+    t, link, ev, clk = streaming(EVENT_FIELD)
+    for _ in range(20):
+        link.routes[0x18A](frame(status=0x01 | FLAG))
+        t.poll(clk.t)
+        clk.t += 0.5
+    assert t.events_field == 1 and not hasattr(link, "write_sensor")
+    assert dict(t.diagnostic(clk.t)[2])["event_clear"] == "off"
+    link.routes[0x18A](frame(status=0x01))  # reset elsewhere (power cycle): the next rise is new
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(3):
+        t.poll(clk.t)
+    assert t.events_field == 2
+
+
+def test_leaving_the_tape_is_not_a_weak_tape_event():
+    t, link, ev, clk = streaming(EVENT_FIELD)
+    link.routes[0x18A](frame(nlcp=0, status=0))
+    link.routes[0x18A](frame(nlcp=0, status=FLAG))
+    for _ in range(3):
+        t.poll(clk.t)
+    assert t.events_field == 0 and t.events_no_track == 1 and not ev
+
+
+def test_a_temperature_event_reads_the_temperature_at_once():
+    o = {(0x2080, 2): 4, (0x2080, 4): 0, (0x2080, 5): 2, (0x2070, 1): 75, (0x2070, 6): 70, (0x2070, 7): 0}
+    t, link, ev, clk = streaming(o)
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(6):
+        t.poll(clk.t)
+    assert t.events_temp == 1 and not ev
+    assert t.temp == {"temp_c": 75, "hi_c": 70, "lo_c": 0, "out": True}
+
+
+def test_the_temperature_is_read_periodically_and_a_silent_object_is_counted():
+    t, link, _, clk = streaming({(0x2070, 1): 0xF6, (0x2070, 6): 70, (0x2070, 7): 0xF6})
+    t.poll(clk.t + 5.0)
+    assert not any(k[0] == 0x2070 for k in link.reads)  # TEMP_FIRST_S
+    for _ in range(3):
+        t.poll(clk.t + MlsTrack.TEMP_FIRST_S)
+    assert t.temp["temp_c"] == -10 and not t.temp["out"]
+    assert dict(t.diagnostic(clk.t)[2])["temp_c"] == "-10"
+    del link.objects[(0x2070, 1)]
+    t.poll(clk.t + MlsTrack.TEMP_FIRST_S + MlsTrack.TEMP_PERIOD_S)
+    assert t.temp_unread == 1
+
+
+def test_an_unanswered_cause_is_counted_and_retried_later():
+    t, link, ev, clk = streaming()
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    t.poll(clk.t)
+    assert t.events_unread == 1 and not t._jobs
+    link.objects.update(EVENT_FIELD)
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    t.poll(clk.t)
+    assert t.events_unread == 1 and not t._jobs  # not before EVENT_RETRY_S
+    clk.t += MlsTrack.EVENT_RETRY_S
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(3):
+        t.poll(clk.t)
+    assert t.events_field == 1
+
+
+def test_a_marker_check_and_an_event_share_the_queue_one_read_per_poll():
+    o = {**configured(), **EVENT_FIELD}
+    got, ev, clk = [], [], Clock()
+    link = FakeLink(o)
+    t = MlsTrack(link, 10, got.append, mode="tpdo", expected_variant=3, markers=EXPECT, clock=clk,
+                 log=lambda s: None, on_event=ev.append)
+    t.start()
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(len(EXPECT) + 3):
+        before = len(link.reads)
+        t.poll(clk.t)
+        assert len(link.reads) - before == 1
+    assert t.markers_ok and t.events_field == 1
+
+
+def test_the_sdo_fallback_reads_no_cause():
+    t, link, _, clk = make({**objs(tpdo=0x8000018A), **EVENT_FIELD}, mode="auto")
+    assert t.start() == "sdo"
+    t.poll(clk.t + 0.2)
+    assert not any(k[0] == 0x2080 for k in link.reads)
+
+
+# M2: the latched flag is reset through the guard, after the cause.
+
+def test_with_event_clear_the_reset_is_written_after_the_cause_and_the_next_rise_is_new():
+    t, link, ev, clk = streaming(EVENT_FIELD, link_cls=SensorLink, event_clear=0)
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(3):
+        t.poll(clk.t)
+    assert not link.writes and t.events_field == 1  # the cause first
+    t.poll(clk.t)
+    assert link.writes == [(0x2080, 1, 0)] and t.clears == 1
+    clk.t += 0.2
+    link.routes[0x18A](frame(status=0x01))
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(4):
+        t.poll(clk.t)
+    assert t.events_field == 2 and len(link.writes) == 2
+
+
+def test_a_flag_still_high_after_a_clear_is_a_new_event_at_most_once_per_clear_min_s():
+    t, link, ev, clk = streaming(EVENT_FIELD, link_cls=SensorLink, event_clear=1)
+    for _ in range(40):  # 4 s with the flag up the whole time (the weak spot is under the sensor)
+        link.routes[0x18A](frame(status=0x01 | FLAG))
+        t.poll(clk.t)
+        clk.t += 0.1
+    assert 3 <= t.events_field <= 4 and len(link.writes) == t.events_field
+    assert all(w == (0x2080, 1, 1) for w in link.writes)
+
+
+def test_a_failed_reset_turns_the_clearing_off_and_keeps_reporting():
+    t, link, ev, clk = streaming(EVENT_FIELD, link_cls=SensorLink, event_clear=0)
+    link.ok = False
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(4):
+        t.poll(clk.t)
+    assert t.event_clear is None and t.clear_state == "failed" and t.events_field == 1
+    assert dict(t.diagnostic(clk.t)[2])["event_clear"] == "failed"
+    clk.t += 5.0
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(4):
+        t.poll(clk.t)
+    assert len(link.writes) == 1 and t.events_field == 1  # held high, no clear: no new event
+
+
+def test_a_link_without_a_sensor_write_turns_the_clearing_off():
+    t, link, ev, clk = streaming(EVENT_FIELD, event_clear=0)
+    link.routes[0x18A](frame(status=0x01 | FLAG))
+    for _ in range(4):
+        t.poll(clk.t)
+    assert t.clear_state == "failed" and t.events_field == 1
+
+
+def test_only_2080h_01_can_be_written_through_the_sensor_guard():
+    from agv_core.drivers.canbus import guard
+
+    link = SensorLink({})
+    for key in ((0x2080, 2), (0x2070, 6), (0x2027, 0), (0x1010, 1), (0x60FF, 0)):
+        with pytest.raises(guard.ForbiddenWrite):
+            link.write_sensor(10, *key, 1, 1)
+    assert link.write_sensor(10, 0x2080, 1, 0, 1)[0] and link.writes == [(0x2080, 1, 0)]
+
+
+def test_an_event_clear_outside_0_1_is_off():
+    t, _, _, _ = streaming(event_clear=-1)
+    assert t.event_clear is None and t.clear_state == "off"
+
+
+def test_the_rate_limit_reports_once_per_period_and_counts_the_ones_held_back():
+    r = mls_track.RateLimit(2.0)
+    assert r.allow(10.0) == 0
+    assert r.allow(10.5) is None and r.allow(11.9) is None
+    assert r.allow(12.0) == 2
+    assert r.allow(20.0) == 0

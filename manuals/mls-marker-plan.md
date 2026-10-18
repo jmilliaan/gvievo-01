@@ -1,7 +1,9 @@
 # MLS marker plan: read marker codes 1-3 (tracked / LINE mode)
 
 Status: IMPLEMENTED in software 2026-10-09 (steps 0, 2, 3 and 6.1; section 11). The bench
-session B0 and B2-B7 is open. `mls.markers_enabled` is the bench switch: it may be true during a
+session B0 and B2-B7 is open as a formal record, **but codes 1 and 2 work on the floor: the
+speed zones (outer 2, inner 1, 100 mm gap between the strips of a pair) were tested the week of 2026-10-09 (operator,
+2026-10-18)**. Code 3 has not been run on the floor. `mls.markers_enabled` is the bench switch: it may be true during a
 bench session (the Home tile and the sensor check need it), and goes back to false at the end of
 any session that does not end in PASS (fix plan `0910-fix-plan-001.md` B4). Aligned with
 the live sensor and re-audited against the whole manual and the code the same day (section 10). Scope is **reading** codes 1-3 reliably and

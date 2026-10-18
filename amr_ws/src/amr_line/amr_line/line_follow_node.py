@@ -6,6 +6,13 @@
     /amr/line_cmd        Twist              body command while following,
                                             to the mux's LINE source
     /amr/line_track      LineTrack  (in)    the MLS reading from drive_node
+    /amr/line/teach      LineTeach          tape-graph teaching (tracked plan 3, P1; engineer)
+    /amr/line/at_home    Trigger            parked at HOME-N: /initialpose from its taught pose
+    /amcl_pose, /amr/localization_state (in) AMCL and readiness, when the layer runs them
+
+Tape localization (tracked plan 3) runs in SHADOW only (P1): amr_line.tape_runtime logs
+where the locator would stop and branch, and records teach passes. Nothing it computes
+reaches the job or the command.
 
 There is no software arm (2026-10-07): the physical Start from IDLE checks the
 prerequisites and runs in one step (FollowJob._start). Motor arming is drive_node's.
@@ -33,12 +40,14 @@ and it puts LINE on the same accel path the mux already gives FOLLOW.
 from __future__ import annotations
 
 import collections
+import math
+import os
 import time
 
 import rclpy
 from agv_core import alarms, kinematics
 from agv_core import config as vehicle_config
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -52,6 +61,7 @@ from amr_interfaces.msg import (
     Event,
     LineState,
     LineTrack,
+    LocalizationState,
     MarkerEvent,
     ModeState,
     MuxState,
@@ -59,8 +69,8 @@ from amr_interfaces.msg import (
     StationDetection,
     WheelStates,
 )
-from amr_interfaces.srv import SelectMission
-from amr_line import autopilot, runtime
+from amr_interfaces.srv import LineTeach, SelectMission
+from amr_line import autopilot, runtime, tape_health
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -130,6 +140,14 @@ class LineFollowNode(Node):
         self.declare_parameter("imu_fresh_s", 0.1)
         self.declare_parameter("odom_fresh_s", 0.1)
         self.declare_parameter("mux_fresh_s", 0.3)  # /amr/mux_state is 10 Hz
+        # Tape localization (tracked plan 3): set by line_layer.launch.py from the profile's
+        # tape_loc block and the active pointer ($AMR_STATE_DIR/line_graph.json).
+        self.declare_parameter("loc_status", "off: tape_loc.enabled is false")
+        self.declare_parameter("loc_map_id", "")
+        self.declare_parameter("loc_map_revision", -1)
+        self.declare_parameter("loc_graph_revision", -1)
+        self.declare_parameter("maps_dir", "~/amr_maps")
+        self.declare_parameter("state_dir", "~/.amr")
 
         self.dt = 1.0 / float(self.get_parameter("rate_hz").value)
         self._generation = int(self.get_parameter("generation").value)
@@ -245,6 +263,19 @@ class LineFollowNode(Node):
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
         self.create_service(SelectMission, "/amr/line/mission", self._srv_mission)
 
+        self.tapeloc = self._tape_runtime()
+        # MLS track level per position along the taught tape (mls-diagnostics-plan M3): written
+        # at the end of each run, only where the locator was HEALTHY. Display/maintenance only.
+        self.tape_health = tape_health.TapeHealth()
+        self._state_dir = os.path.expanduser(str(self.get_parameter("state_dir").value))
+        self._pub_initialpose = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", RELIABLE_1)
+        self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl,
+                                 QoSProfile(depth=5, reliability=QoSReliabilityPolicy.RELIABLE,
+                                            durability=QoSDurabilityPolicy.VOLATILE))
+        self.create_subscription(LocalizationState, "/amr/localization_state", self._on_readiness, LATCHED)
+        self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
+        self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
+
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
         self._publish_state()
@@ -256,9 +287,117 @@ class LineFollowNode(Node):
             f"auto-resume clear={self.job.auto_resume_clear_s} s"
         )
 
+    # -- tape localization (tracked plan 3, P1 shadow) -------------------------
+    def _tape_runtime(self):
+        """The teach/shadow runtime, or None when the site mission does not load (logged)."""
+        from agv_core import mission  # noqa: PLC0415
+
+        from amr_line import tape_locator, tape_runtime  # noqa: PLC0415
+
+        p = self.get_parameter
+        name = str(vehicle_config.TAPE_LOC_SITE_MISSION)
+        try:
+            site = mission.load_site(name)
+        except mission.MissionError as e:
+            self.get_logger().error(f"tape localization unavailable: {e}")
+            return None
+        status = str(p("loc_status").value)
+        rev = int(p("loc_map_revision").value)
+        g = int(p("loc_graph_revision").value)
+        selection = None
+        if not status and p("loc_map_id").value and rev >= 0:
+            selection = {"map_id": str(p("loc_map_id").value), "map_revision": rev,
+                         "graph_revision": g if g >= 0 else None}
+        maps_dir = os.path.expanduser(str(p("maps_dir").value))
+        rt = tape_runtime.TapeRuntime(
+            site, tape_locator.Params.from_profile(vehicle_config), maps_dir=maps_dir,
+            state_dir=os.path.expanduser(str(p("state_dir").value)), selection=selection,
+            resolve_sha=lambda m, r: self._bundle_sha(maps_dir, m, r), status=status,
+            shadow_circuit=str(vehicle_config.TAPE_LOC_SHADOW_CIRCUIT))
+        self.get_logger().info(f"tape localization: {rt.detail}")
+        return rt
+
+    @staticmethod
+    def _bundle_sha(maps_dir, map_id, revision):
+        from amr_mission import map_bundle as mb  # noqa: PLC0415
+
+        rev_dir = mb.revision_dir(maps_dir, map_id, int(revision))
+        return mb.load_manifest(rev_dir, map_id, int(revision)).sha256
+
+    def _ros_now(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def _on_amcl(self, m: PoseWithCovarianceStamped) -> None:
+        if self.tapeloc is None:
+            return
+        q = m.pose.pose.orientation
+        yaw = 2.0 * math.atan2(q.z, q.w)
+        c = m.pose.covariance
+        self.tapeloc.amcl(self._ros_now(), m.header.stamp.sec + m.header.stamp.nanosec * 1e-9,
+                          m.pose.pose.position.x, m.pose.pose.position.y, yaw, c[0], c[1], c[7])
+
+    def _on_readiness(self, m: LocalizationState) -> None:
+        if self.tapeloc is not None and int(m.generation) == self._generation:
+            self.tapeloc.readiness(self._ros_now(), int(m.state), str(m.reason))
+
+    def _travel(self, now: float):
+        """Signed forward wheel travel, m (vehicle terms, as diff_drive_odom), or None."""
+        w = self._wheels
+        if w is None or self._wheels_t is None or now - self._wheels_t > self.wheels_fresh:
+            return None
+        if not (w.left_valid and w.right_valid):
+            return None
+        return 0.5 * vehicle_config.WHEEL_DIA_M / 2.0 * (w.left_pos_rad + w.right_pos_rad)
+
+    def _tapeloc_tick(self, now: float) -> None:
+        rt = self.tapeloc
+        if rt is None:
+            return
+        _counts, _per_rev, still = self._wheel_inputs(now)
+        u = self.job.tape.uturn_snapshot() or {}
+        rt.tick(self._ros_now(), self._travel(now), (self.reader.sensor() or {}).get("nlcp"), still,
+                (u.get("phase") or "") if u.get("active") else "")
+        self.tape_health.where(rt.snapshot() if rt.loc is not None else None)
+        events = rt.drain_events()
+        for level, text in events:
+            self._event("LINE_LOC", text, Event.WARN if level == "warn" else Event.INFO)
+        if events:
+            self._publish_state()
+
+    def _srv_teach(self, req, res):
+        if self.tapeloc is None:
+            res.ok, res.message = False, "tape localization unavailable (site mission refused: see the log)"
+        else:
+            res.ok, res.message = self.tapeloc.teach(self._ros_now(), req.action.strip(), req.arg)
+        self.get_logger().info(f"teach {req.action} {req.arg}: {res.message}")
+        self._event("LINE_LOC", f"teach {req.action}: {res.message}", Event.INFO if res.ok else Event.WARN)
+        self._publish_state()
+        return res
+
+    def _srv_at_home(self, req, res):
+        if self.tapeloc is None:
+            res.success, res.message = False, "tape localization unavailable"
+            return res
+        ok, msg, pose = self.tapeloc.at_home()
+        if ok:
+            m = PoseWithCovarianceStamped()
+            m.header.stamp = self.get_clock().now().to_msg()
+            m.header.frame_id = "map"
+            m.pose.pose.position.x, m.pose.pose.position.y = float(pose[0]), float(pose[1])
+            m.pose.pose.orientation.z = math.sin(pose[2] / 2.0)
+            m.pose.pose.orientation.w = math.cos(pose[2] / 2.0)
+            m.pose.covariance[0] = m.pose.covariance[7] = 0.05 ** 2
+            m.pose.covariance[35] = 0.03 ** 2
+            self._pub_initialpose.publish(m)
+        res.success, res.message = ok, msg
+        self._event("LINE_LOC", msg, Event.INFO if ok else Event.WARN)
+        self._publish_state()
+        return res
+
     # -- intake ------------------------------------------------------------
     def _on_track(self, m: LineTrack) -> None:
         self.reader.update(m, time.monotonic())
+        self.tape_health.track(m.track_level, m.nlcp, m.event_flag, m.source)
 
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, time.monotonic()
@@ -479,6 +618,7 @@ class LineFollowNode(Node):
         before = self.job.state
 
         left, right = self.job.tick(self._inputs(now, min(dt, 5 * self.dt)))
+        self._tapeloc_tick(now)
         engine_events = self.job.tape.drain_events()
         for level, text in engine_events:
             self._event("LINE_MISSION", text, Event.WARN if level == "warn" else Event.INFO)
@@ -504,9 +644,23 @@ class LineFollowNode(Node):
                 f"line {lj.STATE_NAMES[before]} -> {lj.STATE_NAMES[self.job.state]}"
                 f" {self.job.reason}"
             )
+            if before in (lj.RUNNING, lj.HOLD) and self.job.state in (lj.DONE, lj.FAULT, lj.IDLE):
+                self._write_tape_health(lj.STATE_NAMES[self.job.state])
             self._publish_state()
         elif self.job.wants_power() != self._power_published:
             self._publish_state()  # a hold changing cause can change drive_power: say so now
+
+    def _write_tape_health(self, result: str) -> None:
+        """End of a run: append its tape-health bins (M3). A disk problem is logged, never raised."""
+        bins = self.tape_health.drain()
+        try:
+            meta = {"generation": self._generation, "result": result}
+            path = tape_health.write_run(self._state_dir, bins, meta)
+        except OSError as e:
+            self.get_logger().warn(f"tape health not written: {e}")
+            return
+        if path:
+            self.get_logger().info(f"tape health: {len(bins)} bins -> {path}")
 
     # -- output ------------------------------------------------------------
     def _publish_cmd(self, v: float, omega: float) -> None:
@@ -545,6 +699,9 @@ class LineFollowNode(Node):
             setattr(m, k, v)
         for k, v in self.job.marker_snapshot().items():
             setattr(m, k, v)
+        if getattr(self, "tapeloc", None) is not None:
+            for k, v in self.tapeloc.snapshot().items():
+                setattr(m, k, v)
         self._pub_state.publish(m)
         if self.job.state != self._event_state:
             self._event_state = self.job.state

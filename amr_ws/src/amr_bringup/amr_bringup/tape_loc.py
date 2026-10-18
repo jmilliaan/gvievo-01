@@ -45,11 +45,13 @@ def verified_map(maps_dir: str, map_id: str, revision) -> tuple[str, int, object
 def initial_pose_cmd(start: dict, delay_s: float) -> TimerAction:
     """Publish the survey-start pose once, after AMCL is active (P0 initial:=start)."""
     x, y, yaw = float(start["x_m"]), float(start["y_m"]), float(start["yaw_rad"])
+    cov = [0.0] * 36
+    cov[0] = cov[7] = 0.05 ** 2     # x, y: 5 cm
+    cov[35] = 0.03 ** 2             # yaw: ~1.7 deg
     msg = (
-        "{header: {frame_id: map}, pose: {pose: {position: {x: %f, y: %f}, "
-        "orientation: {z: %f, w: %f}}, covariance: [0.0025, 0, 0, 0, 0, 0, 0, 0.0025, 0, 0, 0, 0, "
-        "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0009]}}"
-        % (x, y, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
+        f"{{header: {{frame_id: map}}, pose: {{pose: {{position: {{x: {x:f}, y: {y:f}}}, "
+        f"orientation: {{z: {math.sin(yaw / 2.0):f}, w: {math.cos(yaw / 2.0):f}}}}}, "
+        f"covariance: [{', '.join(f'{c:g}' for c in cov)}]}}}}"
     )
     return TimerAction(
         period=delay_s,

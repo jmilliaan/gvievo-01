@@ -191,7 +191,8 @@
     "markers_enabled": true,
     "marker_codes": [1, 2, 3],
     "polarity_lock": false,
-    "teach_lock": true
+    "teach_lock": true,
+    "event_clear": -1
   },
   "tape_loc": {
     "enabled": false,
@@ -207,7 +208,9 @@
     "sigma_lost_m": 0.5,
     "healthy_window_m": 2.0,
     "lost_fault_s": 30.0,
-    "amcl_params": "default"
+    "amcl_params": "default",
+    "site_mission": "test-mru-straight",
+    "shadow_circuit": "C-STRAIGHT"
   },
   "imu": {
     "enabled": true,

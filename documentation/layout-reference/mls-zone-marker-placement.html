@@ -126,7 +126,7 @@
 <div class="stage" id="stage">
 <section class="slide" id="slide" aria-label="MLS speed zone marker placement at a 90 degree corner of radius 1.5 m">
 
-  <svg class="dwg" viewBox="0 0 1920 1080" role="img" aria-label="A 90 degree corner of radius 1.5 m joining straight S1 (horizontal) and straight S2 (vertical). On each straight a code 2 marker (outer) lies 0.75 to 0.85 m from the tangent point and a code 1 marker (inner) 0.90 to 1.00 m from it, with a 50 mm gap. Code 2 then code 1 enters the straight and grants HIGH; on S1 the HIGH budget ends with a 1.35 m ramp and 1.0 m of NORMAL before code 1. Inset: the pair to scale, strips 15 by 100 mm, code 2 centred 60 mm and code 1 30 mm from the track centre.">
+  <svg class="dwg" viewBox="0 0 1920 1080" role="img" aria-label="A 90 degree corner of radius 1.5 m joining straight S1 (horizontal) and straight S2 (vertical). On each straight a code 2 marker (outer) lies 0.75 to 0.85 m from the tangent point and a code 1 marker (inner) 0.95 to 1.05 m from it, with a 100 mm gap. Code 2 then code 1 enters the straight and grants HIGH; on S1 the HIGH budget ends with a 1.35 m ramp and 1.0 m of NORMAL before code 1. Inset: the pair to scale, strips 15 by 100 mm, code 2 centred 60 mm and code 1 30 mm from the track centre.">
     <defs>
       <path id="chev" d="M-9 -13 L9 0 L-9 13"/>
       <marker id="arr" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="14" refX="15" refY="7" orient="auto-start-reverse"><path d="M0,0 L16,7 L0,14 Z" fill="#3d4553"/></marker>
@@ -204,7 +204,7 @@
     <path class="dim" d="M1025 360 H1250" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <text class="sm" x="550" y="337" text-anchor="middle" fill="#3d4553">ramp 1.35 m · 2 s</text>
     <text class="sm" x="825" y="337" text-anchor="middle" fill="#3d4553">margin 1.0 m</text>
-    <text class="sm" x="1100" y="337" text-anchor="middle" fill="#3d4553">1.00 m</text>
+    <text class="sm" x="1100" y="337" text-anchor="middle" fill="#3d4553">1.05 m</text>
     <text class="sm" x="1137" y="397" text-anchor="middle" fill="#3d4553">0.75 m</text>
     <text class="sm" x="400" y="370" text-anchor="middle" fill="#1e5c39">HIGH budget ends</text>
     <text class="sm" x="400" y="398" text-anchor="middle" fill="#1e5c39">2.35 m before code 1</text>
@@ -214,7 +214,7 @@
     <path class="dim" d="M1580 470 V695" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <path class="dim" d="M1705 470 V770" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <text class="sm" x="1592" y="600" fill="#3d4553">0.75 m</text>
-    <text class="sm" x="1717" y="640" fill="#3d4553">1.00 m</text>
+    <text class="sm" x="1717" y="640" fill="#3d4553">1.05 m</text>
 
     <!-- exit backstops -->
     <text class="sub" x="1300" y="82" fill="#8a5e00">Leaving a straight still HIGH</text>
@@ -232,34 +232,35 @@
     <rect class="strip" x="360" y="515" width="200" height="30"/>
     <text class="code" x="460" y="538" text-anchor="middle">CODE 2 · outer</text>
     <!-- code 1 (inner): 15 x 100 mm, centre 30 mm from the track centre -->
-    <rect class="strip" x="660" y="575" width="200" height="30"/>
-    <text class="code" x="760" y="598" text-anchor="middle">CODE 1 · inner</text>
-    <!-- along the tape: 100 | 50 | 100 -->
-    <path class="dim" d="M360 483 V512 M560 483 V512 M660 483 V570 M860 483 V570"/>
+    <rect class="strip" x="760" y="575" width="200" height="30"/>
+    <text class="code" x="860" y="598" text-anchor="middle">CODE 1 · inner</text>
+    <!-- along the tape: 100 | 100 | 100 (gap 50 -> 100 mm, operator 2026-10-18) -->
+    <path class="dim" d="M360 483 V512 M560 483 V512 M760 483 V570 M960 483 V570"/>
     <path class="dim" d="M360 497 H560" marker-start="url(#arr)" marker-end="url(#arr)"/>
-    <path class="dim" d="M560 497 H660" marker-start="url(#arr)" marker-end="url(#arr)"/>
-    <path class="dim" d="M660 497 H860" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <path class="dim" d="M560 497 H760" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <path class="dim" d="M760 497 H960" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <text class="sm" x="460" y="490" text-anchor="middle" fill="#3d4553">100</text>
-    <text class="sm" x="610" y="490" text-anchor="middle" fill="#c8176b">gap 50</text>
-    <text class="sm" x="760" y="490" text-anchor="middle" fill="#3d4553">100</text>
+    <text class="sm" x="660" y="490" text-anchor="middle" fill="#c8176b">gap 100</text>
+    <text class="sm" x="860" y="490" text-anchor="middle" fill="#3d4553">100</text>
     <!-- across: centre-to-centre 30 and 60 -->
-    <path class="ext" d="M660 590 H318 M360 530 H258 M110 650 H250"/>
+    <path class="ext" d="M760 590 H318 M360 530 H258 M110 650 H250"/>
     <path class="dim" d="M330 590 V650" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <path class="dim" d="M270 530 V650" marker-start="url(#arr)" marker-end="url(#arr)"/>
     <text class="sm" x="316" y="614" text-anchor="end" fill="#3d4553">30</text>
     <text class="sm" x="262" y="598" text-anchor="end" fill="#3d4553">60</text>
     <!-- report points: FailSafe reports a code once its strip has fully passed -->
-    <path class="dim" d="M560 684 V722 M860 684 V722"/>
-    <path class="dim" d="M560 706 H860" marker-start="url(#arr)" marker-end="url(#arr)"/>
-    <text class="sm" x="710" y="700" text-anchor="middle" fill="#3d4553">150 mm</text>
+    <path class="dim" d="M560 684 V722 M960 684 V722"/>
+    <path class="dim" d="M560 706 H960" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="sm" x="760" y="700" text-anchor="middle" fill="#3d4553">200 mm</text>
     <text class="sm" x="548" y="730" text-anchor="end" fill="#3d4553">code 2 reported (arms)</text>
-    <text class="sm" x="872" y="730" fill="#1e5c39">code 1 reported → HIGH</text>
+    <text class="sm" x="972" y="730" fill="#1e5c39">code 1 → HIGH</text>
     <!-- orientation and material -->
     <text class="sm" x="122" y="642" fill="#ffffff">← corner</text>
     <text class="sm" x="1150" y="642" text-anchor="end" fill="#ffffff">straight →</text>
-    <text class="sm" x="1152" y="535" text-anchor="end" fill="#3d4553">strip 15 × 100, S up</text>
-    <text class="sm" x="1152" y="565" text-anchor="end" fill="#3d4553">tape 30, N up</text>
-    <text class="sm" x="1152" y="600" text-anchor="end" fill="#636b7c">mm, centre to centre</text>
+    <text class="sm" x="1162" y="530" text-anchor="end" fill="#3d4553">strip 15 × 100</text>
+    <text class="sm" x="1162" y="558" text-anchor="end" fill="#3d4553">strip S up</text>
+    <text class="sm" x="1162" y="600" text-anchor="end" fill="#3d4553">tape 30, N up</text>
+    <text class="sm" x="1152" y="470" text-anchor="end" fill="#636b7c">mm, centre to centre</text>
 
     <!-- placement rules -->
     <text class="rule" x="96" y="782" fill="#3d4553"><tspan class="k">Placement</tspan>  one pair at both ends of every HIGH straight, same codes everywhere · code 2 nearer the corner</text>

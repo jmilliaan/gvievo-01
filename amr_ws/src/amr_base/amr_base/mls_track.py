@@ -1,7 +1,9 @@
 """The track (line) reading of the SICK MLS (CAN node 10), for /amr/line_track.
 
-Line-follow plan §1.1. Writes nothing to the sensor's objects; the one command it
-sends is NMT Start addressed to the MLS node, so TPDO1 flows (see _nmt_start).
+Line-follow plan §1.1. Writes no configuration to the sensor; it sends NMT Start
+addressed to the MLS node, so TPDO1 flows (see _nmt_start), and - only when the
+profile sets mls.event_clear - the reset of the latched event flag (2080h:01,
+through guard.check_sensor; manuals/mls-diagnostics-plan.md E2).
 Decoding is drivers/canbus/read_mls.py's (TPDO1 layout, Standard/Combi, #LCP).
 
 Acquisition, chosen by `mode`:
@@ -29,6 +31,22 @@ the short probe timeout, and only in tpdo mode (sdo mode already spends its read
 It runs after every start, again whenever the TPDO stream returns after a gap (a
 sensor reboot never reaches _rediscover), and every MARKER_RECHECK_S.
 `markers_ok` is true only when the check passed and the stream is TPDO.
+
+SDO jobs (mls-diagnostics-plan E4). The marker check, the event cause and the
+temperature share ONE queue: one SDO operation per poll, TPDO mode only, the short
+probe timeout. A job that times out is dropped and retried later; it never blocks
+the others for longer than that one read.
+
+Event detection (mls-diagnostics-plan M1/M2, manual 8.8). A rising event flag
+(TPDO1 status bit 7) queues the cause reads 2080h:02/:04/:05. A magnetic-field
+event is reported through `on_event` only if a track was under the sensor on the
+sample before (E5: leaving the tape is not a weak tape); otherwise it is counted
+as `events_no_track`. The flag latches, so with mls.event_clear set the job then
+writes 2080h:01; a flag still high CLEAR_MIN_S after a clear is a new event. A
+failed or refused clear turns the clearing off for the rest of the run. Without
+the clear only the first event after the flag was last reset is seen.
+The temperature (2070h:01 and its thresholds :06/:07) is read every TEMP_PERIOD_S
+and at once after a temperature event; `temp` holds the last decode.
 
 Every sample carries its `source`; the line follower accepts only fresh ones,
 which the SDO path cannot deliver at control rate.
@@ -68,6 +86,36 @@ class TrackSample:
         return self.reading["nlcp"]
 
 
+class RateLimit:
+    """At most one report per `min_s`; the ones in between are counted into the next.
+    Pure and clock-fed: allow(now) -> None (hold it back) or the number held back
+    since the last report."""
+
+    def __init__(self, min_s: float):
+        self.min_s, self._t, self._held = min_s, None, 0
+
+    def allow(self, now: float) -> int | None:
+        if self._t is not None and now - self._t < self.min_s:
+            self._held += 1
+            return None
+        held, self._t, self._held = self._held, now, 0
+        return held
+
+
+@dataclass
+class _Job:
+    """One SDO job: read `keys` in order, then `done(vals, now)`; then, if set, the
+    write (index, sub, value, size) and `wrote(ok, detail, now)`."""
+
+    purpose: str
+    keys: list
+    done: object
+    write: tuple | None = None
+    wrote: object = None
+    vals: dict = field(default_factory=dict)
+    failed: object = None  # failed(key, now) when a read gets no answer
+
+
 @dataclass
 class _SdoCycle:
     index: int = 0
@@ -87,6 +135,10 @@ class MlsTrack:
     PROBE_TIMEOUT_S = 0.05
     MARKER_RECHECK_S = 60.0
     MARKER_RETRY_S = 5.0
+    TEMP_FIRST_S = 10.0  # the first temperature read, after start (the marker check goes first)
+    TEMP_PERIOD_S = 60.0
+    EVENT_RETRY_S = 5.0  # a flag whose cause could not be read is tried again this often
+    CLEAR_MIN_S = 1.0  # a flag still high this long after a clear is a new event
 
     def __init__(
         self,
@@ -99,6 +151,8 @@ class MlsTrack:
         stale_tpdo_s: float = 0.1,
         expected_variant: int | None = 0,
         markers: dict | None = None,
+        on_event=None,
+        event_clear: int | None = None,
         clock=time.monotonic,
         log=print,
     ):
@@ -131,10 +185,27 @@ class MlsTrack:
         self.marker_expect = dict(markers) if markers else None
         self.marker_status = "off" if not markers else "checking"
         self.marker_checks = 0
-        self._mq: list = []
-        self._mvals: dict = {}
+        self._jobs: list[_Job] = []
         self._mnext: float | None = None
         self._mrearm = False
+        # event detection and temperature (mls-diagnostics-plan)
+        self.on_event = on_event
+        self.event_clear = event_clear if event_clear in (0, 1) else None
+        self.clear_state = "off" if self.event_clear is None else "on"
+        self.events_field = 0
+        self.events_no_track = 0
+        self.events_temp = 0
+        self.events_other = 0  # flag set, source neither field nor temperature
+        self.events_unread = 0
+        self.clears = 0
+        self.temp: dict | None = None
+        self.temp_unread = 0
+        self.track_level_min: int | None = None
+        self._temp_next: float | None = None
+        self._ev_prev_flag: bool | None = None
+        self._ev_prev_nlcp: int | None = None
+        self._ev_retry_at: float | None = None
+        self._ev_cleared_at: float | None = None
         self._stale = True
         self._t_start = 0.0
         self._next_cycle = 0.0
@@ -149,6 +220,8 @@ class MlsTrack:
         self.start_count += 1
         if self.marker_expect:
             self._arm_marker_check(self._t_start, reset=True)
+        self._ev_prev_flag = None  # a (re)started sensor: a flag already up is an event
+        self._temp_next = self._t_start + self.TEMP_FIRST_S
         if self.want == "off":
             self.mode = "off"
             return self.mode
@@ -221,10 +294,12 @@ class MlsTrack:
             self._mrearm = False
             if self.marker_expect:
                 self._arm_marker_check(self._last_tpdo_t, reset=True)
+            self._ev_prev_flag = None
         if self.mode != "tpdo":
             self.log(f"MLS TPDO1 frames on 0x{self.cob_id:03X}: track reading by TPDO")
             self.mode = "tpdo"
             self._cycle = _SdoCycle()
+        self._event_watch(r, self._last_tpdo_t)
         self._emit(r, "tpdo", self.clock())
 
     def _nmt_start(self, now: float) -> None:
@@ -280,7 +355,7 @@ class MlsTrack:
                 )
                 self.mode = "sdo"
         if self.mode == "tpdo":
-            self._marker_poll(now)
+            self._sdo_poll(now)
         if self.mode != "sdo":
             return
         c = self._cycle
@@ -305,43 +380,74 @@ class MlsTrack:
             vals = c.values
             self._emit(read_mls.decode_sdo(vals[:3], vals[3], vals[4], self.combi), "sdo", self.clock())
 
+    # -- SDO jobs: one queue, one operation per poll (E4) --
+
+    def _pending(self, purpose: str) -> bool:
+        return any(j.purpose == purpose for j in self._jobs)
+
+    def _schedule(self, now: float) -> None:
+        recheck = self._mnext is not None and now >= self._mnext
+        if self.marker_expect and recheck and not self._pending("marker"):
+            self._arm_marker_check(now, reset=False)  # periodic: keep the verdict meanwhile
+        if self._temp_next is not None and now >= self._temp_next and not self._pending("temp"):
+            self._temp_next = now + self.TEMP_PERIOD_S
+            self._jobs.append(_Job("temp", list(read_mls.TEMP_READS), self._temp_done,
+                                   failed=self._temp_failed))
+
+    def _sdo_poll(self, now: float) -> None:
+        """At most ONE short SDO operation: the next read (or write) of the first job."""
+        self._schedule(now)
+        if not self._jobs:
+            return
+        job = self._jobs[0]
+        if job.keys:
+            key = job.keys[0]
+            v = self.link.read(self.node, *key, timeout=self.PROBE_TIMEOUT_S)
+            if v is None:
+                self._jobs.pop(0)
+                if job.failed:
+                    job.failed(key, now)
+                return
+            job.vals[key] = v
+            job.keys.pop(0)
+            if not job.keys:
+                job.done(job.vals, now)
+                if job.write is None:
+                    self._jobs.pop(0)
+            return
+        self._jobs.pop(0)
+        index, sub, value, size = job.write
+        try:
+            ok, detail = self.link.write_sensor(self.node, index, sub, value, size,
+                                                timeout=self.PROBE_TIMEOUT_S)
+        except Exception as e:  # noqa: BLE001 - ForbiddenWrite, or a link with no sensor write
+            ok, detail = False, repr(e)
+        job.wrote(ok, detail, now)
+
     # -- marker configuration (read-only) --
 
     def _arm_marker_check(self, now: float, reset: bool) -> None:
-        self._mq = list(self.marker_expect)
-        self._mvals = {}
+        self._jobs = [j for j in self._jobs if j.purpose != "marker"]
+        self._jobs.append(_Job("marker", list(self.marker_expect), self._marker_done,
+                               failed=self._marker_failed))
         self._mnext = None
         if reset:
             self.marker_status = "checking"
 
-    def _marker_poll(self, now: float) -> None:
-        """At most ONE short SDO read: the next marker object, or nothing."""
-        if not self.marker_expect:
-            return
-        if not self._mq:
-            if self._mnext is not None and now >= self._mnext:
-                self._arm_marker_check(now, reset=False)  # periodic: keep the verdict meanwhile
-            return
-        key = self._mq[0]
-        v = self.link.read(self.node, *key, timeout=self.PROBE_TIMEOUT_S)
-        if v is None:
-            self._mq = []
-            self._mnext = now + self.MARKER_RETRY_S
-            new = f"unverified: {key[0]:04X}h:{key[1]:02X} did not answer"
-            if new != self.marker_status:
-                self.log(f"MLS markers {new}; retrying in {self.MARKER_RETRY_S:.0f} s")
-            self.marker_status = new
-            return
-        self._mvals[key] = v
-        self._mq.pop(0)
-        if self._mq:
-            return
+    def _marker_failed(self, key, now: float) -> None:
+        self._mnext = now + self.MARKER_RETRY_S
+        new = f"unverified: {key[0]:04X}h:{key[1]:02X} did not answer"
+        if new != self.marker_status:
+            self.log(f"MLS markers {new}; retrying in {self.MARKER_RETRY_S:.0f} s")
+        self.marker_status = new
+
+    def _marker_done(self, vals: dict, now: float) -> None:
         self.marker_checks += 1
         self._mnext = now + self.MARKER_RECHECK_S
         diffs = [
-            f"{i:04X}h:{sb:02X} = {self._mvals[(i, sb)]} (want {w})"
+            f"{i:04X}h:{sb:02X} = {vals.get((i, sb))} (want {w})"
             for (i, sb), w in self.marker_expect.items()
-            if self._mvals.get((i, sb)) != w
+            if vals.get((i, sb)) != w
         ]
         new = "ok" if not diffs else "misconfigured: " + "; ".join(diffs)
         if new != self.marker_status:
@@ -351,6 +457,74 @@ class MlsTrack:
             else:
                 self.log("MLS markers: sensor configured as the profile expects")
         self.marker_status = new
+
+    # -- event detection (mls-diagnostics-plan M1/M2) --
+
+    def _event_watch(self, r: dict, now: float) -> None:
+        """Every TPDO1 frame: queue the cause reads on a new event (see the module doc)."""
+        st = r["status"]
+        flag, nlcp = bool(st["event_flag"]), int(r["nlcp"])
+        if nlcp:
+            lvl = int(st["track_level"])
+            self.track_level_min = lvl if self.track_level_min is None else min(self.track_level_min, lvl)
+        prev_nlcp = nlcp if self._ev_prev_nlcp is None else self._ev_prev_nlcp
+        new = False
+        if flag and not self._pending("event"):
+            if not self._ev_prev_flag:
+                new = True  # rising, or already up when the stream (re)started
+            elif self._ev_retry_at is not None and now >= self._ev_retry_at:
+                new = True  # the last cause read got no answer
+            elif self._ev_cleared_at is not None and now - self._ev_cleared_at >= self.CLEAR_MIN_S:
+                new = True  # up again after a reset
+        if new:
+            self._ev_retry_at = self._ev_cleared_at = None
+            lcp2 = r["lcp"][1][0] if 2 in r["valid"] else None
+            ctx = {"t_mono": now, "track_before": prev_nlcp > 0, "nlcp": nlcp, "lcp2_mm": lcp2,
+                   "track_level": int(st["track_level"])}
+            write = None if self.event_clear is None else (*read_mls.EVENT_RESET, self.event_clear, 1)
+            self._jobs.append(_Job(
+                "event", list(read_mls.EVENT_READS),
+                lambda vals, t, ctx=ctx: self._event_done(vals, t, ctx),
+                write=write, wrote=self._clear_done, failed=self._event_failed,
+            ))
+        self._ev_prev_flag, self._ev_prev_nlcp = flag, nlcp
+
+    def _event_failed(self, key, now: float) -> None:
+        self.events_unread += 1
+        self._ev_retry_at = now + self.EVENT_RETRY_S
+
+    def _event_done(self, vals: dict, now: float, ctx: dict) -> None:
+        ev = read_mls.decode_event(*(vals.get(k) for k in read_mls.EVENT_READS))
+        if ev["temp"]:
+            self.events_temp += 1
+            self._temp_next = now  # read the temperature now, not in a minute
+        if ev["field"]:
+            if ctx["track_before"]:
+                self.events_field += 1
+                if self.on_event is not None:
+                    self.on_event(dict(ev, **ctx))
+            else:
+                self.events_no_track += 1
+        if not ev["field"] and not ev["temp"]:
+            self.events_other += 1
+
+    def _clear_done(self, ok: bool, detail: str, now: float) -> None:
+        if ok:
+            self.clears += 1
+            self._ev_cleared_at = now
+            return
+        self.log(f"MLS event-flag reset 2080h:01 = {self.event_clear} failed ({detail}): "
+                 "not clearing again this run, only the first event after this one is seen")
+        self.event_clear = None
+        self.clear_state = "failed"
+
+    # -- temperature --
+
+    def _temp_done(self, vals: dict, now: float) -> None:
+        self.temp = read_mls.decode_temp(*(vals.get(k) for k in read_mls.TEMP_READS))
+
+    def _temp_failed(self, key, now: float) -> None:
+        self.temp_unread += 1
 
     @property
     def markers_ok(self) -> bool:
@@ -400,6 +574,15 @@ class MlsTrack:
             ("variant_mismatches", str(self.variant_mismatches)),
             ("markers", self.marker_status_text()),
             ("marker_checks", str(self.marker_checks)),
+            ("events_field", str(self.events_field)),
+            ("events_no_track", str(self.events_no_track)),
+            ("events_temp", str(self.events_temp)),
+            ("events_unread", str(self.events_unread)),
+            ("event_clear", self.clear_state if self.event_clear is None else f"on ({self.event_clear})"),
+            ("event_clears", str(self.clears)),
+            ("track_level_min", "" if self.track_level_min is None else str(self.track_level_min)),
+            ("temp_c", "" if not self.temp or self.temp["temp_c"] is None else str(self.temp["temp_c"])),
+            ("temp_range_c", "" if not self.temp else f"{self.temp['lo_c']}..{self.temp['hi_c']}"),
         ]
         if self.mode == "off":
             return ERROR, "off", kv

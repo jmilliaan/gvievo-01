@@ -47,6 +47,16 @@ still clear its latch.
 
 No mission (or "empty") is plain line following: nothing here ever asks for
 anything, and the follower runs at AUTO_RPM with the default branch order.
+
+Marker run (mission marker_run, 2026-10-18, tracked plan 3 section 7.5): no RFID. Phase
+"out" until the pivot: the first uturn_code starts the same U-turn a u_turn tag would.
+Phase "back" after it: the uturn_code re-passed within the approach distance is skipped,
+the first home_code ends the run at home (role home), and any later uturn_code is the
+BACKSTOP - the home marker was missed - and faults the run at once. The marker stream
+going down, or marker events lost, while driving outside a U-turn sets marker_lost: the
+job holds for a person (a missed marker here is the home stop driven past). Reads are
+acted on whether or not they are clean (lcp2, line_good): every action they start is a
+slowdown or a stop.
 """
 
 from agv_core import config as vehicle
@@ -119,11 +129,15 @@ class TapeRun:
         self._generation = None
         self._departure_tag: str | None = None
         self._departure_at: float | None = None
+        self.mrun = m.get("MARKER_RUN")
+        self.mrun_phase = "out" if self.mrun else None
+        self.marker_lost: str | None = None
+        self._mrun_skip_m = 0.0       # travel left in which the U-turn marker re-pass is ignored
 
     @property
     def active(self):
         """Does this run act on any tag at all?"""
-        return bool(self.mission["TAGS"] or self.mission["BRANCH_LATCH"])
+        return bool(self.mission["TAGS"] or self.mission["BRANCH_LATCH"] or self.mrun)
 
     @property
     def needs_link(self):
@@ -171,11 +185,19 @@ class TapeRun:
         if self.table.destination:
             self.events.append((INFO, f"departing for {self.table.destination}"))
 
+    @property
+    def needs_markers(self):
+        """Must the marker stream be up to start and keep driving? A marker run's U-turn
+        and home stop are markers."""
+        return self.mrun is not None
+
     def advance(self, distance_m):
         """Wheel travel since the last tick (encoder; commanded only as a fallback)."""
         ev = self.speed.travel(distance_m)
         if ev:
             self.events.append(ev)
+        if self._mrun_skip_m > 0.0:
+            self._mrun_skip_m = max(0.0, self._mrun_skip_m - max(0.0, distance_m))
         if self.uturn_skip is not None:
             self.uturn_skip_m += max(0.0, distance_m)
             if self.uturn_skip_m > self.uturn_rearm_m:
@@ -267,14 +289,18 @@ class TapeRun:
                             + (f" ({rate:.0f} r/min/s)" if rate else "") + f", {then}"))
 
     # -- speed ------------------------------------------------------------------
-    def markers(self, reads, ok, driving):
+    def markers(self, reads, ok, driving, follower=None):
         """This tick's new MLS markers, [(code, direction, lcp2_mm, gap, line_good)] in
         order (amr_line.marker_reader), and whether the stream is up.
 
         Only the zone's two codes act, and only a clean read while driving. Anything
         that may have hidden a zone marker - the stream down, events lost - takes ARMED
-        and HIGH away: every failure ends at NORMAL.
+        and HIGH away: every failure ends at NORMAL. A marker run routes them instead
+        (_marker_run); follower is needed there for the home stop.
         """
+        if self.mrun is not None:
+            self._marker_run(reads, ok, driving, follower)
+            return
         z = self.speed
         if not z.enabled:
             return
@@ -298,6 +324,43 @@ class TapeRun:
             ev = z.cue(code)
             if ev:
                 self.events.append(ev)
+
+    def _marker_run(self, reads, ok, driving, follower):
+        mr = self.mrun
+        busy = self.stop is not None or self.uturn_req is not None
+        if driving and not busy and self.marker_lost is None:
+            if not ok:
+                self.marker_lost = "MLS markers down: the U-turn or home marker could be missed"
+            elif any(gap for _c, _d, _l, gap, _g in reads):
+                self.marker_lost = "marker events lost: the U-turn or home marker may have been missed"
+        for code, _direction, lcp2, _gap, line_good in reads:
+            if code not in (mr["uturn_code"], mr["home_code"]):
+                continue
+            where = f"marker {code} at {lcp2:+d} mm" + ("" if line_good else ", line not good")
+            if not driving or busy:
+                why = "held" if not driving else "stopping or turning"
+                self.events.append((INFO, f"{where} ignored: {why}"))
+                continue
+            if self.mrun_phase == "out":
+                if code == mr["uturn_code"]:
+                    self._start_u_turn({"tag": f"marker {code}", "direction": mr["direction"],
+                                        "approach_mps": mr["approach_mps"], "decel_m": mr["decel_m"],
+                                        "max_approach_m": mr["max_approach_m"]}, f"U-turn marker ({where})")
+                    busy = True
+                # the home marker on the way out: the departure passes it again
+                continue
+            if code == mr["uturn_code"]:
+                if self._mrun_skip_m > 0.0:
+                    self.events.append((INFO, f"{where}: own U-turn marker passed after turning"))
+                    continue
+                self.fault = (f"home marker missed: {where} read on the way back (the backstop strip "
+                              f"past {mr['label']}); check the home marker, jog back, Reset")
+                return
+            if follower is None:
+                continue
+            self._begin_stop({"tag": f"marker {code}", "label": mr["label"], "role": "home",
+                              "stop_distance_m": mr["stop_distance_m"]}, follower)
+            busy = True
 
     def parked(self, distance_m):
         """Wheel travel while parked at a station: taken off the kept budget, and
@@ -383,15 +446,20 @@ class TapeRun:
         if missed:
             self.events.append((WARN, f"destination {missed} not reached before the U-turn: its tag "
                                       f"was missed. It will not be served from the return leg."))
+        self._start_u_turn(row, f"U-turn tag {tag}")
+        self._record(now, number, tag, f"u-turn {row['direction']}")
+
+    def _start_u_turn(self, row, what):
+        """The U-turn approach, from a tag or a marker: slow to the creep, stop at the tape end."""
         self.drop_high("U-turn")
-        self.uturn_req = {"tag": tag, "direction": row["direction"], "approach_mps": row["approach_mps"],
+        self.uturn_req = {"tag": row["tag"], "direction": row["direction"],
+                          "approach_mps": row["approach_mps"],
                           "decel_m": row["decel_m"], "decel_rpm_s": None,
                           "max_approach_m": row["max_approach_m"], "phase": "approach",
                           "travel_m": 0.0, "level": None, "gone": 0}
         self.uturn = None
         self.uturn_last = None
-        self._record(now, number, tag, f"u-turn {row['direction']}")
-        self.events.append((INFO, f"U-turn tag {tag} - slowing to {row['approach_mps']:.2f} m/s within "
+        self.events.append((INFO, f"{what} - slowing to {row['approach_mps']:.2f} m/s within "
                                   f"{row['decel_m']:.2f} m, stopping where the tape ends"))
 
     def approach(self, sensor, has_track, distance_m):
@@ -449,6 +517,11 @@ class TapeRun:
         # Its own tag lies about the approach distance back along the tape.
         self.uturn_skip, self.uturn_skip_m = req["tag"], 0.0
         self.uturn_rearm_m = req["travel_m"] + uturn.REARM_MARGIN_M
+        if self.mrun is not None:
+            # Back: the U-turn marker is re-passed within the approach distance; after that it
+            # is the backstop.
+            self.mrun_phase = "back"
+            self._mrun_skip_m = req["travel_m"] + uturn.REARM_MARGIN_M
         self.events.append((INFO, f"U-turn {req['direction']} complete at {angle:.0f} deg by encoder, "
                                   f"centred - resuming"))
 

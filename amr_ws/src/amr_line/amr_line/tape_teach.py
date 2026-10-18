@@ -171,8 +171,9 @@ def mean_leg(ident, frm, order, to, segs, fork_backs, end_kind):
                 ys.append(py)
         pts.append((sum(xs) / len(xs), sum(ys) / len(ys)))
     mean = tg.Polyline(tg.resample(pts))
-    starts = [mean.project(*g.pts[0])[0] for g in lines]
-    ends = [mean.project(*g.pts[-1])[0] for g in lines]
+    # Hinted: a leg may start and end at the same floor point (pivot to pivot on a straight).
+    starts = [mean.project(*g.pts[0], hint=0.0)[0] for g in lines]
+    ends = [mean.project(*g.pts[-1], hint=mean.length)[0] for g in lines]
     s0, s1 = statistics.median(starts), statistics.median(ends)
     spread = 0.0
     for g in lines:
@@ -240,11 +241,20 @@ def project_station(graph, mission, sid, pose, taught="", samples=0):
     if leg is None:
         raise tg.GraphError(f"{sid} lies on {lid}, which is not taught yet: record its passes first")
     x, y, yaw = pose
-    s, d = leg.line.project(x, y)
-    _, _, heading = leg.line.point(s)
-    if tg.heading_error(yaw, heading) > math.radians(30):
+    # Of the passes of the tape near the pose (a leg can run both ways past one point, as
+    # through the turnaround of a test straight), the one running the way the vehicle faces.
+    hits = leg.line._candidates(x, y, None, None)
+    best = min(h[2] for h in hits)
+    near = [h for k, h in enumerate(hits) if h[2] <= best + tg.TIE_M
+            and (k == 0 or h[2] <= hits[k - 1][2]) and (k == len(hits) - 1 or h[2] <= hits[k + 1][2])]
+
+    def facing(h):
+        return min(tg.heading_error(yaw, leg.line.point(h[0] + k)[2]) for k in (-0.05, 0.05))
+
+    s, d, _dist = min(near, key=facing)
+    if facing((s, d, 0)) > math.radians(30):
         raise tg.GraphError(f"{sid}: the vehicle faces {math.degrees(yaw):.0f} deg, the leg runs "
-                            f"{math.degrees(heading):.0f} deg - wrong direction for {lid}")
+                            f"{math.degrees(leg.line.point(s)[2]):.0f} deg here - wrong direction for {lid}")
     return tg.Station(sid, lid, s, d, pose, taught, samples)
 
 

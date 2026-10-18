@@ -495,6 +495,18 @@ class DriveLink:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
         self._alive(node)
 
+    def write_sensor(self, node, index, sub, value, size, timeout=0.05):
+        """A line-sensor (MLS) write: guard.check_sensor's list, never the drives'.
+        Short timeout, because it runs on the bus thread between drive cycles.
+        Returns (ok, detail); a refused object raises ForbiddenWrite before the bus."""
+        guard.check_sensor(index, sub)
+        self.keepalive()
+        self.idle()
+        ok, detail = sdo_write(self.router, node, index, sub, value, size, timeout=timeout)
+        if ok:
+            self._alive(node)
+        return ok, detail
+
     def nmt(self, command, node=0):
         self.router.send(can.Message(arbitration_id=0x000, data=[command, node], is_extended_id=False))
         self.router.pump(0.05)

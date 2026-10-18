@@ -323,6 +323,11 @@ mls.*  (SICK MLS line sensor, can.sensor_node; manuals/mls-marker-plan.md)
     a full lap has shown north-up tape everywhere, because south-up track
     becomes invisible with it. teach_lock expects 2029h = 1 (keypad locked).
 
+    event_clear (manuals/mls-diagnostics-plan.md E2): the value drive_node writes to
+    2080h:01 to reset the sensor's latched event flag after reading its cause, or
+    -1 = never write (only the first event after power-up is seen). 0 or 1, as
+    the bench step E0.5 found; -1 until then. The only runtime MLS write.
+
     Nothing here is in the safety path or changes motion.
 
 tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
@@ -348,6 +353,10 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
       lost_fault_s        LOST while held longer than this becomes a FAULT
       amcl_params         "default" (amr_localization/config/amcl.yaml) or "lean" (fewer
                           particles, update every 0.10 m: plan section 2.7)
+      site_mission        the site-3 mission taught and shadowed: "test-mru-straight" while
+                          only the straight in front of MRU is free (plan section 7),
+                          "site-103" once the plant is
+      shadow_circuit      the circuit of that mission the shadow locator follows
 
     Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
 
@@ -595,6 +604,7 @@ _SCHEMA = {
         "markers_enabled": ("MLS_MARKERS", bool),
         "polarity_lock":   ("MLS_POLARITY_LOCK", bool),
         "teach_lock":      ("MLS_TEACH_LOCK", bool),
+        "event_clear":     ("MLS_EVENT_CLEAR", int),
         # "marker_codes" is a list of ints; handled separately in _read_marker_codes().
     },
     "tape_loc": {
@@ -612,6 +622,8 @@ _SCHEMA = {
         "healthy_window_m":   ("TAPE_LOC_HEALTHY_WINDOW_M", float),
         "lost_fault_s":       ("TAPE_LOC_LOST_FAULT_S", float),
         "amcl_params":        ("TAPE_LOC_AMCL_PARAMS", str),
+        "site_mission":       ("TAPE_LOC_SITE_MISSION", str),
+        "shadow_circuit":     ("TAPE_LOC_SHADOW_CIRCUIT", str),
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
@@ -963,6 +975,8 @@ def _validate(ns):
 
     # -- line sensor (mls-marker-plan) -----------------------------------
     check(0 <= g("MLS_VARIANT") <= 7, f"mls.variant is 2006h:01, 0..7, got {g('MLS_VARIANT')}")
+    check(g("MLS_EVENT_CLEAR") in (-1, 0, 1),
+          f"mls.event_clear is the 2080h:01 reset value 0 or 1, or -1 = off; got {g('MLS_EVENT_CLEAR')}")
 
     # -- tape localization (tracked plan 3) -------------------------------
     for key, lo, hi in (("k_odo", 0.0, 0.1), ("amcl_sigma_floor_m", 0.0, 0.2), ("max_lateral_m", 0.0, 0.5),
@@ -979,6 +993,10 @@ def _validate(ns):
           "tape_loc.sigma_lost_m must be above sigma_junction_m and at most 2.0")
     check(0.5 <= g("TAPE_LOC_JUNCTION_LEAD_M") <= 5.0, "tape_loc.junction_lead_m must be in [0.5, 5]")
     check(2 <= g("TAPE_LOC_LOST_REJECTS") <= 50, "tape_loc.lost_rejects must be in 2..50")
+    for key in ("SITE_MISSION", "SHADOW_CIRCUIT"):
+        v = g(f"TAPE_LOC_{key}")
+        check(bool(re.fullmatch(r"[A-Za-z0-9_-]+", v)),
+              f"tape_loc.{key.lower()} must be a plain name, got {v!r}")
     check(g("TAPE_LOC_AMCL_PARAMS") in ("default", "lean"),
           f"tape_loc.amcl_params must be default or lean, got {g('TAPE_LOC_AMCL_PARAMS')!r}")
     check(not (g("TAPE_LOC_ENABLED") and g("TRACKED") is False),

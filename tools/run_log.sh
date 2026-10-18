@@ -56,7 +56,8 @@ else
     ok "line message: $msg"
     [ -n "$MISSION" ] && [ "$m" != "$MISSION" ] && warn "mission is '${m:-plain}', expected '$MISSION': Set job on Run tracked"
     [ -n "$DEST" ] && [ "$d" != "$DEST" ] && warn "destination is '$d', expected '$DEST'"
-    [ -n "$MISSION" ] && [ "$h" != "true" ] && warn "not at Home: Start will be refused"
+    # Only a mission with an RFID Home says why not (home_detail); a marker run has none.
+    [ -n "$MISSION" ] && [ "$h" != "true" ] && [ -n "$hd" ] && warn "not at Home ($hd)"
 fi
 
 # 3. RFID link, mode, drives.

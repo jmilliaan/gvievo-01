@@ -54,6 +54,7 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import (
     GetOperation,
+    LineTeach,
     PlanCommissioning,
     RequestMode,
     RequestSurvey,
@@ -356,6 +357,8 @@ class RosAdapter(Node):
             "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
             "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
             "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
+            "line_teach": self.create_client(LineTeach, "/amr/line/teach", callback_group=g),
+            "line_at_home": self.create_client(Trigger, "/amr/line/at_home", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
         }
@@ -859,6 +862,17 @@ class RosAdapter(Node):
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
         return bool(r.ok), r.message
+
+    def line_teach(self, action: str, arg: str = "") -> tuple[bool, str]:
+        """Tape-graph teaching (tracked plan 3, P1). Records and publishes; moves nothing."""
+        r = self._call("line_teach", LineTeach.Request(action=action, arg=arg))
+        if r is None:
+            return False, "line layer unavailable (enter LINE mode first)"
+        return bool(r.ok), r.message
+
+    def line_at_home(self) -> tuple[bool, str]:
+        """Parked at HOME-N: AMCL's initial pose from its taught pose. Moves nothing."""
+        return self._trigger("line_at_home")
 
     def manual_publish(self, cmd) -> None:
         """One ManualCommand per accepted browser refresh. No timer repeats it."""

@@ -75,7 +75,14 @@ MODULES = [
 # + 19 (2026-10-17): tracked plan 3, tape-graph localization. test_config + 6 (the tape_loc block:
 #   off, station limit within +-10 cm, refusals); test_mission + 13 (site-3 schema: the site-103
 #   file, its legs and listing, 8 refusals).
-EXPECTED_CHECKS = 725
+# + 1 (2026-10-18): the straight-section test mission (plan 3 section 7).
+# + 14 (2026-10-18): MLS diagnostics (manuals/mls-diagnostics-plan.md M0). test_mls + 11 (event
+#   source/cause and temperature decoding, the reset on the guard list and the thresholds off it);
+#   test_canmon + 1 (DriveLink.write_sensor goes through check_sensor; the list check now names
+#   2080h:01); test_config + 2 (mls.event_clear off, and its refusal).
+# + 7 (2026-10-18): the marker run (plan 3 section 7.5): test_mission, the straight's mission and
+#   6 refusals.
+EXPECTED_CHECKS = 747
 
 
 # An exception on a helper thread only prints a traceback by default - the

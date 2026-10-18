@@ -5,12 +5,13 @@ Status 2026-10-17. What each section needs before it can be used:
 | Section | Usable |
 |---|---|
 | 1 Rules | now |
-| 2 P0 measurement | once tooling T1–T3 is built (plan 3 section 5) |
-| 3 Teach | after P1 (planned) |
+| 1A The straight in front of MRU | now: where sections 2 and 3 run until the plant is free |
+| 2 P0 measurement | now (T1–T3 built 2026-10-18; T1 checked on a private domain, not yet on the floor) |
+| 3 Teach | now: P1 teach + shadow built 2026-10-18, not yet run on the vehicle |
 | 4 Daily operation | after P2 + P3 (planned) |
 | 5 Holds and faults | after P2 (planned) |
 | 6 Changes to the site | after P1 (planned) |
-| 7 Rollback | after P1 (planned) |
+| 7 Rollback | now |
 
 Read with: `manuals/site-layout-103.md` (the site, ids such as `MW-1`, `J-N`, `HOME-N`) and
 `manuals/tracked-plan-3-tape-localization.md` (why). General operation, survey and fault codes:
@@ -32,6 +33,40 @@ Roles: **E** = engineer (PIN pages, terminal), **O** = operator at the vehicle w
 - **MLS markers:** `mls.markers_enabled` is the bench switch. It is `true` only during a bench
   session or after the marker bench passed (`manuals/mls-marker-plan.md`).
 
+## 1A. Where the tests run now: the straight in front of MRU
+
+Until the plant is free, sections 2 and 3 run on the ~10 m straight in front of MRU (plan 3
+section 7). Differences from the text below:
+
+- **Profile:** `tape_loc.site_mission: test-mru-straight`, `tape_loc.shadow_circuit: C-STRAIGHT`
+  (the current values).
+- **T-HOME:** the east end of the free section, facing west. Mark it on the floor (the survey
+  start too). **No RFID** (2026-10-18). The run is the job `mru-straight-markers` (Run tracked →
+  Set job). It needs `mls.markers_enabled: true` and the marker stream up (Home tile).
+- **Strips (plan 3 section 7.5; 15 × 100 mm, S up, one side), x measured from the west tape end:**
+  - code 2 at 1.0 m: starts the CW U-turn
+  - code 1 at east limit − 2.0 m: home (the AGV parks 0.5 m past it, at T-HOME)
+  - code 2 at east limit − 1.0 m: the backstop. Read on the way back, it means the home marker was missed: FAULT, jog back, Reset
+  - no other code 1 or 2 strip anywhere on the straight
+- **Holds:**
+  - `MARKERS_LOST`: the marker stream dropped while driving. Check where the AGV is, then Start.
+  - FAULT "home marker missed": check the code-1 strip, jog back to T-HOME, Reset.
+- **Stations on the straight:** T-HOME, T-ATT, MW-4, ME-4 (only MRU4 lies inside). The U-turn at
+  the west tape end is CW.
+- **One lap:**
+  1. T-HOME westbound
+  2. the tape-end pivot (U-turn tag, automatic)
+  3. eastbound back to T-HOME
+  4. O turns the AGV round by hand: selector **MANUAL**, Manual Arm, spin in place, **empty**
+- **2.2 strips:** 2–3 code-3 strips on the straight, at least 3 m apart and 1 m from any stop.
+- **2.3 survey:** only the free area. Drive it both ways, slowly; turn at the ends by hand.
+- **2.5 / 2.6:** `tools/run_log.sh mru-straight-markers` per lap. A lap: Start at T-HOME, the
+  AGV runs, pivots at the tape end, comes back and stops at T-HOME (DONE). Then turn it by hand.
+- **3.2:** circuit `C-STRAIGHT`.
+- **3.3 stations:** T-HOME (facing west), T-ATT (**at least 2 m west of T-HOME**), MW-4 facing
+  west, ME-4 facing east.
+- **Not testable here:** junction orders, fork resyncs, wrong branch, crossings. They wait for the plant.
+
 ## 2. P0 measurement session
 
 Goal: measure how repeatably AMCL knows where the AGV is along the tape (plan 3 section 5,
@@ -41,7 +76,7 @@ metrics M1–M6). Nothing about motion changes: the AGV runs `line-a` exactly as
 
 | # | Who | Check |
 |---|---|---|
-| 1 | E | T1–T3 merged and built: `cd ~/agv_can/amr_ws && colcon build --symlink-install && source install/setup.bash` (a new launch file and tool need the build) |
+| 1 | E | Built: `cd ~/agv_can/amr_ws && colcon build --symlink-install && source install/setup.bash`. `tape_loc.enabled` is **false** (P0 refuses to start otherwise). `pidstat` installed (`sudo apt install sysstat`) |
 | 2 | E | `python3 tests/run_all.py` passes (repo root) |
 | 3 | E | `amr.service` runs the current code: `tools/run_log.sh` warns in its pre-flight if it doesn't. Restart on O's go |
 | 4 | E | MLS marker configuration in place (`read_mls set-markers --go` done, marker bench B2 or later) and `mls.markers_enabled: true`. If not, P0 uses the RFID fallback (plan 3 section 5); note it in the session log |
@@ -142,26 +177,51 @@ and the session log's notes. Apply plan 3's decision rule (section 5).
    to `false` and restart the service on O's go.
 4. The map revision is kept. P1 teaches on it.
 
-## 3. Teach the tape graph (planned, P1)
+## 3. Teach the tape graph (P1)
 
 Teach when: a new map revision, newly laid tape, or a moved station (section 6). Teaching is done
-empty, with no trolleys.
+empty, with no trolleys. All of it is on the **Teach** page (engineer nav, PIN). The page records
+and publishes only; the AGV moves by the panel's Start, or by jogging under MANUAL.
 
-### 3.1 Start a graph
+### 3.0 Once: switch tape localization on
 
-1. E: Teach page (engineer PIN) → **New graph** → choose the map revision.
-2. O: AGV at HOME-N → Calls page **At home** → confirm the scans align. The Localisation tile must
-   show READY.
+1. E: `profiles/agv-01.json` → `"tape_loc": {"enabled": true, ...}`.
+2. E: `cd ~/agv_can/amr_ws && colcon build --symlink-install` (new messages and services), then
+   restart `amr.service` on O's go.
+3. Teach page → Map `site103`, rev `N` → **Select map**. This writes `~/.amr/line_graph.json`.
+4. Load it into LINE: Home → Navigation → **Trackless** → **Tracked** (or a service restart on O's
+   go). Teach → **Status** must say "teaching on site103 revN: no graph active". The LINE layer now
+   runs map_server, AMCL and the localization monitor beside the follower.
 
-### 3.2 Record each circuit's edges
+### 3.1 Localise
 
-1. E: Teach page → **Record circuit** → `C-MRU` (later `C-BTU`).
-2. O: selector **AUTO** → **Start**. The AGV follows the circuit at NORMAL, empty, and back to HOME-N.
-   - The page shows the next expected junction, and each fork the MLS sees as it happens.
-   - Until P2, the MRU U-turn is still triggered by its RFID tag, as in `line-a` today.
-3. Repeat until the circuit has **3 passes**.
-4. The page shows the spread between passes for each edge. Above 5 cm, record that edge again
-   (people or a trolley in the way during one pass is the usual cause).
+1. O: AGV on the survey start mark (the `line-a` Home arrow).
+2. E: give AMCL its initial pose:
+   - first time, with no graph yet: Foxglove "2D Pose Estimate" on the mark, or
+     `ros2 topic pub --once /initialpose …`
+   - once HOME-N is taught: **At home** at HOME-N
+3. E: **Scans align** once the live scan lies on the walls. The Readiness tile must show READY.
+
+### 3.2 Record the circuit passes
+
+A pass is one whole circuit: out of the HOME bay, through every junction and the U-turn, back
+into the bay, ending where it started (within 0.5 m).
+
+1. E: Circuit `C-MRU` → **Record pass**. The Graph tile shows the pass being recorded.
+2. O: selector **AUTO** → **Start**: an ordinary `line-a` run. Until P2 the U-turn and the stops
+   are still RFID's.
+3. Back in the bay, standing: E **Stop pass**. The message gives the length, poses and forks seen.
+   - A pass whose MLS fork episodes and U-turn do not match the circuit's junctions is refused,
+     with both lists: an MLS that missed a fork, or a route that differs from the mission.
+   - People or trolleys in the way during a pass: **Discard** and record it again.
+4. Repeat until there are **3 good passes** (**Passes** lists them).
+5. E: **Build**. Each leg is listed with its pass count and spread. A spread above 5 cm means
+   recording that circuit again.
+
+> **Open (input needed):** confirm that `line-a` drives exactly C-MRU: HOME-N → J-BMERGE → R717 →
+> ATT → J-N right → X1 → J-ML → trunk → MRU → pivot → back → J-ML left → J-STEM → J-SPLIT left →
+> HOME-N. If it does not, the passes are refused, and a temporary mission (or a supervised drive)
+> has to drive that route.
 
 ### 3.3 Teach the stations
 
@@ -172,25 +232,32 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
    - MW = westbound
    - ME = eastbound
    - spin in place to turn it, empty only
-2. E: Teach page → choose the station id → **Teach here**. Hold still for 3 s.
-3. The page shows the edge, `s` and the lateral residual. It refuses when:
-   - the residual is over 5 cm ("not on the tape here")
-   - the heading is wrong for the station
-   - localization is not READY
+2. If AMCL has not updated since the last move (it updates only on motion), nudge the AGV a few
+   centimetres and stop again.
+3. Hold still for **3 s**. E: Station → id → **Teach here**.
+4. The message gives the leg, `s` and the distance from the taught tape. It refuses when:
+   - the AGV is more than 10 cm from the tape
+   - it faces the wrong way for the station's leg
+   - localization is not READY, or there were fewer than 5 poses in the 3 s
+5. **Build** again: it says "every circuit compiles", or lists what is missing. Today C-BTU stays
+   incomplete: row 2 is not laid.
 
-### 3.4 Check and publish
+### 3.4 Publish and make active
 
-1. E: Teach page → **Check against mission** (`site-103`). Every junction and station id must be
-   present, and every order valid.
-2. **Publish** creates graph revision `g<N>`, which never changes afterwards.
-3. **Make active.**
-4. Load it: Home → Navigation → Trackless → Tracked, or a service restart on O's go.
+1. E: **Publish** creates graph revision `g<N>` under the map. It never changes afterwards.
+2. g `N` → **Make active**.
+3. Load it: Trackless → Tracked, or a service restart on O's go. Status names the graph, and the
+   Locator tile shows IDLE.
 
 ### 3.5 Shadow verification
 
-The locator runs during ordinary `line-a` runs and only logs. Record runs with `run_log.sh`;
-`bag_report.py` lists, at each station, the locator's `s` against the taught `s`. Acceptance:
-plan 3 section 4, P1.
+1. O: AGV at HOME-N. E: **At home** → **Scans align** → READY. The Locator tile goes WAITING →
+   HEALTHY.
+2. Ordinary `line-a` runs, recorded with `tools/run_log.sh`. The locator only logs. At every
+   station, junction order and U-turn approach, the event log (`LINE_LOC`) says "would stop / would
+   order … : ok", or "would HOLD" with the reason. LOST, re-acquired and unexpected forks are logged
+   too.
+3. Acceptance: plan 3 section 4, P1. Any "would HOLD" or LOST gets looked at before P2.
 
 ## 4. Daily operation (planned, P2–P3)
 
@@ -242,10 +309,12 @@ plan 3 section 4, P1.
 
 A graph or map revision is never edited in place. The previous one stays and can be made active again.
 
-## 7. Rollback (planned, P1)
+## 7. Rollback
 
-1. E: set `line.localization: false` in `profiles/agv-01.json`.
+1. E: set `tape_loc.enabled: false` in `profiles/agv-01.json`.
 2. Restart `amr.service` on O's go.
 
-LINE then runs as before this plan: `line-a`, RFID stops. Taught graphs and maps are kept for
-when the flag goes back to `true`.
+LINE then runs without AMCL, as before this plan: `line-a`, RFID stops. Taught graphs
+(`~/amr_maps/<map>/tapegraph/g<N>`), passes (`~/.amr/teach/`) and the active pointer
+(`~/.amr/line_graph.json`) are kept for when it goes back to `true`. In P1 nothing the locator says
+reaches motion, so switching it off changes nothing about how the AGV drives.

@@ -187,7 +187,7 @@ class TapeLocator:
         S_p = self.S - back
         r = max(math.sqrt(max(var_along, 0.0)), self.p.amcl_sigma_floor_m)
         w = max(4.0 * self.sigma, 0.5)
-        hit = self.route.project(x, y, S_p - w, S_p + w)
+        hit = self.route.project(x, y, S_p - w, S_p + w, hint=S_p)
         if hit is not None:
             # Before anything else: the rejections a wrong branch causes must not hide it.
             self._wrong_branch_check(S_p, x, y, abs(hit[1]), tp)
@@ -230,7 +230,7 @@ class TapeLocator:
     def _reacquire(self, S_p, back, x, y, r):
         """LOST, READY again: two consecutive poses that agree re-seed S (not a wrong branch)."""
         w = max(3.0 * self.sigma, REACQUIRE_MIN_WINDOW_M)
-        hit = self.route.project(x, y, S_p - w, S_p + w)
+        hit = self.route.project(x, y, S_p - w, S_p + w, hint=S_p)
         if hit is None or abs(hit[1]) > self.p.max_lateral_m:
             self._reacq = None
             return self._reject("LOST: pose not on the route near the last estimate", count=False)
@@ -351,6 +351,11 @@ class Shadow:
                 self.events.append((n["S"] - lead, "uturn", n["id"], n["S"]))
         self.events.sort(key=lambda e: e[0])
         self._next = 0
+
+    @property
+    def done(self):
+        """Every decision of the lap has been passed (the last is the HOME stop)."""
+        return self._next >= len(self.events)
 
     def tick(self, loc):
         """Events whose trigger S the locator has just passed -> [(level, text)]."""

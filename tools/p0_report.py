@@ -21,6 +21,7 @@ averaging the teach builder uses). Then, per direction:
 Targets and the decision rule: plan 3 section 5. The pure part (analyse) takes plain
 lists and is tested without a bag (tools/test_p0_report.py).
 """
+import bisect
 import csv
 import math
 import os
@@ -108,25 +109,37 @@ def analyse(runs):
         reads, lateral = [], []
         for r, p in parts:
             poses = p["poses"]
-            for _t, stamp, x, y in poses:
-                hit = ref.project(x, y)
+            along = _track(ref, poses)
+            for (_t, _stamp_p, _x, _y), hit in zip(poses, along, strict=True):
                 if hit and 0.5 < hit[0] < ref.length - 0.5 and _straight(ref, hit[0]):
                     lateral.append(hit[1])
             stamps = [q[1] for q in poses]
             for t_ev, key in p["events"]:
-                k = max((i for i, s in enumerate(stamps) if s <= t_ev), default=None)
-                if k is None:
+                k = bisect.bisect_right(stamps, t_ev) - 1
+                if k < 0 or along[k] is None:
                     continue
-                _t, stamp, x, y = poses[k]
-                hit = ref.project(x, y)
-                if hit is None:
-                    continue
+                stamp, hit = poses[k][1], along[k]
                 s = hit[0] + travel_at(r["wheels"], t_ev) - travel_at(r["wheels"], stamp)
                 reads.append({"run": r["name"], "key": key, "s": s, "travel": travel_at(r["wheels"], t_ev)})
         strips = _cluster(reads)
         m1 = {name: _two_sigma([x["s"] for x in xs]) for name, xs in strips.items()}
         out[d] = {"length": ref.length, "M1": m1, "M1_n": {k: len(v) for k, v in strips.items()},
                   "M2": _two_sigma(lateral), "M2_n": len(lateral), "M6": _scale(strips)}
+    return out
+
+
+def _track(ref, poses):
+    """Project a lap's poses in order: each near the last hit (fast, and never onto a part
+    of the path the vehicle is not on); a full search only to start or after a miss."""
+    out, last = [], None
+    for _t, _st, x, y in poses:
+        hit = ref.project(x, y, last - 1.0, last + 2.0) if last is not None else None
+        if hit is None or abs(hit[1]) > 0.5:
+            hit = ref.project(x, y)
+        if hit is not None and abs(hit[1]) > 0.5:
+            hit = None
+        last = hit[0] if hit else last
+        out.append(hit)
     return out
 
 
@@ -182,8 +195,9 @@ def report(res, cpu=None, fallback=False):
         lines.append(f"{d}: reference {r['length']:.1f} m")
         for name, v in r["M1"].items():
             ok = not math.isnan(v) and v <= TARGET["M1"]
+            note = " (RFID FALLBACK: read zone scatter included)" if fallback else ""
             lines.append(f"  M1 {name:>12}: 2 sigma {v * 100:6.1f} cm over {r['M1_n'][name]:3d} reads  "
-                         f"{verdict(ok)}" + (" (RFID FALLBACK: read zone scatter included)" if fallback else ""))
+                         f"{verdict(ok)}{note}")
         if not r["M1"]:
             lines.append("  M1: no reference reads (code 3 or RFID) in this direction")
         lines.append(f"  M2 lateral: 2 sigma {r['M2'] * 100:.1f} cm over {r['M2_n']} poses  "
@@ -244,7 +258,7 @@ def read_run(path):
         events = [(_stamp(m.header.stamp), f"rfid:{m.rfid_tag}") for _t, m in bag.get("/amr/rfid", [])
                   if not m.heartbeat and m.rfid_tag]
     pivots, start = [], None
-    for t, m in bag.get("/amr/line_state", []):
+    for _t, m in bag.get("/amr/line_state", []):
         spinning = m.uturn_phase in ("spin", "center", "settle")
         stamp = _stamp(m.header.stamp)
         if spinning and start is None:
