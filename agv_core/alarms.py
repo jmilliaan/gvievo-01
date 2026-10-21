@@ -112,7 +112,7 @@ def _rows() -> tuple[Alarm, ...]:
         # ---- the laser scanner ----
         a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
-          "No /scan at all: the nanoScan3 driver could not reach 192.168.3.2:6060 (cable, power, "
+          "No /scan at all: the nanoScan3 driver could not reach 192.168.3.1:6060 (cable, power, "
           "netplan) or AMR_LIDAR=false. The driver is an OPTIONAL launch member, so nothing faults "
           "and nothing else reports it - this row is the only place it shows. The vehicle's STOP is "
           "the scanner's OSSD pair into the FX3 and is unaffected by the data link; mapping, "
