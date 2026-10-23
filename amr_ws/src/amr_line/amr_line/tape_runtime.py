@@ -348,4 +348,12 @@ class TapeRuntime:
                 "loc_leg": snap.get("leg", ""), "loc_s_m": float(snap.get("S", 0.0)),
                 "loc_sigma_m": float(snap.get("sigma", 0.0)), "loc_rejects": int(snap.get("rejected", 0)),
                 "loc_detail": detail, "loc_graph": self.graph_name,
-                "teach": self.recorder.summary() if self.recorder else ""}
+                "teach": self.recorder.summary() if self.recorder else "",
+                **self.map_identity()}
+
+    def map_identity(self):
+        """The map AMCL runs on in this layer (LineState loc_map_*), empty when it does not."""
+        if not self.running:
+            return {"loc_map_id": "", "loc_map_revision": 0, "loc_map_sha256": ""}
+        return {"loc_map_id": str(self.sel["map_id"]), "loc_map_revision": int(self.sel["map_revision"]),
+                "loc_map_sha256": self.map_sha or ""}

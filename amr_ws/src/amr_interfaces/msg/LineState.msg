@@ -87,3 +87,8 @@ uint32 loc_rejects          # AMCL corrections rejected since the locator starte
 string loc_detail           # why not running, why LOST, or the last rejection
 string loc_graph            # active graph, "site103 rev4 g2"; "" = none
 string teach                # the pass being recorded; "" when not recording
+# The map this LINE layer's AMCL runs on (2026-10-23), "" / 0 when tape localization is
+# off. The web lets an initial pose drawn on exactly this map revision through in LINE.
+string loc_map_id
+uint32 loc_map_revision
+string loc_map_sha256

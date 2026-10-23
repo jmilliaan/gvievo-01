@@ -191,18 +191,42 @@ def _msg_to_dict(msg) -> dict[str, Any]:
     return out
 
 
-def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int, sha256: str = "") -> str:
+# LineState is published at 1 Hz: older than this, it may describe a replaced LINE layer.
+LINE_FRESH_S = 3.0
+
+
+def localization_map(mode, line, line_age_s=None) -> dict | None:
+    """The map AMCL is localizing on now, or None: the navigation layer's active map, or in
+    LINE the tape-localization map the line layer started with (LineState loc_map_*,
+    2026-10-23). Every map's frame is "map", so this identity is what keeps a pose drawn
+    on one map out of another (R12)."""
+    if not mode:
+        return None
+    if mode.get("mode_name") == "NAVIGATION" and mode.get("active_map_id"):
+        return {"map_id": mode["active_map_id"], "map_revision": int(mode.get("active_map_revision", -1)),
+                "sha256": mode.get("active_map_sha256") or "", "layer": "navigation"}
+    fresh = line_age_s is None or line_age_s <= LINE_FRESH_S
+    if mode.get("mode_name") == "LINE" and line and line.get("loc_map_id") and fresh:
+        return {"map_id": line["loc_map_id"], "map_revision": int(line.get("loc_map_revision", -1)),
+                "sha256": line.get("loc_map_sha256") or "", "layer": "line"}
+    return None
+
+
+def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int, sha256: str = "",
+                          line=None, line_age_s=None) -> str:
     """Why a pose drawn on (map_id, map_revision) under `generation` must not be applied; "" if it may."""
     if not mode:
         return "no supervisor state"
-    if mode.get("mode_name") != "NAVIGATION" or not mode.get("active_map_id"):
-        return "no navigation map is active"
-    if (map_id, int(map_revision)) != (mode["active_map_id"], int(mode.get("active_map_revision", -1))):
+    active = localization_map(mode, line, line_age_s)
+    if active is None:
+        return ("no localization map: tape localization is off in LINE (Teach: Select map, then "
+                "Trackless -> Tracked)" if mode.get("mode_name") == "LINE" else "no navigation map is active")
+    if (map_id, int(map_revision)) != (active["map_id"], active["map_revision"]):
         return (
             f"the pose was drawn on {map_id} rev{map_revision}, but the vehicle is running "
-            f"{mode['active_map_id']} rev{mode.get('active_map_revision')}"
+            f"{active['map_id']} rev{active['map_revision']}"
         )
-    active_sha = mode.get("active_map_sha256") or ""
+    active_sha = active["sha256"]
     if sha256 and active_sha and sha256 != active_sha:
         return "the viewed map's content differs from the active map (sha256)"
     if int(generation) != int(mode.get("generation", -1)):
@@ -786,6 +810,7 @@ class RosAdapter(Node):
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
+                "loc_map": localization_map(self._mode, self._line, now - self._line_t),
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 "rfid": self._rfid_state(now),
                 "markers": self._marker_state(now),
@@ -976,7 +1001,8 @@ class RosAdapter(Node):
         """
         with self._lock:
             run, mode = self._run, self._mode
-        why = initial_pose_mismatch(mode, map_id, map_revision, generation, sha256)
+            line, line_age = self._line, self._now() - self._line_t
+        why = initial_pose_mismatch(mode, map_id, map_revision, generation, sha256, line, line_age)
         if why:
             return False, f"refused: {why}"
         if run and run.get("state_name") == "EXECUTING":

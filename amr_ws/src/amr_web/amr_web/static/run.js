@@ -6,13 +6,13 @@ const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, footprint = null, preview = null;
 let poseGen = null;  // the generation the operator saw when they picked up the pose tool
 
-// Pose seeding and confirmation only make sense on the picture of the map the vehicle is
-// running: coordinates drawn on map B would otherwise land in map A (R12). The server
+// Pose seeding and confirmation only make sense on the picture of the map AMCL is running
+// on: coordinates drawn on map B would otherwise land in map A (R12). That is the navigation
+// map, or in LINE the tape-localization map (state.loc_map, 2026-10-23). The server
 // re-checks the identity against the live mode before anything is published.
 function viewIsActive() {
-  const m = lastState && lastState.mode;
-  return !!(m && m.mode_name === 'NAVIGATION' && view.meta && m.active_map_id === view.meta.map_id &&
-            +m.active_map_revision === +view.meta.revision);
+  const a = lastState && lastState.loc_map;
+  return !!(a && view.meta && a.map_id === view.meta.map_id && +a.map_revision === +view.meta.revision);
 }
 function dropPoseTool() { view.tool = null; view._preview = null; $('tool-initialpose').classList.remove('on'); }
 
@@ -62,7 +62,7 @@ function steps(st, l) {
   if (!bar || !bar.querySelector) return;  // the JS harness's fake DOM has no query support
   const m = st.mode;
   const done = {
-    map: !!(m && m.mode_name === 'NAVIGATION' && m.active_map_id),
+    map: !!st.loc_map,
     pose: !!(l && l.state_name !== 'UNLOCALIZED' && l.state_name !== 'LOST'),
     confirm: !!(l && l.state_name === 'READY'),
   };
@@ -92,10 +92,13 @@ onState(st => {
   $('btn-pose-survey').disabled = !onActive || !(view.meta && view.meta.start && view.meta.start.x_m !== undefined);
   if (!onActive && view.tool === 'initialpose') dropPoseTool();
   if (view.tool === 'initialpose' && m && m.generation !== poseGen) dropPoseTool();
+  const lm = st.loc_map;
   tiles('active-map', [m
     ? (m.mode_name === 'NAVIGATION' && activeMap
       ? ['Active', `${activeMap.id} rev${activeMap.rev}`, 'navigation map', '', 'key']
-      : ['Active', 'NO MAP', `mode ${m.mode_name}${m.phase ? ' · ' + m.phase : ''}`, 'warn', 'key'])
+      : lm && lm.layer === 'line'
+        ? ['Active', `${lm.map_id} rev${lm.map_revision}`, 'LINE · tape localization (AMCL)', '', 'key']
+        : ['Active', 'NO MAP', `mode ${m.mode_name}${m.phase ? ' · ' + m.phase : ''}`, 'warn', 'key'])
     : ['Active', '–', 'no supervisor', 'bad', 'key']]);
   const l = st.localization;
   steps(st, l);

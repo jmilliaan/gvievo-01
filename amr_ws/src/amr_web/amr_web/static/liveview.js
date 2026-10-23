@@ -11,8 +11,10 @@ function liveOverlay(view) {
     const mode = lastState && lastState.mode;
     const gen = mode ? mode.generation : null;
     if (gen !== null && livePose.generation !== gen) return;
-    // every map calls its frame "map": a saved map is only comparable if it is the active one (R12)
-    if (v.meta.map_id !== undefined && !(mode && mode.active_map_id === v.meta.map_id && +mode.active_map_revision === +v.meta.revision)) return;
+    // every map calls its frame "map": a saved map is only comparable if AMCL runs on it (R12) -
+    // the navigation map, or in LINE the tape-localization map (state.loc_map)
+    const lm = lastState && lastState.loc_map;
+    if (v.meta.map_id !== undefined && !(lm && lm.map_id === v.meta.map_id && +lm.map_revision === +v.meta.revision)) return;
     const frame = v.meta.frame_id || 'map';
     const s = livePose.scan;
     let row = 0;

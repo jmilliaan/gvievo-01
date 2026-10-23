@@ -47,6 +47,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'amr_web', 'static', 
 const flush = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
 const preview = () => vm.runInContext('preview && preview.route', ctx);
 const state = run => ({ mode: { mode_name: 'NAVIGATION', active_map_id: 'm1', active_map_revision: 1, generation: 3 },
+                        loc_map: { map_id: 'm1', map_revision: 1, sha256: '', layer: 'navigation' },
                         run: run ? { mission_id: run, state_name: 'READY' } : null });
 
 (async () => {
