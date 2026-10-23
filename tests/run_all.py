@@ -84,7 +84,8 @@ MODULES = [
 #   6 refusals.
 # + 5 (2026-10-23): the four basic jobs (empty, basic-right, basic-high-left, basic-high-right)
 #   and the mission picker's note (test_mission).
-EXPECTED_CHECKS = 752
+# + 2 (2026-10-23): the kink pivot's profile refusals (kink_edge_mm, kink_max_deg; test_config).
+EXPECTED_CHECKS = 761
 
 
 # An exception on a helper thread only prints a traceback by default - the

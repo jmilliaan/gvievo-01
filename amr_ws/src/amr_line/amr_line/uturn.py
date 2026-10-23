@@ -75,13 +75,20 @@ def counts_for_angle(deg, counts_per_wheel_rev):
 
 class UTurn:
     def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
-                 phase=SPIN):
+                 phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn"):
         """phase=CENTER skips the spin: centre on the tape already under the
-        sensor, then settle. manualturn.py uses it after an encoder pivot."""
+        sensor, then settle. manualturn.py uses it after an encoder pivot.
+
+        The kink pivot (job.py, 2026-10-23) is the same spin with its own gate:
+        min_deg 0 and a small max_deg, lost=True (the tape has already left the
+        sensor), start_level None (no level check: a kink is not a tape end)."""
         if direction not in ("cw", "ccw"):
-            raise ValueError(f"U-turn direction {direction!r}")
+            raise ValueError(f"{what} direction {direction!r}")
         if phase not in (SPIN, CENTER):
-            raise ValueError(f"U-turn start phase {phase!r}")
+            raise ValueError(f"{what} start phase {phase!r}")
+        self.what = what
+        self.min_deg = config.U_TURN_MIN_DEG if min_deg is None else float(min_deg)
+        self.max_deg = config.U_TURN_MAX_DEG if max_deg is None else float(max_deg)
         self.direction = direction
         self.sign = -1.0 if direction == "cw" else 1.0     # omega > 0 is CCW
         self._m_per_count = math.pi * config.WHEEL_DIA_M / counts_per_wheel_rev
@@ -89,14 +96,14 @@ class UTurn:
         self._left_m = self._right_m = 0.0
         self.start_level = start_level
         self.phase = phase
-        self.lost = False
+        self.lost = bool(lost)
         self.reason = None
         self.elapsed_s = 0.0
         self._settled_s = 0.0
         self._unseen_s = 0.0
         self._unseen_from = None    # encoder angle where centring lost the tape
         self._last_e = None         # last centring error seen, for the side to turn to
-        self._budget_s = (TIME_MARGIN * math.radians(config.U_TURN_MAX_DEG)
+        self._budget_s = (TIME_MARGIN * math.radians(self.max_deg)
                           / spin_omega(config.AUTO_U_TURN_RPM))
 
     @property
@@ -148,25 +155,26 @@ class UTurn:
 
         if self.phase == SPIN:
             if angle < -REVERSE_LIMIT_DEG:
-                return self._fail(f"U-turn encoder angle {angle:.0f} deg opposes "
+                return self._fail(f"{self.what} encoder angle {angle:.0f} deg opposes "
                                   f"the commanded {self.direction} spin")
             if not seen:
                 self.lost = True
-            elif (self.lost and angle >= config.U_TURN_MIN_DEG
+            elif (self.lost and angle >= self.min_deg
                   and abs(e_mm) <= config.U_TURN_CENTER_TOL_MM
-                  and level is not None
-                  and level >= self.start_level - config.U_TURN_LEVEL_TOLERANCE):
+                  and (self.start_level is None
+                       or (level is not None
+                           and level >= self.start_level - config.U_TURN_LEVEL_TOLERANCE))):
                 # Inside the band at full spin speed: stop here and settle.
                 self.phase, self._settled_s, self._last_e = SETTLE, 0.0, e_mm
                 return 0.0, 0.0
             elif seen:
                 self._last_e = e_mm     # the side the tape is on, should the spin overshoot
             if self.phase == SPIN:
-                if angle >= config.U_TURN_MAX_DEG:
-                    return self._fail(f"U-turn tape not reacquired within "
-                                      f"{config.U_TURN_MAX_DEG:.0f} deg")
+                if angle >= self.max_deg:
+                    return self._fail(f"{self.what} tape not reacquired within "
+                                      f"{self.max_deg:.0f} deg")
                 if self.elapsed_s > self._budget_s:
-                    return self._fail(f"U-turn spin exceeded {self._budget_s:.0f} s "
+                    return self._fail(f"{self.what} spin exceeded {self._budget_s:.0f} s "
                                       f"at {angle:.0f} deg by encoder")
                 return kinematics.body_to_wheels(
                     0.0, self.sign * spin_omega(config.AUTO_U_TURN_RPM))
@@ -180,7 +188,7 @@ class UTurn:
             if not paused:
                 self._unseen_s += dt
             if abs(angle - self._unseen_from) > CENTER_LOST_DEG or self._unseen_s > CENTER_LOST_S:
-                return self._fail(f"U-turn tape lost while centring (at {angle:.0f} deg by encoder)")
+                return self._fail(f"{self.what} tape lost while centring (at {angle:.0f} deg by encoder)")
             self.phase = CENTER
             side = 1.0 if (self._last_e or 0.0) >= 0.0 else -1.0
             return kinematics.body_to_wheels(0.0, -spin_omega(side * floor))

@@ -265,9 +265,36 @@ def test_marker_run():
             base(marker_run=dict(MARKER_RUN, home_code=5)), "not laid")
     refused("a marker run block with a missing key is refused",
             base(marker_run={k: v for k, v in MARKER_RUN.items() if k != "label"}), "exactly")
-    refused("a home stop shorter than the drives can decelerate is refused",
-            base(marker_run=dict(MARKER_RUN, stop_distance_m=0.05)), "decel")
+    # 2026-10-23: the read acts only past the junction guard (0.3 m), and the stop still
+    # counts from the strip, so a stop that short could not be measured (it also bounds the
+    # drives' deceleration, which this check used to cover at 0.05 m).
+    refused("a home stop inside the junction guard is refused",
+            base(marker_run=dict(MARKER_RUN, stop_distance_m=0.35)), "marker_run.stop_distance_m")
+
+
+SHARED = dict(MARKER_RUN, uturn_code=3, home_code=3, home_arm_m=20.0, label="HOME-N")
+
+
+def test_guided():
+    """guided (2026-10-23): branches by hand, a cruise cap, one marker code for U-turn and home."""
+    print("\nmission: guided run (the engineer walks C-MRU and gives each branch order)")
+    m = mission.load("c-mru-guided")
+    check("c-mru-guided loads: code 3 for U-turn and home, armed after 40 m, 0.3 m/s",
+          m["MARKER_RUN"]["uturn_code"] == m["MARKER_RUN"]["home_code"] == 3
+          and m["MARKER_RUN"]["home_arm_m"] == 40.0 and m["GUIDED"]["cruise_mps"] == 0.3
+          and m["HIGH_ZONE"] is None and m["BRANCH_LATCH"] == [])
+    check("a mission without the block is not guided", mission.load("mru-straight-markers")["GUIDED"] is None)
+    refused("one shared code with home armed inside the U-turn strip's re-pass is refused",
+            base(marker_run=dict(SHARED, home_arm_m=2.5)), "home_arm_m")
+    refused("guided with RFID branch rows is refused (two sources of orders)",
+            base([HOME], branch_latch=[{"entry_tag": "0050", "exit_tag": "0051", "branch": "left"}],
+                 guided={"cruise_mps": 0.3}), "race")
+    refused("guided with a high zone is refused", base(high_zone=ZONE, guided={"cruise_mps": 0.3}), "no HIGH")
+    refused("a guided cruise above the normal speed is refused",
+            base(guided={"cruise_mps": 0.9}), "cruise_mps")
+    refused("a guided block with an unknown key is refused",
+            base(guided={"cruise_mps": 0.3, "high": True}), "exactly")
 
 
 TESTS = [test_empty_and_listing, test_basic_missions, test_the_site_table_loads, test_refusals,
-         test_high_zone, test_site_mission, test_marker_run]
+         test_high_zone, test_site_mission, test_marker_run, test_guided]

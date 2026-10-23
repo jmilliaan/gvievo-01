@@ -42,6 +42,7 @@
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
     <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
     {% if tracked_ok %}<a href="/teach" class="{{ 'on' if page == 'teach' }}">Teach</a>{% endif %}
+    {% if tracked_ok %}<a href="/guide" class="{{ 'on' if page == 'guide' }}">Guide</a>{% endif %}
     {% endif %}
     {# The visitors' Demo page (/demo, demo.py) is DEPRECATED since 2026-10-02: no nav link;
        the route still serves for anyone who has the URL. #}

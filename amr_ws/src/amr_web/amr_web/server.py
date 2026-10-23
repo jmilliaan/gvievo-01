@@ -335,6 +335,11 @@ def create_app(
         _need(tracked_ok)
         return render_template("teach.html", page="teach")
 
+    @app.get("/guide")
+    def page_guide():
+        _need(tracked_ok)
+        return render_template("guide.html", page="guide")
+
     # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
     # a run starts only on the physical Start under AUTO (line_follow_node). ----
 
@@ -398,6 +403,21 @@ def create_app(
             return jsonify({"mission": name, "circuits": [], "stations": [], "error": str(e)})
         return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
                         "stations": list(m["STATIONS"]), "error": ""})
+
+    # Guided mission (2026-10-23): the engineer's branch order for the next fork. It chooses a
+    # tape only; the run starts and resumes on AUTO + the physical Start (line_follow_node).
+    @app.post("/api/line/branch")
+    def api_line_branch():
+        _need(tracked_ok)
+        if _role() != rolemod.ENGINEER:
+            return _result(False, "branch orders need the engineer view (PIN)", 403)
+        d, err = _body()
+        if err:
+            return err
+        side = str(d.get("side", "") or "")
+        if side not in ("left", "straight", "right"):
+            return _result(False, "side must be left, straight or right", 422)
+        return _call(adapter.line_branch, side)
 
     @app.post("/api/line/teach")
     def api_line_teach():

@@ -358,6 +358,9 @@ class RosAdapter(Node):
             "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
             "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
             "line_teach": self.create_client(LineTeach, "/amr/line/teach", callback_group=g),
+            "branch_left": self.create_client(Trigger, "/amr/line/branch/left", callback_group=g),
+            "branch_straight": self.create_client(Trigger, "/amr/line/branch/straight", callback_group=g),
+            "branch_right": self.create_client(Trigger, "/amr/line/branch/right", callback_group=g),
             "line_at_home": self.create_client(Trigger, "/amr/line/at_home", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
@@ -867,6 +870,15 @@ class RosAdapter(Node):
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
         return bool(r.ok), r.message
+
+    def line_branch(self, side: str) -> tuple[bool, str]:
+        """Guided mission: the branch order for the next fork. Chooses a tape; moves nothing."""
+        if side not in ("left", "straight", "right"):
+            return False, "side must be left, straight or right"
+        r = self._call(f"branch_{side}", Trigger.Request(), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
+        return bool(r.success), r.message
 
     def line_teach(self, action: str, arg: str = "") -> tuple[bool, str]:
         """Tape-graph teaching (tracked plan 3, P1). Records and publishes; moves nothing."""

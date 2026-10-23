@@ -90,6 +90,10 @@ every run stamp, and anything unusual (people in the aisle, trolleys moved, lost
 
 ### 2.2 Lay the code-3 reference strips
 
+> **Superseded 2026-10-23:** code 3 is now the guided run's U-turn **and** home marker (section
+> 3.2A). Do not lay code-3 reference strips; remove any already down (the two on the MRU
+> straight). P0 references will use taught positions instead.
+
 Code 3 = a 60 mm strip **and** a 30 mm strip, as on the drawing
 `documentation/layout-reference/mls-marker-codes-standard.html`:
 - each strip 15 mm wide, 100 mm long, south pole up
@@ -208,8 +212,8 @@ A pass is one whole circuit: out of the HOME bay, through every junction and the
 into the bay, ending where it started (within 0.5 m).
 
 1. E: Circuit `C-MRU` → **Record pass**. The Graph tile shows the pass being recorded.
-2. O: selector **AUTO** → **Start**: an ordinary `line-a` run. Until P2 the U-turn and the stops
-   are still RFID's.
+2. O: selector **AUTO** → **Start**: a **guided run** (section 3.2A). `line-a` does not drive
+   this layout.
 3. Back in the bay, standing: E **Stop pass**. The message gives the length, poses and forks seen.
    - A pass whose MLS fork episodes and U-turn do not match the circuit's junctions is refused,
      with both lists: an MLS that missed a fork, or a route that differs from the mission.
@@ -218,10 +222,47 @@ into the bay, ending where it started (within 0.5 m).
 5. E: **Build**. Each leg is listed with its pass count and spread. A spread above 5 cm means
    recording that circuit again.
 
-> **Open (input needed):** confirm that `line-a` drives exactly C-MRU: HOME-N → J-BMERGE → R717 →
-> ATT → J-N right → X1 → J-ML → trunk → MRU → pivot → back → J-ML left → J-STEM → J-SPLIT left →
-> HOME-N. If it does not, the passes are refused, and a temporary mission (or a supervised drive)
-> has to drive that route.
+### 3.2A The guided run (2026-10-23)
+
+Mission `c-mru-guided`. The engineer walks beside the AGV and gives each branch order by hand.
+Drawing: `documentation/layout-reference/c-mru-route.html`.
+
+| | |
+|---|---|
+| Speed | capped at 0.3 m/s; no HIGH. The corner code-1/2 strips stay down and are ignored |
+| Branch orders | **Guide** page (engineer PIN), on a phone or a laptop: ◀ Left / ▲ Straight / Right ▶, or the arrow keys |
+| U-turn | MLS **code 3** about 1 m before the MRU tape end: creep at 0.1 m/s, stop where the tape ends, pivot CW |
+| Home | MLS **code 3** in the north bay, **0.5 m before HOME-N** on the way back in: a measured stop there, run DONE |
+| Telling them apart | a code 3 counts only after 40 m of wheel travel from either end (`home_arm_m`): out, since Start (the departure crosses the home strip and the HOME complex junctions); back, since the pivot (and the U-turn strip's own re-pass is skipped). Earlier reads are a WARN on the Events list |
+| Junctions | the MLS decodes a merging, diverging or crossing tape as a marker (code 2 at J-BMERGE, code 3 at X1 and into J-ML, 2026-10-23). A U-turn/home read acts only after 0.3 m with one tape under the sensor, before and after it; otherwise WARN "ignored: a junction". Strips stay ≥ 1 m from any junction |
+
+1. Lay the two code-3 strips. The home strip goes on the return path into the north bay, 0.5 m
+   before where the AGV should stop. The AGV starts at HOME-N, past the strip. Both strips
+   must be more than 40 m of tape from HOME-N (the U-turn strip from the start, home from the
+   pivot), and ≥ 1 m from any junction.
+   Corners with no radius (kinks; the HOME complex tape is grooved): the follower holds a
+   deflection up to ~40 deg. Sharper, the tape leaves the sensor at its edge, and the AGV
+   stops, pivots toward it until centred and goes on (Events: "kink: the tape left the
+   sensor at ... mm" then "kink: pivoted ... deg, centred - resuming"). A tape that leaves
+   near the centre is still the tape end. No tape within `kink_max_deg` (75 deg): FAULT,
+   align on the tape, Reset, Start. A protective stop mid-pivot resumes the search. The
+   pivot adds nothing to the along-tape distance and no junction to a teach pass.
+2. Run page → mission `c-mru-guided`. Open **Guide** on the phone.
+3. **An order is one shot: the next fork or MERGE the MLS sees uses it, then it is Straight
+   again.** Set it after the previous junction:
+
+   | Where | Order |
+   |---|---|
+   | leaving the bay: J-BMERGE (merge), R717 | Straight (nothing armed) |
+   | after R717, before J-N | **Right** |
+   | X1, J-ML (merge onto the trunk), MRU line | Straight |
+   | back down the trunk, before J-ML | **Left** (R1380; R2434 is the wrong way) |
+   | J-STEM (merge) | Straight |
+   | after J-STEM, before J-SPLIT | **Left** (north bay) |
+
+4. Any order still armed at the pivot is cleared. Reset clears it too.
+5. Nothing on the Guide page moves the vehicle: AUTO + the physical Start, as always. Keep the
+   E-stop in reach.
 
 ### 3.3 Teach the stations
 

@@ -14,7 +14,7 @@ from agv_core import mission as missions  # noqa: E402
 from test_mission_engine import CENTRED, NO_TAPE, PER_REV, World  # noqa: E402
 
 from amr_line import job as lj  # noqa: E402
-from amr_line import uturn  # noqa: E402
+from amr_line import tape_run, uturn  # noqa: E402
 
 UTURN_CODE, HOME_CODE = 2, 1
 
@@ -30,6 +30,15 @@ def started():
     w.drive(1.0)
     assert w.job.state == lj.RUNNING, w.job.reason
     return w
+
+
+def past_guard(w):
+    """Drive the junction guard's distance (tape_run.MARKER_JUNCTION_M) on one tape."""
+    t = w.job.tape
+    assert t._mrun_pending is not None, "the read is held for the junction guard"
+    start = t._mrun_pending["at"]
+    assert w.until(lambda: t._mrun_pending is None, 5.0)
+    assert t._odo_m - start >= tape_run.MARKER_JUNCTION_M
 
 
 def pivot(w):
@@ -66,6 +75,7 @@ def test_a_full_lap_out_pivot_back_home():
     w.drive(2.0)
     w.mark(UTURN_CODE)
     w.tick()
+    past_guard(w)
     pivot(w)
     w.mark(UTURN_CODE)                  # re-passed right after the pivot: skipped, no backstop
     w.tick()
@@ -73,6 +83,8 @@ def test_a_full_lap_out_pivot_back_home():
     w.drive(4.0)
     w.mark(HOME_CODE)
     w.tick()
+    assert w.job.tape.stop is None, "acts only past the junction guard"
+    past_guard(w)
     assert w.job.tape.stop is not None and w.job.tape.stop["where"] == "T-HOME"
     assert w.until(lambda: w.job.state == lj.DONE, 5.0), w.job.reason
     assert "T-HOME" in w.job.reason and "run complete" in w.job.reason
@@ -83,6 +95,7 @@ def test_a_missed_home_marker_faults_at_the_backstop():
     w.drive(1.0)
     w.mark(UTURN_CODE)
     w.tick()
+    past_guard(w)
     pivot(w)
     w.drive(6.0)                        # 3 m back: past the re-pass skip
     w.mark(UTURN_CODE)                  # the backstop strip past T-HOME
@@ -124,6 +137,7 @@ def test_markers_during_the_pivot_do_nothing():
     w = started()
     w.mark(UTURN_CODE)
     w.tick()
+    past_guard(w)
     w.mark(HOME_CODE)                   # read while approaching the tape end: ignored
     w.tick()
     assert w.job.tape.stop is None and w.job.tape.uturn_req["phase"] == "approach"

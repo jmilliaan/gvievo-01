@@ -64,6 +64,16 @@ the pivot: the first home_code ends the run at home (a measured stop, DONE); a u
 there means the home marker was missed - FAULT at once (the backstop strip). The codes
 mean nothing else, so the block is refused with a high_zone (the same codes are the speed
 zone elsewhere) and with any RFID tag or branch row.
+    Optional "home_arm_m" (2026-10-23): ONE code for both, told apart by wheel travel. A read
+    of the shared code is ignored until home_arm_m has been driven from either end: since
+    Start out (the departure crosses the home strip), since the pivot back (after the
+    own-strip re-pass). The first read after that is the U-turn out, home back. With two
+    codes the backstop stays; with one there is none (a missed home strip drives on).
+
+guided (optional, 2026-10-23): {"cruise_mps": 0.3}. A walked run: the engineer gives each
+branch order by hand (left / straight / right, one shot, consumed by the next fork) and the
+follower never exceeds cruise_mps. Refused with RFID branch rows (two sources of orders would
+race) and with a high_zone (no HIGH while somebody walks beside it).
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -283,17 +293,25 @@ def _check_table(tags, vehicle, fastest_rpm):
 
 
 _MISSION_KEYS = ("mission_name", "branch_default", "branch_latch", "high_zone", "tags")
-_OPTIONAL_MISSION_KEYS = ("marker_run",)
+_OPTIONAL_MISSION_KEYS = ("marker_run", "guided")
 _MARKER_RUN_KEYS = {"uturn_code", "home_code", "direction", "approach_mps", "decel_m", "max_approach_m",
                     "stop_distance_m", "label"}
+_MARKER_RUN_OPTIONAL = {"home_arm_m"}
+# amr_line.uturn.REARM_MARGIN_M: past the approach distance the own strip is re-passed within
+_REARM_MARGIN_M = 1.0
+# Junction guard (2026-10-23, amr_line.tape_run): a marker-run read acts only after this
+# much travel with no second tape under the MLS, so the home stop must be longer than it.
+MARKER_JUNCTION_M = 0.3
 
 
 def _read_marker_run(raw, vehicle):
     """marker_run -> the validated block, or None."""
     if raw is None:
         return None
-    if not isinstance(raw, dict) or set(raw) != _MARKER_RUN_KEYS:
-        raise ConfigError(f"marker_run: expected null or exactly {sorted(_MARKER_RUN_KEYS)}")
+    allowed = _MARKER_RUN_KEYS | _MARKER_RUN_OPTIONAL
+    if not isinstance(raw, dict) or not (_MARKER_RUN_KEYS <= set(raw) <= allowed):
+        raise ConfigError(f"marker_run: expected null or exactly {sorted(_MARKER_RUN_KEYS)} "
+                          f"(+ optional {sorted(_MARKER_RUN_OPTIONAL)})")
     laid = list(vehicle.MLS_MARKER_CODES)
     out = {}
     for key in ("uturn_code", "home_code"):
@@ -304,8 +322,9 @@ def _read_marker_run(raw, vehicle):
             raise ConfigError(f"marker_run.{key}: code {v} is not laid on the floor "
                               f"(mls.marker_codes {laid})")
         out[key] = v
-    if out["uturn_code"] == out["home_code"]:
-        raise ConfigError("marker_run: uturn_code and home_code must differ")
+    if out["uturn_code"] == out["home_code"] and "home_arm_m" not in raw:
+        raise ConfigError("marker_run: uturn_code and home_code must differ, or share one code with "
+                          "home_arm_m (the travel from Start or the pivot before that code counts)")
     if raw["direction"] not in ("cw", "ccw"):
         raise ConfigError("marker_run.direction must be cw or ccw")
     out["direction"] = raw["direction"]
@@ -316,7 +335,13 @@ def _read_marker_run(raw, vehicle):
     out["approach_mps"] = _bounded(raw, "approach_mps", "marker_run", 0.0, round(normal_mps, 3))
     out["max_approach_m"] = _bounded(raw, "max_approach_m", "marker_run", 0.0, 5.0)
     out["decel_m"] = _bounded(raw, "decel_m", "marker_run", 0.0, 2.0)
-    out["stop_distance_m"] = _bounded(raw, "stop_distance_m", "marker_run", 0.0, 5.0)
+    # past the junction guard, with room left to brake (a measured stop, not a hard one)
+    out["stop_distance_m"] = _bounded(raw, "stop_distance_m", "marker_run", MARKER_JUNCTION_M + 0.1, 5.0)
+    out["home_arm_m"] = None
+    if "home_arm_m" in raw:
+        # beyond the own strip's re-pass after the pivot (approach travel + the rearm margin)
+        out["home_arm_m"] = _bounded(raw, "home_arm_m", "marker_run",
+                                     out["max_approach_m"] + _REARM_MARGIN_M, 1000.0)
     decel = float(vehicle.RAMP["auto"]["decel"])
     creep_rpm = out["approach_mps"] / vehicle.MPS_PER_RPM
     rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * out["decel_m"])
@@ -328,6 +353,17 @@ def _read_marker_run(raw, vehicle):
         raise ConfigError(f"marker_run.stop_distance_m: {rate:.0f} r/min/s is beyond drivers.ramp.auto.decel "
                           f"{decel:.0f}")
     return out
+
+
+def _read_guided(raw, vehicle):
+    """guided -> {"cruise_mps", "cruise_rpm"}, or None."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != {"cruise_mps"}:
+        raise ConfigError("guided: expected null or exactly ['cruise_mps']")
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    cruise = _bounded(raw, "cruise_mps", "guided", 0.0, round(normal_mps, 3))
+    return {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS}
 
 
 def _read_high_zone(raw, vehicle):
@@ -401,6 +437,13 @@ def _parse_mission(doc, vehicle):
         if out["TAGS"] or out["BRANCH_LATCH"]:
             raise ConfigError("marker_run with RFID tag or branch rows: a marker run has no RFID; "
                               "two triggers for one U-turn or home stop would race")
+    out["GUIDED"] = _read_guided(doc.get("guided"), vehicle)
+    if out["GUIDED"] is not None:
+        if out["BRANCH_LATCH"]:
+            raise ConfigError("guided with branch_latch rows: the engineer gives the branch orders; "
+                              "RFID orders as well would race")
+        if out["HIGH_ZONE"] is not None:
+            raise ConfigError("guided with a high_zone: no HIGH while somebody walks beside the vehicle")
     return out
 
 
@@ -420,6 +463,9 @@ def summary(m):
         branch += f" (+{len(m['BRANCH_LATCH'])} tag orders)"
     z = m["HIGH_ZONE"]
     parts = [branch, f"HIGH zones (markers {z['outer']}→{z['inner']})" if z else "normal speed"]
+    if m.get("GUIDED") is not None:
+        parts[0] = "branches by hand"
+        parts[1] = f"≤ {m['GUIDED']['cruise_mps']:g} m/s"
     if m["MARKER_RUN"] is not None:
         parts.append("marker run")
     elif m["DESTINATIONS"]:

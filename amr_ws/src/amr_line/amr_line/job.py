@@ -83,6 +83,11 @@ _PARK_CAUSES = ("field", "rfid")
 # Only the speed is decided here: the hold keeps its E-stop terms (a physical Start).
 _PARKS_HIGH = _PARK_CAUSES + ("estop",)
 FIELD_RACE_S = 0.5
+# Kink pivot (see _kink_begin): ticks without tape before a corner is called (a one-tick
+# flicker at the sensor's edge is not one), and the least angle worth searching after a
+# hold took the rest of kink_max_deg.
+KINK_GONE_TICKS = 2
+KINK_MIN_LEFT_DEG = 10.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -182,6 +187,9 @@ class FollowJob:
         self.diag = {}
         self._counts_ref = None     # encoder counts at the last tick, for wheel travel
         self.step_m = None          # wheel travel this tick, None when counts are unavailable
+        self.kink = None            # the kink pivot in progress, see _kink_begin()
+        self.kinks = 0              # kink pivots this run
+        self._edge_gone = 0         # ticks the tape has been gone after leaving at the edge
         self.tape = self._new_tape()
         self.f.reset()
 
@@ -190,6 +198,13 @@ class FollowJob:
         from amr_line.tape_run import TapeRun  # noqa: PLC0415  (profile-dependent)
 
         return TapeRun(self.mission, self.destination)
+
+    def order_branch(self, side):
+        """The engineer's branch order (guided mission). Returns (ok, message). Chooses a tape
+        at the next fork only; it never starts, resumes or speeds anything."""
+        if self.tape is None:
+            return False, "no mission loaded"
+        return self.tape.order(side)
 
     def set_mission(self, mission, destination=None):
         """Choose the job for the next run: mission and, when the mission has
@@ -470,6 +485,11 @@ class FollowJob:
             self.tape.park_high(f"hold ({cause})")
         elif self.tape is not None and cause != "station":
             self.tape.drop_high(f"hold ({cause})")
+        if self.kink is not None and self.kink["turn"] is not None:
+            # A kink pivot is a search, not a measured turn: after the hold it starts again
+            # from rest, toward the same side, with what is left of kink_max_deg.
+            self.kink["done_deg"] += max(0.0, self.kink["turn"].angle_deg)
+            self.kink["turn"] = None
         # A pivot cannot be resumed part-way (gy-demo rule): its start counts and
         # tape history describe a vehicle that has since been stopped by hand.
         if cause != "station" and self.tape is not None and self.tape.uturn_req is not None:
@@ -713,6 +733,9 @@ class FollowJob:
             self.diag = diag
             v_now, _ = kinematics.wheels_to_body(left, right)
             self.followed_m += abs(v_now) * i.dt
+            if approach and self._kink_begin(diag):
+                req["gone"] = 0     # the tape left at the edge: a corner, not the tape end
+                return 0.0, 0.0
             if approach:
                 # Wheel travel: a warning-field hold at the tape end must not use up
                 # max_approach_m. Commanded travel only when the counts are missing.
@@ -745,10 +768,97 @@ class FollowJob:
             return 0.0, 0.0
         return left, right
 
+    # -- the kink pivot ------------------------------------------------------
+    # 2026-10-23: the HOME complex tape is grooved into the floor with corners and no
+    # radius (deflections up to ~50 deg). The follower holds ~40 deg at 0.3 m/s; past
+    # that the tape slides off the sensor's edge (run 2026-10-23 16:02: -2 -> -114 mm
+    # in 0.2 m, 24 deg of yaw, "track lost"). A tape END leaves the sensor near the
+    # centre; a CORNER leaves it at the edge. So: tape gone for KINK_GONE_TICKS with
+    # the last reading >= kink_edge_mm off centre -> stop, pivot toward that side
+    # until the tape is centred (the U-turn spin, encoder-gated to kink_max_deg),
+    # resume. The sensor is only 0.1 m ahead of the axle, so the axle stops within a
+    # few cm of the corner and the centred pivot leaves it on the new tape.
+    # Not a U-turn to tape localization: signed wheel travel does not grow in a
+    # pivot, and the node feeds the fork detectors #LCP 0 meanwhile (pivoting).
+
+    @property
+    def pivoting(self):
+        """A kink pivot is turning the vehicle (tape localization ignores #LCP)."""
+        return self.kink is not None
+
+    def _kink_begin(self, diag):
+        """The tape just left at the sensor's edge: stop and arm the pivot. True if so."""
+        from agv_core import config as vehicle  # noqa: PLC0415
+
+        if vehicle.KINK_MAX_DEG <= 0 or diag.get("state") == "sensor_lost":
+            self._edge_gone = 0
+            return False
+        last = diag.get("e_used")
+        if diag.get("has_track") or last is None or abs(last) < vehicle.KINK_EDGE_MM:
+            self._edge_gone = 0
+            return False
+        self._edge_gone += 1
+        if self._edge_gone < KINK_GONE_TICKS:
+            return False
+        self._edge_gone = 0
+        e = -last if vehicle.INVERT_ERROR else last     # the follower's sign, as u_turn_error
+        direction = "cw" if e > 0 else "ccw"
+        self.kink = {"direction": direction, "at_mm": last, "turn": None, "done_deg": 0.0}
+        self.kinks += 1
+        self.f.hard_stop()
+        self.diag = dict(diag, v_base=0.0)
+        side = "right" if direction == "cw" else "left"
+        self.tape.events.append(("info", f"kink: the tape left the sensor at {last:+.0f} mm - "
+                                         f"stopping to pivot {side} onto it"))
+        return True
+
+    def _kink_fault(self, why):
+        self.kink = None
+        self.state = FAULT
+        self.hold_cause = ""
+        self.reason = f"kink: {why}; align the AGV on the tape, Reset, then Start"
+        self.f.hard_stop()
+        return 0.0, 0.0
+
+    def _kink_tick(self, i: Inputs):
+        """Stopped at a corner: pivot toward the side the tape left by, centre, resume."""
+        from agv_core import config as vehicle  # noqa: PLC0415
+
+        from amr_line import uturn  # noqa: PLC0415
+        from amr_line.tape_run import u_turn_error  # noqa: PLC0415
+
+        k = self.kink
+        if i.sensor_age_s is None or i.sensor_age_s > vehicle.SENSOR_TIMEOUT_S:
+            return self._kink_fault("sensor silent during the pivot")
+        if k["turn"] is None:
+            if not i.wheels_still:
+                self.f.hard_stop()
+                return 0.0, 0.0
+            if i.counts is None or not i.counts_per_rev:
+                return self._kink_fault("encoder counts unavailable for the pivot")
+            left_deg = vehicle.KINK_MAX_DEG - k["done_deg"]
+            if left_deg < KINK_MIN_LEFT_DEG:
+                return self._kink_fault(f"tape not found within {vehicle.KINK_MAX_DEG:.0f} deg")
+            k["turn"] = uturn.UTurn(k["direction"], i.counts_per_rev, i.counts, None,
+                                    min_deg=0.0, max_deg=left_deg, lost=True, what="kink pivot")
+        e_mm, level = u_turn_error(i.sensor)
+        left, right = k["turn"].update(i.counts, e_mm, level, i.dt, paused=i.warning_scale < 1.0)
+        if k["turn"].phase == uturn.FAILED:
+            return self._kink_fault(k["turn"].reason)
+        if k["turn"].phase == uturn.DONE:
+            angle = k["done_deg"] + k["turn"].angle_deg
+            self.kink = None
+            self.f.reset()      # the PID history describes the tape before the corner
+            self.tape.events.append(("info", f"kink: pivoted {k['direction']} {angle:.0f} deg, "
+                                             f"centred - resuming"))
+            return 0.0, 0.0
+        return left, right
+
     def _run(self, i: Inputs):
         """One engine tick: mission tags, branch order, speed zone, stops, U-turn."""
         t = self.tape
-        tags = t.scan(i.now, i.rfid, True, self.f)
+        driving = self.kink is None     # a kink pivot starts no stop and no U-turn
+        tags = t.scan(i.now, i.rfid, driving, self.f)
         if t.fault:
             return self._tape_fault()
         if t.link_lost:
@@ -756,22 +866,27 @@ class FollowJob:
             # rfid_fresh_s, and every metre driven blind is a tag not read.
             self._hold("rfid", t.link_lost + "; press Start once the link is back")
             return 0.0, 0.0
-        t.markers(self._marker_new, self.markers_ok, True, self.f)
+        t.markers(self._marker_new, self.markers_ok, driving, self.f)
         if t.fault:
             return self._tape_fault()
         if t.marker_lost:
             # Like the RFID link: every metre driven blind is a marker not read.
             self._hold("markers", t.marker_lost + "; press Start once the markers are back")
             return 0.0, 0.0
+        if self.kink is not None:
+            return self._kink_tick(i)
         if t.uturn_req is not None:
             return self._uturn_tick(i, tags)
         self._speed_inputs(i)
         choice, high = t.steer(i.sensor, tags, self.f.followed_mm)
         stopping = t.stop is not None
         left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, high,
-                                          change_rate=t.change_rate(), urgent_rate=t.speed.exit_rate)
+                                          cruise_rpm=t.cruise_rpm, change_rate=t.change_rate(),
+                                          urgent_rate=t.speed.exit_rate)
         self.diag = diag
         t.speed.settled(diag["v_base"])
+        if not stopping and self._kink_begin(diag):
+            return 0.0, 0.0
 
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
         v_now, _ = kinematics.wheels_to_body(left, right)

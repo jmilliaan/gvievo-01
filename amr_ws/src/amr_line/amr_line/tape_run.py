@@ -52,7 +52,15 @@ Marker run (mission marker_run, 2026-10-18, tracked plan 3 section 7.5): no RFID
 "out" until the pivot: the first uturn_code starts the same U-turn a u_turn tag would.
 Phase "back" after it: the uturn_code re-passed within the approach distance is skipped,
 the first home_code ends the run at home (role home), and any later uturn_code is the
-BACKSTOP - the home marker was missed - and faults the run at once. The marker stream
+BACKSTOP - the home marker was missed - and faults the run at once. With ONE code for both
+(home_arm_m, 2026-10-23) there is no backstop: the shared code is ignored until home_arm_m
+of wheel travel from EITHER end - since the Start out (the home strip and the bay corners
+lie just past HOME-N: run 2026-10-23 16:13 took its own home strip for the U-turn 1 s
+after Start), since the pivot back - and the first read after that is the U-turn or home.
+
+Guided mission (2026-10-23): the engineer's branch orders (order()) drive the same latch a
+tag would, one shot, consumed by the next fork; the pivot clears any order still standing.
+The follower's cruise is capped at the mission's cruise_mps. The marker stream
 going down, or marker events lost, while driving outside a U-turn sets marker_lost: the
 job holds for a person (a missed marker here is the home stop driven past). Reads are
 acted on whether or not they are clean (lcp2, line_good): every action they start is a
@@ -60,6 +68,7 @@ slowdown or a stop.
 """
 
 from agv_core import config as vehicle
+from agv_core import mission as missions
 
 from amr_line import branch, speed_zone, tag_table, uturn
 
@@ -74,6 +83,15 @@ APPROACH_FRACTION_OF_DRIVE = 0.95
 # A zone marker counts only this close to the tape centre (LCP2). A straight pass reads
 # within a few mm (2026-10-09: +2, -3, -1 mm); a read during a pivot came at +121 mm.
 MARKER_MAX_LCP2_MM = 30
+# Junction guard for the marker run (2026-10-23 16:41): the MLS decodes a second tape
+# running close beside the guide tape - a merge, a diverter, an oblique crossing - as a
+# marker (code 2 at J-BMERGE, code 3 at X1 that started a U-turn approach, bursts of code
+# 3 into J-ML). A strip never shows two tracks (all 11 recorded reads: #LCP 2 throughout).
+# So a U-turn/home read acts only after MARKER_JUNCTION_M of travel with no multi-track
+# #LCP before or after it; distances still count from the strip. Strips stay >= 1 m from
+# any junction (runbook 2.2).
+MARKER_JUNCTION_M = missions.MARKER_JUNCTION_M
+MULTI_NLCP = (3, 6, 7)      # as tape_graph.MULTI_NLCP: more than one track under the MLS
 
 
 def approach_rate(v_rpm, creep_rpm, decel_m):
@@ -129,6 +147,15 @@ class TapeRun:
         self.mrun_phase = "out" if self.mrun else None
         self.marker_lost: str | None = None
         self._mrun_skip_m = 0.0       # travel left in which the U-turn marker re-pass is ignored
+        self._mrun_out_m = 0.0        # wheel travel since Start (shared-code U-turn arming)
+        self._odo_m = 0.0             # wheel travel this run (the junction guard's ruler)
+        self._multi_at = None         # _odo_m at the last multi-track #LCP
+        self._mrun_pending = None     # a U-turn/home read waiting out the junction guard
+        self._follower = None         # for a home stop begun from advance()
+        self._mrun_back_m = 0.0       # wheel travel since the pivot (shared-code home arming)
+        self.guided = m.get("GUIDED")
+        # the follower's ceiling for a guided (walked) run; None = the profile's cruise
+        self.cruise_rpm = self.guided["cruise_rpm"] if self.guided else None
 
     @property
     def active(self):
@@ -192,12 +219,19 @@ class TapeRun:
         ev = self.speed.travel(distance_m)
         if ev:
             self.events.append(ev)
+        self._odo_m += max(0.0, distance_m or 0.0)
         if self._mrun_skip_m > 0.0:
             self._mrun_skip_m = max(0.0, self._mrun_skip_m - max(0.0, distance_m))
+        if self.mrun_phase == "out":
+            self._mrun_out_m += max(0.0, distance_m)
+        elif self.mrun_phase == "back":
+            self._mrun_back_m += max(0.0, distance_m)
         if self.uturn_skip is not None:
             self.uturn_skip_m += max(0.0, distance_m)
             if self.uturn_skip_m > self.uturn_rearm_m:
                 self.uturn_skip = None
+        if self._mrun_pending is not None:
+            self._mrun_release()
 
     def _lose_link(self, why):
         if self.needs_link and self.link_lost is None:
@@ -323,7 +357,8 @@ class TapeRun:
 
     def _marker_run(self, reads, ok, driving, follower):
         mr = self.mrun
-        busy = self.stop is not None or self.uturn_req is not None
+        self._follower = follower
+        busy = self.stop is not None or self.uturn_req is not None or self._mrun_pending is not None
         if driving and not busy and self.marker_lost is None:
             if not ok:
                 self.marker_lost = "MLS markers down: the U-turn or home marker could be missed"
@@ -337,26 +372,67 @@ class TapeRun:
                 why = "held" if not driving else "stopping or turning"
                 self.events.append((INFO, f"{where} ignored: {why}"))
                 continue
+            shared = mr["uturn_code"] == mr["home_code"]
             if self.mrun_phase == "out":
+                if code == mr["uturn_code"] and shared and self._mrun_out_m < mr["home_arm_m"]:
+                    self.events.append((WARN, f"{where} {self._mrun_out_m:.1f} m after Start: the U-turn "
+                                              f"is armed after {mr['home_arm_m']:g} m - ignored"))
+                    continue
                 if code == mr["uturn_code"]:
-                    self._start_u_turn({"tag": f"marker {code}", "direction": mr["direction"],
-                                        "approach_mps": mr["approach_mps"], "decel_m": mr["decel_m"],
-                                        "max_approach_m": mr["max_approach_m"]}, f"U-turn marker ({where})")
-                    busy = True
+                    busy = self._mrun_hold_read("uturn", where)
                 # the home marker on the way out: the departure passes it again
                 continue
             if code == mr["uturn_code"]:
                 if self._mrun_skip_m > 0.0:
                     self.events.append((INFO, f"{where}: own U-turn marker passed after turning"))
                     continue
-                self.fault = (f"home marker missed: {where} read on the way back (the backstop strip "
-                              f"past {mr['label']}); check the home marker, jog back, Reset")
-                return
+                if code != mr["home_code"]:
+                    self.fault = (f"home marker missed: {where} read on the way back (the backstop "
+                                  f"strip past {mr['label']}); check the home marker, jog back, Reset")
+                    return
+                if self._mrun_back_m < mr["home_arm_m"]:
+                    self.events.append((WARN, f"{where} {self._mrun_back_m:.1f} m after the pivot: home "
+                                              f"is armed after {mr['home_arm_m']:g} m - ignored"))
+                    continue
             if follower is None:
                 continue
-            self._begin_stop({"tag": f"marker {code}", "label": mr["label"], "role": "home",
-                              "stop_distance_m": mr["stop_distance_m"]}, follower)
-            busy = True
+            busy = self._mrun_hold_read("home", where)
+
+    def _mrun_hold_read(self, role, where):
+        """A U-turn/home read: wait out the junction guard before acting. True (busy)."""
+        if self._multi_at is not None and self._odo_m - self._multi_at <= MARKER_JUNCTION_M:
+            self.events.append((WARN, f"{where} ignored: a junction - two tapes under the sensor "
+                                      f"{self._odo_m - self._multi_at:.2f} m before it"))
+            return False
+        self._mrun_pending = {"role": role, "where": where, "at": self._odo_m}
+        return True
+
+    def _mrun_release(self):
+        """advance(): act on the pending read once MARKER_JUNCTION_M passed with one tape."""
+        p, mr = self._mrun_pending, self.mrun
+        if self._multi_at is not None and self._multi_at >= p["at"]:
+            self._mrun_pending = None
+            self.events.append((WARN, f"{p['where']} ignored: a junction - two tapes under the sensor "
+                                      f"{self._multi_at - p['at']:.2f} m after it"))
+            return
+        past = self._odo_m - p["at"]
+        if past < MARKER_JUNCTION_M:
+            return
+        self._mrun_pending = None
+        if self.stop is not None or self.uturn_req is not None:
+            return
+        code = mr["uturn_code"] if p["role"] == "uturn" else mr["home_code"]
+        if p["role"] == "uturn":
+            self._start_u_turn({"tag": f"marker {code}", "direction": mr["direction"],
+                                "approach_mps": mr["approach_mps"], "decel_m": mr["decel_m"],
+                                "max_approach_m": mr["max_approach_m"]},
+                               f"U-turn marker ({p['where']}, {past:.2f} m back)")
+            self.uturn_req["travel_m"] = past       # the tape end is measured from the strip
+            return
+        if self._follower is None:
+            return
+        self._begin_stop({"tag": f"marker {code}", "label": mr["label"], "role": "home",
+                          "stop_distance_m": max(0.05, mr["stop_distance_m"] - past)}, self._follower)
 
     def parked(self, distance_m):
         """Wheel travel while parked at a station: taken off the kept budget, and
@@ -404,9 +480,26 @@ class TapeRun:
         return abs(vehicle.AUTO_HIGH_RPM - vehicle.AUTO_RPM) / vehicle.HIGH_RAMP_S
 
     # -- branches ------------------------------------------------------------
+    def order(self, side):
+        """The engineer's branch order in a guided mission. Returns (ok, message)."""
+        if not self.guided:
+            return False, "branch orders by hand only in a guided mission"
+        if side not in (branch.STRAIGHT,) + branch.DIRECTIONS:
+            return False, f"unknown branch order {side!r}: left, straight or right"
+        intent = self.branch.order(side)
+        if intent == branch.STRAIGHT:
+            msg = "branch order cleared: straight on at the next fork"
+        else:
+            msg = (f"branch {intent} armed: used at the NEXT fork or merge, then straight again - "
+                   f"set it after the previous junction")
+        self.events.append((INFO, msg))
+        return True, msg
+
     def steer(self, sensor, tags, followed_mm):
         """Scan each new tag, then the no-tag fork scan. Returns (choice, high)."""
         nlcp = (sensor or {}).get("nlcp")
+        if nlcp in MULTI_NLCP:
+            self._multi_at = self._odo_m
         for tag in tags:
             self._branch_scan(nlcp, tag)
         self._branch_scan(nlcp, None)
@@ -515,9 +608,14 @@ class TapeRun:
         self.uturn_rearm_m = req["travel_m"] + uturn.REARM_MARGIN_M
         if self.mrun is not None:
             # Back: the U-turn marker is re-passed within the approach distance; after that it
-            # is the backstop.
+            # is the backstop (two codes) or, past home_arm_m, home (one shared code).
             self.mrun_phase = "back"
             self._mrun_skip_m = req["travel_m"] + uturn.REARM_MARGIN_M
+            self._mrun_back_m = 0.0
+        if self.guided and self.branch.ladder.latched():
+            # an order given before the pivot faced the other way: it must not outlive it
+            self.branch.order(branch.STRAIGHT)
+            self.events.append((INFO, "branch order cleared by the U-turn"))
         self.events.append((INFO, f"U-turn {req['direction']} complete at {angle:.0f} deg by encoder, "
                                   f"centred - resuming"))
 

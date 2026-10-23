@@ -282,6 +282,23 @@ class BranchEngine:
             self.set_by = tag if self.ladder.latched() else None
         return intent
 
+    def order(self, side):
+        """An order given by hand (a guided mission's engineer, 2026-10-23): the same coil a
+        tag's set contact seals in, so it is consumed by the next fork exactly like a tag's.
+        STRAIGHT clears both coils and the standing default answers again. A new side clears
+        the other coil first: the interlock would otherwise refuse the set. Returns the
+        intent. Added on purpose to the transcribed ladder; scan() and the rungs are unchanged.
+        """
+        if side not in (STRAIGHT,) + DIRECTIONS:
+            raise ValueError(f"unknown branch order {side!r}")
+        self.ladder.scan(clear_left=True, clear_right=True)
+        if side == STRAIGHT:
+            self._at_fork = False   # nothing sealed in: no fork can consume anything
+        else:
+            self.ladder.scan(set_left=side == LEFT, set_right=side == RIGHT)
+        self.set_by = "hand" if self.ladder.latched() else None
+        return self.ladder.intent()
+
     @property
     def slow(self):
         """Is a slow zone latched? Read after scan()."""

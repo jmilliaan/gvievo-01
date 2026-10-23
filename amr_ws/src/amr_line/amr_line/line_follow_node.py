@@ -275,6 +275,11 @@ class LineFollowNode(Node):
         self.create_subscription(LocalizationState, "/amr/localization_state", self._on_readiness, LATCHED)
         self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
         self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
+        # Guided mission (2026-10-23): the engineer's branch order for the next fork. It only
+        # chooses a tape; motion still needs AUTO + the physical Start. The web gates it by PIN.
+        for side in ("left", "straight", "right"):
+            self.create_service(Trigger, f"/amr/line/branch/{side}",
+                                lambda req, res, side=side: self._srv_branch(side, res))
 
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
@@ -355,7 +360,10 @@ class LineFollowNode(Node):
             return
         _counts, _per_rev, still = self._wheel_inputs(now)
         u = self.job.tape.uturn_snapshot() or {}
-        rt.tick(self._ros_now(), self._travel(now), (self.reader.sensor() or {}).get("nlcp"), still,
+        # A kink pivot sweeps the sensor across the corner: #LCP 0 holds the fork detectors
+        # as they were (no phantom junction in a teach pass or the shadow locator).
+        nlcp = 0 if self.job.pivoting else (self.reader.sensor() or {}).get("nlcp")
+        rt.tick(self._ros_now(), self._travel(now), nlcp, still,
                 (u.get("phase") or "") if u.get("active") else "")
         self.tape_health.where(rt.snapshot() if rt.loc is not None else None)
         events = rt.drain_events()
@@ -583,6 +591,12 @@ class LineFollowNode(Node):
             self._publish_cmd(0.0, 0.0)
         res.success, res.message = True, "cleared"
         self.get_logger().info("clear: the run is cleared")
+        self._publish_state()
+        return res
+
+    def _srv_branch(self, side, res):
+        res.success, res.message = self.job.order_branch(side)
+        self.get_logger().info(f"branch order {side}: {res.message}")
         self._publish_state()
         return res
 

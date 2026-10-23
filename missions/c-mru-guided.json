@@ -1,0 +1,9 @@
+{
+  "mission_name": "c-mru-guided",
+  "branch_default": "straight",
+  "branch_latch": [],
+  "high_zone": null,
+  "tags": [],
+  "marker_run": {"uturn_code": 3, "home_code": 3, "home_arm_m": 40.0, "direction": "cw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0, "stop_distance_m": 0.5, "label": "HOME-N"},
+  "guided": {"cruise_mps": 0.3}
+}

@@ -131,6 +131,12 @@ def test_config_profile():
             lambda d: d["pp"].update(max_speed_mps=0.9), "pp.max_speed_mps")
     refuses("a blind-run speed above 0.8 m/s is refused",
             lambda d: d["blind_run"].update(max_speed_mps=1.0), "blind_run.max_speed_mps")
+    # Kink pivot (2026-10-23): an edge at or past the sensor window never triggers, and a
+    # search angle beyond 120 deg is a U-turn by another name.
+    refuses("a kink edge outside the sensor window is refused",
+            lambda d: d["autopilot"].update(kink_edge_mm=100.0), "autopilot.kink_edge_mm")
+    refuses("a kink pivot wider than 120 deg is refused",
+            lambda d: d["autopilot"].update(kink_max_deg=150.0), "autopilot.kink_max_deg")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
     # an infinite manual watchdog would never expire. Python's json reader takes
     # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form
@@ -214,11 +220,13 @@ def test_config_profile():
             lambda d: d["mls"].update(marker_width_mm=15), "unknown key")
     refuses("a profile without the mls block is refused",
             lambda d: d.pop("mls"), "missing top-level")
-    # Tape-graph localization (tracked plan 3): off until P1; thresholds provisional until P0.
-    check("tape localization is off and its station limit fits +-10 cm",
-          config.TAPE_LOC_ENABLED is False and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.05
+    # Tape-graph localization (tracked plan 3): on for the P1 teach of site 103's C-MRU by guided
+    # runs (2026-10-23); thresholds provisional until P0.
+    check("tape localization teaches site-103 C-MRU and its station limit fits +-10 cm",
+          config.TAPE_LOC_ENABLED is True and config.TAPE_LOC_SITE_MISSION == "site-103"
+          and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.05
           and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
-          f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SIGMA_STATION_M}")
+          f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SITE_MISSION} {config.TAPE_LOC_SIGMA_STATION_M}")
     refuses("a station sigma limit above 5 cm is refused",
             lambda d: d["tape_loc"].update(sigma_station_m=0.08), "+-10 cm")
     refuses("a junction sigma limit not above the station limit is refused",

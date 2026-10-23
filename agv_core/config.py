@@ -458,6 +458,11 @@ _SCHEMA = {
         "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
         "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
         "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
+        # Kink pivot (2026-10-23, amr_line.job): the tape left the sensor past
+        # kink_edge_mm off centre (a corner with no radius, grooved into the floor) ->
+        # stop, pivot toward it until centred, at most kink_max_deg. 0 turns it off.
+        "kink_edge_mm":        ("KINK_EDGE_MM", float),
+        "kink_max_deg":        ("KINK_MAX_DEG", float),
         # Tracked speeds (2026-10-08, tracked-speed-plan-1): auto_rpm is NORMAL, the
         # default and the corner speed; HIGH = auto_rpm x auto_high_ratio, granted only
         # inside an RFID high zone (amr_line.speed_zone). AUTO_HIGH_RPM is derived.
@@ -1183,6 +1188,10 @@ def _validate(ns):
           "autopilot.curve_guard_e_mm must be in (0, sensor_max_mm)")
     check(0 < g("U_TURN_MIN_DEG") < g("U_TURN_MAX_DEG") <= 270,
           "autopilot: need 0 < u_turn_min_deg < u_turn_max_deg <= 270")
+    check(0 < g("KINK_EDGE_MM") < g("SENSOR_MAX_MM"),
+          "autopilot.kink_edge_mm must be in (0, sensor_max_mm)")
+    check(g("KINK_MAX_DEG") == 0 or 20 <= g("KINK_MAX_DEG") <= 120,
+          "autopilot.kink_max_deg must be 0 (off) or in [20, 120] deg")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,

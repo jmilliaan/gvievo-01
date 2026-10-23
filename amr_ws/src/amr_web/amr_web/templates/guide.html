@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}AMR — guided run{% endblock %}
+{% block body %}
+{# Guided run (2026-10-23): the engineer walks beside the AGV on a guided mission
+   (missions/c-mru-guided.json) and gives each branch order by hand. An order is one shot:
+   the NEXT fork or merge the MLS sees uses it, then it is straight again. Nothing on this
+   page moves the vehicle: the run starts and resumes only on AUTO + the physical Start.
+   Keyboard: Left / Up (straight) / Right arrows. Engineer view (PIN) only. #}
+<section class="manual grow">
+  <div class="side">
+    <h2>Next fork <small id="gd-mission">guided mission</small></h2>
+    <div id="gd-order" class="tel-grid rows"></div>
+    <div class="bar three">
+      <button id="gd-left" class="big" data-side="left" title="Left arrow">◀ Left</button>
+      <button id="gd-straight" class="big" data-side="straight" title="Up arrow">▲ Straight</button>
+      <button id="gd-right" class="big" data-side="right" title="Right arrow">Right ▶</button>
+    </div>
+    <p id="gd-msg" class="note"></p>
+    <div class="warn-box"><b>Set an order after the previous junction.</b> A merge uses it too: a Left or Right still armed at a merge steers onto the joining tape.</div>
+  </div>
+  <div class="side">
+    <h2>Run <small>line layer</small></h2>
+    <div id="gd-run" class="tel-grid rows"></div>
+    <p id="gd-why" class="note"></p>
+    <div class="warn-box"><b>Motion starts only from the physical panel</b> (AUTO + Start). The U-turn and the home stop are MLS code 3.</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+const $ = id => document.getElementById(id);
+const SIDES = { left: 'Left', straight: 'Straight', right: 'Right' };
+async function order(side) {
+  let r;
+  try { r = await api('/api/line/branch', { side }); } catch (e) { $('gd-msg').textContent = 'no response: the order may not be set'; return; }
+  $('gd-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
+}
+document.querySelectorAll('[data-side]').forEach(b => { b.onclick = () => order(b.dataset.side); });
+// Arrow keys, but never while typing in a field; a held key sends once.
+document.addEventListener('keydown', e => {
+  if (e.repeat || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
+  const side = { ArrowLeft: 'left', ArrowUp: 'straight', ArrowRight: 'right' }[e.key];
+  if (!side) return;
+  e.preventDefault();
+  order(side);
+});
+onState(st => {
+  const ln = st.line;
+  if (!ln) {
+    tiles('gd-order', [['Order', '–', 'line layer not running (Tracked mode)', 'bad', 'key']]);
+    $('gd-run').innerHTML = '';
+    return;
+  }
+  const intent = ln.branch_intent || 'straight';
+  $('gd-mission').textContent = ln.mission || 'no mission';
+  tiles('gd-order', [['Order', SIDES[intent] || intent, intent === 'straight' ? 'nothing armed' : 'used at the next fork', intent === 'straight' ? '' : 'warn', 'key']]);
+  document.querySelectorAll('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === intent));
+  tiles('gd-run', [
+    ['State', ln.state_name || '–', ln.hold_cause || ln.engine_state || '', ln.state_name === 'FAULT' ? 'bad' : (ln.state_name === 'HOLD' ? 'warn' : ''), 'key'],
+    ['Speed', num(ln.v_mps, 2), 'm/s'],
+    ['U-turn', ln.uturn_phase || '–', 'phase'],
+    ['Marker', ln.last_marker ? `code ${ln.last_marker}` : '–', 'last read'],
+    ['Driven', num(ln.followed_m, 1), 'm this run'],
+  ]);
+  $('gd-why').textContent = ln.message || '';
+});
+</script>{% endblock %}

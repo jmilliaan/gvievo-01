@@ -314,6 +314,20 @@ def test_maps_say_which_revisions_can_be_continued(env, tmp_path):
     assert b'id="btn-cs-start"' in page.data and b"survey_continue.js" in page.data
 
 
+def test_guided_branch_orders_need_the_engineer_and_a_valid_side(env):
+    client, stub, *_ = env
+    r = client.post("/api/line/branch", json={"side": "left"})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_branch", ("left",))
+    n = len(stub.calls)
+    for bad in ({"side": "up"}, {"side": ""}, {}):
+        assert client.post("/api/line/branch", json=bad).status_code == 422
+    client.post("/api/role", json={"role": "operator"})
+    assert client.post("/api/line/branch", json={"side": "right"}).status_code == 403
+    assert len(stub.calls) == n  # nothing refused reached the robot
+    page = client.get("/guide")
+    assert page.status_code == 200 and b'data-side="straight"' in page.data and b"ArrowLeft" in page.data
+
+
 def test_state_and_footprint(env):
     client, stub, maps, rev_dir, manifest = env
     assert client.get("/api/state").json["localization"]["state_name"] == "READY"
