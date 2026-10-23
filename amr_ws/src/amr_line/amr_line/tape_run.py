@@ -33,8 +33,8 @@ the high zone (amr_line.speed_zone) grants HIGH. RFID never touches the speed: t
 zone is a pair of MLS marker codes, fed by markers() and acted on only while driving,
 on a clean read (line good, within MARKER_MAX_LCP2_MM of the tape centre - a pivot
 over a marker reads a code off the tape, seen 2026-10-09). The marker stream going
-down, or a marker event lost on the way, takes ARMED or HIGH away. With
-mls.markers_enabled false a zone mission runs NORMAL and says so.
+down, or a marker event lost on the way, takes ARMED or HIGH away. Marker events are
+always on (2026-10-23): a mission without a high_zone is the way to run NORMAL only.
 No RFID tag sets the speed (2026-10-09): a stop parks HIGH and the departure resumes it,
 an RFID-link or protective-field hold parks it and the resume restores it
 (park_high/resume_high). The U-turn tag is the one exception: the pivot reverses the
@@ -107,11 +107,7 @@ class TapeRun:
             m["BRANCH_LATCH"], positive_is_left=vehicle.BRANCH_POSITIVE_IS_LEFT, default=m["BRANCH_DEFAULT"]
         )
         self.events: list[tuple[str, str]] = []
-        zone = m["HIGH_ZONE"]
-        if zone is not None and not vehicle.MLS_MARKERS:
-            self.events.append((WARN, "the high zone needs mls.markers_enabled: this run stays NORMAL"))
-            zone = None
-        self.speed = speed_zone.SpeedZone(zone, normal_rpm=vehicle.AUTO_RPM,
+        self.speed = speed_zone.SpeedZone(m["HIGH_ZONE"], normal_rpm=vehicle.AUTO_RPM,
                                           rpm_per_mps=vehicle.RPM_PER_MPS,
                                           drive_decel_rpm_s=vehicle.DECEL_RPM_S)
         self.guard = speed_zone.CurveGuard(vehicle.CURVE_GUARD_KAPPA, vehicle.CURVE_GUARD_E_MM)

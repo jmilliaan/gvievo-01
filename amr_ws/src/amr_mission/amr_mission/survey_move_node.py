@@ -1,6 +1,6 @@
 """survey_move_node: preset moves while surveying (mapping layer only), press once.
 
-    /amr/survey/move       SurveyMove   "straight" X m (+ fwd / - rev) or "rotate" 45..180 deg
+    /amr/survey/move       SurveyMove   "straight" X m (+ fwd / - rev) or "rotate" 20..180 deg
     /amr/survey/move_stop  Trigger      stop the running move
     /amr/survey_move_state SurveyMoveState, latched
 

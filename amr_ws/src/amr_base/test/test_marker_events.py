@@ -85,8 +85,7 @@ def test_drive_node_checks_exactly_what_the_bench_tool_writes():
     from amr_base.drive_node import marker_expectation
 
     written = {(i, s): v for i, s, _size, v, _label in read_mls.MARKER_SETTINGS}
-    assert marker_expectation(True, False, True) == written
+    assert marker_expectation(False, True) == written
     i, s, _size, v, _label = read_mls.POLARITY_LOCK
-    assert marker_expectation(True, True, True) == {**written, (i, s): v}
-    assert marker_expectation(False, True, True) is None
-    assert (0x2029, 0) not in marker_expectation(True, False, False)
+    assert marker_expectation(True, True) == {**written, (i, s): v}
+    assert (0x2029, 0) not in marker_expectation(False, False)

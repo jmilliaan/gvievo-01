@@ -116,8 +116,9 @@ straight S1 ======== [40]--0.5 m--[60]--0.5 m--T1 ) corner R ( T2--0.5 m--[60]--
 - Departure speed (2026-10-08): a run from Home always starts NORMAL. A station stop
   (MRU, `always` stops) departs at the speed it arrived at: arrived HIGH, the budget
   left at the stop tag (less the stop distance and any travel while parked) is kept
-  and the departure ramps back to HIGH. Any other hold, a zone tag, missing counts or
-  Reset in between forgets it -> NORMAL (`SpeedZone.park/resume`).
+  and the departure ramps back to HIGH. A protective-field trip while parked keeps it
+  (2026-10-23). Any other hold, a zone tag, missing counts or Reset in between forgets
+  it -> NORMAL (`SpeedZone.park/resume`).
 - Tags at the same lateral offset as the station tags (the reader antenna's track).
 
 ### Mission schema (v2.1)
@@ -156,7 +157,7 @@ straight S1 ======== [40]--0.5 m--[60]--0.5 m--T1 ) corner R ( T2--0.5 m--[60]--
 | HIGH | budget used up | NORMAL, comfort ramp (2 s) | the planned exit: done >= 1.0 m before the far I |
 | HIGH | I | NORMAL at **0.5 m/s^2** | late exit (budget too long: survey or encoder scale wrong) - WARN event |
 | HIGH | O | NORMAL at **drive decel ~1.0 m/s^2** | I also missed - WARN event |
-| HIGH | stop begins (parked, departs HIGH), U-turn, any HOLD but a protective stop or RFID link loss (parked, resume HIGH, 2026-10-09), Reset, new run, curve guard trip, IMU+odometry stale | NORMAL | reason recorded |
+| HIGH | stop begins (parked, departs HIGH), U-turn, any HOLD but a protective stop or RFID link loss (parked, resume HIGH, 2026-10-09; also a protective stop first reported as torque loss, and a field trip while parked at a station, 2026-10-23), a real E-stop (parked, resumes NORMAL), Reset, new run, curve guard trip, IMU+odometry stale | NORMAL | reason recorded. Warning fields 1/2 never: the mux slows or stops the vehicle, the budget counts wheel travel |
 
 The entry window (1.5 m) is shorter than the shortest exit-O to entry-I distance
 (0.5 + pi R/2 + 0.5 + 0.5 = 2.29 m at R 0.5), so an O left armed on the way OUT of a

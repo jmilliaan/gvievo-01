@@ -193,19 +193,19 @@ def test_config_profile():
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
     # Line sensor (mls-marker-plan, 2026-10-09): markers off until the bench passes.
-    # markers_enabled is the bench switch (on for the 2026-10-09 trial): only its type is pinned.
-    check("the MLS is expected on variant 3 with codes 1-3",
-          config.MLS_VARIANT == 3 and isinstance(config.MLS_MARKERS, bool)
+    # 2026-10-23: markers are always on; no profile switch, so no MLS_MARKERS name either.
+    check("the MLS is expected on variant 3 with codes 1-3, markers always on",
+          config.MLS_VARIANT == 3 and not hasattr(config, "MLS_MARKERS")
           and config.MLS_MARKER_CODES == [1, 2, 3] and config.MLS_POLARITY_LOCK is False,
-          f"{config.MLS_VARIANT} {config.MLS_MARKERS} {config.MLS_MARKER_CODES}")
+          f"{config.MLS_VARIANT} {config.MLS_MARKER_CODES}")
     refuses("an MLS variant outside 2006h:01's 0..7 is refused",
             lambda d: d["mls"].update(variant=8), "mls.variant")
     for bad, why in (([], "at least one"), ([1, 1], "duplicate"), ([0], "1..7"), ([8], "1..7"),
                      (["2"], "integers"), ([True], "integers"), (2, "integers")):
         refuses(f"mls.marker_codes {bad!r} is refused",
                 lambda d, bad=bad: d["mls"].update(marker_codes=bad), why)
-    refuses("a non-boolean mls.markers_enabled is refused",
-            lambda d: d["mls"].update(markers_enabled=1), "true/false")
+    refuses("the retired mls.markers_enabled is refused (markers are always on)",
+            lambda d: d["mls"].update(markers_enabled=True), "unknown key")
     check("the MLS event-flag reset is off until the bench found its value (E0.5)",
           config.MLS_EVENT_CLEAR == -1, str(config.MLS_EVENT_CLEAR))
     refuses("an mls.event_clear other than -1, 0 or 1 is refused",

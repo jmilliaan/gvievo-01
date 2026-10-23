@@ -66,6 +66,38 @@ def resolve_map(maps_dir: str, map_id: str, revision: int) -> tuple[str, int, st
     return map_id, revision, manifest.sha256
 
 
+CONTINUE_FILES = ("posegraph.posegraph", "posegraph.data")
+HINT_LIMIT_M = 1.0e5  # a pose hint beyond 100 km is a typo, not a map coordinate
+
+
+def continuable(maps_dir: str, map_id: str, revision: int) -> str:
+    """sha256 of a verified revision whose saved pose graph a survey can continue.
+    ValueError otherwise: a merged or imported map has no pose graph to load."""
+    import yaml  # noqa: PLC0415
+
+    from amr_mission import map_bundle as mb  # noqa: PLC0415 - heavy, only on request
+
+    try:
+        _, _, sha = resolve_map(maps_dir, map_id, revision)  # verifies every hash once
+        with open(os.path.join(mb.revision_dir(maps_dir, map_id, revision), mb.MANIFEST)) as fh:
+            files = (yaml.safe_load(fh) or {}).get("files") or {}
+    except (mb.BundleError, OSError) as e:
+        raise ValueError(f"cannot continue {map_id} rev{revision}: {e}") from e
+    missing = [f for f in CONTINUE_FILES if f not in files]
+    if missing:
+        raise ValueError(
+            f"cannot continue {map_id} rev{revision}: no saved pose graph ({', '.join(missing)}); "
+            "only a surveyed revision can be continued"
+        )
+    return sha
+
+
+def check_hint(x: float, y: float, yaw: float) -> None:
+    for v in (x, y, yaw):
+        if not isinstance(v, (int, float)) or v != v or abs(v) > HINT_LIMIT_M:
+            raise ValueError("the pose hint must be a finite pose on the map")
+
+
 def bundle_sha(maps_dir: str, map_id: str, revision: int) -> str:
     try:
         return resolve_map(maps_dir, map_id, revision)[2]

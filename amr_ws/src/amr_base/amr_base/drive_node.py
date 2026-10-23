@@ -100,12 +100,10 @@ MARKER_QOS = QoSProfile(
 BIG = 1e6
 
 
-def marker_expectation(markers_enabled: bool, polarity_lock: bool, teach_lock: bool) -> dict | None:
+def marker_expectation(polarity_lock: bool, teach_lock: bool) -> dict:
     """Profile mls.* -> the MLS objects and values the sensor must hold for markers to be
-    trusted (read-only check in MlsTrack). None = markers off. The same values the bench
-    tool writes (read_mls.MARKER_SETTINGS)."""
-    if not markers_enabled:
-        return None
+    trusted (read-only check in MlsTrack). Markers are always on (2026-10-23). The same
+    values the bench tool writes (read_mls.MARKER_SETTINGS)."""
     want = {(0x2028, 1): 1, (0x2028, 2): 1, (0x2028, 3): 1}
     if teach_lock:
         want[(0x2029, 0)] = 1
@@ -393,7 +391,7 @@ class DriveNode(Node):
             mode=str(self.get_parameter("mls_track_mode").value),
             sdo_hz=float(self.get_parameter("mls_track_sdo_hz").value),
             expected_variant=int(self.get_parameter("mls_track_variant").value),
-            markers=marker_expectation(config.MLS_MARKERS, config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
+            markers=marker_expectation(config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
             on_event=self._on_mls_event,
             event_clear=config.MLS_EVENT_CLEAR,
             log=self._log,

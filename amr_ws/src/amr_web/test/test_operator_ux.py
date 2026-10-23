@@ -598,6 +598,10 @@ def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
     listing = client.get("/api/line/missions").get_json()
     assert "line-a" in listing["missions"] and "empty" not in listing["missions"]
     assert listing["destinations"]["line-a"] == ["MRU1", "MRU2", "MRU3", "MRU4"], "offered as a list"
+    # 2026-10-23: the picker notes each job's branch and speed rule, the "none" entry included.
+    assert {"basic-right", "basic-high-left", "basic-high-right"} <= set(listing["missions"])
+    assert listing["notes"]["empty"] == "always branch left · normal speed"
+    assert listing["notes"]["basic-high-right"] == "always branch right · HIGH zones (markers 2→1)"
     assert client.post("/api/line/mission", json={"name": "line-a", "destination": "MRU2"}).status_code == 200
     assert client.post("/api/line/clear").status_code == 200
     assert stub.calls == [("line_mission", ("line-a", "MRU2")), ("line_clear", ())]
@@ -651,22 +655,17 @@ def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
 # ---- MLS markers on Home (mls-marker-plan 6.1, 2026-10-09) ----------------------------
 
 
-def _home(tmp_path, markers_enabled):
+def _home(tmp_path):
     maps = tmp_path / "maps"
     maps.mkdir(exist_ok=True)
-    app = create_app(Stub(merged()), str(maps), state_dir=str(tmp_path / "state"),
-                     markers_enabled=markers_enabled)
+    app = create_app(Stub(merged()), str(maps), state_dir=str(tmp_path / "state"))
     app.config["TESTING"] = True
     return app.test_client().get("/home").get_data(as_text=True)
 
 
-def test_home_has_no_marker_tile_while_markers_are_off(tmp_path):
-    body = _home(tmp_path, False)
-    assert 'id="live-marker"' not in body and "home-live three" not in body
-
-
-def test_home_puts_the_marker_tile_right_after_rfid_when_markers_are_on(tmp_path):
-    body = _home(tmp_path, True)
+def test_home_always_puts_the_marker_tile_right_after_rfid(tmp_path):
+    """2026-10-23: markers are always on, so the tile is not behind a profile switch."""
+    body = _home(tmp_path)
     assert 'class="home-live three"' in body
     rfid, marker, line = (body.index(f'id="{t}"') for t in ("live-rfid", "live-marker", "live-line"))
     assert rfid < marker < line, "Speed · RFID · Marker on the first row, the line sensor under them"

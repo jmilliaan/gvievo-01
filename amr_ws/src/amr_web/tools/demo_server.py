@@ -761,7 +761,9 @@ class DemoAdapter:
     def survey_move_stop(self):
         return False, "no move running"
 
-    def survey_request(self, operation, map_id, description, request_id):
+    def survey_request(self, operation, map_id, description, request_id, cont=None):
+        if cont is not None:
+            return False, "", "demo: continuing a saved survey needs slam_toolbox on the vehicle"
         with self.lock:
             name = {0: "start", 1: "returned", 2: "save", 3: "abort"}[operation]
             if name == "start":

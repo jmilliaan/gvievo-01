@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-2700.0 -9900.0 9300.0 13200.0" class="layout" role="img" aria-label="Magnetic tape layout projection, top view, mm"><style>
-svg{--bg:#fbfbf9;--ink:#1d2228;--muted:#6b7280;--grid:#eceee9;--gridM:#dcdfd8;
+svg{--bg:#ffffff;--ink:#1d2228;--muted:#6b7280;--grid:#eceee9;--gridM:#dcdfd8;
 --pillar:#c9cdd3;--tape:#16181b;--cl:#f2c200;--feat:rgba(120,130,140,.10);--featS:#9aa1a9;
 --dim:#1f5fbf;--est:#c2410c;--accent:#b91c1c;--card:#ffffff;--line:#e3e5e0}
 
@@ -36,7 +36,7 @@ svg{--bg:#fbfbf9;--ink:#1d2228;--muted:#6b7280;--grid:#eceee9;--gridM:#dcdfd8;
 .pleg text{font:600 85px system-ui,sans-serif;fill:var(--ink)}
 .pnote text{font:500 80px ui-monospace,Consolas,monospace;fill:var(--ink);white-space:pre}
 .pnote text.h{font:700 90px system-ui,sans-serif}
-</style><defs><marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="70" markerHeight="50" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path id="arrp" d="M0,0 L10,5 L0,10 z"/></marker></defs><line class="gM" x1="-3000" y1="-9900.0" x2="-3000" y2="3300.0"/>
+</style><defs><marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="70" markerHeight="50" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path id="arrp" d="M0,0 L10,5 L0,10 z"/></marker></defs><rect class="bg" x="-2700" y="-9900" width="9300" height="13200" fill="#ffffff"/><line class="gM" x1="-3000" y1="-9900.0" x2="-3000" y2="3300.0"/>
 <line class="gm" x1="-2500" y1="-9900.0" x2="-2500" y2="3300.0"/>
 <line class="gM" x1="-2000" y1="-9900.0" x2="-2000" y2="3300.0"/>
 <line class="gm" x1="-1500" y1="-9900.0" x2="-1500" y2="3300.0"/>
@@ -157,10 +157,10 @@ svg{--bg:#fbfbf9;--ink:#1d2228;--muted:#6b7280;--grid:#eceee9;--gridM:#dcdfd8;
 <text class="dtxt" x="-1100.0" y="825" text-anchor="middle">TO and FROM MRU 1-4</text><text class="dtxt" x="-1100.0" y="950" text-anchor="middle">FROM BTU 9-24</text><text class="dtxt" x="-1100.0" y="1075" text-anchor="middle">(AGV 1 only)</text>
 <line class="darrow" x1="5650" y1="0" x2="6400" y2="0" marker-end="url(#darr)" marker-start="url(#darr)"/>
 <rect class="dbox" x="3800" y="1050" width="2750" height="525" rx="40"/>
-<text class="dtxt" x="5175.0" y="1225" text-anchor="middle">TO STU 1-4</text><text class="dtxt" x="5175.0" y="1350" text-anchor="middle">FROM BTU 1-8 & STU 1-4</text><text class="dtxt" x="5175.0" y="1475" text-anchor="middle">(AGV 2 only)</text>
+<text class="dtxt" x="5175.0" y="1225" text-anchor="middle">TO STU 1-4</text><text class="dtxt" x="5175.0" y="1350" text-anchor="middle">FROM BTU 1-8 &amp; STU 1-4</text><text class="dtxt" x="5175.0" y="1475" text-anchor="middle">(AGV 2 only)</text>
 <line class="darrow" x1="2474.0" y1="1700" x2="2474.0" y2="2250" marker-end="url(#darr)"/>
 <rect class="dbox" x="724.0" y="2400" width="3500" height="400" rx="40"/>
-<text class="dtxt" x="2474.0" y="2575" text-anchor="middle">TO BTU 9-24 (AGV 1) and</text><text class="dtxt" x="2474.0" y="2700" text-anchor="middle">BTU 1-8 & STU 1-6 (AGV 2)</text>
+<text class="dtxt" x="2474.0" y="2575" text-anchor="middle">TO BTU 9-24 (AGV 1) and</text><text class="dtxt" x="2474.0" y="2700" text-anchor="middle">BTU 1-8 &amp; STU 1-6 (AGV 2)</text>
 <defs><marker id="darr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="200" markerHeight="200" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#f2a900"/></marker></defs>
 <g class="pleg"><line x1="3250" y1="-9420" x2="3510" y2="-9420" class="lt"/><text x="3570" y="-9390">magnetic tape 30 mm</text><line x1="3250" y1="-9270" x2="3510" y2="-9270" class="la"/><text x="3570" y="-9240">traffic to / from</text></g>
 <g class="pnote"><text x="3250" y="-9000" class="h">PROJECTION: red-mark additions</text><text x="3250" y="-8875" class="">Tape above y 5175 and below y 1570 on the</text><text x="3250" y="-8750" class="">right line is inferred from a hand mark-up</text><text x="3250" y="-8625" class="">(~12.4 mm/px, rounded, loop made symmetric).</text><text x="3250" y="-8500" class="">~ dims: ±~200 mm, verify on site.</text><text x="3250" y="-8250" class="h">Inferred geometry (mm)</text><text x="3250" y="-8125" class="">split          (1040, 5175)</text><text x="3250" y="-8000" class="">loop left      x 465, y 5650–7400</text><text x="3250" y="-7875" class="">loop right     x 1615, y 5650–7400</text><text x="3250" y="-7750" class="">merge          (1040, 8450)</text><text x="3250" y="-7625" class="">U-turn         R717, centre (1757, 8800)</text><text x="3250" y="-7500" class="">               top y 9517</text><text x="3250" y="-7375" class="">right tape     up to y 8800; down to ≤ -1600</text><text x="3250" y="-7250" class="">split kinks    ±50.4°</text><text x="3250" y="-7125" class="">merge kinks    ±28.7°</text></g>

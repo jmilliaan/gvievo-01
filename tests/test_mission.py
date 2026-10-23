@@ -77,6 +77,26 @@ def test_empty_and_listing():
             check(f"name {bad!r} refused", True)
 
 
+def test_basic_missions():
+    print("\nmission: the four basic jobs - plain line following, branch rule x speed rule")
+    want = {"empty": ("left", False), "basic-right": ("right", False),
+            "basic-high-left": ("left", True), "basic-high-right": ("right", True)}
+    plain = mission.load("empty")["TAGS"]
+    for name, (branch, high) in want.items():
+        m = mission.load(name)
+        z = m["HIGH_ZONE"]
+        check(f"{name}: always {branch}, {'HIGH zones' if high else 'NORMAL'}, the U-turn tags only",
+              m["BRANCH_DEFAULT"] == branch and m["BRANCH_LATCH"] == [] and m["TAGS"] == plain
+              and m["HOME"] is None and m["DESTINATIONS"] == [] and m["MARKER_RUN"] is None
+              and (z is not None and (z["outer"], z["inner"]) == (2, 1)) == high
+              and (z is None) == (not high))
+    check("the picker note says the branch and the speed rule",
+          mission.summary(mission.load("empty")) == "always branch left · normal speed"
+          and mission.summary(mission.load("basic-high-right"))
+          == "always branch right · HIGH zones (markers 2→1)"
+          and mission.summary(mission.load("line-a")).endswith("· 4 destinations"))
+
+
 def test_the_site_table_loads():
     print("\nmission: missions/line-a.json, the site's RFID tag reference")
     m = mission.load("line-a")
@@ -249,5 +269,5 @@ def test_marker_run():
             base(marker_run=dict(MARKER_RUN, stop_distance_m=0.05)), "decel")
 
 
-TESTS = [test_empty_and_listing, test_the_site_table_loads, test_refusals, test_high_zone, test_site_mission,
-         test_marker_run]
+TESTS = [test_empty_and_listing, test_basic_missions, test_the_site_table_loads, test_refusals,
+         test_high_zone, test_site_mission, test_marker_run]

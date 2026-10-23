@@ -830,14 +830,19 @@ class RosAdapter(Node):
         return bool(r.accepted), r.operation_id, r.message
 
     def survey_request(
-        self, operation: int, map_id: str, description: str, request_id: str
+        self, operation: int, map_id: str, description: str, request_id: str,
+        cont: tuple[int, float, float, float] | None = None,
     ) -> tuple[bool, str, str]:
+        """`cont` = (revision, x, y, yaw): START continues <map_id> rev<N> from that pose."""
         inst, gen = self.supervisor_identity()
         if not inst:
             return False, "", "supervisor unavailable"
         req = RequestSurvey.Request()
         req.request_id, req.expected_instance, req.expected_generation = request_id, inst, gen
         req.operation, req.map_id, req.description = int(operation), map_id, description
+        if cont is not None:
+            req.continue_revision = int(cont[0])
+            req.hint.x, req.hint.y, req.hint.theta = float(cont[1]), float(cont[2]), float(cont[3])
         r = self._call("survey", req, timeout=5.0)
         if r is None:
             return False, "", "supervisor unavailable"

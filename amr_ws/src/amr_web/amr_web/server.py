@@ -73,7 +73,8 @@ class Adapter(Protocol):
         self, target: int, map_id: str, map_revision: int, request_id: str
     ) -> tuple[bool, str, str]: ...
     def survey_request(
-        self, operation: int, map_id: str, description: str, request_id: str
+        self, operation: int, map_id: str, description: str, request_id: str,
+        cont: tuple[int, float, float, float] | None = None,
     ) -> tuple[bool, str, str]: ...
     def get_operation(self, operation_id: str) -> dict | None: ...
     def recover(self) -> tuple[bool, str]: ...
@@ -136,6 +137,11 @@ def _op_kind(op) -> str:
     return str(op.get("value", "")) if op.get("op") == "paint" else str(op.get("op", ""))
 
 
+def _continuable(m) -> bool:
+    """A survey can continue only a revision that carries slam_toolbox's saved pose graph."""
+    return all(f in (m.files or {}) for f in ("posegraph.posegraph", "posegraph.data"))
+
+
 def _edits_summary(e: dict | None) -> dict | None:
     """What the Maps page shows about how a revision was derived (edits.json)."""
     if not e:
@@ -162,7 +168,6 @@ def create_app(
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
     product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
-    markers_enabled: bool | None = None,  # Home's Marker tile; None = the profile's mls.markers_enabled
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -216,16 +221,6 @@ def create_app(
 
     product = product or _product()
 
-    def _markers_enabled() -> bool:
-        """The profile's mls.markers_enabled. A dev box without a profile has no markers."""
-        try:
-            from agv_core import config  # noqa: PLC0415
-
-            return bool(config.MLS_MARKERS)
-        except Exception:  # noqa: BLE001
-            return False
-
-    markers_enabled = _markers_enabled() if markers_enabled is None else bool(markers_enabled)
     tracked_ok = product in ("tape", "both")
     trackless_ok = product in ("slam", "both")
 
@@ -250,7 +245,7 @@ def create_app(
 
     @app.get("/home")
     def page_home():
-        return render_template("home.html", page="home", markers_enabled=markers_enabled)
+        return render_template("home.html", page="home")
 
     @app.post("/api/role")
     def api_role():
@@ -319,6 +314,11 @@ def create_app(
         _need(trackless_ok)
         return render_template("review.html", page="run", sub="maps")
 
+    @app.get("/survey-continue")
+    def page_survey_continue():
+        _need(trackless_ok)
+        return render_template("survey_continue.html", page="run", sub="maps")
+
     @app.get("/run")
     @app.get("/run-trackless")
     def page_run():
@@ -346,16 +346,22 @@ def create_app(
         # Each mission's destination stops, so the page can offer them as a list
         # rather than free text. A file that does not validate is listed with its
         # error: selecting it is refused by the layer anyway, with the same words.
-        names, dests, errors = [], {}, {}
+        # notes: each mission's branch and speed rule, "empty" included (the "none" entry).
+        names, dests, errors, notes = [], {}, {}, {}
         for n in missions.list_missions():
+            try:
+                m = missions.load(n)
+            except missions.MissionError as e:
+                m = None
+                errors[n] = str(e)
+            if m is not None:
+                notes[n] = missions.summary(m)
             if n == "empty":
                 continue
             names.append(n)
-            try:
-                dests[n] = missions.destinations(missions.load(n))
-            except missions.MissionError as e:
-                errors[n] = str(e)
-        return jsonify({"missions": names, "destinations": dests, "errors": errors})
+            if m is not None:
+                dests[n] = missions.destinations(m)
+        return jsonify({"missions": names, "destinations": dests, "errors": errors, "notes": notes})
 
     @app.post("/api/line/mission")
     def api_line_mission():
@@ -488,6 +494,7 @@ def create_app(
                             "routes": store.list_routes(maps_dir, map_id),
                             "dynamic_cells": ex["dynamic_cells"],
                             "edits": _edits_summary(ex["edits"]),
+                            "continuable": _continuable(m),
                         }
                     )
                 out.append({"map_id": map_id, "revisions": items})
@@ -513,6 +520,8 @@ def create_app(
                 "routes": store.list_routes(app.config["MAPS_DIR"], map_id),
                 "dynamic_cells": ex["dynamic_cells"],
                 "edits": _edits_summary(ex["edits"]),
+                "review": m.review,
+                "continuable": _continuable(m),
             }
         )
 
@@ -915,6 +924,20 @@ def create_app(
             return err
         rid = str(d.get("request_id") or uuid.uuid4().hex)
         desc = str(d.get("description", d.get("note", "")))
+        if op == "start" and d.get("continue_revision") not in (None, 0):
+            # continue a saved survey: revision + where the vehicle stands on it. The
+            # supervisor re-checks the bundle; the session matches the scan before loading.
+            try:
+                rev = _positive_int(d.get("continue_revision"), "continue_revision")
+                h = d.get("hint")
+                if not isinstance(h, dict):
+                    raise ValueError("hint {x_m, y_m, yaw_rad} is required to continue a survey")
+                hint = (_finite(h.get("x_m"), "hint.x_m"), _finite(h.get("y_m"), "hint.y_m"),
+                        _finite(h.get("yaw_rad"), "hint.yaw_rad"))
+            except ValueError as e:
+                return _result(False, str(e), 422)
+            return _accepted(*adapter.survey_request(
+                SURVEY_OPS[op], str(d.get("map_id", "")), desc, rid, cont=(rev, *hint)))
         return _accepted(*adapter.survey_request(SURVEY_OPS[op], str(d.get("map_id", "")), desc, rid))
 
     # preset survey moves (press once): validated again by survey_move_node, which also checks

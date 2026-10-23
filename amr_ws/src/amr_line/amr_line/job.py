@@ -74,6 +74,15 @@ _AUTO_CAUSES = ("field", "drives", "rate", "track")
 # Holds that keep the HIGH budget for the resume (2026-10-09): the protective field (a
 # person stepped in) and the RFID link (no RFID event may change the speed).
 _PARK_CAUSES = ("field", "rfid")
+# An "estop" hold parks the budget too, and decides at the resume (2026-10-23, operator:
+# a protective stop must not reset HIGH). A protective trip removes torque through the
+# FX3, and the drive report can arrive before /output_paths shows the field: the tick then
+# sees torque off with the field still clear and calls it an E-stop. A field violation
+# reported within FIELD_RACE_S of such a hold proves it was the protective field, and the
+# resume restores HIGH; otherwise it was a real E-stop and the resume departs NORMAL.
+# Only the speed is decided here: the hold keeps its E-stop terms (a physical Start).
+_PARKS_HIGH = _PARK_CAUSES + ("estop",)
+FIELD_RACE_S = 0.5
 
 
 @dataclasses.dataclass(frozen=True)
@@ -156,6 +165,8 @@ class FollowJob:
     def reset(self):
         self.state = IDLE
         self.hold_cause = ""
+        self._hold_since = None     # first tick of the current hold
+        self._estop_was_field = False  # this "estop" hold saw the field within FIELD_RACE_S
         self.reason = ""
         self.accepted_t = None      # when the Start that began this run was accepted
         self.refused = None         # why the last Start was refused, until the node reports it
@@ -213,13 +224,8 @@ class FollowJob:
         """The mission's position sources: the RFID link, and a marker run's MLS markers."""
         if self.tape is not None and self.tape.needs_link and not (i.rfid or {}).get("comms_ok", False):
             return "RFID link down (the mission needs its tags)"
-        if self.tape is not None and self.tape.needs_markers:
-            from agv_core import config as vehicle  # noqa: PLC0415
-
-            if not vehicle.MLS_MARKERS:
-                return "the marker run needs mls.markers_enabled"
-            if not (i.markers or {}).get("ok", False):
-                return "MLS markers down (the run's U-turn and home stop are markers)"
+        if self.tape is not None and self.tape.needs_markers and not (i.markers or {}).get("ok", False):
+            return "MLS markers down (the run's U-turn and home stop are markers)"
         return ""
 
     def _job_check(self, i: Inputs):
@@ -314,7 +320,7 @@ class FollowJob:
                 self._premove = None
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
-            if self.hold_cause == "station" or self.hold_cause in _PARK_CAUSES:
+            if self.hold_cause == "station" or self.hold_cause in _PARKS_HIGH:
                 self.tape.parked(self.step_m)
         pre = self._prerequisite(i, torque=False) or (
             self._job_check(i) if kind == "start" else self._rfid_check(i))
@@ -352,8 +358,7 @@ class FollowJob:
                 return self._tape_fault()
             self.reason = f"departed {where}"
             return 0.0, 0.0
-        if back_cause in _PARK_CAUSES:
-            self.tape.resume_high()
+        self._resume_speed(back_cause)
         self.hold_cause = ""
         self.reason = "resumed on Start"
         return 0.0, 0.0
@@ -400,6 +405,14 @@ class FollowJob:
                     "track": "no usable tape reading"}.get(i.track_cause, "tape reading unusable")
         return ""
 
+    def _resume_speed(self, cause):
+        """The speed a hold resumes at: HIGH as arrived after a parking hold (field, RFID
+        link, an "estop" that was the field reported late), NORMAL after a real E-stop."""
+        if cause in _PARK_CAUSES or (cause == "estop" and self._estop_was_field):
+            self.tape.resume_high()
+        elif cause == "estop":
+            self.tape.drop_high("resumed after an E-stop / safety-chain stop")
+
     def _safety_cause(self, i: Inputs):
         """Which safety story a torque loss belongs to. Unknown field evidence
         cannot prove a stop was only the field, so it is an E-stop: the hold
@@ -445,12 +458,15 @@ class FollowJob:
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
+        self._hold_since = None
+        self._estop_was_field = False
         # A station stop parked the HIGH budget (TapeRun._begin_stop); a protective-field or
         # RFID-link hold parks it (operator, 2026-10-09: back to HIGH after it, and no RFID
-        # event changes the speed); any other hold
-        # forgets it. Warning fields never reach here: the mux scales the command and the
-        # budget counts wheel travel, so HIGH carries on through them.
-        if self.tape is not None and cause in _PARK_CAUSES:
+        # event changes the speed), and so does an "estop" hold until the resume knows
+        # whether it was the field (see _PARKS_HIGH); any other hold forgets it. Warning
+        # fields never reach here: the mux scales the command and the budget counts wheel
+        # travel, so HIGH carries on through them.
+        if self.tape is not None and cause in _PARKS_HIGH:
             self.tape.park_high(f"hold ({cause})")
         elif self.tape is not None and cause != "station":
             self.tape.drop_high(f"hold ({cause})")
@@ -529,7 +545,7 @@ class FollowJob:
             if self.tape.fault:
                 return self._tape_fault()
             self.tape.steer(i.sensor, tags, self.f.followed_mm)
-            if self.hold_cause == "station" or self.hold_cause in _PARK_CAUSES:
+            if self.hold_cause == "station" or self.hold_cause in _PARKS_HIGH:
                 self.tape.parked(self.step_m)
             return self._hold_tick(i, pre)
 
@@ -543,6 +559,11 @@ class FollowJob:
 
     def _hold_tick(self, i: Inputs, pre):
         """Wait for the cause to clear, then resume - or wait for a human."""
+        if self._hold_since is None:
+            self._hold_since = i.now
+        if (self.hold_cause == "estop" and i.field_clear is False
+                and i.now - self._hold_since <= FIELD_RACE_S):
+            self._estop_was_field = True  # the protective field, reported late: HIGH comes back
         # A torque loss arriving DURING a hold for some other reason takes the
         # safety cause (executor rule): a hold for stale feedback must not
         # auto-resume through an E-stop that happened while it waited. A hold
@@ -555,10 +576,9 @@ class FollowJob:
             return 0.0, 0.0
 
         if self.hold_cause == "station":
-            if i.field_clear is False and self.tape.speed.parked_left is not None:
-                # Parked in standby a field trip stops nothing, but it still means
-                # somebody was there: depart at NORMAL, as after any safety hold.
-                self.tape.drop_high("protective field violated while parked")
+            # Parked in standby a field trip stops nothing. It does not cost the parked
+            # HIGH either (operator, 2026-10-23: a protective stop never resets HIGH, as
+            # after a protective-field hold while running): the departure is as arrived.
             return self._station_tick(i, pre)
 
         if self.hold_cause not in self._auto_causes():
@@ -577,8 +597,7 @@ class FollowJob:
         if self._auto_since is None:
             self._auto_since = i.now
         if i.now - self._auto_since >= self.auto_resume_clear_s:
-            if self.hold_cause in _PARK_CAUSES:
-                self.tape.resume_high()
+            self._resume_speed(self.hold_cause)
             self.state = RUNNING
             self.hold_cause = ""
             self._auto_since = None

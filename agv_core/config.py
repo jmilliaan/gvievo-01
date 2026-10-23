@@ -313,10 +313,11 @@ mls.*  (SICK MLS line sensor, can.sensor_node; manuals/mls-marker-plan.md)
     variant is 2006h:01, the TPDO1 packing (3 = Standard enhanced since
     2026-10-07). A difference is logged and decoded as reported.
 
-    markers_enabled turns marker events on: the sensor's own decoded code
-    (2028h, standard mode, FailSafe) becomes /amr/line_marker events. Off until
-    the bench session (plan B0-B7) has passed. On, but the sensor not configured
-    as below, means NO events and a warning naming the fix - never a guess.
+    Marker events are always on (2026-10-23; markers_enabled is retired and refused):
+    the sensor's own decoded code (2028h, standard mode, FailSafe) becomes
+    /amr/line_marker events. The sensor not configured as below means NO events and a
+    warning naming the fix - never a guess. Whether a marker changes a run is the
+    mission's choice (high_zone, marker_run), not the profile's.
     marker_codes lists the codes laid on the floor (1-3 with the MLSE-0200,
     15 mm markers); any other code read is a reject, counted, never an event.
     polarity_lock expects 202Dh:05 = 1 (only north track seen): leave false until
@@ -601,7 +602,6 @@ _SCHEMA = {
     },
     "mls": {
         "variant":         ("MLS_VARIANT", int),
-        "markers_enabled": ("MLS_MARKERS", bool),
         "polarity_lock":   ("MLS_POLARITY_LOCK", bool),
         "teach_lock":      ("MLS_TEACH_LOCK", bool),
         "event_clear":     ("MLS_EVENT_CLEAR", int),

@@ -37,8 +37,9 @@ class Stub:
         self.ops["op-mode"] = {"operation_id": "op-mode", "status": 0, "status_name": "PENDING"}
         return True, "op-mode", "accepted"
 
-    def survey_request(self, operation, map_id, description, request_id):
-        self.calls.append(("survey_request", (operation, map_id, description, request_id)))
+    def survey_request(self, operation, map_id, description, request_id, cont=None):
+        args = (operation, map_id, description, request_id) + ((cont,) if cont is not None else ())
+        self.calls.append(("survey_request", args))
         return True, "op-survey", "accepted"
 
     def get_operation(self, oid):
@@ -268,6 +269,49 @@ def test_mode_and_survey_are_asynchronous_operations(env):
     r = client.post("/api/survey/save", json={"note": "seams ok"})
     assert r.status_code == 202 and stub.calls[-1][1][:3] == (2, "", "seams ok")
     assert client.post("/api/survey/bogus", json={}).status_code == 404
+
+
+def test_continue_survey_start_forwards_revision_and_hint(env):
+    client, stub, *_ = env
+    body = {"map_id": "hall", "description": "by rack C", "continue_revision": 2,
+            "hint": {"x_m": 51.8, "y_m": -38.9, "yaw_rad": 0.03}}
+    r = client.post("/api/survey/start", json=body)
+    assert r.status_code == 202 and stub.calls[-1] == (
+        "survey_request", (0, "hall", "by rack C", stub.calls[-1][1][3], (2, 51.8, -38.9, 0.03))
+    )
+    n = len(stub.calls)
+    for bad in (
+        {**body, "hint": None},
+        {**body, "hint": {"x_m": 1.0, "y_m": "x", "yaw_rad": 0.0}},
+        {**body, "hint": {"x_m": float("inf"), "y_m": 0.0, "yaw_rad": 0.0}},
+        {**body, "continue_revision": -1},
+        {**body, "continue_revision": True},
+    ):
+        assert client.post("/api/survey/start", json=bad).status_code == 422
+    assert len(stub.calls) == n  # nothing refused reached the robot
+    # continue_revision 0 is an ordinary new map
+    r = client.post("/api/survey/start", json={**body, "continue_revision": 0})
+    assert r.status_code == 202 and len(stub.calls[-1][1]) == 4
+
+
+def test_maps_say_which_revisions_can_be_continued(env, tmp_path):
+    client, stub, maps, rev_dir, manifest = env
+    assert client.get("/api/maps").json[0]["revisions"][0]["continuable"] is False  # no pose graph
+    pg = tmp_path / "pg"
+    (tmp_path / "pg.posegraph").write_bytes(b"graph")
+    (tmp_path / "pg.data").write_bytes(b"data")
+    stage = mb.staging_dir(maps, "hall", 1)
+    m, g = mb.load(maps, "sim_factory", 1)
+    m.map_id = "hall"
+    mb.stage_bundle(stage, g, str(pg), m)
+    mb.publish(stage, maps, "hall", 1)
+    idx = {x["map_id"]: x for x in client.get("/api/maps").json}
+    assert idx["hall"]["revisions"][0]["continuable"] is True
+    one = client.get("/api/maps/hall/1").json
+    assert one["continuable"] is True and one["review"]["note"] == "t"
+    page = client.get("/survey-continue?map=hall&rev=1")
+    assert page.status_code == 200
+    assert b'id="btn-cs-start"' in page.data and b"survey_continue.js" in page.data
 
 
 def test_state_and_footprint(env):
@@ -696,7 +740,10 @@ def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
         assert client.post("/api/survey_move", json=bad).status_code == 422
     assert client.post("/api/survey_move/stop", json={}).status_code == 200
     page = client.get("/maps").data
-    for el in (b'id="sm-dist"', b'id="sm-fwd"', b'id="sm-rev"', b'id="sm-stop"', b'data-deg="-135"'):
+    for el in (
+        b'id="sm-dist"', b'id="sm-fwd"', b'id="sm-rev"', b'id="sm-stop"',
+        b'data-deg="-135"', b'data-deg="20"', b'data-deg="-30"',
+    ):
         assert el in page
 
 

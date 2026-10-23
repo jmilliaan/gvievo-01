@@ -31,6 +31,7 @@ import uuid
 
 import rclpy
 from agv_core import config
+from geometry_msgs.msg import Pose2D
 from nav2_msgs.srv import ManageLifecycleNodes
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -114,6 +115,9 @@ class Supervisor(Node):
         dp("still_wait_s", 5.0)
         dp("save_s", 60.0)
         dp("survey_rpc_s", 15.0)  # returned / abort answer budget (review R27)
+        # continue-survey: added to layer_start_s while slam_toolbox loads a saved pose graph
+        # (boiacca-map-1 rev1 is 94 MB; the session's own load timeout is 120 s)
+        dp("continue_load_s", 150.0)
         p = self.get_parameter
         self.real = bool(p("real").value)
         self.maps_dir = os.path.expanduser(str(p("maps_dir").value))
@@ -129,6 +133,7 @@ class Supervisor(Node):
                 "still_wait_s",
                 "save_s",
                 "survey_rpc_s",
+                "continue_load_s",
             )
         }
 
@@ -169,6 +174,7 @@ class Supervisor(Node):
         self.survey_op: tuple[str, str] | None = None  # (operation_id, kind) in flight
         self.inhibit_manual = False  # during a save
         self._pending_future = None
+        self._continue_hint: tuple[float, float, float] | None = None  # START of a continued survey
         self._worker: threading.Thread | None = None
         self._worker_result: bool | None = None
         self._lock = threading.RLock()
@@ -463,15 +469,22 @@ class Supervisor(Node):
                     "delete old maps or reports first",
                 )
                 return res
+            cont_rev, cont_sha = int(req.continue_revision), ""
             if kind == fsm.REQ_SURVEY_START:
                 try:
                     rd.check_map_id(req.map_id)
+                    if cont_rev > 0:  # refused here, before the running layer is torn down
+                        cont_sha = rd.continuable(self.maps_dir, req.map_id, cont_rev)
+                        rd.check_hint(req.hint.x, req.hint.y, req.hint.theta)
                 except ValueError as e:
                     res.accepted, res.message = False, str(e)
                     return res
             op, _ = self.book.submit(req.request_id, kind, map_id=req.map_id, message=req.description)
             if kind == fsm.REQ_SURVEY_START:
-                self._begin_transaction(op, fsm.MAPPING, req.map_id, 0, "")
+                self._continue_hint = (
+                    (float(req.hint.x), float(req.hint.y), float(req.hint.theta)) if cont_rev > 0 else None
+                )
+                self._begin_transaction(op, fsm.MAPPING, req.map_id, cont_rev, cont_sha)
             else:
                 self.survey_op = (op.operation_id, kind)
                 if kind == fsm.REQ_SURVEY_SAVE:
@@ -722,7 +735,7 @@ class Supervisor(Node):
             except Exception as e:  # noqa: BLE001
                 self._fail(op, "SPAWN_FAILED", str(e))
                 return
-            t.deadline = now + self.budget["layer_start_s"]
+            t.deadline = now + self._layer_start_budget(t)
             t.notes.append("lm:none")
             self.book.phase(op, "starting new layer")
             t.advance()
@@ -738,7 +751,7 @@ class Supervisor(Node):
                 return
             if now > t.deadline:
                 self._fail(
-                    op, "LAYER_START_TIMEOUT", f"new layer not ready in {self.budget['layer_start_s']:.0f} s"
+                    op, "LAYER_START_TIMEOUT", f"new layer not ready in {self._layer_start_budget(t):.0f} s"
                 )
                 return
             ready = self._LAYER_READY.get(t.target)
@@ -763,6 +776,11 @@ class Supervisor(Node):
             )
             self._set(t.target, "", "")
             return
+
+    def _layer_start_budget(self, t: fsm.Transaction) -> float:
+        """A continued survey also loads a saved pose graph before it is ready."""
+        extra = self.budget["continue_load_s"] if t.target == fsm.MAPPING and t.map_revision > 0 else 0.0
+        return self.budget["layer_start_s"] + extra
 
     def _start_mapping(self, t: fsm.Transaction):
         return self._launch(
@@ -805,6 +823,10 @@ class Supervisor(Node):
             req = StartSurvey.Request()
             req.map_id = t.map_id
             req.description = self.book.get(t.operation_id).message
+            if t.map_revision > 0 and self._continue_hint is not None:
+                req.continue_revision = int(t.map_revision)
+                hx, hy, hyaw = self._continue_hint
+                req.hint = Pose2D(x=hx, y=hy, theta=hyaw)
             self._pending_future = self._cli["start"].call_async(req)
             self.book.phase(t.operation_id, "starting survey")
             return

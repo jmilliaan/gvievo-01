@@ -113,15 +113,11 @@ def test_markers_lost_while_driving_hold_for_a_person():
     assert w.job.state == lj.HOLD and "lost" in w.job.reason
 
 
-def test_start_is_refused_without_markers(monkeypatch):
+def test_start_is_refused_without_markers():
     w = World(mission())
     w.mk_ok = False
     w.press_start()
     assert w.job.state == lj.IDLE and "markers down" in w.job.reason
-    monkeypatch.setattr(vehicle, "MLS_MARKERS", False)
-    w = World(mission())
-    w.press_start()
-    assert w.job.state == lj.IDLE and "mls.markers_enabled" in w.job.reason
 
 
 def test_markers_during_the_pivot_do_nothing():

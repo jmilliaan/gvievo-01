@@ -52,8 +52,9 @@ async function loadMissions() {
   if (status !== 200) return;
   DESTS = data.destinations || {};
   MERR = data.errors || {};
-  $('lt-mission').innerHTML = ['<option value="">none — plain line following</option>']
-    .concat(data.missions.map(n => `<option value="${esc(n)}">${esc(n)}</option>`)).join('');
+  const notes = data.notes || {}, note = n => notes[n] ? ` — ${esc(notes[n])}` : '';
+  $('lt-mission').innerHTML = [`<option value="">none: plain line following${note('empty')}</option>`]
+    .concat(data.missions.map(n => `<option value="${esc(n)}">${esc(n)}${note(n)}</option>`)).join('');
   fillDests();
 }
 loadMissions();

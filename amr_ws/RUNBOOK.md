@@ -208,15 +208,22 @@ RIGHT DI07. The IO page shows the live bits under those names.
      ~2.3 s of standing still after the service starts. Wait and press again.
    **Preset moves** (2026-09-19, Maps page under the jog pad, only while surveying):
    type a distance and press *Forward* / *Reverse* (0.05–10 m at 0.30 m/s), or a
-   *Left* / *Right* spin of 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
+   *Left* / *Right* spin of 20, 30, 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
    drives the whole move by itself under the same authority as the jog pad
    (selector **MANUAL**). **Any pendant button, the E-stop, the selector, the jog
    pad or *Stop move* ends it at once.** After each move the page reports how far
    SLAM corrected the vehicle's position during it; a red "the map may have
    slipped here" (a heading correction of 2° or more) means the scan matcher
    probably took a wrong alignment: back up and drive that stretch again, slowly.
+   **"the map is broken from here"** (5° or more in one move) is a wrong scan
+   match that is already part of the map, and driving it again does not undo it.
+   **Abort the survey** and start again, or continue from the last saved revision
+   (A1). On 2026-10-23, two 20° slips went unnoticed and the loop never closed
+   (2.9 m at the start mark).
    Smooth preset moves and slow spins are what the mapping copes with best in
-   large open areas.
+   large open areas. On a large site, survey in parts: close each part at its
+   start mark, save it, and **Continue survey** from there (A1). A bad slip then
+   costs one part, not the whole site.
 4. Drive the area slowly with the jog pad. Watch **Live map**: grey and black
    cells grow, the green arrow is the vehicle and red points are the current
    scan.
@@ -250,6 +257,48 @@ falls back to `odom` a few seconds later. Nothing recovers it: abort and start
 the survey again (a fresh slam_toolbox is launched). SLAM and AMCL read
 `/scan_gated` (scan_gate_node), which releases each scan only once its odometry
 transform exists, to keep them off the tf2 code path that hung on 2026-09-17.
+
+### A1. Continue a saved survey (`Maps` → **Continue survey**)
+
+A large area does not have to be surveyed in one go (2026-10-23). Save part of it,
+and later keep surveying **the same map** from wherever the vehicle stands, as long
+as that spot is inside the saved map. slam_toolbox loads the saved pose graph, so
+old and new parts close loops with each other like one survey. The save becomes
+the next revision of the same map id; the saved revision is not changed.
+
+1. Stop the vehicle somewhere **inside the saved map**, preferably where walls or
+   pillars run in two directions. Selector **MANUAL**, mode `IDLE`.
+2. On **Maps**, press **Continue survey** on the revision. Only revisions with a
+   saved pose graph show the button (surveyed or continued ones, not merged ones).
+3. Say where the vehicle is:
+   - **Where its survey ended**: the vehicle has not moved since that save.
+   - **At its start mark**: parked on the map's floor mark, at its heading.
+   - **Drag pose on map**: drag from the vehicle's position towards its
+     heading. About 1 m and 30° is close enough.
+4. Optionally describe the spot (**Where you are now**), then press
+   **Continue survey**. The robot matches the live scan against the saved map
+   around your pose first:
+   - `continue refused: the scan fits the saved map poorly here`: the pose is off,
+     or the vehicle is outside the mapped area. Correct the pose, or drive further in.
+   - `continue refused: ambiguous`: another pose fits almost as well (a long
+     corridor, repeated rack rows). Move to where the walls run in two directions.
+   - Nothing has loaded after a refusal: press again.
+5. On a good match it loads the pose graph. This takes up to about two minutes for a
+   large map. The Maps page then shows `MAPPING`, `continues revN`, and the scan
+   match score.
+   - `... loaded, but SLAM put the vehicle ...` or `... could not load ...`: the
+     supervisor goes to FAULT. Press **Recover**, then start again.
+6. Survey as in section A.
+7. **Returned to start** means the map's **original** start mark, in the same frame.
+   Driving back to it measures the closure of the whole map, old and new. You can
+   also press it where you are and save, as with a partial survey; the closure
+   numbers then mean nothing.
+8. **Save map revision**. The revision list shows `continues revN (scan match x.xx)`.
+
+- Dynamic areas, keepout and edits of the continued revision are **not carried
+  over**: the new revision is a fresh map. Mark them again with **Edit areas**.
+- Routes and the tape graph belong to a revision: re-validate or re-teach them on
+  the new one.
 
 ### A2. Trolleys and other temporary objects (`Maps` → **Edit areas**)
 
@@ -587,8 +636,9 @@ beside the RFID tag and in the event log (`LINE_MARKER`). Since 2026-10-09 **the
 decide speed and RFID decides where to stop**: the mission's `high_zone` names an outer and an
 inner marker code (`line-a`: outer 2, inner 1), and that pair grants HIGH (`manuals/rfid-tag-table.md`,
 "Speed zones"). A zone marker counts only while RUNNING, line good and within 30 mm of the
-tape centre; the marker stream going down or losing events drops to NORMAL. With
-`mls.markers_enabled` false a zone mission runs NORMAL. No marker changes the run's state.
+tape centre; the marker stream going down or losing events drops to NORMAL. To run NORMAL
+only, pick a mission without a `high_zone` (plain line following, `basic-right`). No marker
+changes the run's state.
 
 Every command below needs `amr.service` stopped, and every write goes through `guard.py`:
 
@@ -599,10 +649,10 @@ python3 -m agv_core.drivers.canbus.read_mls marker-level           # Hall profil
 python3 -m agv_core.drivers.canbus.read_mls set-markers            # dry run; --go writes, resets node 10, reads back
 ```
 
-- **Enabling:** `profiles/agv-01.json` `mls.markers_enabled` is the bench switch: `true` during
-  a bench session, and back to `false` after any session that does not end with B0–B7 passed.
-  When it is `true` and the sensor is not configured to match, drive_node publishes no marker
-  events, and Home shows "sensor not set up".
+- **Always on (2026-10-23):** there is no profile switch; `mls.markers_enabled` is retired and a
+  profile that still has it is refused. When the sensor is not configured to match, drive_node
+  publishes no marker events and Home shows "sensor not set up": zone missions run NORMAL and a
+  marker run refuses Start.
 - **Polarity lock:** `set-markers --polarity-lock` (202Dh:05) only after a full lap with
   `markers` has shown `north` everywhere. With the lock, south-up track is invisible to the
   sensor.

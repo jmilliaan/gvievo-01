@@ -30,8 +30,8 @@ Roles: **E** = engineer (PIN pages, terminal), **O** = operator at the vehicle w
 - **Bench tools that need `can0`** (`read_mls …`) refuse while the service runs. They are not part
   of this runbook.
 - **One test at a time on the vehicle.** Never start a simulation in the vehicle's domain (10).
-- **MLS markers:** `mls.markers_enabled` is the bench switch. It is `true` only during a bench
-  session or after the marker bench passed (`manuals/mls-marker-plan.md`).
+- **MLS markers:** always on (2026-10-23, no profile switch). The Home Marker tile shows whether the
+  sensor is configured for them (`manuals/mls-marker-plan.md`).
 
 ## 1A. Where the tests run now: the straight in front of MRU
 
@@ -42,8 +42,10 @@ section 7). Differences from the text below:
   (the current values).
 - **T-HOME:** the east end of the free section, facing west. Mark it on the floor (the survey
   start too). **No RFID** (2026-10-18). The run is the job `mru-straight-markers` (Run tracked →
-  Set job). It needs `mls.markers_enabled: true` and the marker stream up (Home tile).
+  Set job). It needs the marker stream up (Home tile).
 - **Strips (plan 3 section 7.5; 15 × 100 mm, S up, one side), x measured from the west tape end:**
+  (drawing: `documentation/layout-reference/mru-straight-test-layout.html`; west = toward the tape end,
+  site-plan directions per `manuals/site-layout-103.md`)
   - code 2 at 1.0 m: starts the CW U-turn
   - code 1 at east limit − 2.0 m: home (the AGV parks 0.5 m past it, at T-HOME)
   - code 2 at east limit − 1.0 m: the backstop. Read on the way back, it means the home marker was missed: FAULT, jog back, Reset
@@ -79,7 +81,7 @@ metrics M1–M6). Nothing about motion changes: the AGV runs `line-a` exactly as
 | 1 | E | Built: `cd ~/agv_can/amr_ws && colcon build --symlink-install && source install/setup.bash`. `tape_loc.enabled` is **false** (P0 refuses to start otherwise). `pidstat` installed (`sudo apt install sysstat`) |
 | 2 | E | `python3 tests/run_all.py` passes (repo root) |
 | 3 | E | `amr.service` runs the current code: `tools/run_log.sh` warns in its pre-flight if it doesn't. Restart on O's go |
-| 4 | E | MLS marker configuration in place (`read_mls set-markers --go` done, marker bench B2 or later) and `mls.markers_enabled: true`. If not, P0 uses the RFID fallback (plan 3 section 5); note it in the session log |
+| 4 | E | MLS marker configuration in place (`read_mls set-markers --go` done, marker bench B2 or later; Home Marker tile not "sensor not set up"). If not, P0 uses the RFID fallback (plan 3 section 5); note it in the session log |
 | 5 | O | `line-a` runs cleanly from Home today; the tape and tags are undamaged |
 | 6 | O | An ordinary production day for the hall: racks and machines where they normally are. Note anything unusual |
 
@@ -173,9 +175,7 @@ and the session log's notes. Apply plan 3's decision rule (section 5).
 
 1. E: Ctrl-C the localization launch.
 2. O: keep the code-3 strips if the decision keeps anchors; otherwise remove them.
-3. E: `mls.markers_enabled` stays `true` only if the marker bench has passed. Otherwise set it back
-   to `false` and restart the service on O's go.
-4. The map revision is kept. P1 teaches on it.
+3. The map revision is kept. P1 teaches on it.
 
 ## 3. Teach the tape graph (P1)
 

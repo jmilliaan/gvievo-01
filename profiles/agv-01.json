@@ -188,7 +188,6 @@
   },
   "mls": {
     "variant": 3,
-    "markers_enabled": true,
     "marker_codes": [1, 2, 3],
     "polarity_lock": false,
     "teach_lock": true,

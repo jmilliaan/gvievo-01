@@ -35,12 +35,12 @@
   </div>
   {# Live readings (2026-10-08), big enough to read from the floor: measured wheel speed,
      the tag under the RFID reader, the MLS line position. Display only, in every mode. #}
-  {# The MLS marker code beside the RFID tag (mls-marker-plan 6.1, 2026-10-09), once the
-     profile turns markers on. Display only. #}
-  <div class="home-live{{ ' three' if markers_enabled }}">
+  {# The MLS marker code beside the RFID tag (mls-marker-plan 6.1, 2026-10-09; always shown
+     since markers are always on, 2026-10-23). Display only. #}
+  <div class="home-live three">
     <div class="live" id="live-speed"><span>Speed</span><b>–</b><i>no wheel feedback</i></div>
     <div class="live" id="live-rfid"><span>RFID tag</span><b>––</b><i>no reader data</i></div>
-    {% if markers_enabled %}<div class="live" id="live-marker"><span>Marker</span><b>––</b><i>no marker data</i></div>{% endif %}
+    <div class="live" id="live-marker"><span>Marker</span><b>––</b><i>no marker data</i></div>
     <div class="live" id="live-line"><span>Line position</span><b>–</b><i>no reading</i>
       <div class="live-bar"><i class="lt-zero"></i><em data-i="0"></em><em data-i="1"></em><em data-i="2"></em></div>
     </div>

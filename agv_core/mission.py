@@ -30,8 +30,7 @@ are shared by every pair, must be laid on the floor (mls.marker_codes), and are
 reserved: nothing else may use them. The one HIGH budget for every straight:
     high_for_m = shortest_straight_m - brake_m - autopilot.high_margin_m
     brake_m    = (v_high + v_normal) / 2 x autopilot.high_ramp_s
-mls.markers_enabled false does not refuse the mission (its stops still run): the
-run stays NORMAL and says so (amr_line.tape_run).
+Marker events are always on (2026-10-23): a mission without a high_zone runs NORMAL only.
 
 Branching stays its own table (branch_latch + branch_default) and its own engine
 (amr_line.branch): speed, stops and branch orders never share a tag.
@@ -46,6 +45,11 @@ at the tape ends (2026-10-08).
     list_missions()          -> ["empty", ...]
     load(name, vehicle=None) -> dict of the names below, or MissionError
     destinations(m)          -> the destination labels, in table order
+    summary(m)               -> the picker's note: branch rule, speed rule
+
+The four basic jobs (2026-10-23) are plain line following with the site's U-turn tags:
+empty (always left), basic-right, basic-high-left, basic-high-right (high zones on the
+line-a marker pair).
 
 MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, TAGS {tag: row}, HOME (row | None),
 DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer" (marker codes, int), "high_for_m",
@@ -403,6 +407,24 @@ def _parse_mission(doc, vehicle):
 def destinations(m):
     """The destination labels of a parsed mission (or None), in table order."""
     return list(m["DESTINATIONS"]) if m else []
+
+
+_BRANCH_NOTE = {"left": "always branch left", "right": "always branch right",
+                "straight": "straight through branches"}
+
+
+def summary(m):
+    """The mission picker's note for a parsed mission: its branch rule and its speed rule."""
+    branch = _BRANCH_NOTE[m["BRANCH_DEFAULT"]]
+    if m["BRANCH_LATCH"]:
+        branch += f" (+{len(m['BRANCH_LATCH'])} tag orders)"
+    z = m["HIGH_ZONE"]
+    parts = [branch, f"HIGH zones (markers {z['outer']}→{z['inner']})" if z else "normal speed"]
+    if m["MARKER_RUN"] is not None:
+        parts.append("marker run")
+    elif m["DESTINATIONS"]:
+        parts.append(f"{len(m['DESTINATIONS'])} destinations")
+    return " · ".join(parts)
 
 
 def list_missions(directory=None):

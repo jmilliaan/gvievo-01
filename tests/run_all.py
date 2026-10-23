@@ -82,7 +82,9 @@ MODULES = [
 #   2080h:01); test_config + 2 (mls.event_clear off, and its refusal).
 # + 7 (2026-10-18): the marker run (plan 3 section 7.5): test_mission, the straight's mission and
 #   6 refusals.
-EXPECTED_CHECKS = 747
+# + 5 (2026-10-23): the four basic jobs (empty, basic-right, basic-high-left, basic-high-right)
+#   and the mission picker's note (test_mission).
+EXPECTED_CHECKS = 752
 
 
 # An exception on a helper thread only prints a traceback by default - the
