@@ -24,13 +24,14 @@ for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
 from agv_core import mission as missions  # noqa: E402
 
 from amr_line import tape_graph as tg  # noqa: E402
+from amr_line import tape_graph_store as store  # noqa: E402
 from amr_line import tape_locator as tl  # noqa: E402
 from amr_line import tape_teach as tt  # noqa: E402
 from amr_line import trip as tr  # noqa: E402
 
 DOC = {
-    "schema": "site-3", "mission_name": "t", "home": "HOME", "attach": "ATT", "trip_calls": 2,
-    "stop_distance_m": 0.5,
+    "schema": "site-4", "mission_name": "t", "home": "HOME", "attach": "ATT", "trip_calls": 2,
+    "stop_distance_m": 0.5, "cruise_mps": 0.4, "uturn_points": {}, "zones": {},
     "junctions": {"J-A": {"shape": "Y", "laid": True}, "J-B": {"shape": "Y", "laid": True},
                   "J-C": {"shape": "Y", "laid": True}, "J-X": {"shape": "T", "laid": False}},
     "uturns": {"U": {"direction": "cw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0,
@@ -509,3 +510,43 @@ def test_store_teach_workspace(tmp_path):
     assert store.delete_pass(state, "t", 1, name) and store.list_passes(state, "t", 1) == []
     with pytest.raises(store.StoreError):
         store.teach_dir(state, "../x", 1)
+
+
+def _anchors():
+    line, nodes = tour()
+    return {n: line.point(s)[:2] for n, s in zip(("J-A", "J-B", "U", "J-C"), nodes, strict=True) if n != "U"}
+
+
+def test_anchored_matching_takes_junctions_by_position_whatever_the_count():
+    # 2026-10-24: the bay merge sits on a kink corner and a 3 cm blip follows J-N - counting
+    # labelled J-N's episode J-BMERGE. By position each junction is found within cm.
+    m = mission()
+    rec = _with_corner_forks(record_pass(0), (2.0, 50.0))
+    rec["forks"].append([16.0, 16.03, True])           # the blip right after J-B
+    rec["forks"].sort()
+    notes = []
+    parts = tt.split_pass(rec, m, notes, _anchors())
+    assert set(parts) == {leg["id"] for leg in m["CIRCUITS"]["C-M"]["legs"]}
+    assert any(n.startswith("J-B at 15.0 m") for n in notes), notes
+    assert any(n.startswith("not junctions") and "16.0 m" in n for n in notes), notes
+
+
+def test_a_junction_at_a_kink_pivot_is_kept_when_anchored():
+    m = mission()
+    rec = record_pass(0)
+    rec["pivots"] = [5.02]                               # J-A right at a corner pivot
+    notes = []
+    tt.split_pass(rec, m, notes, _anchors())
+    assert any(n.startswith("J-A at 5.0 m") for n in notes), notes
+
+
+def test_a_missed_junction_is_refused_by_name_when_anchored():
+    m = mission()
+    with pytest.raises(tt.TeachError, match="for J-B .*missed MLS fork"):
+        tt.split_pass(record_pass(drop_fork=1), m, None, _anchors())
+
+
+def test_anchors_round_trip_in_the_store(tmp_path):
+    store.save_anchors(str(tmp_path), "t", 1, {"J-A": (1.23456, -2.0)})
+    assert store.load_anchors(str(tmp_path), "t", 1) == {"J-A": (1.235, -2.0)}
+    assert store.load_anchors(str(tmp_path), "t", 2) == {}

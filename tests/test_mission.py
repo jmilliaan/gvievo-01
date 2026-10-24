@@ -203,8 +203,8 @@ def _site_refused(name, mutate, needle):
 
 
 def test_site_mission():
-    """Schema site-3 (tracked plan 3 section 2.5): designed data for tape-graph localization."""
-    print("\nmission: missions/site-103.json, the site mission (schema site-3)")
+    """Schema site-4 (tracked plan 3 section 2.5, plan 4): designed data for tape-graph localization."""
+    print("\nmission: missions/site-103.json, the site mission (schema site-4)")
     m = mission.load_site("site-103")
     check("AGV-01's two groups: 4 MRU and 16 BTU machines, two calls a trip",
           sorted(m["GROUPS"]) == ["BTU", "MRU"] and len(m["MACHINES"]) == 20 and m["TRIP_CALLS"] == 2)
@@ -238,6 +238,44 @@ def test_site_mission():
     _site_refused("one station on two legs is refused",
                   lambda d: d["circuits"]["C-BTU"].insert(4, {"stop": "MW-1"}), "one station, one place")
     _site_refused("more than two calls a trip is refused", lambda d: d.update(trip_calls=3), "trip_calls")
+
+
+def _with_points(d):
+    d["uturn_points"] = {"UT-MRU1": {"direction": "cw"}}
+    d["groups"]["MRU"]["machines"]["MRU1"]["uturn"] = "UT-MRU1"
+    d["zones"] = {"Z-LINE": {"from": "ZA-LINE", "to": "ZB-LINE"}}
+
+
+def test_site_mission_positions():
+    """Schema site-4 (tracked plan 4 section 2.2): cruise, mid-line U-turn points, zones."""
+    print("\nmission: site-4 - U-turn points and zones are named in the mission, placed by teaching")
+    d = _site()
+    _with_points(d)
+    m = mission.parse_site(d)
+    check("site-103 cruises at 0.4 m/s; a U-turn point is its machine's, on the release leg; zone ends "
+          "are points whose leg the taught pose decides",
+          m["CRUISE_MPS"] == 0.4 and m["UTURN_POINTS"]["UT-MRU1"]["machine"] == "MRU1"
+          and m["POINTS"] == {"UT-MRU1": "J-ML:merge>U-MRU", "ZA-LINE": None, "ZB-LINE": None}
+          and m["GROUPS"]["MRU"]["machines"]["MRU1"]["uturn"] == "UT-MRU1", str(m["POINTS"]))
+    _site_refused("the retired site-3 schema is refused by name", lambda d: d.update(schema="site-3"),
+                  "retired")
+    _site_refused("a cruise above NORMAL is refused", lambda d: d.update(cruise_mps=0.6), "cruise_mps")
+    _site_refused("a machine U-turn that is not a uturn_points id is refused",
+                  lambda d: d["groups"]["MRU"]["machines"]["MRU2"].update(uturn="UT-X"),
+                  "not in uturn_points")
+    _site_refused("one U-turn point for two machines is refused",
+                  lambda d: (_with_points(d), d["groups"]["MRU"]["machines"]["MRU2"].update(uturn="UT-MRU1")),
+                  "one point, one machine")
+    _site_refused("a U-turn point no machine uses is refused",
+                  lambda d: d.update(uturn_points={"UT-MRU9": {"direction": "cw"}}), "no machine's uturn")
+    _site_refused("a zone from a point to itself is refused",
+                  lambda d: d.update(zones={"Z": {"from": "ZA", "to": "ZA"}}), "the same point")
+    _site_refused("a zone end that is a station is refused",
+                  lambda d: d.update(zones={"Z": {"from": "MW-1", "to": "ZB"}}), "a point of its own")
+    _site_refused("one point ending two zones is refused",
+                  lambda d: d.update(zones={"Z1": {"from": "ZA", "to": "ZB"},
+                                            "Z2": {"from": "ZB", "to": "ZC"}}),
+                  "one zone end")
 
 
 MARKER_RUN = {"uturn_code": 2, "home_code": 1, "direction": "cw", "approach_mps": 0.1, "decel_m": 0.3,
@@ -274,9 +312,9 @@ def test_guided():
     """guided (2026-10-23): branches by hand, a cruise cap, one marker code for U-turn and home."""
     print("\nmission: guided run (the engineer walks C-MRU and gives each branch order)")
     m = mission.load("c-mru-guided")
-    check("c-mru-guided loads: code 3 for U-turn and home, armed after 40 m, 0.3 m/s",
+    check("c-mru-guided loads: code 3 for U-turn and home, armed after 40 m, 0.4 m/s",
           m["MARKER_RUN"]["uturn_code"] == m["MARKER_RUN"]["home_code"] == 3
-          and m["MARKER_RUN"]["home_arm_m"] == 40.0 and m["GUIDED"]["cruise_mps"] == 0.3
+          and m["MARKER_RUN"]["home_arm_m"] == 40.0 and m["GUIDED"]["cruise_mps"] == 0.4
           and m["HIGH_ZONE"] == {"inner": 1, "outer": 2, "spacing_m": 0.5, "arm_m": 0.65}
           and m["BRANCH_LATCH"] == [])
     check("a mission without the block is not guided", mission.load("mru-straight-markers")["GUIDED"] is None)
@@ -299,4 +337,4 @@ def test_guided():
 
 
 TESTS = [test_empty_and_listing, test_basic_missions, test_the_site_table_loads, test_refusals,
-         test_high_zone, test_site_mission, test_marker_run, test_guided]
+         test_high_zone, test_site_mission, test_site_mission_positions, test_marker_run, test_guided]

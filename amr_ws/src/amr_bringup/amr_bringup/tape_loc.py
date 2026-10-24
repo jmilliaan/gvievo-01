@@ -66,7 +66,7 @@ def initial_pose_cmd(start: dict, delay_s: float) -> TimerAction:
 
 
 def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, monitor: bool = True,
-          dynamic_yaml: str = "", require: bool = True) -> list:
+          dynamic_yaml: str = "", require: bool = True, jump_dist_m: float | None = None) -> list:
     """The launch actions. require=True: AMCL or map_server exiting ends the launch (in the
     LINE layer the supervisor then reports LAYER_EXITED)."""
     if params_set not in PARAM_SETS:
@@ -96,7 +96,8 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
         actions += node(
             Node(package="amr_localization", executable="localization_monitor_node",
                  name="localization_monitor", output="screen",
-                 parameters=[{"generation": generation, "dynamic_yaml": dynamic_yaml}]),
+                 parameters=[{"generation": generation, "dynamic_yaml": dynamic_yaml,
+                              **({} if jump_dist_m is None else {"jump_dist_m": float(jump_dist_m)})}]),
             "localization_monitor",
         )
     return actions

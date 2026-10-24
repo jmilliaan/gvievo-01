@@ -54,9 +54,30 @@
       <button id="home-abort" class="danger" hidden>Abort</button>
     </div>
   </div>
-  <details class="home-more">
-    <summary>More <small>everything standing against the vehicle</small></summary>
+  {# The engineer's status (merged from the old Status page, 2026-10-24): the supervisor,
+     readiness and the mode/recover/restart buttons, under the standing list. Open by
+     default for the engineer; the operator's page is unchanged and still fits at ui=l. #}
+  <details class="home-more"{% if role == ENGINEER %} open{% endif %}>
+    <summary>More <small>everything standing against the vehicle{% if role == ENGINEER %} · supervisor · readiness{% endif %}</small></summary>
     <div id="home-list" class="al-log"><div class="none">nothing standing</div></div>
+    {% if role == ENGINEER %}
+    <div class="home-eng">
+      <div class="bar">
+        {% if trackless_ok %}
+        <a class="big" href="/maps">Survey a new map</a>
+        <a class="big" href="/run">Use a saved map</a>
+        {% endif %}
+        <button id="btn-idle" class="big">Return to idle</button>
+        <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
+        {# The operator only gets Restart as the primary button, and only when an alarm says
+           the base cannot be rebuilt. An engineer restarts for other reasons (a rebuilt
+           overlay, a changed amr.env) - with the same server-side refusals. #}
+        <button id="btn-restart" class="danger" title="sudo systemctl restart amr.service">Restart service</button>
+      </div>
+      <p class="note">A mode change needs the vehicle <b>stopped</b>, nothing running and no emergency (selector MANUAL or AUTO alike); it replaces only the mapping/navigation software and never starts a route or a survey by itself.</p>
+      <div id="home-ready" class="tel-grid"></div>
+    </div>
+    {% endif %}
   </details>
 </section>
 {% endblock %}
@@ -172,10 +193,42 @@ function job(st) {
   $('home-job').className = 'home-job' + (level ? ' ' + level : '');
 }
 
+// Engineer only (the block is not rendered for the operator): supervisor and readiness.
+function readiness(st) {
+  const m = st.mode, p = st.panel, d = st.drives, mx = st.mux, l = st.localization;
+  const transition = m && m.mode_name === 'TRANSITIONING' && m.requested_name !== m.mode_name ? ` → ${m.requested_name}` : '';
+  const panelVal = p ? (p.age_s > FRESH_S ? 'STALE' : (p.valid ? (p.mode_auto ? 'AUTO' : 'MANUAL') : 'INVALID')) : '–';
+  tiles('home-ready', [
+    ['Supervisor', m ? m.mode_name : 'NONE',
+      m ? (m.fault_code ? `FAULT ${m.fault_code} · ${m.reason}` : `${m.phase || 'steady'}${transition} · ${m.reason || '—'}`)
+        : 'no ModeState from the supervisor',
+      m ? (m.fault_code ? 'bad' : (MODE_LEVEL[m.mode_name] || '')) : 'bad'],
+    ['Active map', m && m.active_map_id ? `${m.active_map_id} rev${m.active_map_revision}` : '—', 'in use', ''],
+    ['Last survey', m && m.last_survey_map_id ? `${m.last_survey_map_id} rev${m.last_survey_revision}` : '—', 'saved', ''],
+    ['Operation', m && m.operation_id ? m.operation_id : '—', 'last mode request', ''],
+    ['Base ready', yesno(m && m.base_ready), 'drives · panel · lidar · mux', m && m.base_ready ? '' : 'bad'],
+    ['Panel', panelVal, p ? `${num(p.age_s, 2)} s` : 'no image', panelVal === 'AUTO' || panelVal === 'MANUAL' ? '' : 'bad'],
+    ['Drives', d ? (d.operational ? 'ARMED' : (d.link === 'standby' ? 'STANDBY' : 'OFF')) : '–', d ? (d.power_reason || `${num(d.age_s, 2)} s`) : 'no status', d && d.age_s <= FRESH_S ? (d.operational ? '' : 'warn') : 'bad'],
+    ['Command source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
+    ['Localisation', l ? l.state_name : (st.localization_stale ? 'STALE' : '–'), st.localization_stale ? 'old layer' : '—', l ? LOC_LEVEL[l.state_name] : ''],
+    ['Manual available', yesno(m && m.manual_available), '—'],
+    ['Autonomous available', yesno(m && m.autonomous_available), '—'],
+  ]);
+}
+if ($('home-ready')) {
+  $('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
+  $('btn-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+  $('btn-restart').onclick = () => {
+    if (!confirm('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.')) return;
+    api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+  };
+}
+
 onState(st => {
   navSwitch(st.mode);
   job(st);
   liveTiles(st);
+  if ($('home-ready')) readiness(st);
 });
 
 // One poll for the whole page: the server already decided what is standing and what
@@ -204,7 +257,7 @@ function render(d) {
   $('home-list').innerHTML = rows.length ? rows.map(a =>
     `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.level)}</span>` +
     `<span class="al-msg"><span class="al-what">${esc(a.title)}</span>${esc(a.action)}` +
-    `<i class="al-detail">${esc(a.code)} · ${esc(a.detail)}</i></span></div>`).join('')
+    `<i class="al-detail">${esc(a.code)}${a.clears_by ? ` · clears by ${esc(a.clears_by)}` : ''} · ${esc(a.detail)}</i></span></div>`).join('')
     : '<div class="none">nothing standing</div>';
 }
 alarms();

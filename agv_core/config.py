@@ -261,7 +261,7 @@ blind_run.*
     and that is the whole of its involvement.
 
     max_speed_mps caps the centre-path speed of a blind move on either backend
-    (the /commissioning page offers up to this). Above ~0.4 m/s the protective
+    (the commissioning node accepts up to this). Above ~0.4 m/s the protective
     field sizing of the nanoScan3/FX3 must be confirmed first; that is a check
     on the vehicle, not something this file can know.
 
@@ -358,6 +358,8 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
                           only the straight in front of MRU is free (plan section 7),
                           "site-103" once the plant is
       shadow_circuit      the circuit of that mission the shadow locator follows
+      live                tracked plan 4: false = shadow only; true = the site mission is a job
+                          (Calls page): trips stop, branch, turn and speed up by position
 
     Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
 
@@ -456,6 +458,11 @@ _SCHEMA = {
         "u_turn_resume_delay_s": ("U_TURN_RESUME_DELAY_S", float),
         "u_turn_min_deg":      ("U_TURN_MIN_DEG", float),
         "u_turn_max_deg":      ("U_TURN_MAX_DEG", float),
+        # The spin may stop on the tape only past this TRUE angle, integrated from the gyro
+        # (2026-10-24: the encoder over-reads ~15 % in a pivot - 206-209 deg for a good
+        # U-turn - and a stop at 151 deg by encoder left the AGV ~50 deg off the tape).
+        # 0 = off (encoder gate only); a stale gyro falls back to the encoder gate.
+        "u_turn_gyro_min_deg": ("U_TURN_GYRO_MIN_DEG", float),
         "u_turn_center_kp_rpm_per_mm": ("U_TURN_CENTER_KP_RPM_PER_MM", float),
         "u_turn_level_tolerance": ("U_TURN_LEVEL_TOLERANCE", int),
         # Kink pivot (2026-10-23, amr_line.job): the tape left the sensor past
@@ -630,6 +637,13 @@ _SCHEMA = {
         "amcl_params":        ("TAPE_LOC_AMCL_PARAMS", str),
         "site_mission":       ("TAPE_LOC_SITE_MISSION", str),
         "shadow_circuit":     ("TAPE_LOC_SHADOW_CIRCUIT", str),
+        # The LINE layer's readiness monitor: an AMCL correction (map->odom jump) beyond this
+        # drops READY. 0.15 m (the NAVIGATION default) tripped on every lap on the MRU trunk
+        # (2026-10-24, one 15 cm catch-up along the corridor); NAVIGATION keeps its own value.
+        "monitor_jump_m":     ("TAPE_LOC_MONITOR_JUMP_M", float),
+        # Tracked plan 4: false = the position engine only shadows (the Guide page drives);
+        # true = the site mission is a job, and trips stop, branch and turn by position.
+        "live":               ("TAPE_LOC_LIVE", bool),
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
@@ -999,6 +1013,7 @@ def _validate(ns):
           "tape_loc.sigma_lost_m must be above sigma_junction_m and at most 2.0")
     check(0.5 <= g("TAPE_LOC_JUNCTION_LEAD_M") <= 5.0, "tape_loc.junction_lead_m must be in [0.5, 5]")
     check(2 <= g("TAPE_LOC_LOST_REJECTS") <= 50, "tape_loc.lost_rejects must be in 2..50")
+    check(0.05 <= g("TAPE_LOC_MONITOR_JUMP_M") <= 1.0, "tape_loc.monitor_jump_m must be in [0.05, 1] m")
     for key in ("SITE_MISSION", "SHADOW_CIRCUIT"):
         v = g(f"TAPE_LOC_{key}")
         check(bool(re.fullmatch(r"[A-Za-z0-9_-]+", v)),
@@ -1007,6 +1022,8 @@ def _validate(ns):
           f"tape_loc.amcl_params must be default or lean, got {g('TAPE_LOC_AMCL_PARAMS')!r}")
     check(not (g("TAPE_LOC_ENABLED") and g("TRACKED") is False),
           "tape_loc.enabled on a trackless profile (tracked: false): there is no LINE layer to run it in")
+    check(not (g("TAPE_LOC_LIVE") and not g("TAPE_LOC_ENABLED")),
+          "tape_loc.live needs tape_loc.enabled: the position engine drives from the tape locator")
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
@@ -1188,6 +1205,8 @@ def _validate(ns):
           "autopilot.curve_guard_e_mm must be in (0, sensor_max_mm)")
     check(0 < g("U_TURN_MIN_DEG") < g("U_TURN_MAX_DEG") <= 270,
           "autopilot: need 0 < u_turn_min_deg < u_turn_max_deg <= 270")
+    check(g("U_TURN_GYRO_MIN_DEG") == 0 or 120 <= g("U_TURN_GYRO_MIN_DEG") <= 180,
+          "autopilot.u_turn_gyro_min_deg must be 0 (off) or in [120, 180] deg")
     check(0 < g("KINK_EDGE_MM") < g("SENSOR_MAX_MM"),
           "autopilot.kink_edge_mm must be in (0, sensor_max_mm)")
     check(g("KINK_MAX_DEG") == 0 or 20 <= g("KINK_MAX_DEG") <= 120,

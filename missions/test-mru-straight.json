@@ -1,10 +1,11 @@
 {
-  "schema": "site-3",
+  "schema": "site-4",
   "mission_name": "test-mru-straight",
   "home": "T-HOME",
   "attach": "T-ATT",
   "trip_calls": 1,
   "stop_distance_m": 0.5,
+  "cruise_mps": 0.4,
   "junctions": {},
   "uturns": {
     "U-MRU": {
@@ -47,5 +48,7 @@
         }
       }
     }
-  }
+  },
+  "uturn_points": {},
+  "zones": {}
 }

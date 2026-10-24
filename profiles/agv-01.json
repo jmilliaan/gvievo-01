@@ -20,6 +20,7 @@
     "u_turn_resume_delay_s": 1.0,
     "u_turn_min_deg": 150.0,
     "u_turn_max_deg": 225.0,
+    "u_turn_gyro_min_deg": 172.0,
     "u_turn_center_kp_rpm_per_mm": 1.5,
     "u_turn_level_tolerance": 1,
     "kink_edge_mm": 60.0,
@@ -211,7 +212,9 @@
     "lost_fault_s": 30.0,
     "amcl_params": "default",
     "site_mission": "site-103",
-    "shadow_circuit": "C-MRU"
+    "shadow_circuit": "C-MRU",
+    "monitor_jump_m": 0.3,
+    "live": false
   },
   "imu": {
     "enabled": true,

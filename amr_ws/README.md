@@ -280,7 +280,7 @@ the one thing they do about it, while the node's own `reason` stays the
 engineer's detail. Codes travel in `RunState.fault_code`, `LocalizationState.code`,
 `LineState.code` and `MuxState.code`, and every owner emits an `/amr/events` edge
 with its code. `/api/alarms` turns the state snapshot into that list ONCE,
-server-side (`amr_web/alarms.py`): the rail, Home, Status and Alarms pages render
+server-side (`amr_web/alarms.py`): the rail, Home and Alarms pages render
 it and derive nothing. Events are appended to `~/.amr/logs/events.jsonl` and
 reloaded at start, so the history survives a restart, and RUNBOOK section 4 is
 generated from the same rows (`python3 -m agv_core.alarms --md`).

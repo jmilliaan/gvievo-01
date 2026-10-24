@@ -30,6 +30,19 @@
     </div>
     <label class="field">Station <select id="tc-station"></select></label>
     <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
+    <label class="field">Mark <input id="tc-mark" placeholder="label, or M-id to delete"></label>
+    <div class="bar">
+      <button data-act="mark" class="big" title="Where the vehicle is now, driving or standing (Guide page: M key)">Mark here</button>
+      <button data-act="marks">Marks</button>
+      <button data-act="mark_delete" class="danger">Delete mark</button>
+    </div>
+    {# Tracked plan 4: a mark (its M-id in the field above) becomes a station, a mid-line U-turn
+       point or a zone end; "-" takes the role off. Build puts it in the graph. #}
+    <div class="bar">
+      <label class="field">Role <select id="tc-role"></select></label>
+      <button data-act="mark_role" title="The mark named above (M-id) becomes this station or point">Set role</button>
+      <button data-act="roles" title="What is taught, from which mark, and what is not">Roles</button>
+    </div>
     <div class="bar">
       <button data-act="build">Build</button>
       <button data-act="publish">Publish</button>
@@ -51,6 +64,8 @@ async function loadSite() {
   if (data.error) log(data.error, 'bad');
   $('tc-circuit').innerHTML = data.circuits.map(c => `<option>${esc(c)}</option>`).join('');
   $('tc-station').innerHTML = data.stations.map(s => `<option>${esc(s)}</option>`).join('');
+  $('tc-role').innerHTML = [...data.stations, ...(data.points || []), '-']
+    .map(s => `<option value="${esc(s)}">${s === '-' ? '- (remove the role)' : esc(s)}</option>`).join('');
 }
 loadSite();
 
@@ -59,6 +74,8 @@ function argFor(act) {
   if (act === 'pass_start') return $('tc-circuit').value;
   if (act === 'station') return $('tc-station').value;
   if (act === 'activate') return $('tc-g').value.trim();
+  if (act === 'mark' || act === 'mark_delete') return $('tc-mark').value.trim();
+  if (act === 'mark_role') return `${$('tc-mark').value.trim()} ${$('tc-role').value}`;
   return '';
 }
 

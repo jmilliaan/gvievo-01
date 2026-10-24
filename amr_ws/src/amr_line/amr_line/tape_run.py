@@ -160,6 +160,7 @@ class TapeRun:
         self.uturn_forced = False     # guide page: the NEXT tape end is the U-turn, strip or not
         self._follower = None         # for a home stop begun from advance()
         self._mrun_back_m = 0.0       # wheel travel since the pivot (shared-code home arming)
+        self.hold_req = None          # (cause, why): a position engine's hold (site_run), none here
         self.guided = m.get("GUIDED")
         # The guided page's speed toggle: None = no toggle (the zone, if any, always acts);
         # False = NORMAL (zone codes ignored), True = HIGH allowed where the codes grant it.
@@ -172,6 +173,21 @@ class TapeRun:
         if not self.guided or self.speed.high:
             return None
         return self.guided["cruise_rpm"]
+
+    @property
+    def urgent_rate(self):
+        """r/min/s for a late drop from HIGH (the follower's urgent_rate), None without one."""
+        return self.speed.exit_rate
+
+    def locate(self, loc, v_rpm=0.0):
+        """The tape locator's state: only a position engine (site_run) acts on it."""
+
+    def at_rest(self):
+        """A measured stop has come to rest: "home" ends the run, "station" parks."""
+        return "home" if (self.stop or {}).get("role") == "home" else "station"
+
+    def result(self):
+        return self.table.result()
 
     @property
     def speed_select(self):
@@ -391,6 +407,14 @@ class TapeRun:
             if code not in (mr["uturn_code"], mr["home_code"]):
                 continue
             where = f"marker {code} at {lcp2:+d} mm" + ("" if line_good else ", line not good")
+            pend = self._mrun_pending
+            if driving and pend is not None and code == pend["code"] and self.stop is None \
+                    and self.uturn_req is None:
+                # A strip is read once; a junction tape under the sensor is read again and
+                # again (2026-10-24: X1 3 reads, J-ML 5, J-STEM 5 - the last one turned the
+                # AGV 11 m from home). The pending read is a junction's: _mrun_release drops it.
+                pend["burst"] = pend.get("burst", 1) + 1
+                continue
             if not driving or busy:
                 why = "held" if not driving else "stopping or turning"
                 self.events.append((INFO, f"{where} ignored: {why}"))
@@ -427,7 +451,9 @@ class TapeRun:
             self.events.append((WARN, f"{where} ignored: a junction - two tapes under the sensor "
                                       f"{self._odo_m - self._multi_at:.2f} m before it"))
             return False
-        self._mrun_pending = {"role": role, "where": where, "at": self._odo_m}
+        mr = self.mrun
+        self._mrun_pending = {"role": role, "where": where, "at": self._odo_m,
+                              "code": mr["uturn_code"] if role == "uturn" else mr["home_code"]}
         return True
 
     def _mrun_release(self):
@@ -439,6 +465,10 @@ class TapeRun:
         if past < MARKER_JUNCTION_M:
             return
         self._mrun_pending = None
+        if p.get("burst"):
+            self.events.append((WARN, f"{p['where']} ignored: read {p['burst']} times within "
+                                      f"{MARKER_JUNCTION_M:g} m - a junction tape, not a strip"))
+            return
         if "multi_m" in p:
             # Dropped only once the tape went on: two tapes right at the U-turn strip and then
             # the tape END is the MRU end itself (2026-10-24 11:26) - tape_ended() takes that.
@@ -483,6 +513,15 @@ class TapeRun:
             self._turn_at_end({"where": "guide page"}, 0.0, "forced", "the forced U-turn order")
             return True
         return False
+
+    def continue_run(self):
+        """The job continues this run after a stop off the tape: nothing half-done carries
+        over (a pending strip read, a forced U-turn), the phase and distances do."""
+        self._mrun_pending = None
+        self.uturn_forced = False
+        self.uturn = self.uturn_req = None
+        self.events.append((INFO, f"run continued on Start: {self.mrun_phase} phase, "
+                                  f"{self._mrun_out_m:.1f} m out, {self._mrun_back_m:.1f} m back"))
 
     def turn_here(self):
         """The run ended at the tape end on the way out and the guide page then forced the
@@ -697,7 +736,8 @@ class TapeRun:
             return "no tape level recorded on the approach to the U-turn"
         if counts is None:
             return "U-turn encoder position (/wheel_states counts) unavailable"
-        self.uturn = uturn.UTurn(req["direction"], counts_per_rev, counts, req["level"])
+        self.uturn = uturn.UTurn(req["direction"], counts_per_rev, counts, req["level"],
+                                 gyro_min_deg=vehicle.U_TURN_GYRO_MIN_DEG)
         req["phase"] = "spin"
         self.events.append((INFO, f"U-turn {req['direction']} - pivoting at "
                                   f"{vehicle.AUTO_U_TURN_RPM:.0f} r/min, track level {req['level']}"))
@@ -705,6 +745,8 @@ class TapeRun:
 
     def finish_u_turn(self):
         req, angle = self.uturn_req, self.uturn.angle_deg
+        gyro = (f", {self.uturn.gyro_deg:.0f} by gyro" if self.uturn.gyro_ok
+                else ", gyro stale: encoder gate only")
         self.uturn_last = dict(self.uturn_snapshot() or {}, active=False)
         self.uturn = self.uturn_req = None
         # Its own tag lies about the approach distance back along the tape.
@@ -720,8 +762,8 @@ class TapeRun:
             # an order given before the pivot faced the other way: it must not outlive it
             self.branch.order(branch.STRAIGHT)
             self.events.append((INFO, "branch order cleared by the U-turn"))
-        self.events.append((INFO, f"U-turn {req['direction']} complete at {angle:.0f} deg by encoder, "
-                                  f"centred - resuming"))
+        self.events.append((INFO, f"U-turn {req['direction']} complete at {angle:.0f} deg by encoder"
+                                  f"{gyro}, centred - resuming"))
 
     def abort_u_turn(self):
         self.uturn = self.uturn_req = None

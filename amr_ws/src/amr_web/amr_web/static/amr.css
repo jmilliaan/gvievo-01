@@ -335,17 +335,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px 
 .al-fill > .al-log { flex:1 1 auto; min-height:8rem; max-height:none; }
 .al-standing > .al-log { max-height:30vh; }
 
-/* ---- status hero ---- */
-.hero { border:2px solid var(--rule); background:var(--surface); padding:1rem 1.6rem; overflow-wrap:anywhere; }
-.hero-eyebrow { font:500 1.1rem var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); }
-.hero-mode { font:700 3.8rem/1.05 var(--disp); letter-spacing:-.02em; margin:.2rem 0 .3rem; }
-.hero-mode.warn { color:var(--hazard-ink); }
-.hero-mode.bad { color:var(--stop); }
-.hero-reason { color:var(--ink-2); font-size:1.4rem; min-height:1.4em; }
-.hero-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(16rem,1fr)); gap:1.2rem; margin-top:.8rem; }
-.hero-cols span { display:block; font:500 1.05rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
-.hero-cols b { font:600 1.6rem var(--mono); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
-
 /* ---- I/O ---- */
 .io-list { display:flex; flex-direction:column; border:1px solid var(--rule); background:var(--surface); }
 .io-row {
@@ -457,6 +446,47 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .rf-last span { font:400 1.3rem var(--mono); color:var(--ink-2); }
 .rf-last.fresh { border-color:var(--ok); background:var(--ok); }
 .rf-last.fresh b, .rf-last.fresh span { color:var(--surface); }
+/* Run tracked: the follower readout. Under the rail's tiles when it fits there whole
+   (run_tracked.html placeFollower); else a column beside the picker (.with-follower). */
+.rail-extra { flex:0 1 auto; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:.4rem; }
+#telemetry > .rail-extra { padding-top:.6rem; border-top:1px solid var(--rule); }
+.rail-extra > * { flex:0 0 auto; margin:0; }
+.rail-extra .tel-grid.rows .tel { padding:.25rem .8rem; }
+.rail-extra .line-track { width:100%; }
+.rail-extra .lt-head b { white-space:nowrap; }
+.rail-extra .lt-lcps { grid-template-columns:repeat(3,auto); justify-content:space-between; font-size:1rem; }
+.rail-extra .rf-last { align-items:center; }
+.rail-extra .rf-last b { font-size:3.6rem; }
+.rail-extra .rf-last span { font-size:1.1rem; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Run tracked: the job picker owns the column. Two big actions on top, then touch tiles. */
+.line-job { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:1.2rem; }
+.line-job.with-follower { grid-template-columns:minmax(0,3fr) minmax(22rem,2fr); }
+.line-job > * { min-width:0; min-height:0; }
+.job-pick { overflow:auto; display:flex; flex-direction:column; gap:.8rem; }
+.job-pick > * { flex:0 0 auto; margin:0; }
+.job-pick h2 { margin:.2rem 0 0; }
+/* the two actions stay in reach while the tiles scroll under them (HMI, long mission lists) */
+.job-actions { position:sticky; top:0; z-index:1; background:var(--paper); }
+.with-follower button.pick i { -webkit-line-clamp:1; }
+.job-actions > button { min-height:5.6rem; font-size:1.5rem; }
+.job-actions > button.big { flex-direction:column; gap:.2rem; }
+.job-actions small { font:500 1.05rem var(--mono); letter-spacing:.02em; text-transform:none; color:var(--ink-2);
+  max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pick-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(16rem,1fr)); gap:.5rem; }
+.pick-grid.small { grid-template-columns:repeat(auto-fill,minmax(10rem,1fr)); }
+.pick-grid.small button.pick { min-height:3.8rem; }
+button.pick {
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:.2rem; text-align:left;
+  min-height:4.6rem; padding:.5rem .9rem; border:1px solid var(--rule); background:var(--surface); color:var(--ink);
+}
+button.pick b { font:600 1.3rem var(--mono); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+button.pick i { font:400 1rem/1.3 var(--mono); font-style:normal; color:var(--ink-3);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+button.pick:hover:not(:disabled) { border-color:var(--accent-2); }
+button.pick.on { background:var(--accent-wash); border:2px solid var(--accent-2); padding:calc(.5rem - 1px) calc(.9rem - 1px); }
+button.pick.on b { color:var(--accent-2); }
+button.pick.bad { border-left:3px solid var(--stop); }
+button.pick.bad i { color:var(--stop); }
 /* A touch panel has no keyboard: the key hints and the key legend are noise there. */
 @media (pointer:coarse) {
   button.dir .key, .legend.keys { display:none; }
@@ -475,7 +505,8 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 /* three equal buttons on one line, whatever the column width */
 .bar.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .bar.two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
-.bar.three > *, .bar.two > * { padding-left:.4rem; padding-right:.4rem; }
+.bar.four { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.bar.three > *, .bar.two > *, .bar.four > * { padding-left:.4rem; padding-right:.4rem; }
 .canvas-wrap {
   position:relative; background:var(--paper); border:1px solid var(--rule);
   overflow:hidden; min-height:24rem;
@@ -514,17 +545,6 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
   .manual .pad { width:100%; }
   button.dir { aspect-ratio:1/1; }
   .pad.compact button.dir { aspect-ratio:auto; }
-}
-
-/* ---- blind run (/commissioning) ---- */
-label.check { display:flex; gap:.8rem; align-items:flex-start; margin:1rem 0 0; font:500 1.25rem var(--sans); color:var(--ink); cursor:pointer; }
-label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem 0 0; flex:none; }
-.br-ms { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; }
-.list > .row.br-hist { grid-template-columns:minmax(0,1.6fr) minmax(0,.5fr) minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,1.1fr); }
-.row.br-hist i.n { font-style:normal; font-weight:400; font-size:1.1rem; }
-@media (max-width:760px) {
-  .list > .row.br-hist { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
-  .br-ms { grid-template-columns:minmax(0,1fr); }
 }
 
 /* ---- operator home (plan phase 1): one state, one sentence, one button ----
@@ -583,6 +603,10 @@ label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem
 }
 .home-more > summary small { color:var(--ink-3); font-weight:400; }
 .home-more .al-log { border:none; border-top:1px solid var(--rule); max-height:32vh; }
+/* the engineer's block under the standing list (the old Status page) */
+.home-eng { border-top:1px solid var(--rule); padding:1rem 1.6rem; }
+.home-eng .bar { margin-top:0; }
+.home-eng .note { margin:.6rem 0; }
 
 /* The detail line under an alarm's action: the code and the engineer's text, small. */
 .al-detail { display:block; font:400 1.1rem var(--mono); color:var(--ink-3); font-style:normal; margin-top:.2rem; }

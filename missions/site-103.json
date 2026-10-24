@@ -1,10 +1,11 @@
 {
-  "schema": "site-3",
+  "schema": "site-4",
   "mission_name": "site-103",
   "home": "HOME-N",
   "attach": "ATT",
   "trip_calls": 2,
   "stop_distance_m": 0.5,
+  "cruise_mps": 0.4,
   "junctions": {
     "J-BMERGE": {
       "shape": "Y",
@@ -282,5 +283,7 @@
         }
       }
     }
-  }
+  },
+  "uturn_points": {},
+  "zones": {}
 }

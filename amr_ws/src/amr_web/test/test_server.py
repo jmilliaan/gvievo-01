@@ -495,7 +495,7 @@ def test_pages_fonts_and_style_guards(env):
 
     client = env[0]
     for page in (
-        "/status",
+        "/home",
         "/manual",
         "/maps",
         "/editor",
@@ -506,7 +506,6 @@ def test_pages_fonts_and_style_guards(env):
         "/io",
         "/alarms",
         "/params",
-        "/commissioning",
     ):
         r = client.get(page)
         assert r.status_code == 200, page
@@ -553,7 +552,7 @@ def test_one_layout_three_sizes(env):
     assert base.index("dataset.ui") < base.index('href="/static/amr.css"')
     assert "(pointer:coarse)" in base and "amr.ui" in base
     client = env[0]
-    for page in ("/status", "/manual", "/run", "/alarms"):
+    for page in ("/home", "/manual", "/run", "/alarms"):
         html = client.get(page).data.decode()
         assert 'id="ui-size"' in html and 'id="pill-link"' in html, page
 
@@ -573,17 +572,16 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
     from amr_web import role as rolemod  # noqa: PLC0415
 
     for page in (
-        "/status",
         "/manual",
         "/maps",
         "/editor",
         "/review",
         "/run",
+        "/run-tracked",
         "/monitor",
         "/io",
         "/alarms",
         "/params",
-        "/commissioning",
     ):
         client.post("/api/role", json={"role": "operator"})
         html = client.get(page).data.decode()
@@ -787,8 +785,6 @@ _JSON_POSTS = [
     "/api/localization/initialpose",
     "/api/mission/run",
     "/api/missions",
-    "/api/commissioning/plan",
-    "/api/commissioning/measurement",
     "/api/maps/sim_factory/1/edit",
     "/api/maps/sim_factory/1/routes/validate",
     "/api/maps/sim_factory/1/routes/save",
@@ -866,3 +862,27 @@ def test_guided_forced_u_turn_needs_the_engineer_and_a_boolean(env):
     assert len(stub.calls) == n  # nothing refused reached the robot
     page = client.get("/guide")
     assert page.status_code == 200 and b'data-uturn="true"' in page.data
+
+
+def test_guided_continue_needs_the_engineer_and_a_boolean(env):
+    client, stub, *_ = env
+    r = client.post("/api/line/continue", json={"arm": True})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_continue", (True,))
+    n = len(stub.calls)
+    for bad in ({"arm": "yes"}, {}):
+        assert client.post("/api/line/continue", json=bad).status_code == 422
+    client.post("/api/role", json={"role": "operator"})
+    assert client.post("/api/line/continue", json={"arm": True}).status_code == 403
+    assert len(stub.calls) == n
+    assert b'data-continue="true"' in client.get("/guide").data
+
+
+def test_the_tape_graph_overlay_is_read_only_and_for_any_role(env):
+    client, stub, *_ = env
+    teach = client.get("/teach").data
+    assert b'data-act="mark"' in teach and b'data-act="mark_delete"' in teach
+    assert b'id="gd-mark"' in client.get("/guide").data
+    client.post("/api/role", json={"role": "operator"})
+    r = client.get("/api/line/graph")
+    assert r.status_code == 200 and r.json["available"] is False
+    assert b"tapegraph.js" in client.get("/run").data

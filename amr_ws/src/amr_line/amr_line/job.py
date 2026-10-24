@@ -41,6 +41,11 @@ WHAT HOLDS THE VEHICLE, and how each resumes:
               events, while driving: the home stop may have been driven past. Needs a
               physical Start once the stream is back (2026-10-18)
   station     parked at a stop: a physical Start, then the pre-move warning
+  position    a trip (the position engine, amr_line.site_run): the tape locator was not sure
+              enough where the AGV is before a stop, an order or the U-turn. Held BEFORE the
+              point; a physical Start re-checks (tracked plan 4, 2026-10-24)
+  payload     a trip at its U-turn with a release not recorded: no pivot with a trolley
+              attached. The Calls page's "released" confirmation, then a physical Start
   authority   lease, generation or panel selector changed under the run.
               Never auto-resumes: something above this layer took control.
               An explicit act - the selector leaving AUTO on a valid panel,
@@ -91,6 +96,12 @@ KINK_MIN_LEFT_DEG = 10.0
 # The kink pivot stops inside kink_stop_mm, not centred: settle only long enough for the
 # wheels to come to rest, then the follower steers the rest.
 KINK_SETTLE_S = 0.3
+# Right after a U-turn the tape may drop out near the centre (2026-10-24 14:08: gone 0.94 s
+# after "U-turn complete" at the MRU end, track level 3, then seen again at rest at -56 mm).
+# Within this much travel after the pivot, ANY loss is handled like a kink: stop, re-read,
+# pivot toward the side it was last seen if it is not in view, FAULT if it is not found -
+# never the silent end of the run.
+POST_UTURN_M = 1.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -137,6 +148,9 @@ class Inputs:
     # Logged in every state; the mission's high-zone codes set the speed while RUNNING
     # (TapeRun.markers). No marker changes the job's state.
     markers: dict | None = None
+    # The tape locator (tracked plan 4): TapeRuntime.loc_state(), or None. Only a trip acts on
+    # it; a Start of a trip needs it at HOME and healthy.
+    loc: dict | None = None
 
 
 class FollowJob:
@@ -170,6 +184,16 @@ class FollowJob:
         self._marker_new: list = []
         self.markers_ok = False
         self._marker_log = []
+        # The position engine (tracked plan 4). Off (None) unless the node configures it
+        # (tape_loc.live): then a site mission is a job, its trips form from machine calls.
+        self._site_cfg = None       # {"params", "compile"}: locator limits, trip -> TripRoute
+        self.site = None            # the parsed site mission while it is the job
+        self.calls = None           # trip.CallQueue
+        self.payload = None         # trip.Payload: "trolleys off at HOME", survives trips
+        self.trip = None            # the trip being driven
+        self.trip_route = None
+        self.trip_new = None        # a route the node must seed the locator on, once
+        self.trip_note = ""         # how the last trip ended
         self.reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -197,7 +221,11 @@ class FollowJob:
         self.kinks = 0              # kink pivots this run
         self._edge_gone = 0         # ticks the tape has been gone after leaving at the edge
         self.ended_at_end = False   # DONE "track lost": the guide page may force the U-turn there
+        self._post_uturn_m = None   # travel since the last U-turn, while under POST_UTURN_M
+        self.continue_armed = False  # guide page: the next Start continues this run (same phase)
         self._end_gone = 0          # ticks the tape has been gone with a U-turn read pending
+        if self.trip is not None:
+            self._trip_abort("reset")
         self.tape = self._new_tape()
         self.f.reset()
 
@@ -205,6 +233,11 @@ class FollowJob:
         """A fresh mission state for one run: stage, latches and cursor start over."""
         from amr_line.tape_run import TapeRun  # noqa: PLC0415  (profile-dependent)
 
+        if self.site is not None:
+            if self.trip is None:
+                return TapeRun(None)            # between trips: nothing to act on
+            from amr_line.site_run import SiteRun  # noqa: PLC0415
+            return SiteRun(self.site, self.trip, self.trip_route, self._site_cfg["params"])
         t = TapeRun(self.mission, self.destination)
         if t.high_select is not None:
             t.high_select = self.high_select
@@ -238,6 +271,22 @@ class FollowJob:
             return False, "no run: a forced U-turn only while running or at the tape end"
         return self.tape.force_u_turn(on)
 
+    def continue_on_start(self, on):
+        """Guide page: a guided run that ended "track lost" (a U-turn that left the AGV off
+        the tape, a lost tape) continues on the NEXT physical Start from where the engineer
+        put it back on the tape - same phase and distances - instead of a new run from
+        "out" (2026-10-24 13:43: a new run from the MRU end took the home strip for the
+        U-turn). Returns (ok, message). It never starts anything by itself."""
+        if self.tape is None or not (self.tape.guided and self.tape.mrun):
+            return False, "continue only in a guided marker mission"
+        if self.state != DONE or not self.ended_at_end:
+            return False, "nothing to continue: only after the run ended \"track lost\""
+        self.continue_armed = bool(on)
+        if not on:
+            return True, "continue cancelled: the next Start begins a new run"
+        return True, (f"continue armed ({self.tape.mrun_phase} phase): put the AGV on the tape facing "
+                      f"the way to go, then press the physical Start (AUTO)")
+
     def select_speed(self, high):
         """The guided page's speed toggle. Returns (ok, message). HIGH only lets the marker
         pair grant HIGH; it never starts, resumes or speeds anything by itself."""
@@ -248,12 +297,114 @@ class FollowJob:
             self.high_select = bool(high)
         return ok, msg
 
+    # -- trips (tracked plan 4): calls, the payload, the position engine ---------------------
+    def configure_site(self, params, compile_trip):
+        """Let a site mission be the job (tape_loc.live). compile_trip(trip) -> TripRoute or a
+        RouteError; params: the locator limits (tape_locator.Params)."""
+        self._site_cfg = {"params": params, "compile": compile_trip}
+        from amr_line import trip as tripmod  # noqa: PLC0415
+        if self.payload is None:
+            self.payload = tripmod.Payload()
+
+    def trip_call(self, machine, now):
+        if self.calls is None:
+            return False, "no site mission is the job: calls are taken only while it is"
+        return self.calls.call(machine, now)
+
+    def trip_cancel(self, machine):
+        if self.calls is None:
+            return False, "no site mission is the job"
+        if self.calls.cancel(machine):
+            return True, f"{machine}'s call cancelled"
+        return False, f"{machine} is not waiting" + (" (it is on the trip being driven: Clear stops it)"
+                                                     if self.trip and machine in self.trip.machines else "")
+
+    def confirm_released(self):
+        """The Calls page: every trolley of this trip is off (the HOLD payload before the U-turn).
+        It records; the vehicle moves only on the physical Start."""
+        if self.trip is None:
+            return False, "no trip is being driven"
+        self.trip.confirm_released()
+        return True, "releases confirmed: press the physical Start to pivot"
+
+    def confirm_off(self):
+        """The Calls page: the trolleys are off at HOME; the next trip may leave the bay."""
+        if self.payload is None:
+            return False, "no site mission is the job"
+        if self.trip is not None:
+            return False, "a trip is being driven: confirm at HOME once it has ended"
+        self.payload.confirm_off()
+        return True, "trolleys off at HOME confirmed: the next trip may leave"
+
+    def trip_status(self):
+        """For the Calls page and LineState: (trip, next, queue, payload)."""
+        if self.calls is None:
+            return {"trip": "", "trip_next": "", "trip_queue": "", "trip_payload": ""}
+        q = " ".join(m for m, _t in self.calls.pending)
+        g = self.calls.ready_group()
+        nxt = self.tape.next_event() if hasattr(self.tape, "next_event") else ""
+        if g is not None and self.trip is None:
+            nxt = f"{g} trip formed: press Start at {self.site['HOME']}"
+        ok, why = self.payload.may_leave()
+        return {"trip": self.trip.describe() if self.trip else self.trip_note,
+                "trip_next": nxt, "trip_queue": q, "trip_payload": "" if ok else why}
+
+    def _site_at_home(self, loc):
+        """(at HOME, why not) from the locator, for a trip's Start."""
+        from amr_line import site_run  # noqa: PLC0415
+        p = self._site_cfg["params"]
+        if not loc or not loc.get("started"):
+            return False, f"the tape locator is not running: press At home at {self.site['HOME']}"
+        if loc.get("lost"):
+            return False, f"localization LOST ({loc['lost']}): At home at {self.site['HOME']}"
+        off = loc.get("home_offset")
+        if off is None or abs(off) > site_run.HOME_START_M:
+            far = f" ({off:+.2f} m from it)" if off is not None else ""
+            return False, f"not at {self.site['HOME']}{far}: a trip starts there"
+        if loc["sigma"] > p.sigma_junction_m:
+            return False, f"position uncertain at {self.site['HOME']} (sigma {loc['sigma']:.3f} m)"
+        return True, ""
+
+    def _trip_check(self, i: Inputs):
+        """What a trip's Start needs: the trolleys confirmed off, a formed trip, the AGV at HOME."""
+        if self.trip is None:
+            ok, why = self.payload.may_leave()
+            if not ok:
+                return why
+            if self.calls.ready_group() is None:
+                need = self.site["TRIP_CALLS"]
+                return f"no trip formed: {need} call{'s' if need > 1 else ''} of one group needed"
+        ok, why = self._site_at_home(i.loc)
+        return "" if ok else why
+
+    def _trip_take(self):
+        """Form the trip and compile its route. "" or why not (the calls are put back)."""
+        trip = self.calls.take()
+        try:
+            route = self._site_cfg["compile"](trip)
+        except ValueError as e:         # tape_graph.RouteError / GraphError
+            self.calls.restore(trip)
+            return f"trip {trip.describe()} cannot be driven: {e}"
+        self.trip, self.trip_route, self.trip_new = trip, route, route
+        self.trip_note = ""
+        return ""
+
+    def _trip_abort(self, why):
+        trip, self.trip = self.trip, None
+        done = ", ".join(sorted(trip.served)) or "nothing"
+        self.trip_note = f"trip {trip.describe()} ABORTED ({why}); served: {done}"
+        if self.tape is not None:
+            self.tape.events.append(("warn", self.trip_note + f" - bring the AGV to {self.site['HOME']}"))
+
     def set_mission(self, mission, destination=None):
         """Choose the job for the next run: mission and, when the mission has
         destination stops, the destination. Refused unless IDLE or DONE: a run's
         latches and destination belong to the job it started with."""
         if self.state not in (IDLE, DONE):
             return False, f"cannot change the job while {STATE_NAMES[self.state]}: clear first"
+        if mission is not None and str(mission.get("SCHEMA", "")).startswith("site"):
+            return self._set_site(mission)
+        self.site = self.calls = None
         destination = (destination or "").strip() or None
         dests = mission["DESTINATIONS"] if mission else []
         if destination is not None and destination not in dests:
@@ -271,8 +422,23 @@ class FollowJob:
             return True, "plain line following" + (f" (U-turn tags {', '.join(turns)})" if turns else "")
         return True, f"mission {name}" + (f", destination {destination}" if destination else "")
 
+    def _set_site(self, site):
+        if self._site_cfg is None:
+            return False, (f"{site['MISSION_NAME']} drives trips only with tape_loc.live: true "
+                           f"(the position engine is off - it shadows)")
+        from amr_line import trip as tripmod  # noqa: PLC0415
+        self.mission, self.destination, self.result = None, None, ""
+        self.site = site
+        self.calls = tripmod.CallQueue(site)
+        self.high_select = False
+        self.tape = self._new_tape()
+        return True, (f"site mission {site['MISSION_NAME']}: trips form from machine calls "
+                      f"({site['TRIP_CALLS']} a trip), Start at {site['HOME']}")
+
     def at_home(self):
         """(at_home, why_not). (False, "") for a mission without a Home stop."""
+        if self.site is not None:
+            return False, ""
         home = self.mission["HOME"] if self.mission else None
         if home is None:
             return False, ""
@@ -297,6 +463,8 @@ class FollowJob:
         rfid = self._rfid_check(i)
         if rfid:
             return rfid
+        if self.site is not None:
+            return self._trip_check(i)
         m = self.mission
         if m is None or m["HOME"] is None:
             return ""
@@ -318,14 +486,22 @@ class FollowJob:
             self.reason = f"Start refused: {pre}"
             self.refused = pre      # the node turns this into one operator event
             return 0.0, 0.0
+        if self.site is not None:
+            why = self._trip_take()
+            if why:
+                self.reason = f"Start refused: {why}"
+                self.refused = why
+                return 0.0, 0.0
         self._binding = i.authority
-        turn = self.state == DONE and self.ended_at_end and self.tape is not None and self.tape.uturn_forced
-        return self._begin_premove(i, "uturn" if turn else "start")
+        at_end = self.state == DONE and self.ended_at_end and self.tape is not None
+        kind = ("uturn" if at_end and self.tape.uturn_forced
+                else "continue" if at_end and self.continue_armed else "start")
+        return self._begin_premove(i, kind)
 
     def _depart(self, i: Inputs):
         """A run from IDLE/DONE begins: fresh engine, fresh mission state."""
         self.result = ""
-        self.ended_at_end = False
+        self.ended_at_end = self.continue_armed = False
         self.f.reset()
         self.tape = self._new_tape()
         self.followed_m = 0.0
@@ -361,8 +537,11 @@ class FollowJob:
         self._premove = None
         self._prereq_since = None
         self.state, self.hold_cause = back_state, back_cause
-        if kind in ("start", "uturn"):
+        if kind in ("start", "uturn", "continue"):
             self._binding = None
+        if kind == "start" and self.trip is not None:
+            self.calls.restore(self.trip)       # not driven: the calls wait again
+            self.trip = self.trip_route = None
         self.reason = f"Start cancelled: {why}"
         self.refused = why
         return 0.0, 0.0
@@ -408,6 +587,15 @@ class FollowJob:
         self._prereq_since = None
         if kind == "start":
             return self._depart(i)
+        if kind == "continue":
+            # The run that ended "track lost" goes on where the engineer put the AGV back on
+            # the tape: same phase (out/back), same distances, so home is still home.
+            self.ended_at_end = self.continue_armed = False
+            self.state, self.hold_cause = RUNNING, ""
+            self.f.reset()
+            self.tape.continue_run()
+            self.reason = f"continued on Start ({self.tape.mrun_phase or 'run'})"
+            return 0.0, 0.0
         if kind == "uturn":
             # The run that ended at the tape end goes on: same mission state, the forced
             # U-turn from standstill (spin, reacquire, back), then the way home.
@@ -447,6 +635,8 @@ class FollowJob:
         self._resume_at = None
         self.followed_m = 0.0
         self.f.hard_stop()
+        if self.trip is not None:
+            self._trip_abort("cleared")
         self.tape = self._new_tape()
         self.reason = "cleared"
         return moving
@@ -529,6 +719,8 @@ class FollowJob:
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
+        if self.diag:
+            self.diag = dict(self.diag, v_base=0.0)     # hard_stop zeroed it: say so
         self._hold_since = None
         self._estop_was_field = False
         # A station stop parked HIGH (TapeRun._begin_stop); a protective-field or
@@ -580,6 +772,8 @@ class FollowJob:
                 self.reason = f"not ready: {pre}" if pre else "ready: press the physical Start under AUTO"
             return 0.0, 0.0
         if self.state == FAULT:
+            if self.trip is not None:
+                self._trip_abort(self.reason)
             return 0.0, 0.0
 
         # Authority is re-checked every tick and never debounced: if the lease
@@ -698,7 +892,12 @@ class FollowJob:
 
     def _arrive_home(self):
         """The run is over. The destination is spent: the next run is a new job."""
-        self.result = self.tape.table.result()
+        self.result = self.tape.result()
+        if self.trip is not None:
+            # The trolleys come off at HOME by hand: the next trip waits for that confirmation.
+            self.payload.trip_ended()
+            self.trip_note = self.result
+            self.trip = None
         where = self.tape.stop["where"]
         self.state = DONE
         self.hold_cause = ""
@@ -734,11 +933,11 @@ class FollowJob:
         from agv_core import config as vehicle  # noqa: PLC0415
 
         t = self.tape
-        if t.speed.state != "normal" and self.step_m is None:
+        if (t.speed.state != "normal" or t.high) and self.step_m is None:
             t.drop_high("wheel travel unavailable (no encoder counts)")
         if self.step_m is None:
             t.parked(None)
-        if t.speed.high and (i.yaw_rate is None or i.v_meas is None):
+        if t.high and (i.yaw_rate is None or i.v_meas is None):
             t.drop_high("curve guard inputs stale (gyro and odometry)")
         above = (self.diag or {}).get("v_base", 0.0) > vehicle.AUTO_RPM + 1.0
         trip = t.guard.update(t.speed.high or above, i.yaw_rate, i.v_meas,
@@ -814,13 +1013,15 @@ class FollowJob:
             return self._uturn_fault("encoder counts unavailable")
         e_mm, level = u_turn_error(i.sensor)
         # The spin's time budget stands still while a warning field holds it.
-        left, right = t.uturn.update(i.counts, e_mm, level, i.dt, paused=i.warning_scale < 1.0)
+        left, right = t.uturn.update(i.counts, e_mm, level, i.dt, paused=i.warning_scale < 1.0,
+                                     yaw_rate=i.yaw_rate)
         if t.uturn.phase == uturn.FAILED:
             return self._uturn_fault(t.uturn.reason)
         if t.uturn.phase == uturn.DONE:
             t.finish_u_turn()
             # The PID history describes the tape as it was before the pivot.
             self.f.reset()
+            self._post_uturn_m = 0.0
             return 0.0, 0.0
         return left, right
 
@@ -850,7 +1051,8 @@ class FollowJob:
             self._edge_gone = 0
             return False
         last = diag.get("e_used")
-        if diag.get("has_track") or last is None or abs(last) < vehicle.KINK_EDGE_MM:
+        after_turn = self._post_uturn_m is not None
+        if diag.get("has_track") or last is None or (abs(last) < vehicle.KINK_EDGE_MM and not after_turn):
             self._edge_gone = 0
             return False
         self._edge_gone += 1
@@ -864,8 +1066,13 @@ class FollowJob:
         self.f.hard_stop()
         self.diag = dict(diag, v_base=0.0)
         side = "right" if direction == "cw" else "left"
-        self.tape.events.append(("info", f"kink: the tape left the sensor at {last:+.0f} mm - "
-                                         f"stopping to pivot {side} onto it"))
+        if abs(last) < vehicle.KINK_EDGE_MM:
+            self.tape.events.append(("warn", f"the tape vanished at {last:+.0f} mm "
+                                             f"{self._post_uturn_m:.2f} m after the U-turn - stopping "
+                                             f"to find it (pivot {side} if it is not in view)"))
+        else:
+            self.tape.events.append(("info", f"kink: the tape left the sensor at {last:+.0f} mm - "
+                                             f"stopping to pivot {side} onto it"))
         return True
 
     def _tape_end_tick(self, t, diag, stopping):
@@ -932,9 +1139,16 @@ class FollowJob:
         """One engine tick: mission tags, branch order, speed zone, stops, U-turn."""
         t = self.tape
         driving = self.kink is None     # a kink pivot starts no stop and no U-turn
+        t.locate(i.loc, (self.diag or {}).get("v_base", 0.0))
         tags = t.scan(i.now, i.rfid, driving, self.f)
         if t.fault:
             return self._tape_fault()
+        if t.hold_req is not None:
+            # The position engine is not sure enough where it is: held BEFORE the point.
+            cause, why = t.hold_req
+            t.hold_req = None
+            self._hold(cause, f"{why}; press Start to re-check")
+            return 0.0, 0.0
         if t.link_lost:
             # Immediate, not debounced: the node already allows the heartbeat
             # rfid_fresh_s, and every metre driven blind is a tag not read.
@@ -956,7 +1170,7 @@ class FollowJob:
         stopping = t.stop is not None
         left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, high,
                                           cruise_rpm=t.cruise_rpm, change_rate=t.change_rate(),
-                                          urgent_rate=t.speed.exit_rate)
+                                          urgent_rate=t.urgent_rate)
         self.diag = diag
         t.speed.settled(diag["v_base"])
         if not stopping and self._kink_begin(diag):
@@ -967,6 +1181,10 @@ class FollowJob:
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
         v_now, _ = kinematics.wheels_to_body(left, right)
         self.followed_m += abs(v_now) * i.dt
+        if self._post_uturn_m is not None:
+            self._post_uturn_m += abs(v_now) * i.dt
+            if self._post_uturn_m > POST_UTURN_M:
+                self._post_uturn_m = None
         t.advance(self.step_m if self.step_m is not None else abs(v_now) * i.dt)
         if t.fault:
             return self._tape_fault()
@@ -974,8 +1192,14 @@ class FollowJob:
         # A measured stop that has come to rest. Home ends the run; any other
         # stop parks and waits for Start.
         if stopping and diag["v_base"] == 0:
-            if t.stop.get("role") == "home":
+            act = t.at_rest()
+            if act == "home":
                 return self._arrive_home()
+            if act == "pivot":
+                return 0.0, 0.0             # the U-turn takes over next tick
+            if isinstance(act, tuple):
+                self._hold(*act)
+                return 0.0, 0.0
             self._hold("station", f"at {t.stop['where']}: press Start to go on")
             return 0.0, 0.0
 
@@ -983,6 +1207,13 @@ class FollowJob:
         # LINE_LOSS_GRACE_M of travel. That is a completed run, not a fault:
         # the vehicle reached the end of the tape, or the tape ended.
         if diag["state"] in ("line_lost", "sensor_lost"):
+            if self.trip is not None:
+                # A trip that lost its tape is not over where it stopped: FAULT, not DONE.
+                self._trip_abort(f"tape lost at {self.tape.where()}")
+                self.state, self.hold_cause = FAULT, ""
+                self.reason = "track lost during a trip: bring the AGV to HOME (MANUAL), At home, Reset"
+                self.f.hard_stop()
+                return 0.0, 0.0
             self.state = DONE
             self.ended_at_end = diag["state"] == "line_lost"
             self.hold_cause = ""
@@ -1022,7 +1253,9 @@ class FollowJob:
         u = t.uturn_snapshot() or {}
         at_home, why = self.at_home()
         return {
-            "mission": t.name if self.mission and t.name != "empty" else "",
+            **self.trip_status(),
+            "mission": t.name if (self.mission or self.site) and t.name != "empty" else
+            (self.site["MISSION_NAME"] if self.site else ""),
             "station": (t.stop or {}).get("where", ""),
             "next_station": self.destination or "",
             "branch_intent": t.branch.ladder.intent(),

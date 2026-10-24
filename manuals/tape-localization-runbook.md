@@ -229,7 +229,7 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
 
 | | |
 |---|---|
-| Speed | 0.3 m/s outside HIGH. **Speed** toggle on the Guide page (2026-10-24), **Normal** at every mission load: Normal ignores the corner code-1/2 strips; High lets them act as in `line-a` - HIGH (0.85 m/s) only after an outer 2 then inner 1, NORMAL again at the exit 1 / 2, back to 0.3 m/s after it. The toggle never raises the speed by itself; Normal mid-straight drops HIGH at once |
+| Speed | 0.4 m/s outside HIGH (0.3 until 2026-10-24). **Speed** toggle on the Guide page (2026-10-24), **Normal** at every mission load: Normal ignores the corner code-1/2 strips; High lets them act as in `line-a` - HIGH (0.85 m/s) only after an outer 2 then inner 1, NORMAL again at the exit 1 / 2, back to 0.4 m/s after it. The toggle never raises the speed by itself; Normal mid-straight drops HIGH at once |
 | Branch orders | **Guide** page (engineer PIN), on a phone or a laptop: ◀ Left / ▲ Straight / Right ▶, or the arrow keys |
 | U-turn | MLS **code 3** about 1 m before the MRU tape end: creep at 0.1 m/s, stop where the tape ends, pivot CW |
 | Home | MLS **code 3** in the north bay, **0.5 m before HOME-N** on the way back in: a measured stop there, run DONE |
@@ -270,6 +270,16 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
    the end (on the way out only): the next tape end is the U-turn instead of the run ending
    "track lost". One shot, **Cancel** undoes it. Too late once the run has ended: MANUAL and
    the pendant.
+7. **Marks** (2026-10-24): **Mark here** on the Guide page (or the M key, or the Teach page)
+   records where the AGV is at that moment, driving or standing: the last AMCL pose projected
+   onto the leg it faces, moved on by the wheel travel since (about +/-10 cm at 0.3-0.4 m/s).
+   They are saved per map revision as M1, M2, ... (`~/.amr/teach/<map>-rev<R>/marks.json`)
+   with an optional label; their role (station, zone edge, ...) is given later. Needs built
+   legs (Build, or an active graph) and READY. Teach page: **Marks** lists them, **Delete
+   mark** with an M-id in the field. Build re-projects them onto re-averaged legs.
+8. **Overlay:** the Run page map draws the tape graph (or, before one is published, the newest
+   pass, dashed), the junction anchors, the stations and the marks - on the map revision they
+   were taught on only.
 
 ### 3.3 Teach the stations
 
@@ -290,6 +300,25 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
 5. **Build** again: it says "every circuit compiles", or lists what is missing. Today C-BTU stays
    incomplete: row 2 is not laid.
 
+### 3.3A Stations and points from marks (tracked plan 4, E0)
+
+The faster way to teach (2026-10-24): mark while driving (3.2A item 7), give each mark its role
+afterwards.
+
+1. E: Teach page → Mark field: the mark's id (`M6`) → Role: the station or point → **Set role**.
+   - Roles: every station (HOME-N, ATT, MW-x, ME-x), every mid-line U-turn point
+     (`uturn_points` in `missions/site-103.json`) and every zone end (`zones`).
+   - The message gives the leg and `s`. It refuses a role whose leg the mark is not on, or that
+     faces the wrong way (an MW role on an eastbound mark).
+   - A role moved to another mark leaves the first one. Role `-` removes it.
+2. **Roles** lists what is taught, from which mark, and what is not.
+3. **Build** puts them in the graph, then **Publish**, **Make active** (3.4).
+4. INBOUND stops (ME-x) and the U-turn points need marks on their own lap: the outbound lap's
+   marks face west.
+5. A U-turn point must lie after its machine's release stop. Its take-back stop must lie after
+   the point's place on the return leg. Otherwise the trip is refused at Start, with the station
+   named.
+
 ### 3.4 Publish and make active
 
 1. E: **Publish** creates graph revision `g<N>` under the map. It never changes afterwards.
@@ -306,8 +335,16 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
    order … : ok", or "would HOLD" with the reason. LOST, re-acquired and unexpected forks are logged
    too.
 3. Acceptance: plan 3 section 4, P1. Any "would HOLD" or LOST gets looked at before P2.
+4. Plan 4 E2: the log also names each taught U-turn point ("U-turn point of MRU1 UT-MRU1 …") and
+   zone end ("zone Z-…: HIGH from …"). Five Guide-page laps: every "would order" matches the
+   order given by hand, every "would stop" lies within ±10 cm of its floor mark.
 
-## 4. Daily operation (planned, P2–P3)
+## 4. Daily operation (built 2026-10-24, off until `tape_loc.live: true`)
+
+The position engine (tracked plan 4) drives trips once the profile says `tape_loc.live: true`.
+That is after E2 (3.5 item 4). The site mission is then the line job at start-up (Run tracked lists
+it too), and the **Calls** tab runs it. The new LineState fields need `colcon build` of
+`amr_interfaces` (`amr_ws/README.md`). Without the build the Calls page says so, and trips still run.
 
 ### 4.1 After power-on
 
@@ -323,8 +360,10 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
 4. **Attach.** O attaches the trolleys → **Start**.
 5. **At each machine:**
    - **BTU:** swap the trolley → **Start**. Two calls at one shared point are one stop.
-   - **MRU, westbound:** release the trolley → **Start**. After the last release the AGV pivots at the tape end, empty.
-   - **MRU, eastbound:** it stops at the same machines in reverse order. Take the trolley back → **Start**.
+   - **MRU, outbound (westbound):** release the trolley → **Start**. After the last release:
+     - the AGV stops at that machine's U-turn point and pivots there, empty;
+     - with no U-turn point taught for that machine, it pivots at the tape end.
+   - **MRU, inbound (eastbound):** it stops at the same machines in reverse order. Take the trolley back → **Start**.
 6. **Back at HOME-N:** release the trolleys → Calls page **Trolleys off**. The trip is done, and the next trip can start.
 
 ### 4.3 What the screen shows
@@ -333,16 +372,22 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
 - **Locator line** in the rail: edge, `s`, σ, and HEALTHY / DEGRADED / LOST.
 - **Run tile and message:** the next stop or junction, and why the AGV is held.
 
-## 5. Holds and faults (planned, P2)
+## 5. Holds and faults (built 2026-10-24 with the position engine)
+
+Alarm codes: `POSITION_UNSURE` (hold `position`) and `PAYLOAD_UNCONFIRMED` (hold `payload`). A
+FAULT during a trip aborts it: so do a tape lost, a wrong branch, Reset and Clear. The event log
+says what was served. Bring the AGV to HOME-N under MANUAL, **At home**, Reset. The machines then
+call again.
 
 | Code / cause | Operator sees | Operator does |
 |---|---|---|
 | HOLD `position` before a station or junction | "position uncertain before MW-2" | Check that nothing blocks the scanner's view (people, trolleys parked in the aisle). When the Locator line shows HEALTHY, press **Start**. If it does not recover within a minute: MANUAL, jog to HOME-N, **At home**, and call E |
-| HOLD `position` mid-route, localization LOST | "localization lost" | As above. After 30 s without READY it becomes a FAULT: MANUAL, jog to HOME-N, **At home**. Handle the trolleys by hand |
-| HOLD `payload` before the MRU tape end | "MRU release not recorded: a trolley may still be attached" | Check the trolley. If it is attached, release it here → Calls page **Trolley released** → **Start**. The AGV never pivots with a trolley |
+| HOLD `position` mid-route, localization LOST | "localization LOST (…)" | As above: it stays held, and every **Start** re-checks (`tape_loc.lost_fault_s` is not acted on yet). Not recovering: MANUAL, jog to HOME-N, **At home**, Reset. Handle the trolleys by hand |
+| HOLD `payload` at the U-turn (point or tape end) | "release not recorded for MRU1: a trolley may still be attached" | Check the trolley. If it is attached, release it here → Calls page **Released** → **Start**. The AGV never pivots with a trolley; Start alone does not pivot |
 | Trip Start refused `payload` at HOME-N | "trolleys from the last trip not confirmed off" | Release them → **Trolleys off** → **Start** |
 | FAULT `wrong_branch` | "took the wrong tape after J-…" | The AGV is stopped. MANUAL: jog back to HOME-N, **At home**, Reset. Call E: the junction or its taught geometry needs checking |
-| HOLD `position`: unexpected fork | "a junction where none is expected" | Check where the AGV is and the tape under it. If all is in order, **Start**. If it repeats, call E (tape damage or a changed layout) |
+| Unexpected fork (logged, `LINE_LOC`) | "fork with no taught junction near S …" | Logged only, no hold yet. If it repeats, call E (tape damage or a changed layout) |
+| FAULT: an order not used | "order right for J-N not used: no fork seen within 1 m of where J-N is taught" | MANUAL: check which tape the AGV is on, jog to HOME-N, **At home**, Reset. Call E |
 | Site mission refused at layer start | "graph g3 is for map rev 4, active map is rev 5" | E: Teach page → make the matching graph active, or re-teach (section 6) |
 | `LAYER_EXITED` | "the line software stopped" | **Recover** on the Status page (`amr_ws/RUNBOOK.md` section 4), jog to HOME-N, **At home** |
 

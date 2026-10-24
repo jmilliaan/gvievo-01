@@ -37,6 +37,16 @@ WINDOW_M = 0.5
 # by the MLS - incoming and outgoing tape under the sensor at once - not a junction
 # (2026-10-24: 6 and 7 forks on the way out where C-MRU has 4; 1 and 2 kink pivots).
 PIVOT_FORK_M = 0.4
+# Matching by position (2026-10-24): every junction's fork episode ends at the same map point
+# lap after lap (two passes agreed within 5 cm), while the episode COUNT does not (the bay
+# merge sits on a kink corner, a 3 cm blip follows J-N). With anchors, each node takes the
+# episode nearest its anchor, in circuit order, within this radius; everything else is not
+# a junction. Without anchors, the count heuristic below.
+ANCHOR_R_M = 0.6
+# A mark (2026-10-24) is taken from the moving vehicle: the last AMCL pose, projected onto
+# the leg it lies on and facing along, then moved on by the wheel travel since that pose.
+MARK_MAX_LATERAL_M = 0.30
+MARK_MAX_YAW_DEG = 60.0
 
 
 class TeachError(ValueError):
@@ -115,6 +125,38 @@ def _nodes(mission, circuit_id):
     return [leg["from"] for leg in legs[:-1]] + [legs[-1]["from"]]
 
 
+def _align_anchored(rec, nodes, want, samples, anchors, turns, notes):
+    """_align by position: each fork node takes the nearest episode to its anchor."""
+    t0, t1 = samples[0][0], samples[-1][0]
+    eps = sorted(end for _s, end, _x in rec["forks"] if t0 < end < t1)
+    bounds = [t0] + turns + [t1]
+    events, stretch, last = [], 0, t0
+    for n, kind in zip(nodes, want, strict=True):
+        if kind == "uturn":
+            events.append((turns[stretch], "uturn", 0.0))
+            stretch += 1
+            last = turns[stretch - 1]
+            continue
+        ax, ay = anchors[n]
+        cands = [(math.dist(_interp(samples, e), (ax, ay)), e) for e in eps if last < e < bounds[stretch + 1]]
+        if not cands:
+            raise TeachError(f"pass {rec.get('started')}: no fork episode left for {n} after {last:.1f} m "
+                             f"- a missed MLS fork or a different route")
+        d, e = min(cands)
+        if d > ANCHOR_R_M:
+            raise TeachError(f"pass {rec.get('started')}: no fork within {ANCHOR_R_M} m of {n}'s position "
+                             f"(nearest {d:.2f} m, at {e:.1f} m) - a missed MLS fork or a different route")
+        span = next(end - start for start, end, _x in rec["forks"] if end == e)
+        events.append((e, "fork", span))
+        notes.append(f"{n} at {e:.1f} m ({d:.2f} m from its position)")
+        last = e
+    used = {e for e, k, _b in events if k == "fork"}
+    extra = [e for e in eps if e not in used]
+    if extra:
+        notes.append("not junctions: " + ", ".join(f"{e:.1f} m" for e in extra))
+    return events
+
+
 def _align(rec, nodes, want, t0, t1, notes):
     """The pass's events matched to the circuit's nodes -> [(travel, kind, fork_back)].
 
@@ -155,8 +197,8 @@ def _align(rec, nodes, want, t0, t1, notes):
         for e in extra:
             notes.append(f"dropped a corner fork at {e['end']:.1f} m (two tapes {e['span']:.2f} m, pivot)")
         while len(keep) > need:
-            # an X crossing is short too (#LCP 7 marks it): drop a plain short episode first
-            e = min(keep, key=lambda e: (e["cross"], e["span"]))
+            # the shortest goes: 2026-10-24 a 4 cm blip next to X1 (#LCP 7 like X1 itself)
+            e = min(keep, key=lambda e: e["span"])
             keep.remove(e)
             notes.append(f"dropped the shortest fork at {e['end']:.1f} m (two tapes {e['span']:.2f} m)")
         if len(keep) < need:
@@ -164,13 +206,17 @@ def _align(rec, nodes, want, t0, t1, notes):
             raise TeachError(
                 f"pass {rec.get('started')}: {len(keep)} fork(s) between {lo:.1f} and {hi:.1f} m where "
                 f"the circuit needs {need} - a missed MLS fork or a different route (forks: {names})")
+        keep.sort(key=lambda e: e["end"])
+        names = [n for n, w in zip(nodes, want, strict=True) if w == "fork"]
+        first = sum(counts[:i])
+        notes.append(", ".join(f"{names[first + j]} at {e['end']:.1f} m" for j, e in enumerate(keep)))
         events += [(e["end"], "fork", e["span"]) for e in keep]
         if i < len(turns):
             events.append((turns[i], "uturn", 0.0))
     return sorted(events)
 
 
-def split_pass(rec, mission, notes=None):
+def split_pass(rec, mission, notes=None, anchors=None):
     """One recorded pass -> {leg id: {"pts", "fork_back"}}. TeachError if it does not match.
     notes: a list that receives what the matching dropped or restored."""
     cid = rec["circuit"]
@@ -180,7 +226,16 @@ def split_pass(rec, mission, notes=None):
     if len(samples) < 10:
         raise TeachError(f"pass {rec.get('started')}: only {len(samples)} AMCL poses")
     want = ["uturn" if n in mission["UTURNS"] else "fork" for n in nodes]
-    events = _align(rec, nodes, want, samples[0][0], samples[-1][0], [] if notes is None else notes)
+    notes = [] if notes is None else notes
+    forks = [n for n, w in zip(nodes, want, strict=True) if w == "fork"]
+    if anchors and all(n in anchors for n in forks):
+        turns = sorted(t for t in rec["uturns"] if samples[0][0] < t < samples[-1][0])
+        if len(turns) != want.count("uturn"):
+            raise TeachError(f"pass {rec.get('started')}: {len(turns)} U-turn(s) recorded, the circuit has "
+                             f"{want.count('uturn')} - a run that did not U-turn, or a different route")
+        events = _align_anchored(rec, nodes, want, samples, anchors, turns, notes)
+    else:
+        events = _align(rec, nodes, want, samples[0][0], samples[-1][0], notes)
     b = [t for t, _k, _ in events]
     out = {}
     for i, leg in enumerate(legs[:-1]):
@@ -205,6 +260,32 @@ def split_pass(rec, mission, notes=None):
         pts = suffix + prefix
     out[home] = {"pts": pts, "fork_back": events[0][2], "end_kind": events[0][1]}
     return out
+
+
+def place_mark(graph, x, y, yaw, ahead_m=0.0):
+    """A pose -> (leg id, s, d, (x, y, heading) on the tape, metres clamped past the leg's end).
+    The leg is the nearest one within MARK_MAX_LATERAL_M whose direction matches the
+    heading (the two directions of a tape are two legs); s moves on by ahead_m."""
+    best = None
+    for leg in graph.legs.values():
+        hit = leg.line.project(x, y)
+        if hit is None:
+            continue
+        s, d = hit
+        h = leg.line.point(s)[2]
+        dyaw = abs(math.degrees(math.atan2(math.sin(yaw - h), math.cos(yaw - h))))
+        if abs(d) > MARK_MAX_LATERAL_M or dyaw > MARK_MAX_YAW_DEG:
+            continue
+        if best is None or (abs(d), dyaw) < best[0]:
+            best = ((abs(d), dyaw), leg, s, d)
+    if best is None:
+        raise TeachError(f"({x:.2f}, {y:.2f}) is not on a built leg (within {MARK_MAX_LATERAL_M} m, "
+                         f"facing along it)")
+    _, leg, s, d = best
+    s2 = s + ahead_m
+    over = max(0.0, s2 - leg.line.length)
+    s2 = min(max(s2, 0.0), leg.line.length)
+    return leg.id, s2, d, leg.line.point(s2), over
 
 
 def mean_leg(ident, frm, order, to, segs, fork_backs, end_kind):
@@ -248,7 +329,7 @@ def mean_leg(ident, frm, order, to, segs, fork_backs, end_kind):
                   end_kind=end_kind)
 
 
-def build(passes, mission, binding, stations=(), notes=""):
+def build(passes, mission, binding, stations=(), notes="", anchors=None):
     """Recorded passes (dicts) + the site mission -> (Graph, report lines).
 
     Refused passes are reported and left out; legs with no pass are simply not in the
@@ -261,7 +342,7 @@ def build(passes, mission, binding, stations=(), notes=""):
             continue
         notes = []
         try:
-            parts = split_pass(rec, mission, notes)
+            parts = split_pass(rec, mission, notes, anchors)
         except (TeachError, tg.GraphError) as e:
             report.append(f"REFUSED {e}")
             continue
@@ -294,10 +375,19 @@ def build(passes, mission, binding, stations=(), notes=""):
 
 
 def project_station(graph, mission, sid, pose, taught="", samples=0):
-    """A station's taught pose -> tape_graph.Station on its leg (GraphError if not there)."""
-    lid = mission["STATIONS"].get(sid)
+    """A station's taught pose -> tape_graph.Station on its leg (GraphError if not there).
+
+    A site-4 point (tracked plan 4) is taught the same way: a U-turn point on its machine's
+    release leg; a zone end on whichever leg it lies on and faces along (place_mark)."""
+    points = mission.get("POINTS", {})
+    lid = mission["STATIONS"].get(sid) or points.get(sid)
+    if lid is None and sid in points:
+        try:
+            lid = place_mark(graph, *pose)[0]
+        except TeachError as e:
+            raise tg.GraphError(f"{sid}: {e}") from None
     if lid is None:
-        raise tg.GraphError(f"{sid} is not a station of {mission['MISSION_NAME']}")
+        raise tg.GraphError(f"{sid} is not a station or point of {mission['MISSION_NAME']}")
     leg = graph.legs.get(lid)
     if leg is None:
         raise tg.GraphError(f"{sid} lies on {lid}, which is not taught yet: record its passes first")

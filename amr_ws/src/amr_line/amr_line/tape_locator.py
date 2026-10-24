@@ -291,10 +291,16 @@ class TapeLocator:
         return "resync", best
 
     def uturn_done(self, node_id):
-        """The pivot ended at a taught tape end: S is that node's S."""
+        """The pivot ended at a taught tape end: S is that node's S. A mid-line U-turn node
+        (amr_line.trip_route, "mirror") is no measurement: the AGV pivots on the floor point it
+        stopped on, which lies as far past the node on the return leg as it stopped short of
+        it on the way out - S mirrors about the node, sigma carries over."""
         n = next((n for n in self.route.nodes if n["id"] == node_id and n["kind"] == "uturn"), None)
         if n is None or not self.started or self.lost:
             return False
+        if n.get("mirror"):
+            self.S = 2.0 * n["S"] - self.S
+            return True
         self.S, self.sigma = n["S"], max(n["sigma"], min(self.sigma, n["sigma"] * 3))
         return True
 
@@ -338,9 +344,13 @@ class Shadow:
     """P1 shadow mode: where the locator WOULD have stopped and ordered, logged, with the
     check each decision would have met. Motion is not touched."""
 
-    def __init__(self, route, params, stop_distance_m, uturns=None):
+    def __init__(self, route, params, stop_distance_m, uturns=None, points=()):
+        """points: [(S, id, what)] taught positions of tracked plan 4 on this route (mid-line
+        U-turn points, zone ends): logged where the position engine would act on them."""
         self.p = params
         self.events = []   # (S_trigger, kind, id, detail)
+        for S, ident, what in points:
+            self.events.append((S, "point", ident, what))
         for st in route.stops[1:]:
             self.events.append((st["S"] - stop_distance_m, "stop", st["id"], st["S"]))
         for n in route.nodes:
@@ -363,12 +373,15 @@ class Shadow:
         while self._next < len(self.events) and loc.S >= self.events[self._next][0]:
             S_t, kind, ident, detail = self.events[self._next]
             self._next += 1
-            limit = self.p.sigma_station_m if kind == "stop" else self.p.sigma_junction_m
+            stopping = kind == "stop" or (kind == "point" and detail.startswith("U-turn"))
+            limit = self.p.sigma_station_m if stopping else self.p.sigma_junction_m
             ok = loc.ok_for(limit)
             verdict = "ok" if ok else f"would HOLD ({loc.health}, sigma {loc.sigma:.3f} > {limit:g})" \
                 if not loc.lost else f"would HOLD (LOST: {loc.lost})"
+            if kind == "point" and not stopping:
+                verdict = "ok" if ok else "NORMAL (not sure enough for HIGH)"
             what = {"stop": f"stop {ident}", "order": f"order {detail} at {ident}",
-                    "uturn": f"U-turn approach {ident}"}[kind]
+                    "uturn": f"U-turn approach {ident}", "point": f"{detail} {ident}"}[kind]
             out.append(("info" if ok else "warn",
                         f"shadow: {what} at S {S_t:.2f} m, sigma {loc.sigma:.3f} m: {verdict}"))
         return out

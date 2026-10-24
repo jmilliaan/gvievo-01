@@ -162,3 +162,50 @@ def test_a_stop_that_lags_the_command_still_lands_in_the_band():
         p.step(*queue.pop(0))
     assert p.u.phase == uturn.DONE, p.u.reason
     assert centred(p), p.reading(-1)
+
+
+class GyroPivot(Pivot):
+    """Slip 1.15 (the encoder over-reads, 206-209 deg for a good field U-turn), a gyro that
+    reads the true rate, and the 2026-10-24 13:35 false centre: an in-band reading at
+    ~131 deg true (151 by encoder) while the body is still ~50 deg off the tape."""
+
+    def __init__(self, gyro_min_deg, gyro=True):
+        super().__init__("cw", slip=1.15)
+        self.u = uturn.UTurn("cw", CPR, tuple(self.counts), START_LEVEL, gyro_min_deg=gyro_min_deg)
+        self.gyro = gyro
+
+    def reading(self, tick):
+        if 130.0 <= self.theta <= 133.0:
+            return 5.0
+        return super().reading(tick)
+
+    def run(self, seconds=60.0):
+        omega = 0.0
+        for tick in range(int(seconds / DT)):
+            e = self.reading(tick)
+            left, right = self.u.update(tuple(self.counts), e, START_LEVEL if e is not None else None, DT,
+                                        yaw_rate=omega if self.gyro else None)
+            if not self.u.active:
+                return tick
+            self.step(left, right)
+            omega = kinematics.wheels_to_body(left, right)[1]     # the true rate this tick
+        return None
+
+
+def test_the_encoder_gate_alone_stops_on_a_false_centre():
+    p = GyroPivot(gyro_min_deg=None)
+    p.run()
+    assert p.theta < 140.0, p.theta                # the field failure, reproduced
+
+
+def test_the_gyro_gate_turns_on_past_a_false_centre_to_the_tape():
+    p = GyroPivot(gyro_min_deg=165.0)
+    assert p.run() is not None and p.u.phase == uturn.DONE, p.u.reason
+    assert centred(p) and abs(p.theta - 180.0) < 15.0, p.theta
+    assert p.u.gyro_ok and p.u.gyro_deg >= 165.0
+
+
+def test_a_stale_gyro_falls_back_to_the_encoder_gate():
+    p = GyroPivot(gyro_min_deg=165.0, gyro=False)
+    p.run()
+    assert not p.u.gyro_ok and p.u.snapshot()["gyro_deg"] is None

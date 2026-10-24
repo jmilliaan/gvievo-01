@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import subprocess
 import threading
 import time
@@ -36,9 +37,8 @@ from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
 from amr_web import alarms as alarmview
-from amr_web import commissioning_log as clog
 from amr_web import demo as demomod
-from amr_web import jog, netcheck, reports, wifi
+from amr_web import jog, netcheck, reports, tapegraph_view, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
 
@@ -84,13 +84,11 @@ class Adapter(Protocol):
     def io_image(self) -> dict | None: ...
     def events(self, since: int = 0) -> list[dict]: ...
     def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None: ...
-    # commissioning (unified plan §7.2): plan/clear move nothing; only physical Start executes
-    def commissioning(self) -> dict | None: ...
-    def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
-    def commissioning_clear(self) -> tuple[bool, str]: ...
     # tape layer (2026-10-02): clear moves nothing; only physical Start runs (no arm, 2026-10-07)
     def line_clear(self) -> tuple[bool, str]: ...
     def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]: ...
+    # trips (tracked plan 4): calls and confirmations form and record; they move nothing
+    def line_trip(self, action: str, arg: str = "") -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -175,7 +173,6 @@ def create_app(
     # Session cookie carries the role only. The PIN never leaves the server.
     app.secret_key = rolemod.secret(state_dir)
     standing = alarmview.StandingTracker()
-    app.config["EVIDENCE_DIR"] = clog.evidence_dir(state_dir)
     fp = fpmod.load(footprint_path or fpmod.default_path())
     app.config["FOOTPRINT"] = fp
     _grids: dict[tuple[str, int], tuple[Any, gridio.Grid]] = {}
@@ -207,7 +204,7 @@ def create_app(
     # ---- pages -------------------------------------------------------------------
 
     def _role() -> str:
-        # Default is the engineer view (2026-10-02, commissioning); operator only once chosen.
+        # Default is the engineer view (2026-10-02); operator only once chosen.
         return rolemod.OPERATOR if session.get("role") == rolemod.OPERATOR else rolemod.ENGINEER
 
     def _product() -> str:
@@ -241,7 +238,7 @@ def create_app(
 
     @app.get("/")
     def index():
-        return redirect("/home" if _role() == rolemod.OPERATOR else "/status")
+        return redirect("/home")
 
     @app.get("/home")
     def page_home():
@@ -269,10 +266,6 @@ def create_app(
     def api_role_get():
         return jsonify({"role": _role()})
 
-    @app.get("/status")
-    def page_status():
-        return render_template("status.html", page="status")
-
     @app.get("/monitor")
     def page_monitor():
         return render_template("monitor.html", page="monitor")
@@ -288,10 +281,6 @@ def create_app(
     @app.get("/params")
     def page_params():
         return render_template("params.html", page="params")
-
-    @app.get("/commissioning")
-    def page_commissioning():
-        return render_template("commissioning.html", page="commissioning")
 
     @app.get("/manual")
     def page_manual():
@@ -340,6 +329,13 @@ def create_app(
         _need(tracked_ok)
         return render_template("guide.html", page="guide")
 
+    @app.get("/calls")
+    def page_calls():
+        """Machine calls and the trip (tracked plan 4). Operator and engineer. Nothing on it starts
+        the vehicle: a trip leaves HOME on AUTO + the physical Start."""
+        _need(tracked_ok)
+        return render_template("calls.html", page="calls")
+
     # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
     # a run starts only on the physical Start under AUTO (line_follow_node). ----
 
@@ -366,6 +362,16 @@ def create_app(
             names.append(n)
             if m is not None:
                 dests[n] = missions.destinations(m)
+        # The site mission is a job only with the live position engine (tracked plan 4).
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            if config.TAPE_LOC_LIVE:
+                site = config.TAPE_LOC_SITE_MISSION
+                names.append(site)
+                notes[site] = "trips from machine calls (Calls page), driven by position; Start at HOME"
+        except Exception:  # noqa: BLE001 - a dev box without a profile
+            pass
         return jsonify({"missions": names, "destinations": dests, "errors": errors, "notes": notes})
 
     @app.post("/api/line/mission")
@@ -398,11 +404,34 @@ def create_app(
             names = missions.list_site_missions()
             name = names[0] if names else ""
         try:
+            from agv_core import config  # noqa: PLC0415
+
+            live = bool(config.TAPE_LOC_LIVE)
+        except Exception:  # noqa: BLE001 - a dev box without a profile
+            live = False
+        try:
             m = missions.load_site(name)
         except missions.MissionError as e:
-            return jsonify({"mission": name, "circuits": [], "stations": [], "error": str(e)})
+            return jsonify({"mission": name, "circuits": [], "stations": [], "points": [], "machines": {},
+                            "live": live, "error": str(e)})
+        # Machines per group in circuit order (their release / swap stop), for the Calls page.
+        machines = {}
+        for g, row in m["GROUPS"].items():
+            stops = [it["id"] for it in m["CIRCUITS"][row["circuit"]]["items"] if it["kind"] == "stop"]
+            first = {mc: min(stops.index(sid) for k, sid in act.items() if k != "uturn")
+                     for mc, act in row["machines"].items()}
+            machines[g] = sorted(row["machines"], key=lambda mc: (first[mc], mc))
         return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
-                        "stations": list(m["STATIONS"]), "error": ""})
+                        "stations": [m["HOME"], *[s for s in m["STATIONS"] if s != m["HOME"]]],
+                        "points": list(m["POINTS"]), "machines": machines, "trip_calls": m["TRIP_CALLS"],
+                        "home": m["HOME"], "live": live, "error": ""})
+
+    @app.get("/api/line/graph")
+    def api_line_graph():
+        """The taught tape graph (or the newest pass), anchors, stations and marks for the map
+        overlay. Files only, read-only, any role."""
+        _need(tracked_ok)
+        return jsonify(tapegraph_view.view(app.config["STATE_DIR"], app.config["MAPS_DIR"]))
 
     # Guided mission (2026-10-23): the engineer's branch order for the next fork. It chooses a
     # tape only; the run starts and resumes on AUTO + the physical Start (line_follow_node).
@@ -449,6 +478,20 @@ def create_app(
             return _result(False, "force must be true or false", 422)
         return _call(adapter.line_uturn, force)
 
+    # And "continue this run on the next Start" after a "track lost" end. Moves nothing.
+    @app.post("/api/line/continue")
+    def api_line_continue():
+        _need(tracked_ok)
+        if _role() != rolemod.ENGINEER:
+            return _result(False, "continuing a run needs the engineer view (PIN)", 403)
+        d, err = _body()
+        if err:
+            return err
+        arm = d.get("arm")
+        if not isinstance(arm, bool):
+            return _result(False, "arm must be true or false", 422)
+        return _call(adapter.line_continue, arm)
+
     @app.post("/api/line/teach")
     def api_line_teach():
         _need(tracked_ok)
@@ -458,6 +501,24 @@ def create_app(
         if err:
             return err
         return _call(adapter.line_teach, str(d.get("action", "") or ""), str(d.get("arg", "") or ""))
+
+    # Trips (tracked plan 4): a machine calls, a call is cancelled, the operator confirms the
+    # releases (before the U-turn) or the trolleys off at HOME. They form and record a trip;
+    # it leaves HOME only on AUTO + the physical Start. Operator and engineer.
+    TRIP_ACTIONS = ("call", "cancel", "confirm_released", "confirm_off", "status")
+
+    @app.post("/api/line/trip")
+    def api_line_trip():
+        _need(tracked_ok)
+        d, err = _body()
+        if err:
+            return err
+        action, arg = str(d.get("action", "") or ""), str(d.get("arg", "") or "")
+        if action not in TRIP_ACTIONS:
+            return _result(False, f"action must be one of {', '.join(TRIP_ACTIONS)}", 422)
+        if action in ("call", "cancel") and not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", arg):
+            return _result(False, "arg must be a machine name", 422)
+        return _call(adapter.line_trip, action, arg if action in ("call", "cancel") else "")
 
     @app.post("/api/line/at_home")
     def api_line_at_home():
@@ -835,83 +896,6 @@ def create_app(
                 "note": "profile = the vehicle profile; runtime = what the owning node reports it uses",
             }
         )
-
-    # ---- commissioning (unified plan §7.2) ----
-
-    @app.get("/api/commissioning")
-    def api_commissioning():
-        return jsonify(adapter.commissioning() if hasattr(adapter, "commissioning") else None)
-
-    @app.post("/api/commissioning/plan")
-    def api_commissioning_plan():
-        d, err = _body()
-        if err:
-            return err
-        plan = d.get("plan")
-        if not isinstance(plan, dict):
-            return _result(False, "plan object required", 400)
-        try:
-            text = json.dumps(plan)
-        except (TypeError, ValueError):
-            return _result(False, "plan is not JSON-serialisable", 400)
-        if len(text) > 20000:
-            return _result(False, "plan too large", 413)
-        ok, msg, planned = adapter.commissioning_plan(text)
-        body = {"ok": ok, "message": msg}
-        if ok and planned:
-            body["planned"] = json.loads(planned)
-        return jsonify(body), (200 if ok else 409)
-
-    @app.post("/api/commissioning/clear")
-    def api_commissioning_clear():
-        return _call(adapter.commissioning_clear)
-
-    @app.get("/api/commissioning/capabilities")
-    def api_commissioning_capabilities():
-        """What the blind-run form may offer: the profile's caps, and whether the drive
-        owner reports profile position available right now (locked until the decision
-        to run pp on this motor is recorded in pp.vendor_ref). Advisory: the commissioning node and
-        the drive owner enforce the same rules on their own."""
-
-        from agv_core import config  # noqa: PLC0415
-
-        st = adapter.pp_status() if hasattr(adapter, "pp_status") else None
-        fresh = st is not None and float(st.get("age_s", 1e9)) <= 1.0
-        if not fresh:
-            pp_ok, pp_reason = False, "no fresh pp status from the drive owner"
-        else:
-            pp_ok, pp_reason = bool(st.get("available")), str(st.get("reason", ""))
-        return jsonify(
-            {
-                "max_speed_mps": config.BLIND_MAX_SPEED_MPS,
-                "pp_max_speed_mps": config.PP_MAX_SPEED_MPS,
-                "max_distance_m": config.BLIND_MAX_DISTANCE_M,
-                "min_arc_radius_m": config.TRACK_M / 2.0,
-                "track_m": config.TRACK_M,
-                "decel_mps2": config.BLIND_ACCEL_RPM_S * config.MPS_PER_RPM,
-                "field_check_above_mps": 0.4,
-                "pp_available": pp_ok,
-                "pp_reason": "" if pp_ok else pp_reason,
-                "pp_status": st,
-            }
-        )
-
-    @app.get("/api/commissioning/history")
-    def api_commissioning_history():
-        return jsonify(clog.history(app.config["EVIDENCE_DIR"]))
-
-    @app.post("/api/commissioning/measurement")
-    def api_commissioning_measurement():
-        d, err = _body()
-        if err:
-            return err
-        try:
-            row = clog.save_measurement(app.config["EVIDENCE_DIR"], d.get("run"), d)
-        except clog.LogError as e:
-            return _result(False, str(e), 400)
-        except OSError as e:
-            return _result(False, f"measurement not stored: {e}", 500)
-        return jsonify({"ok": True, "message": "measurement stored", "row": row})
 
     # ---- live view (unified plan §6.4): bounded rates, encoded once per snapshot ----
 

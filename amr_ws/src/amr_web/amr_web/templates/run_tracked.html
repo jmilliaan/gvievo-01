@@ -1,33 +1,32 @@
 {% extends "base.html" %}
 {% block title %}AMR — run tracked{% endblock %}
+{% block rail %}
+{# The follower readout (2026-10-24): under the rail's tiles when it fits there whole, so the
+   job picker gets the whole column; where the rail is too short for it (the HMI at size l)
+   placeFollower() moves it into a column beside the picker. Display only. #}
+<div id="follower" class="rail-extra">
+  <div id="lt-state" class="tel-grid rows"></div>
+  <p id="lt-reason" class="note"></p>
+  {% with rfid_big = true %}{% include "_line_track.html" %}{% endwith %}
+</div>
+{% endblock %}
 {% block body %}
 {# Run tracked (2026-10-02): the magnetic-tape product. Pick a mission (or none for plain
    line following) and, for a mission with destination stops, the destination (2026-10-08).
    Anywhere on the line (2026-10-09); then the PHYSICAL Start under AUTO runs it - no software arm
    since 2026-10-07 (motor arming is drive_node's, in every mode). Nothing on this page moves
-   the vehicle. #}
-<section class="manual grow">
-  <div class="side">
-    <h2>Line mode <small>supervisor</small></h2>
-    <div id="lt-mode" class="tel-grid rows"></div>
-    <p class="note">The vehicle boots into LINE. Tracked / trackless is the switch on <a href="/home">Home</a>. With the selector in MANUAL you can jog in LINE mode too.</p>
-    <div class="sep"></div>
-    <h2>Job <small>tape</small></h2>
-    <label class="field">Mission <select id="lt-mission"></select></label>
-    <label class="field">Destination <select id="lt-dest"></select></label>
-    <div class="bar">
-      <button id="btn-line-select" class="big">Set job</button>
-    </div>
-    <div class="bar">
+   the vehicle. Since 2026-10-24 missions and destinations are touch tiles, not drop-downs. #}
+<section id="line-job" class="line-job grow">
+  <div class="job-pick">
+    <div class="bar two job-actions">
+      <button id="btn-line-select" class="big"><span>Set job</span><small id="lt-pick">–</small></button>
       <button id="btn-line-clear" class="danger">Clear</button>
     </div>
+    <h2>Mission <small id="lt-product">tape</small></h2>
+    <div id="lt-mission" class="pick-grid"></div>
+    <h2>Destination <small id="lt-dest-note"></small></h2>
+    <div id="lt-dest" class="pick-grid small"></div>
     <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a stop, Start goes on after the start delay.</div>
-  </div>
-  <div class="side">
-    <h2>Follower <small>line layer</small></h2>
-    <div id="lt-state" class="tel-grid rows"></div>
-    <p id="lt-reason" class="note"></p>
-    {% with rfid_big = true %}{% include "_line_track.html" %}{% endwith %}
   </div>
 </section>
 {% endblock %}
@@ -36,32 +35,77 @@
 const $ = id => document.getElementById(id);
 const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
 
-let DESTS = {}, MERR = {};
+let DESTS = {}, MERR = {}, NOTES = {}, MISSIONS = [];
+// The operator's pick; '' is "none" (plain line following) / "no destination".
+// Seeded once from the layer's active job so a reload shows what is set.
+const pick = { mission: '', dest: '', seeded: false };
+let editable = false;
 
-function fillDests() {
-  const name = $('lt-mission').value, list = DESTS[name] || [];
-  $('lt-dest').innerHTML = list.length
-    ? ['<option value="">— choose —</option>'].concat(list.map(d => `<option value="${esc(d)}">${esc(d)}</option>`)).join('')
-    : '<option value="">none in this mission</option>';
-  $('lt-dest').disabled = !list.length;
-  if (MERR[name]) log(`${name}: ${MERR[name]}`, 'bad');
+function pickTile(value, name, note, on, bad) {
+  return `<button type="button" class="pick${on ? ' on' : ''}${bad ? ' bad' : ''}" data-v="${esc(value)}"`
+    + `${editable ? '' : ' disabled'}><b>${esc(name)}</b>${note ? `<i>${esc(note)}</i>` : ''}</button>`;
 }
+
+function render() {
+  $('lt-mission').innerHTML = [pickTile('', 'none', `plain line following · ${NOTES.empty || ''}`, pick.mission === '')]
+    .concat(MISSIONS.map(n => pickTile(n, n, MERR[n] || NOTES[n] || '', pick.mission === n, !!MERR[n]))).join('');
+  const list = DESTS[pick.mission] || [];
+  $('lt-dest').innerHTML = list.map(d => pickTile(d, d, '', pick.dest === d)).join('');
+  $('lt-dest').hidden = !list.length;
+  $('lt-dest-note').textContent = list.length ? (pick.dest ? '' : 'choose one') : 'none in this mission';
+  $('lt-pick').textContent = (pick.mission || 'none') + (pick.dest ? ` → ${pick.dest}` : '');
+}
+
+// The rail when the follower fits there whole beside the log's minimum; otherwise the column
+// beside the picker. Re-decided on every state tick and resize (size knob, an alarm line).
+// Measured in the rail itself (its height depends on the column width): the trial move and
+// the move back happen in one task, so nothing is painted in between.
+function placeFollower() {
+  const f = $('follower'), rail = $('telemetry'), logEl = $('log'), job = $('line-job');
+  const top = f.scrollTop;
+  if (f.parentElement !== rail) rail.insertBefore(f, logEl);
+  let inRail = true;
+  if (!matchMedia('(max-width:820px)').matches) {  // stacked layout: the rail has no height limit
+    const cs = getComputedStyle(rail), gap = parseFloat(cs.rowGap) || 0;
+    let used = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    for (const el of rail.children) if (el !== f && el !== logEl && el.offsetHeight) used += el.offsetHeight + gap;
+    inRail = used + f.scrollHeight + gap + parseFloat(getComputedStyle(logEl).minHeight) <= rail.clientHeight;
+  }
+  if (!inRail) job.appendChild(f);
+  job.classList.toggle('with-follower', !inRail);
+  f.scrollTop = top;
+}
+addEventListener('resize', placeFollower);
 
 async function loadMissions() {
   const { status, data } = await apiGet('/api/line/missions');
   if (status !== 200) return;
   DESTS = data.destinations || {};
   MERR = data.errors || {};
-  const notes = data.notes || {}, note = n => notes[n] ? ` — ${esc(notes[n])}` : '';
-  $('lt-mission').innerHTML = [`<option value="">none: plain line following${note('empty')}</option>`]
-    .concat(data.missions.map(n => `<option value="${esc(n)}">${esc(n)}${note(n)}</option>`)).join('');
-  fillDests();
+  NOTES = data.notes || {};
+  MISSIONS = data.missions || [];
+  if (pick.mission && !MISSIONS.includes(pick.mission)) pick.mission = '';
+  if (!(DESTS[pick.mission] || []).includes(pick.dest)) pick.dest = '';
+  render();
 }
 loadMissions();
-$('lt-mission').onchange = fillDests;
+
+$('lt-mission').onclick = e => {
+  const b = e.target.closest('button.pick');
+  if (!b || b.disabled) return;
+  if (pick.mission !== b.dataset.v) Object.assign(pick, { mission: b.dataset.v, dest: '' });
+  if (MERR[pick.mission]) log(`${pick.mission}: ${MERR[pick.mission]}`, 'bad');
+  render();
+};
+$('lt-dest').onclick = e => {
+  const b = e.target.closest('button.pick');
+  if (!b || b.disabled) return;
+  pick.dest = b.dataset.v;
+  render();
+};
 
 $('btn-line-select').onclick = async () => {
-  const { data } = await api('/api/line/mission', { name: $('lt-mission').value, destination: $('lt-dest').value });
+  const { data } = await api('/api/line/mission', { name: pick.mission, destination: pick.dest });
   log(data.message, data.ok ? '' : 'bad');
 };
 $('btn-line-clear').onclick = async () => { const { data } = await api('/api/line/clear'); log(data.message, data.ok ? '' : 'bad'); };
@@ -69,11 +113,15 @@ $('btn-line-clear').onclick = async () => { const { data } = await api('/api/lin
 onState(st => {
   const m = st.mode, ln = st.line;
   const inLine = m && m.mode_name === 'LINE';
-  tiles('lt-mode', [
-    ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
-    ['Product', m ? (m.product || '–') : '–', 'profile tracked', ''],
-  ]);
+  $('lt-product').textContent = `tape · product ${m ? (m.product || '–') : '–'}`;
   for (const id of ['btn-line-select', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
+  let dirty = false;
+  if (ln && !pick.seeded) {  // the list may not be loaded yet: loadMissions() re-checks the pick
+    Object.assign(pick, { seeded: true, mission: ln.mission || '', dest: ln.destination || '' });
+    dirty = true;
+  }
+  if (!!(inLine && ln) !== editable) { editable = !editable; dirty = true; }
+  if (dirty) render();
   if (!ln) {
     tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'switch to tracked on Home', 'warn']]);
     $('lt-reason').textContent = '';
@@ -100,5 +148,6 @@ onState(st => {
   }
   lineTrack(st.line_track);
   rfidTags(st.rfid);
+  placeFollower();
 });
 </script>{% endblock %}

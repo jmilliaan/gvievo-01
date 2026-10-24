@@ -36,6 +36,11 @@ left = north, right = south, down = west. Projection coordinates below are mm, a
 | D14 | **Leaving home needs a physical Start.** A call (or a formed trip) on the display never moves the vehicle (safety invariant: no web page starts the vehicle; autonomous motion only under AUTO + a fresh panel Start). When a trip forms, the HMI shows it; the operator presses Start at the bay, and the AGV drives empty through the U-turn to the attach point | safety invariants (CLAUDE.md) |
 | D12 | Tape is laid today **only as far as MRU** (the MRU circuit, `line-a`). Row 2, the left vertical and the middle line are not laid yet | operator |
 | D13 | AGV-01 only for now: no collision or priority logic | operator |
+| D15 | **Positions are marked from the moving AGV** (Guide page M key, ±10 cm at 0.3–0.4 m/s) and given roles later: stop + panel Start (machines, ATT), end-of-cycle stop (HOME-N), mid-line U-turn point, high-speed area. Branch approach points are NOT marked: the order for the trip's destination is armed from the taught junction positions | operator, 2026-10-24 |
+| D16 | **MRU mid-line U-turn:** after the LAST release of the trip (the farthest called machine), the empty AGV pivots at that machine's own **U-turn mark**, a few metres past its outbound stop and clear of the released trolley, instead of driving to the tape end. The tape-end U-turn (U-MRU, code 3) stays as the fallback. Supersedes D8's "drives on to the end" | operator, 2026-10-24 |
+| D17 | **MRU stops are directional and separate:** OUTBOUND (home → machine, westbound) = trolley released; INBOUND (machine → home, eastbound, after the U-turn) = trolley attached, at a **different spot**. Both are marked | operator, 2026-10-24 |
+| D18 | **Trip size is a setting:** 1 or 2 MRU machines per trip (`trip_calls` in `missions/site-103.json`), 2 for now | operator, 2026-10-24 |
+| D19 | **High-speed zones are areas, not latched markers:** a range on the taught path (from one mark to another), checked against the AGV's position; no set/reset strips | operator, 2026-10-24 |
 
 ## 1. Tape network (AGV-01's half and HOME)
 

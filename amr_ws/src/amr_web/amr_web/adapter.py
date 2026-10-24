@@ -34,7 +34,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
-    CommissioningState,
     ControlLease,
     DriveStatus,
     Event,
@@ -48,7 +47,6 @@ from amr_interfaces.msg import (
     ModeState,
     MuxState,
     PanelState,
-    PpStatus,
     StationDetection,
     SurveyMoveState,
     WheelStates,
@@ -56,7 +54,6 @@ from amr_interfaces.msg import (
 from amr_interfaces.srv import (
     GetOperation,
     LineTeach,
-    PlanCommissioning,
     RequestMode,
     RequestSurvey,
     RunMission,
@@ -100,7 +97,9 @@ MUX_NAMES = {
 }
 RFID_RECENT = 8  # tag passes the pages show
 # = rfid_node ENCOUNTERS: every pass is a message, none may be dropped behind a newer one.
-RFID_QOS = QoSProfile(depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE)
+RFID_QOS = QoSProfile(
+    depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
+)
 RELIABLE_1 = QoSProfile(
     depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
 )
@@ -318,15 +317,7 @@ class RosAdapter(LeanNode):
             self._event_n += 1
             self._events.append(dict(e, n=self._event_n, restored=True))
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
-        self._commissioning: dict | None = None
-        self._commissioning_t = 0.0
-        self.create_subscription(
-            CommissioningState, "/amr/commissioning_state", self._on_commissioning, LATCHED, callback_group=g
-        )
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
-        self._pp: dict | None = None
-        self._pp_t = 0.0
-        self.create_subscription(PpStatus, "/drives/pp_status", self._on_pp, RELIABLE_1, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
@@ -393,6 +384,7 @@ class RosAdapter(LeanNode):
             "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
             "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
             "line_teach": self.create_client(LineTeach, "/amr/line/teach", callback_group=g),
+            "line_trip": self.create_client(LineTeach, "/amr/line/trip", callback_group=g),
             "branch_left": self.create_client(Trigger, "/amr/line/branch/left", callback_group=g),
             "branch_straight": self.create_client(Trigger, "/amr/line/branch/straight", callback_group=g),
             "branch_right": self.create_client(Trigger, "/amr/line/branch/right", callback_group=g),
@@ -400,9 +392,9 @@ class RosAdapter(LeanNode):
             "speed_high": self.create_client(Trigger, "/amr/line/speed/high", callback_group=g),
             "uturn_force": self.create_client(Trigger, "/amr/line/uturn/force", callback_group=g),
             "uturn_cancel": self.create_client(Trigger, "/amr/line/uturn/cancel", callback_group=g),
+            "continue_arm": self.create_client(Trigger, "/amr/line/continue/arm", callback_group=g),
+            "continue_cancel": self.create_client(Trigger, "/amr/line/continue/cancel", callback_group=g),
             "line_at_home": self.create_client(Trigger, "/amr/line/at_home", callback_group=g),
-            "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
-            "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
         }
 
     # ---- subscriptions --------------------------------------------------------------
@@ -769,40 +761,6 @@ class RosAdapter(LeanNode):
     def event_log_files(self) -> list[str]:
         return self._log.files()
 
-    def _on_commissioning(self, m: CommissioningState) -> None:
-        d = _msg_to_dict(m)
-        d["phase_name"] = ["IDLE", "PREPARED", "RUNNING", "SETTLING", "DONE", "ABORTED"][min(int(m.phase), 5)]
-        with self._lock:
-            self._commissioning, self._commissioning_t = d, self._now()
-
-    def _on_pp(self, m: PpStatus) -> None:
-        d = _msg_to_dict(m)
-        d.pop("header", None)
-        with self._lock:
-            self._pp, self._pp_t = d, self._now()
-
-    def pp_status(self) -> dict | None:
-        """The drive owner's pp executor (availability, state, last outcome), with its age."""
-        with self._lock:
-            return dict(self._pp, age_s=self._now() - self._pp_t) if self._pp else None
-
-    def commissioning(self) -> dict | None:
-        with self._lock:
-            return (
-                dict(self._commissioning, age_s=self._now() - self._commissioning_t)
-                if self._commissioning
-                else None
-            )
-
-    def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]:
-        r = self._call("comm_plan", PlanCommissioning.Request(plan_json=plan_json), timeout=5.0)
-        if r is None:
-            return False, "commissioning node unavailable", ""
-        return bool(r.ok), r.message, r.planned_json
-
-    def commissioning_clear(self) -> tuple[bool, str]:
-        return self._trigger("comm_clear")
-
     def diagnostics(self) -> dict:
         now = self._now()
         with self._lock:
@@ -974,11 +932,26 @@ class RosAdapter(LeanNode):
             return False, "line layer unavailable (enter Tracked mode first)"
         return bool(r.success), r.message
 
+    def line_continue(self, arm: bool) -> tuple[bool, str]:
+        """Guided mission: the next Start continues the ended run (or cancel). Moves nothing."""
+        r = self._call("continue_arm" if arm else "continue_cancel", Trigger.Request(), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
+        return bool(r.success), r.message
+
     def line_teach(self, action: str, arg: str = "") -> tuple[bool, str]:
         """Tape-graph teaching (tracked plan 3, P1). Records and publishes; moves nothing."""
         r = self._call("line_teach", LineTeach.Request(action=action, arg=arg))
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
+        return bool(r.ok), r.message
+
+    def line_trip(self, action: str, arg: str = "") -> tuple[bool, str]:
+        """Trips (tracked plan 4): call / cancel a machine, confirm releases or trolleys off,
+        status. They form and record a trip; it leaves HOME only on AUTO + the physical Start."""
+        r = self._call("line_trip", LineTeach.Request(action=action, arg=arg), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
         return bool(r.ok), r.message
 
     def line_at_home(self) -> tuple[bool, str]:

@@ -24,8 +24,8 @@
 <body>
 <header>
   <h1>AMR control</h1>
-  {# Two navs, one page. The operator gets four tabs (everything they can act on);
-     the engineer keeps all ten. Hidden pages stay reachable by URL - the PIN is a
+  {# Two navs, one page. The operator gets the tabs they can act on (Calls since 2026-10-24);
+     the engineer keeps the rest too. Hidden pages stay reachable by URL - the PIN is a
      mistake guard, not security (amr_web/role.py). #}
   <nav>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
@@ -33,14 +33,13 @@
        does not carry is not offered at all (its pages answer 404). #}
     {% if tracked_ok %}<a href="/run-tracked" class="{{ 'on' if page == 'run_tracked' }}">Run tracked</a>{% endif %}
     {% if trackless_ok %}<a href="/run" class="{{ 'on' if page == 'run' }}">Run trackless</a>{% endif %}
+    {% if tracked_ok %}<a href="/calls" class="{{ 'on' if page == 'calls' }}">Calls</a>{% endif %}
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     {% if role == ENGINEER %}
-    <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
-    <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
     {% if tracked_ok %}<a href="/teach" class="{{ 'on' if page == 'teach' }}">Teach</a>{% endif %}
     {% if tracked_ok %}<a href="/guide" class="{{ 'on' if page == 'guide' }}">Guide</a>{% endif %}
     {% endif %}
@@ -79,6 +78,8 @@
       <div class="tel" id="tel-gen"><span>Gen.</span><b>–</b><i>—</i></div>
     </div>
     <div id="rail-alarm" class="rail-alarm" hidden></div>
+    {# A page's own live readout under the shared tiles (Run tracked: the follower). #}
+    {% block rail %}{% endblock %}
     <pre id="log"></pre>
   </aside>
   <main class="{% block main_class %}{% endblock %}">

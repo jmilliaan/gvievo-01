@@ -7,6 +7,7 @@ and destination stops. The high zone is a pair of MLS marker codes (2026-10-09):
 RFID decides where to stop, the markers decide speed.
 """
 import copy
+import math
 import os
 import sys
 
@@ -83,7 +84,9 @@ class World:
         self.counts = (0, 0)
         self.integrate = True
         self.still = False
-        self.yaw = 0.0          # gyro yaw rate fed to the curve guard; None = stale
+        self.yaw = "counts"     # gyro yaw rate: "counts" = the true rate of the wheel counts
+                                # (a pivot moves them), a number = fixed, None = stale
+        self._yaw_counts = self.counts
         self.v_meas = 0.0       # odometry speed: the body speed of the last command
         self.mk_ok = True       # /amr/line_marker: the stream, and the events on it
         self.mk_seq = 0
@@ -117,10 +120,20 @@ class World:
             lease_allowed=LEASE_LINE, lease_line=LEASE_LINE, authority=("sup", 1), torque_off=False,
             field_clear=True, drives_fresh=True, rfid=self.rfid(), counts=self.counts,
             counts_per_rev=PER_REV, wheels_still=self.still,
-            yaw_rate=self.yaw, v_meas=self.v_meas, markers=self.markers(),
+            yaw_rate=self._gyro(), v_meas=self.v_meas, markers=self.markers(),
         )
         base.update(over)
         return lj.Inputs(**base)
+
+    def _gyro(self):
+        if self.yaw != "counts":
+            return self.yaw
+        dl = self.counts[0] - self._yaw_counts[0]
+        dr = self.counts[1] - self._yaw_counts[1]
+        self._yaw_counts = self.counts
+        dl, dr = (-dl if vehicle.INVERT_LEFT else dl), (-dr if vehicle.INVERT_RIGHT else dr)
+        m = math.pi * vehicle.WHEEL_DIA_M / PER_REV
+        return (dr - dl) * m / vehicle.TRACK_M / 0.02
 
     def tick(self, **over):
         self.t += 0.02
@@ -860,7 +873,7 @@ def test_plain_line_following_u_turns_ccw_on_0190_and_completes():
     w.still, w.integrate = True, False
     assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
-    for deg, sensor in ((90, NO_TAPE), (170, CENTRED)):
+    for deg, sensor in ((90, NO_TAPE), (176, CENTRED)):
         c = uturn.counts_for_angle(deg, PER_REV)
         w.counts = (base[0] - int(round(c)), base[1] + int(round(c)))   # ccw: right wheel forward
         w.tick(sensor=sensor)

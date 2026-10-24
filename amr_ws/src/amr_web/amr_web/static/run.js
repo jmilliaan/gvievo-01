@@ -189,4 +189,6 @@ $('run-mission').onchange = async e => {
 // live scan over the viewed map: meaningful only when the viewed map IS the active one
 liveOverlay(view);
 pollLive(view, { map: false });
+// the taught tape graph, anchors, stations and marks on their map revision (tapegraph.js)
+if (typeof graphOverlay === 'function') { graphOverlay(view); pollGraph(view); }
 jogpad(document.getElementById('jog-run'), { compact: true });

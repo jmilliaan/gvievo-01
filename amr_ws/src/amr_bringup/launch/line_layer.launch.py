@@ -66,7 +66,7 @@ def _localization(generation: int) -> tuple[list, dict]:
     print(f"[line_layer] tape localization on {sel['map_id']} rev{revision} ({what}), "
           f"AMCL {vehicle.TAPE_LOC_AMCL_PARAMS}")
     return tape_loc.group(map_yaml, params_set=vehicle.TAPE_LOC_AMCL_PARAMS, generation=generation,
-                          monitor=True), params
+                          monitor=True, jump_dist_m=vehicle.TAPE_LOC_MONITOR_JUMP_M), params
 
 
 def _compose(context):

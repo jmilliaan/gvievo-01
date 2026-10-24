@@ -70,7 +70,7 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import LineTeach, SelectMission
-from amr_line import autopilot, runtime, tape_health
+from amr_line import autopilot, flight_recorder, runtime, tape_health
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -269,6 +269,11 @@ class LineFollowNode(LeanNode):
         # at the end of each run, only where the locator was HEALTHY. Display/maintenance only.
         self.tape_health = tape_health.TapeHealth()
         self._state_dir = os.path.expanduser(str(self.get_parameter("state_dir").value))
+        # Tick-by-tick evidence for "why did it stop" (2026-10-24): ~15 s kept, written to
+        # <state_dir>/logs/line_trace on a run end, a hold, a kink pivot, a finished U-turn.
+        self.flight = flight_recorder.FlightRecorder(self._state_dir)
+        self._fr_kinks = 0
+        self._fr_uturn_done = None
         self._pub_initialpose = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", RELIABLE_1)
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl,
                                  QoSProfile(depth=5, reliability=QoSReliabilityPolicy.RELIABLE,
@@ -276,6 +281,10 @@ class LineFollowNode(LeanNode):
         self.create_subscription(LocalizationState, "/amr/localization_state", self._on_readiness, LATCHED)
         self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
         self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
+        # Trips (tracked plan 4): machine calls, and the operator's two confirmations. They form
+        # and record; a trip moves only on AUTO + the physical Start at HOME (the Calls page).
+        self.create_service(LineTeach, "/amr/line/trip", self._srv_trip)
+        self._site_live()
         # Guided mission (2026-10-23): the engineer's branch order for the next fork. It only
         # chooses a tape; motion still needs AUTO + the physical Start. The web gates it by PIN.
         for side in ("left", "straight", "right"):
@@ -291,6 +300,10 @@ class LineFollowNode(LeanNode):
         for act in ("force", "cancel"):
             self.create_service(Trigger, f"/amr/line/uturn/{act}",
                                 lambda req, res, act=act: self._srv_uturn(act, res))
+        # And "continue this run on the next Start" after a "track lost" end (2026-10-24).
+        for act in ("arm", "cancel"):
+            self.create_service(Trigger, f"/amr/line/continue/{act}",
+                                lambda req, res, act=act: self._srv_continue(act, res))
 
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
@@ -332,6 +345,46 @@ class LineFollowNode(LeanNode):
             shadow_circuit=str(vehicle_config.TAPE_LOC_SHADOW_CIRCUIT))
         self.get_logger().info(f"tape localization: {rt.detail}")
         return rt
+
+    def _site_live(self):
+        """tape_loc.live: the site mission is the job; trips stop, branch and turn by position."""
+        if not bool(vehicle_config.TAPE_LOC_LIVE):
+            return
+        rt = self.tapeloc
+        if rt is None or rt.graph is None:
+            why = "the site mission did not load" if rt is None else rt.detail
+            self.get_logger().error(f"tape_loc.live but no trips: {why}")
+            return
+        from amr_line import tape_locator  # noqa: PLC0415
+
+        self.job.configure_site(tape_locator.Params.from_profile(vehicle_config), rt.compile_trip)
+        ok, msg = self.job.set_mission(rt.m)
+        self.get_logger().info(f"position engine live: {msg}" if ok else f"position engine: {msg}")
+
+    def _srv_trip(self, req, res):
+        action, arg = req.action.strip(), (req.arg or "").strip()
+        if action == "call":
+            res.ok, res.message = self.job.trip_call(arg, self._ros_now())
+        elif action == "cancel":
+            res.ok, res.message = self.job.trip_cancel(arg)
+        elif action == "confirm_released":
+            res.ok, res.message = self.job.confirm_released()
+        elif action == "confirm_off":
+            res.ok, res.message = self.job.confirm_off()
+        elif action == "status":
+            st = self.job.trip_status()
+            res.ok = self.job.site is not None
+            res.message = ("; ".join(f"{k[5:]}: {v}" for k, v in st.items() if v) or "no trip, no calls") \
+                if res.ok else "no site mission is the job (tape_loc.live false, or another mission selected)"
+        else:
+            res.ok, res.message = False, f"unknown trip action {action!r}: call, cancel, confirm_released, " \
+                                         f"confirm_off, status"
+        if action != "status":
+            self.get_logger().info(f"trip {action} {arg}: {res.message}")
+            self._event("LINE_MISSION", f"trip {action} {arg}: {res.message}".replace("  ", " "),
+                        Event.INFO if res.ok else Event.WARN)
+            self._publish_state()
+        return res
 
     @staticmethod
     def _bundle_sha(maps_dir, map_id, revision):
@@ -594,6 +647,7 @@ class LineFollowNode(LeanNode):
             yaw_rate=yaw,
             v_meas=v_meas,
             warning_scale=scale,
+            loc=self.tapeloc.loc_state() if getattr(self, "tapeloc", None) is not None else None,
         )
 
     # -- services ----------------------------------------------------------
@@ -610,6 +664,12 @@ class LineFollowNode(LeanNode):
     def _srv_branch(self, side, res):
         res.success, res.message = self.job.order_branch(side)
         self.get_logger().info(f"branch order {side}: {res.message}")
+        self._publish_state()
+        return res
+
+    def _srv_continue(self, act, res):
+        res.success, res.message = self.job.continue_on_start(act == "arm")
+        self.get_logger().info(f"continue {act}: {res.message}")
         self._publish_state()
         return res
 
@@ -640,6 +700,12 @@ class LineFollowNode(LeanNode):
         from agv_core import mission  # noqa: PLC0415
 
         name = (req.name or "").strip()
+        rt = self.tapeloc
+        if rt is not None and name == rt.m["MISSION_NAME"]:
+            res.ok, res.message = self.job.set_mission(rt.m)
+            self.get_logger().info(f"mission: {res.message}")
+            self._publish_state()
+            return res
         try:
             doc = self._plain_mission() if name in ("", "none") else mission.load(name)
         except mission.MissionError as e:
@@ -657,6 +723,12 @@ class LineFollowNode(LeanNode):
         before = self.job.state
 
         left, right = self.job.tick(self._inputs(now, min(dt, 5 * self.dt)))
+        if self.job.trip_new is not None:
+            # A trip's Start: the locator moves onto its route before the pre-move warning ends.
+            route, self.job.trip_new = self.job.trip_new, None
+            ok, msg = self.tapeloc.begin_trip(route) if self.tapeloc is not None else (False, "no locator")
+            if not ok:
+                self._event("LINE_LOC", f"{msg}: the trip will hold (position)", Event.WARN)
         self._tapeloc_tick(now)
         engine_events = self.job.tape.drain_events()
         for level, text in engine_events:
@@ -666,6 +738,7 @@ class LineFollowNode(LeanNode):
             self._event("LINE_MARKER", text, Event.WARN if level == "warn" else Event.INFO)
         if engine_events or marker_events:
             self._publish_state()
+        self._flight_tick(now, before, left, right, engine_events + marker_events)
         if self.job.refused:
             self._event("LINE_MISSION", f"Start refused: {self.job.refused}", Event.WARN)
             self.job.refused = None
@@ -688,6 +761,37 @@ class LineFollowNode(LeanNode):
             self._publish_state()
         elif self.job.wants_power() != self._power_published:
             self._publish_state()  # a hold changing cause can change drive_power: say so now
+
+    def _flight_tick(self, now, before, left, right, events) -> None:
+        sensor = self.reader.sensor() or {}
+        d = self.job.diag or {}
+        u = self.job.tape.uturn_snapshot() or {}
+        state = self.job.state
+        self.flight.add(
+            t=f"{now:.3f}", job=lj.STATE_NAMES[state], engine=d.get("state", ""),
+            nlcp=sensor.get("nlcp"), level=sensor.get("track_level"),
+            tracks_mm=" ".join(str(t.get("pos_mm")) for t in sensor.get("tracks") or ()),
+            has_track=d.get("has_track"), e_used_mm=d.get("e_used"),
+            v_base_rpm=f"{d.get('v_base', 0.0):.0f}", left_rpm=f"{left:.0f}", right_rpm=f"{right:.0f}",
+            kink=(self.job.kink or {}).get("direction", ""),
+            uturn=(u.get("phase") or "") if u.get("active") else "",
+            travel_m=f"{self.job.followed_m:.3f}", note="; ".join(x for _l, x in events)[:200])
+        why = None
+        if state != before and state in (lj.DONE, lj.FAULT, lj.HOLD) and before in (lj.RUNNING, lj.HOLD):
+            why = f"{lj.STATE_NAMES[state]} {self.job.reason}"
+        elif self.job.kinks != self._fr_kinks:
+            why = "kink"
+        elif self.job.tape.uturn_last is not self._fr_uturn_done and self.job.tape.uturn_last:
+            why = "uturn done"
+        self._fr_kinks = self.job.kinks
+        self._fr_uturn_done = self.job.tape.uturn_last
+        if why:
+            try:
+                path = self.flight.dump(why)
+            except OSError as e:
+                self.get_logger().warn(f"line trace not written: {e}")
+                return
+            self.get_logger().info(f"line trace: {path}")
 
     def _write_tape_health(self, result: str) -> None:
         """End of a run: append its tape-health bins (M3). A disk problem is logged, never raised."""

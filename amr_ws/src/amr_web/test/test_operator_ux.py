@@ -279,9 +279,13 @@ def test_events_carry_the_catalogue_title(tmp_path):
 
 
 def test_a_fresh_session_lands_on_the_engineer_view(tmp_path):
+    """2026-10-24: Status merged into Home; both roles land there, the engineer with More open."""
     client, _ = app_for(merged(), tmp_path)
-    assert client.get("/").headers["Location"].endswith("/status")
+    assert client.get("/").headers["Location"].endswith("/home")
     assert client.get("/api/role").get_json()["role"] == role.ENGINEER
+    body = client.get("/home").get_data(as_text=True)
+    assert '<details class="home-more" open>' in body and 'id="home-ready"' in body
+    assert client.get("/status").status_code == 404
 
 
 def test_the_home_page_is_the_operators_landing_page(tmp_path):
@@ -299,8 +303,12 @@ def test_the_engineer_pin_opens_the_engineering_nav(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     assert client.post("/api/role", json={"role": "engineer", "pin": "0000"}).status_code == 403
     assert client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    body = client.get("/status").get_data(as_text=True)
-    assert "/params" in body and "/commissioning" in body
+    body = client.get("/home").get_data(as_text=True)
+    assert "/params" in body and "/monitor" in body
+    # 2026-10-24: no Status tab (merged into Home) and no Commission page at all
+    assert 'href="/status"' not in body and "/commissioning" not in body
+    assert client.get("/commissioning").status_code == 404
+    assert client.get("/api/commissioning").status_code == 404
     # and the way back is always open: a guard you cannot leave is a trap
     assert client.post("/api/role", json={"role": "operator"}).status_code == 200
     assert "/params" not in client.get("/home").get_data(as_text=True)
@@ -308,12 +316,17 @@ def test_the_engineer_pin_opens_the_engineering_nav(tmp_path):
 
 def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
     """The operator gets Restart on Home only when an alarm says the base cannot be
-    rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env)."""
+    rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env).
+    Since 2026-10-24 the engineer's block (readiness, idle/recover/restart) is on Home."""
     client, _ = app_for(merged(), tmp_path)
     client.post("/api/role", json={"role": "operator"})
-    assert 'id="btn-restart"' not in client.get("/status").get_data(as_text=True)
+    home = client.get("/home").get_data(as_text=True)
+    assert 'id="btn-restart"' not in home and 'id="home-ready"' not in home
+    assert '<details class="home-more">' in home, "the operator's More stays closed"
     client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
-    assert 'id="btn-restart"' in client.get("/status").get_data(as_text=True)
+    home = client.get("/home").get_data(as_text=True)
+    for i in ("btn-restart", "btn-recover", "btn-idle", "home-ready"):
+        assert f'id="{i}"' in home, i
 
 
 def test_the_pin_lives_outside_the_repository_and_can_be_overridden(tmp_path, monkeypatch):
@@ -573,7 +586,7 @@ def _product_app(product, tmp_path):
 def test_two_run_tabs_and_maps_routes_live_under_run_trackless(tmp_path):
     """2026-10-02: "Run" was ambiguous with two navigation types."""
     client, _ = _product_app("both", tmp_path)
-    body = client.get("/status").get_data(as_text=True)
+    body = client.get("/home").get_data(as_text=True)
     assert ">Run tracked<" in body and ">Run trackless<" in body
     nav = body.split('<nav>')[1].split('</nav>')[0]
     assert "/maps" not in nav and "/editor" not in nav, "Maps/Routes left the top nav"
@@ -584,7 +597,7 @@ def test_two_run_tabs_and_maps_routes_live_under_run_trackless(tmp_path):
 
 def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
     client, _ = _product_app("slam", tmp_path)
-    assert ">Run tracked<" not in client.get("/status").get_data(as_text=True)
+    assert ">Run tracked<" not in client.get("/home").get_data(as_text=True)
     assert client.get("/run-tracked").status_code == 404
     assert client.post("/api/line/clear").status_code == 404
     client, _ = _product_app("tape", tmp_path)
@@ -612,6 +625,19 @@ def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):
     client, _ = _product_app("tape", tmp_path)
     assert "btn-line-arm" not in client.get("/run-tracked").get_data(as_text=True)
     assert client.post("/api/line/arm").status_code in (404, 405)
+
+
+def test_run_tracked_picks_by_tiles_and_keeps_the_follower_beside_the_rail(tmp_path):
+    """2026-10-24: missions and destinations are touch tiles (no drop-down on the HMI), Set job
+    and Clear sit on top, and the follower readout renders inside the rail, before the log."""
+    client, _ = _product_app("tape", tmp_path)
+    page = client.get("/run-tracked").get_data(as_text=True)
+    assert "<select" not in page
+    assert 'id="lt-mission" class="pick-grid"' in page and 'id="lt-dest" class="pick-grid small"' in page
+    assert page.index('id="btn-line-select"') < page.index('id="lt-mission"')
+    rail = page[page.index('id="telemetry"'):page.index('id="log"')]
+    assert 'id="follower"' in rail and 'id="lt-state"' in rail and 'id="rf-last"' in rail
+    assert 'id="follower"' not in client.get("/manual").get_data(as_text=True)
 
 
 def test_tracked_trackless_is_one_switch_on_home(tmp_path):
@@ -646,7 +672,7 @@ def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
 
 def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    for page in ("/home", "/status", "/manual"):
+    for page in ("/home", "/alarms", "/manual"):
         body = client.get(page).get_data(as_text=True)
         net = body.index('id="net"')
         assert net < body.index('id="supply"') < body.index('id="ipc-temp"'), page

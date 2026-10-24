@@ -13,7 +13,7 @@ lever.
     auto            clears itself once the cause goes away; no button
     start_button    the physical Start button on the panel, after AUTO
     ack             Acknowledge on the Run page (an executor/line FAULT)
-    recover         Recover on the Status page (a supervisor FAULT)
+    recover         Recover on the Home page (a supervisor FAULT)
     operator        an operator act on a page (set the pose, pick a map)
     power_cycle     switch the drives off and on (a latched drive alarm)
     restart_service the service must be restarted (the base cannot be rebuilt)
@@ -173,6 +173,16 @@ def _rows() -> tuple[Alarm, ...]:
           "Line layer hold cause 'markers': a marker run (mission marker_run, no RFID) lost the MLS "
           "marker stream, or marker events, while driving, so the U-turn or home marker may have been "
           "driven past. Never resumes by itself; Start is refused while the stream is down."),
+        a("POSITION_UNSURE", WARN, "start_button", "Stopped: not sure enough where it is on the tape",
+          "Wait for localization to be READY (Teach page), then press Start.",
+          "Line layer hold cause 'position' (tracked plan 4): on a trip the tape locator's sigma was over "
+          "its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held "
+          "BEFORE the point. Start re-checks; it holds again while still unsure."),
+        a("PAYLOAD_UNCONFIRMED", WARN, "start_button", "Stopped before the U-turn: a release is not recorded",
+          "Check the trolley is released, confirm it on the Calls page, then press Start.",
+          "Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a "
+          "release stop not served, so a trolley may still be attached. No sensor sees the trolley: the "
+          "Calls page's confirmation is the record. Start alone does not pivot."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
           "Tape mission stop row (role always, or the job's destination): a measured stop over "
@@ -194,7 +204,7 @@ def _rows() -> tuple[Alarm, ...]:
           "ordered a junction or approached the U-turn, and whether its uncertainty allowed it; "
           "LOST and re-acquired; teach passes and stations. Nothing here changes motion yet."),
         a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
-          "Check the scanner cable and that its driver is running (Status page).",
+          "Check the scanner cable and that its driver is running (Home → More).",
           "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "
           "is not clear. The OSSD stop path does not depend on this data link."),
 
@@ -284,7 +294,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "Group.spawn failed (missing executable, bad environment)."),
         a("LAYER_EXITED", ERROR, "recover", "The mapping or navigation software stopped",
-          "Press Recover on the Status page, then load the mission again.",
+          "Press Recover on the Home page, then load the mission again.",
           "The mode layer's process group exited unrequested; the base is untouched."),
         a("LAYER_NOT_EMPTY", ERROR, "restart_service", "Needs service: old software would not go away",
           "Press Restart on the Home page.",
@@ -296,22 +306,22 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Restart on the Home page.",
           "Teardown exceeded its budget; systemd's TimeoutStopSec (55 s) is the backstop."),
         a("LAYER_START_TIMEOUT", ERROR, "recover", "The new software did not start in time",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "The new layer did not report ready inside layer_start_s; see ~/.amr/logs/layer.log."),
         a("LAYER_NO_READINESS", ERROR, "recover", "The new software never reported ready",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "The layer produced no readiness signal at all: it probably died during entry."),
         a("SAVE_UNKNOWN_OUTCOME", WARN, "operator", "The map may or may not have been saved",
           "Check the Maps page for a new revision before saving again.",
           "The save RPC passed its deadline after the request was accepted; a late answer is ignored."),
         a("MUX_ACK_TIMEOUT", ERROR, "recover", "The mode change did not finish",
-          "Press Recover on the Status page.",
+          "Press Recover on the Home page.",
           "The mux never acknowledged the new generation inside the barrier budget."),
         a("LIFECYCLE_STARTUP", ERROR, "recover", "The new software did not become ready",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "A lifecycle node failed to configure/activate during a transition."),
         a("COORDINATOR_UNAVAILABLE", ERROR, "recover", "The survey software is not answering",
-          "Press Recover on the Status page, then start the survey again.",
+          "Press Recover on the Home page, then start the survey again.",
           "mapping_session service missing when the supervisor needed it."),
         a("SURVEY_RPC_TIMEOUT", ERROR, "recover", "The survey command got no answer",
           "Check the Maps page for a new revision, then press Recover.",
@@ -320,7 +330,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Fix what the Alarms page lists, then start the survey again.",
           "mapping_session refused the start request."),
         a("LOOP_ERROR", ERROR, "recover", "Internal error in the vehicle software",
-          "Press Recover on the Status page. If it repeats, save a report and call the engineer.",
+          "Press Recover on the Home page. If it repeats, save a report and call the engineer.",
           "The supervisor caught an exception in its loop and failed the running operation."),
         a("UNCLEAN_SHUTDOWN", WARN, "power_cycle", "The vehicle lost power last time",
           "Switch the drives off and on, then press the safety reset on the cabinet.",
@@ -417,6 +427,8 @@ HOLD_CODES = {
     "authority": "AUTHORITY_LOST",
     "rfid": "RFID_LINK_LOST",
     "markers": "MARKERS_LOST",
+    "position": "POSITION_UNSURE",
+    "payload": "PAYLOAD_UNCONFIRMED",
 }
 
 
@@ -466,7 +478,7 @@ def card() -> str:
            "| It says | Do this |", "|---|---|"]
     out += [f"| **{CATALOGUE[c].title}** | {CATALOGUE[c].action} |" for c in CARD_CODES if c in CATALOGUE]
     out += ["",
-            "Buttons: **Restart** is on the Home page, **Recover** on Status, "
+            "Buttons: **Restart** and **Recover** are on the Home page, "
             "**Acknowledge** on Run. Reset and Start are on the cabinet.",
             "", "Anything else: save a report from the Alarms page and call the engineer.", ""]
     return "\n".join(out)

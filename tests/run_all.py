@@ -90,7 +90,12 @@ MODULES = [
 #   test_mission's budget checks became no-budget and retired-key checks one for one.
 # + 1 (2026-10-24): guided speed toggle - a marker run with a zone on other codes loads; the guided
 #   high-zone refusal became a load check (test_mission).
-EXPECTED_CHECKS = 764
+# + 1 (2026-10-24): the U-turn gyro gate's refusal (u_turn_gyro_min_deg; test_config).
+# + 1 (2026-10-24): tape_loc.monitor_jump_m's refusal (test_config).
+# + 10 (2026-10-24): tracked plan 4, the position engine. test_config + 1 (tape_loc.live without
+#   tape_loc.enabled refused); test_mission + 9 (site-4: cruise, U-turn points and zones load, the
+#   retired site-3 and 7 refusals).
+EXPECTED_CHECKS = 776
 
 
 # An exception on a helper thread only prints a traceback by default - the

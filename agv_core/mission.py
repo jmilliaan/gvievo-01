@@ -526,18 +526,19 @@ def load(name, vehicle=None, directory=None):
     return out
 
 
-# -- site missions (schema "site-3", tracked plan 3 section 2.5) ---------------------
+# -- site missions (schema "site-4", tracked plans 3 section 2.5 and 4 section 2.2) -----
 #
 # A site mission is designed data: groups of machines, circuits with every junction
 # order written out, and what happens at each stop. WHERE things are (legs, stations)
 # is taught on the vehicle into the tape graph (amr_line.tape_graph), bound to a map
 # revision; the two meet in tape_graph.compile_route, which names anything not taught.
 #
-#   schema            "site-3"
+#   schema            "site-4" (site-3 + cruise_mps, uturn_points, zones; 2026-10-24)
 #   mission_name      the file name
 #   home, attach      station ids: the bay where the AGV parks empty, the attach stop
-#   trip_calls        calls of one group that form a trip (site D3/D4: 2)
+#   trip_calls        calls of one group that form a trip (site D3/D4/D18: 1 or 2)
 #   stop_distance_m   braking distance into every station
+#   cruise_mps        a trip's speed outside the high-speed zones (at most NORMAL)
 #   junctions         {id: {"shape": "Y"|"T"|"X", "laid": bool}}. An unlaid junction is
 #                     not a node: the legs run through it until it is laid and re-taught
 #   uturns            {id: {"direction": "cw"|"ccw", "approach_mps", "decel_m",
@@ -548,15 +549,24 @@ def load(name, vehicle=None, directory=None):
 #                     "approach": "stem" (left | right only: no straight on) or "bar" (as a Y)
 #                     A circuit starts and ends with {"stop": home} and passes attach once
 #   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
-#                     {"release": stop, "take": stop}}}}
+#                     {"release": stop, "take": stop[, "uturn": point]}}}}. "uturn": where a
+#                     trip turns mid-line when this machine is its farthest release (site D16);
+#                     without it, at the circuit's tape-end U-turn
+#   uturn_points      {id: {"direction": "cw"|"ccw"}}: mid-line U-turn points, each the
+#                     "uturn" of exactly one machine; taught on that machine's release leg
+#   zones             {id: {"from": point, "to": point}}: HIGH between two taught points in
+#                     travel direction (site D19); the points are named here, placed by teaching
 #
-# Parsed names: MISSION_NAME, SCHEMA, HOME, ATTACH, TRIP_CALLS, STOP_DISTANCE_M,
+# Parsed names: MISSION_NAME, SCHEMA, HOME, ATTACH, TRIP_CALLS, STOP_DISTANCE_M, CRUISE_MPS,
 # JUNCTIONS, UTURNS, CIRCUITS {id: {"items", "legs", "home_depart", "home_arrive"}}, GROUPS,
-# MACHINES {machine: group}, STATIONS {station: leg id}.
+# MACHINES {machine: group}, STATIONS {station: leg id}, UTURN_POINTS {id: {"direction",
+# "machine", "leg"}}, ZONES {id: {"from", "to"}}, POINTS {point: leg id, or None where the
+# taught pose decides (zone ends)}. Positions (a point after its release, a zone end after its
+# start) are vehicle data: amr_line.trip_route checks them when a trip is compiled.
 
-SITE_SCHEMA = "site-3"
-_SITE_KEYS = ("schema", "mission_name", "home", "attach", "trip_calls", "stop_distance_m",
-              "junctions", "uturns", "circuits", "groups")
+SITE_SCHEMA = "site-4"
+_SITE_KEYS = ("schema", "mission_name", "home", "attach", "trip_calls", "stop_distance_m", "cruise_mps",
+              "junctions", "uturns", "circuits", "groups", "uturn_points", "zones")
 SHAPES = ("Y", "T", "X")
 _ORDERS = {"Y": ("left", "right", "straight", "merge"), "X": ("cross",),
            # A T from its stem has no straight on; along its bar it is a Y.
@@ -565,7 +575,8 @@ _UTURN_KEYS = {"direction", "approach_mps", "decel_m", "max_approach_m", "lead_m
 
 
 def is_site(doc):
-    return isinstance(doc, dict) and doc.get("schema") == SITE_SCHEMA
+    """A site mission of any schema generation (a site-3 file is refused by parse_site, by name)."""
+    return isinstance(doc, dict) and doc.get("schema") in (SITE_SCHEMA, "site-3")
 
 
 def _ident(v, where):
@@ -681,6 +692,8 @@ def _parse_site(doc, vehicle):
                           f"got {calls!r}")
     out["TRIP_CALLS"] = calls
     out["STOP_DISTANCE_M"] = _bounded(doc, "stop_distance_m", "site mission", 0.0, 5.0)
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    out["CRUISE_MPS"] = _bounded(doc, "cruise_mps", "site mission", 0.0, round(normal_mps, 3))
     rate = (vehicle.AUTO_RPM ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["STOP_DISTANCE_M"]))
     if rate > float(vehicle.RAMP["auto"]["decel"]):
         raise ConfigError(f"stop_distance_m: stopping from {vehicle.AUTO_RPM:.0f} r/min in "
@@ -738,6 +751,7 @@ def _parse_site(doc, vehicle):
         circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after}
     out["CIRCUITS"] = circuits
     out["STATIONS"] = stations
+    uturn_points, zones = _site_points(doc, junctions, uturns, stations)
 
     if not isinstance(doc["groups"], dict) or not doc["groups"]:
         raise ConfigError("groups: expected a non-empty object")
@@ -763,8 +777,20 @@ def _parse_site(doc, vehicle):
             if m in machines:
                 raise ConfigError(f"{mw}: machine {m} is already in group {machines[m]} - a machine "
                                   f"belongs to one group")
-            if not isinstance(act, dict) or set(act) not in ({"swap"}, {"release", "take"}):
-                raise ConfigError(f"{mw}: expected {{'swap': stop}} or {{'release': stop, 'take': stop}}")
+            if not isinstance(act, dict) or set(act) not in ({"swap"}, {"release", "take"},
+                                                            {"release", "take", "uturn"}):
+                raise ConfigError(f"{mw}: expected {{'swap': stop}} or {{'release': stop, 'take': stop}} "
+                                  f"(and optionally 'uturn': a uturn_points id)")
+            act = dict(act)
+            point = act.pop("uturn", None)
+            if point is not None:
+                if point not in uturn_points:
+                    raise ConfigError(f"{mw}.uturn: {point!r} is not in uturn_points")
+                if uturn_points[point]["machine"]:
+                    raise ConfigError(f"{mw}.uturn: {point} is already {uturn_points[point]['machine']}'s "
+                                      f"U-turn point - one point, one machine")
+                uturn_points[point].update(machine=m, leg=stations[act["release"]]
+                                           if act["release"] in stations else None)
             for kind, sid in act.items():
                 if sid in (home, attach) or sid not in pos:
                     raise ConfigError(f"{mw}.{kind}: stop {sid!r} is not a machine stop on {cid}")
@@ -776,11 +802,59 @@ def _parse_site(doc, vehicle):
                     raise ConfigError(f"{mw}: the release ({act['release']}) must come before the U-turn and "
                                       f"the take-back ({act['take']}) after it - the AGV never pivots "
                                       f"with a trolley attached")
-            rows[m] = dict(act)
+            if point is not None:
+                act["uturn"] = point
+            rows[m] = act
             machines[m] = name
         groups[name] = {"circuit": cid, "machines": rows}
     out["GROUPS"], out["MACHINES"] = groups, machines
+    unused = sorted(k for k, v in uturn_points.items() if not v["machine"])
+    if unused:
+        raise ConfigError(f"uturn_points {unused}: no machine's uturn - a U-turn point belongs to "
+                          f"the machine after whose release the trip turns")
+    out["UTURN_POINTS"] = uturn_points
+    out["ZONES"] = zones
+    out["POINTS"] = {**{k: v["leg"] for k, v in uturn_points.items()},
+                     **{p: None for z in zones.values() for p in (z["from"], z["to"])}}
     return out
+
+
+def _site_points(doc, junctions, uturns, stations):
+    """uturn_points and zones: named here, placed by teaching (tracked plan 4 section 2.2)."""
+    taken = set(junctions) | set(uturns) | set(stations)
+    if not isinstance(doc["uturn_points"], dict):
+        raise ConfigError("uturn_points: expected an object")
+    points = {}
+    for k, row in doc["uturn_points"].items():
+        where = f"uturn_points.{k}"
+        _ident(k, where)
+        if k in taken:
+            raise ConfigError(f"{where}: {k} is already a station, junction or tape-end U-turn")
+        if not isinstance(row, dict) or set(row) != {"direction"}:
+            raise ConfigError(f"{where}: expected exactly ['direction']")
+        if row["direction"] not in ("cw", "ccw"):
+            raise ConfigError(f"{where}.direction must be cw or ccw")
+        points[k] = {"direction": row["direction"], "machine": "", "leg": None}
+    if not isinstance(doc["zones"], dict):
+        raise ConfigError("zones: expected an object")
+    zones, ends = {}, {}
+    for z, row in doc["zones"].items():
+        where = f"zones.{z}"
+        _ident(z, where)
+        if not isinstance(row, dict) or set(row) != {"from", "to"}:
+            raise ConfigError(f"{where}: expected exactly ['from', 'to']")
+        a, b = _ident(row["from"], f"{where}.from"), _ident(row["to"], f"{where}.to")
+        if a == b:
+            raise ConfigError(f"{where}: from and to are the same point")
+        for p in (a, b):
+            if p in taken or p in points:
+                raise ConfigError(f"{where}: {p} is already a station, junction or U-turn - a zone end "
+                                  f"is a point of its own")
+            if p in ends:
+                raise ConfigError(f"{where}: {p} already ends zone {ends[p]} - one point, one zone end")
+            ends[p] = z
+        zones[z] = {"from": a, "to": b}
+    return points, zones
 
 
 def parse_site(doc, vehicle=None):
@@ -789,6 +863,9 @@ def parse_site(doc, vehicle=None):
         from agv_core import config as vehicle  # noqa: PLC0415
     if not is_site(doc):
         raise MissionError(f"not a site mission (schema must be {SITE_SCHEMA!r})")
+    if doc.get("schema") != SITE_SCHEMA:
+        raise MissionError(f"schema {doc.get('schema')!r} is retired: {SITE_SCHEMA} adds cruise_mps, "
+                           f"uturn_points and zones (tracked plan 4 section 2.2)")
     try:
         return _parse_site(doc, vehicle)
     except MissionError:

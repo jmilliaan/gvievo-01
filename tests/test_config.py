@@ -237,6 +237,10 @@ def test_config_profile():
             lambda d: d["tape_loc"].update(sigma_junction_m=0.02), "sigma_junction_m")
     refuses("an unknown AMCL parameter set is refused",
             lambda d: d["tape_loc"].update(amcl_params="fast"), "default or lean")
+    refuses("a LINE-layer jump trigger above 1 m is refused",
+            lambda d: d["tape_loc"].update(monitor_jump_m=2.0), "monitor_jump_m")
+    refuses("the live position engine without tape localization is refused",
+            lambda d: d["tape_loc"].update(enabled=False, live=True), "tape_loc.live needs")
     refuses("tape localization on a trackless profile is refused",
             lambda d: (d.update(tracked=False), d["tape_loc"].update(enabled=True)), "trackless")
     refuses("a profile without the tape_loc block is refused",
@@ -333,6 +337,8 @@ def test_config_profile():
             lambda d: d["autopilot"].update(high_ramp_s=0.0), "high_ramp_s")
     refuses("a U-turn window with min >= max is refused",
             lambda d: d["autopilot"].update(u_turn_min_deg=230.0), "u_turn_min_deg")
+    refuses("a gyro U-turn gate past 180 deg is refused",
+            lambda d: d["autopilot"].update(u_turn_gyro_min_deg=200.0), "u_turn_gyro_min_deg")
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.

@@ -10,6 +10,10 @@
                 "released" is the record of a served release stop, and "off at home" is
                 the operator's confirmation on the Calls page.
 
+Where a trip turns (site D16, tracked plan 4): after its LAST release - at the mid-line U-turn
+point of the farthest called machine (its "uturn"), or at the circuit's tape-end U-turn when
+that machine has none. Every release comes before the turn, so may_pivot() checks them all.
+
 The trip never moves anything. It answers "stop here?", "may it pivot?", "may it leave
 the bay?"; the line layer turns a "no" into a hold.
 """
@@ -59,9 +63,17 @@ class CallQueue:
         if g is None:
             return None
         need = self.m["TRIP_CALLS"]
-        mine = [m for m, _ in self.pending if self.m["MACHINES"][m] == g][:need]
-        self.pending = [(m, t) for m, t in self.pending if m not in mine]
-        return Trip(self.m, g, mine)
+        mine = [(m, t) for m, t in self.pending if self.m["MACHINES"][m] == g][:need]
+        self.pending = [(m, t) for m, t in self.pending if (m, t) not in mine]
+        trip = Trip(self.m, g, [m for m, _ in mine])
+        trip.called = mine
+        return trip
+
+    def restore(self, trip):
+        """A trip that was not driven (its Start was cancelled or refused): its calls wait
+        again, in their original order and with their original times."""
+        back = [c for c in getattr(trip, "called", []) if all(c[0] != m for m, _ in self.pending)]
+        self.pending = sorted(back + self.pending, key=lambda c: c[1])
 
 
 class Trip:
@@ -69,6 +81,7 @@ class Trip:
         self.m = mission
         self.group = group
         self.machines = list(machines)
+        self.called = [(m, 0.0) for m in self.machines]     # (machine, call time), set by CallQueue
         g = mission["GROUPS"][group]
         self.circuit = g["circuit"]
         items = mission["CIRCUITS"][self.circuit]["items"]
@@ -90,6 +103,22 @@ class Trip:
                 self.plan.append({"id": sid, "role": "machine", "work": wanted[sid]})
         self.served = set()
         self.uturn_at = next((k for k, it in enumerate(items) if it["kind"] == "uturn"), None)
+        # The farthest release (circuit order) decides where this trip turns.
+        pos = {it["id"]: k for k, it in enumerate(items) if it["kind"] == "stop"}
+        releases = [mc for mc in self.machines if RELEASE in g["machines"][mc]]
+        self.farthest = max(releases, key=lambda mc: pos[g["machines"][mc][RELEASE]]) if releases else None
+        self.uturn_point = g["machines"][self.farthest].get("uturn") if self.farthest else None
+
+    def uturn(self):
+        """{"id", "mode": "midline"|"tapeend", "direction"} where this trip turns, or None
+        (a swap trip runs the whole circuit)."""
+        if self.uturn_point is not None:
+            pt = self.m["UTURN_POINTS"][self.uturn_point]
+            return {"id": self.uturn_point, "mode": "midline", "direction": pt["direction"]}
+        if self.uturn_at is None:
+            return None
+        uid = self.m["CIRCUITS"][self.circuit]["items"][self.uturn_at]["id"]
+        return {"id": uid, "mode": "tapeend", "direction": self.m["UTURNS"][uid]["direction"]}
 
     def stops(self):
         """Stop ids in order: where this trip stops (ATT, machines, HOME)."""
@@ -125,6 +154,13 @@ class Trip:
         if left:
             return False, f"release not recorded for {', '.join(left)}: a trolley may still be attached"
         return True, ""
+
+    def describe(self):
+        """For the operator: the group, its machines and where it turns."""
+        u = self.uturn()
+        end = " (tape end)" if u is not None and u["mode"] == "tapeend" else ""
+        turn = "" if u is None else f", U-turn at {u['id']}{end}"
+        return f"{self.group}: {', '.join(self.machines)}{turn}"
 
     def missed(self):
         """Machine stops passed without being served (reported at HOME)."""

@@ -201,6 +201,37 @@ def delete_pass(state_dir, map_id, map_revision, name):
         return False
 
 
+def load_anchors(state_dir, map_id, map_revision):
+    """{junction id: [x, y]} on this map revision: where each junction's MLS fork episode
+    ends, for matching passes by position (tape_teach.ANCHOR_R_M). {} when none."""
+    try:
+        with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "anchors.json")) as fh:
+            doc = json.load(fh)
+        return {str(k): (float(v[0]), float(v[1])) for k, v in doc.items()}
+    except (OSError, ValueError, TypeError, IndexError):
+        return {}
+
+
+def save_anchors(state_dir, map_id, map_revision, anchors):
+    _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "anchors.json"),
+                 {k: [round(float(x), 3), round(float(y), 3)] for k, (x, y) in anchors.items()})
+
+
+def load_marks(state_dir, map_id, map_revision):
+    """{mark id: record} - positions marked from the moving vehicle (2026-10-24); their role
+    (station, zone edge, ...) is given later."""
+    try:
+        with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "marks.json")) as fh:
+            doc = json.load(fh)
+        return doc if isinstance(doc, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_marks(state_dir, map_id, map_revision, marks):
+    _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "marks.json"), marks)
+
+
 def load_stations(state_dir, map_id, map_revision):
     try:
         with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "stations.json")) as fh:
@@ -214,3 +245,8 @@ def save_station(state_dir, map_id, map_revision, record):
     st = load_stations(state_dir, map_id, map_revision)
     st[record["id"]] = record
     _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "stations.json"), st)
+
+
+def save_stations(state_dir, map_id, map_revision, stations):
+    """The whole station table ({id: record}): mark_role replaces and removes entries."""
+    _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "stations.json"), stations)

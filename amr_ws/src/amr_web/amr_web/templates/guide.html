@@ -22,10 +22,20 @@
     </div>
     <p id="gd-msg" class="note"></p>
     <div class="warn-box"><b>Set an order after the previous junction.</b> A merge uses it too: a Left or Right still armed at a merge steers onto the joining tape.</div>
+    <h2>Mark <small>where the AGV is now (M key)</small></h2>
+    <div class="bar two">
+      <input id="gd-mark-label" placeholder="label (optional)">
+      <button id="gd-mark" class="big" title="M key">Mark here</button>
+    </div>
     <h2>U-turn <small>if the strip is missed</small></h2>
     <div class="bar two">
       <button id="gd-uturn" class="big" data-uturn="true" title="The next tape end is the U-turn">U-turn at tape end</button>
       <button id="gd-uturn-cancel" class="big" data-uturn="false">Cancel</button>
+    </div>
+    <h2>Stopped off the tape <small>run ended "track lost"</small></h2>
+    <div class="bar two">
+      <button id="gd-continue" class="big" data-continue="true" title="Put the AGV back on the tape first">Continue on Start</button>
+      <button id="gd-continue-cancel" class="big" data-continue="false">Cancel</button>
     </div>
     <h2>Speed <small id="gd-speed-note">high zones</small></h2>
     <div class="bar two">
@@ -64,10 +74,27 @@ async function uturn(force) {
   $('gd-msg').textContent = r.data.message || '';
   log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
 }
+async function mark() {
+  let r;
+  try { r = await api('/api/line/teach', { action: 'mark', arg: $('gd-mark-label').value.trim() }); }
+  catch (e) { $('gd-msg').textContent = 'no response: the mark may not be set'; return; }
+  $('gd-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.data.ok ? '' : 'bad');
+  if (r.data.ok) $('gd-mark-label').value = '';
+}
+$('gd-mark').onclick = mark;
 document.querySelectorAll('[data-uturn]').forEach(b => { b.onclick = () => uturn(b.dataset.uturn === 'true'); });
+async function cont(arm) {
+  let r;
+  try { r = await api('/api/line/continue', { arm }); } catch (e) { $('gd-msg').textContent = 'no response: continue may not be set'; return; }
+  $('gd-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
+}
+document.querySelectorAll('[data-continue]').forEach(b => { b.onclick = () => cont(b.dataset.continue === 'true'); });
 // Arrow keys, but never while typing in a field; a held key sends once.
 document.addEventListener('keydown', e => {
   if (e.repeat || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
+  if (e.key === 'm' || e.key === 'M') { e.preventDefault(); mark(); return; }
   const side = { ArrowLeft: 'left', ArrowUp: 'straight', ArrowRight: 'right' }[e.key];
   if (!side) return;
   e.preventDefault();

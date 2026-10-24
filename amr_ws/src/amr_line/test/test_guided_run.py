@@ -1,5 +1,5 @@
 """Guided run (mission c-mru-guided, 2026-10-23): the engineer walks C-MRU beside the AGV and
-gives each branch order by hand; the follower is capped at 0.3 m/s outside HIGH; ONE marker
+gives each branch order by hand; the follower is capped at the cruise (CRUISE) outside HIGH; ONE marker
 code (3) is both the U-turn and the home stop, told apart by wheel travel since the pivot.
 The guide page's speed toggle (2026-10-24): NORMAL by default; HIGH lets the corner marker
 pair (2 then 1) grant HIGH, as in any zoned mission.
@@ -21,6 +21,7 @@ from amr_line import branch, uturn  # noqa: E402
 from amr_line import job as lj  # noqa: E402
 
 CODE = 3
+CRUISE = 0.4                            # missions/c-mru-guided.json, m/s (0.3 until 2026-10-24)
 FORK = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}, {"index": 3, "pos_mm": 45, "width": 10}],
         "has_track": True, "nlcp": 6, "track_level": 5}
 
@@ -34,9 +35,9 @@ def started():
     return w
 
 
-def test_cruise_is_capped_at_0_3_mps_and_corner_markers_do_nothing():
+def test_cruise_is_capped_at_the_guided_speed_and_corner_markers_do_nothing():
     w = started()
-    cap = 0.3 * vehicle.RPM_PER_MPS
+    cap = CRUISE * vehicle.RPM_PER_MPS
     w.drive(4.0)
     assert abs(w.job.diag["v_base"] - cap) < 1.0, w.job.diag["v_base"]
     for code in (2, 1):                 # the corner zone strips, toggle at NORMAL: ignored
@@ -48,7 +49,7 @@ def test_cruise_is_capped_at_0_3_mps_and_corner_markers_do_nothing():
 
 
 def out_to_the_mru_end(w):
-    w.drive(140.0)                      # > 40 m out at 0.3 m/s: the U-turn is armed
+    w.drive(140.0)                      # > 40 m out at CRUISE: the U-turn is armed
     assert w.job.tape._mrun_out_m > 40.0
 
 
@@ -77,7 +78,7 @@ def test_one_code_turns_at_the_end_and_stops_at_home_only_after_home_arm_m():
     w.mark(CODE)                        # its own strip re-passed after the pivot: skipped
     w.tick()
     assert w.job.state == lj.RUNNING and w.job.tape.stop is None
-    w.drive(20.0)                       # ~6 m back at 0.3 m/s: still before home_arm_m (40 m)
+    w.drive(20.0)                       # ~8 m back at CRUISE: still before home_arm_m (40 m)
     w.mark(CODE)
     w.tick()
     assert w.job.state == lj.RUNNING and w.job.tape.stop is None, "a stray code 3 is not home"
@@ -182,7 +183,7 @@ def high_selected():
 
 
 def test_high_selected_lets_only_the_marker_pair_grant_high():
-    cap = 0.3 * vehicle.RPM_PER_MPS
+    cap = CRUISE * vehicle.RPM_PER_MPS
     w = high_selected()
     w.drive(2.0)
     assert not w.job.tape.speed.high, "the toggle alone raises nothing"
@@ -205,7 +206,7 @@ def test_high_selected_lets_only_the_marker_pair_grant_high():
 
 
 def test_normal_selected_while_high_drops_it_at_once_and_ignores_the_codes():
-    cap = 0.3 * vehicle.RPM_PER_MPS
+    cap = CRUISE * vehicle.RPM_PER_MPS
     w = high_selected()
     enter_zone(w)
     w.drive(5.0)
@@ -389,3 +390,87 @@ def test_without_the_order_a_start_at_the_tape_end_is_a_new_run_and_idle_refuses
     fresh = World(missions.load("c-mru-guided"))
     ok, msg = fresh.job.force_u_turn(True)
     assert not ok and "no run" in msg
+
+
+def test_a_run_that_ended_after_the_u_turn_continues_home_on_start():
+    # 2026-10-24 13:35-13:44: the U-turn left the AGV off the tape, the run ended; a NEW run
+    # from the MRU end took the home strip for the U-turn and pivoted in the bay
+    w = started()
+    out_to_the_mru_end(w)
+    w.mark(CODE)
+    w.tick()
+    past_guard(w)
+    pivot(w)
+    w.drive(8.0)                                        # past the post-U-turn search window
+    assert w.until(lambda: w.job.state == lj.DONE, 3.0, sensor=NO_TAPE)  # lost on the way back
+    ok, msg = w.job.continue_on_start(True)
+    assert ok and "back phase" in msg, msg
+    w.drive(1.0)
+    assert w.job.state == lj.DONE                       # the web order moves nothing
+    w.start()
+    t = w.job.tape
+    assert t.mrun_phase == "back" and w.job.state == lj.RUNNING
+    w.drive(140.0)                                      # > home_arm_m since the pivot
+    w.mark(CODE)
+    w.tick()
+    past_guard(w)
+    assert t.stop is not None and t.stop["where"] == "HOME-N" and t.uturn_req is None
+
+
+def test_continue_is_refused_unless_the_run_ended_track_lost():
+    w = started()
+    ok, msg = w.job.continue_on_start(True)
+    assert not ok and "nothing to continue" in msg
+    plain = World(missions.load("line-a"))
+    assert not plain.job.continue_on_start(True)[0]
+
+
+def test_a_burst_of_code_3_reads_at_a_junction_is_not_a_strip():
+    # 2026-10-24 13:43:34: J-STEM gave code 3 five times in 0.4 s (-1/-2 mm, one track) and
+    # the AGV U-turned 11 m from home; a strip is read once
+    w = started()
+    out_to_the_mru_end(w)
+    for _ in range(4):
+        w.mark(CODE)
+        w.tick()
+        w.drive(0.02)
+    w.drive(2.0)
+    t = w.job.tape
+    assert t.uturn_req is None and t._mrun_pending is None and w.job.state == lj.RUNNING
+    assert any("a junction tape, not a strip" in x for _l, x in t.events), t.events
+    w.mark(CODE)                         # a real strip later: one read, acts as before
+    w.tick()
+    past_guard(w)
+    assert t.uturn_req is not None
+
+
+def test_the_tape_dropping_out_right_after_the_u_turn_is_found_again_not_the_end():
+    # 2026-10-24 14:08: "U-turn complete", then 0.94 s later "track lost" with the tape in
+    # view again at rest (-56 mm): a dropout near the centre at the weak MRU end
+    w = started()
+    out_to_the_mru_end(w)
+    w.mark(CODE)
+    w.tick()
+    past_guard(w)
+    pivot(w)
+    for _ in range(4):
+        w.tick(sensor=NO_TAPE)
+    assert w.job.kink is not None and w.job.state == lj.RUNNING, w.job.reason
+    assert any("vanished" in x for _l, x in w.job.tape.events), w.job.tape.events
+    w.still, w.integrate = True, False
+    assert w.until(lambda: w.job.kink is None, 3.0), w.job.reason      # in view at standstill
+    w.still, w.integrate = False, True
+    w.drive(1.0)
+    assert w.job.state == lj.RUNNING and w.job.tape.mrun_phase == "back"
+
+
+def test_far_from_the_u_turn_a_centre_loss_is_still_the_end_of_the_tape():
+    w = started()
+    out_to_the_mru_end(w)
+    w.mark(CODE)
+    w.tick()
+    past_guard(w)
+    pivot(w)
+    w.drive(8.0)                                      # > 1 m after the pivot
+    assert w.until(lambda: w.job.state == lj.DONE, 3.0, sensor=NO_TAPE)
+    assert w.job.kink is None

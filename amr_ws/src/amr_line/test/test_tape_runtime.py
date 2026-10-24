@@ -264,3 +264,122 @@ def test_a_u_turn_straight_from_following_is_recorded(tmp_path):
     rt.tick(0.3, 1.1, 0, True, "spin", True)
     rt.tick(0.4, 1.1, 2, True, "")
     assert rt.recorder.uturns == [1.1] and rt.recorder.pivots == [1.1]
+
+
+def test_marks_from_the_moving_vehicle_land_on_the_leg_it_faces(tmp_path):
+    # 2026-10-24: positions marked while driving; their role (station, zone edge) comes later
+    rt = runtime(tmp_path, {"map_id": "t", "map_revision": 1, "graph_revision": None})
+    rt.readiness(0.0, tr.READY)
+    assert rt.teach(0.0, "mark")[1].startswith("no legs")
+    rt.teach(0.0, "pass_start", "C-M")
+    t, travel = drive_lap(rt)
+    rt.teach(t, "pass_stop")
+    assert rt.teach(t, "build")[0]
+    # driving east along J-B:right>U (10,10)->(30,10): the last pose 0.5 m of travel ago
+    t1 = t + 1.0
+    rt.tick(t1, travel, 2, False)
+    rt.amcl(t1, t1, 20.0, 10.0, 0.0, 0.0004, 0.0, 0.0004)
+    rt.tick(t1 + 0.5, travel + 0.5, 2, False)
+    rt.readiness(t1 + 0.5, tr.READY)
+    ok, msg = rt.teach(t1 + 0.5, "mark", "release MW-x")
+    assert ok and msg.startswith("M1 (release MW-x) on J-B:right>U at 10.5"), msg
+    # the same spot facing west is the other leg of the same tape
+    t2 = t1 + 1.0
+    rt.tick(t2, travel + 0.5, 2, False)
+    rt.amcl(t2, t2, 20.0, 10.0, math.pi, 0.0004, 0.0, 0.0004)
+    ok, msg = rt.teach(t2, "mark")
+    assert ok and msg.startswith("M2 on U:pivot>J-C at 10."), msg
+    assert rt.teach(t2 + 5.0, "mark")[1].startswith("no AMCL pose")      # stale pose
+    rt.readiness(t2, tr.LOST_STATES[1], "localisation corrected by 0.15 m")  # LOST: marked, flagged
+    rt.amcl(t2, t2, 21.0, 10.0, 0.0, 0.0004, 0.0, 0.0004)
+    ok, msg = rt.teach(t2, "mark")
+    assert ok and "marked while localisation corrected by 0.15 m" in msg, msg
+    assert rt.teach(t2, "mark_delete", "M3")[0]
+    assert "M1 (release MW-x) J-B:right>U 10.5" in rt.teach(t2, "marks")[1]
+    assert rt.teach(t2, "mark_delete", "M2")[0] and not rt.teach(t2, "mark_delete", "M2")[0]
+    marks = store.load_marks(str(tmp_path / "state"), "t", 1)
+    assert list(marks) == ["M1"] and marks["M1"]["lag_m"] == pytest.approx(0.5, abs=0.01)
+    ok, msg = rt.teach(t2, "build")                  # re-averaged legs: marks follow
+    assert ok and "no longer on a leg" not in msg
+
+
+# -- tracked plan 4: roles for marks, the trip locator --------------------------------------
+
+def _site_runtime(tmp_path, graph_revision=None):
+    from site_fixture import site  # noqa: PLC0415
+    return tr.TapeRuntime(site(), tl.Params(), maps_dir=str(tmp_path / "maps"),
+                          state_dir=str(tmp_path / "state"),
+                          selection={"map_id": "t", "map_revision": 1, "graph_revision": graph_revision},
+                          resolve_sha=lambda _m, _r: SHA, shadow_circuit="C-M")
+
+
+def test_a_mark_becomes_a_station_or_point_by_its_role(tmp_path):
+    from site_fixture import graph, site  # noqa: PLC0415
+    rt = _site_runtime(tmp_path)
+    m = site()
+    rt.staged = graph(m, skip=tuple(m["STATIONS"]) + ("HOME", "UT-M1", "UT-M2", "ZA", "ZB"))
+    line = rt.staged.legs["J-B:right>U"].line
+    marks = {f"M{k}": {"label": "", "leg": "J-B:right>U", "s": s, "pose": list(line.point(s))}
+             for k, s in ((1, 8.0), (2, 11.0), (3, 1.0))}
+    marks["M4"] = {"label": "", "leg": "U:pivot>J-C", "s": 12.0,
+                   "pose": list(rt.staged.legs["U:pivot>J-C"].line.point(12.0))}
+    store.save_marks(str(tmp_path / "state"), "t", 1, marks)
+    ok, msg = rt.teach(0.0, "mark_role", "M1 MW-1")
+    assert ok and msg.startswith("M1 is MW-1 on J-B:right>U at s 8.00 m"), msg
+    assert rt.teach(0.0, "mark_role", "M2 UT-M1")[0], "a U-turn point lands on its machine's release leg"
+    ok, msg = rt.teach(0.0, "mark_role", "M3 ZA")
+    assert ok and "J-B:right>U at s 1.00" in msg, "a zone end takes the leg it faces along"
+    ok, msg = rt.teach(0.0, "mark_role", "M4 MW-2")
+    assert not ok and "wrong direction" in msg, "MW-2 is on the way out; M4 faces back"
+    assert not rt.teach(0.0, "mark_role", "M1 NOPE")[0]
+    ok, msg = rt.teach(0.0, "mark_role", "M4 ME-1")
+    assert ok
+    stations = store.load_stations(str(tmp_path / "state"), "t", 1)
+    assert stations["MW-1"]["mark"] == "M1" and stations["ZA"]["pose"] == pytest.approx(marks["M3"]["pose"])
+    ok, msg = rt.teach(0.0, "roles")
+    assert "MW-1=M1" in msg and "not taught: HOME, ATT, MW-2" in msg, msg
+    # moving a role to another mark takes it off the first; "-" removes it
+    ok, msg = rt.teach(0.0, "mark_role", "M2 MW-1")
+    assert ok and "M1 no longer MW-1" in msg and "UT-M1 untaught" in msg, msg
+    assert rt.teach(0.0, "mark_role", "M2 -")[1] == "M2: role MW-1 removed"
+    assert "MW-1" not in store.load_stations(str(tmp_path / "state"), "t", 1)
+    assert "= ME-1" in rt.teach(0.0, "marks")[1]
+
+
+def test_the_locator_moves_onto_a_trips_route_where_it_stands(tmp_path):
+    from site_fixture import graph, site  # noqa: PLC0415
+
+    from amr_line import trip as trip_mod  # noqa: PLC0415
+    m = site(trip_calls=1)
+    n = store.publish(str(tmp_path / "maps"), graph(m))
+    rt = _site_runtime(tmp_path, graph_revision=n)
+    assert rt.route is not None, rt.detail
+    assert rt.at_home()[0]
+    rt.readiness(0.0, tr.READY)
+    rt.tick(0.1, 0.0, 2, True)
+    assert rt.loc is not None and rt.loc_state()["home_offset"] == pytest.approx(0.0)
+    rt.tick(0.2, 0.12, 2, False)                            # 12 cm out of the bay
+    route = rt.compile_trip(trip_mod.Trip(rt.m, "M", ["M1"]))
+    ok, _msg = rt.begin_trip(route)
+    st = rt.loc_state()
+    assert ok and st["route"] == route.ident and st["S"] == pytest.approx(route.S_start + 0.12)
+    assert st["home_offset"] == pytest.approx(0.12) and rt.shadow is None
+    rt.tick(0.3, 0.32, 2, False)
+    assert rt.loc_state()["S"] == pytest.approx(route.S_start + 0.32)
+
+
+def test_the_shadow_lap_logs_the_u_turn_points_and_zone_ends(tmp_path):
+    from site_fixture import graph, site  # noqa: PLC0415
+    n = store.publish(str(tmp_path / "maps"), graph(site()))
+    rt = _site_runtime(tmp_path, graph_revision=n)
+    rt.at_home()
+    rt.readiness(0.0, tr.READY)
+    t, travel = 0.0, 0.0
+    while travel < 30.0:
+        t, travel = t + 0.02, travel + 0.01
+        rt.tick(t, travel, 2, False)
+    text = " | ".join(x for _l, x in rt.drain_events())
+    assert "zone Z-LINE: HIGH from ZA at S 21.00" in text, text
+    assert "zone Z-LINE: NORMAL by ZB at S 27.00" in text
+    assert "U-turn point of M1 UT-M1 at S 30.50" in text
+    assert "would HOLD" in text, "odometry only: sigma grows past the station limit"

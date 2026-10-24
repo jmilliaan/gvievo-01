@@ -96,3 +96,9 @@ string loc_map_sha256
 # one without a high zone); "normal" = zone markers ignored; "high" = the marker pair may grant
 # HIGH (high_speed above says whether it has).
 string speed_select
+# Trips (tracked plan 4, the position engine, 2026-10-24). APPEND ONLY. All "" unless the site
+# mission is the job (tape_loc.live).
+string trip                 # the trip being driven ("MRU: MRU1, MRU2, U-turn at UT-MRU2"), or how the last ended
+string trip_next            # what comes next: "stop MW-1 in 3.2 m", "right at J-N in 0.8 m", "MRU trip formed: ..."
+string trip_queue           # machines waiting, in call order, space-separated ("MRU3 MRU1")
+string trip_payload         # why the next trip may not leave HOME ("" = trolleys confirmed off)

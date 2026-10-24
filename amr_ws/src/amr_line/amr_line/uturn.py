@@ -76,7 +76,7 @@ def counts_for_angle(deg, counts_per_wheel_rev):
 class UTurn:
     def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
                  phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn",
-                 band_mm=None, settle_s=None):
+                 band_mm=None, settle_s=None, gyro_min_deg=None):
         """phase=CENTER skips the spin: centre on the tape already under the
         sensor, then settle. manualturn.py uses it after an encoder pivot.
 
@@ -101,6 +101,11 @@ class UTurn:
         self._last = tuple(start_counts)
         self._left_m = self._right_m = 0.0
         self.start_level = start_level
+        # The tape may stop the spin only past this TRUE angle from the gyro (the encoder
+        # over-reads ~15 % in a pivot, 2026-10-24). None/0: encoder gate only.
+        self.gyro_min_deg = gyro_min_deg or None
+        self.gyro_deg = 0.0
+        self.gyro_ok = True         # False once a tick came without a yaw rate: encoder only
         self.phase = phase
         self.lost = bool(lost)
         self.reason = None
@@ -144,7 +149,7 @@ class UTurn:
             self._fail(reason)
         return 0.0, 0.0
 
-    def update(self, counts, e_mm, level, dt, paused=False):
+    def update(self, counts, e_mm, level, dt, paused=False, yaw_rate=None):
         """One tick. Returns (left_rpm, right_rpm) in driver terms.
 
         paused: a warning field is slowing or holding the pivot in the mux; the
@@ -156,8 +161,13 @@ class UTurn:
         if not paused:
             self.elapsed_s += dt
         self._integrate(counts)
+        if yaw_rate is None:
+            self.gyro_ok = False
+        else:
+            self.gyro_deg += math.degrees(yaw_rate) * dt * self.sign
         angle = self.angle_deg
         seen = e_mm is not None
+        turned = self.gyro_min_deg is None or not self.gyro_ok or self.gyro_deg >= self.gyro_min_deg
 
         if self.phase == SPIN:
             if angle < -REVERSE_LIMIT_DEG:
@@ -165,7 +175,7 @@ class UTurn:
                                   f"the commanded {self.direction} spin")
             if not seen:
                 self.lost = True
-            elif (self.lost and angle >= self.min_deg
+            elif (self.lost and angle >= self.min_deg and turned
                   and abs(e_mm) <= self.band_mm
                   and (self.start_level is None
                        or (level is not None
@@ -220,4 +230,5 @@ class UTurn:
     def snapshot(self):
         return {"active": self.active, "phase": self.phase,
                 "direction": self.direction, "angle_deg": self.angle_deg,
+                "gyro_deg": self.gyro_deg if self.gyro_ok else None,
                 "tape_lost": self.lost, "reason": self.reason}
