@@ -419,6 +419,36 @@ def create_app(
             return _result(False, "side must be left, straight or right", 422)
         return _call(adapter.line_branch, side)
 
+    # Its speed toggle (2026-10-24): HIGH lets the mission's marker pair grant HIGH, NORMAL
+    # ignores the zone codes. It never starts or resumes the run.
+    @app.post("/api/line/speed")
+    def api_line_speed():
+        _need(tracked_ok)
+        if _role() != rolemod.ENGINEER:
+            return _result(False, "the speed toggle needs the engineer view (PIN)", 403)
+        d, err = _body()
+        if err:
+            return err
+        level = str(d.get("level", "") or "")
+        if level not in ("normal", "high"):
+            return _result(False, "level must be normal or high", 422)
+        return _call(adapter.line_speed, level)
+
+    # Its forced U-turn (2026-10-24): the next tape end is the U-turn, strip or not. It changes
+    # what a tape end means to the running job; it never starts or resumes the run.
+    @app.post("/api/line/uturn")
+    def api_line_uturn():
+        _need(tracked_ok)
+        if _role() != rolemod.ENGINEER:
+            return _result(False, "the forced U-turn needs the engineer view (PIN)", 403)
+        d, err = _body()
+        if err:
+            return err
+        force = d.get("force")
+        if not isinstance(force, bool):
+            return _result(False, "force must be true or false", 422)
+        return _call(adapter.line_uturn, force)
+
     @app.post("/api/line/teach")
     def api_line_teach():
         _need(tracked_ok)
@@ -461,6 +491,7 @@ def create_app(
 
     @app.get("/api/demo")
     def api_demo():
+        _want_live()
         ps = adapter.live.pose_scan() if hasattr(adapter, "live") else None
         return jsonify(demomod.view(ps, fp.polygon, demo_near_m))
 
@@ -884,8 +915,15 @@ def create_app(
 
     # ---- live view (unified plan §6.4): bounded rates, encoded once per snapshot ----
 
+    def _want_live():
+        """Every live-view/demo request keeps /scan and /tf subscribed (live.LIVE_IDLE_S)."""
+        want = getattr(getattr(adapter, "live", None), "want", None)
+        if want is not None:
+            want()
+
     @app.get("/api/live/map")
     def api_live_map():
+        _want_live()
         meta = adapter.live.map_meta() if hasattr(adapter, "live") else None
         if meta is None:
             return jsonify({"snapshot": 0, "available": False})
@@ -893,6 +931,7 @@ def create_app(
 
     @app.get("/api/live/map.png")
     def api_live_map_png():
+        _want_live()
         try:
             snap = int(request.args.get("snapshot", "0"))
         except ValueError:
@@ -904,6 +943,7 @@ def create_app(
 
     @app.get("/api/live/pose")
     def api_live_pose():
+        _want_live()
         if not hasattr(adapter, "live"):
             return jsonify({"generation": 0, "pose": None, "scan": None})
         return jsonify(adapter.live.pose_scan())

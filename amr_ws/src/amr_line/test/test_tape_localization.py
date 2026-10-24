@@ -174,10 +174,55 @@ def test_build_averages_passes_into_legs():
 
 def test_a_pass_with_a_missed_fork_is_refused():
     m = mission()
-    with pytest.raises(tt.TeachError, match="do not match"):
+    with pytest.raises(tt.TeachError, match="missed MLS fork"):
         tt.split_pass(record_pass(drop_fork=1), m)
     _g, report = tt.build([record_pass(0), record_pass(1, drop_fork=1)], m, BINDING)
     assert any(r.startswith("REFUSED") for r in report)
+
+
+def _with_corner_forks(rec, at, span=0.15):
+    """Corner episodes: the MLS sees both legs of a kink corner, then the pivot."""
+    for a in at:
+        rec["forks"].append([a - span, a, False])
+        rec.setdefault("pivots", []).append(a + 0.02)
+    rec["forks"].sort()
+    return rec
+
+
+def test_corner_forks_at_kink_pivots_are_dropped_not_refused():
+    # 2026-10-24: 6 and 7 forks on the way out of C-MRU (4 junctions) with 1 and 2 kink pivots
+    m = mission()
+    rec = _with_corner_forks(record_pass(0), (2.0, 20.0, 50.0))
+    notes = []
+    parts = tt.split_pass(rec, m, notes)
+    assert set(parts) == {leg["id"] for leg in m["CIRCUITS"]["C-M"]["legs"]}
+    assert sum("corner" in n for n in notes) == 3, notes
+    clean = tt.split_pass(record_pass(0), m)
+    for lid in parts:
+        assert len(parts[lid]["pts"]) == len(clean[lid]["pts"]), lid
+
+
+def test_a_stray_short_episode_is_dropped_and_a_junction_at_a_pivot_is_kept():
+    m = mission()
+    rec = record_pass(0)
+    rec["forks"].append([12.0, 12.03, False])          # a strip/corner seen for 3 cm, no pivot
+    rec["forks"].sort()
+    notes = []
+    tt.split_pass(rec, m, notes)
+    assert any("shortest" in n and "12.0" in n for n in notes), notes
+    rec = record_pass(0)
+    rec["pivots"] = [15.1]                              # a pivot right at the J-B junction
+    notes = []
+    tt.split_pass(rec, m, notes)
+    assert any("kept a fork at a pivot" in n for n in notes), notes
+
+
+def test_a_pass_that_did_not_u_turn_is_refused_by_name():
+    m = mission()
+    rec = record_pass(0)
+    rec["uturns"] = []
+    with pytest.raises(tt.TeachError, match="0 U-turn"):
+        tt.split_pass(rec, m)
 
 
 def test_graph_round_trip_and_binding():

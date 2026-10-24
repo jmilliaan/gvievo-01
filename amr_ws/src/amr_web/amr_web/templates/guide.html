@@ -5,7 +5,12 @@
    (missions/c-mru-guided.json) and gives each branch order by hand. An order is one shot:
    the NEXT fork or merge the MLS sees uses it, then it is straight again. Nothing on this
    page moves the vehicle: the run starts and resumes only on AUTO + the physical Start.
-   Keyboard: Left / Up (straight) / Right arrows. Engineer view (PIN) only. #}
+   Keyboard: Left / Up (straight) / Right arrows. Engineer view (PIN) only.
+   Speed toggle (2026-10-24, mission with a high_zone): High lets the marker pair (outer then
+   inner) grant HIGH, Normal ignores the zone codes and drops HIGH at once. Neither raises the
+   speed by itself; NORMAL again at every mission load.
+   U-turn at tape end (2026-10-24): the NEXT tape end is the U-turn, strip or not - instead of
+   the run ending "track lost". One shot, only on the way out; it moves nothing by itself. #}
 <section class="manual grow">
   <div class="side">
     <h2>Next fork <small id="gd-mission">guided mission</small></h2>
@@ -17,6 +22,16 @@
     </div>
     <p id="gd-msg" class="note"></p>
     <div class="warn-box"><b>Set an order after the previous junction.</b> A merge uses it too: a Left or Right still armed at a merge steers onto the joining tape.</div>
+    <h2>U-turn <small>if the strip is missed</small></h2>
+    <div class="bar two">
+      <button id="gd-uturn" class="big" data-uturn="true" title="The next tape end is the U-turn">U-turn at tape end</button>
+      <button id="gd-uturn-cancel" class="big" data-uturn="false">Cancel</button>
+    </div>
+    <h2>Speed <small id="gd-speed-note">high zones</small></h2>
+    <div class="bar two">
+      <button id="gd-normal" class="big" data-speed="normal">Normal</button>
+      <button id="gd-high" class="big" data-speed="high">High</button>
+    </div>
   </div>
   <div class="side">
     <h2>Run <small>line layer</small></h2>
@@ -36,6 +51,20 @@ async function order(side) {
   log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
 }
 document.querySelectorAll('[data-side]').forEach(b => { b.onclick = () => order(b.dataset.side); });
+async function speed(level) {
+  let r;
+  try { r = await api('/api/line/speed', { level }); } catch (e) { $('gd-msg').textContent = 'no response: the speed may not be set'; return; }
+  $('gd-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
+}
+document.querySelectorAll('[data-speed]').forEach(b => { b.onclick = () => speed(b.dataset.speed); });
+async function uturn(force) {
+  let r;
+  try { r = await api('/api/line/uturn', { force }); } catch (e) { $('gd-msg').textContent = 'no response: the U-turn order may not be set'; return; }
+  $('gd-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
+}
+document.querySelectorAll('[data-uturn]').forEach(b => { b.onclick = () => uturn(b.dataset.uturn === 'true'); });
 // Arrow keys, but never while typing in a field; a held key sends once.
 document.addEventListener('keydown', e => {
   if (e.repeat || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
@@ -46,6 +75,14 @@ document.addEventListener('keydown', e => {
 });
 onState(st => {
   const ln = st.line;
+  const sel = (ln && ln.speed_select) || '';  // '' = this mission has no speed toggle
+  document.querySelectorAll('[data-speed]').forEach(b => {
+    b.disabled = !sel;
+    b.classList.toggle('on', b.dataset.speed === sel);
+  });
+  $('gd-speed-note').textContent = !ln ? 'high zones'
+    : !sel ? 'no high zone in this mission'
+      : sel === 'high' ? 'HIGH where the markers grant it' : 'zone markers ignored';
   if (!ln) {
     tiles('gd-order', [['Order', '–', 'line layer not running (Tracked mode)', 'bad', 'key']]);
     $('gd-run').innerHTML = '';
@@ -57,7 +94,7 @@ onState(st => {
   document.querySelectorAll('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === intent));
   tiles('gd-run', [
     ['State', ln.state_name || '–', ln.hold_cause || ln.engine_state || '', ln.state_name === 'FAULT' ? 'bad' : (ln.state_name === 'HOLD' ? 'warn' : ''), 'key'],
-    ['Speed', num(ln.v_mps, 2), 'm/s'],
+    ['Speed', num(ln.v_mps, 2), `m/s · ${ln.high_speed ? 'HIGH' : 'NORMAL'}`, ln.high_speed ? 'warn' : ''],
     ['U-turn', ln.uturn_phase || '–', 'phase'],
     ['Marker', ln.last_marker ? `code ${ln.last_marker}` : '–', 'last read'],
     ['Driven', num(ln.followed_m, 1), 'm this run'],

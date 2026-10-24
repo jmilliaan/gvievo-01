@@ -61,8 +61,8 @@ def doc(rows=(), **over):
 
 
 SITE = doc(SITE_ROWS)
-# The same table with a high zone: shared codes, an 8 m shortest straight -> a 5.65 m budget.
-ZONE = {"shortest_straight_m": 8.0, "pair_spacing_m": 0.5, "outer_code": OUTER, "inner_code": INNER}
+# The same table with a high zone: shared codes; HIGH lasts until the exit pair (no budget).
+ZONE = {"pair_spacing_m": 0.5, "outer_code": OUTER, "inner_code": INNER}
 ZONED = doc(SITE_ROWS, high_zone=ZONE)
 
 
@@ -387,7 +387,7 @@ def test_normal_is_the_default_and_a_mission_without_a_zone_never_goes_high():
     assert w.job.diag["v_base"] == vehicle.AUTO_RPM
 
 
-def test_a_zone_entry_ramps_to_high_and_the_budget_brings_it_back():
+def test_a_zone_entry_ramps_to_high_and_the_exit_marker_brings_it_back():
     w = _enter(_zoned_at_normal())
     assert w.job.diag["speed_target_rpm"] == vehicle.AUTO_HIGH_RPM
     w.drive(1.0)
@@ -398,8 +398,11 @@ def test_a_zone_entry_ramps_to_high_and_the_budget_brings_it_back():
     assert w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM
     snap = w.job.mission_snapshot()
     assert snap["high_speed"] is True and "entered" in snap["speed_reason"]
-    assert w.until(lambda: not w.job.tape.speed.high, 15.0), "the budget ends HIGH"
-    assert "budget" in w.job.tape.speed.reason
+    w.drive(15.0)
+    assert w.job.tape.speed.high, "no distance budget: HIGH until the exit marker"
+    w.mark(INNER)
+    w.tick()
+    assert not w.job.tape.speed.high and "leaving the straight" in w.job.tape.speed.reason
     w.drive(2.5)
     assert w.job.diag["v_base"] == vehicle.AUTO_RPM
 
@@ -481,7 +484,7 @@ def test_the_zone_works_with_the_rfid_link_down():
 def test_no_machine_tag_ever_resets_high():
     """Operator, 2026-10-09: RFID decides where to stop, never the speed. At HIGH, every
     machine tag of line-a is passed at HIGH - not the destination, or already served -
-    and a machine the vehicle does stop at departs HIGH with the budget it had left."""
+    and a machine the vehicle does stop at departs HIGH, as it arrived."""
     line_a = missions.load("line-a")
     machines = [t for t, r in line_a["TAGS"].items() if r["action"] == "stop" and r["role"] != "home"]
     assert set(machines) == {"0020", "0110", "0120", "0130", "0140"}
@@ -509,7 +512,7 @@ def test_no_machine_tag_ever_resets_high():
         w.read(tag)
         w.tick()
         assert w.until(lambda w=w: w.job.state == lj.HOLD, 5.0) and w.job.hold_cause == "station", tag
-        assert w.job.tape.speed.parked_left is not None, (tag, w.job.tape.speed.reason)
+        assert w.job.tape.speed.parked_high, (tag, w.job.tape.speed.reason)
         w.tick(start_edge=True, start_edge_t=w.t)
         assert w.until(lambda w=w: w.job.state == lj.RUNNING, 2.0), w.job.reason
         assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason, tag
@@ -583,7 +586,7 @@ def test_inner_while_high_drops_at_half_a_metre_per_s2_without_a_jerk_ramp():
     dropped = v0 - w.job.diag["v_base"]
     assert dropped == pytest.approx(0.3 * 0.5 * vehicle.RPM_PER_MPS, rel=0.1), dropped
     events = [t for _, t in w.job.tape.drain_events()]
-    assert any("late drop" in e for e in events)
+    assert any("leaving the straight" in e for e in events)
 
 
 def test_outer_while_high_drops_at_the_urgent_rate():
@@ -628,19 +631,17 @@ def _parked_at_mru2_from_high():
     w.read(MRU2)
     w.tick()
     assert w.until(lambda: w.job.state == lj.HOLD, 5.0) and w.job.hold_cause == "station"
-    assert w.job.tape.speed.parked_left is not None, w.job.tape.speed.reason
+    assert w.job.tape.speed.parked_high, w.job.tape.speed.reason
     return w
 
 
 def test_a_station_reached_at_high_departs_at_high():
     """2026-10-08: a station on a straight goes on at the speed it arrived at."""
     w = _parked_at_mru2_from_high()
-    left = w.job.tape.speed.parked_left - w.job.tape.speed.parked_m
     w.drive(2.0)
     w.tick(start_edge=True, start_edge_t=w.t)
     assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason
     assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
-    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.01)
     assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM, 4.0)
 
 
@@ -649,17 +650,15 @@ def test_a_protective_field_at_the_station_keeps_the_high_departure():
     trip stops nothing, so the station hold stays. Operator, 2026-10-23: a protective stop
     never resets HIGH - the departure is as arrived (it cost the parked HIGH until then)."""
     w = _parked_at_mru2_from_high()
-    left = w.job.tape.speed.parked_left - w.job.tape.speed.parked_m
     w.tick(torque_off=True, field_clear=False)
     assert w.job.state == lj.HOLD and w.job.hold_cause == "station"
-    assert w.job.tape.speed.parked_left is not None
+    assert w.job.tape.speed.parked_high
     w.drive(1.0, torque_off=True, field_clear=False)
     w.drive(1.0, torque_off=True)
     w.tick(start_edge=True, start_edge_t=w.t, torque_off=True)
     assert w.job.state == lj.ARMED, w.job.reason
     assert w.until(lambda: w.job.state == lj.RUNNING, 1.0), w.job.reason
     assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
-    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
 
 
 def test_a_run_from_home_starts_normal_even_after_arriving_high():
@@ -668,71 +667,62 @@ def test_a_run_from_home_starts_normal_even_after_arriving_high():
     w = _at_high()
     w.read(HOME)
     w.tick()
-    assert w.job.tape.speed.parked_left is not None, "Home parks, it does not drop"
+    assert w.job.tape.speed.parked_high, "Home parks, it does not drop"
     assert at_rest_stopped(w) and w.job.state == lj.DONE, w.job.reason
     w.job.set_mission(w.job.mission, "MRU1")
     w.start()
-    assert not w.job.tape.speed.high and w.job.tape.speed.parked_left is None
+    assert not w.job.tape.speed.high and not w.job.tape.speed.parked_high
 
 
 def test_an_rfid_link_hold_at_high_resumes_high():
     """2026-10-09: no RFID event changes the speed - the link hold parks HIGH like the
     protective field, and the Start that resumes the run restores it."""
     w = _at_high()
-    left = w.job.tape.speed.budget_left_m()
     w.comms = False
     w.tick()
     assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid", w.job.reason
-    assert w.job.tape.speed.parked_left is not None
+    assert w.job.tape.speed.parked_high
     w.comms = True
     w.gen += 1
     w.enc = []
     w.drive(1.0)
     w.tick(start_edge=True, start_edge_t=w.t)
     assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason
-    assert w.job.tape.speed.high and w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
+    assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
 
 
-def test_a_warning_field_hold_does_not_use_up_the_budget():
-    """The mux slows the vehicle where the follower cannot see it; the budget counts
-    wheel travel, so a held vehicle keeps its HIGH budget."""
+def test_a_warning_field_hold_keeps_high():
+    """The mux slows the vehicle where the follower cannot see it: HIGH stays granted."""
     w = _at_high()
     w.integrate = False             # wheels stopped by the field, command still HIGH
-    w.tick()                        # the last integrated step lands one tick late
-    used = w.job.tape.speed.used_m
+    w.tick()
     w.drive(10.0)
-    assert w.job.tape.speed.high and w.job.tape.speed.used_m == pytest.approx(used)
+    assert w.job.tape.speed.high
 
 
 def test_a_protective_stop_at_high_resumes_high():
-    """Operator, 2026-10-09: after a protective stop the vehicle goes back to HIGH, with
-    the budget it had less any wheel travel while held - like a station departure."""
+    """Operator, 2026-10-09: after a protective stop the vehicle goes back to HIGH, like a
+    station departure."""
     w = _at_high()
-    left = w.job.tape.speed.budget_left_m()
     w.tick(torque_off=True, field_clear=False)
     assert w.job.state == lj.HOLD and w.job.hold_cause == "field"
     assert not w.job.tape.speed.high, "NORMAL while held"
-    assert w.job.tape.speed.parked_left is not None
+    assert w.job.tape.speed.parked_high
     w.drive(1.0, torque_off=True, field_clear=False)
     assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
     assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
-    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
     assert w.until(lambda: w.job.diag["v_base"] == vehicle.AUTO_HIGH_RPM, 4.0)
 
 
 @pytest.mark.parametrize("scale", [0.5, 0.0])
 def test_warning_fields_1_and_2_never_take_high_away(scale):
     """Operator, 2026-10-23: a warning field slows (W1) or stops (W2, x0.00) the vehicle in
-    the mux; the run stays RUNNING, HIGH stays granted and the budget only counts travel."""
+    the mux; the run stays RUNNING and HIGH stays granted."""
     w = _at_high()
     w.integrate = scale > 0.0       # W2: the wheels stand still under a HIGH command
     w.tick(warning_scale=scale)
-    used = w.job.tape.speed.used_m
-    # W1: this world does not slow the wheels for the mux, so keep within the 5.6 m budget
-    w.drive(8.0 if scale == 0.0 else 1.0, warning_scale=scale)
+    w.drive(8.0, warning_scale=scale)
     assert w.job.state == lj.RUNNING and w.job.tape.speed.high, w.job.tape.speed.reason
-    if scale == 0.0:
-        assert w.job.tape.speed.used_m == pytest.approx(used)
     w.integrate = True
     w.drive(0.5)
     assert w.job.tape.speed.high
@@ -742,10 +732,9 @@ def _estop_hold_at_high(field_after_ticks):
     """Torque off with the field still reported clear: held on E-stop terms. The field
     report then arrives `field_after_ticks` ticks later (None: never)."""
     w = _at_high()
-    left = w.job.tape.speed.budget_left_m()
     w.tick(torque_off=True, field_clear=True)
     assert w.job.state == lj.HOLD and w.job.hold_cause == "estop", w.job.reason
-    assert not w.job.tape.speed.high and w.job.tape.speed.parked_left is not None
+    assert not w.job.tape.speed.high and w.job.tape.speed.parked_high
     if field_after_ticks is not None:
         w.drive(0.02 * field_after_ticks, torque_off=True)
         w.drive(1.0, torque_off=True, field_clear=False)
@@ -754,48 +743,42 @@ def _estop_hold_at_high(field_after_ticks):
     w.drive(0.5)
     w.tick(start_edge=True, start_edge_t=w.t)
     assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason
-    return w, left
+    return w
 
 
 def test_a_protective_stop_reported_after_the_torque_loss_still_resumes_high():
-    w, left = _estop_hold_at_high(field_after_ticks=3)
+    w = _estop_hold_at_high(field_after_ticks=3)
     assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
-    assert w.job.tape.speed.budget_left_m() == pytest.approx(left, abs=0.05)
 
 
 def test_a_real_estop_resumes_normal():
-    w, _ = _estop_hold_at_high(field_after_ticks=None)
+    w = _estop_hold_at_high(field_after_ticks=None)
     assert not w.job.tape.speed.high and "E-stop" in w.job.tape.speed.reason
-    w, _ = _estop_hold_at_high(field_after_ticks=40)  # the field 0.8 s later: someone walked up
+    w = _estop_hold_at_high(field_after_ticks=40)  # the field 0.8 s later: someone walked up
     assert not w.job.tape.speed.high
 
 
-def test_travel_during_a_protective_stop_comes_off_the_budget():
+def test_travel_during_a_protective_stop_does_not_cost_high():
+    """No budget (2026-10-24): wheel travel while held changes nothing; only the exit
+    markers end HIGH."""
     w = _at_high()
-    left = w.job.tape.speed.budget_left_m()
     w.tick(torque_off=True, field_clear=False)
     w.move(2.0)  # pushed while held
     assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
-    assert w.job.tape.speed.budget_left_m() == pytest.approx(left - 2.0, abs=0.05)
-    w = _at_high()
-    left = w.job.tape.speed.budget_left_m()
-    w.tick(torque_off=True, field_clear=False)
-    w.move(left + 0.5)  # pushed past the budget's end
-    assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
-    assert not w.job.tape.speed.high
+    assert w.job.tape.speed.high and "as arrived" in w.job.tape.speed.reason
 
 
 def test_other_holds_still_drop_high():
     w = _at_high()
     w.tick(torque_off=True)  # no field evidence (yet): an E-stop story
     assert w.job.state == lj.HOLD and w.job.hold_cause == "estop"
-    # NORMAL now; the budget is kept only until the resume knows whether the field was
+    # NORMAL now; HIGH is kept only until the resume knows whether the field was
     # behind it (test_a_real_estop_resumes_normal / ..._reported_after_the_torque_loss...)
-    assert w.job.tape.speed.parked_left is not None and not w.job.tape.speed.high
+    assert w.job.tape.speed.parked_high and not w.job.tape.speed.high
     w = _at_high()
     w.tick(drives_fresh=False)
     assert w.job.state == lj.HOLD and w.job.hold_cause == "drives"
-    assert w.job.tape.speed.parked_left is None and not w.job.tape.speed.high
+    assert not w.job.tape.speed.parked_high and not w.job.tape.speed.high
     assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
     w.drive(0.5)
     assert not w.job.tape.speed.high

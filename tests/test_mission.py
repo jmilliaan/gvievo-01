@@ -24,7 +24,7 @@ HOME = stop("0010", "home", "Home", ignore_s=2)
 UTURN = {"tag": "0030", "action": "u_turn", "ignore_s": 2, "direction": "cw",
          "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0}
 # v2.2 (2026-10-09): the zone is a pair of MLS marker codes; RFID only stops.
-ZONE = {"shortest_straight_m": 18.0, "pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
+ZONE = {"pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
 OLD_ZONE_ROW = {"tag": "0040", "action": "zone_inner", "ignore_s": 1}
 
 
@@ -107,13 +107,11 @@ def test_the_site_table_loads():
           m["TAGS"]["0180"]["direction"] == "cw" and m["TAGS"]["0190"]["direction"] == "ccw"
           and all(m["TAGS"][t]["approach_mps"] == 0.1 and m["TAGS"][t]["decel_m"] == 0.3
                   for t in ("0180", "0190")))
-    from agv_core import config
     z = m["HIGH_ZONE"]
-    check("high zone: marker 2 outer -> marker 1 inner, budget from the 10 m surveyed straight",
+    check("high zone: marker 2 outer -> marker 1 inner, no HIGH distance budget",
           z["outer"] == 2 and z["inner"] == 1 and not any(r["action"].startswith("zone") for r in
                                                           m["TAGS"].values())
-          and abs(z["high_for_m"] - (10.0 - z["brake_m"] - config.HIGH_MARGIN_M)) < 1e-9,
-          f"{z['high_for_m']:.2f} m")
+          and "high_for_m" not in z, str(z))
 
 
 def test_refusals():
@@ -161,27 +159,24 @@ def test_refusals():
 
 def test_high_zone():
     print("\nmission: high zone (v2.2, MLS marker pair)")
-    from agv_core import config
     m = mission.parse(base([HOME, stop(), UTURN], high_zone=ZONE))
     z = m["HIGH_ZONE"]
-    v_n, v_h = config.AUTO_RPM * config.MPS_PER_RPM, config.AUTO_HIGH_RPM * config.MPS_PER_RPM
-    brake = (v_n + v_h) / 2 * config.HIGH_RAMP_S
     check("one shared outer and inner marker code", z["outer"] == 2 and z["inner"] == 1)
-    check("the budget is derived: straight - braking - margin",
-          abs(z["high_for_m"] - (18.0 - brake - config.HIGH_MARGIN_M)) < 1e-9, f"{z['high_for_m']:.3f}")
+    check("there is no HIGH distance budget (2026-10-24): HIGH lasts until the exit pair",
+          set(z) == {"inner", "outer", "spacing_m", "arm_m"}, str(sorted(z)))
     check("the entry window is the pair spacing plus the marker tolerance", abs(z["arm_m"] - 0.65) < 1e-9)
     check("a zone needs no RFID row at all", mission.parse(base(high_zone=ZONE))["HIGH_ZONE"] is not None)
     refused("an RFID zone tag is refused with a pointer to the marker pair",
             base([OLD_ZONE_ROW], high_zone=ZONE), "MLS marker codes decide speed")
     refused("the v2.1 high_zone without marker codes is refused",
-            base(high_zone={"shortest_straight_m": 18.0, "pair_spacing_m": 0.5}), "outer_code")
+            base(high_zone={"pair_spacing_m": 0.5}), "outer_code")
     refused("a zone code not laid on the floor is refused",
             base(high_zone=dict(ZONE, inner_code=7)), "not laid on the floor")
     refused("a zone code written as text is refused", base(high_zone=dict(ZONE, outer_code="2")), "integer")
     refused("the same code for outer and inner is refused",
             base(high_zone=dict(ZONE, inner_code=2)), "differ")
-    refused("a straight too short for the budget is refused",
-            base(high_zone=dict(ZONE, shortest_straight_m=4.0)), "not worth it")
+    refused("the retired shortest_straight_m is refused by name",
+            base(high_zone=dict(ZONE, shortest_straight_m=10.0)), "removed 2026-10-24")
     refused("a pair spacing outside [0.3, 1.0] m is refused",
             base(high_zone=dict(ZONE, pair_spacing_m=0.1)), "pair_spacing_m")
     refused("a stop the drives cannot make from HIGH is refused when the mission has a zone",
@@ -256,7 +251,7 @@ def test_marker_run():
     check("the straight's marker run loads: U-turn on code 2 (cw), home on code 1, no tags",
           m["MARKER_RUN"]["uturn_code"] == 2 and m["MARKER_RUN"]["home_code"] == 1
           and m["MARKER_RUN"]["direction"] == "cw" and m["TAGS"] == {})
-    refused("a marker run with a high zone is refused (the codes would mean two things)",
+    refused("a marker run with a high zone on its own codes is refused (the codes would mean two things)",
             base(marker_run=MARKER_RUN, high_zone=ZONE), "two things")
     refused("a marker run with RFID tags is refused", base([HOME], marker_run=MARKER_RUN), "no RFID")
     refused("the same code for U-turn and home is refused",
@@ -282,14 +277,21 @@ def test_guided():
     check("c-mru-guided loads: code 3 for U-turn and home, armed after 40 m, 0.3 m/s",
           m["MARKER_RUN"]["uturn_code"] == m["MARKER_RUN"]["home_code"] == 3
           and m["MARKER_RUN"]["home_arm_m"] == 40.0 and m["GUIDED"]["cruise_mps"] == 0.3
-          and m["HIGH_ZONE"] is None and m["BRANCH_LATCH"] == [])
+          and m["HIGH_ZONE"] == {"inner": 1, "outer": 2, "spacing_m": 0.5, "arm_m": 0.65}
+          and m["BRANCH_LATCH"] == [])
     check("a mission without the block is not guided", mission.load("mru-straight-markers")["GUIDED"] is None)
     refused("one shared code with home armed inside the U-turn strip's re-pass is refused",
             base(marker_run=dict(SHARED, home_arm_m=2.5)), "home_arm_m")
     refused("guided with RFID branch rows is refused (two sources of orders)",
             base([HOME], branch_latch=[{"entry_tag": "0050", "exit_tag": "0051", "branch": "left"}],
                  guided={"cruise_mps": 0.3}), "race")
-    refused("guided with a high zone is refused", base(high_zone=ZONE, guided={"cruise_mps": 0.3}), "no HIGH")
+    # 2026-10-24: the guided page's speed toggle (NORMAL by default) lets the marker pair grant HIGH
+    g = mission.parse(base(high_zone=ZONE, guided={"cruise_mps": 0.3}))
+    check("guided with a high zone loads (HIGH only by the guided page's toggle)",
+          g["HIGH_ZONE"]["outer"] == 2 and "HIGH zones by toggle" in mission.summary(g))
+    m = mission.parse(base(marker_run=SHARED, high_zone=ZONE))
+    check("a marker run on code 3 with a high zone on codes 2/1 loads",
+          m["MARKER_RUN"]["uturn_code"] == 3 and m["HIGH_ZONE"]["inner"] == 1)
     refused("a guided cruise above the normal speed is refused",
             base(guided={"cruise_mps": 0.9}), "cruise_mps")
     refused("a guided block with an unknown key is refused",

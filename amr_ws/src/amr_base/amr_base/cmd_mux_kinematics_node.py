@@ -28,11 +28,11 @@ import rclpy
 from agv_core import config, kinematics
 from geometry_msgs.msg import Twist
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
 from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
+from amr_base.lean_node import LeanNode
 
 try:
     # The scanner's field outputs come from the SICK driver. Optional at import so a
@@ -74,7 +74,7 @@ LATCHED = QoSProfile(
 WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
 
 
-class CmdMuxKinematics(Node):
+class CmdMuxKinematics(LeanNode):
     # A class-level default, not only an __init__ assignment: several tests
     # build this node with __new__ and set the attributes they care about by
     # hand, and the 50 Hz tick reads self._line unconditionally. Without this

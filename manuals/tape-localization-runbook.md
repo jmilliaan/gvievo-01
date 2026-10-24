@@ -229,7 +229,7 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
 
 | | |
 |---|---|
-| Speed | capped at 0.3 m/s; no HIGH. The corner code-1/2 strips stay down and are ignored |
+| Speed | 0.3 m/s outside HIGH. **Speed** toggle on the Guide page (2026-10-24), **Normal** at every mission load: Normal ignores the corner code-1/2 strips; High lets them act as in `line-a` - HIGH (0.85 m/s) only after an outer 2 then inner 1, NORMAL again at the exit 1 / 2, back to 0.3 m/s after it. The toggle never raises the speed by itself; Normal mid-straight drops HIGH at once |
 | Branch orders | **Guide** page (engineer PIN), on a phone or a laptop: ◀ Left / ▲ Straight / Right ▶, or the arrow keys |
 | U-turn | MLS **code 3** about 1 m before the MRU tape end: creep at 0.1 m/s, stop where the tape ends, pivot CW |
 | Home | MLS **code 3** in the north bay, **0.5 m before HOME-N** on the way back in: a measured stop there, run DONE |
@@ -242,8 +242,10 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
    pivot), and ≥ 1 m from any junction.
    Corners with no radius (kinks; the HOME complex tape is grooved): the follower holds a
    deflection up to ~40 deg. Sharper, the tape leaves the sensor at its edge, and the AGV
-   stops, pivots toward it until centred and goes on (Events: "kink: the tape left the
-   sensor at ... mm" then "kink: pivoted ... deg, centred - resuming"). A tape that leaves
+   stops, pivots toward it until the tape is within ±`kink_stop_mm` (75 mm, not centred: the
+   sensor sits close to the axle, so centring over-rotates) and goes on (Events: "kink: the
+   tape left the sensor at ... mm" then "kink: pivoted ... deg, tape at ... mm - resuming").
+   A ~60 deg corner may take a second short pivot. A tape that leaves
    near the centre is still the tape end. No tape within `kink_max_deg` (75 deg): FAULT,
    align on the tape, Reset, Start. A protective stop mid-pivot resumes the search. The
    pivot adds nothing to the along-tape distance and no junction to a teach pass.
@@ -263,6 +265,11 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
 4. Any order still armed at the pivot is cleared. Reset clears it too.
 5. Nothing on the Guide page moves the vehicle: AUTO + the physical Start, as always. Keep the
    E-stop in reach.
+6. The U-turn strip sits close to the MRU tape end: a read there turns even inside the 0.3 m
+   junction guard. If the strip is missed, press **U-turn at tape end** on the Guide page before
+   the end (on the way out only): the next tape end is the U-turn instead of the run ending
+   "track lost". One shot, **Cancel** undoes it. Too late once the run has ended: MANUAL and
+   the pendant.
 
 ### 3.3 Teach the stations
 

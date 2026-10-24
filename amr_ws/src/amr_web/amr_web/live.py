@@ -10,6 +10,12 @@ a small snapshot store; the ROS subscriptions live in the adapter.
   * Everything is tagged with the supervisor generation it was received under
     and dropped on a generation change: new-map scans are never drawn over an
     old-map image.
+  * On demand (2026-10-24): /scan (17 Hz) and /tf (~42 Hz) were half of the
+    adapter's callbacks, for pages that are open a small part of the time. A
+    live-view or demo request marks demand (want()); the adapter subscribes while
+    there is demand and drops both LIVE_IDLE_S after the last request. The
+    scanner's liveness for the SCANNER_SILENT/STALE alarm then comes from the
+    driver's own "/scan topic status" diagnostic (scan_diag_progress()).
 """
 
 from __future__ import annotations
@@ -23,6 +29,31 @@ import numpy as np
 from amr_web.png import encode_gray
 
 MAX_POINTS = 400
+# /scan and /tf are dropped this long after the last live-view or demo request. The
+# pages poll at 5 Hz (2 Hz demo) while visible, so only a closed or hidden page lets it lapse.
+LIVE_IDLE_S = 5.0
+# The sick_safetyscanners2 driver's diagnostic_updater status for its /scan publisher.
+SCAN_DIAG_SUFFIX = "/scan topic status"
+
+
+def scan_diag_progress(prev: int | None, values: dict) -> tuple[int | None, bool]:
+    """The scanner driver's "/scan topic status" values -> (counter to keep, scans flowed).
+
+    "Events since startup" counts every scan the driver PUBLISHED: any change since the
+    last status is evidence of a live scanner (a driver restart resets it, also a change).
+    The first status has nothing to compare with, so its "Events in window" decides. A
+    dead driver publishes no status at all, which keeps the age growing - the same
+    absence the /scan subscription itself would have shown."""
+    try:
+        n = int(values.get("Events since startup"))
+    except (TypeError, ValueError):
+        return prev, False
+    if prev is None:
+        try:
+            return n, int(values.get("Events in window", 0)) > 0
+        except (TypeError, ValueError):
+            return n, False
+    return n, n != prev
 
 
 def grid_to_gray(data: list[int] | np.ndarray, width: int, height: int) -> np.ndarray:
@@ -71,6 +102,32 @@ class LiveStore:
         self.scan = None  # list of (x, y)
         self.scan_frame = ""
         self.scan_t = 0.0
+        # live-view demand: monotonic time of the last request, and the adapter's hook
+        # (runs in the requesting thread; it must only wake the executor, never block)
+        self.want_t: float | None = None
+        self.on_want = None
+
+    def want(self, now: float | None = None) -> None:
+        """A page polled the live view (or the demo page): keep /scan and /tf subscribed."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            lapsed = self.want_t is None or now - self.want_t >= LIVE_IDLE_S
+            self.want_t = now
+        if lapsed and self.on_want is not None:
+            try:
+                self.on_want()
+            except Exception:  # noqa: BLE001 - a wake-up only: the adapter's 1 s reconcile catches up
+                pass
+
+    def wanted(self, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            return self.want_t is not None and now - self.want_t < LIVE_IDLE_S
+
+    def clear_live(self) -> None:
+        """The subscriptions were dropped: never serve their last sample as current."""
+        with self._lock:
+            self.pose = self.scan = None
 
     def set_generation(self, gen: int) -> None:
         with self._lock:

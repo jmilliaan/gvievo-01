@@ -2,7 +2,7 @@
   "mission_name": "line-a",
   "branch_default": "left",
   "branch_latch": [],
-  "high_zone": {"shortest_straight_m": 10.0, "pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1},
+  "high_zone": {"pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1},
   "tags": [
     {"tag": "0010", "action": "stop", "ignore_s": 2, "stop_distance_m": 0.5, "role": "home", "label": "Home"},
     {"tag": "0020", "action": "stop", "ignore_s": 2, "stop_distance_m": 0.5, "role": "always", "label": "Trolley release"},

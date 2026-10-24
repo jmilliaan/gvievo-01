@@ -92,3 +92,7 @@ string teach                # the pass being recorded; "" when not recording
 string loc_map_id
 uint32 loc_map_revision
 string loc_map_sha256
+# Guided run speed toggle (2026-10-24). APPEND ONLY. "" = no toggle (not a guided mission, or
+# one without a high zone); "normal" = zone markers ignored; "high" = the marker pair may grant
+# HIGH (high_speed above says whether it has).
+string speed_select

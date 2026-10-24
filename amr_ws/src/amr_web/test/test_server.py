@@ -328,6 +328,20 @@ def test_guided_branch_orders_need_the_engineer_and_a_valid_side(env):
     assert page.status_code == 200 and b'data-side="straight"' in page.data and b"ArrowLeft" in page.data
 
 
+def test_guided_speed_toggle_needs_the_engineer_and_a_valid_level(env):
+    client, stub, *_ = env
+    r = client.post("/api/line/speed", json={"level": "high"})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_speed", ("high",))
+    n = len(stub.calls)
+    for bad in ({"level": "fast"}, {"level": ""}, {}):
+        assert client.post("/api/line/speed", json=bad).status_code == 422
+    client.post("/api/role", json={"role": "operator"})
+    assert client.post("/api/line/speed", json={"level": "normal"}).status_code == 403
+    assert len(stub.calls) == n  # nothing refused reached the robot
+    page = client.get("/guide")
+    assert b'data-speed="normal"' in page.data and b'data-speed="high"' in page.data
+
+
 def test_state_and_footprint(env):
     client, stub, maps, rev_dir, manifest = env
     assert client.get("/api/state").json["localization"]["state_name"] == "READY"
@@ -836,3 +850,19 @@ def test_survey_move_value_must_be_a_finite_number(env):
     )
     assert r.status_code == 422
     assert not any(c[0] == "survey_move" for c in stub.calls)
+
+
+def test_guided_forced_u_turn_needs_the_engineer_and_a_boolean(env):
+    client, stub, *_ = env
+    r = client.post("/api/line/uturn", json={"force": True})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_uturn", (True,))
+    r = client.post("/api/line/uturn", json={"force": False})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_uturn", (False,))
+    n = len(stub.calls)
+    for bad in ({"force": "yes"}, {"force": 1}, {}):
+        assert client.post("/api/line/uturn", json=bad).status_code == 422
+    client.post("/api/role", json={"role": "operator"})
+    assert client.post("/api/line/uturn", json={"force": True}).status_code == 403
+    assert len(stub.calls) == n  # nothing refused reached the robot
+    page = client.get("/guide")
+    assert page.status_code == 200 and b'data-uturn="true"' in page.data

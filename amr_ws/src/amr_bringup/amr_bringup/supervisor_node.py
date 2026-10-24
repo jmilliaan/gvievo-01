@@ -35,10 +35,10 @@ from geometry_msgs.msg import Pose2D
 from nav2_msgs.srv import ManageLifecycleNodes
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import Trigger
 
+from amr_base.lean_node import LeanNode
 from amr_bringup import domains, logs, sdnotify, uptime
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
@@ -95,7 +95,7 @@ _MODE_OF_REQUEST = {
 INTERNAL = "/amr/internal/survey"
 
 
-class Supervisor(Node):
+class Supervisor(LeanNode):
     def __init__(self) -> None:
         super().__init__("amr_supervisor")
         dp = self.declare_parameter

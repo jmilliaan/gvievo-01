@@ -29,8 +29,9 @@ One tag id has one meaning per mission. Tags only do three independent things: *
 mission loader: one weak read at 0.49 m/s (2026-10-09) and first reads of a 0.5 m pair landing
 0.65-0.99 m apart (2026-10-08) made HIGH unreliable. The zone works whatever the RFID setting.
 
-`line-a`: `high_zone` = shortest straight 10 m, pair spacing 0.5 m, **outer code 2, inner
-code 1** (swapped by the operator 2026-10-09; code 3 stays free), HIGH budget 7.65 m.
+`line-a`: `high_zone` = pair spacing 0.5 m, **outer code 2, inner code 1** (swapped by the
+operator 2026-10-09; code 3 stays free). No HIGH distance budget since 2026-10-24: HIGH lasts
+until the exit marker.
 "Outer" and "inner" are positions ALONG the tape: outer nearer the corner, inner further
 into the straight. Both strips lie on the same side of the tape
 (`documentation/layout-reference/mls-zone-marker-placement.html`).
@@ -38,10 +39,12 @@ into the straight. Both strips lie on the same side of the tape
 | Marker | Placement (from the tangent point) | Effect |
 |---|---|---|
 | code 2 (outer) | 0.75-0.85 m, strip centred 60 mm from the track centre | arms the zone; HIGH only if code 1 follows within 0.65 m |
-| code 1 (inner) | 0.90-1.00 m (50 mm gap after code 2), strip centred 30 mm from the track centre | after code 2: HIGH for the budget. Read while HIGH: late exit at 0.5 m/s² |
+| code 1 (inner) | 0.90-1.00 m (50 mm gap after code 2), strip centred 30 mm from the track centre | after code 2: HIGH until the exit. Read while HIGH: the exit, NORMAL at 0.5 m/s² (0.85 → 0.50 m/s in 0.47 m) |
 
 - Same codes at every straight end; the read order gives the direction (2→1 enters, 1→2 leaves).
-- HIGH budget = `shortest_straight_m` (inner to inner: code 1 to code 1, straight-side edges) − brake 1.35 m − margin 1.0 m, counted in wheel travel.
+- No distance budget (operator, 2026-10-24): slowdowns are marker codes (localization later).
+  The exit code 1 is the only planned end of HIGH; code 2 read while HIGH (inner missed) is an
+  urgent drop. With both exit markers missed only the curve guard is left.
 - Code 2 read while HIGH (inner missed): urgent drop to NORMAL.
 - A zone marker counts only while RUNNING, with the line good and within 30 mm of the tape
   centre (a pivot over a marker read code 2 at +121 mm, 2026-10-09). Marker stream down, or
@@ -60,13 +63,13 @@ into the straight. Both strips lie on the same side of the tape
 | HIGH (inside a zone only) | 0.85 m/s (+70 %) | K 11.3 / Kd 0.94 |
 
 - A run from Home always starts NORMAL.
-- A station stop (`always`, `destination`) departs at the speed it arrived at, with the budget
-  left; any other hold, a zone marker, missing encoder counts or Reset in between makes it NORMAL.
-- Warning fields (slow, slow-and-stop) keep HIGH: the mux scales the command and the budget
-  counts wheel travel, so the vehicle speeds back up to HIGH when the field clears.
+- A station stop (`always`, `destination`) departs at the speed it arrived at; any other hold,
+  a zone marker, missing encoder counts or Reset in between makes it NORMAL.
+- Warning fields (slow, slow-and-stop) keep HIGH: the mux scales the command, so the vehicle
+  speeds back up to HIGH when the field clears.
 - **No RFID tag or RFID event sets the speed (2026-10-09).** Every stop tag (Home included)
-  parks the budget and the departure restores it; an RFID-link hold and a protective stop do the
-  same, less any wheel travel while held. Junction slow zones (`branch_latch[].slow_speed: true`)
+  parks HIGH and the departure restores it; an RFID-link hold and a protective stop do the
+  same. Junction slow zones (`branch_latch[].slow_speed: true`)
   are refused by the loader.
 - The U-turn is the one RFID-triggered speed change: it creeps in and pivots, and the run goes on
   NORMAL until the markers grant HIGH again (the vehicle now faces the other way).

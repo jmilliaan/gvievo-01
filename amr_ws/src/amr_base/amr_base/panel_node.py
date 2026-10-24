@@ -27,10 +27,10 @@ from agv_core import (
 )
 from agv_core.drivers import dio  # repo module: drivers/dio.py
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 
 from amr_base import panel_io
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     DriveStatus,
     Event,
@@ -55,7 +55,7 @@ RELIABLE_1 = QoSProfile(
 )
 
 
-class PanelNode(Node):
+class PanelNode(LeanNode):
     def __init__(self, link=None) -> None:
         super().__init__("panel_node")
         self.declare_parameter("rate_hz", 50.0)  # PANEL_DEBOUNCE_SCANS was tuned at canworker's 50 Hz
@@ -153,7 +153,8 @@ class PanelNode(Node):
         frame = self.adapter.tick(snap)
         if frame.changed:
             self.get_logger().info(frame.changed)
-            lvl = Event.WARN if "LOST" in frame.changed or "invalid" in frame.changed else Event.INFO
+            warn = any(w in frame.changed for w in ("LOST", "invalid", "suspect"))
+            lvl = Event.WARN if warn else Event.INFO
             self._event(lvl, "PANEL", frame.changed)
         self._io_n = (self._io_n + 1) % self._io_every
         if self._io_n == 0:

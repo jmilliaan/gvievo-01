@@ -49,6 +49,14 @@ class PanelFrame:
     manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
 
 
+def raw_hex(di) -> str:
+    """The DI image as one word, DI00 = bit 0: the evidence for a phantom image's source."""
+    try:
+        return f"0x{sum(1 << i for i, b in enumerate(di) if b):04X}"
+    except TypeError:
+        return "?"
+
+
 class PanelAdapter:
     """Turns DioLink snapshots into PanelFrames. One instance per node."""
 
@@ -68,6 +76,12 @@ class PanelAdapter:
             hold_s, period = config.PANEL_COINCIDENCE_HOLD_S, config.DIO_SCAN_PERIOD_S
             coincidence_hold_scans = int(math.ceil(hold_s / period))
         self.hold_scans = max(0, coincidence_hold_scans)
+        # Edge guard (2026-10-24: a phantom START with Manual Arm off in the same scan, selector
+        # already AUTO, started a line run with nobody at the box). A Start or Reset edge believed
+        # in the same scan as - or the scan after - any other input change is not a hand: it is
+        # dropped, never delayed, and the operator presses again. Only ever removes authority.
+        self._other_changed_scan: int | None = None  # acquisition of the last non-button change
+        self._acq = 0
         self._held: tuple[str, panel_core.PendantIntent] | None = None  # (mode, pendant) being withheld
         self._held_for = 0
         self.scan = panel_core.PanelScan(
@@ -131,6 +145,9 @@ class PanelAdapter:
                 manual_arm=self._last_frame.manual_arm,
             )
         self._last_scans = scans
+        self._acq += 1
+        last_pend = self._last_pendant if self.pendant is not None else panel_core.PENDANT_IDLE
+        prior = (self._last_mode, last_pend, self._last_arm)
         intent = self.scan.scan(snapshot.get("di"), comms)
         notes = []
         if comms != self._last_comms:
@@ -140,19 +157,30 @@ class PanelAdapter:
             notes.append("panel image " + ("valid" if intent.valid else "invalid"))
             self._last_valid = intent.valid
         # (the selector note is written by _coincidence, once the change is believed)
-        if intent.start:
-            notes.append("START edge")
-        if intent.reset:
-            notes.append("RESET edge")
-
         pend = panel_core.PENDANT_IDLE
         if self.pendant is not None:
             levels = self.pendant.scan(snapshot.get("di"), comms)
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
-        mode, pend = self._coincidence(intent, pend, notes)
         arm_levels = self.manual_arm.scan(snapshot.get("di"), comms)
         arm = bool(intent.valid and arm_levels is not None and arm_levels[0])
+        start, reset = bool(intent.start), bool(intent.reset)
+        if intent.valid and None not in prior:
+            others = [n for n, was, now in zip(("selector", "pendant", "Manual Arm"), prior,
+                                                (intent.mode, pend, arm), strict=True) if was != now]
+            if others:
+                self._other_changed_scan = self._acq
+            recent = self._other_changed_scan is not None and self._acq - self._other_changed_scan <= 1
+            if (start or reset) and recent:
+                edges = "+".join(n for n, on in (("START", start), ("RESET", reset)) if on)
+                notes.append(f"panel image suspect: {edges} edge with {'/'.join(others) or 'another input'} "
+                             f"changing; ignored (raw DI {raw_hex(snapshot.get('di'))})")
+                start = reset = False
+        if start:
+            notes.append("START edge")
+        if reset:
+            notes.append("RESET edge")
+        mode, pend = self._coincidence(intent, pend, notes, snapshot.get("di"))
         if arm != self._last_arm:
             if self._last_arm is not None or arm:
                 notes.append(f"Manual Arm {'on' if arm else 'off'}")
@@ -164,8 +192,8 @@ class PanelAdapter:
         frame = PanelFrame(
             valid=bool(intent.valid),
             mode_auto=mode == panel_core.AUTO,
-            start_edge=bool(intent.start),
-            reset_edge=bool(intent.reset),
+            start_edge=start,
+            reset_edge=reset,
             seq=self.seq,
             comms_ok=comms,
             changed="; ".join(notes) or None,
@@ -175,7 +203,7 @@ class PanelAdapter:
         self._last_frame = frame
         return frame
 
-    def _coincidence(self, intent, pend, notes) -> tuple[str, panel_core.PendantIntent]:
+    def _coincidence(self, intent, pend, notes, di=None) -> tuple[str, panel_core.PendantIntent]:
         """The (mode, pendant) to publish this scan, withholding a simultaneous change."""
         if not intent.valid:
             self._held, self._held_for = None, 0
@@ -188,6 +216,7 @@ class PanelAdapter:
             self._held, self._held_for = (intent.mode, pend), 1
             notes.append(
                 f"panel image suspect: selector {intent.mode.upper()} and pendant changed together; withheld"
+                f" (raw DI {raw_hex(di)})"
             )
             return prev_mode, panel_core.PENDANT_IDLE
         if self._held is not None:

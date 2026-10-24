@@ -1,0 +1,18 @@
+[Unit]
+Description=N97 turbo on, capped at 2.2 GHz (fanless IPC, 24 h duty)
+# Replaces cpu-no-turbo.service. Uncapped turbo (3.6 GHz, PL2 25 W) drove the package to
+# 100 C and throttled it 86 times in 2 h (2026-10-02); 2.2 GHz is +10 % over base.
+Before=amr.service
+Conflicts=cpu-no-turbo.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Order matters: toggling no_turbo resets every policy's scaling_max_freq to the new
+# ceiling, so the cap is written after it. 2200000 kHz = ratio 22, an exact P-state.
+ExecStart=/bin/sh -c 'echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo; for f in /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq; do echo 2200000 > "$f"; done'
+# Back to base clock with turbo off when the unit stops.
+ExecStop=/bin/sh -c 'echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo'
+
+[Install]
+WantedBy=multi-user.target

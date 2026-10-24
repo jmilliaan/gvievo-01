@@ -463,6 +463,8 @@ _SCHEMA = {
         # stop, pivot toward it until centred, at most kink_max_deg. 0 turns it off.
         "kink_edge_mm":        ("KINK_EDGE_MM", float),
         "kink_max_deg":        ("KINK_MAX_DEG", float),
+        # where the pivot stops: the tape within +/-kink_stop_mm (not centred - 2026-10-24)
+        "kink_stop_mm":        ("KINK_STOP_MM", float),
         # Tracked speeds (2026-10-08, tracked-speed-plan-1): auto_rpm is NORMAL, the
         # default and the corner speed; HIGH = auto_rpm x auto_high_ratio, granted only
         # inside an RFID high zone (amr_line.speed_zone). AUTO_HIGH_RPM is derived.
@@ -472,7 +474,6 @@ _SCHEMA = {
         "high_k_ratio":        ("HIGH_K_RATIO", float),
         "high_kd":             ("HIGH_KD", float),
         "high_ramp_s":         ("HIGH_RAMP_S", float),
-        "high_margin_m":       ("HIGH_MARGIN_M", float),
         "curve_guard_kappa":   ("CURVE_GUARD_KAPPA", float),
         "curve_guard_e_mm":    ("CURVE_GUARD_E_MM", float),
         # The RFID speed toggle tags and their lockout moved to the mission's tag
@@ -1181,7 +1182,6 @@ def _validate(ns):
     check(g("HIGH_K_RATIO") > 0 and g("HIGH_KD") >= 0,
           "autopilot: need high_k_ratio > 0 and high_kd >= 0")
     check(0.5 <= g("HIGH_RAMP_S") <= 10, "autopilot.high_ramp_s must be in [0.5, 10] s")
-    check(0.3 <= g("HIGH_MARGIN_M") <= 5, "autopilot.high_margin_m must be in [0.3, 5] m")
     check(0 < g("CURVE_GUARD_KAPPA") <= 2,
           "autopilot.curve_guard_kappa must be in (0, 2] 1/m")
     check(0 < g("CURVE_GUARD_E_MM") < g("SENSOR_MAX_MM"),
@@ -1192,6 +1192,8 @@ def _validate(ns):
           "autopilot.kink_edge_mm must be in (0, sensor_max_mm)")
     check(g("KINK_MAX_DEG") == 0 or 20 <= g("KINK_MAX_DEG") <= 120,
           "autopilot.kink_max_deg must be 0 (off) or in [20, 120] deg")
+    check(g("U_TURN_CENTER_TOL_MM") <= g("KINK_STOP_MM") < g("SENSOR_MAX_MM"),
+          "autopilot.kink_stop_mm must be in [u_turn_center_tol_mm, sensor_max_mm)")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,

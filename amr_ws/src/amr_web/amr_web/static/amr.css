@@ -271,6 +271,7 @@ button.big.run { background:var(--accent-2); border-color:var(--accent-2); color
 button.big.run:hover:not(:disabled) { color:#fff; filter:brightness(1.12); }
 /* An editor tool that is switched on looks like the active nav tab. */
 button.tool.on { background:var(--accent-wash); border-color:var(--accent-2); color:var(--accent-2); }
+button.big.on { background:var(--accent-wash); border-color:var(--accent-2); color:var(--accent-2); }
 /* Quiet until hovered or focused, then the stop colour. No two-step arming here:
    Abort on the Run page must stay one press. */
 button.danger {
@@ -473,7 +474,8 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .tools-foot .bar { margin-top:0; }
 /* three equal buttons on one line, whatever the column width */
 .bar.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
-.bar.three > * { padding-left:.4rem; padding-right:.4rem; }
+.bar.two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.bar.three > *, .bar.two > * { padding-left:.4rem; padding-right:.4rem; }
 .canvas-wrap {
   position:relative; background:var(--paper); border:1px solid var(--rule);
   overflow:hidden; min-height:24rem;

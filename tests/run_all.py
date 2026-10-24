@@ -85,7 +85,12 @@ MODULES = [
 # + 5 (2026-10-23): the four basic jobs (empty, basic-right, basic-high-left, basic-high-right)
 #   and the mission picker's note (test_mission).
 # + 2 (2026-10-23): the kink pivot's profile refusals (kink_edge_mm, kink_max_deg; test_config).
-EXPECTED_CHECKS = 761
+# + 1 (2026-10-24): kink_stop_mm's refusal (test_config).
+# + 1 (2026-10-24): HIGH budget removed - the retired autopilot.high_margin_m is refused (test_config);
+#   test_mission's budget checks became no-budget and retired-key checks one for one.
+# + 1 (2026-10-24): guided speed toggle - a marker run with a zone on other codes loads; the guided
+#   high-zone refusal became a load check (test_mission).
+EXPECTED_CHECKS = 764
 
 
 # An exception on a helper thread only prints a traceback by default - the

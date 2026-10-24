@@ -27,12 +27,12 @@ from amr_maps.raycast import ScanGeometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu, LaserScan
 from std_srvs.srv import Empty, Trigger
 from tf2_ros import Buffer, TransformListener
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import DriveStatus, Event, LocalizationState, WheelStates
 from amr_localization import readiness as rd
 from amr_localization import scan_consistency as consistency
@@ -49,7 +49,7 @@ RELIABLE_1 = QoSProfile(
 )
 
 
-class LocalizationMonitor(Node):
+class LocalizationMonitor(LeanNode):
     def __init__(self) -> None:
         super().__init__("localization_monitor")
         self.declare_parameter("cov_xy_max", 0.05)

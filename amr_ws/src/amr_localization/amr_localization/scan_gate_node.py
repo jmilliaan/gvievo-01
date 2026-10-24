@@ -10,12 +10,12 @@ came is not the consumer's problem.
 import rclpy
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformListener
 
+from amr_base.lean_node import LeanNode
 from amr_localization.scan_gate import ScanGate
 
 SENSOR_DATA = QoSProfile(
@@ -25,7 +25,7 @@ SENSOR_DATA = QoSProfile(
 )
 
 
-class ScanGateNode(Node):
+class ScanGateNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("scan_gate")
         self.declare_parameter("odom_frame", "odom")
@@ -33,7 +33,8 @@ class ScanGateNode(Node):
         self.declare_parameter("settle_s", 0.02)
         self.declare_parameter("hold_max_s", 0.5)
         # 50 Hz (CPU, 2026-10-02; was 100): settle_s is already 20 ms, so a release is
-        # at most one more poll period later. Polls with nothing pending return at once.
+        # at most one more poll period later. The timer runs only while a scan is pending
+        # (CPU, 2026-10-24): an empty poll still cost a whole executor wakeup, 50 a second.
         self.declare_parameter("poll_period_s", 0.02)
         p = self.get_parameter
         self.odom_frame = p("odom_frame").value
@@ -46,7 +47,8 @@ class ScanGateNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self._pub = self.create_publisher(LaserScan, "/scan_gated", SENSOR_DATA)
         self.create_subscription(LaserScan, "/scan", self._on_scan, SENSOR_DATA)
-        self.create_timer(p("poll_period_s").value, self._poll)
+        self._poll_timer = self.create_timer(p("poll_period_s").value, self._poll)
+        self._poll_timer.cancel()  # armed by the first queued scan
         self.create_timer(30.0, self._report)
         self._reported_expired = 0
 
@@ -55,9 +57,12 @@ class ScanGateNode(Node):
 
     def _on_scan(self, m: LaserScan) -> None:
         self.gate.push(Time.from_msg(m.header.stamp).nanoseconds * 1e-9, m, self._now())
+        if self.gate.pending and self._poll_timer.is_canceled():
+            self._poll_timer.reset()  # first poll one period from now, then every period
 
     def _poll(self) -> None:
         if not self.gate.pending:
+            self._poll_timer.cancel()
             return
 
         def transformable(t: float) -> bool:
@@ -67,6 +72,8 @@ class ScanGateNode(Node):
 
         for m in self.gate.poll(self._now(), transformable):
             self._pub.publish(m)
+        if not self.gate.pending:
+            self._poll_timer.cancel()  # released or expired; the next scan re-arms it
 
     def _report(self) -> None:
         s = self.gate.stats

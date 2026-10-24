@@ -38,13 +38,13 @@ from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu, LaserScan
 from slam_toolbox.srv import DeserializePoseGraph, Pause, SerializePoseGraph
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import Event, MappingState, WheelStates
 from amr_interfaces.srv import SaveMap, StartSurvey
 from amr_maps import grid as gridio
@@ -72,7 +72,7 @@ def _wrap(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
 
 
-class MappingSession(Node):
+class MappingSession(LeanNode):
     def __init__(self) -> None:
         super().__init__("mapping_session")
         self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))

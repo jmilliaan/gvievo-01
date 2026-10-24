@@ -23,9 +23,9 @@ import rclpy
 from agv_core import config, ownerlock
 from agv_core.drivers import rfid
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import StationDetection
 
 ENCOUNTERS = QoSProfile(
@@ -33,7 +33,7 @@ ENCOUNTERS = QoSProfile(
 )
 
 
-class RfidNode(Node):
+class RfidNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("rfid_node")
         self.declare_parameter("poll_hz", 50.0)

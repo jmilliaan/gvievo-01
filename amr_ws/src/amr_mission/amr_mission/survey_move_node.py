@@ -26,12 +26,12 @@ import uuid
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -56,7 +56,7 @@ def _yaw(q) -> float:
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
-class SurveyMoveNode(Node):
+class SurveyMoveNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("survey_move")
         dp = self.declare_parameter

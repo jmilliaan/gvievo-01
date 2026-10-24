@@ -59,12 +59,12 @@ from agv_core import (
 from agv_core.drivers.canbus.verify_drivers import open_bus  # noqa: E402
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import arm_policy, canopen, gating, pp
+from amr_base.lean_node import LeanNode
 from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, RateLimit, TrackSample
@@ -126,7 +126,7 @@ TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
 FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
 WHEELS_UI_PERIOD_S = 0.2  # /wheel_states_ui, the display copy (Home speed tile, 2026-10-08)
 
-class DriveNode(Node):
+class DriveNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("drive_node")
         dp = self.declare_parameter

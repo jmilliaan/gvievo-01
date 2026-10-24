@@ -27,12 +27,12 @@ import time
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import commissioning as cj
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     CommissioningState,
     ControlLease,
@@ -64,19 +64,22 @@ LATCHED = QoSProfile(
 SENSOR = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
 )
+# A job exists: a plan is held, moving, or settling. Every other phase is idle.
+JOB_PHASES = (cj.PREPARED, cj.RUNNING, cj.SETTLING)
 
 
-class CommissioningNode(Node):
+class CommissioningNode(LeanNode):
     # Class defaults for tests that build the node with __new__ (see cmd_mux's note).
     _job_subs: tuple | list = ()
     idle_period = 0.5
-    _idle_tick_t = 0.0
+    _tick_timer = None
+    _tick_fast = False
 
     def __init__(self) -> None:
         super().__init__("commissioning_node")
         self.declare_parameter("rate_hz", 50.0)
         # With no job prepared or running there is nothing to control: tick this often
-        # instead (CPU, 2026-10-02). A plan() wakes it to rate_hz on the next tick.
+        # instead (CPU, 2026-10-02). A plan() switches the timer to rate_hz at once.
         self.declare_parameter("idle_period_s", 0.5)
         self.declare_parameter("state_dir", os.path.expanduser("~/.amr"))
         self.declare_parameter("counts_fresh_s", 0.1)
@@ -85,7 +88,6 @@ class CommissioningNode(Node):
         p = self.get_parameter
         self.dt = 1.0 / float(p("rate_hz").value)
         self.idle_period = max(self.dt, float(p("idle_period_s").value))
-        self._idle_tick_t = 0.0
         self.evidence_dir = os.path.join(os.path.expanduser(str(p("state_dir").value)), "commissioning")
         self.counts_fresh = float(p("counts_fresh_s").value)
         self.still_thr = float(p("still_wheel_rad_s").value)
@@ -121,7 +123,11 @@ class CommissioningNode(Node):
         self._pub_state = self.create_publisher(CommissioningState, "/amr/commissioning_state", LATCHED)
         self.create_service(PlanCommissioning, "/amr/commissioning/plan", self._srv_plan)
         self.create_service(Trigger, "/amr/commissioning/clear", self._srv_clear)
-        self.create_timer(self.dt, self._tick)
+        # Idle until a plan. The idle rate is the timer's own period, not an early return
+        # inside a 50 Hz tick: a tick that fires and returns still costs a whole executor
+        # wakeup (~1 ms on the N97, 2026-10-24).
+        self._tick_timer = self.create_timer(self.idle_period, self._tick)
+        self._tick_fast = False
         self.create_timer(0.5, self._publish_state)
         self._t_last = time.monotonic()
         self.get_logger().info(f"commissioning idle; evidence -> {self.evidence_dir}")
@@ -214,6 +220,7 @@ class CommissioningNode(Node):
             res.ok, res.message = False, str(e)
             return res
         self._results_path = ""
+        self._set_tick_rate(self.job.phase in JOB_PHASES)
         res.ok, res.message = True, f"plan {self.job.plan_id} held: press physical Start under MANUAL to run"
         self.get_logger().info(res.message)
         self._publish_state()
@@ -245,15 +252,21 @@ class CommissioningNode(Node):
             self._panel = self._panel_t = None
             self._gyro = self._gyro_t = None
 
+    def _set_tick_rate(self, job: bool) -> None:
+        """rate_hz while a job exists, idle_period otherwise."""
+        if job == self._tick_fast or self._tick_timer is None:
+            return
+        self._tick_fast = job
+        self._tick_timer.timer_period_ns = int((self.dt if job else self.idle_period) * 1e9)
+        # rcl keeps the old next-call time on a period change: without the reset the
+        # first fast tick after a plan could still be up to idle_period away.
+        self._tick_timer.reset()
+
     def _tick(self) -> None:
         now = time.monotonic()
-        self._job_inputs(self.job.phase in (cj.PREPARED, cj.RUNNING, cj.SETTLING))
-        if self.job.phase in (cj.IDLE, cj.DONE, cj.ABORTED):
-            # Nothing prepared or moving. A Start press here is not consumed: the job
-            # refuses any edge older than its plan, so holding it is harmless.
-            if now - self._idle_tick_t < self.idle_period:
-                return
-            self._idle_tick_t = now
+        self._job_inputs(self.job.phase in JOB_PHASES)
+        # Idle phases tick at idle_period (the timer's). A Start press seen while idle is
+        # not consumed: the job refuses any edge older than its plan, so holding it is harmless.
         dt, self._t_last = now - self._t_last, now
         counts, cpr, stopped = self._feedback(now)
         authority, allowed = self._authority(now)
@@ -292,6 +305,7 @@ class CommissioningNode(Node):
             if self.job.phase in (cj.DONE, cj.ABORTED):
                 self._write_evidence()
             self._publish_state()
+        self._set_tick_rate(self.job.phase in JOB_PHASES)
 
     def _publish_pp_hold(self) -> None:
         hold = self.job.pp_hold()

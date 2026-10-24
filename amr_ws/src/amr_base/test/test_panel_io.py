@@ -274,3 +274,59 @@ def test_a_held_pendant_dies_with_the_source_and_the_coincidence_hold_is_1_5_s()
     assert not f.pendant.fwd
     # the default hold is counted in acquisitions at the DIO scan period: 1.5 s, not 0.6 s
     assert ad.hold_scans * config.DIO_SCAN_PERIOD_S == pytest.approx(config.PANEL_COINCIDENCE_HOLD_S, abs=config.DIO_SCAN_PERIOD_S)
+
+
+# ---- edge guard (2026-10-24 phantom START + Manual Arm off, selector already AUTO) ----
+
+
+def _edi(start=False, reset=False, arm=True, auto=True):
+    bits = _di(reset=reset, start=start, auto=auto)
+    bits[config.PANEL_DI_MANUAL_ARM] = arm
+    return bits
+
+
+@pytest.mark.parametrize("pendant", [True, False])
+def test_a_start_with_manual_arm_dropping_in_the_same_scan_is_ignored(pendant):
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=pendant, coincidence_hold_scans=30)
+    f = _settle(ad, _edi())
+    assert f.valid and f.mode_auto and f.manual_arm
+    # the 10:35:49 image: Start up and Manual Arm down together, for 1.0 s
+    f = _settle(ad, _edi(start=True, arm=False))
+    assert not f.start_edge and "suspect" in f.changed and "START" in f.changed
+    assert "Manual Arm" in f.changed and "raw DI 0x" in f.changed
+    for _ in range(18):
+        f = ad.tick(_snap(_edi(start=True, arm=False)))
+        assert not f.start_edge
+    f = _settle(ad, _edi())  # reverts: still no edge
+    assert not f.start_edge
+    f = _settle(ad, _edi(start=True))  # a real press afterwards counts
+    assert f.start_edge and "suspect" not in (f.changed or "")
+
+
+def test_a_start_the_scan_after_another_change_is_ignored_and_a_reset_too():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=30)
+    _settle(ad, _edi())
+    ad.tick(_snap(_edi(arm=False)))  # Manual Arm drops first...
+    f = ad.tick(_snap(_edi(arm=False, start=True)))  # ...believed off here; Start one raw scan behind
+    assert not f.manual_arm and not f.start_edge
+    f = ad.tick(_snap(_edi(arm=False, start=True)))
+    assert not f.start_edge and "suspect" in f.changed  # believed 1 scan after the arm change
+    _settle(ad, _edi(arm=False))
+    f = _settle(ad, _edi(reset=True, arm=True))
+    assert not f.reset_edge and "RESET" in f.changed and "suspect" in f.changed
+
+
+def test_a_start_well_after_another_change_is_a_press():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=30)
+    _settle(ad, _edi(auto=False))
+    f = _settle(ad, _edi())  # selector to AUTO
+    assert f.mode_auto
+    _settle(ad, _edi(), n=3)  # a hand needs far longer than 3 scans (150 ms) to reach Start
+    f = _settle(ad, _edi(start=True))
+    assert f.start_edge and "suspect" not in (f.changed or "")
+
+
+def test_raw_hex_is_the_di_word():
+    bits = [False] * 16
+    bits[0] = bits[8] = True
+    assert panel_io.raw_hex(bits) == "0x0101" and panel_io.raw_hex(None) == "?"

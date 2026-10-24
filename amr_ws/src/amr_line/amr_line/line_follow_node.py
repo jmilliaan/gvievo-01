@@ -50,11 +50,11 @@ from agv_core import config as vehicle_config
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -103,7 +103,7 @@ _WIRE = (
 )
 
 
-class LineFollowNode(Node):
+class LineFollowNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("line_follow_node")
         for mine, wire in _WIRE:
@@ -259,6 +259,7 @@ class LineFollowNode(Node):
         self._event_seq = 0
         self._event_state: int | None = None
         self._power_published: bool | None = None  # LineState.drive_power last sent
+        self._missing_fields: set[str] = set()  # mission_snapshot keys LineState lacks (stale build)
 
         self.create_service(Trigger, "/amr/line/clear", self._srv_clear)
         self.create_service(SelectMission, "/amr/line/mission", self._srv_mission)
@@ -280,6 +281,16 @@ class LineFollowNode(Node):
         for side in ("left", "straight", "right"):
             self.create_service(Trigger, f"/amr/line/branch/{side}",
                                 lambda req, res, side=side: self._srv_branch(side, res))
+        # Its speed toggle (2026-10-24): HIGH lets the marker pair grant HIGH, NORMAL ignores
+        # the zone codes and drops HIGH at once. It never starts or resumes a run.
+        for level in ("normal", "high"):
+            self.create_service(Trigger, f"/amr/line/speed/{level}",
+                                lambda req, res, level=level: self._srv_speed(level, res))
+        # Its forced U-turn (2026-10-24): the next tape end is the U-turn, strip or not. It only
+        # changes what a tape end means to the running job; it never starts or resumes a run.
+        for act in ("force", "cancel"):
+            self.create_service(Trigger, f"/amr/line/uturn/{act}",
+                                lambda req, res, act=act: self._srv_uturn(act, res))
 
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
@@ -360,11 +371,13 @@ class LineFollowNode(Node):
             return
         _counts, _per_rev, still = self._wheel_inputs(now)
         u = self.job.tape.uturn_snapshot() or {}
-        # A kink pivot sweeps the sensor across the corner: #LCP 0 holds the fork detectors
-        # as they were (no phantom junction in a teach pass or the shadow locator).
-        nlcp = 0 if self.job.pivoting else (self.reader.sensor() or {}).get("nlcp")
-        rt.tick(self._ros_now(), self._travel(now), nlcp, still,
-                (u.get("phase") or "") if u.get("active") else "")
+        phase = (u.get("phase") or "") if u.get("active") else ""
+        # A kink pivot or the U-turn spin sweeps the sensor across the tape: #LCP 0 holds the
+        # fork detectors as they were (no phantom junction in a teach pass or the shadow
+        # locator), and the recorder notes the pivot to drop the corner's own fork episode.
+        pivot = self.job.pivoting or phase in ("stopping", "spin", "center", "settle")
+        nlcp = 0 if pivot else (self.reader.sensor() or {}).get("nlcp")
+        rt.tick(self._ros_now(), self._travel(now), nlcp, still, phase, pivot)
         self.tape_health.where(rt.snapshot() if rt.loc is not None else None)
         events = rt.drain_events()
         for level, text in events:
@@ -600,6 +613,18 @@ class LineFollowNode(Node):
         self._publish_state()
         return res
 
+    def _srv_uturn(self, act, res):
+        res.success, res.message = self.job.force_u_turn(act == "force")
+        self.get_logger().info(f"forced U-turn {act}: {res.message}")
+        self._publish_state()
+        return res
+
+    def _srv_speed(self, level, res):
+        res.success, res.message = self.job.select_speed(level == "high")
+        self.get_logger().info(f"speed toggle {level}: {res.message}")
+        self._publish_state()
+        return res
+
     def _plain_mission(self):
         """missions/empty.json (the site's U-turn tags), or None - no tags at all -
         when it is missing or refused, so a bad file never blocks line following."""
@@ -710,6 +735,13 @@ class LineFollowNode(Node):
         m.message = self.job.reason
         m.code = self._code()
         for k, v in self.job.mission_snapshot().items():
+            if not hasattr(m, k):
+                # Python updated by a restart, amr_interfaces not rebuilt: say so once and
+                # keep publishing, rather than lose the line layer to an AttributeError.
+                if k not in self._missing_fields:
+                    self._missing_fields.add(k)
+                    self.get_logger().warning(f"LineState has no field {k!r}: rebuild amr_interfaces")
+                continue
             setattr(m, k, v)
         for k, v in self.job.marker_snapshot().items():
             setattr(m, k, v)

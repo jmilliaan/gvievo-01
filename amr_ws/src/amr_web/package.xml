@@ -12,10 +12,12 @@
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>tf2_ros_py</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>amr_interfaces</exec_depend>
+  <exec_depend>amr_base</exec_depend>
   <exec_depend>amr_maps</exec_depend>
   <exec_depend>amr_navigation</exec_depend>
   <exec_depend>amr_mission</exec_depend>

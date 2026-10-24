@@ -175,6 +175,14 @@ reason "Manual Arm (DI08) off"). Under **AUTO** they are powered by a run: every
 move after a Start first sounds the alarm horn for 2 s (tape and trackless alike),
 holds that wait for Start drop to standby, holds that clear by themselves keep power.
 
+**Phantom panel images (2026-09-17, 2026-10-24).** The DIO island has delivered input
+images in which several bits change at once for ~1 s with nobody at the box (Manual Arm
+reads off, plus Start, Reset, the selector or a pendant button). Two guards discard them:
+the selector and a pendant button changing together are withheld for 1.5 s, and a Start or
+Reset edge in the same or the next scan as any other input change is ignored. Both log a
+`PANEL` warning "panel image suspect: ... (raw DI 0x....)"; if a real press was ignored,
+press again. These guards only take authority away; the FX3/STO path is unaffected.
+
 **Pendant.** The hard-wired jog pendant on the DIO island works under the same
 authority as the jog pad (selector **MANUAL**, Manual Arm on, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
@@ -881,6 +889,22 @@ sudo systemctl restart systemd-journald       # apply the cap
 sudo journalctl --vacuum-size=300M            # shrink what is already there
 sudo swapoff -a && sudo sed -i '/swap.img/d' /etc/fstab && sudo rm -f /swap.img
 ```
+
+### Trim OS services (optional, install once)
+
+Printing (cups snap), ModemManager, multipathd and unattended upgrades have no job
+on the vehicle; unattended upgrades can replace ROS packages under a running stack.
+`deploy/trim-services.sh` disables and masks them (nothing is uninstalled) and keeps
+the pre-trim state in `/var/backups/amr-trim/original`:
+
+```bash
+./deploy/trim-services.sh               # read-only: current state
+sudo ./deploy/trim-services.sh --go     # apply; amr.service is not touched
+sudo ./deploy/trim-services.sh --revert # back to the pre-trim state
+```
+
+It refuses if a multipath device is active. Afterwards, update packages
+deliberately at a service window: `sudo apt update && sudo apt upgrade`.
 
 ### Data on its own volume (W8, optional)
 

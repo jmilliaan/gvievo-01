@@ -71,10 +71,10 @@ STATE_NAMES = {
 # when auto_resume_estop is set, matching the executor's operator decision of
 # 2026-09-19 that an E-stop recovery is a deliberate human act.
 _AUTO_CAUSES = ("field", "drives", "rate", "track")
-# Holds that keep the HIGH budget for the resume (2026-10-09): the protective field (a
+# Holds that keep HIGH for the resume (2026-10-09): the protective field (a
 # person stepped in) and the RFID link (no RFID event may change the speed).
 _PARK_CAUSES = ("field", "rfid")
-# An "estop" hold parks the budget too, and decides at the resume (2026-10-23, operator:
+# An "estop" hold parks HIGH too, and decides at the resume (2026-10-23, operator:
 # a protective stop must not reset HIGH). A protective trip removes torque through the
 # FX3, and the drive report can arrive before /output_paths shows the field: the tick then
 # sees torque off with the field still clear and calls it an E-stop. A field violation
@@ -88,6 +88,9 @@ FIELD_RACE_S = 0.5
 # hold took the rest of kink_max_deg.
 KINK_GONE_TICKS = 2
 KINK_MIN_LEFT_DEG = 10.0
+# The kink pivot stops inside kink_stop_mm, not centred: settle only long enough for the
+# wheels to come to rest, then the follower steers the rest.
+KINK_SETTLE_S = 0.3
 
 
 @dataclasses.dataclass(frozen=True)
@@ -155,6 +158,9 @@ class FollowJob:
         # when a run ends at Home, so one PB press cannot repeat a finished job.
         self.destination = None
         self.result = ""            # how the last run ended at Home, for the operator
+        # The guided page's speed toggle (2026-10-24): kept across runs, NORMAL again at every
+        # mission load and node start. Each fresh TapeRun takes it over (_new_tape).
+        self.high_select = False
         self.tape = None
         # Last tag and the travel since it: survives runs and mission changes.
         self.odometer = tag_table.TagOdometer()
@@ -190,6 +196,8 @@ class FollowJob:
         self.kink = None            # the kink pivot in progress, see _kink_begin()
         self.kinks = 0              # kink pivots this run
         self._edge_gone = 0         # ticks the tape has been gone after leaving at the edge
+        self.ended_at_end = False   # DONE "track lost": the guide page may force the U-turn there
+        self._end_gone = 0          # ticks the tape has been gone with a U-turn read pending
         self.tape = self._new_tape()
         self.f.reset()
 
@@ -197,7 +205,10 @@ class FollowJob:
         """A fresh mission state for one run: stage, latches and cursor start over."""
         from amr_line.tape_run import TapeRun  # noqa: PLC0415  (profile-dependent)
 
-        return TapeRun(self.mission, self.destination)
+        t = TapeRun(self.mission, self.destination)
+        if t.high_select is not None:
+            t.high_select = self.high_select
+        return t
 
     def order_branch(self, side):
         """The engineer's branch order (guided mission). Returns (ok, message). Chooses a tape
@@ -205,6 +216,37 @@ class FollowJob:
         if self.tape is None:
             return False, "no mission loaded"
         return self.tape.order(side)
+
+    def force_u_turn(self, on):
+        """The guide page's fallback: the next tape end is the U-turn. Returns (ok, message).
+        Running: it changes what the tape end means. DONE at the tape end on the way out: the
+        NEXT physical Start pivots there instead of starting a new run. It never starts,
+        resumes or speeds anything by itself."""
+        if self.tape is None:
+            return False, "no mission loaded"
+        if not (self.tape.guided and self.tape.mrun):
+            return self.tape.force_u_turn(on)       # refused there, with the reason
+        if self.state == DONE:
+            if not self.ended_at_end:
+                return False, "the run is over: a forced U-turn only while running or at the tape end"
+            ok, msg = self.tape.force_u_turn(on)
+            if ok and on:
+                msg = (f"U-turn armed at the tape end: press the physical Start (AUTO) to pivot "
+                       f"{self.tape.mrun['direction']} here and drive back")
+            return ok, msg
+        if self.state not in (RUNNING, HOLD):
+            return False, "no run: a forced U-turn only while running or at the tape end"
+        return self.tape.force_u_turn(on)
+
+    def select_speed(self, high):
+        """The guided page's speed toggle. Returns (ok, message). HIGH only lets the marker
+        pair grant HIGH; it never starts, resumes or speeds anything by itself."""
+        if self.tape is None:
+            return False, "no mission loaded"
+        ok, msg = self.tape.select_speed(high)
+        if ok:
+            self.high_select = bool(high)
+        return ok, msg
 
     def set_mission(self, mission, destination=None):
         """Choose the job for the next run: mission and, when the mission has
@@ -220,6 +262,7 @@ class FollowJob:
         self.mission = mission
         self.destination = destination
         self.result = ""
+        self.high_select = False
         self.tape = self._new_tape()
         name = mission["MISSION_NAME"] if mission else "none"
         if not mission or name == "empty":
@@ -276,11 +319,13 @@ class FollowJob:
             self.refused = pre      # the node turns this into one operator event
             return 0.0, 0.0
         self._binding = i.authority
-        return self._begin_premove(i, "start")
+        turn = self.state == DONE and self.ended_at_end and self.tape is not None and self.tape.uturn_forced
+        return self._begin_premove(i, "uturn" if turn else "start")
 
     def _depart(self, i: Inputs):
         """A run from IDLE/DONE begins: fresh engine, fresh mission state."""
         self.result = ""
+        self.ended_at_end = False
         self.f.reset()
         self.tape = self._new_tape()
         self.followed_m = 0.0
@@ -316,7 +361,7 @@ class FollowJob:
         self._premove = None
         self._prereq_since = None
         self.state, self.hold_cause = back_state, back_cause
-        if kind == "start":
+        if kind in ("start", "uturn"):
             self._binding = None
         self.reason = f"Start cancelled: {why}"
         self.refused = why
@@ -363,6 +408,17 @@ class FollowJob:
         self._prereq_since = None
         if kind == "start":
             return self._depart(i)
+        if kind == "uturn":
+            # The run that ended at the tape end goes on: same mission state, the forced
+            # U-turn from standstill (spin, reacquire, back), then the way home.
+            self.ended_at_end = False
+            self.state, self.hold_cause = RUNNING, ""
+            self.f.reset()
+            if not self.tape.turn_here():
+                return self._uturn_fault("the forced U-turn was no longer armed")
+            self.f.hard_stop()
+            self.reason = "U-turn on Start at the tape end"
+            return 0.0, 0.0
         self.state = RUNNING
         if kind == "station":
             where = (self.tape.stop or {}).get("where", "station")
@@ -475,12 +531,12 @@ class FollowJob:
         self.f.hard_stop()
         self._hold_since = None
         self._estop_was_field = False
-        # A station stop parked the HIGH budget (TapeRun._begin_stop); a protective-field or
+        # A station stop parked HIGH (TapeRun._begin_stop); a protective-field or
         # RFID-link hold parks it (operator, 2026-10-09: back to HIGH after it, and no RFID
         # event changes the speed), and so does an "estop" hold until the resume knows
         # whether it was the field (see _PARKS_HIGH); any other hold forgets it. Warning
-        # fields never reach here: the mux scales the command and the budget counts wheel
-        # travel, so HIGH carries on through them.
+        # fields never reach here: the mux scales the command and HIGH carries on
+        # through them.
         if self.tape is not None and cause in _PARKS_HIGH:
             self.tape.park_high(f"hold ({cause})")
         elif self.tape is not None and cause != "station":
@@ -658,7 +714,7 @@ class FollowJob:
 
         Every distance the speed engine and the U-turn count is this, not commanded
         speed: a warning-field hold slows the vehicle in the mux, where the follower
-        cannot see it, and a commanded-speed budget would expire undriven.
+        cannot see it, and a commanded-speed distance would run out undriven.
         """
         from agv_core import config as vehicle  # noqa: PLC0415
 
@@ -775,9 +831,9 @@ class FollowJob:
     # in 0.2 m, 24 deg of yaw, "track lost"). A tape END leaves the sensor near the
     # centre; a CORNER leaves it at the edge. So: tape gone for KINK_GONE_TICKS with
     # the last reading >= kink_edge_mm off centre -> stop, pivot toward that side
-    # until the tape is centred (the U-turn spin, encoder-gated to kink_max_deg),
-    # resume. The sensor is only 0.1 m ahead of the axle, so the axle stops within a
-    # few cm of the corner and the centred pivot leaves it on the new tape.
+    # until the tape is within +/-kink_stop_mm (the U-turn spin, encoder-gated to
+    # kink_max_deg), resume. The sensor is only 0.1 m ahead of the axle: centring
+    # over-rotates into the corner, so the pivot stops short and the follower finishes.
     # Not a U-turn to tape localization: signed wheel travel does not grow in a
     # pivot, and the node feeds the fork detectors #LCP 0 meanwhile (pivoting).
 
@@ -812,6 +868,21 @@ class FollowJob:
                                          f"stopping to pivot {side} onto it"))
         return True
 
+    def _tape_end_tick(self, t, diag, stopping):
+        """A U-turn strip read still inside the junction guard, and the tape ends (gone near
+        the centre for TAPE_GONE_TICKS, as the approach counts it): pivot here."""
+        from amr_line.tape_run import TAPE_GONE_TICKS  # noqa: PLC0415
+        if stopping or diag.get("has_track") or diag.get("state") == "sensor_lost":
+            self._end_gone = 0
+            return False
+        self._end_gone += 1
+        if self._end_gone < TAPE_GONE_TICKS or not t.tape_ended():
+            return False
+        self._end_gone = 0
+        self.f.hard_stop()
+        self.diag = dict(diag, v_base=0.0)
+        return True
+
     def _kink_fault(self, why):
         self.kink = None
         self.state = FAULT
@@ -840,7 +911,8 @@ class FollowJob:
             if left_deg < KINK_MIN_LEFT_DEG:
                 return self._kink_fault(f"tape not found within {vehicle.KINK_MAX_DEG:.0f} deg")
             k["turn"] = uturn.UTurn(k["direction"], i.counts_per_rev, i.counts, None,
-                                    min_deg=0.0, max_deg=left_deg, lost=True, what="kink pivot")
+                                    min_deg=0.0, max_deg=left_deg, lost=True, what="kink pivot",
+                                    band_mm=vehicle.KINK_STOP_MM, settle_s=KINK_SETTLE_S)
         e_mm, level = u_turn_error(i.sensor)
         left, right = k["turn"].update(i.counts, e_mm, level, i.dt, paused=i.warning_scale < 1.0)
         if k["turn"].phase == uturn.FAILED:
@@ -849,8 +921,10 @@ class FollowJob:
             angle = k["done_deg"] + k["turn"].angle_deg
             self.kink = None
             self.f.reset()      # the PID history describes the tape before the corner
-            self.tape.events.append(("info", f"kink: pivoted {k['direction']} {angle:.0f} deg, "
-                                             f"centred - resuming"))
+            e_now, _level = u_turn_error(i.sensor)
+            at = "" if e_now is None else f", tape at {e_now:+.0f} mm"
+            self.tape.events.append(("info", f"kink: pivoted {k['direction']} {angle:.0f} deg{at} - "
+                                             f"resuming"))
             return 0.0, 0.0
         return left, right
 
@@ -887,6 +961,8 @@ class FollowJob:
         t.speed.settled(diag["v_base"])
         if not stopping and self._kink_begin(diag):
             return 0.0, 0.0
+        if self._tape_end_tick(t, diag, stopping):
+            return 0.0, 0.0
 
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)
         v_now, _ = kinematics.wheels_to_body(left, right)
@@ -908,6 +984,7 @@ class FollowJob:
         # the vehicle reached the end of the tape, or the tape ended.
         if diag["state"] in ("line_lost", "sensor_lost"):
             self.state = DONE
+            self.ended_at_end = diag["state"] == "line_lost"
             self.hold_cause = ""
             self.reason = ("track lost: the tape has been out of view for the "
                            "whole line-loss distance budget")
@@ -951,6 +1028,7 @@ class FollowJob:
             "branch_intent": t.branch.ladder.intent(),
             "slow_zone": bool(t.branch.slow),   # junction slow zone: no HIGH through it
             "high_speed": bool(t.high),
+            "speed_select": t.speed_select,
             "speed_reason": t.speed.reason,
             "uturn_phase": (u.get("phase") or "") if u.get("active") else "",
             "last_tag": (t.last_encounter or {}).get("tag") or "",

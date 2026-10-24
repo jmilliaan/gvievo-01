@@ -21,11 +21,11 @@ from agv_core import config
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from tf2_ros import TransformBroadcaster
 
 from amr_base.diff_drive import Geometry, OdomState, forward, integrate
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import WheelStates
 
 SENSOR_DATA = QoSProfile(
@@ -36,7 +36,7 @@ SENSOR_DATA = QoSProfile(
 BIG = 1e6
 
 
-class DiffDriveOdom(Node):
+class DiffDriveOdom(LeanNode):
     def __init__(self) -> None:
         super().__init__("diff_drive_odom")
         self.declare_parameter("wheel_radius_m", config.WHEEL_DIA_M / 2.0)

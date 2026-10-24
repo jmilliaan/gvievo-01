@@ -8,11 +8,11 @@ window completes. /imu/recalibrate (std_srvs/Trigger) discards the estimate.
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import WheelStates
 from amr_localization.gyro_bias import BiasEstimator
 
@@ -23,7 +23,7 @@ SENSOR_DATA = QoSProfile(
 )
 
 
-class ImuBias(Node):
+class ImuBias(LeanNode):
     def __init__(self) -> None:
         super().__init__("imu_bias")
         self.declare_parameter("window_s", 2.0)

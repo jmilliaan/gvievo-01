@@ -60,7 +60,12 @@ after Start), since the pivot back - and the first read after that is the U-turn
 
 Guided mission (2026-10-23): the engineer's branch orders (order()) drive the same latch a
 tag would, one shot, consumed by the next fork; the pivot clears any order still standing.
-The follower's cruise is capped at the mission's cruise_mps. The marker stream
+The follower's cruise is capped at the mission's cruise_mps outside HIGH. A guided mission
+with a high_zone (2026-10-24) has a speed toggle (select_speed(), the guided page): NORMAL,
+the default, ignores the zone codes; HIGH lets them act as in any mission - HIGH only from
+an outer->inner pair read while it is on, out at the exit markers, a hold, the curve guard.
+Switching to NORMAL takes HIGH away at once. A marker run feeds the zone too, on its own
+codes (the loader keeps them apart). The marker stream
 going down, or marker events lost, while driving outside a U-turn sets marker_lost: the
 job holds for a person (a missed marker here is the home stop driven past). Reads are
 acted on whether or not they are clean (lcp2, line_good): every action they start is a
@@ -151,11 +156,29 @@ class TapeRun:
         self._odo_m = 0.0             # wheel travel this run (the junction guard's ruler)
         self._multi_at = None         # _odo_m at the last multi-track #LCP
         self._mrun_pending = None     # a U-turn/home read waiting out the junction guard
+        self._level = None            # the last tape level while following, for tape_ended()
+        self.uturn_forced = False     # guide page: the NEXT tape end is the U-turn, strip or not
         self._follower = None         # for a home stop begun from advance()
         self._mrun_back_m = 0.0       # wheel travel since the pivot (shared-code home arming)
         self.guided = m.get("GUIDED")
-        # the follower's ceiling for a guided (walked) run; None = the profile's cruise
-        self.cruise_rpm = self.guided["cruise_rpm"] if self.guided else None
+        # The guided page's speed toggle: None = no toggle (the zone, if any, always acts);
+        # False = NORMAL (zone codes ignored), True = HIGH allowed where the codes grant it.
+        self.high_select = False if self.guided and self.speed.enabled else None
+
+    @property
+    def cruise_rpm(self):
+        """The follower's ceiling: a guided (walked) run's cruise outside HIGH; None = the
+        profile's cruise for the zone state."""
+        if not self.guided or self.speed.high:
+            return None
+        return self.guided["cruise_rpm"]
+
+    @property
+    def speed_select(self):
+        """LineState.speed_select: "" without a toggle, else "normal" / "high"."""
+        if self.high_select is None:
+            return ""
+        return "high" if self.high_select else "normal"
 
     @property
     def active(self):
@@ -325,14 +348,14 @@ class TapeRun:
 
         Only the zone's two codes act, and only a clean read while driving. Anything
         that may have hidden a zone marker - the stream down, events lost - takes ARMED
-        and HIGH away: every failure ends at NORMAL. A marker run routes them instead
-        (_marker_run); follower is needed there for the home stop.
+        and HIGH away: every failure ends at NORMAL. A marker run routes them to
+        _marker_run first (follower is needed there for the home stop); its codes are not the
+        zone's. A guided run's toggle at NORMAL ignores the zone codes.
         """
         if self.mrun is not None:
             self._marker_run(reads, ok, driving, follower)
-            return
         z = self.speed
-        if not z.enabled:
+        if not z.enabled or self.high_select is False:
             return
         zone = (z.cfg["outer"], z.cfg["inner"])
         if not ok:
@@ -410,34 +433,94 @@ class TapeRun:
     def _mrun_release(self):
         """advance(): act on the pending read once MARKER_JUNCTION_M passed with one tape."""
         p, mr = self._mrun_pending, self.mrun
-        if self._multi_at is not None and self._multi_at >= p["at"]:
-            self._mrun_pending = None
-            self.events.append((WARN, f"{p['where']} ignored: a junction - two tapes under the sensor "
-                                      f"{self._multi_at - p['at']:.2f} m after it"))
-            return
+        if self._multi_at is not None and self._multi_at >= p["at"] and "multi_m" not in p:
+            p["multi_m"] = self._multi_at - p["at"]
         past = self._odo_m - p["at"]
         if past < MARKER_JUNCTION_M:
             return
         self._mrun_pending = None
+        if "multi_m" in p:
+            # Dropped only once the tape went on: two tapes right at the U-turn strip and then
+            # the tape END is the MRU end itself (2026-10-24 11:26) - tape_ended() takes that.
+            self.events.append((WARN, f"{p['where']} ignored: a junction - two tapes under the sensor "
+                                      f"{p['multi_m']:.2f} m after it"))
+            return
         if self.stop is not None or self.uturn_req is not None:
             return
-        code = mr["uturn_code"] if p["role"] == "uturn" else mr["home_code"]
         if p["role"] == "uturn":
-            self._start_u_turn({"tag": f"marker {code}", "direction": mr["direction"],
-                                "approach_mps": mr["approach_mps"], "decel_m": mr["decel_m"],
-                                "max_approach_m": mr["max_approach_m"]},
-                               f"U-turn marker ({p['where']}, {past:.2f} m back)")
-            self.uturn_req["travel_m"] = past       # the tape end is measured from the strip
+            self._mrun_uturn(p, past, f"{past:.2f} m back")
             return
         if self._follower is None:
             return
-        self._begin_stop({"tag": f"marker {code}", "label": mr["label"], "role": "home",
+        self._begin_stop({"tag": f"marker {mr['home_code']}", "label": mr["label"], "role": "home",
                           "stop_distance_m": max(0.05, mr["stop_distance_m"] - past)}, self._follower)
 
+    def _mrun_uturn(self, p, past, how):
+        mr = self.mrun
+        self._start_u_turn({"tag": f"marker {mr['uturn_code']}", "direction": mr["direction"],
+                            "approach_mps": mr["approach_mps"], "decel_m": mr["decel_m"],
+                            "max_approach_m": mr["max_approach_m"]},
+                           f"U-turn marker ({p['where']}, {how})")
+        self.uturn_req["travel_m"] = past           # the tape end is measured from the strip
+
+    def tape_ended(self):
+        """The job saw the tape end (gone near the centre, not a kink) while a U-turn read
+        waits out the junction guard: the strip lies closer to the tape end than
+        MARKER_JUNCTION_M (2026-10-24 10:57: read 0.12 m before the MRU end, the run ended
+        "track lost"). A tape end is no junction - the U-turn starts at once, already
+        stopping. True when it did; the job zeroes the command."""
+        if self.stop is not None or self.uturn_req is not None:
+            return False
+        p = self._mrun_pending
+        if p is not None and p["role"] == "uturn":
+            # Two tapes after the read do not matter here: a junction's tape goes on, and the
+            # MRU end has shown two tracks right at the strip (2026-10-24 11:26).
+            self._mrun_pending = None
+            past = self._odo_m - p["at"]
+            self._turn_at_end(p, past, f"the tape ended {past:.2f} m after it", "the U-turn strip")
+            return True
+        if self.uturn_forced:
+            self._turn_at_end({"where": "guide page"}, 0.0, "forced", "the forced U-turn order")
+            return True
+        return False
+
+    def turn_here(self):
+        """The run ended at the tape end on the way out and the guide page then forced the
+        U-turn: the job's next physical Start pivots here (already stopped) and drives back."""
+        if not self.uturn_forced or self.mrun_phase != "out" or self.uturn_req is not None:
+            return False
+        self._mrun_pending = None
+        self._turn_at_end({"where": "guide page, after the run ended"}, 0.0, "forced", "the run ended")
+        return True
+
+    def _turn_at_end(self, p, past, how, what):
+        self._mrun_uturn(p, past, how)
+        self.uturn_req["phase"] = "stopping"
+        self.uturn_req["level"] = self._level       # the spin's reacquire reference, as approach()
+        self.events.append((INFO, f"tape ended {past:.2f} m after {what} - stopping now "
+                                  f"to pivot {self.uturn_req['direction']}"))
+
+    def force_u_turn(self, on):
+        """The guide page's fallback (2026-10-24): the NEXT tape end is the U-turn, whether or
+        not the strip was read - instead of ending the run "track lost". One shot, consumed by
+        any U-turn. It never starts, resumes or speeds anything: the run is already moving on
+        AUTO + Start, and a tape end stops it either way. Returns (ok, message)."""
+        if not self.guided or not self.mrun:
+            return False, "a forced U-turn only in a guided marker mission"
+        if on and self.mrun_phase != "out":
+            return False, "already past the U-turn: the forced U-turn is only on the way out"
+        if on and self.uturn_req is not None:
+            return False, "a U-turn is already under way"
+        self.uturn_forced = bool(on)
+        msg = (f"U-turn forced: the NEXT tape end is the U-turn (pivot {self.mrun['direction']}), "
+               f"strip or not" if on else "forced U-turn cancelled: a tape end ends the run again")
+        self.events.append((INFO, msg))
+        return True, msg
+
     def parked(self, distance_m):
-        """Wheel travel while parked at a station: taken off the kept budget, and
-        without counts the budget cannot be trusted any more."""
-        if self.speed.parked_left is None:
+        """Wheel travel while parked at a station. Without counts the kept HIGH cannot be
+        trusted any more: the vehicle may have been moved past the exit markers."""
+        if not self.speed.parked_high:
             return
         if distance_m is None:
             self.speed.drop("wheel travel unavailable while stopped")
@@ -447,8 +530,8 @@ class TapeRun:
 
     def park_high(self, reason):
         """A protective-field or RFID-link hold while running (operator, 2026-10-09): HIGH comes back on
-        the resume, like a station departure, with the budget less the wheel travel while
-        held. A measured station stop in progress already parked its budget: left alone."""
+        the resume, like a station departure. A measured station stop in progress already
+        parked HIGH: left alone."""
         if self.stop is not None:
             return
         if self.speed.park(reason):
@@ -495,11 +578,31 @@ class TapeRun:
         self.events.append((INFO, msg))
         return True, msg
 
+    def select_speed(self, high):
+        """The guided page's speed toggle. Returns (ok, message). HIGH never raises the speed
+        by itself: the next outer->inner marker pair does. NORMAL drops HIGH at once."""
+        if not self.guided:
+            return False, "the speed toggle is only in a guided mission"
+        if self.high_select is None:
+            return False, "this guided mission has no high zone: NORMAL only"
+        self.high_select = bool(high)
+        z = self.speed.cfg
+        if self.high_select:
+            msg = (f"speed HIGH selected: HIGH from the next zone entry (marker {z['outer']} then "
+                   f"{z['inner']}), NORMAL again at the exit markers")
+        else:
+            msg = f"speed NORMAL selected: zone markers ignored, {self.guided['cruise_mps']:g} m/s"
+            self.drop_high("speed NORMAL selected on the guided page")
+        self.events.append((INFO, msg))
+        return True, msg
+
     def steer(self, sensor, tags, followed_mm):
         """Scan each new tag, then the no-tag fork scan. Returns (choice, high)."""
         nlcp = (sensor or {}).get("nlcp")
         if nlcp in MULTI_NLCP:
             self._multi_at = self._odo_m
+        if (sensor or {}).get("has_track") and sensor.get("track_level") is not None:
+            self._level = sensor["track_level"]
         for tag in tags:
             self._branch_scan(nlcp, tag)
         self._branch_scan(nlcp, None)
@@ -541,6 +644,7 @@ class TapeRun:
     def _start_u_turn(self, row, what):
         """The U-turn approach, from a tag or a marker: slow to the creep, stop at the tape end."""
         self.drop_high("U-turn")
+        self.uturn_forced = False                   # any U-turn consumes the guide page's order
         self.uturn_req = {"tag": row["tag"], "direction": row["direction"],
                           "approach_mps": row["approach_mps"],
                           "decel_m": row["decel_m"], "decel_rpm_s": None,

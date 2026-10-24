@@ -97,8 +97,10 @@ class TapeRuntime:
         self.detail = f"{self.graph_name}: press At home at {self.m['HOME']}"
 
     # -- inputs --------------------------------------------------------------------
-    def tick(self, t, travel, nlcp, still, uturn_phase=""):
-        """Every control tick. travel: cumulative signed wheel travel (None: unknown)."""
+    def tick(self, t, travel, nlcp, still, uturn_phase="", pivot=False):
+        """Every control tick. travel: cumulative signed wheel travel (None: unknown).
+        pivot: a kink pivot or the U-turn spin turns the sensor across the tape (the node
+        already feeds #LCP 0 then; the recorder notes where, to drop the corner's fork)."""
         if self.ready_t is not None and t - self.ready_t > READINESS_STALE_S and self.ready:
             self._readiness(False, "localization state stale")
         if travel is None:
@@ -106,7 +108,7 @@ class TapeRuntime:
         self.travel = travel
         self._still_since = (self._still_since or t) if still else None
         if self.recorder is not None:
-            self.recorder.tick(t, travel, nlcp)
+            self.recorder.tick(t, travel, nlcp, pivot)
         loc = self.loc
         if loc is not None:
             loc.predict(t, travel)
@@ -126,7 +128,9 @@ class TapeRuntime:
 
     def _uturn(self, travel, phase):
         prev, self._uturn_phase = self._uturn_phase, phase or ""
-        if prev == "approach" and phase == "stopping" and self.recorder is not None:
+        # Into "stopping" from the approach, or straight from following (a strip read in the
+        # last 0.3 m, the guide page's forced U-turn, a Start at the tape end): one U-turn.
+        if phase == "stopping" and prev in ("", "approach") and self.recorder is not None:
             self.recorder.uturn(travel)
         if prev in ("spin", "center", "settle") and not phase and self.loc is not None:
             near = [n for n in self.route.nodes if n["kind"] == "uturn"]
@@ -248,12 +252,18 @@ class TapeRuntime:
         if self.recorder is None:
             return False, "not recording"
         rec, self.recorder = self.recorder, None
-        try:
-            tt.split_pass(rec.to_dict(), self.m)
-        except tt.TeachError as e:
-            return False, f"pass NOT saved: {e} ({rec.summary()})"
+        # Saved in every case (2026-10-24): a lap costs minutes on the floor, and Build re-tries
+        # every saved pass with the current matcher. One that still does not match is skipped
+        # (REFUSED in the Build report); delete it once it is known to be a wrong route.
         name = store.save_pass(self.state_dir, self.sel["map_id"], self.sel["map_revision"], rec.to_dict())
-        return True, f"pass {name} saved: {rec.summary()}"
+        notes = []
+        try:
+            tt.split_pass(rec.to_dict(), self.m, notes)
+        except tt.TeachError as e:
+            return False, (f"pass {name} saved but it does NOT match yet: {e} ({rec.summary()}); "
+                           f"Build skips it")
+        extra = f"; {'; '.join(notes)}" if notes else ""
+        return True, f"pass {name} saved: {rec.summary()}{extra}"
 
     def _t_pass_discard(self, _t, _arg):
         was, self.recorder = self.recorder, None

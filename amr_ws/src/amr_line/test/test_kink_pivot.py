@@ -131,10 +131,12 @@ def test_a_mild_corner_is_followed_without_a_pivot():
 
 
 def test_the_corners_the_follower_loses_are_pivoted_onto():
-    for deg in (45.0, -45.0, 50.4, -50.4, 60.0):
+    # the pivot stops with the tape at +/-kink_stop_mm (75), not centred: a 60 deg corner
+    # may lose the tape once more on the way out and take a second short pivot
+    for deg, most in ((45.0, 1), (-45.0, 1), (50.4, 1), (-50.4, 1), (60.0, 2)):
         w, p = run(kink(deg))
         ends_on_the_new_tape(w, p)
-        assert w.job.kinks == 1, (deg, w.job.kinks)
+        assert 1 <= w.job.kinks <= most, (deg, w.job.kinks)
         assert w.job.kink is None
 
 

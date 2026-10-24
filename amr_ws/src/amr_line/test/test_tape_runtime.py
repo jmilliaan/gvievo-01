@@ -237,3 +237,30 @@ def test_the_straight_section_teach_and_shadow(tmp_path):
                  "stop ME-4", "stop T-HOME"):
         assert text.count(what) == 2, (what, text)
     assert "would HOLD" not in text and "LOST" not in text, text
+
+
+def test_a_pass_that_does_not_match_is_still_saved(tmp_path):
+    rt = runtime(tmp_path, {"map_id": "t", "map_revision": 1, "graph_revision": None})
+    rt.readiness(0.0, tr.READY)
+    assert rt.teach(0.0, "pass_start", "C-M")[0]
+    t = 0.0
+    for i in range(200):                    # 20 m, no fork, no U-turn: not C-M
+        t += 0.1
+        rt.tick(t, i * 0.1, 2, False)
+        rt.amcl(t, t, i * 0.1, 0.0, 0.0, 0.0004, 0.0, 0.0004)
+    ok, msg = rt.teach(t, "pass_stop")
+    assert not ok and "saved but it does NOT match" in msg, msg
+    assert rt.teach(t, "passes")[1].startswith("C-M-")
+    ok, msg = rt.teach(t, "build")
+    assert "REFUSED" in msg, msg
+
+
+def test_a_u_turn_straight_from_following_is_recorded(tmp_path):
+    rt = runtime(tmp_path, {"map_id": "t", "map_revision": 1, "graph_revision": None})
+    rt.readiness(0.0, tr.READY)
+    rt.teach(0.0, "pass_start", "C-M")
+    rt.tick(0.1, 1.0, 2, False, "")
+    rt.tick(0.2, 1.1, 0, False, "stopping", True)     # no approach phase: the tape-end U-turn
+    rt.tick(0.3, 1.1, 0, True, "spin", True)
+    rt.tick(0.4, 1.1, 2, True, "")
+    assert rt.recorder.uturns == [1.1] and rt.recorder.pivots == [1.1]

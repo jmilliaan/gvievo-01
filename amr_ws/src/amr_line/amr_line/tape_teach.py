@@ -33,6 +33,10 @@ MIN_PASSES = 3
 MAX_SPREAD_M = 0.05
 # Averaging passes: how far along a pass to look for the point matching the reference.
 WINDOW_M = 0.5
+# A fork episode this close to a pivot (a kink corner or the U-turn spin) is the corner seen
+# by the MLS - incoming and outgoing tape under the sensor at once - not a junction
+# (2026-10-24: 6 and 7 forks on the way out where C-MRU has 4; 1 and 2 kink pivots).
+PIVOT_FORK_M = 0.4
 
 
 class TeachError(ValueError):
@@ -48,13 +52,19 @@ class PassRecorder:
         self.samples = []     # [travel, x, y]
         self.forks = []       # [start, end, crossing]
         self.uturns = []      # [travel]
+        self.pivots = []      # [travel] where a kink pivot or a U-turn spin began
         self.odom = OdomBuffer(span_s=3.0)
         self.forks_seen = tg.ForkDetector()
         self.dropped = 0      # poses without odometry at their stamp
+        self._pivoting = False
 
-    def tick(self, t, travel, nlcp):
+    def tick(self, t, travel, nlcp, pivot=False):
+        """pivot: a kink pivot or the U-turn spin is turning the sensor across the tape."""
         self.odom.add(t, travel)
-        ep = self.forks_seen.update(travel, nlcp)
+        if pivot and not self._pivoting:
+            self.pivots.append(float(travel))
+        self._pivoting = bool(pivot)
+        ep = self.forks_seen.update(travel, 0 if pivot else nlcp)
         if ep is not None:
             self.forks.append([ep[0], ep[1], ep[2]])
 
@@ -78,7 +88,7 @@ class PassRecorder:
 
     def to_dict(self):
         return {"circuit": self.circuit, "started": self.started, "samples": self.samples,
-                "forks": self.forks, "uturns": self.uturns}
+                "forks": self.forks, "uturns": self.uturns, "pivots": self.pivots}
 
 
 def _interp(samples, travel):
@@ -105,23 +115,72 @@ def _nodes(mission, circuit_id):
     return [leg["from"] for leg in legs[:-1]] + [legs[-1]["from"]]
 
 
-def split_pass(rec, mission):
-    """One recorded pass -> {leg id: {"pts", "fork_back"}}. TeachError if it does not match."""
+def _align(rec, nodes, want, t0, t1, notes):
+    """The pass's events matched to the circuit's nodes -> [(travel, kind, fork_back)].
+
+    The U-turns split the pass into stretches; each stretch must give exactly the forks its
+    nodes need. Fork episodes at a pivot (kink corner, U-turn spin) are corners: dropped
+    first. Still too many: the shortest episodes go (a junction keeps two tapes under the
+    sensor longest). Too few: corner episodes come back, longest first. Every dropped or
+    restored episode is noted, so the engineer can check it against the floor."""
+    pivots = list(rec.get("pivots", [])) + list(rec["uturns"])
+    eps = []
+    for start, end, cross in rec["forks"]:
+        if t0 < end < t1:
+            corner = any(start - PIVOT_FORK_M <= p <= end + PIVOT_FORK_M for p in pivots)
+            eps.append({"end": end, "span": end - start, "corner": corner, "cross": bool(cross)})
+    turns = sorted(t for t in rec["uturns"] if t0 < t < t1)
+    n_turns = want.count("uturn")
+    if len(turns) != n_turns:
+        raise TeachError(f"pass {rec.get('started')}: {len(turns)} U-turn(s) recorded, the circuit has "
+                         f"{n_turns} - a run that did not U-turn, or a different route")
+    bounds = [t0] + turns + [t1]
+    counts, k = [], 0
+    for kind in want + ["uturn"]:
+        if kind == "uturn":
+            counts.append(k)
+            k = 0
+        else:
+            k += 1
+    events = []
+    for i, need in enumerate(counts):
+        lo, hi = bounds[i], bounds[i + 1]
+        here = sorted((e for e in eps if lo < e["end"] < hi), key=lambda e: e["end"])
+        keep = [e for e in here if not e["corner"]]
+        extra = sorted((e for e in here if e["corner"]), key=lambda e: -e["span"])
+        while len(keep) < need and extra:
+            e = extra.pop(0)
+            keep.append(e)
+            notes.append(f"kept a fork at a pivot, {e['end']:.1f} m (two tapes {e['span']:.2f} m)")
+        for e in extra:
+            notes.append(f"dropped a corner fork at {e['end']:.1f} m (two tapes {e['span']:.2f} m, pivot)")
+        while len(keep) > need:
+            # an X crossing is short too (#LCP 7 marks it): drop a plain short episode first
+            e = min(keep, key=lambda e: (e["cross"], e["span"]))
+            keep.remove(e)
+            notes.append(f"dropped the shortest fork at {e['end']:.1f} m (two tapes {e['span']:.2f} m)")
+        if len(keep) < need:
+            names = [n for n, w in zip(nodes, want, strict=True) if w == "fork"]
+            raise TeachError(
+                f"pass {rec.get('started')}: {len(keep)} fork(s) between {lo:.1f} and {hi:.1f} m where "
+                f"the circuit needs {need} - a missed MLS fork or a different route (forks: {names})")
+        events += [(e["end"], "fork", e["span"]) for e in keep]
+        if i < len(turns):
+            events.append((turns[i], "uturn", 0.0))
+    return sorted(events)
+
+
+def split_pass(rec, mission, notes=None):
+    """One recorded pass -> {leg id: {"pts", "fork_back"}}. TeachError if it does not match.
+    notes: a list that receives what the matching dropped or restored."""
     cid = rec["circuit"]
     legs = mission["CIRCUITS"][cid]["legs"]
     nodes = _nodes(mission, cid)
     samples = sorted(rec["samples"])
     if len(samples) < 10:
         raise TeachError(f"pass {rec.get('started')}: only {len(samples)} AMCL poses")
-    events = [(end, "fork", end - start) for start, end, _x in rec["forks"]]
-    events += [(t, "uturn", 0.0) for t in rec["uturns"]]
-    events = [e for e in sorted(events) if samples[0][0] < e[0] < samples[-1][0]]
     want = ["uturn" if n in mission["UTURNS"] else "fork" for n in nodes]
-    got = [kind for _t, kind, _b in events]
-    if got != want:
-        raise TeachError(
-            f"pass {rec.get('started')}: events {got} do not match the nodes of {cid} "
-            f"{list(zip(nodes, want, strict=True))} - a missed or extra MLS fork, or a different route")
+    events = _align(rec, nodes, want, samples[0][0], samples[-1][0], [] if notes is None else notes)
     b = [t for t, _k, _ in events]
     out = {}
     for i, leg in enumerate(legs[:-1]):
@@ -200,11 +259,13 @@ def build(passes, mission, binding, stations=(), notes=""):
         if rec.get("circuit") not in mission["CIRCUITS"]:
             report.append(f"pass {rec.get('started')}: circuit {rec.get('circuit')!r} not in the mission")
             continue
+        notes = []
         try:
-            parts = split_pass(rec, mission)
+            parts = split_pass(rec, mission, notes)
         except (TeachError, tg.GraphError) as e:
             report.append(f"REFUSED {e}")
             continue
+        report += [f"pass {rec.get('started')}: {n}" for n in notes]
         for lid, part in parts.items():
             per_leg.setdefault(lid, []).append(part)
     specs = {leg["id"]: leg for c in mission["CIRCUITS"].values() for leg in c["legs"]}

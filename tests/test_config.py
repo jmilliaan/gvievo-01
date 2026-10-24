@@ -137,6 +137,8 @@ def test_config_profile():
             lambda d: d["autopilot"].update(kink_edge_mm=100.0), "autopilot.kink_edge_mm")
     refuses("a kink pivot wider than 120 deg is refused",
             lambda d: d["autopilot"].update(kink_max_deg=150.0), "autopilot.kink_max_deg")
+    refuses("a kink stop band at or past the sensor window is refused",
+            lambda d: d["autopilot"].update(kink_stop_mm=100.0), "autopilot.kink_stop_mm")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
     # an infinite manual watchdog would never expire. Python's json reader takes
     # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form
@@ -212,6 +214,8 @@ def test_config_profile():
                 lambda d, bad=bad: d["mls"].update(marker_codes=bad), why)
     refuses("the retired mls.markers_enabled is refused (markers are always on)",
             lambda d: d["mls"].update(markers_enabled=True), "unknown key")
+    refuses("the retired autopilot.high_margin_m is refused (no HIGH budget since 2026-10-24)",
+            lambda d: d["autopilot"].update(high_margin_m=1.0), "unknown key")
     check("the MLS event-flag reset is off until the bench found its value (E0.5)",
           config.MLS_EVENT_CLEAR == -1, str(config.MLS_EVENT_CLEAR))
     refuses("an mls.event_clear other than -1, 0 or 1 is refused",

@@ -76,12 +76,12 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -139,7 +139,7 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
     return None
 
 
-class RouteExecutor(Node):
+class RouteExecutor(LeanNode):
     def __init__(self) -> None:
         super().__init__("route_executor")
         self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))

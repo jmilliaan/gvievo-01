@@ -14,6 +14,7 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>amr_interfaces</exec_depend>
+  <exec_depend>amr_base</exec_depend>
   <exec_depend>amr_mission</exec_depend>  <!-- map bundle hashes for the tape graph binding -->
   <!-- The vehicle library at the repo root (kinematics, and the profile the
        engine's runtime namespace is loaded from). Not a rosdep key: install it

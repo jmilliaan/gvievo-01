@@ -23,15 +23,16 @@ from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
 from std_srvs.srv import Trigger
-from tf2_ros import Buffer, TransformListener
+from tf2_msgs.msg import TFMessage
+from tf2_ros import Buffer
 from visualization_msgs.msg import Marker, MarkerArray
 
+from amr_base.lean_node import LeanNode
 from amr_interfaces.msg import (
     CommissioningState,
     ControlLease,
@@ -234,7 +235,7 @@ def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int,
     return ""
 
 
-class RosAdapter(Node):
+class RosAdapter(LeanNode):
     def __init__(self) -> None:
         super().__init__("amr_web")
         self._lock = threading.Lock()
@@ -330,17 +331,27 @@ class RosAdapter(Node):
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
         self._scan_seen_t = 0.0
-        self._scan_recv_t: float | None = None  # last /scan of any kind; None = never seen
+        # Last evidence of a live scanner: a /scan message while the live view is subscribed,
+        # or the driver's "/scan topic status" counter moving (always). None = never seen.
+        self._scan_recv_t: float | None = None
+        self._scan_diag_n: int | None = None
         self._tf_buffer = Buffer()
-        self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
         self.create_subscription(OccupancyGrid, "/map", self.live.on_grid, LATCHED, callback_group=g)
+        # /tf_static is latched and near silent: always. /tf and /scan only on demand (live.py):
+        # subscribed and dropped on THIS executor thread (the guard condition and the timer),
+        # never from a Flask thread - destroying a subscription while another thread took from
+        # it raised InvalidHandle and killed the ROS thread once (2026-09-17).
         self.create_subscription(
-            LaserScan,
-            "/scan",
-            self._on_scan,
-            QoSProfile(depth=2, reliability=QoSReliabilityPolicy.BEST_EFFORT),
+            TFMessage,
+            "/tf_static",
+            self._on_tf_static,
+            QoSProfile(depth=100, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
             callback_group=g,
         )
+        self._live_subs: tuple | None = None
+        self._live_group = g
+        self.live.on_want = self.create_guard_condition(self._live_reconcile, callback_group=g).trigger
+        self.create_timer(1.0, self._live_reconcile, callback_group=g)
         self.create_timer(0.2, self._live_pose, callback_group=g)
         self.create_subscription(
             MappingState, "/amr/mapping_state", self._on_mapping, LATCHED, callback_group=g
@@ -385,6 +396,10 @@ class RosAdapter(Node):
             "branch_left": self.create_client(Trigger, "/amr/line/branch/left", callback_group=g),
             "branch_straight": self.create_client(Trigger, "/amr/line/branch/straight", callback_group=g),
             "branch_right": self.create_client(Trigger, "/amr/line/branch/right", callback_group=g),
+            "speed_normal": self.create_client(Trigger, "/amr/line/speed/normal", callback_group=g),
+            "speed_high": self.create_client(Trigger, "/amr/line/speed/high", callback_group=g),
+            "uturn_force": self.create_client(Trigger, "/amr/line/uturn/force", callback_group=g),
+            "uturn_cancel": self.create_client(Trigger, "/amr/line/uturn/cancel", callback_group=g),
             "line_at_home": self.create_client(Trigger, "/amr/line/at_home", callback_group=g),
             "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
             "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
@@ -449,6 +464,35 @@ class RosAdapter(Node):
             pass
         return "odom"
 
+    def _live_reconcile(self) -> None:
+        """Subscribe /tf and /scan while a page wants the live view; drop them when it lapses."""
+        wanted = self.live.wanted()
+        if wanted and self._live_subs is None:
+            tf = self.create_subscription(TFMessage, "/tf", self._on_tf, 100, callback_group=self._live_group)
+            scan = self.create_subscription(
+                LaserScan,
+                "/scan",
+                self._on_scan,
+                QoSProfile(depth=2, reliability=QoSReliabilityPolicy.BEST_EFFORT),
+                callback_group=self._live_group,
+            )
+            self._live_subs = (tf, scan)
+            self.get_logger().info("live view requested: /tf and /scan subscribed")
+        elif not wanted and self._live_subs is not None:
+            for sub in self._live_subs:
+                self.destroy_subscription(sub)
+            self._live_subs = None
+            self.live.clear_live()
+            self.get_logger().info(f"live view idle {live.LIVE_IDLE_S:g} s: /tf and /scan dropped")
+
+    def _on_tf(self, m: TFMessage) -> None:
+        for t in m.transforms:
+            self._tf_buffer.set_transform(t, "default_authority")
+
+    def _on_tf_static(self, m: TFMessage) -> None:
+        for t in m.transforms:
+            self._tf_buffer.set_transform_static(t, "default_authority")
+
     def _on_scan(self, m: LaserScan) -> None:
         # The live view redraws at 5 Hz; projecting 1152 beams 34 times a second is waste.
         now = time.monotonic()
@@ -478,13 +522,16 @@ class RosAdapter(Node):
     # A replaced layer's map->odom must not be drawn (plan §5.3 step 5). This used to
     # rebuild the TF listener on a generation change; destroying its subscriptions while
     # another executor thread was taking from them raised InvalidHandle out of spin_once
-    # and killed the ROS thread (2026-09-17, right as a survey was saved). The listener
-    # now lives as long as the node; staleness is judged by stamp in _world_frame().
+    # and killed the ROS thread (2026-09-17, right as a survey was saved). Staleness is
+    # judged by stamp in _world_frame(); the /tf subscription now comes and goes only with
+    # live-view demand, on the executor thread (_live_reconcile).
 
     def _live_pose(self) -> None:
         with self._lock:
             gen = self._mode["generation"] if self._mode else 0
         self.live.set_generation(gen)
+        if self._live_subs is None:
+            return  # no /tf: the buffer holds only what was cached before the drop
         frame = self._world_frame()
         try:
             t = self._tf_buffer.lookup_transform(frame, "base_footprint", Time())
@@ -663,6 +710,12 @@ class RosAdapter(Node):
         now = self._now()
         with self._lock:
             for st in m.status:
+                if st.name.endswith(live.SCAN_DIAG_SUFFIX):
+                    self._scan_diag_n, flowed = live.scan_diag_progress(
+                        self._scan_diag_n, {kv.key: kv.value for kv in st.values}
+                    )
+                    if flowed:
+                        self._scan_recv_t = now
                 self._diag[st.name] = {
                     "name": st.name,
                     "hardware_id": st.hardware_id,
@@ -901,6 +954,22 @@ class RosAdapter(Node):
         if side not in ("left", "straight", "right"):
             return False, "side must be left, straight or right"
         r = self._call(f"branch_{side}", Trigger.Request(), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
+        return bool(r.success), r.message
+
+    def line_speed(self, level: str) -> tuple[bool, str]:
+        """Guided mission: the speed toggle. HIGH lets the marker pair grant HIGH; moves nothing."""
+        if level not in ("normal", "high"):
+            return False, "level must be normal or high"
+        r = self._call(f"speed_{level}", Trigger.Request(), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
+        return bool(r.success), r.message
+
+    def line_uturn(self, force: bool) -> tuple[bool, str]:
+        """Guided mission: the next tape end is the U-turn (or cancel that). Moves nothing."""
+        r = self._call("uturn_force" if force else "uturn_cancel", Trigger.Request(), timeout=3.0)
         if r is None:
             return False, "line layer unavailable (enter Tracked mode first)"
         return bool(r.success), r.message

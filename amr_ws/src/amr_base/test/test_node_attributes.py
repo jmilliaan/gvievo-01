@@ -26,6 +26,7 @@ NODE_API = {
     "create_client",
     "create_timer",
     "create_rate",
+    "create_guard_condition",
     "destroy_node",
     "destroy_timer",
     "destroy_publisher",

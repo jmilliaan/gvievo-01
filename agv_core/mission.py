@@ -21,15 +21,13 @@ The v2.1 RFID zone rows (zone_outer/zone_inner) and the v2 speed_toggle are refu
 speed zones work whatever the RFID setting is, and RFID never changes the speed.
 
 high_zone (v2.2, 2026-10-09): null (the run stays at NORMAL) or
-    {"shortest_straight_m": surveyed inner marker to inner marker,
-     "pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
+    {"pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1}
 Every straight end carries two MLS markers: the OUTER code on the corner side, the
-INNER code on the straight side. Outer then inner = entering the straight: HIGH for
-the mission's budget. Inner while HIGH = leaving (amr_line.speed_zone). The codes
-are shared by every pair, must be laid on the floor (mls.marker_codes), and are
-reserved: nothing else may use them. The one HIGH budget for every straight:
-    high_for_m = shortest_straight_m - brake_m - autopilot.high_margin_m
-    brake_m    = (v_high + v_normal) / 2 x autopilot.high_ramp_s
+INNER code on the straight side. Outer then inner = entering the straight: HIGH until
+the exit pair. Inner while HIGH = leaving (amr_line.speed_zone). The codes are shared
+by every pair, must be laid on the floor (mls.marker_codes), and are reserved: nothing
+else may use them. There is no HIGH distance budget (2026-10-24, operator: slowdowns
+are marker codes, or localization later); shortest_straight_m is refused by name.
 Marker events are always on (2026-10-23): a mission without a high_zone runs NORMAL only.
 
 Branching stays its own table (branch_latch + branch_default) and its own engine
@@ -52,8 +50,8 @@ empty (always left), basic-right, basic-high-left, basic-high-right (high zones 
 line-a marker pair).
 
 MISSION_NAME, BRANCH_DEFAULT, BRANCH_LATCH, TAGS {tag: row}, HOME (row | None),
-DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer" (marker codes, int), "high_for_m",
-"arm_m", "spacing_m", "brake_m"} | None), MARKER_RUN (dict | None, below).
+DESTINATIONS (labels), HIGH_ZONE ({"inner", "outer" (marker codes, int), "arm_m",
+"spacing_m"} | None), MARKER_RUN (dict | None, below).
 
 marker_run (optional, 2026-10-18, tracked plan 3 section 7.5): a run with no RFID at all,
 for the straight in front of MRU. Two MLS marker codes do what tags 0180 and Home did:
@@ -62,8 +60,9 @@ for the straight in front of MRU. Two MLS marker codes do what tags 0180 and Hom
 Out: the first uturn_code starts the U-turn approach (as a u_turn tag row). Back, after
 the pivot: the first home_code ends the run at home (a measured stop, DONE); a uturn_code
 there means the home marker was missed - FAULT at once (the backstop strip). The codes
-mean nothing else, so the block is refused with a high_zone (the same codes are the speed
-zone elsewhere) and with any RFID tag or branch row.
+mean nothing else, so the block is refused with a high_zone that uses either of them
+(2026-10-24: a zone on other codes is allowed, and the home stop is then checked from
+HIGH) and with any RFID tag or branch row.
     Optional "home_arm_m" (2026-10-23): ONE code for both, told apart by wheel travel. A read
     of the shared code is ignored until home_arm_m has been driven from either end: since
     Start out (the departure crosses the home strip), since the pivot back (after the
@@ -72,8 +71,10 @@ zone elsewhere) and with any RFID tag or branch row.
 
 guided (optional, 2026-10-23): {"cruise_mps": 0.3}. A walked run: the engineer gives each
 branch order by hand (left / straight / right, one shot, consumed by the next fork) and the
-follower never exceeds cruise_mps. Refused with RFID branch rows (two sources of orders would
-race) and with a high_zone (no HIGH while somebody walks beside it).
+follower never exceeds cruise_mps outside HIGH. Refused with RFID branch rows (two sources
+of orders would race). A high_zone is allowed since 2026-10-24 but starts switched off: the
+guided page's speed toggle (NORMAL / HIGH, NORMAL at every mission load) lets the marker
+pair grant HIGH. The codes still decide where HIGH begins and ends.
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -92,8 +93,6 @@ ACTIONS = ("stop", "u_turn")
 # Wider is safe (an expired arm is NORMAL) but it must stay below the exit-outer ->
 # entry-outer distance through a corner.
 ZONE_ARM_TOLERANCE_M = 0.15
-# A budget shorter than this is not worth the two ramps.
-ZONE_MIN_BUDGET_M = 3.0
 ROLES = ("home", "always", "destination")
 
 # Keys per action, beyond the common tag/action/ignore_s. "label" is optional on
@@ -304,8 +303,9 @@ _REARM_MARGIN_M = 1.0
 MARKER_JUNCTION_M = 0.3
 
 
-def _read_marker_run(raw, vehicle):
-    """marker_run -> the validated block, or None."""
+def _read_marker_run(raw, vehicle, fastest_rpm):
+    """marker_run -> the validated block, or None. fastest_rpm: the home stop's start speed
+    (HIGH with a high zone on other codes)."""
     if raw is None:
         return None
     allowed = _MARKER_RUN_KEYS | _MARKER_RUN_OPTIONAL
@@ -348,10 +348,10 @@ def _read_marker_run(raw, vehicle):
     if rate > decel:
         raise ConfigError(f"marker_run.decel_m: {rate:.0f} r/min/s is beyond "
                           f"drivers.ramp.auto.decel {decel:.0f}")
-    rate = vehicle.AUTO_RPM ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["stop_distance_m"])
+    rate = fastest_rpm ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["stop_distance_m"])
     if rate > decel:
-        raise ConfigError(f"marker_run.stop_distance_m: {rate:.0f} r/min/s is beyond drivers.ramp.auto.decel "
-                          f"{decel:.0f}")
+        raise ConfigError(f"marker_run.stop_distance_m: stopping from {fastest_rpm:.0f} r/min needs "
+                          f"{rate:.0f} r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}")
     return out
 
 
@@ -367,10 +367,13 @@ def _read_guided(raw, vehicle):
 
 
 def _read_high_zone(raw, vehicle):
-    """high_zone -> the marker pair and the one budget every straight shares, or None."""
+    """high_zone -> the marker pair, or None."""
     if raw is None:
         return None
-    keys = {"shortest_straight_m", "pair_spacing_m", "outer_code", "inner_code"}
+    if isinstance(raw, dict) and "shortest_straight_m" in raw:
+        raise ConfigError("high_zone.shortest_straight_m: removed 2026-10-24 - HIGH has no distance "
+                          "budget any more and lasts until the exit marker pair; delete the key")
+    keys = {"pair_spacing_m", "outer_code", "inner_code"}
     if not isinstance(raw, dict) or set(raw) != keys:
         raise ConfigError(f"high_zone: expected null or exactly {sorted(keys)} (v2.2, 2026-10-09: "
                           f"the zone pair is two MLS marker codes, not RFID tags)")
@@ -388,17 +391,8 @@ def _read_high_zone(raw, vehicle):
         raise ConfigError("high_zone: outer_code and inner_code must differ - the read ORDER "
                           "tells entering from leaving")
     spacing = _bounded(raw, "pair_spacing_m", "high_zone", 0.3, 1.0, lo_open=False)
-    shortest = _bounded(raw, "shortest_straight_m", "high_zone", 0.0, 500.0)
-    v_normal = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
-    v_high = vehicle.AUTO_HIGH_RPM * vehicle.MPS_PER_RPM
-    brake = (v_high + v_normal) / 2.0 * vehicle.HIGH_RAMP_S
-    budget = shortest - brake - vehicle.HIGH_MARGIN_M
-    if budget < ZONE_MIN_BUDGET_M:
-        raise ConfigError(f"high_zone: {shortest:g} m straight leaves a {budget:.2f} m HIGH budget "
-                          f"after {brake:.2f} m braking and {vehicle.HIGH_MARGIN_M:g} m margin "
-                          f"(< {ZONE_MIN_BUDGET_M:g} m: not worth it)")
-    return {"inner": codes["inner_code"], "outer": codes["outer_code"], "high_for_m": budget,
-            "brake_m": brake, "spacing_m": spacing, "arm_m": spacing + ZONE_ARM_TOLERANCE_M}
+    return {"inner": codes["inner_code"], "outer": codes["outer_code"],
+            "spacing_m": spacing, "arm_m": spacing + ZONE_ARM_TOLERANCE_M}
 
 
 def _parse_mission(doc, vehicle):
@@ -429,11 +423,13 @@ def _parse_mission(doc, vehicle):
     out["HOME"] = _check_table(out["TAGS"], vehicle, float(fastest))
     out["DESTINATIONS"] = [r["label"] for r in out["TAGS"].values()
                            if r["action"] == "stop" and r["role"] == "destination"]
-    out["MARKER_RUN"] = _read_marker_run(doc.get("marker_run"), vehicle)
+    out["MARKER_RUN"] = _read_marker_run(doc.get("marker_run"), vehicle, float(fastest))
     if out["MARKER_RUN"] is not None:
-        if out["HIGH_ZONE"] is not None:
-            raise ConfigError("marker_run with a high_zone: the speed zone's codes and the marker run's "
-                              "would mean two things")
+        mr, z = out["MARKER_RUN"], out["HIGH_ZONE"]
+        shared = {mr["uturn_code"], mr["home_code"]} & ({z["outer"], z["inner"]} if z else set())
+        if shared:
+            raise ConfigError(f"marker_run with a high_zone on code(s) {sorted(shared)}: the speed zone's "
+                              f"codes and the marker run's would mean two things")
         if out["TAGS"] or out["BRANCH_LATCH"]:
             raise ConfigError("marker_run with RFID tag or branch rows: a marker run has no RFID; "
                               "two triggers for one U-turn or home stop would race")
@@ -442,8 +438,6 @@ def _parse_mission(doc, vehicle):
         if out["BRANCH_LATCH"]:
             raise ConfigError("guided with branch_latch rows: the engineer gives the branch orders; "
                               "RFID orders as well would race")
-        if out["HIGH_ZONE"] is not None:
-            raise ConfigError("guided with a high_zone: no HIGH while somebody walks beside the vehicle")
     return out
 
 
@@ -466,6 +460,8 @@ def summary(m):
     if m.get("GUIDED") is not None:
         parts[0] = "branches by hand"
         parts[1] = f"≤ {m['GUIDED']['cruise_mps']:g} m/s"
+        if z:
+            parts[1] += f", HIGH zones by toggle (markers {z['outer']}→{z['inner']})"
     if m["MARKER_RUN"] is not None:
         parts.append("marker run")
     elif m["DESTINATIONS"]:

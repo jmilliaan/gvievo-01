@@ -75,13 +75,17 @@ def counts_for_angle(deg, counts_per_wheel_rev):
 
 class UTurn:
     def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
-                 phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn"):
+                 phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn",
+                 band_mm=None, settle_s=None):
         """phase=CENTER skips the spin: centre on the tape already under the
         sensor, then settle. manualturn.py uses it after an encoder pivot.
 
         The kink pivot (job.py, 2026-10-23) is the same spin with its own gate:
         min_deg 0 and a small max_deg, lost=True (the tape has already left the
-        sensor), start_level None (no level check: a kink is not a tape end)."""
+        sensor), start_level None (no level check: a kink is not a tape end), and a wide
+        band_mm: the spin stops with the tape still well to the side it came in on, and the
+        follower takes the rest gradually. With the sensor 0.1 m ahead of the axle, pivoting
+        until the tape is centred turns the body past the new leg (field, 2026-10-24)."""
         if direction not in ("cw", "ccw"):
             raise ValueError(f"{what} direction {direction!r}")
         if phase not in (SPIN, CENTER):
@@ -89,6 +93,8 @@ class UTurn:
         self.what = what
         self.min_deg = config.U_TURN_MIN_DEG if min_deg is None else float(min_deg)
         self.max_deg = config.U_TURN_MAX_DEG if max_deg is None else float(max_deg)
+        self.band_mm = config.U_TURN_CENTER_TOL_MM if band_mm is None else float(band_mm)
+        self.settle_s = config.U_TURN_RESUME_DELAY_S if settle_s is None else float(settle_s)
         self.direction = direction
         self.sign = -1.0 if direction == "cw" else 1.0     # omega > 0 is CCW
         self._m_per_count = math.pi * config.WHEEL_DIA_M / counts_per_wheel_rev
@@ -160,7 +166,7 @@ class UTurn:
             if not seen:
                 self.lost = True
             elif (self.lost and angle >= self.min_deg
-                  and abs(e_mm) <= config.U_TURN_CENTER_TOL_MM
+                  and abs(e_mm) <= self.band_mm
                   and (self.start_level is None
                        or (level is not None
                            and level >= self.start_level - config.U_TURN_LEVEL_TOLERANCE))):
@@ -194,12 +200,12 @@ class UTurn:
             return kinematics.body_to_wheels(0.0, -spin_omega(side * floor))
         self._unseen_s, self._unseen_from, self._last_e = 0.0, None, e_mm
 
-        if abs(e_mm) <= config.U_TURN_CENTER_TOL_MM:
+        if abs(e_mm) <= self.band_mm:
             if self.phase == CENTER:
                 self.phase, self._settled_s = SETTLE, 0.0
             else:
                 self._settled_s += dt
-                if self._settled_s >= config.U_TURN_RESUME_DELAY_S:
+                if self._settled_s >= self.settle_s:
                     self.phase = DONE
             return 0.0, 0.0
 
