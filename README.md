@@ -268,7 +268,8 @@ move in the profile.
 
 - **Tracked jobs are sim-tested only** (2026-10-08): the mission is the site's RFID
   tag table (`missions/line-a.json`, schema in `agv_core/mission.py`) - Home, an
-  always-stop, destination stops (MRU1-4), a track-end U-turn and a speed toggle.
+  always-stop, destination stops (MRU1-4) and a track-end U-turn; speed comes from the MLS
+  marker pairs (`high_zone`), not RFID (2026-10-09).
   The job (mission + destination) is set on Run tracked; the vehicle may start anywhere
   on the line, then the physical Start runs it. Tag ids `0010`... are assumed to be what the RFID
   panel shows; stop positions, the 2 s speed change, the tape-end overshoot and the
@@ -278,8 +279,8 @@ move in the profile.
   decision 2026-10-08, manuals/tracked-speed-plan-1-no-slam.md D2): the nanoScan3
   field set (`lidar.zones_validated` false) and the STO stopping distance from 0.85 m/s
   are a floor check before the first HIGH run. There is no FX3 encoder speed monitoring
-  yet. HIGH needs a mission `high_zone`; `line-a` has none until the shortest straight
-  is surveyed, so it runs at NORMAL.
+  yet. HIGH needs a mission `high_zone` (MLS outer/inner marker codes); `line-a` carries one
+  (codes 2/1), so HIGH runs wherever those marker pairs are laid.
 - **`6064h` scaling is unverified** beyond the commissioning runs.
 - **Backlash is unmeasured.** The encoders are motor-side of a 30:1 gearhead.
 - **RFID reader is still on the US region (902.75–927.25 MHz)** and every read so far reports channel 0;

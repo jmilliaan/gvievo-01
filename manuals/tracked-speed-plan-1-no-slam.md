@@ -83,7 +83,12 @@ autopilot as `sr_*`), curvature from yaw rate kappa = omega/v, tape heading-angl
 | Wire / UI | `LineState` append `bool high_speed`, `string speed_reason`; Run tracked Speed tile NORMAL/HIGH + reason; `colcon build` |
 | README | status table speeds; known gap: 0.85 not validated against fields/STO |
 
-## 3. Step A1 - fail-safe high zones (replaces the speed toggle)
+## 3. Step A1 - fail-safe high zones
+
+> **The rules live in `manuals/rfid-tag-table.md`** ("Speed zones", "Speeds"). Since 2026-10-09
+> the zone cue is the MLS marker pair, not RFID tags (section "2026-10-09" above); this section
+> keeps the A1 design and its rationale (spacing, read windows, corner-entry budget) as built
+> then. Where it and the tag table differ, the tag table is current.
 
 ### Layout
 

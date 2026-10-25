@@ -6,14 +6,7 @@ would pass a controller the rig fails or vice versa; so the plant is driven
 here by the real follower, at the rig's settings, and must converge the way
 the rig says it does.
 """
-import os
-import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line"),
-           os.path.join(ROOT, "amr_ws", "src", "amr_sim")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 from amr_line import autopilot, runtime  # noqa: E402
 from amr_sim.tape_plant import TapePlant  # noqa: E402

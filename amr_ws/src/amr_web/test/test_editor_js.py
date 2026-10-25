@@ -11,13 +11,20 @@ import pytest
 NODE = shutil.which("node")
 
 
-@pytest.mark.skipif(NODE is None, reason="node not installed")
-def test_editor_has_no_speed_setting_and_drops_old_speed_keys():
+@pytest.fixture(scope="module")
+def editor():
+    """editor_harness.js run once for the module (it prints one JSON line of every case)."""
     harness = pathlib.Path(__file__).with_name("editor_harness.js")
     r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout.strip().splitlines()[-1])
     assert "error" not in out, out
+    return out
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_editor_has_no_speed_setting_and_drops_old_speed_keys(editor):
+    out = editor
     assert "no steps" in out["new_draft_rows"], out
     # D109: the editor passes an old file's limits through; the server drops the speed keys
     # (route.LEGACY_SPEED_LIMITS, test_server ..._old_speed_keys_are_not_stored)
@@ -26,12 +33,8 @@ def test_editor_has_no_speed_setting_and_drops_old_speed_keys():
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
-def test_editor_straights_typed_in_mm_and_shown_in_mm():
-    harness = pathlib.Path(__file__).with_name("editor_harness.js")
-    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert "error" not in out, out
+def test_editor_straights_typed_in_mm_and_shown_in_mm(editor):
+    out = editor
     assert out["len_no_number"] is True
     assert out["len_preview_m"] == pytest.approx(1.5)
     assert "1500<i>mm</i>" in out["len_step_row"], out["len_step_row"]
@@ -47,24 +50,16 @@ def test_editor_straights_typed_in_mm_and_shown_in_mm():
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
-def test_editor_does_not_mark_long_straights_any_more():
-    harness = pathlib.Path(__file__).with_name("editor_harness.js")
-    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert "error" not in out, out
+def test_editor_does_not_mark_long_straights_any_more(editor):
+    out = editor
     rows = out["long_rows"]
     assert "4000<i>mm</i>" in rows and "4500<i>mm</i>" in rows and "▲" not in rows
     assert "◂0.30" in out["reverse_rows"]  # reverse at half the 0.60 trackless speed
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
-def test_editor_reverse_step_is_bounded_and_moves_the_end_pose_back():
-    harness = pathlib.Path(__file__).with_name("editor_harness.js")
-    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert "error" not in out, out
+def test_editor_reverse_step_is_bounded_and_moves_the_end_pose_back(editor):
+    out = editor
     assert out["reverse_refused"] is True  # 2500 mm > REVERSE_MAX_M
     assert "reverse" in out["reverse_rows"] and "1200<i>mm</i>" in out["reverse_rows"]
     assert out["reverse_saved_step"] == {"id": "s5", "type": "reverse", "distance_m": 1.2}
@@ -73,12 +68,8 @@ def test_editor_reverse_step_is_bounded_and_moves_the_end_pose_back():
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
-def test_editor_arc_step_bounds_and_end_pose():
-    harness = pathlib.Path(__file__).with_name("editor_harness.js")
-    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert "error" not in out, out
+def test_editor_arc_step_bounds_and_end_pose(editor):
+    out = editor
     assert out["arc_refused"] is True  # R 0.5 and 30 deg
     assert "arc L" in out["arc_rows"] and "90° R 1.00" in out["arc_rows"]
     assert "≤0.41" in out["arc_rows"]  # the 0.60 speed, held to 0.9 x 0.45 x R 1.0 = 0.405 by the turn cap

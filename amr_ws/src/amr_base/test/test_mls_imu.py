@@ -4,6 +4,7 @@ import math
 import struct
 
 import pytest
+from test_mls_track import FakeLink, Frame  # the one SDO/route fake for the MLS tests
 
 from amr_base import mls_imu
 from amr_base.mls_imu import MlsImu, StampTracker, decode_mapped, gyro_z_rad_s, parse_mapping
@@ -42,24 +43,6 @@ def test_stamp_tracker_rejects_duplicates_and_backwards_but_allows_wrap():
     assert not t.accept(5, 0.04) and t.rejected == 2  # backwards
     assert t.accept(None, 0.05)  # polled without a stamp this round
     assert t.accept(100, 5.0) and t.resets == 1  # after a gap: chain restarts, no delta trusted
-
-
-class FakeLink:
-    def __init__(self, objects):
-        self.objects = objects
-        self.router = self
-        self.routes = {}
-
-    def read(self, node, index, sub=0, timeout=0.4):
-        return self.objects.get((index, sub))
-
-    def add(self, cob, handler):
-        self.routes[cob] = handler
-
-
-class Frame:
-    def __init__(self, data):
-        self.data = data
 
 
 def test_tpdo_mode_when_the_sensor_reports_an_enabled_yaw_rate_pdo():

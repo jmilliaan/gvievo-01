@@ -10,14 +10,14 @@ WHICH VEHICLE
 The profile is chosen by the AGV_PROFILE environment variable, falling back to
 DEFAULT_PROFILE:
 
-    python3 app.py                      # profiles/agv-01.json
-    AGV_PROFILE=agv-02 python3 app.py   # profiles/agv-02.json
+    (unset)                 # profiles/agv-01.json
+    AGV_PROFILE=agv-02      # profiles/agv-02.json (amr.env for the service, or the shell)
 
 and in the systemd unit, Environment=AGV_PROFILE=agv-01. There is no CLI flag
 and no fallback to a profile that does not exist - a missing file is fatal and
 lists the names that ARE present.
 
-Four rules the loader enforces, in order of how much trouble they save:
+Five rules the loader enforces, in order of how much trouble they save:
 
   1. Unknown and missing keys are BOTH fatal. A profile with "k_rato" would
      otherwise leave the gain at whatever the code last defaulted to, and the
@@ -37,8 +37,8 @@ Four rules the loader enforces, in order of how much trouble they save:
      false = trackless: the SLAM AMR, boots to IDLE, MAPPING/NAVIGATION are
      offered and LINE is refused. true = the magnetic-tape AGV: the supervisor
      enters LINE by itself once the base is up, and NAVIGATION/surveys are
-     refused. null = both (2026-10-02): boots to IDLE, every mode is offered,
-     and the web shows Run tracked and Run trackless. It is read at boot;
+     refused. null = both (2026-10-02): enters LINE by itself like true (since
+     2026-10-08), every mode is offered, and the web shows Run tracked and Run trackless. It is read at boot;
      changing it means restarting amr.service.
 
 load() is written as an atomic swap - parse and validate into a fresh namespace,
@@ -406,7 +406,8 @@ _SCHEMA = {
         "kink_stop_mm":        ("KINK_STOP_MM", float),
         # Tracked speeds (2026-10-08, tracked-speed-plan-1): auto_rpm is NORMAL, the
         # default and the corner speed; HIGH = auto_rpm x auto_high_ratio, granted only
-        # inside an RFID high zone (amr_line.speed_zone). AUTO_HIGH_RPM is derived.
+        # inside an MLS marker zone (mission high_zone, amr_line.speed_zone; RFID only
+        # stops, 2026-10-09). AUTO_HIGH_RPM is derived.
         # k_ratio/kd are the NORMAL (corner) gains, high_k_ratio/high_kd the HIGH
         # (straight) gains; the follower interpolates between them on its own speed.
         "auto_high_ratio":     ("AUTO_HIGH_RATIO", float),
@@ -417,7 +418,8 @@ _SCHEMA = {
         "curve_guard_e_mm":    ("CURVE_GUARD_E_MM", float),
         # The RFID speed toggle tags and their lockout moved to the mission's tag
         # table (2026-10-08, agv_core.mission v2), and the toggle itself became the
-        # mission's high zone (v2.1). gain_blend_s went with the slow zone's gains.
+        # mission's high zone (v2.1), cued by MLS markers since v2.2 (2026-10-09).
+        # gain_blend_s went with the slow zone's gains.
         "ramp_accel_rpm_s":    ("RAMP_ACCEL_RPM_S", float),
         "ramp_jerk_rpm_s2":    ("RAMP_JERK_RPM_S2", float),
         "sensor_max_mm":       ("SENSOR_MAX_MM", float),
@@ -485,9 +487,10 @@ _SCHEMA = {
     "lidar": {
         # SICK nanoScan3. The live UDP stream is owned by the ROS driver
         # (amr_ws, sick_safetyscanners2); the controller no longer listens.
-        # These keys configure the standalone bench tool drivers/lidar_scan.py,
-        # which binds the port only while a human runs it. READ-ONLY: nothing
-        # here opens a CoLa 2 session or writes to the device.
+        # These keys feed the frame decoder agv_core/lidarframe.py (checked against
+        # a recorded fixture in tests/test_lidar.py) and the planned launch wiring;
+        # nothing binds the port but the ROS driver. READ-ONLY: nothing here opens
+        # a CoLa 2 session or writes to the device.
         "enabled":               ("LIDAR_ENABLED", bool),
         "host_ip":               ("LIDAR_HOST_IP", str),
         "sensor_ip":             ("LIDAR_SENSOR_IP", str),
@@ -858,7 +861,7 @@ def _derive(ns):
     # Wheel rad/s per motor r/min (before any invert flag): 2*pi/60 through the gearhead.
     ns["WHEEL_RAD_S_PER_MOTOR_RPM"] = 2.0 * math.pi / 60.0 / ns["GEAR_RATIO"]  # 3.49066e-3
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
-    # The tracked slow speed (junction slow zone, RFID speed toggle) follows cruise.
+    # HIGH follows NORMAL (the junction slow zone and the RFID toggle are retired).
     ns["AUTO_HIGH_RPM"] = ns["AUTO_RPM"] * ns["AUTO_HIGH_RATIO"]
 
     # 6083h caps both the forward ramp and the rate at which the wheel
@@ -1087,7 +1090,7 @@ def _validate(ns):
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
     # -- tracked AUTO speeds (2026-10-08): NORMAL = auto_rpm (0.50 m/s), HIGH = NORMAL x
-    # auto_high_ratio (1.7 -> 0.85 m/s) inside an RFID high zone only. Raising either is a
+    # auto_high_ratio (1.7 -> 0.85 m/s) inside an MLS marker zone only. Raising either is a
     # speed-cap change: README status table, and the operator's explicit say-so.
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           "autopilot: need 0 < auto_rpm <= vehicle.motor_max_rpm")

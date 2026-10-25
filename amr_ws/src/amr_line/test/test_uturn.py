@@ -6,20 +6,14 @@ it at lateral offset Ls * tan(theta - 180 deg) and is visible only within the
 sensor's +/-100 mm. Mechanism checks only - tolerances are settled on the floor.
 """
 import math
-import os
-import sys
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 from agv_core import config, kinematics  # noqa: E402
 
 from amr_line import uturn  # noqa: E402
 
 DT = 0.02
-CPR = 10000.0 * config.GEAR_RATIO          # counts per wheel turn
+from line_fixtures import PER_REV as CPR  # counts per wheel turn  # noqa: E402
+
 START_LEVEL = 6
 
 

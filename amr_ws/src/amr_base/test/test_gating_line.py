@@ -9,17 +9,8 @@ It sits above the permit machinery too: the follower holds no MotionPermit, it
 holds LEASE_LINE and publishes a twist. Both of those are easy to break by
 moving the branch, so they are pinned here.
 """
-import os
-import sys
 
-import pytest
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_base")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from amr_base import gating  # noqa: E402
+from amr_base import gating
 
 NOW = 1000.0
 GEN = 7
@@ -143,19 +134,6 @@ def test_line_has_a_name_in_the_mux_tick():
     """gating.NAMES is subscripted in the 50 Hz tick. A missing entry there is
     a KeyError on the hot path."""
     assert gating.NAMES.get(gating.LINE) == "line"
-
-
-def test_the_lease_bit_is_exclusive_of_the_others():
-    """LEASE_LINE is granted alone, so it must not collide with another bit."""
-    bits = (gating.LEASE_MANUAL, gating.LEASE_AUTONOMOUS,
-            gating.LEASE_COMMISSIONING, gating.LEASE_LINE)
-    assert len(set(bits)) == 4
-    for b in bits[:-1]:
-        assert b & gating.LEASE_LINE == 0
-
-
-if __name__ == "__main__":
-    sys.exit(pytest.main([__file__, "-q"]))
 
 
 # ---- 2026-10-02: no LINE ceiling at the mux; the follower's profile speeds rule --------

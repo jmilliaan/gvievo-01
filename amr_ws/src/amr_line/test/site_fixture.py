@@ -11,13 +11,6 @@ U-turn points, and a high-speed area over the machine line (both directions of i
     area Z-LINE    x 11..17 around y 10: J-B:right>U 1..7, and U:pivot>J-C 13..19 on the way back
 """
 import copy
-import os
-import sys
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 from agv_core import mission as missions  # noqa: E402
 

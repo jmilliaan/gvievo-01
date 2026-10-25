@@ -1,6 +1,8 @@
 """The jog pendant at the mux: levels in the panel image become a body twist."""
 
+import gating_fixtures as fx
 import pytest
+from gating_fixtures import DRIVES_OK, INST, SUP_TELEOP, panel
 
 from amr_base.gating import (
     FOLLOW,
@@ -12,9 +14,7 @@ from amr_base.gating import (
     PENDANT,
     TELEOP,
     Drives,
-    Lease,
     Manual,
-    Panel,
     Params,
     Permit,
     Stamped,
@@ -22,20 +22,16 @@ from amr_base.gating import (
     select,
 )
 
-SUP = Params(require_supervisor=True, teleop_enabled=True)
-DRIVES = Drives(t_recv=10.0, operational=True)
+SUP = SUP_TELEOP
+DRIVES = DRIVES_OK
 
 
-def panel(t=10.0, auto=False, valid=True, **held):
-    return Panel(t_recv=t, valid=valid, auto=auto, **held)
-
-
-def lease(allowed=LEASE_MANUAL, t=10.0):
-    return Lease(t_recv=t, instance="i1", generation=3, seq=1, allowed=allowed)
+def lease(allowed=LEASE_MANUAL, t=10.0):  # this file's shape: what the lease allows comes first
+    return fx.lease(t=t, allowed=allowed)
 
 
 def browser(v=0.1):
-    return Manual(t=10.0, v=v, w=0.0, instance="i1", generation=3, session="s", seq=1, valid_for_s=0.2)
+    return Manual(t=10.0, v=v, w=0.0, instance=INST, generation=3, session="s", seq=1, valid_for_s=0.2)
 
 
 def test_directions_map_to_a_twist_at_the_configured_speeds():

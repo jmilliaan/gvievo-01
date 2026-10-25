@@ -8,16 +8,8 @@ RFID decides where to stop, the markers decide speed.
 """
 import copy
 import math
-import os
-import sys
 
 import pytest
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
 from agv_core import config as vehicle  # noqa: E402
 from agv_core import kinematics  # noqa: E402
 from agv_core import mission as missions  # noqa: E402
@@ -28,10 +20,13 @@ from amr_line import job as lj  # noqa: E402
 
 runtime.load_from_profile()
 
-CENTRED = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}], "has_track": True, "nlcp": 2, "track_level": 5}
-NO_TAPE = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": 0}
-COUNTS_PER_MOTOR_REV = 10000.0
-PER_REV = COUNTS_PER_MOTOR_REV * vehicle.GEAR_RATIO
+from line_fixtures import (  # noqa: E402,F401 - re-exported to test_site_run  # noqa: E402,F401 - re-exported to test_site_run
+    CENTRED,
+    COUNTS_PER_MOTOR_REV,
+    NO_TAPE,
+    PER_REV,
+    counts_for_angle,
+)
 
 HOME, TROLLEY, UTURN = "0010", "0020", "0180"
 INNER, OUTER = 1, 2      # MLS marker codes of the zone pair (missions/line-a.json, swapped 2026-10-09)
@@ -264,7 +259,7 @@ def _uturn(w):
     assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     assert w.job.tape.uturn.phase in (uturn.CENTER, uturn.SETTLE), w.job.tape.uturn.phase
@@ -874,7 +869,7 @@ def test_plain_line_following_u_turns_ccw_on_0190_and_completes():
     assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
     for deg, sensor in ((90, NO_TAPE), (176, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] - int(round(c)), base[1] + int(round(c)))   # ccw: right wheel forward
         w.tick(sensor=sensor)
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)

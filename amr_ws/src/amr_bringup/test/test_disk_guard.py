@@ -5,16 +5,10 @@ moving is never stopped over free space."""
 import types
 
 from agv_core import disk
+from bringup_fakes import Log
 
 from amr_bringup import mode_fsm as fsm
 from amr_bringup.supervisor_node import Supervisor
-
-
-class Log:
-    def info(self, *_):
-        pass
-
-    warn = error = info
 
 
 def fake_usage(mapping):

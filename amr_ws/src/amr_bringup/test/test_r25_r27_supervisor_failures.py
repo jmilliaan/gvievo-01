@@ -6,16 +6,11 @@ touch - no ROS graph, no child processes."""
 import os
 import types
 
+from bringup_fakes import Log
+
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
 from amr_bringup.supervisor_node import Supervisor
-
-
-class Log:
-    def error(self, *_):
-        pass
-
-    info = warn = error
 
 
 class Future:

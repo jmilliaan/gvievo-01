@@ -2,16 +2,9 @@
 
 import pytest
 from amr_web.server import create_app
+from web_fakes import Clock
 
 from amr_web import jog
-
-
-class Clock:
-    def __init__(self):
-        self.t = 100.0
-
-    def __call__(self):
-        return self.t
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ import struct
 import time
 
 import pytest
+from agv_core.drivers.canbus import guard
 from test_canopen import FakeBus
 
 from amr_base import pp
@@ -59,7 +60,7 @@ def test_enter_verifies_switches_and_writes_only_the_moving_wheel():
     assert idx_writes(bus, 0x607A) == [(2, 498_000)]  # the still wheel gets no set-point
     assert idx_writes(bus, 0x6081) == [(2, 1273)] and idx_writes(bus, 0x6083) == [(2, 800)]
     # nothing on the pp safety configuration was written, only read
-    assert not [w for w in bus.writes if w[1] in (0x6072, 0x6065, 0x6067, 0x605D, 0x605E, 0x6085)]
+    assert not [w for w in bus.writes if w[1] in guard.PP_CONFIG_READ_ONLY]
 
 
 def test_enter_refuses_on_config_mismatch_before_any_write():

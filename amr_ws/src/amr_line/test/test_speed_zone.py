@@ -3,13 +3,7 @@
 tracked-speed-plan-1 section 3 (state table) and section 4 (guard), row by row,
 plus the corner passes with shared codes (inner marker 1, outer marker 2).
 """
-import os
-import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 import pytest  # noqa: E402
 from amr_line.speed_zone import ARMED, HIGH, NORMAL, CurveGuard, SpeedZone  # noqa: E402

@@ -38,18 +38,16 @@ Roles: **E** = engineer (PIN pages, terminal), **O** = operator at the vehicle w
 Until the plant is free, sections 2 and 3 run on the ~10 m straight in front of MRU (plan 3
 section 7). Differences from the text below:
 
-- **Profile:** `tape_loc.site_mission: test-mru-straight`, `tape_loc.shadow_circuit: C-STRAIGHT`
-  (the current values).
+- **Profile:** this stage uses `tape_loc.site_mission: test-mru-straight` and
+  `tape_loc.shadow_circuit: C-STRAIGHT`. The profile now holds `site-103` / `C-MRU`, so switch it
+  first (and back after).
 - **T-HOME:** the east end of the free section, facing west. Mark it on the floor (the survey
   start too). **No RFID** (2026-10-18). The run is the job `mru-straight-markers` (Run tracked →
   Set job). It needs the marker stream up (Home tile).
-- **Strips (plan 3 section 7.5; 15 × 100 mm, S up, one side), x measured from the west tape end:**
-  (drawing: `documentation/layout-reference/mru-straight-test-layout.html`; west = toward the tape end,
-  site-plan directions per `manuals/site-layout-103.md`)
-  - code 2 at 1.0 m: starts the CW U-turn
-  - code 1 at east limit − 2.0 m: home (the AGV parks 0.5 m past it, at T-HOME)
-  - code 2 at east limit − 1.0 m: the backstop. Read on the way back, it means the home marker was missed: FAULT, jog back, Reset
-  - no other code 1 or 2 strip anywhere on the straight
+- **Strips:** the layout is `manuals/tracked-plan-3-tape-localization.md` section 7.5 (drawing:
+  `documentation/layout-reference/mru-straight-test-layout.html`). If the code-2 backstop is read
+  on the way back, the home marker was missed: FAULT, jog back to T-HOME, Reset.
+  No other code 1 or 2 strip anywhere on the straight.
 - **Holds:**
   - `MARKERS_LOST`: the marker stream dropped while driving. Check where the AGV is, then Start.
   - FAULT "home marker missed": check the code-1 strip, jog back to T-HOME, Reset.

@@ -6,12 +6,6 @@ Closed loop: the real FollowJob and LineFollower drive a polyline tape plant (po
 the wheels through the drive ramp, MLS window +/-100 mm, sensor 0.1 m ahead of the axle);
 the encoder counts the job reads are the plant's own wheels."""
 import math
-import os
-import sys
-
-HERE = os.path.dirname(__file__)
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
 
 from agv_core import config as vehicle  # noqa: E402
 from agv_core import kinematics  # noqa: E402
@@ -22,7 +16,7 @@ from amr_line import job as lj  # noqa: E402
 
 DT = 0.02
 HALF_M = 0.100
-NO_TAPE = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": 0}
+from line_fixtures import NO_TAPE  # noqa: E402
 
 
 def kink(deg, lead=1.5, tail=2.5):

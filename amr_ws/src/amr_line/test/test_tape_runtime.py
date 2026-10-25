@@ -5,16 +5,9 @@ uses: select a map, record passes, build, teach stations, publish, activate, the
 At home and a shadow lap. Nothing here produces a command.
 """
 import math
-import os
 import random
-import sys
 
 import pytest
-
-HERE = os.path.dirname(__file__)
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-
 from test_tape_localization import BINDING, STATIONS, TRUE, mission, tour  # noqa: E402
 
 from amr_line import tape_graph as tg  # noqa: E402

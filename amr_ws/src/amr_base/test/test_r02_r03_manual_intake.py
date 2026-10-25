@@ -2,14 +2,14 @@
 
 import math
 
-from amr_base import gating
-from amr_base.gating import LEASE_MANUAL, MANUAL, NONE, Drives, Lease, ManualIntake, Panel, select
+from gating_fixtures import DRIVES_OK as DRIVES  # noqa: E402
+from gating_fixtures import INST, SUP, lease, panel  # noqa: E402,F401
 
-SUP = gating.Params(require_supervisor=True, teleop_enabled=False)
-INST = "11111111-aaaa"
-PANEL = Panel(t_recv=10.0, valid=True, auto=False)
-DRIVES = Drives(t_recv=10.0, operational=True)
-LEASE = Lease(t_recv=10.0, instance=INST, generation=3, seq=10, allowed=LEASE_MANUAL)
+from amr_base import gating
+from amr_base.gating import LEASE_MANUAL, MANUAL, NONE, ManualIntake, select
+
+PANEL = panel()
+LEASE = lease(allowed=LEASE_MANUAL)
 
 
 def selected(intake, now=10.0):

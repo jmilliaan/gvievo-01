@@ -1707,49 +1707,49 @@ Each guardrail below is cheap: a test, a table or one rule. If one adds checks t
 | D53 | P2 | todo |
 | D55 | P2 | done |
 | D95 | P2 | todo |
-| D01 | P3 | todo |
+| D01 | P3 | partial (comments fixed; retiring the lidar keys is an owner decision) |
 | D03 | P3 | todo |
-| D05 | P3 | todo |
-| D09 | P3 | todo |
+| D05 | P3 | partial (Protocol complete + RosAdapter contract test; stubs and hasattr guards left) |
+| D09 | P3 | partial (editor harness runs once per module; harness_common.js not done) |
 | D104 | P3 | done |
 | D107 | P3 | todo |
 | D108 | P3 | todo |
 | D114 | P3 | todo |
 | D120 | P3 | todo |
-| D127 | P3 | todo |
+| D127 | P3 | done |
 | D128 | P3 | todo |
 | D131 | P3 | todo |
 | D135 | P3 | todo |
 | D136 | P3 | done |
 | D137 | P3 | partial (vocabulary test; hold_title/run.js not done) |
-| D140 | P3 | todo |
+| D140 | P3 | done |
 | D146 | P3 | todo |
 | D171 | P3 | done |
-| D19 | P3 | todo |
-| D21 | P3 | todo |
+| D19 | P3 | partial (null Log in bringup+mission, Clock in web; quirky fakes stay local) |
+| D21 | P3 | done |
 | D26 | P3 | done |
-| D27 | P3 | todo |
+| D27 | P3 | done |
 | D28 | P3 | done |
-| D31 | P3 | todo |
+| D31 | P3 | done |
 | D37 | P3 | todo |
-| D48 | P3 | todo |
-| D49 | P3 | todo |
-| D50 | P3 | todo |
+| D48 | P3 | partial (pointer + heading; restated rules kept as A1 rationale) |
+| D49 | P3 | done |
+| D50 | P3 | partial (config/panel/kinematics; canmon, ownerlock, events, lidarframe not reviewed) |
 | D51 | P3 | todo |
 | D54 | P3 | todo |
 | D61 | P3 | todo |
-| D65 | P3 | todo |
-| D66 | P3 | todo |
+| D65 | P3 | partial (CENTRED/NO_TAPE shared; Inputs builders differ in shape) |
+| D66 | P3 | done |
 | D69 | P3 | todo |
 | D72 | P3 | todo |
 | D78 | P3 | todo |
-| D84 | P3 | todo |
-| D85 | P3 | todo |
+| D84 | P3 | done |
+| D85 | P3 | done |
 | D86 | P3 | todo |
 | D88 | P3 | done |
-| D89 | P3 | partial (counts, modules, zone wording; Known gaps not reviewed) |
-| D90 | P3 | partial (RUNBOOK, amr.env, supervisor.sh, line_layer; alpha-setup not done) |
-| D91 | P3 | todo |
+| D89 | P3 | partial (speed-toggle/high_zone facts fixed; floor-run and RFID-region gaps not re-verified) |
+| D90 | P3 | done |
+| D91 | P3 | done |
 | D92 | P3 | todo |
 | D96 | P3 | todo |
 | D97 | P3 | todo |

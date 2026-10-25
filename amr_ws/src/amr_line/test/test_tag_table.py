@@ -1,11 +1,5 @@
 """amr_line.tag_table: the per-run tag rules and the at-Home odometer. Pure, clock-fed."""
-import os
-import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line"), os.path.dirname(__file__)):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 from agv_core import config as vehicle  # noqa: E402
 from amr_line.tag_table import TagOdometer, TagTable, home_window_m  # noqa: E402

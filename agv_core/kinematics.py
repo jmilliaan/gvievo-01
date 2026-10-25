@@ -1,11 +1,8 @@
 """Differential-drive geometry: the conversion between body motion and wheels.
 
-*** This file is the seam the whole migration turns on. *** It knows nothing
-about what decides where to go - the tape follower that used to sit above it is
-gone, and a SLAM pose controller producing (linear velocity, angular velocity)
-drops into the same place without touching this file or the motor interface
-under it. Keep control logic and sensor knowledge out of here; a shortcut
-through this module is the one change that would make that expensive.
+Pure geometry: it knows nothing about what decides where to go (the LINE follower,
+Nav2), so every controller meets the motors through the same conversions. Keep
+control logic and sensor knowledge out of here.
 
 The dimensions themselves live in the profile (vehicle section) and reach
 here through config, which also does the deriving - MPS_PER_RPM and friends are

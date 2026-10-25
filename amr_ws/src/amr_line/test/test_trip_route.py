@@ -1,14 +1,7 @@
 """A trip on one S axis (tracked plan 4, section 2.3): amr_line.trip_route on the site_fixture
 circuit. Pure: no job, no clock."""
-import os
-import sys
 
 import pytest
-
-HERE = os.path.dirname(__file__)
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-
 from site_fixture import AREAS, TAUGHT, graph, site  # noqa: E402
 
 from amr_line import tape_graph as tg  # noqa: E402

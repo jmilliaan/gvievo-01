@@ -30,8 +30,8 @@ THREE WAYS A PANEL SCAN GOES WRONG, AND WHAT STOPS THEM
    down and returns after it is released - or vice versa - comparing the new
    image against the pre-outage one invents an edge that nobody produced. So
    edges are evaluated only while comms are good, and the transition back INTO
-   good comms re-baselines instead of comparing. The RFID reader has the same
-   hazard and canworker handles it the same way, keyed on tags_seen.
+   good comms re-baselines instead of comparing. The RFID reader link has the same
+   hazard (its edge is keyed on tags_seen).
 
 Contact bounce is largely handled by the scan period itself - 50 ms is longer
 than a pushbutton bounces - but `debounce_scans` requires a level to read the

@@ -701,42 +701,19 @@ ruff check ~/agv_can/agv_core ~/agv_can/tests && (cd ~/agv_can/amr_ws && ruff ch
 
 ## 6. `amr.service` — the vehicle
 
-The repo carries the unit and its helpers under `amr_ws/deploy/`:
+The unit and its helpers live in `amr_ws/deploy/`; each file's header says its role. Install
+them with RUNBOOK section 5, in this order (from `cd ~/agv_can/amr_ws`):
 
-| File | Role |
-|---|---|
-| `amr.service` | the **only** application boot unit; `BindsTo` can0; `EnvironmentFile=amr.env`; `ExecStartPre` creates `/run/lock/amr` (1777), `~/.amr`, `~/amr_maps`; `KillSignal=SIGINT`, `TimeoutStopSec=55`; `Restart=on-failure` 3×/60 s |
-| `amr.env` | `AMR_MAPS_DIR`, `AMR_STATE_DIR`, feature flags `AMR_WEB/AMR_FOXGLOVE/AMR_LIDAR=true`, `AMR_LOC_BLANK_DYNAMIC=false`. **Paths and switches only; boot never selects a map or resumes a job.** |
-| `amr-supervisor.sh` | `ExecStart`: sources ROS + overlay + `env/vehicle.sh`, runs `amr_bringup.supervisor_node -p real:=true ...` |
-| `validate.sh` | no-side-effect check: paths, `bash -n`, `systemd-analyze verify`, every `${VAR}` in Exec lines defined in `amr.env`, `agv_core/` present |
-| `install.sh` | backs up `/etc/systemd/system/amr.service` to `/var/backups/amr-units/<ts>/`, installs, `daemon-reload`. **Never enables/starts anything** (enforced by `validate.sh`). |
-
-```bash
-cd ~/agv_can/amr_ws
-./deploy/validate.sh                     # "deployment validation passed"
-sudo ./deploy/install.sh                 # prints the backup path
-systemctl is-enabled amr                 # disabled — install.sh does not enable
-```
-
-`install.sh` also installs two power-loss drop-ins (`/etc/sysctl.d/60-amr.conf`:
-dirty pages expire after 5 s, `swappiness=0`; `/etc/systemd/journald.conf.d/amr.conf`:
-journal capped at 300 M). Finish them by hand, as on unit 1 (RUNBOOK section 5):
-
-```bash
-sudo systemctl restart systemd-journald
-sudo swapoff -a && sudo sed -i '/swap.img/d' /etc/fstab && sudo rm -f /swap.img
-```
+1. **"Install rehearsal and validation"**: `./deploy/validate.sh` passes, `sudo ./deploy/install.sh`
+   prints its backup path, `systemctl is-enabled amr` says `disabled` (install never enables).
+2. **"Power-loss hardening"**: `install.sh` drops the sysctl and journald files; finish them by hand
+   there (journald restart, `swapoff`).
+3. **"Two sudo rules the operator pages need"**: without them the vehicle runs, but Restart answers
+   "not permitted" and reports carry a note instead of the journal.
 
 ### 6.1 Operator sudo rules
 
-The Home page's **Restart** button and **Save report** (last 2 h of the journal)
-need two exact NOPASSWD commands, and nothing else. Without them the vehicle runs,
-Restart answers "not permitted" and reports carry a note instead of the journal.
-
-```bash
-sudo install -o root -g root -m 0440 ~/agv_can/amr_ws/deploy/amr-web.sudoers /etc/sudoers.d/amr-web
-sudo visudo -c                           # must print "parsed OK" for every file
-```
+See step 3 above (RUNBOOK section 5); nothing here differs on a new unit.
 
 ### 6.2 Data on its own volume (W8)
 
@@ -765,13 +742,14 @@ sudo systemctl enable --now amr.service
 journalctl -u amr.service -f                             # reaches IDLE; web on :5001
 ```
 
-Boot check (RUNBOOK §1): Status page Mode `IDLE`, Selector `MANUAL`/`AUTO` not
+Boot check (RUNBOOK §1): Home shows Mode `IDLE`, Selector `MANUAL`/`AUTO` not
 `STALE`, Drives `ARMED`/`OFF` without a red bar, Command `none`. A profile with
 `"tracked": true` enters `LINE` by itself after IDLE.
 
 What the supervisor owns from here: `base.launch.py real:=true` (drive_node =
 `can0` owner, panel_node = I/O island owner, nanoScan3 driver, mux, odom, EKF),
-`amr_web.web_node` on `0.0.0.0:5001`, `foxglove_bridge` on `:8765`, and one
+`amr_web.web_node` on `0.0.0.0:5001`, `foxglove_bridge` on `:8765` (only with
+`AMR_FOXGLOVE=true`), and one
 mode layer at a time. Bench tools take the `/run/lock/amr` owner lock and refuse
 while the service holds it — **stop the service before any bench work.**
 
@@ -1211,7 +1189,7 @@ NoDisplay=true
 | 3 | `NetworkManager` + `nm-online` | `agv_field`; `network-online.target` after link or ~30 s | yes, bounded |
 | 4 | `canable@can0.service` | `slcand` + `can0` UP @125 kbps → `sys-subsystem-net-devices-can0.device` | yes — `amr.service` `BindsTo` it |
 | 5 | `nginx` | `:80` holding page | no |
-| 6 | `amr.service` | lock dir, state/maps dirs, supervisor → base (can0, DIO, scanner), web `:5001`, foxglove `:8765`; **IDLE** | |
+| 6 | `amr.service` | lock dir, state/maps dirs, supervisor → base (can0, DIO, scanner), web `:5001`, foxglove `:8765` only with `AMR_FOXGLOVE=true`; **IDLE**, then LINE unless `tracked=false` | |
 | 7 | `lightdm` → `amr-kiosk-session` | Chromium on `http://127.0.0.1/`; independent of 6 | |
 
 Stop path: `systemctl stop amr` sends SIGINT → supervisor revokes lease, stops

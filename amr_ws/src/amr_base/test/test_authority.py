@@ -6,18 +6,17 @@ without a fresh, matching supervisor lease; freshness returning does not
 revive a cached command.
 """
 
+from gating_fixtures import DRIVES_OK, INST, SUP, lease, panel
+
 from amr_base import gating
 from amr_base.gating import (
     FOLLOW,
-    LEASE_AUTONOMOUS,
     LEASE_MANUAL,
     MANUAL,
     NONE,
     TELEOP,
     Drives,
-    Lease,
     Manual,
-    Panel,
     Params,
     Permit,
     Stamped,
@@ -26,21 +25,13 @@ from amr_base.gating import (
     select,
 )
 
-SUP = Params(require_supervisor=True, teleop_enabled=False)
-INST = "11111111-aaaa"
-
-
-def lease(t, gen=3, allowed=LEASE_MANUAL | LEASE_AUTONOMOUS, seq=10, inst=INST):
-    return Lease(t_recv=t, instance=inst, generation=gen, seq=seq, allowed=allowed)
-
 
 def manual(t, v=0.2, gen=3, inst=INST, valid=0.2, seq=5):
     return Manual(t=t, v=v, w=0.0, instance=inst, generation=gen, session="s1", seq=seq, valid_for_s=valid)
 
 
-MANUAL_PANEL = Panel(t_recv=10.0, valid=True, auto=False)
-AUTO_PANEL = Panel(t_recv=10.0, valid=True, auto=True)
-DRIVES_OK = Drives(t_recv=10.0, operational=True)
+MANUAL_PANEL = panel()
+AUTO_PANEL = panel(auto=True)
 
 
 def test_manual_command_needs_fresh_lease_panel_and_drives():

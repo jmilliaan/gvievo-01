@@ -77,12 +77,6 @@ def spin_omega(wheel_rpm):
     return 2.0 * wheel_rpm * config.RAD_S_PER_RPM_DIFF
 
 
-def counts_for_angle(deg, counts_per_wheel_rev):
-    """Per-wheel counts for a pivot of `deg`: arc (track/2)*angle over pi*D."""
-    arc = config.TRACK_M / 2.0 * math.radians(deg)
-    return arc / (math.pi * config.WHEEL_DIA_M) * counts_per_wheel_rev
-
-
 class UTurn:
     def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
                  phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn",

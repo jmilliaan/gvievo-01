@@ -1,9 +1,6 @@
 """amr_line.flight_recorder: the last seconds of ticks, written on demand, pruned."""
 import csv
 import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from amr_line import flight_recorder as fr  # noqa: E402
 

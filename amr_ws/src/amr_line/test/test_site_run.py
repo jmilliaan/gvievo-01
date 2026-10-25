@@ -4,21 +4,15 @@ locator - S is the signed wheel travel the job's own commands make, sigma what t
 The tape is where the route says: two tracks over the last 0.4 m into each junction, no tape
 past the tape end."""
 import math
-import os
-import sys
 
 import pytest
-
-HERE = os.path.dirname(__file__)
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-
 from agv_core import config as vehicle  # noqa: E402
+from line_fixtures import counts_for_angle  # noqa: E402
 from site_fixture import AREAS, graph, site  # noqa: E402
 from test_mission_engine import CENTRED, NO_TAPE, PER_REV, World  # noqa: E402
 
 from amr_line import job as lj  # noqa: E402
-from amr_line import site_run, uturn  # noqa: E402
+from amr_line import site_run  # noqa: E402
 from amr_line import tape_locator as tl  # noqa: E402
 from amr_line import trip_route as trr  # noqa: E402
 
@@ -95,7 +89,7 @@ def spin(w):
     assert w.until(lambda: t.uturn is not None, 3.0), w.job.reason
     base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (176, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2, sensor=CENTRED)    # facing back along the tape

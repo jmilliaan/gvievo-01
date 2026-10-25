@@ -10,17 +10,9 @@ and J-B has a second, untaken exit straight on to (10,20) for the wrong-branch t
 """
 import copy
 import math
-import os
 import random
-import sys
 
 import pytest
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
 from agv_core import mission as missions  # noqa: E402
 
 from amr_line import tape_graph as tg  # noqa: E402

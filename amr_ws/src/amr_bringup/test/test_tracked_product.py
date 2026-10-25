@@ -3,6 +3,7 @@
 import types
 
 from agv_core import config
+from bringup_fakes import Log
 
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
@@ -48,11 +49,6 @@ def test_a_tape_agv_refuses_maps_and_routes_and_a_trackless_one_refuses_line():
     assert fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond()).ok
 
 
-class Log:
-    def info(self, *_):
-        pass
-
-    warn = error = info
 
 
 def fake(tracked):

@@ -4,20 +4,16 @@ code (3) is both the U-turn and the home stop, told apart by wheel travel since 
 The guide page's speed toggle (2026-10-24): NORMAL by default; HIGH lets the corner marker
 pair (2 then 1) grant HIGH, as in any zoned mission.
 Real FollowJob, synthetic clock, wheel counts and marker stream."""
-import os
-import sys
 
-HERE = os.path.dirname(__file__)
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
 
 from agv_core import config as vehicle  # noqa: E402
 from agv_core import mission as missions  # noqa: E402
 from amr_line.tape_run import MARKER_JUNCTION_M as MARKER_GUARD  # noqa: E402
+from line_fixtures import counts_for_angle  # noqa: E402
 from test_marker_run import past_guard, pivot  # noqa: E402
 from test_mission_engine import CENTRED, NO_TAPE, PER_REV, World  # noqa: E402
 
-from amr_line import branch, uturn  # noqa: E402
+from amr_line import branch  # noqa: E402
 from amr_line import job as lj  # noqa: E402
 
 CODE = 3
@@ -271,7 +267,7 @@ def test_a_u_turn_strip_closer_to_the_tape_end_than_the_guard_still_turns():
     assert w.until(lambda: t.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
@@ -300,7 +296,7 @@ def test_a_forced_u_turn_turns_at_the_next_tape_end_without_a_strip():
     assert w.until(lambda: t.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
@@ -340,7 +336,7 @@ def spin_back(w):
     assert w.until(lambda: t.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
     base = w.counts
     for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
-        c = uturn.counts_for_angle(deg, PER_REV)
+        c = counts_for_angle(deg, PER_REV)
         w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
         w.tick(sensor=sensor)
     w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)

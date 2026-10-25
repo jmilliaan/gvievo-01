@@ -6,16 +6,8 @@ makes - start, stop, slow zone, RFID speed toggle - goes through this ramp, and
 the follower's rate must stay under the mux's AUTO a_max (0.3 m/s^2) so the mux
 passes it through instead of reshaping it into a trapezoid.
 """
-import os
-import sys
 
 import pytest
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
 from agv_core import config as vehicle  # noqa: E402
 
 from amr_line import autopilot, runtime  # noqa: E402

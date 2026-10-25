@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from amr_maps.generate_sim_factory import build
 from amr_mission.mapping_session_node import MappingSession
+from mission_fakes import Log
 from sensor_msgs.msg import LaserScan
 from slam_toolbox.srv import DeserializePoseGraph
 
@@ -26,11 +27,6 @@ LASER = (0.35, 0.0, 0.0)
 MARK = {"x_m": 0.5, "y_m": -1.0, "yaw_rad": 0.1, "description": "HP AGV 01"}
 
 
-class Log:
-    def info(self, *_):
-        pass
-
-    warn = error = info
 
 
 def bundle(maps_dir: str, map_id: str = "hall", posegraph: bool = True) -> mb.Manifest:
