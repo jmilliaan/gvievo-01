@@ -15,7 +15,6 @@ from amr_base.canopen import (
     FAULT,
     STANDBY,
     DriveLink,
-    MonitorCursor,
     Router,
     WheelScale,
     counts_per_wheel_rev,
@@ -200,10 +199,22 @@ def _link(bus):
     return DriveLink(router, {1: "left", 2: "right"}, {"accel": 2400, "decel": 3200}, log=lambda s: None)
 
 
+def _arm(link, *args):
+    """prepare() then engage(), force-disarming on failure. The tests' composite: drive_node
+    calls the two steps itself and retries a failed engage instead."""
+    report = link.prepare(*args)
+    try:
+        link.engage()
+    except BaseException:
+        link.disarm(force=True)
+        raise
+    return report
+
+
 def test_arm_configures_pdos_guard_and_enables_both_drives():
     bus = FakeBus()
     link = _link(bus)
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.state == ARMED
     assert link.scale.counts_per_wheel_rev == pytest.approx(30000.0)
     w = bus.writes
@@ -230,7 +241,7 @@ def test_failed_enable_rolls_back_both_drives():
     bus = FakeBus(statusword=0x0240)  # Switch on disabled, never reaches 0x27
     link = _link(bus)
     with pytest.raises(RuntimeError):
-        link.arm(20, None, 0, 30.0, False, False)
+        _arm(link, 20, None, 0, 30.0, False, False)
     assert link.state == DISARMED
     disable = [(n, v) for n, i, _, v in bus.writes if i == 0x6040 and v in (0x06, 0x00)]
     assert (1, 0x00) in disable and (2, 0x00) in disable
@@ -288,7 +299,7 @@ def test_engage_then_release_returns_to_standby_at_zero():
 def test_a_release_that_cannot_finish_latches_fault():
     bus = FakeBus()
     link = _link(bus)
-    link.arm(20, None, 0, 30.0, False, False)
+    _arm(link, 20, None, 0, 30.0, False, False)
     real = bus.send
 
     def refuse_controlword(m):
@@ -368,7 +379,7 @@ def test_router_decodes_pushed_frames_and_tracks_liveness():
 def test_fault_zeroes_at_once_and_disarm_de_energises():
     bus = FakeBus()
     link = _link(bus)
-    link.arm(20, None, 0, 30.0, False, False)
+    _arm(link, 20, None, 0, 30.0, False, False)
     bus.sent.clear()
     link.fault("drive silent")
     assert link.state == FAULT
@@ -388,7 +399,7 @@ def test_disarm_retires_the_pc_loss_guard_first():
     """
     bus = FakeBus()
     link = _link(bus)
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.pc_guard_set
     bus.writes.clear()
     link.disarm()
@@ -403,33 +414,44 @@ def test_disarm_retires_the_pc_loss_guard_first():
     # Without the guard armed (pc_loss_ms=0) nothing is written to 1016h at all.
     bus2 = FakeBus()
     link2 = _link(bus2)
-    link2.arm(20, None, 0, 30.0, False, False)
+    _arm(link2, 20, None, 0, 30.0, False, False)
     bus2.writes.clear()
     link2.disarm()
     assert not any(i == 0x1016 for _, i, _, _ in bus2.writes)
 
 
-def test_monitor_cursor_reads_one_object_per_node_per_call_and_keeps_timeouts_apart():
-    """U7: the diagnostic slot is bounded (one SDO per call) and a timeout is
-    stored as None, never a plausible number."""
-    from agv_core import canmon
+def test_keepalive_one_cadence_strict_raises_and_withheld_sends_nothing():
+    """D124: the loop and the blocking sequences share link._t_hb. strict=True (the
+    loop's call) re-raises a send error so a dead bus ends the loop; the default
+    swallows it, because the caller's own write will report the bus."""
 
-    poller = canmon.MonitorPoller({1: "left", 2: "right"}, objects=canmon.OBJECTS[:2])
-    cur = MonitorCursor(poller, [1, 2])
-    calls = []
+    class DeadBus(FakeBus):
+        def send(self, m):
+            raise can.CanError("bus off")
 
-    def read(nid, idx):
-        calls.append((nid, idx))
-        if nid == 2:
-            return None  # right drive times out
-        return 0xFFFF & 0x01F4  # 500 raw -> 50.0 V for an i16 x0.1 object
+    bus = FakeBus()
+    link = _link(bus)
+    link.pc_node, link.pc_heartbeat_s = 100, 0.1
 
-    out = [cur.step(read, canmon._decode) for _ in range(4)]
-    assert len(calls) == 4  # exactly one read per call
-    assert [c[0] for c in calls] == [1, 2, 1, 2]  # alternating nodes
-    assert calls[0][1] == calls[1][1] == canmon.OBJECTS[0][0]  # same object for both nodes
-    assert calls[2][1] == canmon.OBJECTS[1][0]  # then the next object
-    assert out[0][2] == 500 and out[1][2] is None
-    snap = poller.snapshot({})["nodes"]
-    assert snap["1"]["bus_v"]["value"] == 50.0 and snap["2"]["bus_v"]["value"] is None
-    assert cur.reads == 4 and cur.timeouts == 2
+    def beats():
+        return sum(m.arbitration_id == 0x700 + 100 for m in bus.sent)
+
+    link.keepalive(strict=True)
+    assert beats() == 1  # due at start
+    link.keepalive(strict=True)
+    assert beats() == 1  # not due again yet
+    link._t_hb -= 0.1
+    link.keepalive(strict=True)
+    assert beats() == 2  # due at pc_heartbeat_s
+
+    link.heartbeat_withheld = True
+    link._t_hb = 0.0
+    link.keepalive(strict=True)
+    assert beats() == 2
+
+    dead = _link(DeadBus())
+    dead.pc_node, dead.pc_heartbeat_s = 100, 0.1
+    dead.keepalive()  # swallowed
+    dead._t_hb = 0.0  # a failed send still advanced the cadence; make the next one due
+    with pytest.raises(can.CanError):
+        dead.keepalive(strict=True)

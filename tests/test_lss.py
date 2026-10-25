@@ -297,7 +297,7 @@ def test_bench_tools_respect_the_owner_lock():
     import tempfile
 
     from agv_core import ownerlock
-    from agv_core.drivers.canbus import bus_health, drive_forward, read_imu, verify_bus, verify_drivers
+    from agv_core.drivers.canbus import bus_health, drive_forward, read_imu, sdo, verify_bus, verify_drivers
     print("\nbench tools: the CAN owner lock comes before the bus")
 
     opened = []
@@ -306,8 +306,8 @@ def test_bench_tools_respect_the_owner_lock():
         opened.append(a)
         raise RuntimeError("fake open_bus - no bus in the offline suite")
 
-    mods = (bus_health, drive_forward, lss, read_imu, verify_bus,
-            verify_drivers)
+    # Every tool opens through sdo.bench_bus, so the one opener to replace is sdo's.
+    mods = (sdo,)
     entry = [
         ("drive_forward --go",
          lambda: drive_forward.main(), ["drive_forward.py", "--go"]),

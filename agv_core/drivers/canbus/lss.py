@@ -74,7 +74,7 @@ import time
 
 import can  # noqa: E402
 
-from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, claim_bus, open_bus  # noqa: E402
+from agv_core.drivers.canbus.sdo import BAD, BITRATE, OK, WARN, bench_bus  # noqa: E402
 
 # CiA 305, table 1. The master transmits on 0x7E5 and listens on 0x7E4.
 LSS_RX = 0x7E5          # master -> slave
@@ -96,7 +96,6 @@ CS_INQUIRE_PRODUCT = 0x5B
 CS_INQUIRE_REVISION = 0x5C
 CS_INQUIRE_SERIAL = 0x5D
 
-MODE_WAITING = 0
 MODE_CONFIGURATION = 1
 
 # CiA 301 bit timing table 0. The INDEX is what goes on the wire, not the rate -
@@ -114,8 +113,8 @@ BIT_TIMING_TABLE = {
     10000: 8,
 }
 
-# Defaults, as module constants so this file never imports the vehicle profile.
-BITRATE = 125000
+# Defaults, as module constants so this file never imports the vehicle profile
+# (BITRATE is sdo.BITRATE).
 SENSOR_NODE = 10
 # How long to wait for an LSS reply. LSS is answered by firmware, not by an
 # application task, so this is generous rather than tuned.
@@ -291,11 +290,10 @@ def store_configuration(bus, echo=False):
 
 def _cmd_scan(args):
     """Read-only: is anything speaking LSS, and what is it?"""
-    lock = claim_bus("lss scan")
-    if lock is None:
+    opened = bench_bus("lss scan", args.bitrate, args.channel, note=f" at {args.bitrate // 1000} kbps")
+    if opened is None:
         return 2
-    bus, how = open_bus(args.bitrate, args.channel)
-    print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
+    _lock, bus = opened
     try:
         print("[1] passive listen for LSS traffic, 2 s "
               "(silence is EXPECTED - LSS is master-driven)")
@@ -344,11 +342,10 @@ def _cmd_set(args):
     print("      * you will need to reopen the bus at the new rate afterwards")
     print()
 
-    lock = claim_bus("lss set")
-    if lock is None:
+    opened = bench_bus("lss set", args.bitrate, args.channel, note=f" at {args.bitrate // 1000} kbps")
+    if opened is None:
         return 2
-    bus, how = open_bus(args.bitrate, args.channel)
-    print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
+    _lock, bus = opened
     try:
         if args.use_global:
             print(f"{WARN} --global: EVERY LSS-capable node on this bus will be")
@@ -406,15 +403,10 @@ def _cmd_set(args):
 
 def _cmd_verify(args):
     """Reopen at a given rate and see whether the node is there. Read-only."""
-    lock = claim_bus("lss verify")
-    if lock is None:
+    opened = bench_bus("lss verify", args.bitrate, args.channel, note=f" at {args.bitrate // 1000} kbps")
+    if opened is None:
         return 2
-    try:
-        bus, how = open_bus(args.bitrate, args.channel)
-    except Exception as e:
-        print(f"{BAD}: {e}")
-        return 2
-    print(f"connected via {how} at {args.bitrate // 1000} kbps\n")
+    _lock, bus = opened
     try:
         addr = inquire(bus, echo=args.verbose)
         if all(v is None for v in addr.values()):

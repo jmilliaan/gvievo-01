@@ -14,7 +14,9 @@ function jogpad(root, opts) {
   // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.50 m/s = mux pendant_v_m_s.
   // Diagonals drive like the pendant: the FAST wheel at V, the slow one at TURN_RATIO of it
   // (= pendant_turn_ratio), the side set by the turn direction. Spins at the pendant's rate.
-  const V = 0.50, TRACK_M = 0.487, TURN_RATIO = 0.66, SPIN = 0.39;
+  // jog.page_constants() as base.html renders it (data-jog); the literals are the fallback.
+  const J = (() => { try { return JSON.parse(document.documentElement.dataset.jog || '{}'); } catch (e) { return {}; } })();
+  const V = J.v ?? 0.50, TRACK_M = J.track_m ?? 0.487, TURN_RATIO = J.turn_ratio ?? 0.66, SPIN = J.spin ?? 0.39;
   const CELLS = [
     ['fl', '↖', 'Fwd-L', ''], ['f', '▲', 'Fwd', '↑ / W'], ['fr', '↗', 'Fwd-R', ''],
     ['l', '◀', 'Left', '← / A'], ['stop', '■', 'Stop', 'Space'], ['r', '▶', 'Right', '→ / D'],

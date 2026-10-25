@@ -16,14 +16,12 @@ def lockdir(tmp_path, monkeypatch):
 
 def test_second_owner_is_refused_and_named(lockdir):
     first = ownerlock.acquire("can", "drive_node")
-    assert ownerlock.holder("can").startswith("drive_node")
     with pytest.raises(ownerlock.OwnerBusy, match="drive_node"):
         ownerlock.acquire("can", "agv_controller")
     # a different resource is independent
     dio = ownerlock.acquire("dio", "panel_node")
     first.release()
-    assert ownerlock.holder("can") is None
-    ownerlock.acquire("can", "agv_controller").release()
+    ownerlock.acquire("can", "agv_controller").release()  # free again after release
     dio.release()
 
 
@@ -53,7 +51,6 @@ def test_lock_dies_with_its_process_and_is_not_inherited(lockdir):
             ownerlock.acquire("can", "me")
         holder.wait(timeout=10)
         # holder exited, its sleeping child is still alive: the lock must be FREE
-        assert ownerlock.holder("can") is None
         ownerlock.acquire("can", "me").release()
     finally:
         try:
@@ -64,5 +61,6 @@ def test_lock_dies_with_its_process_and_is_not_inherited(lockdir):
 
 
 def test_unknown_resource_is_rejected(lockdir):
-    with pytest.raises(ValueError):
-        ownerlock.acquire("lidar")
+    for name in ("lidar", "app", "scanner"):  # app/scanner retired with the legacy controller
+        with pytest.raises(ValueError):
+            ownerlock.acquire(name)

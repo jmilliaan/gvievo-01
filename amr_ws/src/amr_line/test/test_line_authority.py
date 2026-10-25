@@ -16,12 +16,12 @@ for _p in (ROOT, os.path.join(ROOT, "amr_ws", "src", "amr_line")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from amr_base.gating import LEASE_LINE  # noqa: E402
 from amr_line import autopilot, runtime  # noqa: E402
 from amr_line import job as lj  # noqa: E402
 
 runtime.load_from_profile()
 
-LEASE_LINE = 8
 
 
 def inputs(**over):

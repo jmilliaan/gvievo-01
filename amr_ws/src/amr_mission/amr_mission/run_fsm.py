@@ -11,18 +11,14 @@ import itertools
 import time
 from dataclasses import dataclass, field
 
+from amr_navigation.route import MAX_REPEAT
+
+from amr_base import wire
+
 IDLE, READY, EXECUTING, PAUSED, BLOCKED, FAULT, DONE = 0, 1, 2, 3, 4, 5, 6
-NAMES = {
-    IDLE: "IDLE",
-    READY: "READY",
-    EXECUTING: "EXECUTING",
-    PAUSED: "PAUSED",
-    BLOCKED: "BLOCKED",
-    FAULT: "FAULT",
-    DONE: "DONE",
-}
+NAMES = wire.RUN_NAMES
 ACTIVE = (EXECUTING, PAUSED, BLOCKED)
-MAX_PASSES = 100  # repeat_count bound: a route pass count above this is refused at load
+MAX_PASSES = MAX_REPEAT  # repeat_count bound: a route pass count above this is refused at load
 
 
 _counter = itertools.count(1)

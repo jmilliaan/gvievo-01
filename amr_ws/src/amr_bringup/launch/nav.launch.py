@@ -10,8 +10,8 @@ or active-map context, so their jog/survey/initial-pose/mission controls are
 refused. Interactive operation is amr.service. Drive here with ROS services.
 """
 
-import os
 
+from agv_core import paths
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
@@ -44,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("sim", default_value="true"),
-            DeclareLaunchArgument("maps_dir", default_value=os.path.expanduser("~/amr_maps")),
+            DeclareLaunchArgument("maps_dir", default_value=paths.maps_dir()),
             DeclareLaunchArgument("map_id", default_value="sim_factory"),
             DeclareLaunchArgument("revision", default_value="latest"),
             DeclareLaunchArgument("slip_noise_std", default_value="0.02"),

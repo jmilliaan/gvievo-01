@@ -28,7 +28,7 @@ onState(st => {
   tiles('manual-state', [
     ['Mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad'],
     ['Manual', yesno(m && m.manual_available), 'allowed by supervisor', m && m.manual_available ? '' : 'warn'],
-    ['Command', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
+    ['Command', ...sourceTile(mx)],
     ['Gen.', l ? String(l.generation) : '–', l ? 'lease' : 'no lease', l ? '' : 'warn'],
   ]);
   lineTrack(st.line_track);

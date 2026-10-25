@@ -28,7 +28,6 @@ for longer than a grace, or another tag read. Any of those means the position is
 no longer proven and the operator jogs back over the tag.
 """
 
-import math
 
 from amr_line import uturn
 
@@ -150,12 +149,7 @@ class TagOdometer:
         if self.tag is None:
             return
         if self._ref is not None:
-            from agv_core import config as vehicle  # noqa: PLC0415
-
-            m_per_count = math.pi * vehicle.WHEEL_DIA_M / counts_per_rev
-            dl = abs(uturn.counts_delta(counts[0], self._ref[0]))
-            dr = abs(uturn.counts_delta(counts[1], self._ref[1]))
-            self.travel_m += 0.5 * (dl + dr) * m_per_count
+            self.travel_m += uturn.unsigned_travel_m(counts, self._ref, counts_per_rev)
         self._ref = tuple(counts)
 
     def at(self, tag, window_m):

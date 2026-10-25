@@ -34,9 +34,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from agv_core.drivers.canbus import cia402
+
+from amr_base.gating import LEASE_COMMISSIONING  # noqa: F401 - re-exported for tests
+
 # ---- CiA 402 words (BLV-R CANopen manual 7.3.3 / 7.3.4) -------------------------
-MODE_PP, MODE_PV = 1, 3
-CW_ENABLED = 0x000F  # Operation enabled; bit 6 = 0: the target is ABSOLUTE
+MODE_PP, MODE_PV = cia402.MODE_PP, cia402.MODE_PV
+CW_ENABLED = cia402.CW_OPERATION_ENABLED  # Operation enabled; bit 6 = 0: the target is ABSOLUTE
 CW_NEW_SETPOINT = 1 << 4
 CW_IMMEDIATE = 1 << 5  # single set-point: applied at once, not queued
 CW_HALT = 1 << 8
@@ -391,16 +395,15 @@ class Controller:
             self.state, self.reason = IDLE, why
 
 
-LEASE_COMMISSIONING = 4  # ControlLease.COMMISSIONING
 
 
 def authority_gate(
     now: float,
     *,
     enabled: bool,
-    lease: tuple[float, int, int] | None,
+    lease,
     move_generation: int,
-    panel: tuple[float, bool, bool] | None,
+    panel,
     lease_timeout_s: float = 0.3,
     panel_timeout_s: float = 0.2,
 ) -> str | None:
@@ -409,21 +412,21 @@ def authority_gate(
     Stricter than the velocity path's gating.drive_gate: the supervisor lease is
     required even where require_supervisor is off (a bench launch), because a pp
     move is carried out by the drives and not re-commanded every tick.
-      lease  (t_recv, generation, allowed bits) of the latest ControlLease
-      panel  (t_recv, valid, mode_auto) of the latest PanelState
+      lease  the latest gating.Lease (t_recv, generation, allowed bits)
+      panel  the latest arm_policy.Panel (t_recv, valid, mode_auto)
     """
     if not enabled:
         return "pp locked in the profile (pp.enabled false)"
-    if lease is None or now - lease[0] > lease_timeout_s:
+    if lease is None or now - lease.t_recv > lease_timeout_s:
         return "no fresh supervisor lease"
-    if not lease[2] & LEASE_COMMISSIONING:
+    if not lease.allowed & LEASE_COMMISSIONING:
         return "supervisor does not allow commissioning"
-    if int(lease[1]) != int(move_generation):
-        return f"move generation {move_generation} != lease {lease[1]}"
-    if panel is None or now - panel[0] > panel_timeout_s:
+    if int(lease.generation) != int(move_generation):
+        return f"move generation {move_generation} != lease {lease.generation}"
+    if panel is None or now - panel.t_recv > panel_timeout_s:
         return "panel state stale"
-    if not panel[1]:
+    if not panel.valid:
         return "panel not valid"
-    if panel[2]:
+    if panel.mode_auto:
         return "selector is AUTO"
     return None

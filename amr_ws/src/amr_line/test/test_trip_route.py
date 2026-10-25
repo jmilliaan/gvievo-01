@@ -9,7 +9,7 @@ HERE = os.path.dirname(__file__)
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from site_fixture import TAUGHT, graph, site  # noqa: E402
+from site_fixture import AREAS, TAUGHT, graph, site  # noqa: E402
 
 from amr_line import tape_graph as tg  # noqa: E402
 from amr_line import tape_locator as tl  # noqa: E402
@@ -23,10 +23,10 @@ def trip(m, *machines):
 
 def plain():
     """No machine has a U-turn point: every trip turns at the tape end."""
-    m = site(uturn_points={}, zones={},
+    m = site(uturn_points={},
              groups={"M": {"circuit": "C-M", "machines": {"M1": {"release": "MW-1", "take": "ME-1"},
                                                           "M2": {"release": "MW-2", "take": "ME-2"}}}})
-    return m, graph(m, skip=("UT-M1", "UT-M2", "ZA", "ZB"))
+    return m, graph(m, skip=("UT-M1", "UT-M2"))
 
 
 def by(route, kind):
@@ -102,19 +102,18 @@ def test_what_is_not_taught_is_named_and_only_the_trips_own_stations_count():
     trr.compile_trip(trip(m, "M1"), m, graph(m, skip=("MW-2", "ME-2", "UT-M2")))
 
 
-def test_a_zone_lies_between_its_points_and_a_reversed_one_is_refused():
-    m = site()
-    r = trr.compile_trip(trip(m, "M1"), m, graph(m))
-    assert r.zones == [(pytest.approx(21.0), pytest.approx(27.0), "Z-LINE")]
-    g = graph(m, skip=("ZA", "ZB"))
-    from amr_line import tape_teach as tt  # noqa: PLC0415
-    for sid, s in (("ZA", 7.0), ("ZB", 1.0)):
-        x, y, h = g.legs["J-B:right>U"].line.point(s)
-        g.put_station(tt.project_station(g, m, sid, (x, y, h)))
-    with pytest.raises(tg.RouteError, match="Z-LINE: its end ZB is not after its start ZA"):
-        trr.compile_trip(trip(m, "M1"), m, g)
-    r = trr.compile_trip(trip(m, "M1"), m, graph(m, skip=("ZB",)))
-    assert r.zones == [] and any("ZB not taught - NORMAL there" in n for n in r.notes)
+def test_a_high_speed_area_becomes_ranges_wherever_the_trip_runs_inside_it():
+    m = site(trip_calls=1)
+    r = trr.compile_trip(trip(m, "M1"), m, graph(m), areas=AREAS)
+    # out along x 11..17 (S 21..27); back over the same tape after the cut at S 31 (entered at s 9)
+    assert r.zones == [(pytest.approx(21.0), pytest.approx(27.0), "Z-LINE"),
+                       (pytest.approx(35.0), pytest.approx(41.0), "Z-LINE")]
+    assert trr.compile_trip(trip(m, "M1"), m, graph(m)).zones == []
+    # a corner of an area clipping the tape for less than AREA_MIN_M is no zone
+    nick = {"N": {"polygon": [(4.0, -0.2), (4.5, -0.2), (4.5, 0.2), (4.0, 0.2)], "kind": "high"}}
+    assert trr.compile_trip(trip(m, "M1"), m, graph(m), areas=nick).zones == []
+    assert trr.inside([(0, 0), (2, 0), (2, 2), (0, 2)], 1, 1)
+    assert not trr.inside([(0, 0), (2, 0), (1, 2)], 1.9, 1.9)
 
 
 def test_the_locator_runs_on_a_trip_route_and_mirrors_at_a_mid_line_u_turn():
@@ -136,4 +135,21 @@ def test_the_locator_runs_on_a_trip_route_and_mirrors_at_a_mid_line_u_turn():
 
 
 def test_the_teaching_positions_of_the_fixture_are_consistent():
-    assert set(TAUGHT) >= {"UT-M1", "UT-M2", "ZA", "ZB"}
+    assert set(TAUGHT) >= {"UT-M1", "UT-M2"}
+
+
+def test_a_steered_merge_is_armed_like_an_order_and_keeps_its_leg_name():
+    import copy
+
+    from agv_core import mission as missions  # noqa: PLC0415
+    from site_fixture import DOC  # noqa: PLC0415
+    d = copy.deepcopy(DOC)
+    d["circuits"]["C-M"][1]["steer"] = "left"           # J-A, the merge after HOME
+    m = missions.parse_site(d)
+    assert [leg["id"] for leg in m["CIRCUITS"]["C-M"]["legs"]][0] == "J-A:merge>J-B"
+    r = trr.compile_trip(trip(m, "M1"), m, graph(m))
+    assert [(e["id"], e["order"]) for e in r.events if e["kind"] == "order"] == [
+        ("J-A", "left"), ("J-B", "right"), ("J-C", "left")]
+    plain = site()
+    r = trr.compile_trip(trip(plain, "M1"), plain, graph(plain))
+    assert [e["id"] for e in r.events if e["kind"] == "order"] == ["J-B", "J-C"], "unsteered: no order"

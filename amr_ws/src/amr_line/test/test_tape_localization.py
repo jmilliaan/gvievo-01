@@ -31,7 +31,7 @@ from amr_line import trip as tr  # noqa: E402
 
 DOC = {
     "schema": "site-4", "mission_name": "t", "home": "HOME", "attach": "ATT", "trip_calls": 2,
-    "stop_distance_m": 0.5, "cruise_mps": 0.4, "uturn_points": {}, "zones": {},
+    "stop_distance_m": 0.5, "cruise_mps": 0.4, "uturn_points": {},
     "junctions": {"J-A": {"shape": "Y", "laid": True}, "J-B": {"shape": "Y", "laid": True},
                   "J-C": {"shape": "Y", "laid": True}, "J-X": {"shape": "T", "laid": False}},
     "uturns": {"U": {"direction": "cw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0,
@@ -550,3 +550,11 @@ def test_anchors_round_trip_in_the_store(tmp_path):
     store.save_anchors(str(tmp_path), "t", 1, {"J-A": (1.23456, -2.0)})
     assert store.load_anchors(str(tmp_path), "t", 1) == {"J-A": (1.235, -2.0)}
     assert store.load_anchors(str(tmp_path), "t", 2) == {}
+
+
+def test_initial_pose_covariance_is_5_cm_and_1_7_deg():
+    from amr_line.tape_locator import initial_pose_cov
+
+    cov = initial_pose_cov()
+    assert len(cov) == 36 and cov[0] == cov[7] == 0.05**2 and cov[35] == 0.03**2
+    assert sum(1 for c in cov if c) == 3

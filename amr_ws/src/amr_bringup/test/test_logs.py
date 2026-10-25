@@ -8,6 +8,8 @@ disk is a lost-write problem like a power cut, which is why it sits in this plan
 import os
 import types
 
+import pytest
+
 from amr_bringup import logs
 from amr_bringup.process_supervisor import Group
 
@@ -64,6 +66,29 @@ def test_the_generation_sweep_keeps_only_the_live_layers_file(tmp_path):
     ]
     assert (tmp_path / "costmap_footprint_gen3.yaml").exists()
     assert (tmp_path / "operations.jsonl").exists()  # nothing else is swept
+
+
+def test_the_sweep_covers_the_localization_map_of_dead_generations(tmp_path):
+    """Lean plan D123: loc_map_gen<N>.pgm/.yaml (navigation_layer blank_dynamic) are swept
+    like the footprint; the live generation's pair is kept."""
+    for gen in (1, 3):
+        for ext in (".pgm", ".yaml"):
+            (tmp_path / f"loc_map_gen{gen}{ext}").write_text("x")
+    (tmp_path / "loc_map_genX.yaml").write_text("x")  # not a generation file
+    assert logs.sweep_generation_files(str(tmp_path), keep_generation=3) == [
+        "loc_map_gen1.pgm",
+        "loc_map_gen1.yaml",
+    ]
+    left = {p.name for p in tmp_path.iterdir()}
+    assert left == {"loc_map_gen3.pgm", "loc_map_gen3.yaml", "loc_map_genX.yaml"}
+
+
+def test_gen_path_names_only_the_known_files(tmp_path):
+    assert logs.gen_path(str(tmp_path), "loc_map_gen", 4) == str(tmp_path / "loc_map_gen4")
+    fp = logs.gen_path(str(tmp_path), "costmap_footprint_gen", 4, ".yaml")
+    assert fp == str(tmp_path / "costmap_footprint_gen4.yaml")
+    with pytest.raises(ValueError):
+        logs.gen_path(str(tmp_path), "costmap_footprint_gen", 4, ".pgm")
 
 
 def test_at_boot_every_generation_file_is_stale(tmp_path):

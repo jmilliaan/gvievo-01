@@ -232,12 +232,8 @@ def test_bus_owner_wiring():
 
     from helpers import ROOT
 
-    from agv_core import config
     co = (ROOT / "amr_ws/src/amr_base/amr_base/canopen.py").read_text(encoding="utf-8")
 
-    check("the profile still carries the legacy flag and it ships OFF",
-          hasattr(config, "CAN_USE_RPDO") and config.CAN_USE_RPDO is False,
-          repr(getattr(config, "CAN_USE_RPDO", "missing")))
     check("the setpoint goes out as an RPDO with Operation-enabled, never a raw controlword",
           "rpdo.send(self.router, nid, CW_OPERATION_ENABLED, rpm)" in co)
 
@@ -268,6 +264,12 @@ def test_pp_write_surface():
           guard.is_allowed(0x1601, (0x607A << 16) | 0x0020, 1))
     check("6072h may NOT be smuggled in through an RPDO mapping",
           not guard.is_allowed(0x1601, (0x6072 << 16) | 0x0010, 1))
+    # D171: every object pp verifies before a move (config pp.expect) is one guard keeps
+    # read-only; a new expect entry left writable would let software change what it checks.
+    from agv_core import config
+    check("every pp.expect object is in guard's read-only pp set",
+          set(config.PP_EXPECT_OBJECTS.values()) <= set(guard.PP_CONFIG_READ_ONLY),
+          str(sorted(set(config.PP_EXPECT_OBJECTS.values()) - set(guard.PP_CONFIG_READ_ONLY))))
 
 
 TESTS = [test_payload, test_cob_ids, test_mapping_values, test_setup_ordering,

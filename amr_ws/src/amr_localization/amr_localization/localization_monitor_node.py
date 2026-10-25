@@ -22,55 +22,46 @@ import math
 
 import numpy as np
 import rclpy
-from agv_core import alarms
+from agv_core import alarms, se2
 from amr_maps.raycast import ScanGeometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu, LaserScan
 from std_srvs.srv import Empty, Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state, tfpose
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import DriveStatus, Event, LocalizationState, WheelStates
 from amr_localization import readiness as rd
 from amr_localization import scan_consistency as consistency
 from amr_maps import grid as gridio
 
-SENSOR_DATA = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-
 
 class LocalizationMonitor(LeanNode):
     def __init__(self) -> None:
         super().__init__("localization_monitor")
-        self.declare_parameter("cov_xy_max", 0.05)
-        self.declare_parameter("cov_yaw_max", 0.03)
-        self.declare_parameter("cov_hold_s", 1.0)
-        self.declare_parameter("jump_dist_m", 0.15)
-        self.declare_parameter("jump_angle_deg", 5.0)
-        self.declare_parameter("settle_s", 2.0)
-        self.declare_parameter("initial_grace_s", 1.5)
-        self.declare_parameter("scan_age_limit_s", 0.15)
+        lim = rd.Limits()  # the defaults live in readiness.Limits, once
+        self.declare_parameter("cov_xy_max", lim.cov_xy_max)
+        self.declare_parameter("cov_yaw_max", lim.cov_yaw_max)
+        self.declare_parameter("cov_hold_s", lim.cov_hold_s)
+        self.declare_parameter("jump_dist_m", lim.jump_dist_m)
+        self.declare_parameter("jump_angle_deg", math.degrees(lim.jump_angle_rad))
+        self.declare_parameter("settle_s", lim.settle_s)
+        self.declare_parameter("initial_grace_s", lim.initial_grace_s)
+        self.declare_parameter("scan_age_limit_s", lim.age_limits["scan"])
         self.declare_parameter("generation", 0)  # layer generation (unified plan U0)
         self.generation = int(self.get_parameter("generation").value)
-        self.declare_parameter("wheels_age_limit_s", 0.10)
-        self.declare_parameter("imu_age_limit_s", 0.20)
-        self.declare_parameter("tf_age_limit_s", 0.20)
-        self.declare_parameter("min_scan_match", 0.6)
-        self.declare_parameter("max_scan_long", 0.15)
-        self.declare_parameter("match_hold_s", 1.0)
+        self.declare_parameter("wheels_age_limit_s", lim.age_limits["wheels"])
+        self.declare_parameter("imu_age_limit_s", lim.age_limits["imu"])
+        self.declare_parameter("tf_age_limit_s", lim.age_limits["tf"])
+        self.declare_parameter("min_scan_match", lim.min_scan_match)
+        self.declare_parameter("max_scan_long", lim.max_scan_long)
+        self.declare_parameter("match_hold_s", lim.match_hold_s)
         self.declare_parameter("match_tolerance_m", 0.15)
         self.declare_parameter("match_period_s", 0.5)
-        self.declare_parameter("match_age_max_s", 2.0)  # confirmation needs a comparison this recent
+        self.declare_parameter("match_age_max_s", lim.match_age_max_s)  # confirmation needs one this recent
         self.declare_parameter(
             "match_max_range_m", 10.0
         )  # beyond this a 0.3 deg yaw error exceeds the tolerance
@@ -165,9 +156,8 @@ class LocalizationMonitor(LeanNode):
             self._touch("wheels")
 
     def _on_drives(self, msg: DriveStatus) -> None:
-        # torque off = not operational AND neither drive's statusword says Operation enabled:
         # a feedback-only loss with the drives still enabled is never excused
-        off = not msg.operational and "Operation enabled" not in (msg.left_state, msg.right_state)
+        off = drive_state.torque_off(msg.operational, msg.left_state, msg.right_state)
         self._torque_off_t = self._now() if off else None
 
     def _on_map(self, msg: OccupancyGrid) -> None:
@@ -182,7 +172,7 @@ class LocalizationMonitor(LeanNode):
             if problem:
                 self.get_logger().error(f"dynamic mask not aligned with /map ({problem}): not used")
             else:
-                self._dynamic = self._dynamic_grid.data >= 65
+                self._dynamic = gridio.occupied(self._dynamic_grid)
         if self._map_key is not None and key != self._map_key:
             # Pose, covariance and scan evidence were all about the previous map.
             self.rd.reset("map changed; give a new initial pose")
@@ -205,7 +195,7 @@ class LocalizationMonitor(LeanNode):
         except Exception:  # noqa: BLE001 - not localised yet, or the stamp is not covered
             return  # no comparison: readiness lets the previous result expire
         q = tr.transform.rotation
-        yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+        yaw = se2.yaw_of(q)
         lx, ly = tr.transform.translation.x, tr.transform.translation.y
         ranges = np.asarray(msg.ranges, dtype=np.float64)
         n = len(ranges)
@@ -246,21 +236,11 @@ class LocalizationMonitor(LeanNode):
         try:
             tr = self.tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
             q = tr.transform.rotation
-            yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+            yaw = se2.yaw_of(q)
             stamp = tr.header.stamp.sec + tr.header.stamp.nanosec * 1e-9
             # AMCL stamps map->odom into the future by transform_tolerance; clamp the age at 0.
             self._last["tf"] = max(self._last.get("tf", 0.0), min(stamp, t))
-            odom_base = None
-            try:
-                ob = self.tf_buffer.lookup_transform("odom", "base_footprint", rclpy.time.Time())
-                oq = ob.transform.rotation
-                odom_base = (
-                    ob.transform.translation.x,
-                    ob.transform.translation.y,
-                    math.atan2(2.0 * oq.w * oq.z, 1.0 - 2.0 * oq.z * oq.z),
-                )
-            except Exception:  # noqa: BLE001
-                pass
+            odom_base = tfpose.lookup_pose(self.tf_buffer, "odom", "base_footprint")
             self.rd.on_map_odom(t, tr.transform.translation.x, tr.transform.translation.y, yaw, odom_base)
         except Exception:  # noqa: BLE001 - no transform yet is a normal state
             pass
@@ -277,16 +257,8 @@ class LocalizationMonitor(LeanNode):
 
     def _event(self) -> None:
         code = self.rd.code or "MODE_CHANGE"
-        row = alarms.get(code)
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source = "localization_monitor"
-        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
-        m.code = code
-        m.text = f"localisation {rd.NAMES[self.rd.state]}: {self.rd.reason}"
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._pub_event.publish(m)
+        text = f"localisation {rd.NAMES[self.rd.state]}: {self.rd.reason}"
+        self._pub_event.publish(self.build_event("localization_monitor", alarms.level(code), code, text))
 
     def _publish(self) -> None:
         t = self._now()
@@ -336,23 +308,7 @@ class LocalizationMonitor(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = LocalizationMonitor()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(LocalizationMonitor, args)
 
 
 if __name__ == "__main__":

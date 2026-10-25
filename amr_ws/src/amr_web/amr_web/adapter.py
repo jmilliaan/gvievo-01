@@ -18,7 +18,7 @@ import traceback
 from typing import Any
 
 import rclpy
-from agv_core import disk
+from agv_core import disk, paths, se2
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
@@ -32,7 +32,11 @@ from tf2_msgs.msg import TFMessage
 from tf2_ros import Buffer
 from visualization_msgs.msg import Marker, MarkerArray
 
+from amr_base.gating import LEASE_COMMISSIONING, LEASE_LINE, LEASE_MANUAL
 from amr_base.lean_node import LeanNode
+from amr_base.qos import EVENT_STREAM as RFID_QOS
+from amr_base.qos import LATCHED, RELIABLE_1
+from amr_base.wire import LINE_NAMES, LOC_NAMES, MAPPING_NAMES, MODE_NAMES, MUX_NAMES, OP_NAMES, RUN_NAMES
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -57,52 +61,16 @@ from amr_interfaces.srv import (
     RequestMode,
     RequestSurvey,
     RunMission,
-    SaveMap,
     SelectMission,
-    StartSurvey,
     SurveyMove,
 )
 from amr_web import live
-from amr_web.eventlog import EventLog
+from amr_web.eventlog import EventLog, EventRing
 
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
 SCAN_PERIOD_S = 0.1  # live-view scan projection rate cap (the page redraws at 5 Hz)
 MAP_ODOM_FRESH_S = 2.0  # newest map->odom stamp older than this: no layer is localising
-STATE_NAMES = {0: "IDLE", 1: "MAPPING", 2: "RETURN_REVIEW", 3: "SAVING", 4: "SAVED"}
-LOC_NAMES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
-RUN_NAMES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
-MODE_NAMES = {
-    0: "STARTING",
-    1: "IDLE",
-    2: "MAPPING",
-    3: "NAVIGATION",
-    4: "TRANSITIONING",
-    5: "FAULT",
-    6: "STOPPING",
-    7: "LINE",
-}
-OP_NAMES = {0: "PENDING", 1: "SUCCEEDED", 2: "FAILED", 3: "INTERRUPTED"}
-LINE_NAMES = {0: "IDLE", 1: "ARMED", 2: "RUNNING", 3: "HOLD", 4: "DONE", 5: "FAULT"}
-MUX_NAMES = {
-    0: "none",
-    1: "teleop",
-    2: "follow",
-    3: "rotate",
-    4: "manual",
-    5: "commissioning",
-    6: "pendant",
-    7: "line",
-}
 RFID_RECENT = 8  # tag passes the pages show
 # = rfid_node ENCOUNTERS: every pass is a message, none may be dropped behind a newer one.
-RFID_QOS = QoSProfile(
-    depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
 
 
 IPC_TEMP_PERIOD_S = 5.0  # sysfs is cheap, but a CPU temperature moves over tens of seconds
@@ -303,19 +271,15 @@ class RosAdapter(LeanNode):
         self._diag: dict[str, dict] = {}
         self._io: dict | None = None
         self._io_t = 0.0
-        self._events: list[dict] = []
-        self._event_n = 0
         # The ring survives a restart: every event is appended to disk, and the tail is
         # read back here at start so the Alarms history is not empty after a reboot.
-        state_dir = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
+        state_dir = paths.state_dir()
         self._state_dir = state_dir
-        self._maps_dir = os.environ.get("AMR_MAPS_DIR", os.path.expanduser("~/amr_maps"))
+        self._maps_dir = paths.maps_dir()
         self._disk_cache: dict | None = None
         self._disk_t = 0.0
-        self._log = EventLog(os.path.join(state_dir, "logs", "events.jsonl"))
-        for e in self._log.tail(300):
-            self._event_n += 1
-            self._events.append(dict(e, n=self._event_n, restored=True))
+        self._ring = EventRing(300, EventLog(os.path.join(state_dir, "logs", "events.jsonl")))
+        self._ring.restore()
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
@@ -363,10 +327,6 @@ class RosAdapter(LeanNode):
         self._preview = self.create_publisher(Path, "/amr/route_preview", LATCHED)
         self._markers = self.create_publisher(MarkerArray, "/amr/route_markers", LATCHED)
         self._srv = {
-            "survey_start": self.create_client(StartSurvey, "/amr/survey/start", callback_group=g),
-            "survey_returned": self.create_client(Trigger, "/amr/survey/returned", callback_group=g),
-            "survey_save": self.create_client(SaveMap, "/amr/survey/save", callback_group=g),
-            "survey_abort": self.create_client(Trigger, "/amr/survey/abort", callback_group=g),
             "survey_move": self.create_client(SurveyMove, "/amr/survey/move", callback_group=g),
             "survey_move_stop": self.create_client(Trigger, "/amr/survey/move_stop", callback_group=g),
             "loc_confirm": self.create_client(Trigger, "/amr/localization/confirm", callback_group=g),
@@ -415,7 +375,7 @@ class RosAdapter(LeanNode):
 
     def _on_mapping(self, m: MappingState) -> None:
         d = _msg_to_dict(m)
-        d["state_name"] = STATE_NAMES.get(m.state, str(m.state))
+        d["state_name"] = MAPPING_NAMES.get(m.state, str(m.state))
         with self._lock:
             self._mapping, self._mapping_t = d, self._now()
 
@@ -733,13 +693,7 @@ class RosAdapter(LeanNode):
             "text": m.text,
             "seq": int(m.seq),
         }
-        with self._lock:
-            self._event_n += 1
-            self._events.append(dict(e, n=self._event_n))
-            del self._events[:-300]
-        # Outside the lock: a slow disk must not stall the callback. Errors are forced
-        # to the platter (W4) - after a power cut they are the line you need.
-        self._log.append(e, sync=(e["level"] == "error"))
+        self._ring.add(e)  # the disk append runs outside the ring's lock; errors are synced (W4)
 
     def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None:
         """An event raised by the web itself (a page error, a give-up on a restart).
@@ -752,14 +706,10 @@ class RosAdapter(LeanNode):
             "text": text,
             "seq": 0,
         }
-        with self._lock:
-            self._event_n += 1
-            self._events.append(dict(e, n=self._event_n))
-            del self._events[:-300]
-        self._log.append(e, sync=(e["level"] == "error"))
+        self._ring.add(e)
 
     def event_log_files(self) -> list[str]:
-        return self._log.files()
+        return self._ring.files()
 
     def diagnostics(self) -> dict:
         now = self._now()
@@ -771,8 +721,7 @@ class RosAdapter(LeanNode):
             return dict(self._io, age_s=self._now() - self._io_t) if self._io else None
 
     def events(self, since: int = 0) -> list[dict]:
-        with self._lock:
-            return [e for e in self._events if e["n"] > since]
+        return self._ring.since(since)
 
     def supervisor_identity(self) -> tuple[str, int]:
         """(instance, generation) from the latest lease, or ("", 0) without a supervisor."""
@@ -788,11 +737,11 @@ class RosAdapter(LeanNode):
             lease, t, mode = self._lease, self._lease_t, self._mode
         if not lease or self._now() - t > 1.0:
             return False, "no supervisor lease"
-        if lease["allowed"] & 1:
+        if lease["allowed"] & LEASE_MANUAL:
             return True, ""
-        if lease["allowed"] & 4:
+        if lease["allowed"] & LEASE_COMMISSIONING:
             return False, "a commissioning job is held or running; clear it first"
-        if lease["allowed"] & 8:
+        if lease["allowed"] & LEASE_LINE:
             return False, "the line follower holds the vehicle; leave LINE mode to jog"
         return False, f"manual control withheld by the supervisor ({mode['mode_name'] if mode else '?'})"
 
@@ -990,20 +939,6 @@ class RosAdapter(LeanNode):
             return False, f"{self._srv[key].srv_name} unavailable"
         return bool(r.success), r.message
 
-    def survey_start(self, map_id: str, description: str) -> tuple[bool, str]:
-        r = self._call("survey_start", StartSurvey.Request(map_id=map_id, description=description))
-        return (False, "survey service unavailable") if r is None else (bool(r.accepted), r.message)
-
-    def survey_returned(self) -> tuple[bool, str]:
-        return self._trigger("survey_returned")
-
-    def survey_save(self, note: str) -> tuple[bool, str]:
-        r = self._call("survey_save", SaveMap.Request(note=note), timeout=60.0)
-        return (False, "survey service unavailable") if r is None else (bool(r.ok), r.message)
-
-    def survey_abort(self) -> tuple[bool, str]:
-        return self._trigger("survey_abort")
-
     def survey_move(self, kind: str, value: float) -> tuple[bool, str]:
         r = self._call("survey_move", SurveyMove.Request(kind=kind, value=float(value)), timeout=5.0)
         return (
@@ -1053,7 +988,7 @@ class RosAdapter(LeanNode):
         m.header.frame_id = "map"
         m.header.stamp = self.get_clock().now().to_msg()
         m.pose.pose.position.x, m.pose.pose.position.y = x, y
-        m.pose.pose.orientation.z, m.pose.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+        m.pose.pose.orientation.z, m.pose.pose.orientation.w = se2.quat_zw(yaw)
         m.pose.covariance[0] = m.pose.covariance[7] = 0.5**2
         m.pose.covariance[35] = math.radians(15.0) ** 2
         self._initialpose.publish(m)
@@ -1076,7 +1011,7 @@ class RosAdapter(LeanNode):
                     p = PoseStamped()
                     p.header = path.header
                     p.pose.position.x, p.pose.position.y = x, y
-                    p.pose.orientation.z, p.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+                    p.pose.orientation.z, p.pose.orientation.w = se2.quat_zw(yaw)
                     path.poses.append(p)
             else:
                 m = Marker()

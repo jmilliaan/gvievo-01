@@ -7,20 +7,13 @@ when finished; launch tests wait for that line.
 
 import math
 
-import rclpy
 from geometry_msgs.msg import Twist
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
-RELIABLE_1 = QoSProfile(
-    depth=1,
-    reliability=QoSReliabilityPolicy.RELIABLE,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import RELIABLE_1
 
 
-class SquareDrive(Node):
+class SquareDrive(LeanNode):
     def __init__(self) -> None:
         super().__init__("square_drive")
         self.declare_parameter("side_a_m", 4.0)
@@ -29,11 +22,6 @@ class SquareDrive(Node):
         self.declare_parameter("turn_rate_rad_s", 1.0)
         self.declare_parameter("settle_s", 1.0)
         self.declare_parameter("start_delay_s", 0.0)  # stillness for gyro-bias calibration
-        # Deliberate return error (spec §8 "modest return error"): the last
-        # straight is shortened and the last turn cut short, so the loop does
-        # not close exactly and a survey review has something real to report.
-        self.declare_parameter("closing_error_m", 0.0)
-        self.declare_parameter("closing_error_deg", 0.0)
         self.declare_parameter("rate_hz", 20.0)
         p = self.get_parameter
         v, w, settle = (
@@ -81,25 +69,7 @@ class SquareDrive(Node):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = SquareDrive()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        # launch sends SIGINT; the context may already be down by the time we
-        # get here, and destroy_node() then raises from the C layer.
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(SquareDrive, args)
 
 
 if __name__ == "__main__":

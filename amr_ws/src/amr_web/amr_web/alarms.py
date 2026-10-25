@@ -16,6 +16,8 @@ from typing import Any
 
 from agv_core import alarms as cat
 
+from amr_base import drive_state
+
 FRESH_S = 0.5  # panel / drives / mux samples older than this are not current
 # The scanner runs at 34 Hz. A gap this long is a dead link, not a late frame; the grace
 # period stops a page loaded during boot from accusing a scanner that is still starting.
@@ -29,6 +31,8 @@ STOPPED_NEEDS_YOU = "STOPPED (needs you)"
 STOPPED_WILL_RESUME = "STOPPED (will resume)"
 RUNNING = "RUNNING"
 READY = "READY"
+# A run that holds the vehicle: a restart or a mode swap waits for it (headline + restart).
+RUN_ACTIVE = ("READY", "EXECUTING", "PAUSED", "BLOCKED")
 
 
 def _drive_code(drives: dict | None) -> str | None:
@@ -40,7 +44,7 @@ def _drive_code(drives: dict | None) -> str | None:
     if "Fault" in states:
         return "DRIVE_FAULT"
     if not drives.get("operational"):
-        if "Switch on disabled" in states:
+        if drive_state.SWITCH_ON_DISABLED in states:
             return "SAFETY_RESET_NEEDED"
         return None  # disarmed on purpose (IDLE with no one asking to move) is not an alarm
     return None
@@ -162,7 +166,7 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         "level": top["level"] if top else "info",
         "button": cat.BUTTON.get(top["clears_by"], "") if top else "",
         "clears_by": top["clears_by"] if top else "",
-        "run_active": bool(run.get("state_name") in ("READY", "EXECUTING", "PAUSED", "BLOCKED")),
+        "run_active": bool(run.get("state_name") in RUN_ACTIVE),
     }
 
 

@@ -46,16 +46,8 @@ def survey(seconds, csv_path=None, out=sys.stdout):
     buf = b""
     try:
         while time.monotonic() - t0 < seconds:
-            try:
-                chunk = sock.recv(4096)
-            except TimeoutError:
-                continue
-            if not chunk:
-                raise ConnectionResetError("reader closed the connection")
-            buf += chunk
-            frames, used = dec.decode(buf)
-            buf = buf[used:]
-            for f in frames:
+            frames, buf = rfid.read_frames(sock, dec, buf)
+            for f in frames or ():
                 if f.cmd == rfid.CMD_GET_PARAMS:
                     params = rfid.parse_params(f) or params
                 elif f.cmd == rfid.CMD_DEVICE_INFO:
@@ -79,8 +71,7 @@ def survey(seconds, csv_path=None, out=sys.stdout):
         print(f"{'ch':>3} {'MHz':>8} {'reads':>6} {'min':>7} {'median':>7} {'max':>7}", file=out)
         for ch in sorted(by_ch):
             v = by_ch[ch]
-            mhz = (f"{params['start_mhz'] + ch * params['step_khz'] / 1000.0:8.3f}"
-                   if params else f"{'?':>8}")
+            mhz = f"{rfid.channel_mhz(params, ch):8.3f}" if params else f"{'?':>8}"
             print(f"{ch:>3} {mhz} {len(v):>6} {min(v):>7.1f} {statistics.median(v):>7.1f} "
                   f"{max(v):>7.1f}", file=out)
         if len(by_ch) == 1 and len(rows) >= 20:

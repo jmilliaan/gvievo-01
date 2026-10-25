@@ -7,7 +7,6 @@ import types
 from agv_core import disk
 
 from amr_bringup import mode_fsm as fsm
-from amr_bringup import readiness as rd
 from amr_bringup.supervisor_node import Supervisor
 
 
@@ -50,12 +49,6 @@ def test_an_unreadable_path_never_blocks_the_vehicle(monkeypatch):
     assert st.level == disk.UNKNOWN and not st.blocks_new_work  # reported, not a refusal (audit R19)
 
 
-def test_readiness_still_exposes_the_helper():
-    """The supervisor reads it through readiness; the web through agv_core directly."""
-    assert rd.disk_status is disk.status
-    assert (rd.DISK_OK, rd.DISK_WARN, rd.DISK_STOP) == (disk.OK, disk.WARN, disk.STOP)
-
-
 def sv():
     s = types.SimpleNamespace()
     s.state_dir, s.maps_dir = "/state", "/maps"
@@ -91,9 +84,10 @@ def survey_sv(level):
     s.mode = fsm.IDLE
     s.admit_params = None
     s._lock = __import__("threading").RLock()
-    s.book = types.SimpleNamespace(get=lambda _i: None, _by_request={})
+    s.book = types.SimpleNamespace(get=lambda _i: None, by_request=lambda _r: None)
     s._check_expected = lambda i, g: ""
     s._conditions = lambda: fsm.Conditions(now=1.0)
+    s._dedup_or_admit = types.MethodType(Supervisor._dedup_or_admit, s)
     s._srv_survey = types.MethodType(Supervisor._srv_survey, s)
     return s
 

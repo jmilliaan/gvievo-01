@@ -82,7 +82,7 @@ def test_seq_is_monotonic_and_a_new_generation_restarts_it():
 
 
 def test_drive_node_checks_exactly_what_the_bench_tool_writes():
-    from amr_base.drive_node import marker_expectation
+    marker_expectation = read_mls.marker_expectation
 
     written = {(i, s): v for i, s, _size, v, _label in read_mls.MARKER_SETTINGS}
     assert marker_expectation(False, True) == written

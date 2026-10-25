@@ -118,34 +118,3 @@ def _register_bits(reg):
 def decode_nmt(byte):
     """Heartbeat state byte -> name. Bit 7 is the toggle in node-guarding."""
     return NMT_STATES.get(byte & 0x7F, f"unknown (0x{byte:02X})")
-
-
-# -- statusword (6041h) -------------------------------------------------------
-# The CiA 402 state itself is decoded by bus_health.decode_state(). These are
-# the flag bits beside it, which cost nothing extra because 6041h is already
-# polled every telemetry pass.
-# *** Bit 5 (QS) is NOT in this list, deliberately. ***
-# can-monitoring-plan.txt says "bit 5 QS = quick stop active", which is
-# inverted. The manual groups bits 0-6 as the CiA 402 state machine, and the
-# state table bears that out: Operation enabled is 0x27 with bit 5 SET, Quick
-# stop active is 0x07 with bit 5 CLEAR. Read as an active-high flag it would
-# light permanently in normal running and go dark during an actual quick stop -
-# exactly backwards. bus_health.decode_state() already reports "Quick stop
-# active" correctly by matching the whole masked pattern, so there is nothing
-# to add here.
-SW_FLAGS = [
-    (3,  "FAULT", "error", "alarm active"),
-    (7,  "WARN", "warn", "warning or alarm occurred"),
-    (11, "ILA", "warn",
-     "internal limit active - a software limit, FW/RV-LS, FW/RV-BLK, STOP, "
-     "QSTOP or CLR is asserted. This is how the FX3 quick stop becomes "
-     "visible over CAN."),
-]
-
-
-def decode_statusword_flags(sw):
-    """Statusword -> the flag bits that are set, most significant first."""
-    if sw is None:
-        return []
-    return [{"bit": bit, "name": name, "level": level, "note": note}
-            for bit, name, level, note in SW_FLAGS if sw & (1 << bit)]

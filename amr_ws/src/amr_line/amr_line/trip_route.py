@@ -14,14 +14,14 @@ compile_trip(trip, mission, graph) -> TripRoute. The circuit's legs end to end, 
                pivot leaves the AGV on the same floor point, now on the return leg
     events     what the engine (amr_line.site_run) acts on, sorted by S: stop, order (armed at
                S_fork - junction_lead_m, never before the previous node is passed), uturn
-    zones      [(S_a, S_b, id)]: HIGH between two taught points (site D19)
+    zones      [(S_a, S_b, id)]: HIGH where the route runs inside a high-speed AREA drawn on
+               the map (site D19, 2026-10-25: areas, not point pairs; area_ranges())
 
 Positions are vehicle data, so the checks that need them are here, not in the mission loader:
 a U-turn point before its machine's release, a take-back stop before the U-turn point's return,
-a zone end before its start. Each is a RouteError naming the station; the layer refuses the trip.
+Each is a RouteError naming the station; the layer refuses the trip.
 """
 
-import bisect
 import itertools
 
 from amr_line import tape_graph as tg
@@ -30,60 +30,104 @@ from amr_line import tape_graph as tg
 RETURN_MAX_LATERAL_M = 0.15
 # An order needs this much tape between the previous node and its fork to be armed in.
 MIN_ARM_M = 0.05
+# A route is tested against the high-speed areas every AREA_STEP_M; a stretch inside one
+# shorter than AREA_MIN_M (an area's corner clipping a curve) is no zone.
+AREA_STEP_M = 0.05
+AREA_MIN_M = 1.0
 
 _ids = itertools.count(1)
 
 
-class TripRoute:
-    """The locator's route (same surface as tape_graph.Route) plus the trip's events."""
+class TripRoute(tg.Route):
+    """The locator's route (tape_graph.Route, legs cut at a mid-line U-turn) plus the trip's events.
+    stops: [{"id", "S", "role", "work"}], HOME first and last."""
 
     def __init__(self, circuit, segments, stops, nodes, uturn, zones, events, notes, label):
-        self.circuit = circuit
-        self.segments = segments                    # [(S0, leg, lo, hi)]: S = S0 + (s - lo)
-        self._starts = [seg[0] for seg in segments]
-        self.stops = stops                          # [{"id", "S", "role", "work"}], HOME first and last
-        self.nodes = nodes
+        super().__init__(circuit, segments, stops, nodes)
         self.uturn = uturn                          # {"id", "mode", "direction", "S", ...} or None
         self.zones = zones                          # [(S_a, S_b, id)]
         self.events = events
         self.notes = notes
         self.label = label
         self.ident = f"{label}#{next(_ids)}"        # the locator must be on THIS route
-        self.S_start = stops[0]["S"]
-        self.S_end = stops[-1]["S"]
 
-    @property
-    def length(self):
-        s0, _leg, lo, hi = self.segments[-1]
-        return s0 + hi - lo
 
-    def at(self, S):
-        """(index, leg, s on the leg) of the segment holding S (clamped to the route)."""
-        i = min(max(bisect.bisect_right(self._starts, S) - 1, 0), len(self.segments) - 1)
-        s0, leg, lo, hi = self.segments[i]
-        return i, leg, min(max(lo + S - s0, lo), hi)
+def inside(poly, x, y):
+    """Is (x, y) inside the polygon [[x, y], ...]? (even-odd ray test)"""
+    hit, n = False, len(poly)
+    for k in range(n):
+        (x0, y0), (x1, y1) = poly[k], poly[(k + 1) % n]
+        if (y0 > y) != (y1 > y) and x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
+            hit = not hit
+    return hit
 
-    def point(self, S):
-        _, leg, s = self.at(S)
-        return leg.line.point(s)
 
-    def project(self, x, y, S_lo, S_hi, hint=None):
-        """Nearest route point with S in [S_lo, S_hi] -> (S, d) or None (tape_graph.Route.project)."""
-        hits = []
-        for s0, leg, lo, hi in self.segments:
-            if s0 > S_hi or s0 + hi - lo < S_lo:
-                continue
-            a, b = max(lo, lo + S_lo - s0), min(hi, lo + S_hi - s0)
-            hits += [(s0 + s - lo, d, dist) for s, d, dist in leg.line._candidates(x, y, a, b)]
-        return tg._pick(hits, hint)
+def area_ranges(segments, areas, step=AREA_STEP_M, min_len=AREA_MIN_M):
+    """[(S_a, S_b, area id)] where the route's segments [(S0, leg, lo, hi)] run inside the
+    high-speed areas {id: {"polygon": [[x, y], ...]}}, sorted. Contiguous across segments."""
+    out = []
+    for aid, area in sorted(areas.items()):
+        poly = area["polygon"]
+        run = None                              # [S_a, S_b] of the stretch being followed
+        for s0, leg, lo, hi in segments:
+            n = max(1, int((hi - lo) / step))
+            for k in range(n + 1):
+                s = lo + (hi - lo) * k / n
+                S = s0 + s - lo
+                x, y, _h = leg.line.point(s)
+                if inside(poly, x, y):
+                    if run is None:
+                        run = [S, S]
+                    run[1] = S
+                elif run is not None:
+                    if run[1] - run[0] >= min_len:
+                        out.append((run[0], run[1], aid))
+                    run = None
+        if run is not None and run[1] - run[0] >= min_len:
+            out.append((run[0], run[1], aid))
+    return sorted(out)
 
-    def stop(self, ident):
-        return next((s for s in self.stops if s["id"] == ident), None)
 
-    def where(self, S):
-        """'<leg> at <s> m' for messages."""
-        _, leg, s = self.at(S)
-        return f"{leg.id} at {s:.2f} m"
+def side_at(node, steers):
+    """The side to arm before a junction node: its order at a diverge, the circuit's "steer" at a
+    merge (mission site-4), "" for none (straight on, a crossing, an unsteered merge)."""
+    if node["kind"] != "junction":
+        return ""
+    if node["order"] in ("left", "right"):
+        return node["order"]
+    return steers.get(f"{node['id']}:{node['order']}", "")
+
+
+def decision_points(stops, nodes, junction_lead_m, steers=None, turns=(), check=True):
+    """What the engine (site_run) acts on, sorted by S: a stop at each stop after the first, an
+    order armed at S_fork - junction_lead_m but never before the previous node is passed, and the
+    U-turn(s). `check`: refuse an order with no tape to arm it in (RouteError); the Shadow logs
+    instead of refusing, so it passes False."""
+    events = [{"kind": "stop", **s} for s in stops[1:]]
+    prev_S = stops[0]["S"]
+    for n in nodes:
+        side = side_at(n, steers or {})
+        if side:
+            arm = max(n["S_fork"] - junction_lead_m, prev_S)
+            if check and arm > n["S_fork"] - MIN_ARM_M:
+                raise tg.RouteError(f"{n['id']}: no tape to arm its order in between the previous node "
+                                    f"and its fork ({n['S_fork'] - prev_S:.2f} m)")
+            events.append({"kind": "order", "id": n["id"], "order": side, "S": arm,
+                           "S_fork": n["S_fork"], "S_node": n["S"]})
+        prev_S = n["S"]
+    events += [{"kind": "uturn", **t} for t in turns]
+    events.sort(key=lambda e: e["S"])
+    return events
+
+
+def trigger_S(e, stop_distance_m):
+    """Where the engine acts on event `e`: an order at its arm point, a tape-end U-turn its lead
+    before the tape end, a stop (or a mid-line U-turn, which stops first) the stop distance before."""
+    if e["kind"] == "order":
+        return e["S"]
+    if e["kind"] == "uturn" and e["mode"] == "tapeend":
+        return e["S"] - e["lead_m"]
+    return e["S"] - stop_distance_m
 
 
 def _fits(seg, st):
@@ -91,14 +135,11 @@ def _fits(seg, st):
     return leg.id == st.leg and lo - 1e-6 <= st.s <= hi + 1e-6
 
 
-def compile_trip(trip, mission, graph, junction_lead_m=1.0):
-    """A trip.Trip + its site mission + the active graph -> TripRoute (RouteError when not drivable)."""
+def compile_trip(trip, mission, graph, junction_lead_m=1.0, areas=None):
+    """A trip.Trip + its site mission + the active graph (+ the map revision's high-speed areas)
+    -> TripRoute (RouteError when not drivable)."""
     circuit = mission["CIRCUITS"][trip.circuit]
-    specs = circuit["legs"]                         # home leg last
-    order = [specs[-1]] + specs[:-1] + [specs[-1]]
-    missing = sorted({leg["id"] for leg in specs if leg["id"] not in graph.legs})
-    if missing:
-        raise tg.RouteError(f"{trip.circuit} not taught: {', '.join(missing)}")
+    order = tg._circuit_order(trip.circuit, circuit, graph)
     plan = [{"id": mission["HOME"], "role": "start", "work": []}] + [dict(p) for p in trip.plan]
     untaught = [p["id"] for p in plan if p["id"] not in graph.stations]
     u = trip.uturn()
@@ -172,11 +213,7 @@ def compile_trip(trip, mission, graph, junction_lead_m=1.0):
                           "sigma": tg.MIN_END_SPREAD_M, "leg_in": prev.id, "leg_out": leg.id,
                           "fork": False, "mirror": True})
             continue
-        kind = "uturn" if prev.end_kind == "uturn" else "junction"
-        nodes.append({"id": leg.frm, "kind": kind, "order": leg.order, "S": s0,
-                      "S_fork": s0 - prev.fork_back_m if prev.end_kind == "fork" else s0,
-                      "sigma": max(prev.end_spread_m, tg.MIN_END_SPREAD_M), "leg_in": prev.id,
-                      "leg_out": leg.id, "fork": prev.end_kind == "fork"})
+        nodes.append(tg._node(prev, leg, s0))
 
     # -- the U-turn -------------------------------------------------------------------------
     turn = None
@@ -189,44 +226,11 @@ def compile_trip(trip, mission, graph, junction_lead_m=1.0):
             turn.update(mission["UTURNS"][u["id"]])
 
     # -- events -----------------------------------------------------------------------------
-    events = [{"kind": "stop", **s} for s in stops[1:]]
-    prev_S = stops[0]["S"]
-    for n in nodes:
-        if n["kind"] == "junction" and n["order"] in ("left", "right"):
-            arm = max(n["S_fork"] - junction_lead_m, prev_S)
-            if arm > n["S_fork"] - MIN_ARM_M:
-                raise tg.RouteError(f"{n['id']}: no tape to arm its order in between the previous node "
-                                    f"and its fork ({n['S_fork'] - prev_S:.2f} m)")
-            events.append({"kind": "order", "id": n["id"], "order": n["order"], "S": arm,
-                           "S_fork": n["S_fork"], "S_node": n["S"]})
-        prev_S = n["S"]
-    if turn is not None:
-        events.append({"kind": "uturn", **turn})
-    events.sort(key=lambda e: e["S"])
+    events = decision_points(stops, nodes, junction_lead_m, circuit.get("steers", {}),
+                             [turn] if turn is not None else [])
 
-    # -- zones ------------------------------------------------------------------------------
-    zones, notes = [], []
-    for zid, z in mission["ZONES"].items():
-        ends = [graph.stations.get(z["from"]), graph.stations.get(z["to"])]
-        if None in ends:
-            gone = [p for p, st in zip((z["from"], z["to"]), ends, strict=True) if st is None]
-            notes.append(f"zone {zid}: {', '.join(gone)} not taught - NORMAL there")
-            continue
-        at = [[seg[0] + st.s - seg[2] for seg in segments if _fits(seg, st)] for st in ends]
-        if not at[0] and not at[1]:
-            continue                                # another circuit's zone
-        pairs = []
-        for a in at[0]:
-            b = min((b for b in at[1] if b > a), default=None)
-            if b is not None and not any(a < a2 < b for a2 in at[0]):
-                pairs.append((a, b, zid))
-        if not pairs:
-            if at[0] and at[1]:
-                raise tg.RouteError(f"zone {zid}: its end {z['to']} is not after its start {z['from']} "
-                                    f"on trip {trip.describe()}")
-            notes.append(f"zone {zid}: one end is beyond this trip's U-turn - NORMAL there")
-            continue
-        zones += pairs
-    zones.sort()
+    # -- high-speed areas ---------------------------------------------------------------------
+    zones = area_ranges(segments, areas or {})
+    notes = []
     label = f"{trip.group}:{'+'.join(trip.machines)}"
     return TripRoute(trip.circuit, segments, stops, nodes, turn, zones, events, notes, label)

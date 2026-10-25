@@ -288,6 +288,44 @@ def place_mark(graph, x, y, yaw, ahead_m=0.0):
     return leg.id, s2, d, leg.line.point(s2), over
 
 
+def offset_mark(graph, ref_leg, x, y, offset_m, same=False):
+    """A point on the OTHER direction's leg through (x, y) - the inbound tape past an outbound
+    mark - offset_m along that leg's travel (+ = the way the AGV drives there). same: along the
+    reference mark's own leg instead (a U-turn point past a release, 2026-10-25).
+    -> (leg id, s, (x, y, heading)). TeachError when no such leg, or the offset runs off it."""
+    ref = graph.legs.get(ref_leg)
+    if ref is None:
+        raise TeachError(f"leg {ref_leg} is not in the graph")
+    s_ref = ref.line.project(x, y)
+    h_ref = ref.line.point(s_ref[0])[2] if s_ref else 0.0
+    if same:
+        s2 = s_ref[0] + offset_m
+        if not 0.0 <= s2 <= ref.line.length:
+            raise TeachError(f"{offset_m:+.2f} m runs off {ref.id} ({s_ref[0]:.2f} m along, "
+                             f"{ref.line.length:.2f} m long)")
+        return ref.id, s2, ref.line.point(s2)
+    best = None
+    for leg in graph.legs.values():
+        if leg.id == ref_leg:
+            continue
+        hit = leg.line.project(x, y)
+        if hit is None or abs(hit[1]) > MARK_MAX_LATERAL_M:
+            continue
+        h = leg.line.point(hit[0])[2]
+        if math.degrees(tg.heading_error(h, h_ref)) < 180.0 - MARK_MAX_YAW_DEG:
+            continue                            # not the way back along the same tape
+        if best is None or abs(hit[1]) < abs(best[1][1]):
+            best = (leg, hit)
+    if best is None:
+        raise TeachError(f"no tape the other way through ({x:.2f}, {y:.2f}) (within {MARK_MAX_LATERAL_M} m)")
+    leg, (s, _d) = best
+    s2 = s + offset_m
+    if not 0.0 <= s2 <= leg.line.length:
+        raise TeachError(f"{offset_m:+.2f} m runs off {leg.id} ({s:.2f} m along, "
+                         f"{leg.line.length:.2f} m long)")
+    return leg.id, s2, leg.line.point(s2)
+
+
 def mean_leg(ident, frm, order, to, segs, fork_backs, end_kind):
     """Average a leg over its passes -> tape_graph.Leg."""
     lines = [tg.Polyline(tg.resample(p)) for p in segs if len(p) >= 2]
@@ -378,14 +416,8 @@ def project_station(graph, mission, sid, pose, taught="", samples=0):
     """A station's taught pose -> tape_graph.Station on its leg (GraphError if not there).
 
     A site-4 point (tracked plan 4) is taught the same way: a U-turn point on its machine's
-    release leg; a zone end on whichever leg it lies on and faces along (place_mark)."""
-    points = mission.get("POINTS", {})
-    lid = mission["STATIONS"].get(sid) or points.get(sid)
-    if lid is None and sid in points:
-        try:
-            lid = place_mark(graph, *pose)[0]
-        except TeachError as e:
-            raise tg.GraphError(f"{sid}: {e}") from None
+    release leg."""
+    lid = mission["STATIONS"].get(sid) or mission.get("POINTS", {}).get(sid)
     if lid is None:
         raise tg.GraphError(f"{sid} is not a station or point of {mission['MISSION_NAME']}")
     leg = graph.legs.get(lid)

@@ -24,6 +24,9 @@ import time
 from dataclasses import dataclass
 
 from agv_core.drivers.canbus import read_imu  # repo module
+from agv_core.drivers.canbus.cia301 import COB_MASK
+
+from amr_base.mls_track import SdoProbe
 
 OBJ_GYRO_Z = (read_imu.OBJ_GYRO, 3)
 OBJ_STAMP = read_imu.OBJ_STAMP
@@ -84,7 +87,7 @@ def decode_mapped(data: bytes, mapping: list[MapEntry]) -> dict[tuple[int, int],
 
 
 def gyro_z_rad_s(raw16: int, sign: float = 1.0) -> float:
-    return read_imu.s16(raw16 & 0xFFFF) * read_imu.GYRO_LSB_DPS * DPS_TO_RAD_S * sign
+    return read_imu.gyro_dps(raw16 & 0xFFFF) * DPS_TO_RAD_S * sign
 
 
 class StampTracker:
@@ -149,23 +152,21 @@ class MlsImu:
         self.cob_id: int | None = None
         self.tracker = StampTracker()
         self.samples = 0
-        self.misses = 0
+        self._sdo = SdoProbe()
         self.rejected = 0  # malformed TPDO payloads (F04)
         self.last_reject = ""
         self.restarts = 0  # rediscoveries after an absent start (F08)
         self._rediscover_at: float | None = None
         self._next_poll = 0.0
         self._polls = 0
-        self._consecutive = 0
 
-    # One late reply (a busy bus) is retried at the next poll; only a sensor
-    # that keeps not answering is backed off.
-    MISSES_BEFORE_BACKOFF = 5
-    # A sensor that did not answer at start is probed again this often, with
-    # one short SDO timeout per probe, so a late-booting MLS is picked up
-    # without restarting the bus owner and without starving its loop.
-    REDISCOVER_S = 5.0
-    PROBE_TIMEOUT_S = 0.05
+    # Retry, backoff and rediscovery: SdoProbe's, shared with the track reader.
+    REDISCOVER_S = SdoProbe.REDISCOVER_S
+    PROBE_TIMEOUT_S = SdoProbe.PROBE_TIMEOUT_S
+
+    @property
+    def misses(self) -> int:
+        return self._sdo.misses
 
     # -- start --
 
@@ -182,7 +183,7 @@ class MlsImu:
         if enabled == 0:
             self.log("MLS 2006h:02 MEMS = 0: the IMU is disabled in the sensor configuration")
         raw = self.link.read(self.node, TPDO_GYRO_COMM, 1)
-        cob = None if raw is None else raw & 0x7FF
+        cob = None if raw is None else raw & COB_MASK
         if raw is not None and not (raw & read_imu.COB_DISABLED) and cob:
             count = self.link.read(self.node, TPDO_GYRO_MAP, 0) or 0
             entries = [self.link.read(self.node, TPDO_GYRO_MAP, i) or 0 for i in range(1, count + 1)]
@@ -243,12 +244,11 @@ class MlsImu:
         self._next_poll = now + self.poll_period
         raw = self.link.read(self.node, *OBJ_GYRO_Z, timeout=0.05)
         if raw is None:
-            self.misses += 1
-            self._consecutive += 1
-            if self._consecutive >= self.MISSES_BEFORE_BACKOFF:
-                self._next_poll = now + 2.0  # an absent sensor costs one short timeout every 2 s
+            backoff = self._sdo.miss(now)
+            if backoff is not None:
+                self._next_poll = backoff
             return
-        self._consecutive = 0
+        self._sdo.hit()
         t = time.monotonic()
         stamp = None
         self._polls += 1

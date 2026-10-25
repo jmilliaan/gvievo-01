@@ -27,14 +27,19 @@ from typing import Any, Protocol
 
 import numpy as np
 from agv_core import alarms as catalogue
+from agv_core import paths
+from amr_navigation.compiler import MIN_LENGTH_M
 from amr_navigation.route import VEHICLE_V_MAX, Route, RouteError
 from amr_navigation.validate import load_dynamic, load_keepout, validate
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
 
+from amr_base.wire import MODE_IDLE, MODE_LINE, MODE_NAVIGATION, SURVEY_OPS
 from amr_maps import edit as mapedit
 from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
+from amr_mission import survey_move as survey_movemod
 from amr_navigation import footprint as fpmod
+from amr_navigation import route as routemod
 from amr_navigation import store
 from amr_web import alarms as alarmview
 from amr_web import demo as demomod
@@ -42,18 +47,11 @@ from amr_web import jog, netcheck, reports, tapegraph_view, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
 
-MODE_IDLE, MODE_NAVIGATION, MODE_LINE = 1, 3, 7
-SURVEY_OPS = {"start": 0, "returned": 1, "save": 2, "abort": 3}
-
 
 class Adapter(Protocol):
     """What the pages need from ROS. `amr_web.adapter.RosAdapter` implements it."""
 
     def state(self) -> dict[str, Any]: ...
-    def survey_start(self, map_id: str, description: str) -> tuple[bool, str]: ...
-    def survey_returned(self) -> tuple[bool, str]: ...
-    def survey_save(self, note: str) -> tuple[bool, str]: ...
-    def survey_abort(self) -> tuple[bool, str]: ...
     def survey_move(self, kind: str, value: float) -> tuple[bool, str]: ...
     def survey_move_stop(self) -> tuple[bool, str]: ...
     def localization_confirm(self) -> tuple[bool, str]: ...
@@ -89,6 +87,18 @@ class Adapter(Protocol):
     def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]: ...
     # trips (tracked plan 4): calls and confirmations form and record; they move nothing
     def line_trip(self, action: str, arg: str = "") -> tuple[bool, str]: ...
+
+
+# The route editor's geometry bounds (editor.js), rendered from the code that enforces them.
+_ROUTE_BOUNDS = {
+    "min_straight_m": MIN_LENGTH_M,
+    "reverse_max_m": routemod.REVERSE_MAX_M,
+    "arc_min_r": routemod.ARC_MIN_RADIUS_M,
+    "arc_min_deg": routemod.ARC_MIN_DEG,
+    "arc_max_deg": routemod.ARC_MAX_DEG,
+    "arc_yaw_rate_ratio": routemod.ARC_YAW_RATE_RATIO,
+    "vehicle_arc_w_max": routemod.VEHICLE_ARC_W_MAX,
+}
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -137,7 +147,7 @@ def _op_kind(op) -> str:
 
 def _continuable(m) -> bool:
     """A survey can continue only a revision that carries slam_toolbox's saved pose graph."""
-    return all(f in (m.files or {}) for f in ("posegraph.posegraph", "posegraph.data"))
+    return not mb.missing_posegraph(m)
 
 
 def _edits_summary(e: dict | None) -> dict | None:
@@ -163,12 +173,13 @@ def create_app(
     maps_dir: str,
     footprint_path: str | None = None,
     wifi_iface: str = "wlp1s0",
-    state_dir: str = "~/.amr",
+    state_dir: str | None = None,  # None: agv_core.paths
     internet_probe: netcheck.InternetProbe | None = None,
     product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
+    state_dir = state_dir or paths.state_dir()
     app.config["STATE_DIR"] = os.path.expanduser(state_dir)
     # Session cookie carries the role only. The PIN never leaves the server.
     app.secret_key = rolemod.secret(state_dir)
@@ -196,7 +207,7 @@ def create_app(
             _extras[key] = {
                 "keepout": load_keepout(rev_dir),
                 "dynamic": dyn,
-                "dynamic_cells": int((dyn.data >= 65).sum()) if dyn is not None else 0,
+                "dynamic_cells": int(gridio.occupied(dyn).sum()) if dyn is not None else 0,
                 "edits": mb.load_edits(rev_dir),
             }
         return _extras[key]
@@ -212,7 +223,7 @@ def create_app(
         try:
             from agv_core import config  # noqa: PLC0415
 
-            return {True: "tape", False: "slam"}.get(config.TRACKED, "both")
+            return config.product()
         except Exception:  # noqa: BLE001
             return "both"
 
@@ -227,7 +238,15 @@ def create_app(
         tabs or the engineer's ten without a second request - and the product, so a
         tab for the other product is not offered at all."""
         return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER,
-                "product": product, "tracked_ok": tracked_ok, "trackless_ok": trackless_ok}
+                "product": product, "tracked_ok": tracked_ok, "trackless_ok": trackless_ok,
+                "fresh_s": alarmview.FRESH_S, "jog_consts": jog.page_constants()}
+
+    def _engineer_only(what: str):
+        """A 403 for the operator role ("<what> the engineer view (PIN)"), None for the engineer.
+        Checked before the body is read, so a refusal never depends on what was sent."""
+        if _role() != rolemod.ENGINEER:
+            return _result(False, f"{what} the engineer view (PIN)", 403)
+        return None
 
     def _need(ok: bool):
         """A page or API of the other product is 404, not hidden (dual-product plan Inc. 4)."""
@@ -291,12 +310,14 @@ def create_app(
     @app.get("/maps")
     def page_maps():
         _need(trackless_ok)
-        return render_template("maps.html", page="run", sub="maps")
+        return render_template("maps.html", page="run", sub="maps",
+                               rotate_steps=survey_movemod.ROTATE_STEPS_DEG)
 
     @app.get("/editor")
     def page_editor():
         _need(trackless_ok)
-        return render_template("editor.html", page="run", sub="editor", trackless_v=VEHICLE_V_MAX)
+        return render_template("editor.html", page="run", sub="editor", trackless_v=VEHICLE_V_MAX,
+                               route_bounds=_ROUTE_BOUNDS)
 
     @app.get("/review")
     def page_review():
@@ -328,6 +349,29 @@ def create_app(
     def page_guide():
         _need(tracked_ok)
         return render_template("guide.html", page="guide")
+
+    @app.get("/tape-areas")
+    def page_tape_areas():
+        """High-speed areas drawn on the teaching map (tracked plan 4, 2026-10-25). Engineer."""
+        _need(tracked_ok)
+        return render_template("tape_areas.html", page="teach")
+
+    @app.post("/api/line/areas")
+    def api_line_areas():
+        """Save {"id", "polygon": [[x, y], ...]} or delete {"id", "delete": true} one area. Files
+        only: a trip reads them at its Start. Engineer."""
+        _need(tracked_ok)
+        denied = _engineer_only("high-speed areas need")
+        if denied:
+            return denied
+        d, err = _body()
+        if err:
+            return err
+        if d.get("delete") is True:
+            ok, msg = tapegraph_view.save_area(app.config["STATE_DIR"], d.get("id"), None)
+        else:
+            ok, msg = tapegraph_view.save_area(app.config["STATE_DIR"], d.get("id"), d.get("polygon"))
+        return _result(ok, msg, 422)
 
     @app.get("/calls")
     def page_calls():
@@ -396,19 +440,15 @@ def create_app(
         _need(tracked_ok)
         from agv_core import mission as missions  # noqa: PLC0415
 
+        live = False
         try:
             from agv_core import config  # noqa: PLC0415
 
             name = config.TAPE_LOC_SITE_MISSION       # the one the line layer teaches and shadows
+            live = bool(getattr(config, "TAPE_LOC_LIVE", False))
         except Exception:  # noqa: BLE001 - a dev box without a profile
             names = missions.list_site_missions()
             name = names[0] if names else ""
-        try:
-            from agv_core import config  # noqa: PLC0415
-
-            live = bool(config.TAPE_LOC_LIVE)
-        except Exception:  # noqa: BLE001 - a dev box without a profile
-            live = False
         try:
             m = missions.load_site(name)
         except missions.MissionError as e:
@@ -438,8 +478,9 @@ def create_app(
     @app.post("/api/line/branch")
     def api_line_branch():
         _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "branch orders need the engineer view (PIN)", 403)
+        denied = _engineer_only("branch orders need")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
@@ -453,8 +494,9 @@ def create_app(
     @app.post("/api/line/speed")
     def api_line_speed():
         _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "the speed toggle needs the engineer view (PIN)", 403)
+        denied = _engineer_only("the speed toggle needs")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
@@ -468,8 +510,9 @@ def create_app(
     @app.post("/api/line/uturn")
     def api_line_uturn():
         _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "the forced U-turn needs the engineer view (PIN)", 403)
+        denied = _engineer_only("the forced U-turn needs")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
@@ -482,8 +525,9 @@ def create_app(
     @app.post("/api/line/continue")
     def api_line_continue():
         _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "continuing a run needs the engineer view (PIN)", 403)
+        denied = _engineer_only("continuing a run needs")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
@@ -495,8 +539,9 @@ def create_app(
     @app.post("/api/line/teach")
     def api_line_teach():
         _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "teaching needs the engineer view (PIN)", 403)
+        denied = _engineer_only("teaching needs")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
@@ -624,10 +669,7 @@ def create_app(
                 "map_id": map_id,
                 "revision": rev,
                 "sha256": m.sha256,
-                "width": g.width,
-                "height": g.height,
-                "resolution": g.meta.resolution,
-                "origin": [g.meta.origin_x, g.meta.origin_y, g.meta.origin_yaw],
+                **gridio.meta_dict(g),
                 "start": m.start,
                 "routes": store.list_routes(app.config["MAPS_DIR"], map_id),
                 "dynamic_cells": ex["dynamic_cells"],
@@ -643,10 +685,7 @@ def create_app(
             _, g = bundle(map_id, rev)
         except mb.BundleError as e:
             return _result(False, str(e), 404)
-        img = np.full(g.data.shape, 205, dtype=np.uint8)
-        img[g.data == 0] = 254
-        img[g.data >= 65] = 0
-        png = encode_gray(np.flipud(img))  # row 0 = bottom in the grid, top in the image
+        png = encode_gray(np.flipud(gridio.trinary_image(g)))  # row 0 = bottom in the grid, top in the image
         return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/maps/<map_id>/<int:rev>/dynamic.png")
@@ -658,7 +697,7 @@ def create_app(
             return _result(False, str(e), 404)
         if dyn is None:
             return _result(False, "this revision has no dynamic areas", 404)
-        img = np.where(dyn.data >= 65, 255, 0).astype(np.uint8)
+        img = np.where(gridio.occupied(dyn), 255, 0).astype(np.uint8)
         png = encode_gray(np.flipud(img))
         return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
 
@@ -1170,7 +1209,7 @@ def create_app(
         if moving:
             return _result(False, "the wheels are turning; stop the vehicle first", 409)
         run_state = (st.get("run") or {}).get("state_name")
-        if run_state in ("READY", "EXECUTING", "PAUSED", "BLOCKED"):
+        if run_state in alarmview.RUN_ACTIVE:
             return _result(False, f"a run is {run_state}; abort it first", 409)
         cmd = ["sudo", "-n", "systemctl", "restart", "amr.service"]
         try:

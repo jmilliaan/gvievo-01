@@ -43,6 +43,14 @@ const ctx = {
   fillMapSelect: async sel => { sel.appendChild({ value: 'm1/1', textContent: 'm1 rev1' }); },
 };
 vm.createContext(ctx);
+ctx.$ = id => ctx.document.getElementById(id);  // amr.js's global, which the page relies on
+// mapview.js's plain helpers, from the real file in a context of their own (the harness keeps its fake MapView)
+{
+  const mv = { document: { documentElement: {} }, getComputedStyle: () => ({ getPropertyValue: () => '', fontSize: '10px' }), Math };
+  vm.createContext(mv);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'amr_web', 'static', 'mapview.js'), 'utf8'), mv);
+  for (const k of ['arcCentre', 'arcPose', 'viewIsActive']) ctx[k] = mv[k];
+}
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'amr_web', 'static', 'run.js'), 'utf8'), ctx);
 const flush = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
 const preview = () => vm.runInContext('preview && preview.route', ctx);

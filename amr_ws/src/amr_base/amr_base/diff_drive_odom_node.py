@@ -16,31 +16,23 @@ covariance is informational.
 
 import math
 
-import rclpy
-from agv_core import config
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from tf2_ros import TransformBroadcaster
 
-from amr_base.diff_drive import Geometry, OdomState, forward, integrate
-from amr_base.lean_node import LeanNode
+from amr_base.diff_drive import Geometry, OdomState, forward, integrate, profile_geometry
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
 from amr_interfaces.msg import WheelStates
 
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
 BIG = 1e6
 
 
 class DiffDriveOdom(LeanNode):
     def __init__(self) -> None:
         super().__init__("diff_drive_odom")
-        self.declare_parameter("wheel_radius_m", config.WHEEL_DIA_M / 2.0)
-        self.declare_parameter("track_width_m", config.TRACK_M)
+        self.declare_parameter("wheel_radius_m", profile_geometry().wheel_radius_m)
+        self.declare_parameter("track_width_m", profile_geometry().track_width_m)
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("publish_tf", False)
@@ -133,25 +125,7 @@ def _diag(*vals: float) -> list[float]:
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = DiffDriveOdom()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        # launch sends SIGINT; the context may already be down by the time we
-        # get here, and destroy_node() then raises from the C layer.
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(DiffDriveOdom, args)
 
 
 if __name__ == "__main__":

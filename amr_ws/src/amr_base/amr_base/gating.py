@@ -556,6 +556,25 @@ def nav_topic(base: str, generation: int) -> str:
     return base if generation == 0 else f"/amr/layers/g{generation}{base}"
 
 
+def lease_stale(cur, instance: str, generation: int, seq: int, monotonic_generation: bool = False) -> bool:
+    """True when an incoming ControlLease must be dropped as a replay or a reorder.
+
+    `cur` is the stored lease (anything with .instance, .generation, .seq) or None.
+    Within one supervisor instance and generation, seq must increase: a stale sample
+    can never extend a lease. A new instance or generation is accepted as is, because
+    the supervisor restarting or swapping a layer is how authority legitimately moves.
+    monotonic_generation=True (the line follower, commissioning) also drops an OLDER
+    generation of the same instance: a reordered lease never moves authority back to
+    a layer that is gone. The drive owner and the mux accept any generation change and
+    clear their caches on it instead. Pure; the caller keeps its clock and its lock.
+    """
+    if cur is None or cur.instance != instance:
+        return False
+    if monotonic_generation and int(generation) < int(cur.generation):
+        return True
+    return int(generation) == int(cur.generation) and int(seq) <= int(cur.seq)
+
+
 def drive_gate(
     now: float,
     lease: Lease | None,

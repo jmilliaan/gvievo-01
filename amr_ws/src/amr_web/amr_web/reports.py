@@ -19,6 +19,8 @@ import threading
 import time
 import zipfile
 
+from agv_core import fsutil
+
 DIRNAME = "reports"
 KEEP = 20
 JOURNAL_SINCE = "-2h"
@@ -62,6 +64,19 @@ _NAME_LOCK = threading.Lock()
 _CLAIMED: set[str] = set()  # names being written right now
 
 
+def _profile_path() -> str:
+    """The profile this process loaded; the vehicle default when none was."""
+    try:
+        from agv_core import config  # noqa: PLC0415 - the web may run without a profile
+
+        loaded = getattr(config, "PROFILE_PATH_LOADED", None)
+        if loaded:
+            return loaded
+    except Exception:  # noqa: BLE001
+        pass
+    return os.path.join(os.path.expanduser("~/agv_can"), "profiles", "agv-01.json")
+
+
 def build(
     state_dir: str,
     state: dict,
@@ -97,10 +112,7 @@ def build(
                 z.write(src, os.path.join("logs", os.path.basename(src)))
             except OSError as e:
                 z.writestr(f"logs/{os.path.basename(src)}.missing", str(e))
-        for src in (
-            os.path.join(os.path.expanduser(state_dir), "operations.jsonl"),
-            os.path.join(os.path.expanduser("~/agv_can"), "profiles", "agv-01.json"),
-        ):
+        for src in (os.path.join(os.path.expanduser(state_dir), "operations.jsonl"), _profile_path()):
             if os.path.exists(src):
                 try:
                     z.write(src, os.path.basename(src))
@@ -115,14 +127,9 @@ def build(
 
 def _prune(out_dir: str) -> None:
     try:
-        names = sorted(n for n in os.listdir(out_dir) if n.startswith("report-") and n.endswith(".zip"))
+        fsutil.keep_newest(out_dir, KEEP, lambda n: n.startswith("report-") and n.endswith(".zip"))
     except OSError:
-        return
-    for name in names[:-KEEP]:
-        try:
-            os.remove(os.path.join(out_dir, name))
-        except OSError:
-            pass
+        pass
 
 
 def listing(state_dir: str) -> list[dict]:

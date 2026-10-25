@@ -48,8 +48,7 @@ class Validation:
 
 def load_mask(rev_dir: str, name: str) -> gridio.Grid | None:
     """A revision's optional mask grid (`keepout`, `dynamic`), or None when it has none."""
-    path = os.path.join(rev_dir, f"{name}.yaml")
-    return gridio.read(path) if os.path.isfile(path) else None
+    return gridio.read_optional(os.path.join(rev_dir, f"{name}.yaml"))
 
 
 def load_keepout(rev_dir: str) -> gridio.Grid | None:
@@ -109,7 +108,7 @@ def validate(
         issues.append(Issue("map_geometry", str(e)))
         return Validation(issues, compiled)
     if keepout is not None:
-        problem = keepout_misalignment(grid, keepout)
+        problem = gridio.mask_misalignment(grid, keepout)
         if problem:
             issues.append(Issue("keepout", f"keepout mask not aligned with the map: {problem}"))
             keepout = None  # the issue already fails validation; do not index a mismatched grid
@@ -120,7 +119,7 @@ def validate(
             # like keepout: the issue fails validation and the mismatched grid is never indexed
             issues.append(Issue("dynamic", f"dynamic mask not aligned with the map: {problem}"))
         else:
-            dyn = dynamic.data >= 65
+            dyn = gridio.occupied(dynamic)
     # Start pose itself must be clear (the vehicle stands there, at the start heading).
     start = (route.start.x_m, route.start.y_m, route.start.yaw_rad)
     c = _clearance(grid, fp, keepout, (start, start), None, dynamic=dyn)
@@ -159,11 +158,6 @@ def _provisional(what: str, c: fpmod.Clearance, step_id: str | None) -> Issue:
         step_id,
         INFO,
     )
-
-
-def keepout_misalignment(grid: gridio.Grid, keepout: gridio.Grid) -> str | None:
-    """None if the keepout grid indexes the same cells as the map, else what differs."""
-    return gridio.mask_misalignment(grid, keepout)
 
 
 def _clearance(grid, fp, keepout, line, turn, arc=None, dynamic=None) -> fpmod.Clearance:

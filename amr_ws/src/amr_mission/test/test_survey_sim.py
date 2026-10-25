@@ -1,7 +1,7 @@
 """T4 acceptance (spec §8 "Survey/return", "Save/load"; §10 T4).
 
-mapping.launch.py sim: a survey loop round rack row C with 2 % wheel slip and
-a deliberate closing error, then Returned-to-start -> Save. Checks:
+mapping.launch.py sim: a survey loop round rack row C with 2 % wheel slip (which
+alone leaves a real return error), then Returned-to-start -> Save. Checks:
 
   * the closure evidence reports the REAL return error (from ground truth),
     not zero: confirmation neither forces pose equality nor hides the error;
@@ -54,7 +54,6 @@ from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 
 MAPS_DIR = tempfile.mkdtemp(prefix="amr_survey_test_")
-CLOSING_ERROR_M, CLOSING_ERROR_DEG = 0.10, 3.0
 WORLD = os.path.join(get_package_share_directory("amr_maps"), "worlds", "sim_factory", "world.yaml")
 
 
@@ -82,8 +81,6 @@ def generate_test_description():
                 "turn_rate_rad_s": 0.5,
                 "settle_s": 1.0,
                 "start_delay_s": 4.0,
-                "closing_error_m": CLOSING_ERROR_M,
-                "closing_error_deg": CLOSING_ERROR_DEG,
             }
         ],
     )

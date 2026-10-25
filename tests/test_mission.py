@@ -76,6 +76,30 @@ def test_empty_and_listing():
         except mission.MissionError:
             check(f"name {bad!r} refused", True)
 
+    # D77 (2026-10-25): load and load_site read through one reader; the refusals stay theirs.
+    with open(os.path.join(tmp, "broken.json"), "w") as f:
+        f.write("{not json")
+    site = json.load(open(os.path.join(mission.MISSION_DIR, "site-103.json")))
+    with open(os.path.join(tmp, "site-x.json"), "w") as f:
+        json.dump(site, f)
+    for load in (mission.load, mission.load_site):
+        for name, needle in (("../x", "not a mission name"), ("nope", "no mission 'nope'"),
+                             ("broken", "not valid JSON")):
+            try:
+                load(name, directory=tmp)
+                check(f"{load.__name__}({name!r}) is refused", False, "accepted")
+            except mission.MissionError as e:
+                check(f"{load.__name__}({name!r}) is refused: {needle}", needle in str(e), str(e)[:60])
+    try:
+        mission.load("nope", directory=tmp)
+    except mission.MissionError as e:
+        check("a missing tag-table mission lists what there is", "; have [" in str(e), str(e)[:80])
+    try:
+        mission.load_site("site-x", directory=tmp)
+        check("a site mission whose name does not match its file is refused", False, "accepted")
+    except mission.MissionError as e:
+        check("a site mission whose name does not match its file is refused", "does not match" in str(e))
+
 
 def test_basic_missions():
     print("\nmission: the four basic jobs - plain line following, branch rule x speed rule")
@@ -241,41 +265,45 @@ def test_site_mission():
 
 
 def _with_points(d):
-    d["uturn_points"] = {"UT-MRU1": {"direction": "cw"}}
-    d["groups"]["MRU"]["machines"]["MRU1"]["uturn"] = "UT-MRU1"
-    d["zones"] = {"Z-LINE": {"from": "ZA-LINE", "to": "ZB-LINE"}}
+    d["uturn_points"]["UT-MRU4"] = {"direction": "cw"}
+    d["groups"]["MRU"]["machines"]["MRU4"]["uturn"] = "UT-MRU4"
 
 
 def test_site_mission_positions():
-    """Schema site-4 (tracked plan 4 section 2.2): cruise, mid-line U-turn points, zones."""
-    print("\nmission: site-4 - U-turn points and zones are named in the mission, placed by teaching")
+    """Schema site-4 (tracked plan 4 section 2.2): cruise and mid-line U-turn points."""
+    print("\nmission: site-4 - U-turn points are named in the mission, placed by teaching")
     d = _site()
     _with_points(d)
     m = mission.parse_site(d)
-    check("site-103 cruises at 0.4 m/s; a U-turn point is its machine's, on the release leg; zone ends "
-          "are points whose leg the taught pose decides",
-          m["CRUISE_MPS"] == 0.4 and m["UTURN_POINTS"]["UT-MRU1"]["machine"] == "MRU1"
-          and m["POINTS"] == {"UT-MRU1": "J-ML:merge>U-MRU", "ZA-LINE": None, "ZB-LINE": None}
-          and m["GROUPS"]["MRU"]["machines"]["MRU1"]["uturn"] == "UT-MRU1", str(m["POINTS"]))
+    plain = mission.load_site("site-103")
+    check("site-103 cruises at 0.4 m/s; MRU1-3 turn at their U-turn points, MRU4 at the tape end; a "
+          "U-turn point is its machine's, on the release leg",
+          plain["CRUISE_MPS"] == 0.4 and sorted(plain["UTURN_POINTS"]) == ["UT-MRU1", "UT-MRU2", "UT-MRU3"]
+          and "uturn" not in plain["GROUPS"]["MRU"]["machines"]["MRU4"]
+          and m["UTURN_POINTS"]["UT-MRU4"]["machine"] == "MRU4"
+          and plain["CIRCUITS"]["C-MRU"]["steers"] == {"J-STEM:merge": "left"}
+          and set(m["POINTS"].values()) == {"J-ML:merge>U-MRU"}, str(m["POINTS"]))
     _site_refused("the retired site-3 schema is refused by name", lambda d: d.update(schema="site-3"),
                   "retired")
+    _site_refused("a steer on a junction that is not a merge is refused",
+                  lambda d: d["circuits"]["C-MRU"][3].update(steer="left"), "steer only on a merge")
+    _site_refused("mission zones are refused by name (areas on the map since 2026-10-25)",
+                  lambda d: d.update(zones={}), "areas drawn on the map")
     _site_refused("a cruise above NORMAL is refused", lambda d: d.update(cruise_mps=0.6), "cruise_mps")
     _site_refused("a machine U-turn that is not a uturn_points id is refused",
                   lambda d: d["groups"]["MRU"]["machines"]["MRU2"].update(uturn="UT-X"),
                   "not in uturn_points")
     _site_refused("one U-turn point for two machines is refused",
-                  lambda d: (_with_points(d), d["groups"]["MRU"]["machines"]["MRU2"].update(uturn="UT-MRU1")),
+                  lambda d: (_with_points(d), d["groups"]["MRU"]["machines"]["MRU2"].update(uturn="UT-MRU4")),
                   "one point, one machine")
+    # D76/D58 (2026-10-25): every shape checks its slowdowns against 6084h through one helper.
+    _site_refused("a site stop shorter than the drives can decelerate is refused",
+                  lambda d: d.update(stop_distance_m=0.01), "stop_distance_m: stopping from")
+    _site_refused("a site U-turn slowdown shorter than the drives can decelerate is refused",
+                  lambda d: [u.update(decel_m=0.01, lead_m=1.5) for u in d["uturns"].values()],
+                  "decel_m:")
     _site_refused("a U-turn point no machine uses is refused",
-                  lambda d: d.update(uturn_points={"UT-MRU9": {"direction": "cw"}}), "no machine's uturn")
-    _site_refused("a zone from a point to itself is refused",
-                  lambda d: d.update(zones={"Z": {"from": "ZA", "to": "ZA"}}), "the same point")
-    _site_refused("a zone end that is a station is refused",
-                  lambda d: d.update(zones={"Z": {"from": "MW-1", "to": "ZB"}}), "a point of its own")
-    _site_refused("one point ending two zones is refused",
-                  lambda d: d.update(zones={"Z1": {"from": "ZA", "to": "ZB"},
-                                            "Z2": {"from": "ZB", "to": "ZC"}}),
-                  "one zone end")
+                  lambda d: d["uturn_points"].update({"UT-MRU9": {"direction": "cw"}}), "no machine's uturn")
 
 
 MARKER_RUN = {"uturn_code": 2, "home_code": 1, "direction": "cw", "approach_mps": 0.1, "decel_m": 0.3,
@@ -303,6 +331,8 @@ def test_marker_run():
     # drives' deceleration, which this check used to cover at 0.05 m).
     refused("a home stop inside the junction guard is refused",
             base(marker_run=dict(MARKER_RUN, stop_distance_m=0.35)), "marker_run.stop_distance_m")
+    refused("a marker-run U-turn slowdown shorter than the drives can decelerate is refused",
+            base(marker_run=dict(MARKER_RUN, decel_m=0.01)), "marker_run.decel_m:")
 
 
 SHARED = dict(MARKER_RUN, uturn_code=3, home_code=3, home_arm_m=20.0, label="HOME-N")

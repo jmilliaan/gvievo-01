@@ -1,6 +1,7 @@
 #!/bin/bash
 # systemd entry point for the unified service. The supervisor starts web and
-# hardware in IDLE; mapping/navigation are selected later by the operator.
+# hardware in IDLE, then enters LINE unless the profile says tracked=false;
+# mapping/navigation are selected later by the operator.
 set -eo pipefail
 
 AMR_WORKSPACE="${AMR_WS:-$HOME/agv_can/amr_ws}"

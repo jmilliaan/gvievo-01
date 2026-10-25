@@ -19,19 +19,17 @@ import os
 import statistics
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from agv_core import fsutil, paths  # noqa: E402
+
 
 def load_runs(directory):
     """Every run record in date order (file name, then line order). Bad lines are skipped."""
     runs = []
     for path in sorted(glob.glob(os.path.join(directory, "*.jsonl"))):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(rec, dict) and isinstance(rec.get("bins"), list):
-                    runs.append(rec)
+        for rec in fsutil.iter_jsonl(path):
+            if isinstance(rec, dict) and isinstance(rec.get("bins"), list):
+                runs.append(rec)
     return runs
 
 
@@ -91,10 +89,14 @@ def weak(merged, level, drop):
     return rows
 
 
+def default_dir():
+    """Where amr_line.tape_health.write_run puts the records."""
+    return paths.state_path("reports", "tape_health")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Weak stretches of tape from the MLS track level, over runs.")
-    state = os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))
-    ap.add_argument("--dir", default=os.path.join(state, "reports", "tape_health"))
+    ap.add_argument("--dir", default=default_dir())
     ap.add_argument("--runs", type=int, default=10, help="the last N runs (default 10)")
     ap.add_argument("--graph", help="tape graph name (default: the newest seen)")
     ap.add_argument("--level", type=int, default=3, help="list bins whose lowest level is <= this (3)")

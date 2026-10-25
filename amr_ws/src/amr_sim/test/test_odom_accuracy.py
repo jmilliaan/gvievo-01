@@ -38,13 +38,8 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch_ros.actions import Node
 from nav_msgs.msg import Odometry
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
+from amr_base.qos import SENSOR_DATA
 
 
 @pytest.mark.launch_test

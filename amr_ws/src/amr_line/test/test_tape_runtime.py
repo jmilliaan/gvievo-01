@@ -317,7 +317,7 @@ def test_a_mark_becomes_a_station_or_point_by_its_role(tmp_path):
     from site_fixture import graph, site  # noqa: PLC0415
     rt = _site_runtime(tmp_path)
     m = site()
-    rt.staged = graph(m, skip=tuple(m["STATIONS"]) + ("HOME", "UT-M1", "UT-M2", "ZA", "ZB"))
+    rt.staged = graph(m, skip=tuple(m["STATIONS"]) + ("HOME", "UT-M1", "UT-M2"))
     line = rt.staged.legs["J-B:right>U"].line
     marks = {f"M{k}": {"label": "", "leg": "J-B:right>U", "s": s, "pose": list(line.point(s))}
              for k, s in ((1, 8.0), (2, 11.0), (3, 1.0))}
@@ -327,15 +327,16 @@ def test_a_mark_becomes_a_station_or_point_by_its_role(tmp_path):
     ok, msg = rt.teach(0.0, "mark_role", "M1 MW-1")
     assert ok and msg.startswith("M1 is MW-1 on J-B:right>U at s 8.00 m"), msg
     assert rt.teach(0.0, "mark_role", "M2 UT-M1")[0], "a U-turn point lands on its machine's release leg"
-    ok, msg = rt.teach(0.0, "mark_role", "M3 ZA")
-    assert ok and "J-B:right>U at s 1.00" in msg, "a zone end takes the leg it faces along"
+    ok, msg = rt.teach(0.0, "mark_role", "M3 ATT")      # M3 is on the machine line, ATT on J-A's leg
+    assert not ok and "wrong direction for J-A:merge>J-B" in msg and "ATT" not in rt.staged.stations, msg
     ok, msg = rt.teach(0.0, "mark_role", "M4 MW-2")
     assert not ok and "wrong direction" in msg, "MW-2 is on the way out; M4 faces back"
     assert not rt.teach(0.0, "mark_role", "M1 NOPE")[0]
     ok, msg = rt.teach(0.0, "mark_role", "M4 ME-1")
     assert ok
     stations = store.load_stations(str(tmp_path / "state"), "t", 1)
-    assert stations["MW-1"]["mark"] == "M1" and stations["ZA"]["pose"] == pytest.approx(marks["M3"]["pose"])
+    assert stations["MW-1"]["mark"] == "M1"
+    assert stations["UT-M1"]["pose"] == pytest.approx(marks["M2"]["pose"])
     ok, msg = rt.teach(0.0, "roles")
     assert "MW-1=M1" in msg and "not taught: HOME, ATT, MW-2" in msg, msg
     # moving a role to another mark takes it off the first; "-" removes it
@@ -368,9 +369,10 @@ def test_the_locator_moves_onto_a_trips_route_where_it_stands(tmp_path):
     assert rt.loc_state()["S"] == pytest.approx(route.S_start + 0.32)
 
 
-def test_the_shadow_lap_logs_the_u_turn_points_and_zone_ends(tmp_path):
-    from site_fixture import graph, site  # noqa: PLC0415
+def test_the_shadow_lap_logs_the_u_turn_points_and_the_high_speed_areas(tmp_path):
+    from site_fixture import AREAS, graph, site  # noqa: PLC0415
     n = store.publish(str(tmp_path / "maps"), graph(site()))
+    store.save_areas(str(tmp_path / "state"), "t", 1, AREAS)
     rt = _site_runtime(tmp_path, graph_revision=n)
     rt.at_home()
     rt.readiness(0.0, tr.READY)
@@ -379,7 +381,58 @@ def test_the_shadow_lap_logs_the_u_turn_points_and_zone_ends(tmp_path):
         t, travel = t + 0.02, travel + 0.01
         rt.tick(t, travel, 2, False)
     text = " | ".join(x for _l, x in rt.drain_events())
-    assert "zone Z-LINE: HIGH from ZA at S 21.00" in text, text
-    assert "zone Z-LINE: NORMAL by ZB at S 27.00" in text
+    assert "high-speed area: HIGH from Z-LINE at S 21.00" in text, text
+    assert "high-speed area: NORMAL by Z-LINE at S 27.00" in text
     assert "U-turn point of M1 UT-M1 at S 30.50" in text
     assert "would HOLD" in text, "odometry only: sigma grows past the station limit"
+
+
+
+def test_an_inbound_mark_is_placed_by_a_floor_offset_from_an_outbound_one(tmp_path):
+    from site_fixture import graph, site  # noqa: PLC0415
+    rt = _site_runtime(tmp_path)
+    rt.staged = graph(site())
+    line = rt.staged.legs["J-B:right>U"].line
+    store.save_marks(str(tmp_path / "state"), "t", 1,
+                     {"M8": {"label": "", "leg": "J-B:right>U", "s": 8.0, "pose": list(line.point(8.0))}})
+    # MW-1 is at x 18 going east; the inbound tape runs west over it: +1.2 m along it is x 16.8
+    ok, msg = rt.teach(0.0, "mark_offset", "M8 1.2 M12")
+    assert ok and msg.startswith("M12 on U:pivot>J-C at 13.20 m (+1.20 m from M8), (16.80, 10.00)"), msg
+    marks = store.load_marks(str(tmp_path / "state"), "t", 1)
+    assert marks["M12"]["from"] == "M8" and marks["M12"]["offset_m"] == 1.2
+    ok, msg = rt.teach(0.0, "mark_role", "M12 ME-1")
+    assert ok and "U:pivot>J-C at s 13.20" in msg, msg
+    assert not rt.teach(0.0, "mark_offset", "M8 1.0 M12")[0], "an id in use is refused"
+    assert "runs off" in rt.teach(0.0, "mark_offset", "M8 -20")[1]
+    assert rt.teach(0.0, "mark_offset", "M8 -0.5")[1].startswith("M13 on U:pivot>J-C at 11.50")
+
+
+
+def test_a_u_turn_point_is_placed_along_the_release_marks_own_tape(tmp_path):
+    from site_fixture import graph, site  # noqa: PLC0415
+    rt = _site_runtime(tmp_path)
+    rt.staged = graph(site())
+    line = rt.staged.legs["J-B:right>U"].line
+    store.save_marks(str(tmp_path / "state"), "t", 1,
+                     {"M8": {"label": "", "leg": "J-B:right>U", "s": 8.0, "pose": list(line.point(8.0))}})
+    ok, msg = rt.teach(0.0, "mark_along", "M8 1.4 M16")         # MW-1 + 1.4 m toward the line's end
+    assert ok and msg.startswith("M16 on J-B:right>U at 9.40 m (+1.40 m from M8), (19.40, 10.00)"), msg
+    assert rt.teach(0.0, "mark_role", "M16 UT-M1")[0]
+    assert "runs off" in rt.teach(0.0, "mark_along", "M8 15")[1]
+
+
+
+def test_a_mark_off_every_built_leg_is_kept_and_placed_at_build(tmp_path):
+    # 2026-10-25: the first C-BTU lap marks its stops before row 2 is in any graph
+    from site_fixture import graph, site  # noqa: PLC0415
+    rt = _site_runtime(tmp_path)
+    rt.staged = graph(site())
+    rt.readiness(0.0, tr.READY)
+    rt.tick(0.0, 0.0, 2, False)
+    rt.amcl(0.0, 0.0, 50.0, 50.0, 0.0, 0.0004, 0.0, 0.0004)       # far from every leg
+    rt.tick(0.5, 0.5, 2, False)
+    ok, msg = rt.teach(0.5, "mark", "R2-1")
+    assert ok and msg.startswith("M1 (R2-1) at (50.50, 50.00), not on a built leg yet"), msg
+    marks = store.load_marks(str(tmp_path / "state"), "t", 1)
+    assert marks["M1"]["leg"] == "" and marks["M1"]["lag_m"] == 0.5
+    assert "M1 (R2-1)" in rt.teach(0.5, "marks")[1]

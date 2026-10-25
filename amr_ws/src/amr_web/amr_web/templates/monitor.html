@@ -20,7 +20,6 @@ async function tick() {
         `<div class="list">${rows || '<div class="none">no values</div>'}</div></div>`;
     }).join('') : '<div class="none">no diagnostics yet (drive owner not running?)</div>';
   }
-  setTimeout(tick, 1000);
 }
-tick();
+every(1000, tick);
 </script>{% endblock %}

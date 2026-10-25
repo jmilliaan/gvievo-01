@@ -86,19 +86,29 @@ import struct
 import sys
 import time
 
-import can  # noqa: E402
-
-from agv_core.drivers.canbus import guard  # noqa: E402
-from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, open_bus, sdo_read  # noqa: E402
+from agv_core import paths  # noqa: E402
+from agv_core.drivers.canbus import cia301  # noqa: E402
+from agv_core.drivers.canbus.cia301 import COB_DISABLED  # noqa: E402,F401 - re-exported
+from agv_core.drivers.canbus.mls_markers import MarkerDetector, lcp2  # noqa: E402
+from agv_core.drivers.canbus.sdo import (  # noqa: E402,F401 - s8/s16 re-exported
+    BAD,
+    OK,
+    WARN,
+    bench_bus,
+    guarded_sdo_write,
+    nmt,
+    s8,
+    s16,
+    sdo_int,
+)
 
 SENSOR_NODE = 10
-TPDO1_COB = 0x180
-TPDO1_COMM = 0x1800           # :01 COB-ID (bit 31 = disabled), :02 type, :05 event timer
+TPDO1_COB = cia301.TPDO1_COB_BASE
+TPDO1_COMM = cia301.TPDO1_COMM  # :01 COB-ID (bit 31 = disabled), :02 type, :05 event timer
 OBJ_VARIANT = (0x2006, 1)
 OBJ_LCP = 0x2021              # :01..:03 LCP1..3, :04 #LCP (+marker), :0B..:0D line levels
 OBJ_NLCP = (0x2021, 4)
 OBJ_STATUS = (0x2022, 0)
-COB_DISABLED = 1 << 31
 # Event detection and temperature, firmware V5 (manual 8.7, 8.8, pp. 57-58).
 OBJ_EVENT = 0x2080            # :01 reset the flag (write), :02 source, :04 field code, :05 temp code
 OBJ_TEMP = 0x2070             # :01 temperature INT8 degC, :06 upper threshold, :07 lower threshold
@@ -133,10 +143,6 @@ FIELD_LEVEL_MT = 0.00076   # 2024h resolution, manual p.43
 LINE_LEVEL_MT = 0.049      # 2021h:0B..0D resolution, manual p.43
 
 
-def s16(v):
-    return v - 0x10000 if v & 0x8000 else v
-
-
 def decode_lcp(word, combi):
     """One 16-bit track field -> (position_mm, width_mm or None)."""
     if not combi:
@@ -167,10 +173,6 @@ def decode_marker(b):
     bit 0 as the intro and bits 1-4 as code 1-15, and never says where the travel
     direction goes: the raw value is kept so the bench (plan B6) can settle it."""
     return {"intro": bool(b & 0x08), "code": (b >> 4) & 0x0F, "raw": (b >> 3) & 0x1F}
-
-
-def s8(v):
-    return None if v is None else (v & 0xFF) - 0x100 if v & 0x80 else v & 0xFF
 
 
 def decode_event(source, field_code, temp_code):
@@ -220,6 +222,15 @@ def decode_sdo(words, nlcp, status, combi):
     return decode_tpdo1(data, combi)
 
 
+# The TPDO1 fields over SDO, in decode_sdo_values order: LCP1..3, #LCP, status.
+TRACK_SDO_ITEMS = ((OBJ_LCP, 1), (OBJ_LCP, 2), (OBJ_LCP, 3), OBJ_NLCP, OBJ_STATUS)
+
+
+def decode_sdo_values(vals, combi):
+    """The five TRACK_SDO_ITEMS values, read in order -> decode_tpdo1's dict."""
+    return decode_sdo(vals[:3], vals[3], vals[4], combi)
+
+
 def fmt_reading(r):
     """One line: the track position, then the qualifiers that explain it."""
     st = r["status"]
@@ -252,12 +263,7 @@ def fmt_reading(r):
 
 # --- SDO path ---------------------------------------------------------------
 
-def rd(bus, node, index, sub, signed=False):
-    st, val, _, _ = sdo_read(bus, node, index, sub)
-    if not st:
-        return None
-    n = len(val)
-    return int.from_bytes(val, "little", signed=signed) if n else None
+rd = sdo_int
 
 
 def read_variant(bus, node):
@@ -271,14 +277,10 @@ def read_variant(bus, node):
 
 def live_values(bus, node, combi):
     """The same fields TPDO1 carries, but via SDO so it works Pre-operational."""
-    words = [rd(bus, node, OBJ_LCP, s) for s in (1, 2, 3)]
-    if any(w is None for w in words):
+    vals = [rd(bus, node, i, sub) for i, sub in TRACK_SDO_ITEMS]
+    if any(v is None for v in vals):
         return None
-    nlcp = rd(bus, node, *OBJ_NLCP)
-    status = rd(bus, node, *OBJ_STATUS)
-    if nlcp is None or status is None:
-        return None
-    return decode_sdo(words, nlcp, status, combi)
+    return decode_sdo_values(vals, combi)
 
 
 def snapshot(bus, node):
@@ -376,7 +378,7 @@ def poll(bus, node, seconds, interval):
 
 # --- calibrate: background vs tape ----------------------------------------
 
-CAL_DIR = os.path.expanduser("~/.amr/mls_cal")
+CAL_DIR = paths.mls_cal_dir()
 CAL_STEPS = ("background", "tape")
 # A tape step must see one track this often, and its weakest field must clear the
 # strongest background by this ratio. Engineering margins, not SICK figures.
@@ -551,15 +553,9 @@ STANDARD_VARIANTS = (0, 2, 3, 4)
 
 
 def _guarded_write(bus, node, index, sub, value, size):
-    """The ONLY MLS write path in this tool: guard.check_sensor first, then the SDO.
+    """The ONLY MLS write path in this tool: the line-sensor guard list, then the SDO.
     Returns (ok, detail); a refused object never reaches the bus."""
-    from agv_core.drivers.canbus.drive_forward import sdo_write  # noqa: PLC0415
-
-    try:
-        guard.check_sensor(index, sub)
-    except guard.ForbiddenWrite as e:
-        return False, str(e)
-    return sdo_write(bus, node, index, sub, value, size)
+    return guarded_sdo_write(bus, node, index, sub, value, size, sensor=True)
 
 
 def set_variant(bus, node, value, go=False):
@@ -608,6 +604,18 @@ MARKER_SETTINGS = (
     (0x2029, 0, 1, 1, "lock teach key"),
 )
 POLARITY_LOCK = (0x202D, 5, 1, 1, "tape polarity: north track, south markers")
+TEACH_LOCK = (0x2029, 0)
+
+
+def marker_expectation(polarity_lock, teach_lock):
+    """Profile mls.* -> {(index, sub): value} the sensor must hold for markers to be
+    trusted (drive_node's read-only check in MlsTrack): exactly what set-markers
+    writes, the teach lock only if teach_lock, the polarity lock only if polarity_lock."""
+    want = {(i, s): v for i, s, _size, v, _label in MARKER_SETTINGS if teach_lock or (i, s) != TEACH_LOCK}
+    if polarity_lock:
+        i, s, _size, v, _label = POLARITY_LOCK
+        want[(i, s)] = v
+    return want
 
 
 def marker_writes(current, polarity_lock=False):
@@ -659,36 +667,36 @@ def set_markers(bus, node, go=False, polarity_lock=False):
 
 
 class MarkerWatch:
-    """Edges of the marker field and the reading-code bit, from decoded readings.
-    Pure: feed(t, reading) returns a line to print or None; summary() at the end."""
+    """The bench view of the runtime's marker detector (mls_markers.MarkerDetector):
+    the same code edges, the same abort rule with its grace frames. Pure:
+    feed(t, reading) returns a line to print when the raw field or the reading-code
+    bit changed, else None; summary() at the end."""
 
     def __init__(self):
         self.prev = None          # (raw, reading_code)
-        self.counts = {}          # code -> times reported
-        self.aborts = 0           # reading-code episodes that ended with no code
+        self.counts = {}          # code -> marker events
         self.polarity = set()     # seen while a track was present
-        self._seen_code = False
+        self._det = MarkerDetector(range(1, 32))
+
+    @property
+    def aborts(self):
+        return self._det.aborts
 
     def feed(self, t, r):
         st, mk = r["status"], r["marker"]
         if r["nlcp"]:
             self.polarity.add(st["polarity"])
+        ev = self._det.feed(t, r, "tpdo", True)
+        if ev is not None:
+            self.counts[ev.code] = self.counts.get(ev.code, 0) + 1
         cur = (mk["raw"], st["reading_code"])
         if cur == self.prev:
             return None
-        prev, self.prev = self.prev, cur
-        if mk["code"] and (prev is None or prev[0] != mk["raw"]):
-            self.counts[mk["code"]] = self.counts.get(mk["code"], 0) + 1
-        if st["reading_code"] or mk["code"]:
-            self._seen_code = self._seen_code or bool(mk["code"])
-        if prev is not None and prev[1] and not st["reading_code"]:
-            if not self._seen_code and not mk["code"]:
-                self.aborts += 1
-            self._seen_code = False
-        lcp2 = r["lcp"][1][0] if 2 in r["valid"] else None
+        self.prev = cur
+        p2 = lcp2(r)
         return (f"{t:9.3f}s  raw {mk['raw']:05b} ({mk['raw']:2d})  intro {int(mk['intro'])}  "
                 f"code {mk['code']:2d}  reading {int(st['reading_code'])}  "
-                f"LCP2 {'--' if lcp2 is None else f'{lcp2:+d}'}  #LCP {r['nlcp']}  {st['polarity']}")
+                f"LCP2 {'--' if p2 is None else f'{p2:+d}'}  #LCP {r['nlcp']}  {st['polarity']}")
 
     def summary(self):
         return {"codes": dict(sorted(self.counts.items())), "aborts": self.aborts,
@@ -865,12 +873,6 @@ def marker_level(bus, node, samples, interval, range_mm=200, save=None, baseline
     return 0
 
 
-def nmt(bus, command, node):
-    bus.send(can.Message(arbitration_id=0x000, data=[command, node],
-                         is_extended_id=False))
-    time.sleep(0.05)
-
-
 def stream(bus, node, seconds, start_nmt):
     variant, combi = read_variant(bus, node)
     cob = TPDO1_COB + node
@@ -943,22 +945,14 @@ def main():
         return calibrate(None, args.node, "report", 0, 0.0)
     if args.mode in ("set-variant", "clear-event") and args.value is None:
         ap.error(f"{args.mode} needs --value")
-    if args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers", "clear-event"):
-        # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
-        # IMU poll) would read the other's replies. Take the bus owner lock first.
-        from agv_core import ownerlock  # noqa: PLC0415
-        try:
-            lock = ownerlock.acquire("can")  # noqa: F841 - held until exit
-        except ownerlock.OwnerBusy as e:
-            print(f"{BAD}: can0 is owned ({e}). Stop it first: sudo systemctl stop amr.service")
-            return 2
-
-    try:
-        bus, how = open_bus()
-    except Exception as e:
-        print(f"{BAD}: {e}")
+    # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
+    # IMU poll) would read the other's replies. These modes take the bus owner lock.
+    locked = args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers",
+                           "clear-event")
+    opened = bench_bus("read_mls", lock=locked)
+    if opened is None:
         return 2
-    print(f"connected via {how}\n")
+    _lock, bus = opened
 
     try:
         if args.mode == "snapshot":

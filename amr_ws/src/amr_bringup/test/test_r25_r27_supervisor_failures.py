@@ -3,6 +3,7 @@
 The real Supervisor methods run against a plain object carrying just the state they
 touch - no ROS graph, no child processes."""
 
+import os
 import types
 
 from amr_bringup import mode_fsm as fsm
@@ -57,7 +58,7 @@ def fake():
     sv.get_logger = Log
     sv._set = lambda mode, phase="", reason="", fault="": sv.modes.append((mode, fault))
     sv._start_worker = lambda fn: None
-    for name in ("_fail", "_fail_active", "_step_survey", "_reap", "_respawn_due"):
+    for name in ("_fail", "_fail_active", "_step_survey", "_reap", "_respawn_due", "_spawn"):
         setattr(sv, name, types.MethodType(getattr(Supervisor, name), sv))
     return sv
 
@@ -163,7 +164,7 @@ def test_base_ready_after_the_boot_budget_leaves_fault_by_itself():
     sv._auto_enter_line = lambda: None
     sv._boot_reported, sv.reports = True, []
     sv._boot_report = lambda now, missing: sv.reports.append(missing)
-    for name in ("_tick", "_base_failure"):
+    for name in ("_tick", "_base_failure", "_enter_idle_if_base_ready"):
         setattr(sv, name, types.MethodType(getattr(Supervisor, name), sv))
     import amr_bringup.supervisor_node as node
 
@@ -182,3 +183,17 @@ def test_base_ready_after_the_boot_budget_leaves_fault_by_itself():
         assert sv.reports == [""]  # and the operator is told the vehicle is ready
     finally:
         node.rd.base_ready, node.rd.base_missing = saved
+
+
+# ---- lean plan D24: layers resolve the directories the supervisor was given ----------------
+
+
+def test_children_get_the_supervisor_directories(monkeypatch):
+    """A layer reads AMR_STATE_DIR/AMR_MAPS_DIR (agv_core.paths); the supervisor's own
+    params win over whatever the parent shell had, so the two can never disagree."""
+    monkeypatch.setenv("AMR_STATE_DIR", "/elsewhere/state")
+    monkeypatch.delenv("AMR_MAPS_DIR", raising=False)
+    sv = types.SimpleNamespace(state_dir="/data/amr", maps_dir="/data/maps")
+    env = Supervisor._env(sv)
+    assert env["AMR_STATE_DIR"] == "/data/amr" and env["AMR_MAPS_DIR"] == "/data/maps"
+    assert env["PATH"] == os.environ["PATH"]

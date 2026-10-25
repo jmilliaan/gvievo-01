@@ -8,8 +8,8 @@ supervisor the web pages have no lease or mode, so their jog/survey controls are
 refused; use the ROS services. Interactive operation is amr.service (§3.1).
 """
 
-import os
 
+from agv_core import paths
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
@@ -44,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("slip_noise_std", default_value="0.02"),
             DeclareLaunchArgument("world_yaml", default_value=default_world()),
             DeclareLaunchArgument("clutter_count", default_value="0"),
-            DeclareLaunchArgument("maps_dir", default_value=os.path.expanduser("~/amr_maps")),
+            DeclareLaunchArgument("maps_dir", default_value=paths.maps_dir()),
             DeclareLaunchArgument("foxglove", default_value="false"),
             DeclareLaunchArgument("web", default_value="true", description="operator pages on :5001"),
             OpaqueFunction(function=_base),

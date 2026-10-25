@@ -24,15 +24,13 @@ slew diverges. A parameter may lower them, never raise them above hardware.
 
 import math
 
-import rclpy
 from agv_core import config, kinematics
 from geometry_msgs.msg import Twist
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
-from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
-from amr_base.lean_node import LeanNode
+from amr_base.diff_drive import Geometry, clamp_wheels, inverse, profile_geometry, scurve, slew, slew_asym
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 
 try:
     # The scanner's field outputs come from the SICK driver. Optional at import so a
@@ -60,18 +58,11 @@ LINE_STATE_FRESH_S = 2.5
 # Sources a person drives by hand: switching between these is not operator history.
 HAND_SOURCES = {"none", "manual", "pendant", "teleop"}
 
-RELIABLE_1 = QoSProfile(
-    depth=1,
-    reliability=QoSReliabilityPolicy.RELIABLE,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
-LATCHED = QoSProfile(
-    depth=1,
-    reliability=QoSReliabilityPolicy.RELIABLE,
-    durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-)
 
-WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
+
+# A factor-0 warning field stops AUTO within this distance unless scanner_fields.yaml
+# (base.launch, the authority) says otherwise; also the fallback for a non-finite value.
+WARNING_STOP_M_DEFAULT = 0.40
 
 
 class CmdMuxKinematics(LeanNode):
@@ -103,9 +94,9 @@ class CmdMuxKinematics(LeanNode):
         self.stop_d_max = config.DECEL_RPM_S * config.MPS_PER_RPM
         self.stop_delta_max = kinematics.max_yaw_accel(config.DECEL_RPM_S)
 
-        self.declare_parameter("wheel_radius_m", config.WHEEL_DIA_M / 2.0)
-        self.declare_parameter("track_width_m", config.TRACK_M)
-        self.declare_parameter("wheel_vel_max_rad_s", config.MOTOR_MAX_RPM * WHEEL_RAD_S_PER_MOTOR_RPM)
+        self.declare_parameter("wheel_radius_m", profile_geometry().wheel_radius_m)
+        self.declare_parameter("track_width_m", profile_geometry().track_width_m)
+        self.declare_parameter("wheel_vel_max_rad_s", config.MOTOR_MAX_RPM * config.WHEEL_RAD_S_PER_MOTOR_RPM)
         self.declare_parameter("a_max", min(0.5, hw_a_max))
         self.declare_parameter("alpha_max", min(1.0, hw_alpha_max))
         # Deceleration limits (speed shrinking). Default = the acceleration limits, so a stop is
@@ -135,21 +126,23 @@ class CmdMuxKinematics(LeanNode):
         # Warning 1 does not slow a LINE U-turn at or below this body speed (the 0.1 m/s
         # creep, the pivot); warning 2 still stops it. 0 = off (gating.line_uturn_exempt).
         self.declare_parameter("line_uturn_exempt_mps", 0.12)
-        self.declare_parameter("teleop_timeout_s", 0.5)
-        self.declare_parameter("cmd_timeout_s", 0.2)
-        self.declare_parameter("permit_timeout_s", 0.3)
-        self.declare_parameter("panel_timeout_s", 0.2)
+        # Freshness and the pendant caps: gating.DEFAULT is the one source of the values.
+        d = gating.DEFAULT
+        self.declare_parameter("teleop_timeout_s", d.teleop_window_s)
+        self.declare_parameter("cmd_timeout_s", d.cmd_timeout_s)
+        self.declare_parameter("permit_timeout_s", d.permit_timeout_s)
+        self.declare_parameter("panel_timeout_s", d.panel_timeout_s)
         self.declare_parameter("rate_hz", 50.0)
-        self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
-        self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
-        self.declare_parameter("pendant_v_m_s", 0.50)
-        self.declare_parameter("pendant_w_rad_s", 0.39)  # spin in place (0.30 until 2026-09-19, +30 %)
-        self.declare_parameter("pendant_turn_ratio", 0.66)  # slow wheel / fast wheel while driving + turning
+        self.declare_parameter("require_supervisor", d.require_supervisor)  # production: True (§4.2)
+        self.declare_parameter("teleop_enabled", d.teleop_enabled)  # /cmd_vel_teleop, engineering only
+        self.declare_parameter("pendant_v_m_s", d.pendant_v)
+        self.declare_parameter("pendant_w_rad_s", d.pendant_w)  # spin in place
+        self.declare_parameter("pendant_turn_ratio", d.pendant_turn_ratio)  # slow / fast wheel, turning
         # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
         # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
         self.declare_parameter("survey_w_max_rad_s", 0.27)
-        self.declare_parameter("lease_timeout_s", 0.3)
-        self.declare_parameter("drives_timeout_s", 0.3)
+        self.declare_parameter("lease_timeout_s", d.lease_timeout_s)
+        self.declare_parameter("drives_timeout_s", d.drives_timeout_s)
         # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
         # a warning field is occupied. base.launch fills these from scanner_fields.yaml.
         self.declare_parameter("field_source", "scanner")  # scanner | assume_clear (sim only)
@@ -159,7 +152,7 @@ class CmdMuxKinematics(LeanNode):
         self.declare_parameter("warning_active_level", False)
         self.declare_parameter("warning_decel_s", 1.0)  # each step down, seconds
         self.declare_parameter("warning_accel_s", 1.0)  # each step up, seconds
-        self.declare_parameter("warning_stop_m", 0.40)  # a factor-0 warning stops in this distance
+        self.declare_parameter("warning_stop_m", WARNING_STOP_M_DEFAULT)  # a factor-0 warning stops in this
         self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter
@@ -204,7 +197,9 @@ class CmdMuxKinematics(LeanNode):
                                  for k in p("warning_scales").value),
             warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.0),
             warning_accel_s=self._finite_or(float(p("warning_accel_s").value), 1.0),
-            warning_stop_m=max(0.0, self._finite_or(float(p("warning_stop_m").value), 0.40)),
+            warning_stop_m=max(
+                0.0, self._finite_or(float(p("warning_stop_m").value), WARNING_STOP_M_DEFAULT)
+            ),
             fresh_s=self._finite_or(float(p("field_fresh_s").value), 0.5),
             assume_clear=str(p("field_source").value) == "assume_clear",
         )
@@ -254,9 +249,7 @@ class CmdMuxKinematics(LeanNode):
         if self.fp.assume_clear:
             self.get_logger().warning("field_source=assume_clear: scanner fields ASSUMED clear (sim only)")
         elif OutputPaths is not None:
-            sensor = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT,
-                                durability=QoSDurabilityPolicy.VOLATILE)
-            self.create_subscription(OutputPaths, "/output_paths", self._on_output_paths, sensor)
+            self.create_subscription(OutputPaths, "/output_paths", self._on_output_paths, SENSOR_DATA)
         else:
             self.get_logger().error(
                 "sick_safetyscanners2_interfaces missing: fields unknown, supervised AUTO stays zero"
@@ -341,10 +334,8 @@ class CmdMuxKinematics(LeanNode):
         )
 
     def _on_lease(self, msg: ControlLease) -> None:
-        cur = self._lease
-        if cur is not None and cur.instance == msg.instance and cur.generation == msg.generation:
-            if int(msg.seq) <= cur.seq:
-                return  # stale sample cannot extend a lease
+        if gating.lease_stale(self._lease, msg.instance, int(msg.generation), int(msg.seq)):
+            return  # stale sample cannot extend a lease
         self._lease = gating.Lease(
             self._now(), msg.instance, int(msg.generation), int(msg.seq), int(msg.allowed)
         )
@@ -564,34 +555,11 @@ class CmdMuxKinematics(LeanNode):
         self._pub_state.publish(m)
 
     def _event(self, level: int, code: str, text: str) -> None:
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source, m.level, m.code, m.text = "cmd_mux_kinematics", level, code, text
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._pub_event.publish(m)
+        self._pub_event.publish(self.build_event("cmd_mux_kinematics", level, code, text))
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = CmdMuxKinematics()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        # launch sends SIGINT; the context may already be down by the time we
-        # get here, and destroy_node() then raises from the C layer.
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(CmdMuxKinematics, args)
 
 
 if __name__ == "__main__":

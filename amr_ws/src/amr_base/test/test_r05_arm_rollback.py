@@ -6,7 +6,7 @@ before the speed-zero wait, commit 6515799)."""
 import time
 
 import pytest
-from test_canopen import FakeBus, _link
+from test_canopen import FakeBus, _arm, _link
 
 from amr_base.canopen import ARMED, DISARMED
 
@@ -48,7 +48,7 @@ def test_second_node_guard_failure_rolls_back_the_first_nodes_guard():
     bus.abort = lambda n, i, s, v: (n, i, v) == (2, 0x1016, HB)
     link = _link(bus)
     with pytest.raises(RuntimeError, match="1016h"):
-        link.arm(20, 100, 500, 30.0, False, False)
+        _arm(link, 20, 100, 500, 30.0, False, False)
     assert (1, 0x1016, 1, HB) in bus.writes
     assert (1, 0x1016, 1, 0) in bus.writes  # tracked as soon as it landed, so retired
     assert not link.pc_guard_set and link.state == DISARMED and not link.cleanup_owed
@@ -60,7 +60,7 @@ def test_pdo_setup_failure_is_inside_the_rollback():
     bus.abort = lambda n, i, s, v: (n, i) == (2, 0x1801)
     link = _link(bus)
     with pytest.raises(RuntimeError):
-        link.arm(20, 100, 500, 30.0, False, False)
+        _arm(link, 20, 100, 500, 30.0, False, False)
     assert _disabled(bus) == {1, 2} and link.state == DISARMED
     assert not any(i == 0x1016 for _, i, _, _ in bus.writes)  # never reached, nothing to retire
 
@@ -77,7 +77,7 @@ def test_post_enable_read_failure_is_inside_the_rollback():
 
     link.read = read
     with pytest.raises(OSError):
-        link.arm(20, 100, 500, 30.0, False, False)
+        _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.state == DISARMED and _disabled(bus) == {1, 2}
     assert [(n, v) for n, i, _, v in bus.writes if i == 0x1016 and v == 0] == [(1, 0), (2, 0)]
 
@@ -85,7 +85,7 @@ def test_post_enable_read_failure_is_inside_the_rollback():
 def test_disarm_retries_owed_cleanup_even_when_software_says_disarmed():
     bus = AbortBus(statusword=0x1637)
     link = _link(bus)
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     bus.abort = lambda n, i, s, v: (n, i, v) == (2, 0x1016, 0)
     assert link.disarm() is False
     assert link.state == DISARMED and link.cleanup_owed and link.pc_guard_nodes == {2}
@@ -102,7 +102,7 @@ def test_disarm_retries_owed_cleanup_even_when_software_says_disarmed():
 def test_exit_zeroes_before_retiring_the_guard_and_keeps_the_measured_order():
     bus = AbortBus(statusword=0x1637)
     link = _link(bus)
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     link.send_target(500, 500)
     bus.order.clear()
     link.disarm()
@@ -117,7 +117,7 @@ def test_heartbeat_is_kept_alive_through_the_arm_and_disarm_transactions():
     bus = AbortBus(statusword=0x1637)
     link = _link(bus)
     link.pc_node, link.pc_heartbeat_s = 100, 0.0  # "due" before every SDO
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.state == ARMED
     sdo = [k for k in bus.order if k[0] == "sdo"]
     assert sum(k[0] == "hb" for k in bus.order) >= len(sdo)
@@ -140,7 +140,7 @@ def test_idle_hook_runs_between_the_sdos_of_arm_engage_and_release_but_never_in_
         link.read(10, 0x2034, 3)  # re-enters read() -> idle(): must not recurse
 
     link.idle_hook = hook
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.state == ARMED and len(calls) > 3
     drive_sdo = sum(1 for m in bus.sent if m.arbitration_id in (0x601, 0x602))
     assert len(calls) == sum(1 for m in bus.sent if m.arbitration_id == 0x60A)  # one read per call
@@ -159,5 +159,5 @@ def test_idle_hook_exception_does_not_break_the_sequence():
     bus = FakeBus()
     link = _link(bus)
     link.idle_hook = lambda: 1 / 0
-    link.arm(20, 100, 500, 30.0, False, False)
+    _arm(link, 20, 100, 500, 30.0, False, False)
     assert link.state == ARMED and not link._in_idle

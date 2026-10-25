@@ -38,6 +38,8 @@ def test_scaling():
     check("a raw word above 0x8000 is negative", imu.s16(0xFFFF) == -1)
     check("a raw word below 0x8000 is positive", imu.s16(0x7FFF) == 32767)
     check("s16 passes None through", imu.s16(None) is None)
+    check("gyro_dps is s16 times the LSB, None-safe (the drive node's yaw rate uses it)",
+          imu.gyro_dps(0xFFFF) == -imu.GYRO_LSB_DPS and imu.gyro_dps(None) is None)
 
     check("a full-scale negative rate decodes to -2000 deg/s",
           abs(imu.decode_gyro((0x8000,))[0] + 2000.0) < 0.1,

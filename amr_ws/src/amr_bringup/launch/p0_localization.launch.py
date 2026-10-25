@@ -15,6 +15,7 @@ layer (tape_loc.enabled): two AMCLs would fight over map->odom.
 
 import os
 
+from agv_core import paths
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -48,7 +49,7 @@ def _compose(context):
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
-            DeclareLaunchArgument("maps_dir", default_value=os.environ.get("AMR_MAPS_DIR", "~/amr_maps")),
+            DeclareLaunchArgument("maps_dir", default_value=paths.maps_dir()),
             DeclareLaunchArgument("map_id"),
             DeclareLaunchArgument("revision", default_value="latest"),
             DeclareLaunchArgument("params", default_value="default"),

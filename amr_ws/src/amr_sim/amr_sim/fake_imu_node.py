@@ -10,23 +10,17 @@ bias node has something to track. Orientation is marked unavailable
 import math
 import random
 
-import rclpy
 from nav_msgs.msg import Odometry
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
+
 DEG = math.pi / 180.0
 G = 9.80665
 
 
-class FakeImu(Node):
+class FakeImu(LeanNode):
     def __init__(self) -> None:
         super().__init__("fake_imu")
         self.declare_parameter("rate_hz", 100.0)
@@ -71,25 +65,7 @@ class FakeImu(Node):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = FakeImu()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        # launch sends SIGINT; the context may already be down by the time we
-        # get here, and destroy_node() then raises from the C layer.
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(FakeImu, args)
 
 
 if __name__ == "__main__":

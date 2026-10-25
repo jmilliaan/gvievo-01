@@ -1,9 +1,18 @@
 // The MLS line strip (_line_track.html): Manual, Run tracked and Home's live tiles, so the rail's
 // shared amr.js does not reference ids other pages lack.
-// LCP1..3 on a bar scaled to the profile's sensor_max_mm. Older than 1 s = no reading.
+// An MLS reading older than 1 s is no reading.
+const lineFresh = t => !!t && t.age_s <= 1.0;
+// LCP1..3 dots on a bar scaled to sensor_max_mm; a dot shows only while live and valid.
+function placeLcpDots(dots, t, live, max) {
+  dots.forEach(d => {
+    const i = +d.dataset.i, on = live && t.valid[i];
+    d.hidden = !on;
+    if (on) d.style.left = `${50 + 50 * Math.max(-1, Math.min(1, t.lcp_mm[i] / max))}%`;
+  });
+}
 function lineTrack(t) {
   const box = document.getElementById('line-track');
-  const live = !!t && t.age_s <= 1.0;
+  const live = lineFresh(t);
   box.classList.toggle('stale', !live);
   const max = (t && t.sensor_max_mm) || 100;
   document.getElementById('lt-min').textContent = `−${max}`;
@@ -11,11 +20,7 @@ function lineTrack(t) {
   document.getElementById('lt-status').textContent = !t ? 'no reading (drive_node not publishing)'
     : !live ? `stale ${t.age_s.toFixed(1)} s`
     : `${t.nlcp_label} · level ${t.track_level}/7 · ${t.line_good ? 'good' : 'weak'} · ${t.polarity}` + (t.marker ? ` · marker ${t.marker}` : '');
-  box.querySelectorAll('.lt-dot').forEach(d => {
-    const i = +d.dataset.i, on = live && t.valid[i];
-    d.hidden = !on;
-    if (on) d.style.left = `${50 + 50 * Math.max(-1, Math.min(1, t.lcp_mm[i] / max))}%`;
-  });
+  placeLcpDots(box.querySelectorAll('.lt-dot'), t, live, max);
   document.getElementById('lt-lcps').innerHTML = [0, 1, 2].map(i => {
     const on = live && t.valid[i];
     return `<span class="${on ? '' : 'muted'}">LCP${i + 1} <b>${on ? (t.lcp_mm[i] > 0 ? '+' : '') + t.lcp_mm[i] + ' mm' : '–'}</b></span>`;
@@ -59,15 +64,14 @@ function markerReading(m) {
 function rfidTags(r) {
   const box = document.querySelector('.lt-rfid');
   if (!box) return;
-  const { link, tags, up, last, reading } = rfidReading(r);
+  const { link, tags, up, last, reading, why } = rfidReading(r);
   box.classList.toggle('down', !up);
   // RSSI of the latest read, and a flag when the reader's own configuration (read back on
   // connect) is not what the profile expects: a swapped or factory-reset unit. Display only.
   const mism = (link && link.config_mismatch) || [];
   const status = document.getElementById('rf-status');
   status.textContent = (!link ? 'no reader data (rfid_node not publishing)'
-    : link.age_s > 2.0 ? `reader silent ${link.age_s.toFixed(1)} s`
-    : !link.comms_ok ? 'reader link down'
+    : why ? why  // silent / link down, worded once in rfidReading
     : reading ? `link ok · reading ${last.tag}${rssiText(last.rssi_dbm)} · ${link.seq} read`
     : `link ok · no tag · ${link.seq} read`) + (mism.length ? ' · reader config ≠ profile' : '');
   status.title = [link && link.reader, ...mism].filter(Boolean).join('\n');
@@ -82,5 +86,4 @@ function rfidTags(r) {
     : '<span class="none">pass a tag under the reader</span>';
 }
 function rssiText(dbm) { return typeof dbm === 'number' ? ` · ${dbm.toFixed(1)} dBm` : ''; }
-function ago(s) { return s < 60 ? `${Math.round(s)} s ago` : `${Math.round(s / 60)} min ago`; }
 function clock(wall) { const d = new Date(wall * 1000); return d.toTimeString().slice(0, 8); }

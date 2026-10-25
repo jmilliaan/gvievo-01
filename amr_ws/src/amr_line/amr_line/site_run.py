@@ -18,7 +18,8 @@ WHO decides: not RFID tags or marker strips, but the distance S along the trip's
                "payload"), then the pivot from the tape (UTurn: leave it, reacquire it past the
                gyro gate). Tape end: may_pivot() and sigma_junction_m at S_end - lead_m, then
                the usual approach to where the tape ends (F5)
-    speed      NORMAL = the site's cruise_mps. HIGH inside a zone [S_a, S_b) only while the
+    speed      NORMAL = the site's cruise_mps. HIGH inside a zone [S_a, S_b) - where the route
+               runs inside a high-speed area drawn on the map (trip_route.area_ranges) - only while the
                locator is healthy (F4, no latching), under an envelope that is back at the
                cruise by every stop, U-turn, junction fork and zone end ahead (F6)
     wrong      the locator's wrong-branch latch: FAULT
@@ -32,7 +33,7 @@ import math
 
 from agv_core import config as vehicle
 
-from amr_line import branch
+from amr_line import branch, trip_route
 from amr_line.tape_run import INFO, WARN, TapeRun
 
 # The envelope is back at the cruise this far before each point it protects.
@@ -203,8 +204,7 @@ class SiteRun(TapeRun):
         return []
 
     def steer(self, sensor, tags, followed_mm):
-        from amr_line.tape_run import MULTI_NLCP  # noqa: PLC0415
-        self._multi_now = (sensor or {}).get("nlcp") in MULTI_NLCP
+        self._multi_now = (sensor or {}).get("nlcp") in branch.MULTI_NLCP
         return super().steer(sensor, tags, followed_mm)
 
     def advance(self, distance_m):
@@ -234,11 +234,7 @@ class SiteRun(TapeRun):
             self._next += 1
 
     def _trigger(self, e):
-        if e["kind"] == "order":
-            return e["S"]
-        if e["kind"] == "uturn" and e["mode"] == "tapeend":
-            return e["S"] - e["lead_m"]
-        return e["S"] - self.stop_distance_m
+        return trip_route.trigger_S(e, self.stop_distance_m)
 
     # -- orders ----------------------------------------------------------------------------
     def _arm(self, e):

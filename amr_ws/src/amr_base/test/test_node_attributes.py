@@ -47,6 +47,19 @@ NODE_API = {
 }
 
 
+def _lean_api() -> set[str]:
+    """Methods and attributes every LeanNode subclass inherits from amr_base/lean_node.py."""
+    tree = ast.parse((SRC / "amr_base" / "amr_base" / "lean_node.py").read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "LeanNode")
+    out = set()
+    for n in ast.walk(cls):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.add(n.name)
+        elif isinstance(n, ast.Attribute) and _is_self_attr(n) and isinstance(n.ctx, ast.Store):
+            out.add(n.attr)
+    return out
+
+
 def _is_self_attr(n: ast.AST) -> bool:
     return isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"
 
@@ -54,7 +67,7 @@ def _is_self_attr(n: ast.AST) -> bool:
 def _unassigned(path: pathlib.Path) -> list[str]:
     out = []
     for cls in (n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.ClassDef)):
-        assigned, used = set(NODE_API), {}
+        assigned, used = set(NODE_API) | LEAN_API, {}
         for n in ast.walk(cls):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 assigned.add(n.name)
@@ -70,6 +83,9 @@ def _unassigned(path: pathlib.Path) -> list[str]:
         rel = path.relative_to(SRC)
         out += [f"{rel}:{line} {cls.name}.{a}" for a, line in used.items() if a not in assigned]
     return out
+
+
+LEAN_API = _lean_api()
 
 
 def test_no_node_reads_an_attribute_it_never_assigns():

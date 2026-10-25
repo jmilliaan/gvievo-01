@@ -22,8 +22,9 @@ import uuid
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 
+from agv_core import fsutil
+
 PENDING, SUCCEEDED, FAILED, INTERRUPTED = 0, 1, 2, 3
-STATUS_NAMES = {PENDING: "PENDING", SUCCEEDED: "SUCCEEDED", FAILED: "FAILED", INTERRUPTED: "INTERRUPTED"}
 HISTORY = 64
 
 
@@ -91,6 +92,10 @@ class OperationBook:
         self._journal(op, "finish")
         return op
 
+    def by_request(self, request_id: str) -> Operation | None:
+        """The operation a client's request_id already created (a retried call), or None."""
+        return self.get(self._by_request.get(request_id, "")) if request_id else None
+
     def get(self, operation_id: str) -> Operation | None:
         return self._ops.get(operation_id)
 
@@ -124,15 +129,10 @@ class OperationBook:
         """Rebuild terminal history; anything still PENDING was interrupted by a
         crash/restart and is marked so - its side effects are NOT replayed."""
         try:
-            with open(path, encoding="utf-8") as f:
-                lines = f.readlines()
+            recs = list(fsutil.iter_jsonl(path))
         except FileNotFoundError:
             return
-        for line in lines:
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
+        for rec in recs:
             rec.pop("event", None)
             rec.pop("t", None)
             try:

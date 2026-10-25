@@ -26,6 +26,7 @@ MODULES = [
     "test_invariants",
     "test_canmon",
     "test_lss",
+    "test_verify_bus",
     "test_imu",
     "test_rpdo",
     "test_rfid",
@@ -36,6 +37,10 @@ MODULES = [
     "test_layout",
     "test_mls",
     "test_mission",
+    "test_se2",
+    "test_paths",
+    "test_fsio",
+    "test_fsutil",
 ]
 
 # 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
@@ -95,7 +100,45 @@ MODULES = [
 # + 10 (2026-10-24): tracked plan 4, the position engine. test_config + 1 (tape_loc.live without
 #   tape_loc.enabled refused); test_mission + 9 (site-4: cruise, U-turn points and zones load, the
 #   retired site-3 and 7 refusals).
-EXPECTED_CHECKS = 776
+# - 2 (2026-10-25): high-speed zones are map areas, not mission data: test_mission's 3 zone
+#   refusals became 1 ("zones" refused by name).
+# + 1 (2026-10-25): a merge's "steer" (MRU inbound, always left to HOME): refused off a merge.
+# Lean plan (manuals/lean-plan.md), 2026-10-25:
+# + 3 D44: test_canmon - the IMU TPDO COB-IDs on the line-sensor list (its exact-set check names
+#   them), their mappings refused, FREE refused on both lists, the bench guard refuses before a
+#   frame; "read_mls writes only through its wrapper" became "no raw sdo_write( in canbus/".
+# - 3 D57: the unused statusword-flag decoder and its 3 checks (test_canmon).
+# + 9 D41/D43: test_canmon - the shared CiA 301/402 words, one enable sequence, the preflight
+#   verdict (healthy, silent, collision, fault, Remote clear, unreadable).
+# + 1 D115: test_imu - gyro_dps.
+# + 4 D28: test_verify_bus (new module) - verify_bus.run exit codes and hints.
+# + 3 D55: test_canmon - decode_int, MonitorPoller.step (moved from amr_base test_canopen,
+#   which loses its MonitorCursor case).
+# + 1 D45: test_mls - the bench marker watch follows the runtime detector's abort grace
+#   (the abort check became inside-grace / after-grace).
+# + 2 D80/D150: test_rfid - the pass line parses back, channel_mhz. D82 retargeted the dropped
+#   snapshot fields to the link's own state (count unchanged).
+# + 4 D02: test_config - 7 retired keys refused (autopilot.dry_run, can.use_rpdo,
+#   monitor.poll_period_s, imu.poll_period_s/retry_period_s, timing.telemetry_period_s/
+#   manual_watchdog_s); the 2 IMU pacing refusals went with their keys; test_rpdo's
+#   use_rpdo legacy-flag check went with it. R16 now uses timing.driver_timeout_s.
+# + 1 D145: test_config - config.product().
+# + 4 D20: test_se2 (new module) - wrap, compose, yaw_of planar and rolled, correction_at.
+# + 1 D33: test_blindrun - kinematics.counts_delta / to_int32 across the wrap.
+# + 1 D34: test_config - the derived WHEEL_RAD_S_PER_MOTOR_RPM.
+# + 3 D75/D76/D58: test_mission - slowdowns too steep for 6084h are refused in the site stop, the
+#   site U-turn and the marker-run U-turn (one decel helper behind every mission shape).
+# + 8 D77: test_mission - load and load_site refuse a bad name, a missing file and invalid JSON
+#   through one reader (6); a missing tag-table mission lists the alternatives; a site mission's name
+#   must match its file.
+# + 4 D24: test_paths (new module) - unset defaults, empty counts as unset, env wins with ~
+#   expanded, env_for.
+# + 6 D17: test_fsio (new module) - thread lock exclusion, temp sweep, chunked sha,
+#   positive_revision, publish refuses an existing dest, wrapped rename error.
+# + 8 D29: test_fsutil (new module) - rotation shift and absent file, atomic json mode/dir/failure,
+#   mkstemp leaves no temp, tolerant jsonl, keep_newest and its keep-0 edge.
+# + 1 D171: test_rpdo - every pp.expect object is in guard's read-only pp set.
+EXPECTED_CHECKS = 836
 
 
 # An exception on a helper thread only prints a traceback by default - the
@@ -113,11 +156,30 @@ def _thread_excepthook(args):
 _default_excepthook = threading.excepthook
 
 
+# pytest-style modules (plain asserts, no check()): run here too, outside the check count, so
+# the one command covers them (lean plan D26). Paths are relative to the repo root.
+PYTEST_PATHS = ["tests/test_alarms.py", "tools"]
+
+
+def _run_pytest_modules():
+    """'' when they pass or pytest is not installed (said so), else what failed."""
+    import subprocess
+
+    try:
+        import pytest  # noqa: F401
+    except ImportError:
+        print("pytest not installed: skipped " + ", ".join(PYTEST_PATHS))
+        return ""
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *PYTEST_PATHS],
+                       cwd=str(helpers.ROOT), capture_output=True, text=True)
+    print(f"pytest {' '.join(PYTEST_PATHS)}: {(r.stdout.strip().splitlines() or ['?'])[-1]}")
+    return "" if r.returncode == 0 else f"pytest {' '.join(PYTEST_PATHS)} failed"
+
+
 def main():
     threading.excepthook = _thread_excepthook
     print(f"profile {helpers.config.PROFILE_NAME}: "
           f"can {helpers.config.CAN_BITRATE // 1000} kbps "
-          f"use_rpdo={helpers.config.CAN_USE_RPDO} "
           f"6083h={helpers.config.ACCEL_RPM_S}")
 
     ran = 0
@@ -127,12 +189,15 @@ def main():
             fn()
             ran += 1
 
+    pytest_problem = _run_pytest_modules()
     total = helpers.CHECKS[0]
     print()
     print(f"{ran} test function(s), {total} check(s)")
 
     problems = list(helpers.FAIL)
     problems += [f"uncaught exception in thread {e}" for e in THREAD_ERRORS]
+    if pytest_problem:
+        problems.append(pytest_problem)
     if total != EXPECTED_CHECKS:
         problems.append(
             f"expected {EXPECTED_CHECKS} checks, ran {total} - a module or a "

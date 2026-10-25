@@ -19,6 +19,8 @@ import json
 import os
 import sys
 
+from agv_core import paths
+
 from amr_maps import edit
 from amr_mission import map_bundle as mb
 
@@ -42,7 +44,7 @@ def build_ops(args: argparse.Namespace) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--maps-dir", default=os.environ.get("AMR_MAPS_DIR", "~/amr_maps"))
+    ap.add_argument("--maps-dir", default=paths.maps_dir())
     ap.add_argument("--map", required=True, help="map id")
     ap.add_argument("--rev", required=True, type=int, help="parent revision (never modified)")
     ap.add_argument("--ops", help="JSON list of edit ops, or an edits.json to replay")

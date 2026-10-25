@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
-
 import rclpy
+from agv_core import paths
 
 from amr_web.adapter import RosAdapter, start_spinning
 from amr_web.server import create_app
@@ -13,12 +12,12 @@ from amr_web.server import create_app
 def main(args=None) -> None:
     rclpy.init(args=args)
     adapter = RosAdapter()
-    adapter.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
+    adapter.declare_parameter("maps_dir", paths.maps_dir())
     adapter.declare_parameter("host", "0.0.0.0")
     adapter.declare_parameter("port", 5001)
     adapter.declare_parameter("wifi_iface", "wlp1s0")
     # role/PIN, event log, reports: same source as base.launch.py uses for its nodes
-    adapter.declare_parameter("state_dir", os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr")))
+    adapter.declare_parameter("state_dir", paths.state_dir())
     maps_dir = adapter.get_parameter("maps_dir").value
     host, port = adapter.get_parameter("host").value, int(adapter.get_parameter("port").value)
     spinner = start_spinning(adapter)

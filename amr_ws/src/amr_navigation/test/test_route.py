@@ -439,7 +439,7 @@ def _mut(path, value):
         (("repeat_count",), True),
         (("repeat_count",), -1),
         (("repeat_count",), 10**9),
-        (("repeat_count",), 101),  # amr_mission run_fsm MAX_PASSES = 100
+        (("repeat_count",), 101),  # route.MAX_REPEAT + 1
         (("revision",), 1.5),
         (("schema_version",), "1"),
         (("limits", "angular_rad_s"), -0.3),

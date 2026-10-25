@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pytest
+from agv_core import fsio
 from amr_maps.grid import Grid, GridMeta
 
 from amr_maps import edit
@@ -173,7 +174,7 @@ def test_a_failed_publish_leaves_no_revision_and_the_parent_intact(tmp_path, mon
     def boom(*_a, **_k):
         raise OSError("disk gone")
 
-    monkeypatch.setattr(mb, "_fsync_path", boom)
+    monkeypatch.setattr(fsio, "fsync_path", boom)
     ops = [{"op": "paint", "value": "unknown", "polygon": _rect(0.1, -0.3, 0.25, -0.15)}]
     with pytest.raises(OSError):
         mb.derive_edit(maps, "line_section", 1, ops, note="x")
@@ -445,3 +446,23 @@ def test_stray_or_misaligned_dynamic_files_are_refused(tmp_path):
     _list_all(stage)
     with pytest.raises(mb.BundleError, match="not aligned"):
         mb.verify(stage)
+
+
+# ---- lean plan D38/D68: one revision resolver, one pose-graph rule ---------------------------
+
+
+def test_manifest_sha_is_the_verified_identity(tmp_path):
+    maps = _published(tmp_path)
+    m = mb.load_manifest(mb.revision_dir(maps, "line_section", 1), "line_section", 1)
+    assert mb.manifest_sha(maps, "line_section", "1") == m.sha256
+    with pytest.raises(mb.BundleError):
+        mb.manifest_sha(maps, "line_section", 0)
+
+
+def test_missing_posegraph_names_what_a_continue_needs():
+    from types import SimpleNamespace as M  # noqa: PLC0415 - only .files is read
+
+    full = {"map.yaml": "x", "posegraph.posegraph": "a", "posegraph.data": "b"}
+    assert mb.missing_posegraph(M(files=full)) == []
+    assert mb.missing_posegraph(M(files={"posegraph.data": "b"})) == ["posegraph.posegraph"]
+    assert mb.missing_posegraph(M(files=None)) == list(mb.POSEGRAPH_FILES)

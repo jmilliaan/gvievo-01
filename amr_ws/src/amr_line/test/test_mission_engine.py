@@ -22,12 +22,12 @@ from agv_core import config as vehicle  # noqa: E402
 from agv_core import kinematics  # noqa: E402
 from agv_core import mission as missions  # noqa: E402
 
+from amr_base.gating import LEASE_LINE  # noqa: E402
 from amr_line import autopilot, runtime, uturn  # noqa: E402
 from amr_line import job as lj  # noqa: E402
 
 runtime.load_from_profile()
 
-LEASE_LINE = 8
 CENTRED = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}], "has_track": True, "nlcp": 2, "track_level": 5}
 NO_TAPE = {"tracks": [], "has_track": False, "nlcp": 0, "track_level": 0}
 COUNTS_PER_MOTOR_REV = 10000.0

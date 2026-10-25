@@ -29,7 +29,7 @@ from amr_bringup import logs
 ALLOWED_EXECUTABLES = ("ros2",)
 # Direct module entry points: `ros2 run` does not forward SIGINT to its child,
 # so nodes we must stop cleanly are started as `python3 -m <module>` instead.
-ALLOWED_MODULES = ("amr_web.web_node", "amr_bringup.supervisor_node")
+ALLOWED_MODULES = ("amr_web.web_node",)
 
 
 def _pgid_of(pid: int) -> int | None:

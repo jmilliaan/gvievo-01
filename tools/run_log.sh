@@ -6,21 +6,28 @@
 #
 # Start it BEFORE pressing Start on the panel; Ctrl-C once when the run is over.
 # Read-only towards the vehicle: it never starts/stops amr.service and sends nothing
-# to the vehicle. Output: ~/.amr/runs/<stamp>/
+# to the vehicle. Output: $AMR_STATE_DIR/runs/<stamp>/ (amr.env; default ~/.amr)
+# ROS_DOMAIN_ID_RUN overrides the vehicle domain (amr_ws/env/vehicle.sh).
 set -u
 MISSION="${1:-}"
 DEST="${2:-}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT="$HOME/.amr/runs/$STAMP"
-mkdir -p "$OUT"
 
-# The service's ROS environment (amr.env), whatever this shell had.
+# The service's environment, whatever this shell had: its directories (amr.env), its ROS
+# domain, RMW and loopback CycloneDDS config (vehicle.sh), so the recorder sees its graph.
 # shellcheck disable=SC1091
+set -a; source "$REPO/amr_ws/deploy/amr.env"; set +a
+# shellcheck disable=SC1091
+source "$REPO/amr_ws/env/vehicle.sh"
 set +u  # the ROS setup scripts read unset variables
+# shellcheck disable=SC1091
 source "$REPO/amr_ws/install/setup.bash" >/dev/null 2>&1
 set -u
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID_RUN:-10}" RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID_RUN:-$ROS_DOMAIN_ID}"
+STATE_DIR="$(python3 -c 'from agv_core import paths; print(paths.state_dir())')"
+OUT="$STATE_DIR/runs/$STAMP"
+mkdir -p "$OUT"
 
 warn() { echo "  WARN  $*" | tee -a "$OUT/preflight.txt"; }
 ok()   { echo "  ok    $*" | tee -a "$OUT/preflight.txt"; }
@@ -69,7 +76,7 @@ dr=$(timeout 6 ros2 topic echo --once /drives/status 2>/dev/null)
 ok "drives: operational=$(field "$dr" operational) link=$(field "$dr" link_state) power_reason='$(field "$dr" power_reason)'"
 
 # 4. Disk.
-free_g=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
+free_g=$(df -BG --output=avail "$STATE_DIR" | tail -1 | tr -dc 0-9)
 [ "${free_g:-0}" -lt 5 ] && warn "only ${free_g} GB free" || ok "${free_g} GB free"
 
 # 5. Snapshot of what is being tested.
@@ -78,7 +85,8 @@ free_g=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
     git -C "$REPO" rev-parse HEAD; git -C "$REPO" status --short
 } > "$OUT/code_state.txt" 2>&1
 git -C "$REPO" diff > "$OUT/code.diff" 2>/dev/null
-cp "$REPO/profiles/${AGV_PROFILE:-agv-01}.json" "$OUT/profile.json" 2>/dev/null
+PROFILE_JSON="$(python3 -c 'from agv_core import config; config.load(); print(config.PROFILE_PATH_LOADED)' 2>/dev/null)"
+cp "${PROFILE_JSON:-$REPO/profiles/${AGV_PROFILE:-agv-01}.json}" "$OUT/profile.json" 2>/dev/null
 [ -n "$MISSION" ] && cp "$REPO/missions/$MISSION.json" "$OUT/mission.json" 2>/dev/null
 cp "$REPO/missions/empty.json" "$OUT/empty.json" 2>/dev/null
 
@@ -129,10 +137,10 @@ T1=$(date +%s.%N)
 kill "$CPUMON" ${PIDSTAT:+"$PIDSTAT"} 2>/dev/null
 
 # Logs for the run window (events.jsonl lines by their own timestamp).
-python3 - "$T0" "$T1" "$OUT" <<'EOF'
+python3 - "$T0" "$T1" "$OUT" "$STATE_DIR" <<'EOF'
 import json, os, sys
 t0, t1, out = float(sys.argv[1]) - 5, float(sys.argv[2]) + 5, sys.argv[3]
-src = os.path.expanduser("~/.amr/logs/events.jsonl")
+src = os.path.join(sys.argv[4], "logs", "events.jsonl")
 n = 0
 with open(src) as f, open(os.path.join(out, "events.jsonl"), "w") as g:
     for line in f:
@@ -144,7 +152,7 @@ with open(src) as f, open(os.path.join(out, "events.jsonl"), "w") as g:
 print(f"{n} events copied")
 EOF
 for f in layer.log base.log web.log; do
-    tail -n 400 "$HOME/.amr/logs/$f" > "$OUT/$f" 2>/dev/null
+    tail -n 400 "$STATE_DIR/logs/$f" > "$OUT/$f" 2>/dev/null
 done
 
 echo "report..."

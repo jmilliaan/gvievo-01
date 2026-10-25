@@ -58,7 +58,7 @@ re-taught leg moves the station with it.
 |---|---|---|
 | `uturn_points` | `"UT-MRU1": {"direction": "cw"}` | a mid-line U-turn point: a station-like taught position on the outbound leg |
 | group machine `uturn` | `"MRU1": {"release": "MW-1", "take": "ME-1", "uturn": "UT-MRU1"}` | where the trip turns if MRU1 is its farthest release |
-| `zones` | `"Z-TRUNK": {"from": "ZA-TRUNK", "to": "ZB-TRUNK"}` | HIGH between two taught points on the same route, in travel direction |
+| ~~`zones`~~ | retired 2026-10-25 | high-speed zones are **areas drawn on the map** (section 10), not mission data |
 | `trip_calls` | 2 (exists) | F7: 1 or 2 |
 
 Loader refusals (each a test in `tests/test_mission.py`, `EXPECTED_CHECKS` updated): a machine
@@ -83,7 +83,7 @@ taught positions are vehicle data).
 | order (left/right) | `S_fork − junction_lead_m` | route nodes, the leg's `order` |
 | junction resync | `S_fork` | route nodes |
 | U-turn (midline / tapeend) | U-turn point S, or the leg end | 1. above |
-| zone [S_a, S_b] | the zone's two points | mission `zones` |
+| zone [S_a, S_b] | where the route runs inside a high-speed area | `areas.json` of the map revision |
 
 `trip.Trip` changes: `may_pivot()` checks the releases **up to the U-turn** (all of them, since
 the U-turn is after the last release); the plan gets the per-machine U-turn point.
@@ -197,9 +197,53 @@ Decided while building (they differ from sections 3 and 6):
 
 Floor order from here:
 
-1. `mark_role` M1–M12 (Teach page Role field). Mark a lap for ME-1…ME-4 and the U-turn points,
-   and assign them. Add the `uturn_points`, the machines' `uturn` and the `zones` to
-   `missions/site-103.json`. Build, Publish, Make active.
+1. Roles and positions (done 2026-10-25, section 10). Left: HOME-N (Teach here at standstill), the
+   high-speed areas. Build, Publish, Make active.
 2. E2: five Guide-page laps, with the shadow log against the floor (runbook 3.5 item 4).
 3. `colcon build --packages-select amr_interfaces`, then `tape_loc.live: true` and a restart, once
    E2 passes. Then E3 (one-call trip), E4, E5.
+
+## 10. 2026-10-25: roles, areas, offset marks
+
+The operator's role table for M1–M15 (the table itself is in
+`documentation/layout-reference/tape-graph-g1/README.md`):
+
+| Decision | Change |
+|---|---|
+| High-speed zones are **areas** drawn on the map, not mark pairs | Mission `zones` refused by name. `<teach>/areas.json` is written by the `/tape-areas` page (engineer). `trip_route.area_ranges` cuts the route where it lies inside an area for at least 1 m. The runtime reads the areas fresh at each trip's Start. The shadow lap logs entry and exit |
+| ME-1…ME-4 (attach full) = 2 m from MW-1…MW-4 toward home | Teach action `mark_offset <M> <metres> [<new M>]`: a mark on the tape the other way through the reference mark (`tape_teach.offset_mark`), + = the inbound travel direction. Teach page "Inbound at offset" |
+| UT-MRU1…3 = 1.4 m from MW-1…MW-3 toward the line's end; MRU4 turns at the tape end | Teach action `mark_along`: the same along the reference mark's own tape. `uturn_points` UT-MRU1…3 (cw) and the machines' `uturn` in `site-103.json`; MRU4 has none. (A first answer made the old M12 UT-MRU4; the updated rules replaced it, and the mark is deleted) |
+| STU (left at J-N) | later |
+
+On the vehicle (backup `marks-2026-10-25-0954.bak.json`):
+- M3, M4, M6, M7 deleted;
+- labels from the table;
+- M12–M15 by `mark_offset +2.0`, M16–M18 by `mark_along +1.4`;
+- stations.json: ATT=M1, MW-1…4=M8…M11, ME-1…4=M12…M15, UT-MRU1…3=M16…M18, each checked
+  against g1's legs and directions;
+- all ten MRU trips compile on g1 (HOME-N stood in by the pass start for the check). On a mid-line
+  trip the take-back stop comes 3.4 m after the pivot.
+
+Images: `documentation/layout-reference/tape-graph-g1/marks-*.png`, redrawn 2026-10-25.
+
+Still to teach: HOME-N (Teach here at standstill), the high-speed areas. Then Build → Publish →
+Make active (g2).
+
+2026-10-25 (operator): `tape_loc.sigma_station_m` 0.025 → **0.05 m**, the validation's ceiling.
+2 sigma is then the whole ±10 cm budget, and the stop's own error comes on top. The operator
+accepts that in exchange for fewer `position` holds before stations.
+
+2026-10-25 (operator): **MRU inbound, always branch left until HOME.** J-ML and J-SPLIT were already
+`left`. The J-STEM merge gets `"steer": "left"` in C-MRU: a merge may name a side, armed before it
+like an order (`trip_route.side_at`), while its leg keeps the name `J-STEM:merge>J-SPLIT`, so g1 stays
+valid. All ten MRU trips arm right@J-N, then left@J-ML, left@J-STEM, left@J-SPLIT, each with the full
+1 m before its fork. The shadow lap logs the J-STEM order too. C-BTU's J-STEM is unchanged.
+
+2026-10-25: **C-BTU taught next** (operator: for AGV-01 all of row 2 is laid, BTU9–16 and BTU17–24;
+BTU1–8 belong to the other AGV).
+- The C-MRU lap of 10-24 saw no fork on the trunk between J-ML and the MRU line, so J-R2E is not
+  where `site-103.json` puts it (M5: BTU's return joins at J-ML).
+- The C-BTU topology in the mission (J-S, X2, J-LV, J-R2E) is therefore fitted to the recorded
+  lap's fork episodes before any Build, not guessed.
+- For the lap: mission `c-btu-guided` (guided, 0.4 m/s, no marker run: ends with Reset at
+  HOME-N). Marks off every built leg are kept at their AMCL pose and placed at Build.

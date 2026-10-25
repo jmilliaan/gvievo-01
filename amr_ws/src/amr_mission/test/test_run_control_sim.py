@@ -39,28 +39,17 @@ from launch import LaunchDescription  # noqa: E402
 from launch.actions import IncludeLaunchDescription  # noqa: E402
 from launch.launch_description_sources import AnyLaunchDescriptionSource  # noqa: E402
 from nav_msgs.msg import Odometry  # noqa: E402
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy  # noqa: E402
 from std_srvs.srv import SetBool, Trigger  # noqa: E402
 
+from amr_base import wire
+from amr_base.qos import LATCHED, SENSOR_DATA
 from amr_interfaces.msg import LocalizationState, MotionPermit, RunState, WheelStates  # noqa: E402
 from amr_interfaces.srv import AddObstacle, RunMission, SetPose2D  # noqa: E402
 from amr_mission import map_bundle as mb  # noqa: E402
 from amr_navigation import store  # noqa: E402
 
 MAPS_DIR = tempfile.mkdtemp(prefix="amr_ctl_test_")
-SENSOR_DATA = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-S = {
-    RunState.IDLE: "IDLE",
-    RunState.READY: "READY",
-    RunState.EXECUTING: "EXECUTING",
-    RunState.PAUSED: "PAUSED",
-    RunState.BLOCKED: "BLOCKED",
-    RunState.FAULT: "FAULT",
-    RunState.DONE: "DONE",
-}
+S = wire.RUN_NAMES
 
 
 def make_route(sha: str) -> Route:

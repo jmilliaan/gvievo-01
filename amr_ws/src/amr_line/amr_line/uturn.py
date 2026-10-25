@@ -31,6 +31,7 @@ spin speed.
 import math
 
 from agv_core import config, kinematics  # vehicle constants, read at call time
+from agv_core import mission as missions
 
 SPIN, CENTER, SETTLE, DONE, FAILED = "spin", "center", "settle", "done", "failed"
 
@@ -52,14 +53,23 @@ TIME_MARGIN = 2.0
 # After turning, the vehicle drives back over its own U-turn tag, which lies the
 # measured approach distance ahead (tape_run.finish_u_turn). That one read is
 # ignored within this much further travel; beyond it the tag re-arms in case the
-# read was missed.
-REARM_MARGIN_M = 1.0
+# read was missed. The mission loader checks marker-run strips against the same margin.
+REARM_MARGIN_M = missions.REARM_MARGIN_M
 
 
-def counts_delta(new, old):
-    """6064h is INT32 and wraps; the shorter way round is the real travel."""
-    d = (int(new) - int(old)) & 0xFFFFFFFF
-    return d - (1 << 32) if d >= 1 << 31 else d
+counts_delta = kinematics.counts_delta  # 6064h is INT32 and wraps
+
+
+def m_per_count(counts_per_wheel_rev):
+    """Wheel travel per encoder count: pi*D over the counts in one wheel turn."""
+    return math.pi * config.WHEEL_DIA_M / counts_per_wheel_rev
+
+
+def unsigned_travel_m(counts, ref, counts_per_wheel_rev):
+    """Mean distance both wheels turned (either way) from `ref` to `counts`, wrap-safe."""
+    dl = abs(counts_delta(counts[0], ref[0]))
+    dr = abs(counts_delta(counts[1], ref[1]))
+    return 0.5 * (dl + dr) * m_per_count(counts_per_wheel_rev)
 
 
 def spin_omega(wheel_rpm):
@@ -97,7 +107,7 @@ class UTurn:
         self.settle_s = config.U_TURN_RESUME_DELAY_S if settle_s is None else float(settle_s)
         self.direction = direction
         self.sign = -1.0 if direction == "cw" else 1.0     # omega > 0 is CCW
-        self._m_per_count = math.pi * config.WHEEL_DIA_M / counts_per_wheel_rev
+        self._m_per_count = m_per_count(counts_per_wheel_rev)
         self._last = tuple(start_counts)
         self._left_m = self._right_m = 0.0
         self.start_level = start_level

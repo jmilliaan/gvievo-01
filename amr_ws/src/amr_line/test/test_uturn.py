@@ -209,3 +209,19 @@ def test_a_stale_gyro_falls_back_to_the_encoder_gate():
     p = GyroPivot(gyro_min_deg=165.0, gyro=False)
     p.run()
     assert not p.u.gyro_ok and p.u.snapshot()["gyro_deg"] is None
+
+
+def test_unsigned_travel_is_wrap_safe_and_uses_pi_d():
+    """D32: job, tag_table and the U-turn take wheel travel from one helper."""
+    import math
+
+    from agv_core import config
+
+    from amr_line import uturn
+
+    cpr = 1_080_000.0
+    one_m = cpr / (math.pi * config.WHEEL_DIA_M)
+    near_wrap = (2**31 - 10, -(2**31) + 10)
+    after = (-(2**31) + int(one_m) - 10, 2**31 - int(one_m) + 10)  # both wheels across the wrap
+    assert math.isclose(uturn.unsigned_travel_m(after, near_wrap, cpr), int(one_m) * uturn.m_per_count(cpr))
+    assert math.isclose(uturn.m_per_count(cpr) * one_m, 1.0)

@@ -39,34 +39,42 @@ import time
 from dataclasses import dataclass, field
 
 import can
+from agv_core import kinematics  # noqa: E402
 from agv_core.drivers.canbus import (
     guard,  # repo module
     rpdo,  # noqa: E402
 )
 from agv_core.drivers.canbus.alarms import decode_emcy, decode_nmt  # noqa: E402
-from agv_core.drivers.canbus.bus_health import decode_state  # noqa: E402
-from agv_core.drivers.canbus.drive_forward import (  # noqa: E402
-    CW_DISABLE_VOLTAGE,
-    CW_ENABLE,
-    CW_SHUTDOWN,
-    CW_SWITCH_ON,
-    SW_FAULT,
-    SW_REMOTE,
-    SW_SPEED_IS_ZERO,
-    sdo_write,
+from agv_core.drivers.canbus.cia301 import (  # noqa: E402
+    COB_DISABLED,
+    HEARTBEAT_COB_BASE,
+    TPDO1_COB_BASE,
+    TPDO1_COMM,
+    TPDO1_MAP,
+    TPDO2_COB_BASE,
+    TPDO2_COMM,
+    TPDO2_MAP,
+    TRANSMISSION_ASYNC,
 )
-from agv_core.drivers.canbus.verify_drivers import sdo_read, u32  # noqa: E402
+from agv_core.drivers.canbus.cia301 import NMT_STATE_OPERATIONAL as NMT_OPERATIONAL  # noqa: E402
+from agv_core.drivers.canbus.cia402 import (  # noqa: E402
+    CW_DISABLE_VOLTAGE,
+    CW_OPERATION_ENABLED,
+    CW_SHUTDOWN,
+    ENABLE_SEQUENCE,
+    MODE_PV,
+    SW_FAULT,
+    SW_SPEED_IS_ZERO,
+    decode_state,
+    is_operation_enabled,
+    preflight_report,
+)
+from agv_core.drivers.canbus.sdo import sdo_read, sdo_write, u32  # noqa: E402
 
 from amr_base import pp
+from amr_base.diff_drive import RAD_S_PER_RPM, WheelScale  # noqa: F401 - re-exported
 
 # ---------------------------------------------------------------- PDO layout
-
-TPDO1_COB_BASE = 0x180
-TPDO2_COB_BASE = 0x280
-TPDO1_COMM, TPDO1_MAP = 0x1800, 0x1A00
-TPDO2_COMM, TPDO2_MAP = 0x1801, 0x1A01
-COB_DISABLED = 1 << 31
-TRANSMISSION_EVENT = 255
 
 MAP_STATUSWORD = (0x6041 << 16) | 0x0010
 MAP_VELOCITY_ACTUAL = (0x606C << 16) | 0x0020
@@ -75,11 +83,6 @@ MAP_ERROR_REGISTER = (0x1001 << 16) | 0x0008
 
 _TPDO1 = struct.Struct("<Hi")  # statusword, velocity r/min
 _TPDO2 = struct.Struct("<iB")  # position counts, error register
-
-HEARTBEAT_COB_BASE = 0x700
-NMT_OPERATIONAL = 0x05
-CW_OPERATION_ENABLED = rpdo.CW_OPERATION_ENABLED
-OPERATION_ENABLED_MASK, OPERATION_ENABLED = 0x6F, 0x27
 
 
 def tpdo_configuration_steps(node: int, period_ms: int) -> list[tuple[int, int, int, int, str]]:
@@ -102,15 +105,14 @@ def tpdo_configuration_steps(node: int, period_ms: int) -> list[tuple[int, int, 
         for i, entry in enumerate(entries, start=1):
             steps.append((mapping, i, entry, 4, f"{label}: map {entry >> 16:04X}h ({entry & 0xFF} bit)"))
         steps.append((mapping, 0, len(entries), 1, f"{label}: {len(entries)} mapped objects"))
-        steps.append((comm, 2, TRANSMISSION_EVENT, 1, f"{label}: transmission type 255 (event)"))
+        steps.append((comm, 2, TRANSMISSION_ASYNC, 1, f"{label}: transmission type 255 (event)"))
         # Inhibit = period: type 255 also transmits on every VALUE CHANGE, and a
         # servo-locked position counter dithering by one count fired TPDO2 on
         # every drive cycle (~1200 f/s measured 2026-09-16, 3x the budget).
         steps.append((comm, 3, period_ms * 10, 2, f"{label}: inhibit time {period_ms} ms"))
         steps.append((comm, 5, period_ms, 2, f"{label}: event timer {period_ms} ms"))
         steps.append((comm, 1, cob, 4, f"enable {label} on 0x{cob:03X}"))
-    for index, sub, value, _size, _what in steps:
-        guard.check(index, value, sub)
+    rpdo.check_steps(steps)
     return steps
 
 
@@ -146,8 +148,7 @@ def pc_heartbeat_message(pc_node: int) -> can.Message:
 
 def unwrap_i32(prev: int, new: int) -> int:
     """Signed delta between two INT32 counter readings, wrap-safe."""
-    d = (new - prev) & 0xFFFFFFFF
-    return d - (1 << 32) if d >= (1 << 31) else d
+    return kinematics.counts_delta(new, prev)
 
 
 class WheelPosition:
@@ -179,33 +180,6 @@ class WheelPosition:
 
 
 # ---------------------------------------------------------------- scaling
-
-RAD_S_PER_RPM = 2.0 * 3.141592653589793 / 60.0
-
-
-@dataclass(frozen=True)
-class WheelScale:
-    """Motor-side units -> wheel-side SI, per wheel. Applied exactly once."""
-
-    gear_ratio: float
-    invert_left: bool
-    invert_right: bool
-    counts_per_wheel_rev: float | None = None  # 608Fh/6091h at arm time; None = positions unknown
-
-    def _sign(self, left: bool) -> float:
-        return -1.0 if (self.invert_left if left else self.invert_right) else 1.0
-
-    def motor_rpm(self, wheel_rad_s: float, left: bool) -> float:
-        return wheel_rad_s / RAD_S_PER_RPM * self.gear_ratio * self._sign(left)
-
-    def wheel_rad_s(self, motor_rpm: float, left: bool) -> float:
-        return motor_rpm * RAD_S_PER_RPM / self.gear_ratio * self._sign(left)
-
-    def wheel_rad(self, counts: int, left: bool) -> float | None:
-        if not self.counts_per_wheel_rev:
-            return None
-        return counts / self.counts_per_wheel_rev * 2.0 * 3.141592653589793 * self._sign(left)
-
 
 def counts_per_wheel_rev(read, nodes, gear_ratio: float) -> float | None:
     """Port of canworker._read_encoder_scale: 608Fh counts per motor rev × gear.
@@ -306,7 +280,7 @@ class DriveTelemetry:
     def operation_enabled(self) -> bool | None:
         if self.statusword is None:
             return None
-        return (self.statusword & OPERATION_ENABLED_MASK) == OPERATION_ENABLED
+        return is_operation_enabled(self.statusword)
 
     @property
     def faulted(self) -> bool:
@@ -450,15 +424,21 @@ class DriveLink:
 
     # -- SDO (blocking) --
 
-    def keepalive(self) -> None:
-        """PC heartbeat if one is due. Same thread as every other frame, so no second CAN owner."""
+    def keepalive(self, strict: bool = False) -> None:
+        """PC heartbeat if one is due. Same thread as every other frame, so no second CAN owner.
+
+        The one cadence for the heartbeat (_t_hb), whether it is sent from the bus loop or
+        from inside a blocking sequence. strict=True is the loop's call and re-raises a send
+        error, so a dead bus ends the loop; inside a sequence the caller's own write reports it.
+        """
         if self.pc_node is None or self.heartbeat_withheld:
             return
         if time.monotonic() - self._t_hb >= self.pc_heartbeat_s:
             try:
                 self.send_pc_heartbeat(self.pc_node)
             except Exception:  # noqa: BLE001 - the caller's own write will report the bus
-                pass
+                if strict:
+                    raise
 
     def idle(self) -> None:
         """Run idle_hook unless already inside it (its own SDOs come back through here)."""
@@ -572,55 +552,9 @@ class DriveLink:
     # -- state machine --
 
     def preflight(self) -> tuple[bool, list[str]]:
-        ok, report = True, []
-        for nid, label in self.nodes.items():
-            st, _, note, _ = sdo_read(self.router, nid, 0x1000, 0)
-            if st is None:
-                report.append(f"node {nid} ({label}): not responding")
-                ok = False
-                continue
-            if "COLLISION" in note:
-                report.append(f"node {nid} ({label}): {note}")
-                ok = False
-                continue
-            err, sw = self.read(nid, 0x1001), self.read(nid, 0x6041)
-            if err is None or sw is None:
-                report.append(f"node {nid} ({label}): diagnostics unreadable")
-                ok = False
-                continue
-            report.append(
-                f"node {nid} ({label}): error reg 0x{err:02X}, statusword 0x{sw:04X} ({decode_state(sw)})"
-            )
-            if err:
-                report.append(f"  node {nid}: driver reports a fault - clear it first")
-                ok = False
-            if not sw & SW_REMOTE:
-                report.append(
-                    f"  node {nid}: Remote bit clear - controlword ignored (S-ON active, or MEXE02)"
-                )
-                ok = False
-            if sw & SW_FAULT:
-                report.append(f"  node {nid}: FAULT state")
-                ok = False
-        return ok, report
-
-    def arm(
-        self,
-        feedback_period_ms: int,
-        pc_node: int | None,
-        pc_loss_ms: int,
-        gear_ratio: float,
-        invert_left: bool,
-        invert_right: bool,
-    ) -> list[str]:
-        """prepare() then engage(): energise both drives with zero targets. Raises, and rolls back."""
-        report = self.prepare(feedback_period_ms, pc_node, pc_loss_ms, gear_ratio, invert_left, invert_right)
-        try:
-            self.engage()
-        except BaseException:
-            self.disarm(force=True)
-            raise
-        return report
+        return preflight_report(
+            lambda n, i, sub: sdo_read(self.router, n, i, sub), lambda n, i: self.read(n, i), self.nodes
+        )
 
     def prepare(
         self,
@@ -661,7 +595,7 @@ class DriveLink:
             for nid in self.nodes:
                 self.nmt(0x01, nid)
             for nid in self.nodes:
-                self.write(nid, 0x6060, 0, 3, 1, "modes of operation = pv")
+                self.write(nid, 0x6060, 0, MODE_PV, 1, "modes of operation = pv")
                 self.write(nid, 0x6083, 0, int(self.ramp["accel"]), 4, "profile acceleration")
                 self.write(nid, 0x6084, 0, int(self.ramp["decel"]), 4, "profile deceleration")
                 self.write(nid, 0x60FF, 0, 0, 4, "target velocity = 0")
@@ -738,15 +672,11 @@ class DriveLink:
         for nid in self.nodes:
             # 60FFh may hold whatever the last RPDO carried before the release.
             self.write(nid, 0x60FF, 0, 0, 4, "target velocity = 0")
-            for cw, name in (
-                (CW_SHUTDOWN, "Shutdown"),
-                (CW_SWITCH_ON, "Switch On"),
-                (CW_ENABLE, "Enable Operation"),
-            ):
+            for cw, name in ENABLE_SEQUENCE:
                 self.write(nid, 0x6040, 0, cw, 2, name)
                 self.router.pump(0.05)
             sw = self.read(nid, 0x6041) or 0
-            if (sw & OPERATION_ENABLED_MASK) != OPERATION_ENABLED:
+            if not is_operation_enabled(sw):
                 raise RuntimeError(
                     f"node {nid} did not reach Operation enabled (statusword 0x{sw:04X}, {decode_state(sw)})"
                 )
@@ -1150,39 +1080,3 @@ def decide(
         why = "backoff" if now < retry_at else "power wanted"
         return ArmDecision("engage" if now >= retry_at else "none", why)
     return ArmDecision("none", "standby")
-
-
-# ---------------------------------------------------------------- monitoring slot
-
-
-class MonitorCursor:
-    """One bounded diagnostic SDO read per call (unified plan §7.1), round-robin
-    over canmon.OBJECTS x nodes. `read(node, index)` is the link's SDO read
-    (None on timeout). Pure bookkeeping around the repo's MonitorPoller so the
-    slot is testable without a bus; the caller decides WHEN to call it."""
-
-    def __init__(self, poller, nodes) -> None:
-        self.poller = poller
-        self.nodes = list(nodes)
-        self._i = 0
-        self._current = None
-        self.reads = 0
-        self.timeouts = 0
-
-    def step(self, read, decode) -> tuple[int, str, object] | None:
-        if self._i == 0 or self._current is None:
-            self._current = self.poller.next_object()
-            if self._current is None:
-                return None
-        index, key, ctype = self._current
-        nid = self.nodes[self._i]
-        self._i = (self._i + 1) % len(self.nodes)
-        raw = read(nid, index)
-        self.reads += 1
-        if raw is None:
-            self.timeouts += 1
-            self.poller.store(nid, key, None)
-            return nid, key, None
-        value = decode(ctype, int(raw).to_bytes(4, "little"))
-        self.poller.store(nid, key, value)
-        return nid, key, value

@@ -24,6 +24,8 @@ from __future__ import annotations
 import os
 import time
 
+from agv_core import fsutil
+
 KEEP = 5
 MAX_BYTES = 50 * 1024 * 1024
 
@@ -31,13 +33,7 @@ MAX_BYTES = 50 * 1024 * 1024
 def rotate(path: str, keep: int = KEEP) -> None:
     """base.log -> base.log.1 -> ... -> base.log.<keep>; the oldest falls off."""
     try:
-        if not os.path.exists(path):
-            return
-        for n in range(keep - 1, 0, -1):
-            src, dst = f"{path}.{n}", f"{path}.{n + 1}"
-            if os.path.exists(src):
-                os.replace(src, dst)
-        os.replace(path, f"{path}.1")
+        fsutil.rotate_numbered(path, keep)
     except OSError:
         pass
 
@@ -72,8 +68,33 @@ def cap_dir(directory: str, max_bytes: int = MAX_BYTES) -> list[str]:
     return out
 
 
+# Files a layer writes per control generation into the state directory: stem -> extensions.
+# navigation_layer writes them through gen_path(); the sweep below removes dead ones.
+GENERATION_FILES = {
+    "costmap_footprint_gen": (".yaml",),
+    "loc_map_gen": (".pgm", ".yaml"),
+}
+
+
+def gen_path(state_dir: str, stem: str, generation: int, ext: str = "") -> str:
+    """<state_dir>/<stem><generation><ext>; ext "" gives the stem gridio.write() extends."""
+    if stem not in GENERATION_FILES or (ext and ext not in GENERATION_FILES[stem]):
+        raise ValueError(f"not a per-generation file: {stem}*{ext}")
+    return os.path.join(os.path.expanduser(state_dir), f"{stem}{int(generation)}{ext}")
+
+
+def _generation_of(name: str) -> str | None:
+    for stem, exts in GENERATION_FILES.items():
+        for ext in exts:
+            if name.startswith(stem) and name.endswith(ext):
+                digits = name[len(stem) : -len(ext)]
+                if digits.isdigit():
+                    return digits
+    return None
+
+
 def sweep_generation_files(state_dir: str, keep_generation: int | None = None) -> list[str]:
-    """Delete `costmap_footprint_gen<N>.yaml` files that no live layer owns.
+    """Delete the GENERATION_FILES that no live layer owns.
 
     They are written per control generation and never removed, so the state directory
     accumulated one per mode change for the life of the install. At boot nothing is
@@ -84,9 +105,9 @@ def sweep_generation_files(state_dir: str, keep_generation: int | None = None) -
     except OSError:
         return removed
     for name in sorted(names):
-        if not (name.startswith("costmap_footprint_gen") and name.endswith(".yaml")):
+        digits = _generation_of(name)
+        if digits is None:
             continue
-        digits = name[len("costmap_footprint_gen") : -len(".yaml")]
         if keep_generation is not None and digits == str(keep_generation):
             continue
         try:

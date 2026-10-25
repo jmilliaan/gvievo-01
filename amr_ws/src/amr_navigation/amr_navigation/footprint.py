@@ -16,7 +16,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import yaml
-from amr_maps.grid import Grid, rasterize_polygon, require_axis_aligned
+from amr_maps.grid import Grid, occupied, rasterize_polygon, require_axis_aligned
+
+from amr_navigation.compiler import arc_pose
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,7 @@ def arc_poses(
     to_len: float | None = None,
 ) -> list[tuple[float, float, float]]:
     """Poses along an arc (heading tangent) every `spacing` metres of arc length, between
-    `from_len` and `to_len` (default: the whole arc). Same construction as compiler.arc_pose."""
+    `from_len` and `to_len` (default: the whole arc), each from compiler.arc_pose."""
     sign = 1.0 if signed_angle >= 0 else -1.0
     total = radius * abs(signed_angle)
     a0 = max(0.0, min(total, from_len))
@@ -183,11 +185,7 @@ def arc_poses(
     n = max(1, int(math.ceil((a1 - a0) / spacing)))
     out = []
     for k in range(n + 1):
-        phi = (a0 + (a1 - a0) * k / n) / radius
-        yaw = yaw0 + sign * phi
-        out.append(
-            (centre[0] + sign * radius * math.sin(yaw), centre[1] - sign * radius * math.cos(yaw), yaw)
-        )
+        out.append(arc_pose(centre, radius, yaw0, sign, (a0 + (a1 - a0) * k / n) / radius))
     return out
 
 
@@ -284,8 +282,8 @@ def check(
     which is clipped to the grid and so cannot express overhang. `dynamic` (bool, the map's
     shape) turns occupied/unknown cells inside it into `provisional`; keepout still blocks."""
     swept = mask if dynamic is None else mask & ~dynamic
-    occ = int(((grid.data >= 65) & swept).sum())
+    occ = int((occupied(grid) & swept).sum())
     unk = int(((grid.data == -1) & swept).sum())
-    ko = int(((keepout.data >= 65) & mask).sum()) if keepout is not None else 0
-    prov = 0 if dynamic is None else int(((grid.data >= 65) | (grid.data == -1))[mask & dynamic].sum())
+    ko = int((occupied(keepout) & mask).sum()) if keepout is not None else 0
+    prov = 0 if dynamic is None else int((occupied(grid) | (grid.data == -1))[mask & dynamic].sum())
     return Clearance(occ, unk, ko, int(mask.sum()), outside, prov)

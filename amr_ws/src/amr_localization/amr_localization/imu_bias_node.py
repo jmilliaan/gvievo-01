@@ -6,21 +6,14 @@ comes from /wheel_states; nothing is published until the first calibration
 window completes. /imu/recalibrate (std_srvs/Trigger) discards the estimate.
 """
 
-import rclpy
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
 from amr_interfaces.msg import WheelStates
 from amr_localization.gyro_bias import BiasEstimator
-
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
 
 
 class ImuBias(LeanNode):
@@ -53,12 +46,8 @@ class ImuBias(LeanNode):
 
     def _on_wheels(self, msg: WheelStates) -> None:
         self._wheels_t = self._now()
-        self._wheels_still = (
-            msg.left_valid
-            and msg.right_valid
-            and abs(msg.left_vel_rad_s) < self.w_eps
-            and abs(msg.right_vel_rad_s) < self.w_eps
-        )
+        self._wheels_still = drive_state.still(msg.left_vel_rad_s, msg.right_vel_rad_s, self.w_eps,
+                                               inclusive=False, valid=msg.left_valid and msg.right_valid)
 
     def _stationary(self, t: float) -> bool:
         # No wheel feedback means we cannot claim stillness.
@@ -102,25 +91,7 @@ class ImuBias(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = ImuBias()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        # launch sends SIGINT; the context may already be down by the time we
-        # get here, and destroy_node() then raises from the C layer.
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(ImuBias, args)
 
 
 if __name__ == "__main__":

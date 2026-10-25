@@ -26,14 +26,9 @@ TIME_MARGIN = 2.0
 TIME_SLACK_S = 2.0
 # Longest wait at rest for both speed-zero bits before calling it a fault.
 SETTLE_LIMIT_S = 5.0
-# Completed segments kept in memory for the page; the CSV keeps all of them.
-RESULTS_KEPT = 50
 
 
-def counts_delta(new, old):
-    """6064h is INT32 and wraps; the shorter way round is the real travel."""
-    d = (int(new) - int(old)) & 0xFFFFFFFF
-    return d - (1 << 32) if d >= 1 << 31 else d
+counts_delta = kinematics.counts_delta  # 6064h is INT32 and wraps
 
 
 def _num(spec, key, where):

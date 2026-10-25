@@ -4,13 +4,10 @@ const view = new MapView(document.getElementById('ed-canvas'));
 let mapId = null, mapRev = null, footprint = null, mapsIndex = [];
 const DEFAULT_LIMITS = () => ({});
 // The one trackless speed (2026-10-02): amr_navigation.route.VEHICLE_V_MAX, rendered into the page.
-// Speed keys in older route files are dropped here and by the server; nothing writes them back.
+// Speed keys in older route files are dropped by the server on load and save (route.LEGACY_SPEED_LIMITS).
 const SPEED_V = +(document.getElementById('ed-speed').dataset.v) || 0.60;
-const LEGACY_SPEED_KEYS = ['linear_mps', 'long_linear_mps', 'long_min_length_m', 'arc_linear_mps'];
-const routeLimits = l => Object.fromEntries(Object.entries(l || {}).filter(([k]) => !LEGACY_SPEED_KEYS.includes(k)));
 let route = { route_id: '', start: null, steps: [], repeat_count: 1, limits: DEFAULT_LIMITS() };
 let history = [], future = [], lastResult = null, savedRef = null;
-const $ = id => document.getElementById(id);
 // Context tokens (review Q15): every awaited server response is applied only if the map
 // selection (mapToken) and the draft (draftToken) are still the ones it was made for. A
 // map change bumps mapToken; any edit, undo/redo, load or clear bumps draftToken.
@@ -26,14 +23,14 @@ function redo() { if (!future.length) return; history.push(JSON.stringify(route)
 
 // Distances are authored and stored in metres; the operator reads and types them in mm (0 dp).
 const mm = m => num(Math.round(m * 1000), 0);
-const MIN_STRAIGHT_M = 0.05;
-const REVERSE_MAX_M = 2.0;  // amr_navigation.route.REVERSE_MAX_M: the rear is outside the scanner's field
-const ARC_MIN_R = 1.0, ARC_MIN_DEG = 45, ARC_MAX_DEG = 180;  // amr_navigation.route ARC_* bounds
+// Geometry bounds from amr_navigation (server _ROUTE_BOUNDS on the canvas); literals are the fallback.
+const BOUNDS = (() => { try { return JSON.parse(view.canvas.dataset.bounds || '{}'); } catch (e) { return {}; } })();
+const MIN_STRAIGHT_M = BOUNDS.min_straight_m ?? 0.05;
+const REVERSE_MAX_M = BOUNDS.reverse_max_m ?? 2.0;  // the rear is outside the scanner's field
+const ARC_MIN_R = BOUNDS.arc_min_r ?? 1.0, ARC_MIN_DEG = BOUNDS.arc_min_deg ?? 45, ARC_MAX_DEG = BOUNDS.arc_max_deg ?? 180;
 // mirrors amr_navigation compiler.arc_speed: the trackless speed, lowered so v/R <= 0.9 x VEHICLE_ARC_W_MAX
-const ARC_YAW_RATE_RATIO = 0.9, VEHICLE_ARC_W_MAX = 0.45;
-// Same construction as compiler.arc_centre / arc_pose: the circle to the left for +1 (ccw).
-function arcCentre(x, y, yaw, r, sign) { return [x - sign * r * Math.sin(yaw), y + sign * r * Math.cos(yaw)]; }
-function arcPose(c, r, yaw0, sign, phi) { const yaw = yaw0 + sign * phi; return { x: c[0] + sign * r * Math.sin(yaw), y: c[1] - sign * r * Math.cos(yaw), yaw }; }
+const ARC_YAW_RATE_RATIO = BOUNDS.arc_yaw_rate_ratio ?? 0.9, VEHICLE_ARC_W_MAX = BOUNDS.vehicle_arc_w_max ?? 0.45;
+// arcCentre / arcPose: mapview.js (compiler.arc_centre / arc_pose).
 function arcSamples(a, s, n) {  // poses along step s (an arc) from pose a, n+1 of them
   const sign = s.direction === 'ccw' ? 1 : -1, c = arcCentre(a.x, a.y, a.yaw, s.radius_m, sign), th = s.angle_deg * Math.PI / 180;
   return Array.from({ length: n + 1 }, (_, k) => arcPose(c, s.radius_m, a.yaw, sign, th * k / n));
@@ -141,7 +138,7 @@ const badSteps = () => new Set((lastResult && lastResult.issues || []).filter(i 
 function payload() {
   return { schema_version: 1, route_id: $('ed-route-id').value.trim(), revision: 0,
            map: { id: mapId, revision: mapRev, sha256: '' }, frame_id: 'map',
-           start: route.start || { x_m: 0, y_m: 0, yaw_deg: 0 }, limits: routeLimits(route.limits), steps: route.steps, repeat_count: route.repeat_count };
+           start: route.start || { x_m: 0, y_m: 0, yaw_deg: 0 }, limits: route.limits || {}, steps: route.steps, repeat_count: route.repeat_count };
 }
 $('btn-validate').onclick = async () => {
   const c = ctx();
@@ -290,7 +287,7 @@ $('ed-load').onchange = async e => {
   const c = ctx(), forMap = { map_id: mapId, map_revision: mapRev };
   const { data } = await apiGet(`/api/maps/${mapId}/${mapRev}/routes/${rid}/${rrev}`);
   if (!stillCurrent(c)) { log(`load of ${rid} rev${rrev} discarded: the draft or map changed meanwhile`, 'warn'); return; }
-  snapshot(); route = { route_id: data.route.route_id, start: data.route.start, steps: data.route.steps, repeat_count: data.route.repeat_count, limits: routeLimits(data.route.limits) };
+  snapshot(); route = { route_id: data.route.route_id, start: data.route.start, steps: data.route.steps, repeat_count: data.route.repeat_count, limits: data.route.limits || {} };
   $('ed-route-id').value = data.route.route_id; savedRef = Object.assign({ route_id: rid, revision: +rrev }, forMap); lastResult = data; showResult(data); refresh();
   log(`loaded ${rid} rev${rrev}${data.ok ? '' : ' (INVALID on this map revision)'}`, data.ok ? '' : 'bad');
 };

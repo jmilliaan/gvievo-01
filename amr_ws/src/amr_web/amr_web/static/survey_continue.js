@@ -2,7 +2,6 @@
 // vehicle stands on it, and start. The session coordinator matches the live scan against the
 // map before slam_toolbox loads the graph and refuses when unsure. Moves nothing.
 const view = new MapView(document.getElementById('cs-canvas'));
-const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, hint = null, mapToken = 0, busy = false;
 
 const deg = r => r * 180 / Math.PI;

@@ -2,18 +2,10 @@
 // controls. Motion itself is authorised only by the physical panel.
 const HOLD_NAMES = { field: 'lidar stop', estop: 'E-stop', controller: 'controller stop', pending: 'stopping' };
 const view = new MapView(document.getElementById('run-canvas'));
-const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, footprint = null, preview = null;
 let poseGen = null;  // the generation the operator saw when they picked up the pose tool
 
-// Pose seeding and confirmation only make sense on the picture of the map AMCL is running
-// on: coordinates drawn on map B would otherwise land in map A (R12). That is the navigation
-// map, or in LINE the tape-localization map (state.loc_map, 2026-10-23). The server
-// re-checks the identity against the live mode before anything is published.
-function viewIsActive() {
-  const a = lastState && lastState.loc_map;
-  return !!(a && view.meta && a.map_id === view.meta.map_id && +a.map_revision === +view.meta.revision);
-}
+// viewIsActive(view, state): mapview.js - only the active map's picture takes a pose (R12).
 function dropPoseTool() { view.tool = null; view._preview = null; $('tool-initialpose').classList.remove('on'); }
 
 view.onDrag = (a, b, done) => {
@@ -21,7 +13,7 @@ view.onDrag = (a, b, done) => {
   const yaw = Math.atan2(b[1] - a[1], b[0] - a[0]);
   view._preview = { x: a[0], y: a[1], yaw };
   if (done) {
-    if (!viewIsActive() || !lastState.mode || lastState.mode.generation !== poseGen) { log('the viewed map is not the active map (or the mode changed); pose not sent', 'bad'); dropPoseTool(); return; }
+    if (!viewIsActive(view, lastState) || !lastState.mode || lastState.mode.generation !== poseGen) { log('the viewed map is not the active map (or the mode changed); pose not sent', 'bad'); dropPoseTool(); return; }
     api('/api/localization/initialpose', { x_m: a[0], y_m: a[1], yaw_rad: yaw, map_id: view.meta.map_id, map_revision: view.meta.revision,
                                            sha256: view.meta.sha256, generation: poseGen }).then(r => { if (r.status === 200) log(r.data.message); });
     dropPoseTool();
@@ -30,7 +22,7 @@ view.onDrag = (a, b, done) => {
 view.onClick = () => { log('drag from the position towards the heading', 'warn'); };
 $('tool-initialpose').onclick = () => {
   if (view.tool) { dropPoseTool(); return; }
-  if (!viewIsActive()) { log('select the active map in the view first', 'bad'); return; }
+  if (!viewIsActive(view, lastState)) { log('select the active map in the view first', 'bad'); return; }
   poseGen = lastState.mode.generation; view.tool = 'initialpose'; $('tool-initialpose').classList.add('on');
 };
 // Most runs start where the survey began: one press seeds the pose at the map's survey
@@ -38,20 +30,20 @@ $('tool-initialpose').onclick = () => {
 $('btn-pose-survey').onclick = () => {
   const st = view.meta && view.meta.start;
   if (!st || st.x_m === undefined) { log('this map has no survey start mark', 'bad'); return; }
-  if (!viewIsActive()) { log('the viewed map is not the active map; pose not sent', 'bad'); return; }
+  if (!viewIsActive(view, lastState)) { log('the viewed map is not the active map; pose not sent', 'bad'); return; }
   dropPoseTool();
   const yaw = st.yaw_rad || 0;
   api('/api/localization/initialpose', { x_m: st.x_m, y_m: st.y_m, yaw_rad: yaw, map_id: view.meta.map_id, map_revision: view.meta.revision,
                                          sha256: view.meta.sha256, generation: lastState.mode.generation })
     .then(r => log(r.status === 200 ? `${r.data.message} (survey mark ${num(st.x_m, 2)}, ${num(st.y_m, 2)}, ${num(yaw * 180 / Math.PI, 1)}°)` : r.data.message, r.status === 200 ? '' : 'bad'));
 };
-$('btn-loc-confirm').onclick = () => api('/api/localization/confirm').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-$('btn-loc-reset').onclick = () => api('/api/localization/reset').then(r => log(r.data.message));
-$('btn-run-load').onclick = () => api('/api/mission/run', { mission_id: $('run-mission').value }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-$('btn-run-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message));
-$('btn-run-resume').onclick = () => api('/api/mission/resume').then(r => log(r.data.message));
-$('btn-run-abort').onclick = () => api('/api/mission/abort').then(r => log(r.data.message));
-$('btn-run-ack').onclick = () => api('/api/mission/ack').then(r => log(r.data.message));
+$('btn-loc-confirm').onclick = () => act('/api/localization/confirm');
+$('btn-loc-reset').onclick = () => act('/api/localization/reset');
+$('btn-run-load').onclick = () => act('/api/mission/run', { mission_id: $('run-mission').value });
+$('btn-run-pause').onclick = () => act('/api/mission/pause');
+$('btn-run-resume').onclick = () => act('/api/mission/resume');
+$('btn-run-abort').onclick = () => act('/api/mission/abort');
+$('btn-run-ack').onclick = () => act('/api/mission/ack');
 
 const age = (v) => [num(v, 2), 's', v > 1.0 ? 'warn' : ''];
 
@@ -87,7 +79,7 @@ onState(st => {
   } else if (nowRun && nowRun !== runMission) {
     runMission = nowRun; loadMissions(nowRun);  // a mission was loaded (here or elsewhere): draw THAT route
   } else runMission = nowRun;
-  const onActive = viewIsActive();
+  const onActive = viewIsActive(view, lastState);
   $('tool-initialpose').disabled = !onActive; $('btn-loc-confirm').disabled = !onActive;
   $('btn-pose-survey').disabled = !onActive || !(view.meta && view.meta.start && view.meta.start.x_m !== undefined);
   if (!onActive && view.tool === 'initialpose') dropPoseTool();
@@ -142,7 +134,7 @@ $('btn-activate').onclick = () => { if (!mapId) return; operation('/api/mode', {
 $('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
 view.overlays.push((c, v) => {
   if (v._preview) v.arrow(v._preview.x, v._preview.y, v._preview.yaw, 1.0, INK.preview);
-  if (!viewIsActive()) return;  // executor pose and route preview are in the ACTIVE map's coordinates
+  if (!viewIsActive(view, lastState)) return;  // executor pose and route preview are in the ACTIVE map's coordinates
   const r = lastState && lastState.run;
   if (r && r.pose_valid) { v.arrow(r.pose_x, r.pose_y, r.pose_yaw, 0.8, INK.accent); if (footprint) v.footprint(r.pose_x, r.pose_y, r.pose_yaw, footprint.polygon, alpha(INK.accent, 0.55)); }
   if (preview) preview.steps.forEach(s => {
@@ -151,7 +143,7 @@ view.overlays.push((c, v) => {
     else if (s.type === 'arc' && s.centre) {
       // the compiled arc: from its start heading, signed angle about its centre (compiler.arc_pose)
       const sign = s.signed_angle_deg >= 0 ? 1 : -1, th = Math.abs(s.signed_angle_deg) * Math.PI / 180, n = Math.max(8, Math.ceil(Math.abs(s.signed_angle_deg) / 3));
-      const pts = Array.from({ length: n + 1 }, (_, k) => { const yaw = s.start[2] + sign * th * k / n; return [s.centre[0] + sign * s.radius_m * Math.sin(yaw), s.centre[1] - sign * s.radius_m * Math.cos(yaw)]; });
+      const pts = Array.from({ length: n + 1 }, (_, k) => { const p = arcPose(s.centre, s.radius_m, s.start[2], sign, th * k / n); return [p.x, p.y]; });
       v.polyline(pts, INK.route, 2); v.dot(s.end[0], s.end[1], INK.turn, 4);
     }
     else v.dot(s.start[0], s.start[1], INK.turn, 5);

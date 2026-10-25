@@ -24,8 +24,6 @@ is atomic, not durable (review 2026-09-21, F03).
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -37,6 +35,8 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import yaml
+from agv_core import fsio
+from agv_core.fsio import sha256_file  # noqa: F401 - re-exported
 
 from amr_maps import edit
 from amr_maps import grid as gridio
@@ -82,14 +82,6 @@ class Manifest:
     sha256: str = ""  # over the files table, the bundle identity routes refer to
 
 
-def sha256_file(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def list_revisions(maps_dir: str, map_id: str) -> list[int]:
     d = os.path.join(maps_dir, map_id)
     if not os.path.isdir(d):
@@ -112,9 +104,7 @@ def next_revision(maps_dir: str, map_id: str) -> int:
 
 def revision_dir(maps_dir: str, map_id: str, revision: int) -> str:
     _plain_id(map_id)
-    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-        raise BundleError(f"revision must be a positive integer: {revision!r}")
-    return os.path.join(maps_dir, map_id, f"rev{revision}")
+    return os.path.join(maps_dir, map_id, f"rev{fsio.positive_revision(revision, BundleError)}")
 
 
 def _plain_id(map_id: str) -> str:
@@ -126,21 +116,13 @@ def _plain_id(map_id: str) -> str:
     return map_id
 
 
-LOCK = ".lock"
+LOCK = fsio.LOCK_NAME
 
 
-@contextlib.contextmanager
 def map_lock(maps_dir: str, map_id: str):
     """Exclusive writer lock for one map (allocate + stage + verify + publish).
     flock binds to the open file description: threads and processes alike."""
-    d = os.path.join(maps_dir, _plain_id(map_id))
-    os.makedirs(d, exist_ok=True)
-    fd = os.open(os.path.join(d, LOCK), os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        os.close(fd)
+    return fsio.writer_lock(os.path.join(maps_dir, _plain_id(map_id)))
 
 
 def staging_dir(maps_dir: str, map_id: str, revision: int) -> str:
@@ -366,8 +348,8 @@ def derive_edit(
     src_dir = revision_dir(maps_dir, map_id, from_revision)
     parent, grid = load(maps_dir, map_id, from_revision)
     dyn = load_mask(src_dir, "dynamic")
-    res = edit.apply(grid, None if dyn is None else dyn.data >= 65, ops)
-    before = np.zeros(grid.data.shape, dtype=bool) if dyn is None else dyn.data >= 65
+    res = edit.apply(grid, None if dyn is None else gridio.occupied(dyn), ops)
+    before = np.zeros(grid.data.shape, dtype=bool) if dyn is None else gridio.occupied(dyn)
     if np.array_equal(res.grid.data, grid.data) and np.array_equal(res.dynamic, before):
         raise edit.EditError("the edits change nothing on this map (outside it, or already so)")
     with tempfile.TemporaryDirectory(prefix="amr_edit_") as tmp:
@@ -395,14 +377,6 @@ def derive_edit(
     return path, revision, res
 
 
-def _fsync_path(path: str, directory: bool = False) -> None:
-    fd = os.open(path, os.O_RDONLY | (os.O_DIRECTORY if directory else 0))
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
 def publish(stage: str, maps_dir: str, map_id: str, revision: int) -> str:
     """Durable, atomic rename of a verified stage to rev<N>. Refuses to
     overwrite. The stage's manifest must name this map and revision, so a
@@ -418,14 +392,7 @@ def publish(stage: str, maps_dir: str, map_id: str, revision: int) -> str:
         )
     if os.path.lexists(dest):
         raise BundleError(f"revision already exists: {dest}")
-    for name in os.listdir(stage):
-        _fsync_path(os.path.join(stage, name))
-    _fsync_path(stage, directory=True)
-    try:
-        os.rename(stage, dest)
-    except OSError as e:
-        raise BundleError(f"publish {dest}: {e}") from e
-    _fsync_path(os.path.dirname(dest), directory=True)
+    fsio.publish_dir(stage, dest, wrap=lambda e: BundleError(f"publish {dest}: {e}"))
     return dest
 
 
@@ -444,6 +411,21 @@ def load_manifest(rev_dir: str, map_id: str, revision: int) -> Manifest:
             f"manifest identity {m.map_id!r} rev{m.revision} does not match {map_id!r} rev{revision}"
         )
     return m
+
+
+def manifest_sha(maps_dir: str, map_id: str, revision) -> str:
+    """The verified bundle identity of <map_id>/rev<N>; BundleError on any mismatch."""
+    rev = int(revision)
+    return load_manifest(revision_dir(maps_dir, map_id, rev), map_id, rev).sha256
+
+
+# slam_toolbox's saved pose graph: what a survey needs to continue a revision
+POSEGRAPH_FILES = ("posegraph.posegraph", "posegraph.data")
+
+
+def missing_posegraph(manifest: Manifest) -> list[str]:
+    files = manifest.files or {}
+    return [f for f in POSEGRAPH_FILES if f not in files]
 
 
 def load(maps_dir: str, map_id: str, revision: int) -> tuple[Manifest, gridio.Grid]:

@@ -205,18 +205,26 @@ def test_rfid():
           rfid.pass_summary(ps.closed[0][1])
           == "RFID pass 0040: 3 reads in 0.30 s, RSSI peak -70.0 mean -72.7 min -76.0 dBm",
           rfid.pass_summary(ps.closed[0][1]))
+    back = rfid.parse_pass_summary("[rfid_node] " + rfid.pass_summary(ps.closed[0][1]))
+    check("the pass line parses back (tools/bag_report.py reads it)",
+          back is not None and back["tag"] == "0040" and back["reads"] == 3
+          and back["rssi_peak"] == -70.0 and rfid.parse_pass_summary("no pass here") is None, str(back))
+    check("a hop channel's frequency comes from the reader's start and step",
+          rfid.channel_mhz({"start_mhz": 902.75, "step_khz": 500}, 4) == 904.75
+          and rfid.channel_mhz(None, 4) is None)
 
     # -- link state from captured frames (no socket) ---------------------------
     link = rfid.RfidLink()
     snap = link.snapshot()
     check("carrier is read from the real NIC, or None if absent",
-          snap["carrier"] in (True, False, None), str(snap["carrier"]))
-    check("silence is not a fault while connected", snap["silent"] is False)
+          link.carrier() in (True, False, None), str(link.carrier()))
+    check("an unstarted link is not comms-ok, and silence is never a snapshot field",
+          snap["comms_ok"] is False and "silent" not in snap)
     link._absorb(rfid.CfDecoder().decode(hx(PARAMS) + info_bytes)[0])
     link._absorb(rfid.CfDecoder().decode(stream)[0])
     snap = link.snapshot(encounters=True)
     check("five reads of one tag are ONE encounter",
-          snap["encounters"] == [(1, "0020")] and snap["tags_seen"] == 5, str(snap["encounters"]))
+          snap["encounters"] == [(1, "0020")] and link._tags_seen == 5, str(snap["encounters"]))
     link.passes.expire(float("inf"))
     snap = link.snapshot(encounters=True)
     check("the five captured reads are one pass with their RSSI spread",
@@ -229,9 +237,9 @@ def test_rfid():
           snap["reader"]["region_name"] == "US" and "CP-203910" in (snap["identity"] or ""))
     check("no config mismatch on the captured unit", snap["config_mismatch"] == [])
     link.ignore = {"0020"}
-    before = link.snapshot()["tags_seen"]
+    before = link._tags_seen
     link._absorb(rfid.CfDecoder().decode(hx(TAG_FRAMES[0]))[0])
-    check("an ignored id never counts", link.snapshot()["tags_seen"] == before)
+    check("an ignored id never counts", link._tags_seen == before)
     link.heartbeat = rfid.Heartbeat(1.0, 3.0)
     link.heartbeat.reset(0.0)
     link._absorb(rfid.CfDecoder().decode(resp(rfid.CMD_ONLINE, 0, b""))[0])
@@ -425,7 +433,7 @@ def test_rfid_link_session():
     try:
         link.start()
         deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline and not (link.snapshot()["reader"] and link.snapshot()["tag"]):
+        while time.monotonic() < deadline and not (link.snapshot()["reader"] and link._last_tag):
             time.sleep(0.05)
         snap = link.snapshot(encounters=True)
     finally:
@@ -442,7 +450,7 @@ def test_rfid_link_session():
           rfid.command(rfid.CMD_GET_PARAMS) in segments[1:2], [x.hex() for x in segments])
     check("identity, parameters and the tag all arrive over the session",
           bool(snap["identity"]) and snap["reader"] and snap["reader"]["region_name"] == "US"
-          and snap["tag"] == "0020" and snap["encounters"] == [(1, "0020")], str(snap)[:120])
+          and link._last_tag == "0020" and snap["encounters"] == [(1, "0020")], str(snap)[:120])
 
 
 TESTS = [

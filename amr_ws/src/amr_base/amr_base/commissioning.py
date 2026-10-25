@@ -54,6 +54,8 @@ from agv_core import (
 )
 
 from amr_base import pp
+from amr_base.diff_drive import WheelScale
+from amr_base.gating import LEASE_AUTONOMOUS, LEASE_COMMISSIONING  # noqa: F401 - re-exported for tests
 
 IDLE, PREPARED, RUNNING, SETTLING, DONE, ABORTED = range(6)
 PHASE_NAMES = {
@@ -64,14 +66,12 @@ PHASE_NAMES = {
     DONE: "DONE",
     ABORTED: "ABORTED",
 }
-LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 2, 4
 BACKENDS = ("pv", "pp")
 PP_STATUS_FRESH_S = 0.5  # /drives/pp_status is 10 Hz
 PP_TAKE_S = 1.0  # the drive owner must report our run id this soon after Start
 PP_RELEASE_TICKS = 10  # hold=false repeats after an abort/clear
 # A plain file-name stem: no path separators, no leading dot.
 PLAN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
-WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
 
 
 @dataclass
@@ -335,9 +335,8 @@ class Job:
         self.results = list(self.run.results)
         if self.phase in (DONE, ABORTED):
             return 0.0, 0.0
-        sl = -1.0 if config.INVERT_LEFT else 1.0
-        sr = -1.0 if config.INVERT_RIGHT else 1.0
-        return sl * left_rpm * WHEEL_RAD_S_PER_MOTOR_RPM, sr * right_rpm * WHEEL_RAD_S_PER_MOTOR_RPM
+        scale = WheelScale(config.GEAR_RATIO, config.INVERT_LEFT, config.INVERT_RIGHT)
+        return scale.wheel_rad_s(left_rpm, True), scale.wheel_rad_s(right_rpm, False)
 
     def _pp_follow(self, i: Inputs) -> None:
         """RUNNING, pp: the drive owner does the move; this watches it end."""

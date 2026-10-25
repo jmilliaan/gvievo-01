@@ -332,3 +332,21 @@ def test_nomotion_updates_are_wanted_only_while_checking():
     assert not r.wants_nomotion_update()
     r.evaluate(3.0, {**FRESH, "scan": 0.3})
     assert r.state == rd.LOST and not r.wants_nomotion_update()  # LOST needs a new pose
+
+
+def test_the_monitor_node_declares_the_limits_defaults():
+    """D166: localization_monitor_node takes every readiness default from Limits()."""
+    import ast
+    import pathlib
+
+    src = pathlib.Path(__file__).resolve().parents[1] / "amr_localization" / "localization_monitor_node.py"
+    ages = ("scan_age_limit_s", "wheels_age_limit_s", "imu_age_limit_s", "tf_age_limit_s")
+    literal = []
+    for node in ast.walk(ast.parse(src.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "declare_parameter":
+            name, default = node.args[0].value, node.args[1]
+            if name.startswith(("cov_", "jump_", "settle", "initial_grace", "min_scan", "max_scan",
+                                "match_hold", "match_age")) or name in ages:
+                if isinstance(default, ast.Constant):
+                    literal.append(name)
+    assert literal == []

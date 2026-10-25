@@ -17,6 +17,7 @@ Domain guard: real:=true needs ROS_DOMAIN_ID=10; real:=false refuses it.
 
 import os
 
+from agv_core import paths
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -133,9 +134,9 @@ def _compose(context):
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
-            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve to 0.3 m/s^2 with
-            # 1.0 m/s^3 (1.9 s to full speed); driving + turning arcs with the slow wheel at 66 %
-            # of the fast one; a spin in place stays at 0.3 rad/s.
+            # Manual (pendant / browser jog, 2026-09-18): the node's defaults - 0.5 m/s, S-curve to
+            # 0.3 m/s^2 with 1.0 m/s^3, arcs with the slow wheel at 66 % of the fast one, spins at
+            # 0.39 rad/s, 0.27 rad/s while surveying (gating.DEFAULT and the mux's own params).
             parameters=[
                 {
                     **gate,
@@ -149,12 +150,6 @@ def _compose(context):
                     "alpha_max": 0.4,
                     "d_max": 0.5,
                     "delta_max": 1.0,
-                    "manual_a_max": 0.3,
-                    "manual_jerk": 1.0,
-                    "pendant_v_m_s": 0.5,
-                    "pendant_w_rad_s": 0.39,
-                    "pendant_turn_ratio": 0.66,  # manual corner: inner wheel 66 % of the outer
-                    "survey_w_max_rad_s": 0.27,  # manual spin cap while surveying (pendant + jog)
                 }
             ],
         ),
@@ -181,7 +176,7 @@ def _compose(context):
                 executable="commissioning_node",
                 name="commissioning_node",
                 output="screen",
-                parameters=[{"state_dir": os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))}],
+                parameters=[{"state_dir": paths.state_dir()}],
             )
         )
     actions += required(

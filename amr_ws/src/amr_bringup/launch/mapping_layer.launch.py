@@ -12,6 +12,7 @@ fault unless it asked for the stop.
 
 import os
 
+from agv_core import paths
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -71,7 +72,7 @@ def _compose(context):
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
-            DeclareLaunchArgument("maps_dir", default_value=os.path.expanduser("~/amr_maps")),
+            DeclareLaunchArgument("maps_dir", default_value=paths.maps_dir()),
             DeclareLaunchArgument("generation", default_value="0"),
             DeclareLaunchArgument("internal", default_value="false"),
             OpaqueFunction(function=_compose),

@@ -15,8 +15,8 @@ child spawned by an owner does not inherit and silently keep the lock. Locks
 release with the descriptor - on any exit, including SIGKILL - so nothing
 ever needs to "clean up" a stale lock file, and nobody may unlink one.
 
-Free of config, ROS and threads; importable by the legacy controller and by
-the ROS owners alike (bare name via the layer dirs / amr_base.agv_repo).
+Free of config, ROS and threads: the ROS owners (drive_node, panel_node,
+rfid_node) and the bench tools import it alike.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import fcntl
 import os
 
 DEFAULT_DIR = "/run/lock/amr"
-RESOURCES = ("app", "can", "dio", "scanner", "rfid")
+RESOURCES = ("can", "dio", "rfid")
 
 
 class OwnerBusy(RuntimeError):
@@ -81,21 +81,3 @@ def acquire(resource: str, who: str = "") -> OwnerLock:
     except OSError:
         pass
     return OwnerLock(resource, fd, path)
-
-
-def holder(resource: str) -> str | None:
-    """Who holds `resource`, or None if it is free. Diagnostic only."""
-    path = os.path.join(lock_dir(), f"{resource}.lock")
-    try:
-        fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
-    except FileNotFoundError:
-        return None
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        try:
-            return os.read(fd, 256).decode(errors="replace").strip() or "unknown"
-        finally:
-            os.close(fd)
-    os.close(fd)  # we got it, so it was free; closing releases it again
-    return None

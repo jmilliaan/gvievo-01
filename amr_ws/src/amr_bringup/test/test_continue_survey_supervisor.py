@@ -78,6 +78,7 @@ def fake(maps_dir):
     sv._conditions = lambda: None
     sv._begin_transaction = lambda op, target, map_id, rev, sha: sv.began.append((target, map_id, rev, sha))
     sv._cli = {"start": Client()}
+    sv._dedup_or_admit = types.MethodType(Supervisor._dedup_or_admit, sv)
     sv.snap = types.SimpleNamespace(mapping_state_for=lambda gen: True)
     return sv
 
@@ -121,3 +122,14 @@ def test_the_session_receives_the_revision_and_hint_and_the_budget_grows(tmp_pat
     assert Supervisor._layer_start_budget(sv, t) == 30.0
     nav = fsm.Transaction("x", fsm.NAVIGATION, fsm.IDLE, 2, map_id="hall", map_revision=1)
     assert Supervisor._layer_start_budget(sv, nav) == 30.0  # only a continued survey loads a graph
+
+
+def test_a_retried_request_id_gets_its_first_operation_back(tmp_path):
+    """Lean plan D102: one dedup path for mode and survey requests; nothing is begun twice."""
+    sv = fake(str(tmp_path))
+    first = sv.book.submit("same-id", fsm.REQ_SURVEY_ABORT)[0]
+    req = RequestSurvey.Request(operation=RequestSurvey.Request.START, map_id="hall", request_id="same-id")
+    res = Supervisor._srv_survey(sv, req, RequestSurvey.Response())
+    assert res.accepted and res.operation_id == first.operation_id and res.message == "duplicate request"
+    assert sv.began == []
+    assert sv.book.by_request("") is None and sv.book.by_request("other") is None

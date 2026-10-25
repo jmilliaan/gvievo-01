@@ -83,10 +83,16 @@ def load(path: str | None = None) -> dict:
         return validate(yaml.safe_load(fh))
 
 
+def protective_index(doc: dict) -> int:
+    """The /output_paths index of the protective field: the mux gates AUTO on it, and the
+    follower and the executor read it to explain a stop (never to decide one)."""
+    return int(doc["fields"]["protective"]["path"])
+
+
 def mux_params(doc: dict) -> dict:
     f = doc["fields"]
     return {
-        "protective_index": f["protective"]["path"],
+        "protective_index": protective_index(doc),
         "warning_indices": [f["warning_1"]["path"], f["warning_2"]["path"]],
         "warning_scales": [float(f["warning_1"]["scale"]), float(f["warning_2"]["scale"])],
         "warning_active_level": f["warning_1"]["active"],

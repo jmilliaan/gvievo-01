@@ -308,7 +308,7 @@ def test_the_grace_timer_does_not_survive_into_the_next_mission():
     run_for(n, 1.0, torque=True, field=True)
     assert n.fsm.state == fsm.FAULT
     run_for(n, 1.0, torque=True, field=True)  # ticks in FAULT clear the timer
-    assert n._prereq_since is None
+    assert n._prereq.since is None
     assert n.fsm.ack() and n.fsm.load("m2", len(n.compiled.steps))
     run_for(n, 0.3, torque=True, field=True)  # still not READY, but inside a fresh grace period
     assert n.fsm.state == fsm.READY

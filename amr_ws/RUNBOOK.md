@@ -101,7 +101,7 @@ One vehicle, two products, chosen by a single top-level key in
 | `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
 | `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the **Navigation** switch on Home picks tracked (LINE) or trackless (IDLE, then mapping → navigation on Run trackless) | nothing by product |
 
-The Status header's mode shows `LINE` and `/api/state` carries `product`
+The Home header's mode shows `LINE` and `/api/state` carries `product`
 (`"tape"` / `"slam"`). Switching = edit the key, then
 `sudo systemctl restart amr.service` (the key is missing → the profile refuses
 to load and the service does not start; the error names it). The boot entry
@@ -128,9 +128,9 @@ vehicle is stopped, nothing is running and there is no emergency.
 > `branch_default` is `left` in both `missions/line-a.json` and `missions/empty.json` (plain
 > line following), with no branch-latch tags. The RIGHT trial flag is gone.
 
-Speed: two tracked speeds from the profile, cruise `autopilot.auto_rpm`
-(2387 r/min = 0.75 m/s) and slow = `auto_rpm × auto_slow_ratio` (0.5 → 0.375 m/s);
-no separate LINE ceiling. A warning field halves either. In the sim the launch passes
+Speed: the tracked speeds and the MLS marker zones that grant HIGH are written once, in
+`manuals/rfid-tag-table.md` ("Speeds", "Speed zones"); the profile `autopilot` block holds
+the values. A warning field halves either. In the sim the launch passes
 `field_source:=assume_clear` (no scanner there); never on a vehicle.
 
 ## 2. Survey → draw a route → run it
@@ -171,7 +171,7 @@ fast one.
 **Drive power (2026-10-08).** The drives are not powered while idle: they sit in
 standby (CANopen up, wheel counts read, power stage off). Under **MANUAL** they are
 powered only while the **Manual Arm** switch (DI08) is on; jog pad, pendant, survey
-moves and commissioning moves do nothing with it off (Status shows Drives `OFF`,
+moves and commissioning moves do nothing with it off (Home shows Drives `OFF`,
 reason "Manual Arm (DI08) off"). Under **AUTO** they are powered by a run: every
 move after a Start first sounds the alarm horn for 2 s (tape and trackless alike),
 holds that wait for Start drop to standby, holds that clear by themselves keep power.
@@ -516,7 +516,8 @@ The route editor moves nothing. The mode can stay `IDLE`.
        during a hold aborts the run. **Prepare resume** + Start still works
        as an override.
      - Executor parameters: `auto_resume_enabled` (false = the old
-       Prepare resume + Start), `auto_resume_clear_s` 2.0,
+       Prepare resume + Start), `auto_resume_clear_s` (default: the profile's
+       `autopilot.auto_resume_hold_s`, 2.0),
        `auto_resume_estop` false, `controller_abort_retries` 3,
        `prereq_grace_s` 0.5.
    - **Abort** ends the run. The mission must be loaded again.
@@ -714,7 +715,6 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `EXEC_ROUTE_INVALID` | error | This mission cannot be run | Pick another mission, or call the engineer to fix this one. | Route/mission failed to compile or validate against the active map revision. |
 | `LOC_COV_GREW` | error | The vehicle is unsure where it is | Set the initial pose on the Run page and confirm the scans line up. | AMCL covariance over the limit for longer than cov_hold_s. |
 | `LOC_JUMP` | error | The vehicle's position jumped | Set the initial pose on the Run page and confirm the scans line up. | map->odom correction over the jump trigger since the last accepted pose. |
 | `LOC_LOST` | error | The vehicle lost its position | Set the initial pose on the Run page and confirm the scans line up. | Umbrella code for a LocalizationState LOST without a more specific cause. |

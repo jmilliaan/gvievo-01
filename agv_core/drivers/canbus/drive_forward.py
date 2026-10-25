@@ -18,21 +18,33 @@ Object references (BLV-R CANopen edition, opman_can/blvr_canopen.md):
 Sequence per CiA 402: NMT Start -> Shutdown(06) -> Switch On(07) ->
 Enable Operation(0F) with target 0, then ramp by writing 60FFh.
 """
-import struct
 import sys
 import time
 
-import can  # noqa: E402
-
-from agv_core.drivers.canbus.bus_health import decode_state  # noqa: E402
-from agv_core.drivers.canbus.verify_drivers import (  # noqa: E402
+from agv_core.drivers.canbus.cia402 import (  # noqa: F401 - CW_*/SW_* re-exported
+    CW_DISABLE_VOLTAGE,
+    CW_ENABLE,
+    CW_SHUTDOWN,
+    CW_SWITCH_ON,
+    ENABLE_SEQUENCE,
+    PVCM_MOTION_EXTENSION,
+    SW_FAULT,
+    SW_REMOTE,
+    SW_SPEED_IS_ZERO,
+    decode_state,
+    is_operation_enabled,
+    preflight_report,
+)
+from agv_core.drivers.canbus.sdo import (  # noqa: F401 - sdo_write/nmt re-exported
     BAD,
     OK,
     WARN,
-    claim_bus,
-    open_bus,
+    bench_bus,
+    guarded_sdo_write,
+    nmt,
+    sdo_int,
     sdo_read,
-    u32,
+    sdo_write,
 )
 
 NODES = {1: "left", 2: "right"}
@@ -42,82 +54,21 @@ DECEL_RPM_S = 400       # 6084h
 RUN_SECONDS = 2.2
 MAX_RPM_SANITY = 4000    # refuse obviously wrong setpoints
 
-# Controlword bit 13 (PVCM): 0 = motion extension, 1 = normal (opman_can:1667).
-# MOTION EXTENSION: this vehicle's motor is a BLMR6400SKM-GFV-B, 400 W on a 1:30
-# gearhead, and the Function Edition says that combination must use motion
-# extension - in normal mode a hard decel while demand and actual velocity differ
-# can damage the motor (opman_fun:2951, 3121). It is also what the RPDO stream
-# already sends (rpdo.CW_OPERATION_ENABLED = 0x000F), so the arm sequence and
-# every later setpoint frame now agree.
-PVCM_MOTION_EXTENSION = 0
-CW_ENABLE = 0x000F | (PVCM_MOTION_EXTENSION << 13)   # bit12=0 => continuous velocity
-CW_SWITCH_ON = 0x0007
-CW_SHUTDOWN = 0x0006
-CW_DISABLE_VOLTAGE = 0x0000
-CW_QUICK_STOP = 0x0002
-
-SW_FAULT = 1 << 3
-SW_SPEED_IS_ZERO = 1 << 12
-SW_REMOTE = 1 << 9
-
-
-def sdo_write(bus, node, index, sub, value, size, timeout=0.5):
-    """Expedited SDO download. Returns (ok, detail)."""
-    cs = {1: 0x2F, 2: 0x2B, 3: 0x27, 4: 0x23}[size]
-    payload = struct.pack("<i" if value < 0 else "<I", value)[:size]
-    while bus.recv(timeout=0) is not None:
-        pass
-    bus.send(can.Message(
-        arbitration_id=0x600 + node,
-        data=bytes([cs, index & 0xFF, (index >> 8) & 0xFF, sub]) + payload.ljust(4, b"\0"),
-        is_extended_id=False))
-
-    # Same rule as sdo_read: only a full frame echoing our (index, sub) is
-    # this transaction's answer. A late reply to an earlier request, or a
-    # short frame, is skipped rather than reported as the result.
-    mux = bytes([index & 0xFF, (index >> 8) & 0xFF, sub])
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        m = bus.recv(timeout=max(0.0, deadline - time.monotonic()))
-        if m is None:
-            break
-        if m.arbitration_id != 0x580 + node:
-            continue
-        data = bytes(m.data)
-        if len(data) != 8 or data[1:4] != mux:
-            continue
-        if data[0] == 0x60:
-            return True, "ok"
-        if data[0] == 0x80:
-            return False, f"abort 0x{struct.unpack_from('<I', data, 4)[0]:08X}"
-        return False, f"unexpected 0x{data[0]:02X}"
-    return False, "timeout"
-
 
 def w(bus, node, index, sub, value, size, what):
-    ok, detail = sdo_write(bus, node, index, sub, value, size)
+    ok, detail = guarded_sdo_write(bus, node, index, sub, value, size)
     if not ok:
         raise RuntimeError(f"node {node}: writing {what} ({index:04X}h) failed: {detail}")
     return ok
 
 
 def statusword(bus, node):
-    st, val, _, _ = sdo_read(bus, node, 0x6041, 0)
-    return u32(val) & 0xFFFF if st else None
+    v = sdo_int(bus, node, 0x6041, 0)
+    return None if v is None else v & 0xFFFF
 
 
 def actual_rpm(bus, node):
-    st, val, _, _ = sdo_read(bus, node, 0x606C, 0)
-    if not st:
-        return None
-    return struct.unpack("<i", val.ljust(4, b"\0"))[0]
-
-
-def nmt(bus, command, node=0):
-    """0x01 start, 0x02 stop, 0x80 pre-operational. node 0 = broadcast."""
-    bus.send(can.Message(arbitration_id=0x000, data=[command, node],
-                         is_extended_id=False))
-    time.sleep(0.05)
+    return sdo_int(bus, node, 0x606C, 0, signed=True)
 
 
 def coast_to_stop(bus, quiet=False):
@@ -127,7 +78,7 @@ def coast_to_stop(bus, quiet=False):
     """
     for nid in NODES:
         try:
-            sdo_write(bus, nid, 0x60FF, 0, 0, 4)
+            guarded_sdo_write(bus, nid, 0x60FF, 0, 0, 4)
         except Exception:
             pass
     deadline = time.time() + 3.0
@@ -141,7 +92,7 @@ def coast_to_stop(bus, quiet=False):
     for nid in NODES:
         for cw in (CW_SHUTDOWN, CW_DISABLE_VOLTAGE):
             try:
-                sdo_write(bus, nid, 0x6040, 0, cw, 2)
+                guarded_sdo_write(bus, nid, 0x6040, 0, cw, 2)
             except Exception:
                 pass
     if not quiet:
@@ -150,32 +101,10 @@ def coast_to_stop(bus, quiet=False):
 
 def preflight(bus):
     print("[1] preflight")
-    ok = True
-    for nid, label in NODES.items():
-        st, val, note, _ = sdo_read(bus, nid, 0x1000, 0)
-        if st is None:
-            print(f"    node {nid} ({label}): {BAD} not responding")
-            ok = False
-            continue
-        if "COLLISION" in note:
-            print(f"    node {nid} ({label}): {BAD} {note}")
-            ok = False
-            continue
-        err = sdo_read(bus, nid, 0x1001, 0)[1]
-        err = u32(err) if err else None
-        sw = statusword(bus, nid)
-        print(f"    node {nid} ({label}): error reg 0x{err:02X}, "
-              f"statusword 0x{sw:04X} ({decode_state(sw)})")
-        if err:
-            print(f"      {BAD} driver reports a fault - clear it before driving")
-            ok = False
-        if not sw & SW_REMOTE:
-            print(f"      {BAD} Remote bit clear - controlword will be ignored "
-                  f"(S-ON active, or MEXE02 has the driver)")
-            ok = False
-        if sw & SW_FAULT:
-            print(f"      {BAD} FAULT state")
-            ok = False
+    ok, lines = preflight_report(lambda n, i, sub: sdo_read(bus, n, i, sub),
+                                 lambda n, i: sdo_int(bus, n, i, 0), NODES)
+    for line in lines:
+        print(f"    {line}")
     return ok
 
 
@@ -188,16 +117,16 @@ def arm(bus):
         w(bus, nid, 0x6083, 0, ACCEL_RPM_S, 4, "profile acceleration")
         w(bus, nid, 0x6084, 0, DECEL_RPM_S, 4, "profile deceleration")
         w(bus, nid, 0x60FF, 0, 0, 4, "target velocity = 0")
-        for cw, name in ((CW_SHUTDOWN, "Shutdown"),
-                         (CW_SWITCH_ON, "Switch On"),
-                         (CW_ENABLE, "Enable Operation")):
+        for cw, name in ENABLE_SEQUENCE:
             w(bus, nid, 0x6040, 0, cw, 2, name)
             time.sleep(0.05)
         sw = statusword(bus, nid)
+        if sw is None:
+            raise RuntimeError(f"node {nid} statusword unreadable after enable")
         state = decode_state(sw)
-        flag = OK if (sw & 0x6F) == 0x27 else BAD
+        flag = OK if is_operation_enabled(sw) else BAD
         print(f"    node {nid} ({label}): 0x{sw:04X} ({state}) {flag}")
-        if (sw & 0x6F) != 0x27:
+        if not is_operation_enabled(sw):
             raise RuntimeError(f"node {nid} did not reach Operation enabled")
 
 
@@ -230,8 +159,8 @@ def main():
               f"hold {RUN_SECONDS:.1f} s.")
         print("\nBoth setpoints are POSITIVE, which on THIS AGV is forward travel:")
         print("the wheels are opposite-handed, so equal positive velocities drive")
-        print("it straight. See motion.py for the same convention in table")
-        print(f"form. {WARN}: re-verify on blocks after swapping a motor or driver -")
+        print("it straight (vehicle.invert_left/invert_right in the profile carry the")
+        print(f"same convention). {WARN}: re-verify on blocks after swapping a motor or driver -")
         print("if the two wheels turn opposite ways you will get a spin, not travel.")
         print("\nRe-run with --go to actually drive.")
         return 0
@@ -240,15 +169,10 @@ def main():
         print(f"{BAD}: TARGET_RPM {TARGET_RPM} exceeds sanity limit")
         return 2
 
-    lock = claim_bus("drive_forward")
-    if lock is None:
+    opened = bench_bus("drive_forward")
+    if opened is None:
         return 2
-    try:
-        bus, how = open_bus()
-    except Exception as e:
-        print(f"{BAD}: {e}")
-        return 2
-    print(f"connected via {how}\n")
+    _lock, bus = opened
 
     rc = 0
     armed = False

@@ -63,6 +63,9 @@ def test_the_catalogue_is_well_formed():
         assert row.action.endswith("."), code
         assert row.hint, code
         assert alarms.BUTTON[row.clears_by] is not None, code
+        # what the operator surface renders from the row (alarms.describe), every key filled
+        d = alarms.describe(code, "detail")
+        assert d["title"] and d["action"] and d["level"] in ("info", "warn", "error"), code
 
 
 def test_hold_causes_all_map_to_a_catalogue_code():
@@ -90,3 +93,41 @@ def test_the_operator_card_is_short_and_real():
     for code in alarms.CARD_CODES:
         assert code in alarms.CATALOGUE
         assert alarms.CATALOGUE[code].title in card
+
+
+def test_level_is_the_event_msg_constants():
+    """D14: every node takes an event's level from alarms.level(); the map must be the
+    Event.msg constants (parsed from the .msg, so this needs no ROS install)."""
+    import re
+
+    from helpers import ROOT
+
+    from agv_core import alarms
+
+    msg = (ROOT / "amr_ws/src/amr_interfaces/msg/Event.msg").read_text(encoding="utf-8")
+    want = {k.lower(): int(v) for k, v in re.findall(r"^uint8 (INFO|WARN|ERROR)=(\d+)", msg, re.M)}
+    assert alarms.LEVEL == want == {"info": 0, "warn": 1, "error": 2}
+    assert alarms.level("ESTOP") == want[alarms.get("ESTOP").severity]
+    assert alarms.level("NO_SUCH_CODE") == want[alarms.get("NO_SUCH_CODE").severity]
+
+
+HOLD_SOURCES = ("amr_ws/src/amr_line/amr_line/job.py", "amr_ws/src/amr_line/amr_line/track.py",
+                "amr_ws/src/amr_line/amr_line/site_run.py",
+                "amr_ws/src/amr_mission/amr_mission/route_executor_node.py")
+
+
+def test_every_hold_cause_a_run_fsm_writes_is_a_catalogue_cause():
+    """Lean plan D137: a hold_cause outside HOLD_CODES falls back to WAITING_FOR_PREREQ, so the
+    operator would read the wrong sentence. Scanned: _hold("x", ...), hold_cause comparisons and
+    assignments, and the tuples they are tested against."""
+    found = set()
+    for rel in HOLD_SOURCES:
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        found |= set(re.findall(r'_hold\(\s*"([a-z_]+)"', src))
+        found |= set(re.findall(r'hold_cause\s*(?:==|!=|=)\s*"([a-z_]+)"', src))
+        for group in re.findall(r'hold_cause (?:not )?in \(([^)]*)\)', src):
+            found |= set(re.findall(r'"([a-z_]+)"', group))
+        for group in re.findall(r'^_(?:AUTO_CAUSES|PARKS_HIGH)\s*=\s*\(([^)]*)\)', src, re.M):
+            found |= set(re.findall(r'"([a-z_]+)"', group))
+    assert len(found) >= 8, found  # the scan sees the real vocabulary
+    assert found <= set(alarms.HOLD_CODES), sorted(found - set(alarms.HOLD_CODES))

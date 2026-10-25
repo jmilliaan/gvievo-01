@@ -12,7 +12,6 @@ name. The returned sha256 is of exactly the committed bytes.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import os
 import re
@@ -20,6 +19,8 @@ import tempfile
 import time
 
 import yaml
+from agv_core import fsio
+from agv_core.fsio import sha256_file  # noqa: F401 - re-exported
 
 from amr_navigation.route import Route
 
@@ -34,34 +35,13 @@ class StoreConflict(StoreError):
     """The name is taken by different content: nothing was written."""
 
 
-LOCK_NAME = ".lock"
+LOCK_NAME = fsio.LOCK_NAME
 TMP_PREFIX = ".tmp-"
 
 
-@contextlib.contextmanager
 def _locked(d: str):
-    """Exclusive lock on directory `d`. flock binds to the open file description, so two
-    threads of one process exclude each other as well as two processes do."""
-    os.makedirs(d, exist_ok=True)
-    fd = os.open(os.path.join(d, LOCK_NAME), os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        # temp files are only created under this lock, so any left now were abandoned
-        for name in os.listdir(d):
-            if name.startswith(TMP_PREFIX):
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(os.path.join(d, name))
-        yield
-    finally:
-        os.close(fd)  # releases the lock
-
-
-def _fsync_dir(d: str) -> None:
-    fd = os.open(d, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    """Exclusive lock on directory `d`; abandoned temp files are swept under it."""
+    return fsio.writer_lock(d, sweep_prefix=TMP_PREFIX)
 
 
 def _commit_new(dest: str, data: bytes) -> str:
@@ -80,7 +60,7 @@ def _commit_new(dest: str, data: bytes) -> str:
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
-    _fsync_dir(d)
+    fsio.fsync_path(d, directory=True)
     return hashlib.sha256(data).hexdigest()
 
 
@@ -105,9 +85,7 @@ def _name(kind: str, name: str) -> str:
 
 
 def _revision(revision: int) -> int:
-    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-        raise StoreError(f"revision must be a positive integer: {revision!r}")
-    return revision
+    return fsio.positive_revision(revision, StoreError)
 
 
 def _inside(maps_dir: str, path: str) -> str:
@@ -152,11 +130,6 @@ def list_routes(maps_dir: str, map_id: str) -> dict[str, list[int]]:
 
 def route_path(maps_dir: str, map_id: str, route_id: str, revision: int) -> str:
     return os.path.join(routes_dir(maps_dir, map_id, route_id), f"rev{_revision(revision)}.yaml")
-
-
-def sha256_file(path: str) -> str:
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
 
 
 def save_route(maps_dir: str, route: Route) -> tuple[int, str, str]:

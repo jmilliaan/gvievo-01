@@ -30,8 +30,8 @@ on port 5001, and one *mode layer* at a time.
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
 | Manual | pendant 0.50 m/s, web jog 0.40 m/s, only under selector MANUAL |
-| Auto | tracked NORMAL 0.50 m/s, HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an RFID high zone; trackless 0.60 m/s |
-| Tests | `tests/run_all.py` 531 checks + `pytest` per ROS package, no hardware |
+| Auto | tracked NORMAL 0.50 m/s, HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an MLS marker zone; trackless 0.60 m/s |
+| Tests | `tests/run_all.py` (`EXPECTED_CHECKS` guards the count) + `pytest` per ROS package, no hardware |
 
 ---
 
@@ -112,7 +112,8 @@ agv_core/          The vehicle library. No ROS, no Flask, no web tier.
   config.py          Loads and validates the profile. Everything imports this.
   kinematics.py      Wheel <-> body conversions from the profile geometry.
   ownerlock.py       The can/dio owner locks (fcntl); one owner per device.
-  panel.py, canmon.py, events.py, motion.py, blindrun.py, lidarframe.py
+  alarms.py, mission.py, paths.py, se2.py, fsio.py, fsutil.py, disk.py,
+  panel.py, canmon.py, events.py, blindrun.py, lidarframe.py
   drivers/           dio.py (Modbus I/O island), rfid.py (Chafon reader)
   drivers/canbus/    CANopen decoders, the write deny-list (guard.py), RPDO
                      setup, and the bench tools listed above.
@@ -131,7 +132,7 @@ amr_ws/            The ROS 2 workspace (colcon, symlink install).
   src/amr_sim          fake base/panel/IMU, synthetic scan and tape
   src/amr_interfaces   messages and services
 
-tests/             531 offline checks for agv_core. run_all.py runs them.
+tests/             offline checks for agv_core (count: EXPECTED_CHECKS). run_all.py runs them.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
 manuals/           Device documentation, the SLAM plan, vehicle reports.
 pyproject.toml     Packages agv_core; also the shared ruff and pytest config.
@@ -140,9 +141,9 @@ pyproject.toml     Packages agv_core; also the shared ruff and pytest config.
 **`agv_core` is a real package, imported by package path.** `from agv_core
 import config`, `from agv_core.drivers.canbus import guard`. ROS nodes run out
 of the colcon install space, which is outside the repo, so
-`amr_ws/deploy/amr-launch.sh`, `env/vehicle.sh` and `env/sim.sh` put the repo
-root on `PYTHONPATH`; `amr_ws/deploy/validate.sh` refuses to install if
-`agv_core/` is not where the launch wrapper expects it.
+`env/vehicle.sh` (sourced by the service's `amr-supervisor.sh`) and `env/sim.sh`
+put the repo root on `PYTHONPATH`; `amr_ws/deploy/validate.sh` refuses to install
+if `agv_core/` is not where they expect it.
 
 **Dependency graph:** `agv_core.config` imports only the standard library;
 everything else imports it. No cycles. Nothing in `agv_core/drivers/canbus/`
@@ -209,7 +210,7 @@ Everything tunable lives in `profiles/<name>.json`, selected by `AGV_PROFILE`.
 4. **`profile_name` must match the filename.**
 
 Speeds, ramps, the jog and pendant limits, the PP lock and the tape engine's
-35 gains (`autopilot`) are all there — and the product: top-level
+gains (`autopilot`) are all there — and the product: top-level
 `"tracked": false` is the SLAM AMR, `true` the tape AGV that boots into LINE
 and refuses maps and routes, `null` both: boots into LINE, trackless by the Home
 switch (RUNBOOK §1). The web UI's Params page shows every
@@ -220,7 +221,7 @@ value the running nodes actually use beside the profile's.
 ## Testing
 
 ```bash
-python3 tests/run_all.py                                   # 531 checks, no hardware
+python3 tests/run_all.py                                   # no hardware
 cd amr_ws && source install/setup.bash && source env/vehicle.sh
 env AMR_SIM_TESTS=0 ROS_DOMAIN_ID=89 python3 -m pytest -q src/*/test   # per package
 ruff check agv_core tests && (cd amr_ws && ruff check src)

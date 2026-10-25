@@ -25,6 +25,7 @@ import threading
 import time
 
 import numpy as np
+from agv_core import se2
 
 from amr_web.png import encode_gray
 
@@ -67,8 +68,7 @@ def grid_to_gray(data: list[int] | np.ndarray, width: int, height: int) -> np.nd
     return np.flipud(img)
 
 
-def yaw_of(q) -> float:
-    return math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+yaw_of = se2.yaw_of
 
 
 def scan_points(ranges, angle_min: float, angle_inc: float, range_min: float, range_max: float, tx, ty, tyaw):

@@ -307,17 +307,35 @@ afterwards.
 
 1. E: Teach page → Mark field: the mark's id (`M6`) → Role: the station or point → **Set role**.
    - Roles: every station (HOME-N, ATT, MW-x, ME-x), every mid-line U-turn point
-     (`uturn_points` in `missions/site-103.json`) and every zone end (`zones`).
+     (`uturn_points` in `missions/site-103.json`).
    - The message gives the leg and `s`. It refuses a role whose leg the mark is not on, or that
      faces the wrong way (an MW role on an eastbound mark).
    - A role moved to another mark leaves the first one. Role `-` removes it.
 2. **Roles** lists what is taught, from which mark, and what is not.
 3. **Build** puts them in the graph, then **Publish**, **Make active** (3.4).
-4. INBOUND stops (ME-x) and the U-turn points need marks on their own lap: the outbound lap's
-   marks face west.
+4. INBOUND stops (ME-x) either get marks on their own eastbound lap (the outbound lap's marks
+   face west), or are placed by a floor offset from the outbound mark (2026-10-25):
+   - measure on the floor from the release spot to the attach-full spot, along the tape;
+   - Mark field `M8 M12` (reference, new id) → Offset `1.20` → **Mark inbound at offset**;
+   - + is the way the inbound AGV drives (east, toward J-ML), − the other way;
+   - then give M12 its role (ME-1) as in step 1.
+   - A U-turn point the same way along the outbound tape: Mark field `M8 M16` → Offset `1.4` →
+     **Along at offset** (+ = onward, toward the line's end), then role UT-MRU1.
 5. A U-turn point must lie after its machine's release stop. Its take-back stop must lie after
    the point's place on the return leg. Otherwise the trip is refused at Start, with the station
    named.
+
+### 3.3B High-speed areas (2026-10-25)
+
+High speed is where the tape runs inside an area drawn on the map, not between marks.
+
+1. E: Teach page → **High-speed areas →** (`/tape-areas`). The teaching map shows with the tape
+   graph and the marks.
+2. **Draw new** → click each corner → Id → **Save area**. **Delete** in the list removes one.
+3. A trip is HIGH only where its route lies inside an area for at least 1 m, only with the locator
+   healthy. It slows back to the cruise before every stop, junction and area end.
+4. Areas count from the next trip on, with no Build. The shadow lap logs "high-speed area: HIGH
+   from …" and "NORMAL by …" where the circuit enters and leaves each one.
 
 ### 3.4 Publish and make active
 
@@ -336,7 +354,7 @@ afterwards.
    too.
 3. Acceptance: plan 3 section 4, P1. Any "would HOLD" or LOST gets looked at before P2.
 4. Plan 4 E2: the log also names each taught U-turn point ("U-turn point of MRU1 UT-MRU1 …") and
-   zone end ("zone Z-…: HIGH from …"). Five Guide-page laps: every "would order" matches the
+   high-speed area entry and exit ("high-speed area: HIGH from …"). Five Guide-page laps: every "would order" matches the
    order given by hand, every "would stop" lies within ±10 cm of its floor mark.
 
 ## 4. Daily operation (built 2026-10-24, off until `tape_loc.live: true`)

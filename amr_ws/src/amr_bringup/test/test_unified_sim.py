@@ -28,9 +28,11 @@ import uuid
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import SetBool, Trigger
 
+from amr_base import wire
+from amr_base.qos import LATCHED
+from amr_base.qos import RELIABLE_1 as R1
 from amr_interfaces.msg import (
     ControlLease,
     LocalizationState,
@@ -42,11 +44,7 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import GetOperation, RequestMode, RequestSurvey, RunMission, SetPose2D
 
-R1 = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-NAMES = ["STARTING", "IDLE", "MAPPING", "NAVIGATION", "TRANSITIONING", "FAULT", "STOPPING", "LINE"]
+NAMES = wire.MODE_NAMES
 
 
 class Probe(Node):

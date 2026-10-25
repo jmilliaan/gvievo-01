@@ -13,6 +13,7 @@ import os
 import sys
 
 import numpy as np
+from agv_core import paths
 from ament_index_python.packages import get_package_share_directory
 
 from amr_maps import grid as gridio
@@ -32,7 +33,7 @@ def surfaces_only(grid: gridio.Grid) -> gridio.Grid:
     AMCL toward the obstacle ahead by a few centimetres along a corridor.
     Keeping only occupied cells with a non-occupied 8-neighbour removes that.
     """
-    occ = grid.data >= 65
+    occ = gridio.occupied(grid)
     interior = occ.copy()
     for dr in (-1, 0, 1):
         for dc in (-1, 0, 1):
@@ -77,7 +78,7 @@ def _write_locked(maps_dir: str, map_id: str, world: gridio.Grid) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
-    maps_dir = os.path.expanduser(argv[0] if argv else "~/amr_maps")
+    maps_dir = os.path.expanduser(argv[0]) if argv else paths.maps_dir()
     map_id = argv[1] if len(argv) > 1 else "sim_factory"
     print(write_world_as_bundle(maps_dir, map_id))
 

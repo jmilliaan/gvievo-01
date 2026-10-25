@@ -26,12 +26,20 @@ import math
 import secrets
 from dataclasses import dataclass
 
-V_MAX, W_MAX = 0.50, 0.39
+from amr_base.gating import DEFAULT
+
+V_MAX, W_MAX = DEFAULT.pendant_v, DEFAULT.pendant_w  # the mux's pendant caps
 TICKET_S = 1.0  # a refresh must arrive within this; the browser sends every 0.1 s. Wider than
 # CMD_S on purpose: the ROBOT stops 0.2 s after the last refresh regardless; this only decides
 # whether a still-held button may resume after a link hiccup without a new press. At 0.25 s a
 # single slow Wi-Fi round trip ended 14 of 17 holds on the vehicle (2026-09-17).
 CMD_S = 0.20  # lifetime a command carries at most
+
+
+def page_constants() -> dict:
+    """What static/jogpad.js shows and drives with, from the mux's pendant defaults (base.html
+    renders it as data-jog); the page keeps the same literals only as a fallback."""
+    return {"v": V_MAX, "spin": W_MAX, "turn_ratio": DEFAULT.pendant_turn_ratio, "track_m": DEFAULT.track_m}
 
 
 class JogError(Exception):

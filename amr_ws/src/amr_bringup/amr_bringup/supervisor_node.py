@@ -30,15 +30,18 @@ import time
 import uuid
 
 import rclpy
-from agv_core import config
+from agv_core import config, paths
+from agv_core import disk as diskmod
 from geometry_msgs.msg import Pose2D
 from nav2_msgs.srv import ManageLifecycleNodes
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import Trigger
 
+from amr_base.gating import LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE, LEASE_MANUAL
 from amr_base.lean_node import LeanNode
+from amr_base.qos import LATCHED, RELIABLE_1
+from amr_base.qos import SENSOR_DATA as SENSOR
 from amr_bringup import domains, logs, sdnotify, uptime
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
@@ -61,17 +64,6 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import GetOperation, RequestMode, RequestSurvey, SaveMap, StartSurvey
 
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-SENSOR = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-
-LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
 # The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
@@ -100,8 +92,8 @@ class Supervisor(LeanNode):
         super().__init__("amr_supervisor")
         dp = self.declare_parameter
         dp("real", True)
-        dp("maps_dir", os.path.expanduser("~/amr_maps"))
-        dp("state_dir", os.path.expanduser("~/.amr"))
+        dp("maps_dir", paths.maps_dir())
+        dp("state_dir", paths.state_dir())
         dp("web", True)
         dp("foxglove", True)
         dp("lidar", True)
@@ -147,8 +139,8 @@ class Supervisor(LeanNode):
         self._auto_line_done = False
         self._boot_reported = False  # the end-of-boot operator event fires once per boot
         self._verdict: uptime.Verdict | None = None  # how the PREVIOUS run ended
-        self.disk = rd.DiskStatus(-1, rd.DISK_OK, "")
-        self._disk_level = rd.DISK_OK
+        self.disk = diskmod.DiskStatus(-1, diskmod.OK, "")
+        self._disk_level = diskmod.OK
         self._t_disk = 0.0
         self._deferred: list[tuple[int, str, str, float]] = []
         # Optional groups the supervisor brings back by itself (plan phase 3.1).
@@ -229,9 +221,6 @@ class Supervisor(LeanNode):
             "lm_nav": self.create_client(
                 ManageLifecycleNodes, "/lifecycle_manager_navigation/manage_nodes", callback_group=g
             ),
-            "lm_loc_active": self.create_client(
-                Trigger, "/lifecycle_manager_localization/is_active", callback_group=g
-            ),
             "lm_nav_active": self.create_client(
                 Trigger, "/lifecycle_manager_navigation/is_active", callback_group=g
             ),
@@ -249,11 +238,16 @@ class Supervisor(LeanNode):
         return time.monotonic()
 
     def _env(self) -> dict:
-        return dict(os.environ)
+        # children resolve the directories this supervisor was given, not their own defaults
+        return {**os.environ, **paths.env_for(self.state_dir, self.maps_dir)}
+
+    def _spawn(self, role: str, argv: list[str]) -> Group:
+        """Every child group: the supervisor's environment, its own log under logs/."""
+        return Group.spawn(role, argv, env=self._env(), log_path=os.path.join(self._logs, f"{role}.log"))
 
     def _launch(self, role: str, file: str, **args) -> Group:
         argv = ["ros2", "launch", "amr_bringup", file] + [f"{k}:={v}" for k, v in args.items()]
-        g = Group.spawn(role, argv, env=self._env(), log_path=os.path.join(self._logs, f"{role}.log"))
+        g = self._spawn(role, argv)
         self.get_logger().info(f"spawned {g.describe()}: {' '.join(argv[3:])}")
         # The layer about to start owns THIS generation's footprint file; earlier ones
         # belong to layers that are gone (power-loss plan W2).
@@ -289,11 +283,7 @@ class Supervisor(LeanNode):
         self._deferred = keep
 
     def _event(self, level: int, code: str, text: str) -> None:
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source, m.level, m.code, m.text = "amr_supervisor", level, code, text
-        self._event_seq += 1
-        m.seq = self._event_seq
+        m = self.build_event("amr_supervisor", level, code, text)
         try:
             self._pub_event.publish(m)
         except Exception:  # noqa: BLE001 - never let an event stop the loop
@@ -378,7 +368,7 @@ class Supervisor(LeanNode):
             m.line_available = bool(allowed & LEASE_LINE)
             m.fault_code = self.fault_code
             m.reason = self.reason
-            m.product = {True: "tape", False: "slam"}.get(self.tracked, "both")
+            m.product = config.product(self.tracked)
             m.last_survey_map_id, m.last_survey_revision = self.last_survey
         self._pub_mode.publish(m)
 
@@ -404,15 +394,8 @@ class Supervisor(LeanNode):
                     "target must be IDLE, NAVIGATION or LINE (MAPPING is a survey START)",
                 )
                 return res
-            existing = (
-                self.book.get(self.book._by_request.get(req.request_id, "")) if req.request_id else None
-            )
-            if existing is not None:
-                res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
-                return res
-            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
-            if not d.ok:
-                res.accepted, res.message = False, d.reason
+            d = self._dedup_or_admit(req.request_id, kind, res)
+            if d is None:
                 return res
             map_id, rev, sha = "", 0, ""
             if kind == fsm.REQ_NAVIGATION:
@@ -434,6 +417,19 @@ class Supervisor(LeanNode):
             res.accepted, res.operation_id, res.message = True, op.operation_id, d.reason or "accepted"
             return res
 
+    def _dedup_or_admit(self, request_id: str, kind: str, res):
+        """The admission for a new request, or None when `res` already holds the answer: a
+        retried request_id gets its first operation back, a refused one the FSM's reason."""
+        existing = self.book.by_request(request_id)
+        if existing is not None:
+            res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
+            return None
+        d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
+        if not d.ok:
+            res.accepted, res.message = False, d.reason
+            return None
+        return d
+
     def _srv_survey(self, req, res):
         with self._lock:
             why = self._check_expected(req.expected_instance, int(req.expected_generation))
@@ -450,15 +446,8 @@ class Supervisor(LeanNode):
             if kind is None:
                 res.accepted, res.message = False, "unknown survey operation"
                 return res
-            existing = (
-                self.book.get(self.book._by_request.get(req.request_id, "")) if req.request_id else None
-            )
-            if existing is not None:
-                res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
-                return res
-            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
-            if not d.ok:
-                res.accepted, res.message = False, d.reason
+            d = self._dedup_or_admit(req.request_id, kind, res)
+            if d is None:
                 return res
             # No room to write the result (power-loss plan W3). Refused for the two
             # operations that CREATE a map; never for anything that is already running.
@@ -586,18 +575,18 @@ class Supervisor(LeanNode):
     def _check_disk(self) -> None:
         """Watch the state and maps filesystems (power-loss plan W3). Edges only, and
         the level is published in ModeState so the web can raise the standing alarm."""
-        st = rd.disk_status([self.state_dir, self.maps_dir])
+        st = diskmod.status([self.state_dir, self.maps_dir])
         self.disk = st
         if st.level == self._disk_level:
             return
         was, self._disk_level = self._disk_level, st.level
-        if st.level == rd.DISK_STOP:
+        if st.level == diskmod.STOP:
             self._event(Event.ERROR, "DISK_FULL", f"{st.free_mb} MB free on {st.path}")
-        elif st.level == rd.DISK_WARN:
+        elif st.level == diskmod.WARN:
             self._event(Event.WARN, "DISK_LOW", f"{st.free_mb} MB free on {st.path}")
-        elif st.level == rd.DISK_UNKNOWN:
+        elif st.level == diskmod.UNKNOWN:
             self._event(Event.WARN, "DISK_LOW", "storage free space unknown: no watched filesystem could be read")
-        elif was != rd.DISK_OK:
+        elif was != diskmod.OK:
             self._event(Event.INFO, "DISK_LOW", f"storage is no longer low ({st.free_mb} MB free)")
 
     def _boot_report(self, now: float, missing: str) -> None:
@@ -995,9 +984,7 @@ class Supervisor(LeanNode):
                 f"maps_dir:={self.maps_dir}",
             ]
             self._respawnable["web"] = argv
-            self.groups["web"] = Group.spawn(
-                "web", argv, env=self._env(), log_path=os.path.join(self._logs, "web.log")
-            )
+            self.groups["web"] = self._spawn("web", argv)
         base_args = {"real": str(self.real).lower(), "supervised": "true"}
         if self.real:
             base_args["lidar"] = str(bool(p("lidar").value)).lower()
@@ -1013,9 +1000,7 @@ class Supervisor(LeanNode):
         if p("foxglove").value:
             argv = ["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"]
             self._respawnable["foxglove"] = argv
-            self.groups["foxglove"] = Group.spawn(
-                "foxglove", argv, env=self._env(), log_path=os.path.join(self._logs, "foxglove.log")
-            )
+            self.groups["foxglove"] = self._spawn("foxglove", argv)
         self._boot_deadline = self._now() + self.budget["base_ready_s"]
         self._boot_reported = False
 
@@ -1054,12 +1039,7 @@ class Supervisor(LeanNode):
                             f"{role} keeps stopping; restart the service")
                 continue
             try:
-                self.groups[role] = Group.spawn(
-                    role,
-                    self._respawnable[role],
-                    env=self._env(),
-                    log_path=os.path.join(self._logs, f"{role}.log"),
-                )
+                self.groups[role] = self._spawn(role, self._respawnable[role])
                 self.get_logger().warn(f"{role} respawned (attempt {tries} of {RESPAWN_TRIES})")
             except Exception as e:  # noqa: BLE001 - an optional group must never fault the vehicle
                 self.get_logger().error(f"{role} respawn failed: {e!r}")
@@ -1108,14 +1088,22 @@ class Supervisor(LeanNode):
                 self.get_logger().error(f"lease publish failed: {e!r}")
             time.sleep(max(0.0, period - (self._now() - t0)))
 
+    def _enter_idle_if_base_ready(self, now: float, late: bool = False) -> bool:
+        """STARTING (or a BASE_NOT_READY fault) -> IDLE once the base and this generation's
+        mux are up: the boot report, IDLE, then the product's own entry (LINE). True if it did."""
+        if not (rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now)):
+            return False
+        if late:
+            self.get_logger().info("base ready after the boot budget")
+        self._boot_report(now, "")
+        self._set(fsm.IDLE, "", "")
+        self._auto_enter_line()
+        return True
+
     def _tick(self, now: float) -> None:
         self._reap(now)
         if self.mode == fsm.STARTING:
-            if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
-                self._boot_report(now, "")
-                self._set(fsm.IDLE, "", "")
-                self._auto_enter_line()
-            elif now > self._boot_deadline:
+            if not self._enter_idle_if_base_ready(now) and now > self._boot_deadline:
                 missing = rd.base_missing(self.snap, now)
                 self._boot_report(now, missing)
                 self._set(fsm.FAULT, "base not ready", missing, "BASE_NOT_READY")
@@ -1127,11 +1115,7 @@ class Supervisor(LeanNode):
             # "Switch on disabled" until the safety reset was pressed 70 s after boot).
             # The group is alive and healthy, nothing needs rebuilding: enter IDLE the
             # same way STARTING does instead of demanding a service restart.
-            if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
-                self.get_logger().info("base ready after the boot budget")
-                self._boot_report(now, "")
-                self._set(fsm.IDLE, "", "")
-                self._auto_enter_line()
+            if self._enter_idle_if_base_ready(now, late=True):
                 return
         if self.txn is not None:
             self._step_transaction(now)

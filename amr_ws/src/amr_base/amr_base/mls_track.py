@@ -57,16 +57,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from agv_core.drivers.canbus import read_mls  # repo module
+from agv_core.drivers.canbus import mls_markers, read_mls  # repo module
 
-MODES = ("tpdo", "sdo", "auto", "off")
-SDO_ITEMS = (
-    (read_mls.OBJ_LCP, 1),
-    (read_mls.OBJ_LCP, 2),
-    (read_mls.OBJ_LCP, 3),
-    read_mls.OBJ_NLCP,
-    read_mls.OBJ_STATUS,
-)
+SOURCE_TPDO, SOURCE_SDO = mls_markers.SOURCE_TPDO, mls_markers.SOURCE_SDO
+MODES = (SOURCE_TPDO, SOURCE_SDO, "auto", "off")
+SDO_ITEMS = read_mls.TRACK_SDO_ITEMS
 
 OK, WARN, ERROR = "ok", "warn", "error"
 
@@ -116,6 +111,34 @@ class _Job:
     failed: object = None  # failed(key, now) when a read gets no answer
 
 
+class SdoProbe:
+    """Miss bookkeeping for one polled SDO stream on the MLS. Clock-fed.
+
+    One late reply (a busy bus) is retried at the next poll; only a sensor that
+    keeps not answering is backed off. A sensor that did not answer at start is
+    probed again every REDISCOVER_S with one PROBE_TIMEOUT_S read, so a
+    late-booting MLS is picked up without starving the wheel loop.
+    """
+
+    MISSES_BEFORE_BACKOFF = 5
+    BACKOFF_S = 2.0  # an absent sensor costs one short timeout every 2 s
+    REDISCOVER_S = 5.0
+    PROBE_TIMEOUT_S = 0.05
+
+    def __init__(self) -> None:
+        self.misses = 0
+        self.consecutive = 0
+
+    def miss(self, now: float) -> float | None:
+        """Count a miss; the time to back off until, or None to retry next poll."""
+        self.misses += 1
+        self.consecutive += 1
+        return now + self.BACKOFF_S if self.consecutive >= self.MISSES_BEFORE_BACKOFF else None
+
+    def hit(self) -> None:
+        self.consecutive = 0
+
+
 @dataclass
 class _SdoCycle:
     index: int = 0
@@ -126,13 +149,10 @@ class MlsTrack:
     """Acquisition state for one MLS. Bus-thread only; `on_sample` is called
     from within the bus loop with every decoded sample."""
 
-    MISSES_BEFORE_BACKOFF = 5
-    # A sensor that did not answer at start (or whose TPDO1 configuration
-    # could not be read) is probed again this often with ONE short SDO
-    # timeout, so a late-booting MLS is acquired without restarting the bus
-    # owner and without starving the wheel loop.
-    REDISCOVER_S = 5.0
-    PROBE_TIMEOUT_S = 0.05
+    # A sensor that did not answer at start (or whose TPDO1 configuration could
+    # not be read) is probed again; see SdoProbe.
+    REDISCOVER_S = SdoProbe.REDISCOVER_S
+    PROBE_TIMEOUT_S = SdoProbe.PROBE_TIMEOUT_S
     MARKER_RECHECK_S = 60.0
     MARKER_RETRY_S = 5.0
     TEMP_FIRST_S = 10.0  # the first temperature read, after start (the marker check goes first)
@@ -172,7 +192,7 @@ class MlsTrack:
         self.last: TrackSample | None = None
         self.samples = 0
         self.tpdo_frames = 0
-        self.misses = 0
+        self._sdo = SdoProbe()
         self.stale_periods = 0
         self.nmt_starts = 0
         self.restarts = 0  # rediscoveries after an incomplete start (F08)
@@ -210,7 +230,10 @@ class MlsTrack:
         self._t_start = 0.0
         self._next_cycle = 0.0
         self._cycle = _SdoCycle()
-        self._consecutive = 0
+
+    @property
+    def misses(self) -> int:
+        return self._sdo.misses
 
     # -- start --
 
@@ -270,9 +293,9 @@ class MlsTrack:
         if any(x is None for x in vals):
             self.log("MLS track: start snapshot incomplete (SDO)")
             return
-        r = read_mls.decode_sdo(vals[:3], vals[3], vals[4], self.combi)
+        r = read_mls.decode_sdo_values(vals, self.combi)
         self.log(f"MLS track at start (SDO): #LCP {r['nlcp']} {r['nlcp_label']}; {read_mls.fmt_reading(r)}")
-        self._emit(r, "sdo", self.clock())
+        self._emit(r, SOURCE_SDO, self.clock())
 
     # -- samples --
 
@@ -300,7 +323,7 @@ class MlsTrack:
             self.mode = "tpdo"
             self._cycle = _SdoCycle()
         self._event_watch(r, self._last_tpdo_t)
-        self._emit(r, "tpdo", self.clock())
+        self._emit(r, SOURCE_TPDO, self.clock())
 
     def _nmt_start(self, now: float) -> None:
         """NMT Start addressed to the MLS only. TPDO1 flows in Operational and
@@ -366,19 +389,18 @@ class MlsTrack:
         index, sub = SDO_ITEMS[c.index]
         v = self.link.read(self.node, index, sub, timeout=0.05)
         if v is None:
-            self.misses += 1
-            self._consecutive += 1
             self._cycle = _SdoCycle()
-            if self._consecutive >= self.MISSES_BEFORE_BACKOFF:
-                self._next_cycle = now + 2.0
+            backoff = self._sdo.miss(now)
+            if backoff is not None:
+                self._next_cycle = backoff
             return
-        self._consecutive = 0
+        self._sdo.hit()
         c.values.append(v)
         c.index += 1
         if c.index == len(SDO_ITEMS):
             self._cycle = _SdoCycle()
             vals = c.values
-            self._emit(read_mls.decode_sdo(vals[:3], vals[3], vals[4], self.combi), "sdo", self.clock())
+            self._emit(read_mls.decode_sdo_values(vals, self.combi), SOURCE_SDO, self.clock())
 
     # -- SDO jobs: one queue, one operation per poll (E4) --
 
@@ -478,7 +500,7 @@ class MlsTrack:
                 new = True  # up again after a reset
         if new:
             self._ev_retry_at = self._ev_cleared_at = None
-            lcp2 = r["lcp"][1][0] if 2 in r["valid"] else None
+            lcp2 = mls_markers.lcp2(r)
             ctx = {"t_mono": now, "track_before": prev_nlcp > 0, "nlcp": nlcp, "lcp2_mm": lcp2,
                    "track_level": int(st["track_level"])}
             write = None if self.event_clear is None else (*read_mls.EVENT_RESET, self.event_clear, 1)

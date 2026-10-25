@@ -886,3 +886,31 @@ def test_the_tape_graph_overlay_is_read_only_and_for_any_role(env):
     r = client.get("/api/line/graph")
     assert r.status_code == 200 and r.json["available"] is False
     assert b"tapegraph.js" in client.get("/run").data
+
+
+
+def test_the_survey_spins_are_the_steps_the_move_accepts(env):
+    """Lean plan D109: maps.html renders ROTATE_STEPS_DEG, both directions."""
+    from amr_mission.survey_move import ROTATE_STEPS_DEG  # noqa: PLC0415
+
+    client = env[0]
+    html = client.get("/maps").get_data(as_text=True)
+    for d in ROTATE_STEPS_DEG:
+        assert f'data-deg="{d:g}">Left {d:g}°' in html and f'data-deg="-{d:g}">Right {d:g}°' in html
+    assert html.count('class="tool" data-deg=') == 2 * len(ROTATE_STEPS_DEG) == 12
+
+
+def test_pages_carry_the_jog_and_route_constants(env):
+    """Lean plan D109: jogpad.js and editor.js read the Python constants from the page."""
+    import json  # noqa: PLC0415
+
+    from amr_web import jog  # noqa: PLC0415
+
+    client = env[0]
+    html = client.get("/editor").get_data(as_text=True)
+    import re  # noqa: PLC0415
+
+    attr = lambda name: json.loads(re.search(rf"data-{name}='([^']*)'", html).group(1))  # noqa: E731
+    assert attr("jog") == jog.page_constants()
+    b = attr("bounds")
+    assert b["reverse_max_m"] == 2.0 and b["arc_min_r"] == 1.0 and b["min_straight_m"] == 0.05

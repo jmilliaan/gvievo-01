@@ -124,7 +124,8 @@
       },
       {
         "junction": "J-STEM",
-        "order": "merge"
+        "order": "merge",
+        "steer": "left"
       },
       {
         "junction": "J-SPLIT",
@@ -214,15 +215,18 @@
       "machines": {
         "MRU1": {
           "release": "MW-1",
-          "take": "ME-1"
+          "take": "ME-1",
+          "uturn": "UT-MRU1"
         },
         "MRU2": {
           "release": "MW-2",
-          "take": "ME-2"
+          "take": "ME-2",
+          "uturn": "UT-MRU2"
         },
         "MRU3": {
           "release": "MW-3",
-          "take": "ME-3"
+          "take": "ME-3",
+          "uturn": "UT-MRU3"
         },
         "MRU4": {
           "release": "MW-4",
@@ -284,6 +288,15 @@
       }
     }
   },
-  "uturn_points": {},
-  "zones": {}
+  "uturn_points": {
+    "UT-MRU1": {
+      "direction": "cw"
+    },
+    "UT-MRU2": {
+      "direction": "cw"
+    },
+    "UT-MRU3": {
+      "direction": "cw"
+    }
+  }
 }

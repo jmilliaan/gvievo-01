@@ -81,3 +81,12 @@ def test_beams_into_dynamic_areas_move_neither_fraction():
     assert long == 0.0 and match > 0.95
     # the same scan with no mask argument is the old behaviour exactly
     assert sc.compare(g, near, 0.0, 0.0, 0.0, ranges, GEOM, TOL, None) == (match_plain, long_plain)
+
+
+def test_occupied_near_is_the_relocalizer_proximity_footprint():
+    """D106: the square dilation agrees with relocalize.proximity's reach on the sim world."""
+    from amr_maps import generate_sim_factory, relocalize
+
+    world = generate_sim_factory.build()
+    for tol in (0.05, 0.15, 0.3):
+        assert (sc.occupied_near(world, tol) == (relocalize.proximity(world, tol) > 0)).all(), tol

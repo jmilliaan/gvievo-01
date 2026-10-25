@@ -52,44 +52,20 @@
 </section>
 {% endblock %}
 {% block scripts %}<script>
-const $ = id => document.getElementById(id);
 const SIDES = { left: 'Left', straight: 'Straight', right: 'Right' };
-async function order(side) {
-  let r;
-  try { r = await api('/api/line/branch', { side }); } catch (e) { $('gd-msg').textContent = 'no response: the order may not be set'; return; }
-  $('gd-msg').textContent = r.data.message || '';
-  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
-}
+const order = side => act('/api/line/branch', { side }, { msgEl: 'gd-msg', noResponse: 'no response: the order may not be set' });
 document.querySelectorAll('[data-side]').forEach(b => { b.onclick = () => order(b.dataset.side); });
-async function speed(level) {
-  let r;
-  try { r = await api('/api/line/speed', { level }); } catch (e) { $('gd-msg').textContent = 'no response: the speed may not be set'; return; }
-  $('gd-msg').textContent = r.data.message || '';
-  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
-}
+const speed = level => act('/api/line/speed', { level }, { msgEl: 'gd-msg', noResponse: 'no response: the speed may not be set' });
 document.querySelectorAll('[data-speed]').forEach(b => { b.onclick = () => speed(b.dataset.speed); });
-async function uturn(force) {
-  let r;
-  try { r = await api('/api/line/uturn', { force }); } catch (e) { $('gd-msg').textContent = 'no response: the U-turn order may not be set'; return; }
-  $('gd-msg').textContent = r.data.message || '';
-  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
-}
+const uturn = force => act('/api/line/uturn', { force }, { msgEl: 'gd-msg', noResponse: 'no response: the U-turn order may not be set' });
 async function mark() {
-  let r;
-  try { r = await api('/api/line/teach', { action: 'mark', arg: $('gd-mark-label').value.trim() }); }
-  catch (e) { $('gd-msg').textContent = 'no response: the mark may not be set'; return; }
-  $('gd-msg').textContent = r.data.message || '';
-  log(r.data.message || `refused (${r.status})`, r.data.ok ? '' : 'bad');
-  if (r.data.ok) $('gd-mark-label').value = '';
+  const r = await act('/api/line/teach', { action: 'mark', arg: $('gd-mark-label').value.trim() },
+                      { msgEl: 'gd-msg', noResponse: 'no response: the mark may not be set' });
+  if (r && r.data.ok) $('gd-mark-label').value = '';
 }
 $('gd-mark').onclick = mark;
 document.querySelectorAll('[data-uturn]').forEach(b => { b.onclick = () => uturn(b.dataset.uturn === 'true'); });
-async function cont(arm) {
-  let r;
-  try { r = await api('/api/line/continue', { arm }); } catch (e) { $('gd-msg').textContent = 'no response: continue may not be set'; return; }
-  $('gd-msg').textContent = r.data.message || '';
-  log(r.data.message || `refused (${r.status})`, r.status === 200 ? '' : 'bad');
-}
+const cont = arm => act('/api/line/continue', { arm }, { msgEl: 'gd-msg', noResponse: 'no response: continue may not be set' });
 document.querySelectorAll('[data-continue]').forEach(b => { b.onclick = () => cont(b.dataset.continue === 'true'); });
 // Arrow keys, but never while typing in a field; a held key sends once.
 document.addEventListener('keydown', e => {

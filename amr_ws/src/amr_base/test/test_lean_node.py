@@ -69,3 +69,76 @@ def test_every_production_node_is_lean():
     assert not plain, "use amr_base.lean_node.LeanNode:\n" + "\n".join(plain)
     lean = [f for f in SRC.glob("amr_*/amr_*/*.py") if "(LeanNode):" in f.read_text()]
     assert len(lean) >= 15, f"expected the 15 production nodes, found {len(lean)}"
+
+
+class _Node:
+    def __init__(self, log):
+        self.log = log
+
+    def destroy_node(self):
+        self.log.append("destroy")
+
+
+def _fake_rclpy(monkeypatch, log, spin_raises=None, ok=False):
+    import rclpy
+
+    monkeypatch.setattr(rclpy, "init", lambda args=None: log.append("init"))
+    monkeypatch.setattr(rclpy, "ok", lambda: ok)
+    monkeypatch.setattr(rclpy, "try_shutdown", lambda: log.append("shutdown"))
+
+    def spin(node):
+        log.append("spin")
+        if spin_raises is not None:
+            raise spin_raises
+
+    monkeypatch.setattr(rclpy, "spin", spin)
+
+
+def test_run_tears_down_in_order_before_destroy_first(monkeypatch):
+    """D10: drive_node disarms in before_destroy; it must come before destroy_node."""
+    from amr_base.lean_node import run
+
+    log = []
+    _fake_rclpy(monkeypatch, log, spin_raises=KeyboardInterrupt())
+    run(lambda: _Node(log), before_destroy=lambda n: log.append("before"))
+    assert log == ["init", "spin", "before", "destroy", "shutdown"]
+
+
+def test_run_destroys_even_when_before_destroy_raises(monkeypatch):
+    import pytest
+
+    from amr_base.lean_node import run
+
+    log = []
+    _fake_rclpy(monkeypatch, log, spin_raises=KeyboardInterrupt())
+
+    def boom(n):
+        raise ValueError("teardown")
+
+    with pytest.raises(ValueError):
+        run(lambda: _Node(log), before_destroy=boom)
+    assert log[-2:] == ["destroy", "shutdown"]
+
+
+def test_run_swallows_a_teardown_runtime_error_only_once_rclpy_is_down(monkeypatch):
+    import pytest
+
+    from amr_base.lean_node import run
+
+    log = []
+    _fake_rclpy(monkeypatch, log, spin_raises=RuntimeError("Unable to convert call argument"), ok=False)
+    run(lambda: _Node(log))  # context already down: swallowed
+    _fake_rclpy(monkeypatch, log, spin_raises=RuntimeError("real"), ok=True)
+    with pytest.raises(RuntimeError):
+        run(lambda: _Node(log))
+    _fake_rclpy(monkeypatch, log, spin_raises=RuntimeError("real"), ok=False)
+    with pytest.raises(RuntimeError):
+        run(lambda: _Node(log), catch_runtime=False)
+
+
+def test_ui_throttle_publishes_the_first_then_one_per_period():
+    from amr_base.lean_node import UiThrottle
+
+    t = UiThrottle(0.2)
+    got = [t.due(x) for x in (100.0, 100.1, 100.19, 100.2, 100.25, 100.41)]
+    assert got == [True, False, False, True, False, True]

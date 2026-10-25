@@ -44,17 +44,18 @@ import math
 import os
 import time
 
-import rclpy
-from agv_core import alarms, kinematics
+from agv_core import alarms, kinematics, paths
 from agv_core import config as vehicle_config
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
-from rclpy.executors import ExternalShutdownException
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state, gating
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import EVENT_STREAM, LATCHED, RELIABLE_1
+from amr_base.qos import SENSOR_DATA as SENSOR
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -83,15 +84,6 @@ try:
 except ImportError:  # pragma: no cover - present on the vehicle
     OutputPaths = None
 
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-SENSOR = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
 
 # The state machine's constants are LineState's constants. If a renumbering
 # ever slips through, fail here at construction rather than let readiness.py's
@@ -146,8 +138,8 @@ class LineFollowNode(LeanNode):
         self.declare_parameter("loc_map_id", "")
         self.declare_parameter("loc_map_revision", -1)
         self.declare_parameter("loc_graph_revision", -1)
-        self.declare_parameter("maps_dir", "~/amr_maps")
-        self.declare_parameter("state_dir", "~/.amr")
+        self.declare_parameter("maps_dir", paths.maps_dir())
+        self.declare_parameter("state_dir", paths.state_dir())
 
         self.dt = 1.0 / float(self.get_parameter("rate_hz").value)
         self._generation = int(self.get_parameter("generation").value)
@@ -229,11 +221,9 @@ class LineFollowNode(LeanNode):
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
-        rfid_qos = QoSProfile(depth=50, reliability=QoSReliabilityPolicy.RELIABLE,
-                              durability=QoSDurabilityPolicy.VOLATILE)
-        self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, rfid_qos)
-        # Same QoS as RFID: reliable, volatile - every marker is a message, a replay never new.
-        self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, rfid_qos)
+        # Every RFID encounter and every marker is a message; a replay is never new.
+        self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, EVENT_STREAM)
+        self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, EVENT_STREAM)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
         self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
         self.create_subscription(Odometry, "/odom_raw", self._on_odom, SENSOR)
@@ -289,21 +279,27 @@ class LineFollowNode(LeanNode):
         # chooses a tape; motion still needs AUTO + the physical Start. The web gates it by PIN.
         for side in ("left", "straight", "right"):
             self.create_service(Trigger, f"/amr/line/branch/{side}",
-                                lambda req, res, side=side: self._srv_branch(side, res))
+                                lambda req, res, side=side: self._trigger(
+                                    f"branch order {side}", lambda: self.job.order_branch(side), res))
         # Its speed toggle (2026-10-24): HIGH lets the marker pair grant HIGH, NORMAL ignores
         # the zone codes and drops HIGH at once. It never starts or resumes a run.
         for level in ("normal", "high"):
             self.create_service(Trigger, f"/amr/line/speed/{level}",
-                                lambda req, res, level=level: self._srv_speed(level, res))
+                                lambda req, res, level=level: self._trigger(
+                                    f"speed toggle {level}",
+                                    lambda: self.job.select_speed(level == "high"), res))
         # Its forced U-turn (2026-10-24): the next tape end is the U-turn, strip or not. It only
         # changes what a tape end means to the running job; it never starts or resumes a run.
         for act in ("force", "cancel"):
             self.create_service(Trigger, f"/amr/line/uturn/{act}",
-                                lambda req, res, act=act: self._srv_uturn(act, res))
+                                lambda req, res, act=act: self._trigger(
+                                    f"forced U-turn {act}",
+                                    lambda: self.job.force_u_turn(act == "force"), res))
         # And "continue this run on the next Start" after a "track lost" end (2026-10-24).
         for act in ("arm", "cancel"):
             self.create_service(Trigger, f"/amr/line/continue/{act}",
-                                lambda req, res, act=act: self._srv_continue(act, res))
+                                lambda req, res, act=act: self._trigger(
+                                    f"continue {act}", lambda: self.job.continue_on_start(act == "arm"), res))
 
         self.create_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
@@ -390,8 +386,7 @@ class LineFollowNode(LeanNode):
     def _bundle_sha(maps_dir, map_id, revision):
         from amr_mission import map_bundle as mb  # noqa: PLC0415
 
-        rev_dir = mb.revision_dir(maps_dir, map_id, int(revision))
-        return mb.load_manifest(rev_dir, map_id, int(revision)).sha256
+        return mb.manifest_sha(maps_dir, map_id, revision)
 
     def _ros_now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -460,8 +455,9 @@ class LineFollowNode(LeanNode):
             m.pose.pose.position.x, m.pose.pose.position.y = float(pose[0]), float(pose[1])
             m.pose.pose.orientation.z = math.sin(pose[2] / 2.0)
             m.pose.pose.orientation.w = math.cos(pose[2] / 2.0)
-            m.pose.covariance[0] = m.pose.covariance[7] = 0.05 ** 2
-            m.pose.covariance[35] = 0.03 ** 2
+            from amr_line.tape_locator import initial_pose_cov  # noqa: PLC0415 - as the locator itself
+
+            m.pose.covariance = initial_pose_cov()
             self._pub_initialpose.publish(m)
         res.success, res.message = ok, msg
         self._event("LINE_LOC", msg, Event.INFO if ok else Event.WARN)
@@ -481,13 +477,10 @@ class LineFollowNode(LeanNode):
             self._reset_edge = True
 
     def _on_lease(self, m: ControlLease) -> None:
-        cur = self._lease
-        if cur is not None and cur.instance == m.instance:
-            # Replayed or reordered leases never move authority backwards.
-            if int(m.generation) < int(cur.generation):
-                return
-            if int(m.generation) == int(cur.generation) and int(m.seq) <= int(cur.seq):
-                return
+        # Replayed or reordered leases never move authority backwards.
+        gen, seq = int(m.generation), int(m.seq)
+        if gating.lease_stale(self._lease, m.instance, gen, seq, monotonic_generation=True):
+            return
         self._lease, self._lease_t = m, time.monotonic()
 
     def _on_rfid(self, m: StationDetection) -> None:
@@ -567,8 +560,8 @@ class LineFollowNode(LeanNode):
         w = self._wheels
         if w is None or self._wheels_t is None or now - self._wheels_t > self.wheels_fresh:
             return None, 0.0, False
-        still = (w.left_valid and w.right_valid and abs(w.left_vel_rad_s) <= self.still_w
-                 and abs(w.right_vel_rad_s) <= self.still_w)
+        still = drive_state.still(w.left_vel_rad_s, w.right_vel_rad_s, self.still_w,
+                                  valid=w.left_valid and w.right_valid)
         counts = (int(w.left_counts), int(w.right_counts)) if w.counts_valid else None
         return counts, float(w.counts_per_wheel_rev), bool(still)
 
@@ -576,17 +569,14 @@ class LineFollowNode(LeanNode):
         self._mode = m
 
     def _on_drives(self, m: DriveStatus) -> None:
-        # torque off = not operational AND neither statusword says Operation enabled
-        self._torque_off_msg = (
-            not m.operational and "Operation enabled" not in (m.left_state, m.right_state)
-        )
+        self._torque_off_msg = drive_state.torque_off(m.operational, m.left_state, m.right_state)
         self._drives_t = time.monotonic()
 
     def _on_output_paths(self, m) -> None:
-        status = getattr(m, "status", None)
-        if status is None or len(status) <= self.field_index:
+        clear = drive_state.field_clear(getattr(m, "status", None), self.field_index)
+        if clear is None:
             return  # a malformed array is no evidence at all: the old one ages out
-        self._field_clear = bool(status[self.field_index])
+        self._field_clear = clear
         self._field_t = time.monotonic()
 
     def _field(self, now: float) -> bool | None:
@@ -661,27 +651,11 @@ class LineFollowNode(LeanNode):
         self._publish_state()
         return res
 
-    def _srv_branch(self, side, res):
-        res.success, res.message = self.job.order_branch(side)
-        self.get_logger().info(f"branch order {side}: {res.message}")
-        self._publish_state()
-        return res
-
-    def _srv_continue(self, act, res):
-        res.success, res.message = self.job.continue_on_start(act == "arm")
-        self.get_logger().info(f"continue {act}: {res.message}")
-        self._publish_state()
-        return res
-
-    def _srv_uturn(self, act, res):
-        res.success, res.message = self.job.force_u_turn(act == "force")
-        self.get_logger().info(f"forced U-turn {act}: {res.message}")
-        self._publish_state()
-        return res
-
-    def _srv_speed(self, level, res):
-        res.success, res.message = self.job.select_speed(level == "high")
-        self.get_logger().info(f"speed toggle {level}: {res.message}")
+    def _trigger(self, label, call, res):
+        """One engineer Trigger (branch order, speed toggle, forced U-turn, continue): the job's
+        (ok, message) as the reply, logged under `label`, the state published at once."""
+        res.success, res.message = call()
+        self.get_logger().info(f"{label}: {res.message}")
         self._publish_state()
         return res
 
@@ -867,34 +841,18 @@ class LineFollowNode(LeanNode):
 
     def _event(self, code: str, detail: str, level: int | None = None) -> None:
         code = code or "MODE_CHANGE"
-        row = alarms.get(code)
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source = "line_follow"
-        m.level = level if level is not None else {
-            alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
-        m.code = code
-        m.text = f"line {lj.STATE_NAMES[self.job.state]}: {detail}"
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._pub_event.publish(m)
+        level = alarms.level(code) if level is None else level
+        text = f"line {lj.STATE_NAMES[self.job.state]}: {detail}"
+        self._pub_event.publish(self.build_event("line_follow", level, code, text))
+
+
+def _stop(node) -> None:
+    node.job.clear()
+    node._publish_cmd(0.0, 0.0)
 
 
 def main() -> None:
-    rclpy.init()
-    node = LineFollowNode()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        try:
-            node.job.clear()
-            node._publish_cmd(0.0, 0.0)
-        finally:
-            node.destroy_node()
-            if rclpy.ok():
-                rclpy.shutdown()
+    run(LineFollowNode, before_destroy=_stop, catch_runtime=False)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ near 31 ms, so ~3.6 ms of every tick is spent waiting for two acknowledgements
 that carry no information. An RPDO is a bare CAN frame: it is not acknowledged,
 there is nothing to wait for, and the write becomes a queue append.
 
-  manuals/potential-ros-migration.md section 9 ranks this first of everything
+  manuals/obsolete/potential-ros-migration.md (historical) section 9 ranks this first of everything
   worth doing, above any framework change
   manuals/slam-generalized-plan/hardware-reconciliation.md D-8 calls it a
   prerequisite for the ROS drive node, not an optimisation
@@ -31,8 +31,8 @@ why:
     but a failed setpoint write on one tick is corrected by the next tick 20 ms
     later, and the vehicle has never depended on that acknowledgement.
   * The thing that actually stops the vehicle when a drive goes quiet is
-    core/health.py's table, fed by the producer heartbeat (1017h) and by
-    telemetry replies. Both survive this change untouched. A drive that stops
+    drive_node's feedback-freshness check, fed by the producer heartbeat (1017h)
+    and by the TPDO feedback. Both survive this change untouched. A drive that stops
     receiving RPDOs is detected by exactly the same mechanism as before.
   * The drive's own CANopen heartbeat CONSUMER is what stops it if the PC dies.
     That is a drive-side setting, unaffected either way.
@@ -58,6 +58,8 @@ import struct
 
 import can  # noqa: E402
 
+from agv_core.drivers.canbus import cia402  # noqa: E402
+from agv_core.drivers.canbus.cia301 import COB_DISABLED, TRANSMISSION_ASYNC  # noqa: E402,F401 - re-exported
 from agv_core.drivers.canbus.guard import check as guard_check  # noqa: E402
 
 # CiA 301 default: RPDO1 is 0x200 + node.
@@ -68,16 +70,14 @@ RPDO1_COB_BASE = 0x200
 RPDO1_COMM = 0x1400
 RPDO1_MAP = 0x1600
 
-# Bit 31 of a COB-ID entry means "this PDO does not exist". A PDO is reconfigured
-# by disabling it, rewriting it, and enabling it again - writing a mapping while
-# the PDO is live is undefined behaviour in CiA 301, not merely bad manners.
-COB_DISABLED = 1 << 31
-
-# Transmission type 255 = asynchronous, event-driven: the drive acts on the
-# frame when it arrives. Not SYNC-driven, because there is no SYNC producer on
-# this bus and adding one would put a frame on the wire 50 times a second to
-# schedule a frame we are already sending 50 times a second.
-TRANSMISSION_ASYNC = 255
+# COB_DISABLED (cia301): a PDO is reconfigured by disabling it, rewriting it, and
+# enabling it again - writing a mapping while the PDO is live is undefined
+# behaviour in CiA 301, not merely bad manners.
+#
+# TRANSMISSION_ASYNC (cia301, type 255): the drive acts on the frame when it
+# arrives. Not SYNC-driven, because there is no SYNC producer on this bus and
+# adding one would put a frame on the wire 50 times a second to schedule a frame
+# we are already sending 50 times a second.
 
 # Mapping entries: index << 16 | subindex << 8 | bit length.
 #   6040h controlword      u16   16 bits
@@ -95,9 +95,8 @@ _PAYLOAD = struct.Struct("<Hi")
 PAYLOAD_LEN = _PAYLOAD.size             # 6
 
 # CiA 402 controlword for "Operation enabled", which is what every tick sends
-# once the arm sequence has completed. Named here so the tick does not carry a
-# magic 0x000F beside a velocity.
-CW_OPERATION_ENABLED = 0x000F
+# once the arm sequence has completed.
+CW_OPERATION_ENABLED = cia402.CW_OPERATION_ENABLED
 
 
 def cob_id(node, base=RPDO1_COB_BASE):
@@ -192,10 +191,10 @@ def check_steps(steps=None, node=1):
 def configure(bus, node, sdo_write, base=RPDO1_COB_BASE, echo=None):
     """Run the sequence over SDO. `sdo_write` is injected, not imported.
 
-    Injected so this module never decides WHICH SDO implementation is in use -
-    canworker passes its guarded _write, a bench script passes drive_forward's
-    raw one, and the ROS node passes whatever python-canopen gives it. That is
-    the same seam open_bus() uses for the bus itself.
+    Injected so this module never decides WHICH SDO implementation is in use:
+    amr_base.canopen.DriveLink passes its guarded write, a bench script would
+    pass sdo.guarded_sdo_write. The contract is
+    sdo_write(bus, node, index, sub, value, size) -> (ok: bool, detail: str).
 
     Returns the step list actually executed, so a caller can log it.
     """
@@ -204,13 +203,7 @@ def configure(bus, node, sdo_write, base=RPDO1_COB_BASE, echo=None):
     for index, sub, value, size, what in steps:
         if echo:
             echo(f"    {index:04X}h:{sub:02X} = 0x{value:0{size * 2}X}  {what}")
-        ok = sdo_write(bus, node, index, sub, value, size)
-        # A tuple result is (ok, detail); a bare truthy value is ok. Both call
-        # conventions exist in this repo and neither is worth changing here.
-        if isinstance(ok, tuple):
-            ok, detail = ok
-        else:
-            detail = ""
+        ok, detail = sdo_write(bus, node, index, sub, value, size)
         if not ok:
             raise RuntimeError(
                 f"node {node}: RPDO1 setup failed at {index:04X}h:{sub:02X} "

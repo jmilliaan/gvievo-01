@@ -25,14 +25,16 @@ import math
 import os
 import time
 
-import rclpy
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from agv_core import paths
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import commissioning as cj
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state, gating
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, RELIABLE_1
+from amr_base.qos import SENSOR_DATA as SENSOR
+from amr_base.wire import MODE_NAMES
 from amr_interfaces.msg import (
     CommissioningState,
     ControlLease,
@@ -45,25 +47,6 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import PlanCommissioning
 
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-MODE_NAMES = {
-    ModeState.STARTING: "STARTING",
-    ModeState.IDLE: "IDLE",
-    ModeState.MAPPING: "MAPPING",
-    ModeState.NAVIGATION: "NAVIGATION",
-    ModeState.TRANSITIONING: "TRANSITIONING",
-    ModeState.FAULT: "FAULT",
-    ModeState.STOPPING: "STOPPING",
-    ModeState.LINE: "LINE",
-}
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-SENSOR = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
 # A job exists: a plan is held, moving, or settling. Every other phase is idle.
 JOB_PHASES = (cj.PREPARED, cj.RUNNING, cj.SETTLING)
 
@@ -81,7 +64,7 @@ class CommissioningNode(LeanNode):
         # With no job prepared or running there is nothing to control: tick this often
         # instead (CPU, 2026-10-02). A plan() switches the timer to rate_hz at once.
         self.declare_parameter("idle_period_s", 0.5)
-        self.declare_parameter("state_dir", os.path.expanduser("~/.amr"))
+        self.declare_parameter("state_dir", paths.state_dir())
         self.declare_parameter("counts_fresh_s", 0.1)
         self.declare_parameter("still_wheel_rad_s", 0.02)
         self.declare_parameter("gyro_fresh_s", 0.1)
@@ -143,13 +126,10 @@ class CommissioningNode(LeanNode):
             self._start_edge_t = time.monotonic()  # consumed by exactly one tick
 
     def _on_lease(self, m: ControlLease) -> None:
-        cur = self._lease
-        if cur is not None and cur.instance == m.instance:
-            # Replayed or reordered leases of the same supervisor never move authority back.
-            if int(m.generation) < int(cur.generation):
-                return
-            if int(m.generation) == int(cur.generation) and int(m.seq) <= int(cur.seq):
-                return
+        # Replayed or reordered leases of the same supervisor never move authority back.
+        gen, seq = int(m.generation), int(m.seq)
+        if gating.lease_stale(self._lease, m.instance, gen, seq, monotonic_generation=True):
+            return
         self._lease, self._lease_t = m, time.monotonic()
         self._generation = int(m.generation)
 
@@ -181,7 +161,7 @@ class CommissioningNode(LeanNode):
         cpr = cpr if w.counts_valid and math.isfinite(cpr) and cpr > 0.0 else 0.0
         stopped = None
         if w.left_valid and w.right_valid:
-            stopped = abs(w.left_vel_rad_s) <= self.still_thr and abs(w.right_vel_rad_s) <= self.still_thr
+            stopped = drive_state.still(w.left_vel_rad_s, w.right_vel_rad_s, self.still_thr)
         return counts, cpr, stopped
 
     def _on_mode(self, m: ModeState) -> None:
@@ -423,23 +403,15 @@ def write_evidence(directory: str, plan_id: str, data: dict) -> str:
     raise OSError("no unique evidence file name")
 
 
-def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = CommissioningNode()
+def _finalize_quietly(node) -> None:
     try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
+        node.finalize()
+    except Exception:  # noqa: BLE001 - the teardown still destroys the node
         pass
-    finally:
-        try:
-            node.finalize()
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+
+
+def main(args=None) -> None:
+    run(CommissioningNode, args, before_destroy=_finalize_quietly, catch_runtime=False)
 
 
 if __name__ == "__main__":

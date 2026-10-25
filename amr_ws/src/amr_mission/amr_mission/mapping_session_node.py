@@ -33,49 +33,35 @@ import time
 from dataclasses import asdict
 
 import rclpy
-from agv_core import alarms
+from agv_core import alarms, paths, se2
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import Imu, LaserScan
 from slam_toolbox.srv import DeserializePoseGraph, Pause, SerializePoseGraph
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state, tfpose, wire
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, SENSOR_DATA
 from amr_interfaces.msg import Event, MappingState, WheelStates
 from amr_interfaces.srv import SaveMap, StartSurvey
 from amr_maps import grid as gridio
 from amr_maps import relocalize
 from amr_mission import map_bundle as mb
 
-POSEGRAPH_FILES = ("posegraph.posegraph", "posegraph.data")
-
-SENSOR_DATA = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-STATE_NAMES = {
-    MappingState.IDLE: "IDLE",
-    MappingState.MAPPING: "MAPPING",
-    MappingState.RETURN_REVIEW: "RETURN_REVIEW",
-    MappingState.SAVING: "SAVING",
-    MappingState.SAVED: "SAVED",
-}
+STATE_NAMES = wire.MAPPING_NAMES
 
 
-def _wrap(a: float) -> float:
-    return math.atan2(math.sin(a), math.cos(a))
+_wrap = se2.wrap
 
 
 class MappingSession(LeanNode):
     def __init__(self) -> None:
         super().__init__("mapping_session")
-        self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
+        self.declare_parameter("maps_dir", paths.maps_dir())
         self.declare_parameter("scan_age_limit_s", 0.15)
         self.declare_parameter("imu_age_limit_s", 0.20)
         self.declare_parameter("wheels_age_limit_s", 0.10)
@@ -187,13 +173,9 @@ class MappingSession(LeanNode):
     def _slam_lag_s(self) -> float | None:
         """Seconds between the newest scan and the scan SLAM last consumed, from the
         map->odom stamp; None when there is no map->odom or no scan yet."""
-        if self._last_scan_stamp is None:
+        consumed = self._map_odom_stamp()
+        if self._last_scan_stamp is None or consumed is None:
             return None
-        try:
-            t = self.tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
-        except Exception:  # noqa: BLE001
-            return None
-        consumed = rclpy.time.Time.from_msg(t.header.stamp).nanoseconds * 1e-9
         return self._last_scan_stamp - consumed
 
     def _check_slam(self) -> None:
@@ -235,43 +217,23 @@ class MappingSession(LeanNode):
         self._last_imu_t = self._now()
 
     def _on_wheels(self, msg: WheelStates) -> None:
-        still = (
-            msg.left_valid
-            and msg.right_valid
-            and abs(msg.left_vel_rad_s) < self.w_eps
-            and abs(msg.right_vel_rad_s) < self.w_eps
-        )
+        still = drive_state.still(msg.left_vel_rad_s, msg.right_vel_rad_s, self.w_eps, inclusive=False,
+                                  valid=msg.left_valid and msg.right_valid)
         self._last_wheels = (self._now(), still)
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         self._map, self._map_t = msg, self._now()
 
     def _pose_in_map(self) -> tuple[float, float, float] | None:
-        try:
-            t = self.tf_buffer.lookup_transform("map", "base_footprint", rclpy.time.Time())
-        except Exception:  # noqa: BLE001 - any TF failure means "no pose"
-            return None
-        q = t.transform.rotation
-        yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
-        return t.transform.translation.x, t.transform.translation.y, yaw
+        return tfpose.lookup_pose(self.tf_buffer, "map", "base_footprint")
 
     def _laser_pose(self, frame: str) -> tuple[float, float, float] | None:
         """The scanner's mount in base_footprint (static TF)."""
-        try:
-            t = self.tf_buffer.lookup_transform("base_footprint", frame, rclpy.time.Time())
-        except Exception:  # noqa: BLE001
-            return None
-        q = t.transform.rotation
-        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-        return t.transform.translation.x, t.transform.translation.y, yaw
+        return tfpose.lookup_pose(self.tf_buffer, "base_footprint", frame)
 
     def _map_odom_stamp(self) -> float | None:
         """Stamp of map->odom: the last scan slam_toolbox consumed."""
-        try:
-            t = self.tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
-        except Exception:  # noqa: BLE001
-            return None
-        return rclpy.time.Time.from_msg(t.header.stamp).nanoseconds * 1e-9
+        return tfpose.lookup_stamp(self.tf_buffer, "map", "odom")
 
     def _readiness(self, need_still: bool = True) -> list[str]:
         """Empty list = ready; otherwise the reasons (spec §2.4 age limits)."""
@@ -306,15 +268,7 @@ class MappingSession(LeanNode):
         self._publish_state()
 
     def event(self, code: str, text: str) -> None:
-        row = alarms.get(code)
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source = "mapping_session"
-        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
-        m.code, m.text = code, text
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._pub_event.publish(m)
+        self._pub_event.publish(self.build_event("mapping_session", alarms.level(code), code, text))
 
     def _publish_state(self) -> None:
         self._check_slam()
@@ -387,7 +341,7 @@ class MappingSession(LeanNode):
             manifest, grid = mb.load(self.maps_dir, req.map_id, rev)
         except (mb.BundleError, OSError) as e:
             return self._refuse(res, f"cannot continue {what}: {e}")
-        missing = [f for f in POSEGRAPH_FILES if f not in manifest.files]
+        missing = mb.missing_posegraph(manifest)
         if missing:
             return self._refuse(
                 res,
@@ -628,25 +582,7 @@ class MappingSession(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = MappingSession()
-    executor = MultiThreadedExecutor(num_threads=4)
-    executor.add_node(node)
-    try:
-        executor.spin()
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(MappingSession, args, executor=lambda: MultiThreadedExecutor(num_threads=4))
 
 
 if __name__ == "__main__":

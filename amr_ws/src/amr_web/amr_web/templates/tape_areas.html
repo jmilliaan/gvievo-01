@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}AMR — high-speed areas{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block body %}
+{# High-speed areas (tracked plan 4, 2026-10-25): polygons drawn on the teaching map revision.
+   A trip is HIGH where its route runs inside one (trip_route.area_ranges), only while the tape
+   locator is healthy, and always back at the cruise before stops, junctions and the area's end.
+   Saving writes a file the next trip reads at its Start; nothing here moves the vehicle.
+   Engineer view (PIN). Not in the nav: reached from the Teach page. #}
+<section class="editor">
+  <aside class="tools">
+    <h2>High-speed areas <small id="ar-map">teaching map</small></h2>
+    <div class="bar two">
+      <button id="ar-draw" class="big" title="Then click the corners on the map">Draw new</button>
+      <button id="ar-undo">Undo corner</button>
+    </div>
+    <label class="field">Id <input id="ar-id" placeholder="e.g. H-MRU-LINE" maxlength="32"></label>
+    <div class="bar two">
+      <button id="ar-save" class="big run">Save area</button>
+      <button id="ar-cancel">Cancel</button>
+    </div>
+    <p id="ar-msg" class="note"></p>
+    <h3>Saved</h3>
+    <div id="ar-list"></div>
+    <div class="warn-box"><b>HIGH only where the tape runs inside an area</b> for at least 1 m, only with the locator healthy, and slowed back to the cruise before every stop, junction and area end. Takes effect from the next trip.</div>
+    <p class="note"><a href="/teach">← Teach</a></p>
+  </aside>
+  <div class="canvas-wrap">
+    <canvas id="ar-canvas" width="900" height="600"></canvas>
+    <div class="hint">Draw new, then click each corner; Save closes the polygon. Drag = pan, +/− = zoom.</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/tapegraph.js"></script><script>
+const view = new MapView($('ar-canvas'));
+let corners = null;           // the polygon being drawn, [[x, y]], or null
+graphOverlay(view);
+view.overlays.push((c, v) => {
+  if (!corners || !corners.length) return;
+  if (corners.length > 2) v.fillPolygon(corners, alpha(INK.preview, 0.25), INK.accent);
+  else v.polyline(corners, INK.accent, 2);
+  corners.forEach(p => v.dot(p[0], p[1], INK.accent, 4));
+});
+view.onClick = w => { if (corners) { corners.push([+w[0].toFixed(3), +w[1].toFixed(3)]); view.draw(); } };
+function drawing(on) {
+  corners = on ? [] : null;
+  view.tool = on ? 'area' : null;
+  $('ar-draw').classList.toggle('on', on);
+  view.draw();
+}
+$('ar-draw').onclick = () => drawing(!corners);
+$('ar-undo').onclick = () => { if (corners) { corners.pop(); view.draw(); } };
+$('ar-cancel').onclick = () => drawing(false);
+async function send(body) {
+  let r;
+  try { r = await api('/api/line/areas', body); } catch (e) { $('ar-msg').textContent = 'no response: it may not be saved'; return false; }
+  $('ar-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.data.ok ? '' : 'bad');
+  return r.data.ok;
+}
+$('ar-save').onclick = async () => {
+  if (!corners) { $('ar-msg').textContent = 'Draw new first'; return; }
+  if (await send({ id: $('ar-id').value.trim(), polygon: corners })) { drawing(false); refresh(); }
+};
+function list(g) {
+  $('ar-list').innerHTML = (g.areas || []).map(a =>
+    `<div class="bar two"><span>${esc(a.id)} · ${a.polygon.length} corners</span><button class="danger" data-del="${esc(a.id)}">Delete</button></div>`).join('') || '<p class="note">none</p>';
+  document.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = async () => { if (await send({ id: b.dataset.del, delete: true })) refresh(); };
+  });
+}
+let loaded = '';
+async function refresh() {
+  let r;
+  try { r = await apiGet('/api/line/graph'); } catch (e) { return; }
+  const g = r.data || {};
+  if (!g.available) { $('ar-map').textContent = g.why || 'no teaching map'; return; }
+  $('ar-map').textContent = `${g.map_id} rev${g.map_revision}`;
+  tapeGraph = g;
+  const key = `${g.map_id}/${g.map_revision}`;
+  if (key !== loaded) { loaded = key; await view.load(g.map_id, g.map_revision); }
+  list(g);
+  view.draw();
+}
+refresh();
+</script>{% endblock %}

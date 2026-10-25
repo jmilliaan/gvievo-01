@@ -46,17 +46,13 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch_ros.actions import Node
 from nav_msgs.msg import Odometry
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_srvs.srv import Trigger
 
+from amr_base.qos import LATCHED, SENSOR_DATA
 from amr_interfaces.msg import LocalizationState
 from amr_interfaces.srv import SetPose2D
 
 MAPS_DIR = tempfile.mkdtemp(prefix="amr_amcl_test_")
-SENSOR_DATA = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
 
 
 @pytest.mark.launch_test

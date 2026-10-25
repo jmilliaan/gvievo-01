@@ -69,7 +69,7 @@ def sv_with_web(monkeypatch, spawn_result=None, spawn_raises=None):
 
     # scoped to the test: Group.spawn is the real thing again afterwards
     monkeypatch.setattr(node.Group, "spawn", staticmethod(spawn))
-    for name in ("_reap", "_respawn_due"):
+    for name in ("_reap", "_respawn_due", "_spawn"):
         setattr(sv, name, types.MethodType(getattr(Supervisor, name), sv))
     return sv
 

@@ -44,13 +44,6 @@ def test_can_monitoring():
           f"{len(alarms.EMCY_CODES)} codes"
           + (f", missing {[hex(c) for c in missing]}" if missing else ""))
 
-    # -- statusword flags: ILA is how the FX3 quick stop becomes visible ----
-    flags = {f["name"] for f in alarms.decode_statusword_flags(0x0800)}
-    check("ILA decodes from statusword bit 11", flags == {"ILA"}, str(flags))
-    check("a clear statusword yields no flags",
-          alarms.decode_statusword_flags(0x0027) == [])
-    check("decode_statusword_flags tolerates None",
-          alarms.decode_statusword_flags(None) == [])
     check("NMT state decodes from the heartbeat byte",
           alarms.decode_nmt(0x05) == "Operational"
           and alarms.decode_nmt(0x7F) == "Pre-operational")
@@ -116,22 +109,60 @@ def test_can_monitoring():
 
     # The line sensor's own list (mls-marker-plan, 2026-10-09): exactly these, and no
     # store, factory reset, offset calibration, zero teach or inversion.
-    check("the MLS write list is exactly variant, markers, polarity, teach lock and event reset",
+    check("the MLS write list is exactly variant, markers, polarity, teach lock, event reset "
+          "and the four IMU TPDO COB-IDs",
           set(guard.SENSOR_ALLOWED) == {(0x2006, 1), (0x2028, 1), (0x2028, 2), (0x2028, 3),
-                                        (0x202D, 5), (0x2029, 0), (0x2080, 1)})
+                                        (0x202D, 5), (0x2029, 0), (0x2080, 1),
+                                        (0x1803, 1), (0x1804, 1), (0x1805, 1), (0x1806, 1)})
+    check("the MLS list refuses the IMU TPDO mappings and every other IMU TPDO sub-index",
+          not any(guard.is_sensor_allowed(i, s) for i in (0x1803, 0x1806, 0x1A03, 0x1A06)
+                  for s in (0, 2, 3, 5)))
     check("the MLS list refuses store, defaults, offset calibration, zero teach, inversion",
           not any(guard.is_sensor_allowed(i, s) for i, s in
                   ((0x1010, 1), (0x1011, 1), (0x202A, 0), (0x202B, 0), (0x202C, 0),
                    (0x2027, 0), (0x2025, 0), (0x2026, 0), (0x202D, 1), (0x2006, 2),
                    (0x2070, 6), (0x2070, 7), (0x2080, 2))))
-    check("the MLS list makes no drive object writable, and the drive list none of it",
+    # The IMU TPDO COB-IDs are PDO comm params, which the drive list admits by rule
+    # anyway; every manufacturer object on the MLS list stays off the drive list.
+    check("the MLS list makes no drive object writable, and the drive list none of its 2xxxh objects",
           not any(guard.is_sensor_allowed(i, 0) for i in guard.ALLOWED)
-          and not any(guard.is_allowed(i) for i, _ in guard.SENSOR_ALLOWED))
-    # read_mls is the only MLS writer and must write through the guard.
-    rm = (ROOT / "agv_core/drivers/canbus/read_mls.py").read_text(encoding="utf-8")
-    check("read_mls writes only through its guarded wrapper",
-          "guard.check_sensor(" in rm and rm.count("sdo_write(") == 1,
-          f"{rm.count('sdo_write(')} sdo_write( calls")
+          and not any(guard.is_allowed(i) for i, _ in guard.SENSOR_ALLOWED if 0x2000 <= i <= 0x2FFF))
+    check("FREE (403Eh) stays refused on both lists",
+          not guard.is_allowed(0x403E, 0) and not guard.is_sensor_allowed(0x403E, 0)
+          and not guard.is_sensor_allowed(0x403E, 1))
+
+    # Every bench write goes through sdo.guarded_sdo_write. A raw sdo_write( call in
+    # canbus/ is allowed only inside that helper, and rpdo.configure's injected
+    # writer (its steps pass guard.check_steps before the first frame).
+    import io
+    import tokenize
+    raw = []
+    for path in sorted((ROOT / "agv_core/drivers/canbus").glob("*.py")):
+        toks = [t for t in tokenize.generate_tokens(io.StringIO(path.read_text(encoding="utf-8")).readline)
+                if t.type in (tokenize.NAME, tokenize.OP)]
+        for prev, tok, nxt in zip(toks, toks[1:], toks[2:], strict=False):
+            if tok.string == "sdo_write" and nxt.string == "(" and prev.string != "def":
+                raw.append(f"{path.name}:{tok.start[0]}")
+    allowed_raw = {"sdo.py", "rpdo.py"}
+    check("no raw sdo_write( outside sdo.guarded_sdo_write (and rpdo's injected writer)",
+          {r.split(":")[0] for r in raw} <= allowed_raw and len(raw) == 2, ", ".join(raw))
+
+    from agv_core.drivers.canbus import sdo
+
+    class _NoBus:
+        sent = []
+
+        def recv(self, timeout=None):
+            return None
+
+        def send(self, m):
+            self.sent.append(m)
+
+    nb = _NoBus()
+    ok_free, why_free = sdo.guarded_sdo_write(nb, 1, 0x403E, 0, 1 << 6, 2)
+    ok_imu, _ = sdo.guarded_sdo_write(nb, 10, 0x1A06, 1, 0, 4, sensor=True)
+    check("the bench guard refuses FREE and an IMU mapping write before a frame is sent",
+          not ok_free and not ok_imu and "403E" in why_free and nb.sent == [], why_free[:80])
 
     # Every write by the bus owner (amr_base.canopen since U11 retired canworker)
     # must go through the guard, not around it. _raw_write is the shutdown path,
@@ -172,6 +203,28 @@ def test_can_monitoring():
     check("a short payload decodes rather than raising",
           canmon._decode("i32", b"\x01") == 1)
     check("a None payload yields None", canmon._decode("i16", None) is None)
+    check("decode_int gives an unsigned read its object's width and sign",
+          canmon.decode_int("i16", 0xFFC9) == -55 and canmon.decode_int("i32", 0xFFFFF63C) == -2500
+          and canmon.decode_int("u8", 0x1FF) == 0xFF and canmon.decode_int("i16", None) is None)
+
+    # step(): the diagnostic slot is bounded (one SDO per call, U7) and a timeout
+    # is stored as None, never a plausible number.
+    stepper = canmon.MonitorPoller({1: "left", 2: "right"}, objects=canmon.OBJECTS[:2])
+    calls = []
+
+    def read(nid, idx):
+        calls.append((nid, idx))
+        return None if nid == 2 else 0x01F4  # right drive times out; 500 raw -> 50.0 V
+
+    out = [stepper.step(read) for _ in range(4)]
+    check("step reads one object per call, alternating nodes, the object fixed for a node sweep",
+          [c[0] for c in calls] == [1, 2, 1, 2]
+          and calls[0][1] == calls[1][1] == canmon.OBJECTS[0][0] and calls[2][1] == canmon.OBJECTS[1][0],
+          str(calls))
+    snap = stepper.snapshot({})["nodes"]
+    check("a timeout is stored as None and counted apart from the reads",
+          out[0][2] == 500 and out[1][2] is None and snap["1"]["bus_v"]["value"] == 50.0
+          and snap["2"]["bus_v"]["value"] is None and (stepper.reads, stepper.timeouts) == (4, 2))
 
     pol.store(1, "bus_v", 482)
     pol.store(1, "drv_c", 723)
@@ -195,6 +248,49 @@ def test_can_monitoring():
           pol.snapshot()["nodes"]["1"]["info"]["value"] is None)
 
 
+def test_cia_tables_and_preflight():
+    """The CiA 301/402 words the bus owner and the bench share, and the one
+    preflight verdict both print (lean plan D41/D43)."""
+    from agv_core.drivers.canbus import cia301, cia402, drive_forward, rpdo
+    print("\nCiA 301/402: shared words, one enable sequence, one preflight")
+
+    check("CiA 402 words: Operation enabled 000Fh, state mask 6Fh/27h, pp 1, pv 3",
+          cia402.CW_OPERATION_ENABLED == 0x000F == cia402.CW_ENABLE == rpdo.CW_OPERATION_ENABLED
+          and (cia402.OPERATION_ENABLED_MASK, cia402.OPERATION_ENABLED) == (0x6F, 0x27)
+          and (cia402.MODE_PP, cia402.MODE_PV) == (1, 3)
+          and cia402.is_operation_enabled(0x0627) and not cia402.is_operation_enabled(0x0621)
+          and not cia402.is_operation_enabled(None))
+    check("CiA 301 words: COB disabled bit 31, async 255, NMT start 01h / pre-op 80h",
+          cia301.COB_DISABLED == 1 << 31 == rpdo.COB_DISABLED and cia301.TRANSMISSION_ASYNC == 255
+          and (cia301.NMT_START, cia301.NMT_PREOPERATIONAL) == (0x01, 0x80))
+    check("the bench and the bus owner share one enable sequence: 06h, 07h, 0Fh",
+          drive_forward.ENABLE_SEQUENCE is cia402.ENABLE_SEQUENCE
+          and [cw for cw, _ in cia402.ENABLE_SEQUENCE] == [0x06, 0x07, 0x0F])
+
+    healthy = {0x1001: 0, 0x6041: 0x0221}
+
+    def run(sdo=(True, b"", "ok", 1.0), regs=None, nodes=None):
+        r = healthy if regs is None else regs
+        return cia402.preflight_report(lambda n, i, s: sdo, lambda n, i: r.get(i),
+                                       nodes or {1: "left"})
+
+    ok, lines = run()
+    check("a healthy drive passes preflight", ok and "Ready to switch on" in lines[0], lines[0])
+    ok, lines = run(sdo=(None, None, "timeout", None))
+    check("a silent drive fails preflight as not responding", not ok and "not responding" in lines[0])
+    ok, lines = run(sdo=(True, b"", "2 REPLIES - ID COLLISION?", 1.0))
+    check("two answers on one Node-ID fail preflight", not ok and "COLLISION" in lines[0])
+    ok, lines = run(regs={0x1001: 0x81, 0x6041: 0x0208})
+    check("a fault fails preflight, naming the error register and FAULT state",
+          not ok and "reports a fault" in " ".join(lines) and "FAULT state" in lines[-1])
+    ok, lines = run(regs={0x1001: 0, 0x6041: 0x0021})
+    check("a clear Remote bit fails preflight", not ok and "Remote bit clear" in lines[-1])
+    ok, lines = run(regs={0x1001: None, 0x6041: 0x0221})
+    check("unreadable diagnostics fail preflight instead of raising",
+          not ok and "diagnostics unreadable" in lines[0])
+
+
 TESTS = [
     test_can_monitoring,
+    test_cia_tables_and_preflight,
 ]

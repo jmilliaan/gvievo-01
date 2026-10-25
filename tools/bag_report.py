@@ -19,7 +19,6 @@ Time is seconds from the first recorded message (bag receive time).
 import csv
 import math
 import os
-import re
 import sys
 
 import rosbag2_py
@@ -27,19 +26,18 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from agv_core import config  # noqa: E402
+from amr_base import diff_drive  # noqa: E402
+from amr_base.wire import LINE_NAMES as LINE_STATES  # noqa: E402 - needs the sourced ROS overlay
+from amr_base.wire import MUX_NAMES as MUX_SOURCES  # noqa: E402
 
-LINE_STATES = {0: "IDLE", 1: "ARMED", 2: "RUNNING", 3: "HOLD", 4: "DONE", 5: "FAULT"}
-# agv_core.drivers.rfid.pass_summary(); change both together.
-PASS_RE = re.compile(r"RFID pass (\w+): (\d+) reads in ([\d.]+) s, RSSI peak (-?[\d.]+) "
-                     r"mean (-?[\d.]+) min (-?[\d.]+) dBm")
+from agv_core import config  # noqa: E402
+from agv_core.drivers import rfid  # noqa: E402
+
 # A pass with this few reads was nearly a missed tag.
 MARGINAL_READS = 2
 # line_track.csv's lateral_mm column; the marker columns come after it. (Until 2026-10-09 the
 # U-turn report read column 11 here, one past the end of the row: an IndexError.)
 LAT = 10
-MUX_SOURCES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning",
-               6: "pendant", 7: "line"}
 
 
 def read_bag(path):
@@ -94,7 +92,7 @@ def main(run):
         return
     t0 = min(v[0][0] for v in bag.values())
     csvd = os.path.join(run, "csv")
-    r = config.WHEEL_DIA_M / 2.0
+    geom = diff_drive.profile_geometry()
     timeline = []
 
     def ev(t, what):
@@ -104,13 +102,12 @@ def main(run):
     wheels, dist, yaw = [], 0.0, 0.0
     prev = None
     for t, m in bag.get("/wheel_states", []):
-        v = r * (m.left_vel_rad_s + m.right_vel_rad_s) / 2.0
-        w = r * (m.right_vel_rad_s - m.left_vel_rad_s) / config.TRACK_M
+        v, w = diff_drive.forward(geom, m.left_vel_rad_s, m.right_vel_rad_s)
         if prev is not None and m.left_valid and m.right_valid:
-            dl = (m.left_pos_rad - prev.left_pos_rad) * r
-            dr = (m.right_pos_rad - prev.right_pos_rad) * r
-            dist += abs(dl + dr) / 2.0
-            yaw += (dr - dl) / config.TRACK_M
+            ds, dth = diff_drive.forward(geom, m.left_pos_rad - prev.left_pos_rad,
+                                         m.right_pos_rad - prev.right_pos_rad)
+            dist += abs(ds)
+            yaw += dth
         prev = m
         wheels.append((t - t0, v, w, dist, math.degrees(yaw), m.left_counts, m.right_counts,
                        m.left_valid and m.right_valid))
@@ -254,15 +251,15 @@ def main(run):
     print("\nRFID PASSES (a pass ends tag_clear_s after its last read; logged when it ends)")
     passes = []
     for t, m in bag.get("/rosout", []):
-        g = PASS_RE.search(m.msg)
+        g = rfid.parse_pass_summary(m.msg)
         if not g:
             continue
-        reads, dur = int(g[2]), float(g[3])
+        reads, dur = g["reads"], g["duration_s"]
         end = t - t0
         mid = end - config.RFID_TAG_CLEAR_S - dur / 2.0   # logged clear_s after the last read
         v = at(wheels, mid, 1)
-        passes.append((round(mid, 2), g[1], reads, dur, v, None if v is None else abs(v) * dur,
-                       float(g[4]), float(g[5]), float(g[6])))
+        passes.append((round(mid, 2), g["tag"], reads, dur, v, None if v is None else abs(v) * dur,
+                       g["rssi_peak"], g["rssi_mean"], g["rssi_min"]))
     write_csv(csvd, "rfid_passes.csv", ["t_mid", "tag", "reads", "duration_s", "v_mps", "zone_m",
                                         "rssi_peak", "rssi_mean", "rssi_min"], passes)
     if not passes:

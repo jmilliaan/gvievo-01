@@ -13,6 +13,8 @@ import csv
 import os
 import time
 
+from agv_core import fsutil
+
 FIELDS = ("t", "job", "engine", "nlcp", "tracks_mm", "level", "has_track", "e_used_mm",
           "v_base_rpm", "left_rpm", "right_rpm", "kink", "uturn", "travel_m", "note")
 
@@ -43,9 +45,4 @@ class FlightRecorder:
         return path
 
     def _prune(self):
-        files = sorted(f for f in os.listdir(self.dir) if f.endswith(".csv"))
-        for f in files[:-self.keep]:
-            try:
-                os.unlink(os.path.join(self.dir, f))
-            except OSError:
-                pass
+        fsutil.keep_newest(self.dir, self.keep, lambda f: f.endswith(".csv"))

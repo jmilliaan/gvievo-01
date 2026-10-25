@@ -1,4 +1,5 @@
-"""tape_synth_node: a straight strip of magnetic tape, for the LINE layer in sim.
+"""tape_synth_node: a straight strip of magnetic tape, for the LINE layer in sim. Manual-only
+(`ros2 run amr_sim tape_synth_node`): no launch file starts it (lean plan D164).
 
 Re-hosts the plant from the tape engine's test rig (`amr_line/test/harness.py`,
 itself verbatim from gy-demo): the vehicle's lateral offset y and heading theta
@@ -24,25 +25,21 @@ Parameters: y0_mm (initial offset, default 30 = the rig's step), tape_length_m
 
 from __future__ import annotations
 
-import math
 import time
 
-import rclpy
 from agv_core import config
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from agv_core.drivers.canbus.mls_markers import SOURCE_TPDO
 
+from amr_base.diff_drive import WheelScale
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
 from amr_interfaces.msg import LineTrack, WheelStates
 from amr_sim.tape_plant import TapePlant
 
-SENSOR_DATA = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
+_SCALE = WheelScale(config.GEAR_RATIO, config.INVERT_LEFT, config.INVERT_RIGHT)
 
 
-class TapeSynth(Node):
+class TapeSynth(LeanNode):
     def __init__(self) -> None:
         super().__init__("tape_synth")
         self.declare_parameter("y0_mm", 30.0)
@@ -67,8 +64,8 @@ class TapeSynth(Node):
 
     def _on_wheels(self, m: WheelStates) -> None:
         # rad/s at the wheel -> motor r/min, the engine's unit
-        self._left = m.left_vel_rad_s / WHEEL_RAD_S_PER_MOTOR_RPM
-        self._right = m.right_vel_rad_s / WHEEL_RAD_S_PER_MOTOR_RPM
+        self._left = _SCALE.motor_rpm(m.left_vel_rad_s, True)
+        self._right = _SCALE.motor_rpm(m.right_vel_rad_s, False)
 
     def _tick(self) -> None:
         now = time.monotonic()
@@ -78,7 +75,7 @@ class TapeSynth(Node):
 
         m = LineTrack()
         m.stamp = self.get_clock().now().to_msg()
-        m.source = "tpdo"
+        m.source = SOURCE_TPDO
         m.sample_age_s = 0.0
         self._seq = (self._seq + 1) & 0xFFFFFFFF
         m.seq = self._seq
@@ -97,16 +94,7 @@ class TapeSynth(Node):
 
 
 def main() -> None:
-    rclpy.init()
-    node = TapeSynth()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    run(TapeSynth, None, catch_runtime=False)
 
 
 if __name__ == "__main__":

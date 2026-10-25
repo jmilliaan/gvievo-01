@@ -13,13 +13,12 @@ mutable part: passes and stations are added and deleted there, and a graph is BU
 it and published as the next g<N>. The pointer is read once when the LINE layer starts.
 """
 
-import contextlib
-import fcntl
-import hashlib
 import json
 import os
 import re
 import tempfile
+
+from agv_core import fsio, fsutil
 
 from amr_line import tape_graph as tg
 
@@ -50,35 +49,11 @@ def list_revisions(maps_dir, map_id):
     return sorted(int(m.group(1)) for m in map(REV_RE.match, names) if m)
 
 
-@contextlib.contextmanager
-def _lock(root):
-    os.makedirs(root, exist_ok=True)
-    fd = os.open(os.path.join(root, ".lock"), os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        os.close(fd)
-
-
-def _fsync(path, directory=False):
-    fd = os.open(path, os.O_RDONLY | (os.O_DIRECTORY if directory else 0))
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
-def _sha(path):
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
-
-
 def publish(maps_dir, graph, summary=""):
     """Write `graph` as the next g<N> of its map. Returns N."""
     map_id = graph.binding["map_id"]
     root = graph_root(maps_dir, map_id)
-    with _lock(root):
+    with fsio.writer_lock(root):
         revs = list_revisions(maps_dir, map_id)
         n = (revs[-1] + 1) if revs else 1
         graph.revision = n
@@ -90,16 +65,12 @@ def publish(maps_dir, graph, summary=""):
             gpath = os.path.join(stage, "graph.json")
             with open(gpath, "w") as fh:
                 json.dump(graph.to_dict(), fh, indent=1)
-            manifest = {"graph_revision": n, "sha256": _sha(gpath), **graph.binding,
+            manifest = {"graph_revision": n, "sha256": fsio.sha256_file(gpath), **graph.binding,
                         "mission": graph.mission, "legs": sorted(graph.legs),
                         "stations": sorted(graph.stations), "summary": summary}
             with open(os.path.join(stage, "manifest.json"), "w") as fh:
                 json.dump(manifest, fh, indent=1)
-            for name in os.listdir(stage):
-                _fsync(os.path.join(stage, name))
-            _fsync(stage, directory=True)
-            os.rename(stage, dest)
-            _fsync(root, directory=True)
+            fsio.publish_dir(stage, dest)
         except BaseException:
             if os.path.isdir(stage):
                 for name in os.listdir(stage):
@@ -116,7 +87,7 @@ def load(maps_dir, map_id, revision):
         with open(os.path.join(d, "manifest.json")) as fh:
             manifest = json.load(fh)
         gpath = os.path.join(d, "graph.json")
-        sha = _sha(gpath)
+        sha = fsio.sha256_file(gpath)
         with open(gpath) as fh:
             doc = json.load(fh)
     except (OSError, ValueError) as e:
@@ -132,13 +103,7 @@ def load(maps_dir, map_id, revision):
 # -- the active pointer --------------------------------------------------------------
 
 def _atomic_json(path, doc):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=os.path.dirname(path))
-    with os.fdopen(fd, "w") as fh:
-        json.dump(doc, fh, indent=1)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    fsutil.atomic_write_json(path, doc, indent=1, mkstemp=True)
 
 
 def read_active(state_dir):
@@ -250,3 +215,30 @@ def save_station(state_dir, map_id, map_revision, record):
 def save_stations(state_dir, map_id, map_revision, stations):
     """The whole station table ({id: record}): mark_role replaces and removes entries."""
     _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "stations.json"), stations)
+
+
+def load_areas(state_dir, map_id, map_revision):
+    """{area id: {"polygon": [[x, y], ...], "kind": "high"}} - high-speed areas drawn on this map
+    revision (tracked plan 4, 2026-10-25; the /tape-areas page writes them). {} when none."""
+    try:
+        with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "areas.json")) as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    out = {}
+    for k, v in doc.items():
+        try:
+            poly = [(float(p[0]), float(p[1])) for p in v["polygon"]]
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if len(poly) >= 3 and v.get("kind", "high") == "high":
+            out[str(k)] = {"polygon": poly, "kind": "high"}
+    return out
+
+
+def save_areas(state_dir, map_id, map_revision, areas):
+    _atomic_json(os.path.join(teach_dir(state_dir, map_id, map_revision), "areas.json"),
+                 {k: {"polygon": [[round(float(x), 3), round(float(y), 3)] for x, y in v["polygon"]],
+                      "kind": v.get("kind", "high")} for k, v in areas.items()})

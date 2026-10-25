@@ -70,6 +70,7 @@ Silence is NOT a fault. The reader pushes only when a tag is in the field, so a
 quiet link is the normal state of a vehicle between stations. Prolonged silence
 raises a soft "silent" flag for the dashboard - it never stops the vehicle.
 """
+import re
 import socket
 import threading
 import time
@@ -243,6 +244,14 @@ def parse_params(frame):
     }
 
 
+def channel_mhz(params, channel):
+    """The carrier frequency of a hop channel, from the reader's own parameters; None
+    when the parameters are not in yet."""
+    if not params or channel is None:
+        return None
+    return params["start_mhz"] + channel * params["step_khz"] / 1000.0
+
+
 def params_summary(params):
     """One line for logs and the HMI: "active RS232 US 902.75-927.25 MHz 30 dBm"."""
     if not params:
@@ -377,9 +386,43 @@ class PassStats:
 
 
 def pass_summary(p):
-    """One log line per pass. tools/bag_report.py parses it: change both together."""
+    """One log line per pass. parse_pass_summary() reads it back (tools/bag_report.py)."""
     return (f"RFID pass {p['tag']}: {p['reads']} reads in {p['duration_s']:.2f} s, "
             f"RSSI peak {p['rssi_peak']:.1f} mean {p['rssi_mean']:.1f} min {p['rssi_min']:.1f} dBm")
+
+
+PASS_RE = re.compile(r"RFID pass (\w+): (\d+) reads in ([\d.]+) s, RSSI peak (-?[\d.]+) "
+                     r"mean (-?[\d.]+) min (-?[\d.]+) dBm")
+
+
+def parse_pass_summary(text):
+    """A pass_summary() line (anywhere in `text`) -> the pass dict, or None."""
+    g = PASS_RE.search(text)
+    if not g:
+        return None
+    return {"tag": g[1], "reads": int(g[2]), "duration_s": float(g[3]),
+            "rssi_peak": float(g[4]), "rssi_mean": float(g[5]), "rssi_min": float(g[6])}
+
+
+RX_BUFFER_MAX = 8192  # bytes of undecodable junk kept before the buffer is dropped
+
+
+def read_frames(sock, decoder, buf):
+    """One recv on the reader socket -> (frames, buf). frames is None on a recv timeout
+    (no tag in the field: normal). Raises ConnectionResetError when the reader closed
+    the connection; never lets the buffer grow without bound on junk."""
+    try:
+        chunk = sock.recv(4096)
+    except TimeoutError:
+        return None, buf
+    if not chunk:
+        raise ConnectionResetError("reader closed the connection")
+    buf += chunk
+    frames, used = decoder.decode(buf)
+    buf = buf[used:]
+    if len(buf) > RX_BUFFER_MAX:
+        buf = b""
+    return frames, buf
 
 
 class RfidLink:
@@ -452,42 +495,25 @@ class RfidLink:
             return None                     # no such interface; not a fault
 
     def snapshot(self, encounters=False):
+        """What rfid_node publishes (StationDetection) and nothing else."""
         now = time.monotonic()
         with self._lock:
             tag_age = (now - self._last_tag_at) if self._last_tag_at else None
             rx_age = (now - self._last_rx) if self._last_rx else None
-            # Hold the tag briefly so a 5 Hz UI poll cannot miss one that a
-            # 10 Hz reader poll saw. Beyond the hold it is history, not state.
-            live = (self._last_tag
-                    if tag_age is not None and tag_age <= config.RFID_TAG_HOLD_S
-                    else None)
             read = self._last_read
             params = dict(self._params) if self._params else None
             return {
                 "enabled": config.RFID_ENABLED,
                 "connected": self._connected,
-                "carrier": self.carrier(),
                 "comms_ok": self._comms_ok(),
-                # Soft flag only. Never stops the vehicle.
-                "silent": bool(self._connected and rx_age is not None
-                               and rx_age > config.RFID_SILENT_WARN_S),
-                "tag": live,
-                "last_tag": self._last_tag,
                 "tag_age_s": tag_age,
                 "rx_age_s": rx_age,
-                "tags_seen": self._tags_seen,
-                "epc": read.epc if read else None,
                 "rssi_dbm": read.rssi_dbm if read else None,
-                "antenna": read.antenna if read else None,
                 "channel": read.channel if read else None,
-                "freq_mhz": (params["start_mhz"] + read.channel * params["step_khz"] / 1000.0
-                             if read and params else None),
+                "freq_mhz": channel_mhz(params, read.channel) if read else None,
                 "identity": self._identity,
                 "reader": params,
                 "config_mismatch": list(self._mismatch),
-                "heartbeat": self.heartbeat.state(),
-                "bad_frames": self.decoder.bad_frames,
-                "detail": self._detail,
                 "encounter_seq": self._encounter_seq,
                 "generation": self._generation,
                 "encounters": list(self._encounters) if encounters else [],
@@ -574,19 +600,9 @@ class RfidLink:
             if verdict == "gave_up":
                 events.warn("RFID reader does not answer the 0x0050 heartbeat; "
                             "relying on TCP keepalive and carrier only")
-            try:
-                chunk = sock.recv(4096)
-            except TimeoutError:
-                continue                    # no tag in the field: normal
-            if not chunk:
-                raise ConnectionResetError("reader closed the connection")
-
-            buf += chunk
-            frames, used = self.decoder.decode(buf)
-            buf = buf[used:]
-            if len(buf) > 8192:             # never grow without bound on junk
-                buf = b""
-            self._absorb(frames)
+            frames, buf = read_frames(sock, self.decoder, buf)
+            if frames is not None:
+                self._absorb(frames)
 
     def _absorb(self, frames):
         if not frames:

@@ -81,6 +81,7 @@ Free of ROS; the line layer and the web both read it.
 import json
 import os
 
+from agv_core import kinematics
 from agv_core.config import ConfigError, _coerce
 
 MISSION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "missions")
@@ -190,6 +191,25 @@ def _bounded(row, key, where, lo, hi, lo_open=True):
     return v
 
 
+def _decel_needed(vehicle, v_rpm, distance_m, end_rpm=0.0):
+    """(the r/min/s that takes v_rpm to end_rpm over distance_m, the drives' 6084h limit)."""
+    return (kinematics.approach_decel_rpm_s(v_rpm, end_rpm, distance_m, vehicle.MPS_PER_RPM),
+            float(vehicle.RAMP["auto"]["decel"]))
+
+
+def _uturn_approach(row, where, vehicle):
+    """The U-turn approach every mission shape shares: approach_mps (at most NORMAL),
+    max_approach_m and decel_m, plus (rate, limit) for slowing NORMAL -> approach_mps
+    over decel_m. Each caller words its own refusal."""
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    out = {"approach_mps": _bounded(row, "approach_mps", where, 0.0, round(normal_mps, 3)),
+           "max_approach_m": _bounded(row, "max_approach_m", where, 0.0, 5.0),
+           "decel_m": _bounded(row, "decel_m", where, 0.0, 2.0)}
+    rate, limit = _decel_needed(vehicle, vehicle.AUTO_RPM, out["decel_m"],
+                                out["approach_mps"] / vehicle.MPS_PER_RPM)
+    return out, rate, limit
+
+
 def _read_tags(rows, vehicle, branch_tags):
     """tags -> {tag: normalised row}. Every rule a tag can carry, one row each."""
     if not isinstance(rows, list):
@@ -248,16 +268,11 @@ def _read_tags(rows, vehicle, branch_tags):
             if row["direction"] not in ("cw", "ccw"):
                 raise ConfigError(f"{where}.direction must be cw or ccw")
             rec["direction"] = row["direction"]
-            normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
-            rec["approach_mps"] = _bounded(row, "approach_mps", where, 0.0, round(normal_mps, 3))
-            rec["max_approach_m"] = _bounded(row, "max_approach_m", where, 0.0, 5.0)
-            rec["decel_m"] = _bounded(row, "decel_m", where, 0.0, 2.0)
             # NORMAL -> approach_mps over decel_m within the drives' deceleration. The
             # tag belongs in a NORMAL area; arriving HIGH, the rate is capped at runtime
             # and the slowdown takes longer than decel_m.
-            creep_rpm = rec["approach_mps"] / vehicle.MPS_PER_RPM
-            rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * rec["decel_m"])
-            decel = float(vehicle.RAMP["auto"]["decel"])
+            approach, rate, decel = _uturn_approach(row, where, vehicle)
+            rec.update(approach)
             if rate > decel:
                 raise ConfigError(f"{where}.decel_m: slowing from {vehicle.AUTO_RPM:.0f} r/min to "
                                   f"{rec['approach_mps']:g} m/s in {rec['decel_m']:g} m needs {rate:.0f} "
@@ -279,11 +294,10 @@ def _check_table(tags, vehicle, fastest_rpm):
     # A measured stop from the fastest speed the mission can reach (HIGH when it has a
     # high zone: a stop tag read during a late exit) must be within what the drives
     # decelerate at: beyond it, 6084h clips the profile and the vehicle stops past the mark.
-    decel = float(vehicle.RAMP["auto"]["decel"])
     for r in tags.values():
         if r["action"] != "stop":
             continue
-        rate = fastest_rpm ** 2 * vehicle.MPS_PER_RPM / (2.0 * r["stop_distance_m"])
+        rate, decel = _decel_needed(vehicle, fastest_rpm, r["stop_distance_m"])
         if rate > decel:
             raise ConfigError(f"tags ({r['tag']}): stopping from {fastest_rpm:.0f} r/min in "
                               f"{r['stop_distance_m']:g} m needs {rate:.0f} r/min/s, beyond "
@@ -296,8 +310,8 @@ _OPTIONAL_MISSION_KEYS = ("marker_run", "guided")
 _MARKER_RUN_KEYS = {"uturn_code", "home_code", "direction", "approach_mps", "decel_m", "max_approach_m",
                     "stop_distance_m", "label"}
 _MARKER_RUN_OPTIONAL = {"home_arm_m"}
-# amr_line.uturn.REARM_MARGIN_M: past the approach distance the own strip is re-passed within
-_REARM_MARGIN_M = 1.0
+# Past the approach distance the own strip is re-passed within this; amr_line.uturn uses it.
+REARM_MARGIN_M = 1.0
 # Junction guard (2026-10-23, amr_line.tape_run): a marker-run read acts only after this
 # much travel with no second tape under the MLS, so the home stop must be longer than it.
 MARKER_JUNCTION_M = 0.3
@@ -331,24 +345,19 @@ def _read_marker_run(raw, vehicle, fastest_rpm):
     out["label"] = _coerce(raw["label"], str, "marker_run.label").strip()
     if not out["label"]:
         raise ConfigError("marker_run.label: the home stop needs a name the operator recognises")
-    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
-    out["approach_mps"] = _bounded(raw, "approach_mps", "marker_run", 0.0, round(normal_mps, 3))
-    out["max_approach_m"] = _bounded(raw, "max_approach_m", "marker_run", 0.0, 5.0)
-    out["decel_m"] = _bounded(raw, "decel_m", "marker_run", 0.0, 2.0)
+    approach, rate, decel = _uturn_approach(raw, "marker_run", vehicle)
+    out.update(approach)
     # past the junction guard, with room left to brake (a measured stop, not a hard one)
     out["stop_distance_m"] = _bounded(raw, "stop_distance_m", "marker_run", MARKER_JUNCTION_M + 0.1, 5.0)
     out["home_arm_m"] = None
     if "home_arm_m" in raw:
         # beyond the own strip's re-pass after the pivot (approach travel + the rearm margin)
         out["home_arm_m"] = _bounded(raw, "home_arm_m", "marker_run",
-                                     out["max_approach_m"] + _REARM_MARGIN_M, 1000.0)
-    decel = float(vehicle.RAMP["auto"]["decel"])
-    creep_rpm = out["approach_mps"] / vehicle.MPS_PER_RPM
-    rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * out["decel_m"])
+                                     out["max_approach_m"] + REARM_MARGIN_M, 1000.0)
     if rate > decel:
         raise ConfigError(f"marker_run.decel_m: {rate:.0f} r/min/s is beyond "
                           f"drivers.ramp.auto.decel {decel:.0f}")
-    rate = fastest_rpm ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["stop_distance_m"])
+    rate, decel = _decel_needed(vehicle, fastest_rpm, out["stop_distance_m"])
     if rate > decel:
         raise ConfigError(f"marker_run.stop_distance_m: stopping from {fastest_rpm:.0f} r/min needs "
                           f"{rate:.0f} r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}")
@@ -490,40 +499,33 @@ EMPTY = {
 }
 
 
-def parse(doc, vehicle=None):
-    """A mission document -> the validated names. MissionError on any problem."""
+def _as_mission_error(parser, doc, vehicle):
+    """Run a parser, a ConfigError from a shared reader surfacing as a MissionError."""
     if vehicle is None:
         from agv_core import config as vehicle  # noqa: PLC0415
     try:
-        return _parse_mission(doc, vehicle)
+        return parser(doc, vehicle)
     except MissionError:
         raise
     except ConfigError as e:
         raise MissionError(str(e)) from None
 
 
+def parse(doc, vehicle=None):
+    """A mission document -> the validated names. MissionError on any problem."""
+    return _as_mission_error(_parse_mission, doc, vehicle)
+
+
 def load(name, vehicle=None, directory=None):
     """missions/<name>.json -> validated names. "empty" needs no file."""
-    if not isinstance(name, str) or not name or "/" in name or name.startswith("."):
-        raise MissionError(f"not a mission name: {name!r}")
-    path = os.path.join(directory or MISSION_DIR, f"{name}.json")
-    if name == "empty" and not os.path.exists(path):
+    if name == "empty" and not os.path.exists(_path(name, directory)):
         doc = EMPTY
     else:
-        try:
-            with open(path) as f:
-                doc = json.load(f)
-        except OSError:
-            raise MissionError(f"no mission {name!r} ({path}); have {list_missions(directory)}") from None
-        except ValueError as e:
-            raise MissionError(f"mission {name!r}: not valid JSON ({e})") from None
+        doc = _read_doc(name, directory, have=lambda: list_missions(directory))
     if is_site(doc):
         raise MissionError(f"{name!r} is a site mission (tracked plan 3): it runs on tape-graph "
                            f"localization, not as an RFID tag-table job")
-    out = parse(doc, vehicle)
-    if out["MISSION_NAME"] != name:
-        raise MissionError(f"mission_name {out['MISSION_NAME']!r} does not match the file name {name!r}")
-    return out
+    return _named(parse(doc, vehicle), name)
 
 
 # -- site missions (schema "site-4", tracked plans 3 section 2.5 and 4 section 2.2) -----
@@ -533,7 +535,7 @@ def load(name, vehicle=None, directory=None):
 # is taught on the vehicle into the tape graph (amr_line.tape_graph), bound to a map
 # revision; the two meet in tape_graph.compile_route, which names anything not taught.
 #
-#   schema            "site-4" (site-3 + cruise_mps, uturn_points, zones; 2026-10-24)
+#   schema            "site-4" (site-3 + cruise_mps, uturn_points; 2026-10-24)
 #   mission_name      the file name
 #   home, attach      station ids: the bay where the AGV parks empty, the attach stop
 #   trip_calls        calls of one group that form a trip (site D3/D4/D18: 1 or 2)
@@ -546,7 +548,10 @@ def load(name, vehicle=None, directory=None):
 #   circuits          {id: [item, ...]}, items in travel order:
 #                       {"stop": id} | {"junction": id, "order": o} | {"uturn": id}
 #                     o: left | right | straight | merge (Y), cross (X). A T item also says
-#                     "approach": "stem" (left | right only: no straight on) or "bar" (as a Y)
+#                     "approach": "stem" (left | right only: no straight on) or "bar" (as a Y).
+#                     A merge may add "steer": left | right - the side armed before it, like
+#                     an order; the leg keeps its "merge" name (2026-10-25: MRU inbound, always
+#                     left until HOME)
 #                     A circuit starts and ends with {"stop": home} and passes attach once
 #   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
 #                     {"release": stop, "take": stop[, "uturn": point]}}}}. "uturn": where a
@@ -554,19 +559,20 @@ def load(name, vehicle=None, directory=None):
 #                     without it, at the circuit's tape-end U-turn
 #   uturn_points      {id: {"direction": "cw"|"ccw"}}: mid-line U-turn points, each the
 #                     "uturn" of exactly one machine; taught on that machine's release leg
-#   zones             {id: {"from": point, "to": point}}: HIGH between two taught points in
-#                     travel direction (site D19); the points are named here, placed by teaching
+#
+# High-speed zones are not mission data (2026-10-25): they are AREAS drawn on the map
+# revision (amr_line.tape_graph_store areas.json, the /tape-areas page), cut into ranges along
+# a trip when it is compiled (amr_line.trip_route). A "zones" key is refused by name.
 #
 # Parsed names: MISSION_NAME, SCHEMA, HOME, ATTACH, TRIP_CALLS, STOP_DISTANCE_M, CRUISE_MPS,
 # JUNCTIONS, UTURNS, CIRCUITS {id: {"items", "legs", "home_depart", "home_arrive"}}, GROUPS,
 # MACHINES {machine: group}, STATIONS {station: leg id}, UTURN_POINTS {id: {"direction",
-# "machine", "leg"}}, ZONES {id: {"from", "to"}}, POINTS {point: leg id, or None where the
-# taught pose decides (zone ends)}. Positions (a point after its release, a zone end after its
-# start) are vehicle data: amr_line.trip_route checks them when a trip is compiled.
+# "machine", "leg"}}, POINTS {point: leg id}. Positions (a point after its release) are
+# vehicle data: amr_line.trip_route checks them when a trip is compiled.
 
 SITE_SCHEMA = "site-4"
 _SITE_KEYS = ("schema", "mission_name", "home", "attach", "trip_calls", "stop_distance_m", "cruise_mps",
-              "junctions", "uturns", "circuits", "groups", "uturn_points", "zones")
+              "junctions", "uturns", "circuits", "groups", "uturn_points")
 SHAPES = ("Y", "T", "X")
 _ORDERS = {"Y": ("left", "right", "straight", "merge"), "X": ("cross",),
            # A T from its stem has no straight on; along its bar it is a Y.
@@ -592,17 +598,13 @@ def _site_uturn(name, row, vehicle):
     if row["direction"] not in ("cw", "ccw"):
         raise ConfigError(f"{where}.direction must be cw or ccw")
     out = {"direction": row["direction"]}
-    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
-    out["approach_mps"] = _bounded(row, "approach_mps", where, 0.0, round(normal_mps, 3))
-    out["max_approach_m"] = _bounded(row, "max_approach_m", where, 0.0, 5.0)
-    out["decel_m"] = _bounded(row, "decel_m", where, 0.0, 2.0)
+    approach, rate, decel = _uturn_approach(row, where, vehicle)
+    out.update(approach)
     out["lead_m"] = _bounded(row, "lead_m", where, 0.0, 10.0)
     if out["lead_m"] < out["decel_m"]:
         raise ConfigError(f"{where}.lead_m ({out['lead_m']:g}) must cover decel_m ({out['decel_m']:g}): "
                           f"the approach starts lead_m before the taught tape end")
-    creep_rpm = out["approach_mps"] / vehicle.MPS_PER_RPM
-    rate = (vehicle.AUTO_RPM ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * out["decel_m"])
-    if rate > float(vehicle.RAMP["auto"]["decel"]):
+    if rate > decel:
         raise ConfigError(f"{where}.decel_m: {rate:.0f} r/min/s is beyond drivers.ramp.auto.decel")
     return out
 
@@ -629,6 +631,13 @@ def _site_items(cid, raw, junctions, uturns):
             if j is None:
                 raise ConfigError(f"{where}: junction {it['junction']!r} is not in junctions")
             keys = {"junction", "order"} | ({"approach"} if j["shape"] == "T" else set())
+            if "steer" in it:
+                if it.get("order") != "merge":
+                    raise ConfigError(f"{where}: steer only on a merge - a diverge says its side in "
+                                      f"its order")
+                if it["steer"] not in ("left", "right"):
+                    raise ConfigError(f"{where}.steer: expected left or right, got {it['steer']!r}")
+                keys = keys | {"steer"}
             if set(it) != keys:
                 raise ConfigError(f"{where}: expected exactly {sorted(keys)} at {it['junction']} "
                                   f"(shape {j['shape']}" + ("; approach is stem or bar)" if j["shape"] == "T"
@@ -643,10 +652,16 @@ def _site_items(cid, raw, junctions, uturns):
                 raise ConfigError(f"{where}: order {it['order']!r} at {it['junction']} ({shape}): "
                                   f"expected one of {list(allowed)}"
                                   + (" - a T has no straight on from its stem" if shape == "T-stem" else ""))
-            items.append({"kind": "junction", "id": it["junction"], "order": it["order"]})
+            items.append({"kind": "junction", "id": it["junction"], "order": it["order"],
+                          **({"steer": it["steer"]} if "steer" in it else {})})
         else:
             raise ConfigError(f"{where}: expected {{'stop'}}, {{'uturn'}} or {{'junction', 'order'}}")
     return items
+
+
+def leg_id(frm, order, to):
+    """A tape leg's id: from node, the order taken there, to node ("J1:left>J2"). Persisted."""
+    return f"{frm}:{order}>{to}"
 
 
 def _site_legs(cid, items, junctions, home):
@@ -659,13 +674,13 @@ def _site_legs(cid, items, junctions, home):
     legs = []
     for a, b in zip(nodes, nodes[1:], strict=False):
         frm, to = items[a], items[b]
-        legs.append({"id": f"{frm['id']}:{frm['order']}>{to['id']}", "from": frm["id"],
+        legs.append({"id": leg_id(frm["id"], frm["order"], to["id"]), "from": frm["id"],
                      "order": frm["order"], "to": to["id"],
                      "stops": [it["id"] for it in items[a + 1:b] if it["kind"] == "stop"]})
     last, first = items[nodes[-1]], items[nodes[0]]
     before = [it["id"] for it in items[:nodes[0]] if it["kind"] == "stop"]
     after = [it["id"] for it in items[nodes[-1] + 1:] if it["kind"] == "stop"]
-    legs.append({"id": f"{last['id']}:{last['order']}>{first['id']}", "from": last["id"],
+    legs.append({"id": leg_id(last["id"], last["order"], first["id"]), "from": last["id"],
                  "order": last["order"], "to": first["id"], "stops": after + before})
     # The home leg is driven twice (out of the bay, back into it): `after` then `before`
     # in tape order, but `before` is the trip's start.
@@ -675,6 +690,9 @@ def _site_legs(cid, items, junctions, home):
 def _parse_site(doc, vehicle):
     if not isinstance(doc, dict):
         raise ConfigError("mission must be a JSON object")
+    if "zones" in doc:
+        raise ConfigError("zones: retired 2026-10-25 - high-speed zones are areas drawn on the map "
+                          "(/tape-areas), not mission data")
     unknown = set(doc) - set(_SITE_KEYS)
     if unknown:
         raise ConfigError(f"site mission: unknown key(s) {sorted(unknown)}")
@@ -694,8 +712,8 @@ def _parse_site(doc, vehicle):
     out["STOP_DISTANCE_M"] = _bounded(doc, "stop_distance_m", "site mission", 0.0, 5.0)
     normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
     out["CRUISE_MPS"] = _bounded(doc, "cruise_mps", "site mission", 0.0, round(normal_mps, 3))
-    rate = (vehicle.AUTO_RPM ** 2 * vehicle.MPS_PER_RPM / (2.0 * out["STOP_DISTANCE_M"]))
-    if rate > float(vehicle.RAMP["auto"]["decel"]):
+    rate, decel = _decel_needed(vehicle, vehicle.AUTO_RPM, out["STOP_DISTANCE_M"])
+    if rate > decel:
         raise ConfigError(f"stop_distance_m: stopping from {vehicle.AUTO_RPM:.0f} r/min in "
                           f"{out['STOP_DISTANCE_M']:g} m needs {rate:.0f} r/min/s, "
                           f"beyond drivers.ramp.auto.decel")
@@ -748,10 +766,12 @@ def _parse_site(doc, vehicle):
                     raise ConfigError(f"circuits.{cid}: station {sid} lies on {leg['id']} here and on "
                                       f"{stations[sid]} in another circuit - one station, one place")
                 stations[sid] = leg["id"]
-        circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after}
+        steers = {f"{it['id']}:{it['order']}": it["steer"] for it in items if it.get("steer")}
+        circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after,
+                         "steers": steers}
     out["CIRCUITS"] = circuits
     out["STATIONS"] = stations
-    uturn_points, zones = _site_points(doc, junctions, uturns, stations)
+    uturn_points = _site_points(doc, junctions, uturns, stations)
 
     if not isinstance(doc["groups"], dict) or not doc["groups"]:
         raise ConfigError("groups: expected a non-empty object")
@@ -813,14 +833,12 @@ def _parse_site(doc, vehicle):
         raise ConfigError(f"uturn_points {unused}: no machine's uturn - a U-turn point belongs to "
                           f"the machine after whose release the trip turns")
     out["UTURN_POINTS"] = uturn_points
-    out["ZONES"] = zones
-    out["POINTS"] = {**{k: v["leg"] for k, v in uturn_points.items()},
-                     **{p: None for z in zones.values() for p in (z["from"], z["to"])}}
+    out["POINTS"] = {k: v["leg"] for k, v in uturn_points.items()}
     return out
 
 
 def _site_points(doc, junctions, uturns, stations):
-    """uturn_points and zones: named here, placed by teaching (tracked plan 4 section 2.2)."""
+    """uturn_points: named here, placed by teaching (tracked plan 4 section 2.2)."""
     taken = set(junctions) | set(uturns) | set(stations)
     if not isinstance(doc["uturn_points"], dict):
         raise ConfigError("uturn_points: expected an object")
@@ -835,64 +853,48 @@ def _site_points(doc, junctions, uturns, stations):
         if row["direction"] not in ("cw", "ccw"):
             raise ConfigError(f"{where}.direction must be cw or ccw")
         points[k] = {"direction": row["direction"], "machine": "", "leg": None}
-    if not isinstance(doc["zones"], dict):
-        raise ConfigError("zones: expected an object")
-    zones, ends = {}, {}
-    for z, row in doc["zones"].items():
-        where = f"zones.{z}"
-        _ident(z, where)
-        if not isinstance(row, dict) or set(row) != {"from", "to"}:
-            raise ConfigError(f"{where}: expected exactly ['from', 'to']")
-        a, b = _ident(row["from"], f"{where}.from"), _ident(row["to"], f"{where}.to")
-        if a == b:
-            raise ConfigError(f"{where}: from and to are the same point")
-        for p in (a, b):
-            if p in taken or p in points:
-                raise ConfigError(f"{where}: {p} is already a station, junction or U-turn - a zone end "
-                                  f"is a point of its own")
-            if p in ends:
-                raise ConfigError(f"{where}: {p} already ends zone {ends[p]} - one point, one zone end")
-            ends[p] = z
-        zones[z] = {"from": a, "to": b}
-    return points, zones
+    return points
 
 
 def parse_site(doc, vehicle=None):
     """A site mission document -> the validated names. MissionError on any problem."""
-    if vehicle is None:
-        from agv_core import config as vehicle  # noqa: PLC0415
     if not is_site(doc):
         raise MissionError(f"not a site mission (schema must be {SITE_SCHEMA!r})")
     if doc.get("schema") != SITE_SCHEMA:
-        raise MissionError(f"schema {doc.get('schema')!r} is retired: {SITE_SCHEMA} adds cruise_mps, "
-                           f"uturn_points and zones (tracked plan 4 section 2.2)")
-    try:
-        return _parse_site(doc, vehicle)
-    except MissionError:
-        raise
-    except ConfigError as e:
-        raise MissionError(str(e)) from None
+        raise MissionError(f"schema {doc.get('schema')!r} is retired: {SITE_SCHEMA} adds cruise_mps "
+                           f"and uturn_points (tracked plan 4 section 2.2)")
+    return _as_mission_error(_parse_site, doc, vehicle)
 
 
-def _read_doc(name, directory=None):
+def _path(name, directory=None):
+    """missions/<name>.json, refusing anything that is not a plain name."""
     if not isinstance(name, str) or not name or "/" in name or name.startswith("."):
         raise MissionError(f"not a mission name: {name!r}")
-    path = os.path.join(directory or MISSION_DIR, f"{name}.json")
+    return os.path.join(directory or MISSION_DIR, f"{name}.json")
+
+
+def _read_doc(name, directory=None, have=None):
+    """The JSON of missions/<name>.json. `have()` lists the alternatives for a missing
+    file; it is only called on that error path."""
+    path = _path(name, directory)
     try:
         with open(path) as f:
             return json.load(f)
     except OSError:
-        raise MissionError(f"no mission {name!r} ({path})") from None
+        raise MissionError(f"no mission {name!r} ({path})" + (f"; have {have()}" if have else "")) from None
     except ValueError as e:
         raise MissionError(f"mission {name!r}: not valid JSON ({e})") from None
 
 
-def load_site(name, vehicle=None, directory=None):
-    """missions/<name>.json as a site mission."""
-    out = parse_site(_read_doc(name, directory), vehicle)
+def _named(out, name):
     if out["MISSION_NAME"] != name:
         raise MissionError(f"mission_name {out['MISSION_NAME']!r} does not match the file name {name!r}")
     return out
+
+
+def load_site(name, vehicle=None, directory=None):
+    """missions/<name>.json as a site mission."""
+    return _named(parse_site(_read_doc(name, directory), vehicle), name)
 
 
 def list_site_missions(directory=None):

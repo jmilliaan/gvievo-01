@@ -143,10 +143,5 @@ def load_from_profile(config=None):
     return ns
 
 
-def snapshot():
-    """Every name currently set, for a diagnostic topic or a test assertion."""
-    return {k: globals()[k] for k in REQUIRED if k in globals()}
-
-
 def is_loaded():
     return _loaded

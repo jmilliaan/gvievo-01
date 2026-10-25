@@ -15,6 +15,24 @@ conversion factor that disagrees with the geometry it came from.
 from agv_core import config
 
 
+def to_int32(n):
+    """An integer as the drive's signed 32-bit counter would hold it (two's complement wrap)."""
+    n = int(n) & 0xFFFFFFFF
+    return n - (1 << 32) if n >= 1 << 31 else n
+
+
+def counts_delta(new, old):
+    """6064h is INT32 and wraps; the shorter way round is the real travel."""
+    return to_int32(int(new) - int(old))
+
+
+def approach_decel_rpm_s(v_rpm, end_rpm, distance_m, mps_per_rpm):
+    """The constant r/min/s that takes v_rpm to end_rpm over distance_m. Uncapped: the
+    caller compares it with 6084h (or caps it). mps_per_rpm is passed, not read, so the
+    mission loader can check a profile that is not the loaded one."""
+    return (v_rpm ** 2 - end_rpm ** 2) * mps_per_rpm / (2.0 * distance_m)
+
+
 def max_yaw_accel(driver_accel_rpm_s):
     """rad/s^2 available for steering, given the 6083h/6084h setting.
 

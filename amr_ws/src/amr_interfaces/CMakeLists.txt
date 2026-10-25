@@ -11,7 +11,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/WheelVelocities.msg"
   "msg/WheelStates.msg"
   "msg/DriveStatus.msg"
-  "msg/SafetyFieldStatus.msg"
   "msg/StationDetection.msg"
   "msg/MappingState.msg"
   "msg/LocalizationState.msg"

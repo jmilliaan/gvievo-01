@@ -19,6 +19,7 @@ the only third-party needs are flask, numpy and pyyaml.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import math
 import os
 import sys
@@ -26,12 +27,11 @@ import tempfile
 import threading
 import time
 import types
-import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.abspath(os.path.join(HERE, "..", ".."))  # amr_ws/src
 REPO = os.path.abspath(os.path.join(SRC, "..", ".."))
-for pkg in ("amr_web", "amr_maps", "amr_mission", "amr_navigation", "amr_base"):
+for pkg in ("amr_web", "amr_maps", "amr_mission", "amr_navigation", "amr_base", "amr_bringup"):
     sys.path.insert(0, os.path.join(SRC, pkg))
 os.environ.setdefault("AGV_CAN_ROOT", REPO)
 
@@ -49,10 +49,15 @@ sys.modules.setdefault("ament_index_python", _ament)
 sys.modules.setdefault("ament_index_python.packages", _ament_pk)
 
 import numpy as np  # noqa: E402
+from agv_core import fsio, se2  # noqa: E402
 from amr_navigation.compiler import compile_route  # noqa: E402
+from amr_web.eventlog import EventRing  # noqa: E402
 from amr_web.png import encode_gray  # noqa: E402
 from flask import request  # noqa: E402
 
+from amr_base import diff_drive, wire  # noqa: E402
+from amr_bringup import mode_fsm as fsm  # noqa: E402
+from amr_bringup import operations as opsmod  # noqa: E402
 from amr_maps import grid as gridio  # noqa: E402
 from amr_mission import fixtures  # noqa: E402
 from amr_mission import map_bundle as mb  # noqa: E402
@@ -60,28 +65,31 @@ from amr_navigation import store  # noqa: E402
 from amr_web import server as web_server  # noqa: E402
 
 if sys.platform == "win32":  # a directory cannot be opened for fsync on Windows
-    store._fsync_dir = lambda d: None
-    if hasattr(mb, "_fsync_dir"):
-        mb._fsync_dir = lambda d: None
+    _fsync_file = fsio.fsync_path
+    fsio.fsync_path = lambda path, directory=False: None if directory else _fsync_file(path)
 
 WORLD_YAML = os.path.join(SRC, "amr_maps", "worlds", "sim_factory", "world.yaml")
 LASER_X = 0.964  # nanoScan3 ahead of the axle (amr_ws/README "Geometry")
 FOV = math.radians(95.0)
-MODE = {"STARTING": 0, "IDLE": 1, "MAPPING": 2, "NAVIGATION": 3, "TRANSITIONING": 4, "FAULT": 5}
-MAP_STATES = {0: "IDLE", 1: "MAPPING", 2: "RETURN_REVIEW", 3: "SAVING", 4: "SAVED"}
-LOC_STATES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
-RUN_STATES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
-DI_NAMES = [
-    "spare",
-    "start",
-    "reset",
-    "auto_manual",
-    "pendant_fwd",
-    "pendant_rvs",
-    "pendant_left",
-    "pendant_right",
-] + [f"spare{i}" for i in range(8, 16)]
-DO_NAMES = ["horn_lights"] + [f"spare{i}" for i in range(1, 16)]
+MAP_STATES, LOC_STATES, RUN_STATES = wire.MAPPING_NAMES, wire.LOC_NAMES, wire.RUN_NAMES
+
+
+def _vehicle():
+    """Geometry, gear ratio, DIO names and the selector input from the vehicle profile, as the
+    real nodes read them; the demo's own literals only when no profile loads."""
+    try:
+        from agv_core import config  # noqa: PLC0415
+
+        if not getattr(config, "PROFILE_PATH_LOADED", None):
+            config.load()
+        return (diff_drive.profile_geometry(), float(config.GEAR_RATIO), list(config.DIO_DI_NAMES),
+                list(config.DIO_DO_NAMES), int(config.PANEL_DI_AUTO))
+    except Exception:  # noqa: BLE001 - an offline demo without a profile
+        names = ["[SPARE]"] * 16
+        return diff_drive.Geometry(0.09, 0.487), 30.0, names, list(names), 2
+
+
+GEOM, GEAR_RATIO, DI_NAMES, DO_NAMES, DI_AUTO = _vehicle()
 SCENARIOS = [
     ("idle", "Idle"),
     ("mapping", "Mapping"),
@@ -102,8 +110,8 @@ def mode_dict(**kw) -> dict:
         "header": {},
         "instance": "demo-instance",
         "generation": 1,
-        "mode": 1,
-        "requested_mode": 1,
+        "mode": fsm.IDLE,
+        "requested_mode": fsm.IDLE,
         "phase": "",
         "operation_id": "",
         "base_ready": True,
@@ -119,9 +127,8 @@ def mode_dict(**kw) -> dict:
         "last_survey_revision": 0,
     }
     d.update(kw)
-    inv = {v: k for k, v in MODE.items()}
-    d["mode_name"] = inv.get(d["mode"], str(d["mode"]))
-    d["requested_name"] = inv.get(d["requested_mode"], str(d["requested_mode"]))
+    d["mode_name"] = wire.MODE_NAMES.get(d["mode"], str(d["mode"]))
+    d["requested_name"] = wire.MODE_NAMES.get(d["requested_mode"], str(d["requested_mode"]))
     return d
 
 
@@ -150,7 +157,7 @@ class Sim:
         h, w = self.world.data.shape
         inside = (r >= 0) & (r < h) & (c >= 0) & (c < w)
         out = np.ones(r.shape, dtype=bool)
-        out[inside] = self.world.data[r[inside], c[inside]] >= 65
+        out[inside] = gridio.occupied(self.world.data[r[inside], c[inside]])
         return out
 
     def scan(self, max_points: int = 400) -> list[tuple[float, float]]:
@@ -181,7 +188,7 @@ class Sim:
         # refuse to drive the axle into a wall; the demo is not a physics engine
         if not self.occupied(np.array([nx]), np.array([ny]))[0]:
             self.x, self.y = nx, ny
-        self.yaw = math.atan2(math.sin(nyaw), math.cos(nyaw))
+        self.yaw = se2.wrap(nyaw)
 
 
 class DemoLive:
@@ -200,19 +207,14 @@ class DemoLive:
         return {
             "snapshot": self.d.sim.snapshot,
             "generation": self.d.mode["generation"],
-            "width": g.width,
-            "height": g.height,
-            "resolution": g.meta.resolution,
-            "origin": [g.meta.origin_x, g.meta.origin_y, g.meta.origin_yaw],
+            **gridio.meta_dict(g),
             "frame_id": "map",
             "age_s": 0.3,
         }
 
     def map_png(self, snapshot: int) -> bytes | None:
         g = self.d.sim.world
-        img = np.full(g.data.shape, 205, dtype=np.uint8)
-        img[g.data == 0] = 254
-        img[g.data >= 65] = 0
+        img = gridio.trinary_image(g)
         if self._layer() == "MAPPING":
             img[~self.d.sim.revealed] = 205
         return encode_gray(np.flipud(img))
@@ -237,8 +239,8 @@ class DemoAdapter:
         self.sim = Sim(fixtures.surfaces_only(gridio.read(WORLD_YAML)))
         self.live = DemoLive(self)
         self.offline = False
-        self.ops: dict[str, dict] = {}
-        self.events_: list[dict] = []
+        self.book = opsmod.OperationBook(None)  # the supervisor's own record, without a journal
+        self._ring = EventRing(300)  # the real ring, without a disk log
         self.manual = (0.0, 0.0, 0.0)  # v, w, expires (monotonic)
         self.exec_plan: list | None = None
         self.exec_i, self.exec_t = 0, 0.0
@@ -267,8 +269,8 @@ class DemoAdapter:
         m = self._bundle1()
         self.mode = mode_dict(
             generation=gen,
-            mode=3,
-            requested_mode=3,
+            mode=fsm.NAVIGATION,
+            requested_mode=fsm.NAVIGATION,
             layer_ready=True,
             active_map_id="sim_factory",
             active_map_revision=1,
@@ -338,7 +340,9 @@ class DemoAdapter:
             s = self.sim
             s.x, s.y, s.yaw = 0.0, 0.0, 0.0
             if name == "mapping" or name == "review":
-                self.mode = mode_dict(generation=2, mode=2, requested_mode=2, layer_ready=True)
+                self.mode = mode_dict(
+                    generation=2, mode=fsm.MAPPING, requested_mode=fsm.MAPPING, layer_ready=True
+                )
                 s.revealed[:] = False
                 s.reveal_at = None
                 s.x = 6.0 if name == "mapping" else 0.03
@@ -385,8 +389,8 @@ class DemoAdapter:
             elif name == "layerfault":
                 self.mode = mode_dict(
                     generation=3,
-                    mode=5,
-                    requested_mode=3,
+                    mode=fsm.FAULT,
+                    requested_mode=fsm.NAVIGATION,
                     fault_code="LAYER_EXITED",
                     reason="navigation layer exited (amcl: exit code -6); see ~/.amr/logs/layer.log",
                     manual_available=True,
@@ -501,7 +505,7 @@ class DemoAdapter:
             extra["remaining_turn_rad"] = rem
             if abs(rem) <= w * 0.05:
                 s.w, self._turned = 0.0, 0.0
-                s.yaw = math.atan2(math.sin(target), math.cos(target))
+                s.yaw = se2.wrap(target)
                 self.exec_i += 1
         self.run = self._run(2, mission_id=self.run["mission_id"], **extra)
 
@@ -535,8 +539,7 @@ class DemoAdapter:
             abort(503)
         with self.lock:
             s = self.sim
-            wl = (s.v - s.w * 0.487 / 2) / 0.09
-            wr = (s.v + s.w * 0.487 / 2) / 0.09
+            wl, wr = diff_drive.inverse(GEOM, s.v, s.w)
             src = (
                 "follow"
                 if self.exec_plan and s.v
@@ -595,34 +598,39 @@ class DemoAdapter:
     # ---- supervisor operations --------------------------------------------------------
 
     def _op(self, kind: str, ok: bool = True, message: str = "done", **kw) -> str:
-        oid = uuid.uuid4().hex[:12]
-        self.ops[oid] = {
-            "operation_id": oid,
-            "request_id": "",
-            "kind": kind,
-            "phase": "done",
-            "status": 1 if ok else 2,
-            "status_name": "SUCCEEDED" if ok else "FAILED",
-            "map_id": kw.get("map_id", ""),
-            "map_revision": kw.get("map_revision", 0),
-            "map_sha256": "",
-            "message": message,
-        }
-        return oid
+        """A finished operation, recorded the way the supervisor records one."""
+        op, _ = self.book.submit(
+            "", kind, map_id=kw.get("map_id", ""), map_revision=kw.get("map_revision", 0)
+        )
+        self.book.phase(op.operation_id, "done")
+        self.book.finish(op.operation_id, opsmod.SUCCEEDED if ok else opsmod.FAILED, message)
+        return op.operation_id
+
+    def _conditions(self) -> fsm.Conditions:
+        """What supervisor admission looks at, from the demo's own state."""
+        now, moving = time.monotonic(), bool(self.sim.v or self.sim.w)
+        return fsm.Conditions(
+            now=now, wheels_t=now, wheels_still_since=None if moving else now - 1.0,
+            panel_t=now, panel_valid=True, panel_manual=not self.panel["mode_auto"],
+            run_state=self.run["state"] if self.run else None,
+            survey_state=self.mapping["state"] if self.mapping else None,
+        )
 
     def request_mode(self, target, map_id, map_revision, request_id):
         with self.lock:
-            if self.run and self.run["state"] in (1, 2, 3, 4):
-                return False, "", "a run is READY/EXECUTING/PAUSED/BLOCKED; abort it first"
-            if target == MODE["NAVIGATION"]:
+            kind = fsm.REQ_NAVIGATION if target == fsm.NAVIGATION else fsm.REQ_IDLE
+            d = fsm.admit(self.mode["mode"], kind, self._conditions())
+            if not d.ok:
+                return False, "", d.reason
+            if target == fsm.NAVIGATION:
                 try:
                     m, _ = mb.load(self.maps_dir, map_id, int(map_revision))
                 except mb.BundleError as e:
                     return True, self._op("mode", False, str(e)), "accepted"
                 self.mode = mode_dict(
                     generation=self.mode["generation"] + 1,
-                    mode=3,
-                    requested_mode=3,
+                    mode=fsm.NAVIGATION,
+                    requested_mode=fsm.NAVIGATION,
                     layer_ready=True,
                     active_map_id=map_id,
                     active_map_revision=int(map_revision),
@@ -651,7 +659,10 @@ class DemoAdapter:
             name = {0: "start", 1: "returned", 2: "save", 3: "abort"}[operation]
             if name == "start":
                 self.mode = mode_dict(
-                    generation=self.mode["generation"] + 1, mode=2, requested_mode=2, layer_ready=True
+                    generation=self.mode["generation"] + 1,
+                    mode=fsm.MAPPING,
+                    requested_mode=fsm.MAPPING,
+                    layer_ready=True,
                 )
                 self.sim.revealed[:] = False
                 self.sim.reveal_at = None
@@ -694,13 +705,42 @@ class DemoAdapter:
             return True, self._op(f"survey_{name}"), "accepted"
 
     def get_operation(self, operation_id):
-        return self.ops.get(operation_id)
+        op = self.book.get(operation_id)
+        if op is None:
+            return None
+        d = {k: v for k, v in dataclasses.asdict(op).items() if k not in ("started", "finished")}
+        return dict(d, status_name=wire.OP_NAMES.get(op.status, str(op.status)))
 
     def line_clear(self):
         return True, "cleared"
 
-    def line_mission(self, name):
-        return False, "demo: there is no line layer"
+    # The tape layer's calls (RosAdapter.line_*): the demo has no line layer, so each one is
+    # refused in words instead of a 500 (test_demo_contract binds every call server.py makes).
+    _NO_LINE = "demo: there is no line layer"
+
+    def line_mission(self, name, destination=""):
+        return False, self._NO_LINE
+
+    def line_branch(self, side):
+        return False, self._NO_LINE
+
+    def line_speed(self, level):
+        return False, self._NO_LINE
+
+    def line_uturn(self, force):
+        return False, self._NO_LINE
+
+    def line_continue(self, arm):
+        return False, self._NO_LINE
+
+    def line_teach(self, action, arg=""):
+        return False, self._NO_LINE
+
+    def line_trip(self, action, arg=""):
+        return False, self._NO_LINE
+
+    def line_at_home(self):
+        return False, self._NO_LINE
 
     def recover(self):
         with self.lock:
@@ -791,8 +831,7 @@ class DemoAdapter:
     def diagnostics(self) -> dict:
         with self.lock:
             s, op = self.sim, self.drives["operational"]
-            rpm_l = (s.v - s.w * 0.2435) / 0.09 * 60 / (2 * math.pi) * 30
-            rpm_r = (s.v + s.w * 0.2435) / 0.09 * 60 / (2 * math.pi) * 30
+            rpm_l, rpm_r = (w * 60 / (2 * math.pi) * GEAR_RATIO for w in diff_drive.inverse(GEOM, s.v, s.w))
         t = time.monotonic()
 
         def drive(label, node, rpm):
@@ -852,7 +891,7 @@ class DemoAdapter:
     def io_image(self) -> dict | None:
         with self.lock:
             di = [False] * 16
-            di[3] = self.panel["mode_auto"]
+            di[DI_AUTO] = self.panel["mode_auto"]
             horn = bool(self.drives["operational"] and (self.sim.v or self.sim.w))
         do = [False] * 16
         do[0] = horn
@@ -873,21 +912,20 @@ class DemoAdapter:
 
     def _event(self, level: int, source: str, code: str, text: str) -> None:
         self.seq += 1
-        self.events_.append(
-            {
-                "n": self.seq,
-                "t": time.time(),
-                "source": source,
-                "level": ["info", "warn", "error"][level],
-                "code": code,
-                "text": text,
-                "seq": self.seq,
-            }
-        )
-        del self.events_[:-300]
+        self._ring.add({"t": time.time(), "source": source, "level": ["info", "warn", "error"][level],
+                        "code": code, "text": text, "seq": self.seq})
+
+    def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None:
+        """RosAdapter.emit: an event raised by the web itself (a page error)."""
+        lv = {"info": 0, "warn": 1, "error": 2}.get(level, 0)
+        self._ring.add({"t": time.time(), "source": source, "level": ["info", "warn", "error"][lv],
+                        "code": code, "text": text, "seq": 0})
+
+    def event_log_files(self) -> list[str]:
+        return self._ring.files()  # no disk log in the demo
 
     def events(self, since: int = 0) -> list[dict]:
-        return [e for e in self.events_ if e["n"] > since]
+        return self._ring.since(since)
 
 # ---- seed data -------------------------------------------------------------------------
 

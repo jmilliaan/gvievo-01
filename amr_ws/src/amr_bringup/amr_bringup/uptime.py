@@ -24,6 +24,8 @@ import os
 import time
 from dataclasses import dataclass
 
+from agv_core import fsutil
+
 MARKER = "running.json"
 POWER_LOSS, SERVICE_CRASH = "power_loss", "service_crash"
 
@@ -74,8 +76,6 @@ def boot_time() -> float | None:
 
 def write(state_dir: str, instance: str, mode_name: str, operation_id: str = "", run_id: str = "") -> None:
     """Record what is running now. Atomic and silent: never raises into the loop."""
-    p = path(state_dir)
-    tmp = f"{p}.tmp"
     body = {
         "written_at": time.time(),
         "instance": instance,
@@ -85,18 +85,9 @@ def write(state_dir: str, instance: str, mode_name: str, operation_id: str = "",
         "pid": os.getpid(),
     }
     try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(body, fh)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, p)
+        fsutil.atomic_write_json(path(state_dir), body)
     except OSError:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        pass
 
 
 def clear(state_dir: str) -> None:

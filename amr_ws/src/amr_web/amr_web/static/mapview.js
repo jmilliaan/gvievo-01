@@ -185,6 +185,18 @@ class MapView {
 }
 // A dynamic-area mask image (255 = dynamic) as a canvas of the same size: diagonal stripes of
 // `hex`, one cell per pixel, so the hatch scales with the map and never hides it.
+// Same construction as amr_navigation compiler.arc_centre / arc_pose: the circle to the left
+// for sign +1 (ccw); the pose `phi` along it from heading yaw0.
+function arcCentre(x, y, yaw, r, sign) { return [x - sign * r * Math.sin(yaw), y + sign * r * Math.cos(yaw)]; }
+function arcPose(c, r, yaw0, sign, phi) { const yaw = yaw0 + sign * phi; return { x: c[0] + sign * r * Math.sin(yaw), y: c[1] - sign * r * Math.cos(yaw), yaw }; }
+// Pose seeding and confirmation only make sense on the picture of the map AMCL is running
+// on: coordinates drawn on map B would otherwise land in map A (R12). That is the navigation
+// map, or in LINE the tape-localization map (state.loc_map, 2026-10-23). The server
+// re-checks the identity against the live mode before anything is published.
+function viewIsActive(view, state) {
+  const a = state && state.loc_map;
+  return !!(a && view.meta && a.map_id === view.meta.map_id && +a.map_revision === +view.meta.revision);
+}
 function hatchMask(img, hex) {
   const w = img.width, h = img.height, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const c = cv.getContext('2d'); c.drawImage(img, 0, 0);

@@ -45,7 +45,7 @@
     <div id="ed-steps" class="list"><div class="none">no steps</div></div>
   </aside>
   <div class="canvas-wrap">
-    <canvas id="ed-canvas" width="900" height="600"></canvas>
+    <canvas id="ed-canvas" width="900" height="600" data-bounds='{{ route_bounds|tojson }}'></canvas>
     <div id="ed-hint" class="hint">Pick a map. Drag = pan, +/− or wheel = zoom. Start pose: click, then drag for heading. Straight: click a point or type a length in mm; lengths are shown in mm. Dashed outlines are the area validation checks (footprint + margin); all of it must be white.</div>
   </div>
 </section>

@@ -28,9 +28,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from amr_maps import grid as gridio
 from amr_maps.grid import Grid
 
-OCCUPIED = 65
+OCCUPIED = gridio.OCCUPIED
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ def scan_points(
 
 def proximity(grid: Grid, tol_m: float) -> np.ndarray:
     """float32 field: 1 on occupied cells, linear to 0 at tol_m (Chebyshev rings)."""
-    occ = grid.data >= OCCUPIED
+    occ = gridio.occupied(grid)
     k = max(1, int(round(tol_m / grid.meta.resolution)))
     field = occ.astype(np.float32)
     reach = occ.copy()

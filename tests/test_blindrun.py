@@ -64,6 +64,11 @@ def refused(name, segments, speed=SPEED, cpr=CPR, expect=""):
 
 def test_plan_maths():
     print("\nblind run plan maths")
+    from agv_core import kinematics
+    check("an INT32 counter delta takes the short way across the wrap (one helper for all)",
+          kinematics.counts_delta(-(1 << 31) + 5, (1 << 31) - 5) == 10
+          and kinematics.to_int32((1 << 31) + 1) == -(1 << 31) + 1
+          and blindrun.counts_delta is kinematics.counts_delta)
     p = blindrun.plan([{"kind": "straight", "distance_m": 1.0}], SPEED, CPR)["segments"][0]
     want = round(CPR / (math.pi * config.WHEEL_DIA_M))
     check("1 m straight is counts_per_wheel_rev / (pi*D) on both wheels",

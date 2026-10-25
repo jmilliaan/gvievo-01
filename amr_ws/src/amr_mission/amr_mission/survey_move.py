@@ -19,14 +19,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from agv_core import se2
+
 STRAIGHT, ROTATE = "straight", "rotate"
 ROTATE_STEPS_DEG = (20.0, 30.0, 45.0, 90.0, 135.0, 180.0)
 STRAIGHT_MIN_M, STRAIGHT_MAX_M = 0.05, 10.0
 BROKEN_DEG = 5.0  # a heading correction this large in one move is a wrong match, not drift
 
 
-def wrap(a: float) -> float:
-    return math.atan2(math.sin(a), math.cos(a))
+wrap = se2.wrap
 
 
 class MoveError(ValueError):
@@ -135,19 +136,9 @@ class MoveController:
         return self.progress
 
 
-def _apply(frame, pose):
-    fx, fy, fyaw = frame
-    px, py, pyaw = pose
-    c, s = math.cos(fyaw), math.sin(fyaw)
-    return fx + c * px - s * py, fy + s * px + c * py, wrap(fyaw + pyaw)
-
-
-def slam_correction(map_odom_before, map_odom_after, odom_base) -> tuple[float, float]:
-    """How far SLAM moved the vehicle's map pose relative to odometry between two map->odom
-    samples, measured AT the vehicle (odom_base = base in odom now): (metres, radians)."""
-    a = _apply(map_odom_before, odom_base)
-    b = _apply(map_odom_after, odom_base)
-    return math.hypot(b[0] - a[0], b[1] - a[1]), abs(wrap(b[2] - a[2]))
+# How far SLAM moved the vehicle's map pose relative to odometry between two map->odom
+# samples, measured AT the vehicle (odom_base = base in odom now): (metres, radians).
+slam_correction = se2.correction_at
 
 
 def check_verdict(move: Move, corr_m: float, corr_rad: float, max_deg: float = 2.0, max_frac: float = 0.03):

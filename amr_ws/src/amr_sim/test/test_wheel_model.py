@@ -2,10 +2,10 @@
 
 import pytest
 
-from amr_base.diff_drive import Geometry
+from amr_base.diff_drive import profile_geometry
 from amr_sim.wheel_model import WheelModel
 
-G = Geometry(0.09, 0.487)
+G = profile_geometry()
 
 
 def make(**kw) -> WheelModel:

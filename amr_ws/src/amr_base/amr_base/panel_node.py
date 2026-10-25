@@ -20,17 +20,16 @@ from __future__ import annotations
 
 import time
 
-import rclpy
 from agv_core import (
     config,
     ownerlock,  # repo module: core/ownerlock.py
 )
 from agv_core.drivers import dio  # repo module: drivers/dio.py
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data
 
 from amr_base import panel_io
-from amr_base.lean_node import LeanNode
+from amr_base.lean_node import UI_PERIOD_FAST_S, LeanNode, UiThrottle, run
+from amr_base.qos import LATCHED, RELIABLE_1
 from amr_interfaces.msg import (
     DriveStatus,
     Event,
@@ -45,14 +44,8 @@ from amr_interfaces.msg import (
 
 WHEELS_FRESH_S = 0.3
 MUX_FRESH_S = 0.5  # /amr/mux_state is 10 Hz
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
 TURNING_RAD_S = 0.01  # wheel speed above which a motor counts as turning (feedback noise floor)
 
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
 
 
 class PanelNode(LeanNode):
@@ -68,7 +61,7 @@ class PanelNode(LeanNode):
         # 10 Hz copy for displays (CPU, 2026-10-02): the web shows the selector at 2 Hz.
         # Edges ride only the full topic - nothing that acts on Start/Reset reads this one.
         self._pub_ui = self.create_publisher(PanelState, "/amr/panel_state_ui", 10)
-        self._ui_t = 0.0
+        self._ui = UiThrottle(UI_PERIOD_FAST_S)
         self._pub_io = self.create_publisher(IoImage, "/amr/io", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
@@ -169,8 +162,7 @@ class PanelNode(LeanNode):
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
         m.manual_arm = frame.manual_arm
         self._pub.publish(m)
-        if time.monotonic() - self._ui_t >= 0.1:
-            self._ui_t = time.monotonic()
+        if self._ui.due(time.monotonic()):
             self._pub_ui.publish(m)
 
         # dio.motion_on (DO00, DO08): on while the motors turn, off when they do not, in any
@@ -209,12 +201,7 @@ class PanelNode(LeanNode):
                 self.get_logger().debug(f"horn {'on' if want else 'off'}")
 
     def _event(self, level: int, code: str, text: str) -> None:
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source, m.level, m.code, m.text = "panel_node", level, code, text
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._pub_event.publish(m)
+        self._pub_event.publish(self.build_event("panel_node", level, code, text))
 
     def _publish_io(self, snap: dict) -> None:
         """The owner's full I/O image (unified plan §7): requested vs readback kept apart."""
@@ -245,17 +232,7 @@ class PanelNode(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = PanelNode()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        node.close()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    run(PanelNode, args, before_destroy=lambda n: n.close(), catch_runtime=False)
 
 
 if __name__ == "__main__":

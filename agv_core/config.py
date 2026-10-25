@@ -75,25 +75,6 @@ drivers.ramp
     raising this without re-checking traction is a different kind of mistake.
 
 
-timing.manual_watchdog_s
-    A held button re-POSTs every ~100 ms. Miss six in a row and the setpoint is
-    zeroed - covers a closed tab, a dropped Wi-Fi link and a wedged browser.
-
-    0.6 s rather than the original 0.4: three missed POSTs is tight over Wi-Fi,
-    and the trips it produced were the link hiccuping rather than the operator
-    letting go. It does not change how fast the vehicle stops when they DO let
-    go - the browser sends /api/stop on release and that is immediate; this
-    deadline only covers the case where nothing arrives at all.
-
-    Expiry zeroes the setpoint and logs a warning; it does NOT latch a fault.
-    Recovery is to hold the button again, which is a deliberate act with a hand
-    on the control, so there is nothing for an acknowledgment to add.
-
-    *** An autonomous mode would need the opposite. *** Latched motion that
-    would otherwise resume on its own has to latch a fault instead, the way tape
-    following did. Whatever navigates next must make that choice deliberately
-    rather than inherit this one.
-
 panel.di_manual_arm
     The Manual Arm input (DI08 on agv-01). Under MANUAL the drives are powered
     only while this input is HIGH; LOW leaves them in standby (CANopen up,
@@ -105,19 +86,14 @@ panel.di_manual_arm
     command, 2026-10-08): the drives are no longer powered while idle.
 
     *** Power is not motion. *** A powered manual vehicle holds zero; every
-    millimetre still needs a jog HELD (manual_watchdog_s). And nothing here can
+    millimetre still needs a jog HELD (a stream older than 0.2 s is zero). And nothing here can
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
     enable fails, and it is retried on a slow backoff, never latched.
 
-timing.loop_period_s / telemetry_period_s
-    50 Hz bus loop; 5 Hz statusword + rpm + error register (6 fast reads).
-
-    *** The telemetry poll is the largest spike in the loop. *** Six blocking
-    SDO round-trips at ~1.8 ms each land inside a single 20 ms tick, one tick in
-    ten. Measured over tape-following runs 0023-0025 the loop held a p50 of
-    20.1 ms but a p95 of 28.1 and a max of 37.9. Lowering this period makes the
-    spike more frequent, not smaller; moving the statusword and actual velocity
-    onto drive TPDOs is what removes it - see manuals/codebase-improvement.md.
+timing.loop_period_s
+    The 50 Hz bus loop in drive_node. Statusword, velocity, position and the error
+    register arrive on drive TPDO1/TPDO2 (amr_base.canopen), so the loop carries no
+    blocking telemetry poll.
 
 rfid.*  (Chafon CF821, UHF EPC Gen2, TCP 2022)
     CF821 protocol captured from this unit on 2026-10-08 and CRC-verified; the
@@ -150,40 +126,11 @@ rfid.expect_work_mode / expect_region / expect_power_dbm
     (902.75-927.25 MHz); Indonesia permits 920-923 MHz, which needs region 0.
 
 timing.driver_timeout_s
-    How long a driver may go without answering a telemetry read before it is
-    declared silent and the vehicle is stopped. This is HARDWARE health and has
-    nothing to do with the browser watchdogs above - those cover an absent
-    operator, this covers an absent driver.
-
-    Must sit above telemetry_period_s or the ordinary gap between two polls
-    reads as a dead driver; _validate() enforces that. 0.6 s is three normal
-    polls, which is deliberately generous: the 5 Hz telemetry poll shares the
-    bus with setpoint writes, so an occasional late read is expected. Tighten it
-    only after watching the event log across several runs.
-
-can.use_rpdo
-    Send the controlword and 60FFh as ONE RPDO1 frame per tick instead of a
-    blocking SDO write per node. *** Ships FALSE - turn it on only after the
-    bench checklist. ***
-
-    60FFh is currently written by a blocking SDO transfer twice a tick, about
-    1.8 ms each, against a 20 ms budget the loop already overruns (20.4 ms
-    average, 31 ms peak). An RPDO is a bare CAN frame with nothing to wait for,
-    so this returns ~3.6 ms of every tick. It is the largest available win on
-    the control loop and it is a prerequisite for the ROS drive node, not an
-    optimisation - see manuals/slam-generalized-plan/hardware-reconciliation.md
-    D-8 and manuals/potential-ros-migration.md section 9.
-
-    An RPDO is not acknowledged, and that is deliberately not a loss: nothing
-    ever checked the acknowledgement on the per-tick path, a failed setpoint is
-    corrected 20 ms later by the next tick, and what actually detects a drive
-    that has gone quiet is health.py fed by the 1017h heartbeat - untouched by
-    this. A late tick, by contrast, IS a steering update the vehicle does not
-    get.
-
-    A flag rather than a straight replacement because it changes the motion
-    path: if the bench finds the drives unhappy with an async RPDO, backing out
-    is a profile edit rather than a revert. Both paths stay tested.
+    How long a drive's feedback may be missing before it is declared silent and
+    the vehicle is stopped. This is HARDWARE health and has nothing to do with
+    the operator's command freshness - that covers an absent operator, this
+    covers an absent driver. Must sit above twice can.heartbeat_ms; _validate()
+    enforces that.
 
 can.heartbeat_ms
     Producer heartbeat time (1017h), written to each drive at bus-up. The
@@ -204,13 +151,11 @@ monitor.*
     hardware. CAN is the channel beside it that records what happened and warns
     before a trip.
 
-    The analogue objects are polled ONE PER NODE per poll, round-robin, and
-    poll_period_s paces it. At tick rate that would be two SDO round-trips out
-    of every 20 ms budget - about 4 ms of tick and a fifth of a 125 kbps bus -
-    for values that move on a thermal timescale. At 0.1 s it is ~0.8 ms of
-    average tick and ~4% of the bus, sweeping the whole table in about a
-    second. The plan asks for 1-5 Hz on Tier 3; this sits just under it and
-    leaves the control loop alone, which matters more.
+    The analogue objects are polled ONE PER NODE per poll, round-robin
+    (canmon.MonitorPoller.step), paced by drive_node's monitor_period_* params.
+    At tick rate that would be two SDO round-trips out of every 20 ms budget -
+    about 4 ms of tick and a fifth of a 125 kbps bus - for values that move on
+    a thermal timescale.
 
     Temperature warns are the plan's: driver trips at 85 C so warn at 70, motor
     trips at 95 so warn at 80. Bus voltage is two-sided - low is battery sag
@@ -345,13 +290,14 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
       max_lateral_m       a pose farther from the taught path is rejected (M2)
       innov_min_m         innovation gate floor; the gate is max(3 sigma, this)
       pose_max_age_s      an older /amcl_pose is not used
-      sigma_station_m     a station stop needs sigma at most this when braking starts
-                          (2 sigma <= 5 cm of the operator's +-10 cm). At most 0.05
+      sigma_station_m     a station stop needs sigma at most this when braking starts. At most
+                          0.05 (2 sigma = the operator's +-10 cm); 0.05 since 2026-10-25, the
+                          operator's choice: fewer `position` holds, the stop's own error on top
       sigma_junction_m    a junction order needs sigma at most this by S_fork - junction_lead_m
       lost_rejects        this many corrections rejected in a row = LOST
       sigma_lost_m        sigma above this = LOST
       healthy_window_m    HEALTHY needs an accepted correction within this much travel
-      lost_fault_s        LOST while held longer than this becomes a FAULT
+      lost_fault_s        reserved, not read yet: LOST while held longer than this is to become a FAULT
       amcl_params         "default" (amr_localization/config/amcl.yaml) or "lean" (fewer
                           particles, update every 0.10 m: plan section 2.7)
       site_mission        the site-3 mission taught and shadowed: "test-mru-straight" while
@@ -364,23 +310,10 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
     Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
 
 imu.*
-    The IMU inside the SICK MLS on can.sensor_node, read over SDO by the bus
-    thread and shown on /monitor and the rail. DISPLAY ONLY today: nothing
-    steers from it, nothing gates on it, and it is not a health source. It is
-    here so the gyro can be watched before gyro-odometry is built on it - see
-    drivers/canbus/read_imu.py for why the gyro is a navigation component.
-
-    One SDO read per poll, round-robin over eight objects (gyro xyz, accel xyz,
-    yaw, the sensor's own clock). A read costs ~4 ms on the 125 kbps bus, so
-    reading the whole set at once would eat a 20 ms tick; spreading it keeps
-    every tick short and refreshes the whole picture every 8 x poll_period_s.
-    At 0.04 s that is ~3 Hz, which is plenty to eyeball. SLAM wants 100 Hz
-    yaw rate and will get it from a TPDO (read_imu.py tpdo gyro), routed
-    through TpdoTap - not by turning this poll up.
-
-    retry_period_s is the back-off after a read times out. Without it an
-    absent or unpowered sensor would cost a timeout on every poll, and the
-    timeout (short as it is) is dead time the control loop pays for.
+    The yaw-rate gyro inside the SICK MLS on can.sensor_node (amr_base.mls_imu):
+    by TPDO when 1806h carries 2034h:03, else polled by SDO at drive_node's
+    imu_poll_hz. A sensor that stops answering is backed off and probed again
+    (mls_track.SdoProbe). See drivers/canbus/read_imu.py for the scaling.
 
 can.channel / can.adapter_serial
     The SocketCAN interface to prefer, and which CANable2 to accept on the USB
@@ -439,7 +372,6 @@ _SCHEMA = {
     # Increment 3: the decision was to restore the profile block verbatim
     # rather than let it arrive in pieces.
     "autopilot": {
-        "dry_run":             ("DRY_RUN", bool),
         "invert_error":        ("INVERT_ERROR", bool),
         "branch_positive_is_left": ("BRANCH_POSITIVE_IS_LEFT", bool),
         "k_ratio":             ("K_RATIO", float),
@@ -521,9 +453,9 @@ _SCHEMA = {
         "tag_len":            ("RFID_TAG_LEN", int),
         "ignore_tags":        ("RFID_IGNORE_TAGS", list),
         "recv_timeout_s":     ("RFID_RECV_TIMEOUT_S", float),
-        "silent_warn_s":      ("RFID_SILENT_WARN_S", float),
+        "silent_warn_s":      ("RFID_SILENT_WARN_S", float),  # no reader since 2026-10-25 (lean D82)
         "reconnect_period_s": ("RFID_RECONNECT_PERIOD_S", float),
-        "tag_hold_s":         ("RFID_TAG_HOLD_S", float),
+        "tag_hold_s":         ("RFID_TAG_HOLD_S", float),  # no reader since 2026-10-25 (lean D82)
         "tag_clear_s":        ("RFID_TAG_CLEAR_S", float),
         "heartbeat_s":        ("RFID_HEARTBEAT_S", float),
         "heartbeat_timeout_s": ("RFID_HEARTBEAT_TIMEOUT_S", float),
@@ -601,11 +533,9 @@ _SCHEMA = {
         "left_node":      ("LEFT", int),
         "right_node":     ("RIGHT", int),
         "sensor_node":    ("SENSOR_NODE", int),
-        "use_rpdo":       ("CAN_USE_RPDO", bool),
     },
     "monitor": {
         "enabled":            ("MONITOR_ENABLED", bool),
-        "poll_period_s":      ("MONITOR_PERIOD_S", float),
         "driver_temp_warn_c": ("MON_DRV_WARN_C", float),
         "driver_temp_trip_c": ("MON_DRV_TRIP_C", float),
         "motor_temp_warn_c":  ("MON_MTR_WARN_C", float),
@@ -647,8 +577,6 @@ _SCHEMA = {
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
-        "poll_period_s":  ("IMU_PERIOD_S", float),
-        "retry_period_s": ("IMU_RETRY_PERIOD_S", float),
     },
     "blind_run": {
         "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
@@ -669,8 +597,6 @@ _SCHEMA = {
     },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
-        "telemetry_period_s": ("TELEMETRY_PERIOD_S", float),
-        "manual_watchdog_s":  ("MANUAL_WATCHDOG_S", float),
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
         "premove_timeout_s":  ("PREMOVE_TIMEOUT_S", float),
@@ -736,6 +662,13 @@ def _read_io_names(raw, count, where):
     return [v.strip() for v in raw]
 
 
+def _int_list(raw, where, what="integers"):
+    """A JSON list of plain ints (bools refused), or ConfigError naming `where`."""
+    if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
+        raise ConfigError(f"{where}: expected a list of {what}")
+    return raw
+
+
 def _read_do_list(raw, count, where):
     """dio.motion_on / dio.alarm_on -> sorted DO channel numbers, distinct, in 0..num_do-1.
 
@@ -746,8 +679,7 @@ def _read_do_list(raw, count, where):
       movement_horn  the motion_on channels that ARE the movement horn (DO00): off while
                  the alarm horn sounds, so a field switches the sound (2026-10-07).
     """
-    if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
-        raise ConfigError(f"{where}: expected a list of DO channel numbers")
+    _int_list(raw, where, "DO channel numbers")
     if len(set(raw)) != len(raw):
         raise ConfigError(f"{where}: a channel is listed twice")
     bad = [v for v in raw if not 0 <= v < count]
@@ -765,10 +697,7 @@ def _read_zone_bytes(raw, where):
     ORDER is the thing lidar_brief.md sec 2.5 insists must be confirmed rather
     than assumed, which is exactly why it lives in the profile.
     """
-    if not isinstance(raw, list) or not all(isinstance(v, int)
-                                            and not isinstance(v, bool)
-                                            for v in raw):
-        raise ConfigError(f"{where}: expected a list of integers")
+    _int_list(raw, where)
     if len(raw) != 3:
         raise ConfigError(f"{where}: expected 3 offsets (stop, slow, warn), "
                           f"got {len(raw)}")
@@ -782,9 +711,7 @@ def _read_marker_codes(raw, where):
 
     Standard mode decodes 1-7 (manual 8021642 p. 52); which of them are usable
     depends on the sensor length and marker width (MLSE-0200 + 15 mm: 1-3)."""
-    if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool)
-                                            for v in raw):
-        raise ConfigError(f"{where}: expected a list of integers")
+    _int_list(raw, where)
     if not raw:
         raise ConfigError(f"{where}: expected at least one code")
     if len(set(raw)) != len(raw):
@@ -910,7 +837,7 @@ def _parse(doc):
     ns["DIO_ALARM_ON"] = _read_do_list(
         doc["dio"]["alarm_on"], ns["DIO_NUM_DO"], "dio.alarm_on")
     ns["DIO_MOVEMENT_HORN"] = _read_do_list(
-        doc["dio"].get("movement_horn", []), ns["DIO_NUM_DO"], "dio.movement_horn")
+        doc["dio"]["movement_horn"], ns["DIO_NUM_DO"], "dio.movement_horn")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
     ns["MLS_MARKER_CODES"] = _read_marker_codes(
@@ -928,6 +855,8 @@ def _derive(ns):
     ns["RPM_PER_MPS"] = 1.0 / ns["MPS_PER_RPM"]                # 3183.1
     # Yaw rate from a left/right difference: omega = (v_right - v_left) / TRACK.
     ns["RAD_S_PER_RPM_DIFF"] = ns["MPS_PER_RPM"] / ns["TRACK_M"]   # 6.46418e-4
+    # Wheel rad/s per motor r/min (before any invert flag): 2*pi/60 through the gearhead.
+    ns["WHEEL_RAD_S_PER_MOTOR_RPM"] = 2.0 * math.pi / 60.0 / ns["GEAR_RATIO"]  # 3.49066e-3
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
     # The tracked slow speed (junction slow zone, RFID speed toggle) follows cruise.
     ns["AUTO_HIGH_RPM"] = ns["AUTO_RPM"] * ns["AUTO_HIGH_RATIO"]
@@ -1036,17 +965,7 @@ def _validate(ns):
           f"CAN node IDs must be distinct, got left={ids[0]} right={ids[1]} "
           f"sensor={ids[2]}")
     check(g("LOOP_PERIOD_S") > 0, "timing.loop_period_s must be > 0")
-    check(g("TELEMETRY_PERIOD_S") >= g("LOOP_PERIOD_S"),
-          "timing.telemetry_period_s must be >= loop_period_s")
-    check(g("MANUAL_WATCHDOG_S") > 0, "watchdog deadline must be > 0")
-    # A driver is declared silent when its telemetry stops answering. The
-    # deadline has to sit ABOVE the poll period or the normal gap between two
-    # polls reads as a fault - the same pairing check as loop/telemetry above,
-    # and one neither module could make alone.
-    check(g("DRIVER_TIMEOUT_S") > g("TELEMETRY_PERIOD_S"),
-          f"timing.driver_timeout_s ({g('DRIVER_TIMEOUT_S')}) must exceed "
-          f"telemetry_period_s ({g('TELEMETRY_PERIOD_S')}), or the gap between "
-          f"two normal polls is reported as a dead driver")
+    check(g("DRIVER_TIMEOUT_S") > 0, "timing.driver_timeout_s must be > 0")
 
     # -- drive monitoring --------------------------------------------------
     # Heartbeat is what makes a dead driver distinguishable from an idle one,
@@ -1058,14 +977,6 @@ def _validate(ns):
           f"can.heartbeat_ms ({g('CAN_HEARTBEAT_MS')}) must be under half "
           f"timing.driver_timeout_s ({g('DRIVER_TIMEOUT_S')} s), or a single "
           f"missed heartbeat reads as a dead driver")
-    # One object per node per poll. At the 20 ms tick this would be two SDO
-    # round-trips EVERY tick - about 4 ms of a 20 ms budget and a fifth of the
-    # bus - for values that move on a thermal timescale. Pacing it to 0.1 s
-    # sweeps the whole table in about a second, which is inside the 1-5 Hz the
-    # monitoring plan asks for and leaves the control loop alone.
-    check(g("MONITOR_PERIOD_S") >= g("LOOP_PERIOD_S"),
-          f"monitor.poll_period_s ({g('MONITOR_PERIOD_S')}) must be >= "
-          f"loop_period_s ({g('LOOP_PERIOD_S')})")
     check(g("MON_DRV_WARN_C") < g("MON_DRV_TRIP_C"),
           "monitor.driver_temp_warn_c must be below driver_temp_trip_c")
     check(g("MON_MTR_WARN_C") < g("MON_MTR_TRIP_C"),
@@ -1172,18 +1083,6 @@ def _validate(ns):
     check(not g("PENDANT_ENABLED") or g("DIO_ENABLED"),
           "pendant.enabled is true while dio.enabled is false - the pendant is "
           "read from the DI image, so its buttons would never respond")
-
-    # -- imu --------------------------------------------------------------
-    # One SDO read per poll on the bus thread, so it is paced like the other
-    # polls: never faster than the tick it runs inside.
-    check(g("IMU_PERIOD_S") >= g("LOOP_PERIOD_S"),
-          f"imu.poll_period_s ({g('IMU_PERIOD_S')}) must be >= loop_period_s "
-          f"({g('LOOP_PERIOD_S')})")
-    # The back-off exists to be longer than a poll; equal or shorter and an
-    # absent sensor is retried at poll rate, which is the case it exists for.
-    check(g("IMU_RETRY_PERIOD_S") > g("IMU_PERIOD_S"),
-          f"imu.retry_period_s ({g('IMU_RETRY_PERIOD_S')}) must exceed "
-          f"poll_period_s ({g('IMU_PERIOD_S')})")
 
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
@@ -1295,7 +1194,7 @@ def _json_constant(name):
     Python accepts them silently by default. They are passed through as the
     float they spell rather than refused here, because only _coerce knows which
     field it is reading: every value goes through it, and it refuses nonfinite
-    numbers with the field named - "timing.manual_watchdog_s: expected a finite
+    numbers with the field named - "timing.driver_timeout_s: expected a finite
     number" sends the reader to the line, "Infinity is invalid" does not."""
     return float(name)
 
@@ -1374,6 +1273,7 @@ _UNIT_EXACT = {
     "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V",
     "MPS_PER_RPM": "m/s per r/min", "RPM_PER_MPS": "r/min per m/s",
     "RAD_S_PER_RPM_DIFF": "rad/s per r/min diff", "MAX_SPEED_MPS": "m/s",
+    "WHEEL_RAD_S_PER_MOTOR_RPM": "wheel rad/s per motor r/min",
 }
 
 # Everything _derive() computes, with the relation that produced it - which is
@@ -1384,6 +1284,7 @@ _DERIVED = (
     ("MPS_PER_RPM", "\u03c0\u00b7wheel_dia_m / (gear_ratio \u00b7 60)"),
     ("RPM_PER_MPS", "1 / MPS_PER_RPM"),
     ("RAD_S_PER_RPM_DIFF", "MPS_PER_RPM / track_m"),
+    ("WHEEL_RAD_S_PER_MOTOR_RPM", "2\u03c0 / (60 \u00b7 gear_ratio)"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
     ("AUTO_HIGH_RPM", "autopilot.auto_rpm \u00b7 auto_high_ratio - the tracked HIGH speed"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
@@ -1418,6 +1319,16 @@ def _fmt(value):
     if isinstance(value, (list, tuple)):
         return ", ".join(_fmt(v) for v in value) if value else "(empty list)"
     return value if value else "(empty)"
+
+
+_LOADED = object()
+
+
+def product(tracked=_LOADED):
+    """The profile's `tracked` as a product: True "tape", False "slam", null "both".
+    Without an argument, the loaded profile's."""
+    t = globals().get("TRACKED") if tracked is _LOADED else tracked
+    return {True: "tape", False: "slam"}.get(t, "both")
 
 
 def tuning_notes():
@@ -1466,26 +1377,14 @@ def tuning_notes():
     return out
 
 
-# How fast the vehicle goes, gathered from the three sections that happen to
-# hold it, and shown FIRST. Speed is the thing looked up most often and the
-# thing most often changed, and it was previously spread across `manual`,
-# `autopilot` and `drivers` - three scrolls apart on the page for one question.
-#
-# Display only. The JSON keeps its existing shape, so these rows carry their
-# full dotted path rather than a bare key: this page's other audience is
-# somebody about to edit the profile, and "auto_slow_rpm" alone would not say
-# which section to put it in.
-#
-# (section, key) pairs, in the order they should read.
+# The drive ramps, shown FIRST as the "speed" section and nowhere else (one
+# parameter in two places reads as two parameters). Display only: the rows carry
+# their full dotted path, because this page's other audience is somebody about to
+# edit the profile. (section, key) pairs, in the order they should read.
 _SPEED_ROWS = [
     ("drivers", "ramp.auto.accel"),
     ("drivers", "ramp.auto.decel"),
 ]
-
-# Everything in _SPEED_ROWS is suppressed where it would otherwise appear, so no
-# value is ever printed twice - a page showing one parameter in two places is a
-# page where the two can be read as two parameters.
-_MOVED = set(_SPEED_ROWS)
 
 # Section order on the page. Speed first, then the geometry it runs on;
 # everything after is in schema order. Named here rather
@@ -1543,25 +1442,9 @@ def describe():
         speed.append(row)
     out.append({
         "name": "speed", "rows": speed,
-        "note": "How fast the vehicle goes, in one place. These keys live in "
-                "the manual and drivers sections of the JSON - each row is "
-                "labelled with the path to edit. The manual pair is the jog "
-                "pad; the ramp pairs are 6083h/6084h, written to the drives at "
-                "arm time, and the auto pair also sets the ceiling on yaw "
-                "acceleration - see kinematics.max_yaw_accel()."})
-
-    # *** The station-tag rule table lived here. ***
-    # Two rules were loaded from the profile - the branch latch and the
-    # stop-until-Start tags - and both were tape-following: they steered at a
-    # diverter and parked at a station on a fixed route. They are gone with the
-    # feature.
-    #
-    # The RFID reader is NOT gone, and neither is the discipline this table
-    # existed to enforce: a tag id may mean exactly one thing, and the loader
-    # refuses a repeat rather than letting the meaning depend on which rung
-    # reads it first. Whatever consumes tags next - station identity for
-    # localisation is the expected one - wants that rule back, as data in the
-    # profile rather than as code.
+        "note": "The drive ramps, 6083h/6084h (drivers.ramp.auto in the JSON), "
+                "written to the drives at arm time for AUTO. The accel also sets "
+                "the ceiling on yaw acceleration - see kinematics.max_yaw_accel()."})
 
     # Then the schema's own sections: the named ones in the order above, then
     # whatever is left in the order the profile writes it.
@@ -1569,17 +1452,9 @@ def describe():
     for section in ordered:
         fields = _SCHEMA[section]
         rows = [_row(section, key, const, g.get(const), notes)
-                for key, (const, _want) in fields.items()
-                if (section, key) not in _MOVED]
+                for key, (const, _want) in fields.items()]
 
-        # The three things _SCHEMA's flat table cannot express, in the same
-        # order the profile writes them.
-        if section == "drivers":
-            for mode in ("auto",):
-                for k in ("accel", "decel"):
-                    key = f"ramp.{mode}.{k}"
-                    if (section, key) not in _MOVED:
-                        rows.append(ramp_row(section, key))
+        # What _SCHEMA's flat table cannot express (the ramps are in "speed").
         if section == "dio":
             for key, const in (("di_names", "DIO_DI_NAMES"),
                                ("do_names", "DIO_DO_NAMES")):

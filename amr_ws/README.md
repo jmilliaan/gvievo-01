@@ -97,11 +97,10 @@ chassis box. Still `VERIFY`: IMU lateral/vertical position inside the MLS.
 
 **Repo modules.** ROS nodes reuse `config`, `kinematics` etc. from the repo
 root as ordinary package imports — `from agv_core import config`,
-`from agv_core.drivers.canbus import guard` — the same way `app/server.py` does.
-What they need is the repo root on `PYTHONPATH`; `amr_ws/deploy/amr-launch.sh`
-(and `amr_ws/env/vehicle.sh`) put it there, or `pip install -e .` at the repo
-root does it permanently. `AGV_CAN_ROOT` overrides which root the launcher
-exports. There is no `amr_base.agv_repo` shim any more and no bare imports off
+`from agv_core.drivers.canbus import guard`. What they need is the repo root on
+`PYTHONPATH`; `amr_ws/env/vehicle.sh` puts it there (the service sources it), or
+`pip install -e .` at the repo root does it permanently. `AGV_CAN_ROOT` overrides
+which root it exports. There is no `amr_base.agv_repo` shim any more and no bare imports off
 layer directories. Profile selection is still the controller's `AGV_PROFILE`.
 
 **IMU chain.** `/imu/data_raw` (raw, biased; the MLS node in T10, `fake_imu`
@@ -389,8 +388,7 @@ more participants. To let a laptop join deliberately: copy the XML, bind `wlp1s0
 point `CYCLONEDDS_URI` at the copy for that session only.
 
 Also sourced by anything long-lived: `deploy/amr-supervisor.sh` is the unified
-systemd entry point; `deploy/amr-launch.sh` remains the standalone legacy-unit
-wrapper during the rollback window.
+systemd entry point.
 
 **Unified deployment (U9).** `deploy/amr.service` conflicts with all three old
 application units, binds to can0 and starts the supervisor through the coherent

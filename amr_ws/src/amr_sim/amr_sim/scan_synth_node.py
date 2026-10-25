@@ -14,27 +14,20 @@ import os
 import random
 
 import numpy as np
-import rclpy
+from agv_core import se2
 from ament_index_python.packages import get_package_share_directory
 from amr_maps.raycast import ScanGeometry, cast, nanoscan3
 from nav_msgs.msg import Odometry
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
 from amr_interfaces.srv import AddObstacle
 from amr_maps import grid as gridio
 
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
 
-
-class ScanSynth(Node):
+class ScanSynth(LeanNode):
     def __init__(self) -> None:
         super().__init__("scan_synth")
         default_world = os.path.join(
@@ -140,7 +133,7 @@ class ScanSynth(Node):
             return
         t = self._truth
         q = t.pose.pose.orientation
-        yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+        yaw = se2.yaw_of(q)
         bx, by = t.pose.pose.position.x, t.pose.pose.position.y
         lx = bx + self.lx * math.cos(yaw) - self.ly * math.sin(yaw)
         ly = by + self.lx * math.sin(yaw) + self.ly * math.cos(yaw)
@@ -164,23 +157,7 @@ class ScanSynth(Node):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = ScanSynth()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        # A callback running while launch tears the context down raises from
-        # the C layer ("Unable to convert call argument"); only real if still ok.
-        if rclpy.ok():
-            raise
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(ScanSynth, args)
 
 
 if __name__ == "__main__":

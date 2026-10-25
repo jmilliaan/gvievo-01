@@ -1,6 +1,26 @@
 // Shared helpers: JSON requests, a log line, the 2 Hz state poll every page uses,
 // the telemetry rail, tile rendering, and the asynchronous-operation helper
 // (unified plan §6.2: accepted != completed).
+const $ = id => document.getElementById(id);  // the one copy: page scripts load after this file
+// "42 s", "3 min", "1.5 h"; with a suffix, "42 s ago"
+function ago(s, suffix = '') {
+  const t = s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+  return suffix ? `${t} ${suffix}` : t;
+}
+// Run fn now, then again `ms` after each run settles. A throw or a rejected request never
+// stops the loop (one dropped request used to end some pages' polling for good).
+// visibleOnly: skip runs while the tab is hidden. onError(e): show the failure.
+function every(ms, fn, { visibleOnly = false, onError = null } = {}) {
+  async function tick() {
+    try {
+      if (!(visibleOnly && document.hidden)) await fn();
+    } catch (e) {
+      if (onError) { try { onError(e); } catch (_) { /* a broken handler must not stop the loop */ } }
+    }
+    setTimeout(tick, ms);
+  }
+  tick();
+}
 const REQUEST_TIMEOUT_MS = 8000;  // a hung request must not hang a page (Q11); it rejects like a network error
 async function request(path, method, body) {
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
@@ -24,6 +44,22 @@ function log(msg, cls) {
   const el = document.getElementById('log');
   const t = new Date().toLocaleTimeString();
   el.textContent = `${t}  ${msg}\n` + el.textContent.split('\n').slice(0, 60).join('\n');
+}
+// POST and report the server's answer: to the log (after `prefix`) and, given `msgEl`, in that
+// element, marked bad unless the server said ok (data.ok when it says, else HTTP 200).
+// Returns {status, data}, or null when nothing answered (`noResponse` says what that means).
+// 202 operations go through operation() instead.
+async function act(path, body, { msgEl = null, noResponse = 'no response', prefix = '' } = {}) {
+  const el = typeof msgEl === 'string' ? document.getElementById(msgEl) : msgEl;
+  let r;
+  try { r = await api(path, body); } catch (e) {
+    if (el) { el.textContent = noResponse; el.classList.add('bad'); } else log(noResponse, 'bad');
+    return null;
+  }
+  const ok = r.data.ok ?? r.status === 200;
+  if (el) { el.textContent = r.data.message || ''; el.classList.toggle('bad', !ok); }
+  log(prefix + (r.data.message || `refused (${r.status})`), ok ? '' : 'bad');
+  return r;
 }
 // Number formatting: fixed decimals, tabular in CSS; "–" for anything missing or nonfinite.
 const num = (v, dp) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(dp) : '–';
@@ -52,16 +88,25 @@ let lastState = null;
 const MODE_LEVEL = { STARTING: 'warn', TRANSITIONING: 'warn', FAULT: 'bad', STOPPING: 'bad' };
 const LOC_LEVEL = { CHECKING: 'warn', LOST: 'bad' };
 const RUN_LEVEL = { BLOCKED: 'warn', PAUSED: 'warn', FAULT: 'bad' };
-const FRESH_S = 0.5;  // panel / drives / mux samples older than this are not current
+// Panel / drives / mux samples older than this are not current: alarms.FRESH_S, rendered by base.html.
+const FRESH_S = Number(document.documentElement.dataset.freshS) || 0.5;
+// The selector as the panel image says it: '–' none, STALE, INVALID, else AUTO / MANUAL.
+function panelVerdict(p) {
+  if (!p) return '–';
+  if (p.age_s > FRESH_S) return 'STALE';
+  if (!p.valid) return 'INVALID';
+  return p.mode_auto ? 'AUTO' : 'MANUAL';
+}
+// [value, note, level] of the command-source tile, from the mux state.
+const sourceTile = mx => [mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''];
 
 function rail(st) {
   const m = st.mode;
   tile('tel-mode', m ? m.mode_name : '–', m ? (m.phase || '—') : 'no supervisor', m ? MODE_LEVEL[m.mode_name] : 'bad');
-  const p = st.panel;
-  if (!p) tile('tel-selector', '–', 'no panel image', 'bad');
-  else if (p.age_s > FRESH_S) tile('tel-selector', 'STALE', `${num(p.age_s, 1)} s old`, 'bad');
-  else if (!p.valid) tile('tel-selector', 'INVALID', `${num(p.age_s, 2)} s`, 'bad');
-  else tile('tel-selector', p.mode_auto ? 'AUTO' : 'MANUAL', `${num(p.age_s, 2)} s`);
+  const p = st.panel, pv = panelVerdict(p);
+  if (!p) tile('tel-selector', pv, 'no panel image', 'bad');
+  else if (pv === 'STALE') tile('tel-selector', pv, `${num(p.age_s, 1)} s old`, 'bad');
+  else tile('tel-selector', pv, `${num(p.age_s, 2)} s`, pv === 'INVALID' ? 'bad' : undefined);
   const d = st.drives;
   if (!d) tile('tel-drives', '–', 'no drive status', 'bad');
   else if (d.age_s > FRESH_S) tile('tel-drives', 'STALE', `${num(d.age_s, 1)} s old`, 'bad');
@@ -69,7 +114,7 @@ function rail(st) {
   // off in standby is normal (powered on demand, 2026-10-08): say why instead of the statuswords
   else tile('tel-drives', d.operational ? 'ARMED' : 'OFF', (!d.operational && d.link === 'standby' && d.power_reason) ? d.power_reason : (d.left === d.right ? (d.left || '?') : `${d.left || '?'} · ${d.right || '?'}`), d.operational ? '' : 'warn');
   const mx = st.mux, mxStale = !mx || mx.age_s > FRESH_S;
-  tile('tel-source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : '', mxStale);
+  tile('tel-source', ...sourceTile(mx), mxStale);
   // Scanner fields as the mux applies them: protective stops AUTO, warning 1 x0.5, warning 2 a deceleration stop (factor 0).
   if (!mx) tile('tel-field', '–', 'no mux state', 'bad');
   else if (!mx.field_fresh) tile('tel-field', 'NO DATA', 'auto held at zero', 'bad', mxStale);
@@ -107,6 +152,13 @@ function railStale(on) { const e = document.getElementById('telemetry'); if (e) 
 
 // One alarms poll for every page (amr_web/alarms.py decides; nothing is re-derived
 // client-side). Pages register with onAlarms(); the rail always shows the top row.
+// Alarm level -> row class, and one standing-alarm row (Home and Alarms render the same).
+const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
+function alarmRow(a, detailHtml) {
+  return `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.level)}</span>` +
+    `<span class="al-msg"><span class="al-what">${esc(a.title)}</span>${esc(a.action)}` +
+    `<i class="al-detail">${detailHtml}</i></span></div>`;
+}
 const alarmListeners = [];
 function onAlarms(fn) { alarmListeners.push(fn); }
 async function pollAlarms() {
@@ -125,9 +177,8 @@ async function pollAlarms() {
       alarmListeners.forEach(fn => fn(data));
     }
   } catch (e) { /* the state poll already reports the disconnection */ }
-  setTimeout(pollAlarms, 1000);
 }
-pollAlarms();
+every(1000, pollAlarms);
 
 async function poll() {
   try {
@@ -141,38 +192,37 @@ async function poll() {
       stateListeners.forEach(fn => fn(data));
     } else { pill('pill-link', 'error ' + status, 'bad'); railStale(true); }
   } catch (e) { pill('pill-link', 'disconnected', 'bad'); railStale(true); }
-  setTimeout(poll, 500);
 }
-poll();
+every(500, poll);
 
 // Wi-Fi header readout: a comfort indicator for whoever holds the tablet, not an authority.
-async function pollWifi() {
-  const el = document.getElementById('wifi'), txt = document.getElementById('wifi-text');
-  if (!el) return;
+async function pollWifi(el, txt) {
   let w = null;
   try { const { status, data } = await apiGet('/api/wifi'); if (status === 200) w = data; } catch (e) { /* offline */ }
   const bars = w ? w.bars : 0;
   el.querySelectorAll('.bars b').forEach((b, i) => b.classList.toggle('on', i < bars));
   el.className = 'wifi ' + (!w || !w.connected ? 'bad' : bars >= 3 ? 'ok' : bars >= 2 ? '' : 'warn');
   txt.textContent = !w ? '–' : !w.connected ? `${w.iface} no link` : `${w.ssid || w.iface} ${Math.round(w.dbm)} dBm`;
-  setTimeout(pollWifi, 2000);
 }
-pollWifi();
+{
+  const el = document.getElementById('wifi'), txt = document.getElementById('wifi-text');
+  if (el) every(2000, () => pollWifi(el, txt));
+}
 
 // Internet as the ROBOT sees it (the server probes; the tablet's own link says nothing about
 // it). 0.25 Hz: the server caches its probe for 4 s anyway. Informational only.
-async function pollNet() {
-  const el = document.getElementById('net');
-  if (!el) return;
+async function pollNet(el) {
   let n = null;
   try { const { status, data } = await apiGet('/api/internet'); if (status === 200) n = data; } catch (e) { /* offline */ }
   el.className = 'net ' + (!n || n.online == null ? '' : n.online ? 'ok' : 'bad');
   el.title = !n ? 'Internet: robot not reachable'
     : n.online == null ? 'Internet: checking…'
     : n.online ? `Internet: online (${n.via}, ${n.rtt_ms} ms) - rechecked every 4 s` : 'Internet: offline - rechecked every 4 s';
-  setTimeout(pollNet, 4000);
 }
-pollNet();
+{
+  const el = document.getElementById('net');
+  if (el) every(4000, () => pollNet(el));
+}
 
 // Submit an asynchronous supervisor operation and follow it to a terminal status.
 // A refresh/reconnect recovers progress through /api/operations/<id>; nothing is resubmitted.

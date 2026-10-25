@@ -41,12 +41,12 @@ def test_invalid_gap_rearm_and_scale_change_rebaseline_without_moving():
 
 
 def _odom():
-    from amr_base.diff_drive import Geometry, OdomState
+    from amr_base.diff_drive import OdomState, profile_geometry
     from amr_base.diff_drive_odom_node import DiffDriveOdom
 
     published = []
     node = SimpleNamespace(
-        geom=Geometry(0.09, 0.487),
+        geom=profile_geometry(),
         state=OdomState(),
         _last=None,
         _t=DiffDriveOdom._t,

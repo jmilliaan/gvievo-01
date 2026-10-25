@@ -549,3 +549,13 @@ def test_the_rate_limit_reports_once_per_period_and_counts_the_ones_held_back():
     assert r.allow(10.5) is None and r.allow(11.9) is None
     assert r.allow(12.0) == 2
     assert r.allow(20.0) == 0
+
+
+def test_sdo_probe_backs_off_after_five_misses_and_a_hit_resets():
+    from amr_base.mls_track import SdoProbe
+
+    p = SdoProbe()
+    assert [p.miss(10.0) for _ in range(4)] == [None] * 4
+    assert p.miss(10.0) == 10.0 + SdoProbe.BACKOFF_S == 12.0
+    p.hit()
+    assert p.miss(11.0) is None and p.misses == 6

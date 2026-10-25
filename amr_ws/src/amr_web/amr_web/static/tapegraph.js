@@ -7,6 +7,7 @@ function graphOverlay(view) {
     const g = tapeGraph;
     if (!g || !g.available || !v.meta) return;
     if (v.meta.map_id !== g.map_id || +v.meta.revision !== +g.map_revision) return;
+    (g.areas || []).forEach(a => { v.fillPolygon(a.polygon, alpha(INK.preview, 0.18), INK.turn); v.text(a.polygon[0][0], a.polygon[0][1], `HIGH ${a.id}`, INK.turn); });
     g.legs.forEach(l => v.polyline(l.pts, alpha(INK.route, 0.85), 3));
     if (g.pass) { c.setLineDash([6, 4]); v.polyline(g.pass.pts, alpha(INK.route, 0.85), 3); c.setLineDash([]); }
     g.anchors.forEach(a => { v.dot(a.x, a.y, INK.turn, 5); v.text(a.x, a.y, a.id, INK.turn); });
@@ -18,17 +19,11 @@ function graphOverlay(view) {
 }
 function pollGraph(view) {
   let last = '';
-  async function tick() {
-    try {
-      if (!document.hidden) {
-        const { status, data } = await apiGet('/api/line/graph');
-        if (status === 200) {
-          const key = JSON.stringify(data);
-          if (key !== last) { last = key; tapeGraph = data; view.draw(); }
-        }
-      }
-    } catch (e) { /* keep the last drawing; try again */ }
-    setTimeout(tick, 5000);
-  }
-  tick();
+  every(5000, async () => {  // a failed fetch keeps the last drawing
+    const { status, data } = await apiGet('/api/line/graph');
+    if (status === 200) {
+      const key = JSON.stringify(data);
+      if (key !== last) { last = key; tapeGraph = data; view.draw(); }
+    }
+  }, { visibleOnly: true });
 }

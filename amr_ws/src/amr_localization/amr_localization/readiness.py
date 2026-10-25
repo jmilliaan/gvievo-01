@@ -17,20 +17,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from agv_core import se2
+
+from amr_base import wire
+
 UNLOCALIZED, CHECKING, READY, LOST = 0, 1, 2, 3
-NAMES = {UNLOCALIZED: "UNLOCALIZED", CHECKING: "CHECKING", READY: "READY", LOST: "LOST"}
+NAMES = wire.LOC_NAMES
 
 
-def _wrap(a: float) -> float:
-    return math.atan2(math.sin(a), math.cos(a))
-
-
-def _apply(frame: tuple[float, float, float], pose: tuple[float, float, float]) -> tuple[float, float, float]:
-    """Pose expressed in `frame`'s child, returned in `frame`'s parent."""
-    fx, fy, fyaw = frame
-    px, py, pyaw = pose
-    c, s = math.cos(fyaw), math.sin(fyaw)
-    return fx + c * px - s * py, fy + s * px + c * py, _wrap(fyaw + pyaw)
+_wrap = se2.wrap
 
 
 @dataclass(frozen=True)
@@ -171,14 +166,11 @@ class Readiness:
         self._prev_map_odom, self._prev_map_odom_t = (x, y, yaw), t
         if prev is None:
             return
+        a = abs(_wrap(yaw - prev[2]))
         if odom_base is None:
             d = math.hypot(x - prev[0], y - prev[1])
-            a = abs(_wrap(yaw - prev[2]))
         else:
-            px, py, _ = _apply(prev, odom_base)
-            nx, ny, _ = _apply((x, y, yaw), odom_base)
-            d = math.hypot(nx - px, ny - py)
-            a = abs(_wrap(yaw - prev[2]))
+            d, _ = se2.correction_at(prev, (x, y, yaw), odom_base)
         if d <= self.limits.jump_dist_m and a <= self.limits.jump_angle_rad:
             return
         if self._initial_t is not None and t - self._initial_t < self.limits.initial_grace_s:

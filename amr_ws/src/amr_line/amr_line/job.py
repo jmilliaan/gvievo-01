@@ -62,15 +62,13 @@ stop is the wrong direction.
 """
 import dataclasses
 
+from amr_base import hold_policy, wire
 from amr_line import marker_reader, tag_table
 
 # LineState.msg, and not free to change - see the module docstring.
 IDLE, ARMED, RUNNING, HOLD, DONE, FAULT = 0, 1, 2, 3, 4, 5
 
-STATE_NAMES = {
-    IDLE: "IDLE", ARMED: "ARMED", RUNNING: "RUNNING",
-    HOLD: "HOLD", DONE: "DONE", FAULT: "FAULT",
-}
+STATE_NAMES = wire.LINE_NAMES
 
 # Holds that clear themselves once the cause does. "estop" joins this set only
 # when auto_resume_estop is set, matching the executor's operator decision of
@@ -206,7 +204,8 @@ class FollowJob:
         self.accepted_t = None      # when the Start that began this run was accepted
         self.refused = None         # why the last Start was refused, until the node reports it
         self._binding = None        # (instance, generation) the run belongs to
-        self._prereq_since = None
+        self._loc = None            # the latest tape-locator snapshot (Inputs.loc), for at_home()
+        self._prereq = hold_policy.Debounce()
         self._auto_since = None
         self._resume_pending = False
         # The engine has no run odometer - _track_gap_m is distance since the
@@ -436,9 +435,10 @@ class FollowJob:
                       f"({site['TRIP_CALLS']} a trip), Start at {site['HOME']}")
 
     def at_home(self):
-        """(at_home, why_not). (False, "") for a mission without a Home stop."""
+        """(at_home, why_not). (False, "") for a mission without a Home stop. A site mission
+        answers with the trip's own predicate (_site_at_home, what a Start checks)."""
         if self.site is not None:
-            return False, ""
+            return self._site_at_home(self._loc)
         home = self.mission["HOME"] if self.mission else None
         if home is None:
             return False, ""
@@ -507,7 +507,8 @@ class FollowJob:
         self.followed_m = 0.0
         self.accepted_t = i.now
         self.hold_cause = ""
-        self._prereq_since = self._auto_since = None
+        self._prereq.reset()
+        self._auto_since = None
         self._resume_pending = False
         self._resume_at = None
         self.state = RUNNING
@@ -528,14 +529,14 @@ class FollowJob:
         """kind: start (IDLE/DONE), resume (a hold that waited for Start), station."""
         self._premove = {"kind": kind, "since": i.now, "back": (self.state, self.hold_cause, self.reason)}
         self.state = ARMED
-        self._prereq_since = None
+        self._prereq.reset()
         return self._premove_tick(i)
 
     def _premove_cancel(self, why):
         back_state, back_cause, _ = self._premove["back"]
         kind = self._premove["kind"]
         self._premove = None
-        self._prereq_since = None
+        self._prereq.reset()
         self.state, self.hold_cause = back_state, back_cause
         if kind in ("start", "uturn", "continue"):
             self._binding = None
@@ -569,12 +570,11 @@ class FollowJob:
             return self._premove_cancel(pre)
         waited = i.now - pm["since"]
         powered = not i.torque_off and i.drives_fresh
-        if not pre and powered and waited >= self.premove_s:
+        if not pre and hold_policy.premove_ready(waited, self.premove_s, i.drives_fresh, i.torque_off):
             return self._premove_go(i)
         if waited >= self.premove_timeout_s:
-            return self._premove_cancel(
-                f"drives did not power up within {self.premove_timeout_s:.0f} s "
-                "(safety chain open? release the E-stop and press Reset)")
+            return self._premove_cancel(hold_policy.premove_timeout_text(
+                self.premove_timeout_s, "safety chain open? release the E-stop and press Reset"))
         left = max(0.0, self.premove_s - waited)
         self.reason = (f"Start: warning, moving in {left:.1f} s" if powered or left > 0
                        else "Start: waiting for the drives to power up")
@@ -584,7 +584,7 @@ class FollowJob:
         kind = self._premove["kind"]
         back_cause = self._premove["back"][1]
         self._premove = None
-        self._prereq_since = None
+        self._prereq.reset()
         if kind == "start":
             return self._depart(i)
         if kind == "continue":
@@ -630,7 +630,8 @@ class FollowJob:
         self.hold_cause = ""
         self.accepted_t = None
         self._binding = None
-        self._prereq_since = self._auto_since = None
+        self._prereq.reset()
+        self._auto_since = None
         self._resume_pending = False
         self._resume_at = None
         self.followed_m = 0.0
@@ -691,7 +692,7 @@ class FollowJob:
         return ""
 
     def _auto_causes(self):
-        return _AUTO_CAUSES + (("estop",) if self.auto_resume_estop else ())
+        return hold_policy.auto_causes(_AUTO_CAUSES, self.auto_resume_estop)
 
     def _prereq_held(self, now, pre):
         """True once a prerequisite has failed CONTINUOUSLY for the grace.
@@ -700,22 +701,13 @@ class FollowJob:
         What is debounced is "something is wrong", not one message: the reason
         may change while the timer runs.
         """
-        if not pre:
-            self._prereq_since = None
-            return False
-        if self._prereq_since is None:
-            self._prereq_since = now
-        return now - self._prereq_since >= self.prereq_grace_s
+        return self._prereq.held(now, pre, self.prereq_grace_s)
 
     def _hold(self, cause, why):
         self.state = HOLD
         self.hold_cause = cause
         self._premove = None
-        self.reason = {
-            "field": f"safety stop (protective field): {why}",
-            "estop": f"safety stop (E-stop / safety chain): {why}",
-            "authority": f"authority lost: {why}",
-        }.get(cause, why)
+        self.reason = hold_policy.hold_text(cause, why, {"authority": "authority lost: {why}"})
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
@@ -750,6 +742,7 @@ class FollowJob:
         """Returns (left_rpm, right_rpm). Zero unless actually following."""
         # Every state, MANUAL jogs included: this is how "at Home" is proven.
         self.odometer.update(i.now, i.rfid, i.counts, i.counts_per_rev)
+        self._loc = i.loc
         self._markers_tick(i.markers)
         self.step_m = self._wheel_travel(i)
         # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
@@ -915,7 +908,6 @@ class FollowJob:
         speed: a warning-field hold slows the vehicle in the mux, where the follower
         cannot see it, and a commanded-speed distance would run out undriven.
         """
-        from agv_core import config as vehicle  # noqa: PLC0415
 
         from amr_line import uturn  # noqa: PLC0415
 
@@ -923,10 +915,7 @@ class FollowJob:
         self._counts_ref = tuple(counts) if counts is not None else None
         if counts is None or ref is None or not i.counts_per_rev:
             return None
-        m_per_count = 3.141592653589793 * vehicle.WHEEL_DIA_M / i.counts_per_rev
-        dl = abs(uturn.counts_delta(counts[0], ref[0]))
-        dr = abs(uturn.counts_delta(counts[1], ref[1]))
-        return 0.5 * (dl + dr) * m_per_count
+        return uturn.unsigned_travel_m(counts, ref, i.counts_per_rev)
 
     def _speed_inputs(self, i: Inputs):
         """Take HIGH away when its supports are gone; run the curve guard."""
@@ -1259,7 +1248,7 @@ class FollowJob:
             "station": (t.stop or {}).get("where", ""),
             "next_station": self.destination or "",
             "branch_intent": t.branch.ladder.intent(),
-            "slow_zone": bool(t.branch.slow),   # junction slow zone: no HIGH through it
+            "slow_zone": False,   # junction slow zones retired 2026-10-09 (slow_speed); the field stays
             "high_speed": bool(t.high),
             "speed_select": t.speed_select,
             "speed_reason": t.speed.reason,

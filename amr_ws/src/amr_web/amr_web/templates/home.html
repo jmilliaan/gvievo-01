@@ -83,24 +83,21 @@
 {% endblock %}
 {% block scripts %}<script src="/static/linetrack.js"></script>
 <script>
-const $ = id => document.getElementById(id);
-const LV = { info: 'lv-info', warn: 'lv-warn', error: 'lv-error' };
 let headline = null;
 
+const recover = () => act('/api/recover');
+const restart = text => { if (confirm(text)) act('/api/service/restart'); };
 // The primary button is whatever the top alarm's clears_by says. One button, never two.
 const ACTIONS = {
-  Acknowledge: () => api('/api/mission/ack').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
-  Recover:     () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
+  Acknowledge: () => act('/api/mission/ack'),
+  Recover:     recover,
   'Set position': () => { location.href = '/run'; },
-  Restart:     () => {
-    if (!confirm('Restart the vehicle software?\n\nSwitch the drives off and on first if a drive alarm is standing. Nothing moves during a restart.')) return;
-    api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-  },
+  Restart:     () => restart('Restart the vehicle software?\n\nSwitch the drives off and on first if a drive alarm is standing. Nothing moves during a restart.'),
 };
 
 $('home-primary').onclick = () => { const fn = ACTIONS[$('home-primary').textContent]; if (fn) fn(); };
-$('home-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-$('home-abort').onclick = () => { if (confirm('Abort the run?')) api('/api/mission/abort').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')); };
+$('home-pause').onclick = () => act('/api/mission/pause');
+$('home-abort').onclick = () => { if (confirm('Abort the run?')) act('/api/mission/abort'); };
 // Navigation switch. During a swap it shows where the vehicle is going, not where it was.
 let navBusy = false;
 for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
@@ -141,21 +138,15 @@ function liveTiles(st) {
   const r = rfidReading(st.rfid);
   if (!r.up) live('live-rfid', '––', r.why, 'off');
   else if (r.tag) live('live-rfid', r.tag, `reading now${rssiText(r.last.rssi_dbm)}`, 'ok');
-  else live('live-rfid', '––', r.last ? `last ${r.last.tag} · ${ago(r.last.age_s)}` : 'no tag under the reader', '');
-  if ($('live-marker')) {
-    const k = markerReading(st.markers), n = k.link ? k.link.count : 0;
-    const aborted = k.link && k.link.aborts ? ` · ${k.link.aborts} aborted` : '';
-    if (!k.up) live('live-marker', '––', k.why, k.misconfigured ? 'warn' : 'off');
-    else if (k.code) live('live-marker', String(k.code), `read now · ${k.last.lcp2_mm >= 0 ? '+' : ''}${k.last.lcp2_mm} mm${aborted}`, aborted ? 'warn' : 'ok');
-    else live('live-marker', '––', (k.last ? `last ${k.last.code} · ${ago(k.last.age_s)} · ${n} read` : 'no marker read yet') + aborted, aborted ? 'warn' : '');
-  }
+  else live('live-rfid', '––', r.last ? `last ${r.last.tag} · ${ago(r.last.age_s, 'ago')}` : 'no tag under the reader', '');
+  const mk = markerReading(st.markers), n = mk.link ? mk.link.count : 0;
+  const aborted = mk.link && mk.link.aborts ? ` · ${mk.link.aborts} aborted` : '';
+  if (!mk.up) live('live-marker', '––', mk.why, mk.misconfigured ? 'warn' : 'off');
+  else if (mk.code) live('live-marker', String(mk.code), `read now · ${mk.last.lcp2_mm >= 0 ? '+' : ''}${mk.last.lcp2_mm} mm${aborted}`, aborted ? 'warn' : 'ok');
+  else live('live-marker', '––', (mk.last ? `last ${mk.last.code} · ${ago(mk.last.age_s, 'ago')} · ${n} read` : 'no marker read yet') + aborted, aborted ? 'warn' : '');
   const t = st.line_track, el = $('live-line');
-  const fresh = !!t && t.age_s <= 1.0, max = (t && t.sensor_max_mm) || 100;
-  el.querySelectorAll('.live-bar em').forEach(d => {
-    const i = +d.dataset.i, on = fresh && t.valid[i];
-    d.hidden = !on;
-    if (on) d.style.left = `${50 + 50 * Math.max(-1, Math.min(1, t.lcp_mm[i] / max))}%`;
-  });
+  const fresh = lineFresh(t), max = (t && t.sensor_max_mm) || 100;
+  placeLcpDots(el.querySelectorAll('.live-bar em'), t, fresh, max);
   if (!fresh) { live('live-line', '–', t ? `stale ${num(t.age_s, 1)} s` : 'no reading', 'off'); return; }
   // One track is always LCP2 (MLS manual); at a diverter LCP2 is still the middle one.
   const k = t.valid[1] ? 1 : t.valid.indexOf(true);
@@ -197,7 +188,7 @@ function job(st) {
 function readiness(st) {
   const m = st.mode, p = st.panel, d = st.drives, mx = st.mux, l = st.localization;
   const transition = m && m.mode_name === 'TRANSITIONING' && m.requested_name !== m.mode_name ? ` → ${m.requested_name}` : '';
-  const panelVal = p ? (p.age_s > FRESH_S ? 'STALE' : (p.valid ? (p.mode_auto ? 'AUTO' : 'MANUAL') : 'INVALID')) : '–';
+  const panelVal = panelVerdict(p);
   tiles('home-ready', [
     ['Supervisor', m ? m.mode_name : 'NONE',
       m ? (m.fault_code ? `FAULT ${m.fault_code} · ${m.reason}` : `${m.phase || 'steady'}${transition} · ${m.reason || '—'}`)
@@ -209,7 +200,7 @@ function readiness(st) {
     ['Base ready', yesno(m && m.base_ready), 'drives · panel · lidar · mux', m && m.base_ready ? '' : 'bad'],
     ['Panel', panelVal, p ? `${num(p.age_s, 2)} s` : 'no image', panelVal === 'AUTO' || panelVal === 'MANUAL' ? '' : 'bad'],
     ['Drives', d ? (d.operational ? 'ARMED' : (d.link === 'standby' ? 'STANDBY' : 'OFF')) : '–', d ? (d.power_reason || `${num(d.age_s, 2)} s`) : 'no status', d && d.age_s <= FRESH_S ? (d.operational ? '' : 'warn') : 'bad'],
-    ['Command source', mx ? mx.source : '–', mx ? (mx.inhibited ? 'inhibited' : '—') : 'no mux state', mx && mx.inhibited ? 'warn' : ''],
+    ['Command source', ...sourceTile(mx)],
     ['Localisation', l ? l.state_name : (st.localization_stale ? 'STALE' : '–'), st.localization_stale ? 'old layer' : '—', l ? LOC_LEVEL[l.state_name] : ''],
     ['Manual available', yesno(m && m.manual_available), '—'],
     ['Autonomous available', yesno(m && m.autonomous_available), '—'],
@@ -217,11 +208,8 @@ function readiness(st) {
 }
 if ($('home-ready')) {
   $('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
-  $('btn-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-  $('btn-restart').onclick = () => {
-    if (!confirm('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.')) return;
-    api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
-  };
+  $('btn-recover').onclick = recover;
+  $('btn-restart').onclick = () => restart('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.');
 }
 
 onState(st => {
@@ -231,15 +219,8 @@ onState(st => {
   if ($('home-ready')) readiness(st);
 });
 
-// One poll for the whole page: the server already decided what is standing and what
-// the button is (amr_web/alarms.py), so nothing is re-derived here.
-async function alarms() {
-  try {
-    const { status, data } = await apiGet('/api/alarms');
-    if (status === 200) render(data);
-  } catch (e) { /* the rail's own poll reports the disconnection */ }
-  setTimeout(alarms, 1000);
-}
+// The rail's /api/alarms poll (amr.js) feeds this page: the server already decided what is
+// standing and what the button is (amr_web/alarms.py), so nothing is re-derived here.
 function render(d) {
   headline = d.headline;
   const h = d.headline;
@@ -254,11 +235,9 @@ function render(d) {
   $('home-pause').hidden = !h.run_active;
   $('home-abort').hidden = !h.run_active;
   const rows = d.alarms || [];
-  $('home-list').innerHTML = rows.length ? rows.map(a =>
-    `<div class="al-row standing ${LV[a.level]}"><span class="al-lv">${esc(a.level)}</span>` +
-    `<span class="al-msg"><span class="al-what">${esc(a.title)}</span>${esc(a.action)}` +
-    `<i class="al-detail">${esc(a.code)}${a.clears_by ? ` · clears by ${esc(a.clears_by)}` : ''} · ${esc(a.detail)}</i></span></div>`).join('')
+  $('home-list').innerHTML = rows.length ? rows.map(a => alarmRow(a,
+    `${esc(a.code)}${a.clears_by ? ` · clears by ${esc(a.clears_by)}` : ''} · ${esc(a.detail)}`)).join('')
     : '<div class="none">nothing standing</div>';
 }
-alarms();
+onAlarms(render);
 </script>{% endblock %}

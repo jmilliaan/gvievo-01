@@ -20,19 +20,19 @@ Tape localization (tracked plan 3, P1): with the profile's tape_loc.enabled, the
 also runs map_server, AMCL and the readiness monitor (amr_bringup.tape_loc) on the map
 of the active pointer ($AMR_STATE_DIR/line_graph.json, set from the Teach page). They
 are REQUIRED like the follower: AMCL exiting ends the layer (LAYER_EXITED, Recover on
-the Status page). No pointer, or a bundle that does not verify: the group is skipped
+Home). No pointer, or a bundle that does not verify: the group is skipped
 and the follower is told why - line following itself is never blocked by it.
 """
 
-import os
 
+from agv_core import paths
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 from amr_base import gating
-from amr_bringup import tape_loc
+from amr_bringup import scanner_fields, tape_loc
 from amr_bringup.launch_helpers import required
 
 
@@ -43,8 +43,7 @@ def _localization(generation: int) -> tuple[list, dict]:
     from amr_line import tape_graph_store as store  # noqa: PLC0415
 
     vehicle.load()
-    maps_dir = os.path.expanduser(os.environ.get("AMR_MAPS_DIR", "~/amr_maps"))
-    state_dir = os.path.expanduser(os.environ.get("AMR_STATE_DIR", "~/.amr"))
+    maps_dir, state_dir = paths.maps_dir(), paths.state_dir()
     params = {"maps_dir": maps_dir, "state_dir": state_dir, "loc_status": ""}
     if not vehicle.TAPE_LOC_ENABLED:
         params["loc_status"] = "off: tape_loc.enabled is false"
@@ -91,6 +90,7 @@ def _compose(context):
                     # and ONLY there. On the vehicle a stale /output_paths is
                     # "unknown" and the layer refuses to arm.
                     "field_source": "scanner" if real else "assume_clear",
+                    "field_output_index": scanner_fields.protective_index(scanner_fields.load()),
                     **loc_params,
                 }
             ],

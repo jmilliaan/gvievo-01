@@ -3,7 +3,8 @@ held-not-latched state machine with every halt trigger (plan: PP blind-run page)
 
 import pytest
 
-from amr_base import pp
+from amr_base import gating, pp
+from amr_base.arm_policy import Panel
 
 SEG_STRAIGHT = {"counts": [1_000_000, 1_000_000], "rpm": [1273.0, 1273.0], "duration_s": 3.0}
 # arc: inner wheel 60 % of the outer
@@ -260,8 +261,16 @@ def test_abandon_records_a_fault():
 
 # ---- the drive owner's own authority check ------------------------------------------
 
-LEASE_OK = (10.0, 3, pp.LEASE_COMMISSIONING)
-PANEL_OK = (10.0, True, False)
+def lease(t, generation, allowed):
+    return gating.Lease(t, "sup", generation, 1, allowed)
+
+
+def panel(t, valid, auto):
+    return Panel(t, valid, auto, False)
+
+
+LEASE_OK = lease(10.0, 3, pp.LEASE_COMMISSIONING)
+PANEL_OK = panel(10.0, True, False)
 
 
 def gate(**kw):
@@ -279,13 +288,13 @@ def test_gate_open_with_lease_generation_and_manual_panel():
     [
         ({"enabled": False}, "locked"),
         ({"lease": None}, "lease"),
-        ({"lease": (9.0, 3, pp.LEASE_COMMISSIONING)}, "lease"),
-        ({"lease": (10.0, 3, 1)}, "does not allow commissioning"),
+        ({"lease": lease(9.0, 3, pp.LEASE_COMMISSIONING)}, "lease"),
+        ({"lease": lease(10.0, 3, 1)}, "does not allow commissioning"),
         ({"move_generation": 4}, "generation"),
         ({"panel": None}, "panel state stale"),
-        ({"panel": (9.5, True, False)}, "panel state stale"),
-        ({"panel": (10.0, False, False)}, "not valid"),
-        ({"panel": (10.0, True, True)}, "AUTO"),
+        ({"panel": panel(9.5, True, False)}, "panel state stale"),
+        ({"panel": panel(10.0, False, False)}, "not valid"),
+        ({"panel": panel(10.0, True, True)}, "AUTO"),
     ],
 )
 def test_gate_refuses(kw, fragment):

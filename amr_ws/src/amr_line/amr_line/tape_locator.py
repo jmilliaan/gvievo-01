@@ -27,11 +27,24 @@ import collections
 import dataclasses
 import math
 
-from amr_line import tape_graph as tg
+from amr_line import trip_route
 
 HEALTHY, DEGRADED, LOST = "HEALTHY", "DEGRADED", "LOST"
 # A LOST locator re-acquires (readiness READY again) on two poses that agree this well.
 REACQUIRE_AGREE_M = 0.05
+# The pose handed to AMCL from a tape position (HOME, or the survey start): 5 cm, ~1.7 deg.
+INITIAL_POSE_SIGMA_XY_M = 0.05
+INITIAL_POSE_SIGMA_YAW_RAD = 0.03
+
+
+def initial_pose_cov():
+    """The 6x6 row-major covariance for an initial pose set from the tape (x, y, yaw only)."""
+    cov = [0.0] * 36
+    cov[0] = cov[7] = INITIAL_POSE_SIGMA_XY_M ** 2
+    cov[35] = INITIAL_POSE_SIGMA_YAW_RAD ** 2
+    return cov
+
+
 REACQUIRE_MIN_WINDOW_M = 1.0
 
 
@@ -65,6 +78,20 @@ class Params:
                    healthy_window_m=v.TAPE_LOC_HEALTHY_WINDOW_M)
 
 
+def interp_sorted(series, t):
+    """Linear interpolation in a time-sorted [(t, value)] sequence, for t inside
+    [first t, last t] (the caller decides what lies outside). Bisection, O(log n)."""
+    lo, hi = 0, len(series) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if series[mid][0] <= t:
+            lo = mid
+        else:
+            hi = mid
+    (t0, v0), (t1, v1) = series[lo], series[hi]
+    return v0 if t1 == t0 else v0 + (v1 - v0) * (t - t0) / (t1 - t0)
+
+
 class OdomBuffer:
     """(t, travel) samples for span_s; interpolated travel at a past stamp."""
 
@@ -87,15 +114,7 @@ class OdomBuffer:
             return None
         if t >= q[-1][0]:
             return q[-1][1]
-        lo, hi = 0, len(q) - 1
-        while hi - lo > 1:
-            mid = (lo + hi) // 2
-            if q[mid][0] <= t:
-                lo = mid
-            else:
-                hi = mid
-        (t0, s0), (t1, s1) = q[lo], q[hi]
-        return s0 if t1 == t0 else s0 + (s1 - s0) * (t - t0) / (t1 - t0)
+        return interp_sorted(q, t)
 
     def clear(self):
         self._q.clear()
@@ -344,21 +363,22 @@ class Shadow:
     """P1 shadow mode: where the locator WOULD have stopped and ordered, logged, with the
     check each decision would have met. Motion is not touched."""
 
-    def __init__(self, route, params, stop_distance_m, uturns=None, points=()):
+    def __init__(self, route, params, stop_distance_m, uturns=None, points=(), steers=None):
         """points: [(S, id, what)] taught positions of tracked plan 4 on this route (mid-line
         U-turn points, zone ends): logged where the position engine would act on them."""
         self.p = params
         self.events = []   # (S_trigger, kind, id, detail)
         for S, ident, what in points:
             self.events.append((S, "point", ident, what))
-        for st in route.stops[1:]:
-            self.events.append((st["S"] - stop_distance_m, "stop", st["id"], st["S"]))
-        for n in route.nodes:
-            if n["kind"] == "junction" and n["order"] in ("left", "right"):
-                self.events.append((n["S_fork"] - params.junction_lead_m, "order", n["id"], n["order"]))
-            elif n["kind"] == "uturn":
-                lead = (uturns or {}).get(n["id"], {}).get("lead_m", 1.5)
-                self.events.append((n["S"] - lead, "uturn", n["id"], n["S"]))
+        # The engine's own schedule (trip_route.decision_points / trigger_S) over the whole
+        # circuit, so a shadow line says where the live engine would act (lean plan D13).
+        turns = [{"id": n["id"], "mode": "tapeend", "S": n["S"], "lead_m": 1.5,
+                  **(uturns or {}).get(n["id"], {})}
+                 for n in route.nodes if n["kind"] == "uturn" and not trip_route.side_at(n, steers or {})]
+        for e in trip_route.decision_points(route.stops, route.nodes, params.junction_lead_m, steers,
+                                            turns, check=False):
+            detail = e["order"] if e["kind"] == "order" else e["S"]
+            self.events.append((trip_route.trigger_S(e, stop_distance_m), e["kind"], e["id"], detail))
         self.events.sort(key=lambda e: e[0])
         self._next = 0
 
@@ -385,8 +405,3 @@ class Shadow:
             out.append(("info" if ok else "warn",
                         f"shadow: {what} at S {S_t:.2f} m, sigma {loc.sigma:.3f} m: {verdict}"))
         return out
-
-
-def route_for(circuit_id, mission, graph):
-    """Compile a circuit of a parsed site mission against a graph (RouteError if untaught)."""
-    return tg.compile_route(circuit_id, mission["CIRCUITS"][circuit_id], graph)

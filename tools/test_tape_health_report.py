@@ -56,3 +56,14 @@ def test_the_cli_reads_the_last_runs_and_reports(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["runs"] == 3 and out["weak"][0]["s0_m"] == 3.0 and out["weak"][0]["runs"] == 1
     assert tr.main(["--dir", str(tmp_path / "none")]) == 1
+
+
+def test_the_report_reads_where_the_run_writes(tmp_path, monkeypatch):
+    """Lean plan D24: producer (amr_line.tape_health) and reader agree on the directory."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(here, "..", "amr_ws", "src", "amr_line"))
+    from amr_line import tape_health  # noqa: PLC0415
+
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path))
+    written = tape_health.write_run(str(tmp_path), good_run(), {"graph": "g2"}, now=0.0)
+    assert os.path.dirname(written) == tr.default_dir()

@@ -22,6 +22,8 @@ import math
 import os
 import time
 
+from agv_core.drivers.canbus.mls_markers import SOURCE_TPDO
+
 BIN_M = 0.25
 
 
@@ -47,7 +49,7 @@ class TapeHealth:
         """One /amr/line_track sample."""
         rising = bool(event_flag) and not self._prev_flag
         self._prev_flag = bool(event_flag)
-        if source != "tpdo":
+        if source != SOURCE_TPDO:
             return
         if self._where is None:
             self.unplaced += 1

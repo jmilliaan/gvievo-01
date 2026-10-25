@@ -39,6 +39,8 @@ CLEARS = ("auto", "start_button", "ack", "operator", "recover", "power_cycle", "
 # Worst first: the operator surface sorts standing alarms by this, so the one
 # sentence on the Home page is the one that actually holds the vehicle.
 SEVERITY_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
+# Severity -> amr_interfaces Event.level (INFO=0, WARN=1, ERROR=2; test_alarms pins it).
+LEVEL = {INFO: 0, WARN: 1, ERROR: 2}
 
 
 @dataclass(frozen=True)
@@ -257,9 +259,6 @@ def _rows() -> tuple[Alarm, ...]:
         a("EXEC_POSE_INJECTED", ERROR, "ack", "The position was changed while the vehicle was moving",
           "Press Acknowledge on the Run page, then reload the mission.",
           "An /initialpose arrived during EXECUTING: progress is no longer trustworthy."),
-        a("EXEC_ROUTE_INVALID", ERROR, "operator", "This mission cannot be run",
-          "Pick another mission, or call the engineer to fix this one.",
-          "Route/mission failed to compile or validate against the active map revision."),
 
         # ---- mapping ----
         a("MAP_SAVE_FAILED", ERROR, "operator", "The map was not saved",
@@ -396,6 +395,11 @@ def get(code: str) -> Alarm:
         return row
     return UNKNOWN if not code else Alarm(code, UNKNOWN.severity, UNKNOWN.clears_by,
                                           UNKNOWN.title, UNKNOWN.action, UNKNOWN.hint)
+
+
+def level(code: str) -> int:
+    """The Event.level an event with this code carries: its catalogue severity."""
+    return LEVEL[get(code).severity]
 
 
 def describe(code: str, detail: str = "", since: float | None = None) -> dict:

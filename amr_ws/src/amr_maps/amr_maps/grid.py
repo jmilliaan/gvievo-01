@@ -65,12 +65,50 @@ class Grid:
         )
 
 
-def to_pgm_bytes(grid: Grid) -> bytes:
-    """Binary PGM (P5). unknown -> 205, free -> 254, occupied -> 0 (map_server trinary)."""
+# Occupancy at or above this is an obstacle (map_server occupied_thresh 0.65).
+OCCUPIED = 65
+
+
+def occupied(data) -> np.ndarray:
+    """The obstacle mask of a Grid (or of its data array)."""
+    return (data.data if isinstance(data, Grid) else data) >= OCCUPIED
+
+
+def trinary_image(grid: Grid) -> np.ndarray:
+    """map_server's trinary gray: unknown 205, free 254, occupied 0. Row 0 is the grid's
+    bottom row (flip it for an image, as to_pgm_bytes does)."""
     img = np.full(grid.data.shape, 205, dtype=np.uint8)
     img[grid.data == 0] = 254
-    img[grid.data >= 65] = 0
-    img = np.flipud(img)
+    img[occupied(grid)] = 0
+    return img
+
+
+def dilate_square(mask: np.ndarray, k: int) -> np.ndarray:
+    """A boolean mask grown by k cells in every direction (a square, no wrap at the edges)."""
+    p = np.pad(mask, k)
+    out = np.zeros_like(mask)
+    h, w = mask.shape
+    for dr in range(-k, k + 1):
+        for dc in range(-k, k + 1):
+            out |= p[k + dr : k + dr + h, k + dc : k + dc + w]
+    return out
+
+
+def read_optional(path: str) -> Grid | None:
+    """read(path), or None when the file does not exist (an optional mask)."""
+    return read(path) if os.path.isfile(path) else None
+
+
+def meta_dict(grid: Grid) -> dict:
+    """A grid's size and placement as the web pages read it."""
+    m = grid.meta
+    return {"width": grid.width, "height": grid.height, "resolution": m.resolution,
+            "origin": [m.origin_x, m.origin_y, m.origin_yaw]}
+
+
+def to_pgm_bytes(grid: Grid) -> bytes:
+    """Binary PGM (P5). unknown -> 205, free -> 254, occupied -> 0 (map_server trinary)."""
+    img = np.flipud(trinary_image(grid))
     header = f"P5\n{grid.width} {grid.height}\n255\n".encode()
     return header + img.tobytes()
 

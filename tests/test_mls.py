@@ -149,8 +149,12 @@ def test_marker_tooling():
         [rd(0), rd(0, True), rd(0b00101, True), rd(0b00101), rd(0), rd(0, True), rd(0)])]
     check("the watch prints changes only",
           lines[0] is not None and all(x is not None for x in lines[1:]), str(lines))
-    check("a code read counts once; a reading-code episode with no code is an abort",
-          w.summary()["codes"] == {2: 1} and w.summary()["aborts"] == 1, str(w.summary()))
+    check("a code read counts once; an uncoded episode is not an abort inside the grace frames",
+          w.summary()["codes"] == {2: 1} and w.summary()["aborts"] == 0, str(w.summary()))
+    for k in range(5):  # the runtime's ABORT_GRACE_FRAMES: FailSafe may report a frame late
+        w.feed(0.1 + 0.01 * k, rd(0))
+    check("...and is one after them, as the runtime detector counts it",
+          w.summary()["aborts"] == 1, str(w.summary()))
     w.feed(1.0, rd(0, polarity=0x20))
     check("the watch records the track polarity (B0)", w.summary()["polarity"] == ["north", "south"])
 

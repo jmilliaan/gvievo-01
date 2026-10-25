@@ -2,7 +2,6 @@
   "profile_name": "agv-01",
   "tracked": null,
   "autopilot": {
-    "dry_run": false,
     "invert_error": true,
     "k_ratio": 11.3,
     "kd": 0.95,
@@ -176,12 +175,10 @@
     "left_node": 1,
     "right_node": 2,
     "sensor_node": 10,
-    "heartbeat_ms": 200,
-    "use_rpdo": false
+    "heartbeat_ms": 200
   },
   "monitor": {
     "enabled": true,
-    "poll_period_s": 0.1,
     "driver_temp_warn_c": 70.0,
     "driver_temp_trip_c": 85.0,
     "motor_temp_warn_c": 80.0,
@@ -203,7 +200,7 @@
     "max_lateral_m": 0.1,
     "innov_min_m": 0.1,
     "pose_max_age_s": 0.5,
-    "sigma_station_m": 0.025,
+    "sigma_station_m": 0.05,
     "sigma_junction_m": 0.2,
     "junction_lead_m": 1.0,
     "lost_rejects": 5,
@@ -217,9 +214,7 @@
     "live": false
   },
   "imu": {
-    "enabled": true,
-    "poll_period_s": 0.04,
-    "retry_period_s": 2.0
+    "enabled": true
   },
   "blind_run": {
     "max_distance_m": 10.0,
@@ -247,8 +242,6 @@
   },
   "timing": {
     "loop_period_s": 0.02,
-    "telemetry_period_s": 0.2,
-    "manual_watchdog_s": 0.6,
     "driver_timeout_s": 0.6,
     "auto_start_delay_s": 2.0,
     "premove_timeout_s": 8.0

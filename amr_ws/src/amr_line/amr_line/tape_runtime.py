@@ -13,6 +13,7 @@ the same clock). Wheel travel is SIGNED forward travel, so a pivot adds about no
     teach(action)    map <id> <rev> | pass_start <circuit> | pass_stop | pass_discard |
                      passes | pass_delete <name> | station <id> | mark [label] | marks |
                      mark_delete <M> | mark_role <M> <station or point | -> | roles |
+                     mark_offset | mark_along <M> <metres> [<new M>] |
                      build | publish | activate <g> | status
     begin_trip(r)    tracked plan 4: the locator moves onto a trip's route (trip_route) at
                      the AGV's place relative to HOME; loc_state() is what the job acts on
@@ -195,7 +196,14 @@ class TapeRuntime:
         """trip.Trip -> trip_route.TripRoute on the active graph (RouteError when it cannot)."""
         if self.graph is None:
             raise tg.RouteError(f"no active tape graph ({self.detail})")
-        return trip_route.compile_trip(trip, self.m, self.graph, junction_lead_m=self.p.junction_lead_m)
+        return trip_route.compile_trip(trip, self.m, self.graph, junction_lead_m=self.p.junction_lead_m,
+                                       areas=self._areas())
+
+    def _areas(self):
+        """The high-speed areas of the active map revision, read fresh: an area drawn on the map
+        counts from the next trip on, with no rebuild."""
+        return store.load_areas(self.state_dir, self.sel["map_id"], self.sel["map_revision"]) \
+            if self.sel is not None else {}
 
     def begin_trip(self, route):
         """Move the locator onto the trip's route, where it is now relative to HOME. (ok, msg)."""
@@ -241,23 +249,21 @@ class TapeRuntime:
         self.events.append((INFO, f"shadow: locator started at {self.m['HOME']} on {self.route.circuit}"))
 
     def _new_shadow(self):
-        """The lap's would-be decisions, the taught plan-4 points on the circuit included: a
-        mid-line U-turn point where it would stop and pivot, a zone end where HIGH would start
-        or end (E2: the log is checked against the floor before the engine drives)."""
+        """The lap's would-be decisions, the plan-4 positions on the circuit included: a taught
+        mid-line U-turn point where it would stop and pivot, where the circuit enters and leaves
+        each high-speed area (E2: the log is checked against the floor before the engine drives)."""
         points = []
         for pid in self.m.get("POINTS", {}):
             st = self.graph.stations.get(pid) if self.graph else None
-            hit = next((s0 + st.s for s0, leg in self.route.segments if st and leg.id == st.leg), None)
-            if hit is None:
-                continue
-            if pid in self.m.get("UTURN_POINTS", {}):
+            hit = next((s0 + st.s - lo for s0, leg, lo, _hi in self.route.segments
+                        if st and leg.id == st.leg), None)
+            if hit is not None:
                 what = f"U-turn point of {self.m['UTURN_POINTS'][pid]['machine']}"
                 points.append((hit - self.m["STOP_DISTANCE_M"], pid, what))
-            else:
-                zone = next(z for z, row in self.m["ZONES"].items() if pid in (row["from"], row["to"]))
-                side = "HIGH from" if self.m["ZONES"][zone]["from"] == pid else "NORMAL by"
-                points.append((hit, pid, f"zone {zone}: {side}"))
-        return tl.Shadow(self.route, self.p, self.m["STOP_DISTANCE_M"], self.m["UTURNS"], points)
+        for a, b, aid in trip_route.area_ranges(self.route.segments, self._areas()):
+            points += [(a, aid, "high-speed area: HIGH from"), (b, aid, "high-speed area: NORMAL by")]
+        return tl.Shadow(self.route, self.p, self.m["STOP_DISTANCE_M"], self.m["UTURNS"], points,
+                         self.m["CIRCUITS"][self.route.circuit].get("steers"))
 
     def _shadow_tick(self, still):
         loc = self.loc
@@ -286,8 +292,8 @@ class TapeRuntime:
         fn = getattr(self, f"_t_{action}", None)
         if fn is None:
             return False, (f"unknown teach action {action!r}: map, pass_start, pass_stop, pass_discard, "
-                           f"passes, pass_delete, station, mark, marks, mark_delete, mark_role, roles, "
-                           f"build, publish, activate, status")
+                           f"passes, pass_delete, station, mark, marks, mark_delete, mark_role, mark_offset, "
+                           f"mark_along, roles, build, publish, activate, status")
         try:
             return fn(t, (arg or "").strip())
         except (store.StoreError, tg.GraphError, tt.TeachError, ValueError) as e:
@@ -400,7 +406,13 @@ class TapeRuntime:
         stamp, x, y, yaw = self._poses[-1]
         then = self._odom.at(stamp)
         ahead = (self.travel - then) if (then is not None and self.travel is not None) else 0.0
-        leg, s, d, (px, py, ph), over = tt.place_mark(graph, x, y, yaw, ahead)
+        try:
+            leg, s, d, (px, py, ph), over = tt.place_mark(graph, x, y, yaw, ahead)
+        except tt.TeachError:
+            # Off every built leg (2026-10-25: the first lap of a new circuit, C-BTU): kept at the
+            # AMCL pose moved on by the travel since it; Build puts it on its leg once there is one.
+            leg, s, over = "", 0.0, 0.0
+            px, py, ph = x + ahead * math.cos(yaw), y + ahead * math.sin(yaw), yaw
         sel = self.sel
         marks = store.load_marks(self.state_dir, sel["map_id"], sel["map_revision"])
         n = 1 + max((int(k[1:]) for k in marks if k[1:].isdigit()), default=0)
@@ -412,7 +424,53 @@ class TapeRuntime:
         extra = f"; {over:.2f} m past the leg's end, put at its end" if over > 0.01 else ""
         extra += f"; marked while {doubt}: check it on the map" if doubt else ""
         name = f" ({arg})" if arg else ""
+        if not leg:
+            return True, (f"{mid}{name} at ({px:.2f}, {py:.2f}), not on a built leg yet: Build puts it "
+                          f"on its leg{extra}")
         return True, f"{mid}{name} on {leg} at {s:.2f} m, ({px:.2f}, {py:.2f}){extra}"
+
+    def _t_mark_offset(self, _t, arg):
+        """mark_offset <ref mark> <metres> [<new id>]: a mark on the tape the other way past the
+        reference mark (the inbound stop beside an outbound release: site D17), the given distance
+        along that tape (+ = the way the AGV drives there), measured on the floor (2026-10-25)."""
+        return self._offset(arg, "mark_offset", same=False)
+
+    def _t_mark_along(self, _t, arg):
+        """mark_along <ref mark> <metres> [<new id>]: a mark on the reference mark's own tape, the
+        given distance along it (+ = onward, the way the AGV drives there): a U-turn point past
+        its machine's release stop (2026-10-25)."""
+        return self._offset(arg, "mark_along", same=True)
+
+    def _offset(self, arg, action, same):
+        why = self._need_map()
+        if why:
+            return False, why
+        parts = arg.split()
+        if len(parts) not in (2, 3):
+            return False, f"{action} <mark> <metres> [<new mark id>]"
+        ref, d = parts[0], float(parts[1])
+        graph = self.staged or self.graph
+        if graph is None:
+            return False, "no legs: build (or activate a graph) first"
+        sel = self.sel
+        marks = store.load_marks(self.state_dir, sel["map_id"], sel["map_revision"])
+        mk = marks.get(ref)
+        if mk is None:
+            return False, f"no mark {ref!r}"
+        if len(parts) == 3:
+            mid = parts[2]
+            if not (mid[:1] == "M" and mid[1:].isdigit()):
+                return False, f"a mark id is M<number>, got {mid!r}"
+            if mid in marks:
+                return False, f"{mid} exists already"
+        else:
+            mid = f"M{1 + max((int(k[1:]) for k in marks if k[1:].isdigit()), default=0)}"
+        leg, s, (px, py, ph) = tt.offset_mark(graph, mk["leg"], mk["pose"][0], mk["pose"][1], d, same=same)
+        marks[mid] = {"label": f"{ref} {d:+.2f} m", "leg": leg, "s": round(s, 3),
+                      "pose": [round(px, 3), round(py, 3), round(ph, 4)], "marked": tt.now_iso(),
+                      "lag_m": 0.0, "loc": "", "from": ref, "offset_m": d}
+        store.save_marks(self.state_dir, sel["map_id"], sel["map_revision"], marks)
+        return True, f"{mid} on {leg} at {s:.2f} m ({d:+.2f} m from {ref}), ({px:.2f}, {py:.2f})"
 
     def _t_marks(self, _t, _arg):
         why = self._need_map()
@@ -511,7 +569,7 @@ class TapeRuntime:
                 lost.append(k)
         if marks:
             store.save_marks(self.state_dir, sel["map_id"], sel["map_revision"], marks)
-        return [f"marks no longer on a leg: {', '.join(lost)}"] if lost else []
+        return [f"marks not on a built leg: {', '.join(lost)}"] if lost else []
 
     def _t_station(self, t, arg):
         why = self._need_map()

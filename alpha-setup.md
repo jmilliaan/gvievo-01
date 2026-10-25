@@ -661,7 +661,7 @@ pip3 install --user python-can==4.6.1 pymodbus==3.15.0 flask==3.1.3 numpy==2.2.6
 
 ### 5.3 `~/.bashrc` — the vehicle shell environment
 
-Append (this is what `amr-launch.sh` / `amr-supervisor.sh` do for the service;
+Append (this is what `amr-supervisor.sh` does for the service;
 an interactive shell must match or `amr_interfaces` messages will not decode
 and nothing will discover):
 
@@ -708,7 +708,6 @@ The repo carries the unit and its helpers under `amr_ws/deploy/`:
 | `amr.service` | the **only** application boot unit; `BindsTo` can0; `EnvironmentFile=amr.env`; `ExecStartPre` creates `/run/lock/amr` (1777), `~/.amr`, `~/amr_maps`; `KillSignal=SIGINT`, `TimeoutStopSec=55`; `Restart=on-failure` 3×/60 s |
 | `amr.env` | `AMR_MAPS_DIR`, `AMR_STATE_DIR`, feature flags `AMR_WEB/AMR_FOXGLOVE/AMR_LIDAR=true`, `AMR_LOC_BLANK_DYNAMIC=false`. **Paths and switches only; boot never selects a map or resumes a job.** |
 | `amr-supervisor.sh` | `ExecStart`: sources ROS + overlay + `env/vehicle.sh`, runs `amr_bringup.supervisor_node -p real:=true ...` |
-| `amr-launch.sh` | the same overlay for `ros2 launch` children; exports `PYTHONPATH=<repo root>` |
 | `validate.sh` | no-side-effect check: paths, `bash -n`, `systemd-analyze verify`, every `${VAR}` in Exec lines defined in `amr.env`, `agv_core/` present |
 | `install.sh` | backs up `/etc/systemd/system/amr.service` to `/var/backups/amr-units/<ts>/`, installs, `daemon-reload`. **Never enables/starts anything** (enforced by `validate.sh`). |
 

@@ -26,6 +26,10 @@ under another revision, every station is somewhere else: refused at load, never
 import bisect
 import math
 
+from agv_core import mission as missions
+
+from amr_line import branch
+
 GRAPH_FORMAT = 1
 STEP_M = 0.05
 # A station must project this close to its leg when it is taught or loaded.
@@ -42,8 +46,7 @@ class GraphError(ValueError):
     """A graph that cannot be used as written: refused, with the reason."""
 
 
-def leg_id(frm, order, to):
-    return f"{frm}:{order}>{to}"
+leg_id = missions.leg_id  # the persisted leg id, shared with the site-mission loader
 
 
 def _wrap(a):
@@ -283,7 +286,9 @@ class RouteError(GraphError):
 class Route:
     """One circuit, HOME to HOME, as a single distance S.
 
-    segments  [(S0, leg)] in travel order; the home leg is first and last
+    segments  [(S0, leg, lo, hi)] in travel order: S = S0 + (s - lo) for s in [lo, hi] on the
+              leg. A whole circuit drives every leg end to end (lo 0, hi its length); a trip
+              (trip_route.TripRoute) cuts legs at a mid-line U-turn. The home leg is first and last
     stops     [{"id", "S"}] every stop item of the circuit, HOME first and last
     nodes     [{"id", "kind": "junction"|"uturn", "order", "S", "S_fork", "sigma", "leg_in"}]:
               S is where the leg in ends (the single track again, or the tape end);
@@ -293,7 +298,7 @@ class Route:
     def __init__(self, circuit_id, segments, stops, nodes):
         self.circuit = circuit_id
         self.segments = segments
-        self._starts = [s0 for s0, _ in segments]
+        self._starts = [seg[0] for seg in segments]
         self.stops = stops
         self.nodes = nodes
         self.S_start = stops[0]["S"]
@@ -301,14 +306,14 @@ class Route:
 
     @property
     def length(self):
-        s0, leg = self.segments[-1]
-        return s0 + leg.length
+        s0, _leg, lo, hi = self.segments[-1]
+        return s0 + hi - lo
 
     def at(self, S):
-        """(index, leg, s) of the segment holding S (clamped to the route)."""
+        """(index, leg, s on the leg) of the segment holding S (clamped to the route)."""
         i = min(max(bisect.bisect_right(self._starts, S) - 1, 0), len(self.segments) - 1)
-        s0, leg = self.segments[i]
-        return i, leg, min(max(S - s0, 0.0), leg.length)
+        s0, leg, lo, hi = self.segments[i]
+        return i, leg, min(max(lo + S - s0, lo), hi)
 
     def point(self, S):
         _, leg, s = self.at(S)
@@ -322,14 +327,41 @@ class Route:
         inside the window. Inside the window, the hint (the predicted S) breaks a tie: a
         turnaround leaves both directions of the tape in one window."""
         hits = []
-        for s0, leg in self.segments:
-            if s0 > S_hi or s0 + leg.length < S_lo:
+        for s0, leg, lo, hi in self.segments:
+            if s0 > S_hi or s0 + hi - lo < S_lo:
                 continue
-            hits += [(s0 + s, d, dist) for s, d, dist in leg.line._candidates(x, y, S_lo - s0, S_hi - s0)]
+            a, b = max(lo, lo + S_lo - s0), min(hi, lo + S_hi - s0)
+            hits += [(s0 + s - lo, d, dist) for s, d, dist in leg.line._candidates(x, y, a, b)]
         return _pick(hits, hint)
 
     def stop(self, ident):
         return next((s for s in self.stops if s["id"] == ident), None)
+
+    def where(self, S):
+        """'<leg> at <s> m' for messages."""
+        _, leg, s = self.at(S)
+        return f"{leg.id} at {s:.2f} m"
+
+
+def _circuit_order(circuit_id, circuit, graph, also_missing=()):
+    """The circuit's legs in driving order, HOME to HOME: the home leg (listed last) out of the
+    bay, the others, the home leg back in. RouteError names every leg not taught (and
+    `also_missing`, the caller's own untaught items)."""
+    legs = circuit["legs"]
+    missing = sorted({leg["id"] for leg in legs if leg["id"] not in graph.legs}) + list(also_missing)
+    if missing:
+        raise RouteError(f"{circuit_id} not taught: {', '.join(missing)}")
+    return [legs[-1]] + legs[:-1] + [legs[-1]]
+
+
+def _node(prev, leg, s0):
+    """The node where `prev` ends and `leg` starts at S = s0, in the locator's format: a U-turn
+    or a junction, its fork back from S where the multi-track began on the teach passes."""
+    kind = "uturn" if prev.end_kind == "uturn" else "junction"
+    return {"id": leg.frm, "kind": kind, "order": leg.order, "S": s0,
+            "S_fork": s0 - prev.fork_back_m if prev.end_kind == "fork" else s0,
+            "sigma": max(prev.end_spread_m, MIN_END_SPREAD_M), "leg_in": prev.id,
+            "leg_out": leg.id, "fork": prev.end_kind == "fork"}
 
 
 def compile_route(circuit_id, circuit, graph):
@@ -337,25 +369,21 @@ def compile_route(circuit_id, circuit, graph):
 
     RouteError names everything not taught yet, so the Teach page can list it."""
     legs = circuit["legs"]           # [{"id", "from", "order", "to", "stops": [...]}], home leg last
-    home_leg = legs[-1]
-    order = [home_leg] + legs[:-1] + [home_leg]
-    missing = sorted({leg["id"] for leg in legs if leg["id"] not in graph.legs})
     stops_needed = [sid for leg in legs for sid in leg["stops"]]
-    missing += sorted({f"station {sid}" for sid in stops_needed if sid not in graph.stations})
-    if missing:
-        raise RouteError(f"{circuit_id} not taught: {', '.join(missing)}")
+    order = _circuit_order(circuit_id, circuit, graph,
+                           sorted({f"station {sid}" for sid in stops_needed if sid not in graph.stations}))
 
     segments, S0 = [], 0.0
     for spec in order:
         leg = graph.legs[spec["id"]]
-        segments.append((S0, leg))
+        segments.append((S0, leg, 0.0, leg.length))
         S0 += leg.length
 
     stops = []
     # The home leg is driven twice: out of the bay (the stops before the first node, HOME
     # at the start) and back into it (the stops after the last node, HOME at the end).
     for k, spec in enumerate(order):
-        s0, _leg = segments[k]
+        s0 = segments[k][0]
         if k == 0:
             ids = circuit["home_depart"]
         elif k == len(order) - 1:
@@ -371,28 +399,14 @@ def compile_route(circuit_id, circuit, graph):
         if b["S"] < a["S"]:
             raise RouteError(f"{circuit_id}: station {b['id']} is taught before {a['id']} on the tape")
 
-    nodes = []
-    for k in range(1, len(order)):
-        s0, leg = segments[k]
-        _p0, prev = segments[k - 1]
-        kind = "uturn" if prev.end_kind == "uturn" else "junction"
-        nodes.append({"id": leg.frm, "kind": kind, "order": leg.order, "S": s0,
-                      "S_fork": s0 - prev.fork_back_m if prev.end_kind == "fork" else s0,
-                      "sigma": max(prev.end_spread_m, MIN_END_SPREAD_M), "leg_in": prev.id,
-                      "leg_out": leg.id, "fork": prev.end_kind == "fork"})
+    nodes = [_node(segments[k - 1][1], segments[k][1], segments[k][0]) for k in range(1, len(order))]
     return Route(circuit_id, segments, stops, nodes)
-
-
-def lateral_to(leg, x, y):
-    """|distance| from (x, y) to a leg anywhere along it."""
-    hit = leg.line.project(x, y)
-    return abs(hit[1]) if hit else math.inf
 
 
 # -- the MLS fork episodes ----------------------------------------------------------
 
-MULTI_NLCP = (3, 6, 7)
-SINGLE_NLCP = 2
+# The MLS #LCP meanings, from the follower's verbatim port (branch.py, read only).
+MULTI_NLCP, SINGLE_NLCP, CROSSING_NLCP = branch.MULTI_NLCP, branch.SINGLE_NLCP, branch.CROSSING_NLCP
 
 
 class ForkDetector:
@@ -418,7 +432,7 @@ class ForkDetector:
         if nlcp in MULTI_NLCP:
             if self._start is None:
                 self._start, self._cross = travel, False
-            self._cross = self._cross or nlcp == 7
+            self._cross = self._cross or nlcp == CROSSING_NLCP
             self._end = None
             self.multi = True
             return None

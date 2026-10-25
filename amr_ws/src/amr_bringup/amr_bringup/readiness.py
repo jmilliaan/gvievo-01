@@ -13,14 +13,12 @@ import re
 import threading
 import time
 
-from agv_core import disk
-
+from amr_base import drive_state, wire
 from amr_bringup import mode_fsm as fsm
 
 MAP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
-# drive_node's standby (2026-10-08): linked, power stage off on purpose. Not an emergency.
-STANDBY_STATES = ("Ready to switch on", "Switched on")
+STANDBY_STATES = drive_state.STANDBY_STATES
 
 
 def drives_ok(operational: bool, link_state: str, left_state: str, right_state: str) -> bool:
@@ -32,14 +30,8 @@ def drives_ok(operational: bool, link_state: str, left_state: str, right_state: 
     """
     if operational:
         return True
-    return link_state == "standby" and left_state in STANDBY_STATES and right_state in STANDBY_STATES
-
-# Disk thresholds live in agv_core.disk: the supervisor and the web both need the
-# same answer, and the web must not import the supervisor's internals to get it.
-DISK_WARN_MB, DISK_STOP_MB = disk.WARN_MB, disk.STOP_MB
-DISK_OK, DISK_WARN, DISK_STOP, DISK_UNKNOWN = disk.OK, disk.WARN, disk.STOP, disk.UNKNOWN
-DiskStatus = disk.DiskStatus
-disk_status = disk.status
+    standby = left_state in STANDBY_STATES and right_state in STANDBY_STATES
+    return link_state == drive_state.LINK_STANDBY and standby
 
 
 def check_map_id(map_id: str) -> str:
@@ -51,6 +43,11 @@ def check_map_id(map_id: str) -> str:
 
 def resolve_map(maps_dir: str, map_id: str, revision: int) -> tuple[str, int, str]:
     """(map_id, revision, sha256) of a verified bundle. Exact revision required (>0)."""
+    return map_id, revision, _resolve(maps_dir, map_id, revision).sha256
+
+
+def _resolve(maps_dir: str, map_id: str, revision: int):
+    """The verified Manifest behind resolve_map (same checks, same messages)."""
     from amr_mission import map_bundle as mb  # noqa: PLC0415 - heavy, only on request
 
     check_map_id(map_id)
@@ -62,34 +59,28 @@ def resolve_map(maps_dir: str, map_id: str, revision: int) -> tuple[str, int, st
         raise ValueError("map path escapes the map store")
     if not os.path.isdir(rev_dir):
         raise ValueError(f"no such map revision: {map_id} rev{revision}")
-    manifest = mb.load_manifest(rev_dir, map_id, revision)  # raises BundleError on any mismatch
-    return map_id, revision, manifest.sha256
+    return mb.load_manifest(rev_dir, map_id, revision)  # raises BundleError on any mismatch
 
 
-CONTINUE_FILES = ("posegraph.posegraph", "posegraph.data")
 HINT_LIMIT_M = 1.0e5  # a pose hint beyond 100 km is a typo, not a map coordinate
 
 
 def continuable(maps_dir: str, map_id: str, revision: int) -> str:
     """sha256 of a verified revision whose saved pose graph a survey can continue.
     ValueError otherwise: a merged or imported map has no pose graph to load."""
-    import yaml  # noqa: PLC0415
-
     from amr_mission import map_bundle as mb  # noqa: PLC0415 - heavy, only on request
 
     try:
-        _, _, sha = resolve_map(maps_dir, map_id, revision)  # verifies every hash once
-        with open(os.path.join(mb.revision_dir(maps_dir, map_id, revision), mb.MANIFEST)) as fh:
-            files = (yaml.safe_load(fh) or {}).get("files") or {}
+        manifest = _resolve(maps_dir, map_id, revision)  # verifies every hash once
     except (mb.BundleError, OSError) as e:
         raise ValueError(f"cannot continue {map_id} rev{revision}: {e}") from e
-    missing = [f for f in CONTINUE_FILES if f not in files]
+    missing = mb.missing_posegraph(manifest)
     if missing:
         raise ValueError(
             f"cannot continue {map_id} rev{revision}: no saved pose graph ({', '.join(missing)}); "
             "only a surveyed revision can be continued"
         )
-    return sha
+    return manifest.sha256
 
 
 def check_hint(x: float, y: float, yaw: float) -> None:
@@ -156,7 +147,7 @@ class Snapshots:
                 self.wheels_still_since = None
                 return
             self.wheels_t = now
-            still = abs(m.left_vel_rad_s) <= self.still_thr and abs(m.right_vel_rad_s) <= self.still_thr
+            still = drive_state.still(m.left_vel_rad_s, m.right_vel_rad_s, self.still_thr)
             if not still:
                 self.wheels_still_since = None
             elif self.wheels_still_since is None:
@@ -201,7 +192,7 @@ class Snapshots:
         return (
             self.commissioning_t is not None
             and now - self.commissioning_t <= fresh_s
-            and self.commissioning_phase in (1, 2, 3)
+            and self.commissioning_phase in wire.COMMISSIONING_BUSY
         )
 
     def commissioning_active(self, now: float, fresh_s: float = 2.0) -> bool:
@@ -242,7 +233,7 @@ class Snapshots:
 
     def _line_active_locked(self, generation: int) -> bool:
         """ARMED / RUNNING / HOLD (1..3) of THIS generation: a job that holds the vehicle."""
-        return self.line_gen == generation and self.line_state in (1, 2, 3)
+        return self.line_gen == generation and self.line_state in wire.LINE_HELD
 
     def conditions(self, now: float, generation: int, operation_pending: bool) -> fsm.Conditions:
         with self._lock:

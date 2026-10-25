@@ -2,17 +2,56 @@
 
 Wheel velocities here are WHEEL rad/s, not motor r/min: this sits above the
 hardware boundary. Conversion to the drives' r/min (gear ratio, inversion) is
-the drive node's job (spec §0.2), using core/kinematics.py.
+WheelScale, applied exactly once by whoever talks to a drive (drive_node, and the
+sim and commissioning that stand in for it).
 """
 
 import math
 from dataclasses import dataclass
+
+from agv_core import se2
 
 
 @dataclass(frozen=True)
 class Geometry:
     wheel_radius_m: float
     track_width_m: float
+
+
+def profile_geometry() -> Geometry:
+    """The vehicle profile's wheel radius and track: the default every node's
+    wheel_radius_m / track_width_m params start from."""
+    from agv_core import config  # noqa: PLC0415 - read at call time, after the profile loads
+
+    return Geometry(config.WHEEL_DIA_M / 2.0, config.TRACK_M)
+
+
+# Motor r/min -> rad/s, before the gearhead.
+RAD_S_PER_RPM = 2.0 * math.pi / 60.0
+
+
+@dataclass(frozen=True)
+class WheelScale:
+    """Motor-side units -> wheel-side SI, per wheel. Applied exactly once."""
+
+    gear_ratio: float
+    invert_left: bool
+    invert_right: bool
+    counts_per_wheel_rev: float | None = None  # 608Fh/6091h at arm time; None = positions unknown
+
+    def _sign(self, left: bool) -> float:
+        return -1.0 if (self.invert_left if left else self.invert_right) else 1.0
+
+    def motor_rpm(self, wheel_rad_s: float, left: bool) -> float:
+        return wheel_rad_s / RAD_S_PER_RPM * self.gear_ratio * self._sign(left)
+
+    def wheel_rad_s(self, motor_rpm: float, left: bool) -> float:
+        return motor_rpm * RAD_S_PER_RPM / self.gear_ratio * self._sign(left)
+
+    def wheel_rad(self, counts: int, left: bool) -> float | None:
+        if not self.counts_per_wheel_rev:
+            return None
+        return counts / self.counts_per_wheel_rev * 2.0 * math.pi * self._sign(left)
 
 
 def inverse(geom: Geometry, v_mps: float, wz_rad_s: float) -> tuple[float, float]:
@@ -82,8 +121,7 @@ def scurve(
     return v_new, a
 
 
-def wrap_angle(a: float) -> float:
-    return math.atan2(math.sin(a), math.cos(a))
+wrap_angle = se2.wrap
 
 
 @dataclass

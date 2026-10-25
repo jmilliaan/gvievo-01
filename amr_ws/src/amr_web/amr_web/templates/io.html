@@ -40,7 +40,6 @@ async function tick() {
     document.getElementById('io-lost').hidden = false;
     tiles('io-link', [['Comms', '–', 'no I/O image (panel_node not running?)', 'bad']]);
   }
-  setTimeout(tick, 250);
 }
-tick();
+every(250, tick, { onError: () => { document.getElementById('io-lost').hidden = false; } });
 </script>{% endblock %}

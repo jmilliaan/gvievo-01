@@ -42,7 +42,7 @@ class RouteError(ValueError):
 # Schema bounds (R21): enough for any real site, small enough that a malformed request
 # cannot make the compiler or the sweep rasteriser do unbounded work.
 MAX_STEPS = 500
-MAX_REPEAT = 100  # = amr_mission run_fsm MAX_PASSES: the executor's pass bound
+MAX_REPEAT = 100  # the executor's pass bound (amr_mission run_fsm.MAX_PASSES is this)
 MAX_ABS_COORD_M = 10_000.0
 MAX_NAME_LEN = 128
 FRAMES = ("map",)

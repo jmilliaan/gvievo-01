@@ -2,13 +2,13 @@
 
 The C-M circuit of test_tape_localization (HOME on the home leg, ATT, J-B right onto the
 machine line, the tape end U, back past the machines, J-C left home), plus two mid-line
-U-turn points and a high-speed zone on the machine line:
+U-turn points, and a high-speed area over the machine line (both directions of its tape):
 
     J-C:left>J-A   (0,0)->(10,0)      HOME at 5
     J-A:merge>J-B  (10,0)->(10,10)    ATT at 3
     J-B:right>U    (10,10)->(30,10)   MW-1 at 8 (x 18), UT-M1 at 11, MW-2 at 14 (x 24), UT-M2 at 17
     U:pivot>J-C    (30,10)->(0,10)->(0,0)   ME-2 at 6 (x 24), ME-1 at 12 (x 18)
-    zone Z-LINE    ZA at x 11, ZB at x 17 on the way out (J-B:right>U at 1 and 7)
+    area Z-LINE    x 11..17 around y 10: J-B:right>U 1..7, and U:pivot>J-C 13..19 on the way back
 """
 import copy
 import os
@@ -39,8 +39,8 @@ DOC = {
         "M1": {"release": "MW-1", "take": "ME-1", "uturn": "UT-M1"},
         "M2": {"release": "MW-2", "take": "ME-2", "uturn": "UT-M2"}}}},
     "uturn_points": {"UT-M1": {"direction": "cw"}, "UT-M2": {"direction": "cw"}},
-    "zones": {"Z-LINE": {"from": "ZA", "to": "ZB"}},
 }
+AREAS = {"Z-LINE": {"polygon": [(10.98, 9.0), (17.02, 9.0), (17.02, 11.0), (10.98, 11.0)], "kind": "high"}}
 BINDING = {"map_id": "t", "map_revision": 1, "map_sha256": "ab" * 32}
 TRUE = {
     "J-C:left>J-A": [(0, 0), (10, 0)],
@@ -52,8 +52,7 @@ END = {"J-C:left>J-A": "fork", "J-A:merge>J-B": "fork", "J-B:right>U": "uturn", 
 FORK_BACK_M = 0.4
 TAUGHT = {"HOME": ("J-C:left>J-A", 5.0), "ATT": ("J-A:merge>J-B", 3.0), "MW-1": ("J-B:right>U", 8.0),
           "MW-2": ("J-B:right>U", 14.0), "ME-2": ("U:pivot>J-C", 6.0), "ME-1": ("U:pivot>J-C", 12.0),
-          "UT-M1": ("J-B:right>U", 11.0), "UT-M2": ("J-B:right>U", 17.0),
-          "ZA": ("J-B:right>U", 1.0), "ZB": ("J-B:right>U", 7.0)}
+          "UT-M1": ("J-B:right>U", 11.0), "UT-M2": ("J-B:right>U", 17.0)}
 
 
 def site(**over):

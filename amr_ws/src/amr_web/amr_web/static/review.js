@@ -3,7 +3,6 @@
 // robot to derive a NEW revision (POST /api/maps/<id>/<rev>/edit). The revision on screen is
 // never modified and nothing on this page moves the vehicle.
 const view = new MapView(document.getElementById('rv-canvas'));
-const $ = id => document.getElementById(id);
 let mapId = null, mapRev = null, ops = [], history = [], future = [], saving = false, mapToken = 0;
 
 // op per tool, as amr_maps.edit expects it; colours per kind on the canvas and in the list

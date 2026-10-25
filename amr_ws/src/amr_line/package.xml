@@ -19,7 +19,7 @@
   <!-- The vehicle library at the repo root (kinematics, and the profile the
        engine's runtime namespace is loaded from). Not a rosdep key: install it
        with `pip install -e .` from the repo root, or put the repo root on
-       PYTHONPATH (amr_ws/deploy/amr-launch.sh does the latter). -->
+       PYTHONPATH (amr_ws/env/vehicle.sh does the latter). -->
 
   <test_depend>python3-pytest</test_depend>
 

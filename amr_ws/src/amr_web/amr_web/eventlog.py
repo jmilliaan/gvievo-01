@@ -17,6 +17,8 @@ import json
 import os
 import threading
 
+from agv_core import fsutil
+
 MAX_BYTES = 5 * 1024 * 1024
 KEEP = 5
 
@@ -59,12 +61,7 @@ class EventLog:
             return
         if size + incoming <= self.max_bytes:
             return
-        # events.jsonl -> .1 -> .2 ... ; the oldest falls off the end
-        for n in range(self.keep - 1, 0, -1):
-            src, dst = f"{self.path}.{n}", f"{self.path}.{n + 1}"
-            if os.path.exists(src):
-                os.replace(src, dst)
-        os.replace(self.path, f"{self.path}.1")
+        fsutil.rotate_numbered(self.path, self.keep)  # events.jsonl -> .1 -> .2 ...
 
     def tail(self, limit: int = 300) -> list[dict]:
         """The newest `limit` events, oldest first. A truncated or half-written last
@@ -72,15 +69,7 @@ class EventLog:
         out: list[dict] = []
         for path in (f"{self.path}.1", self.path):
             try:
-                with open(path, encoding="utf-8") as fh:
-                    for raw in fh:
-                        raw = raw.strip()
-                        if not raw:
-                            continue
-                        try:
-                            out.append(json.loads(raw))
-                        except ValueError:
-                            continue
+                out.extend(fsutil.iter_jsonl(path))
             except OSError:
                 continue
         return out[-limit:]
@@ -89,3 +78,47 @@ class EventLog:
         """Every log file that exists, newest first: what a report packages."""
         names = [self.path] + [f"{self.path}.{n}" for n in range(1, self.keep + 1)]
         return [p for p in names if os.path.exists(p)]
+
+
+class EventRing:
+    """The bounded event history the Alarms page reads: every event numbered n = 1, 2, ...
+    in arrival order, the oldest dropped past `maxlen`. With a `log`, each event is also
+    appended to disk - outside the lock, so a slow disk never stalls a ROS callback; ERROR
+    events are synced (power-loss plan W4) - and restore() reloads the log's tail at start,
+    marked `restored`, so the history survives a restart."""
+
+    def __init__(self, maxlen: int = 300, log: EventLog | None = None) -> None:
+        self.maxlen = maxlen
+        self.log = log
+        self._rows: list[dict] = []
+        self._n = 0
+        self._lock = threading.Lock()
+
+    def restore(self) -> int:
+        """Reload the log's tail (oldest first). Returns how many came back."""
+        if self.log is None:
+            return 0
+        rows = self.log.tail(self.maxlen)
+        with self._lock:
+            for e in rows:
+                self._n += 1
+                self._rows.append(dict(e, n=self._n, restored=True))
+            del self._rows[: -self.maxlen]
+        return len(rows)
+
+    def add(self, event: dict) -> dict:
+        with self._lock:
+            self._n += 1
+            row = dict(event, n=self._n)
+            self._rows.append(row)
+            del self._rows[: -self.maxlen]
+        if self.log is not None:
+            self.log.append(event, sync=(event.get("level") == "error"))
+        return row
+
+    def since(self, n: int = 0) -> list[dict]:
+        with self._lock:
+            return [e for e in self._rows if e["n"] > n]
+
+    def files(self) -> list[str]:
+        return self.log.files() if self.log is not None else []

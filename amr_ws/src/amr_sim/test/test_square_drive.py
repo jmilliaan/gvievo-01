@@ -33,15 +33,9 @@ import rclpy
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from nav_msgs.msg import Odometry
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
+from amr_base.qos import SENSOR_DATA
 from amr_interfaces.msg import WheelStates
-
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
 
 
 @pytest.mark.launch_test

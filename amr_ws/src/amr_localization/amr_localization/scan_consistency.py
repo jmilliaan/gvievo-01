@@ -18,20 +18,14 @@ import numpy as np
 from amr_maps.grid import Grid
 from amr_maps.raycast import ScanGeometry, cast
 
-OCCUPIED = 65
+from amr_maps import grid as gridio
+
+OCCUPIED = gridio.OCCUPIED
 
 
 def occupied_near(grid: Grid, tol_m: float) -> np.ndarray:
     """Occupied cells dilated by tol_m (square, wrap-free)."""
-    occ = grid.data >= OCCUPIED
-    cells = max(1, int(round(tol_m / grid.meta.resolution)))
-    p = np.pad(occ, cells)
-    near = np.zeros_like(occ)
-    h, w = occ.shape
-    for dr in range(-cells, cells + 1):
-        for dc in range(-cells, cells + 1):
-            near |= p[cells + dr : cells + dr + h, cells + dc : cells + dc + w]
-    return near
+    return gridio.dilate_square(gridio.occupied(grid), max(1, int(round(tol_m / grid.meta.resolution))))
 
 
 def compare(

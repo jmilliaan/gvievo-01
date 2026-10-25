@@ -14,7 +14,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from agv_core import config as vehicle  # noqa: E402
-from site_fixture import graph, site  # noqa: E402
+from site_fixture import AREAS, graph, site  # noqa: E402
 from test_mission_engine import CENTRED, NO_TAPE, PER_REV, World  # noqa: E402
 
 from amr_line import job as lj  # noqa: E402
@@ -37,7 +37,7 @@ class TripWorld(World):
         self._last = (0, 0)
         super().__init__(None)
         self.params = params or tl.Params()
-        self.job.configure_site(self.params, lambda trip: trr.compile_trip(trip, m, g))
+        self.job.configure_site(self.params, lambda trip: trr.compile_trip(trip, m, g, areas=AREAS))
         ok, msg = self.job.set_mission(m)
         assert ok, msg
         self.job.confirm_off()
@@ -151,10 +151,10 @@ def test_a_one_call_trip_stops_turns_mid_line_and_ends_at_home():
 
 
 def test_a_two_call_trip_turns_at_the_tape_end_when_its_machine_has_no_point():
-    m = site(uturn_points={}, zones={},
+    m = site(uturn_points={},
              groups={"M": {"circuit": "C-M", "machines": {"M1": {"release": "MW-1", "take": "ME-1"},
                                                           "M2": {"release": "MW-2", "take": "ME-2"}}}})
-    w = TripWorld(m, graph(m, skip=("UT-M1", "UT-M2", "ZA", "ZB")))
+    w = TripWorld(m, graph(m, skip=("UT-M1", "UT-M2")))
     w.job.trip_call("M2", w.t)
     w.job.trip_call("M1", w.t + 1)
     w.start()
@@ -173,7 +173,7 @@ def test_a_two_call_trip_turns_at_the_tape_end_when_its_machine_has_no_point():
     assert w.job.trip_note.endswith("served")
 
 
-def test_high_inside_a_zone_and_back_to_the_cruise_before_its_end():
+def test_high_inside_a_high_speed_area_and_back_to_the_cruise_before_it_ends():
     w = one_call()
     w.job.trip_call("M1", w.t)
     w.start()
@@ -307,3 +307,20 @@ def test_the_site_mission_is_refused_as_a_job_without_the_live_engine():
 
 def test_home_start_window():
     assert site_run.HOME_START_M == 0.5
+
+
+def test_home_shows_the_trip_predicate_in_a_site_mission():
+    """Lean plan D144: the Home tile read NO with an empty detail in every site mission; it now
+    says what a trip's Start checks (job._site_at_home)."""
+    w = one_call()
+    snap = lambda: w.job.mission_snapshot()  # noqa: E731
+    w.tick()                                    # at HOME on the circuit
+    assert snap()["at_home"] is True and w.job.at_home() == w.job._site_at_home(w.loc())
+    w.S = 9.0                                   # off HOME
+    w.tick()
+    s = snap()
+    assert s["at_home"] is False and s["home_detail"] == w.job._site_at_home(w.loc())[1] != ""
+    w.lost = "no junction for 3 m"
+    w.tick()
+    s = snap()
+    assert s["at_home"] is False and "LOST" in s["home_detail"]

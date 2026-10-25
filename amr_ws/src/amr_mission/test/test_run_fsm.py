@@ -169,3 +169,10 @@ def test_auto_resume_only_from_blocked():
     m.start(True, True)
     m.fault("drive")
     assert not m.auto_resume("x") and m.state == f.FAULT
+
+
+def test_the_pass_bound_is_the_route_files_bound():
+    from amr_mission import run_fsm
+    from amr_navigation import route
+
+    assert run_fsm.MAX_PASSES == route.MAX_REPEAT

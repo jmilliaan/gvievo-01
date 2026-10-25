@@ -397,6 +397,19 @@ def test_a_report_packages_the_evidence(tmp_path):
         assert z.read("note.txt").decode() == "it stopped"
 
 
+def test_a_report_carries_the_profile_this_process_loaded(tmp_path, monkeypatch):
+    """Lean plan D149: the loaded profile, not a hard-coded agv-01 path."""
+    from agv_core import config  # noqa: PLC0415
+
+    prof = tmp_path / "agv-77.json"
+    prof.write_text("{}")
+    monkeypatch.setattr(config, "PROFILE_PATH_LOADED", str(prof), raising=False)
+    client, _ = app_for(merged(), tmp_path)
+    name = client.post("/api/report", json={"note": ""}).get_json()["name"]
+    with zipfile.ZipFile(reports.path_of(str(tmp_path / "state"), name)) as z:
+        assert "agv-77.json" in z.namelist()
+
+
 def test_a_report_name_from_a_url_cannot_escape_the_reports_directory(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     assert reports.path_of(str(tmp_path), "../../etc/passwd") is None
@@ -448,8 +461,9 @@ def test_a_half_written_line_is_skipped_not_raised(tmp_path):
 
 @pytest.mark.parametrize("code", sorted(cat.CATALOGUE))
 def test_every_catalogue_row_renders_for_the_operator(code):
+    """Only the button labels here: they pin home.html's ACTIONS. Row well-formedness is
+    tests/test_alarms.py (lean plan D136)."""
     row = cat.describe(code, "detail")
-    assert row["title"] and row["action"] and row["level"] in ("info", "warn", "error")
     assert cat.BUTTON[row["clears_by"]] in ("", "Acknowledge", "Recover", "Restart", "Set position")
 
 
@@ -755,3 +769,19 @@ def test_the_adapter_never_assigns_one_attribute_twice_in_init():
                     names.append(e.attr)
     dup = sorted({n for n in names if names.count(n) > 1})
     assert not dup, f"assigned twice in RosAdapter.__init__: {dup}"
+
+
+def test_pages_carry_the_freshness_limit_the_server_judges_by(tmp_path):
+    """Lean plan D62: amr.js reads FRESH_S from base.html instead of restating 0.5."""
+    from amr_web import alarms as alarmview  # noqa: PLC0415
+
+    client, _ = app_for(merged(), tmp_path)
+    html = client.get("/home").get_data(as_text=True)
+    assert f'data-fresh-s="{alarmview.FRESH_S}"' in html
+
+
+def test_home_places_the_lcp_dots_through_the_shared_helper(tmp_path):
+    """Lean plan D130: one dot placement and freshness rule (linetrack.js) for Home and the strip."""
+    client, _ = app_for(merged(), tmp_path)
+    html = client.get("/home").get_data(as_text=True)
+    assert "placeLcpDots(" in html and "lineFresh(" in html

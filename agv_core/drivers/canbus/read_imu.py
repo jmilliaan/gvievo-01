@@ -2,7 +2,7 @@
 """The IMU inside the SICK MLS: read it, measure its bias, put it on a TPDO.
 
 Reads are safe and work in Pre-operational. The `tpdo` mode WRITES to the sensor
-and refuses to run without --go, the same rule tune_mls.py follows.
+and refuses to run without --go, the same rule `read_mls.py --go` follows.
 
 WHY THIS MATTERS MORE THAN IT LOOKS
 -----------------------------------
@@ -61,8 +61,19 @@ import statistics
 import sys
 import time
 
-from agv_core.drivers.canbus.drive_forward import sdo_write  # noqa: E402
-from agv_core.drivers.canbus.verify_drivers import BAD, OK, WARN, claim_bus, open_bus, sdo_read  # noqa: E402
+from agv_core.drivers.canbus.cia301 import (  # noqa: E402,F401 - COB_DISABLED re-exported
+    COB_DISABLED,
+    COB_MASK,
+)
+from agv_core.drivers.canbus.sdo import (  # noqa: E402
+    BAD,
+    OK,
+    WARN,
+    bench_bus,
+    guarded_sdo_write,
+    s16,
+    sdo_int,
+)
 
 SENSOR_NODE = 10
 
@@ -71,7 +82,6 @@ OBJ_ENABLE = (0x2006, 2)        # MEMS enable; IMU and thermometer share it
 OBJ_LPF = (0x202D, 4)           # orientation low-pass filter
 OBJ_EULER = 0x2030              # sub 1-3, roll/pitch/yaw
 OBJ_QUAT = 0x2031               # sub 1-4, w/x/y/z
-OBJ_YAW_RESET = (0x2032, 1)     # write to zero the yaw reference
 OBJ_ACCEL = 0x2033              # sub 1-3
 OBJ_GYRO = 0x2034               # sub 1-3, the one that matters
 OBJ_STAMP = (0x2035, 0)         # milliseconds, u16, wraps at 65.536 s
@@ -110,19 +120,18 @@ TPDO_SLOTS = {
 }
 VALID_COB_BASES = (0x180, 0x280, 0x380, 0x480)
 MAX_ACTIVE_TPDOS = 4
-# Bit 31 of the COB-ID entry is "this PDO does not exist". Enabling an already
-# addressed PDO is therefore clearing one bit, not writing a new COB-ID.
-COB_DISABLED = 1 << 31
+# COB_DISABLED (bit 31, cia301): enabling an already addressed PDO is clearing one
+# bit, not writing a new COB-ID. s16 is sdo.s16, None-safe.
 
 
-def s16(v):
-    """A raw 16-bit object as signed. The SDO layer hands back unsigned."""
-    return v - 0x10000 if v is not None and v >= 0x8000 else v
+def gyro_dps(raw):
+    """One raw gyro word -> deg/s. None passes through as None."""
+    return None if raw is None else s16(raw) * GYRO_LSB_DPS
 
 
 def decode_gyro(raw):
     """Three raw words -> deg/s per axis. None passes through as None."""
-    return tuple(None if v is None else s16(v) * GYRO_LSB_DPS for v in raw)
+    return tuple(gyro_dps(v) for v in raw)
 
 
 def decode_accel(raw):
@@ -217,11 +226,7 @@ def cob_id_for(base, node):
 
 # ---- bus access -----------------------------------------------------------
 
-def rd(bus, node, index, sub):
-    st, val, _, _ = sdo_read(bus, node, index, sub)
-    if not st or not val:
-        return None
-    return int.from_bytes(val, "little")
+rd = sdo_int
 
 
 def read_triple(bus, node, index):
@@ -249,7 +254,7 @@ def read_tpdo_state(bus, node=SENSOR_NODE):
         raw = rd(bus, node, index, 1)
         out[name] = {
             "index": index, "label": label, "raw": raw,
-            "cob_id": None if raw is None else raw & 0x7FF,
+            "cob_id": None if raw is None else raw & COB_MASK,
             "enabled": None if raw is None else not (raw & COB_DISABLED),
         }
     return out
@@ -317,9 +322,9 @@ def measure_bias(bus, node=SENSOR_NODE, seconds=30.0, axis=2):
           f"DO NOT DISTURB THE VEHICLE")
     samples, end = [], time.time() + seconds
     while time.time() < end:
-        raw = rd(bus, node, OBJ_GYRO, axis + 1)
-        if raw is not None:
-            samples.append(s16(raw) * GYRO_LSB_DPS)
+        dps = gyro_dps(rd(bus, node, OBJ_GYRO, axis + 1))
+        if dps is not None:
+            samples.append(dps)
     stats = summarise_bias(samples)
     if stats is None:
         print(f"{BAD} only {len(samples)} samples - the sensor is not answering.")
@@ -379,7 +384,7 @@ def enable_tpdo(bus, node, slot, base, go=False):
         print(f"\n{WARN} this writes to the sensor. Re-run with --go. "
               f"Nothing has been changed.")
         return 2
-    ok, detail = sdo_write(bus, node, index, 1, cob, 4)
+    ok, detail = guarded_sdo_write(bus, node, index, 1, cob, 4, sensor=True)
     if not ok:
         print(f"{BAD} write refused: {detail}")
         return 1
@@ -422,15 +427,10 @@ def main(argv=None):
             print(f"{WARN} the control service must not be running - it owns "
                   f"can0.\n")
 
-    lock = claim_bus("read_imu")
-    if lock is None:
+    opened = bench_bus("read_imu")
+    if opened is None:
         return 2
-    try:
-        bus, how = open_bus()
-    except Exception as e:                      # noqa: BLE001 - a bench tool
-        print(f"{BAD}: {e}")
-        return 2
-    print(f"connected via {how}\n")
+    _lock, bus = opened
     try:
         if args.mode == "show":
             return show(bus, args.node)

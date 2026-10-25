@@ -33,6 +33,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "amr_ws", "src", "amr_line"))
 
 from amr_line import tape_graph as tg  # noqa: E402
+from amr_line import tape_locator as tl  # noqa: E402
 from amr_line import tape_teach as tt  # noqa: E402
 
 TARGET = {"M1": 0.05, "M2": 0.05, "M3": 0, "M4": 0.2, "M5_cpu": 75.0, "M5_temp": 75.0, "M6": 0.02}
@@ -51,12 +52,7 @@ def travel_at(wheels, t):
         return wheels[0][1]
     if t >= wheels[-1][0]:
         return wheels[-1][1]
-    lo, hi = 0, len(wheels) - 1
-    while hi - lo > 1:
-        mid = (lo + hi) // 2
-        lo, hi = (mid, hi) if wheels[mid][0] <= t else (lo, mid)
-    (t0, a), (t1, b) = wheels[lo], wheels[hi]
-    return a if t1 == t0 else a + (b - a) * (t - t0) / (t1 - t0)
+    return tl.interp_sorted(wheels, t)
 
 
 def split(run):

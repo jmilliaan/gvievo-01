@@ -220,8 +220,8 @@ def is_allowed(index, value=None, sub=None):
 # by the bus owner, which only reads its configuration. The one runtime write is
 # 2080h:01, the reset of the latched event flag (manuals/mls-diagnostics-plan.md
 # E2): a status object, not configuration. Those bench writes used to go straight through
-# drive_forward.sdo_write with no check at all (set-variant even attempted 1010h,
-# which FORBIDDEN names). They now pass check_sensor().
+# an unguarded sdo_write with no check at all (set-variant even attempted 1010h,
+# which FORBIDDEN names). They now pass check_sensor() via sdo.guarded_sdo_write.
 #
 # Kept apart from check() on purpose: the drive allow-list stays exactly the set of
 # objects motion writes, and nothing here can make a drive object writable - these
@@ -230,6 +230,11 @@ def is_allowed(index, value=None, sub=None):
 # section 2), the TPDO1 variant and the event-flag reset. Zero point, offset
 # calibration, factory reset, inversion, store and the event/temperature thresholds
 # (2070h:06/07) are not.
+#
+# The IMU TPDO COB-ID entries (1803h-1806h:01) are the bench tool read_imu's
+# `tpdo --go`: they decide WHERE a fixed-purpose IMU TPDO is sent, never what it
+# carries (the PDO_RANGES rule above), and a TPDO is a read path. Their mapping
+# objects (1A03h-1A06h) and every other sub-index stay refused.
 SENSOR_ALLOWED = {
     (0x2006, 1): "variant TPDO1 (track data packing, diverter detection)",
     (0x2028, 1): "use markers",
@@ -238,6 +243,10 @@ SENSOR_ALLOWED = {
     (0x202D, 5): "tape polarity",
     (0x2029, 0): "lock teach key",
     (0x2080, 1): "reset the latched event flag",
+    (0x1803, 1): "IMU TPDO COB-ID (Euler)",
+    (0x1804, 1): "IMU TPDO COB-ID (quaternion)",
+    (0x1805, 1): "IMU TPDO COB-ID (acceleration)",
+    (0x1806, 1): "IMU TPDO COB-ID (yaw rate)",
 }
 
 

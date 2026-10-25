@@ -19,7 +19,9 @@ def test_editor_has_no_speed_setting_and_drops_old_speed_keys():
     out = json.loads(r.stdout.strip().splitlines()[-1])
     assert "error" not in out, out
     assert "no steps" in out["new_draft_rows"], out
-    assert out["saved_limits"] == {"angular_rad_s": 0.3}, out  # the old file's speeds are not written back
+    # D109: the editor passes an old file's limits through; the server drops the speed keys
+    # (route.LEGACY_SPEED_LIMITS, test_server ..._old_speed_keys_are_not_stored)
+    assert out["saved_limits"]["angular_rad_s"] == 0.3, out
     assert out["reset_saved"] == {}, out  # a new draft carries no speed at all
 
 

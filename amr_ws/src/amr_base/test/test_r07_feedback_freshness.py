@@ -6,7 +6,7 @@ import time
 from types import SimpleNamespace
 
 import can
-from test_canopen import FakeBus, _link
+from test_canopen import FakeBus, _arm, _link
 
 from amr_base.canopen import ARMED, WheelPosition, wheel_feedback
 
@@ -17,7 +17,7 @@ AGE = 0.05
 def _armed():
     bus = FakeBus()
     link = _link(bus)
-    link.arm(20, None, 0, 30.0, False, False)
+    _arm(link, 20, None, 0, 30.0, False, False)
     return bus, link
 
 

@@ -182,3 +182,20 @@ def test_r19_rotated_origin_is_refused_at_load(tmp_path):
         text.replace("- 0.0\n", "- 0\n").replace("image: flat.pgm", "image: " + stem0 + ".pgm")
     )
     assert grid.read(str(tmp_path / "ints.yaml")).width == 3
+
+
+def test_trinary_image_is_the_pgm_payload_and_one_threshold():
+    """D40: one occupancy threshold and one trinary image for the PGM, the web and the demo."""
+    data = np.array([[-1, 0, 64], [65, 100, 0]], dtype=np.int8)
+    g = grid.Grid(data, grid.GridMeta(0.05, 0.0, 0.0))
+    img = grid.trinary_image(g)
+    assert img.tolist() == [[205, 254, 205], [0, 0, 254]]
+    assert grid.to_pgm_bytes(g).endswith(np.flipud(img).tobytes())
+    assert grid.occupied(g).tolist() == [[False, False, False], [True, True, False]]
+    assert grid.meta_dict(grid.Grid(data, grid.GridMeta(0.1, 1.5, -2.0)))["origin"] == [1.5, -2.0, 0.0]
+
+
+def test_dilate_square_grows_without_wrapping():
+    m = np.zeros((4, 4), dtype=bool)
+    m[0, 0] = True
+    assert grid.dilate_square(m, 1).sum() == 4 and not grid.dilate_square(m, 1)[3, 3]

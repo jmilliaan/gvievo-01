@@ -73,6 +73,7 @@ slowdown or a stop.
 """
 
 from agv_core import config as vehicle
+from agv_core import kinematics
 from agv_core import mission as missions
 
 from amr_line import branch, speed_zone, tag_table, uturn
@@ -96,14 +97,14 @@ MARKER_MAX_LCP2_MM = 30
 # #LCP before or after it; distances still count from the strip. Strips stay >= 1 m from
 # any junction (runbook 2.2).
 MARKER_JUNCTION_M = missions.MARKER_JUNCTION_M
-MULTI_NLCP = (3, 6, 7)      # as tape_graph.MULTI_NLCP: more than one track under the MLS
+MULTI_NLCP = branch.MULTI_NLCP  # more than one track under the MLS
 
 
 def approach_rate(v_rpm, creep_rpm, decel_m):
     """r/min/s that takes v_rpm down to creep_rpm over decel_m (None: already there)."""
     if v_rpm <= creep_rpm or decel_m <= 0:
         return None
-    rate = (v_rpm ** 2 - creep_rpm ** 2) * vehicle.MPS_PER_RPM / (2.0 * decel_m)
+    rate = kinematics.approach_decel_rpm_s(v_rpm, creep_rpm, decel_m, vehicle.MPS_PER_RPM)
     return min(rate, APPROACH_FRACTION_OF_DRIVE * vehicle.DECEL_RPM_S)
 
 
@@ -653,7 +654,7 @@ class TapeRun:
         return choice, self.high
 
     def _branch_scan(self, nlcp, tag):
-        was, was_slow, was_forks = self.branch.ladder.intent(), self.branch.slow, self.branch.forks
+        was, was_forks = self.branch.ladder.intent(), self.branch.forks
         intent = self.branch.scan(tag, nlcp)
         if intent != was:
             if intent != branch.STRAIGHT:
@@ -662,8 +663,6 @@ class TapeRun:
                 self.events.append((INFO, f"branch {was} taken - order consumed at the fork"))
             else:
                 self.events.append((INFO, f"branch cleared (tag {tag})"))
-        if self.branch.slow != was_slow:
-            self.events.append((INFO, f"slow zone {'entered' if self.branch.slow else 'left'} (tag {tag})"))
 
     # -- U-turn ----------------------------------------------------------------
     def _u_turn_tag(self, now, number, row):

@@ -40,9 +40,9 @@ from launch import LaunchDescription  # noqa: E402
 from launch.actions import IncludeLaunchDescription  # noqa: E402
 from launch.launch_description_sources import AnyLaunchDescriptionSource  # noqa: E402
 from nav_msgs.msg import Odometry  # noqa: E402
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy  # noqa: E402
 from std_srvs.srv import SetBool, Trigger  # noqa: E402
 
+from amr_base.qos import LATCHED, SENSOR_DATA
 from amr_interfaces.msg import LocalizationState, RunState  # noqa: E402
 from amr_interfaces.srv import RunMission  # noqa: E402
 from amr_mission import map_bundle as mb  # noqa: E402
@@ -50,10 +50,6 @@ from amr_navigation import store  # noqa: E402
 
 MAPS_DIR = tempfile.mkdtemp(prefix="amr_route_test_")
 RUNS = int(os.environ.get("AMR_ACCEPT_RUNS", "1"))  # one 53 m lap is ~5 min at 0.30 m/s
-SENSOR_DATA = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
 
 
 def make_route(sha: str) -> Route:

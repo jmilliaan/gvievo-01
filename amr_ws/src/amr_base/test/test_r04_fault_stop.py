@@ -5,7 +5,7 @@ import struct
 import time
 
 import can
-from test_canopen import FakeBus, _link
+from test_canopen import FakeBus, _arm, _link
 
 from amr_base.canopen import FAULT, SW_SPEED_IS_ZERO
 
@@ -36,7 +36,7 @@ def _rpdos(bus):
 
 def _armed(bus):
     link = _link(bus)
-    link.arm(20, None, 0, 30.0, False, False)
+    _arm(link, 20, None, 0, 30.0, False, False)
     bus.sent.clear()
     return link
 

@@ -16,18 +16,16 @@ publishes the same message.
 
 import time
 
-import rclpy
 from agv_core import panel as panel_core  # repo module: core/panel.py
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
 from std_srvs.srv import SetBool, Trigger
 
+from amr_base.lean_node import UI_PERIOD_FAST_S, LeanNode, UiThrottle, run
 from amr_interfaces.msg import PanelState
 
 PENDANT_PARAMS = ("pendant_fwd", "pendant_rvs", "pendant_left", "pendant_right")
 
 
-class FakePanel(Node):
+class FakePanel(LeanNode):
     def __init__(self) -> None:
         super().__init__("fake_panel")
         self.declare_parameter("auto", False)
@@ -43,7 +41,7 @@ class FakePanel(Node):
         # 10 Hz copy for displays (CPU, 2026-10-02): the web shows the selector at 2 Hz.
         # Edges ride only the full topic - nothing that acts on Start/Reset reads this one.
         self._pub_ui = self.create_publisher(PanelState, "/amr/panel_state_ui", 10)
-        self._ui_t = 0.0
+        self._ui = UiThrottle(UI_PERIOD_FAST_S)
         self.create_service(SetBool, "/sim/panel/set_mode", self._set_mode)
         self.create_service(SetBool, "/sim/panel/set_valid", self._set_valid)
         self.create_service(Trigger, "/sim/panel/press_start", self._press_start)
@@ -87,27 +85,12 @@ class FakePanel(Node):
         levels = [bool(self.get_parameter(n).value) for n in PENDANT_PARAMS]
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = panel_core.pendant_intent(*levels)
         self._pub.publish(m)
-        if time.monotonic() - self._ui_t >= 0.1:
-            self._ui_t = time.monotonic()
+        if self._ui.due(time.monotonic()):
             self._pub_ui.publish(m)
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = FakePanel()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        if rclpy.ok():
-            raise
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(FakePanel, args)
 
 
 if __name__ == "__main__":

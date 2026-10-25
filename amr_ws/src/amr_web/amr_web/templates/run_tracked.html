@@ -32,7 +32,6 @@
 {% endblock %}
 {% block scripts %}<script src="/static/linetrack.js"></script>
 <script>
-const $ = id => document.getElementById(id);
 const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
 
 let DESTS = {}, MERR = {}, NOTES = {}, MISSIONS = [];
@@ -104,11 +103,8 @@ $('lt-dest').onclick = e => {
   render();
 };
 
-$('btn-line-select').onclick = async () => {
-  const { data } = await api('/api/line/mission', { name: pick.mission, destination: pick.dest });
-  log(data.message, data.ok ? '' : 'bad');
-};
-$('btn-line-clear').onclick = async () => { const { data } = await api('/api/line/clear'); log(data.message, data.ok ? '' : 'bad'); };
+$('btn-line-select').onclick = () => act('/api/line/mission', { name: pick.mission, destination: pick.dest });
+$('btn-line-clear').onclick = () => act('/api/line/clear');
 
 onState(st => {
   const m = st.mode, ln = st.line;

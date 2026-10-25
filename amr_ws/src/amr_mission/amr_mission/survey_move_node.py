@@ -23,15 +23,15 @@ import math
 import threading
 import uuid
 
-import rclpy
+from agv_core import se2
 from nav_msgs.msg import Odometry
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from rclpy.time import Time
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_base.lean_node import LeanNode
+from amr_base import tfpose
+from amr_base.gating import LEASE_MANUAL
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, RELIABLE_1
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -43,17 +43,7 @@ from amr_interfaces.msg import (
 from amr_interfaces.srv import SurveyMove
 from amr_mission import survey_move as sm
 
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-LEASE_MANUAL = 1
-
-
-def _yaw(q) -> float:
-    return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+_yaw = se2.yaw_of
 
 
 class SurveyMoveNode(LeanNode):
@@ -147,12 +137,7 @@ class SurveyMoveNode(LeanNode):
         return bool(m.pendant_fwd or m.pendant_rvs or m.pendant_left or m.pendant_right)
 
     def _map_odom(self) -> tuple[float, float, float] | None:
-        try:
-            t = self.tf_buffer.lookup_transform("map", "odom", Time())
-        except Exception:  # noqa: BLE001 - no transform is a normal state early in a survey
-            return None
-        tr = t.transform
-        return tr.translation.x, tr.translation.y, _yaw(tr.rotation)
+        return tfpose.lookup_pose(self.tf_buffer, "map", "odom")  # None early in a survey
 
     # ---- authority ----
 
@@ -301,22 +286,18 @@ class SurveyMoveNode(LeanNode):
         self._state_pub.publish(m)
 
 
-def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = SurveyMoveNode()
+def _stop_quietly(node) -> None:
+    """A move in progress ends with a zero command, not with the last setpoint."""
     try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
+        with node._lock:
+            if node.state == SurveyMoveState.MOVING:
+                node._send(0.0, 0.0, 0.0)
+    except Exception:  # noqa: BLE001
         pass
-    finally:
-        try:
-            with node._lock:
-                if node.state == SurveyMoveState.MOVING:
-                    node._send(0.0, 0.0, 0.0)
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+
+
+def main(args=None) -> None:
+    run(SurveyMoveNode, args, before_destroy=_stop_quietly, catch_runtime=False)
 
 
 if __name__ == "__main__":

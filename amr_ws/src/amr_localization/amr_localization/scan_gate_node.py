@@ -7,22 +7,14 @@ scans are counted and logged, never published: a scan whose transform never
 came is not the consumer's problem.
 """
 
-import rclpy
 from rclpy.duration import Duration
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformListener
 
-from amr_base.lean_node import LeanNode
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import SENSOR_DATA
 from amr_localization.scan_gate import ScanGate
-
-SENSOR_DATA = QoSProfile(
-    depth=5,
-    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-    durability=QoSDurabilityPolicy.VOLATILE,
-)
 
 
 class ScanGateNode(LeanNode):
@@ -87,15 +79,7 @@ class ScanGateNode(LeanNode):
 
 
 def main() -> None:
-    rclpy.init()
-    node = ScanGateNode()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.try_shutdown()
+    run(ScanGateNode, None, catch_runtime=False)
 
 
 if __name__ == "__main__":

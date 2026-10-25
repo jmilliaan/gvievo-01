@@ -45,9 +45,9 @@ def verified_map(maps_dir: str, map_id: str, revision) -> tuple[str, int, object
 def initial_pose_cmd(start: dict, delay_s: float) -> TimerAction:
     """Publish the survey-start pose once, after AMCL is active (P0 initial:=start)."""
     x, y, yaw = float(start["x_m"]), float(start["y_m"]), float(start["yaw_rad"])
-    cov = [0.0] * 36
-    cov[0] = cov[7] = 0.05 ** 2     # x, y: 5 cm
-    cov[35] = 0.03 ** 2             # yaw: ~1.7 deg
+    from amr_line.tape_locator import initial_pose_cov  # noqa: PLC0415 - launch-time import
+
+    cov = initial_pose_cov()
     msg = (
         f"{{header: {{frame_id: map}}, pose: {{pose: {{position: {{x: {x:f}, y: {y:f}}}, "
         f"orientation: {{z: {math.sin(yaw / 2.0):f}, w: {math.cos(yaw / 2.0):f}}}}}, "

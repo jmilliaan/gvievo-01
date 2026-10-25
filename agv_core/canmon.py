@@ -7,12 +7,11 @@ before a trip (manuals/can-monitoring-plan.txt section 0).
 
 WHY ROUND-ROBIN AND NOT A BURST
 -------------------------------
-canworker._poll_telemetry() already fires six blocking SDO reads back to back
-every 200 ms, and that burst is most of a 20 ms control tick. Eleven more
-objects x two nodes as a burst would blow the tick outright, and a late tick is
-a steering update the vehicle does not get.
+Eleven objects x two nodes as a burst of blocking SDO reads would be most of a
+20 ms control tick, and a late tick is a steering update the vehicle does not get.
 
-So this yields ONE object per node per tick. The cost is bounded at two SDO
+So this yields ONE object per node per tick (step(), called from drive_node's
+diagnostic slot). The cost is bounded at two SDO
 round-trips regardless of how long the table grows, and a full sweep of eleven
 objects completes in about 220 ms at 50 Hz - inside the 1-5 Hz the plan asks
 for Tier 3, and the values are slow-moving anyway.
@@ -30,10 +29,11 @@ plausible-looking garbage rather than failing, so this table cites the manual.
 """
 import struct
 
+from agv_core.drivers.canbus.alarms import MUST, SHOULD
+
 # (index, key, label, ctype, scale, unit, tier)
-#   ctype  how to unpack the SDO payload - see _decode()
+#   ctype  how to unpack the SDO payload - see _decode() / decode_int()
 #   scale  multiply the raw value by this to get `unit`
-MUST, SHOULD = "must", "should"
 
 OBJECTS = [
     # -- Tier 3, analogue health. The early-warning channel; trend these. -----
@@ -88,6 +88,19 @@ def _decode(ctype, payload):
     return None
 
 
+_WIDTH = {"u8": (8, False), "i16": (16, True), "u16": (16, False), "i32": (32, True), "u32": (32, False)}
+
+
+def decode_int(ctype, value):
+    """An unsigned SDO read (as the bus owner's link returns it) -> the int of the
+    object's width and sign. None stays None."""
+    if value is None or ctype not in _WIDTH:
+        return None
+    bits, signed = _WIDTH[ctype]
+    v = int(value) & ((1 << bits) - 1)
+    return v - (1 << bits) if signed and v >= 1 << (bits - 1) else v
+
+
 class MonitorPoller:
     """Round-robin cursor over OBJECTS x nodes. Pure bookkeeping - no bus.
 
@@ -101,6 +114,10 @@ class MonitorPoller:
         self._i = 0
         self.values = {n: {} for n in self._nodes}
         self.sweeps = 0
+        self._node_i = 0
+        self._current = None
+        self.reads = 0
+        self.timeouts = 0
 
     def next_object(self):
         """The (index, key, ctype) due this tick, or None if the table is empty.
@@ -116,6 +133,29 @@ class MonitorPoller:
             self._i = 0
             self.sweeps += 1
         return idx, key, ctype
+
+    def step(self, read):
+        """One bounded read: the current object on the next node. Returns
+        (node, key, value) or None if the table is empty.
+
+        The object stays fixed for a full sweep of the nodes, so both drives are
+        read at the same point. `read(node, index)` is the bus owner's unsigned
+        SDO read (None on timeout); a timeout is stored as None, never a number.
+        """
+        if self._node_i == 0 or self._current is None:
+            self._current = self.next_object()
+            if self._current is None:
+                return None
+        index, key, ctype = self._current
+        nid = self._nodes[self._node_i]
+        self._node_i = (self._node_i + 1) % len(self._nodes)
+        raw = read(nid, index)
+        self.reads += 1
+        value = decode_int(ctype, raw)
+        if raw is None:
+            self.timeouts += 1
+        self.store(nid, key, value)
+        return nid, key, value
 
     def store(self, node, key, raw):
         """Record one decoded reading. raw None means the read did not answer."""

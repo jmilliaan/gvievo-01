@@ -62,8 +62,7 @@ import math
 import os
 import threading
 
-import rclpy
-from agv_core import alarms
+from agv_core import alarms, paths, se2
 from agv_core import config as vehicle_config
 from amr_navigation.compiler import ARC, ROTATE, CompiledStep, wrap
 from amr_navigation.route import VEHICLE_ARC_W_MAX
@@ -75,13 +74,14 @@ from nav_msgs.msg import Odometry, Path
 from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.duration import Duration
-from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_base.lean_node import LeanNode
+from amr_base import drive_state, hold_policy, tfpose
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -104,21 +104,10 @@ from amr_mission import run_fsm as fsm
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
 
-SENSOR_DATA = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-
 PHASE_INIT, PHASE_GOAL, PHASE_SETTLE, PHASE_PREMOVE = "init", "goal", "settle", "premove"
 
 
-def _yaw(q) -> float:
-    return math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+_yaw = se2.yaw_of
 
 
 def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> str | None:
@@ -142,7 +131,7 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
 class RouteExecutor(LeanNode):
     def __init__(self) -> None:
         super().__init__("route_executor")
-        self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
+        self.declare_parameter("maps_dir", paths.maps_dir())
         self.declare_parameter("footprint_yaml", "")
         # Layer identity (unified plan U0/U4): stamped into every RunState and MotionPermit;
         # the active_map_* values are what a mission must match (U4 enforces).
@@ -205,7 +194,7 @@ class RouteExecutor(LeanNode):
         self.declare_parameter("taper_lead_s", 0.3)
         # auto-resume after a stop whose cause clears by itself (see the module docstring)
         self.declare_parameter("auto_resume_enabled", True)
-        self.declare_parameter("auto_resume_clear_s", 2.0)
+        self.declare_parameter("auto_resume_clear_s", float(vehicle_config.AUTO_RESUME_HOLD_S))
         self.declare_parameter("auto_resume_estop", False)  # operator decision 2026-09-19: Start
         self.declare_parameter("safety_window_s", 1.0)
         self.declare_parameter("drives_age_limit_s", 0.5)
@@ -383,8 +372,8 @@ class RouteExecutor(LeanNode):
         self._wheels_t = self._now()
         # R07: receipt is not evidence. Prerequisites need the drive's validity flags too.
         self._wheels_valid = bool(m.left_valid and m.right_valid)
-        self._wheels_still = (
-            self._wheels_valid and abs(m.left_vel_rad_s) < self.w_eps and abs(m.right_vel_rad_s) < self.w_eps
+        self._wheels_still = drive_state.still(
+            m.left_vel_rad_s, m.right_vel_rad_s, self.w_eps, inclusive=False, valid=self._wheels_valid
         )
 
     def _init_hold_state(self) -> None:
@@ -392,7 +381,7 @@ class RouteExecutor(LeanNode):
         self.fault_code = ""  # alarm catalogue code for a FAULT (agv_core/alarms.py)
         self._auto_since: float | None = None  # all-clear since, for auto-resume
         self._pending_since: float | None = None
-        self._prereq_since: float | None = None  # a prerequisite has been failing since
+        self._prereq = hold_policy.Debounce()  # a prerequisite has been failing since
         self._aborts = 0  # controller aborts auto-resumed on this step
         self._drives_t: float | None = None
         self._torque_off_msg = False
@@ -402,16 +391,16 @@ class RouteExecutor(LeanNode):
 
     def _on_drives(self, m: DriveStatus) -> None:
         t = self._now()
-        # torque off = not operational AND neither drive's statusword says Operation enabled
-        off = not m.operational and "Operation enabled" not in (m.left_state, m.right_state)
+        off = drive_state.torque_off(m.operational, m.left_state, m.right_state)
         self._drives_t, self._torque_off_msg = t, off
         if off:
             self._last_off_t = t
 
     def _on_output_paths(self, m) -> None:
-        if len(m.status) <= self.field_index:
+        clear = drive_state.field_clear(m.status, self.field_index)
+        if clear is None:
             return
-        self._field_clear = bool(m.status[self.field_index])
+        self._field_clear = clear
         if not self._field_clear:
             self._field_trip_t = self._now()
 
@@ -427,14 +416,11 @@ class RouteExecutor(LeanNode):
         return "field" if self._field_tripped(now) else "estop"
 
     def _auto_causes(self) -> tuple[str, ...]:
-        return ("field", "controller") + (("estop",) if self.auto_resume_estop else ())
+        return hold_policy.auto_causes(("field", "controller"), self.auto_resume_estop)
 
     def _hold(self, cause: str, why: str) -> None:
         """Stop and hold: BLOCKED with a cause (see the module docstring)."""
-        text = {
-            "field": f"safety stop (protective field): {why}",
-            "estop": f"safety stop (E-stop / safety chain): {why}",
-        }.get(cause, why)
+        text = hold_policy.hold_text(cause, why)
         if self.fsm.state == fsm.EXECUTING:
             self.fsm.block(text)
         else:
@@ -472,11 +458,7 @@ class RouteExecutor(LeanNode):
         self._scan, self._scan_t = m, self._now()
 
     def _pose(self) -> tuple[float, float, float] | None:
-        try:
-            t = self.tf_buffer.lookup_transform("map", "base_footprint", rclpy.time.Time())
-        except Exception:  # noqa: BLE001
-            return None
-        return t.transform.translation.x, t.transform.translation.y, _yaw(t.transform.rotation)
+        return tfpose.lookup_pose(self.tf_buffer, "map", "base_footprint")
 
     # ---- services -------------------------------------------------------------------------
 
@@ -605,12 +587,7 @@ class RouteExecutor(LeanNode):
         is debounced is "something is wrong", not one particular message. Callers that merely
         REFUSE (the Start gate, the resume checks) do not use this - refusing is free, and
         those gates should answer for the instant the operator pressed the button."""
-        if not pre:
-            self._prereq_since = None
-            return False
-        if self._prereq_since is None:
-            self._prereq_since = now
-        return now - self._prereq_since >= self.prereq_grace_s
+        return self._prereq.held(now, pre, self.prereq_grace_s)
 
     def _auto(self) -> bool:
         return self._panel is not None and self._panel.valid and self._panel.mode_auto
@@ -669,7 +646,7 @@ class RouteExecutor(LeanNode):
         the warning has run and the drives have torque; hold (estop) if they never do."""
         waited = now - (self._premove_since if self._premove_since is not None else now)
         drives_fresh = self._drives_t is not None and now - self._drives_t <= self.drives_age
-        if waited >= self.premove_s and drives_fresh and not self._torque_off(now):
+        if hold_policy.premove_ready(waited, self.premove_s, drives_fresh, self._torque_off(now)):
             self.phase, self._premove_since = PHASE_INIT, None
             self.fsm.reason = f"moving: {self.fsm.progress()}"
             return
@@ -677,8 +654,9 @@ class RouteExecutor(LeanNode):
             self._premove_since = None
             self._hold(
                 "estop",
-                f"drives did not power up within {self.premove_timeout_s:.0f} s "
-                "(safety chain open? release the E-stop, Reset, then Start)",
+                hold_policy.premove_timeout_text(
+                    self.premove_timeout_s, "safety chain open? release the E-stop, Reset, then Start"
+                ),
             )
 
     def drive_power(self) -> bool:
@@ -804,7 +782,7 @@ class RouteExecutor(LeanNode):
             ps = PoseStamped()
             ps.header = path.header
             ps.pose.position.x, ps.pose.position.y = x, y
-            ps.pose.orientation.z, ps.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+            ps.pose.orientation.z, ps.pose.orientation.w = se2.quat_zw(yaw)
             path.poses.append(ps)
 
         for sample in st.samples:
@@ -1015,7 +993,7 @@ class RouteExecutor(LeanNode):
             else:
                 # IDLE / DONE / FAULT: nothing is waiting on a prerequisite, so the grace timer
                 # must not survive into the next mission and fire on its first tick
-                self._prereq_since = None
+                self._prereq.reset()
             if self.fsm.state == fsm.EXECUTING:
                 self._execute(now)
             elif self.fsm.state in (fsm.PAUSED, fsm.BLOCKED):
@@ -1306,16 +1284,8 @@ class RouteExecutor(LeanNode):
             if self.fsm.state == fsm.FAULT
             else "MODE_CHANGE"
         )
-        row = alarms.get(code)
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source = "route_executor"
-        m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
-        m.code = code
-        m.text = f"run {fsm.NAMES[self.fsm.state]} {self.fsm.progress()}: {self.fsm.reason}"
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._event_pub.publish(m)
+        text = f"run {fsm.NAMES[self.fsm.state]} {self.fsm.progress()}: {self.fsm.reason}"
+        self._event_pub.publish(self.build_event("route_executor", alarms.level(code), code, text))
 
     def _run_summary(self, previous: int | None) -> None:
         """One line per finished run, for the operator to read back (plan phase 2.3):
@@ -1333,19 +1303,13 @@ class RouteExecutor(LeanNode):
         if self._run_started is None:
             return
         holds = ", ".join(f"{k} x{n}" for k, n in sorted(self._run_holds.items())) or "none"
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source = "route_executor"
-        m.level = Event.ERROR if state == fsm.FAULT else Event.INFO
-        m.code = "RUN_SUMMARY"
-        m.text = (
+        text = (
             f"{self.fsm.mission_id or 'run'} {fsm.NAMES[state]} after "
             f"{self._now() - self._run_started:.0f} s; peak cross-track "
             f"{self._run_peak_cross:.2f} m; holds: {holds}"
         )
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._event_pub.publish(m)
+        level = Event.ERROR if state == fsm.FAULT else Event.INFO
+        self._event_pub.publish(self.build_event("route_executor", level, "RUN_SUMMARY", text))
         self._run_started = None
 
     def _publish_state(self) -> None:
@@ -1388,23 +1352,7 @@ class RouteExecutor(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = RouteExecutor()
-    executor = MultiThreadedExecutor(num_threads=4)
-    executor.add_node(node)
-    try:
-        executor.spin()
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        if rclpy.ok():
-            raise
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(RouteExecutor, args, executor=lambda: MultiThreadedExecutor(num_threads=4))
 
 
 if __name__ == "__main__":

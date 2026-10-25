@@ -15,14 +15,13 @@ import argparse
 import sys
 import time
 
-import can  # noqa: E402
-
-from agv_core.drivers.canbus.verify_drivers import (  # noqa: E402
+from agv_core.drivers.canbus.sdo import (  # noqa: E402
     BAD,
     OK,
     WARN,
-    claim_bus,
-    open_bus,
+    bench_bus,
+    nmt,
+    read_identity,
     sdo_read,
     u32,
 )
@@ -33,6 +32,10 @@ EXPECTED = {
     10: ("SICK MLS",     "MLSE",     None),   # expected device type unknown
 }
 SCAN_RANGE = range(1, 128)
+MISSING_HINTS = {
+    (10,): "sensor not answering. Check its 24 V (L+), the drop"
+           "\n         wiring, and that it is still at factory 125 kbps.",
+}
 
 
 def classify(cob):
@@ -77,46 +80,54 @@ def passive_listen(bus, seconds):
     return seen
 
 
-def scan(bus, timeout):
-    print("\n[2] scanning Node-IDs 1..127 (SDO read of 1000h)")
+def scan(bus, timeout, scan_range=SCAN_RANGE, expected=EXPECTED):
+    print(f"\n[2] scanning Node-IDs {scan_range.start}..{scan_range.stop - 1} (SDO read of 1000h)")
     found = {}
-    for nid in SCAN_RANGE:
+    for nid in scan_range:
         st, val, note, lat = sdo_read(bus, nid, 0x1000, 0, timeout=timeout)
         if st is None:
             continue
         dt = u32(val) if st else None
         found[nid] = (dt, note, lat)
         tag = f"device type 0x{dt:08X}" if st else f"abort 0x{val:08X}"
-        star = "" if nid in EXPECTED else f"  {WARN} UNEXPECTED"
+        star = "" if nid in expected else f"  {WARN} UNEXPECTED"
         print(f"    node {nid:>3}: {tag}   ({lat:.2f} ms) [{note}]{star}")
     if not found:
-        print(f"    {BAD}: no device answered on any address 1..127")
+        print(f"    {BAD}: no device answered on any address "
+              f"{scan_range.start}..{scan_range.stop - 1}")
     return found
 
 
-def identity(bus, found):
+def identity(bus, found, expected=EXPECTED, strict_type=False):
+    """Print each node's identity. Returns 1 if strict_type and a type or a
+    collision is wrong, else 0. A missing 1018h sub-index is normal."""
     print("\n[3] identity")
+    rc = 0
     for nid in sorted(found):
-        label = EXPECTED.get(nid, ("unknown device", "?", None))[0]
+        label = expected.get(nid, ("unknown device", "?", None))[0]
         print(f"  node {nid} ({label}):")
         dt, note, _ = found[nid]
-        exp = EXPECTED.get(nid, (None, None, None))[2]
+        exp = expected.get(nid, (None, None, None))[2]
         if dt is not None:
-            mark = "" if exp is None else f"  {OK if dt == exp else WARN} (expected 0x{exp:08X})"
+            good = exp is None or dt == exp
+            mark = "" if exp is None else f"  {OK if good else WARN} (expected 0x{exp:08X})"
             print(f"    device type   0x{dt:08X}{mark}")
+            rc |= strict_type and not good
         if "COLLISION" in note:
             print(f"    {BAD}: {note}  <-- two devices share this Node-ID")
-        for sub, name in ((1, "vendor ID"), (2, "product code"),
-                          (3, "revision"), (4, "serial number")):
-            st, val, _, _ = sdo_read(bus, nid, 0x1018, sub)
+            rc |= strict_type
+        for name, st, val in read_identity(bus, nid):
             if st:
-                print(f"    {name:<13} 0x{u32(val):08X}")
+                print(f"    {name:<13} 0x{val:08X}")
             elif st is False:
                 print(f"    {name:<13} -")          # sub-index absent is normal
+            elif strict_type:
+                print(f"    {name:<13} timeout")
         # device name is optional (1008h) but useful for identifying the sensor
         st, val, _, _ = sdo_read(bus, nid, 0x1008, 0)
         if st and val:
             print(f"    device name   {val.decode('ascii', 'replace').strip()}")
+    return int(rc)
 
 
 def bus_dead_help():
@@ -145,6 +156,44 @@ def bus_dead_help():
     identical to 'nothing is transmitting'. Silence is not diagnostic here.""")
 
 
+def run(bus, expected=EXPECTED, scan_range=SCAN_RANGE, scan_timeout=0.1, listen_s=5.0,
+        nmt_start=False, strict_type=False, hints=MISSING_HINTS):
+    """Listen, scan, identify, verdict. Returns the exit code: 0 only when exactly
+    `expected` answered (and, with strict_type, with the right device types)."""
+    passive_listen(bus, listen_s)
+    found = scan(bus, scan_timeout, scan_range, expected)
+    if not found:
+        bus_dead_help()
+        return 1
+
+    rc = identity(bus, {n: v for n, v in found.items() if n in expected or not strict_type},
+                  expected, strict_type)
+
+    if nmt_start:
+        print("\n[3b] NMT Start (broadcast) - devices -> Operational")
+        nmt(bus, 0x01)
+        time.sleep(0.15)
+        passive_listen(bus, listen_s)
+
+    print("\n[4] verdict")
+    missing = [n for n in expected if n not in found]
+    extra = [n for n in found if n not in expected]
+    for nid, (label, _, _) in expected.items():
+        mark = OK if nid in found else BAD
+        print(f"    node {nid:>3}  {label:<14} {mark}")
+    if extra:
+        print(f"    {WARN}: unexpected Node-IDs {extra}")
+    if not missing and not extra:
+        print(f"\n    {OK}: exactly nodes {sorted(expected)} present, no collisions.")
+        return rc
+    if missing:
+        print(f"\n    {BAD}: missing {missing}")
+        hint = (hints or {}).get(tuple(missing))
+        if hint:
+            print(f"      -> {hint}")
+    return 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--nmt-start", action="store_true",
@@ -153,50 +202,12 @@ def main():
     ap.add_argument("--scan-timeout", type=float, default=0.1)
     args = ap.parse_args()
 
-    lock = claim_bus("verify_bus")
-    if lock is None:
+    opened = bench_bus("verify_bus")
+    if opened is None:
         return 2
+    _lock, bus = opened
     try:
-        bus, how = open_bus()
-    except Exception as e:
-        print(f"{BAD}: {e}")
-        return 2
-    print(f"connected via {how}")
-
-    try:
-        passive_listen(bus, args.listen)
-        found = scan(bus, args.scan_timeout)
-
-        if not found:
-            bus_dead_help()
-            return 1
-
-        identity(bus, found)
-
-        if args.nmt_start:
-            print("\n[3b] NMT Start (broadcast) - devices -> Operational")
-            bus.send(can.Message(arbitration_id=0x000, data=[0x01, 0x00],
-                                 is_extended_id=False))
-            time.sleep(0.2)
-            passive_listen(bus, args.listen)
-
-        print("\n[4] verdict")
-        missing = [n for n in EXPECTED if n not in found]
-        extra = [n for n in found if n not in EXPECTED]
-        for nid, (label, _, _) in EXPECTED.items():
-            mark = OK if nid in found else BAD
-            print(f"    node {nid:>3}  {label:<14} {mark}")
-        if extra:
-            print(f"    {WARN}: unexpected Node-IDs {extra}")
-        if not missing and not extra:
-            print(f"\n    {OK}: all three nodes present, no collisions.")
-            return 0
-        if missing:
-            print(f"\n    {BAD}: missing {missing}")
-            if missing == [10]:
-                print("      -> sensor not answering. Check its 24 V (L+), the drop"
-                      "\n         wiring, and that it is still at factory 125 kbps.")
-        return 1
+        return run(bus, scan_timeout=args.scan_timeout, listen_s=args.listen, nmt_start=args.nmt_start)
     finally:
         bus.shutdown()
 

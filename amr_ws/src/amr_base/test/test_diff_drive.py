@@ -141,3 +141,25 @@ def test_scurve_builds_acceleration_gradually_and_never_overshoots():
         vs.append(v)
     assert max(abs(x - y) for x, y in zip(vs, vs[1:], strict=False)) <= 0.5 * dt + 1e-9
     assert vs[-1] == -0.2
+
+
+def test_wheel_scale_applies_the_invert_flag_both_ways():
+    """D34: commissioning and the tape sim convert through WheelScale, so an inverted
+    wheel is inverted once, the same way the drive node does it."""
+    from amr_base.diff_drive import WheelScale
+
+    s = WheelScale(30.0, invert_left=True, invert_right=False)
+    assert s.motor_rpm(s.wheel_rad_s(300.0, True), True) == pytest.approx(300.0)
+    assert s.wheel_rad_s(300.0, True) == pytest.approx(-s.wheel_rad_s(300.0, False))
+
+
+def test_profile_geometry_is_what_the_library_kinematics_use():
+    """D35: the nodes' geometry default and agv_core.kinematics agree on the wheels."""
+    from agv_core import config, kinematics
+
+    from amr_base.diff_drive import WheelScale, inverse, profile_geometry
+
+    wl, wr = inverse(profile_geometry(), 0.5, 0.3)
+    left_rpm, right_rpm = kinematics.body_to_wheels(0.5, 0.3)  # driver terms: invert flags applied
+    s = WheelScale(config.GEAR_RATIO, config.INVERT_LEFT, config.INVERT_RIGHT)
+    assert (s.wheel_rad_s(left_rpm, True), s.wheel_rad_s(right_rpm, False)) == pytest.approx((wl, wr))

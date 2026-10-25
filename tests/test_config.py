@@ -140,12 +140,12 @@ def test_config_profile():
     refuses("a kink stop band at or past the sensor window is refused",
             lambda d: d["autopilot"].update(kink_stop_mm=100.0), "autopilot.kink_stop_mm")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
-    # an infinite manual watchdog would never expire. Python's json reader takes
-    # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form
-    # is written as raw text and must be refused with the FIELD named.
+    # an infinite driver timeout would never declare a silent drive. Python's json
+    # reader takes the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so
+    # each form is written as raw text and must be refused with the FIELD named.
     def refuses_raw(name, token, expect):
         def mutate(d):
-            d["timing"]["manual_watchdog_s"] = "@@TOKEN@@"
+            d["timing"]["driver_timeout_s"] = "@@TOKEN@@"
         d = copy.deepcopy(base)
         mutate(d)
         tmp = tempfile.mkdtemp()
@@ -163,24 +163,33 @@ def test_config_profile():
         check(name, msg is not None and expect in msg, msg or "accepted!")
 
     for token in ("Infinity", "-Infinity", "NaN", "1e999", "-1e999"):
-        refuses_raw(f"a watchdog of {token} is refused, naming the field",
-                    token, "timing.manual_watchdog_s")
+        refuses_raw(f"a driver timeout of {token} is refused, naming the field",
+                    token, "timing.driver_timeout_s")
     refuses_raw("an integer too large for a float is refused, naming the field",
-                "1" + "0" * 400, "timing.manual_watchdog_s")
+                "1" + "0" * 400, "timing.driver_timeout_s")
     refuses("a finite wheel diameter that overflows a derived value is refused",
             lambda d: d["vehicle"].update(wheel_dia_m=1e308, gear_ratio=1e-300),
             "not finite")
-    check("the live watchdog is finite after the refusals",
-          math.isfinite(config.MANUAL_WATCHDOG_S), config.MANUAL_WATCHDOG_S)
+    check("the live driver timeout is finite after the refusals",
+          math.isfinite(config.DRIVER_TIMEOUT_S), config.DRIVER_TIMEOUT_S)
 
     refuses("duplicate CAN node IDs are refused",
             lambda d: d["can"].update(sensor_node=2), "distinct")
-    refuses("a non-boolean can.use_rpdo is refused",
-            lambda d: d["can"].update(use_rpdo=1), "true/false")
+    refuses("a non-boolean rfid.enabled is refused",
+            lambda d: d["rfid"].update(enabled=1), "true/false")
 
-    refuses("a driver timeout inside the telemetry period is refused",
+    refuses("a driver timeout inside two heartbeats is refused",
             lambda d: d["timing"].update(driver_timeout_s=0.1),
             "driver_timeout_s")
+
+    # 2026-10-25 (lean plan D02): validated but never read; the ROS params rule instead
+    # (drive_node cmd_timeout_s / imu_poll_hz / monitor_period_*, cmd_mux freshness).
+    for sect, key, val in (("autopilot", "dry_run", False), ("can", "use_rpdo", False),
+                           ("monitor", "poll_period_s", 0.1), ("imu", "poll_period_s", 0.04),
+                           ("imu", "retry_period_s", 2.0), ("timing", "telemetry_period_s", 0.2),
+                           ("timing", "manual_watchdog_s", 0.6)):
+        refuses(f"a leftover {sect}.{key} is refused",
+                lambda d, s=sect, k=key, v=val: d[s].update({k: v}), "unknown key")
     refuses("an empty can.channel is refused",
             lambda d: d["can"].update(channel=""), "can.channel")
 
@@ -226,9 +235,11 @@ def test_config_profile():
             lambda d: d.pop("mls"), "missing top-level")
     # Tape-graph localization (tracked plan 3): on for the P1 teach of site 103's C-MRU by guided
     # runs (2026-10-23); thresholds provisional until P0.
+    # 2026-10-25 (operator): station limit loosened 0.025 -> 0.05 m (2 sigma = the whole +-10 cm) to
+    # cut `position` holds; a stop's own error now comes on top, accepted.
     check("tape localization teaches site-103 C-MRU and its station limit fits +-10 cm",
           config.TAPE_LOC_ENABLED is True and config.TAPE_LOC_SITE_MISSION == "site-103"
-          and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.05
+          and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.10
           and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
           f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SITE_MISSION} {config.TAPE_LOC_SIGMA_STATION_M}")
     refuses("a station sigma limit above 5 cm is refused",
@@ -275,21 +286,17 @@ def test_config_profile():
           and config.HORN_HOLD_S >= 2 * config.DIO_SCAN_PERIOD_S,
           f"HORN_HOLD_S={config.HORN_HOLD_S}")
 
-    # The IMU poll runs on the bus thread, so it is paced like every other
-    # poll there, and its back-off has to be a back-off.
-    refuses("an IMU poll faster than the tick is refused",
-            lambda d: d["imu"].update(poll_period_s=d["timing"]["loop_period_s"] / 2),
-            "imu.poll_period_s")
-    refuses("an IMU retry no slower than the poll is refused",
-            lambda d: d["imu"].update(retry_period_s=d["imu"]["poll_period_s"]),
-            "imu.retry_period_s")
-
     # The name in the file must match the file. A profile copied for a second
     # vehicle and not renamed would report the old identity in the event log
     # and in every run CSV header.
     msg = load_with(lambda d: None, name="agv-99")
     check("profile_name must match the filename", msg is not None
           and "agv-99" in (msg or ""), msg or "accepted!")
+    check("wheel rad/s per motor r/min is 2 pi / 60 through the gearhead (one derived constant)",
+          abs(config.WHEEL_RAD_S_PER_MOTOR_RPM * config.GEAR_RATIO * 60.0 / (2 * math.pi) - 1.0) < 1e-12)
+    check("tracked true/false/null is the tape/slam/both product, the loaded one by default",
+          [config.product(t) for t in (True, False, None)] == ["tape", "slam", "both"]
+          and config.product() == config.product(config.TRACKED))
 
     # -- which vehicle this process is --------------------------------------
     check("the default profile resolves into profiles/",
@@ -444,8 +451,8 @@ def test_params_view():
     # true/false, not Python's True/False - the page is read next to the JSON
     # file it describes, and the two must be the same word.
     check("booleans render as JSON does",
-          rows["can.use_rpdo"]["value"] in ("true", "false"),
-          rows["can.use_rpdo"]["value"])
+          rows["rfid.enabled"]["value"] in ("true", "false"),
+          rows["rfid.enabled"]["value"])
     check("a whole float drops its .0",
           rows["vehicle.motor_max_rpm"]["value"] == "4000",
           rows["vehicle.motor_max_rpm"]["value"])
@@ -474,16 +481,16 @@ def test_tuning_notes_are_parsed_not_restated():
 
     # A heading naming several keys has to reach all of them, or the second and
     # third key look undocumented while their paragraph exists.
-    for key in ("timing.loop_period_s", "timing.telemetry_period_s"):
-        check(f"{key} carries the shared timing note", key in notes)
+    for key in ("rfid.heartbeat_s", "rfid.heartbeat_timeout_s"):
+        check(f"{key} carries the shared heartbeat note", key in notes)
     check("a key named without its section still resolves",
           "vehicle.invert_right" in notes)
     check("a section-wide note is kept as such", "rfid.*" in notes)
 
     # Attachment, not just parsing: the note has to land on the row.
     rows = rows_by_path(config.describe())
-    check("the use_rpdo note reaches its row",
-          "rpdo" in (rows["can.use_rpdo"]["note"] or "").lower())
+    check("the heartbeat note reaches its row",
+          "1017h" in (rows["can.heartbeat_ms"]["note"] or ""))
     check("a nested ramp row inherits the drivers.ramp note",
           "6083h" in (rows["drivers.ramp.auto.accel"]["note"] or ""))
     check("a section note reaches a row that has none of its own",

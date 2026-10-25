@@ -317,3 +317,29 @@ def test_blank_dynamic_refuses_a_map_with_nothing_fixed_left(tmp_path, monkeypat
             revision=rev,
             blank_dynamic="true",
         )
+
+
+def test_the_follower_and_executor_read_the_protective_field_index_of_the_yaml(tmp_path):
+    """D165: one protective index (scanner_fields.yaml) for the mux, the follower and the
+    executor. A wrong one makes them explain a stop from a warning path, never stops."""
+    import math
+
+    import yaml
+    from amr_mission.fixtures import write_world_as_bundle
+
+    from amr_bringup import scanner_fields
+    from amr_maps import raycast
+
+    doc = scanner_fields.load()
+    assert scanner_fields.protective_index(doc) == scanner_fields.mux_params(doc)["protective_index"] == 0
+    c = compose("line_layer.launch.py", generation=3, real="true")
+    params = [_param_dict(p) for p in c["params"]["line_follow_node"] if isinstance(p, dict)]
+    assert any(p.get("field_output_index") == 0 for p in params)
+    write_world_as_bundle(str(tmp_path))
+    n = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory")
+    params = [_param_dict(p) for p in n["params"]["route_executor_node"] if isinstance(p, dict)]
+    assert any(p.get("field_output_index") == 0 for p in params)
+    # the synthetic scan's field of view is the mounted scanner's
+    cfg = yaml.safe_load(open(os.path.join(os.path.dirname(LAUNCH), "config", "nanoscan3.yaml")))
+    ros = next(v["ros__parameters"] for v in cfg.values() if isinstance(v, dict) and "ros__parameters" in v)
+    assert math.isclose(raycast.MOUNTED_FOV, ros["angle_end"] - ros["angle_start"], abs_tol=1e-3)

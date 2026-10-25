@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from amr_maps.grid import Grid
+from amr_maps.grid import OCCUPIED, Grid
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ def cast(
     rows = np.floor((py - grid.meta.origin_y) / grid.meta.resolution).astype(np.int64)
     inside = (cols >= 0) & (cols < grid.width) & (rows >= 0) & (rows < grid.height)
     occ = np.zeros(px.shape, dtype=bool)
-    occ[inside] = grid.data[rows[inside], cols[inside]] >= 65
+    occ[inside] = grid.data[rows[inside], cols[inside]] >= OCCUPIED
     # Leaving the grid counts as a hit at the boundary? No: outside is unknown,
     # the beam just reports no return (inf), like a real scanner into open air.
     hit = occ.any(axis=1)

@@ -36,7 +36,6 @@ let cfgJson = '';
 async function load() {
   const { status, data } = await apiGet('/api/config');
   if (status === 200 && JSON.stringify(data) !== cfgJson) { cfgJson = JSON.stringify(data); cfg = data; render(); }
-  setTimeout(load, 5000);
 }
-load();
+every(5000, load);
 </script>{% endblock %}

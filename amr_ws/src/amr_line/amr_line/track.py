@@ -20,6 +20,8 @@ says the SDO path is "too slow and too skewed for control".
 """
 import collections
 
+from agv_core.drivers.canbus.mls_markers import SOURCE_TPDO
+
 
 class TrackReader:
     """Holds the last sample, converts it, and judges whether it may be used."""
@@ -76,7 +78,7 @@ class TrackReader:
         age = self.age_s(now_mono)
         if age is None or age > self.timeout_s:
             return False, "track"
-        if not self.accept_sdo and self.last.source != "tpdo":
+        if not self.accept_sdo and self.last.source != SOURCE_TPDO:
             # Not a fault of the tape: the sensor is in the wrong mode.
             return False, "rate"
         # An unmeasured rate is not a good rate: three samples at 100 Hz is

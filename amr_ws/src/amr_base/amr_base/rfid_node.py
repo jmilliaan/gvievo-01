@@ -19,18 +19,12 @@ RSSI) so a run bag shows the read margin; tools/bag_report.py tabulates it.
 
 from __future__ import annotations
 
-import rclpy
 from agv_core import config, ownerlock
 from agv_core.drivers import rfid
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
-from amr_base.lean_node import LeanNode
+from amr_base.lean_node import LeanNode, run
+from amr_base.qos import EVENT_STREAM as ENCOUNTERS
 from amr_interfaces.msg import StationDetection
-
-ENCOUNTERS = QoSProfile(
-    depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
 
 
 class RfidNode(LeanNode):
@@ -92,14 +86,4 @@ class RfidNode(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = RfidNode()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        node.link.stop()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    run(RfidNode, args, before_destroy=lambda n: n.link.stop(), catch_runtime=False)

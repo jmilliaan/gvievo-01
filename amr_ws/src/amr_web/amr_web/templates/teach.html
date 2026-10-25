@@ -43,6 +43,15 @@
       <button data-act="mark_role" title="The mark named above (M-id) becomes this station or point">Set role</button>
       <button data-act="roles" title="What is taught, from which mark, and what is not">Roles</button>
     </div>
+    {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
+       name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
+       the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
+    <div class="bar">
+      <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
+      <button data-act="mark_offset" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
+      <button data-act="mark_along" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
+      <a href="/tape-areas" class="note">High-speed areas →</a>
+    </div>
     <div class="bar">
       <button data-act="build">Build</button>
       <button data-act="publish">Publish</button>
@@ -54,7 +63,6 @@
 </section>
 {% endblock %}
 {% block scripts %}<script>
-const $ = id => document.getElementById(id);
 const HEALTH = { HEALTHY: 'ok', DEGRADED: 'warn', LOST: 'bad', WAITING: 'warn', IDLE: '' };
 
 async function loadSite() {
@@ -76,26 +84,21 @@ function argFor(act) {
   if (act === 'activate') return $('tc-g').value.trim();
   if (act === 'mark' || act === 'mark_delete') return $('tc-mark').value.trim();
   if (act === 'mark_role') return `${$('tc-mark').value.trim()} ${$('tc-role').value}`;
+  if (act === 'mark_offset' || act === 'mark_along') {
+    const [ref, id] = $('tc-mark').value.trim().split(/\s+/);
+    return [ref || '', $('tc-offset').value.trim(), id || ''].join(' ').trim();
+  }
   return '';
 }
 
 for (const b of document.querySelectorAll('button[data-act]')) {
-  b.onclick = async () => {
-    const act = b.dataset.act;
-    const { data } = await api('/api/line/teach', { action: act, arg: argFor(act) });
-    $('tc-msg').textContent = data.message || '';
-    $('tc-msg').className = 'note' + (data.ok ? '' : ' bad');
-    log(`teach ${act}: ${data.message}`, data.ok ? '' : 'bad');
+  b.onclick = () => {
+    const what = b.dataset.act;
+    act('/api/line/teach', { action: what, arg: argFor(what) }, { msgEl: 'tc-msg', prefix: `teach ${what}: ` });
   };
 }
-$('btn-at-home').onclick = async () => {
-  const { data } = await api('/api/line/at_home');
-  log(data.message, data.ok ? '' : 'bad');
-};
-$('btn-confirm').onclick = async () => {
-  const { data } = await api('/api/localization/confirm');
-  log(data.message, data.ok ? '' : 'bad');
-};
+$('btn-at-home').onclick = () => act('/api/line/at_home');
+$('btn-confirm').onclick = () => act('/api/localization/confirm');
 
 onState(st => {
   const ln = st.line, loc = st.localization;

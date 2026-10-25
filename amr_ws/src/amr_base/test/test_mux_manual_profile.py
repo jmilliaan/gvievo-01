@@ -9,7 +9,7 @@ from builtin_interfaces.msg import Time
 
 from amr_base import cmd_mux_kinematics_node as mux
 from amr_base import gating
-from amr_base.diff_drive import Geometry
+from amr_base.diff_drive import profile_geometry
 
 
 class _Logger:
@@ -21,7 +21,7 @@ class _Logger:
 
 def _node(dt=0.02):
     n = mux.CmdMuxKinematics.__new__(mux.CmdMuxKinematics)
-    n.geom = Geometry(0.09, 0.487)
+    n.geom = profile_geometry()
     n.w_max = 100.0
     n.a_max, n.alpha_max, n.d_max, n.delta_max = 0.15, 0.4, 0.5, 1.0
     n.manual_a_max, n.manual_alpha_max, n.manual_jerk, n.manual_jerk_w = 0.3, 0.4, 1.0, 2.0

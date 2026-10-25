@@ -103,3 +103,34 @@ def test_names_cover_every_source_and_the_lease_bits_are_distinct():
     bits = [g.LEASE_MANUAL, g.LEASE_AUTONOMOUS, g.LEASE_COMMISSIONING, g.LEASE_LINE]
     assert bits == [1, 2, 4, 8]
     assert all(b and not (b & (b - 1)) for b in bits)  # each is one bit
+
+
+def test_lease_bits_are_the_control_lease_constants():
+    """D46: every node takes the lease bits from gating; gating must equal the msg."""
+    import pytest
+
+    from amr_base import gating
+
+    msg = pytest.importorskip("amr_interfaces.msg").ControlLease
+    assert (gating.LEASE_MANUAL, gating.LEASE_AUTONOMOUS, gating.LEASE_COMMISSIONING, gating.LEASE_LINE) == (
+        msg.MANUAL,
+        msg.AUTONOMOUS,
+        msg.COMMISSIONING,
+        msg.LINE,
+    )
+
+
+def test_lease_stale_drops_replays_and_keeps_the_two_generation_rules():
+    """D22: one replay filter behind all five lease intakes. Failure mode it pins: an
+    inverted comparison would accept a replayed lease and keep authority alive for one
+    more 0.3 s window (expiry still zeroes commands in select/drive_gate)."""
+    from amr_base.gating import Lease, lease_stale
+
+    cur = Lease(t_recv=10.0, instance="A", generation=3, seq=10, allowed=1)
+    assert not lease_stale(None, "A", 3, 1)
+    assert lease_stale(cur, "A", 3, 10) and lease_stale(cur, "A", 3, 9)  # replay, reorder
+    assert not lease_stale(cur, "A", 3, 11)
+    assert not lease_stale(cur, "B", 1, 1)  # a restarted supervisor: accepted
+    assert not lease_stale(cur, "A", 2, 50)  # drive owner / mux: any generation change is new
+    assert lease_stale(cur, "A", 2, 50, monotonic_generation=True)  # follower: never back
+    assert not lease_stale(cur, "A", 4, 0, monotonic_generation=True)

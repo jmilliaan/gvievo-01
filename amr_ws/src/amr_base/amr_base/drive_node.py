@@ -56,18 +56,22 @@ from agv_core import (
     config,
     ownerlock,  # noqa: E402
 )
-from agv_core.drivers.canbus.verify_drivers import open_bus  # noqa: E402
+from agv_core.drivers.canbus import read_mls  # noqa: E402
+from agv_core.drivers.canbus.sdo import open_bus  # noqa: E402
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from rclpy.executors import ExternalShutdownException
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import arm_policy, canopen, gating, pp
-from amr_base.lean_node import LeanNode
+from amr_base import arm_policy, canopen, drive_state, gating, pp
+from amr_base.lean_node import LeanNode, UiThrottle, run
 from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
 from amr_base.mls_track import ERROR, WARN, MlsTrack, RateLimit, TrackSample
+
+# /amr/line_marker (mls-marker-plan 5.4): every marker is a message, none may be dropped
+# behind a newer one, and a replayed old one must never look new (EVENT_STREAM).
+from amr_base.qos import EVENT_STREAM as MARKER_QOS
+from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
@@ -83,33 +87,12 @@ from amr_interfaces.msg import (
     WheelVelocities,
 )
 
-SENSOR_DATA = QoSProfile(
-    depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
-)
-RELIABLE_1 = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
-LATCHED = QoSProfile(
-    depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
-)
-# /amr/line_marker (mls-marker-plan 5.4): every marker is a message, none may be dropped
-# behind a newer one, and a replayed old one must never look new.
-MARKER_QOS = QoSProfile(
-    depth=50, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE
-)
 BIG = 1e6
 
 
-def marker_expectation(polarity_lock: bool, teach_lock: bool) -> dict:
-    """Profile mls.* -> the MLS objects and values the sensor must hold for markers to be
-    trusted (read-only check in MlsTrack). Markers are always on (2026-10-23). The same
-    values the bench tool writes (read_mls.MARKER_SETTINGS)."""
-    want = {(0x2028, 1): 1, (0x2028, 2): 1, (0x2028, 3): 1}
-    if teach_lock:
-        want[(0x2029, 0)] = 1
-    if polarity_lock:
-        want[(0x202D, 5)] = 1
-    return want
+# Profile mls.* -> what the sensor must hold for markers to be trusted; the bench
+# tool's own table, so the check and set-markers cannot drift.
+marker_expectation = read_mls.marker_expectation
 
 
 def _fault_code(reason: str) -> str:
@@ -122,18 +105,16 @@ def _fault_code(reason: str) -> str:
     return "DRIVE_FAULT"
 
 
-TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
 FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
-WHEELS_UI_PERIOD_S = 0.2  # /wheel_states_ui, the display copy (Home speed tile, 2026-10-08)
 
 class DriveNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("drive_node")
         dp = self.declare_parameter
-        dp("rate_hz", 1.0 / config.LOOP_PERIOD_S)
+        # The loop period, driver timeout, IMU/monitor switches and MLS variant come from
+        # the profile directly (config.*): no ROS param shadows them.
         dp("cmd_timeout_s", 0.2)
         dp("feedback_hz", 50.0)  # TPDO event timer; 100 Hz once the 125 kbps bus is proven to carry it
-        dp("driver_timeout_s", config.DRIVER_TIMEOUT_S)
         dp("auto_arm", True)  # bring the link up (STANDBY) at start; power follows arm_policy
         dp("power_panel_timeout_s", 1.0)  # arm_policy: a panel image older than this = no power
         dp("power_ask_timeout_s", 2.5)  # arm_policy: a LineState/RunState request older than this
@@ -142,7 +123,6 @@ class DriveNode(LeanNode):
         dp("pc_heartbeat_ms", 100)
         dp("pc_loss_ms", 500)  # 1016h on the drives; 0 disables the drive-side response
         dp("ramp", "auto")  # profile drivers.ramp.<name>
-        dp("imu_enabled", config.IMU_ENABLED)
         dp("imu_poll_hz", 50.0)
         dp("imu_stamp_every", 10)
         dp("gyro_sign", 1.0)  # VERIFY on the vehicle: CCW spin must read positive
@@ -152,21 +132,19 @@ class DriveNode(LeanNode):
         # auto listens for TPDO1 and polls by SDO (monitor rate) while none arrive.
         dp("mls_track_mode", "auto")
         dp("mls_track_sdo_hz", 10.0)
-        dp("mls_track_variant", config.MLS_VARIANT)  # 2006h:01 as commissioned (profile mls.variant)
         dp("require_supervisor", False)  # production: True (unified plan §4.2)
         dp("lease_timeout_s", 0.3)
         # Diagnostic monitoring (unified plan §7.1): ONE bounded SDO read per slot on the
         # bus thread, below command/feedback/heartbeat work, slower while moving.
-        dp("monitor_enabled", bool(config.MONITOR_ENABLED))
         dp("monitor_period_still_s", 0.25)
         dp("monitor_period_moving_s", 1.0)
         dp("pp_hold_timeout_s", 0.2)  # a pp move halts this long after its last hold
         dp("pp_panel_timeout_s", 0.2)
         p = self.get_parameter
-        self.period = 1.0 / p("rate_hz").value
+        self.period = config.LOOP_PERIOD_S
         self.cmd_timeout = p("cmd_timeout_s").value
         self.feedback_ms = max(1, int(round(1000.0 / p("feedback_hz").value)))
-        self.driver_timeout = p("driver_timeout_s").value
+        self.driver_timeout = config.DRIVER_TIMEOUT_S
         self.want_link = bool(p("auto_arm").value)
         self._power_params = arm_policy.Params(
             panel_timeout_s=float(p("power_panel_timeout_s").value),
@@ -180,11 +158,11 @@ class DriveNode(LeanNode):
         self.pc_hb_s = p("pc_heartbeat_ms").value / 1000.0
         self.pc_loss_ms = int(p("pc_loss_ms").value)
         self.ramp = config.RAMP[p("ramp").value]
-        self.imu_enabled = bool(p("imu_enabled").value)
+        self.imu_enabled = bool(config.IMU_ENABLED)
         self.imu_frame = p("imu_frame").value
         self.gyro_var = p("gyro_var").value
 
-        self.nodes = {config.LEFT: "left", config.RIGHT: "right"}
+        self.nodes = dict(config.NODES)
         self._lock = threading.Lock()
         self._cmd: tuple[float, float, float] | None = None  # (t_mono, wl, wr)
         self._cmd_gen = 0
@@ -195,12 +173,11 @@ class DriveNode(LeanNode):
             lease_timeout_s=float(p("lease_timeout_s").value),
         )
         self._gate_reason: str | None = None
-        self._mon = canmon.MonitorPoller(config.NODES) if p("monitor_enabled").value else None
+        self._mon = canmon.MonitorPoller(config.NODES) if config.MONITOR_ENABLED else None
         self._mon_periods = (
             float(p("monitor_period_still_s").value),
             float(p("monitor_period_moving_s").value),
         )
-        self._cursor = canopen.MonitorCursor(self._mon, config.NODES) if self._mon is not None else None
         self._bus_stats = {"sdo_timeouts": 0, "monitor_reads": 0}
         self._event_seq = 0
         self._operational = False
@@ -217,7 +194,6 @@ class DriveNode(LeanNode):
         self._pp_panel_timeout = float(p("pp_panel_timeout_s").value)
         self._pp_req: pp.Request | None = None
         self._pp_bad = ""  # why the last PpMove was not accepted as a request
-        self._panel: tuple[float, bool, bool] | None = None  # (t_mono, valid, mode_auto)
         self._track: MlsTrack | None = None  # built on the bus thread
         # /amr/line_track is best-effort, so a dropped sample is invisible
         # without this. Touched only on the bus thread, the sole publisher.
@@ -226,7 +202,7 @@ class DriveNode(LeanNode):
         self._pub_wheels = self.create_publisher(WheelStates, "/wheel_states", SENSOR_DATA)
         # 5 Hz copy for displays, as /amr/line_track_ui. Nothing in control reads it.
         self._pub_wheels_ui = self.create_publisher(WheelStates, "/wheel_states_ui", SENSOR_DATA)
-        self._wheels_ui_t = 0.0
+        self._wheels_ui = UiThrottle()  # /wheel_states_ui, the Home speed tile
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
@@ -236,7 +212,7 @@ class DriveNode(LeanNode):
         # A 5 Hz copy for displays (CPU, 2026-10-02): the web shows it at 2 Hz and was
         # deserialising all 100 samples a second in Python. Control stays on the full topic.
         self._pub_track_ui = self.create_publisher(LineTrack, "/amr/line_track_ui", SENSOR_DATA)
-        self._track_ui_t = 0.0
+        self._track_ui = UiThrottle()  # /amr/line_track_ui
         # Marker codes (mls-marker-plan): events made on the bus thread, a 1 Hz status heartbeat.
         self._pub_marker = self.create_publisher(MarkerEvent, "/amr/line_marker", MARKER_QOS)
         self._markers = MarkerDetector(config.MLS_MARKER_CODES)
@@ -267,10 +243,8 @@ class DriveNode(LeanNode):
 
     def _on_lease(self, msg: ControlLease) -> None:
         with self._lock:
-            cur = self._lease
-            if cur is not None and (cur.instance, cur.generation) == (msg.instance, int(msg.generation)):
-                if int(msg.seq) <= cur.seq:
-                    return
+            if gating.lease_stale(self._lease, msg.instance, int(msg.generation), int(msg.seq)):
+                return
             self._lease = gating.Lease(
                 time.monotonic(), msg.instance, int(msg.generation), int(msg.seq), int(msg.allowed)
             )
@@ -294,7 +268,6 @@ class DriveNode(LeanNode):
     def _on_panel(self, msg: PanelState) -> None:
         t = time.monotonic()
         with self._lock:
-            self._panel = (t, bool(msg.valid), bool(msg.mode_auto))
             self._power_panel = arm_policy.Panel(
                 t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm)
             )
@@ -390,7 +363,7 @@ class DriveNode(LeanNode):
             self._publish_track,
             mode=str(self.get_parameter("mls_track_mode").value),
             sdo_hz=float(self.get_parameter("mls_track_sdo_hz").value),
-            expected_variant=int(self.get_parameter("mls_track_variant").value),
+            expected_variant=int(config.MLS_VARIANT),  # 2006h:01 as commissioned (profile mls.variant)
             markers=marker_expectation(config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
             on_event=self._on_mls_event,
             event_clear=config.MLS_EVENT_CLEAR,
@@ -423,7 +396,7 @@ class DriveNode(LeanNode):
 
     def _loop(self, link, router, imu) -> None:
         retry_at = 0.0
-        t_tick = t_hb = t_status = t_mon = t_diag = 0.0
+        t_tick = t_status = t_mon = t_diag = 0.0
         t_wheels = None
         last_pub = {n: (None, None) for n in self.nodes}
         positions = {n: canopen.WheelPosition() for n in self.nodes}
@@ -486,7 +459,7 @@ class DriveNode(LeanNode):
                     # not a broken drive: the operator's answer is the cabinet's Reset
                     # button (2026-09-22). Edge-triggered - engaging retries every 2 s.
                     self._edge("arm", ("SAFETY_RESET_NEEDED", 1, f"{e}")
-                               if "Switch on disabled" in str(e) else ("DRIVE_FAULT", 2, f"{e}"))
+                               if drive_state.SWITCH_ON_DISABLED in str(e) else ("DRIVE_FAULT", 2, f"{e}"))
             elif d.action == "release":
                 if link.release():
                     self._log(f"drives in standby (power off): {d.reason}; {self._power[1]}")
@@ -535,9 +508,7 @@ class DriveNode(LeanNode):
                 if not self._pp_step(link, time.monotonic()):
                     link.send_target(*self._target(time.monotonic(), link.scale))
 
-            if self.pc_loss_ms and now - t_hb >= self.pc_hb_s and not link.heartbeat_withheld:
-                t_hb = now
-                link.send_pc_heartbeat(self.pc_node)
+            link.keepalive(strict=True)  # the PC heartbeat, when pc_loss_ms set link.pc_node
 
             link.idle()  # the IMU poll (link.idle_hook), guarded against re-entry
             if self._track is not None:
@@ -635,11 +606,11 @@ class DriveNode(LeanNode):
 
     def _pp_gate(self, link, now: float, generation: int) -> str | None:
         with self._lock:
-            lease, panel = self._lease, self._panel
+            lease, panel = self._lease, self._power_panel
         why = pp.authority_gate(
             now,
             enabled=bool(config.PP_ENABLED),
-            lease=None if lease is None else (lease.t_recv, lease.generation, lease.allowed),
+            lease=lease,
             move_generation=generation,
             panel=panel,
             lease_timeout_s=self._gate.lease_timeout_s,
@@ -791,8 +762,7 @@ class DriveNode(LeanNode):
             m.counts_valid = bool(m.left_valid and m.right_valid)
         m.counts_per_wheel_rev = float(scale.counts_per_wheel_rev or 0.0) if scale else 0.0
         self._safe_publish(self._pub_wheels, m)
-        if now - self._wheels_ui_t >= WHEELS_UI_PERIOD_S:
-            self._wheels_ui_t = now
+        if self._wheels_ui.due(now):
             self._safe_publish(self._pub_wheels_ui, m)
 
     def _publish_status(self, link, imu) -> None:
@@ -831,10 +801,10 @@ class DriveNode(LeanNode):
             self._log(f"drives {snap['state']}{why}, imu {snap['mode']}")
 
     def _monitor_slot(self, link) -> None:
-        """One object, one node, one SDO round trip (~2-4 ms); see canopen.MonitorCursor."""
-        self._cursor.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05), canmon._decode)
-        self._bus_stats["monitor_reads"] = self._cursor.reads
-        self._bus_stats["sdo_timeouts"] = self._cursor.timeouts
+        """One object, one node, one SDO round trip (~2-4 ms); see canmon.MonitorPoller.step."""
+        self._mon.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05))
+        self._bus_stats["monitor_reads"] = self._mon.reads
+        self._bus_stats["sdo_timeouts"] = self._mon.timeouts
 
     def _edge(self, slot: str, what: tuple[str, int, str] | None) -> None:
         """Emit an operator event only when `slot` CHANGES (agv_core/events: edges,
@@ -852,12 +822,7 @@ class DriveNode(LeanNode):
         self.event(what[1], what[0], f"{alarms.get(what[0]).title}: {what[2]}")
 
     def event(self, level: int, code: str, text: str) -> None:
-        m = Event()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.source, m.level, m.code, m.text = "drive_node", level, code, text
-        self._event_seq += 1
-        m.seq = self._event_seq
-        self._safe_publish(self._pub_event, m)
+        self._safe_publish(self._pub_event, self.build_event("drive_node", level, code, text))
 
     def _publish_diagnostics(self, link, imu) -> None:
         """Owner-published snapshot (unified plan §7.1): drive states, alarms, the
@@ -1002,8 +967,7 @@ class DriveNode(LeanNode):
         self._safe_publish(self._pub_track, m)
         self._marker_sample(s)
         now = time.monotonic()
-        if now - self._track_ui_t >= TRACK_UI_PERIOD_S:
-            self._track_ui_t = now
+        if self._track_ui.due(now):
             self._safe_publish(self._pub_track_ui, m)
 
     def _marker_sample(self, s: TrackSample) -> None:
@@ -1051,22 +1015,7 @@ class DriveNode(LeanNode):
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
-    node = DriveNode()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except RuntimeError:
-        if rclpy.ok():
-            raise
-    finally:
-        node.stop()  # disarms on the bus thread before the context goes away
-        try:
-            node.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
-        rclpy.try_shutdown()
+    run(DriveNode, args, before_destroy=lambda n: n.stop())  # disarms on the bus thread first
 
 
 if __name__ == "__main__":

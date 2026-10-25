@@ -21,9 +21,6 @@ setup(
     description="Launch files, configs and systemd units for the SLAM AMR.",
     license="Proprietary",
     tests_require=["pytest"],
-    entry_points={
-        "console_scripts": [
-            "amr_supervisor = amr_bringup.supervisor_node:main",
-        ],
-    },
+    # amr.service runs `python3 -m amr_bringup.supervisor_node` (deploy/amr-supervisor.sh);
+    # the package installs no console script.
 )
