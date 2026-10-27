@@ -28,14 +28,11 @@ MODULES = [
     "test_lss",
     "test_imu",
     "test_rpdo",
-    "test_rfid",
     "test_dio",
     "test_lidar",
     "test_panel",
     "test_blindrun",
     "test_layout",
-    "test_mls",
-    "test_mission",
 ]
 
 # 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
@@ -84,7 +81,15 @@ MODULES = [
 #   6 refusals.
 # + 8 (2026-10-27): test_invariants C05, segmented SDO uploads. sdo_read finishes or aborts the
 #   transfer instead of returning the length as the value and leaving the MLS's server open.
-EXPECTED_CHECKS = 755
+# - 138 (2026-10-27): tracked removal P3 (RFID driver, MLS track decoder, line-sensor guard).
+#   test_rfid (75) and test_mls (58) gone as modules; test_canmon - 5 (the line-sensor list
+#   checks, read_mls and DriveLink.write_sensor). Nothing added.
+# - 99 (2026-10-27): tracked removal P5 (profile, missions). test_mission (72) gone as a
+#   module with agv_core.mission and missions/; test_config 125 -> 98: - 33 (the mls and
+#   tape_loc blocks, the partial-autopilot check, the autopilot leftovers and limits) + 6
+#   (refusals of a leftover autopilot, rfid, mls or tape_loc section, the tracked key and
+#   vehicle.sensor_lookahead_m).
+EXPECTED_CHECKS = 518
 
 
 # An exception on a helper thread only prints a traceback by default - the

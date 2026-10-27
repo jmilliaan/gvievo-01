@@ -1,7 +1,7 @@
 # amr_ws — ROS 2 Humble workspace for the SLAM AMR
 
-Plans: `manuals/slam-generalized-plan/amr_implementation_spec.md` and
-`manuals/slam-generalized-plan/unified_amr_service_plan.md`. The unified stack
+Plans (archived): `manuals/obsolete/slam-generalized-plan/amr_implementation_spec.md` and
+`manuals/obsolete/slam-generalized-plan/unified_amr_service_plan.md`. The unified stack
 boots hardware and web in IDLE, then changes mapping/navigation layers under one
 supervisor. Software integration through commissioning parity is implemented;
 the compact vehicle acceptance and witnessed service cutover remain. Operator
@@ -203,7 +203,7 @@ Policy (`canopen.decide`, tabled in `test_canopen.py`): linked automatically
 (power stage off), TPDOs flowing so `/wheel_states` stays valid — and **powered**
 (Operation enabled, zero target) only while `amr_base.arm_policy` wants it (2026-10-08):
 under MANUAL while the Manual Arm input (DI08, `panel.di_manual_arm`) is high, under AUTO
-while `LineState`/`RunState.drive_power` asks; a stale panel or request is no power.
+while `RunState.drive_power` asks; a stale panel or request is no power.
 Engage retries every 2 s if the enable fails (usually ETO); power no longer wanted →
 release (zero, standstill wait, Shutdown) back to STANDBY, a release that cannot finish
 latches FAULT. A drive that leaves Operation enabled while powered → release and engage
@@ -277,8 +277,8 @@ and the run page. No endpoint publishes a velocity.
 **One catalogue, two audiences (2026-09-22).** Every stop, hold and fault in the
 stack carries a CODE; `agv_core/alarms.py` maps it to what the operator reads and
 the one thing they do about it, while the node's own `reason` stays the
-engineer's detail. Codes travel in `RunState.fault_code`, `LocalizationState.code`,
-`LineState.code` and `MuxState.code`, and every owner emits an `/amr/events` edge
+engineer's detail. Codes travel in `RunState.fault_code`, `LocalizationState.code`
+and `MuxState.code`, and every owner emits an `/amr/events` edge
 with its code. `/api/alarms` turns the state snapshot into that list ONCE,
 server-side (`amr_web/alarms.py`): the rail, Home, Status and Alarms pages render
 it and derive nothing. Events are appended to `~/.amr/logs/events.jsonl` and

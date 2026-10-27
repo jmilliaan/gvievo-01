@@ -30,7 +30,7 @@ def rows_by_path(sections):
 
 def test_config_profile():
     """The profile is the whole tuning surface, so a bad one must be refused
-    loudly at boot rather than showing up as odd behaviour on a length of tape."""
+    loudly at boot rather than showing up as odd behaviour halfway through a run."""
     import copy
     import json
     import shutil
@@ -72,18 +72,18 @@ def test_config_profile():
             lambda d: d["vehicle"].pop("gear_ratio"), "missing key")
     refuses("an unknown section is refused",
             lambda d: d.update({"extra": {}}), "unknown top-level")
-    # *** A whole retired section must not come back by accident. *** The
-    # autopilot block was deleted with tape following; a profile still carrying
-    # it is a profile from before the retirement, and running it would mean
-    # loading gains nothing reads.
-    # The autopilot section came BACK on 2026-09-21 for the ROS LINE layer
-    # (dual-product plan, Increment 1), so a profile carrying it is now valid.
-    # What is still refused is a PARTIAL one: the loader demands every key,
-    # because a half-restored gain set is how a vehicle ends up steering on a
-    # default nobody chose.
-    refuses("a partial autopilot section is refused",
-            lambda d: d.update({"autopilot": {"k_ratio": 11.3}}),
-            "missing key")
+    # *** A whole retired section must not come back by accident. *** The tracked
+    # product was removed on 2026-10-27 (manuals/trackless-only-removal-plan.md):
+    # a profile still carrying its sections or keys is a profile from before the
+    # removal, and the strict loader refuses it rather than loading values
+    # nothing reads.
+    for section in ("autopilot", "rfid", "mls", "tape_loc"):
+        refuses(f"a leftover {section} section is refused",
+                lambda d, sec=section: d.update({sec: {}}), "unknown top-level")
+    refuses("a leftover tracked key is refused",
+            lambda d: d.update(tracked=None), "unknown top-level")
+    refuses("a leftover vehicle.sensor_lookahead_m is refused",
+            lambda d: d["vehicle"].update(sensor_lookahead_m=0.1), "unknown key")
     refuses("a leftover branch_latch table is refused",
             lambda d: d.update({"branch_latch": []}), "unknown top-level")
     refuses("a leftover stop_until_start_button table is refused",
@@ -192,43 +192,6 @@ def test_config_profile():
             lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
-    # Line sensor (mls-marker-plan, 2026-10-09): markers off until the bench passes.
-    # markers_enabled is the bench switch (on for the 2026-10-09 trial): only its type is pinned.
-    check("the MLS is expected on variant 3 with codes 1-3",
-          config.MLS_VARIANT == 3 and isinstance(config.MLS_MARKERS, bool)
-          and config.MLS_MARKER_CODES == [1, 2, 3] and config.MLS_POLARITY_LOCK is False,
-          f"{config.MLS_VARIANT} {config.MLS_MARKERS} {config.MLS_MARKER_CODES}")
-    refuses("an MLS variant outside 2006h:01's 0..7 is refused",
-            lambda d: d["mls"].update(variant=8), "mls.variant")
-    for bad, why in (([], "at least one"), ([1, 1], "duplicate"), ([0], "1..7"), ([8], "1..7"),
-                     (["2"], "integers"), ([True], "integers"), (2, "integers")):
-        refuses(f"mls.marker_codes {bad!r} is refused",
-                lambda d, bad=bad: d["mls"].update(marker_codes=bad), why)
-    refuses("a non-boolean mls.markers_enabled is refused",
-            lambda d: d["mls"].update(markers_enabled=1), "true/false")
-    check("the MLS event-flag reset is off until the bench found its value (E0.5)",
-          config.MLS_EVENT_CLEAR == -1, str(config.MLS_EVENT_CLEAR))
-    refuses("an mls.event_clear other than -1, 0 or 1 is refused",
-            lambda d: d["mls"].update(event_clear=2), "mls.event_clear")
-    refuses("an unknown key in the mls block is refused",
-            lambda d: d["mls"].update(marker_width_mm=15), "unknown key")
-    refuses("a profile without the mls block is refused",
-            lambda d: d.pop("mls"), "missing top-level")
-    # Tape-graph localization (tracked plan 3): off until P1; thresholds provisional until P0.
-    check("tape localization is off and its station limit fits +-10 cm",
-          config.TAPE_LOC_ENABLED is False and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.05
-          and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
-          f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SIGMA_STATION_M}")
-    refuses("a station sigma limit above 5 cm is refused",
-            lambda d: d["tape_loc"].update(sigma_station_m=0.08), "+-10 cm")
-    refuses("a junction sigma limit not above the station limit is refused",
-            lambda d: d["tape_loc"].update(sigma_junction_m=0.02), "sigma_junction_m")
-    refuses("an unknown AMCL parameter set is refused",
-            lambda d: d["tape_loc"].update(amcl_params="fast"), "default or lean")
-    refuses("tape localization on a trackless profile is refused",
-            lambda d: (d.update(tracked=False), d["tape_loc"].update(enabled=True)), "trackless")
-    refuses("a profile without the tape_loc block is refused",
-            lambda d: d.pop("tape_loc"), "missing top-level")
     refuses("a pre-move timeout not above the warning is refused",
             lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
             "premove_timeout_s")
@@ -297,31 +260,6 @@ def test_config_profile():
         del os.environ[config.PROFILE_ENV_VAR]
         config.load()
 
-    # 2026-10-08: tag meanings moved to the mission's tag table (agv_core.mission v2).
-    # A profile still carrying them is refused, not silently ignored: its toggle
-    # tags would otherwise look configured and never fire.
-    refuses("a leftover autopilot.speed_toggle_tags is refused",
-            lambda d: d["autopilot"].update(speed_toggle_tags=["00A1"]), "unknown key")
-    refuses("a leftover autopilot.speed_toggle_lockout_s is refused",
-            lambda d: d["autopilot"].update(speed_toggle_lockout_s=4.0), "unknown key")
-    refuses("a leftover autopilot.u_turn_stop_distance_m is refused",
-            lambda d: d["autopilot"].update(u_turn_stop_distance_m=0.4), "unknown key")
-    # 2026-10-08 (tracked-speed-plan-1): the slow zone's keys went with the toggle.
-    for key, val in (("auto_slow_ratio", 0.5), ("slow_k_ratio", 25.0), ("slow_kd", 5.0),
-                     ("gain_blend_s", 0.4)):
-        refuses(f"a leftover autopilot.{key} is refused",
-                lambda d, k=key, v=val: d["autopilot"].update({k: v}), "unknown key")
-    refuses("HIGH at or below NORMAL is refused",
-            lambda d: d["autopilot"].update(auto_high_ratio=1.0), "auto_high_ratio")
-    refuses("HIGH above the motor limit is refused",
-            lambda d: d["autopilot"].update(auto_rpm=3000, auto_high_ratio=1.7), "motor_max_rpm")
-    refuses("a curve guard error limit beyond the sensor range is refused",
-            lambda d: d["autopilot"].update(curve_guard_e_mm=150.0), "curve_guard_e_mm")
-    refuses("a zero high ramp is refused",
-            lambda d: d["autopilot"].update(high_ramp_s=0.0), "high_ramp_s")
-    refuses("a U-turn window with min >= max is refused",
-            lambda d: d["autopilot"].update(u_turn_min_deg=230.0), "u_turn_min_deg")
-
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
     load_with(lambda d: d["blind_run"].update(max_rpm=9000))
@@ -388,9 +326,8 @@ def test_params_view():
     for sec, key in (("drivers", "ramp.auto.accel"), ("dio", "di_names"),
                      ("lidar", "zone_bytes")):
         check(f"the nested {sec}.{key} is displayed", f"{sec}.{key}" in rows)
-    # The junction table moved into the "rfid rules" block, grouped with every
-    # other kind of thing a tag can mean rather than standing on its own.
-    # The RFID rule table went with tape following - see config.describe().
+    # The RFID rule table went with tape following, and the reader with the
+    # tracked product (2026-10-27).
     check("no retired rule table is still rendered",
           not any(s["name"] == "rfid rules" for s in sections))
 
@@ -431,8 +368,8 @@ def test_params_view():
     check("a whole float drops its .0",
           rows["vehicle.motor_max_rpm"]["value"] == "4000",
           rows["vehicle.motor_max_rpm"]["value"])
-    # An empty value is a SETTING here (rfid.ignore_tags empty means nothing is
-    # discarded), so it must never render as a blank cell.
+    # An empty value is a SETTING here (an empty DO list means no output is
+    # driven), so it must never render as a blank cell.
     check("no cell is blank", all(r["value"] for s in sections
                                   for r in s["rows"]))
 
@@ -460,7 +397,7 @@ def test_tuning_notes_are_parsed_not_restated():
         check(f"{key} carries the shared timing note", key in notes)
     check("a key named without its section still resolves",
           "vehicle.invert_right" in notes)
-    check("a section-wide note is kept as such", "rfid.*" in notes)
+    check("a section-wide note is kept as such", "monitor.*" in notes)
 
     # Attachment, not just parsing: the note has to land on the row.
     rows = rows_by_path(config.describe())
@@ -469,7 +406,7 @@ def test_tuning_notes_are_parsed_not_restated():
     check("a nested ramp row inherits the drivers.ramp note",
           "6083h" in (rows["drivers.ramp.auto.accel"]["note"] or ""))
     check("a section note reaches a row that has none of its own",
-          "CF821" in (rows["rfid.ip"]["note"] or ""))
+          "DIAGNOSTIC ONLY" in (rows["monitor.driver_temp_warn_c"]["note"] or ""))
 
     # Parsing must never be able to take the page down: a docstring rewritten
     # into prose yields no notes, not an exception.

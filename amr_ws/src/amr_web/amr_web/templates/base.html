@@ -29,10 +29,7 @@
      mistake guard, not security (amr_web/role.py). #}
   <nav>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
-    {# Two navigation types, two run tabs (2026-10-02). A tab for a product the profile
-       does not carry is not offered at all (its pages answer 404). #}
-    {% if tracked_ok %}<a href="/run-tracked" class="{{ 'on' if page == 'run_tracked' }}">Run tracked</a>{% endif %}
-    {% if trackless_ok %}<a href="/run" class="{{ 'on' if page == 'run' }}">Run trackless</a>{% endif %}
+    <a href="/run"    class="{{ 'on' if page == 'run' }}">Run</a>
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     {% if role == ENGINEER %}
@@ -41,7 +38,6 @@
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
     <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
-    {% if tracked_ok %}<a href="/teach" class="{{ 'on' if page == 'teach' }}">Teach</a>{% endif %}
     {% endif %}
     {# The visitors' Demo page (/demo, demo.py) is DEPRECATED since 2026-10-02: no nav link;
        the route still serves for anyone who has the URL. #}
@@ -81,7 +77,7 @@
     <pre id="log"></pre>
   </aside>
   <main class="{% block main_class %}{% endblock %}">
-    {% if sub %}{# Maps and Routes are SLAM things: they live inside Run trackless. #}
+    {% if sub %}{# Maps and Routes live inside Run. #}
     <nav class="subnav">
       <a href="/run" class="{{ 'on' if sub == 'run' }}">Run</a>
       {% if role == ENGINEER %}

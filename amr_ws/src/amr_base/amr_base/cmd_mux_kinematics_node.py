@@ -45,7 +45,6 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
-    LineState,
     ManualCommand,
     ModeState,
     MotionPermit,
@@ -53,9 +52,6 @@ from amr_interfaces.msg import (
     PanelState,
     WheelVelocities,
 )
-
-# /amr/line_state arrives on change and at 1 Hz: older than this, no U-turn exemption.
-LINE_STATE_FRESH_S = 2.5
 
 # Sources a person drives by hand: switching between these is not operator history.
 HAND_SOURCES = {"none", "manual", "pendant", "teleop"}
@@ -75,23 +71,18 @@ WHEEL_RAD_S_PER_MOTOR_RPM = 2.0 * math.pi / 60.0 / config.GEAR_RATIO
 
 
 class CmdMuxKinematics(Node):
-    # A class-level default, not only an __init__ assignment: several tests
+    # Class-level defaults, not only __init__ assignments: several tests
     # build this node with __new__ and set the attributes they care about by
-    # hand, and the 50 Hz tick reads self._line unconditionally. Without this
+    # hand, and the 50 Hz tick reads these unconditionally. Without them
     # a new cache attribute turns every one of those into an AttributeError
     # from inside the tick, which is a poor way to learn about it.
-    _line: gating.Stamped | None = None
-    # Same reason: the field state the tick reads (2026-10-02). Assume-clear by default
+    # The field state the tick reads (2026-10-02). Assume-clear by default
     # so a test built with __new__ that never sets fp keeps its old behaviour.
     _field: gating.Field | None = None
     fp = gating.FieldParams(assume_clear=True)
     _view = gating.FieldView(True, True, False)
     _scale = 1.0
     _speed_ramp: gating.SpeedRamp | None = None
-    line_alpha_max = 0.0  # 0 here = use alpha_max (tests built with __new__)
-    line_d_max = 0.0  # 0 here = use d_max (tests built with __new__)
-    line_uturn_exempt_mps = 0.0  # 0 here = no U-turn warning-1 exemption (tests built with __new__)
-    _line_uturn: tuple[float, str] | None = None
     _target = 1.0
 
     def __init__(self) -> None:
@@ -121,20 +112,6 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("manual_jerk", 1.0)  # m/s^3: 0.3 s to full acceleration
         self.declare_parameter("manual_alpha_max", 0.0)  # 0 = same as alpha_max
         self.declare_parameter("manual_jerk_w", 2.0)  # rad/s^3
-        # LINE steering slews its yaw rate at the drive's own limit, not at the gentle Nav2
-        # alpha_max (2026-10-02): at the 0.85 m/s tape cruise the follower's corrections
-        # need ~27 rad/s^2 per metre of wobble, so 0.4 rad/s^2 rate-limited any wobble over
-        # ~15 mm and the loop oscillated. gy-demo drove the wheels with only the drive ramp.
-        self.declare_parameter("line_alpha_max", 0.0)  # 0 = the hardware yaw limit
-        # LINE deceleration at the follower's own rate (tracked-speed-plan-1, 2026-10-08):
-        # a measured 0.5 m stop from 0.85 m/s needs 0.72 m/s^2 and a late high-zone exit
-        # up to ~0.95 m/s^2; at the Nav2 d_max 0.5 the mux would carry the vehicle past
-        # the mark. The follower already shapes every stop and speed change; this only
-        # stops the mux reshaping them. Acceleration is unchanged (a_max).
-        self.declare_parameter("line_d_max", 0.0)  # 0 = the drive's deceleration (6084h)
-        # Warning 1 does not slow a LINE U-turn at or below this body speed (the 0.1 m/s
-        # creep, the pivot); warning 2 still stops it. 0 = off (gating.line_uturn_exempt).
-        self.declare_parameter("line_uturn_exempt_mps", 0.12)
         self.declare_parameter("teleop_timeout_s", 0.5)
         self.declare_parameter("cmd_timeout_s", 0.2)
         self.declare_parameter("permit_timeout_s", 0.3)
@@ -171,10 +148,6 @@ class CmdMuxKinematics(Node):
         self.delta_max = min(p("delta_max").value or self.alpha_max, hw_alpha_max)
         self.manual_a_max = min(p("manual_a_max").value, hw_a_max)
         self.manual_alpha_max = min(p("manual_alpha_max").value or self.alpha_max, hw_alpha_max)
-        self.line_alpha_max = min(p("line_alpha_max").value or hw_alpha_max, hw_alpha_max)
-        hw_d_max = config.DECEL_RPM_S * config.MPS_PER_RPM
-        self.line_d_max = min(p("line_d_max").value or hw_d_max, hw_d_max)
-        self.line_uturn_exempt_mps = max(0.0, self._finite_or(float(p("line_uturn_exempt_mps").value), 0.0))
         self.manual_jerk = max(1e-3, float(p("manual_jerk").value))
         self.manual_jerk_w = max(1e-3, float(p("manual_jerk_w").value))
         if self.a_max < p("a_max").value or self.alpha_max < p("alpha_max").value:
@@ -221,7 +194,6 @@ class CmdMuxKinematics(Node):
         self._manual = gating.ManualIntake()
         self._drives: gating.Drives | None = None
         self._commissioning: gating.Wheels | None = None
-        self._line: gating.Stamped | None = None
         self._field: gating.Field | None = None
         self._view = gating.FieldView(False, False, False)
         self._scale = 1.0
@@ -242,8 +214,6 @@ class CmdMuxKinematics(Node):
         self._subscribe_nav(0)
         self.create_subscription(MotionPermit, "/amr/motion_permit", self._on_permit, RELIABLE_1)
         self.create_subscription(PanelState, "/amr/panel_state", self._on_panel, 10)
-        # The U-turn phase, for the warning-1 exemption. On change + 1 Hz, latched.
-        self.create_subscription(LineState, "/amr/line_state", self._on_line_state, LATCHED)
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_subscription(ManualCommand, "/amr/manual_command", self._on_manual, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
@@ -361,7 +331,6 @@ class CmdMuxKinematics(Node):
         self._permit = None
         self._manual.clear()
         self._commissioning = None
-        self._line = None
         self._v = self._wz = self._a = self._alpha = 0.0
         self._wl = self._wr = 0.0
         self._subscribe_nav(gen)
@@ -374,21 +343,7 @@ class CmdMuxKinematics(Node):
             self.create_subscription(
                 Twist, gating.nav_topic("/cmd_vel_rotate", gen), self._on_rotate, RELIABLE_1
             ),
-            # The line follower publishes a body twist and holds no permit, so
-            # it joins the generation-private set rather than carrying its own
-            # generation field: a replaced layer's stream lands on a topic this
-            # mux is no longer subscribed to and cannot look fresh.
-            self.create_subscription(
-                Twist, gating.nav_topic("/amr/line_cmd", gen), self._on_line, RELIABLE_1
-            ),
         ]
-
-    def _on_line_state(self, msg: LineState) -> None:
-        phase = msg.uturn_phase if msg.state == LineState.RUNNING else ""
-        self._line_uturn = (self._now(), phase)
-
-    def _on_line(self, msg: Twist) -> None:
-        self._line = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)
 
     def _on_mode(self, msg: ModeState) -> None:
         surveying = msg.mode == ModeState.MAPPING
@@ -423,13 +378,9 @@ class CmdMuxKinematics(Node):
             manual=self._manual.current,
             drives=self._drives,
             commissioning=self._commissioning,
-            line=self._line,
         )
         self._view = gating.field_view(self._now(), self._field, self.fp)
-        exempt = gating.line_uturn_exempt(
-            sel, self._line_uturn, self._now(), LINE_STATE_FRESH_S, self.line_uturn_exempt_mps
-        )
-        sel, target = gating.field_limit(sel, self._view, self.gp, self.fp, slow_exempt=exempt)
+        sel, target = gating.field_limit(sel, self._view, self.gp, self.fp)
         if self._speed_ramp is None:
             self._speed_ramp = gating.SpeedRamp()
         if sel.source in gating.AUTO_SOURCES:
@@ -517,13 +468,8 @@ class CmdMuxKinematics(Node):
             # the slew must not stretch it, so only the drive's ramp bounds it then
             stopping = self._speed_ramp.stopping
             d_max = max(self.d_max, getattr(self, "stop_d_max", 0.0)) if stopping else self.d_max
-            if sel.source == gating.LINE and self.line_d_max:
-                d_max = max(d_max, self.line_d_max)
             self._v = slew_asym(self._v, sel.v, self.a_max, d_max, self.dt)
-            if sel.source == gating.LINE and self.line_alpha_max:
-                yaw_up = yaw_down = self.line_alpha_max
-            else:
-                yaw_up, yaw_down = self.alpha_max, self.delta_max
+            yaw_up, yaw_down = self.alpha_max, self.delta_max
             if stopping:
                 yaw_down = max(yaw_down, getattr(self, "stop_delta_max", 0.0))
             self._wz = slew_asym(self._wz, sel.w, yaw_up, yaw_down, self.dt)

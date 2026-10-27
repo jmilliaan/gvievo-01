@@ -76,10 +76,6 @@ def standing(state: dict[str, Any]) -> list[dict]:
         elif run.get("state_name") == "BLOCKED":
             add(run.get("fault_code") or cat.hold_code(run.get("hold_cause", "")), run.get("reason", ""))
 
-    line = state.get("line")
-    if line and line.get("code"):
-        add(line["code"], line.get("message", ""))
-
     # The scanner is the one failure nothing else reports: its driver is an optional
     # launch member, so an unplugged sensor kills mapping, navigation and localisation
     # while the supervisor still says IDLE and the drives still jog (vehicle, 2026-09-22 -
@@ -134,19 +130,19 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
     detail = ""
 
     if top and top["clears_by"] == "restart_service":
-        line = NEEDS_SERVICE
+        text = NEEDS_SERVICE
     elif mode.get("mode_name") in ("STARTING", "TRANSITIONING") or not mode.get("base_ready"):
-        line = NOT_READY
+        text = NOT_READY
     elif run.get("state_name") == "EXECUTING":
-        line = RUNNING
+        text = RUNNING
     elif run.get("state_name") == "BLOCKED":
-        line = STOPPED_WILL_RESUME if run.get("auto_resume") else STOPPED_NEEDS_YOU
+        text = STOPPED_WILL_RESUME if run.get("auto_resume") else STOPPED_NEEDS_YOU
     elif top and top["level"] == "error":
-        line = STOPPED_NEEDS_YOU
+        text = STOPPED_NEEDS_YOU
     elif run.get("state_name") in ("READY", "PAUSED", "DONE"):
-        line = f"READY · {run.get('mission_id') or 'no mission'}"
+        text = f"READY · {run.get('mission_id') or 'no mission'}"
     else:
-        line = READY
+        text = READY
 
     if run.get("state_name") in ("EXECUTING", "PAUSED", "BLOCKED") and run.get("mission_id"):
         total = int(run.get("step_index", -1)) + 1
@@ -154,7 +150,7 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         detail = f"{run['mission_id']} · step {total}{step}"
 
     return {
-        "state": line,
+        "state": text,
         "detail": detail,
         "action": top["action"] if top else "Nothing to do.",
         "title": top["title"] if top else "The vehicle is fine.",

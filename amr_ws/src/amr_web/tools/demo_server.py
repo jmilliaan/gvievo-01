@@ -431,9 +431,9 @@ class DemoAdapter:
         d = {
             "generation": self.mode["generation"],
             "state": state,
-            "map_id": "line_section",
+            "map_id": "aisle_a",
             "revision": 0,
-            "description": "tape arrow A, facing the rack ends",
+            "description": "floor mark A, facing the rack ends",
             "start": {"x": 0.0, "y": 0.0, "theta": 0.0},
             "closure_available": state >= 2,
             "closure_dx_m": 0.031,
@@ -810,12 +810,6 @@ class DemoAdapter:
 
     def get_operation(self, operation_id):
         return self.ops.get(operation_id)
-
-    def line_clear(self):
-        return True, "cleared"
-
-    def line_mission(self, name):
-        return False, "demo: there is no line layer"
 
     def recover(self):
         with self.lock:

@@ -97,9 +97,11 @@ def test_names_cover_every_source_and_the_lease_bits_are_distinct():
         if k.isupper() and not k.startswith("LEASE_") and isinstance(v, int) and not isinstance(v, bool)
     }
     assert sources == set(g.NAMES), f"sources without a NAMES entry: {sorted(sources - set(g.NAMES))}"
-    assert g.LINE == 7 and g.PENDANT == 6  # MuxState.msg pins these numbers
+    assert g.PENDANT == 6  # MuxState.msg pins these numbers
+    # LINE (7) and LEASE_LINE (bit 8) are retired with the tracked product
+    assert not hasattr(g, "LINE") and not hasattr(g, "LEASE_LINE")
     assert len(set(g.NAMES.values())) == len(g.NAMES)  # no two sources share a name
     # the lease classes are single, distinct bits of ControlLease.allowed
-    bits = [g.LEASE_MANUAL, g.LEASE_AUTONOMOUS, g.LEASE_COMMISSIONING, g.LEASE_LINE]
-    assert bits == [1, 2, 4, 8]
+    bits = [g.LEASE_MANUAL, g.LEASE_AUTONOMOUS, g.LEASE_COMMISSIONING]
+    assert bits == [1, 2, 4]
     assert all(b and not (b & (b - 1)) for b in bits)  # each is one bit

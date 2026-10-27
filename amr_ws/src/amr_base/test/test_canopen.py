@@ -219,8 +219,8 @@ def test_arm_configures_pdos_guard_and_enables_both_drives():
     ]
     assert (1, 0x60FF, 0, 0) in w  # armed with a zero target
     # PDO config happened while pre-operational (NMT 0x80 PER DRIVE came before;
-    # a broadcast would also silence the MLS on node 10, whose TPDO1 only flows
-    # in Operational)
+    # a broadcast would also reach the MLS gyro on node 10, whose state is not the
+    # drive link's to change)
     nmt = [(m.data[0], m.data[1]) for m in bus.sent if m.arbitration_id == 0]
     assert nmt[:2] == [(0x80, 1), (0x80, 2)] and (0x01, 1) in nmt and (0x01, 2) in nmt
     assert all(node in (1, 2) for _, node in nmt)  # never a broadcast, never node 10

@@ -42,7 +42,7 @@ from amr_web import jog, netcheck, reports, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
 
-MODE_IDLE, MODE_NAVIGATION, MODE_LINE = 1, 3, 7
+MODE_IDLE, MODE_NAVIGATION = 1, 3
 SURVEY_OPS = {"start": 0, "returned": 1, "save": 2, "abort": 3}
 
 
@@ -87,9 +87,6 @@ class Adapter(Protocol):
     def commissioning(self) -> dict | None: ...
     def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
     def commissioning_clear(self) -> tuple[bool, str]: ...
-    # tape layer (2026-10-02): clear moves nothing; only physical Start runs (no arm, 2026-10-07)
-    def line_clear(self) -> tuple[bool, str]: ...
-    def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -161,8 +158,6 @@ def create_app(
     wifi_iface: str = "wlp1s0",
     state_dir: str = "~/.amr",
     internet_probe: netcheck.InternetProbe | None = None,
-    product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
-    markers_enabled: bool | None = None,  # Home's Marker tile; None = the profile's mls.markers_enabled
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -205,44 +200,11 @@ def create_app(
         # Default is the engineer view (2026-10-02, commissioning); operator only once chosen.
         return rolemod.OPERATOR if session.get("role") == rolemod.OPERATOR else rolemod.ENGINEER
 
-    def _product() -> str:
-        """The profile's `tracked`: tape | slam | both. A dev box without a profile is both."""
-        try:
-            from agv_core import config  # noqa: PLC0415
-
-            return {True: "tape", False: "slam"}.get(config.TRACKED, "both")
-        except Exception:  # noqa: BLE001
-            return "both"
-
-    product = product or _product()
-
-    def _markers_enabled() -> bool:
-        """The profile's mls.markers_enabled. A dev box without a profile has no markers."""
-        try:
-            from agv_core import config  # noqa: PLC0415
-
-            return bool(config.MLS_MARKERS)
-        except Exception:  # noqa: BLE001
-            return False
-
-    markers_enabled = _markers_enabled() if markers_enabled is None else bool(markers_enabled)
-    tracked_ok = product in ("tape", "both")
-    trackless_ok = product in ("slam", "both")
-
     @app.context_processor
     def _inject_role():
         """Every template knows the role, so base.html can show the operator's three
-        tabs or the engineer's ten without a second request - and the product, so a
-        tab for the other product is not offered at all."""
-        return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER,
-                "product": product, "tracked_ok": tracked_ok, "trackless_ok": trackless_ok}
-
-    def _need(ok: bool):
-        """A page or API of the other product is 404, not hidden (dual-product plan Inc. 4)."""
-        if not ok:
-            from flask import abort  # noqa: PLC0415
-
-            abort(404)
+        tabs or the engineer's ten without a second request."""
+        return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER}
 
     @app.get("/")
     def index():
@@ -250,7 +212,7 @@ def create_app(
 
     @app.get("/home")
     def page_home():
-        return render_template("home.html", page="home", markers_enabled=markers_enabled)
+        return render_template("home.html", page="home")
 
     @app.post("/api/role")
     def api_role():
@@ -302,111 +264,24 @@ def create_app(
     def page_manual():
         return render_template("manual.html", page="manual")
 
-    # Maps and Routes live under Run trackless (2026-10-02): `page` lights that tab and
+    # Maps and Routes live under Run (2026-10-02): `page` lights that tab and
     # `sub` the strip inside it.
     @app.get("/maps")
     def page_maps():
-        _need(trackless_ok)
         return render_template("maps.html", page="run", sub="maps")
 
     @app.get("/editor")
     def page_editor():
-        _need(trackless_ok)
         return render_template("editor.html", page="run", sub="editor", trackless_v=VEHICLE_V_MAX)
 
     @app.get("/review")
     def page_review():
-        _need(trackless_ok)
         return render_template("review.html", page="run", sub="maps")
 
     @app.get("/run")
     @app.get("/run-trackless")
     def page_run():
-        _need(trackless_ok)
         return render_template("run.html", page="run", sub="run")
-
-    @app.get("/run-tracked")
-    def page_run_tracked():
-        _need(tracked_ok)
-        return render_template("run_tracked.html", page="run_tracked")
-
-    @app.get("/teach")
-    def page_teach():
-        _need(tracked_ok)
-        return render_template("teach.html", page="teach")
-
-    # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
-    # a run starts only on the physical Start under AUTO (line_follow_node). ----
-
-    @app.get("/api/line/missions")
-    def api_line_missions():
-        _need(tracked_ok)
-        from agv_core import mission as missions  # noqa: PLC0415
-
-        # Each mission's destination stops, so the page can offer them as a list
-        # rather than free text. A file that does not validate is listed with its
-        # error: selecting it is refused by the layer anyway, with the same words.
-        names, dests, errors = [], {}, {}
-        for n in missions.list_missions():
-            if n == "empty":
-                continue
-            names.append(n)
-            try:
-                dests[n] = missions.destinations(missions.load(n))
-            except missions.MissionError as e:
-                errors[n] = str(e)
-        return jsonify({"missions": names, "destinations": dests, "errors": errors})
-
-    @app.post("/api/line/mission")
-    def api_line_mission():
-        _need(tracked_ok)
-        d, err = _body()
-        if err:
-            return err
-        return _call(adapter.line_mission, str(d.get("name", "") or ""), str(d.get("destination", "") or ""))
-
-    @app.post("/api/line/clear")
-    def api_line_clear():
-        _need(tracked_ok)
-        return _call(adapter.line_clear)
-
-    # ---- tape-graph localization (tracked plan 3, P1): teach and shadow. Nothing here
-    # moves the vehicle: a teach pass is driven by AUTO + the physical Start or under MANUAL.
-
-    @app.get("/api/line/site")
-    def api_line_site():
-        """The site mission's circuits and stations, for the Teach page's lists."""
-        _need(tracked_ok)
-        from agv_core import mission as missions  # noqa: PLC0415
-
-        try:
-            from agv_core import config  # noqa: PLC0415
-
-            name = config.TAPE_LOC_SITE_MISSION       # the one the line layer teaches and shadows
-        except Exception:  # noqa: BLE001 - a dev box without a profile
-            names = missions.list_site_missions()
-            name = names[0] if names else ""
-        try:
-            m = missions.load_site(name)
-        except missions.MissionError as e:
-            return jsonify({"mission": name, "circuits": [], "stations": [], "error": str(e)})
-        return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
-                        "stations": list(m["STATIONS"]), "error": ""})
-
-    @app.post("/api/line/teach")
-    def api_line_teach():
-        _need(tracked_ok)
-        if _role() != rolemod.ENGINEER:
-            return _result(False, "teaching needs the engineer view (PIN)", 403)
-        d, err = _body()
-        if err:
-            return err
-        return _call(adapter.line_teach, str(d.get("action", "") or ""), str(d.get("arg", "") or ""))
-
-    @app.post("/api/line/at_home")
-    def api_line_at_home():
-        _need(tracked_ok)
-        return _call(adapter.line_at_home)
 
     # ---- state -------------------------------------------------------------------
 
@@ -892,11 +767,9 @@ def create_app(
         d, err = _body()
         if err:
             return err
-        target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION, "line": MODE_LINE}.get(
-            str(d.get("target", "")).lower()
-        )
+        target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION}.get(str(d.get("target", "")).lower())
         if target is None:
-            return _result(False, "target must be idle, navigation or line", 400)
+            return _result(False, "target must be idle or navigation", 400)
         try:
             rev = int(d.get("map_revision", 0))
         except (TypeError, ValueError):

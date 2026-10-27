@@ -495,18 +495,6 @@ class DriveLink:
             raise RuntimeError(f"node {node}: {what} ({index:04X}h) failed: {detail}")
         self._alive(node)
 
-    def write_sensor(self, node, index, sub, value, size, timeout=0.05):
-        """A line-sensor (MLS) write: guard.check_sensor's list, never the drives'.
-        Short timeout, because it runs on the bus thread between drive cycles.
-        Returns (ok, detail); a refused object raises ForbiddenWrite before the bus."""
-        guard.check_sensor(index, sub)
-        self.keepalive()
-        self.idle()
-        ok, detail = sdo_write(self.router, node, index, sub, value, size, timeout=timeout)
-        if ok:
-            self._alive(node)
-        return ok, detail
-
     def nmt(self, command, node=0):
         self.router.send(can.Message(arbitration_id=0x000, data=[command, node], is_extended_id=False))
         self.router.pump(0.05)
@@ -651,8 +639,9 @@ class DriveLink:
         self._reset_stop()
         try:
             # PDO mapping and NMT error control belong in PRE-OPERATIONAL. Per
-            # drive, not broadcast: a broadcast (node 0) also silenced the MLS
-            # on node 10, whose TPDO1 only flows in Operational (2026-09-21).
+            # drive, not broadcast: a broadcast (node 0) would also put the MLS
+            # on node 10 (the gyro) in Pre-operational, and the drive link changes
+            # no node's state but its own drives' (2026-09-21).
             for nid in self.nodes:
                 self.nmt(0x80, nid)
             self.configure_pdos(feedback_period_ms)

@@ -206,27 +206,24 @@ class PanelAdapter:
         return intent.mode, pend
 
 
-# AUTO runs that count for the alarm horn: tracked line RUNNING / HOLD, trackless
-# EXECUTING / BLOCKED (amr_interfaces LineState / RunState values).
-LINE_ACTIVE = (2, 3)
+# AUTO runs that count for the alarm horn: EXECUTING / BLOCKED (amr_interfaces RunState values).
 RUN_ACTIVE = (2, 4)
-LINE_PREMOVE = 1  # LineState.ARMED: the pre-move warning after a Start
 
 
 def alarm_wanted(
-    mode_auto: bool, line_state: int | None, run_state: int | None,
+    mode_auto: bool, run_state: int | None,
     field_fresh: bool, protective_clear: bool, warning_active: bool,
     run_premove: bool = False,
 ) -> bool:
     """dio.alarm_on (operator, 2026-10-02): AUTO RUNNING and (protective stop, warning 1 or
     warning 2). Field state comes from the mux; stale field data does not sound it.
 
-    And the pre-move warning (2026-10-08): from a Start until the vehicle moves (line ARMED,
-    RunState.premove) the alarm horn sounds whatever the fields say, then gives way to the
+    And the pre-move warning (2026-10-08): from a Start until the vehicle moves
+    (RunState.premove) the alarm horn sounds whatever the fields say, then gives way to the
     movement horn once the wheels turn."""
-    if mode_auto and (line_state == LINE_PREMOVE or run_premove):
+    if mode_auto and run_premove:
         return True
-    running = mode_auto and (line_state in LINE_ACTIVE or run_state in RUN_ACTIVE)
+    running = mode_auto and run_state in RUN_ACTIVE
     return running and field_fresh and (not protective_clear or warning_active)
 
 

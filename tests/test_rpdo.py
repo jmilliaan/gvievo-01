@@ -85,7 +85,7 @@ def test_cob_ids():
           rpdo.RPDO1_COB_BASE == 0x200)
     check("the two drives get distinct COB-IDs",
           (rpdo.cob_id(1), rpdo.cob_id(2)) == (0x201, 0x202))
-    # The MLS streams TPDO1 on 0x18A. An RPDO1 on 0x200+n cannot collide with
+    # The MLS may still stream TPDO1 on 0x18A. An RPDO1 on 0x200+n cannot collide with
     # it, which is worth asserting because a collision is two decoders reading
     # each other's frames rather than an error.
     check("neither drive's RPDO1 collides with the MLS stream on 0x18A",

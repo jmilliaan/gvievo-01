@@ -22,7 +22,7 @@ Reference documents supplied with this brief:
 
 ## 1. Goal and scope
 
-Give the trackless AMR (`"tracked": false`, the SLAM/AMCL/Nav2 product) an
+Give the SLAM/AMCL/Nav2 product an
 **absolute, millimetre-level position and heading fix at the home position**,
 from a SICK GLS621 downward camera reading a floor label.
 
@@ -38,7 +38,6 @@ The fix is used to:
    map a known absolute reference and a closure residual for revision approval.
 
 Out of scope:
-- The tracked/LINE product (`amr_line`, MLS track following).
 - Continuous GLS localisation along routes: there is one label, at home only.
 - Anything in the safety path. The GLS is not a safety device. Nothing here may decide
   whether it is safe to move.
@@ -80,9 +79,9 @@ Repo invariants that constrain this work:
 ## 3. Target architecture
 
 ```
-                      Ethernet (vehicle switch), CoLa A over TCP
+                      Ethernet (LAN3, enp3s0), CoLa A over TCP
  GLS621 ──────────────────────────────────────────────┐
- 192.168.3.1  host 2112: result stream                │
+ 192.168.4.1  host 2112: result stream                │
               aux  2111: diagnostics + commands       ▼
                                           ┌──────────────────────────┐
                                           │ amr_base/gls_node        │  sole owner of the GLS socket
@@ -264,7 +263,7 @@ When a route ends at the home station and the vehicle has stopped:
 | Item | Value / note |
 |---|---|
 | Device | GLS621, type V2D621G-2MSXBB5x, S/N 26261075, FW V4.16.0.7 |
-| Network | Static IP **192.168.3.1** /24, gateway 0.0.0.0. Bench laptop was 192.168.3.4. **Re-address to the vehicle LAN before install, and check for collisions** with nanoScan3, the Modbus island and the N97. Factory default is 192.168.0.1. |
+| Network | On the vehicle: static IP **192.168.4.1** /24, gateway 0.0.0.0, on its own port (PC enp3s0 at 192.168.4.2, `/etc/netplan/80-lan3-gls621.yaml`, resolved 2026-10-21), so there is no clash with the nanoScan3 subnet 192.168.3.0/24. Bench setup used 192.168.3.1 (laptop 192.168.3.4). Factory default is 192.168.0.1. |
 | Protocol | **CoLa A (ASCII) only.** CoLa B gets no reply, so SOPAS must use CoLa A. Host port 2112 (results), aux port 2111 (diagnostics + commands). Commands are also answered on 2112. |
 | Power | 12–24 V DC ±20 % (28.8 V max), 4 W typical / 22 W max, 2 A fuse (op-ins) |
 | Mount height | **Fixed by the chassis at ~203 mm.** Focus is set to 203 mm. At this height a 0.7 mm module images at ~7 px; the decoder minimum is 6 px (`DCDMMinModSize100` = 600), so **don't mount higher**. |

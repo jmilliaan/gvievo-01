@@ -1,14 +1,14 @@
 """Drive power policy (2026-10-08): when drive_node powers the drives. Pure and clock-fed.
 
     MANUAL   powered while the Manual Arm input (panel.di_manual_arm, DI08) is HIGH
-    AUTO     powered while the active layer asks for it: LineState.drive_power (tape) or
-             RunState.drive_power (trackless). They ask from the pre-move warning after
-             a Start until the run ends or stops in a hold that waits for a human
+    AUTO     powered while the executor asks for it: RunState.drive_power. It asks from
+             the pre-move warning after a Start until the run ends or stops in a hold
+             that waits for a human
     else     standby: CANopen up, encoders and the MLS read, power stage off
 
 The drives are no longer powered just because the vehicle is idle. Standby keeps the
-wheel counts flowing, so "at Home", station parking and a vehicle pushed by hand stay
-measured while nothing is powered.
+wheel counts flowing, so a parked vehicle or one pushed by hand stays measured while
+nothing is powered.
 
 This is NOT a safety function and decides nothing about whether moving is safe: the
 FX3 takes STO in hardware whatever this says, and motion still needs the panel, the
@@ -35,7 +35,7 @@ class Ask:
     """One layer's request. t_stamp is the message's own stamp on the monotonic clock, so a
     latched message replayed from a layer that has since died is not fresh."""
 
-    source: str  # "line" | "run"
+    source: str  # "run"
     t_stamp: float
     drive_power: bool
 
@@ -43,7 +43,7 @@ class Ask:
 @dataclass(frozen=True)
 class Params:
     panel_timeout_s: float = 1.0  # /amr/panel_state is 50 Hz
-    ask_timeout_s: float = 2.5  # LineState is on change + 1 Hz, RunState on change + 2 Hz
+    ask_timeout_s: float = 2.5  # RunState is on change + 2 Hz
 
 
 def _fresh(t: float | None, now: float, timeout: float) -> bool:

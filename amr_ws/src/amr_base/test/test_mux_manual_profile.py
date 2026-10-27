@@ -96,38 +96,15 @@ def test_manual_spin_is_capped_while_surveying():
         _run(n, gating.Selection(gating.PENDANT, 0.0, 0.39, "pendant", 0), 1)
     assert n._wz == pytest.approx(0.39)
 
-
-def test_line_steering_slews_at_line_alpha_max_not_the_nav2_limit():
-    """2026-10-02: tape cruise 0.85 m/s oscillated with LINE yaw slewed at the Nav2 0.4 rad/s^2."""
+def test_follow_uses_d_max_and_alpha_max():
+    """The autonomous sources slew at the Nav2 limits: a_max up, d_max down, alpha_max for yaw."""
     n = _node()
-    n.line_alpha_max = 3.0
-    _run(n, gating.Selection(gating.LINE, 0.0, 0.3, "line", 0), 5)  # 0.1 s
-    assert n._wz == pytest.approx(0.3)  # 3.0 rad/s^2 x 0.1 s reaches it
+    _run(n, gating.Selection(gating.FOLLOW, 0.0, 0.3, "follow", 0), 5)  # 0.1 s
+    assert n._wz == pytest.approx(0.4 * 0.1)
     m = _node()
-    m.line_alpha_max = 3.0
-    _run(m, gating.Selection(gating.FOLLOW, 0.0, 0.3, "follow", 0), 5)
-    assert m._wz == pytest.approx(0.4 * 0.1)  # Nav2 keeps its gentle yaw ramp
-
-
-def test_line_decelerates_at_line_d_max_and_others_keep_d_max():
-    """2026-10-08: a measured stop / late high-zone exit from 0.85 m/s must not be
-    stretched by the Nav2 d_max 0.5 m/s^2. LINE alone decelerates at line_d_max;
-    acceleration stays at a_max for everyone."""
-    n = _node()
-    n.line_d_max = 1.0
-    n._v = 0.85
-    _run(n, gating.Selection(gating.LINE, 0.5, 0.0, "line", 0), 5)  # 0.1 s
-    assert n._v == pytest.approx(0.85 - 1.0 * 0.1)
-    m = _node()
-    m.line_d_max = 1.0
     m._v = 0.85
     _run(m, gating.Selection(gating.FOLLOW, 0.5, 0.0, "follow", 0), 5)
-    assert m._v == pytest.approx(0.85 - 0.5 * 0.1)  # Nav2 keeps d_max
+    assert m._v == pytest.approx(0.85 - 0.5 * 0.1)
     up = _node()
-    up.line_d_max = 1.0
-    _run(up, gating.Selection(gating.LINE, 0.85, 0.0, "line", 0), 5)
-    assert up._v == pytest.approx(0.15 * 0.1)  # LINE still accelerates at a_max
-    off = _node()  # line_d_max 0 = no override (today's behaviour)
-    off._v = 0.85
-    _run(off, gating.Selection(gating.LINE, 0.5, 0.0, "line", 0), 5)
-    assert off._v == pytest.approx(0.85 - 0.5 * 0.1)
+    _run(up, gating.Selection(gating.FOLLOW, 0.85, 0.0, "follow", 0), 5)
+    assert up._v == pytest.approx(0.15 * 0.1)

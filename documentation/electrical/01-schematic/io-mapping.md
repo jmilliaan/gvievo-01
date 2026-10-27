@@ -47,7 +47,7 @@ Same on both drivers. Only the pins below are connected.
 ### CAN bus (sheet 06)
 
 One CAN-to-USB adapter plugs into the **IPC USB port** and feeds a single CAN H / L / GND bus. On that bus:
-Driver 01, Driver 02, the **MLSE line sensor**, and the **battery BMS**.
+Driver 01, Driver 02, the **MLSE (gyro/IMU)**, and the **battery BMS**.
 
 ---
 

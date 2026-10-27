@@ -9,8 +9,8 @@ Three devices on the DIO module drive the vehicle's state:
 
 This module reports what the operator ASKED FOR - a Reset edge, a Start edge,
 the selector position. It deliberately does not decide what the vehicle should
-do about it, because that depends on state only the controller holds. Same
-division as branch.py: the mechanism here, the policy there.
+do about it, because that depends on state only the controller holds: the
+mechanism here, the policy there (panel_io, the mux, the supervisor).
 
 Free of config, of any clock, and of I/O, so the whole thing is a table-driven
 unit test rather than an integration test.
@@ -30,8 +30,7 @@ THREE WAYS A PANEL SCAN GOES WRONG, AND WHAT STOPS THEM
    down and returns after it is released - or vice versa - comparing the new
    image against the pre-outage one invents an edge that nobody produced. So
    edges are evaluated only while comms are good, and the transition back INTO
-   good comms re-baselines instead of comparing. The RFID reader has the same
-   hazard and canworker handles it the same way, keyed on tags_seen.
+   good comms re-baselines instead of comparing.
 
 Contact bounce is largely handled by the scan period itself - 50 ms is longer
 than a pushbutton bounces - but `debounce_scans` requires a level to read the

@@ -79,18 +79,6 @@ def _compose(context):
         )
         if cfg("lidar").perform(context).lower() == "true":
             actions.append(include("amr_bringup", "scanner.launch.py"))
-        # RFID reader (2026-10-02): optional - a missing reader leaves plain line
-        # following and SLAM untouched; respawns so a late cable recovers by itself.
-        actions.append(
-            Node(
-                package="amr_base",
-                executable="rfid_node",
-                name="rfid_node",
-                output="screen",
-                respawn=True,
-                respawn_delay=5.0,
-            )
-        )
     else:
         actions += required(
             Node(
@@ -128,8 +116,8 @@ def _compose(context):
             executable="cmd_mux_kinematics_node",
             name="cmd_mux_kinematics",
             output="screen",
-            # Autonomous starts at 0.3 m/s^2 (2026-10-02, was 0.15): 2.0 s to the 0.60 trackless
-            # speed, 2.5 s to the 0.75 tracked cruise; 0.85 s to 0.34 rad/s. Stops
+            # Autonomous starts at 0.3 m/s^2 (2026-10-02, was 0.15): 2.0 s to the 0.60 m/s
+            # trackless ceiling; 0.85 s to 0.34 rad/s. Stops
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).

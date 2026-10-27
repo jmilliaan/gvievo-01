@@ -35,7 +35,6 @@ from amr_interfaces.msg import (
     DriveStatus,
     Event,
     IoImage,
-    LineState,
     MuxState,
     PanelState,
     RunState,
@@ -82,11 +81,9 @@ class PanelNode(Node):
         self._wheels_t: float | None = None
         # dio.alarm_on: the run states and the scanner fields as the mux sees them.
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1)
-        self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED)
         self.create_subscription(RunState, "/amr/run_state", self._on_run, LATCHED)
         self._mux: MuxState | None = None
         self._mux_t: float | None = None
-        self._line_state: int | None = None
         self._run_state: int | None = None
         self._run_premove = False
         self._alarm = False
@@ -126,9 +123,6 @@ class PanelNode(Node):
 
     def _on_mux(self, m: MuxState) -> None:
         self._mux, self._mux_t = m, time.monotonic()
-
-    def _on_line(self, m: LineState) -> None:
-        self._line_state = int(m.state)
 
     def _on_run(self, m: RunState) -> None:
         self._run_state = int(m.state)
@@ -181,7 +175,7 @@ class PanelNode(Node):
         mux = self._mux
         mux_fresh = mux is not None and time.monotonic() - self._mux_t <= MUX_FRESH_S
         alarm = panel_io.alarm_wanted(
-            frame.valid and frame.mode_auto, self._line_state, self._run_state,
+            frame.valid and frame.mode_auto, self._run_state,
             mux_fresh and mux.field_fresh,
             bool(mux.protective_clear) if mux_fresh else True,
             bool(mux.warning_active) if mux_fresh else False,

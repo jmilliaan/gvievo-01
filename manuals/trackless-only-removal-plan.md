@@ -2,6 +2,8 @@
 
 Branch `kyb-trackless` · repo `/home/gvipc-evo-01/agv_can` · read-only analysis, 2026-10-21
 
+> **Status (2026-10-27):** P1-P6 were carried out in the working tree (uncommitted). P7 (vehicle deploy) and the D18 tags are still to do. The `amr_ws/deploy/netplan/` copies (D19) are not in yet: the live files are root-only.
+
 ---
 
 ## 1. Summary

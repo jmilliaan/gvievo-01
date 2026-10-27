@@ -3,7 +3,7 @@
 Owns four process groups - web, base, an optional Foxglove bridge, and at most
 one mode layer (mapping or navigation) - and the single source of motion
 authority, /amr/control_lease. Boots STARTING -> IDLE with base and web up and
-no layer, then on to LINE unless the profile is trackless-only (tracked false).
+no layer, and stays in IDLE until a client asks for a mode.
 Mode changes and survey operations are asynchronous operations (OperationState)
 driven by one serial loop; every step has a deadline and a
 failure lands in FAULT with motion inhibited, never in a half-switched stack.
@@ -30,7 +30,6 @@ import time
 import uuid
 
 import rclpy
-from agv_core import config
 from nav2_msgs.srv import ManageLifecycleNodes
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -48,7 +47,6 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
-    LineState,
     LocalizationState,
     MappingState,
     ModeState,
@@ -70,7 +68,8 @@ SENSOR = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
 )
 
-LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE = 1, 2, 4, 8
+# ControlLease.allowed bits. Bit 8 retired (LINE), never reuse.
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
 # The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
@@ -84,12 +83,10 @@ DEFER_EVENT_S = 60.0
 _REQUEST_OF_TARGET = {
     ModeState.IDLE: fsm.REQ_IDLE,
     ModeState.NAVIGATION: fsm.REQ_NAVIGATION,
-    ModeState.LINE: fsm.REQ_LINE,
 }
 _MODE_OF_REQUEST = {
     fsm.REQ_IDLE: fsm.IDLE,
     fsm.REQ_NAVIGATION: fsm.NAVIGATION,
-    fsm.REQ_LINE: fsm.LINE,
 }
 INTERNAL = "/amr/internal/survey"
 
@@ -132,14 +129,6 @@ class Supervisor(Node):
             )
         }
 
-        # The product, from the profile's top-level `tracked` (config.py note 5):
-        # a tape AGV enters LINE by itself once the base is up and refuses maps and
-        # routes; a trackless one boots to IDLE and refuses LINE; a vehicle carrying
-        # both boots to LINE too (2026-10-08: tracked is the default product, trackless
-        # is the operator's switch on Home). Read once, here.
-        self.tracked = config.TRACKED  # True tape | False slam | None both
-        self.admit_params = fsm.Params(tracked=self.tracked)
-        self._auto_line_done = False
         self._boot_reported = False  # the end-of-boot operator event fires once per boot
         self._verdict: uptime.Verdict | None = None  # how the PREVIOUS run ended
         self.disk = rd.DiskStatus(-1, rd.DISK_OK, "")
@@ -188,12 +177,6 @@ class Supervisor(Node):
             MappingState, "/amr/mapping_state", self.snap.on_mapping, LATCHED, callback_group=g
         )
         self.create_subscription(RunState, "/amr/run_state", self.snap.on_run, LATCHED, callback_group=g)
-        # Without this the LINE transaction can never COMMIT: _ready_line waits
-        # on snap.line_state_for(generation) and nothing would ever feed it, so
-        # a swap into LINE would sit there until LAYER_START_TIMEOUT.
-        self.create_subscription(
-            LineState, "/amr/line_state", self.snap.on_line, LATCHED, callback_group=g
-        )
         self.create_subscription(
             LocalizationState, "/amr/localization_state", self.snap.on_loc, LATCHED, callback_group=g
         )
@@ -320,12 +303,6 @@ class Supervisor(Node):
             return 0
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
-        if self.mode == fsm.LINE:
-            # The selector decides who drives (2026-10-02): MANUAL jogs (pendant, browser)
-            # in LINE mode too, AUTO is the tape follower's. The two cannot fight - the mux
-            # reads the panel first, and the follower ends its run when the selector
-            # leaves AUTO.
-            return LEASE_MANUAL | LEASE_LINE
         if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
             return LEASE_COMMISSIONING  # exclusive IDLE substate: no ordinary jog meanwhile
         return LEASE_MANUAL
@@ -369,10 +346,8 @@ class Supervisor(Node):
             allowed = self._allowed()
             m.manual_available = bool(allowed & LEASE_MANUAL)
             m.autonomous_available = bool(allowed & LEASE_AUTONOMOUS)
-            m.line_available = bool(allowed & LEASE_LINE)
             m.fault_code = self.fault_code
             m.reason = self.reason
-            m.product = {True: "tape", False: "slam"}.get(self.tracked, "both")
             m.last_survey_map_id, m.last_survey_revision = self.last_survey
         self._pub_mode.publish(m)
 
@@ -395,7 +370,7 @@ class Supervisor(Node):
             if kind is None:
                 res.accepted, res.message = (
                     False,
-                    "target must be IDLE, NAVIGATION or LINE (MAPPING is a survey START)",
+                    "target must be IDLE or NAVIGATION (MAPPING is a survey START)",
                 )
                 return res
             existing = (
@@ -404,7 +379,7 @@ class Supervisor(Node):
             if existing is not None:
                 res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
                 return res
-            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
+            d = fsm.admit(self.mode, kind, self._conditions())
             if not d.ok:
                 res.accepted, res.message = False, d.reason
                 return res
@@ -450,7 +425,7 @@ class Supervisor(Node):
             if existing is not None:
                 res.accepted, res.operation_id, res.message = True, existing.operation_id, "duplicate request"
                 return res
-            d = fsm.admit(self.mode, kind, self._conditions(), self.admit_params)
+            d = fsm.admit(self.mode, kind, self._conditions())
             if not d.ok:
                 res.accepted, res.message = False, d.reason
                 return res
@@ -543,26 +518,10 @@ class Supervisor(Node):
         self.requested = target
         self._set(fsm.TRANSITIONING, "inhibiting")
 
-    def _auto_enter_line(self) -> None:
-        """LINE is the default mode of every vehicle that carries the tape product
-        (tracked true, and since 2026-10-08 tracked null = both): start the swap right
-        after boot, once. Only a trackless-only vehicle (tracked false) stays in IDLE.
-        No panel rule here - nothing can be moving at boot, the mux inhibits
-        through the transition, and the follower still needs the physical Start under
-        AUTO before a wheel turns. Leaving LINE later (the Home switch to trackless) is
-        the operator's request and is not undone."""
-        if self.tracked is False or self._auto_line_done or self.txn is not None:
-            return
-        self._auto_line_done = True
-        op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)
-        self.get_logger().info(f"profile tracked={self.tracked}: entering LINE (the default mode)")
-        self._begin_transaction(op, fsm.LINE, "", 0, "")
-
     def _mark(self) -> None:
         """Rewrite the running marker (power-loss plan W1). One small atomic write per
         mode change; a cut between writes costs at most the last transition."""
         pend = self.book.pending
-            "CAN bus": "check the CAN adapter (USB) and its cable; it recovers by itself once plugged in",
         uptime.write(
             self.state_dir,
             self.instance,
@@ -603,6 +562,7 @@ class Supervisor(Node):
             return
         actions = {
             "drives": "press the safety reset on the cabinet",
+            "CAN bus": "check the CAN adapter (USB) and its cable; it recovers by itself once plugged in",
             "panel": "check the control panel and its I/O island",
             "wheel feedback": "press the safety reset on the cabinet",
             "mux": "call the engineer: the command mux did not start",
@@ -785,18 +745,6 @@ class Supervisor(Node):
             autostart="false",
         )
 
-    def _start_line(self, t: fsm.Transaction):
-        return self._launch(
-            "layer", "line_layer.launch.py", generation=self.generation, real=str(self.real).lower()
-        )
-
-    def _ready_line(self, t: fsm.Transaction, now: float) -> None:
-        """The line layer is ready as soon as it reports its own state on THIS generation.
-        No RPC: unlike a survey, nothing has to be handed to it to start (Increment 1)."""
-        if not self.snap.line_state_for(self.generation):
-            return
-        t.step = fsm.COMMIT
-
     def _ready_mapping(self, t: fsm.Transaction, now: float) -> None:
         if not self.snap.mapping_state_for(self.generation):
             return  # coordinator not up yet
@@ -874,12 +822,10 @@ class Supervisor(Node):
     _LAYER_START = {
         fsm.MAPPING: _start_mapping,
         fsm.NAVIGATION: _start_navigation,
-        fsm.LINE: _start_line,
     }
     _LAYER_READY = {
         fsm.MAPPING: _ready_mapping,
         fsm.NAVIGATION: _ready_navigation,
-        fsm.LINE: _ready_line,
     }
 
     # ---------------------------------------------------------- survey follow-ups
@@ -1093,7 +1039,6 @@ class Supervisor(Node):
             if rd.base_ready(self.snap, now) and self.snap.mux_acknowledged(self.generation, now):
                 self._boot_report(now, "")
                 self._set(fsm.IDLE, "", "")
-                self._auto_enter_line()
             elif now > self._boot_deadline:
                 missing = rd.base_missing(self.snap, now)
                 self._boot_report(now, missing)
@@ -1110,7 +1055,6 @@ class Supervisor(Node):
                 self.get_logger().info("base ready after the boot budget")
                 self._boot_report(now, "")
                 self._set(fsm.IDLE, "", "")
-                self._auto_enter_line()
                 return
         if self.txn is not None:
             self._step_transaction(now)
