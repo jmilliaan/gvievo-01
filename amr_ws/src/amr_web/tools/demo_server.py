@@ -982,7 +982,7 @@ class DemoAdapter:
             "scans": int(time.monotonic() * 50) % 10**7,
             "errors": 0,
             "writes": 412,
-            "detail": "192.168.1.30:502 (demo)",
+            "detail": "192.168.1.40:502 (demo)",
             "age_s": 0.02,
         }
 

@@ -138,7 +138,7 @@ def _rows() -> tuple[Alarm, ...]:
         # ---- the panel and the command mux ----
         a("PANEL_STALE", ERROR, "engineer", "The control panel is not answering",
           "Call the engineer: the panel wiring or the I/O island is down.",
-          "No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion "
+          "No fresh, valid PanelState: Modbus DIO at 192.168.1.40 lost, or panel_node down. No motion "
           "authority at all without it."),
         a("NOT_LEASED", WARN, "auto", "Waiting for the supervisor",
           "Wait. If it stays, press Restart on the Home page.",

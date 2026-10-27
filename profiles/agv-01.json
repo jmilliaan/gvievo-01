@@ -81,7 +81,7 @@
     "alarm_on": [1],
     "movement_horn": [0],
     "enabled": true,
-    "ip": "192.168.1.30",
+    "ip": "192.168.1.40",
     "port": 502,
     "device_id": 1,
     "scan_period_s": 0.05,

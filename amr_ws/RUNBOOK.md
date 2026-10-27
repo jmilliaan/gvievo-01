@@ -740,7 +740,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `DISK_FULL` | error | No storage left: new maps cannot be saved | Call the engineer: the disk is full. A route already running is not affected. | Under 200 MB free. Survey start and map save are refused; navigation and LINE are deliberately NOT gated - a full disk must not stop a vehicle that is already moving. |
 | `LOC_GATE_FAILED` | error | The position check stopped running | Call the engineer: the map/scan check failed. | Scan-consistency gate or the transform it needs failed; no evidence either way, so LOST. |
 | `LOC_STREAM_STALE` | error | A sensor the vehicle navigates by went quiet | Call the engineer: a sensor stopped (see the detail for which). | scan/wheels/imu/tf/amcl age over the spec 2.4 limits. |
-| `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion authority at all without it. |
+| `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.40 lost, or panel_node down. No motion authority at all without it. |
 | `DISK_LOW` | warn | The vehicle is running out of storage | Call the engineer: old maps and reports need deleting. | Under 1 GB free on the state or maps filesystem. Surveys and saves still run; at 200 MB they are refused (DISK_FULL). |
 | `FIELD_UNKNOWN` | warn | Stopped: no safety-scanner field data | Check the scanner cable and that its driver is running (Status page). | Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see is not clear. The OSSD stop path does not depend on this data link. |
 | `MLS_TEMP` | warn | The line sensor is outside its temperature range | Call the engineer: the line sensor is too hot or too cold. | 2070h:01 outside the sensor's own thresholds 2070h:07..2070h:06 (manual 8.7), read every 60 s and at once after a temperature event. Clears itself when back inside. |
@@ -765,7 +765,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
   `~/.amr/logs/events.jsonl` (the operator event log, kept across restarts),
   `journalctl -u amr.service` (the supervisor itself). **Save report** on the
   Alarms page packages all of these.
-- Panel invalid: check the DIO island at `192.168.1.30`. Reconnection must not
+- Panel invalid: check the DIO island at `192.168.1.40`. Reconnection must not
   create a Start edge or replay a jog.
 - No ROS discovery in an engineering shell: source `env/vehicle.sh`. Hardware
   refuses any domain other than 10.

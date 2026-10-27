@@ -169,7 +169,7 @@ under another username means editing `amr.service` (`User=`, `Group=`,
 
 | Interface | Driver | Managed by | Address | Peer |
 |---|---|---|---|---|
-| `enp2s0` (LAN1) | `igc` (Intel i226, `8086:125c`) | netplan → networkd | `192.168.1.10/24`, no gateway, no DNS | DIO island `192.168.1.30:502` (Modbus TCP), RFID reader `192.168.1.200:2022` |
+| `enp2s0` (LAN1) | `igc` (Intel i226, `8086:125c`) | netplan → networkd | `192.168.1.10/24`, no gateway, no DNS | DIO island `192.168.1.40:502` (Modbus TCP), RFID reader `192.168.1.200:2022` |
 | `enp3s0` (LAN2) | `igc` | netplan → networkd | `192.168.3.2/24`, no gateway, no DNS | nanoScan3 `192.168.3.10` (CoLa2 TCP 2122, UDP data → host `:6060`) |
 | `wlp1s0` | `iwlwifi` (Intel 7260) | NetworkManager | per unit (`192.168.2.20/24` unit 1, `192.168.2.30/24` unit 2), gw `192.168.2.10`, DNS 1.1.1.1/8.8.8.8, metric 700 | SSID `agv_field` — the operator tablet reaches `http://<unit address>:5001` here |
 | `usb0` | `cdc_ether`/`rndis` | netplan → networkd | DHCP, metric 100 | phone tether: maintenance uplink and remote SSH |
@@ -187,7 +187,7 @@ two wired LANs never carry a default route — a third would blackhole traffic.
 | Oriental Motor BLV-R ×2 | CANopen node IDs 1 (left) / 2 (right), 125 kbps, `1016h` volatile | MEXE02 over USB |
 | SICK MLS | node ID 10, 125 kbps, TPDO1 `0x18A` @100 Hz track; yaw-rate TPDO disabled | CANopen SDO (no SOPAS used); 2006h:01 = 3 Standard enhanced for flush diverters, set with `read_mls set-variant --value 3 --go` (2026-10-07) |
 | SICK nanoScan3 | IP `192.168.3.10`; fields, monitoring cases | Safety Designer (read-only for us) |
-| Modbus I/O island | IP `192.168.1.30`, unit 1 | vendor web page |
+| Modbus I/O island | IP `192.168.1.40`, unit 1 | vendor web page |
 | RFID reader (Chafon CF821, CP-203910_V1.13 / RN370MU-910) | IP `192.168.1.200`/24, GW `192.168.1.1`, TCP 2022, MAC `8C:4B:41:3B:CC:A4`, device addr 1. Read back 2026-10-08: WorkMode 1 active, Interface `0x80` RS232 (tags still stream over TCP), Region 1 US 902.75–927.25 MHz (49 × 500 kHz), 30 dBm, Q 4, S0, filter 0, buffer off, remote push off. The profile's `rfid.expect_*` must match; the driver warns on drift. Region change to Indonesia 920–923 MHz (custom region 0) is pending | "UHF Even Reader" V1.6.3, a **Windows** program: `tools/uhf-even/Software/UHF Even Reader V1.6.3/UHF Even Reader.exe` in the repo, run from a laptop on LAN1's subnet; the driver only queries |
 | Jog pendant / panel | DI1 Start, DI2 Reset, DI3 AUTO/MANUAL, DI4–7 FWD/RVS/LEFT/RIGHT, DO0 horn | wiring, `profiles/agv-01.json` |
 
@@ -760,7 +760,7 @@ Cutover is a **witnessed** step (RUNBOOK §5–§6): E-stop engaged, a person at
 vehicle, drives powered, `can0` up, scanner and I/O island reachable.
 
 ```bash
-ping -c1 192.168.1.30 && ping -c1 192.168.3.10          # DIO island, scanner
+ping -c1 192.168.1.40 && ping -c1 192.168.3.10          # DIO island, scanner
 python3 -m agv_core.drivers.canbus.verify_bus            # nodes 1, 2, 10 answer (service stopped)
 sudo systemctl enable --now amr.service
 journalctl -u amr.service -f                             # reaches IDLE; web on :5001
@@ -1240,7 +1240,7 @@ reads, no writes: none of these takes `--go`.
 | MLS | `python3 -m agv_core.drivers.canbus.read_mls snapshot` | variant `2006h:01` = 3 (Standard enhanced); TPDO1 COB-ID `0x18A` enabled, type and event timer as unit 1 (100 Hz) |
 | MLS markers | after 9.2 item 6: the Home marker tile / drive_node's start check | the same as unit 1: markers OK if unit 1's sensor was written with `set-markers --go`, else "sensor not set up". Either way motion is unaffected; with markers not OK a zone mission runs NORMAL |
 | MLS IMU | `python3 -m agv_core.drivers.canbus.read_imu show` | answers with plausible gyro/accel (vehicle still: yaw rate ~0, accel ~1 g); TPDO mapping as unit 1 (the IMU is SDO-polled by drive_node) |
-| I/O island | `ping -c3 -I enp2s0 192.168.1.30` | 0 % loss; panel edges in 9.2 item 7 |
+| I/O island | `ping -c3 -I enp2s0 192.168.1.40` | 0 % loss; panel edges in 9.2 item 7 |
 | RFID reader | `ping -c3 -I enp2s0 192.168.1.200`; then the driver's start log (`journalctl -u amr \| grep -i rfid` after 9.2 item 6) | 0 % loss; **no** `expect_*` drift warning: WorkMode 1, region 1, 30 dBm |
 | nanoScan3 | `ping -c3 -I enp3s0 192.168.3.10`; Safety Designer: the project uploaded is the one unit 1 runs (compare the checksum Safety Designer shows) | fields and cases match unit 1; then 9.2 item 8 |
 
@@ -1250,7 +1250,7 @@ Run all of these once, in order, before the vehicle leaves the bench.
 
 1. **Cold boot with the monitor unplugged.** `systemctl status amr lightdm canable@can0 nginx` all `active`. Plug the monitor in after 2 min → UI appears, full-screen, native size.
 2. **`ip route`** shows exactly two defaults (`usb0` 100, `wlp1s0` 700) and none via the wired ports. `networkctl list` shows `enp2s0/enp3s0 configured`, `wlp1s0 unmanaged`.
-3. **Peers**: `ping -c3 -I enp2s0 192.168.1.30`, `ping -c3 -I enp2s0 192.168.1.200`, `ping -c3 -I enp3s0 192.168.3.10` all 0 % loss.
+3. **Peers**: `ping -c3 -I enp2s0 192.168.1.40`, `ping -c3 -I enp2s0 192.168.1.200`, `ping -c3 -I enp3s0 192.168.3.10` all 0 % loss.
 4. **CAN** (service stopped): `candump -n 20 can0` shows TPDOs from `0x181/0x182` and `0x18A`; `python3 -m agv_core.drivers.canbus.verify_bus` → nodes 1, 2, 10 answer; `verify_drivers` → BLV-R identity.
 5. **Bench tools refuse while the service runs** (`/run/lock/amr` owner named in the error).
 6. **`amr.service` reaches IDLE** (RUNBOOK §1 boot check) with `journalctl -u amr.service` free of tracebacks; `pgrep -af 'amr_|nav2|slam_toolbox|foxglove'` empty after `systemctl stop amr`.
