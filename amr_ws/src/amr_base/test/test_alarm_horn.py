@@ -1,9 +1,14 @@
-"""DO01 alarm horn (operator, 2026-10-02): AUTO RUNNING and (protective stop OR warning 1
-OR warning 2). Running = RunState EXECUTING/BLOCKED."""
+"""The alarm horn, dio.alarm_on (operator, 2026-10-02): AUTO RUNNING and (protective stop OR
+warning 1 OR warning 2), plus the pre-move warning. Running = RunState EXECUTING/BLOCKED.
+
+MCQ4-4 outputs (operator, 2026-10-27): DO00 rotary lamp, DO01 horn (the movement horn),
+DO02 alarm horn."""
 
 from amr_base.panel_io import alarm_wanted, motion_outputs
 
 IDLE, EXECUTING, PAUSED, BLOCKED, FAULT, DONE = 0, 2, 3, 4, 5, 6  # RunState
+LAMP, HORN = 0, 1
+MOTION, MOVEMENT_HORN = [LAMP, HORN], [HORN]
 
 
 def test_auto_run_with_a_field_occupied_sounds_it():
@@ -22,31 +27,39 @@ def test_not_running_or_not_auto_is_silent():
     assert not alarm_wanted(False, EXECUTING, True, False, True), "selector MANUAL"
 
 
-def test_the_pre_move_warning_sounds_it_whatever_the_fields_say():
+def test_the_pre_move_warning_is_lamp_and_alarm_horn_then_lamp_and_horn():
     """2026-10-08: a Start under AUTO sounds the alarm horn before the vehicle moves - while
-    RunState.premove - with no field data at all."""
+    RunState.premove - with no field data at all. 2026-10-27: the lamp turns with it, and
+    once the wheels turn the sound goes back to the horn."""
     assert alarm_wanted(True, EXECUTING, False, True, False, run_premove=True)
     assert alarm_wanted(True, None, False, True, False, run_premove=True)
     assert not alarm_wanted(True, EXECUTING, True, True, False, run_premove=False)
     assert not alarm_wanted(False, EXECUTING, True, True, False, run_premove=True), "selector MANUAL"
-    # nothing turns during it, so the movement horn stays off; once moving, it takes over
-    assert motion_outputs(False, True, [0, 8], [0]) == {0: False, 8: False}
-    assert motion_outputs(True, alarm_wanted(True, EXECUTING, True, True, False), [0, 8], [0]) == {
-        0: True, 8: True
-    }
+    # pre-move: nothing turns yet, the alarm sounds -> lamp on, horn off
+    assert motion_outputs(False, True, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: False}
+    # moving, no field: lamp and horn
+    moving = alarm_wanted(True, EXECUTING, True, True, False)
+    assert motion_outputs(True, moving, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: True}
+
+
+def test_manual_moving_is_lamp_and_horn():
+    alarm = alarm_wanted(False, None, True, True, True)
+    assert not alarm
+    assert motion_outputs(True, alarm, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: True}
 
 
 def test_stale_field_data_does_not_sound_it():
     assert not alarm_wanted(True, EXECUTING, False, False, True)
 
 
-def test_a_field_switches_the_movement_horn_to_the_alarm_horn():
-    """Operator, 2026-10-07: on warning 1, warning 2 or protective the sound changes - DO00
-    (movement horn) off while DO01 (alarm) sounds; DO08 keeps following the motors."""
+def test_a_field_switches_the_horn_to_the_alarm_horn():
+    """Operator, 2026-10-07: on warning 1, warning 2 or protective the sound changes - the
+    horn off while the alarm horn sounds; the lamp stays on."""
     for run, protective_clear in ((EXECUTING, True), (BLOCKED, True), (EXECUTING, False)):
         alarm = alarm_wanted(True, run, True, protective_clear, True)
         assert alarm
-        assert motion_outputs(True, alarm, [0, 8], [0]) == {0: False, 8: True}
-    assert motion_outputs(True, False, [0, 8], [0]) == {0: True, 8: True}, "no field: movement horn"
-    assert motion_outputs(False, False, [0, 8], [0]) == {0: False, 8: False}, "stopped: both off"
-    assert motion_outputs(False, True, [0, 8], [0]) == {0: False, 8: False}, "stopped by protective: alarm only"
+        assert motion_outputs(True, alarm, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: False}
+    assert motion_outputs(True, False, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: True}, "no field"
+    assert motion_outputs(False, False, MOTION, MOVEMENT_HORN) == {LAMP: False, HORN: False}, "stopped"
+    assert motion_outputs(False, True, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: False}, \
+        "stopped by protective: lamp and alarm horn"

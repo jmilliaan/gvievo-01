@@ -1,9 +1,11 @@
 """Drive power policy (2026-10-08): when drive_node powers the drives. Pure and clock-fed.
 
-    MANUAL   powered while the Manual Arm input (panel.di_manual_arm, DI08) is HIGH
-    AUTO     powered while the executor asks for it: RunState.drive_power. It asks from
-             the pre-move warning after a Start until the run ends or stops in a hold
-             that waits for a human
+    ARM      the pendant enable (panel.di_manual_arm, DI09 on MCQ4-4) gates BOTH modes:
+             LOW is never powered, whatever the selector says (operator, 2026-10-27)
+    MANUAL   powered while ARM is HIGH
+    AUTO     powered while ARM is HIGH and the executor asks for it: RunState.drive_power.
+             It asks from the pre-move warning after a Start until the run ends or stops
+             in a hold that waits for a human
     else     standby: CANopen up, encoders and the MLS read, power stage off
 
 The drives are no longer powered just because the vehicle is idle. Standby keeps the
@@ -61,10 +63,11 @@ def want_power(
         return False, "panel state stale"
     if not panel.valid:
         return False, "panel image invalid"
+    mode = "AUTO" if panel.mode_auto else "MANUAL"
+    if not panel.manual_arm:
+        return False, f"{mode}, pendant enable (arm) off"
     if not panel.mode_auto:
-        if panel.manual_arm:
-            return True, "MANUAL, Manual Arm on"
-        return False, "MANUAL, Manual Arm (DI08) off"
+        return True, "MANUAL, pendant enable (arm) on"
     for a in asks:
         if a.drive_power and _fresh(a.t_stamp, now, p.ask_timeout_s):
             return True, f"AUTO, the {a.source} run asks for power"

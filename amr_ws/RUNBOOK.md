@@ -574,7 +574,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while the mux had a command to apply. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
+| `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Switch the pendant enable (arm) on. AUTO: then press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while the mux had a command to apply. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
 | `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
 

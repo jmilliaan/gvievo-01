@@ -88,7 +88,7 @@ class PanelAdapter:
                 ),
                 scans,
             )
-        # Manual Arm (DI08): a debounced LEVEL, like the pendant. A switch already on at
+        # Pendant enable / arm (DI09): a debounced LEVEL, like the pendant. A switch already on at
         # power-on powers the drives once the image is valid - power is not motion.
         self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
         self._last_arm: bool | None = None
@@ -229,9 +229,11 @@ def alarm_wanted(
 
 def motion_outputs(turning: bool, alarm: bool, channels, movement_horn) -> dict[int, bool]:
     """dio.motion_on with the horn switch (operator, 2026-10-07): while the alarm horn sounds
-    (protective, warning 1 or warning 2 in an AUTO run) the movement horn is OFF, so the
-    sound changes; the other motion outputs (DO08) keep following the motors."""
-    return {ch: turning and not (alarm and ch in movement_horn) for ch in channels}
+    (pre-move warning, or protective / warning 1 / warning 2 in an AUTO run) the movement
+    horn is OFF, so the sound changes. The other motion outputs - the rotary lamp, DO00 on
+    MCQ4-4 - are on while the motors turn AND while the alarm sounds, so the lamp already
+    turns during the 2 s pre-move warning (operator, 2026-10-27)."""
+    return {ch: (turning and not alarm) if ch in movement_horn else (turning or alarm) for ch in channels}
 
 
 def horn_wanted(

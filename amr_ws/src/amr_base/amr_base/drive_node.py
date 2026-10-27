@@ -12,8 +12,8 @@ Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
 
 Drive power (2026-10-08). The link and the power stage are separate levels:
 STANDBY (CANopen up, TPDOs flowing, power stage off) whenever the link is wanted,
-ARMED (Operation enabled) only while amr_base.arm_policy wants power - under MANUAL
-while the Manual Arm input (DI08) is high, under AUTO while the trackless run
+ARMED (Operation enabled) only while amr_base.arm_policy wants power - only while the
+pendant enable / arm input (DI09) is high, and under AUTO also while the run
 asks for it (RunState.drive_power). /drives/arm and
 /drives/disarm set the LINK (standby or fully disarmed), not the power.
 

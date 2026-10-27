@@ -87,11 +87,12 @@ timing.manual_watchdog_s
     deliberately rather than inherit this one.
 
 panel.di_manual_arm
-    The Manual Arm input (DI08 on agv-01). Under MANUAL the drives are powered
-    only while this input is HIGH; LOW leaves them in standby (CANopen up,
-    encoders read, power stage off), so a jog, a pendant press, a survey move
-    or a commissioning pp move does nothing until it is switched on. Under
-    AUTO it is ignored: power follows the run (amr_base/arm_policy.py).
+    The pendant enable / arm input (DI09 on MCQ4-4). The drives are powered
+    only while this input is HIGH, in MANUAL and AUTO alike (operator,
+    2026-10-27); LOW leaves them in standby (CANopen up, encoders read, power
+    stage off), so a jog, a pendant press, a survey move, a commissioning pp
+    move or an AUTO run does nothing until it is switched on. Under AUTO power
+    also needs the run to ask for it (amr_base/arm_policy.py).
 
     It replaces manual_auto_arm (the selector in MANUAL was itself the arm
     command, 2026-10-08): the drives are no longer powered while idle.
@@ -519,12 +520,13 @@ def _read_io_names(raw, count, where):
 def _read_do_list(raw, count, where):
     """dio.motion_on / dio.alarm_on -> sorted DO channel numbers, distinct, in 0..num_do-1.
 
-    Operator, 2026-10-02:
-      motion_on  DO00 (movement horn) and DO08: on while the motors turn, any mode.
-      alarm_on   DO01 (alarm horn): on while an AUTO run is active and the protective
-                 field is violated or warning field 1 or 2 is occupied.
-      movement_horn  the motion_on channels that ARE the movement horn (DO00): off while
-                 the alarm horn sounds, so a field switches the sound (2026-10-07).
+    motion_on  on while the motors turn, any mode. MCQ4-4 (operator, 2026-10-27): DO00
+               rotary lamp (also on while the alarm sounds) and DO01 horn.
+    alarm_on   on while an AUTO run is active and the protective field is violated or
+               warning field 1 or 2 is occupied, and during the pre-move warning.
+               DO02 on MCQ4-4.
+    movement_horn  the motion_on channels that are a movement horn: off while the alarm
+               horn sounds, so a field switches the sound (2026-10-07). DO01 on MCQ4-4.
     """
     if not isinstance(raw, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
         raise ConfigError(f"{where}: expected a list of DO channel numbers")

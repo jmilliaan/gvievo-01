@@ -180,12 +180,13 @@ def test_config_profile():
     # mis-wiring it in the profile are refused: a channel the module does not
     # have would write nothing, and a horn enabled without the DIO scan has
     # nobody to write it.
-    # dio.motion_on (2026-10-02): DO00 and DO08 on while the motors turn.
-    check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
-    check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
-    check("DO00 is the movement horn", config.DIO_MOVEMENT_HORN == [0], str(config.DIO_MOVEMENT_HORN))
-    # Drive power (2026-10-08): under MANUAL the drives are powered only while DI08 is HIGH.
-    check("DI08 is the Manual Arm input", config.PANEL_DI_MANUAL_ARM == 8, str(config.PANEL_DI_MANUAL_ARM))
+    # MCQ4-4 (operator, 2026-10-27): DO00 rotary lamp and DO01 horn follow the motors in any
+    # mode; DO02 is the alarm horn (pre-move warning, AUTO field alarm), and DO01 gives way to it.
+    check("DO00 and DO01 follow the motors", config.DIO_MOTION_ON == [0, 1], str(config.DIO_MOTION_ON))
+    check("DO02 is the alarm horn", config.DIO_ALARM_ON == [2], str(config.DIO_ALARM_ON))
+    check("DO01 is the movement horn", config.DIO_MOVEMENT_HORN == [1], str(config.DIO_MOVEMENT_HORN))
+    # Drive power (2026-10-27): the drives are powered only while DI09 (pendant enable) is HIGH.
+    check("DI09 is the arm input", config.PANEL_DI_MANUAL_ARM == 9, str(config.PANEL_DI_MANUAL_ARM))
     refuses("a Manual Arm input shared with a panel button is refused",
             lambda d: d["panel"].update(di_manual_arm=d["panel"]["di_start"]), "distinct")
     refuses("a Manual Arm input on a pendant channel is refused",
@@ -215,7 +216,7 @@ def test_config_profile():
             lambda d: (d["dio"].update(enabled=False),
                        d["panel"].update(enabled=False),
                        d["pendant"].update(enabled=False),
-                       d["horn"].update(enabled=True, do_channel=2)),
+                       d["horn"].update(enabled=True, do_channel=5)),
             "horn.enabled")
     check("HORN_HOLD_S outlasts both the tick and the DIO scan",
           config.HORN_HOLD_S >= 5 * config.LOOP_PERIOD_S

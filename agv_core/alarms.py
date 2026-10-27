@@ -68,7 +68,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Wait a moment. If it stays, look at the Alarms page.",
           "Hold cause 'pending': a prerequisite went stale inside the grace window."),
         a("DRIVES_NOT_READY", WARN, "start_button", "Stopped: the motors are not powered",
-          "MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety "
+          "Switch the pendant enable (arm) on. AUTO: then press Start (after the cabinet's safety "
           "reset if the E-stop was used).",
           "DriveStatus not operational while the mux had a command to apply. Since 2026-10-08 the "
           "drives are powered only on demand (DriveStatus.power_reason says why not)."),
