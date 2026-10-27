@@ -21,6 +21,8 @@ MAP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 # drive_node's standby (2026-10-08): linked, power stage off on purpose. Not an emergency.
 STANDBY_STATES = ("Ready to switch on", "Switched on")
+# drive_node's DriveStatus.link_state while can0 cannot be opened (amr_base.drive_node.NO_BUS).
+NO_BUS = "no bus"
 
 
 def drives_ok(operational: bool, link_state: str, left_state: str, right_state: str) -> bool:
@@ -84,6 +86,7 @@ class Snapshots:
         self.mux_inhibited = False
         self.drives_t = None
         self.drives_ok = False
+        self.drives_link = ""
         self.wheels_t = None
         self.wheels_still_since = None
         self.panel_t = None
@@ -114,6 +117,7 @@ class Snapshots:
         with self._lock:
             self.drives_t = time.monotonic()
             self.drives_ok = drives_ok(
+            self.drives_link = str(m.link_state)
                 bool(m.operational), str(m.link_state), str(m.left_state), str(m.right_state)
             )
 
@@ -237,7 +241,11 @@ def base_missing(s: Snapshots, now: float, fresh_s: float = 1.0) -> str:
             missing.append("mux")
         if s.drives_t is None or now - s.drives_t > fresh_s:
             missing.append("drives")
-        if s.wheels_t is None or now - s.wheels_t > fresh_s:
+        elif s.drives_link == NO_BUS:
+            # drive_node is alive but cannot open can0 (USB adapter out): name THAT,
+            # not "drives"/"wheel feedback", whose advice is the cabinet safety reset.
+            missing.append("CAN bus")
+        if (s.wheels_t is None or now - s.wheels_t > fresh_s) and s.drives_link != NO_BUS:
             missing.append("wheel feedback")
         if s.panel_t is None or now - s.panel_t > fresh_s:
             missing.append("panel")

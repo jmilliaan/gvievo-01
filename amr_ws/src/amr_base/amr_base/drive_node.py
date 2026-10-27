@@ -127,6 +127,8 @@ def _fault_code(reason: str) -> str:
 TRACK_UI_PERIOD_S = 0.2  # /amr/line_track_ui, the display copy
 FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
 WHEELS_UI_PERIOD_S = 0.2  # /wheel_states_ui, the display copy (Home speed tile, 2026-10-08)
+BUS_RETRY_S = 2.0  # can0 missing (USB adapter out): retry this often, status published each try
+NO_BUS = "no bus"  # DriveStatus.link_state while can0 cannot be opened
 
 class DriveNode(Node):
     def __init__(self) -> None:
@@ -358,14 +360,12 @@ class DriveNode(Node):
             self._can_lock = ownerlock.acquire("can", "drive_node")  # before any bus I/O (plan §9.2)
         except ownerlock.OwnerBusy as e:
             self.get_logger().error(f"refusing can0: {e}")
-            self._status_snapshot = {"state": "no bus", "reason": str(e), "mode": "off"}
+            self._status_snapshot = {"state": NO_BUS, "reason": str(e), "mode": "off"}
             return
-        try:
-            raw, how = open_bus(config.CAN_BITRATE, config.CAN_CHANNEL, config.CAN_ADAPTER_SERIAL)
-        except Exception as e:  # noqa: BLE001
-            self.get_logger().error(f"CAN bus unavailable: {e} (another CAN owner running?)")
-            self._status_snapshot = {"state": "no bus", "reason": str(e), "mode": "off"}
+        opened = self._wait_for_bus()
+        if opened is None:
             return
+        raw, how = opened
         router = canopen.Router(raw)
         link = canopen.DriveLink(router, self.nodes, self.ramp, log=self._log)
         if self.pc_loss_ms:  # heartbeat kept alive inside blocking arm/disarm sequences too
@@ -422,6 +422,51 @@ class DriveNode(Node):
             except Exception:  # noqa: BLE001
                 pass
             self._log("bus closed, drives de-energised")
+
+    def _wait_for_bus(self):
+        """Open can0, retrying until it exists. Returns (bus, how), or None on shutdown.
+
+        The CANable is a USB adapter: unplugged at boot, can0 does not exist. Exiting
+        here took the whole base layer down and left the operator a page that said only
+        "base exited" (2026-10-27). Waiting keeps the node, and so the web, alive and
+        says why on /drives/status and as an event; plugging the adapter in recovers by
+        itself. No bus means no frames and no power: nothing here can move the vehicle.
+        """
+        while not self._stop.is_set() and rclpy.ok():
+            try:
+                opened = open_bus(config.CAN_BITRATE, config.CAN_CHANNEL, config.CAN_ADAPTER_SERIAL)
+            except Exception as e:  # noqa: BLE001 - a missing adapter is a condition, retried
+                reason = f"{config.CAN_CHANNEL} unavailable: {e}"
+                if self._status_snapshot.get("reason") != reason:
+                    self.get_logger().error(f"{reason}; retrying every {BUS_RETRY_S:.0f} s")
+                self._status_snapshot = {"state": NO_BUS, "reason": reason, "mode": "off"}
+                self._edge("bus", ("CAN_DOWN", 2, f"{reason} - check the CAN adapter (USB) and its cable"))
+                self._publish_no_bus(reason)
+                self._refuse_requests(reason)
+                self._stop.wait(BUS_RETRY_S)
+                continue
+            self._edge("bus", None)
+            return opened
+        return None
+
+    def _publish_no_bus(self, reason: str) -> None:
+        m = DriveStatus()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.left_state = m.right_state = NO_BUS
+        m.operational = False
+        m.link_state = NO_BUS
+        m.power_wanted, m.power_reason = False, reason
+        self._safe_publish(self._pub_status, m)
+
+    def _refuse_requests(self, reason: str) -> None:
+        """Answer arm/disarm/ack at once while there is no bus, instead of a 15 s timeout."""
+        while True:
+            try:
+                what, done, box = self._requests.get_nowait()
+            except queue.Empty:
+                return
+            box["ok"], box["msg"] = what == "disarm", f"{what}: no CAN bus ({reason})"
+            done.set()
 
     def _loop(self, link, router, imu) -> None:
         retry_at = 0.0

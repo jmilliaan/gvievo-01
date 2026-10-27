@@ -82,7 +82,9 @@ MODULES = [
 #   2080h:01); test_config + 2 (mls.event_clear off, and its refusal).
 # + 7 (2026-10-18): the marker run (plan 3 section 7.5): test_mission, the straight's mission and
 #   6 refusals.
-EXPECTED_CHECKS = 747
+# + 8 (2026-10-27): test_invariants C05, segmented SDO uploads. sdo_read finishes or aborts the
+#   transfer instead of returning the length as the value and leaving the MLS's server open.
+EXPECTED_CHECKS = 755
 
 
 # An exception on a helper thread only prints a traceback by default - the

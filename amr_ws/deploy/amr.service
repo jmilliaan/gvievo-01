@@ -1,9 +1,13 @@
 [Unit]
 Description=Unified AMR supervisor, hardware, web UI, mapping and navigation
 Documentation=file:///home/gvipc-evo-01/agv_can/amr_ws/RUNBOOK.md
-After=network-online.target sys-subsystem-net-devices-can0.device
+# No BindsTo/After on can0 (2026-10-27). The CANable is USB: bound to its device,
+# the service did not start when the adapter was out at boot, and stopped with the
+# web UI when it was pulled, leaving no page to say why. drive_node waits for can0
+# instead and reports "no bus" (Status page, Alarms, the boot report); with no bus
+# there are no frames and no power, so nothing can move.
+After=network-online.target
 Wants=network-online.target
-BindsTo=sys-subsystem-net-devices-can0.device
 StartLimitIntervalSec=60
 StartLimitBurst=3
 

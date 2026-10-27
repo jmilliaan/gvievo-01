@@ -562,6 +562,7 @@ class Supervisor(Node):
         """Rewrite the running marker (power-loss plan W1). One small atomic write per
         mode change; a cut between writes costs at most the last transition."""
         pend = self.book.pending
+            "CAN bus": "check the CAN adapter (USB) and its cable; it recovers by itself once plugged in",
         uptime.write(
             self.state_dir,
             self.instance,
