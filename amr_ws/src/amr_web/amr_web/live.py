@@ -12,7 +12,7 @@ a small snapshot store; the ROS subscriptions live in the adapter.
     old-map image.
   * On demand (2026-10-24): /scan (17 Hz) and /tf (~42 Hz) were half of the
     adapter's callbacks, for pages that are open a small part of the time. A
-    live-view or demo request marks demand (want()); the adapter subscribes while
+    live-view request marks demand (want()); the adapter subscribes while
     there is demand and drops both LIVE_IDLE_S after the last request. The
     scanner's liveness for the SCANNER_SILENT/STALE alarm then comes from the
     driver's own "/scan topic status" diagnostic (scan_diag_progress()).
@@ -30,8 +30,8 @@ from agv_core import se2
 from amr_web.png import encode_gray
 
 MAX_POINTS = 400
-# /scan and /tf are dropped this long after the last live-view or demo request. The
-# pages poll at 5 Hz (2 Hz demo) while visible, so only a closed or hidden page lets it lapse.
+# /scan and /tf are dropped this long after the last live-view request. The
+# pages poll at 5 Hz while visible, so only a closed or hidden page lets it lapse.
 LIVE_IDLE_S = 5.0
 # The sick_safetyscanners2 driver's diagnostic_updater status for its /scan publisher.
 SCAN_DIAG_SUFFIX = "/scan topic status"
@@ -108,7 +108,7 @@ class LiveStore:
         self.on_want = None
 
     def want(self, now: float | None = None) -> None:
-        """A page polled the live view (or the demo page): keep /scan and /tf subscribed."""
+        """A page polled the live view: keep /scan and /tf subscribed."""
         now = time.monotonic() if now is None else now
         with self._lock:
             lapsed = self.want_t is None or now - self.want_t >= LIVE_IDLE_S

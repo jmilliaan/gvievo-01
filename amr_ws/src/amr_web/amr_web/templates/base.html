@@ -29,22 +29,20 @@
      mistake guard, not security (amr_web/role.py). #}
   <nav>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
-    {# Two navigation types, two run tabs (2026-10-02). A tab for a product the profile
-       does not carry is not offered at all (its pages answer 404). #}
-    {% if tracked_ok %}<a href="/run-tracked" class="{{ 'on' if page == 'run_tracked' }}">Run tracked</a>{% endif %}
-    {% if trackless_ok %}<a href="/run" class="{{ 'on' if page == 'run' }}">Run trackless</a>{% endif %}
+    {# Run is the tape product; Mapping (2026-10-28) the survey and the AMCL position. A tab
+       for a product the profile does not carry is not offered at all (its pages answer 404). #}
+    {% if tracked_ok %}<a href="/run" class="{{ 'on' if page == 'run' }}">Run</a>{% endif %}
     {% if tracked_ok %}<a href="/calls" class="{{ 'on' if page == 'calls' }}">Calls</a>{% endif %}
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
+    {# Mapping stays in the operator's nav: Home's "Set position" lands on its Position tab. #}
+    {% if trackless_ok %}<a href="/mapping" class="{{ 'on' if page == 'mapping' }}">Mapping</a>{% endif %}
     {% if role == ENGINEER %}
+    {% if tracked_ok %}<a href="/teach" class="{{ 'on' if page == 'teach' }}">Teach</a>{% endif %}
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
-    {% if tracked_ok %}<a href="/teach" class="{{ 'on' if page == 'teach' }}">Teach</a>{% endif %}
-    {% if tracked_ok %}<a href="/guide" class="{{ 'on' if page == 'guide' }}">Guide</a>{% endif %}
     {% endif %}
-    {# The visitors' Demo page (/demo, demo.py) is DEPRECATED since 2026-10-02: no nav link;
-       the route still serves for anyone who has the URL. #}
   </nav>
   <button id="role-btn" class="ui-size role-btn" type="button"
           title="{{ 'Engineer view: press to go back to the operator view' if role == ENGINEER else 'Engineer view (PIN)' }}"
@@ -78,20 +76,11 @@
       <div class="tel" id="tel-gen"><span>Gen.</span><b>–</b><i>—</i></div>
     </div>
     <div id="rail-alarm" class="rail-alarm" hidden></div>
-    {# A page's own live readout under the shared tiles (Run tracked: the follower). #}
+    {# A page's own live readout under the shared tiles (Run: the follower; Teach: the locator). #}
     {% block rail %}{% endblock %}
     <pre id="log"></pre>
   </aside>
   <main class="{% block main_class %}{% endblock %}">
-    {% if sub %}{# Maps and Routes are SLAM things: they live inside Run trackless. #}
-    <nav class="subnav">
-      <a href="/run" class="{{ 'on' if sub == 'run' }}">Run</a>
-      {% if role == ENGINEER %}
-      <a href="/maps" class="{{ 'on' if sub == 'maps' }}">Maps</a>
-      <a href="/editor" class="{{ 'on' if sub == 'editor' }}">Routes</a>
-      {% endif %}
-    </nav>
-    {% endif %}
     {% block body %}{% endblock %}</main>
 </div>
 

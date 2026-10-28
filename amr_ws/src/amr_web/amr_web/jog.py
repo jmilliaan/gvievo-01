@@ -16,8 +16,8 @@ Rules the tests pin:
   * after the ticket deadline (server monotonic clock) nothing revives the
     session; a new press is required. Only the remaining lifetime travels
     into the ROS command (valid_for_s), never a fresh 0.2 s per late arrival;
-  * limits are the manual caps: 0.50 m/s (= the pendant's pendant_v_m_s, one manual speed
-    since 2026-10-02; 0.40 before) and 0.39 rad/s, survey included, not the vehicle's.
+  * limits are the manual caps: 0.60 m/s (= the pendant's pendant_v_m_s, one manual speed
+    since 2026-10-02; 0.50 until 2026-10-28, 0.40 before) and 0.39 rad/s, not the vehicle's.
 """
 
 from __future__ import annotations

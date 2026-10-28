@@ -14,7 +14,6 @@ GET /api/operations/<id> until it is terminal.
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import re
@@ -28,21 +27,13 @@ from typing import Any, Protocol
 import numpy as np
 from agv_core import alarms as catalogue
 from agv_core import paths
-from amr_navigation.compiler import MIN_LENGTH_M
-from amr_navigation.route import VEHICLE_V_MAX, Route, RouteError
-from amr_navigation.validate import load_dynamic, load_keepout, validate
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
 
-from amr_base.wire import MODE_IDLE, MODE_LINE, MODE_NAVIGATION, SURVEY_OPS
-from amr_maps import edit as mapedit
+from amr_base.wire import MODE_IDLE, MODE_LINE, SURVEY_OPS
 from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 from amr_mission import survey_move as survey_movemod
-from amr_navigation import footprint as fpmod
-from amr_navigation import route as routemod
-from amr_navigation import store
 from amr_web import alarms as alarmview
-from amr_web import demo as demomod
 from amr_web import jog, netcheck, reports, tapegraph_view, wifi
 from amr_web import role as rolemod
 from amr_web.png import encode_gray
@@ -59,11 +50,8 @@ class Adapter(Protocol):
     def set_initial_pose(
         self, x: float, y: float, yaw: float, map_id: str, map_revision: int, generation: int, sha256: str
     ) -> tuple[bool, str]: ...
-    def publish_route_preview(self, compiled, frame_id: str) -> None: ...
-    def run_mission(self, mission_id: str) -> tuple[bool, str]: ...
     def pause(self) -> tuple[bool, str]: ...
     def abort(self) -> tuple[bool, str]: ...
-    def prepare_resume(self) -> tuple[bool, str]: ...
     def ack_fault(self) -> tuple[bool, str]: ...
     # supervisor (unified plan §4.2, §6.2)
     def supervisor_identity(self) -> tuple[str, int]: ...
@@ -96,18 +84,6 @@ class Adapter(Protocol):
     def line_at_home(self) -> tuple[bool, str]: ...
     # trips (tracked plan 4): calls and confirmations form and record; they move nothing
     def line_trip(self, action: str, arg: str = "") -> tuple[bool, str]: ...
-
-
-# The route editor's geometry bounds (editor.js), rendered from the code that enforces them.
-_ROUTE_BOUNDS = {
-    "min_straight_m": MIN_LENGTH_M,
-    "reverse_max_m": routemod.REVERSE_MAX_M,
-    "arc_min_r": routemod.ARC_MIN_RADIUS_M,
-    "arc_min_deg": routemod.ARC_MIN_DEG,
-    "arc_max_deg": routemod.ARC_MAX_DEG,
-    "arc_yaw_rate_ratio": routemod.ARC_YAW_RATE_RATIO,
-    "vehicle_arc_w_max": routemod.VEHICLE_ARC_W_MAX,
-}
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -147,40 +123,14 @@ def _positive_int(x, what: str) -> int:
     return x
 
 
-def _op_kind(op) -> str:
-    """dynamic | undynamic | free | unknown | occupied, for an edits.json op."""
-    if not isinstance(op, dict):
-        return ""
-    return str(op.get("value", "")) if op.get("op") == "paint" else str(op.get("op", ""))
-
-
 def _continuable(m) -> bool:
     """A survey can continue only a revision that carries slam_toolbox's saved pose graph."""
     return not mb.missing_posegraph(m)
 
 
-def _edits_summary(e: dict | None) -> dict | None:
-    """What the Maps page shows about how a revision was derived (edits.json)."""
-    if not e:
-        return None
-    parent = e.get("parent") or {}
-    ops = e.get("ops") or []
-    kinds = [_op_kind(o) for o in ops]
-    return {
-        "parent_revision": parent.get("revision"),
-        "created": e.get("created", ""),
-        "note": e.get("note", ""),
-        "ops": len(ops),
-        "counts": {
-            k: kinds.count(k) for k in ("dynamic", "undynamic", "free", "unknown", "occupied") if k in kinds
-        },
-    }
-
-
 def create_app(
     adapter: Adapter,
     maps_dir: str,
-    footprint_path: str | None = None,
     wifi_iface: str = "wlp1s0",
     state_dir: str | None = None,  # None: agv_core.paths
     internet_probe: netcheck.InternetProbe | None = None,
@@ -193,8 +143,6 @@ def create_app(
     # Session cookie carries the role only. The PIN never leaves the server.
     app.secret_key = rolemod.secret(state_dir)
     standing = alarmview.StandingTracker()
-    fp = fpmod.load(footprint_path or fpmod.default_path())
-    app.config["FOOTPRINT"] = fp
     _grids: dict[tuple[str, int], tuple[Any, gridio.Grid]] = {}
 
     def bundle(map_id: str, rev: int):
@@ -202,24 +150,6 @@ def create_app(
         if key not in _grids:
             _grids[key] = mb.load(app.config["MAPS_DIR"], map_id, rev)
         return _grids[key]
-
-    # Revisions are immutable (a verified bundle's files never change), so a revision's masks
-    # and edit record are cached like its grid.
-    _extras: dict[tuple[str, int], dict] = {}
-
-    def extras(map_id: str, rev: int) -> dict:
-        key = (map_id, rev)
-        if key not in _extras:
-            bundle(map_id, rev)  # verified first
-            rev_dir = mb.revision_dir(app.config["MAPS_DIR"], map_id, rev)
-            dyn = load_dynamic(rev_dir)
-            _extras[key] = {
-                "keepout": load_keepout(rev_dir),
-                "dynamic": dyn,
-                "dynamic_cells": int(gridio.occupied(dyn).sum()) if dyn is not None else 0,
-                "edits": mb.load_edits(rev_dir),
-            }
-        return _extras[key]
 
     # ---- pages -------------------------------------------------------------------
 
@@ -314,40 +244,31 @@ def create_app(
     def page_manual():
         return render_template("manual.html", page="manual")
 
-    # Maps and Routes live under Run trackless (2026-10-02): `page` lights that tab and
-    # `sub` the strip inside it.
+    # MAPPING (2026-10-28): survey, continue a survey and the AMCL position on one page. Routes,
+    # map area edits and trackless missions were removed with it; the vehicle's one map is the
+    # tape-localization map. Old addresses redirect so a bookmark or the kiosk still lands.
+    @app.get("/mapping")
+    def page_mapping():
+        _need(trackless_ok)
+        return render_template("mapping.html", page="mapping", rotate_steps=survey_movemod.ROTATE_STEPS_DEG)
+
     @app.get("/maps")
-    def page_maps():
-        _need(trackless_ok)
-        return render_template("maps.html", page="run", sub="maps",
-                               rotate_steps=survey_movemod.ROTATE_STEPS_DEG)
-
-    @app.get("/editor")
-    def page_editor():
-        _need(trackless_ok)
-        return render_template("editor.html", page="run", sub="editor", trackless_v=VEHICLE_V_MAX,
-                               route_bounds=_ROUTE_BOUNDS)
-
-    @app.get("/review")
-    def page_review():
-        _need(trackless_ok)
-        return render_template("review.html", page="run", sub="maps")
-
     @app.get("/survey-continue")
-    def page_survey_continue():
-        _need(trackless_ok)
-        return render_template("survey_continue.html", page="run", sub="maps")
-
-    @app.get("/run")
     @app.get("/run-trackless")
-    def page_run():
+    def page_mapping_old():
         _need(trackless_ok)
-        return render_template("run.html", page="run", sub="run")
+        return redirect("/mapping")
+
+    # Run is the tape product (2026-10-28; "Run tracked" until then).
+    @app.get("/run")
+    def page_run():
+        _need(tracked_ok)
+        return render_template("run.html", page="run")
 
     @app.get("/run-tracked")
-    def page_run_tracked():
+    def page_run_tracked_old():
         _need(tracked_ok)
-        return render_template("run_tracked.html", page="run_tracked")
+        return redirect("/run")
 
     @app.get("/teach")
     def page_teach():
@@ -357,7 +278,7 @@ def create_app(
     @app.get("/guide")
     def page_guide():
         _need(tracked_ok)
-        return render_template("guide.html", page="guide")
+        return redirect("/teach")
 
     @app.get("/tape-areas")
     def page_tape_areas():
@@ -585,31 +506,6 @@ def create_app(
     def api_state():
         return jsonify(adapter.state())
 
-    # ---- DEMO page: visitors, not operators (manuals/plans/2026-09-23-demo-page.md) ----
-    # DEPRECATED 2026-10-02 (operator): no nav link any more; the route stays until removed.
-    # Open to both roles, read-only. Everything it may say is decided in demo.py.
-    demo_path = os.path.join(app.static_folder or "", "demo", "content.json")
-    try:
-        with open(demo_path, encoding="utf-8") as fh:
-            demo_content = json.load(fh)
-    except (OSError, ValueError):
-        demo_content = {"product": "AGV", "cards": [], "specs": []}  # the page must still serve
-    demo_outline = [list(p) for p in fp.polygon]
-    try:
-        demo_near_m = float(demo_content.get("near_m", demomod.NEAR_M))
-    except (TypeError, ValueError):
-        demo_near_m = demomod.NEAR_M
-
-    @app.get("/demo")
-    def page_demo():
-        return render_template("demo.html", c=demo_content, outline=demo_outline, view_m=demomod.VIEW_M)
-
-    @app.get("/api/demo")
-    def api_demo():
-        _want_live()
-        ps = adapter.live.pose_scan() if hasattr(adapter, "live") else None
-        return jsonify(demomod.view(ps, fp.polygon, demo_near_m))
-
     wifi_reader = wifi.WifiReader(wifi_iface)
 
     @app.get("/api/wifi")
@@ -622,10 +518,6 @@ def create_app(
     @app.get("/api/internet")
     def api_internet():
         return jsonify(internet.read())
-
-    @app.get("/api/footprint")
-    def api_footprint():
-        return jsonify({"polygon": list(fp.polygon), "margin_m": fp.margin_m, "reach_m": fp.reach_m})
 
     # ---- maps ----------------------------------------------------------------------
 
@@ -642,7 +534,6 @@ def create_app(
                 for r in revs:
                     try:
                         m, _ = bundle(map_id, r)
-                        ex = extras(map_id, r)
                     except (mb.BundleError, gridio.GridError) as e:
                         items.append({"revision": r, "error": str(e)})
                         continue
@@ -657,9 +548,6 @@ def create_app(
                             "origin": m.origin,
                             "start": m.start,
                             "review": m.review,
-                            "routes": store.list_routes(maps_dir, map_id),
-                            "dynamic_cells": ex["dynamic_cells"],
-                            "edits": _edits_summary(ex["edits"]),
                             "continuable": _continuable(m),
                         }
                     )
@@ -670,7 +558,6 @@ def create_app(
     def api_map(map_id: str, rev: int):
         try:
             m, g = bundle(map_id, rev)
-            ex = extras(map_id, rev)
         except (mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
         return jsonify(
@@ -680,9 +567,6 @@ def create_app(
                 "sha256": m.sha256,
                 **gridio.meta_dict(g),
                 "start": m.start,
-                "routes": store.list_routes(app.config["MAPS_DIR"], map_id),
-                "dynamic_cells": ex["dynamic_cells"],
-                "edits": _edits_summary(ex["edits"]),
                 "review": m.review,
                 "continuable": _continuable(m),
             }
@@ -696,188 +580,6 @@ def create_app(
             return _result(False, str(e), 404)
         png = encode_gray(np.flipud(gridio.trinary_image(g)))  # row 0 = bottom in the grid, top in the image
         return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
-
-    @app.get("/api/maps/<map_id>/<int:rev>/dynamic.png")
-    def api_map_dynamic(map_id: str, rev: int):
-        """The dynamic-area mask in the map image's geometry: 255 = dynamic, 0 = not."""
-        try:
-            dyn = extras(map_id, rev)["dynamic"]
-        except (mb.BundleError, gridio.GridError) as e:
-            return _result(False, str(e), 404)
-        if dyn is None:
-            return _result(False, "this revision has no dynamic areas", 404)
-        img = np.where(gridio.occupied(dyn), 255, 0).astype(np.uint8)
-        png = encode_gray(np.flipud(img))
-        return Response(png, mimetype="image/png", headers={"Cache-Control": "max-age=3600"})
-
-    @app.post("/api/maps/<map_id>/<int:rev>/edit")
-    def api_map_edit(map_id: str, rev: int):
-        """Operator edits (mark/clear dynamic areas, paint free/unknown) -> a NEW revision
-        derived from this one (dynamic-mapping plan §1.1). Nothing is modified in place:
-        routes and missions on this revision keep meaning what they meant."""
-        d, err = _body()
-        if err:
-            return err
-        note = d.get("note", "")
-        if not isinstance(note, str):
-            return _result(False, "note must be text", 400)
-        try:
-            bundle(map_id, rev)
-            _path, new_rev, res = mb.derive_edit(app.config["MAPS_DIR"], map_id, rev, d.get("ops"), note)
-        except mapedit.EditError as e:
-            return _result(False, str(e), 422)
-        except (mb.BundleError, gridio.GridError) as e:
-            return _result(False, str(e), 404)
-        return jsonify(
-            {
-                "ok": True,
-                "map_id": map_id,
-                "revision": new_rev,
-                "parent_revision": rev,
-                "dynamic_cells": res.dynamic_cells,
-                "cells": res.cells,
-                "message": f"{map_id} rev{new_rev} saved from rev{rev} ({len(res.cells)} edits)",
-            }
-        )
-
-    # ---- routes --------------------------------------------------------------------
-
-    def _validate_payload(map_id: str, rev: int, payload: dict):
-        m, g = bundle(map_id, rev)
-        route = Route.from_dict(payload)
-        route.map.id, route.map.revision, route.map.sha256 = map_id, rev, m.sha256
-        ex = extras(map_id, rev)
-        return route, validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
-
-    def _compiled_dict(compiled) -> dict:
-        return {
-            "total_length_m": compiled.total_length_m,
-            "total_turn_deg": float(np.degrees(compiled.total_turn_rad)),
-            "closes": compiled.closes,
-            "end": list(compiled.end),
-            "steps": [
-                {
-                    "id": s.id,
-                    "type": s.type,
-                    "start": list(s.start),
-                    "end": list(s.end),
-                    "length_m": s.length_m,
-                    "v_mps": s.v_mps,
-                    "radius_m": s.radius_m,
-                    "centre": list(s.centre) if s.centre is not None else None,
-                    "signed_angle_deg": float(np.degrees(s.signed_angle_rad)),
-                    "duration_est_s": s.duration_est_s,
-                }
-                for s in compiled.steps
-            ],
-        }
-
-    @app.post("/api/maps/<map_id>/<int:rev>/routes/validate")
-    def api_route_validate(map_id: str, rev: int):
-        try:
-            d, err = _body()
-            if err:
-                return err
-            route, v = _validate_payload(map_id, rev, d)
-        except (mb.BundleError, gridio.GridError) as e:
-            return _result(False, str(e), 404)
-        except RouteError as e:
-            return jsonify(
-                {"ok": False, "issues": [{"code": "schema", "message": str(e), "step_id": e.step_id}]}
-            ), 422
-        if v.ok:
-            adapter.publish_route_preview(v.compiled, route.frame_id)
-        body = {"ok": v.ok, "issues": [i.to_dict() for i in v.issues], "route": route.to_dict()}
-        if v.compiled is not None:
-            body["compiled"] = _compiled_dict(v.compiled)
-        return jsonify(body), (200 if v.ok else 422)
-
-    @app.post("/api/maps/<map_id>/<int:rev>/routes/save")
-    def api_route_save(map_id: str, rev: int):
-        try:
-            d, err = _body()
-            if err:
-                return err
-            route, v = _validate_payload(map_id, rev, d)
-        except (mb.BundleError, gridio.GridError) as e:
-            return _result(False, str(e), 404)
-        except RouteError as e:
-            return jsonify(
-                {"ok": False, "issues": [{"code": "schema", "message": str(e), "step_id": e.step_id}]}
-            ), 422
-        if not v.ok:
-            return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
-        try:
-            revision, path, sha = store.save_route(app.config["MAPS_DIR"], route)
-        except store.StoreError as e:
-            return _result(False, str(e), 409)
-        return jsonify(
-            {"ok": True, "route_id": route.route_id, "revision": revision, "sha256": sha, "path": path}
-        )
-
-    @app.get("/api/maps/<map_id>/<int:rev>/routes/<route_id>/<int:rrev>")
-    def api_route_get(map_id: str, rev: int, route_id: str, rrev: int):
-        try:
-            route, sha = store.load_route(app.config["MAPS_DIR"], map_id, route_id, rrev)
-            m, g = bundle(map_id, rev)
-        except (store.StoreError, mb.BundleError) as e:
-            return _result(False, str(e), 404)
-        ex = extras(map_id, rev)
-        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
-        body = {
-            "route": route.to_dict(),
-            "sha256": sha,
-            "ok": v.ok,
-            "issues": [i.to_dict() for i in v.issues],
-        }
-        if v.compiled is not None:
-            body["compiled"] = _compiled_dict(v.compiled)
-            if v.ok:
-                adapter.publish_route_preview(v.compiled, route.frame_id)
-        return jsonify(body)
-
-    # ---- missions ------------------------------------------------------------------
-
-    @app.get("/api/missions")
-    def api_missions():
-        return jsonify(store.list_missions(app.config["MAPS_DIR"]))
-
-    @app.post("/api/missions")
-    def api_mission_create():
-        d, err = _body()
-        if err:
-            return err
-        req = (d.get("map_id"), d.get("map_revision"), d.get("route_id"), d.get("route_revision"))
-        if not (
-            isinstance(req[0], str)
-            and isinstance(req[2], str)
-            and all(isinstance(x, int) and not isinstance(x, bool) for x in (req[1], req[3]))
-            and isinstance(d.get("mission_id") or "", str)
-        ):
-            return _result(False, "map_id, map_revision, route_id, route_revision required", 400)
-        map_id, rev, route_id, rrev = req
-        try:
-            m, g = bundle(map_id, rev)
-            route, sha = store.load_route(app.config["MAPS_DIR"], map_id, route_id, rrev)
-        except RouteError as e:
-            return _result(False, f"stored route unreadable: {e}", 422)
-        except (store.StoreError, mb.BundleError, gridio.GridError) as e:
-            return _result(False, str(e), 404)
-        ex = extras(map_id, rev)
-        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
-        if not v.ok:
-            return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
-        # route ids/revisions are per map; missions share one directory: the default id names the map
-        mission_id = d.get("mission_id") or f"{map_id}_rev{rev}_{route_id}_rev{rrev}"
-        try:
-            path = store.save_mission(
-                app.config["MAPS_DIR"], mission_id, map_id, rev, m.sha256, route_id, rrev, sha
-            )
-        except store.StoreConflict as e:
-            return _result(False, str(e), 409)
-        except store.StoreError as e:
-            return _result(False, str(e), 400)
-        return jsonify({"ok": True, "mission_id": mission_id, "path": path})
 
     # ---- coordinator calls (services on the robot; the browser never commands wheels) ----
 
@@ -948,7 +650,7 @@ def create_app(
     # ---- live view (unified plan §6.4): bounded rates, encoded once per snapshot ----
 
     def _want_live():
-        """Every live-view/demo request keeps /scan and /tf subscribed (live.LIVE_IDLE_S)."""
+        """Every live-view request keeps /scan and /tf subscribed (live.LIVE_IDLE_S)."""
         want = getattr(getattr(adapter, "live", None), "want", None)
         if want is not None:
             want()
@@ -993,19 +695,13 @@ def create_app(
         d, err = _body()
         if err:
             return err
-        target = {"idle": MODE_IDLE, "navigation": MODE_NAVIGATION, "line": MODE_LINE}.get(
-            str(d.get("target", "")).lower()
-        )
+        # NAVIGATION is not entered from the web since 2026-10-28 (no routes, no trackless
+        # missions); MAPPING is entered by a survey start.
+        target = {"idle": MODE_IDLE, "line": MODE_LINE}.get(str(d.get("target", "")).lower())
         if target is None:
-            return _result(False, "target must be idle, navigation or line", 400)
-        try:
-            rev = int(d.get("map_revision", 0))
-        except (TypeError, ValueError):
-            return _result(False, "map_revision must be an integer", 400)
-        if target == MODE_NAVIGATION and (not d.get("map_id") or rev <= 0):
-            return _result(False, "navigation needs map_id and an exact map_revision", 422)
+            return _result(False, "target must be idle or line", 400)
         rid = str(d.get("request_id") or uuid.uuid4().hex)
-        return _accepted(*adapter.request_mode(target, str(d.get("map_id", "")), rev, rid))
+        return _accepted(*adapter.request_mode(target, "", 0, rid))
 
     @app.post("/api/survey/<op>")
     def api_survey(op: str):
@@ -1184,13 +880,6 @@ def create_app(
         # the adapter re-checks the identity against the live ModeState right before publishing (R12)
         return _call(adapter.set_initial_pose, x, y, yaw, map_id, map_rev, gen, str(d.get("sha256", "")))
 
-    @app.post("/api/mission/run")
-    def api_mission_run():
-        d, err = _body()
-        if err:
-            return err
-        return _call(adapter.run_mission, str(d.get("mission_id", "")))
-
     @app.post("/api/mission/pause")
     def api_mission_pause():
         return _call(adapter.pause)
@@ -1198,10 +887,6 @@ def create_app(
     @app.post("/api/mission/abort")
     def api_mission_abort():
         return _call(adapter.abort)
-
-    @app.post("/api/mission/resume")
-    def api_mission_resume():
-        return _call(adapter.prepare_resume)
 
     @app.post("/api/mission/ack")
     def api_mission_ack():

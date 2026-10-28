@@ -1,70 +1,149 @@
 {% extends "base.html" %}
 {% block title %}AMR — run{% endblock %}
-{% block main_class %}wide{% endblock %}
+{% block rail %}
+{# The follower readout (2026-10-24): under the rail's tiles when it fits there whole, so the
+   job picker gets the whole column; where the rail is too short for it (the HMI at size l)
+   placeFollower() moves it into a column beside the picker. Display only. #}
+<div id="follower" class="rail-extra">
+  <div id="lt-state" class="tel-grid rows"></div>
+  <p id="lt-reason" class="note"></p>
+  {% with rfid_big = true %}{% include "_line_track.html" %}{% endwith %}
+</div>
+{% endblock %}
 {% block body %}
-<section class="editor">
-  <aside class="tools tabbed">
-    {# Two panes so the column fits a 7" panel: the map + pose work, then the mission. The
-       hold controls sit in a footer under both panes - Abort is never behind a tab. #}
-    <div class="tabs" id="run-tabs">
-      <button class="tab on" type="button" data-tab="loc">Map &amp; pose</button>
-      <button class="tab" type="button" data-tab="mission">Mission</button>
+{# Run (2026-10-02; "Run tracked" until 2026-10-28): the magnetic-tape product. Pick a mission (or none for plain
+   line following) and, for a mission with destination stops, the destination (2026-10-08).
+   Anywhere on the line (2026-10-09); then the PHYSICAL Start under AUTO runs it - no software arm
+   since 2026-10-07 (motor arming is drive_node's, in every mode). Nothing on this page moves
+   the vehicle. Since 2026-10-24 missions and destinations are touch tiles, not drop-downs. #}
+<section id="line-job" class="line-job grow">
+  <div class="job-pick">
+    <div class="bar two job-actions">
+      <button id="btn-line-select" class="big"><span>Set job</span><small id="lt-pick">–</small></button>
+      <button id="btn-line-clear" class="danger">Clear</button>
     </div>
-    <div class="tabpane" data-tab="loc">
-      <h2>Vehicle map <small>navigation layer</small></h2>
-      <div id="active-map" class="tel-grid"></div>
-      <label class="field">View / activate <select id="run-map"></select></label>
-      <div class="bar">
-        <button id="btn-activate" class="big run">Use this map on the vehicle</button>
-        <button id="btn-idle" class="big">Return to idle</button>
-      </div>
-      <p class="note">Selecting only changes the picture. <b>Use this map</b> replaces the navigation software on that exact revision (vehicle stopped, nothing running, no emergency) and does not move anything.</p>
-      <div class="sep"></div>
-      <h2>Localisation <small>AMCL · monitor</small></h2>
-      {# The three steps in order, so nobody has to know which button comes first.
-         A done step greys out; the current one is boxed. Buttons stay below. #}
-      <div class="steps" id="loc-steps">
-        <div class="step" data-step="map"><b>1 Map</b><span>pick and use a map</span></div>
-        <div class="step" data-step="pose"><b>2 Position</b><span>set the initial pose</span></div>
-        <div class="step" data-step="confirm"><b>3 Check</b><span>confirm the scans line up</span></div>
-      </div>
-      <div id="loc-state" class="tel-grid"></div>
-      <div id="loc-detail" class="tel-grid" style="margin-top:.6rem"></div>
-      <p id="loc-reason" class="note"></p>
-      <div class="bar">
-        <button id="tool-initialpose" class="tool">Set initial pose on map</button>
-        <button id="btn-pose-survey" class="tool" title="Seed the initial pose at the map's survey start mark (position and heading)">Initial pose = survey mark</button>
-      </div>
-      <div class="bar">
-        <button id="btn-loc-confirm" class="big run">Confirm: scans align</button>
-        <button id="btn-loc-reset" class="big">Reset</button>
-      </div>
-      <div class="sep"></div>
-      <h3>Jog <small>selector MANUAL</small></h3>
-      <div id="jog-run"></div>
-    </div>
-    <div class="tabpane" data-tab="mission" hidden>
-      <h2>Mission <small>route executor</small></h2>
-      <label class="field">Mission <select id="run-mission"></select></label>
-      <div class="bar"><button id="btn-run-load" class="big run">Load (READY)</button></div>
-      <div id="run-state" class="tel-grid" style="margin-top:1rem"></div>
-      <p id="run-reason" class="note"></p>
-      <div class="warn-box" style="margin-top:1rem"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. Pause / abort / prepare-resume below; Start confirms a prepared resume.</div>
-      <div class="bar"><button id="btn-run-resume" class="big">Prepare resume</button></div>
-    </div>
-    <div class="tools-foot">
-      <div class="bar three">
-        <button id="btn-run-pause" class="big">Pause</button>
-        <button id="btn-run-abort" class="danger">Abort</button>
-        <button id="btn-run-ack" class="big" title="Acknowledge an executor FAULT">Ack fault</button>
-      </div>
-    </div>
-  </aside>
-  <div class="canvas-wrap">
-    <canvas id="run-canvas" width="900" height="600"></canvas>
-    <div id="run-hint" class="hint">Drag = pan, +/− or wheel = zoom, fit = whole map. Initial pose: press the position, drag towards the heading, release.</div>
+    <h2>Mission <small id="lt-product">tape</small></h2>
+    <div id="lt-mission" class="pick-grid"></div>
+    <h2>Destination <small id="lt-dest-note"></small></h2>
+    <div id="lt-dest" class="pick-grid small"></div>
+    <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a stop, Start goes on after the start delay.</div>
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/liveview.js"></script><script src="/static/tapegraph.js"></script><script src="/static/jogpad.js"></script><script src="/static/run.js"></script>
-<script>tabs('run-tabs');</script>{% endblock %}
+{% block scripts %}<script src="/static/linetrack.js"></script>
+<script>
+const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
+
+let DESTS = {}, MERR = {}, NOTES = {}, MISSIONS = [];
+// The operator's pick; '' is "none" (plain line following) / "no destination".
+// Seeded once from the layer's active job so a reload shows what is set.
+const pick = { mission: '', dest: '', seeded: false };
+let editable = false;
+
+function pickTile(value, name, note, on, bad) {
+  return `<button type="button" class="pick${on ? ' on' : ''}${bad ? ' bad' : ''}" data-v="${esc(value)}"`
+    + `${editable ? '' : ' disabled'}><b>${esc(name)}</b>${note ? `<i>${esc(note)}</i>` : ''}</button>`;
+}
+
+function render() {
+  $('lt-mission').innerHTML = [pickTile('', 'none', `plain line following · ${NOTES.empty || ''}`, pick.mission === '')]
+    .concat(MISSIONS.map(n => pickTile(n, n, MERR[n] || NOTES[n] || '', pick.mission === n, !!MERR[n]))).join('');
+  const list = DESTS[pick.mission] || [];
+  $('lt-dest').innerHTML = list.map(d => pickTile(d, d, '', pick.dest === d)).join('');
+  $('lt-dest').hidden = !list.length;
+  $('lt-dest-note').textContent = list.length ? (pick.dest ? '' : 'choose one') : 'none in this mission';
+  $('lt-pick').textContent = (pick.mission || 'none') + (pick.dest ? ` → ${pick.dest}` : '');
+}
+
+// The rail when the follower fits there whole beside the log's minimum; otherwise the column
+// beside the picker. Re-decided on every state tick and resize (size knob, an alarm line).
+// Measured in the rail itself (its height depends on the column width): the trial move and
+// the move back happen in one task, so nothing is painted in between.
+function placeFollower() {
+  const f = $('follower'), rail = $('telemetry'), logEl = $('log'), job = $('line-job');
+  const top = f.scrollTop;
+  if (f.parentElement !== rail) rail.insertBefore(f, logEl);
+  let inRail = true;
+  if (!matchMedia('(max-width:820px)').matches) {  // stacked layout: the rail has no height limit
+    const cs = getComputedStyle(rail), gap = parseFloat(cs.rowGap) || 0;
+    let used = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    for (const el of rail.children) if (el !== f && el !== logEl && el.offsetHeight) used += el.offsetHeight + gap;
+    inRail = used + f.scrollHeight + gap + parseFloat(getComputedStyle(logEl).minHeight) <= rail.clientHeight;
+  }
+  if (!inRail) job.appendChild(f);
+  job.classList.toggle('with-follower', !inRail);
+  f.scrollTop = top;
+}
+addEventListener('resize', placeFollower);
+
+async function loadMissions() {
+  const { status, data } = await apiGet('/api/line/missions');
+  if (status !== 200) return;
+  DESTS = data.destinations || {};
+  MERR = data.errors || {};
+  NOTES = data.notes || {};
+  MISSIONS = data.missions || [];
+  if (pick.mission && !MISSIONS.includes(pick.mission)) pick.mission = '';
+  if (!(DESTS[pick.mission] || []).includes(pick.dest)) pick.dest = '';
+  render();
+}
+loadMissions();
+
+$('lt-mission').onclick = e => {
+  const b = e.target.closest('button.pick');
+  if (!b || b.disabled) return;
+  if (pick.mission !== b.dataset.v) Object.assign(pick, { mission: b.dataset.v, dest: '' });
+  if (MERR[pick.mission]) log(`${pick.mission}: ${MERR[pick.mission]}`, 'bad');
+  render();
+};
+$('lt-dest').onclick = e => {
+  const b = e.target.closest('button.pick');
+  if (!b || b.disabled) return;
+  pick.dest = b.dataset.v;
+  render();
+};
+
+$('btn-line-select').onclick = () => act('/api/line/mission', { name: pick.mission, destination: pick.dest });
+$('btn-line-clear').onclick = () => act('/api/line/clear');
+
+onState(st => {
+  const m = st.mode, ln = st.line;
+  const inLine = m && m.mode_name === 'LINE';
+  $('lt-product').textContent = `tape · product ${m ? (m.product || '–') : '–'}`;
+  for (const id of ['btn-line-select', 'btn-line-clear']) $(id).disabled = !inLine || !ln;
+  let dirty = false;
+  if (ln && !pick.seeded) {  // the list may not be loaded yet: loadMissions() re-checks the pick
+    Object.assign(pick, { seeded: true, mission: ln.mission || '', dest: ln.destination || '' });
+    dirty = true;
+  }
+  if (!!(inLine && ln) !== editable) { editable = !editable; dirty = true; }
+  if (dirty) render();
+  if (!ln) {
+    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'switch to tracked on Home', 'warn']]);
+    $('lt-reason').textContent = '';
+  } else {
+    const uturn = ln.uturn_phase ? `U-turn ${ln.uturn_phase}` : '';
+    tiles('lt-state', [
+      ['State', ln.state_name, ln.hold_cause ? `hold: ${ln.hold_cause}` : (ln.engine_state || '—'), LINE_LEVEL[ln.state_name] || ''],
+      ['Mission', ln.mission || 'none', ln.mission ? 'tape mission' : 'plain line following', ''],
+      ['Job', ln.destination || '–', ln.stop_where ? `at ${ln.stop_where}` : (ln.job_result || '—'),
+        /MISSED|NOT/.test(ln.job_result || '') ? 'bad' : ''],
+      ['Home', ln.at_home ? 'YES' : 'NO', ln.at_home ? 'start position' : (ln.home_detail || '—'),
+        ln.at_home ? 'ok' : (ln.home_detail ? 'warn' : '')],
+      ['Speed', ln.high_speed ? 'HIGH' : 'NORMAL', `${num(ln.v_mps, 2)} m/s · ${ln.speed_reason || '—'}`,
+        ln.high_speed ? 'warn' : ''],
+      ['Branch', (ln.branch_intent || 'straight').toUpperCase(), uturn || '—', uturn ? 'warn' : ''],
+      ['Last tag', ln.last_tag || '–', ln.last_tag_action || '—', ''],
+      ['Travel', `${num(ln.followed_m, 1)} m`, `track ${num(ln.track_hz, 0)} Hz`, ''],
+    ].concat(ln.loc_health ? [
+      // Tape localization in shadow (tracked plan 3, P1): display only, it decides nothing yet.
+      ['Locator', ln.loc_health, ln.loc_leg ? `${ln.loc_leg} · σ ${num(ln.loc_sigma_m * 100, 1)} cm` : (ln.loc_detail || '—'),
+        { HEALTHY: 'ok', DEGRADED: 'warn', LOST: 'bad', WAITING: 'warn' }[ln.loc_health] || ''],
+    ] : []));
+    $('lt-reason').textContent = ln.message || '';
+  }
+  lineTrack(st.line_track);
+  rfidTags(st.rfid);
+  placeFollower();
+});
+</script>{% endblock %}

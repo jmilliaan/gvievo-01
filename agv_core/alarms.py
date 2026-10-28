@@ -12,7 +12,7 @@ lever.
 
     auto            clears itself once the cause goes away; no button
     start_button    the physical Start button on the panel, after AUTO
-    ack             Acknowledge on the Run page (an executor/line FAULT)
+    ack             Acknowledge on the Home page (an executor/line FAULT)
     recover         Recover on the Home page (a supervisor FAULT)
     operator        an operator act on a page (set the pose, pick a map)
     power_cycle     switch the drives off and on (a latched drive alarm)
@@ -245,57 +245,57 @@ def _rows() -> tuple[Alarm, ...]:
 
         # ---- localisation ----
         a("LOC_LOST", ERROR, "operator", "The vehicle lost its position",
-          "Set the initial pose on the Run page and confirm the scans line up.",
+          "Set the position on the Mapping page and confirm the scans line up.",
           "Umbrella code for a LocalizationState LOST without a more specific cause."),
         a("LOC_SCAN_MISMATCH", ERROR, "operator", "The vehicle is not where it thinks it is",
-          "Set the initial pose on the Run page and confirm the scans line up.",
+          "Set the position on the Mapping page and confirm the scans line up.",
           "Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous "
           "wrong-pose signature."),
         a("LOC_COV_GREW", ERROR, "operator", "The vehicle is unsure where it is",
-          "Set the initial pose on the Run page and confirm the scans line up.",
+          "Set the position on the Mapping page and confirm the scans line up.",
           "AMCL covariance over the limit for longer than cov_hold_s."),
         a("LOC_STREAM_STALE", ERROR, "engineer", "A sensor the vehicle navigates by went quiet",
           "Call the engineer: a sensor stopped (see the detail for which).",
           "scan/wheels/imu/tf/amcl age over the spec 2.4 limits."),
         a("LOC_JUMP", ERROR, "operator", "The vehicle's position jumped",
-          "Set the initial pose on the Run page and confirm the scans line up.",
+          "Set the position on the Mapping page and confirm the scans line up.",
           "map->odom correction over the jump trigger since the last accepted pose."),
         a("LOC_GATE_FAILED", ERROR, "engineer", "The position check stopped running",
           "Call the engineer: the map/scan check failed.",
           "Scan-consistency gate or the transform it needs failed; no evidence either way, so LOST."),
         a("LOC_NOT_SET", WARN, "operator", "The vehicle does not know where it is yet",
-          "On the Run page: pick the map, set the initial pose, then confirm.",
+          "On the Mapping page (Position): set the initial pose, then confirm.",
           "LocalizationState UNLOCALIZED: no accepted initial pose since the layer started."),
         a("LOC_NOT_CONFIRMED", INFO, "operator", "Waiting for you to confirm the position",
-          "On the Run page, check the scans line up with the map and press Confirm.",
+          "On the Mapping page (Position), check the scans line up with the map and press Confirm.",
           "LocalizationState CHECKING with can_confirm true."),
 
         # ---- the route executor ----
         a("EXEC_OFF_PATH", ERROR, "ack", "The vehicle drifted off its route",
-          "Press Acknowledge on the Run page, then reload the mission.",
+          "Press Acknowledge on the Home page, then reload the mission.",
           "Cross-track over the route's allowance; the step was interrupted."),
         a("EXEC_OVERSHOOT", ERROR, "ack", "The vehicle went past the step's end",
-          "Press Acknowledge on the Run page, then reload the mission.",
+          "Press Acknowledge on the Home page, then reload the mission.",
           "Travel past the straight's length, or a turn overshoot, beyond tolerance."),
         a("EXEC_TURN_FAILED", ERROR, "ack", "The turn did not come out right",
-          "Press Acknowledge on the Run page, then reload the mission.",
+          "Press Acknowledge on the Home page, then reload the mission.",
           "Turn centre drift, wrong direction of rotation, or remaining angle out of tolerance."),
         a("EXEC_ENDPOINT_MISSED", ERROR, "ack", "The step finished in the wrong place",
-          "Press Acknowledge on the Run page, then reload the mission.",
+          "Press Acknowledge on the Home page, then reload the mission.",
           "Endpoint position/heading error over tolerance at step completion."),
         a("EXEC_ACTION_FAILED", ERROR, "ack", "The navigation software refused a step",
-          "Press Acknowledge on the Run page. If it repeats, call the engineer.",
+          "Press Acknowledge on the Home page. If it repeats, call the engineer.",
           "Nav2 action aborted/rejected/lost, or its server was unavailable."),
         a("EXEC_PREREQ_LOST", ERROR, "ack", "A sensor or the panel dropped out mid-step",
-          "Press Acknowledge on the Run page, then check the Alarms page.",
+          "Press Acknowledge on the Home page, then check the Alarms page.",
           "A prerequisite stayed bad past prereq_grace_s, or wheel feedback stopped without a safety stop."),
         a("EXEC_POSE_INJECTED", ERROR, "ack", "The position was changed while the vehicle was moving",
-          "Press Acknowledge on the Run page, then reload the mission.",
+          "Press Acknowledge on the Home page, then reload the mission.",
           "An /initialpose arrived during EXECUTING: progress is no longer trustworthy."),
 
         # ---- mapping ----
         a("MAP_SAVE_FAILED", ERROR, "operator", "The map was not saved",
-          "Try Save again on the Maps page. If it fails twice, call the engineer.",
+          "Try Save again on the Mapping page. If it fails twice, call the engineer.",
           "mapping_session save returned an error; the survey is still open."),
         a("SURVEY_NOT_READY", WARN, "operator", "The vehicle is not ready to survey",
           "Fix what the Alarms page lists, then start the survey again.",
@@ -344,7 +344,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Recover on the Home page, then try the mode change again.",
           "The layer produced no readiness signal at all: it probably died during entry."),
         a("SAVE_UNKNOWN_OUTCOME", WARN, "operator", "The map may or may not have been saved",
-          "Check the Maps page for a new revision before saving again.",
+          "Check the Mapping page for a new revision before saving again.",
           "The save RPC passed its deadline after the request was accepted; a late answer is ignored."),
         a("MUX_ACK_TIMEOUT", ERROR, "recover", "The mode change did not finish",
           "Press Recover on the Home page.",
@@ -356,7 +356,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Recover on the Home page, then start the survey again.",
           "mapping_session service missing when the supervisor needed it."),
         a("SURVEY_RPC_TIMEOUT", ERROR, "recover", "The survey command got no answer",
-          "Check the Maps page for a new revision, then press Recover.",
+          "Check the Mapping page for a new revision, then press Recover.",
           "returned/abort/save RPC passed its deadline; a late answer is ignored."),
         a("SURVEY_START_REFUSED", WARN, "operator", "The survey would not start",
           "Fix what the Alarms page lists, then start the survey again.",
@@ -402,7 +402,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) "
           "no longer allowed it; the veto's controlwords were sent."),
         a("PP_FAULTED", WARN, "ack", "A blind move failed",
-          "Press Acknowledge on the Run page.", "Blind-run move faulted mid-flight."),
+          "Press Acknowledge on the Home page.", "Blind-run move faulted mid-flight."),
         a("PP_ABANDONED", WARN, "auto", "A blind move was abandoned",
           "Nothing to do.", "Blind-run move dropped (authority lost or the owner disarmed)."),
         a("WEB_BUG", WARN, "auto", "A page did not work",

@@ -1,4 +1,4 @@
-"""/scan and /tf on demand (2026-10-24): live-view and demo requests mark demand, it lapses
+"""/scan and /tf on demand (2026-10-24): live-view requests mark demand, it lapses
 LIVE_IDLE_S after the last one, and the scanner alarm's liveness comes from the driver's
 "/scan topic status" diagnostic while nothing is subscribed."""
 
@@ -99,14 +99,14 @@ class _Stub:
         pass
 
 
-def test_live_and_demo_requests_mark_demand(tmp_path):
+def test_live_requests_mark_demand(tmp_path):
     maps = tmp_path / "maps"
     maps.mkdir()
     stub = _Stub()
     app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"))
     app.config["TESTING"] = True
     c = app.test_client()
-    for url in ("/api/live/pose", "/api/live/map", "/api/live/map.png?snapshot=0", "/api/demo"):
+    for url in ("/api/live/pose", "/api/live/map", "/api/live/map.png?snapshot=0"):
         before = stub.live.wants
         c.get(url)
         assert stub.live.wants == before + 1, url

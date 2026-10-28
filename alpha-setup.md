@@ -463,6 +463,18 @@ The vehicle does **not** need Wi-Fi or the internet to run. ROS is loopback-only
 the scanner and I/O island are wired, the kiosk browser talks to `127.0.0.1`.
 Wi-Fi is how the tablet reaches the pages and how the header shows link quality.
 
+**Rejoining after leaving range.** NetworkManager alone gives up ~15 s after the
+AP vanishes and then rejoins only when a background scan sees `agv_field`; those
+back off to ~2 min apart. `agv-wifi-reconnect.service` (installed by
+`amr_ws/deploy/install.sh`) scans every 3 s while unassociated and brings
+`agv-net` up as soon as the SSID is heard at ≥ 25 % signal. While associated it only
+reads sysfs. Enable it once per unit:
+
+```bash
+sudo systemctl enable --now agv-wifi-reconnect
+journalctl -u agv-wifi-reconnect -f       # out of range / heard at N% / associated
+```
+
 ---
 
 ## 3. CAN — the CANable 2.0 as `can0`

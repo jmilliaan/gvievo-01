@@ -1,4 +1,4 @@
-// The MLS line strip (_line_track.html): Manual, Run tracked and Home's live tiles, so the rail's
+// The MLS line strip (_line_track.html): Manual, Run and Home's live tiles, so the rail's
 // shared amr.js does not reference ids other pages lack.
 // An MLS reading older than 1 s is no reading.
 const lineFresh = t => !!t && t.age_s <= 1.0;
@@ -75,7 +75,7 @@ function rfidTags(r) {
     : reading ? `link ok · reading ${last.tag}${rssiText(last.rssi_dbm)} · ${link.seq} read`
     : `link ok · no tag · ${link.seq} read`) + (mism.length ? ' · reader config ≠ profile' : '');
   status.title = [link && link.reader, ...mism].filter(Boolean).join('\n');
-  const big = box.querySelector('.rf-last');  // Run tracked only: optional
+  const big = box.querySelector('.rf-last');  // Run only: optional
   if (big) {
     big.classList.toggle('fresh', reading);
     big.querySelector('b').textContent = reading ? last.tag : '––';

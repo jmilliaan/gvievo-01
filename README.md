@@ -29,7 +29,7 @@ on port 5001, and one *mode layer* at a time.
 | Runtime | `amr.service` → `deploy/amr-supervisor.sh` → ROS 2 Humble, `amr_ws/` |
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
-| Manual | pendant 0.50 m/s, web jog 0.40 m/s, only under selector MANUAL |
+| Manual | pendant and web jog 0.60 m/s (2026-10-28, was 0.50), only under selector MANUAL |
 | Auto | tracked NORMAL 0.50 m/s, HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an MLS marker zone; trackless 0.60 m/s |
 | Tests | `tests/run_all.py` (`EXPECTED_CHECKS` guards the count) + `pytest` per ROS package, no hardware |
 
@@ -212,8 +212,8 @@ Everything tunable lives in `profiles/<name>.json`, selected by `AGV_PROFILE`.
 Speeds, ramps, the jog and pendant limits, the PP lock and the tape engine's
 gains (`autopilot`) are all there — and the product: top-level
 `"tracked": false` is the SLAM AMR, `true` the tape AGV that boots into LINE
-and refuses maps and routes, `null` both: boots into LINE, trackless by the Home
-switch (RUNBOOK §1). The web UI's Params page shows every
+and refuses maps and routes, `null` both: boots into LINE, surveys and the AMCL
+position on the Mapping page (RUNBOOK §1, §2). The web UI's Params page shows every
 value the running nodes actually use beside the profile's.
 
 ---
@@ -270,7 +270,7 @@ move in the profile.
   tag table (`missions/line-a.json`, schema in `agv_core/mission.py`) - Home, an
   always-stop, destination stops (MRU1-4) and a track-end U-turn; speed comes from the MLS
   marker pairs (`high_zone`), not RFID (2026-10-09).
-  The job (mission + destination) is set on Run tracked; the vehicle may start anywhere
+  The job (mission + destination) is set on Run; the vehicle may start anywhere
   on the line, then the physical Start runs it. Tag ids `0010`... are assumed to be what the RFID
   panel shows; stop positions, the 2 s speed change, the tape-end overshoot and the
   pivot reacquisition angle are settled on the floor.

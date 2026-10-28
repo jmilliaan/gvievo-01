@@ -1,0 +1,20 @@
+[Unit]
+Description=Rejoin agv_field Wi-Fi as soon as it is back in range
+Documentation=file:///home/gvipc-evo-01/agv_can/alpha-setup.md
+After=NetworkManager.service
+
+[Service]
+Type=simple
+# root: NetworkManager refuses Wi-Fi scan requests from the operator account. The
+# script is therefore run from /usr/local/sbin, not from the operator-writable repo.
+ExecStart=/usr/local/sbin/agv-wifi-reconnect
+Restart=always
+RestartSec=10
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

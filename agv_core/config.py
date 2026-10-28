@@ -38,7 +38,7 @@ Five rules the loader enforces, in order of how much trouble they save:
      offered and LINE is refused. true = the magnetic-tape AGV: the supervisor
      enters LINE by itself once the base is up, and NAVIGATION/surveys are
      refused. null = both (2026-10-02): enters LINE by itself like true (since
-     2026-10-08), every mode is offered, and the web shows Run tracked and Run trackless. It is read at boot;
+     2026-10-08), every mode is offered, and the web shows Run and Mapping. It is read at boot;
      changing it means restarting amr.service.
 
 load() is written as an atomic swap - parse and validate into a fresh namespace,
@@ -587,7 +587,7 @@ _SCHEMA = {
         # drops READY. 0.15 m (the NAVIGATION default) tripped on every lap on the MRU trunk
         # (2026-10-24, one 15 cm catch-up along the corridor); NAVIGATION keeps its own value.
         "monitor_jump_m":     ("TAPE_LOC_MONITOR_JUMP_M", float),
-        # Tracked plan 4: false = the position engine only shadows (the Guide page drives);
+        # Tracked plan 4: false = the position engine only shadows (Teach's guided-run orders drive);
         # true = the site mission is a job, and trips stop, branch and turn by position.
         "live":               ("TAPE_LOC_LIVE", bool),
     },

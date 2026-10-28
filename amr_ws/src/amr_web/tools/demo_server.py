@@ -4,10 +4,10 @@
     python amr_ws/src/amr_web/tools/demo_server.py --port 5099 --maps-dir /tmp/demo_maps
 
 Runs the REAL `amr_web.server.create_app` (routes, templates, static files, jog
-sessions, route validation/storage) against `DemoAdapter`, a pure-Python stand-in
-for `RosAdapter` that fabricates the same dict shapes the ROS callbacks produce.
-A small kinematic sim moves a pose on the sim_factory world, so the jog pad, the
-live survey view, localisation and route execution all animate.
+sessions, map bundles) against `DemoAdapter`, a pure-Python stand-in for `RosAdapter`
+that fabricates the same dict shapes the ROS callbacks produce. A small kinematic sim
+moves a pose on the sim_factory world, so the jog pad, the live survey view and
+localisation animate. There is no line layer and, since 2026-10-28, no route executor.
 
 A floating DEMO bar (injected into every HTML response, not into the templates)
 switches scenarios and plays the physical panel: selector, Start, Reset, E-stop.
@@ -50,7 +50,6 @@ sys.modules.setdefault("ament_index_python.packages", _ament_pk)
 
 import numpy as np  # noqa: E402
 from agv_core import fsio, se2  # noqa: E402
-from amr_navigation.compiler import compile_route  # noqa: E402
 from amr_web.eventlog import EventRing  # noqa: E402
 from amr_web.png import encode_gray  # noqa: E402
 from flask import request  # noqa: E402
@@ -61,7 +60,6 @@ from amr_bringup import operations as opsmod  # noqa: E402
 from amr_maps import grid as gridio  # noqa: E402
 from amr_mission import fixtures  # noqa: E402
 from amr_mission import map_bundle as mb  # noqa: E402
-from amr_navigation import store  # noqa: E402
 from amr_web import server as web_server  # noqa: E402
 
 if sys.platform == "win32":  # a directory cannot be opened for fsync on Windows
@@ -71,7 +69,7 @@ if sys.platform == "win32":  # a directory cannot be opened for fsync on Windows
 WORLD_YAML = os.path.join(SRC, "amr_maps", "worlds", "sim_factory", "world.yaml")
 LASER_X = 0.964  # nanoScan3 ahead of the axle (amr_ws/README "Geometry")
 FOV = math.radians(95.0)
-MAP_STATES, LOC_STATES, RUN_STATES = wire.MAPPING_NAMES, wire.LOC_NAMES, wire.RUN_NAMES
+MAP_STATES, LOC_STATES = wire.MAPPING_NAMES, wire.LOC_NAMES
 
 
 def _vehicle():
@@ -94,11 +92,7 @@ SCENARIOS = [
     ("idle", "Idle"),
     ("mapping", "Mapping"),
     ("review", "Return review"),
-    ("nav", "Nav: checking"),
-    ("ready", "Nav: ready + mission"),
-    ("executing", "Executing"),
-    ("blocked", "Blocked"),
-    ("runfault", "Run fault"),
+    ("nav", "AMCL: checking"),
     ("lost", "Loc lost"),
     ("layerfault", "Layer fault"),
     ("offline", "Disconnected"),
@@ -242,8 +236,6 @@ class DemoAdapter:
         self.book = opsmod.OperationBook(None)  # the supervisor's own record, without a journal
         self._ring = EventRing(300)  # the real ring, without a disk log
         self.manual = (0.0, 0.0, 0.0)  # v, w, expires (monotonic)
-        self.exec_plan: list | None = None
-        self.exec_i, self.exec_t = 0, 0.0
         self.seq = 0
         self.scenario("idle")
         threading.Thread(target=self._loop, daemon=True, name="demo-sim").start()
@@ -256,8 +248,6 @@ class DemoAdapter:
         self.drives = {"operational": True, "left": "Operation enabled", "right": "Operation enabled"}
         self.mapping = None
         self.loc = None
-        self.run = None
-        self.exec_plan = None
         self.offline = False
         self.manual = (0.0, 0.0, 0.0)
 
@@ -302,38 +292,6 @@ class DemoAdapter:
         d["state_name"] = LOC_STATES[d["state"]]
         return d
 
-    def _run(self, state: int, **kw) -> dict:
-        mission = self._first_mission()
-        d = {
-            "generation": self.mode["generation"],
-            "state": state,
-            "run_id": "run-0007",
-            "mission_id": mission.get("mission_id", "") if mission else "",
-            "map_id": "sim_factory",
-            "map_revision": 1,
-            "route_id": "demo_loop",
-            "route_revision": 1,
-            "step_index": -1,
-            "step_id": "",
-            "step_type": "",
-            "remaining_turn_rad": 0.0,
-            "cross_track_m": 0.0,
-            "localization_state": 2,
-            "resume_prepared": False,
-            "pose_valid": True,
-            "pose_x": self.sim.x,
-            "pose_y": self.sim.y,
-            "pose_yaw": self.sim.yaw,
-            "reason": "",
-        }
-        d.update(kw)
-        d["state_name"] = RUN_STATES[d["state"]]
-        return d
-
-    def _first_mission(self) -> dict | None:
-        ms = store.list_missions(self.maps_dir)
-        return ms[0] if ms else None
-
     def scenario(self, name: str) -> None:
         with self.lock:
             self._reset()
@@ -351,41 +309,13 @@ class DemoAdapter:
                     s.revealed[:] = True
                     s.snapshot += 1
                 self.mapping = self._mapping_dict(1 if name == "mapping" else 2)
-            elif name in ("nav", "ready", "executing", "blocked", "runfault", "lost"):
+            elif name in ("nav", "lost"):
                 self._nav()
                 s.x, s.y, s.yaw = 0.02, -0.01, 0.01
-                loc_state = {"nav": 1, "lost": 3}.get(name, 2)
                 self.loc = self._loc(
-                    loc_state,
+                    3 if name == "lost" else 1,
                     reason="covariance grew: sigma_xy 0.27 m > 0.22 m for 1.0 s" if name == "lost" else "",
                 )
-                if name == "ready":
-                    self.run = self._run(1, reason="waiting for AUTO + physical Start")
-                elif name == "executing":
-                    self.panel["mode_auto"] = True
-                    self._start_exec()
-                elif name == "blocked":
-                    self.panel["mode_auto"] = True
-                    s.x = 4.2
-                    self.run = self._run(
-                        4,
-                        step_index=0,
-                        step_id="s1",
-                        step_type="straight",
-                        cross_track_m=0.018,
-                        reason="obstruction in the swept footprint 1.1 m ahead (23 scan points)",
-                    )
-                elif name == "runfault":
-                    s.x, s.yaw = 12.0, 1.2
-                    self.run = self._run(
-                        5,
-                        step_index=1,
-                        step_id="s2",
-                        step_type="rotate",
-                        remaining_turn_rad=1.94,
-                        reason="turn travel 4.6 deg from commanded (limit 4.0)",
-                    )
-                    self._event(2, "route_executor", "RUN_FAULT", self.run["reason"])
             elif name == "layerfault":
                 self.mode = mode_dict(
                     generation=3,
@@ -426,88 +356,21 @@ class DemoAdapter:
             if what == "selector":
                 self.panel["mode_auto"] = not self.panel["mode_auto"]
                 self.manual = (0.0, 0.0, 0.0)
-                if not self.panel["mode_auto"] and self.run and self.run["state"] in (2, 3, 4):
-                    self.run = self._run(5, reason="selector switched to MANUAL during the run")
-                    self.exec_plan = None
                 return "AUTO" if self.panel["mode_auto"] else "MANUAL"
             if what == "estop":
                 op = not self.drives["operational"]
                 st = "Operation enabled" if op else "Switch on disabled"
                 self.drives = {"operational": op, "left": st, "right": st}
                 if not op:
-                    self.exec_plan = None
                     self.sim.v = self.sim.w = 0.0
-                    if self.run and self.run["state"] == 2:
-                        self.run = self._run(5, reason="drives not operational")
                 return "released" if op else "pressed"
             if what == "start":
                 if not self.panel["mode_auto"]:
                     return "Start ignored: selector MANUAL"
-                if self.run and (self.run["state"] == 1 or self.run.get("resume_prepared")):
-                    self._start_exec(resume=self.run["state"] != 1)
-                    return "EXECUTING"
                 return "Start ignored: nothing ready"
             if what == "reset":
-                if self.run and self.run["state"] == 5:
-                    self.run = self._run(0, reason="fault acknowledged (physical Reset)")
                 return "reset"
         return "?"
-
-    # ---- executor ---------------------------------------------------------------------
-
-    def _start_exec(self, resume: bool = False) -> None:
-        mission = self._first_mission() if not self.run else None
-        mid = (self.run or {}).get("mission_id") or (mission or {}).get("mission_id")
-        if not mid:
-            self.run = self._run(0, reason="no mission")
-            return
-        mis = store.load_mission(self.maps_dir, mid)
-        route, _ = store.load_route(
-            self.maps_dir, mis["map"]["id"], mis["route"]["id"], int(mis["route"]["revision"])
-        )
-        comp = compile_route(route)
-        self.exec_limits = (route.limits.linear_mps, route.limits.angular_rad_s)
-        if not resume:
-            self.exec_i = 0
-            st = comp.steps[0].start
-            self.sim.x, self.sim.y, self.sim.yaw = st
-        self.exec_plan = comp.steps
-        self.exec_t = time.monotonic()
-        self.run = self._run(2, mission_id=mid, route_id=route.route_id, route_revision=route.revision)
-        self._event(0, "route_executor", "RUN_START", f"{mid} {'resumed' if resume else 'started'}")
-
-    def _exec_tick(self) -> None:
-        s = self.sim
-        if self.exec_i >= len(self.exec_plan):
-            self.exec_plan = None
-            s.v = s.w = 0.0
-            self.run = self._run(6, step_index=self.exec_i - 1, reason="route complete")
-            self._event(0, "route_executor", "RUN_DONE", self.run["mission_id"])
-            return
-        st = self.exec_plan[self.exec_i]
-        v, w = self.exec_limits
-        extra = {"step_index": self.exec_i, "step_id": st.id, "step_type": st.type}
-        if st.type == "straight":
-            ex, ey, eyaw = st.end
-            left = (ex - s.x) * math.cos(eyaw) + (ey - s.y) * math.sin(eyaw)
-            s.yaw, s.w = eyaw, 0.0
-            s.v = min(v, max(0.05, left * 1.5))
-            if left <= 0.01:
-                s.x, s.y, s.v = ex, ey, 0.0
-                self.exec_i += 1
-            extra["cross_track_m"] = 0.004 * math.sin(time.monotonic() * 1.3)
-        else:
-            target = st.start[2] + st.signed_angle_rad
-            done = getattr(self, "_turned", 0.0)
-            rem = st.signed_angle_rad - done
-            s.v, s.w = 0.0, math.copysign(w, rem)
-            self._turned = done + s.w * 0.05
-            extra["remaining_turn_rad"] = rem
-            if abs(rem) <= w * 0.05:
-                s.w, self._turned = 0.0, 0.0
-                s.yaw = se2.wrap(target)
-                self.exec_i += 1
-        self.run = self._run(2, mission_id=self.run["mission_id"], **extra)
 
     # ---- sim loop ---------------------------------------------------------------------
 
@@ -518,17 +381,13 @@ class DemoAdapter:
             with self.lock:
                 s = self.sim
                 now = time.monotonic()
-                if self.exec_plan and self.drives["operational"] and self.panel["mode_auto"]:
-                    self._exec_tick()
-                elif self.drives["operational"] and not self.panel["mode_auto"] and now < self.manual[2]:
+                if self.drives["operational"] and not self.panel["mode_auto"] and now < self.manual[2]:
                     s.v, s.w = self.manual[0], self.manual[1]
                 else:
                     s.v = s.w = 0.0
                 s.step(dt)
                 if self.mode["mode_name"] == "MAPPING" and self.mapping and self.mapping["state"] == 1:
                     s.reveal()
-                if self.run and self.run["state"] != 2:
-                    self.run.update(pose_x=s.x, pose_y=s.y, pose_yaw=s.yaw)
 
     # ---- server.Adapter: state ------------------------------------------------------
 
@@ -540,20 +399,14 @@ class DemoAdapter:
         with self.lock:
             s = self.sim
             wl, wr = diff_drive.inverse(GEOM, s.v, s.w)
-            src = (
-                "follow"
-                if self.exec_plan and s.v
-                else "rotate"
-                if self.exec_plan
-                else ("manual" if (s.v or s.w) else "none")
-            )
+            src = "manual" if (s.v or s.w) else "none"
             return {
                 "mode": dict(self.mode),
                 "mode_age_s": 0.2,
                 "lease": {
                     "instance": "demo-instance",
                     "generation": self.mode["generation"],
-                    "allowed": (1 if self.mode["manual_available"] else 0) | (2 if self.exec_plan else 0),
+                    "allowed": 1 if self.mode["manual_available"] else 0,
                 },
                 "panel": dict(self.panel, age_s=0.02),
                 "drives": dict(self.drives, age_s=0.05),
@@ -575,10 +428,15 @@ class DemoAdapter:
                 "mapping_age_s": 0.5 if self.mapping else None,
                 "mapping_stale": False,
                 "localization": self.loc and dict(self.loc),
+                # adapter.localization_map(): the demo's only AMCL map is the navigation one
+                "loc_map": {"map_id": self.mode["active_map_id"],
+                            "map_revision": self.mode["active_map_revision"],
+                            "sha256": self.mode.get("active_map_sha256", ""), "layer": "navigation"}
+                if self.mode["mode_name"] == "NAVIGATION" and self.mode.get("active_map_id") else None,
                 "localization_age_s": 0.3 if self.loc else None,
                 "localization_stale": False,
-                "run": self.run and dict(self.run),
-                "run_age_s": 0.1 if self.run else None,
+                "run": None,
+                "run_age_s": None,
                 "run_stale": False,
                 "t": time.time(),
             }
@@ -612,38 +470,20 @@ class DemoAdapter:
         return fsm.Conditions(
             now=now, wheels_t=now, wheels_still_since=None if moving else now - 1.0,
             panel_t=now, panel_valid=True, panel_manual=not self.panel["mode_auto"],
-            run_state=self.run["state"] if self.run else None,
+            run_state=None,
             survey_state=self.mapping["state"] if self.mapping else None,
         )
 
     def request_mode(self, target, map_id, map_revision, request_id):
         with self.lock:
-            kind = fsm.REQ_NAVIGATION if target == fsm.NAVIGATION else fsm.REQ_IDLE
-            d = fsm.admit(self.mode["mode"], kind, self._conditions())
+            if target == fsm.LINE:
+                return False, "", "demo: there is no line layer"
+            d = fsm.admit(self.mode["mode"], fsm.REQ_IDLE, self._conditions())
             if not d.ok:
                 return False, "", d.reason
-            if target == fsm.NAVIGATION:
-                try:
-                    m, _ = mb.load(self.maps_dir, map_id, int(map_revision))
-                except mb.BundleError as e:
-                    return True, self._op("mode", False, str(e)), "accepted"
-                self.mode = mode_dict(
-                    generation=self.mode["generation"] + 1,
-                    mode=fsm.NAVIGATION,
-                    requested_mode=fsm.NAVIGATION,
-                    layer_ready=True,
-                    active_map_id=map_id,
-                    active_map_revision=int(map_revision),
-                    active_map_sha256=m.sha256,
-                    autonomous_available=True,
-                )
-                self.loc = self._loc(0)
-                self.run = None
-                self._event(0, "supervisor", "MODE_CHANGE", f"NAVIGATION on {map_id} rev{map_revision}")
-            else:
-                self._reset()
-                self.mode = mode_dict(generation=self.mode["generation"] + 1)
-                self._event(0, "supervisor", "MODE_CHANGE", "IDLE")
+            self._reset()
+            self.mode = mode_dict(generation=self.mode["generation"] + 1)
+            self._event(0, "supervisor", "MODE_CHANGE", "IDLE")
             return True, self._op("mode"), "accepted"
 
     def survey_move(self, kind, value):
@@ -785,46 +625,15 @@ class DemoAdapter:
             self.loc = self._loc(0)
             return True, "localisation reset"
 
-    def publish_route_preview(self, compiled, frame_id):
-        pass
-
-    def run_mission(self, mission_id):
-        with self.lock:
-            if not self.loc or self.loc["state"] != 2:
-                return False, "localisation not READY"
-            self.run = self._run(1, mission_id=mission_id, reason="waiting for AUTO + physical Start")
-            return True, f"mission {mission_id} loaded"
-
+    # Home's Pause / Abort / Ack: there is no trackless run in the demo.
     def pause(self):
-        with self.lock:
-            if not self.run or self.run["state"] != 2:
-                return False, "not executing"
-            self.exec_plan = None
-            self.run = self._run(
-                3, mission_id=self.run["mission_id"], step_index=self.exec_i, reason="operator pause"
-            )
-            return True, "paused"
+        return False, "not executing"
 
     def abort(self):
-        with self.lock:
-            self.exec_plan = None
-            self.run = self._run(0, reason="aborted by operator")
-            return True, "aborted"
-
-    def prepare_resume(self):
-        with self.lock:
-            if not self.run or self.run["state"] not in (3, 4):
-                return False, "nothing to resume"
-            self.run["resume_prepared"] = True
-            self.run["reason"] = "resume prepared; press physical Start under AUTO"
-            return True, "resume prepared"
+        return False, "nothing to abort"
 
     def ack_fault(self):
-        with self.lock:
-            if not self.run or self.run["state"] != 5:
-                return False, "no fault"
-            self.run = self._run(0, reason="fault acknowledged")
-            return True, "acknowledged"
+        return False, "no fault"
 
     # ---- diagnostics ------------------------------------------------------------------
 
@@ -929,42 +738,9 @@ class DemoAdapter:
 
 # ---- seed data -------------------------------------------------------------------------
 
-DEMO_ROUTE = {
-    "schema_version": 1,
-    "route_id": "demo_loop",
-    "revision": 0,
-    "map": {"id": "sim_factory", "revision": 1, "sha256": ""},
-    "frame_id": "map",
-    "start": {"x_m": 0.0, "y_m": 0.0, "yaw_deg": 0.0},
-    "limits": {"linear_mps": 0.4},
-    "steps": [
-        {"id": "s1", "type": "straight", "to": {"x_m": 12.0, "y_m": 0.0}},
-        {"id": "s2", "type": "rotate", "direction": "ccw", "angle_deg": 180},
-        {"id": "s3", "type": "straight", "to": {"x_m": 0.0, "y_m": 0.0}},
-        {"id": "s4", "type": "rotate", "direction": "ccw", "angle_deg": 180},
-    ],
-    "repeat_count": 1,
-}
-
-
 def seed(maps_dir: str, client) -> None:
     if not mb.list_revisions(maps_dir, "sim_factory"):
         fixtures.write_world_as_bundle(maps_dir, "sim_factory", WORLD_YAML)
-    if not store.list_routes(maps_dir, "sim_factory"):
-        r = client.post("/api/maps/sim_factory/1/routes/save", json=DEMO_ROUTE)
-        if r.status_code != 200:
-            print("demo route not saved:", r.get_json(), file=sys.stderr)
-            return
-        rrev = r.get_json().get("revision", 1)
-        client.post(
-            "/api/missions",
-            json={
-                "map_id": "sim_factory",
-                "map_revision": 1,
-                "route_id": "demo_loop",
-                "route_revision": int(rrev),
-            },
-        )
 
 
 # ---- DEMO bar --------------------------------------------------------------------------

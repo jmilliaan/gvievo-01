@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}AMR — mapping{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block body %}
+{# Mapping (2026-10-28): one page for the old Run trackless, Maps and Continue survey. Routes,
+   map area edits and trackless missions are gone; what is left is surveying the vehicle's map
+   and giving AMCL its position on it (in LINE the tape-localization map). One canvas: the live
+   grid while surveying, the saved revision otherwise. Survey is the engineer's; Position and
+   Jog are the operator's too (Home's "Set position" opens Position). Nothing here moves the
+   vehicle except the jog pad and the preset moves, both under selector MANUAL. #}
+{% set tab = request.args.get('tab') %}
+{% set tab = tab if tab in ('survey', 'jog', 'pose') and (tab != 'survey' or role == ENGINEER) else ('survey' if role == ENGINEER else 'pose') %}
+<section class="editor">
+  <aside class="tools tabbed">
+    <label class="field">Map <select id="mp-map"></select></label>
+    <div class="tabs" id="mp-tabs">
+      {% if role == ENGINEER %}<button class="tab{{ ' on' if tab == 'survey' }}" type="button" data-tab="survey">Survey</button>{% endif %}
+      <button class="tab{{ ' on' if tab == 'pose' }}" type="button" data-tab="pose">Position</button>
+      <button class="tab{{ ' on' if tab == 'jog' }}" type="button" data-tab="jog">Jog</button>
+    </div>
+    {% if role == ENGINEER %}
+    <div class="tabpane" data-tab="survey">
+      <div id="survey-state" class="tel-grid"></div>
+      <p id="survey-msg" class="note"></p>
+      <h3>New map</h3>
+      <label class="field">Map id <input id="survey-map-id" placeholder="line_section"></label>
+      <label class="field">Start mark <input id="survey-desc" placeholder="floor mark A, facing the rack ends"></label>
+      <div class="bar"><button id="btn-survey-start" class="big">Start survey</button></div>
+      <div class="sep"></div>
+      <h3>Continue the selected map <small>saved pose graph · same frame</small></h3>
+      <div id="cs-info" class="tel-grid"></div>
+      <p class="note">Show roughly where the vehicle stands (about 1 m, 30°); the scan is matched first and the start refused when unsure. The save becomes the <b>next revision</b>.</p>
+      <div class="bar" style="margin-top:0">
+        <button id="cs-at-end" class="tool" title="Where the saved survey pressed Returned to start: the vehicle has not moved since that save">Where its survey ended</button>
+        <button id="cs-at-start" class="tool" title="Parked on the map's floor mark, facing its marked heading">At its start mark</button>
+        <button id="tool-hint" class="tool" title="Drag from the vehicle's position towards its heading">Drag pose on map</button>
+      </div>
+      <div id="cs-hint" class="tel-grid" style="margin-top:.6rem"><div class="none">no pose yet</div></div>
+      <div class="bar"><button id="btn-cs-start" class="big">Continue survey</button></div>
+      <div class="sep"></div>
+      <h3>Finish <small>review seams before saving</small></h3>
+      <div class="bar"><button id="btn-survey-returned" class="big">Returned to start</button></div>
+      <div id="closure" class="tel-grid"><div class="none">available after "Returned to start"</div></div>
+      <label class="field">Review note <input id="survey-note" placeholder="seams ok, span 12.00 m measured 11.96"></label>
+      <div class="bar">
+        <button id="btn-survey-save" class="big run">Save map revision</button>
+        <button id="btn-survey-abort" class="danger">Abort survey</button>
+      </div>
+      {% if tracked_ok %}<div class="bar"><button id="btn-to-line" class="big" title="Leave MAPPING for the tape layer (vehicle stopped, survey saved or aborted)">Back to tracked</button></div>{% endif %}
+    </div>
+    {% endif %}
+    <div class="tabpane" data-tab="pose">
+      <div id="active-map" class="tel-grid"></div>
+      {# The three steps in order: a done step greys out, the current one is boxed. #}
+      <div class="steps" id="loc-steps">
+        <div class="step" data-step="map"><b>1 Map</b><span>a layer runs AMCL</span></div>
+        <div class="step" data-step="pose"><b>2 Position</b><span>set the initial pose</span></div>
+        <div class="step" data-step="confirm"><b>3 Check</b><span>confirm the scans line up</span></div>
+      </div>
+      <div id="loc-state" class="tel-grid"></div>
+      <p id="loc-reason" class="note"></p>
+      <div class="bar">
+        <button id="tool-initialpose" class="tool">Set initial pose on map</button>
+        <button id="btn-pose-survey" class="tool" title="Seed the initial pose at the map's survey start mark (position and heading)">Pose = survey mark</button>
+        {% if tracked_ok %}<button id="btn-at-home" class="tool" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>{% endif %}
+      </div>
+      <div class="bar">
+        <button id="btn-loc-confirm" class="big run">Confirm: scans align</button>
+        <button id="btn-loc-reset" class="big">Reset</button>
+      </div>
+      <div id="loc-detail" class="tel-grid" style="margin-top:.6rem"></div>
+    </div>
+    <div class="tabpane" data-tab="jog">
+      <h3>Preset moves <small>press once · 0.30 m/s · 0.20 rad/s · while surveying</small></h3>
+      <p class="note">The vehicle drives the whole move by itself. Any pendant button, the E-stop, the selector, the jog pad or <b>Stop</b> ends it; the map is checked against it after.</p>
+      <label class="field">Distance m <span class="inline"><input id="sm-dist" type="number" step="0.1" min="0.05" max="10" value="1.0" title="0.05 to 10 m"><button id="sm-fwd" class="tool">Forward</button><button id="sm-rev" class="tool">Reverse</button></span></label>
+      {# the spins survey_move accepts (ROTATE_STEPS_DEG), not a copy of them #}
+      <div class="bar" id="sm-spins">
+        {% for d in rotate_steps %}<button class="tool" data-deg="{{ '%g' % d }}">Left {{ '%g' % d }}°</button>{% endfor %}
+      </div>
+      <div class="bar" id="sm-spins-cw">
+        {% for d in rotate_steps %}<button class="tool" data-deg="-{{ '%g' % d }}">Right {{ '%g' % d }}°</button>{% endfor %}
+      </div>
+      <div class="bar"><button id="sm-stop" class="danger">Stop move</button></div>
+      <p id="sm-status" class="note">available while surveying</p>
+      <div class="sep"></div>
+      <h3>Jog <small>selector MANUAL · survey spin cap 0.27 rad/s</small></h3>
+      <div id="jog-mp"></div>
+    </div>
+  </aside>
+  <div class="canvas-wrap">
+    <canvas id="mp-canvas" width="900" height="600"></canvas>
+    <div id="mp-hint" class="hint">connecting…</div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/liveview.js"></script><script src="/static/tapegraph.js"></script><script src="/static/jogpad.js"></script><script src="/static/mapping.js"></script>
+<script>tabs('mp-tabs');</script>{% endblock %}

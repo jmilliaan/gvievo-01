@@ -5,23 +5,23 @@
    holds it, and the one button that clears it. Everything else is behind "More".
    Fits 1280x720 at ui=l with nothing below the fold. #}
 <section class="home">
-  {# Level 1 of the navigation hierarchy (2026-10-08): tracked (LINE) or trackless (IDLE
-     and its two steps, mapping then navigation, on Run trackless). Tracked is the boot
-     default, so this is only pressed to leave it. A mode change moves nothing; the
-     supervisor refuses it unless the vehicle is stopped, idle and out of emergency.
-     Only a vehicle that carries both products has a choice to make. #}
+  {# Level 1 of the navigation hierarchy (2026-10-08): tracked (LINE) or idle. Tracked is the
+     boot default, so this is only pressed to leave it; a survey (Mapping page) starts from
+     either. A mode change moves nothing; the supervisor refuses it unless the vehicle is
+     stopped, idle and out of emergency. Only a vehicle that carries both products has a
+     choice to make. #}
   {% if tracked_ok and trackless_ok %}
   <div class="home-nav">
     <span class="home-nav-label">Navigation</span>
     <div class="seg" role="radiogroup" aria-label="Navigation type">
       <button id="nav-tracked" class="tool" role="radio" data-target="line">Tracked</button>
-      <button id="nav-trackless" class="tool" role="radio" data-target="idle">Trackless</button>
+      <button id="nav-idle" class="tool" role="radio" data-target="idle">Idle</button>
     </div>
     <span id="nav-hint" class="home-nav-hint"></span>
   </div>
   {% endif %}
   {# Job beside the status (2026-10-08), the job wider: what the vehicle was told to do,
-     then whether anything holds it. Display only; the job is set on Run tracked. #}
+     then whether anything holds it. Display only; the job is set on Run. #}
   <div class="home-top">
     <div class="home-job" id="home-job">
       <span>Job</span>
@@ -63,10 +63,7 @@
     {% if role == ENGINEER %}
     <div class="home-eng">
       <div class="bar">
-        {% if trackless_ok %}
-        <a class="big" href="/maps">Survey a new map</a>
-        <a class="big" href="/run">Use a saved map</a>
-        {% endif %}
+        {% if trackless_ok %}<a class="big" href="/mapping">Mapping</a>{% endif %}
         <button id="btn-idle" class="big">Return to idle</button>
         <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
         {# The operator only gets Restart as the primary button, and only when an alarm says
@@ -91,7 +88,7 @@ const restart = text => { if (confirm(text)) act('/api/service/restart'); };
 const ACTIONS = {
   Acknowledge: () => act('/api/mission/ack'),
   Recover:     recover,
-  'Set position': () => { location.href = '/run'; },
+  'Set position': () => { location.href = '/mapping?tab=pose'; },
   Restart:     () => restart('Restart the vehicle software?\n\nSwitch the drives off and on first if a drive alarm is standing. Nothing moves during a restart.'),
 };
 
@@ -111,13 +108,13 @@ function navSwitch(m) {
   const where = m ? (m.mode_name === 'TRANSITIONING' ? m.requested_name : m.mode_name) : '';
   const tracked = where === 'LINE';
   $('nav-tracked').classList.toggle('on', !!m && tracked);
-  $('nav-trackless').classList.toggle('on', !!m && !tracked && settled);
+  $('nav-idle').classList.toggle('on', !!m && !tracked && settled);
   $('nav-tracked').setAttribute('aria-checked', String(!!m && tracked));
-  $('nav-trackless').setAttribute('aria-checked', String(!!m && !tracked && settled));
-  for (const id of ['nav-tracked', 'nav-trackless']) $(id).disabled = !settled || navBusy;
+  $('nav-idle').setAttribute('aria-checked', String(!!m && !tracked && settled));
+  for (const id of ['nav-tracked', 'nav-idle']) $(id).disabled = !settled || navBusy;
   $('nav-hint').textContent = !m ? 'no supervisor'
-    : !settled ? (m.mode_name === 'TRANSITIONING' ? `switching to ${tracked ? 'tracked' : 'trackless'}…` : m.mode_name)
-    : tracked ? 'magnetic tape · Run tracked' : `${m.mode_name === 'IDLE' ? 'no map in use' : m.mode_name.toLowerCase()} · Run trackless`;
+    : !settled ? (m.mode_name === 'TRANSITIONING' ? `switching to ${where.toLowerCase()}…` : m.mode_name)
+    : tracked ? 'magnetic tape · Run' : `${m.mode_name === 'IDLE' ? 'no layer running' : m.mode_name.toLowerCase()} · Mapping page`;
 }
 
 // One live tile: big value, one line under it, and a level ('' / 'warn' / 'off').
@@ -156,14 +153,14 @@ function liveTiles(st) {
        `${t.nlcp_label} · level ${t.track_level}/7${t.line_good ? '' : ' · weak'}`, t.line_good ? '' : 'warn');
 }
 
-// The job: in LINE the tape mission and destination with where it stands, otherwise the
-// trackless run. Display only.
+// The job: in LINE the tape mission and destination with where it stands, in MAPPING the
+// survey. Display only.
 function job(st) {
   const m = st.mode, ln = st.line;
   let what = '–', sub = 'no job state yet', level = 'off';
   if (m && m.mode_name === 'LINE') {
     if (!ln) sub = 'no line state yet';
-    else if (!ln.mission) { what = 'Plain line following'; sub = 'no mission · set one on Run tracked'; level = ''; }
+    else if (!ln.mission) { what = 'Plain line following'; sub = 'no mission · set one on Run'; level = ''; }
     else {
       what = ln.destination ? `${ln.mission} → ${ln.destination}` : ln.mission;
       const result = ln.job_result || '';
@@ -174,11 +171,8 @@ function job(st) {
         : 'away from Home · press Start on the panel';
       level = /MISSED|NOT/.test(result) ? 'warn' : '';
     }
-  } else if (st.run && st.run.mission_id) {
-    what = st.run.mission_id;
-    sub = `${st.run.state_name}${st.run.step_id ? ' · step ' + st.run.step_id : ''}`;
-    level = '';
-  } else if (m) sub = 'no trackless run';
+  } else if (m && m.mode_name === 'MAPPING') { what = 'Survey'; sub = 'on the Mapping page'; level = ''; }
+  else if (m) sub = 'no tape layer running';
   $('home-job-what').textContent = what;
   $('home-job-detail').textContent = sub;
   $('home-job').className = 'home-job' + (level ? ' ' + level : '');

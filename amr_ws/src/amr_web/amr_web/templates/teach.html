@@ -1,62 +1,118 @@
 {% extends "base.html" %}
-{% block title %}AMR — teach tape graph{% endblock %}
+{% block title %}AMR — teach{% endblock %}
 {% block body %}
-{# Teach (tracked plan 3, P1; runbook section 3). Records where the tape and the stations
-   are, on the map the LINE layer localises on; the locator then runs in SHADOW and only
-   logs. Nothing on this page moves the vehicle: a pass is driven with AUTO + the physical
-   Start (or under MANUAL), a station is taught with the vehicle standing still.
-   Teach actions need the engineer view; At home and Confirm do not. #}
+{# Teach (tracked plan 3, P1; runbook section 3), with the Guide page merged in (2026-10-28):
+   a teach pass IS a guided run, so the orders and the teach tools share one page.
+   Left, the guided run (2026-10-23): the engineer walks beside the AGV and gives each branch
+   order by hand. An order is one shot: the NEXT fork or merge the MLS sees uses it, then it is
+   straight again. Keyboard: Left / Up (straight) / Right arrows, M = Mark here.
+     Speed toggle (2026-10-24, mission with a high_zone): High lets the marker pair (outer then
+     inner) grant HIGH, Normal ignores the zone codes and drops HIGH at once. Neither raises the
+     speed by itself; NORMAL again at every mission load.
+     U-turn at tape end (2026-10-24): the NEXT tape end is the U-turn, strip or not - instead of
+     the run ending "track lost". One shot, only on the way out; it moves nothing by itself.
+   Right, the teach tools: record where the tape and the stations are, on the map the LINE layer
+   localises on; the locator runs in SHADOW and only logs.
+   Nothing on this page moves the vehicle: a run or a pass starts and resumes only on AUTO + the
+   physical Start (or is driven under MANUAL); a station is taught with the vehicle standing
+   still. Engineer view (PIN): every action here needs it except At home and Scans align. #}
 <section class="manual grow">
   <div class="side">
-    <h2>Locator <small>shadow</small></h2>
-    <div id="tc-loc" class="tel-grid rows"></div>
-    <p id="tc-detail" class="note"></p>
-    <div class="bar">
-      <button id="btn-at-home" class="big" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>
-      <button id="btn-confirm" title="The live scan lies on the map's walls">Scans align</button>
+    <h2>Next fork <small id="gd-mission">guided mission</small></h2>
+    <div id="gd-order" class="tel-grid rows"></div>
+    <div class="bar three">
+      <button id="gd-left" class="big" data-side="left" title="Left arrow">◀ Left</button>
+      <button id="gd-straight" class="big" data-side="straight" title="Up arrow">▲ Straight</button>
+      <button id="gd-right" class="big" data-side="right" title="Right arrow">Right ▶</button>
     </div>
-    <div class="warn-box"><b>Motion starts only from the physical panel</b>. A teach pass is an ordinary run from the HOME bay back to it.</div>
+    <p id="gd-msg" class="note"></p>
+    <div class="warn-box"><b>Set an order after the previous junction.</b> A merge uses it too: a Left or Right still armed at a merge steers onto the joining tape.</div>
+    <h2>Mark <small>where the AGV is now (M key), driving or standing</small></h2>
+    <div class="bar two">
+      <input id="gd-mark-label" placeholder="label (optional)">
+      <button id="gd-mark" class="big" title="M key">Mark here</button>
+    </div>
+    <h2>U-turn <small>if the strip is missed</small></h2>
+    <div class="bar two">
+      <button id="gd-uturn" class="big" data-uturn="true" title="The next tape end is the U-turn">U-turn at tape end</button>
+      <button id="gd-uturn-cancel" class="big" data-uturn="false">Cancel</button>
+    </div>
+    <h2>Stopped off the tape <small>run ended "track lost"</small></h2>
+    <div class="bar two">
+      <button id="gd-continue" class="big" data-continue="true" title="Put the AGV back on the tape first">Continue on Start</button>
+      <button id="gd-continue-cancel" class="big" data-continue="false">Cancel</button>
+    </div>
+    <h2>Speed <small id="gd-speed-note">high zones</small></h2>
+    <div class="bar two">
+      <button id="gd-normal" class="big" data-speed="normal">Normal</button>
+      <button id="gd-high" class="big" data-speed="high">High</button>
+    </div>
+    <div class="warn-box"><b>Motion starts only from the physical panel</b> (AUTO + Start). The U-turn and the home stop are MLS code 3. A teach pass is an ordinary run from the HOME bay back to it.</div>
   </div>
   <div class="side">
     <h2>Teach <small id="tc-mission">site mission</small></h2>
-    <label class="field">Map <input id="tc-map" placeholder="map id"> rev <input id="tc-rev" size="3" inputmode="numeric"></label>
-    <div class="bar"><button data-act="map" id="btn-map">Select map</button><button data-act="status">Status</button></div>
-    <label class="field">Circuit <select id="tc-circuit"></select></label>
-    <div class="bar">
-      <button data-act="pass_start" class="big">Record pass</button>
-      <button data-act="pass_stop">Stop pass</button>
-      <button data-act="pass_discard" class="danger">Discard</button>
-      <button data-act="passes">Passes</button>
+    <div class="tabs" id="tc-tabs">
+      <button class="tab on" type="button" data-tab="status">Status</button>
+      <button class="tab" type="button" data-tab="pass">Pass</button>
+      <button class="tab" type="button" data-tab="marks">Marks</button>
+      <button class="tab" type="button" data-tab="graph">Graph</button>
     </div>
-    <label class="field">Station <select id="tc-station"></select></label>
-    <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
-    <label class="field">Mark <input id="tc-mark" placeholder="label, or M-id to delete"></label>
-    <div class="bar">
-      <button data-act="mark" class="big" title="Where the vehicle is now, driving or standing (Guide page: M key)">Mark here</button>
-      <button data-act="marks">Marks</button>
-      <button data-act="mark_delete" class="danger">Delete mark</button>
+    <div class="tabpane" data-tab="status">
+      <div id="gd-run" class="tel-grid rows"></div>
+      <p id="gd-why" class="note"></p>
+      <h3>Locator <small>shadow</small></h3>
+      <div id="tc-loc" class="tel-grid rows"></div>
+      <p id="tc-detail" class="note"></p>
     </div>
-    {# Tracked plan 4: a mark (its M-id in the field above) becomes a station, a mid-line U-turn
-       point or a zone end; "-" takes the role off. Build puts it in the graph. #}
-    <div class="bar">
-      <label class="field">Role <select id="tc-role"></select></label>
-      <button data-act="mark_role" title="The mark named above (M-id) becomes this station or point">Set role</button>
-      <button data-act="roles" title="What is taught, from which mark, and what is not">Roles</button>
+    <div class="tabpane" data-tab="pass" hidden>
+      <label class="field">Map <input id="tc-map" placeholder="map id"> rev <input id="tc-rev" size="3" inputmode="numeric"></label>
+      <div class="bar"><button data-act="map" id="btn-map">Select map</button><button data-act="status">Status</button></div>
+      <label class="field">Circuit <select id="tc-circuit"></select></label>
+      <div class="bar">
+        <button data-act="pass_start" class="big">Record pass</button>
+        <button data-act="pass_stop">Stop pass</button>
+        <button data-act="pass_discard" class="danger">Discard</button>
+        <button data-act="passes">Passes</button>
+      </div>
+      <label class="field">Station <select id="tc-station"></select></label>
+      <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
+      <div class="bar">
+        <button id="btn-at-home" class="big" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>
+        <button id="btn-confirm" title="The live scan lies on the map's walls">Scans align</button>
+      </div>
     </div>
-    {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
-       name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
-       the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
-    <div class="bar">
-      <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
-      <button data-act="mark_offset" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
-      <button data-act="mark_along" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
-      <a href="/tape-areas" class="note">High-speed areas →</a>
+    <div class="tabpane" data-tab="marks" hidden>
+      <label class="field">Mark <input id="tc-mark" placeholder="M-id"></label>
+      <div class="bar">
+        <button data-act="marks">Marks</button>
+        <button data-act="mark_delete" class="danger">Delete mark</button>
+      </div>
+      {# Tracked plan 4: a mark (its M-id above) becomes a station, a mid-line U-turn point or a
+         zone end; "-" takes the role off. Build puts it in the graph. #}
+      <div class="bar">
+        <label class="field">Role <select id="tc-role"></select></label>
+        <button data-act="mark_role" title="The mark named above (M-id) becomes this station or point">Set role</button>
+        <button data-act="roles" title="What is taught, from which mark, and what is not">Roles</button>
+      </div>
+      {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
+         name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
+         the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
+      <div class="bar">
+        <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
+        <button data-act="mark_offset" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
+        <button data-act="mark_along" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
+      </div>
+      <p class="note"><a href="/tape-areas">High-speed areas →</a></p>
     </div>
-    <div class="bar">
-      <button data-act="build">Build</button>
-      <button data-act="publish">Publish</button>
-      <label class="field">g <input id="tc-g" size="3" inputmode="numeric"></label>
-      <button data-act="activate">Make active</button>
+    <div class="tabpane" data-tab="graph" hidden>
+      <div class="bar">
+        <button data-act="build" class="big">Build</button>
+        <button data-act="publish" class="big">Publish</button>
+      </div>
+      <div class="bar">
+        <label class="field">g <input id="tc-g" size="3" inputmode="numeric"></label>
+        <button data-act="activate">Make active</button>
+      </div>
     </div>
     <p id="tc-msg" class="note"></p>
   </div>
@@ -64,7 +120,36 @@
 {% endblock %}
 {% block scripts %}<script>
 const HEALTH = { HEALTHY: 'ok', DEGRADED: 'warn', LOST: 'bad', WAITING: 'warn', IDLE: '' };
+const SIDES = { left: 'Left', straight: 'Straight', right: 'Right' };
+tabs('tc-tabs');
 
+// ---- guided run ----
+const order = side => act('/api/line/branch', { side }, { msgEl: 'gd-msg', noResponse: 'no response: the order may not be set' });
+document.querySelectorAll('[data-side]').forEach(b => { b.onclick = () => order(b.dataset.side); });
+const speed = level => act('/api/line/speed', { level }, { msgEl: 'gd-msg', noResponse: 'no response: the speed may not be set' });
+document.querySelectorAll('[data-speed]').forEach(b => { b.onclick = () => speed(b.dataset.speed); });
+const uturn = force => act('/api/line/uturn', { force }, { msgEl: 'gd-msg', noResponse: 'no response: the U-turn order may not be set' });
+document.querySelectorAll('[data-uturn]').forEach(b => { b.onclick = () => uturn(b.dataset.uturn === 'true'); });
+const cont = arm => act('/api/line/continue', { arm }, { msgEl: 'gd-msg', noResponse: 'no response: continue may not be set' });
+document.querySelectorAll('[data-continue]').forEach(b => { b.onclick = () => cont(b.dataset.continue === 'true'); });
+async function mark() {
+  if ($('gd-mark').disabled) return;
+  const r = await act('/api/line/teach', { action: 'mark', arg: $('gd-mark-label').value.trim() },
+                      { msgEl: 'gd-msg', noResponse: 'no response: the mark may not be set' });
+  if (r && r.data.ok) $('gd-mark-label').value = '';
+}
+$('gd-mark').onclick = mark;
+// Arrow keys and M, but never while typing in a field; a held key sends once.
+document.addEventListener('keydown', e => {
+  if (e.repeat || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
+  if (e.key === 'm' || e.key === 'M') { e.preventDefault(); mark(); return; }
+  const side = { ArrowLeft: 'left', ArrowUp: 'straight', ArrowRight: 'right' }[e.key];
+  if (!side || document.querySelector(`[data-side="${side}"]`).disabled) return;
+  e.preventDefault();
+  order(side);
+});
+
+// ---- teach tools ----
 async function loadSite() {
   const { status, data } = await apiGet('/api/line/site');
   if (status !== 200) return;
@@ -82,7 +167,7 @@ function argFor(act) {
   if (act === 'pass_start') return $('tc-circuit').value;
   if (act === 'station') return $('tc-station').value;
   if (act === 'activate') return $('tc-g').value.trim();
-  if (act === 'mark' || act === 'mark_delete') return $('tc-mark').value.trim();
+  if (act === 'mark_delete') return $('tc-mark').value.trim();
   if (act === 'mark_role') return `${$('tc-mark').value.trim()} ${$('tc-role').value}`;
   if (act === 'mark_offset' || act === 'mark_along') {
     const [ref, id] = $('tc-mark').value.trim().split(/\s+/);
@@ -90,7 +175,6 @@ function argFor(act) {
   }
   return '';
 }
-
 for (const b of document.querySelectorAll('button[data-act]')) {
   b.onclick = () => {
     const what = b.dataset.act;
@@ -103,11 +187,35 @@ $('btn-confirm').onclick = () => act('/api/localization/confirm');
 onState(st => {
   const ln = st.line, loc = st.localization;
   const inLine = st.mode && st.mode.mode_name === 'LINE';
-  for (const b of document.querySelectorAll('button')) if (b.closest('main')) b.disabled = !inLine || !ln;
+  for (const b of document.querySelectorAll('main button:not(.tab)')) b.disabled = !inLine || !ln;
+  const sel = (ln && ln.speed_select) || '';  // '' = this mission has no speed toggle
+  document.querySelectorAll('[data-speed]').forEach(b => {
+    b.disabled = !inLine || !sel;
+    b.classList.toggle('on', b.dataset.speed === sel);
+  });
+  $('gd-speed-note').textContent = !ln ? 'high zones'
+    : !sel ? 'no high zone in this mission'
+      : sel === 'high' ? 'HIGH where the markers grant it' : 'zone markers ignored';
   if (!ln) {
-    tiles('tc-loc', [['Locator', '–', inLine ? 'no line state yet' : 'switch to tracked on Home', 'warn']]);
+    const why = inLine ? 'no line state yet' : 'switch to tracked on Home';
+    tiles('gd-order', [['Order', '–', 'line layer not running (Tracked mode)', 'bad', 'key']]);
+    tiles('tc-loc', [['Locator', '–', why, 'warn']]);
+    $('gd-run').innerHTML = '';
+    $('tc-detail').textContent = '';
     return;
   }
+  const intent = ln.branch_intent || 'straight';
+  $('gd-mission').textContent = ln.mission || 'no mission';
+  tiles('gd-order', [['Order', SIDES[intent] || intent, intent === 'straight' ? 'nothing armed' : 'used at the next fork', intent === 'straight' ? '' : 'warn', 'key']]);
+  document.querySelectorAll('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === intent));
+  tiles('gd-run', [
+    ['State', ln.state_name || '–', ln.hold_cause || ln.engine_state || '', ln.state_name === 'FAULT' ? 'bad' : (ln.state_name === 'HOLD' ? 'warn' : ''), 'key'],
+    ['Speed', num(ln.v_mps, 2), `m/s · ${ln.high_speed ? 'HIGH' : 'NORMAL'}`, ln.high_speed ? 'warn' : ''],
+    ['U-turn', ln.uturn_phase || '–', 'phase'],
+    ['Marker', ln.last_marker ? `code ${ln.last_marker}` : '–', 'last read'],
+    ['Driven', num(ln.followed_m, 1), 'm this run'],
+  ]);
+  $('gd-why').textContent = ln.message || '';
   const h = ln.loc_health || 'OFF';
   tiles('tc-loc', [
     ['Locator', h, ln.loc_circuit || '—', HEALTH[h] || ''],

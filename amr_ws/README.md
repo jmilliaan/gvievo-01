@@ -66,15 +66,13 @@ ros2 service call /amr/localization/confirm std_srvs/srv/Trigger   # operator: s
 ros2 service call /sim/set_pose amr_interfaces/srv/SetPose2D "{x_m: 2.0, y_m: 0.0, yaw_rad: 3.14}"  # kidnap test
 ```
 
-Draw and run a route (spec §5–§7), web app on **http://<robot>:5001**:
-1. `/editor`: pick the map, set the start pose (click, drag for heading), add straights (click ahead) and
-   turns (CW/CCW 45/90/180/270), **Validate**, **Save revision**, **Create mission**.
-2. `/run`: set the initial pose on the map, drive a little, **Confirm** when the scan aligns → READY.
-3. Load the mission (READY), selector **AUTO**, physical **Start** → EXECUTING. Pause / Abort /
-   Prepare-resume on the page; Start confirms a prepared resume. In sim the panel is
-   `ros2 service call /sim/panel/set_mode std_srvs/srv/SetBool "{data: true}"` and
-   `ros2 service call /sim/panel/press_start std_srvs/srv/Trigger`; an obstacle is
-   `ros2 service call /sim/add_obstacle amr_interfaces/srv/AddObstacle "{x_m: 3, y_m: 0, size_m: 0.6}"`.
+Web app on **http://<robot>:5001** (2026-10-28: routes, trackless missions and NAVIGATION are
+no longer on the web; the route executor and `amr_navigation` stay in the stack):
+1. `/mapping` → **Survey**: start, drive, **Returned to start**, **Save map revision**; or continue a
+   saved revision from a dragged pose.
+2. `/mapping` → **Position**: set the initial pose on the AMCL map, drive a little, **Confirm** when
+   the scan aligns → READY.
+3. The offline preview of every page, no ROS: `python3 amr_ws/src/amr_web/tools/demo_server.py`.
 
 Teleop into the sim: `ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/cmd_vel_teleop`
 (only under panel MANUAL: the mux takes authority from the panel, never from the command stream).

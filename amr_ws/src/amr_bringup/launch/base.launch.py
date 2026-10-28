@@ -134,8 +134,8 @@ def _compose(context):
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
-            # Manual (pendant / browser jog, 2026-09-18): the node's defaults - 0.5 m/s, S-curve to
-            # 0.3 m/s^2 with 1.0 m/s^3, arcs with the slow wheel at 66 % of the fast one, spins at
+            # Manual (pendant / browser jog, 2026-09-18): the node's defaults - 0.6 m/s (2026-10-28),
+            # S-curve to 0.3 m/s^2 with 1.0 m/s^3, arcs with the slow wheel at 66 % of the fast one, spins at
             # 0.39 rad/s, 0.27 rad/s while surveying (gating.DEFAULT and the mux's own params).
             parameters=[
                 {

@@ -38,6 +38,9 @@ install_dropin sysctl-amr.conf /etc/sysctl.d/60-amr.conf
 install_dropin journald-amr.conf /etc/systemd/journald.conf.d/amr.conf
 install_dropin logrotate-amr /etc/logrotate.d/amr
 install_dropin chrony-amr.conf /etc/chrony/conf.d/amr.conf
+# Wi-Fi rejoin (alpha-setup 2.3). It runs as root, so it runs from a root-owned copy.
+install -m 0755 "$DEPLOY_DIR/agv-wifi-reconnect.sh" /usr/local/sbin/agv-wifi-reconnect
+install_dropin agv-wifi-reconnect.service /etc/systemd/system/agv-wifi-reconnect.service
 sysctl --quiet --system || echo "warning: sysctl --system failed; reboot applies it anyway" >&2
 
 systemctl list-unit-files 'amr*.service' --no-legend \
@@ -47,5 +50,6 @@ systemctl daemon-reload
 echo "Installed unit files without changing enabled or running services."
 echo "The journal cap needs: systemctl restart systemd-journald"
 echo "The chrony drop-in needs: systemctl restart chrony (off-shift)"
+echo "Wi-Fi rejoin, once per unit: systemctl enable --now agv-wifi-reconnect (safe while running)"
 echo "Backup: $BACKUP_DIR"
 echo "Follow the witnessed cutover or rollback procedure in $DEPLOY_DIR/../RUNBOOK.md."

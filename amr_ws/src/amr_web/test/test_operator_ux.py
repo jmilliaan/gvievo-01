@@ -486,14 +486,14 @@ def test_the_manual_page_shows_the_line_reading_above_the_pad(tmp_path):
     assert body.index('id="line-track"') < body.index('id="jog"')
 
 
-def test_rfid_tags_show_on_the_manual_and_run_tracked_pages(tmp_path):
+def test_rfid_tags_show_on_the_manual_and_run_pages(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    for page in ("/manual", "/run-tracked"):
+    for page in ("/manual", "/run"):
         body = client.get(page).get_data(as_text=True)
         assert 'id="rf-status"' in body and 'id="rf-tags"' in body, page
         assert "rfidTags(st.rfid)" in body, page
-    # the last tag, large for the HMI: Run tracked only (operator, 2026-10-07)
-    assert 'id="rf-last"' in client.get("/run-tracked").get_data(as_text=True)
+    # the last tag, large for the HMI: Run only (operator, 2026-10-07)
+    assert 'id="rf-last"' in client.get("/run").get_data(as_text=True)
     assert 'id="rf-last"' not in client.get("/manual").get_data(as_text=True)
 
 
@@ -508,7 +508,7 @@ def test_home_shows_speed_rfid_and_line_tiles_and_loads_no_mission(tmp_path):
 
 
 def test_home_shows_the_job_beside_the_status_and_cannot_set_it(tmp_path):
-    """2026-10-08: the job is shown on Home, wider than the status block; set on Run tracked."""
+    """2026-10-08: the job is shown on Home, wider than the status block; set on Run."""
     client, _ = app_for(merged(), tmp_path)
     body = client.get("/home").get_data(as_text=True)
     top = body.index('class="home-top"')
@@ -597,27 +597,38 @@ def _product_app(product, tmp_path):
     return app.test_client(), stub
 
 
-def test_two_run_tabs_and_maps_routes_live_under_run_trackless(tmp_path):
-    """2026-10-02: "Run" was ambiguous with two navigation types."""
+def test_run_mapping_and_teach_tabs(tmp_path):
+    """2026-10-28: Run is the tape product, Mapping holds the survey and the AMCL position (no
+    sub-tabs, no routes), Guide is part of Teach. Mapping is in the operator's nav: Home's
+    "Set position" lands on its Position tab; its Survey tab is the engineer's."""
     client, _ = _product_app("both", tmp_path)
     body = client.get("/home").get_data(as_text=True)
-    assert ">Run tracked<" in body and ">Run trackless<" in body
     nav = body.split('<nav>')[1].split('</nav>')[0]
-    assert "/maps" not in nav and "/editor" not in nav, "Maps/Routes left the top nav"
-    sub = client.get("/maps").get_data(as_text=True)
-    assert 'class="subnav"' in sub and 'href="/editor"' in sub
-    assert client.get("/run-trackless").status_code == 200
+    assert '>Run<' in nav and '>Mapping<' in nav and '>Teach<' in nav
+    for gone in ("Run tracked", "Run trackless", "/guide", "/maps", "/editor"):
+        assert gone not in nav, gone
+    assert "/mapping?tab=pose" in body
+    page = client.get("/mapping").get_data(as_text=True)
+    assert 'class="subnav"' not in page and 'data-tab="survey"' in page and 'id="btn-survey-start"' in page
+    client.post("/api/role", json={"role": "operator"})
+    nav = client.get("/home").get_data(as_text=True).split('<nav>')[1].split('</nav>')[0]
+    assert '>Mapping<' in nav and '>Teach<' not in nav
+    page = client.get("/mapping?tab=survey").get_data(as_text=True)
+    assert 'data-tab="survey"' not in page and 'id="btn-survey-start"' not in page
+    assert 'class="tab on" type="button" data-tab="pose"' in page and 'id="tool-initialpose"' in page
 
 
 def test_a_product_the_profile_does_not_carry_is_404_not_hidden(tmp_path):
     client, _ = _product_app("slam", tmp_path)
-    assert ">Run tracked<" not in client.get("/home").get_data(as_text=True)
-    assert client.get("/run-tracked").status_code == 404
+    nav = client.get("/home").get_data(as_text=True).split('<nav>')[1].split('</nav>')[0]
+    assert '>Run<' not in nav and '>Teach<' not in nav and '>Mapping<' in nav
+    for path in ("/run", "/run-tracked", "/teach", "/guide"):
+        assert client.get(path).status_code == 404, path
     assert client.post("/api/line/clear").status_code == 404
     client, _ = _product_app("tape", tmp_path)
-    for path in ("/run", "/maps", "/editor"):
+    for path in ("/mapping", "/maps", "/survey-continue", "/run-trackless"):
         assert client.get(path).status_code == 404, path
-    assert client.get("/run-tracked").status_code == 200
+    assert client.get("/run").status_code == 200
 
 
 def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
@@ -634,18 +645,18 @@ def test_line_apis_reach_the_layer_and_never_move_anything(tmp_path):
     assert stub.calls == [("line_mission", ("line-a", "MRU2")), ("line_clear", ())]
 
 
-def test_run_tracked_has_no_arm_button_and_no_arm_api(tmp_path):
+def test_run_has_no_arm_button_and_no_arm_api(tmp_path):
     """2026-10-07: the physical Start runs from IDLE; motor arming is drive_node's."""
     client, _ = _product_app("tape", tmp_path)
-    assert "btn-line-arm" not in client.get("/run-tracked").get_data(as_text=True)
+    assert "btn-line-arm" not in client.get("/run").get_data(as_text=True)
     assert client.post("/api/line/arm").status_code in (404, 405)
 
 
-def test_run_tracked_picks_by_tiles_and_keeps_the_follower_beside_the_rail(tmp_path):
+def test_run_picks_by_tiles_and_keeps_the_follower_beside_the_rail(tmp_path):
     """2026-10-24: missions and destinations are touch tiles (no drop-down on the HMI), Set job
     and Clear sit on top, and the follower readout renders inside the rail, before the log."""
     client, _ = _product_app("tape", tmp_path)
-    page = client.get("/run-tracked").get_data(as_text=True)
+    page = client.get("/run").get_data(as_text=True)
     assert "<select" not in page
     assert 'id="lt-mission" class="pick-grid"' in page and 'id="lt-dest" class="pick-grid small"' in page
     assert page.index('id="btn-line-select"') < page.index('id="lt-mission"')
@@ -654,15 +665,15 @@ def test_run_tracked_picks_by_tiles_and_keeps_the_follower_beside_the_rail(tmp_p
     assert 'id="follower"' not in client.get("/manual").get_data(as_text=True)
 
 
-def test_tracked_trackless_is_one_switch_on_home(tmp_path):
+def test_tracked_idle_is_one_switch_on_home(tmp_path):
     """2026-10-08: level 1 of navigation is a Home switch (tracked = LINE, the boot
-    default; trackless = IDLE and its mapping/navigation steps). Run tracked no longer
-    carries mode buttons, and a single-product vehicle has nothing to switch."""
+    default; idle since 2026-10-28, a survey starts from either). Run carries no mode
+    buttons, and a single-product vehicle has nothing to switch."""
     client, _ = _product_app("both", tmp_path)
     home = client.get("/home").get_data(as_text=True)
     assert 'id="nav-tracked"' in home and 'data-target="line"' in home
-    assert 'id="nav-trackless"' in home and 'data-target="idle"' in home
-    tracked = client.get("/run-tracked").get_data(as_text=True)
+    assert 'id="nav-idle"' in home and 'data-target="idle"' in home
+    tracked = client.get("/run").get_data(as_text=True)
     assert "btn-line-mode" not in tracked and "btn-line-idle" not in tracked
     for product in ("tape", "slam"):
         (tmp_path / product).mkdir()

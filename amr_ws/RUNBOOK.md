@@ -4,25 +4,28 @@
 operator web app, then enters **LINE** (tracked, the
 default) unless the profile is trackless-only, which stays in **IDLE**. It does
 not load a map, start a survey, resume a commissioning job or run a route after
-boot, and LINE moves nothing until the physical Start under AUTO. The operator
-switches to trackless on Home, then selects mapping or navigation from Run trackless.
+boot, and LINE moves nothing until the physical Start under AUTO. Surveys and
+the AMCL position are on the **Mapping** page (2026-10-28). The web app no longer
+draws routes or enters NAVIGATION: the tape AGV is the product, and its one map
+(`rev-boiacca-map-01`) is the tape-localization map. The other maps were moved to
+`~/amr_maps_archive/` on 2026-10-28.
 
 The physical controls remain authoritative:
 
 - **MANUAL** permits bounded browser jog or a held commissioning plan.
-- **AUTO** permits a loaded route only after a fresh physical **Start** edge.
+- **AUTO** permits a run only after a fresh physical **Start** edge.
 - E-stop and the FX3/STO chain remain the immediate physical stop path.
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
-The web app is `http://192.168.2.20:5001/`. Its tabs are **Home**, **Manual**,
-**Maps** (survey), **Routes** (route editor), **Run**, **Monitor**, **I/O**,
-**Alarms** (events) and **Params**. Every page has the same left
+The web app is `http://192.168.2.20:5001/`. Its tabs are **Home**, **Run** (tape
+jobs), **Calls**, **Manual**, **Alarms** (events), **Mapping** (survey and AMCL
+position), and for the engineer **Teach**, **Monitor**, **I/O** and **Params**. Every page has the same left
 rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
 Generation, with the event log below. A tile with a yellow bar needs attention and
 a red bar means a fault or stale data. If the whole rail is greyed out and the
 header pill says `DISCONNECTED`, the values are last known, not live. After a
 software update, hard-refresh the browser so it does not keep old styles or
-scripts: the **↻** button at the top right of every page (next to ✕ on Demo) does
+scripts: the **↻** button at the top right of every page does
 it from the touch panel; Ctrl+Shift+R with a keyboard.
 
 ## 1. Normal service operation
@@ -43,11 +46,13 @@ page offers **Restart**.
 
 ### Who sees what: operator and engineer
 
-The pages open in the **operator** view: **Home · Run · Manual · Alarms**, and
-nothing else. Home is one line of state, one sentence of action and one button,
+The pages open in the **operator** view: **Home · Run · Calls · Manual · Alarms ·
+Mapping** (Position and Jog tabs only), and nothing else. Home is one line of state, one sentence of action and one button,
 all chosen server-side from the alarm catalogue (`agv_core/alarms.py`, section 4).
 
-The **engineer** view adds Maps, Routes, Monitor, I/O, Params, Teach and Guide,
+The **engineer** view adds Teach (the guided-run orders and the teach tools on one
+page; Guide was merged into it on 2026-10-28), Monitor, I/O, Params and the Survey
+tab on Mapping,
 and on Home opens **More** with the supervisor, readiness and the Return to idle /
 Recover / Restart service buttons (the old Status page, merged 2026-10-24). Press `Op` in the header and type the PIN; press `Eng` to go back.
 
@@ -89,17 +94,6 @@ pgrep -af 'amr_|nav2|slam_toolbox' || true
 Do not use process-name kills during normal operation. The supervisor owns the
 child process groups and performs bounded SIGINT → SIGTERM → SIGKILL cleanup.
 
-### Demo page (visitors)
-
-`Demo` (last tab, both views, no PIN) is a full-screen page for when the vehicle is
-on display, **stationary**: product story, fixed spec strip, and a live top-down view
-of what the safety laser scanner sees around the vehicle outline. When someone comes
-within `near_m` (default 1.0 m from the outline) it says "It sees you". It is
-read-only and says nothing technical: no scan, no pose or any fault reads as
-"Standing by". It has no tabs; **tap the ✕ in the corner** to return to Home.
-Wording, specs and `near_m`: `amr_web/static/demo/content.json` (restart the
-service after editing). The view needs `/scan` and the odom TF (EKF) running.
-
 ### Tape or trackless: the profile's `tracked` key
 
 One vehicle, two products, chosen by a single top-level key in
@@ -107,9 +101,9 @@ One vehicle, two products, chosen by a single top-level key in
 
 | `"tracked"` | boots to | offered | refused with |
 |---|---|---|---|
-| `false` (default, the SLAM AMR) | `IDLE` | surveys, maps, routes | LINE: "this vehicle is trackless (profile tracked=false)" |
+| `false` (default, the SLAM AMR) | `IDLE` | surveys and the AMCL position (no routes on the web since 2026-10-28) | LINE: "this vehicle is trackless (profile tracked=false)" |
 | `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
-| `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the **Navigation** switch on Home picks tracked (LINE) or trackless (IDLE, then mapping → navigation on Run trackless) | nothing by product |
+| `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the **Navigation** switch on Home picks Tracked (LINE) or Idle; a survey starts from either on Mapping | nothing by product |
 
 The Home header's mode shows `LINE` and `/api/state` carries `product`
 (`"tape"` / `"slam"`). Switching = edit the key, then
@@ -117,8 +111,8 @@ The Home header's mode shows `LINE` and `/api/state` carries `product`
 to load and the service does not start; the error names it). The boot entry
 into LINE happens once; leaving it afterwards is honoured and not undone. Jogging
 needs no mode change (MANUAL jogs in LINE too). On a `null` vehicle the Home
-**Navigation** switch is the way between the two: Tracked requests LINE, Trackless
-requests IDLE. Like every mode change it moves nothing and is refused unless the
+**Navigation** switch is the way between the two: Tracked requests LINE, Idle
+requests IDLE (Mapping → Survey also has **Back to tracked**). Like every mode change it moves nothing and is refused unless the
 vehicle is stopped, nothing is running and there is no emergency.
 
 **The LINE follower's rules (after the 2026-09-21 review fixes):**
@@ -143,19 +137,22 @@ Speed: the tracked speeds and the MLS marker zones that grant HIGH are written o
 the values. A warning field halves either. In the sim the launch passes
 `field_source:=assume_clear` (no scanner there); never on a vehicle.
 
-## 2. Survey → draw a route → run it
+## 2. Survey a map and give AMCL its position (`Mapping` page)
 
-The complete workflow, in order. Only step C moves the vehicle on its own, and
-only after a physical Start. Everything else is browser jog under **MANUAL**,
-or it moves nothing.
+Nothing here moves the vehicle except browser jog and the preset moves, both under
+**MANUAL**. Mapping is one page (2026-10-28, replacing Run trackless, Maps, Routes,
+Review and Continue survey): a **Map** list over three tabs, **Survey** (engineer),
+**Position** and **Jog**, beside one map. While surveying the map is the live grid;
+otherwise it is the revision picked in **Map**, with the live scan (on the AMCL map
+only) and the taught tape graph.
 
 Before you begin:
 
-- The service is in `IDLE` (Home → More) and the drives are operational.
+- The service is in `LINE` or `IDLE` (Home → More) and the drives are operational.
 - Someone is at the vehicle with the E-stop in reach, and the area is clear.
 - The selector is on **MANUAL**.
 - Mark a start position and heading on the floor (tape an arrow). The survey
-  begins and ends there, and it is the easiest place to start a route from.
+  begins and ends there.
 
 **Header (top right).** The Wi-Fi readout shows the robot's link on `wlp1s0`
 (SSID and dBm; red `no link` when `agv_field` is out of range). Next to it, **NET**
@@ -167,16 +164,15 @@ pages are served by the robot itself. Without `agv_field` the tablet cannot reac
 the pages (use a wired or USB connection), and boot waits at most about 30 s for
 NetworkManager before `amr.service` starts.
 
-**Jogging.** A jog pad appears on the Manual, Maps and Run pages. Hold
+**Jogging.** A jog pad appears on the Manual page and on Mapping → **Jog**. Hold
 a pad button, or hold W/A/S/D or the arrow keys, to drive. The held button turns
 blue. Releasing stops the vehicle, even if you let go before the page has
 received its jog session. So do Space, Esc, the centre **Stop** button, switching
-browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20, 0.30
-and 0.40 m/s (2026-09-19; the server caps jog at 0.40 m/s and 0.39 rad/s). The diagonal
-buttons drive like the pendant: the fast wheel at the selected speed, the slow one at 75 %
-of it. Left/Right spin at 1.95 × the selected speed in rad/s, at most 0.39 rad/s.
-Surveys may use any setting; check the survey's return review (see below) after the first
-fast one.
+browser tabs or windows, and typing in a text field. There is one manual speed, the
+pendant's (2026-10-02; 0.60 m/s since 2026-10-28; the server caps jog at it and 0.39 rad/s).
+The diagonal buttons drive like the pendant: the fast wheel at 0.60 m/s, the slow one at
+66 % of it. Left/Right spin at 0.39 rad/s (0.27 while surveying). Check the survey's
+return review (see below) after the first survey at 0.60.
 
 **Drive power (2026-10-08).** The drives are not powered while idle: they sit in
 standby (CANopen up, wheel counts read, power stage off). Under **MANUAL** they are
@@ -202,33 +198,35 @@ already held when the pendant becomes able to drive (power-on or a panel
 reconnect, the selector turning MANUAL, Manual Arm switching on) does nothing
 until it is let go and pressed again (2026-10-28; the I/O log says "held at
 enable: release it"). The pendant outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
-parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`; 0.60 was tried and
-reverted on 2026-09-19 after a survey at that speed came out rotated); FWD/RVS
-with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
-(`pendant_turn_ratio`, fast wheel 0.50 m/s, slow 0.375); LEFT/RIGHT alone
+parameters in `base.launch.py`): FWD/RVS 0.60 m/s (`pendant_v_m_s`, the jog pad's speed too;
+0.60 since 2026-10-28 - it was tried on 2026-09-19 and reverted after a survey came out
+rotated, which the 0.27 rad/s survey spin cap below was then added for); FWD/RVS
+with LEFT/RIGHT arcs with the slow wheel at 66 % of the fast one
+(`pendant_turn_ratio`, fast wheel 0.60 m/s, slow 0.40); LEFT/RIGHT alone
 spins in place at 0.39 rad/s (`pendant_w_rad_s`). **While surveying** (mode MAPPING)
 every manual spin, pendant and jog pad alike, is capped at 0.27 rad/s (mux
 `survey_w_max_rad_s`): a fast spin smears the scans the map is built from. Manual sources follow an
 S-curve: acceleration builds at 1.0 m/s³ to 0.3 m/s² (`manual_jerk`,
-`manual_a_max`), so 0 → 0.50 m/s takes about 1.9 s; releasing a button still
-stops at the drives' ramp. Wiring
+`manual_a_max`), so 0 → 0.60 m/s takes about 2.3 s. Releasing a button is not
+shaped by the mux: the command drops to zero at once (held, not latched) and the drives
+brake on their own 6084h ramp, 3200 r/min/s = 1.0 m/s² (0.60 m/s → 0 in 0.6 s, ~0.18 m). Wiring
 (profile `pendant`, 0-based DI channels): FWD DI04, RVS DI05, LEFT DI06,
 RIGHT DI07. The IO page shows the live bits under those names.
 
-### A. Survey a map (`Maps` page)
+### A. Survey a map (`Mapping` → **Survey**)
 
 1. Park the vehicle on the floor mark, facing the marked heading, and keep it
    **still**.
 2. Fill in **Map id**, using letters, digits, `_` and `-` only (for example
-   `line_section`). Fill in **Start mark description** (for example "tape
+   `line_section`). Fill in **Start mark** (for example "tape
    arrow A, facing the rack ends").
-3. Press **New map (start survey)**. The supervisor switches to `MAPPING`, and
+3. Press **Start survey**. The supervisor switches to `MAPPING`, and
    this takes a few seconds. The state box then shows
    `MAPPING map <id>  surveying '<id>' from (x, y, heading)`.
    - `not ready: vehicle is moving`: stop and press again.
    - `not ready: IMU not calibrated`: the IMU calibrates during the first
      ~2.3 s of standing still after the service starts. Wait and press again.
-   **Preset moves** (2026-09-19, Maps page under the jog pad, only while surveying):
+   **Preset moves** (2026-09-19, Mapping → **Jog**, only while surveying):
    type a distance and press *Forward* / *Reverse* (0.05–10 m at 0.30 m/s), or a
    *Left* / *Right* spin of 20, 30, 45, 90, 135 or 180° (0.20 rad/s). Press once: the vehicle
    drives the whole move by itself under the same authority as the jog pad
@@ -246,10 +244,10 @@ RIGHT DI07. The IO page shows the live bits under those names.
    large open areas. On a large site, survey in parts: close each part at its
    start mark, save it, and **Continue survey** from there (A1). A bad slip then
    costs one part, not the whole site.
-4. Drive the area slowly with the jog pad. Watch **Live map**: grey and black
+4. Drive the area slowly with the jog pad. Watch the map: grey and black
    cells grow, the green arrow is the vehicle and red points are the current
    scan.
-   - Drive every aisle the routes will use, and a little beyond.
+   - Drive every aisle the vehicle will use, and a little beyond.
    - Pass junctions and loop back over areas you have already mapped, so SLAM
      can close the loop.
    - Avoid fast turns in place. If walls start to look doubled, slow down.
@@ -264,12 +262,12 @@ RIGHT DI07. The IO page shows the live bits under those names.
 6. Optionally fill in **Review note** (for example "span 12.00 m measured
    11.96"), then press **Save map revision**. The state goes `SAVING` → saved,
    and the supervisor returns to `IDLE` on its own.
-7. The map appears under **Saved map revisions** as `<id>`, `rev N`, with a
-   short SHA. A revision never changes after it is saved. Surveying the same
-   map id again creates `rev N+1`.
+7. The map appears in the **Map** list as `<id> rev N`. A revision never changes
+   after it is saved. Surveying the same map id again creates `rev N+1`.
+8. **Back to tracked** returns to LINE.
 
-**Abort survey** discards the survey and returns to `IDLE`. You cannot switch
-to navigation while an unsaved survey exists: save it or abort it first. A new
+**Abort survey** discards the survey and returns to `IDLE`. You cannot change
+mode while an unsaved survey exists: save it or abort it first. A new
 survey can start straight away, with no service restart.
 
 **`SLAM STALLED N s`** in the session message (also refused by "Returned to
@@ -280,7 +278,7 @@ the survey again (a fresh slam_toolbox is launched). SLAM and AMCL read
 `/scan_gated` (scan_gate_node), which releases each scan only once its odometry
 transform exists, to keep them off the tf2 code path that hung on 2026-09-17.
 
-### A1. Continue a saved survey (`Maps` → **Continue survey**)
+### A1. Continue a saved survey (`Mapping` → **Survey**)
 
 A large area does not have to be surveyed in one go (2026-10-23). Save part of it,
 and later keep surveying **the same map** from wherever the vehicle stands, as long
@@ -289,15 +287,16 @@ old and new parts close loops with each other like one survey. The save becomes
 the next revision of the same map id; the saved revision is not changed.
 
 1. Stop the vehicle somewhere **inside the saved map**, preferably where walls or
-   pillars run in two directions. Selector **MANUAL**, mode `IDLE`.
-2. On **Maps**, press **Continue survey** on the revision. Only revisions with a
-   saved pose graph show the button (surveyed or continued ones, not merged ones).
+   pillars run in two directions. Selector **MANUAL**, mode `IDLE` or `LINE`.
+2. Pick the revision in **Map**. The **Pose graph** tile under *Continue the
+   selected map* says whether it can be continued (surveyed or continued
+   revisions can, merged ones cannot).
 3. Say where the vehicle is:
    - **Where its survey ended**: the vehicle has not moved since that save.
    - **At its start mark**: parked on the map's floor mark, at its heading.
    - **Drag pose on map**: drag from the vehicle's position towards its
      heading. About 1 m and 30° is close enough.
-4. Optionally describe the spot (**Where you are now**), then press
+4. Optionally describe the spot (**Start mark**), then press
    **Continue survey**. The robot matches the live scan against the saved map
    around your pose first:
    - `continue refused: the scan fits the saved map poorly here`: the pose is off,
@@ -306,7 +305,7 @@ the next revision of the same map id; the saved revision is not changed.
      corridor, repeated rack rows). Move to where the walls run in two directions.
    - Nothing has loaded after a refusal: press again.
 5. On a good match it loads the pose graph. This takes up to about two minutes for a
-   large map. The Maps page then shows `MAPPING`, `continues revN`, and the scan
+   large map. The Survey tab then shows `MAPPING`, `continues revN`, and the scan
    match score.
    - `... loaded, but SLAM put the vehicle ...` or `... could not load ...`: the
      supervisor goes to FAULT. Press **Recover**, then start again.
@@ -315,255 +314,47 @@ the next revision of the same map id; the saved revision is not changed.
    Driving back to it measures the closure of the whole map, old and new. You can
    also press it where you are and save, as with a partial survey; the closure
    numbers then mean nothing.
-8. **Save map revision**. The revision list shows `continues revN (scan match x.xx)`.
+8. **Save map revision**. The new revision's info tile says `continued from revN`.
 
-- Dynamic areas, keepout and edits of the continued revision are **not carried
-  over**: the new revision is a fresh map. Mark them again with **Edit areas**.
-- Routes and the tape graph belong to a revision: re-validate or re-teach them on
-  the new one.
+- Keepout and dynamic masks of the continued revision are **not carried over**:
+  the new revision is a fresh map.
+- The tape graph belongs to a revision: re-teach it on the new one (Teach → Pass:
+  **Select map**).
 
-### A2. Trolleys and other temporary objects (`Maps` → **Edit areas**)
+### B. Give AMCL its position (`Mapping` → **Position**)
 
-The survey cannot wait for an empty floor, so a saved map contains trolleys,
-parked forklifts and pallets that later move. Without a mark, the map treats
-them as walls, and a route through a spot where a trolley stood is refused.
-Mark such places as **dynamic areas** (2026-09-19, dynamic-mapping plan
-Increment 1). Nothing on this page moves the vehicle, and the mode can stay
-`IDLE`.
+AMCL runs on one map at a time; the **AMCL map** tile names it. In LINE that is
+the tape-localization map the line layer started with (Teach → Pass: **Select
+map**). Home's **Set position** button opens this tab.
 
-> **A dynamic area is a statement about the MAP, not a guard during the run.**
-> Since 2026-09-20 the executor makes no scan check of its own, so marking an
-> area only lets a route be validated through it. If the trolley is still
-> standing there when the run comes past, the only thing that will stop the
-> vehicle is the nanoScan3 protective field. **Check the area is clear before
-> you Start.**
-
-1. On **Maps**, press **Edit areas** on the revision. The Review page opens
-   with that revision. Areas already marked are drawn with yellow hatching.
-2. Pick a tool and drag a rectangle with the left mouse button. Right-drag
-   pans the map.
-   - **Dynamic area**: the scan here may change. Draw it around the object
-     with some floor, not over walls or racks.
-   - **Clear dynamic**: removes the mark.
-   - **Erase to unknown**: safe erase. Unknown cells still block routes unless
-     they lie inside a dynamic area.
-   - **Paint free**: you state that this is open floor (the object is gone for
-     good). Use it rarely.
-   Each rectangle is one edit. Edits apply in order, so a later one wins where
-   rectangles overlap. Undo, Redo and × remove edits.
-3. Add a note and press **Save as new revision**. The robot writes `rev N+1`.
-   The files `map.pgm`, `dynamic.pgm`/`.yaml` and `edits.json` (the parent and
-   the edits) are listed and hashed like every bundle file. The old revision
-   is not changed.
-4. Routes are saved per revision. On **Routes**, select the new revision, load
-   each route, **Validate**, **Save revision**, and create a new mission. On
-   **Run**, select the new revision.
-
-What a dynamic area does:
-
-- **Validation**: mapped occupied or unknown cells inside a dynamic area do not
-  block a route. The result shows a yellow **provisional** line for the step
-  ("passable only if the live scan agrees"). Keepout still blocks, and cells
-  outside the mark still block.
-- **During a run**: nothing. The executor no longer compares the scan against
-  the route (operator decision 2026-09-20: obstacles belong to the safety
-  chain), so an object still standing in a marked area is stopped only by the
-  protective field, and only if it is in front of the vehicle. The run log
-  warns at load which steps cross dynamic areas.
-- **Localisation monitor**: beams that end in a dynamic area, or where the map
-  expects a wall inside one, are left out of the scan match.
-- **AMCL** by default still localises against the full map. With
-  `AMR_LOC_BLANK_DYNAMIC=true` in `amr.env`, it uses a copy with the dynamic
-  areas set to unknown, served on `/map_loc`. The web view keeps showing
-  `/map`. Leave it `false` until AMCL covariance and scan match have been
-  compared on the same route with both settings on a trolley-heavy map. The
-  navigation layer refuses to start if fewer than 500 occupied cells remain
-  outside the dynamic areas.
-- The rear blind spot is unchanged: a dynamic area behind the vehicle is not
-  seen during a reverse.
-
-From the shell (same result as the page):
-
-```bash
-ros2 run amr_mission map_edit --map tool-center-00 --rev 1 \
-    --dynamic-rect 4.0 -1.5 6.5 -0.4 --note "trolley bay by rack C"
-```
-
-### B. Draw a route (`Routes` page)
-
-The route editor moves nothing. The mode can stay `IDLE`.
-
-1. **Map**: pick the saved `<id> rev N`. **Route id**: a plain name, for
-   example `route_a`. **Load saved** stays on `— new —`, or pick an existing
-   route to edit it.
-2. **Start pose**: click the tool, then click on the map where the route
-   starts and **drag towards the heading**, then release. A green arrow and the
-   vehicle's footprint appear.
-   - Put the start on a spot you can mark on the floor. The survey start mark
-     is the easiest.
-   - When the run starts, the vehicle must be within **0.10 m and 5°** of this
-     pose, or Start is refused.
-3. Build the route from steps. They chain from the start pose:
-   - **Straight**: select the tool, then click a point ahead. The straight runs
-     along the current heading, as far as that point projected onto the
-     heading. It cannot go backwards or sideways; turn first.
-   - **CCW / CW 45, 90, 180, 270**: turn in place, as seen from above. CCW is
-     to the left.
-   - **Undo**, **Redo** and **Clear steps** edit the list. The step list
-     (`s1`, `s2`, …) is shown under **Steps**.
-4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
-   unless the route returns to its own start pose. A repeated run shows
-   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.60 m/s, new routes
-   0.55 (2026-09-19). Use 0.15–0.20 m/s for a first run. **Long straight
-   speed**: a straight strictly longer than *Long straight from* (default
-   4 m) runs at this speed, up to 0.85 m/s (new routes 0.85); leave the field
-   empty for no boost. Boosted straights show `▲0.85` in the step list and
-   the result shows how many. **Arc speed** (new routes 0.40 m/s): never
-   above the speed cap. Existing routes keep their stored speeds until they
-   are edited and saved again (re-save them after the first vehicle run at
-   the new speeds). Autonomous acceleration is 0.15 m/s² (mux `a_max`), so a
-   straight reaches 0.85 only after about 2.4 m.
-   Consecutive straights and arcs are driven as ONE continuous move (no
-   stop between them); a rotate or a reverse ends such a chain. Before a
-   slower chained step (a normal straight after a boosted one, an arc) the
-   speed tapers early enough for the mux to reach the lower speed at the
-   boundary (executor `taper_decel` 0.4 m/s², `taper_lead_s` 0.3: 0.96 m for
-   0.85 → 0.40, 0.34 m for 0.55 → 0.40); at the end of a chain the
-   controller's own ramp over the last 1.0 m brings it to the stop.
-   Routes saved before 2026-09-18 never boost until re-saved with the field
-   set. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
-   to back up along the current heading, facing forward: at most 2000 mm
-   and at **0.30 m/s** (half the 0.60 m/s trackless speed, never the boost). The nanoScan3 does not
-   cover the rear, so a reverse is driven blind: keep it short, keep the
-   area behind clear, and stay within reach of the E-stop for the first
-   ones. Shown dashed with `◂` in the editor. **Arc** (2026-09-18): radius
-   (≥ 1.0 m, twice the track) and angle (45–180°), *Arc L* / *Arc R*; the
-   vehicle drives forward along the circle and leaves with the heading turned
-   by the angle;
-   an arc runs at the route's arc speed (0.40 m/s, whatever the straight
-   before it ran at), or less where v/R would exceed 0.9 × the arc turn
-   ceiling of 0.45 rad/s (never below R 1.0 m). Spins run at 0.37 rad/s.
-   Pure
-   pursuit cuts the entry of a 1 m arc inside by a few cm (0.8 m lookahead);
-   watch the cross-track on the first arcs. Above 0.40 m/s the nanoScan3 protective field must be validated for
-   the speed first (stopping from 0.85 needs about 0.72 m at 0.5 m/s² plus
-   the reaction time).
-5. Press **Validate**. The robot checks the route against the map, including
-   the footprint along every straight and the area every turn actually sweeps
-   (a 90° turn does not check behind the vehicle; a 180° does). The footprint
-   is grown by the 0.05 m margin (footprint.yaml `margin_m`, one cell) and every cell under it must be free:
-   unknown (grey) cells count as blocked. The margin is smaller than the 0.10 m cross-track the
-   executor tolerates while running, so leave visible clearance to walls when drawing. The dashed outlines on the map are exactly
-   these areas; a failed one is red. A start pose or turn next to the wall the
-   survey began against is the usual failure: move the start forward.
-   A route that leaves the map, even partly, is refused. Problem steps turn red
-   and the reasons are listed under **Result**, with the length, total turning,
-   and whether the route closes on its start.
-6. Press **Save revision**. The result shows `saved <route> rev M`. An invalid
-   route is refused.
-7. Press **Create mission from saved revision**. The result shows
-   `mission <id> created`. The id is `<map>_rev<N>_<route>_rev<M>`. A mission
-   ties this exact route revision to this exact map revision, and the Run page
-   lists missions. Creating it again with the same references is harmless; an
-   existing id with different references is refused.
-
-### C. Run the route (`Run` page)
-
-1. **Activate the map.** Under **View / activate**, pick the same
-   `<id> rev N` and press **Use this map on the vehicle**. The vehicle must be
-   stopped and the selector on MANUAL. The mode goes `TRANSITIONING` →
-   `NAVIGATION`, and the **Active** tile shows `<id> rev N`. Nothing moves.
-2. **Tell it where it is.** Keep the active map selected in **View / activate**.
-   **Set initial pose on map** and **Confirm** are greyed out while another map is
-   in view, and a pose drawn on a map that is no longer active is refused. Press
-   **Set initial pose on map**, then on the map click the vehicle's real position
-   and **drag towards the way it faces**, and release. Localisation shows
-   `CHECKING`. The red scan points should now lie
-   on the map's walls.
-   - If they don't line up, set the pose again more carefully.
-   - Jog a short distance (about 0.5 m forward and back, a small turn) with the
-     pad on this page. This helps it converge.
-3. **Confirm.** Wait until the **Can confirm** tile shows `YES`: covariance
-   small, a recent scan comparison with **Scan match** ≥ 0.6, sensors fresh
-   (sensor ages over 1 s turn yellow). A new initial pose or **Reset** clears all
-   earlier evidence, so it can take a moment to become `YES` again. Check yourself that the
-   red scan overlays the walls, then press **Confirm: scans align**. The state
-   becomes `READY`. **Reset** starts localisation over.
-4. **Position the vehicle** on the route's start pose, within 0.10 m and 5°,
-   using the jog pad. The dark-blue arrow and outline show where the vehicle
-   thinks it is, and the planned route is drawn in steel blue. A red
-   `STALE SCAN` or `STALE POSE` label means that overlay is old; do not position
-   against it.
-5. **Load.** Pick the mission in **Mission**. Only missions for the active map
-   revision are listed. Press **Load (READY)**. The run state becomes `READY`.
-6. **Go.** Clear the area. Switch the physical selector to **AUTO**, then press
-   the physical **Start** button once. The run state becomes `EXECUTING`.
-   - `Start refused: 0.23 m / 7.0 deg from the route start; reposition
-     manually`: switch to MANUAL, jog onto the start, switch back to AUTO and
-     press Start.
-   - `localisation not READY`: go back to steps 2–3.
-7. **While running**:
-   - The physical controls always win: E-stop, or switching to MANUAL, stops
-     it.
-   - **Pause** stops it and keeps its progress. To continue: **Prepare resume**,
-     then physical **Start**.
-   - `BLOCKED` is a hold with a cause, shown on the State tile (2026-09-19,
-     auto-resume). It keeps its progress and continues from where it stopped:
-     - **lidar stop**: a person or object entered the nanoScan3 protective
-       field and the safety chain took the drives' torque. Once the field is
-       clear and the drives are back, the run **continues by itself** after
-       2 s of all-clear. No button.
-     - **E-stop**: the drives lost torque with the field clear (the E-stop
-       button). Release it; the run waits for a physical **Start** (no
-       Prepare resume needed).
-     - **controller stop**: Nav2 gave up on the move (usually "collision
-       ahead"). Look at what is in the way, clear it, then press **Start**
-       (2026-10-28: only the lidar stop continues by itself). At most 3 per
-       step, then FAULT.
-     - **panel link**: the drives lost torque just after the I/O island
-       reported the panel unreadable. Check the panel, then **Start**.
-     - There is no **obstacle** hold any more (2026-09-20). The executor does
-       not look at the scan, so nothing but the protective field and the
-       E-stop will stop the vehicle for something in the way — and the field
-       looks forward only, so a reverse step or a spin has no cover at all.
-     - Every hold waits until the vehicle is still, on its segment and in
-       the corridor, the drives have torque, the field is clear and
-       localisation is READY; the reason says what it is waiting for. MANUAL
-       during a hold aborts the run. **Prepare resume** + Start still works
-       as an override.
-     - Executor parameters: `auto_resume_enabled` (false = the old
-       Prepare resume + Start), `auto_resume_clear_s` (default: the profile's
-       `autopilot.auto_resume_hold_s`, 2.0),
-       `auto_resume_estop` false, `controller_abort_retries` 3,
-       `prereq_grace_s` 0.5.
-   - **Abort** ends the run. The mission must be loaded again.
-8. **Finished.** The run state is `DONE`. Load the same or another mission and
-   press Start again for another run. Every run needs its own physical Start.
-   To leave navigation, **Abort** any active or paused run, then press
-   **Return to idle**.
-
-Mode changes (a new survey, another map) are refused while a run is `READY`,
-`EXECUTING`, `PAUSED` or `BLOCKED`. Abort the run first.
-
-| Run state | Meaning, and what to do |
-|---|---|
-| `READY` | Mission loaded, waiting for AUTO + physical Start. |
-| `EXECUTING` | Driving the route. |
-| `PAUSED` | Operator pause. **Prepare resume**, then physical Start. |
-| `BLOCKED` | A hold: lidar stop or controller stop continue by themselves once clear; after the E-stop button press Start. See "While running". |
-| `FAULT` | Sensor, drive, panel or localisation problem, or a tolerance was exceeded (for example "passed the endpoint"). A sensor prerequisite must fail continuously for `prereq_grace_s` (0.5 s) before it counts, so one dropped frame is not a fault; losing wheel feedback while moving still stops at once (a `BLOCKED` hold, not a fault). Read the reason and the Monitor/Alarms pages, fix the cause, press **Acknowledge fault** (or the physical **Reset** button, with the vehicle at rest: it does exactly the same and nothing more - no motion, no resume, no drive or supervisor fault clearing). That does not resume: localise again if needed, reposition, load, Start. A run whose Nav2 goal never reported an outcome stays barred until navigation is stopped and started again, acknowledgement or not. |
-| `DONE` | Route complete. Load a mission again for another run, or Return to idle. |
+1. Keep the AMCL map selected in **Map**. **Set initial pose on map** and
+   **Confirm** are greyed out while another map is in view, and a pose drawn on a
+   map that is no longer the AMCL map is refused.
+2. At HOME-N press **At home** (the taught pose). Elsewhere press **Set initial
+   pose on map**, press the vehicle's real position on the map, **drag towards the
+   way it faces** and release; **Pose = survey mark** puts it on the map's floor
+   mark. Localisation shows `CHECKING` and the red scan points should lie on the
+   map's walls. If not, set the pose again. A short jog (about 0.5 m forward and
+   back, a small turn) helps it converge.
+3. Wait until **Can confirm** shows `YES`: covariance small, **Scan match** ≥ 0.6,
+   sensors fresh (ages over 1 s turn yellow). A new pose or **Reset** clears the
+   earlier evidence. Check yourself that the red scan overlays the walls, then
+   press **Confirm: scans align**. The state becomes `READY`. **Reset** starts over.
 
 | Localisation | Meaning |
 |---|---|
 | `UNLOCALIZED` | No initial pose yet. Set one. |
 | `CHECKING` | Pose given, converging. Confirm once `can_confirm` is true and the scans align. |
-| `READY` | Confirmed. Runs can load and start. |
+| `READY` | Confirmed. |
 | `LOST` | A sensor went stale, uncertainty grew, or the pose jumped. Set the initial pose and confirm again. |
 
-Wheel feedback that arrives but is flagged invalid counts as missing: localisation
-treats the wheels as stale, and a loaded or running route faults with
-`wheel feedback invalid`.
+Map clean-up and dynamic areas are no longer on the web (2026-10-28); the shell
+tool still writes a derived revision:
+
+```bash
+ros2 run amr_mission map_edit --map <map_id> --rev <N> \
+    --dynamic-rect 4.0 -1.5 6.5 -0.4 --note "trolley bay by rack C"
+```
 
 ## 3. Diagnostics
 
@@ -722,29 +513,29 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `EXEC_ACTION_FAILED` | error | The navigation software refused a step | Press Acknowledge on the Run page. If it repeats, call the engineer. | Nav2 action aborted/rejected/lost, or its server was unavailable. |
-| `EXEC_ENDPOINT_MISSED` | error | The step finished in the wrong place | Press Acknowledge on the Run page, then reload the mission. | Endpoint position/heading error over tolerance at step completion. |
-| `EXEC_OFF_PATH` | error | The vehicle drifted off its route | Press Acknowledge on the Run page, then reload the mission. | Cross-track over the route's allowance; the step was interrupted. |
-| `EXEC_OVERSHOOT` | error | The vehicle went past the step's end | Press Acknowledge on the Run page, then reload the mission. | Travel past the straight's length, or a turn overshoot, beyond tolerance. |
-| `EXEC_POSE_INJECTED` | error | The position was changed while the vehicle was moving | Press Acknowledge on the Run page, then reload the mission. | An /initialpose arrived during EXECUTING: progress is no longer trustworthy. |
-| `EXEC_PREREQ_LOST` | error | A sensor or the panel dropped out mid-step | Press Acknowledge on the Run page, then check the Alarms page. | A prerequisite stayed bad past prereq_grace_s, or wheel feedback stopped without a safety stop. |
-| `EXEC_TURN_FAILED` | error | The turn did not come out right | Press Acknowledge on the Run page, then reload the mission. | Turn centre drift, wrong direction of rotation, or remaining angle out of tolerance. |
-| `PP_FAULTED` | warn | A blind move failed | Press Acknowledge on the Run page. | Blind-run move faulted mid-flight. |
+| `EXEC_ACTION_FAILED` | error | The navigation software refused a step | Press Acknowledge on the Home page. If it repeats, call the engineer. | Nav2 action aborted/rejected/lost, or its server was unavailable. |
+| `EXEC_ENDPOINT_MISSED` | error | The step finished in the wrong place | Press Acknowledge on the Home page, then reload the mission. | Endpoint position/heading error over tolerance at step completion. |
+| `EXEC_OFF_PATH` | error | The vehicle drifted off its route | Press Acknowledge on the Home page, then reload the mission. | Cross-track over the route's allowance; the step was interrupted. |
+| `EXEC_OVERSHOOT` | error | The vehicle went past the step's end | Press Acknowledge on the Home page, then reload the mission. | Travel past the straight's length, or a turn overshoot, beyond tolerance. |
+| `EXEC_POSE_INJECTED` | error | The position was changed while the vehicle was moving | Press Acknowledge on the Home page, then reload the mission. | An /initialpose arrived during EXECUTING: progress is no longer trustworthy. |
+| `EXEC_PREREQ_LOST` | error | A sensor or the panel dropped out mid-step | Press Acknowledge on the Home page, then check the Alarms page. | A prerequisite stayed bad past prereq_grace_s, or wheel feedback stopped without a safety stop. |
+| `EXEC_TURN_FAILED` | error | The turn did not come out right | Press Acknowledge on the Home page, then reload the mission. | Turn centre drift, wrong direction of rotation, or remaining angle out of tolerance. |
+| `PP_FAULTED` | warn | A blind move failed | Press Acknowledge on the Home page. | Blind-run move faulted mid-flight. |
 
 ### Cleared by: operator
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `LOC_COV_GREW` | error | The vehicle is unsure where it is | Set the initial pose on the Run page and confirm the scans line up. | AMCL covariance over the limit for longer than cov_hold_s. |
-| `LOC_JUMP` | error | The vehicle's position jumped | Set the initial pose on the Run page and confirm the scans line up. | map->odom correction over the jump trigger since the last accepted pose. |
-| `LOC_LOST` | error | The vehicle lost its position | Set the initial pose on the Run page and confirm the scans line up. | Umbrella code for a LocalizationState LOST without a more specific cause. |
-| `LOC_SCAN_MISMATCH` | error | The vehicle is not where it thinks it is | Set the initial pose on the Run page and confirm the scans line up. | Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous wrong-pose signature. |
-| `MAP_SAVE_FAILED` | error | The map was not saved | Try Save again on the Maps page. If it fails twice, call the engineer. | mapping_session save returned an error; the survey is still open. |
-| `LOC_NOT_SET` | warn | The vehicle does not know where it is yet | On the Run page: pick the map, set the initial pose, then confirm. | LocalizationState UNLOCALIZED: no accepted initial pose since the layer started. |
-| `SAVE_UNKNOWN_OUTCOME` | warn | The map may or may not have been saved | Check the Maps page for a new revision before saving again. | The save RPC passed its deadline after the request was accepted; a late answer is ignored. |
+| `LOC_COV_GREW` | error | The vehicle is unsure where it is | Set the position on the Mapping page and confirm the scans line up. | AMCL covariance over the limit for longer than cov_hold_s. |
+| `LOC_JUMP` | error | The vehicle's position jumped | Set the position on the Mapping page and confirm the scans line up. | map->odom correction over the jump trigger since the last accepted pose. |
+| `LOC_LOST` | error | The vehicle lost its position | Set the position on the Mapping page and confirm the scans line up. | Umbrella code for a LocalizationState LOST without a more specific cause. |
+| `LOC_SCAN_MISMATCH` | error | The vehicle is not where it thinks it is | Set the position on the Mapping page and confirm the scans line up. | Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous wrong-pose signature. |
+| `MAP_SAVE_FAILED` | error | The map was not saved | Try Save again on the Mapping page. If it fails twice, call the engineer. | mapping_session save returned an error; the survey is still open. |
+| `LOC_NOT_SET` | warn | The vehicle does not know where it is yet | On the Mapping page (Position): set the initial pose, then confirm. | LocalizationState UNLOCALIZED: no accepted initial pose since the layer started. |
+| `SAVE_UNKNOWN_OUTCOME` | warn | The map may or may not have been saved | Check the Mapping page for a new revision before saving again. | The save RPC passed its deadline after the request was accepted; a late answer is ignored. |
 | `SURVEY_NOT_READY` | warn | The vehicle is not ready to survey | Fix what the Alarms page lists, then start the survey again. | mapping_session refused: sensor ages or mode preconditions not met. |
 | `SURVEY_START_REFUSED` | warn | The survey would not start | Fix what the Alarms page lists, then start the survey again. | mapping_session refused the start request. |
-| `LOC_NOT_CONFIRMED` | info | Waiting for you to confirm the position | On the Run page, check the scans line up with the map and press Confirm. | LocalizationState CHECKING with can_confirm true. |
+| `LOC_NOT_CONFIRMED` | info | Waiting for you to confirm the position | On the Mapping page (Position), check the scans line up with the map and press Confirm. | LocalizationState CHECKING with can_confirm true. |
 
 ### Cleared by: recover
 
@@ -757,7 +548,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LIFECYCLE_STARTUP` | error | The new software did not become ready | Press Recover on the Home page, then try the mode change again. | A lifecycle node failed to configure/activate during a transition. |
 | `LOOP_ERROR` | error | Internal error in the vehicle software | Press Recover on the Home page. If it repeats, save a report and call the engineer. | The supervisor caught an exception in its loop and failed the running operation. |
 | `MUX_ACK_TIMEOUT` | error | The mode change did not finish | Press Recover on the Home page. | The mux never acknowledged the new generation inside the barrier budget. |
-| `SURVEY_RPC_TIMEOUT` | error | The survey command got no answer | Check the Maps page for a new revision, then press Recover. | returned/abort/save RPC passed its deadline; a late answer is ignored. |
+| `SURVEY_RPC_TIMEOUT` | error | The survey command got no answer | Check the Mapping page for a new revision, then press Recover. | returned/abort/save RPC passed its deadline; a late answer is ignored. |
 | `BASE_NOT_READY` | warn | Not ready: the vehicle's basics did not come up | Press the safety reset on the cabinet. The vehicle becomes ready by itself. | Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the supervisor leaves FAULT on its own once the base reports ready. |
 
 ### Cleared by: power cycle

@@ -262,8 +262,6 @@ button.big, a.big, button.tool, a.tool {
   display:inline-flex; align-items:center; justify-content:center; transition:border-color .06s, color .06s, background .06s;
 }
 button.tool, a.tool { font-size:1.1rem; padding:.6rem 1rem; min-height:3.2rem; letter-spacing:.05em; }
-/* a link styled as a tool inside a list row (Maps: Edit areas) */
-.row a.tool { padding:.3rem .8rem; min-height:2.6rem; margin-top:.4rem; }
 button.big:hover:not(:disabled), a.big:hover, button.tool:hover:not(:disabled), a.tool:hover {
   border-color:var(--accent-2); color:var(--accent-2);
 }
@@ -446,8 +444,8 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .rf-last span { font:400 1.3rem var(--mono); color:var(--ink-2); }
 .rf-last.fresh { border-color:var(--ok); background:var(--ok); }
 .rf-last.fresh b, .rf-last.fresh span { color:var(--surface); }
-/* Run tracked: the follower readout. Under the rail's tiles when it fits there whole
-   (run_tracked.html placeFollower); else a column beside the picker (.with-follower). */
+/* Run: the follower readout. Under the rail's tiles when it fits there whole
+   (run.html placeFollower); else a column beside the picker (.with-follower). */
 .rail-extra { flex:0 1 auto; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:.4rem; }
 #telemetry > .rail-extra { padding-top:.6rem; border-top:1px solid var(--rule); }
 .rail-extra > * { flex:0 0 auto; margin:0; }
@@ -458,7 +456,7 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .rail-extra .rf-last { align-items:center; }
 .rail-extra .rf-last b { font-size:3.6rem; }
 .rail-extra .rf-last span { font-size:1.1rem; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-/* Run tracked: the job picker owns the column. Two big actions on top, then touch tiles. */
+/* Run: the job picker owns the column. Two big actions on top, then touch tiles. */
 .line-job { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:1.2rem; }
 .line-job.with-follower { grid-template-columns:minmax(0,3fr) minmax(22rem,2fr); }
 .line-job > * { min-width:0; min-height:0; }
@@ -496,12 +494,10 @@ button.pick.bad i { color:var(--stop); }
 .editor { display:grid; grid-template-columns:32rem minmax(0,1fr); gap:1.2rem; min-height:0; }
 .tools { background:var(--surface); border:1px solid var(--rule); padding:1.2rem; overflow:auto; min-height:0; display:flex; flex-direction:column; }
 .tools > * { flex:0 0 auto; }
-/* A tabbed column (Run) scrolls inside the open pane; the tab bar and the footer with
-   Pause / Abort / Ack stay put, so they are reachable whichever pane is open. */
+/* A tabbed column (Mapping) scrolls inside the open pane; the map picker and the tab bar
+   stay put. */
 .tools.tabbed { overflow:hidden; }
 .tools.tabbed > .tabpane { flex:1 1 auto; min-height:0; overflow:auto; }
-.tools-foot { border-top:1px solid var(--rule); margin-top:1rem; padding-top:1rem; }
-.tools-foot .bar { margin-top:0; }
 /* three equal buttons on one line, whatever the column width */
 .bar.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .bar.two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -511,7 +507,6 @@ button.pick.bad i { color:var(--stop); }
   position:relative; background:var(--paper); border:1px solid var(--rule);
   overflow:hidden; min-height:24rem;
 }
-.canvas-wrap.live { height:36rem; flex:0 0 auto; }
 canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:none; }
 .hint {
   position:absolute; left:.8rem; bottom:.8rem; right:.8rem; pointer-events:none; width:fit-content; max-width:calc(100% - 1.6rem);
@@ -525,8 +520,6 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
 }
 .canvas-zoom button:hover { border-color:var(--accent-2); color:var(--accent-2); }
 .canvas-zoom button.fit { font-size:1rem; letter-spacing:.06em; text-transform:uppercase; }
-.turns { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; margin-top:.5rem; }
-.maps-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(36rem,1fr)); gap:1.2rem; }
 
 /* Below this the rail and the content cannot share a row usefully: stack, and let
    the document scroll - unreachable controls are a worse failure than a scrollbar.
@@ -551,7 +544,7 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */
 .home { display:flex; flex-direction:column; gap:1rem; min-height:0; }
-/* Home: tracked / trackless, a two-way segmented switch (2026-10-08) */
+/* Home: tracked / idle, a two-way segmented switch (2026-10-08) */
 .home-nav { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
 .home-nav-label { font:600 1.1rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); }
 .seg { display:inline-flex; }
@@ -666,12 +659,6 @@ dialog.pin-pad::backdrop { background:rgba(20,23,29,.45); }
 .pin-keys button:active, .pin-cancel:active { background:var(--accent-wash); }
 .pin-keys .pin-ok { background:var(--accent); color:#fff; border-color:var(--accent); }
 .pin-cancel { width:100%; margin-top:.6rem; font:600 1.4rem var(--sans); }
-
-/* Sub-tabs inside Run trackless (Run · Maps · Routes), 2026-10-02. One slim row so the
-   pages built for the HMI's height lose as little as possible. */
-nav.subnav { display:flex; gap:.4rem; border:0; border-bottom:1px solid var(--rule); background:none;
-  padding:0 0 .4rem; margin:0 0 .6rem; flex:0 0 auto; }
-nav.subnav a { padding:.25rem .8rem; font-size:1.1rem; }
 
 /* Header chips beside NET (2026-10-02): drive supply voltage, IPC CPU temperature. */
 .rail-link .chip { font:600 1.1rem var(--mono); color:var(--ink-2); white-space:nowrap; }

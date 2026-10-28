@@ -293,7 +293,7 @@ def from_occupancy_grid_msg(msg) -> Grid:
 
 # ---------------------------------------------------------------------------
 # Image (pixel) <-> world, for the route editor. The browser uses the SAME
-# formulas (amr_web/static/editor.js); these are the reference, tested with
+# formulas (amr_web/static/mapview.js); these are the reference, tested with
 # non-zero origin, origin yaw, row inversion and non-default resolution.
 # Pixel (u, v): u = column from the left, v = row from the TOP of the image,
 # continuous (a pixel's centre is at +0.5). Origin yaw rotates the grid axes

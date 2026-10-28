@@ -2,8 +2,8 @@
 // liveOverlay(view): draws the vehicle pose and the current scan in the view's
 // frame only when the frames match; stale (> 1 s) data is drawn dimmed, and a
 // generation mismatch draws nothing. pollLive(view, {map, hz}) polls
-// /api/live/pose at 5 Hz and, if `map` is set, /api/live/map at 1 Hz, only
-// while the page is visible - hidden pages request nothing.
+// /api/live/pose at 5 Hz and, while `map` is set (or returns true), /api/live/map at 1 Hz,
+// only while the page is visible - hidden pages request nothing.
 let livePose = null;
 function liveOverlay(view) {
   view.overlays.push((c, v) => {
@@ -47,7 +47,7 @@ function pollLive(view, opts) {
           if (status === 200) { data._received = Date.now(); livePose = data; failures = 0; }
           view.draw();
         }
-        if (o.map && now - tMap >= 1000 / o.mapHz) {
+        if ((typeof o.map === 'function' ? o.map() : o.map) && now - tMap >= 1000 / o.mapHz) {
           tMap = now;
           const { status, data } = await apiGet('/api/live/map');
           if (status === 200) { if (data.available) await view.loadLive(data); else if (view._liveSnapshot) view.clearLive(); }

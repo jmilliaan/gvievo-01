@@ -59,7 +59,7 @@ class Params:
     # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v (the FAST wheel's speed); with LEFT
     # or RIGHT held as well the vehicle arcs with the slow wheel at pendant_turn_ratio of the
     # fast one (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
-    pendant_v: float = 0.50  # body m/s while FWD or RVS is held (0.60 tried and reverted 09-19)
+    pendant_v: float = 0.60  # body m/s while FWD or RVS is held (0.50 from 09-19 to 10-28, owner)
     pendant_w: float = 0.39  # body rad/s for a spin in place (0.30 until 2026-09-19, +30 %)
     pendant_turn_ratio: float = 0.66  # slow wheel / fast wheel while driving and turning (0.75 until 2026-10-02)
     track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
@@ -69,8 +69,8 @@ class Params:
 
 def survey_spin_cap(w: float, surveying: bool, cap: float) -> float:
     """A manual turn rate while surveying is capped at `cap` (2026-09-19: fast spins smear the
-    scans slam_toolbox matches). Only |w| above the cap changes: a pendant arc at 0.50 m/s
-    (0.26 rad/s) and the browser diagonals keep their shape."""
+    scans slam_toolbox matches). Only |w| above the cap changes: a pendant arc at 0.60 m/s
+    (0.42 rad/s) is flattened to 0.27 rad/s; the spins are capped likewise."""
     if not surveying:
         return w
     return max(-cap, min(cap, w))

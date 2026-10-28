@@ -108,7 +108,7 @@ const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh'
   pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
   out.refreshes_after_focus_while_pending = nonzeroRefreshes();
   doc.activeElement = null;
-  // 7. 2026-10-02: ONE manual speed, 0.50; a diagonal keeps the fast wheel at 0.50 and the
+  // 7. 2026-10-02: ONE manual speed (0.60 since 2026-10-28); a diagonal keeps the fast wheel at it and the
   //    slow one at 66 % of it; a spin runs at 0.39 rad/s
   const holdBody = async (btn) => {
     calls.length = 0;

@@ -1,25 +1,20 @@
 """Flask API against a stub adapter and a temp maps dir (spec §8 "Coordinates", T6)."""
 
-import math
 import struct
 import zlib
 
 import numpy as np
 import pytest
 from amr_maps.generate_sim_factory import build
-from amr_maps.grid import Grid, write
 from amr_web.png import encode_gray
 from amr_web.server import create_app
 
 from amr_mission import map_bundle as mb
 
-FOOTPRINT_YAML = "polygon: [[-0.5, -0.35], [1.1, -0.35], [1.1, 0.35], [-0.5, 0.35]]\nmargin_m: 0.20\n"
-
 
 class Stub:
     def __init__(self):
         self.calls = []
-        self.previews = []
         self.run_state = None
         self.identity = ("inst-1", 3)
         self.published = []
@@ -64,8 +59,6 @@ class Stub:
         return fn
 
     def __getattr__(self, name):
-        if name == "publish_route_preview":
-            return lambda compiled, frame: self.previews.append((compiled, frame))
         return self._rec(name)
 
 
@@ -73,7 +66,7 @@ class Stub:
 def env(tmp_path):
     maps = tmp_path / "maps"
     maps.mkdir()
-    # world as bundle, plus an unknown patch and a keepout mask for the validation paths
+    # the sim world as a published bundle
     g = build()
     stage = mb.staging_dir(str(maps), "sim_factory", 1)
     m = mb.Manifest(
@@ -91,36 +84,12 @@ def env(tmp_path):
     mb.stage_bundle(stage, g, None, m, required_posegraph=False)
     mb.verify(stage)
     rev_dir = mb.publish(stage, str(maps), "sim_factory", 1)
-    fp = tmp_path / "footprint.yaml"
-    fp.write_text(FOOTPRINT_YAML)
     stub = Stub()
     # state_dir in the tmp tree: the app writes web.json (the engineer PIN and the
     # session secret) there, and a test must never touch the vehicle's real ~/.amr.
-    app = create_app(stub, str(maps), str(fp), state_dir=str(tmp_path / "state"))
+    app = create_app(stub, str(maps), state_dir=str(tmp_path / "state"))
     app.config["TESTING"] = True
     return app.test_client(), stub, str(maps), rev_dir, mb.verify(rev_dir)
-
-
-def route_payload(steps, start=(0.0, 0.0, 0.0), repeat=1, route_id="r1"):
-    return {
-        "schema_version": 1,
-        "route_id": route_id,
-        "revision": 0,
-        "map": {"id": "x", "revision": 9, "sha256": "ignored"},
-        "frame_id": "map",
-        "start": {"x_m": start[0], "y_m": start[1], "yaw_deg": start[2]},
-        "limits": {"linear_mps": 0.3},
-        "steps": steps,
-        "repeat_count": repeat,
-    }
-
-
-def S(sid, x, y):
-    return {"id": sid, "type": "straight", "to": {"x_m": x, "y_m": y}}
-
-
-def R(sid, d, a):
-    return {"id": sid, "type": "rotate", "direction": d, "angle_deg": a}
 
 
 def test_maps_index_and_image(env):
@@ -146,78 +115,6 @@ def test_png_encoder_round_trip():
     assert rows == [img[r].tobytes() for r in range(3)]
 
 
-def test_validate_save_load_and_mission(env):
-    client, stub, maps, rev_dir, manifest = env
-    good = route_payload([S("s1", 15.0, 0.0), R("s2", "ccw", 180), S("s3", 2.0, 0.0)])
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=good)
-    assert r.status_code == 200 and r.json["ok"] and r.json["compiled"]["steps"][1]["signed_angle_deg"] == 180
-    assert r.json["route"]["map"]["sha256"] == manifest.sha256  # server binds the route to the loaded bundle
-    assert len(stub.previews) == 1
-    r = client.post("/api/maps/sim_factory/1/routes/save", json=good)
-    assert r.status_code == 200 and r.json["revision"] == 1
-    r = client.post("/api/maps/sim_factory/1/routes/save", json=good)
-    assert r.json["revision"] == 2
-    r = client.get("/api/maps/sim_factory/1/routes/r1/2")
-    assert r.status_code == 200 and r.json["ok"] and r.json["route"]["revision"] == 2
-    r = client.post(
-        "/api/missions",
-        json={"map_id": "sim_factory", "map_revision": 1, "route_id": "r1", "route_revision": 2},
-    )
-    assert r.status_code == 200 and r.json["mission_id"] == "sim_factory_rev1_r1_rev2"
-    r = client.get("/api/missions")
-    assert r.json[0]["route"]["revision"] == 2 and r.json[0]["map"]["sha256"] == manifest.sha256
-    assert (
-        client.post(
-            "/api/missions",
-            json={"map_id": "sim_factory", "map_revision": 1, "route_id": "r1", "route_revision": 7},
-        ).status_code
-        == 404
-    )
-    assert client.post("/api/missions", json={}).status_code == 400
-
-
-def test_invalid_routes_are_422_with_step_ids(env):
-    client, stub, maps, rev_dir, manifest = env
-    r = client.post(
-        "/api/maps/sim_factory/1/routes/validate",
-        json=route_payload([S("s1", 5.0, 0.0), R("s2", "ccw", 90), S("s3", 5.0, 4.0)]),
-    )
-    assert r.status_code == 422 and not r.json["ok"]
-    assert any(i["step_id"] == "s3" and i["code"] == "clearance" for i in r.json["issues"])
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=route_payload([S("s1", 3.0, 0.5)]))
-    assert (
-        r.status_code == 422
-        and r.json["issues"][0]["step_id"] == "s1"
-        and "turn" in r.json["issues"][0]["message"]
-    )
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=route_payload([R("t", "cw", 60)]))
-    assert r.status_code == 422
-    r = client.post("/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 3.0, 0.5)]))
-    assert r.status_code == 422
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json={"schema_version": 3})
-    assert r.status_code == 422 and r.json["issues"][0]["code"] == "schema"
-    assert stub.previews == []  # nothing invalid is previewed
-
-
-def test_keepout_mask_is_honoured(env):
-    client, stub, maps, rev_dir, manifest = env
-    g = build()
-    ko = Grid(np.zeros(g.data.shape, dtype=np.int8), g.meta)
-    r0, c0 = g.world_to_cell(6.0, 0.0)
-    ko.data[r0 - 2 : r0 + 2, c0 - 2 : c0 + 2] = 100
-    # a keepout is navigation content: it goes into a NEW revision whose identity covers it (Q14)
-    write(ko, f"{maps}/keepout")  # the yaml names its image by stem: keepout.pgm, as listed
-    _, rev = mb.derive_revision(
-        maps, "sim_factory", 1, {"keepout.yaml": f"{maps}/keepout.yaml", "keepout.pgm": f"{maps}/keepout.pgm"}
-    )
-    r = client.post(f"/api/maps/sim_factory/{rev}/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 422 and any("keepout" in i["message"] for i in r.json["issues"])
-    # dropped into the published revision unlisted, it is not a usable revision at all
-    write(ko, f"{rev_dir}/keepout")
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 404
-
-
 def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
     client, stub, maps, rev_dir, manifest = env
     for path, body, name in (
@@ -227,9 +124,7 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
             {"x_m": 1, "y_m": 2, "yaw_rad": 0.5, "map_id": "a", "map_revision": 2, "generation": 7},
             "set_initial_pose",
         ),
-        ("/api/mission/run", {"mission_id": "m"}, "run_mission"),
         ("/api/mission/pause", {}, "pause"),
-        ("/api/mission/resume", {}, "prepare_resume"),
         ("/api/mission/abort", {}, "abort"),
         ("/api/mission/ack", {}, "ack_fault"),
     ):
@@ -251,15 +146,16 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
 
 def test_mode_and_survey_are_asynchronous_operations(env):
     client, stub, *_ = env
-    r = client.post(
-        "/api/mode", json={"target": "navigation", "map_id": "m", "map_revision": 2, "request_id": "r1"}
-    )
+    r = client.post("/api/mode", json={"target": "line", "request_id": "r1"})
     assert r.status_code == 202 and r.json["operation_id"] == "op-mode"
-    assert stub.calls[-1] == ("request_mode", (3, "m", 2, "r1"))
+    assert stub.calls[-1] == ("request_mode", (7, "", 0, "r1"))
     assert client.get("/api/operations/op-mode").json["status_name"] == "PENDING"
     assert client.get("/api/operations/nope").status_code == 404
-    assert client.post("/api/mode", json={"target": "navigation", "map_id": "m"}).status_code == 422
-    assert client.post("/api/mode", json={"target": "fly"}).status_code == 400
+    # NAVIGATION is not entered from the web since 2026-10-28 (no routes, no trackless missions)
+    n = len(stub.calls)
+    for bad in ({"target": "navigation", "map_id": "m", "map_revision": 2}, {"target": "fly"}):
+        assert client.post("/api/mode", json=bad).status_code == 400
+    assert len(stub.calls) == n
     r = client.post("/api/survey/start", json={"map_id": "a", "description": "mark"})
     assert (
         r.status_code == 202
@@ -309,9 +205,10 @@ def test_maps_say_which_revisions_can_be_continued(env, tmp_path):
     assert idx["hall"]["revisions"][0]["continuable"] is True
     one = client.get("/api/maps/hall/1").json
     assert one["continuable"] is True and one["review"]["note"] == "t"
-    page = client.get("/survey-continue?map=hall&rev=1")
+    page = client.get("/mapping")
     assert page.status_code == 200
-    assert b'id="btn-cs-start"' in page.data and b"survey_continue.js" in page.data
+    assert b'id="btn-cs-start"' in page.data and b"mapping.js" in page.data
+    assert client.get("/survey-continue?map=hall&rev=1").headers["Location"].endswith("/mapping")
 
 
 def test_guided_branch_orders_need_the_engineer_and_a_valid_side(env):
@@ -324,7 +221,7 @@ def test_guided_branch_orders_need_the_engineer_and_a_valid_side(env):
     client.post("/api/role", json={"role": "operator"})
     assert client.post("/api/line/branch", json={"side": "right"}).status_code == 403
     assert len(stub.calls) == n  # nothing refused reached the robot
-    page = client.get("/guide")
+    page = client.get("/teach")
     assert page.status_code == 200 and b'data-side="straight"' in page.data and b"ArrowLeft" in page.data
 
 
@@ -338,153 +235,29 @@ def test_guided_speed_toggle_needs_the_engineer_and_a_valid_level(env):
     client.post("/api/role", json={"role": "operator"})
     assert client.post("/api/line/speed", json={"level": "normal"}).status_code == 403
     assert len(stub.calls) == n  # nothing refused reached the robot
-    page = client.get("/guide")
+    page = client.get("/teach")
     assert b'data-speed="normal"' in page.data and b'data-speed="high"' in page.data
 
 
-def test_state_and_footprint(env):
+def test_state_and_page_addresses(env):
+    """2026-10-28: Mapping replaces Run trackless, Maps, Routes, Review and Continue survey; Run is
+    the tape product; Guide is part of Teach. Old addresses redirect, removed tools are gone."""
     client, stub, maps, rev_dir, manifest = env
     assert client.get("/api/state").json["localization"]["state_name"] == "READY"
-    fp = client.get("/api/footprint").json
-    assert (
-        fp["margin_m"] == 0.2
-        and len(fp["polygon"]) == 4
-        and fp["reach_m"] == pytest.approx((1.1**2 + 0.35**2) ** 0.5)
-    )
     assert client.get("/").status_code == 302
-    for page in ("/maps", "/editor", "/run"):
-        assert client.get(page).status_code == 200
-
-
-# ---- R21/R22/R23: route schema errors, mission identity, concurrent saves ----------------
-
-
-def _publish_bundle(maps: str, map_id: str) -> mb.Manifest:
-    g = build()
-    stage = mb.staging_dir(maps, map_id, 1)
-    m = mb.Manifest(
-        map_id,
-        1,
-        mb.now_iso(),
-        "map",
-        0.05,
-        [-3.0, -10.0, 0.0],
-        g.width,
-        g.height,
-        {"x_m": 0, "y_m": 0, "yaw_rad": 0, "description": "mark"},
-        {"dx_m": 0, "dy_m": 0, "dyaw_rad": 0, "note": "t"},
-    )
-    mb.stage_bundle(stage, g, None, m, required_posegraph=False)
-    return mb.verify(mb.publish(stage, maps, map_id, 1))
-
-
-def test_r21_malformed_route_payloads_are_422_and_never_stored(env):
-    from amr_navigation import store
-
-    client, stub, maps, rev_dir, manifest = env
-    good = route_payload([S("s1", 5.0, 0.0)])
-    bad = []
-    for key, value in (
-        ("repeat_count", 2.5),
-        ("repeat_count", "2"),
-        ("repeat_count", 101),
-        ("limits", {"angular_rad_s": 0}),
-        ("limits", {"angular_rad_s": "fast"}),
-        ("limits", {"bogus": 1.0}),
-        ("start", None),
-        ("start", {"x_m": 0.0, "y_m": 0.0}),
-        ("steps", [{"id": "s1", "type": "straight", "to": {"x_m": "5", "y_m": 0}}]),
-        ("steps", [{"id": "s1", "type": "rotate", "direction": "cw", "angle_deg": 90.5}]),
-        ("steps", [S("s", 5.0, 0.0)] * 1000),
-    ):
-        bad.append({**good, key: value})
-    bad.append({**good, "start": {"x_m": 1e6, "y_m": 0.0, "yaw_deg": 0.0}, "steps": [S("s1", 1e6 + 1, 0.0)]})
-    bad.append([1, 2])
-    for payload in bad:
-        for path in ("validate", "save"):
-            r = client.post(f"/api/maps/sim_factory/1/routes/{path}", json=payload)
-            assert r.status_code in (400, 422), (path, payload if not isinstance(payload, dict) else "")
-            assert not r.json["ok"]
-    assert store.list_routes(maps, "sim_factory") == {}
-    assert stub.previews == []
-
-
-def test_r22_same_route_name_on_two_maps_keeps_both_missions(env):
-    from amr_navigation import store
-
-    client, stub, maps, rev_dir, manifest = env
-    _publish_bundle(maps, "other_map")
-    payload = route_payload([S("s1", 5.0, 0.0)])
-    ids = []
-    for map_id in ("sim_factory", "other_map"):
-        r = client.post(f"/api/maps/{map_id}/1/routes/save", json=payload)
-        assert r.status_code == 200 and r.json["revision"] == 1
-        r = client.post(
-            "/api/missions", json={"map_id": map_id, "map_revision": 1, "route_id": "r1", "route_revision": 1}
-        )
-        assert r.status_code == 200, r.json
-        ids.append(r.json["mission_id"])
-    assert len(set(ids)) == 2 and all(
-        map_id in i for map_id, i in zip(("sim_factory", "other_map"), ids, strict=True)
-    )
-    assert {m["map"]["id"] for m in store.list_missions(maps)} == {"sim_factory", "other_map"}
-    # idempotent retry of the same references
-    body = {"map_id": "sim_factory", "map_revision": 1, "route_id": "r1", "route_revision": 1}
-    assert client.post("/api/missions", json=body).status_code == 200
-    # an explicit id already used for other references fails and leaves the original bytes alone
-    path = f"{maps}/missions/{ids[0]}.yaml"
-    before = open(path, "rb").read()
-    r = client.post(
-        "/api/missions",
-        json={
-            "mission_id": ids[0],
-            "map_id": "other_map",
-            "map_revision": 1,
-            "route_id": "r1",
-            "route_revision": 1,
-        },
-    )
-    assert r.status_code == 409 and not r.json["ok"]
-    assert open(path, "rb").read() == before
-    for bad in (
-        {**body, "map_revision": "1"},
-        {**body, "route_revision": 1.5},
-        {**body, "map_revision": True},
-        {**body, "mission_id": 5},
-    ):
-        assert client.post("/api/missions", json=bad).status_code == 400
-
-
-def test_r23_concurrent_route_saves_get_distinct_revisions(env):
-    import hashlib
-    import threading
-
-    client, stub, maps, rev_dir, manifest = env
-    app = client.application
-    n = 6
-    barrier = threading.Barrier(n)
-    out, errors = [], []
-
-    def save(k):
-        try:
-            c = app.test_client()
-            payload = route_payload([S("s1", 4.0 + k, 0.0)])
-            barrier.wait(timeout=10)
-            r = c.post("/api/maps/sim_factory/1/routes/save", json=payload)
-            out.append((k, r.status_code, r.json))
-        except Exception as e:  # noqa: BLE001
-            errors.append(e)
-
-    threads = [threading.Thread(target=save, args=(k,)) for k in range(n)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=60)
-    assert not errors and len(out) == n and all(code == 200 for _, code, _ in out)
-    assert sorted(j["revision"] for _, _, j in out) == list(range(1, n + 1))
-    for k, _, j in out:
-        data = open(j["path"], "rb").read()
-        assert hashlib.sha256(data).hexdigest() == j["sha256"] and f"x_m: {4.0 + k}".encode() in data
+    for page in ("/mapping", "/run", "/teach", "/calls"):
+        assert client.get(page).status_code == 200, page
+    for old, new in (("/maps", "/mapping"), ("/survey-continue", "/mapping"), ("/run-trackless", "/mapping"),
+                     ("/run-tracked", "/run"), ("/guide", "/teach")):
+        r = client.get(old)
+        assert r.status_code == 302 and r.headers["Location"].endswith(new), old
+    for gone in ("/editor", "/review", "/demo", "/api/demo", "/api/footprint", "/api/missions",
+                 "/api/maps/sim_factory/1/dynamic.png", "/api/maps/sim_factory/1/routes/r1/1"):
+        assert client.get(gone).status_code == 404, gone
+    for gone in ("/api/mission/run", "/api/mission/resume", "/api/missions", "/api/maps/sim_factory/1/edit",
+                 "/api/maps/sim_factory/1/routes/validate", "/api/maps/sim_factory/1/routes/save"):
+        assert client.post(gone, json={}).status_code in (404, 405), gone
+    assert stub.calls == []
 
 
 def test_pages_fonts_and_style_guards(env):
@@ -497,11 +270,10 @@ def test_pages_fonts_and_style_guards(env):
     for page in (
         "/home",
         "/manual",
-        "/maps",
-        "/editor",
-        "/review",
+        "/mapping",
         "/run",
-        "/run-tracked",
+        "/teach",
+        "/calls",
         "/monitor",
         "/io",
         "/alarms",
@@ -519,8 +291,6 @@ def test_pages_fonts_and_style_guards(env):
         text = f.read_text()
         assert not re.search(r"https?://", text), f"external URL in {f.name}"
         assert not re.search(r"@media[^{]*prefers-color-scheme", text), f"dark-mode query in {f.name}"
-        if f.stem == "demo":
-            continue  # the visitors' page has its own brochure look (plan 2026-09-23-demo-page §5)
         assert "box-shadow" not in text, f.name
         assert "gradient(" not in text, f.name
         for radius in re.findall(r"border-radius\s*:\s*([^;}]+)", text):
@@ -573,11 +343,10 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
 
     for page in (
         "/manual",
-        "/maps",
-        "/editor",
-        "/review",
+        "/mapping",
         "/run",
-        "/run-tracked",
+        "/teach",
+        "/calls",
         "/monitor",
         "/io",
         "/alarms",
@@ -628,133 +397,6 @@ def test_wifi_endpoint(env):
     assert set(body) >= {"iface", "connected", "ssid", "dbm", "bars"}
 
 
-def test_route_speed_is_the_vehicle_constant_and_old_speed_keys_are_not_stored(env):
-    client, stub, maps, rev_dir, manifest = env
-    body = route_payload([S("s1", 3.0, 0.0)], route_id="dflt")
-    del body["limits"]
-    r = client.post("/api/maps/sim_factory/1/routes/save", json=body)
-    assert r.status_code == 200
-    r = client.get("/api/maps/sim_factory/1/routes/dflt/1")
-    assert r.json["route"]["limits"]["angular_rad_s"] == 0.37
-    assert "linear_mps" not in r.json["route"]["limits"]
-    # a payload still carrying a pre-2026-10-02 speed is accepted and the speed is dropped
-    r = client.post(
-        "/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 3.0, 0.0)], route_id="slow")
-    )
-    assert r.status_code == 200
-    r = client.get("/api/maps/sim_factory/1/routes/slow/1")
-    assert "linear_mps" not in r.json["route"]["limits"]
-
-
-def test_validate_route_with_an_arc_and_a_reverse(env):
-    client, stub, maps, rev_dir, manifest = env
-    # in the sim factory's 3.6 m aisle: 5 m out, a left 45 deg arc of R 1.5 (stays in the aisle), 1 m back
-    arc = {"id": "s2", "type": "arc", "direction": "ccw", "angle_deg": 45, "radius_m": 1.5}
-    body = route_payload([S("s1", 5.0, 0.0), arc, {"id": "s3", "type": "reverse", "distance_m": 1.0}])
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=body)
-    assert r.status_code == 200, r.json
-    steps = r.json["compiled"]["steps"]
-    assert [s["type"] for s in steps] == ["straight", "arc", "reverse"]
-    assert steps[1]["radius_m"] == 1.5 and steps[1]["centre"] == pytest.approx([5.0, 1.5])
-    q = math.pi / 4
-    assert steps[1]["end"] == pytest.approx([5.0 + 1.5 * math.sin(q), 1.5 - 1.5 * math.cos(q), q])
-    assert steps[1]["v_mps"] == pytest.approx(0.60)  # R 1.5 allows the full trackless speed (cap 0.6075)
-    assert steps[2]["v_mps"] == pytest.approx(0.30)  # reverse: half
-    assert steps[2]["end"][0] == pytest.approx(steps[1]["end"][0] - math.cos(q))
-    assert len(stub.previews) == 1  # the preview carries the arc and reverse samples too
-    # a 90 deg arc of the same radius turns the nose into the racks: clearance fails on that step
-    body = route_payload([S("s1", 5.0, 0.0), {**arc, "angle_deg": 90}])
-    r = client.post("/api/maps/sim_factory/1/routes/validate", json=body)
-    assert r.status_code == 422 and any(
-        i["step_id"] == "s2" and i["code"] == "clearance" for i in r.json["issues"]
-    )
-
-
-# ---- dynamic-mapping plan §1.2/§1.3: map review -> a derived revision -------------------------
-
-
-def _rect(x0, y0, x1, y1):
-    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-
-
-def test_edit_endpoint_derives_a_revision_and_validation_turns_provisional(env):
-    client, stub, maps, rev_dir, manifest = env
-    # a trolley surveyed into the aisle: rev1 has it as a wall, so the straight is refused
-    g = build()
-    r0, c0 = g.world_to_cell(8.0, 0.0)
-    g.data[r0 - 3 : r0 + 3, c0 - 3 : c0 + 3] = 100
-    stage = mb.staging_dir(maps, "trolley", 1)
-    m = mb.Manifest(
-        "trolley",
-        1,
-        mb.now_iso(),
-        "map",
-        0.05,
-        [-3.0, -10.0, 0.0],
-        g.width,
-        g.height,
-        {"x_m": 0, "y_m": 0, "yaw_rad": 0, "description": "mark"},
-        {"dx_m": 0, "dy_m": 0, "dyaw_rad": 0, "note": "t"},
-    )
-    mb.stage_bundle(stage, g, None, m, required_posegraph=False)
-    mb.publish(stage, maps, "trolley", 1)
-    r = client.post("/api/maps/trolley/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 422
-    assert client.get("/api/maps/trolley/1/dynamic.png").status_code == 404  # no dynamic areas yet
-    # mark it dynamic from the review page
-    body = {"ops": [{"op": "dynamic", "polygon": _rect(7.6, -0.4, 8.4, 0.4)}], "note": "trolley bay"}
-    r = client.post("/api/maps/trolley/1/edit", json=body)
-    assert r.status_code == 200 and r.json["revision"] == 2 and r.json["dynamic_cells"] > 0, r.json
-    idx = {x["map_id"]: x for x in client.get("/api/maps").json}["trolley"]["revisions"]
-    assert idx[0]["edits"] is None and idx[0]["dynamic_cells"] == 0
-    assert idx[1]["edits"]["parent_revision"] == 1 and idx[1]["edits"]["counts"] == {"dynamic": 1}
-    assert idx[1]["edits"]["note"] == "trolley bay" and idx[1]["dynamic_cells"] == r.json["dynamic_cells"]
-    meta = client.get("/api/maps/trolley/2").json
-    assert meta["dynamic_cells"] == r.json["dynamic_cells"]
-    png = client.get("/api/maps/trolley/2/dynamic.png")
-    assert png.status_code == 200 and png.mimetype == "image/png" and png.data[1:4] == b"PNG"
-    # the same straight on rev2: valid, with a provisional (info) issue naming the step
-    r = client.post("/api/maps/trolley/2/routes/validate", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 200 and r.json["ok"], r.json
-    assert [(i["code"], i["step_id"], i["severity"]) for i in r.json["issues"]] == [
-        ("provisional", "s1", "info")
-    ]
-    r = client.post("/api/maps/trolley/2/routes/save", json=route_payload([S("s1", 12.0, 0.0)]))
-    assert r.status_code == 200
-    r = client.post(
-        "/api/missions",
-        json={"map_id": "trolley", "map_revision": 2, "route_id": "r1", "route_revision": r.json["revision"]},
-    )
-    assert r.status_code == 200, r.json
-    # rev1 is untouched: still refused there
-    assert (
-        client.post(
-            "/api/maps/trolley/1/routes/validate", json=route_payload([S("s1", 12.0, 0.0)])
-        ).status_code
-        == 422
-    )
-
-
-def test_edit_endpoint_refuses_bad_or_empty_edits(env):
-    client, stub, maps, rev_dir, manifest = env
-    for body, code in (
-        ([], 400),
-        ({"ops": []}, 422),
-        ({"ops": [{"op": "paint", "value": "wall", "polygon": _rect(0, 0, 1, 1)}]}, 422),
-        ({"ops": [{"op": "dynamic", "polygon": _rect(500, 500, 501, 501)}]}, 422),  # off the map: no change
-        ({"ops": [{"op": "dynamic", "polygon": _rect(0, 0, 1, 1)}], "note": 5}, 400),
-    ):
-        r = client.post("/api/maps/sim_factory/1/edit", json=body)
-        assert r.status_code == code, (body, r.status_code, r.json)
-    assert (
-        client.post(
-            "/api/maps/nope/1/edit", json={"ops": [{"op": "dynamic", "polygon": _rect(0, 0, 1, 1)}]}
-        ).status_code
-        == 404
-    )
-    assert mb.list_revisions(maps, "sim_factory") == [1]  # nothing was published
-
-
 def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
     client, stub, *_ = env
     r = client.post("/api/survey_move", json={"kind": "straight", "value": 1.0})
@@ -765,7 +407,7 @@ def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
     for bad in ({"kind": "strafe", "value": 1}, {"kind": "rotate", "value": "x"}, {"kind": "rotate"}):
         assert client.post("/api/survey_move", json=bad).status_code == 422
     assert client.post("/api/survey_move/stop", json={}).status_code == 200
-    page = client.get("/maps").data
+    page = client.get("/mapping").data
     for el in (
         b'id="sm-dist"', b'id="sm-fwd"', b'id="sm-rev"', b'id="sm-stop"',
         b'data-deg="-135"', b'data-deg="20"', b'data-deg="-30"',
@@ -783,11 +425,6 @@ _JSON_POSTS = [
     "/api/manual/refresh",
     "/api/manual/release",
     "/api/localization/initialpose",
-    "/api/mission/run",
-    "/api/missions",
-    "/api/maps/sim_factory/1/edit",
-    "/api/maps/sim_factory/1/routes/validate",
-    "/api/maps/sim_factory/1/routes/save",
 ]
 
 
@@ -860,7 +497,7 @@ def test_guided_forced_u_turn_needs_the_engineer_and_a_boolean(env):
     client.post("/api/role", json={"role": "operator"})
     assert client.post("/api/line/uturn", json={"force": True}).status_code == 403
     assert len(stub.calls) == n  # nothing refused reached the robot
-    page = client.get("/guide")
+    page = client.get("/teach")
     assert page.status_code == 200 and b'data-uturn="true"' in page.data
 
 
@@ -874,43 +511,39 @@ def test_guided_continue_needs_the_engineer_and_a_boolean(env):
     client.post("/api/role", json={"role": "operator"})
     assert client.post("/api/line/continue", json={"arm": True}).status_code == 403
     assert len(stub.calls) == n
-    assert b'data-continue="true"' in client.get("/guide").data
+    assert b'data-continue="true"' in client.get("/teach").data
 
 
 def test_the_tape_graph_overlay_is_read_only_and_for_any_role(env):
     client, stub, *_ = env
     teach = client.get("/teach").data
-    assert b'data-act="mark"' in teach and b'data-act="mark_delete"' in teach
-    assert b'id="gd-mark"' in client.get("/guide").data
+    assert b'data-act="mark_delete"' in teach and b'data-act="mark_role"' in teach
+    assert b'id="gd-mark"' in teach
     client.post("/api/role", json={"role": "operator"})
     r = client.get("/api/line/graph")
     assert r.status_code == 200 and r.json["available"] is False
-    assert b"tapegraph.js" in client.get("/run").data
+    assert b"tapegraph.js" in client.get("/mapping").data
 
 
 
 def test_the_survey_spins_are_the_steps_the_move_accepts(env):
-    """Lean plan D109: maps.html renders ROTATE_STEPS_DEG, both directions."""
+    """Lean plan D109: mapping.html renders ROTATE_STEPS_DEG, both directions."""
     from amr_mission.survey_move import ROTATE_STEPS_DEG  # noqa: PLC0415
 
     client = env[0]
-    html = client.get("/maps").get_data(as_text=True)
+    html = client.get("/mapping").get_data(as_text=True)
     for d in ROTATE_STEPS_DEG:
         assert f'data-deg="{d:g}">Left {d:g}°' in html and f'data-deg="-{d:g}">Right {d:g}°' in html
     assert html.count('class="tool" data-deg=') == 2 * len(ROTATE_STEPS_DEG) == 12
 
 
-def test_pages_carry_the_jog_and_route_constants(env):
-    """Lean plan D109: jogpad.js and editor.js read the Python constants from the page."""
+def test_pages_carry_the_jog_constants(env):
+    """Lean plan D109: jogpad.js reads the Python constants from the page."""
     import json  # noqa: PLC0415
+    import re  # noqa: PLC0415
 
     from amr_web import jog  # noqa: PLC0415
 
     client = env[0]
-    html = client.get("/editor").get_data(as_text=True)
-    import re  # noqa: PLC0415
-
-    attr = lambda name: json.loads(re.search(rf"data-{name}='([^']*)'", html).group(1))  # noqa: E731
-    assert attr("jog") == jog.page_constants()
-    b = attr("bounds")
-    assert b["reverse_max_m"] == 2.0 and b["arc_min_r"] == 1.0 and b["min_straight_m"] == 0.05
+    html = client.get("/mapping").get_data(as_text=True)
+    assert json.loads(re.search(r"data-jog='([^']*)'", html).group(1)) == jog.page_constants()

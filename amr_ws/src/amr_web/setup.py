@@ -7,7 +7,7 @@ setup(
     version="0.0.1",
     packages=[package_name],
     package_data={
-        package_name: ["templates/*.html", "static/*.css", "static/*.js", "static/fonts/*", "static/demo/*"]
+        package_name: ["templates/*.html", "static/*.css", "static/*.js", "static/fonts/*"]
     },
     include_package_data=True,
     data_files=[
