@@ -50,8 +50,9 @@
     DI00: 64, DI01: 72, DI02: 80, DI03: 88, DI04: 96, DI05: 104, DI06: 112, DI07: 120,
     DI08: 128, COM0: 137, COM1: 146,
   };
-  // DI08 (COM1 group, COM1 → 1N24): switched to 24 V by safety PLC Q3 (sheet 08), orange safety wire
-  const Q3 = { t: 'DI08', tb: 'TB72', end: 'SAFETY PLC Q3 (SH.08)' };
+  // DI08 (COM1 group, COM1 → 1N24): the MANUAL ARM switch (owner, 2026-10-28; it was drawn as
+  // safety PLC Q3). Switch, terminal and wire are still to be confirmed: '?' and '«»' render red.
+  const Q3 = { t: 'DI08', tb: '?TB72', end: 'MANUAL ARM SW «placeholder»' };
   const START = { t: 'DI00', tb: ['TB56', 'TB57'], name: 'PB START' };
   const REMOTE = [                                   // contacts drawn on sheet 08
     { t: 'DI01', tb: 'TB58', end: 'PB RESET 23 (SH.08)' },
@@ -162,13 +163,13 @@
       s.wire(M1, dis.map(t => DI[t]), ...W); s.wire(M2, dis.map(t => DI[t]), ...W);
       const cy = COMS.map(c => DI[c.t]);
       s.wire(M1, cy, ...W); s.wire(M2, cy, ...W);
-      // DI08 ← safety PLC Q3
+      // DI08 ← MANUAL ARM switch
       const yq = DI[Q3.t];
       s.line(SX, yq, SHORT, yq);
       tb(TB1, yq, Q3.tb);
       s.endLabels(SHORT, [yq], [Q3.end]);
       wl(63.4, yq, Q3.t);
-      s.wire(M1 - 4, [yq], 'AWG22', 'ORANGE'); s.wire(M2, [yq], 'AWG22', 'ORANGE');
+      s.wire(M1 - 4, [yq], '?AWG22', '?ORANGE'); s.wire(M2, [yq], '?AWG22', '?ORANGE');
       Object.keys(DI).forEach(t => term(DI[t], t));
       s.text(24, 154.6, 'DI07 AND DI09–DI0F (COM1 GROUP): NOT USED', { size: 1.6 });
 

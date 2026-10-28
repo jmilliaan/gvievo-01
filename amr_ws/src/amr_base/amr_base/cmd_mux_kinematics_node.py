@@ -23,6 +23,7 @@ slew diverges. A parameter may lower them, never raise them above hardware.
 """
 
 import math
+import time
 
 from agv_core import config, kinematics
 from geometry_msgs.msg import Twist
@@ -126,12 +127,13 @@ class CmdMuxKinematics(LeanNode):
         # Warning 1 does not slow a LINE U-turn at or below this body speed (the 0.1 m/s
         # creep, the pivot); warning 2 still stops it. 0 = off (gating.line_uturn_exempt).
         self.declare_parameter("line_uturn_exempt_mps", 0.12)
-        # Freshness and the pendant caps: gating.DEFAULT is the one source of the values.
+        # Freshness comes from the profile's freshness block (WP-A10); the pendant caps from
+        # gating.DEFAULT. test_authority pins gating.DEFAULT's freshness to the profile.
         d = gating.DEFAULT
         self.declare_parameter("teleop_timeout_s", d.teleop_window_s)
-        self.declare_parameter("cmd_timeout_s", d.cmd_timeout_s)
-        self.declare_parameter("permit_timeout_s", d.permit_timeout_s)
-        self.declare_parameter("panel_timeout_s", d.panel_timeout_s)
+        self.declare_parameter("cmd_timeout_s", config.FRESH_CMD_S)
+        self.declare_parameter("permit_timeout_s", config.FRESH_PERMIT_S)
+        self.declare_parameter("panel_timeout_s", config.FRESH_PANEL_S)
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("require_supervisor", d.require_supervisor)  # production: True (§4.2)
         self.declare_parameter("teleop_enabled", d.teleop_enabled)  # /cmd_vel_teleop, engineering only
@@ -141,8 +143,8 @@ class CmdMuxKinematics(LeanNode):
         # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
         # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
         self.declare_parameter("survey_w_max_rad_s", 0.27)
-        self.declare_parameter("lease_timeout_s", d.lease_timeout_s)
-        self.declare_parameter("drives_timeout_s", d.drives_timeout_s)
+        self.declare_parameter("lease_timeout_s", config.FRESH_LEASE_S)
+        self.declare_parameter("drives_timeout_s", config.FRESH_DRIVES_S)
         # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
         # a warning field is occupied. base.launch fills these from scanner_fields.yaml.
         self.declare_parameter("field_source", "scanner")  # scanner | assume_clear (sim only)
@@ -175,6 +177,11 @@ class CmdMuxKinematics(LeanNode):
                 f"accel limits clamped to hardware: a_max={self.a_max:.3f} "
                 f"alpha_max={self.alpha_max:.3f} (6083h = {config.ACCEL_RPM_S} r/min/s)"
             )
+        # The hard ceilings hold for a ROS-param override too: the profile refuses a wider
+        # value at load, and the mux refuses to start on one (WP-A10).
+        for name, ceiling in (("cmd_timeout_s", 0.2), ("lease_timeout_s", 0.3), ("permit_timeout_s", 0.3)):
+            if not 0.0 < float(p(name).value) <= ceiling:
+                raise ValueError(f"{name}={p(name).value}: must be in (0, {ceiling}] s (hard ceiling)")
         self.gp = gating.Params(
             cmd_timeout_s=p("cmd_timeout_s").value,
             teleop_window_s=p("teleop_timeout_s").value,
@@ -261,7 +268,7 @@ class CmdMuxKinematics(LeanNode):
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
         self._inhibited = False
-        self.create_timer(self.dt, self._tick)
+        self.create_steady_timer(self.dt, self._tick)
         self.create_timer(0.1, self._publish_state)
         if not self.gp.require_supervisor:
             self.get_logger().warn(
@@ -273,7 +280,9 @@ class CmdMuxKinematics(LeanNode):
         )
 
     def _now(self) -> float:
-        return self.get_clock().now().nanoseconds * 1e-9
+        # Receipt stamps and every freshness check use the monotonic clock, never ROS/wall
+        # time: a backward step would make a stale command read fresh again (WP-A5).
+        return time.monotonic()
 
     def _on_teleop(self, msg: Twist) -> None:
         self._teleop = gating.finite_or_zero(self._now(), msg.linear.x, msg.angular.z)

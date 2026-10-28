@@ -366,5 +366,17 @@ def test_guided():
             base(guided={"cruise_mps": 0.3, "high": True}), "exactly")
 
 
+def test_max_tag_gap():
+    """WP-A7: the missed-tag backstop is a mission key, off unless set."""
+    print("\nmission: max_tag_gap_m (missed-tag backstop)")
+    tags = [HOME, stop(), UTURN]
+    check("absent: the backstop is off", mission.parse(base(tags))["MAX_TAG_GAP_M"] is None)
+    check("set: it loads as metres", mission.parse(base(tags, max_tag_gap_m=12.5))["MAX_TAG_GAP_M"] == 12.5)
+    refused("zero is refused", base(tags, max_tag_gap_m=0), "max_tag_gap_m")
+    refused("a negative gap is refused", base(tags, max_tag_gap_m=-3), "max_tag_gap_m")
+    refused("a gap on a mission without tag rows is refused", base(max_tag_gap_m=5.0), "no tag to miss")
+
+
 TESTS = [test_empty_and_listing, test_basic_missions, test_the_site_table_loads, test_refusals,
-         test_high_zone, test_site_mission, test_site_mission_positions, test_marker_run, test_guided]
+         test_high_zone, test_site_mission, test_site_mission_positions, test_marker_run, test_guided,
+         test_max_tag_gap]

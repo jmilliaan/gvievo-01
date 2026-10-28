@@ -59,8 +59,10 @@ def tick(n, dt=0.1, wheels=True, torque=None, field=None):
         m.operational = torque
         m.left_state = m.right_state = "Operation enabled" if torque else "Switch on disabled"
         n._on_drives(m)
-    if field is not None:
-        n._on_output_paths(SimpleNamespace(status=[field]))
+    # The scanner publishes every scan: the last field state again unless the test changes it.
+    last = field if field is not None else n._field_clear
+    if last is not None:
+        n._on_output_paths(SimpleNamespace(status=[last]))
     n._tick()
 
 
@@ -96,7 +98,7 @@ def test_resume_waits_while_the_field_is_violated_or_the_vehicle_is_off_the_segm
     tick(n, torque=False, wheels=False)
     assert n.hold_cause == "field"
     run_for(n, 3.0, torque=True, field=False)  # drives back, field still violated
-    assert n.fsm.state == fsm.BLOCKED and "protective field not clear" in n.fsm.reason
+    assert n.fsm.state == fsm.BLOCKED and "protective field not proven clear" in n.fsm.reason
     n._pose = lambda: (1.0, 0.5, 0.0)  # pushed 0.5 m sideways during the stop
     run_for(n, 3.0, torque=True, field=True)
     assert n.fsm.state == fsm.BLOCKED and "corridor" in n.fsm.reason
@@ -159,6 +161,8 @@ def test_controller_abort_is_retried_three_times_then_faults():
         if attempt < 3:
             assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "controller", attempt
             run_for(n, 2.2, torque=True, field=True)
+            assert n.fsm.state == fsm.BLOCKED, "waits for Start (WP-A2)"
+            n._start_edge()
             assert n.fsm.state == fsm.EXECUTING, attempt
     assert n.fsm.state == fsm.FAULT and "aborted" in n.fsm.reason
 
@@ -171,13 +175,17 @@ def test_abort_during_a_safety_stop_is_a_hold_not_a_retry():
     assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "field" and n._aborts == 0
 
 
-def test_controller_hold_resumes_by_itself_and_can_be_switched_off():
+def test_controller_hold_waits_for_start_and_can_be_switched_off():
+    """WP-A2 (owner, 2026-10-25): only the protective field resumes by itself. A controller
+    abort holds for a person - who looks at what is in the way - then Start."""
     n = node()
     n.goals.current, n.goals.result = object(), ga.ABORTED
     tick(n, torque=True, field=True)
-    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "controller"
-    run_for(n, 2.2, torque=True, field=True)
-    assert n.fsm.state == fsm.EXECUTING and n._aborts == 1
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "controller" and n._aborts == 1
+    run_for(n, 5.0, torque=True, field=True)
+    assert n.fsm.state == fsm.BLOCKED and not n.drive_power()
+    n._start_edge()
+    assert n.fsm.state == fsm.EXECUTING
     m = node()
     m.auto_resume_enabled = False
     m.goals.current, m.goals.result = object(), ga.ABORTED
@@ -378,3 +386,75 @@ def test_holds_that_resume_by_themselves_keep_power_and_skip_the_warning():
     assert n.hold_cause == "field" and n.drive_power()
     run_for(n, 2.5, torque=True, field=True)
     assert n.fsm.state == fsm.EXECUTING and n.phase != ren.PHASE_PREMOVE
+
+
+def test_a_torque_loss_after_the_panel_went_invalid_is_a_panel_hold():
+    """WP-A2: the I/O island said its image was invalid, then the torque went. That is not a
+    known E-stop and not the field: a `panel` hold, which waits for Start."""
+    from amr_interfaces.msg import PanelState
+
+    n = node()
+    tick(n, torque=True, field=True)
+    bad = PanelState()
+    bad.valid, bad.mode_auto = False, True
+    n._on_panel(bad)
+    good = PanelState()
+    good.valid, good.mode_auto = True, True
+    n._on_panel(good)
+    tick(n, torque=False, wheels=False)
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "panel"
+    run_for(n, 5.0, torque=True, field=True)
+    assert n.fsm.state == fsm.BLOCKED
+    n._start_edge()
+    assert n.fsm.state == fsm.EXECUTING
+
+
+def test_a_stale_clear_field_is_unknown_not_clear():
+    """WP-A8: the executor's field state ages (it used to keep its last True for ever)."""
+    n = node()
+    tick(n, torque=True, field=True)
+    for _ in range(6):  # 0.6 s of silence > field_fresh_s
+        n.clock[0] += 0.1
+        n._panel_t = n._loc_t = n.clock[0]
+    assert n._field_state(n.clock[0]) is None
+    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="x"))
+    n._tick()
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop", "unknown is never the field"
+
+
+def test_a_field_hold_does_not_resume_while_the_field_is_unknown():
+    n = node()
+    tick(n, field=False)
+    tick(n, torque=False, wheels=False)
+    assert n.hold_cause == "field"
+    n._field_clear = None  # the scanner went quiet after the trip
+    n._field_t = None
+    for _ in range(40):
+        n.clock[0] += 0.1
+        n._panel_t = n._loc_t = n.clock[0]
+        n.wheels(0.0, valid=True)
+        n._on_drives(DriveStatus(operational=True, left_state="Operation enabled",
+                                 right_state="Operation enabled"))
+        n._tick()
+    assert n.fsm.state != fsm.EXECUTING, "resumed on an unknown field"
+
+
+def test_executing_with_the_field_unknown_faults_after_the_grace():
+    n = node()
+    tick(n, torque=True, field=True)
+    n._field_t = n.clock[0] - 10.0  # long silent
+    for _ in range(10):
+        n.clock[0] += 0.1
+        n._panel_t = n._loc_t = n.clock[0]
+        n.wheels(0.0, valid=True)
+        n._on_drives(DriveStatus(operational=True, left_state="Operation enabled",
+                                 right_state="Operation enabled"))
+        n._tick()
+    assert n.fsm.state == fsm.FAULT and "protective field state unknown" in n.fsm.reason
+
+
+def test_assume_clear_is_unaffected_by_a_silent_scanner():
+    n = node()
+    n.field_source = "assume_clear"
+    n._field_clear, n._field_t = None, None
+    assert n._field_state(n.clock[0]) is True and n._prereqs() is None

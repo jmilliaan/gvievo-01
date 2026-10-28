@@ -143,6 +143,19 @@ can.heartbeat_ms
     a dead driver; _validate() enforces that. 0 leaves the drive's own setting
     alone.
 
+freshness.*  (unified plan WP-A10, 2026-10-28; values unchanged from the ROS defaults)
+    How old an input may be before it counts as absent. The GATE limits are the mux's
+    (cmd_s, lease_s, permit_s, panel_s, drives_s) plus the protective field's (field_s):
+    expiry means zero at once. Hard ceilings, refused above: cmd_s 0.2 s (a held manual
+    command), lease_s and permit_s 0.3 s. The CONSUMER limits (line_*, executor_*) may only
+    be at or above the gate limit they mirror: a consumer that calls an input stale while
+    the mux still passes it would hold on what the mux lets through, and one tighter than
+    the gate is a widening edit waiting to happen the other way. pc_heartbeat_ms is the
+    PC's heartbeat to the drives and pc_loss_ms the drives' 1016h window (0 is refused:
+    the drives would have no response to losing this PC); the heartbeat must be under
+    half the window. feedback_hz is the drives' TPDO rate; timing.driver_timeout_s must
+    cover at least three of its periods.
+
 monitor.*
     Drive health monitoring - see manuals/can-monitoring-plan.txt.
 
@@ -604,6 +617,24 @@ _SCHEMA = {
         "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
         "premove_timeout_s":  ("PREMOVE_TIMEOUT_S", float),
     },
+    # See the "freshness.*" note above. Gate limits (the mux), the consumers' own limits,
+    # and the drive link's PC heartbeat / loss window / TPDO rate.
+    "freshness": {
+        "cmd_s":             ("FRESH_CMD_S", float),
+        "lease_s":           ("FRESH_LEASE_S", float),
+        "permit_s":          ("FRESH_PERMIT_S", float),
+        "panel_s":           ("FRESH_PANEL_S", float),
+        "drives_s":          ("FRESH_DRIVES_S", float),
+        "field_s":           ("FRESH_FIELD_S", float),
+        "line_panel_s":      ("FRESH_LINE_PANEL_S", float),
+        "line_lease_s":      ("FRESH_LINE_LEASE_S", float),
+        "line_drives_s":     ("FRESH_LINE_DRIVES_S", float),
+        "executor_panel_s":  ("FRESH_EXEC_PANEL_S", float),
+        "executor_drives_s": ("FRESH_EXEC_DRIVES_S", float),
+        "pc_heartbeat_ms":   ("PC_HEARTBEAT_MS", int),
+        "pc_loss_ms":        ("PC_LOSS_MS", int),
+        "feedback_hz":       ("DRIVE_FEEDBACK_HZ", float),
+    },
 }
 
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
@@ -969,6 +1000,31 @@ def _validate(ns):
           f"sensor={ids[2]}")
     check(g("LOOP_PERIOD_S") > 0, "timing.loop_period_s must be > 0")
     check(g("DRIVER_TIMEOUT_S") > 0, "timing.driver_timeout_s must be > 0")
+
+    # -- freshness (WP-A10) -------------------------------------------------
+    for key, name, ceiling in (("cmd_s", "FRESH_CMD_S", 0.2), ("lease_s", "FRESH_LEASE_S", 0.3),
+                               ("permit_s", "FRESH_PERMIT_S", 0.3)):
+        check(0.0 < g(name) <= ceiling,
+              f"freshness.{key} ({g(name)}) must be in (0, {ceiling}] s: a hard ceiling")
+    for key, name in (("panel_s", "FRESH_PANEL_S"), ("drives_s", "FRESH_DRIVES_S"),
+                      ("field_s", "FRESH_FIELD_S")):
+        check(g(name) > 0.0, f"freshness.{key} must be > 0")
+    for consumer, gate in (("line_panel_s", "panel_s"), ("line_lease_s", "lease_s"),
+                           ("line_drives_s", "drives_s"), ("executor_panel_s", "panel_s"),
+                           ("executor_drives_s", "drives_s")):
+        c = g(_SCHEMA["freshness"][consumer][0])
+        k = g(_SCHEMA["freshness"][gate][0])
+        check(c >= k, f"freshness.{consumer} ({c}) must be at or above the gate's freshness.{gate} ({k})")
+    check(g("PC_LOSS_MS") > 0,
+          "freshness.pc_loss_ms must be > 0: with 0 the drives have no response to losing this PC")
+    check(0 < g("PC_HEARTBEAT_MS") < g("PC_LOSS_MS") / 2.0,
+          f"freshness.pc_heartbeat_ms ({g('PC_HEARTBEAT_MS')}) must be under half pc_loss_ms "
+          f"({g('PC_LOSS_MS')}), or one late heartbeat trips the drives")
+    check(g("DRIVE_FEEDBACK_HZ") > 0.0, "freshness.feedback_hz must be > 0")
+    if g("DRIVE_FEEDBACK_HZ") > 0.0:
+        check(g("DRIVER_TIMEOUT_S") >= 3.0 / g("DRIVE_FEEDBACK_HZ"),
+              f"timing.driver_timeout_s ({g('DRIVER_TIMEOUT_S')} s) must cover at least three TPDO "
+              f"periods at freshness.feedback_hz ({g('DRIVE_FEEDBACK_HZ')})")
 
     # -- drive monitoring --------------------------------------------------
     # Heartbeat is what makes a dead driver distinguishable from an idle one,

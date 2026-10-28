@@ -34,8 +34,11 @@ itself is a BLOCKED hold with a cause, not a FAULT:
              field was violated (/output_paths): resumes by itself;
   estop      the same drive dropout with the field clear (the E-stop button): waits for a
              physical Start (no Resume click), unless auto_resume_estop;
-  controller the FollowPath/Spin goal ABORTED (RPP "collision ahead"): resumes by itself, at
-             most controller_abort_retries times per step, then FAULT;
+  controller the FollowPath/Spin goal ABORTED (RPP "collision ahead"): waits for a physical
+             Start (owner decision 2026-10-25: only the field resumes by itself), at most
+             controller_abort_retries times per step, then FAULT;
+  panel      the drives lost torque within safety_window_s of the I/O island reporting its
+             panel image invalid: waits for a physical Start, never read as the field;
   pending    wheel feedback vanished while executing: stopped at once, and classified as a
              safety stop when the drive report says torque off within safety_window_s, else FAULT.
 
@@ -184,7 +187,7 @@ class RouteExecutor(LeanNode):
         # the rollback). Tune on the vehicle so the mean stop error is ~0; never above the
         # route's position_tolerance_m (clamped).
         self.declare_parameter("goal_overshoot_m", 0.045)
-        self.declare_parameter("panel_age_limit_s", 0.50)
+        self.declare_parameter("panel_age_limit_s", vehicle_config.FRESH_EXEC_PANEL_S)
         self.declare_parameter("loc_age_limit_s", 2.5)
         # Speed tapers between chained steps (a boosted straight into a normal one, a straight
         # into an arc at its arc speed) and at the end of a boosted straight: the lower speed is asked
@@ -197,8 +200,12 @@ class RouteExecutor(LeanNode):
         self.declare_parameter("auto_resume_clear_s", float(vehicle_config.AUTO_RESUME_HOLD_S))
         self.declare_parameter("auto_resume_estop", False)  # operator decision 2026-09-19: Start
         self.declare_parameter("safety_window_s", 1.0)
-        self.declare_parameter("drives_age_limit_s", 0.5)
+        self.declare_parameter("drives_age_limit_s", vehicle_config.FRESH_EXEC_DRIVES_S)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]: protective field
+        # WP-A8, as line_follow_node: the field state ages like every other input, and only a
+        # sim (no scanner) may assume it clear. The launch passes assume_clear for real:=false.
+        self.declare_parameter("field_source", "scanner")
+        self.declare_parameter("field_fresh_s", vehicle_config.FRESH_FIELD_S)  # profile freshness block
         self.declare_parameter("controller_abort_retries", 3)
         # The pre-move warning after a Start (module docstring); the profile's timing block.
         self.declare_parameter("premove_s", float(vehicle_config.AUTO_START_DELAY_S))
@@ -242,6 +249,10 @@ class RouteExecutor(LeanNode):
         self.premove_timeout_s = max(self.premove_s, float(p("premove_timeout_s").value))
         self._premove_since: float | None = None
         self.field_index = int(p("field_output_index").value)
+        self.field_source = str(p("field_source").value)
+        if self.field_source not in ("scanner", "assume_clear"):
+            raise ValueError(f"field_source {self.field_source!r}: scanner or assume_clear")
+        self.field_fresh = float(p("field_fresh_s").value)
         self.abort_retries = int(p("controller_abort_retries").value)
         self._init_hold_state()
         self.goal_accept_timeout = p("goal_accept_timeout_s").value
@@ -267,6 +278,7 @@ class RouteExecutor(LeanNode):
         self._loc_t = 0.0
         self._panel_t = 0.0
         self._panel: PanelState | None = None
+        self._panel_invalid_t: float | None = None  # last PanelState with valid=False
         self._wheels_t = 0.0
         self._wheels_valid = False
         self._wheels_still = False
@@ -330,7 +342,7 @@ class RouteExecutor(LeanNode):
         self.create_service(Trigger, "/amr/abort", self._srv_abort, callback_group=srv)
         self.create_service(Trigger, "/amr/resume", self._srv_resume, callback_group=srv)
         self.create_service(Trigger, "/amr/ack_fault", self._srv_ack, callback_group=srv)
-        self.create_timer(0.1, self._tick, callback_group=srv)
+        self.create_steady_timer(0.1, self._tick, callback_group=srv)
         self.create_timer(0.5, self._publish_state, callback_group=io)
         self.get_logger().info(f"IDLE; maps_dir {self.maps_dir}; footprint reach {self.fp.reach_m:.2f} m")
 
@@ -348,6 +360,8 @@ class RouteExecutor(LeanNode):
 
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, self._now()
+        if not m.valid:
+            self._panel_invalid_t = self._panel_t
         if m.start_edge:
             with self._lock:
                 self._start_edge()
@@ -382,11 +396,12 @@ class RouteExecutor(LeanNode):
         self._auto_since: float | None = None  # all-clear since, for auto-resume
         self._pending_since: float | None = None
         self._prereq = hold_policy.Debounce()  # a prerequisite has been failing since
-        self._aborts = 0  # controller aborts auto-resumed on this step
+        self._aborts = 0  # controller-abort holds taken on this step
         self._drives_t: float | None = None
         self._torque_off_msg = False
         self._last_off_t: float | None = None  # last time the drive report said torque off
         self._field_clear: bool | None = None
+        self._field_t: float | None = None  # receipt of that /output_paths sample
         self._field_trip_t: float | None = None  # last time the protective field was violated
 
     def _on_drives(self, m: DriveStatus) -> None:
@@ -400,23 +415,41 @@ class RouteExecutor(LeanNode):
         clear = drive_state.field_clear(m.status, self.field_index)
         if clear is None:
             return
-        self._field_clear = clear
+        self._field_clear, self._field_t = clear, self._now()
         if not self._field_clear:
-            self._field_trip_t = self._now()
+            self._field_trip_t = self._field_t
+
+    def _field_state(self, now: float) -> bool | None:
+        """The protective field: True clear, False violated, None UNKNOWN (no fresh sample).
+        Unknown is never clear (WP-A8: a stale True used to read as clear for ever)."""
+        if self.field_source == "assume_clear":
+            return True
+        if self._field_t is None or not 0.0 <= now - self._field_t <= self.field_fresh:
+            return None
+        return self._field_clear
 
     def _torque_off(self, now: float) -> bool:
         return self._torque_off_msg and self._drives_t is not None and now - self._drives_t <= self.drives_age
 
     def _field_tripped(self, now: float) -> bool:
-        if self._field_clear is False:
+        """Proven violated now, or within safety_window_s: only then is a stop the field's."""
+        if self._field_state(now) is False:
             return True
         return self._field_trip_t is not None and now - self._field_trip_t <= self.safety_window
 
     def _safety_cause(self, now: float) -> str:
-        return "field" if self._field_tripped(now) else "estop"
+        """Which story a torque loss belongs to. The field when it is proven; the panel when
+        the I/O island said its image was invalid within safety_window_s (selector, Start
+        and E-stop state were unknown, so it is neither the field nor a known E-stop -
+        WP-A2); else an E-stop."""
+        if self._field_tripped(now):
+            return "field"
+        if self._panel_invalid_t is not None and now - self._panel_invalid_t <= self.safety_window:
+            return "panel"
+        return "estop"
 
     def _auto_causes(self) -> tuple[str, ...]:
-        return hold_policy.auto_causes(("field", "controller"), self.auto_resume_estop)
+        return hold_policy.auto_causes(self.auto_resume_estop)
 
     def _hold(self, cause: str, why: str) -> None:
         """Stop and hold: BLOCKED with a cause (see the module docstring)."""
@@ -576,6 +609,8 @@ class RouteExecutor(LeanNode):
             return "panel stale or invalid"
         if self._scan is None or now - self._scan_t > self.scan_age:
             return "no fresh scan"
+        if self._field_state(now) is None:
+            return "protective field state unknown (no fresh /output_paths)"
         return None
 
     def _prereq_held(self, now: float, pre: str | None) -> bool:
@@ -954,12 +989,12 @@ class RouteExecutor(LeanNode):
                     and not self._panel.mode_auto
                     and now - self._panel_t <= self.panel_age
                 )
-                if manual and (self.hold_cause in ("pending", "field", "estop") or pre is None):
+                if manual and (self.hold_cause in ("pending", *hold_policy.SAFETY_CAUSES) or pre is None):
                     self.fsm.abort("manual takeover: selector left AUTO")
                     self._interrupt("manual takeover")
                 elif self._torque_off(now) and (
                     (state == fsm.EXECUTING and self.phase != PHASE_PREMOVE)
-                    or (state == fsm.BLOCKED and self.hold_cause not in ("field", "estop"))
+                    or (state == fsm.BLOCKED and self.hold_cause not in hold_policy.SAFETY_CAUSES)
                 ):
                     # the safety chain took the torque: hold, don't fault (auto-resume plan);
                     # a hold that was already on (a controller abort, then someone stepping
@@ -1014,7 +1049,7 @@ class RouteExecutor(LeanNode):
         """Wheel feedback may be missing during a safety hold: while the drives report no
         torque, and for safety_window_s after they got it back (re-arming)."""
         paused = self.fsm.state == fsm.PAUSED  # an operator Pause, then the E-stop: still paused
-        if not paused and (self.fsm.state != fsm.BLOCKED or self.hold_cause not in ("field", "estop")):
+        if not paused and (self.fsm.state != fsm.BLOCKED or self.hold_cause not in hold_policy.SAFETY_CAUSES):
             return False
         if self._torque_off(now):
             return True
@@ -1028,8 +1063,8 @@ class RouteExecutor(LeanNode):
         ok, why = self._resume_checks()
         if ok and self._torque_off(now):
             ok, why = False, "drives have no torque"
-        if ok and self._field_clear is False:
-            ok, why = False, "protective field not clear"
+        if ok and self._field_state(now) is not True:
+            ok, why = False, "protective field not proven clear"
         base = self.fsm.reason.split(" | ", 1)[0]
         if not ok:
             self._auto_since = None
@@ -1042,8 +1077,6 @@ class RouteExecutor(LeanNode):
         if now - self._auto_since < self.auto_clear_s:
             return
         cause = self.hold_cause
-        if cause == "controller":
-            self._aborts += 1
         if self.fsm.auto_resume(f"auto-resumed after {cause}"):
             self.hold_cause, self._auto_since = "", None
             self.phase = PHASE_INIT
@@ -1170,6 +1203,8 @@ class RouteExecutor(LeanNode):
                         self._hold(self._safety_cause(now), f"{st.type} action aborted during a safety stop")
                         return
                     if self._aborts < self.abort_retries:
+                        # counted at the hold: it resumes on Start now, not by itself (WP-A2)
+                        self._aborts += 1
                         self._hold("controller", f"controller aborted the {st.type} (collision ahead?)")
                         return
                 self._fault(f"action {self.goals.result}", "EXEC_ACTION_FAILED")
@@ -1339,6 +1374,8 @@ class RouteExecutor(LeanNode):
             else (self.fault_code if self.fsm.state == fsm.FAULT else "")
         )
         m.auto_resume = blocked and self.auto_resume_enabled and self.hold_cause in self._auto_causes()
+        if hasattr(m, "hold_device"):  # amr_interfaces not rebuilt yet: publish without it
+            m.hold_device = hold_policy.hold_device(self.hold_cause) if blocked else ""
         m.drive_power = self.drive_power()
         m.premove = self.fsm.state == fsm.EXECUTING and self.phase == PHASE_PREMOVE
         pose = self._pose()

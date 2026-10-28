@@ -264,7 +264,7 @@ def bench_bus(who, bitrate=None, channel=None, note="", lock=True):
 
     None means the reason was printed and the tool exits 2 with nothing sent.
     Keep the returned lock referenced until the bus is shut down. lock=False is
-    for read_mls's read-only modes, which run beside the service on purpose.
+    for read_mls's listen-only `stream` (no --nmt), which runs beside the service on purpose.
     """
     held = None
     if lock:

@@ -1061,6 +1061,11 @@ def create_app(
 
     @app.post("/api/recover")
     def api_recover():
+        # Owner decision 2026-10-25 (unified plan WP-B4): Recover - which also acknowledges a
+        # drive-link fault after the power cycle - is the engineer's.
+        denied = _engineer_only("Recover needs")
+        if denied:
+            return denied
         return _call(adapter.recover)
 
     # ---- manual jog (unified plan §6.3): the only endpoint that publishes a velocity ----

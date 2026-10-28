@@ -1,0 +1,60 @@
+#!/bin/bash
+# Keeps exactly one Chromium kiosk window on the AMR UI, forever.
+#  - exits for any reason (Alt+F4, Ctrl+W, crash, OOM)  -> respawned in 1 s
+#  - navigated off 127.0.0.1, or extra tabs/windows      -> killed, respawned
+#  - screen geometry changed (monitor hot-plugged)       -> killed, respawned so
+#    the window re-fits the new panel size
+# Versioned in amr_ws/deploy/kiosk/; installed to /usr/local/bin by the owner
+# (validate.sh says when the two differ).
+URL=http://127.0.0.1/
+DBG=9222
+export DISPLAY=${DISPLAY:-:0}
+
+# --current reads the X server's cached screen size and probes no connector:
+# amr-display-hotplug.sh already re-probes (xrandr -q) every 5 s, and an EDID
+# read per probe is what made the second one expensive (cpu-load-plan Tier 1 #4).
+geometry() { xrandr --current 2>/dev/null | awk '/current/{print $8 $9 $10}'; }
+
+watchdog() {   # $1 = chromium pid
+  sleep 15                             # first start can be slow (snap)
+  local g0; g0=$(geometry)
+  while kill -0 "$1" 2>/dev/null; do
+    sleep 20
+    if [ "$(geometry)" != "$g0" ]; then
+      logger -t amr-kiosk "screen geometry changed -> restarting browser"
+      kill "$1"; return
+    fi
+    # Ask Chromium what it is showing. Only real tabs (type "page") count;
+    # the endpoint also lists internal helpers (chrome://omnibox-popup...)
+    # that are not windows. Exactly one tab, on our origin, or it dies.
+    read -r pages bad < <(curl -s --max-time 2 "http://127.0.0.1:$DBG/json" | python3 -c '
+import json,sys
+try: t=[x for x in json.load(sys.stdin) if x.get("type")=="page"]
+except Exception: print("? ?"); sys.exit()
+print(len(t), sum(1 for x in t if not x.get("url","").startswith("http://127.0.0.1")))')
+    if [ "$pages" = "?" ]; then continue; fi        # endpoint not answering: judge next round
+    if [ "${pages:-0}" != "1" ] || [ "${bad:-0}" != "0" ]; then
+      logger -t amr-kiosk "browser state wrong (pages=$pages off-origin=$bad) -> restarting"
+      kill "$1"; return
+    fi
+  done
+}
+
+while :; do
+  chromium \
+    --kiosk --incognito --noerrdialogs --no-first-run --disable-infobars \
+    --disable-session-crashed-bubble --disable-translate --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --disable-features=TranslateUI,TFLiteLanguageDetectionEnabled \
+    --disable-background-networking --disable-component-update \
+    --check-for-update-interval=31536000 --password-store=basic \
+    --autoplay-policy=no-user-gesture-required \
+    --remote-debugging-port=$DBG --remote-allow-origins=* \
+    --window-position=0,0 --start-fullscreen \
+    "$URL" >/dev/null 2>&1 &
+  pid=$!
+  watchdog "$pid" &
+  wait "$pid"
+  logger -t amr-kiosk "chromium exited ($?) -> respawn"
+  sleep 1
+done

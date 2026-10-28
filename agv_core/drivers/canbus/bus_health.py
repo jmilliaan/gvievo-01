@@ -90,7 +90,9 @@ def main():
 
         print("\n[3] verdict")
         if fails == 0:
-            print(f"    {OK}: {SOAK_N}/{SOAK_N} transfers, zero errors. "
+            # Zero FAILED TRANSFERS, measured. Not "zero bus errors": slcan firmware never
+            # reports error frames or counters, so ip -s link showing 0 there means unknown.
+            print(f"    {OK}: {SOAK_N}/{SOAK_N} transfers, none failed. "
                   f"Termination and wiring look sound.")
         elif rate >= 99.0:
             print(f"    {WARN}: {fails} failure(s). Not clean - suspect termination "

@@ -260,8 +260,6 @@ def stack(tmp_path_factory):
             "-p",
             "web:=false",
             "-p",
-            "foxglove:=false",
-            "-p",
             f"state_dir:={state}",
             "-p",
             f"maps_dir:={maps}",

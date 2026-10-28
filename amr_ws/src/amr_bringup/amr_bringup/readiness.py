@@ -107,6 +107,9 @@ class Snapshots:
         self.mux_inhibited = False
         self.drives_t = None
         self.drives_ok = False
+        self.drive_link = ""
+        self.run_power = False
+        self.line_power = False
         self.wheels_t = None
         self.wheels_still_since = None
         self.panel_t = None
@@ -139,6 +142,7 @@ class Snapshots:
             self.drives_ok = drives_ok(
                 bool(m.operational), str(m.link_state), str(m.left_state), str(m.right_state)
             )
+            self.drive_link = str(m.link_state)
 
     def on_wheels(self, m) -> None:
         with self._lock:
@@ -169,6 +173,7 @@ class Snapshots:
         with self._lock:
             self.run_gen = int(m.generation)
             self.run_state = int(m.state)
+            self.run_power = bool(getattr(m, "drive_power", False))
             # Kept only so the unclean-shutdown marker can name the interrupted mission
             # (power-loss plan W1); nothing gates on it.
             self.run_mission = str(getattr(m, "mission_id", "") or "")
@@ -182,6 +187,7 @@ class Snapshots:
         with self._lock:
             self.line_gen = int(m.generation)
             self.line_state = int(m.state)
+            self.line_power = bool(getattr(m, "drive_power", False))
 
     def on_commissioning(self, m) -> None:
         with self._lock:
@@ -223,6 +229,10 @@ class Snapshots:
         with self._lock:
             return self.run_gen == generation and self.run_state is not None
 
+    def drive_link_state(self) -> str:
+        with self._lock:
+            return self.drive_link
+
     def loc_state_for(self, generation: int) -> bool:
         with self._lock:
             return self.loc_gen == generation and self.loc_state is not None
@@ -251,6 +261,25 @@ class Snapshots:
                 line_active=self._line_active_locked(generation),
                 drives_ok=bool(self.drives_t is not None and now - self.drives_t <= 1.0 and self.drives_ok),
             )
+
+
+def drive_ack_refusal(s: Snapshots, now: float, generation: int, fresh_s: float = 1.0) -> str:
+    """Why the supervisor may not acknowledge a drive-link fault now, or "" (unified plan
+    WP-B4). Not while a run still holds or asks for the drives: LINE ARMED/RUNNING or a
+    powered HOLD, a trackless run EXECUTING or a powered BLOCKED. A hold that waits for a
+    person (the drive_fault hold itself) is exactly when Recover is meant to be used."""
+    with s._lock:
+        if s.drives_t is None or now - s.drives_t > fresh_s:
+            return "no fresh drive report"
+        if s.drive_link != drive_state.LINK_FAULT:
+            return ""
+        armed_or_running = s.line_state in (1, 2)  # LineState ARMED, RUNNING (wire.LINE_NAMES)
+        powered_hold = s.line_state in wire.LINE_HELD and s.line_power
+        if s.line_gen == generation and (armed_or_running or powered_hold):
+            return "the line run still holds the drives: Reset it on the panel first"
+        if s.run_gen == generation and s.run_power:
+            return "the trackless run still holds the drives: stop it first"
+        return ""
 
 
 def base_missing(s: Snapshots, now: float, fresh_s: float = 1.0) -> str:

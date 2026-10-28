@@ -70,6 +70,7 @@ Silence is NOT a fault. The reader pushes only when a tag is in the field, so a
 quiet link is the normal state of a vehicle between stations. Prolonged silence
 raises a soft "silent" flag for the dashboard - it never stops the vehicle.
 """
+import random
 import re
 import socket
 import threading
@@ -457,7 +458,12 @@ class RfidLink:
         self._encounter_tag = None
         self._encounter_at = None
         self._rebaseline = False
-        self._generation = 0
+        self._connected_at = None           # monotonic, this connection
+        self._dropped_at = None             # monotonic, the last connected -> lost edge
+        # Random start (unified plan WP-A1): a consumer that outlives an rfid_node restart
+        # must see a new generation, and a restarted counter starting at 0 again could
+        # equal the one it remembers.
+        self._generation = random.getrandbits(31)
 
     # ---- public ----------------------------------------------------------
 
@@ -569,6 +575,7 @@ class RfidLink:
         self._identity_seen = False
         with self._lock:
             self._connected = True
+            self._connected_at = now
             self._last_rx = now
             self._detail = "connected"
         events.info(f"RFID connected {config.RFID_IP}:{config.RFID_PORT}")
@@ -626,16 +633,7 @@ class RfidLink:
                 return
             for r in reads:
                 self.passes.read(r.tag, r.rssi_dbm, now)
-                # A reconnect first establishes a baseline. It is not evidence
-                # of departure, and must not synthesize a second station visit.
-                if self._rebaseline:
-                    self._rebaseline = False
-                elif (r.tag != self._encounter_tag
-                      or self._encounter_at is None
-                      or now - self._encounter_at >= config.RFID_TAG_CLEAR_S):
-                    self._encounter_seq += 1
-                    self._encounters.append((self._encounter_seq, r.tag))
-                self._encounter_tag, self._encounter_at = r.tag, now
+                self._encounter(r.tag, now)
             last = reads[-1]
             new = last.tag != self._last_tag
             self._last_tag = last.tag
@@ -646,6 +644,33 @@ class RfidLink:
         # second and would otherwise flush the event ring in seconds.
         if new:
             events.info(f"RFID tag {last.tag} ({last.rssi_dbm:.1f} dBm)")
+
+    def _encounter(self, tag, now):
+        """One tag read into the encounter stream. Caller holds the lock."""
+        if self._is_new_encounter(tag, now):
+            self._encounter_seq += 1
+            self._encounters.append((self._encounter_seq, tag))
+        self._encounter_tag, self._encounter_at = tag, now
+
+    def _is_new_encounter(self, tag, now):
+        """Is this read a new pass? Caller holds the lock.
+
+        A reconnect is not evidence of departure: the tag that was under the antenna
+        when the link dropped, read again within tag_clear_s of reconnecting, is the
+        same pass and must not synthesize a second station visit. Anything else
+        after a reconnect - another tag, the same tag read late, or a tag that was
+        not in the field at the drop - is counted (WP-A1: a blanket "swallow the
+        first read" lost a different tag B read first after the reconnect).
+        """
+        clear = config.RFID_TAG_CLEAR_S
+        if self._rebaseline:
+            self._rebaseline = False        # only the first read after a reconnect
+            in_field_at_drop = (self._encounter_at is not None and self._dropped_at is not None
+                                and self._dropped_at - self._encounter_at < clear)
+            return not (tag == self._encounter_tag and in_field_at_drop
+                        and self._connected_at is not None and now - self._connected_at <= clear)
+        return (tag != self._encounter_tag or self._encounter_at is None
+                or now - self._encounter_at >= clear)
 
     def _on_identity(self, ident):
         if not ident:
@@ -668,7 +693,7 @@ class RfidLink:
         for m in mismatch:
             events.warn(f"RFID reader config: {m}")
 
-    def _drop(self):
+    def _drop(self, now=None):
         was = self._connected
         sock, self._sock = self._sock, None
         if sock:
@@ -680,8 +705,11 @@ class RfidLink:
             self._connected = False
             self._generation += 1
             self._encounters.clear()
-            self.passes.expire(time.monotonic(), force=True)
-            self._rebaseline = True
+            now = time.monotonic() if now is None else now
+            self.passes.expire(now, force=True)
+            if was:                         # a failed connect leaves nothing to re-baseline
+                self._rebaseline = True
+                self._dropped_at = now
         if was:
             events.warn("RFID link lost")
 

@@ -20,9 +20,41 @@ def hold_text(cause: str, why: str, extra: dict[str, str] | None = None) -> str:
     return fmt.format(why=why) if fmt else why
 
 
-def auto_causes(base: tuple[str, ...], estop: bool) -> tuple[str, ...]:
+# THE hold-cause policy, for both products (owner decision 2026-10-25, unified plan WP-A2):
+# only a protective-field stop resumes by itself, and an E-stop only behind the profile's
+# auto_resume_estop. Every other hold - a device dropout, a slow or missing tape reading, a
+# controller abort, a panel link loss - waits for a fresh physical Start, because the
+# operator must look before the vehicle moves again.
+AUTO_CAUSES = ("field",)
+# Holds on the safety chain's terms: the drives lost torque (STO) for a reason outside this
+# software. Wheel feedback may be missing while one stands, and a later torque loss does not
+# re-classify it. "panel": the I/O island reported its image invalid just before the torque
+# went - the safety chain's state is then unknown, so it is never read as the field.
+SAFETY_CAUSES = ("field", "estop", "panel")
+# The device each cause blames (LineState/RunState.hold_device). "" = no single device.
+CAUSE_DEVICE = {
+    "field": "scanner",
+    "estop": "safety_chain",
+    "panel": "dio",
+    "drives": "drives",
+    "drive_fault": "drives",
+    "track": "mls",
+    "rate": "mls",
+    "sensor": "mls",
+    "markers": "mls",
+    "rfid": "rfid",
+    "rfid_overdue": "rfid",
+    "controller": "nav2",
+}
+
+
+def auto_causes(estop: bool) -> tuple[str, ...]:
     """Hold causes that resume by themselves; an E-stop only when the profile allows it."""
-    return tuple(base) + (("estop",) if estop else ())
+    return AUTO_CAUSES + (("estop",) if estop else ())
+
+
+def hold_device(cause: str) -> str:
+    return CAUSE_DEVICE.get(cause, "")
 
 
 class Debounce:

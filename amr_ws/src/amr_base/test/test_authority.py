@@ -163,3 +163,91 @@ def test_hand_driven_source_changes_are_not_operator_events():
     assert is_history("none", "follow")  # the executor losing the wheels IS history
     assert is_history("line", "none")
     assert is_history("none", "manual", inhibited=True)  # so is an inhibit
+
+
+# -- WP-A5: a stamp from the future is not fresh ------------------------------------------
+# A backward clock step used to leave samples stamped before it reading fresh for their whole
+# limit plus the step. The mux now stamps with time.monotonic(), and an age below zero is
+# stale whatever the clock: output goes to zero, the next fresh sample restores selection.
+
+FUTURE = 10.5  # every input stamped half a second after `now`
+
+
+def test_a_future_stamped_lease_closes_the_gate():
+    s = select(10.0, None, None, None, None, MANUAL_PANEL, SUP, lease(FUTURE), manual(10.0), DRIVES_OK)
+    assert (s.source, s.v, s.inhibited) == (NONE, 0.0, True)
+
+
+def test_a_future_stamped_panel_drives_or_command_is_not_fresh():
+    s = select(10.0, None, None, None, None, panel(t=FUTURE), SUP, lease(10.0), manual(10.0), DRIVES_OK)
+    assert s.source == NONE and s.v == 0.0
+    s = select(10.0, None, None, None, None, MANUAL_PANEL, SUP, lease(10.0), manual(10.0),
+               Drives(FUTURE, True))
+    assert s.source == NONE and s.v == 0.0
+    s = select(10.0, None, None, None, None, MANUAL_PANEL, SUP, lease(10.0), manual(FUTURE), DRIVES_OK)
+    assert s.source == NONE and s.v == 0.0
+
+
+def test_a_future_stamped_teleop_permit_or_line_command_is_not_fresh():
+    from amr_base.gating import LEASE_LINE, Params
+
+    tele = Params(require_supervisor=False, teleop_enabled=True)
+    s = select(10.0, Stamped(FUTURE, 0.3, 0.0), None, None, None, MANUAL_PANEL, tele)
+    assert s.v == 0.0
+    s = select(10.0, None, Stamped(10.0, 0.3, 0.0), None, Permit(FUTURE, FOLLOW, True, INST, 3, 1),
+               AUTO_PANEL, SUP, lease(10.0), None, DRIVES_OK)
+    assert s.source == NONE and s.v == 0.0
+    s = select(10.0, None, None, None, None, AUTO_PANEL, SUP, lease(10.0, allowed=LEASE_LINE), None,
+               DRIVES_OK, line=Stamped(FUTURE, 0.2, 0.0))
+    assert s.source == NONE and s.v == 0.0
+    # and the next fresh sample restores selection: nothing latched
+    s = select(10.6, None, None, None, None, panel(t=10.6, auto=True), SUP,
+               lease(10.6, allowed=LEASE_LINE), None, Drives(10.6, True), line=Stamped(10.6, 0.2, 0.0))
+    assert s.v == 0.2
+
+
+def test_the_mux_stamps_with_the_monotonic_clock_and_ticks_on_steady_timers():
+    """Contract: the mux's receipt clock is time.monotonic, and every motion-path tick runs on a
+    STEADY timer (LeanNode.create_steady_timer)."""
+    import inspect
+    import pathlib
+
+    from amr_base.cmd_mux_kinematics_node import CmdMuxKinematics
+
+    assert "time.monotonic()" in inspect.getsource(CmdMuxKinematics._now)
+    src = pathlib.Path(__file__).resolve().parents[2]
+    for rel, tick in (("amr_base/amr_base/cmd_mux_kinematics_node.py", "self._tick"),
+                      ("amr_base/amr_base/panel_node.py", "self._tick"),
+                      ("amr_line/amr_line/line_follow_node.py", "self._tick"),
+                      ("amr_mission/amr_mission/route_executor_node.py", "self._tick"),
+                      ("amr_bringup/amr_bringup/supervisor_node.py", "self._publish_mode")):
+        text = (src / rel).read_text(encoding="utf-8")
+        assert "create_steady_timer(" in text and tick in text.split("create_steady_timer(", 1)[1][:120], rel
+
+
+def test_the_gate_limits_are_the_profiles_and_the_consumers_sit_at_or_above_them():
+    """WP-A10: one source for every freshness limit (the profile's freshness block). gating's
+    pure defaults - what every unit test runs with - are the profile's gate values, and each
+    consumer limit is at or above the gate it mirrors (the profile refuses otherwise)."""
+    from agv_core import config
+
+    d = gating.DEFAULT
+    limits = (d.cmd_timeout_s, d.lease_timeout_s, d.permit_timeout_s, d.panel_timeout_s, d.drives_timeout_s)
+    assert limits == (config.FRESH_CMD_S, config.FRESH_LEASE_S, config.FRESH_PERMIT_S,
+                      config.FRESH_PANEL_S, config.FRESH_DRIVES_S)
+    assert config.FRESH_CMD_S <= 0.2 and config.FRESH_LEASE_S <= 0.3 and config.FRESH_PERMIT_S <= 0.3
+    for consumer, gate in ((config.FRESH_LINE_PANEL_S, config.FRESH_PANEL_S),
+                           (config.FRESH_LINE_LEASE_S, config.FRESH_LEASE_S),
+                           (config.FRESH_LINE_DRIVES_S, config.FRESH_DRIVES_S),
+                           (config.FRESH_EXEC_PANEL_S, config.FRESH_PANEL_S),
+                           (config.FRESH_EXEC_DRIVES_S, config.FRESH_DRIVES_S)):
+        assert consumer >= gate
+
+
+def test_the_mux_refuses_a_ros_param_override_above_a_ceiling():
+    import inspect
+
+    from amr_base.cmd_mux_kinematics_node import CmdMuxKinematics
+
+    src = inspect.getsource(CmdMuxKinematics.__init__)
+    assert '("cmd_timeout_s", 0.2), ("lease_timeout_s", 0.3), ("permit_timeout_s", 0.3)' in src

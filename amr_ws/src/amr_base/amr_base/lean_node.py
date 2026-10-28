@@ -46,6 +46,14 @@ def _default_events() -> bool:
 
 
 class LeanNode(Node):
+    def create_steady_timer(self, period_s: float, callback, callback_group=None):
+        """A timer on the STEADY clock: a wall-clock step (NTP, an RTC fix at boot) neither
+        stalls nor bunches its ticks. For every motion-path tick (unified plan WP-A5)."""
+        from rclpy.clock import Clock, ClockType  # noqa: PLC0415
+
+        return self.create_timer(period_s, callback, callback_group=callback_group,
+                                 clock=Clock(clock_type=ClockType.STEADY_TIME))
+
     def create_publisher(self, *args, event_callbacks: PublisherEventCallbacks | None = None, **kwargs):
         if event_callbacks is None and not _default_events():
             event_callbacks = PublisherEventCallbacks(use_default_callbacks=False)

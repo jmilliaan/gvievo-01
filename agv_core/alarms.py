@@ -63,12 +63,34 @@ def _rows() -> tuple[Alarm, ...]:
         a("ESTOP", WARN, "start_button", "Stopped: emergency stop or safety chain",
           "Release the E-stop, then press Reset and Start on the panel.",
           "Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile."),
-        a("PATH_BLOCKED", WARN, "auto", "Stopped: the way ahead is blocked",
-          "Clear the route. The vehicle tries again by itself.",
-          "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT."),
+        a("PATH_BLOCKED", WARN, "start_button", "Stopped: the way ahead is blocked",
+          "Clear the route, then press Start.",
+          "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. "
+          "Waits for Start since 2026-10-28: only the protective field resumes by itself "
+          "(owner decision, unified plan WP-A2)."),
         a("WAITING_FOR_PREREQ", INFO, "auto", "Waiting: a sensor or the panel is not ready yet",
           "Wait a moment. If it stays, look at the Alarms page.",
           "Hold cause 'pending': a prerequisite went stale inside the grace window."),
+        a("PANEL_LINK_LOST", WARN, "start_button", "Stopped: the control panel link dropped",
+          "Check the panel and the I/O island; once the panel answers, press Start.",
+          "Hold cause 'panel': the I/O island reported its image invalid while the vehicle was "
+          "armed or moving, so selector, Start and E-stop state were unknown. Held at once, not "
+          "after the grace, and never read as the protective field."),
+        a("LINE_PREREQ_LOST", WARN, "start_button", "Stopped: a condition for driving lapsed",
+          "Look at the reason shown; once it is fixed, press Start.",
+          "Line hold cause 'prereq': a prerequisite (panel, lease, drive report, protective field "
+          "state) failed for longer than prereq_grace_s while running. Never resumes by itself."),
+        a("MLS_SILENT", WARN, "start_button", "Stopped: the tape sensor stopped reporting",
+          "Check the tape sensor and its cable; once it reports again, check where the vehicle is, "
+          "then press Start.",
+          "Line hold cause 'sensor': no MLS sample for longer than SENSOR_TIMEOUT_S while running. "
+          "A silent sensor used to end the run DONE wherever it stopped (unified plan WP-A3). On a "
+          "marker run the resume names the distance driven blind."),
+        a("RFID_TAG_OVERDUE", WARN, "start_button", "Stopped: no station tag where one was expected",
+          "Check where the vehicle is on the route (a tag may have been missed), then press Start.",
+          "Line hold cause 'rfid_overdue' (unified plan WP-A7): the run drove further than the "
+          "mission's max_tag_gap_m without reading a tag of its table, so a stop or the U-turn "
+          "tag may have been driven past. Counted afresh from the Start."),
         a("TRACK_LOST", WARN, "start_button", "Stopped: the tape is not under the sensor",
           "Push the vehicle back onto the tape, then press Start.",
           "Line layer hold cause 'track': MLS reports no track for longer than the loss grace."),
@@ -96,19 +118,30 @@ def _rows() -> tuple[Alarm, ...]:
           "Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries "
           "every 2 s and succeeds the moment the chain closes."),
         a("DRIVE_ALARM", ERROR, "power_cycle", "Drive alarm",
-          "Switch the drives off and on, then press Recover.",
+          "Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "CANopen EMCY latched; 40C0h (alarm reset) is on the write deny-list, so only a power cycle "
           "clears it. See the code in the detail (e.g. 8130h = heartbeat lost)."),
         a("DRIVE_SILENT", ERROR, "power_cycle", "A drive stopped answering",
-          "Switch the drives off and on, then press Recover.",
+          "Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive "
           "logic power before blaming the PC."),
         a("DRIVE_STOP_UNCONFIRMED", ERROR, "power_cycle", "The vehicle cannot confirm it stopped",
-          "Stay clear. Switch the drives off and on, then press Recover.",
+          "Stay clear. Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so "
           "each drive's own 1016h trips."),
+        a("DRIVE_LINK_FAULT", ERROR, "power_cycle", "Stopped: the drives' link failed",
+          "Switch the drives off and on, wait for them to boot, the engineer presses Recover, then Start.",
+          "Line hold cause 'drive_fault' (unified plan WP-A4): drive_node's link went FAULT, or let go "
+          "of the drives under a running vehicle. Held at once: cached statuswords may still read "
+          "'Operation enabled'. The DRIVE_* row beside it names the node and the code."),
+        a("CAN_TX_FAILED", ERROR, "power_cycle", "The PC cannot send on the drive bus",
+          "Switch the drives off and on, check the CAN adapter's USB cable, then the engineer presses Recover.",
+          "The CAN adapter refused frames (ENOBUFS/EAGAIN: TX queue full) for longer than "
+          "timing.driver_timeout_s. Single failures are counted (can/bus diagnostics tx_errors) "
+          "and never retried; the drives' own 1016h trips if the heartbeat stops getting out "
+          "(unified plan WP-B2)."),
         a("DRIVE_FAULT", ERROR, "power_cycle", "A drive is in fault",
-          "Switch the drives off and on, then press Recover.",
+          "Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "CiA-402 Fault state on a node while armed."),
 
         # ---- the laser scanner ----
@@ -288,7 +321,7 @@ def _rows() -> tuple[Alarm, ...]:
           "The base process group died. Recovery cannot rebuild it: the drives must be re-armed."),
         a("BOOT_ERROR", ERROR, "restart_service", "Needs service: the vehicle software failed to start",
           "Press Restart on the Home page. If it repeats, call the engineer.",
-          "Exception while spawning the base/web/foxglove groups; see journalctl -u amr.service."),
+          "Exception while spawning the base/web groups; see journalctl -u amr.service."),
         a("SPAWN_FAILED", ERROR, "restart_service", "Needs service: a program would not start",
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "Group.spawn failed (missing executable, bad environment)."),
@@ -425,11 +458,16 @@ HOLD_CODES = {
     "estop": "ESTOP",
     "controller": "PATH_BLOCKED",
     "pending": "WAITING_FOR_PREREQ",
+    "prereq": "LINE_PREREQ_LOST",
+    "panel": "PANEL_LINK_LOST",
     "drives": "DRIVES_NOT_READY",
+    "drive_fault": "DRIVE_LINK_FAULT",
     "track": "TRACK_LOST",
+    "sensor": "MLS_SILENT",
     "rate": "TRACK_RATE_LOW",
     "authority": "AUTHORITY_LOST",
     "rfid": "RFID_LINK_LOST",
+    "rfid_overdue": "RFID_TAG_OVERDUE",
     "markers": "MARKERS_LOST",
     "position": "POSITION_UNSURE",
     "payload": "PAYLOAD_UNCONFIRMED",

@@ -10,7 +10,11 @@ OPERATION_ENABLED = "Operation enabled"
 SWITCH_ON_DISABLED = "Switch on disabled"  # STO held by the safety chain (FX3), or not yet reset
 # drive_node's standby (2026-10-08): linked, power stage off on purpose. Not an emergency.
 STANDBY_STATES = ("Ready to switch on", "Switched on")
+# DriveStatus.left/right_state for a node whose TPDO1 stopped: its cached statusword is not
+# evidence of anything (WP-A4).
+STALE = "stale"
 LINK_STANDBY = "standby"  # = amr_base.canopen.STANDBY (test_drive_state pins it)
+LINK_FAULT = "fault"  # = amr_base.canopen.FAULT
 
 
 def torque_off(operational: bool, left_state: str, right_state: str) -> bool:

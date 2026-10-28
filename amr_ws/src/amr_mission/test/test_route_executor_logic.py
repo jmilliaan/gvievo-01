@@ -60,6 +60,9 @@ def make_node(steps, passes=1):
     panel = PanelState()
     panel.valid, panel.mode_auto = True, True
     n._panel, n._panel_t = panel, n.clock[0]
+    n._panel_invalid_t = None
+    # the scanner: a clear field, sampled now (WP-A8 ages it like every other input)
+    n.field_source, n.field_fresh = "scanner", 0.5
     n._scan = object()
     n._pose = lambda: (0.0, 0.0, 0.0)
     n.auto_resume_enabled, n.auto_clear_s, n.auto_resume_estop = True, 2.0, False
@@ -68,6 +71,7 @@ def make_node(steps, passes=1):
     # pre-move phase still needs a fresh drive report with torque - see drives().
     n.premove_s, n.premove_timeout_s, n._premove_since = 0.0, 8.0, None
     n._init_hold_state()
+    n._field_clear, n._field_t = True, n.clock[0]
     n._reset_step_state()
     n.wheels(0.0, valid=True)
     return n
@@ -173,7 +177,7 @@ def test_r08_resume_waits_for_the_interrupted_goal_then_faults_after_the_bound()
     n.goals.send(c, "g", n.fsm.run_id, 0, 0)
     n.phase = ren.PHASE_GOAL
     n.clock[0] += 30.0  # a long step: the bound runs from the pause, not from the send
-    n._loc_t = n._panel_t = n.clock[0]
+    n._loc_t = n._panel_t = n._field_t = n.clock[0]
     n.wheels(0.0)
     n.fsm.pause()
     n._interrupt("paused")
@@ -275,7 +279,7 @@ def test_q06_acknowledged_fault_keeps_the_unresolved_goal_barrier_across_a_new_r
     n.fsm.prepare_resume(True, "")
     n._start_edge()
     n.clock[0] += 6.0  # the cancellation bound passes with the goal's acceptance still pending
-    n._loc_t = n._panel_t = n.clock[0]
+    n._loc_t = n._panel_t = n._field_t = n.clock[0]
     n.drives(True)
     n._execute(n.clock[0])  # the pre-move warning ends
     n._execute(n.clock[0])

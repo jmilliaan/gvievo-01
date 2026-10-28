@@ -144,8 +144,10 @@ class DebouncedLevels:
 
     Same trust rules as PanelScan - a level must read the same on N consecutive
     scans, stale bits during a comms loss are not input, a malformed image is
-    not input - but no anti-tie-down baseline: a pendant button is a deadman,
-    and one held at power-on is meant to drive.
+    not input. No anti-tie-down baseline HERE: the levels are reported as read.
+    The release-before-use rule (owner, 2026-10-25: a direction held when the
+    pendant becomes able to drive must be let go once first) is applied by
+    amr_base.panel_io.PanelAdapter, which knows the enabling events.
 
     scan() returns the believed levels as a tuple of bools, or None while there
     is nothing trustworthy to report.

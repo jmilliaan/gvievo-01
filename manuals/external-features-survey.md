@@ -10,6 +10,9 @@ Related plans: `manuals/sensor-dropout-hardening-plan.md` (cited as "plan P0-x /
 
 ## 0. Summary
 
+The owner's answers to this survey's questions and the build order are in
+`manuals/unified-coding-plan.md` §1 (2026-10-25).
+
 ### Top 10
 
 | # | Feature | Target engine / file | Mode | Value | Effort | Why |
@@ -622,7 +625,7 @@ Format per candidate: verdict, mode, value/effort after verification, Humble sta
 
 #### `fx3-gateway-readonly`: FX0-GMOD Modbus TCP gateway
 **Downgraded** (value medium → low) · new · effort L
-- **Verifier:** purchase + Flexi Soft change + re-validation; the FX3 CPU model (which decides gateway support) is not recorded in the repo. Cheaper paths exist: Q3 → DI08 already, Q4 spare (`fx3-spare-q4-status-bit`), and 60FDh HWTO. Only if per-function FX3 logic state, module faults or a config checksum are wanted later; read-only, network-input set unmapped.
+- **Verifier:** purchase + Flexi Soft change + re-validation; the FX3 CPU model (which decides gateway support) is not recorded in the repo. Cheaper paths exist: Q3 (its destination is open; DI08 is the Manual Arm switch, 2026-10-28), Q4 spare (`fx3-spare-q4-status-bit`), and 60FDh HWTO. Only if per-function FX3 logic state, module faults or a config checksum are wanted later; read-only, network-input set unmapped.
 
 #### `rt-sched-motion-nodes`: SCHED_FIFO / affinity / gc.freeze for drive_node and mux
 **Downgraded** (value medium → low) · augment · effort S
@@ -865,7 +868,7 @@ Format per candidate: verdict, mode, value/effort after verification, Humble sta
 
 #### `fx3-spare-q4-status-bit`: FX3 Q4 → DI09 as a read-only "E-stop/STO active" bit
 **Keep.** new · value high · effort S (software; FX3 side by a human) · existing pymodbus DIO path
-- **What:** a real non-safety copy of the FX3 logic state ("E-stop chain open or STO requested" / "reset required"), the same way Q3 exports a status to DI08. Replaces the torque-loss guess (`job.py:398-402`).
+- **What:** a real non-safety copy of the FX3 logic state ("E-stop chain open or STO requested" / "reset required"), through Q3 into a free DI in DI09–DI0F (DI08 is the Manual Arm switch, 2026-10-28). Replaces the torque-loss guess (`job.py:398-402`).
 - **Sources:** `documentation/electrical/01-schematic/io-mapping.md` §2 (Q3 → DI08 test pulses off; Q4 spare), §3 (DI09-DI0F unused, COM1); SICK Flexi Soft gateways manual im0078284 (stage 2 only).
 - **Sketch:** a human sets Q4 in Flexi Soft Designer (test pulses off), wired to DI09 (COM1 group, like DI08); sheet 08/09 update through the electrical SKILL workflow. Profile DIO key + schema + refusal test; `config.py` cross-check that it differs from all panel/pendant channels; panel_io reads it with the usual freshness rule. A pure function uses it only to choose cause text and `clears_by` ("E-stop: release, reset, then Start").
 - **Risks:** never "safe to move", never latch motion on it. FX3 project change = new checksum + re-verification, safety logic untouched.
@@ -1054,7 +1057,7 @@ Host facts (read-only, verifier): governor powersave, EPP balance_performance, c
 
 #### `io-mapping-parsed-profile-test`: parse io-mapping.md and assert the profile DI/DO map
 **Keep.** new · value medium (was high) · effort S · stdlib, offline suite
-- **What:** one drift check between the wiring source of truth and the profile. Today `test_panel.py:165-188` hand-copies a subset. Drift it would surface now: (a) all `do_names` are `[SPARE]` while sheet 09 has DO0/DO1 = horn sounds 1/2; (b) `dio.motion_on = [0, 8]`, but DO8-DOB are "NOT USED" (sheet 09:198); (c) `num_do 16` vs "16DI+12RELAY"; (d) DI08 "Manual Arm" in the profile/`config.py:98`/RUNBOOK while io-mapping says only "Safety PLC Q3, non-safety status signal".
+- **What:** one drift check between the wiring source of truth and the profile. Today `test_panel.py:165-188` hand-copies a subset. Drift it would surface now: (a) all `do_names` are `[SPARE]` while sheet 09 has DO0/DO1 = horn sounds 1/2; (b) `dio.motion_on = [0, 8]`, but DO8-DOB are "NOT USED" (sheet 09:198); (c) `num_do 16` vs "16DI+12RELAY"; (d) resolved 2026-10-28: io-mapping now names DI08 the Manual Arm switch, matching the profile.
 - **Sources:** `io-mapping.md` §2-3; `tests/test_config.py:442` (parse-don't-restate precedent); `config.py:703-737, 1092-1130`; `tests/run_all.py:87`.
 - **Target:** new `tests/test_wiring.py` registered in `run_all.py` MODULES with a deliberate EXPECTED_CHECKS bump.
 - **Sketch:** ~40 lines: split on headings, read pipe tables keyed by first column, expand ranges, classify wired/spare/not_used by keyword. Assert panel/pendant channels map to rows naming START/RESET/selector/FORWARD…; `di_manual_arm` → the row naming "Safety PLC Q3" and in the COM1 range DI08-DI0F; every channel in motion_on/alarm_on/movement_horn/horn.do_channel is a wired DO; no non-`[SPARE]` name on a not_used row; `num_di/num_do` ≤ header counts. `KNOWN_OPEN` = exact-set equality for {DO8 in motion_on, num_do 16 > 12} (plan P2-8 Q5 "ask, don't change") and `do_names[0..1]` until `profile-do-names-from-sheet` lands. Reworded table → clear "table not found" failure.

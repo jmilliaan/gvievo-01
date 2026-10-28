@@ -63,6 +63,9 @@ class RfidNode(LeanNode):
         m.freq_mhz = 0.0 if freq is None else float(freq)
         m.reader = rfid.params_summary(snap.get("reader"))
         m.config_mismatch = [str(x) for x in snap.get("config_mismatch", ())]
+        params = snap.get("reader")
+        if hasattr(m, "work_mode_mismatch"):  # amr_interfaces not rebuilt yet: publish without it
+            m.work_mode_mismatch = bool(params) and params.get("work_mode") != config.RFID_EXPECT_WORK_MODE
         return m
 
     def _poll(self) -> None:
@@ -81,8 +84,12 @@ class RfidNode(LeanNode):
                 self._pass_logged = seq
 
     def _heartbeat(self) -> None:
+        # Publish what is pending first, then claim only what was published: a heartbeat
+        # carrying the driver's newer seq ahead of its encounter would make a consumer
+        # skip that encounter (unified plan WP-A1, the heartbeat-ahead race).
+        self._poll()
         snap = self.link.snapshot()
-        self._pub.publish(self._msg(snap, True, snap.get("encounter_seq", 0)))
+        self._pub.publish(self._msg(snap, True, self._sent))
 
 
 def main(args=None) -> None:

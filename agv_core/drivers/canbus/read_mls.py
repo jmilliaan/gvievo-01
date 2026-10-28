@@ -946,9 +946,12 @@ def main():
     if args.mode in ("set-variant", "clear-event") and args.value is None:
         ap.error(f"{args.mode} needs --value")
     # SDO answers come back on one COB-ID: a second client on node 10 (drive_node's
-    # IMU poll) would read the other's replies. These modes take the bus owner lock.
-    locked = args.mode in ("calibrate", "set-variant", "set-markers", "marker-level", "markers",
-                           "clear-event")
+    # IMU poll) would read the other's replies, and an NMT from here moves the sensor under
+    # the running stack. Every mode that SENDS anything (SDO or NMT) takes the bus owner
+    # lock (unified plan WP-B5; snapshot and poll read by SDO). Only `stream` without --nmt
+    # is listen-only, and stays lock-free so it can run beside the service.
+    sends = args.mode != "stream" or args.nmt
+    locked = sends
     opened = bench_bus("read_mls", lock=locked)
     if opened is None:
         return 2

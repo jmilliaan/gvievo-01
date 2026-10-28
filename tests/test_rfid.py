@@ -453,8 +453,44 @@ def test_rfid_link_session():
           and link._last_tag == "0020" and snap["encounters"] == [(1, "0020")], str(snap)[:120])
 
 
+def test_rfid_reconnect_encounters():
+    """WP-A1: a reconnect re-baselines only the tag that was in the field at the drop."""
+    from agv_core import config
+    from agv_core.drivers import rfid
+    print("\nRFID encounters across a reconnect")
+    clear = config.RFID_TAG_CLEAR_S
+
+    def run(steps):
+        link = rfid.RfidLink()
+        link._connected, link._connected_at = True, 0.0
+        for kind, t, tag in steps:
+            if kind == "read":
+                link._encounter(tag, t)
+            elif kind == "drop":
+                link._drop(now=t)
+            else:  # connect
+                link._connected, link._connected_at = True, t
+        return [tg for _n, tg in link.snapshot(encounters=True)["encounters"]], link
+
+    got, _ = run([("read", 1.0, "A"), ("drop", 1.1, None), ("connect", 1.5, None), ("read", 1.6, "B")])
+    check("A, drop, B: B is counted (the first read after a reconnect is not swallowed blindly)",
+          got == ["B"], got)
+    got, _ = run([("read", 1.0, "A"), ("drop", 1.1, None), ("connect", 1.5, None), ("read", 1.6, "A")])
+    check("A, drop, A inside the window: the same pass, nothing new", got == [], got)
+    late = 1.5 + clear + 0.1
+    got, _ = run([("read", 1.0, "A"), ("drop", 1.1, None), ("connect", 1.5, None), ("read", late, "A")])
+    check("A, drop, A outside the window: a new pass", got == ["A"], got)
+    got, link = run([("drop", 1.0, None), ("drop", 2.0, None), ("connect", 2.5, None),
+                     ("read", 2.6, "A")])
+    check("a failed connect (never up) leaves nothing to re-baseline: A is counted",
+          got == ["A"] and not link._rebaseline, got)
+    check("two links start in different generations (random seed)",
+          len({rfid.RfidLink()._generation for _ in range(4)}) > 1)
+
+
 TESTS = [
     test_rfid,
     test_rfid_survey,
     test_rfid_link_session,
+    test_rfid_reconnect_encounters,
 ]

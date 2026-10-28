@@ -1,7 +1,7 @@
 # Unified AMR operator and cutover runbook
 
 `amr.service` is the intended production service. It starts the hardware base,
-operator web app and optional Foxglove bridge, then enters **LINE** (tracked, the
+operator web app, then enters **LINE** (tracked, the
 default) unless the profile is trackless-only, which stays in **IDLE**. It does
 not load a map, start a survey, resume a commissioning job or run a route after
 boot, and LINE moves nothing until the physical Start under AUTO. The operator
@@ -50,6 +50,16 @@ all chosen server-side from the alarm catalogue (`agv_core/alarms.py`, section 4
 The **engineer** view adds Maps, Routes, Monitor, I/O, Params, Teach and Guide,
 and on Home opens **More** with the supervisor, readiness and the Return to idle /
 Recover / Restart service buttons (the old Status page, merged 2026-10-24). Press `Op` in the header and type the PIN; press `Eng` to go back.
+
+**Drive faults (2026-10-28).** A latched drive alarm (8130h and the like) clears
+only with a power cycle: switch the drives off and on, wait for them to boot,
+then the engineer presses **Recover**. Recover acknowledges the drive link
+(`/drives/ack_fault`) and is refused while a run still holds or asks for the
+drives (stop or Reset the run first); its answer is drive_node's, word for word,
+"cleanup owed" included. There is no alarm-reset wiring. **One drive lost trips
+both** on purpose: when one drive goes silent, the PC withholds its heartbeat
+and the healthy drive trips 1016h (8130h) too, so both need the power cycle
+(owner decision, unified plan §1 item 4).
 The PIN is **1805** by default and lives in `~/.amr/web.json` (0600, created on
 first run) or in `AMR_WEB_ENGINEER_PIN`, never in the repository. It is a mistake
 guard, not security: every endpoint is still reachable directly on the network,
@@ -66,14 +76,14 @@ In the engineer view, Home → More and the rail must show:
 - Active map `—`, Localisation and Run `–`.
 
 Stopping the service revokes the control lease first. The supervisor then stops
-the active layer, base, Foxglove and web process groups. The base shutdown
+the active layer, base and web process groups. The base shutdown
 zeros wheel commands, clears the drive heartbeat consumer and de-energizes the
 drives; the panel owner drives its output coil low. After stop, check that no
 child remains:
 
 ```bash
 systemctl show amr.service -p ActiveState -p SubState -p MainPID -p Result
-pgrep -af 'amr_|nav2|slam_toolbox|foxglove' || true
+pgrep -af 'amr_|nav2|slam_toolbox' || true
 ```
 
 Do not use process-name kills during normal operation. The supervisor owns the
@@ -187,8 +197,11 @@ press again. These guards only take authority away; the FX3/STO path is unaffect
 **Pendant.** The hard-wired jog pendant on the DIO island works under the same
 authority as the jog pad (selector **MANUAL**, Manual Arm on, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
-vehicle. Opposing buttons pressed together cancel each other. The pendant
-outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
+vehicle. Opposing buttons pressed together cancel each other. A button
+already held when the pendant becomes able to drive (power-on or a panel
+reconnect, the selector turning MANUAL, Manual Arm switching on) does nothing
+until it is let go and pressed again (2026-10-28; the I/O log says "held at
+enable: release it"). The pendant outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
 parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`; 0.60 was tried and
 reverted on 2026-09-19 after a survey at that speed came out rotated); FWD/RVS
 with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
@@ -420,7 +433,7 @@ The route editor moves nothing. The mode can stay `IDLE`.
    Routes saved before 2026-09-18 never boost until re-saved with the field
    set. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
    to back up along the current heading, facing forward: at most 2000 mm
-   and at half the speed cap (never the boost). The nanoScan3 does not
+   and at **0.30 m/s** (half the 0.60 m/s trackless speed, never the boost). The nanoScan3 does not
    cover the rear, so a reverse is driven blind: keep it short, keep the
    area behind clear, and stay within reach of the E-stop for the first
    ones. Shown dashed with `◂` in the editor. **Arc** (2026-09-18): radius
@@ -504,8 +517,11 @@ The route editor moves nothing. The mode can stay `IDLE`.
        button). Release it; the run waits for a physical **Start** (no
        Prepare resume needed).
      - **controller stop**: Nav2 gave up on the move (usually "collision
-       ahead"). Continues by itself when clear, at most 3 times per step,
-       then FAULT.
+       ahead"). Look at what is in the way, clear it, then press **Start**
+       (2026-10-28: only the lidar stop continues by itself). At most 3 per
+       step, then FAULT.
+     - **panel link**: the drives lost torque just after the I/O island
+       reported the panel unreadable. Check the panel, then **Start**.
      - There is no **obstacle** hold any more (2026-09-20). The executor does
        not look at the scan, so nothing but the protective field and the
        E-stop will stop the vehicle for something in the way — and the field
@@ -659,7 +675,6 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `FIELD_PROTECTIVE` | warn | Stopped: something is in the protective field | Clear the area in front of the vehicle; it continues by itself. | The mux zeroes every AUTO source while /output_paths says the protective field is violated - the software side of a stop the scanner's OSSD pair already makes. |
 | `GENERATION_MISMATCH` | warn | Motion is held after a mode change | Wait. If it stays, press Restart on the Home page. | A command or permit carries a superseded generation; the mux drops it by design. |
 | `NOT_LEASED` | warn | Waiting for the supervisor | Wait. If it stays, press Restart on the Home page. | Mux has no fresh ControlLease (supervisor down, starting or in a transaction). |
-| `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. |
 | `PP_ABANDONED` | warn | A blind move was abandoned | Nothing to do. | Blind-run move dropped (authority lost or the owner disarmed). |
 | `PP_REFUSED` | warn | A blind move was refused | Nothing to do; ask the engineer if it was expected. | Blind-run move refused by the drive owner. |
 | `PP_VETOED` | warn | A blind move was stopped before it started | Nothing to do; ask the engineer if it was expected. | Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) no longer allowed it; the veto's controlwords were sent. |
@@ -690,10 +705,15 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `AUTHORITY_LOST` | warn | Stopped: the vehicle lost permission to drive | Put the selector back to AUTO and press Start. | Line hold cause 'authority': lease/permit withdrawn or the selector left AUTO. |
 | `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | MANUAL: switch Manual Arm (DI08) on. AUTO: press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while something wanted to move: the hold cause 'drives', or the mux gating a command. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
 | `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
+| `LINE_PREREQ_LOST` | warn | Stopped: a condition for driving lapsed | Look at the reason shown; once it is fixed, press Start. | Line hold cause 'prereq': a prerequisite (panel, lease, drive report, protective field state) failed for longer than prereq_grace_s while running. Never resumes by itself. |
 | `MARKERS_LOST` | warn | Stopped: the line sensor's markers are not reporting | Check where the vehicle is (the home marker may have been passed), then press Start. | Line layer hold cause 'markers': a marker run (mission marker_run, no RFID) lost the MLS marker stream, or marker events, while driving, so the U-turn or home marker may have been driven past. Never resumes by itself; Start is refused while the stream is down. |
+| `MLS_SILENT` | warn | Stopped: the tape sensor stopped reporting | Check the tape sensor and its cable; once it reports again, check where the vehicle is, then press Start. | Line hold cause 'sensor': no MLS sample for longer than SENSOR_TIMEOUT_S while running. A silent sensor used to end the run DONE wherever it stopped (unified plan WP-A3). On a marker run the resume names the distance driven blind. |
+| `PANEL_LINK_LOST` | warn | Stopped: the control panel link dropped | Check the panel and the I/O island; once the panel answers, press Start. | Hold cause 'panel': the I/O island reported its image invalid while the vehicle was armed or moving, so selector, Start and E-stop state were unknown. Held at once, not after the grace, and never read as the protective field. |
+| `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route, then press Start. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. Waits for Start since 2026-10-28: only the protective field resumes by itself (owner decision, unified plan WP-A2). |
 | `PAYLOAD_UNCONFIRMED` | warn | Stopped before the U-turn: a release is not recorded | Check the trolley is released, confirm it on the Calls page, then press Start. | Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a release stop not served, so a trolley may still be attached. No sensor sees the trolley: the Calls page's confirmation is the record. Start alone does not pivot. |
 | `POSITION_UNSURE` | warn | Stopped: not sure enough where it is on the tape | Wait for localization to be READY (Teach page), then press Start. | Line layer hold cause 'position' (tracked plan 4): on a trip the tape locator's sigma was over its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held BEFORE the point. Start re-checks; it holds again while still unsure. |
 | `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
+| `RFID_TAG_OVERDUE` | warn | Stopped: no station tag where one was expected | Check where the vehicle is on the route (a tag may have been missed), then press Start. | Line hold cause 'rfid_overdue' (unified plan WP-A7): the run drove further than the mission's max_tag_gap_m without reading a tag of its table, so a stop or the U-turn tag may have been driven past. Counted afresh from the Start. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
 | `TRACK_LOST` | warn | Stopped: the tape is not under the sensor | Push the vehicle back onto the tape, then press Start. | Line layer hold cause 'track': MLS reports no track for longer than the loss grace. |
 | `AT_STATION` | info | Parked at a station | Press Start when the station work is done; it moves after the start delay. | Tape mission stop row (role always, or the job's destination): a measured stop over stop_distance_m after the tag, then a LineState HOLD with cause 'station'. The Home stop ends the run (DONE) instead. |
@@ -744,10 +764,12 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `DRIVE_ALARM` | error | Drive alarm | Switch the drives off and on, then press Recover. | CANopen EMCY latched; 40C0h (alarm reset) is on the write deny-list, so only a power cycle clears it. See the code in the detail (e.g. 8130h = heartbeat lost). |
-| `DRIVE_FAULT` | error | A drive is in fault | Switch the drives off and on, then press Recover. | CiA-402 Fault state on a node while armed. |
-| `DRIVE_SILENT` | error | A drive stopped answering | Switch the drives off and on, then press Recover. | No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive logic power before blaming the PC. |
-| `DRIVE_STOP_UNCONFIRMED` | error | The vehicle cannot confirm it stopped | Stay clear. Switch the drives off and on, then press Recover. | Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so each drive's own 1016h trips. |
+| `CAN_TX_FAILED` | error | The PC cannot send on the drive bus | Switch the drives off and on, check the CAN adapter's USB cable, then the engineer presses Recover. | The CAN adapter refused frames (ENOBUFS/EAGAIN: TX queue full) for longer than timing.driver_timeout_s. Single failures are counted (can/bus diagnostics tx_errors) and never retried; the drives' own 1016h trips if the heartbeat stops getting out (unified plan WP-B2). |
+| `DRIVE_ALARM` | error | Drive alarm | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | CANopen EMCY latched; 40C0h (alarm reset) is on the write deny-list, so only a power cycle clears it. See the code in the detail (e.g. 8130h = heartbeat lost). |
+| `DRIVE_FAULT` | error | A drive is in fault | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | CiA-402 Fault state on a node while armed. |
+| `DRIVE_LINK_FAULT` | error | Stopped: the drives' link failed | Switch the drives off and on, wait for them to boot, the engineer presses Recover, then Start. | Line hold cause 'drive_fault' (unified plan WP-A4): drive_node's link went FAULT, or let go of the drives under a running vehicle. Held at once: cached statuswords may still read 'Operation enabled'. The DRIVE_* row beside it names the node and the code. |
+| `DRIVE_SILENT` | error | A drive stopped answering | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive logic power before blaming the PC. |
+| `DRIVE_STOP_UNCONFIRMED` | error | The vehicle cannot confirm it stopped | Stay clear. Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so each drive's own 1016h trips. |
 | `UNCLEAN_SHUTDOWN` | warn | The vehicle lost power last time | Switch the drives off and on, then press the safety reset on the cabinet. | A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from the SAME boot is a service crash instead and needs no drive action. |
 
 ### Cleared by: restart service
@@ -755,7 +777,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `BASE_EXITED` | error | Needs service: the vehicle software stopped | Switch the drives off and on, then press Restart on the Home page. | The base process group died. Recovery cannot rebuild it: the drives must be re-armed. |
-| `BOOT_ERROR` | error | Needs service: the vehicle software failed to start | Press Restart on the Home page. If it repeats, call the engineer. | Exception while spawning the base/web/foxglove groups; see journalctl -u amr.service. |
+| `BOOT_ERROR` | error | Needs service: the vehicle software failed to start | Press Restart on the Home page. If it repeats, call the engineer. | Exception while spawning the base/web groups; see journalctl -u amr.service. |
 | `LAYER_NOT_EMPTY` | error | Needs service: old software would not go away | Press Restart on the Home page. | STOP_OLD found surviving members of the previous layer's process group. |
 | `LAYER_STOP_TIMEOUT` | error | Needs service: software would not stop | Press Restart on the Home page. | The layer did not exit inside its stop budget. |
 | `SPAWN_FAILED` | error | Needs service: a program would not start | Press Restart on the Home page. If it repeats, call the engineer. | Group.spawn failed (missing executable, bad environment). |
@@ -955,6 +977,11 @@ systemctl list-unit-files 'agv_controller*' 'amr*'    # amr.service is the only 
 `amr.service` is the only AGV application boot service. Nothing else on the PC
 opens `can0` or the I/O island; the bench tools take the owner lock and refuse
 while the service runs.
+
+The CANable (slcan) firmware never reports error frames or error counters, so
+`ip -details -statistics link show can0` showing 0 bus errors means **unknown**,
+not clean. The evidence for a sound bus is `bus_health`'s SDO soak (service
+stopped): every transfer completes.
 
 ## 7. Rollback
 

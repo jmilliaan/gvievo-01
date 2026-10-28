@@ -136,7 +136,11 @@ class TagOdometer:
             if n > self._cursor:
                 self.tag, self.travel_m, self._ref = tag, 0.0, None
                 self.why = ""
-        self._cursor = max(self._cursor, seq)
+                self._cursor = n            # only over what was consumed (WP-A1)
+        if seq > self._cursor:
+            # The reader counted an encounter that never arrived: travel since "the last
+            # tag" would be measured from the wrong tag.
+            self._break("RFID encounter missing")  # the cursor stays, for a late arrival
         self._integrate(now, counts, counts_per_rev)
 
     def _integrate(self, now, counts, counts_per_rev):

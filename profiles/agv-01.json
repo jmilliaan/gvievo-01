@@ -245,5 +245,21 @@
     "driver_timeout_s": 0.6,
     "auto_start_delay_s": 2.0,
     "premove_timeout_s": 8.0
+  },
+  "freshness": {
+    "cmd_s": 0.2,
+    "lease_s": 0.3,
+    "permit_s": 0.3,
+    "panel_s": 0.2,
+    "drives_s": 0.3,
+    "field_s": 0.5,
+    "line_panel_s": 0.2,
+    "line_lease_s": 0.3,
+    "line_drives_s": 0.5,
+    "executor_panel_s": 0.5,
+    "executor_drives_s": 0.5,
+    "pc_heartbeat_ms": 100,
+    "pc_loss_ms": 500,
+    "feedback_hz": 50.0
   }
 }

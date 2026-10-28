@@ -113,6 +113,11 @@ class PanelAdapter:
         self._last_mode: str | None = None
         self._last_comms: bool | None = None
         self._last_pendant: panel_core.PendantIntent | None = None
+        # Pendant release-before-use (owner decision 2026-10-25, unified plan WP-A6): a direction
+        # held when the pendant becomes able to drive - the image (re)baselined, the published
+        # selector turning MANUAL, Manual Arm switching on - publishes idle until it has been
+        # read LOW once. There is no enabling device and the FX3 does not see the pendant.
+        self._must_release: set[str] = set()
 
     @staticmethod
     def source_fresh(snapshot: dict) -> bool:
@@ -153,15 +158,18 @@ class PanelAdapter:
         if comms != self._last_comms:
             notes.append("DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})"))
             self._last_comms = comms
+        prior_valid = self._last_valid
         if intent.valid != self._last_valid:
             notes.append("panel image " + ("valid" if intent.valid else "invalid"))
             self._last_valid = intent.valid
         # (the selector note is written by _coincidence, once the change is believed)
         pend = panel_core.PENDANT_IDLE
+        levels = None
         if self.pendant is not None:
             levels = self.pendant.scan(snapshot.get("di"), comms)
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
+        was_valid = prior_valid
         arm_levels = self.manual_arm.scan(snapshot.get("di"), comms)
         arm = bool(intent.valid and arm_levels is not None and arm_levels[0])
         start, reset = bool(intent.start), bool(intent.reset)
@@ -181,6 +189,11 @@ class PanelAdapter:
         if reset:
             notes.append("RESET edge")
         mode, pend = self._coincidence(intent, pend, notes, snapshot.get("di"))
+        enabling = bool(intent.valid) and (
+            was_valid is not True                                            # (re)baseline
+            or (mode == panel_core.MANUAL and prior[0] != panel_core.MANUAL)  # selector to MANUAL
+            or (arm and prior[2] is not True))                               # Manual Arm on
+        pend = self._release_first(pend, levels, enabling, notes)
         if arm != self._last_arm:
             if self._last_arm is not None or arm:
                 notes.append(f"Manual Arm {'on' if arm else 'off'}")
@@ -202,6 +215,23 @@ class PanelAdapter:
         )
         self._last_frame = frame
         return frame
+
+    def _release_first(self, pend, levels, enabling, notes) -> panel_core.PendantIntent:
+        """Mask every direction still waiting to be released since the last enabling event.
+        Tracked on the raw LEVELS, not the intent: FWD held, then RVS added, cancels to idle
+        in the intent without FWD ever having been let go."""
+        if self.pendant is None or levels is None:
+            return pend
+        held = {n for n, on in zip(pend._fields, levels, strict=True) if on}
+        if enabling:
+            new = held - self._must_release
+            if new:
+                notes.append(f"pendant {' '.join(sorted(new)).upper()} held at enable: release it")
+            self._must_release |= held
+        self._must_release &= held  # read LOW once: released
+        if not self._must_release:
+            return pend
+        return pend._replace(**{n: False for n in self._must_release})
 
     def _coincidence(self, intent, pend, notes, di=None) -> tuple[str, panel_core.PendantIntent]:
         """The (mode, pendant) to publish this scan, withholding a simultaneous change."""

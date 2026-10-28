@@ -343,3 +343,56 @@ def test_the_follower_and_executor_read_the_protective_field_index_of_the_yaml(t
     cfg = yaml.safe_load(open(os.path.join(os.path.dirname(LAUNCH), "config", "nanoscan3.yaml")))
     ros = next(v["ros__parameters"] for v in cfg.values() if isinstance(v, dict) and "ros__parameters" in v)
     assert math.isclose(raycast.MOUNTED_FOV, ros["angle_end"] - ros["angle_start"], abs_tol=1e-3)
+
+
+def test_foxglove_is_retired():
+    """Unified plan WP-0A (owner, 2026-10-25): no launch argument, supervisor group,
+    deploy variable or package dependency names Foxglove any more. Manuals may, and so
+    does validate.sh, which warns about a leftover AMR_FOXGLOVE line."""
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    roots = [os.path.join(repo, d) for d in ("amr_ws/src", "amr_ws/deploy", "agv_core")]
+    hits = []
+    for root in roots:
+        for d, dirs, files in os.walk(root):
+            dirs[:] = [x for x in dirs if x not in ("__pycache__", "build", "install", "log")]
+            for f in files:
+                p = os.path.join(d, f)
+                skip = p == os.path.abspath(__file__) or f == "validate.sh"
+                if skip or not f.endswith((".py", ".xml", ".sh", ".env", ".yaml")):
+                    continue
+                with open(p, encoding="utf-8", errors="replace") as fh:
+                    if "foxglove" in fh.read().lower():
+                        hits.append(os.path.relpath(p, repo))
+    assert hits == []
+    for name in ("mapping", "nav", "sim", "drivers", "lidar"):
+        src = open(os.path.join(LAUNCH, f"{name}.launch.py"), encoding="utf-8").read()
+        assert "foxglove" not in src.lower(), name
+
+
+def test_nav2_lifecycle_managers_do_not_rebond_a_dead_node():
+    """WP-0D: a dead Nav2 node ends the layer (REQUIRED), and the supervisor replaces the
+    layer. A lifecycle manager quietly re-bonding a respawned node would hide that. The
+    two files are the ones navigation_layer.launch.py hands its managers."""
+    import yaml
+
+    seen = {}
+    for pkg, f in (("amr_localization", "amcl.yaml"), ("amr_navigation", "nav2_params.yaml")):
+        doc = yaml.safe_load(open(os.path.join(get_package_share_directory(pkg), "config", f)))
+        for name, body in doc.items():
+            if name.startswith("lifecycle_manager"):
+                seen[name] = body["ros__parameters"].get("attempt_respawn_reconnection")
+    assert seen == {"lifecycle_manager_localization": False, "lifecycle_manager_navigation": False}
+
+
+def test_the_executor_assumes_the_field_clear_only_in_sim(tmp_path):
+    """WP-A8: a vehicle navigation layer reads the scanner; only real:=false assumes clear."""
+    from amr_mission.fixtures import write_world_as_bundle
+
+    write_world_as_bundle(str(tmp_path))
+    for real, want in (("true", "scanner"), ("false", "assume_clear")):
+        c = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory", real=real)
+        params = [_param_dict(p) for p in c["params"]["route_executor_node"] if isinstance(p, dict)]
+        assert any(p.get("field_source") == want for p in params), (real, params)
+    d = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory")
+    params = [_param_dict(p) for p in d["params"]["route_executor_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "scanner" for p in params), "the default is the vehicle"

@@ -41,6 +41,10 @@ def _drive_code(drives: dict | None) -> str | None:
     if drives is None:
         return None
     states = f"{drives.get('left', '')} {drives.get('right', '')}"
+    # The LINK's verdict first (WP-B4): a link in FAULT with cached "Operation enabled"
+    # statuswords used to show nothing but DRIVES_NOT_READY. A silent node reads "stale".
+    if drives.get("link") == drive_state.LINK_FAULT:
+        return "DRIVE_SILENT" if drive_state.STALE in states else "DRIVE_FAULT"
     if "Fault" in states:
         return "DRIVE_FAULT"
     if not drives.get("operational"):
@@ -116,6 +120,9 @@ def standing(state: dict[str, Any]) -> list[dict]:
 
     # Worst first, and never the same code twice (a mux inhibit during a supervisor
     # FAULT is the same stop said twice).
+    # A drive row that names the fault says everything DRIVES_NOT_READY would, and more.
+    if any(r["code"] in ("DRIVE_FAULT", "DRIVE_SILENT") for r in out):
+        out = [r for r in out if r["code"] != "DRIVES_NOT_READY"]
     seen, unique = set(), []
     for row in sorted(out, key=lambda r: cat.SEVERITY_ORDER[r["level"]]):
         if row["code"] in seen:

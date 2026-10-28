@@ -306,7 +306,7 @@ def _check_table(tags, vehicle, fastest_rpm):
 
 
 _MISSION_KEYS = ("mission_name", "branch_default", "branch_latch", "high_zone", "tags")
-_OPTIONAL_MISSION_KEYS = ("marker_run", "guided")
+_OPTIONAL_MISSION_KEYS = ("marker_run", "guided", "max_tag_gap_m")
 _MARKER_RUN_KEYS = {"uturn_code", "home_code", "direction", "approach_mps", "decel_m", "max_approach_m",
                     "stop_distance_m", "label"}
 _MARKER_RUN_OPTIONAL = {"home_arm_m"}
@@ -442,6 +442,15 @@ def _parse_mission(doc, vehicle):
         if out["TAGS"] or out["BRANCH_LATCH"]:
             raise ConfigError("marker_run with RFID tag or branch rows: a marker run has no RFID; "
                               "two triggers for one U-turn or home stop would race")
+    # Missed-tag backstop (unified plan WP-A7): the most wheel travel between two reads of a
+    # tag in this table before the run holds (rfid_overdue). Absent/null = off, so a mission
+    # written before the key stays valid until the site's tag spacing is measured.
+    gap = doc.get("max_tag_gap_m")
+    if gap is not None:
+        if not out["TAGS"]:
+            raise ConfigError("max_tag_gap_m on a mission without tag rows: there is no tag to miss")
+        gap = _bounded(doc, "max_tag_gap_m", "mission", 0.0, 500.0)
+    out["MAX_TAG_GAP_M"] = gap
     out["GUIDED"] = _read_guided(doc.get("guided"), vehicle)
     if out["GUIDED"] is not None:
         if out["BRANCH_LATCH"]:

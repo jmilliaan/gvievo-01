@@ -33,6 +33,7 @@ by the controller coming back.
 
 from __future__ import annotations
 
+import errno
 import math
 import struct
 import time
@@ -201,6 +202,45 @@ def counts_per_wheel_rev(read, nodes, gear_ratio: float) -> float | None:
     return scales.pop() if len(scales) == 1 else None
 
 
+# ---------------------------------------------------------------- TX health
+
+# A full TX queue (slcan/USB backlog) or a busy socket: the frame was not sent, the bus is
+# still there. Anything else - ENODEV (adapter unplugged), ENETDOWN - is the bus gone.
+TRANSIENT_TX_ERRNOS = (errno.ENOBUFS, errno.EAGAIN)
+CanOperationError = can.CanOperationError  # for callers that do not import python-can
+
+
+def transient_tx_error(e: BaseException) -> bool:
+    return isinstance(e, can.CanOperationError) and getattr(e, "error_code", None) in TRANSIENT_TX_ERRNOS
+
+
+class TxHealth:
+    """Transient CAN TX failures on the bus thread (unified plan WP-B2). Pure, clock-fed.
+
+    One failed send is counted, never retried: a dropped setpoint is replaced by the next
+    tick's, and the PC heartbeat is never back-filled - if sends keep failing, the drives'
+    1016h still trips, which is the point of it. Failures lasting longer than the driver
+    timeout fault the link (CAN_TX_FAILED) once; a tick whose sends all went out clears it.
+    """
+
+    def __init__(self) -> None:
+        self.errors = 0
+        self.last_error = ""
+        self.since: float | None = None
+
+    def fail(self, now: float, e: BaseException) -> None:
+        self.errors += 1
+        self.last_error = str(e)
+        if self.since is None:
+            self.since = now
+
+    def ok(self) -> None:
+        self.since = None
+
+    def failing_for(self, now: float) -> float:
+        return 0.0 if self.since is None else now - self.since
+
+
 # ---------------------------------------------------------------- router
 
 
@@ -212,14 +252,22 @@ class Router:
     routed here is lost while a transfer is in flight. Handlers run on the bus
     thread and must never raise; an exception is swallowed so an SDO transfer
     in progress is not broken by a decoder bug.
+
+    Error and remote (RTR) frames are dropped before routing and counted, and a route
+    is keyed by (COB-ID, extended): python-can can hand up an error frame whose id is
+    0x081/0x082, which would otherwise reach nodes 1 and 2's EMCY decoders, and an
+    extended 29-bit frame must never alias an 11-bit CANopen COB-ID (unified plan WP-B6).
     """
 
     def __init__(self, bus):
         self._bus = bus
-        self._route: dict[int, callable] = {}
+        self._route: dict[tuple[int, bool], callable] = {}
+        self.error_frames = 0
+        self.remote_frames = 0
+        self.decode_errors: dict[int, int] = {}  # per COB-ID: a decoder raised (WP-B2)
 
-    def add(self, cob_id: int, handler) -> None:
-        self._route[cob_id] = handler
+    def add(self, cob_id: int, handler, extended: bool = False) -> None:
+        self._route[(cob_id, bool(extended))] = handler
 
     def send(self, msg) -> None:
         self._bus.send(msg)
@@ -231,13 +279,21 @@ class Router:
             m = self._bus.recv(timeout=remaining)
             if m is None:
                 return None
-            h = self._route.get(m.arbitration_id)
+            if getattr(m, "is_error_frame", False) or getattr(m, "is_remote_frame", False):
+                if getattr(m, "is_error_frame", False):
+                    self.error_frames += 1
+                else:
+                    self.remote_frames += 1
+                if deadline is not None and time.perf_counter() >= deadline:
+                    return None
+                continue
+            h = self._route.get((m.arbitration_id, bool(getattr(m, "is_extended_id", False))))
             if h is None:
                 return m
             try:
                 h(m)
-            except Exception:  # noqa: BLE001 - see class docstring
-                pass
+            except Exception:  # noqa: BLE001 - see class docstring; counted, not raised
+                self.decode_errors[m.arbitration_id] = self.decode_errors.get(m.arbitration_id, 0) + 1
             if deadline is not None and time.perf_counter() >= deadline:
                 return None
 
@@ -319,6 +375,9 @@ class DriveLink:
     scale: WheelScale | None = None
     applied: tuple[int, int] | None = None
     pc_guard_nodes: set = field(default_factory=set)  # 1016h written on these; cleared on disarm
+    heartbeat_ms: int = 0  # 1017h last asked for (enable_heartbeat); prepare() writes it again
+    idle_errors: int = 0  # the idle hook (IMU poll) raised; counted, never re-raised (WP-B2)
+    last_idle_error: str = ""
     # PC heartbeat kept alive INSIDE blocking arm/disarm transactions (R05): the
     # loop cannot produce it while an SDO sequence or the speed-zero wait runs.
     pc_node: int | None = None
@@ -367,10 +426,13 @@ class DriveLink:
             return t.rpm == 0
         return bool(t.statusword & SW_SPEED_IS_ZERO)
 
-    def _standstill_sdo(self, nid: int) -> bool:
+    def _standstill_sdo(self, nid: int) -> bool | None:
+        """True at standstill, False still turning, None no answer (a dead node)."""
         if self.in_pp:
-            return self.read(nid, 0x606C, timeout=0.2) == 0
-        return bool((self.read(nid, 0x6041, timeout=0.2) or 0) & SW_SPEED_IS_ZERO)
+            v = self.read(nid, 0x606C, timeout=0.2)
+            return None if v is None else v == 0
+        sw = self.read(nid, 0x6041, timeout=0.2)
+        return None if sw is None else bool(sw & SW_SPEED_IS_ZERO)
 
     def __post_init__(self):
         for nid in self.nodes:
@@ -447,8 +509,9 @@ class DriveLink:
         self._in_idle = True
         try:
             self.idle_hook()
-        except Exception:  # noqa: BLE001 - a sensor poll must not break a drive sequence
-            pass
+        except Exception as e:  # noqa: BLE001 - a sensor poll must not break a drive sequence
+            self.idle_errors += 1
+            self.last_idle_error = repr(e)
         finally:
             self._in_idle = False
 
@@ -494,7 +557,10 @@ class DriveLink:
     # -- configuration --
 
     def enable_heartbeat(self, ms: int) -> None:
-        """Drive PRODUCER heartbeat (1017h): what tells a dead drive from an idle one."""
+        """Drive PRODUCER heartbeat (1017h): what tells a dead drive from an idle one.
+        Remembered, and written again by every prepare(): a drive that rebooted since bus-up
+        has its default (0 = off) back (WP-B3)."""
+        self.heartbeat_ms = ms
         if not ms:
             return
         for nid in self.nodes:
@@ -580,6 +646,12 @@ class DriveLink:
         ok, report = self.preflight()
         if not ok:
             raise RuntimeError("preflight failed: " + "; ".join(report))
+        # A clean preflight (1001h = 0, no fault statusword) after a power cycle is the proof
+        # that a latched EMCY is gone: forget it, or the DRIVE_ALARM row outlives the fault
+        # it named (unified plan WP-B4).
+        for nid in self.nodes:
+            t = self.telemetry[nid]
+            t.alarm, t.statusword, t.error_register = None, None, None
         self.arm_epoch += 1
         self.cleanup_owed = True
         self._reset_stop()
@@ -592,6 +664,7 @@ class DriveLink:
             self.configure_pdos(feedback_period_ms)
             if pc_node is not None and pc_loss_ms:
                 self.set_pc_loss_guard(pc_node, pc_loss_ms)
+            self.enable_heartbeat(self.heartbeat_ms)  # non-fatal: a refusal is logged per node
             for nid in self.nodes:
                 self.nmt(0x01, nid)
             for nid in self.nodes:
@@ -648,25 +721,39 @@ class DriveLink:
                 failed.append(f"return to pv ({e})")
         failed += [f"node {n}: zero RPDO" for n in self._send_zero_each()]
         failed += self._zero_target_raw()
-        self._wait_standstill(4.0)
+        failed += [f"node {n}: not at standstill after 4 s" for n in self._wait_standstill(4.0)]
         failed += self._controlwords_raw((CW_SHUTDOWN,))
         self.applied = None
         if failed:
-            self.state, self.fault_reason = FAULT, "power-off incomplete: " + "; ".join(failed)
+            # fault() semantics, not just the state (WP-B4): the stop clock starts, the zero is
+            # retried by fault_tick, and an unconfirmed stop withholds the PC heartbeat (R04).
+            self.fault("power-off incomplete: " + "; ".join(failed))
             self.log(self.fault_reason)
             return False
         self.state, self.energised = STANDBY, False
         return True
 
-    def _wait_standstill(self, seconds: float) -> None:
+    def _wait_standstill(self, seconds: float) -> list[int]:
+        """Wait up to `seconds` for each drive to report standstill. Returns the nodes still
+        turning at the end.
+
+        A node whose read times out is dropped at once - it cannot answer, and waiting the
+        full time on it held a one-drive loss for 4 s per teardown step. A node that ANSWERS
+        "still turning" is waited on for the whole time: a Shutdown while it turns would let
+        it coast (unified plan WP-B3)."""
         end = time.monotonic() + seconds
-        while time.monotonic() < end:
-            try:
-                if all(self._standstill_sdo(n) for n in self.nodes):
-                    return
-            except Exception:  # noqa: BLE001
-                return
-            self.router.pump(0.05)
+        waiting = set(self.nodes)
+        while waiting and time.monotonic() < end:
+            for nid in sorted(waiting):
+                try:
+                    still = self._standstill_sdo(nid)
+                except Exception:  # noqa: BLE001 - a broken read is no answer
+                    still = None
+                if still is None or still:
+                    waiting.discard(nid)
+            if waiting:
+                self.router.pump(0.05)
+        return sorted(waiting)
 
     def _enable_sequence(self) -> None:
         for nid in self.nodes:
@@ -749,6 +836,13 @@ class DriveLink:
         return failed
 
     def _raw_write(self, nid, index, sub, value, size) -> tuple[bool, str]:
+        """The teardown's write (60FFh = 0, 6040h shutdown/disable): no idle(), no raise -
+        but through guard.py like every other SDO write (unified plan WP-B3). A refusal
+        comes back as a failure, never an exception, so the teardown carries on."""
+        try:
+            guard.check(index, value, sub)
+        except guard.ForbiddenWrite as e:
+            return False, f"refused by guard: {e}"
         self.keepalive()
         try:
             ok, detail = sdo_write(self.router, nid, index, sub, value, size)

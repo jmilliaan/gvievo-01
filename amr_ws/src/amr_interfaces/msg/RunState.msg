@@ -39,3 +39,6 @@ string fault_code           # alarm catalogue code (agv_core/alarms.py); "" when
 # Start (alarm horn on, no goal sent yet).
 bool drive_power
 bool premove
+# The device the hold blames (amr_base.hold_policy.CAUSE_DEVICE), "" when no single device or
+# not BLOCKED (unified plan WP-A2).
+string hold_device

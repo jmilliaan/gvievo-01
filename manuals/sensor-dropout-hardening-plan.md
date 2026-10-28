@@ -270,6 +270,8 @@ Refuted parts of audit items are left out. Items the verifier rated "partially" 
 
 ## 7. Open questions (only the ones that change the plan)
 
+Answered by the owner on 2026-10-25: see `manuals/unified-coding-plan.md` §1, which also orders the work.
+
 1. **Hold-cause policy (P0-2).** Should only `field` (and `estop` behind its flag) auto-resume? Then `track`, `rate`, `drives` and every device-dropout cause would need a fresh physical Start in both products. That reverses the documented design at job.py:31-35 and the RUNBOOK. P0-2 assumes yes.
 2. **Pendant release-first (P0-10).** May it override the documented "a pendant held at power-on is meant to drive" rule (panel.py:141-148)? There is no enabling device and the FX3 does not see the pendant.
 3. **Bench session, service stopped.** These results gate P1-11, P1-12, P1-14, P2-5 and P0-6 tuning:
@@ -281,7 +283,7 @@ Refuted parts of audit items are left out. Items the verifier rated "partially" 
 4. **Drive-fault clear act and one-drive loss.** Recover through the supervisor admission (P0-5 assumes this), or the physical Reset, or an engineer PIN? And when only one drive goes silent, should the healthy drive still be forced into 8130h by heartbeat withholding (canopen.py:863-867)?
 5. **I/O hardware.**
    - Can spare DIs take FX3 status outputs (E-stop / reset-required)?
-   - What does FX3 Q3 → DI08 encode?
+   - ~~What does FX3 Q3 → DI08 encode?~~ Answered 2026-10-28: DI08 is the Manual Arm switch, not Q3.
    - Is DO8 in `motion_on` a planned beacon or should it be removed?
    - Should `num_do` be 12, to match the CK-EC5163?
    - Does that module have a comm-loss output reset?

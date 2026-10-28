@@ -102,3 +102,6 @@ string trip                 # the trip being driven ("MRU: MRU1, MRU2, U-turn at
 string trip_next            # what comes next: "stop MW-1 in 3.2 m", "right at J-N in 0.8 m", "MRU trip formed: ..."
 string trip_queue           # machines waiting, in call order, space-separated ("MRU3 MRU1")
 string trip_payload         # why the next trip may not leave HOME ("" = trolleys confirmed off)
+# The device the hold blames (amr_base.hold_policy.CAUSE_DEVICE: scanner, safety_chain, dio,
+# drives, mls, rfid, nav2), "" when no single device or not held (unified plan WP-A2).
+string hold_device

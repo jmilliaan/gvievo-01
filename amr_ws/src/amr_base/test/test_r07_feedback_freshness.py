@@ -37,7 +37,7 @@ def test_heartbeat_and_sdo_replies_do_not_hide_a_missing_tpdo():
     _feed(link, now - 1.0)
     _feed(link, now, status=False, nodes=(1,))  # node 1: TPDO2 only
     _feed(link, now, nodes=(2,))
-    bus.rx.append(can.Message(arbitration_id=0x701, data=bytes([0x05])))
+    bus.rx.append(can.Message(arbitration_id=0x701, data=bytes([0x05]), is_extended_id=False))
     link.router.pump(0.01)
     link.read(1, 0x1001)
     now = time.monotonic()
@@ -97,15 +97,18 @@ def test_drive_status_operational_needs_fresh_feedback():
     _feed(link, time.monotonic() - 1.0)  # cached Operation enabled, but old
     DriveNode._publish_status(node, link, None)
     assert link.state == ARMED and out[-1].operational is False
+    # WP-A4: the cached state is not published as if it were current
+    assert out[-1].left_state == out[-1].right_state == "stale"
     _feed(link, time.monotonic())
     DriveNode._publish_status(node, link, None)
     assert out[-1].operational is True
+    assert out[-1].left_state == out[-1].right_state == "Operation enabled"
 
 
 def test_tpdo_frames_set_their_own_clocks_only():
     bus, link = _armed()
     link.telemetry[1].t_status = link.telemetry[1].t_position = None
-    bus.rx.append(can.Message(arbitration_id=0x281, data=struct.pack("<iB", 7, 0)))
+    bus.rx.append(can.Message(arbitration_id=0x281, data=struct.pack("<iB", 7, 0), is_extended_id=False))
     link.router.pump(0.01)
     t = link.telemetry[1]
     assert t.t_position is not None and t.t_status is None

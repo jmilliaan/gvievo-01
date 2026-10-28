@@ -52,7 +52,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import drive_state, gating
+from amr_base import drive_state, gating, hold_policy
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import EVENT_STREAM, LATCHED, RELIABLE_1
 from amr_base.qos import SENSOR_DATA as SENSOR
@@ -71,7 +71,7 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import LineTeach, SelectMission
-from amr_line import autopilot, flight_recorder, runtime, tape_health
+from amr_line import autopilot, flight_recorder, rfid_intake, runtime, tape_health
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -113,16 +113,17 @@ class LineFollowNode(LeanNode):
         self.declare_parameter("auto_resume_clear_s", -1.0)
         self.declare_parameter("auto_resume_estop", False)
         self.declare_parameter("accept_sdo_track", False)
-        self.declare_parameter("panel_fresh_s", 0.2)
-        self.declare_parameter("lease_fresh_s", 0.3)
-        self.declare_parameter("drives_fresh_s", 0.5)
+        # Pinned at or above the mux's own limits by the profile (freshness.line_*, WP-A10).
+        self.declare_parameter("panel_fresh_s", vehicle_config.FRESH_LINE_PANEL_S)
+        self.declare_parameter("lease_fresh_s", vehicle_config.FRESH_LINE_LEASE_S)
+        self.declare_parameter("drives_fresh_s", vehicle_config.FRESH_LINE_DRIVES_S)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]
         # "scanner": the protective field is what a FRESH /output_paths says,
         # and unknown otherwise (a Start is refused and a torque loss is
         # an E-stop). "assume_clear": the sim, which has no scanner. The launch
         # file picks by the supervisor's `real`; never assume on a vehicle.
         self.declare_parameter("field_source", "scanner")
-        self.declare_parameter("field_fresh_s", 0.5)  # /output_paths rides every scan (~34 Hz)
+        self.declare_parameter("field_fresh_s", vehicle_config.FRESH_FIELD_S)  # /output_paths: every scan
         # Mission engine inputs (2026-10-02)
         self.declare_parameter("rfid_fresh_s", 1.5)  # heartbeat is 2 Hz
         self.declare_parameter("wheels_fresh_s", 0.1)
@@ -188,15 +189,14 @@ class LineFollowNode(LeanNode):
         self._lease_t = None
         self._drives_t = None
         self._torque_off_msg = False
+        self._drive_link, self._drives_operational = "", False
         self._field_clear: bool | None = None  # last /output_paths verdict
         self._field_t: float | None = None     # ...and when it arrived (monotonic)
         self._t_last = time.monotonic()
         self._published_zero = True
         # RFID: the encounter stream rebuilt as the driver's snapshot shape.
         self.rfid_fresh = float(self.get_parameter("rfid_fresh_s").value)
-        self._rfid_t: float | None = None
-        self._rfid_status = {"comms_ok": False, "encounter_seq": 0, "generation": 0, "tag_age_s": None}
-        self._rfid_encounters: collections.deque = collections.deque(maxlen=256)
+        self.rfid_in = rfid_intake.RfidIntake(self.rfid_fresh)
         # MLS markers (mls-marker-plan 6): the same snapshot shape, rebuilt from /amr/line_marker.
         self._marker_t: float | None = None
         self._marker_status = {"ok": False, "status": "no marker data", "generation": None, "base": 0}
@@ -301,7 +301,7 @@ class LineFollowNode(LeanNode):
                                 lambda req, res, act=act: self._trigger(
                                     f"continue {act}", lambda: self.job.continue_on_start(act == "arm"), res))
 
-        self.create_timer(self.dt, self._tick)
+        self.create_steady_timer(self.dt, self._tick)
         self.create_timer(1.0, self._publish_state)
         self._publish_state()
         self.get_logger().info(
@@ -484,19 +484,9 @@ class LineFollowNode(LeanNode):
         self._lease, self._lease_t = m, time.monotonic()
 
     def _on_rfid(self, m: StationDetection) -> None:
-        now = time.monotonic()
-        if int(m.generation) != self._rfid_status["generation"]:
-            self._rfid_encounters.clear()  # the driver cleared its buffer on reconnect
-        if not m.heartbeat and m.rfid_tag:
-            self._rfid_encounters.append((int(m.encounter_seq), str(m.rfid_tag)))
-        self._rfid_status = {
-            "comms_ok": bool(m.comms_ok),
-            "encounter_seq": max(int(m.encounter_seq), self._rfid_status["encounter_seq"])
-            if int(m.generation) == self._rfid_status["generation"] else int(m.encounter_seq),
-            "generation": int(m.generation),
-            "tag_age_s": None if m.tag_age_s < 0 else float(m.tag_age_s),
-        }
-        self._rfid_t = now
+        self.rfid_in.on_message(time.monotonic(), bool(m.heartbeat), str(m.rfid_tag), m.encounter_seq,
+                                m.generation, bool(m.comms_ok), float(m.tag_age_s),
+                                bool(getattr(m, "work_mode_mismatch", False)))
 
     def _on_marker(self, m: MarkerEvent) -> None:
         gen = int(m.generation)
@@ -523,13 +513,7 @@ class LineFollowNode(LeanNode):
 
     def _rfid(self, now: float) -> dict:
         """agv_core.drivers.rfid snapshot shape. A silent node is a link that is down."""
-        fresh = self._rfid_t is not None and now - self._rfid_t <= self.rfid_fresh
-        st = dict(self._rfid_status)
-        st["comms_ok"] = bool(fresh and st["comms_ok"])
-        if st["tag_age_s"] is not None and self._rfid_t is not None:
-            st["tag_age_s"] += now - self._rfid_t
-        st["encounters"] = list(self._rfid_encounters)
-        return st
+        return self.rfid_in.snapshot(now)
 
     def _on_wheels(self, m: WheelStates) -> None:
         self._wheels, self._wheels_t = m, time.monotonic()
@@ -568,8 +552,12 @@ class LineFollowNode(LeanNode):
     def _on_mode(self, m: ModeState) -> None:
         self._mode = m
 
+    def _drives_fresh(self, now: float) -> bool:
+        return self._drives_t is not None and now - self._drives_t <= self.drives_fresh_s
+
     def _on_drives(self, m: DriveStatus) -> None:
         self._torque_off_msg = drive_state.torque_off(m.operational, m.left_state, m.right_state)
+        self._drive_link, self._drives_operational = str(m.link_state), bool(m.operational)
         self._drives_t = time.monotonic()
 
     def _on_output_paths(self, m) -> None:
@@ -609,11 +597,12 @@ class LineFollowNode(LeanNode):
             now=now,
             dt=dt,
             sensor=self.reader.sensor(),
-            sensor_age_s=self.reader.age_s(now) or 0.0,
+            sensor_age_s=self.reader.age_s(now),  # None = never decoded: a silent sensor (WP-A3)
             track_ok=track_ok,
             track_cause=track_cause,
             panel_valid=bool(panel_ok and self._panel.valid),
             panel_auto=bool(panel_ok and self._panel.mode_auto),
+            panel_link_lost=bool(panel_ok and not self._panel.valid),
             start_edge=start_edge_t is not None,
             start_edge_t=start_edge_t,
             reset_edge=reset_edge,
@@ -629,6 +618,9 @@ class LineFollowNode(LeanNode):
             drives_fresh=bool(
                 self._drives_t is not None and now - self._drives_t <= self.drives_fresh_s
             ),
+            # A stale report says nothing about the link: "" and None are "unknown".
+            drive_link=self._drive_link if self._drives_fresh(now) else "",
+            drives_operational=self._drives_operational if self._drives_fresh(now) else None,
             rfid=self._rfid(now),
             markers=self._markers(now),
             counts=counts,
@@ -808,11 +800,13 @@ class LineFollowNode(LeanNode):
         m.v_mps, m.omega_rad_s = float(v), float(omega)
         m.followed_m = float(self.job.followed_m)
         m.track_hz = float(self.reader.hz() or 0.0)
-        m.sample_age_s = float(self.reader.age_s(time.monotonic()) or 0.0)
+        age = self.reader.age_s(time.monotonic())
+        m.sample_age_s = -1.0 if age is None else float(age)  # -1 = never decoded
         m.track_source = "" if self.reader.last is None else str(self.reader.last.source)
         m.message = self.job.reason
         m.code = self._code()
-        for k, v in self.job.mission_snapshot().items():
+        extra = {"hold_device": hold_policy.hold_device(self.job.hold_cause)}
+        for k, v in {**self.job.mission_snapshot(), **extra}.items():
             if not hasattr(m, k):
                 # Python updated by a restart, amr_interfaces not rebuilt: say so once and
                 # keep publishing, rather than lose the line layer to an AttributeError.

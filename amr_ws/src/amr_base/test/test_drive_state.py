@@ -28,3 +28,4 @@ def test_the_names_match_the_decoder_and_the_link():
 
     canopen = pytest.importorskip("amr_base.canopen")
     assert canopen.STANDBY == ds.LINK_STANDBY
+    assert canopen.FAULT == ds.LINK_FAULT

@@ -636,6 +636,11 @@ def test_reverse_step_is_bounded_slow_and_backs_along_the_heading():
     assert st.length_m == 1.5 and st.samples[0] == pytest.approx((3.0, 0.0, 0.0))
     assert st.samples[-1] == pytest.approx((1.5, 0.0, 0.0)) and all(s[2] == 0.0 for s in st.samples)
     assert st.v_mps == pytest.approx(0.30)  # half the trackless speed: the rear is outside the scanner field
+    # A ceiling, not just today's value: the RUNBOOK tells the operator 0.30 m/s, so a raised
+    # trackless speed must not raise the blind reverse with it (unified plan WP-0C).
+    from amr_navigation.route import REVERSE_SPEED_RATIO, VEHICLE_V_MAX
+
+    assert REVERSE_SPEED_RATIO * VEHICLE_V_MAX <= 0.30 + 1e-9
     assert st.travel_yaw == pytest.approx(math.pi)
     assert c.total_length_m == pytest.approx(4.5) and c.end == pytest.approx((1.5, 0.0, 0.0))
     # bounded to REVERSE_MAX_M, and never zero

@@ -1,4 +1,8 @@
-# Unified coding plan: hardening, CPU load, external features (2026-10-25)
+# Unified coding plan: hardening, CPU load, external features (2026-10-25, re-checked 2026-10-28)
+
+**Re-check 2026-10-28.** Every WP was compared with the tree at 64e9654. None is built. L has
+landed (§0 rule 1), so every milestone gate that waited on it is open. The partial
+progress L made on some WPs is in §2 and noted in the WPs.
 
 For a coding agent. It merges three plans into one ordered list of work packages, with the
 owner's answers to their open questions applied:
@@ -8,7 +12,7 @@ owner's answers to their open questions applied:
 | **H** | `manuals/sensor-dropout-hardening-plan.md` (items H-P0-1 … H-P3-3) |
 | **C** | `manuals/cpu-load-plan.md` (items C-§4a-a … C-#28) |
 | **S** | `manuals/external-features-survey.md` (items by slug, e.g. S-`rfid-0072-heartbeat`) |
-| **L** | `manuals/lean-plan.md` (D-numbers), being executed by another instance right now |
+| **L** | `manuals/lean-plan.md` (D-numbers). P0 + P1 committed (75f2bea, 64e9654); 122 of 161 marked; the rest are in §0 rule 1 |
 
 The source items hold the full rationale, evidence and line anchors. This plan states **what
 to build, in what order, and what changed versus the source**. When a work package says
@@ -18,17 +22,32 @@ to build, in what order, and what changed versus the source**. When a work packa
 
 ## 0. Rules for the agent
 
-1. **Precondition: L lands first.** Another instance is refactoring right now: `canbus/`
-   gains `sdo.py`, `cia301.py` and `cia402.py`, and `drive_node`, `canopen`, `mls_*`,
-   `rfid.py`, `guard.py`, `config.py`, `profiles/agv-01.json` and `tests/run_all.py` are
-   being changed. Don't start a WP that touches a file with uncommitted L or plan-4 changes.
-   Check `git status` first. The source line numbers are already stale, so **re-anchor every
-   item by symbol** (function or class name), never by line.
-2. **Use L's new homes.** CANopen constants come from `canbus/cia301.py` and `cia402.py`, SDO
-   from `canbus/sdo.py`, QoS from `amr_base/qos.py` (L D07) and wire enums from
-   `amr_base/wire.py` (L D04). New enums (DeviceHealth device and state) go in `wire.py`.
-   If D04 or D07 has not landed yet, put the enums next to the message and leave a
-   `TODO(L-D04)`.
+1. **L has landed** (75f2bea, 64e9654), and so has plan 4 (ef319d9). Check `git status`
+   before starting a WP anyway. The source line numbers are stale, so **re-anchor every item
+   by symbol** (function or class name), never by line. These L items are still open, and
+   each overlaps a WP here. Do each one together with its WP, not separately:
+
+   | L item | State | Do it with |
+   |---|---|---|
+   | D16: two horn engines | todo | WP-C7 (panel_node horn subscriptions) |
+   | D08: `agv_core/events.py` ring written, never read | todo | WP-H3 (event forensics) |
+   | D51: Foxglove plumbing | todo | Superseded by WP-0A |
+   | D01: `lidar.*` keys have no consumer | partial, owner decision | WP-P10 launches the scanner from them, which settles D01: the keys stay |
+   | D53: localization group built twice | todo | WP-C15 (Nav2 lifecycle/container) |
+
+   The remaining L items (D13 rest, D36, D39, D95 and the P3 tail) touch no WP file.
+2. **Use L's homes:**
+   - CANopen constants: `canbus/cia301.py` and `cia402.py`.
+   - SDO: `canbus/sdo.py`, including `bench_bus` and `guarded_sdo_write`.
+   - QoS: `amr_base/qos.py`.
+   - Wire enums: `amr_base/wire.py`. The new DeviceHealth device and state enums go here.
+   - Node boilerplate: `amr_base/lean_node.py` (`LeanNode`, `run`).
+   - TF to pose: `amr_base/tfpose.py`.
+   - Hold primitives shared by the two run FSMs: `amr_base/hold_policy.py` (`auto_causes`,
+     `Debounce`, `hold_text`, `premove_ready`).
+   - Event ring: `eventlog.EventRing`.
+   - State and maps paths: `agv_core/paths.py`.
+   - Atomic file writes: `agv_core/fsio.py`.
 3. **Check before you build.** Several items may already be done by L or plan-4 work. Grep
    for the symbol the item adds. If it exists and its test exists, mark the item done in §7
    and move on.
@@ -44,7 +63,17 @@ to build, in what order, and what changed versus the source**. When a work packa
    `guard.py`. Every change to them adds or adjusts a test, and the WP summary states the
    **failure mode and recovery path**.
 6. **The unified sim** runs once per milestone (end of M1, M3, M5), sequentially, on its own
-   `ROS_DOMAIN_ID`. It checks mechanisms, not tolerances.
+   `ROS_DOMAIN_ID`. It checks mechanisms, not tolerances. Known failures to tell apart
+   from new ones (triage 2026-10-28, none caused by L):
+   - **Stale tests, to fix in WP-T3:**
+     - `test_square_drive`: no panel, so the vehicle never leaves `PANEL_STALE`.
+     - `test_run_control_sim`: still expects the obstruction check, removed 2026-09-21.
+     - `test_fault_injection_sim::test_killing_the_base…`: expects a `BASE_EXITED` event, but only `MODE_CHANGE` is emitted.
+   - **Flaky:** `test_route_sim` passes when run alone.
+   - **Not diagnosed:** `test_amcl_sim` and `test_survey_sim`. They clash with the live service on port 5001; diagnose with `amr.service` stopped.
+   - **Already failing in plain pytest** (not sim):
+     - `test_launch_layers::test_line_layer_is_only_the_follower`
+     - `test_node_attributes::test_no_node_reads_an_attribute_it_never_assigns` (`site_run.py`)
 7. **Build marks:**
    - R: service restart is enough
    - C: needs `colcon build` (msg/srv or a new entry point)
@@ -71,7 +100,7 @@ to build, in what order, and what changed versus the source**. When a work packa
 | 12 | nanoScan3 24 V | Always on; off only on its circuit protector or vehicle power-off | SCN-1 stays "partial". H-P1-12 scanner watch moves to P2 (WP-Z) |
 | 13 | Data output saved in Safety Designer | Unknown | Human task HT-1. S-`sick-driver-no-write-fork` stays blocked on it |
 | 14 | FX3 status to the PC | Q3 will carry E-stop status to a DI, wired later. FX3 CPU is **FX3-CPU000000**. Q4 not used | WP-Y1 deferred until wired. S-`fx3-spare-q4-status-bit` and S-`fx3-gateway-readonly` dropped |
-| 15 | DIO | `num_do` stays 16. Module is **CK-TP5162**. DO8 not answered → unchanged | Electrical doc rename = HT-2 (SKILL workflow). Open item O-1 (DI08) |
+| 15 | DIO | `num_do` stays 16. Module is **CK-TP5162**. DO8 not answered → unchanged | Electrical doc rename = HT-2 (SKILL workflow). O-1 (DI08) resolved 2026-10-28 |
 | 16 | BMS | Ignore | S §2.12 dropped, except the error/RTR-frame filter, which is a latent EMCY collision bug (WP-B6) |
 | 17 | RFID heartbeat opcode | 0x0072 | WP-E1 |
 | 18 | Bench session | Yes | §5. Needs the read-only probe WP-0B first for the SDO reads |
@@ -80,18 +109,17 @@ to build, in what order, and what changed versus the source**. When a work packa
 | 21 | Order of work | Not answered → recommended order | M0 → M6 below |
 
 ### Open items (record them; don't block on them)
-- **O-1, DI08.** The software reads DI08 as **Manual Arm**: `panel.di_manual_arm: 8`,
-  config.py docs, RUNBOOK. The owner confirms this. But `io-mapping.md` §2/§3 says DI08 is
-  wired to **FX3 Q3**. Either the Manual Arm switch reaches DI08 through Q3, or
-  `io-mapping.md` is wrong. The future Q3 E-stop status then needs a free DI in **DI09–DI0F**
-  (COM1 group; DI07 is COM0 and won't read a sourcing output). Resolve through HT-2. Until
-  then, no code reads Q3 as E-stop.
+- **O-1, DI08: resolved 2026-10-28.** DI08 is the **Manual Arm** switch (owner), not FX3 Q3.
+  `io-mapping.md` and sheets 08/09 are corrected; the Manual Arm switch details and Q3's
+  destination are still `«placeholder»` there. The future Q3 E-stop status needs a free DI in
+  **DI09–DI0F** (COM1 group; DI07 is COM0 and won't read a sourcing output). Until it is
+  wired, no code reads Q3 as E-stop.
 - **O-2, DO8** in `dio.motion_on` (`[0, 8]`): sheet 09 marks DO8–DOB as "NOT USED".
   Leave it unchanged and make it visible (WP-Y2).
 
 ### Conflict with L, settled
-- **L D02** removes the profile IMU, monitor and telemetry periods because nothing reads
-  them. The ROS params in drive_node rule. H-P2-1 wanted to wire `imu.poll_period_s` and
+- **L D02** (landed) removes the profile IMU, monitor and telemetry periods because nothing
+  reads them. The ROS params in drive_node rule. H-P2-1 wanted to wire `imu.poll_period_s` and
   `retry_period_s` into the profile. **L wins for those:** they stay ROS params.
 - H-P2-1 keeps only the new `freshness` block: gate limits with hard ceilings, and consumer
   limits pinned ≥ gate (WP-A9).
@@ -102,7 +130,10 @@ to build, in what order, and what changed versus the source**. When a work packa
 
 | Item | State |
 |---|---|
-| S "Two guard.py bypasses" / L D44 | **Done by L**: `canbus/sdo.guarded_sdo_write`, used by `drive_forward` and `read_imu.enable_tpdo`. Check that the L D44 test exists (no raw `sdo_write` outside the helper) |
+| S "Two guard.py bypasses" / L D44 | **Done by L**: `canbus/sdo.guarded_sdo_write`, used by `drive_forward` and `read_imu.enable_tpdo`. Test verified 2026-10-28: `tests/test_canmon.py` "no raw sdo_write( outside sdo.guarded_sdo_write". It scans `canbus/` only. A remaining gap in `amr_base/canopen.py` is assigned to WP-B3 |
+| H-P0-2 shared module | **Done by L**: `amr_base/hold_policy.py`. Both FSMs call `auto_causes()` and `Debounce`. WP-A2 changes the cause sets, not the plumbing |
+| H-P1-2 parts | **Done**: `LineState.auto_resume` and `RunState.auto_resume` are filled. `IoImage.comms_ok` comes from `PanelAdapter.source_fresh` |
+| C#22 LeanNode part | **Done by L**: `RouteExecutor(LeanNode)` with `MultiThreadedExecutor(4)`. The rest of WP-C14 is open |
 | H-P0-8 LINE half | `line_follow_node` already has `field_source` / `field_fresh_s`. The executor half is still open (WP-A8) |
 | C §3 (LeanNode, commissioning idle period, scan_gate poll, web live subs, `AMR_FOXGLOVE=false`) | Committed (8f7944a). Deployed: built `LineState` matches the source, amr.service was restarted 2026-10-25 10:14. **Acceptance pidstat not taken** (§6) |
 | C Tier 1 #1 (`tape_loc.enabled=false`) | Withdrawn in the source |
@@ -116,9 +147,9 @@ to build, in what order, and what changed versus the source**. When a work packa
 
 | Milestone | Theme | Gate to start |
 |---|---|---|
-| **M0** | Small, isolated wins + bench probe + deploy files | Now, for WPs whose files are clean |
-| **M1** | Motion authority and missed stops (H-P0) | L work on `job.py`, `rfid.py`, `panel_io.py` and the mux is committed |
-| **M2** | Bus thread and drive recovery | L canbus/canopen/drive_node refactor committed |
+| **M0** | Small, isolated wins + bench probe + deploy files | Open |
+| **M1** | Motion authority and missed stops (H-P0) | Open (L committed 75f2bea) |
+| **M2** | Bus thread and drive recovery | Open (L committed 75f2bea) |
 | **M3** | Device health and an honest HMI | M1 + M2 |
 | **M4** | CPU: transport and wakeups | Any time after M0. Prefer after M2: drive_node items overlap |
 | **M5** | Peripherals: RFID, scanner, DIO, IMU, MLS, web transport | M3 for the health-model consumers |
@@ -143,7 +174,11 @@ to build, in what order, and what changed versus the source**. When a work packa
   - `agv_core/alarms.py` SUPERVISOR text "base/web/foxglove groups" → "base/web groups"
   - Comments in `cyclonedds-local.xml`, `domains.py`, `base.launch.py` and
     `navigation_layer.launch.py`
-  - Docs: README, amr_ws/README, RUNBOOK, alpha-setup
+  - Docs: README, amr_ws/README, RUNBOOK, alpha-setup. L's doc pass (2026-10-25) wrote
+    "Foxglove only with `AMR_FOXGLOVE=true`" into alpha-setup §6/§6.1. Remove that too.
+  - State on 2026-10-28: the env-default conflict that L D51 names is still present.
+    `amr-supervisor.sh` uses `${AMR_FOXGLOVE:-true}`, `amr.env` sets `false`, and the
+    supervisor's `dp("foxglove", True)` defaults to true. All three go.
 - **validate.sh:** warn if `AMR_FOXGLOVE` is still present in the installed env file.
 - **Don't** `apt remove ros-humble-foxglove-bridge` here. That is the owner's call in WP-P1.
 - **Tests:**
@@ -171,13 +206,17 @@ to build, in what order, and what changed versus the source**. When a work packa
 - **Bump `EXPECTED_CHECKS`.**
 
 ### WP-0C Doc and comment fixes · no build
-- RUNBOOK reverse speed: say **0.30 m/s** (0.5 × 0.60). Add a test pinning reverse ≤ 0.30 m/s
-  in the route compiler test (S "RUNBOOK reverse speed wording").
+- RUNBOOK reverse speed (§ route editor, "Reverse (2026-09-18)", which still says "half the
+  speed cap"): say **0.30 m/s** (0.5 × 0.60). Add a test pinning reverse ≤ 0.30 m/s in the
+  route compiler test (S "RUNBOOK reverse speed wording").
 - `amcl.yaml`: mark `save_pose_rate` dead in Humble nav2_amcl 1.1.20.
-- `nanoscan3.yaml`: `/output_paths` comes from application data, not `intrusion_data`.
-- `bus_health.py` docstring + RUNBOOK: slcan reports zero bus errors because the firmware
-  never reports them. 0 means unknown, not clean.
-- `cpu-load-plan.md` §3: "deployed 2026-10-25, acceptance pidstat owed". Tier 1 #2: dropped
+- `nanoscan3.yaml`: the `intrusion_data: true` comment says it is the field status.
+  `/output_paths` comes from application data, not `intrusion_data`. Fix the comment.
+- `bus_health.py`: the module docstring already says slcan has no error-state visibility.
+  Still owed: the soak summary prints "zero errors". Say "0 errors (slcan: 0 means unknown,
+  not clean)" there and in the RUNBOOK.
+- `cpu-load-plan.md` §3: the heading still says "NOT deployed". Change it to "deployed
+  2026-10-25, acceptance pidstat owed". Tier 1 #2: dropped
   (decision 6). Add a §6 note that the projection keeps dev tooling.
 - `sensor-dropout-hardening-plan.md` §7 and `external-features-survey.md` §0: one line each
   pointing to this plan's §1 for the answers.
@@ -214,18 +253,25 @@ All these WPs have verification **U**, plus **V** in §6 where noted.
 - Note: L changed `rfid.py` (`read_frames`, `RX_BUFFER_MAX`). Merge onto it.
 
 ### WP-A2 Single hold-cause policy · C (`hold_device`) · H-P0-2, with decision 1
-- `CAUSE_POLICY` in `agv_core/alarms.py`. `job._AUTO_CAUSES = ("field",)`. The executor's auto
-  set imports the same policy.
+- **Today (2026-10-28):**
+  - `job._AUTO_CAUSES = ("field", "drives", "rate", "track")`.
+  - The executor passes `("field", "controller")` to `hold_policy.auto_causes()`.
+  - Decision 1 removes `drives`, `rate`, `track` **and the executor's `controller`**.
+- `CAUSE_POLICY` goes in `amr_base/hold_policy.py`, beside `auto_causes()`, which L created
+  and both FSMs already call. `auto_causes()` reads it instead of a per-product tuple, and
+  `job._AUTO_CAUSES` goes. `agv_core/alarms.py` keeps its `clears_by` per code.
 - **Delta:** the source's sub-points stay as written:
   - Split `panel_fresh` / `panel_image_valid`.
   - A fresh `valid=False` holds at once with cause `panel` and code `PANEL_LINK_LOST`.
   - Line `pending` → `LINE_PREREQ_LOST`.
   - In `_hold_tick`, reclassify an auto hold to `pending` when `field_clear is None`.
   - Executor: torque loss after a panel invalid → `panel`.
-  - Append `hold_device` to LineState and RunState.
+  - Append `hold_device` to LineState and RunState. `auto_resume` is already there.
 - Regenerate the `job.py` module docstring and RUNBOOK §4.
 - **Tests:**
-  - `test_alarms`: `clears_by=='auto'` ⇔ the cause is in `CAUSE_POLICY` auto, for both products.
+  - A new `amr_base/test/test_hold_policy.py`. The library suite in `tests/` reads amr_ws
+    files only as text and imports none of them:
+    `clears_by=='auto'` ⇔ the cause is in `CAUSE_POLICY` auto, for both products.
   - `test_line_authority`: `rate`/`track`/`drives` holds stay held 10 s with `wants_power()`
     False, and resume only on start_edge + premove.
   - The source's panel and field cases.
@@ -265,9 +311,8 @@ All these WPs have verification **U**, plus **V** in §6 where noted.
 - Mission key `max_tag_gap_m`: schema, validation and refusal in `tests/test_mission.py`.
 - Hold `rfid_overdue` → `RFID_TAG_OVERDUE`.
 - Append `StationDetection.work_mode_mismatch`.
-- **Plan-4 conflict:** `agv_core/mission.py` and `missions/*.json` are being edited now. Start
-  only after they are committed. Add the key with a default, so existing missions stay valid
-  until the key is set.
+- Add the key with a default, so existing missions stay valid until it is set. Plan 4's
+  `mission.py` work is committed (ef319d9).
 
 ### WP-A8 Executor field state ages · R · H-P0-8, executor half
 - `_field_clear` becomes `(status, t_recv)`, plus `field_fresh_s` and `field_source`
@@ -297,7 +342,6 @@ All these WPs have verification **U**, plus **V** in §6 where noted.
   unnoticed.
 - **Recovery:** the profile is refused at load and the service won't start. The error names
   the key.
-- Starts only after plan-4 / L changes to `config.py` and the profile are committed.
 
 **End of M1:** run the unified sim once. Add RUNBOOK §4 entries for every new code:
 MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
@@ -320,7 +364,19 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
 
 ### WP-B2 CAN TX errors and MLS exceptions don't kill the base · R · H-P1-3 as source
 
-### WP-B3 Drive cleanup timing · R · H-P1-6 as source
+### WP-B3 Drive cleanup timing · R · H-P1-6 as source, plus one delta
+- **Delta (found 2026-10-28):** `DriveLink._raw_write` in `amr_base/canopen.py` calls
+  `sdo_write` without `guard.check`. It is the teardown path for 60FFh=0 and the 6040h
+  shutdown/disable controlwords, used by `_zero_target_raw` and `_controlwords_raw`. That
+  breaks "every SDO write goes through guard.py". L D44's test scans `canbus/` only, so it
+  misses this.
+- **Fix:** call `guard.check(index, value, sub)` first. A `ForbiddenWrite` returns
+  `(False, …)`, so the teardown never raises. Today's three values pass the guard (checked).
+- **Test:** extend the D44 scan to `amr_base/canopen.py`. Every `sdo_write(` sits in a method
+  that calls `guard.check`/`check_sensor` first.
+- **Failure mode:** a future teardown edit writes a deny-listed object unguarded.
+- **Recovery:** the write is refused and reported as a teardown failure. The drives stay as
+  they were, and STO is unaffected.
 
 ### WP-B4 Drive fault: a working clear and an honest standing row · C · H-P0-5, decision 3
 - Recover is the existing supervisor Recover action, **gated to the engineer role** in amr_web
@@ -361,16 +417,24 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
 - `IO_ISLAND_LOST` = DIO + RFID (shared cable).
 
 ### WP-H2 HMI truthfulness · C · H-P1-2 as source
-- LINE `headline()`, `LineState.auto_resume`, `ModeState.base_missing`, `IoImage.comms_ok`
-  from `source_fresh`, structured `DIO_LINK_LOST/OK`.
-- PANEL_STALE takes its IP from config.
+- **Already done:** `LineState.auto_resume`, `IoImage.comms_ok` from `source_fresh`.
+- **Open:**
+  - LINE `headline()`.
+  - `ModeState.base_missing`: `readiness.base_missing()` exists, but no msg field carries it.
+  - Structured `DIO_LINK_LOST/OK`: no such codes in `agv_core/alarms.py`.
+- PANEL_STALE takes its IP from config. The text still hard-codes 192.168.1.30.
 - All web text fits at UI scale `l`. Reuse `amr.css` classes.
 
 ### WP-H3 Event forensics independent of the web · R · H-P1-15 as source
+- Do L D08 here: the DIO/RFID drivers write `agv_core/events.py`, and nothing reads it.
+  Either this WP's forensic log reads it, or the ring goes. Use `eventlog.EventRing`
+  (L) for any new ring.
 
 ### WP-H4 Supervisor and launch liveness · R · H-P1-5 as source
 - Add S-`sdnotify-extend-timeout-status-executor-watchdog`: `STATUS=` with the mode and the
-  last fault, plus `EXTEND_TIMEOUT_USEC` during the bounded stop.
+  last fault, plus `EXTEND_TIMEOUT_USEC` during the bounded stop. `sdnotify.Notifier`
+  already has a `STATUS=` sender that the supervisor never calls (it calls `ready`,
+  `watchdog`, `stopping`). Wire that, and add `EXTEND_TIMEOUT_USEC`.
 
 ### WP-H5 Unclean-death handling · D · H-P1-4, minus the re-plug part (WP-P3)
 - `WatchdogSignal=SIGINT`, `faulthandler` dump, `ExecStop=amr-orphan-stop.sh` with an atomic
@@ -378,7 +442,9 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
 - **Delta:** the static "call engineer" page is written to `$AMR_STATE_DIR` and served by
   the kiosk as a `file://` fallback. **No nginx** (S §5).
 - S-`uptime-boot-id-and-service-result`: classify unclean shutdowns by `boot_id` and
-  `$SERVICE_RESULT` in `ExecStopPost`. Pure `classify()` with tests.
+  `$SERVICE_RESULT` in `ExecStopPost`. Pure `classify()` with tests. Extend
+  `amr_bringup/uptime.py`, which already tells a power cut from a crash by the kernel boot
+  time. Add the two inputs there; don't add a second classifier.
 - Reword SERVICE_CRASHED (8130h is possible).
 
 **End of M3:** run the unified sim once.
@@ -398,15 +464,15 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 | WP-C4 | C#9 supervisor feed node with its own executor (mux, drives, wheels, panel) | R | Receipt stamps and freshness windows unchanged; test_hardness |
 | WP-C5 | C#11 gyro bias folded into drive_node `_publish_imu`; retire imu_bias_node; `/imu/data_raw` only with subscribers | C | `gyro_bias.py` moves to agv_core. "Nothing until calibrated" kept. **After WP-B1** (same file) |
 | WP-C6 | C#12, #13, #14 line_follow: idle tick 10 Hz with `timer.reset()` on any edge; `/imu/data` subscribed only outside IDLE; (v, wz) from `/wheel_states`, drop `/odom_raw` | R | Test: Start-edge reaction ≤ 20 ms. Wrapper only, autopilot untouched |
-| WP-C7 | C#15 panel_node: no `/cmd_wheel_vel` or `/drives/status` subscriptions when `horn.enabled` is false; motion lamp from a DriveStatus `turning` flag | C | **Overlaps L (lean-plan line ~974, horn path).** If L did it, tick it here |
+| WP-C7 | C#15 panel_node: no `/cmd_wheel_vel` or `/drives/status` subscriptions when `horn.enabled` is false; motion lamp from a DriveStatus `turning` flag | C | L did not do it: panel_node still subscribes both topics unconditionally (2026-10-28). Do L D16 (two horn engines) in the same change |
 | WP-C8 | C#16 rfid_node wakes on a new tag via a GuardCondition | R | After WP-A1 / WP-E1 (same file) |
 | WP-C9 | C#17 cmd_mux: a repeated zero at 10 Hz when source NONE and output exactly zero · **SAFETY-LISTED** | R | **Failure mode:** a lost idle zero. drive_node treats > 0.2 s as zero anyway (2× margin). **Recovery:** revert. Test: any nonzero, first zero or generation change is published on that tick |
 | WP-C10 | C#18 `/odom_raw` computed in drive_node; retire diff_drive_odom_node | C | After WP-C5 |
 | WP-C11 | C#19 `start_parameter_services=False` where nobody runs `ros2 param set` | R | Grep RUNBOOK and the scripts for `param set` first. Keep the services on nodes the RUNBOOK tunes live |
 | WP-C12 | C#20 amr_web: service clients on a second node; stop the idle `_live_pose` / reconcile timers; `/drives/pp_status` on demand; `live.py` ceil division | R | Combine with WP-E5 (same process) |
 | WP-C13 | C#21 small items | R | — |
-| WP-C14 | C#22 route_executor: LeanNode, no param services, TF on its own thread, **keep MultiThreadedExecutor**; plus S-`rclpy-nonblocking-action-checks` (`server_is_ready()`, stamp-age-checked TF) | R | — |
-| WP-C15 | C#23, #24 Nav2 controller/behavior inactive while the executor is IDLE; one `component_container_isolated`; `bond_timeout: 0` | R | Opt-in sim once. Plus S-`nav2-lifecycle-health-after-commit` (pure `layer_health`, LAYER_INACTIVE) |
+| WP-C14 | C#22 route_executor: no param services, TF on its own thread, **keep MultiThreadedExecutor**; plus S-`rclpy-nonblocking-action-checks` (`server_is_ready()`, stamp-age-checked TF) | R | LeanNode already done by L. Read TF through `tfpose` |
+| WP-C15 | C#23, #24 Nav2 controller/behavior inactive while the executor is IDLE; one `component_container_isolated`; `bond_timeout: 0` | R | Opt-in sim once. Plus S-`nav2-lifecycle-health-after-commit` (pure `layer_health`, LAYER_INACTIVE). Do L D53 (localization group built twice) in the same launch change |
 | WP-C16 | C#28 web live view in NAV/MAPPING from a 5 Hz display topic | C | — |
 
 **Not in M4:**
@@ -488,7 +554,7 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 | WP-P7 | Supply/brownout (H-P2-6) | R | — |
 | WP-P8 | Drive odometry bridge + plausibility (H-P2-2) | R | Update the R06 contract test deliberately |
 | WP-P9 | MLS reboot/variant (H-P2-3) | R | Read-only 0x70A |
-| WP-P10 | Scanner config hygiene (H-P2-4): launch from `LIDAR_*` keys, fixed texts, `validate.sh` checks enp3s0 · SAFETY-LISTED for any QoS change on `/output_paths` | R | Measuring the p99 inter-arrival is a §6 item |
+| WP-P10 | Scanner config hygiene (H-P2-4): launch from `LIDAR_*` keys, fixed texts, `validate.sh` checks enp3s0 · SAFETY-LISTED for any QoS change on `/output_paths` | R | Measuring the p99 inter-arrival is a §6 item. This gives the `lidar.*` profile keys a consumer, which settles L D01: keep them |
 | WP-P11 | S-`ipc-throttle-telemetry` (thermal_throttle counters next to the IPC temperature on the HMI) | R | sysfs fake-tree test. The N97 throttles while showing ~65 °C |
 | WP-T1 | H-P3-1 pure tests; S-`hypothesis-stateful-gating` (derandomized, outside EXPECTED_CHECKS) | — | — |
 | WP-T2 | H-P3-2 sim fault hooks + S-`fake-output-paths-from-field-geometry` (sim only, refuses domain 10, asserted in `test_launch_layers`) | C | — |
@@ -501,8 +567,8 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 
 | Item | Trigger |
 |---|---|
-| WP-Y1 E-stop status DI (decision 14): profile `panel.di_estop_status` (nullable; schema, refusal test, distinct from the panel/pendant channels, must be in the COM1 range DI09–DI0F); panel_io reads it with the usual freshness; a pure function uses it **only** to pick the cause text and `clears_by`, replacing the torque-loss guess in `job.py` / the executor | Q3 wired to a DI and O-1 resolved |
-| WP-Y2 S-`profile-do-names-from-sheet` + S-`io-mapping-parsed-profile-test` (with KNOWN_OPEN for DO8, decision 15) | HT-2 done (electrical docs corrected) |
+| WP-Y1 E-stop status DI (decision 14): profile `panel.di_estop_status` (nullable; schema, refusal test, distinct from the panel/pendant channels, must be in the COM1 range DI09–DI0F); panel_io reads it with the usual freshness; a pure function uses it **only** to pick the cause text and `clears_by`, replacing the torque-loss guess in `job.py` / the executor. DI08 is taken (Manual Arm) | Q3 wired to one of DI09–DI0F (O-1 resolved 2026-10-28) |
+| WP-Y2 S-`profile-do-names-from-sheet` + S-`io-mapping-parsed-profile-test` (with KNOWN_OPEN for DO8, decision 15, and for the `«placeholder»` rows: Q3's destination, the Manual Arm switch details) | HT-2 done |
 | H-P1-12 scanner watch wrapper (exit + respawn on `/scan` silence) | A scanner-only power loss is observed, or HT-1 shows the data output is not saved |
 | S-`sick-driver-no-write-fork` | HT-1 proves the Safety Designer data output persists |
 | H-P1-14 odometry under STO | Operator observes `/wheel_states` during a field trip (decision 19) |
@@ -555,7 +621,7 @@ None of these reads writes anything.
 | # | Step | Unblocks |
 |---|---|---|
 | HT-1 | Open the nanoScan3 project in Safety Designer **read-only**: is a continuous UDP data output to 192.168.3.2:6060 saved, and at what publishing frequency? Don't transfer anything | WP-Z scanner items |
-| HT-2 | Electrical docs through `documentation/electrical/agent/SKILL.md` (interpret → confirm → build): module **CK-TP5162** on sheets 03 and 09 and in `io-mapping.md` (also check the "12 relay" text against `num_do` 16); the DI08 row (O-1: Manual Arm, or Q3?); plan the Q3 → DI09–DI0F E-stop status row | WP-Y1, WP-Y2 |
+| HT-2 | Electrical docs through `documentation/electrical/agent/SKILL.md` (interpret → confirm → build). **Done 2026-10-28:** DI08 = Manual Arm in `io-mapping.md` and sheets 08/09. **Open:** module **CK-TP5162** on sheets 03 and 09 and in `io-mapping.md` (no mention yet; also check the "12 relay" text against `num_do` 16); fill the `«placeholder»`/`?` items: the Manual Arm switch type, terminal and wire, Q3's destination and its test-pulse setting; remove Q3 from sheet 08's orange cable if it is not wired; plan the Q3 → DI09–DI0F E-stop status row | WP-Y1, WP-Y2 |
 | OP-1 | CPU §3 acceptance, no dev session attached for 60 s: `pidstat -u 10 6` per process, idle LINE. Repeat after M4 | §6 projection |
 | OP-2 | After each milestone: a witnessed LINE run; watch `LineState.track_hz` holds, panel/lease stale events and FIELD_UNKNOWN chatter | M1, M4 rate changes |
 | OP-3 | Fault-injection table (hardening §5), rows matching the built WPs only | M1–M5 |
@@ -566,16 +632,37 @@ None of these reads writes anything.
 
 ## 7. Status
 
-| WP | State | Date | Tests run |
+Checked against the tree on 2026-10-28 (64e9654), by grepping each WP's anchor symbol.
+"Partial" means L landed part of the WP. §2 and the WP text say which part.
+
+| WP | State | Date | Evidence |
 |---|---|---|---|
-| WP-0A | open | | |
-| WP-0B | open | | |
-| WP-0C | open | | |
-| WP-0D | open | | |
-| WP-0E | open | | |
-| WP-A1 … A10 | open | | |
-| WP-B1 … B6 | open | | |
-| WP-H1 … H5 | open | | |
-| WP-C1 … C16 | open | | |
-| WP-E1 … E9 | open | | |
-| WP-P1 … P11, WP-T1 … T4 | open | | |
+| WP-0A | done (C: package.xml) | 2026-10-28 | test_launch_layers `test_foxglove_is_retired`; validate.sh warns on a leftover AMR_FOXGLOVE |
+| WP-0B | done | 2026-10-28 | run_all (test_canmon sdo_probe ×4, test_lss owner lock ×2) |
+| WP-0C | done | 2026-10-28 | test_route reverse ceiling; RUNBOOK/plan text |
+| WP-0D | done | 2026-10-28 | test_launch_layers `test_nav2_lifecycle_managers_do_not_rebond_a_dead_node` |
+| WP-0E | done (D: owner installs) | 2026-10-28 | deploy/pwrbtn-watch.sh (same line format, checked), logrotate-amr, kiosk/ copies, rmem_max; validate.sh notes kiosk drift. `trim-services.sh` still owner |
+| WP-A1 | done | 2026-10-28 | run_all test_rfid ×5; test_rfid_intake, test_mission_engine (seq ahead), TagOdometer |
+| WP-A2 | done (C: hold_device) | 2026-10-28 | test_hold_policy (policy = catalogue), test_line_authority, test_auto_resume (controller, panel) |
+| WP-A3 | done, minus the FAULT bound | 2026-10-28 | test_line_authority sensor holds, test_marker_run blind travel. **No bound value exists for "blind_m above a bound → FAULT": owner to set one** |
+| WP-A4 | done | 2026-10-28 | test_line_authority drive_fault ×3, test_mission_engine tape distance, test_r07 `stale` state |
+| WP-A5 | done (D: chrony drop-in) | 2026-10-28 | test_authority future stamps ×3 + steady-timer contract |
+| WP-A6 | done | 2026-10-28 | test_panel_io release-first ×4 |
+| WP-A7 | done (C: work_mode_mismatch) | 2026-10-28 | run_all test_mission ×5; test_mission_engine gap ×2, work mode |
+| WP-A8 | done | 2026-10-28 | test_auto_resume field ages ×4; test_launch_layers executor field_source |
+| WP-A9 | done | 2026-10-28 | test_mission_engine `..._while_braking_in_a_field_hold...` |
+| WP-A10 | done | 2026-10-28 | run_all test_config ×9; test_authority profile contract; test_cmd_mux_defaults |
+| End of M1 | **unified sim not run** | 2026-10-28 | Needs `colcon build` (LineState/RunState.hold_device, StationDetection.work_mode_mismatch) and the service stopped: owner, off-shift |
+| WP-B1 | partial | 2026-10-28 | (e) only: can/bus diagnostics `loop_max_ms`, `loop_overruns` (> cmd_timeout_s), `tx_dropped`. **Open:** (a)–(d) read_sensor ≤ 0.05 s, one-read-per-poll rediscovery chains, nmt_nowait, one sensor SDO per loop, IMU miss-rate backoff. Left until M1/M2 have had a witnessed run: it reshapes the bus thread's timing |
+| WP-B2 | done | 2026-10-28 | test_canopen TxHealth, loop contract, decode/idle counters; CAN_TX_FAILED row; can/bus diagnostics tx_errors, error_frames, decode_errors, idle_errors, mls_errors |
+| WP-B3 | done | 2026-10-28 | test_canopen standstill ×2, 1017h in prepare, teardown guard; test_arm_policy backoff; run_all test_canmon canopen guard scan |
+| WP-B4 | partial | 2026-10-28 | Done: engineer-only Recover (test_operator_ux), supervisor acks `/drives/ack_fault` with the run refusal (test_readiness), clean preflight clears the latched alarm, release() failure takes fault() semantics (test_canopen), web DRIVE_FAULT/DRIVE_SILENT row hides DRIVES_NOT_READY, action texts, RUNBOOK. **Open:** 603Fh/1003h read into the fault detail and report zip, boot-up frame `rebooted` flag, DriveStatus `fault_code`/`fault_detail` (C) |
+| WP-B5 | done | 2026-10-28 | run_all test_lss read_mls lock ×7 |
+| WP-B6 | done | 2026-10-28 | test_canopen router error/RTR drop, (id, extended) key; fixtures now build 11-bit frames |
+| WP-H1 | open | 2026-10-28 | no `agv_core/health.py`, no `DeviceHealth.msg` |
+| WP-H2 | partial | 2026-10-28 | `auto_resume` and `comms_ok` done |
+| WP-H3 … H5 | open | 2026-10-28 | — |
+| WP-C1 … C13, C15, C16 | open | 2026-10-28 | `imu_bias_node` and `diff_drive_odom_node` still launched. No `take_message` |
+| WP-C14 | partial | 2026-10-28 | LeanNode done (L) |
+| WP-E1 … E9 | open | 2026-10-28 | The rfid docstring still names 0x0050 as the heartbeat. No waitress. DIO does two reads per scan |
+| WP-P1 … P11, WP-T1 … T4 | open | 2026-10-28 | no `deploy/platform/` |

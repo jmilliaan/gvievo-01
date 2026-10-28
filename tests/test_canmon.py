@@ -146,6 +146,22 @@ def test_can_monitoring():
     allowed_raw = {"sdo.py", "rpdo.py"}
     check("no raw sdo_write( outside sdo.guarded_sdo_write (and rpdo's injected writer)",
           {r.split(":")[0] for r in raw} <= allowed_raw and len(raw) == 2, ", ".join(raw))
+    # WP-B3 (2026-10-28): the bus owner's own writes are in amr_ws, which the scan above does
+    # not see. Every function in canopen.py that calls sdo_write( must call guard.check or
+    # guard.check_sensor on an earlier line - the teardown's _raw_write did not.
+    import ast
+    tree = ast.parse((ROOT / "amr_ws/src/amr_base/amr_base/canopen.py").read_text(encoding="utf-8"))
+    unguarded = []
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
+        writes = [c.lineno for c in calls if getattr(c.func, "id", getattr(c.func, "attr", "")) == "sdo_write"]
+        guards = [c.lineno for c in calls if isinstance(c.func, ast.Attribute)
+                  and getattr(c.func.value, "id", "") == "guard" and c.func.attr in ("check", "check_sensor")]
+        if writes and not (guards and min(guards) < min(writes)):
+            unguarded.append(f"{fn.name}:{min(writes)}")
+    check("every sdo_write( in DriveLink (canopen.py) follows a guard check in its function",
+          not unguarded and len([1 for n in ast.walk(tree) if isinstance(n, ast.Call)
+                                 and getattr(n.func, "id", "") == "sdo_write"]) >= 3, ", ".join(unguarded))
 
     from agv_core.drivers.canbus import sdo
 
@@ -290,7 +306,69 @@ def test_cia_tables_and_preflight():
           not ok and "diagnostics unreadable" in lines[0])
 
 
+def test_sdo_probe():
+    """WP-0B: the bench probe reads only, answers every preset object, and refuses writes."""
+    import ast
+    import contextlib
+    import io
+
+    import can
+
+    from agv_core.drivers.canbus import sdo_probe
+    from agv_core.drivers.canbus.cia301 import SDO_REPLY_BASE, SDO_REQUEST_BASE
+    print("\nsdo_probe: read-only bench probe")
+
+    class AnswerBus:
+        """Answers every upload with the index as a u32; 603Fh with an abort."""
+
+        def __init__(self):
+            self.sent, self._q = [], []
+
+        def send(self, m):
+            d = bytes(m.data)
+            self.sent.append((m.arbitration_id, d))
+            node = m.arbitration_id - SDO_REQUEST_BASE
+            index = d[1] | d[2] << 8
+            if index == 0x603F:
+                reply = bytes([0x80]) + d[1:4] + struct.pack("<I", 0x06020000)
+            else:
+                reply = bytes([0x43]) + d[1:4] + struct.pack("<I", index)
+            self._q.append(can.Message(arbitration_id=SDO_REPLY_BASE + node, data=reply,
+                                       is_extended_id=False))
+
+        def recv(self, timeout=None):
+            return self._q.pop(0) if self._q else None
+
+    objs = [(n, i, s) for name in sdo_probe.PRESETS for n, o in sdo_probe.PRESETS[name] for i, s in o]
+    bus, lines = AnswerBus(), []
+    rc = sdo_probe.run(bus, objs, timeout=0.05, out=lines.append)
+    uploads_only = all(d[0] == 0x40 and a - SDO_REQUEST_BASE in (1, 2, 10) for a, d in bus.sent)
+    check("sdo_probe: both presets read every object once, uploads only, nodes 1/2/10",
+          len(bus.sent) == len(objs) == len(lines) and uploads_only, f"{len(bus.sent)}/{len(objs)}")
+    check("sdo_probe: a value prints hex + decimal, an abort its code, and an abort makes rc 1",
+          rc == 1 and any("1800h:05  0x00001800  (6144)" in x for x in lines)
+          and any("603Fh:00  ABORT 0x06020000" in x for x in lines), lines[:2])
+
+    def refused(argv):
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                sdo_probe.main(argv)
+        except SystemExit as e:
+            return e.code == 2
+        return False
+
+    check("sdo_probe: a write-shaped target, --go and an empty call are argparse errors",
+          refused(["1:6040:0=6"]) and refused(["--go", "1:6041:0"]) and refused([]))
+    tree = ast.parse((ROOT / "agv_core/drivers/canbus/sdo_probe.py").read_text(encoding="utf-8"))
+    names = {n.attr if isinstance(n, ast.Attribute) else n.id
+             for n in ast.walk(tree) if isinstance(n, (ast.Attribute, ast.Name))}
+    check("sdo_probe: references no SDO write, guarded write or NMT helper",
+          not names & {"sdo_write", "guarded_sdo_write", "nmt", "nmt_nowait"}, names & {"sdo_write", "nmt"})
+
+
 TESTS = [
     test_can_monitoring,
     test_cia_tables_and_preflight,
+    test_sdo_probe,
 ]

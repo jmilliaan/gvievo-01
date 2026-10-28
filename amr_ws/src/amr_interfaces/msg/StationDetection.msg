@@ -26,3 +26,8 @@ int16 channel            # hop channel of that read; -1 = no read yet
 float32 freq_mhz         # channel as a frequency; 0 = unknown (no read or no params)
 string reader            # e.g. "active RS232 US 902.75-927.25 MHz 30 dBm", "" until read
 string[] config_mismatch # reader vs profile rfid.expect_*; empty = as expected
+# Appended 2026-10-28 (unified plan WP-A7). True only when the reader's parameters were
+# read back AND its work mode is not the profile's rfid.expect_work_mode: a reader not in
+# ACTIVE mode pushes no tags, so a mission that needs them must not start. False when the
+# parameters are unread (unknown is not refused).
+bool work_mode_mismatch

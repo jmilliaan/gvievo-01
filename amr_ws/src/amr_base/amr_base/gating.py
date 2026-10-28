@@ -252,7 +252,10 @@ class Selection:
 
 
 def _fresh(t: float | None, now: float, limit: float) -> bool:
-    return t is not None and now - t <= limit
+    """Received within `limit` of `now`. An age below zero - a stamp from the future, which a
+    clock step can produce - is NOT fresh (unified plan WP-A5): it would otherwise read
+    fresh for its whole limit plus the size of the step."""
+    return t is not None and 0.0 <= now - t <= limit
 
 
 def select(
@@ -312,8 +315,8 @@ def select(
             limit = min(p.cmd_timeout_s, max(0.0, manual.valid_for_s))
             if same and _fresh(manual.t, now, limit):
                 return Selection(MANUAL, manual.v, manual.w, "manual", gen)
-        if p.teleop_enabled and teleop is not None and now - teleop.t <= p.teleop_window_s:
-            if now - teleop.t <= p.cmd_timeout_s:
+        if p.teleop_enabled and teleop is not None and _fresh(teleop.t, now, p.teleop_window_s):
+            if _fresh(teleop.t, now, p.cmd_timeout_s):
                 return Selection(TELEOP, teleop.v, teleop.w, "teleop", gen)
             return Selection(TELEOP, 0.0, 0.0, "teleop command timed out", gen, code="SOURCE_TIMED_OUT")
         return Selection(NONE, 0.0, 0.0, "MANUAL, no fresh command", gen, code="NO_SOURCE")
@@ -348,12 +351,12 @@ def select(
     # The route's authored limits travel with the permit and are enforced HERE, the last
     # software arbitration point (review Q04): Nav2 keeps its configured speeds.
     if permit.source == FOLLOW:
-        if follow is not None and now - follow.t <= p.cmd_timeout_s:
+        if follow is not None and _fresh(follow.t, now, p.cmd_timeout_s):
             v, w = capped(follow.v, permit.v_max), capped(follow.w, permit.w_max)
             return Selection(FOLLOW, v, w, "follow", gen)
         return Selection(NONE, 0.0, 0.0, "permit FOLLOW, no fresh /cmd_vel", gen, code="SOURCE_TIMED_OUT")
     if permit.source == ROTATE:
-        if rotate is not None and now - rotate.t <= p.cmd_timeout_s:
+        if rotate is not None and _fresh(rotate.t, now, p.cmd_timeout_s):
             v, w = capped(rotate.v, permit.v_max), capped(rotate.w, permit.w_max)
             return Selection(ROTATE, v, w, "rotate", gen)
         return Selection(
@@ -466,7 +469,7 @@ def line_uturn_exempt(
     if max_v <= 0.0 or sel.source != LINE or line_uturn is None:
         return False
     t, phase = line_uturn
-    return now - t <= fresh_s and phase in UTURN_PHASES and abs(sel.v) <= max_v
+    return _fresh(t, now, fresh_s) and phase in UTURN_PHASES and abs(sel.v) <= max_v
 
 
 STOP_MIN_V = 0.05  # m/s: below this a warning stop is timed by warning_decel_s, not distance

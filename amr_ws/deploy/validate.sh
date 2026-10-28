@@ -88,6 +88,37 @@ if command -v journalctl >/dev/null; then
   fi
 fi
 
+# The kiosk scripts run from /usr/local/bin and are installed by hand; the copies here
+# are the versioned ones (unified plan WP-0E). Say when they differ, either way round.
+for f in "$DEPLOY_DIR"/kiosk/*; do
+  live="/usr/local/bin/$(basename "$f")"
+  if [[ ! -f "$live" ]]; then
+    echo "note: $live is not installed (copy of $f)"
+  elif ! cmp -s "$f" "$live"; then
+    echo "note: $live differs from deploy/kiosk/$(basename "$f"); install it with:" \
+         "sudo install -m 0755 $f $live"
+  fi
+done
+live_watch="$REPO_ROOT/logs/pwrbtn-watch.sh"
+if [[ -f "$live_watch" ]] && ! cmp -s "$DEPLOY_DIR/pwrbtn-watch.sh" "$live_watch"; then
+  echo "note: logs/pwrbtn-watch.sh differs from deploy/pwrbtn-watch.sh (the cron job runs the logs/ copy)"
+fi
+
+# Clock steps (unified plan WP-A5): chrony may step the clock only at start. A makestep with
+# a limit of -1 steps at any time, under a running vehicle.
+if [[ -d /etc/chrony ]]; then
+  if grep -rhsE '^[[:space:]]*makestep[[:space:]]+[0-9.]+[[:space:]]+-1' /etc/chrony/chrony.conf /etc/chrony/conf.d >/dev/null; then
+    echo "warning: chrony may step the clock at any time (makestep ... -1); install chrony-amr.conf" >&2
+  fi
+  [[ -f /etc/chrony/conf.d/amr.conf ]] || echo "note: chrony-amr.conf is not installed (run install.sh)"
+fi
+
+# Foxglove is retired (unified plan WP-0A): the supervisor has no foxglove parameter,
+# so a leftover AMR_FOXGLOVE line does nothing - say so rather than let it mislead.
+if grep -q '^AMR_FOXGLOVE=' "$DEPLOY_DIR/amr.env"; then
+  echo "warning: amr.env still sets AMR_FOXGLOVE; Foxglove is retired and it does nothing" >&2
+fi
+
 # Where the state lives (W8). Not a failure on the bench - the data volume is
 # optional - but a vehicle should not keep its maps on the root filesystem.
 STATE_DIR=$(sed -n 's/^AMR_STATE_DIR=//p' "$DEPLOY_DIR/amr.env" | head -1)

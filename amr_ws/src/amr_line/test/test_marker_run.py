@@ -137,3 +137,20 @@ def test_markers_during_the_pivot_do_nothing():
     w.mark(HOME_CODE)                   # read while approaching the tape end: ignored
     w.tick()
     assert w.job.tape.stop is None and w.job.tape.uturn_req["phase"] == "approach"
+
+
+def test_travel_with_the_markers_down_is_named_at_the_resume():
+    """WP-A3: the metres driven while the marker stream was down are where a marker could have
+    been missed. The hold says how far, and the Start that resumes logs it once."""
+    w = started()
+    w.mk_ok = False
+    w.tick()
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "markers"
+    assert w.job.blind_m > 0.0
+    w.mk_ok = True
+    w.tick()
+    assert "markers may have been missed over" in w.job.reason, w.job.reason
+    w.job.drain_marker_events()
+    w.start()
+    assert w.job.blind_m == 0.0
+    assert any("markers may have been missed" in text for _lvl, text in w.job.drain_marker_events())

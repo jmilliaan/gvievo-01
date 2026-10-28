@@ -1,0 +1,14 @@
+# Installed by install.sh as /etc/logrotate.d/amr (unified plan WP-0E).
+# pwrbtn-watch.sh appends one line every 2 s and reopens the file for each, so a
+# plain rename is safe: the next line starts the new file. Was 26 MB, unrotated.
+/home/gvipc-evo-01/agv_can/logs/pwrbtn-watch.log {
+    su gvipc-evo-01 gvipc-evo-01
+    weekly
+    maxsize 5M
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0664 gvipc-evo-01 gvipc-evo-01
+}

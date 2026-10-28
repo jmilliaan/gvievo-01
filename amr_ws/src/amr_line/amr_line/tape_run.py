@@ -161,7 +161,15 @@ class TapeRun:
         self.uturn_forced = False     # guide page: the NEXT tape end is the U-turn, strip or not
         self._follower = None         # for a home stop begun from advance()
         self._mrun_back_m = 0.0       # wheel travel since the pivot (shared-code home arming)
-        self.hold_req = None          # (cause, why): a position engine's hold (site_run), none here
+        self.hold_req = None          # (cause, why): a hold the job takes before the next point
+        # Missed-tag backstop (WP-A7): wheel travel since the last read of a tag in the table.
+        self.max_tag_gap_m = m.get("MAX_TAG_GAP_M")
+        self.tag_gap_m = 0.0
+        # WP-A9: set by the job while held for a cause that resumes by itself (the field). The
+        # vehicle may still be braking then: a stop or U-turn tag read in that time, or the link
+        # dropping, is a point driven past that the resume must not drive on from.
+        self.held_auto = False
+        self.missed_while_held: str | None = None
         self.guided = m.get("GUIDED")
         # The guided page's speed toggle: None = no toggle (the zone, if any, always acts);
         # False = NORMAL (zone codes ignored), True = HIGH allowed where the codes grant it.
@@ -238,6 +246,7 @@ class TapeRun:
             if row is not None and row["action"] == "stop":
                 resumed_tag = last
         self.sync(rfid)
+        self.tag_gap_m = 0.0
         if resumed_tag is not None:
             self._departure_tag, self._departure_at = resumed_tag, now
             self.table.departed(now, resumed_tag)
@@ -260,6 +269,13 @@ class TapeRun:
         if ev:
             self.events.append(ev)
         self._odo_m += max(0.0, distance_m or 0.0)
+        if self.max_tag_gap_m:
+            self.tag_gap_m += max(0.0, distance_m or 0.0)
+            if self.tag_gap_m > self.max_tag_gap_m and self.hold_req is None:
+                self.hold_req = ("rfid_overdue",
+                                 f"no tag of the mission read for {self.tag_gap_m:.1f} m "
+                                 f"(max_tag_gap_m {self.max_tag_gap_m:g}): a tag may have been missed")
+                self.tag_gap_m = 0.0  # counted afresh from the operator's Start
         if self._mrun_skip_m > 0.0:
             self._mrun_skip_m = max(0.0, self._mrun_skip_m - max(0.0, distance_m))
         if self.mrun_phase == "out":
@@ -296,7 +312,15 @@ class TapeRun:
             self._cursor = seq
             self._lose_link("RFID encounter buffer overrun: tags were missed")
             return []
-        self._cursor = seq
+        # The cursor moves only over encounters actually consumed (WP-A1). The status seq
+        # never runs ahead of a delivered encounter (rfid_node publishes it first, on one
+        # ordered topic), so a seq past the last one consumed is an encounter lost.
+        # The tags that did arrive are still handled below: a stop among them must apply.
+        if pending:
+            self._cursor = pending[-1][0]
+        if seq > self._cursor:
+            # The cursor stays: should the encounter still arrive, it is handled then.
+            self._lose_link("RFID encounter missing: the reader counted a tag this run never received")
         # The departed tag stays suppressed until it has left the field.
         age = rfid.get("tag_age_s")
         clear = vehicle.RFID_TAG_CLEAR_S
@@ -315,6 +339,7 @@ class TapeRun:
             if row is None:
                 self._record(now, number, tag, "no tag rule")
                 continue
+            self.tag_gap_m = 0.0          # a tag of the table: where we are is known again
             left = self.table.window_left(now, tag)
             if left > 0:
                 self._record(now, number, tag, "ignored", f"ignore window, {left:.1f} s left")
@@ -323,6 +348,8 @@ class TapeRun:
             # must not queue up stops.
             if not driving or self.stop is not None or self.uturn_req is not None:
                 self._record(now, number, tag, "suppressed", "held or stopped")
+                if self.held_auto and row["action"] in ("stop", "u_turn") and self.missed_while_held is None:
+                    self.missed_while_held = row.get("label") or f"tag {tag}"
                 continue
             if row["action"] == "u_turn":
                 self._u_turn_tag(now, number, row)

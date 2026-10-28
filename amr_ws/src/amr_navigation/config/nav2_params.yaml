@@ -132,3 +132,6 @@ lifecycle_manager_navigation:
     autostart: true
     node_names: [controller_server, behavior_server]
     bond_timeout: 20.0     # startup load on the N97: the whole launch dies if a bond is missed
+    # A node that dies is a fault for the layer (its launch is REQUIRED), not something to
+    # re-bond with: the supervisor replaces the whole layer (unified plan WP-0D).
+    attempt_respawn_reconnection: false

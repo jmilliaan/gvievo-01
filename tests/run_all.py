@@ -138,7 +138,20 @@ MODULES = [
 # + 8 D29: test_fsutil (new module) - rotation shift and absent file, atomic json mode/dir/failure,
 #   mkstemp leaves no temp, tolerant jsonl, keep_newest and its keep-0 edge.
 # + 1 D171: test_rpdo - every pp.expect object is in guard's read-only pp set.
-EXPECTED_CHECKS = 836
+# + 6 WP-0B (unified plan, 2026-10-28): test_canmon - sdo_probe reads both presets uploads-only,
+#   prints value/abort, refuses write-shaped args, names no write/NMT helper (4); test_lss - it
+#   takes the owner lock before the bus (2).
+# + 5 WP-A1 (unified plan, 2026-10-28): test_rfid - a reconnect re-baselines only the tag in the
+#   field at the drop (A/drop/B, A inside and outside the window, failed connect), random generation.
+# + 5 WP-A7 (unified plan, 2026-10-28): test_mission - max_tag_gap_m off when absent, loads, and is
+#   refused at 0, below 0 and on a mission without tag rows.
+# + 9 WP-A10 (unified plan, 2026-10-28): test_config - the freshness block: cmd/lease/permit ceilings,
+#   line and executor consumers below the gate, pc_loss_ms 0, heartbeat >= half the loss window,
+#   driver timeout under three TPDO periods, a missing key.
+# + 1 WP-B3 (2026-10-28): test_canmon - every sdo_write( in amr_base canopen.py follows a guard check.
+# + 7 WP-B5 (2026-10-28): test_lss - read_mls snapshot, poll and stream --nmt take the owner lock
+#   (refused while owned, release after) (6); stream without --nmt stays lock-free (1).
+EXPECTED_CHECKS = 869
 
 
 # An exception on a helper thread only prints a traceback by default - the

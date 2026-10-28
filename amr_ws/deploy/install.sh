@@ -36,6 +36,8 @@ install_dropin() {  # <source> <destination>
 }
 install_dropin sysctl-amr.conf /etc/sysctl.d/60-amr.conf
 install_dropin journald-amr.conf /etc/systemd/journald.conf.d/amr.conf
+install_dropin logrotate-amr /etc/logrotate.d/amr
+install_dropin chrony-amr.conf /etc/chrony/conf.d/amr.conf
 sysctl --quiet --system || echo "warning: sysctl --system failed; reboot applies it anyway" >&2
 
 systemctl list-unit-files 'amr*.service' --no-legend \
@@ -44,5 +46,6 @@ systemctl daemon-reload
 
 echo "Installed unit files without changing enabled or running services."
 echo "The journal cap needs: systemctl restart systemd-journald"
+echo "The chrony drop-in needs: systemctl restart chrony (off-shift)"
 echo "Backup: $BACKUP_DIR"
 echo "Follow the witnessed cutover or rollback procedure in $DEPLOY_DIR/../RUNBOOK.md."

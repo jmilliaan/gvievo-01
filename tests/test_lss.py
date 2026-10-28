@@ -297,7 +297,16 @@ def test_bench_tools_respect_the_owner_lock():
     import tempfile
 
     from agv_core import ownerlock
-    from agv_core.drivers.canbus import bus_health, drive_forward, read_imu, sdo, verify_bus, verify_drivers
+    from agv_core.drivers.canbus import (
+        bus_health,
+        drive_forward,
+        read_imu,
+        read_mls,
+        sdo,
+        sdo_probe,
+        verify_bus,
+        verify_drivers,
+    )
     print("\nbench tools: the CAN owner lock comes before the bus")
 
     opened = []
@@ -321,6 +330,11 @@ def test_bench_tools_respect_the_owner_lock():
         ("lss verify", lambda: lss.main(["verify"]), None),
         ("lss set --go",
          lambda: lss.main(["set", "--to", "1000000", "--go"]), None),
+        ("sdo_probe --preset", lambda: sdo_probe.main(["--preset", "drive-health"]), None),
+        # WP-B5: read_mls modes that send an SDO or an NMT take the lock too
+        ("read_mls snapshot", lambda: read_mls.main(), ["read_mls.py", "snapshot"]),
+        ("read_mls poll", lambda: read_mls.main(), ["read_mls.py", "poll"]),
+        ("read_mls stream --nmt", lambda: read_mls.main(), ["read_mls.py", "stream", "--nmt"]),
     ]
 
     tmp = tempfile.mkdtemp()
@@ -348,6 +362,10 @@ def test_bench_tools_respect_the_owner_lock():
                       f"naming it, bus never opened",
                       rc == 2 and not opened and "agv_controller" in out,
                       f"rc={rc} opened={len(opened)} {out.strip()[-60:]!r}")
+            del opened[:]
+            run(lambda: read_mls.main(), ["read_mls.py", "stream"])
+            check("read_mls stream without --nmt is listen-only: it runs beside the service (no lock)",
+                  bool(opened), f"opened={len(opened)}")
         finally:
             runtime.release()
 

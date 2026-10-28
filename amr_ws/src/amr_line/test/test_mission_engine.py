@@ -787,6 +787,9 @@ def test_other_holds_still_drop_high():
     w.tick(drives_fresh=False)
     assert w.job.state == lj.HOLD and w.job.hold_cause == "drives"
     assert not w.job.tape.speed.parked_high and not w.job.tape.speed.high
+    w.drive(1.0)
+    assert w.job.state == lj.HOLD, "a drives hold waits for Start (WP-A2)"
+    w.tick(start_edge=True, start_edge_t=w.t)
     assert w.until(lambda: w.job.state == lj.RUNNING, 5.0), w.job.reason
     w.drive(0.5)
     assert not w.job.tape.speed.high
@@ -965,6 +968,23 @@ def test_an_encounter_gap_holds_the_vehicle():
     assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid" and "overrun" in w.job.reason
 
 
+
+def test_a_status_seq_ahead_of_its_encounter_is_never_skipped():
+    """WP-A1: the old cursor jumped to the status seq, so an encounter that arrived after
+    a heartbeat already counting it was dropped silently - a missed stop. Now the gap
+    holds the vehicle, and the encounter, if it does arrive, is still handled."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.seq += 1  # the reader counted MRU1; its encounter is not here yet
+    w.tick()
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid" and "missing" in w.job.reason
+    w.enc.append((w.seq, MRU1))
+    w.tick()
+    assert (w.job.tape.last_encounter or {}).get("tag") == MRU1, w.job.tape.last_encounter
+
+
 def test_rfid_loss_during_the_u_turn_is_a_fault():
     w = World(SITE, "MRU1")
     w.park_at_home()
@@ -983,3 +1003,77 @@ def test_start_needs_the_rfid_link_for_a_tag_mission():
     w.comms = False
     w.press_start()
     assert w.job.state == lj.IDLE and "RFID link down" in w.job.reason
+
+
+
+def test_no_counts_and_no_operational_drives_advance_no_tape_distance():
+    """WP-A4: commanded travel stands in for missing counts only while the drives drive."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.integrate = False
+    t = w.job.tape
+    before = t._odo_m
+    w.drive(0.2, counts=None, drives_operational=False)
+    assert t._odo_m == before
+    w.drive(0.2, counts=None, drives_operational=True)
+    assert t._odo_m > before
+
+
+GAPPED = doc(SITE_ROWS, max_tag_gap_m=3.0)
+
+
+def test_driving_past_the_tag_gap_holds_for_a_person():
+    """WP-A7: no tag of the table for longer than max_tag_gap_m - one may have been missed."""
+    w = World(GAPPED, "MRU1")
+    w.park_at_home()
+    w.start()
+    assert w.until(lambda: w.job.state == lj.HOLD, 30.0), w.job.reason
+    assert w.job.hold_cause == "rfid_overdue" and "max_tag_gap_m" in w.job.reason
+    assert w.job.tape.tag_gap_m == 0.0
+    w.drive(2.0)
+    assert w.job.state == lj.HOLD, "never resumes by itself"
+    w.start()  # the operator checked: counted afresh from here
+    assert w.job.state == lj.RUNNING
+
+
+def test_a_tag_of_the_table_resets_the_gap():
+    w = World(GAPPED, "MRU2")
+    w.park_at_home()
+    w.start()
+    w.drive(1.0)
+    gap = w.job.tape.tag_gap_m
+    assert gap > 0.0
+    w.read(MRU1)  # passed, not the destination
+    w.tick()
+    assert w.job.tape.tag_gap_m < gap
+
+
+def test_a_reader_not_in_active_mode_refuses_a_tag_mission_start():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    rfid = dict(w.rfid(), work_mode_mismatch=True)
+    w.job.tick(w.inputs(start_edge=True, start_edge_t=w.t, rfid=rfid))
+    assert w.job.state == lj.IDLE and "active mode" in w.job.reason
+    # parameters not read (no key): not refused
+    w.start()
+    assert w.job.state == lj.RUNNING
+
+
+def test_a_stop_tag_read_while_braking_in_a_field_hold_is_not_driven_on_from():
+    """WP-A9: the field hold resumes by itself - but not past a stop it read while braking."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    w.tick(torque_off=True, field_clear=False)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "field"
+    w.read(MRU1)  # read while the vehicle was still coasting into the stop
+    w.tick(field_clear=False)
+    w.drive(4.0)  # the field clears and stays clear
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid", w.job.reason
+    assert "MRU1" in w.job.reason or "passed" in w.job.reason
+    assert w.job.tape.stop is None, "never applied as a stop"
+    w.tick(start_edge=True, start_edge_t=w.t)
+    assert w.until(lambda: w.job.state == lj.RUNNING, 2.0), w.job.reason

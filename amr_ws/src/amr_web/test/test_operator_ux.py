@@ -785,3 +785,25 @@ def test_home_places_the_lcp_dots_through_the_shared_helper(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     html = client.get("/home").get_data(as_text=True)
     assert "placeLcpDots(" in html and "lineFresh(" in html
+
+
+def test_recover_is_the_engineers(tmp_path):
+    """WP-B4 (owner, 2026-10-25): Recover, which also acknowledges a drive-link fault after
+    the power cycle, needs the engineer view (PIN)."""
+    client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
+    r = client.post("/api/recover")
+    assert r.status_code == 403 and "engineer view" in r.get_json()["message"]
+    client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
+    assert client.post("/api/recover").status_code != 403
+
+
+def test_a_drive_link_fault_is_a_drive_row_and_hides_drives_not_ready():
+    """WP-B4: link FAULT with cached 'Operation enabled' used to show only DRIVES_NOT_READY."""
+    from amr_web import alarms as web_alarms
+
+    fault = {"operational": False, "left": "Operation enabled", "right": "Operation enabled", "link": "fault"}
+    assert web_alarms._drive_code(fault) == "DRIVE_FAULT"
+    assert web_alarms._drive_code(dict(fault, left="stale")) == "DRIVE_SILENT"
+    assert web_alarms._drive_code(dict(fault, link="standby", left="Ready to switch on",
+                                       right="Ready to switch on")) is None

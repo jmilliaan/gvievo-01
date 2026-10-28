@@ -37,7 +37,8 @@ sick_safetyscanners2_node:
     general_system_state: true
     derived_settings: true
     measurement_data: true
-    intrusion_data: true             # protective/warning field status (plan §4.1)
+    intrusion_data: true             # per-beam field intrusions. /output_paths (the mux's field
+                                     # status) comes from application data, not from this block
     application_io_data: true
     use_persistent_config: false
     min_intensities: 0.0

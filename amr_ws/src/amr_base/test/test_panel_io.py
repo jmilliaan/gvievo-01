@@ -139,18 +139,23 @@ def test_pendant_levels_and_log():
     assert not any(f.pendant) and f.changed == "pendant released"
 
 
-def test_pendant_is_held_at_power_on_and_dropped_on_comms_loss():
+def test_a_pendant_held_at_power_on_or_reconnect_must_be_released_first():
+    """WP-A6 (owner, 2026-10-25): no enabling device and the FX3 does not see the pendant, so a
+    direction already held when the image (re)baselines publishes idle until let go once."""
     ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
     f = ad.tick(_snap(_pdi(fwd=True)))
     assert not any(f.pendant)  # one scan: not yet believed
     f = ad.tick(_snap(_pdi(fwd=True)))
-    assert f.pendant.fwd  # no anti-tie-down: a held deadman drives
+    assert not any(f.pendant) and "FWD held at enable: release it" in f.changed
+    f = _settle(ad, _pdi(fwd=True))
+    assert not any(f.pendant), "held on: still idle"
+    _settle(ad, _pdi())
+    f = _settle(ad, _pdi(fwd=True))
+    assert f.pendant.fwd, "released and pressed again: drives"
     f = _settle(ad, _pdi(fwd=True), comms=False)
     assert not any(f.pendant) and not f.valid
-    f = ad.tick(_snap(_pdi(fwd=True)))
-    assert not any(f.pendant)  # reconnect: needs a fresh debounce
-    f = ad.tick(_snap(_pdi(fwd=True)))
-    assert f.pendant.fwd
+    f = _settle(ad, _pdi(fwd=True))
+    assert not any(f.pendant), "reconnect with FWD held: release first again"
 
 
 def test_manual_arm_is_a_debounced_level_and_dies_with_the_image():
@@ -216,7 +221,9 @@ def test_a_persisting_coincidence_is_accepted_after_the_hold():
         f = ad.tick(_snap(_cdi(auto=False, fwd=True)))
     assert f.mode_auto  # still withheld
     f = ad.tick(_snap(_cdi(auto=False, fwd=True)))
-    assert not f.mode_auto and f.pendant[0] and "accepted" in f.changed and "selector MANUAL" in f.changed
+    assert not f.mode_auto and "accepted" in f.changed and "selector MANUAL" in f.changed
+    # WP-A6: the selector turned MANUAL with FWD held: it must be released before it drives
+    assert not any(f.pendant) and "held at enable" in f.changed
 
 
 def test_separate_selector_and_pendant_changes_are_immediate():
@@ -330,3 +337,29 @@ def test_raw_hex_is_the_di_word():
     bits = [False] * 16
     bits[0] = bits[8] = True
     assert panel_io.raw_hex(bits) == "0x0101" and panel_io.raw_hex(None) == "?"
+
+
+def test_a_pendant_held_through_manual_arm_switching_on_must_be_released():
+    """WP-A6 (c): Manual Arm rising powers the drives; a direction already held waits."""
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
+    _settle(ad, _pdi())
+    f = _settle(ad, _pdi(fwd=True))
+    assert f.pendant.fwd  # a normal held jog is unaffected
+    bits = _pdi(fwd=True)
+    bits[config.PANEL_DI_MANUAL_ARM] = True
+    f = _settle(ad, bits)
+    assert f.manual_arm and not any(f.pendant)
+    bits[F] = False
+    _settle(ad, bits)
+    bits[F] = True
+    f = _settle(ad, bits)
+    assert f.pendant.fwd
+
+
+def test_holding_the_opposite_direction_does_not_count_as_a_release():
+    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
+    _settle(ad, _pdi(fwd=True))  # held at baseline
+    f = _settle(ad, _pdi(fwd=True, rvs=True))  # cancels in the intent, FWD never let go
+    assert not any(f.pendant)
+    f = _settle(ad, _pdi(fwd=True))
+    assert not any(f.pendant)

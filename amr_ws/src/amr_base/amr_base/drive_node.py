@@ -107,21 +107,30 @@ def _fault_code(reason: str) -> str:
 
 FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
 
+def _sysfs_count(path: str) -> str:
+    """A kernel counter as text, "" when unreadable (slcan without a netdev, a dev box)."""
+    try:
+        with open(path) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
 class DriveNode(LeanNode):
     def __init__(self) -> None:
         super().__init__("drive_node")
         dp = self.declare_parameter
         # The loop period, driver timeout, IMU/monitor switches and MLS variant come from
         # the profile directly (config.*): no ROS param shadows them.
-        dp("cmd_timeout_s", 0.2)
-        dp("feedback_hz", 50.0)  # TPDO event timer; 100 Hz once the 125 kbps bus is proven to carry it
+        dp("cmd_timeout_s", config.FRESH_CMD_S)
+        dp("feedback_hz", config.DRIVE_FEEDBACK_HZ)  # TPDO event timer (profile freshness block)
         dp("auto_arm", True)  # bring the link up (STANDBY) at start; power follows arm_policy
         dp("power_panel_timeout_s", 1.0)  # arm_policy: a panel image older than this = no power
         dp("power_ask_timeout_s", 2.5)  # arm_policy: a LineState/RunState request older than this
         dp("arm_retry_s", 2.0)
         dp("pc_node_id", 100)
-        dp("pc_heartbeat_ms", 100)
-        dp("pc_loss_ms", 500)  # 1016h on the drives; 0 disables the drive-side response
+        dp("pc_heartbeat_ms", config.PC_HEARTBEAT_MS)
+        dp("pc_loss_ms", config.PC_LOSS_MS)  # 1016h on the drives; 0 (bench only) disables it
         dp("ramp", "auto")  # profile drivers.ramp.<name>
         dp("imu_poll_hz", 50.0)
         dp("imu_stamp_every", 10)
@@ -396,6 +405,12 @@ class DriveNode(LeanNode):
 
     def _loop(self, link, router, imu) -> None:
         retry_at = 0.0
+        # prepare and the owed cleanup back off when they keep failing; engage does not: a
+        # drive held in Switch on disabled arms the moment the cabinet Reset is pressed.
+        link_backoff = arm_policy.RetryBackoff(self.arm_retry)
+        self._tx = tx = canopen.TxHealth()
+        self._loop_max_s, self._loop_overruns = 0.0, 0
+        self._mls_errors, mls_failing = 0, False
         t_tick = t_status = t_mon = t_diag = 0.0
         t_wheels = None
         last_pub = {n: (None, None) for n in self.nodes}
@@ -428,7 +443,6 @@ class DriveNode(LeanNode):
                 link.cleanup_owed,
             )
             if d.action == "prepare":
-                retry_at = now + self.arm_retry
                 try:
                     link.prepare(
                         self.feedback_ms,
@@ -438,15 +452,16 @@ class DriveNode(LeanNode):
                         config.INVERT_LEFT,
                         config.INVERT_RIGHT,
                     )
+                    retry_at = link_backoff.next_at(time.monotonic(), True)
                     self._log("drives in standby (linked, power stage off)")
                     self._edge("arm", None)
                 except Exception as e:  # noqa: BLE001 - a condition, retried
+                    retry_at = link_backoff.next_at(time.monotonic(), False)
                     self.get_logger().warn(
-                        f"cannot link the drives: {e} - retrying in {self.arm_retry:.0f} s"
+                        f"cannot link the drives: {e} - retrying in {retry_at - time.monotonic():.0f} s"
                     )
                     self._edge("arm", ("DRIVE_FAULT", 2, f"{e}"))
             elif d.action == "engage":
-                retry_at = now + self.arm_retry
                 try:
                     link.engage()
                     self._log(f"drives powered (targets zero): {self._power[1]}")
@@ -460,25 +475,28 @@ class DriveNode(LeanNode):
                     # button (2026-09-22). Edge-triggered - engaging retries every 2 s.
                     self._edge("arm", ("SAFETY_RESET_NEEDED", 1, f"{e}")
                                if drive_state.SWITCH_ON_DISABLED in str(e) else ("DRIVE_FAULT", 2, f"{e}"))
+                retry_at = time.monotonic() + self.arm_retry
             elif d.action == "release":
                 if link.release():
                     self._log(f"drives in standby (power off): {d.reason}; {self._power[1]}")
                 else:
                     self.get_logger().error(f"FAULT: {link.fault_reason}")
                     self._edge("fault", ("DRIVE_FAULT", 2, link.fault_reason or "power-off incomplete"))
-                retry_at = now + self.arm_retry
+                retry_at = time.monotonic() + self.arm_retry
             elif d.action == "disarm":
                 self.get_logger().warn(f"disarming: {d.reason}")
-                if not link.disarm():
+                ok = link.disarm()
+                if not ok:
                     self.get_logger().error(f"disarm incomplete: {'; '.join(link.cleanup_failures)}")
-                retry_at = now + self.arm_retry
+                retry_at = link_backoff.next_at(time.monotonic(), ok)
             elif d.action == "cleanup":
                 # Q02: an owed teardown is retried on the arm backoff; arming waits for it.
-                if link.disarm(force=True):
+                ok = link.disarm(force=True)
+                if ok:
                     self._log("owed drive cleanup completed")
                 else:
                     self.get_logger().error(f"drive cleanup still owed: {'; '.join(link.cleanup_failures)}")
-                retry_at = now + self.arm_retry
+                retry_at = link_backoff.next_at(time.monotonic(), ok)
             elif d.action == "fault":
                 self.get_logger().error(f"FAULT: {d.reason}")
                 link.fault(d.reason)
@@ -503,16 +521,37 @@ class DriveNode(LeanNode):
                 # already carry Halt (DriveLink.in_pp); record it and stand down.
                 self._pp.abandon(f"drives {link.state} {link.fault_reason or ''}".strip(), now)
                 self.event(2, "PP_ABANDONED", self._pp.last.reason)
-            if now - t_tick >= self.period and link.state == canopen.ARMED:
-                t_tick = now
-                if not self._pp_step(link, time.monotonic()):
-                    link.send_target(*self._target(time.monotonic(), link.scale))
-
-            link.keepalive(strict=True)  # the PC heartbeat, when pc_loss_ms set link.pc_node
+            # A full TX queue costs this tick's frames, not the bus thread (WP-B2): counted,
+            # never retried, and faulted once it outlasts the driver timeout. A bus that is
+            # GONE (ENODEV, ENETDOWN) still ends the thread, as before.
+            try:
+                if now - t_tick >= self.period and link.state == canopen.ARMED:
+                    t_tick = now
+                    if not self._pp_step(link, time.monotonic()):
+                        link.send_target(*self._target(time.monotonic(), link.scale))
+                link.keepalive(strict=True)  # the PC heartbeat, when pc_loss_ms set link.pc_node
+                tx.ok()
+            except canopen.CanOperationError as e:
+                if not canopen.transient_tx_error(e):
+                    raise
+                tx.fail(now, e)
+            if tx.failing_for(now) > self.driver_timeout and link.state in (canopen.ARMED, canopen.STANDBY):
+                why = f"CAN TX failed for {tx.failing_for(now):.1f} s ({tx.last_error})"
+                self.get_logger().error(f"FAULT: {why}")
+                link.fault(why)
+                self._edge("fault", ("CAN_TX_FAILED", 2, why))
+                tx.ok()
 
             link.idle()  # the IMU poll (link.idle_hook), guarded against re-entry
             if self._track is not None:
-                self._track.poll(now)
+                try:
+                    self._track.poll(now)
+                    mls_failing = False
+                except Exception as e:  # noqa: BLE001 - the line sensor must not take the drives down
+                    self._mls_errors += 1
+                    if not mls_failing:
+                        self.get_logger().error(f"MLS track poll failed: {e!r} (counted: mls_errors)")
+                    mls_failing = True
 
             # Feedback: a WheelStates per complete new pair - a new TPDO1 AND a new
             # TPDO2 from both drives, not just one member changing (R07). Once
@@ -544,6 +583,12 @@ class DriveNode(LeanNode):
                 self._publish_diagnostics(link, imu)
 
             spent = time.perf_counter() - t0
+            # Report-only (unified plan WP-B1 e): how long the loop's own work took, and how
+            # often it outran the command timeout - the in-service answer to "does a blocking
+            # sensor read stall the setpoints?". Nothing acts on it.
+            self._loop_max_s = max(self._loop_max_s, spent)
+            if spent > self.cmd_timeout:
+                self._loop_overruns += 1
             router.pump(max(0.001, self.period - spent))
 
     def _serve_requests(self, link) -> None:
@@ -772,10 +817,14 @@ class DriveNode(LeanNode):
         m.left_statusword, m.right_statusword = tl.statusword or 0, tr.statusword or 0
         m.left_error_code = (tl.alarm or {}).get("code", tl.error_register or 0) & 0xFFFF
         m.right_error_code = (tr.alarm or {}).get("code", tr.error_register or 0) & 0xFFFF
-        m.left_state, m.right_state = tl.state, tr.state
         # Cached statuswords are not evidence: operational also needs fresh TPDO1
-        # and TPDO2 from both drives (R07).
+        # and TPDO2 from both drives (R07), and a node whose TPDO1 stopped reports "stale",
+        # not the last state it sent - a cached "Operation enabled" kept LINE running on a
+        # drive that had gone silent (unified plan WP-A4).
         now, max_age = time.monotonic(), 2.5 * self.feedback_ms / 1000.0
+        status_fresh = {n: link.feedback_fresh(n, now, max_age)[0] for n in (config.LEFT, config.RIGHT)}
+        m.left_state = tl.state if status_fresh[config.LEFT] or tl.statusword is None else drive_state.STALE
+        m.right_state = tr.state if status_fresh[config.RIGHT] or tr.statusword is None else drive_state.STALE
         fresh = all(all(link.feedback_fresh(n, now, max_age)) for n in (config.LEFT, config.RIGHT))
         m.operational = bool(
             link.state == canopen.ARMED and fresh and tl.operation_enabled and tr.operation_enabled
@@ -887,6 +936,18 @@ class DriveNode(LeanNode):
             KeyValue(key="nonfinite_cmds", value=str(self._bad_cmds)),
             KeyValue(key="stop_unconfirmed", value="; ".join(link.stop_unconfirmed)),
             KeyValue(key="heartbeat_withheld", value=str(link.heartbeat_withheld)),
+            # WP-B2: what the bus thread absorbed instead of dying
+            KeyValue(key="tx_errors", value=str(getattr(getattr(self, "_tx", None), "errors", 0))),
+            KeyValue(key="last_tx_error", value=getattr(getattr(self, "_tx", None), "last_error", "")),
+            KeyValue(key="error_frames", value=str(link.router.error_frames)),
+            KeyValue(key="decode_errors", value=str(sum(link.router.decode_errors.values()))),
+            KeyValue(key="idle_errors", value=str(link.idle_errors)),
+            KeyValue(key="last_idle_error", value=link.last_idle_error),
+            KeyValue(key="mls_errors", value=str(getattr(self, "_mls_errors", 0))),
+            KeyValue(key="loop_max_ms", value=f"{1000.0 * getattr(self, '_loop_max_s', 0.0):.1f}"),
+            KeyValue(key="loop_overruns", value=str(getattr(self, "_loop_overruns", 0))),
+            KeyValue(key="tx_dropped",
+                     value=_sysfs_count(f"/sys/class/net/{config.CAN_CHANNEL}/statistics/tx_dropped")),
             KeyValue(key="cleanup_failures", value="; ".join(link.cleanup_failures)),
             KeyValue(key="pp_state", value=self._pp.state),
             KeyValue(key="pp_in_mode", value=str(link.in_pp)),

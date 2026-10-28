@@ -65,7 +65,7 @@ line_follow alone receives ~275 wakeups/s.
   Group.spawn, use `os.setpriority` after Popen, not `preexec_fn` (the supervisor is
   threaded).
 
-## 3. Already in the working tree (other sessions, 09:33–10:06, NOT deployed)
+## 3. Already in the working tree (committed 8f7944a; deployed 2026-10-25, acceptance pidstat owed)
 
 | Change | Est. |
 |---|---|
@@ -90,7 +90,7 @@ Treat it as a vehicle acceptance run, not a CPU tweak.
 | # | Change | Est. | Notes |
 |---|---|---|---|
 | 1 | ~~`tape_loc.enabled=false` in production~~. **Withdrawn 2026-10-24.** Tape localization is the production positioning source for stops, starts, slow-downs, junction orders and the U-turn (tracked plan 3 D1). The group stays on in LINE; its cost is cut instead (§4a) | — | |
-| 2 | No dev session on the vehicle in production: close VS Code Remote, disable Codex/Copilot remote, `ros2 daemon stop` after CLI probes | 5–23 | Add to RUNBOOK |
+| 2 | ~~No dev session on the vehicle in production~~ **Dropped** (owner, 2026-10-25: VS Code Remote and agent CLIs stay; unified plan §1 decision 6) | 5–23 | — |
 | 3 | `logs/pwrbtn-watch.sh`: forks `date` + 7 `awk` every 2 s; its log is 24 MB and unrotated | 1.5 | Use one awk or read sysfs; rotate the log |
 | 4 | Kiosk watchdog: python3 + curl + xrandr every 5 s | 1.2 | Slow to 15–30 s; drop the duplicate xrandr probe |
 | 5 | Kiosk Chromium: merge the duplicate `--disable-features` (the snap's TFLite flag is lost); add `--disable-background-networking --disable-component-update`; verify GPU raster in chrome://gpu | 0.5 | /usr/local/bin/amr-kiosk-browser |
@@ -189,6 +189,9 @@ Tier 2 realistic total: **~0.4–0.5 core.**
 
 While running LINE with tape_loc, add AMCL ~6 % (default set) or ~3–4 % (lean, if P0 accepts
 it). Tape localization therefore costs about 0.1 core in production, not 0.45.
+
+The projection keeps dev tooling: VS Code Remote and agent CLIs stay on the vehicle (owner,
+2026-10-25), so add 0.05–0.23 core to every row above when a session is attached.
 
 Acceptance on the vehicle, sequentially, no dev session attached:
 1. Idle 60 s: `pidstat -u 10 6` per process. Compare against the §1 figures.

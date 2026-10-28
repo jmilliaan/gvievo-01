@@ -259,20 +259,21 @@ def test_a_stale_panel_is_still_debounced():
     {"track_ok": False, "track_cause": "rate"},
     {"track_ok": False, "track_cause": "track"},
 ])
-def test_a_torque_loss_during_an_auto_hold_takes_the_safety_cause(first):
-    """drives/rate/track -> torque off with the field clear is an E-stop, and
-    an E-stop waits for a human. Before: the hold kept its first cause and
-    resumed by itself two seconds after everything came back."""
+def test_device_holds_wait_for_a_person(first):
+    """WP-A2 (owner, 2026-10-25): only the protective field resumes by itself. A
+    drives/rate/track hold stays held with the drives in standby however long its cause
+    has been gone, and goes on only through Start and the pre-move warning."""
     job = run(make())
     for t in (102.0, 102.6):
         job.tick(inputs(now=t, **first))
     assert job.state == lj.HOLD and job.hold_cause in ("drives", "rate", "track")
-    job.tick(inputs(now=103.0, torque_off=True, field_clear=True))
-    assert job.hold_cause == "estop" and not job.auto_resume()
-    for t in (104.0, 106.0, 110.0):
-        job.tick(inputs(now=t))
-        assert job.state == lj.HOLD, "resumed without Start after an E-stop"
-    job.tick(inputs(now=111.0, start_edge=True, start_edge_t=110.9))
+    assert not job.auto_resume() and not job.wants_power()
+    for t in (104.0, 108.0, 112.6):
+        job.tick(inputs(now=t, torque_off=True))  # standby: no torque, as it should be
+        assert job.state == lj.HOLD and not job.wants_power(), "resumed without Start"
+    job.tick(inputs(now=113.0, start_edge=True, start_edge_t=112.9, torque_off=True))
+    assert job.state == lj.ARMED and job.wants_power()
+    job.tick(inputs(now=113.1))
     assert job.state == lj.RUNNING
 
 
@@ -287,9 +288,11 @@ def test_unknown_field_evidence_is_an_estop_not_a_field_stop():
     job2 = run(make())
     job2.tick(inputs(now=102.0, torque_off=True, field_clear=False))
     assert job2.hold_cause == "field"
-    for t in (103.0, 104.0, 106.0):
-        job2.tick(inputs(now=t, field_clear=None))
-    assert job2.state == lj.HOLD and "unknown" in job2.reason
+    job2.tick(inputs(now=103.0, field_clear=None))
+    assert job2.hold_cause == "prereq" and "unknown" in job2.reason  # WP-A2: a hold for a person
+    for t in (104.0, 106.0):
+        job2.tick(inputs(now=t))
+    assert job2.state == lj.HOLD and not job2.auto_resume()
 
 
 def test_a_field_hold_keeps_the_fields_terms():
@@ -521,3 +524,77 @@ def test_a_cancelled_resume_returns_to_its_hold():
     job.tick(inputs(now=111.0, torque_off=True, start_edge=True, start_edge_t=110.9))
     job.tick(inputs(now=119.5, torque_off=True))
     assert job.state == lj.HOLD and job.hold_cause == "estop" and "did not power up" in job.reason
+
+
+def test_a_fresh_invalid_panel_image_holds_at_once_for_a_person():
+    """WP-A2: the I/O island itself says the panel image is invalid - not debounced like a
+    stale image, never a powered hold, never relabelled as the field or an E-stop."""
+    job = run(make())
+    job.tick(inputs(now=102.0, panel_link_lost=True, panel_valid=False))
+    assert job.state == lj.HOLD and job.hold_cause == "panel"
+    assert not job.auto_resume() and not job.wants_power()
+    job.tick(inputs(now=102.1, torque_off=True, field_clear=True))
+    assert job.hold_cause == "panel", "a torque loss after the panel dropped is not an E-stop"
+    for t in (104.0, 108.0):
+        job.tick(inputs(now=t))
+        assert job.state == lj.HOLD
+    job.tick(inputs(now=108.5, start_edge=True, start_edge_t=108.4))
+    assert job.state in (lj.ARMED, lj.RUNNING)
+
+
+def test_a_stale_panel_with_a_bad_track_is_a_prereq_hold_not_a_track_hold():
+    """WP-A2: the debounced hold names the track only when the track is the only thing wrong."""
+    job = run(make())
+    bad = dict(panel_valid=False, track_ok=False, track_cause="track")
+    job.tick(inputs(now=102.0, **bad))
+    job.tick(inputs(now=102.6, **bad))
+    assert job.state == lj.HOLD and job.hold_cause == "prereq"
+
+
+def test_a_silent_sensor_holds_for_a_person_and_is_not_the_end_of_the_tape():
+    """WP-A3 (MLS-1): it used to end the run DONE wherever it stopped."""
+    job = run(make())
+    job.tick(inputs(now=102.0, sensor_age_s=0.2))
+    assert job.state == lj.HOLD and job.hold_cause == "sensor", (job.state, job.reason)
+    assert job.tick(inputs(now=102.02)) == (0.0, 0.0)
+    for t in (104.0, 108.0, 112.0):
+        job.tick(inputs(now=t))
+        assert job.state == lj.HOLD, "fresh again is not a Start"
+    job.tick(inputs(now=112.5, start_edge=True, start_edge_t=112.4))
+    assert job.state in (lj.ARMED, lj.RUNNING)
+
+
+def test_a_sensor_never_heard_while_running_holds():
+    job = run(make())
+    job.tick(inputs(now=102.0, sensor_age_s=None))
+    assert job.state == lj.HOLD and job.hold_cause == "sensor"
+
+
+def test_a_drive_link_fault_holds_at_once_whatever_the_cached_statuswords_say():
+    """WP-A4 (D2, X3): link FAULT with a cached "Operation enabled" used to keep RUNNING."""
+    job = run(make())
+    job.tick(inputs(now=102.0, drive_link="fault", drives_operational=False))
+    assert job.state == lj.HOLD and job.hold_cause == "drive_fault"
+    assert job.tick(inputs(now=102.02, drive_link="fault")) == (0.0, 0.0)
+    assert not job.wants_power()
+    job.tick(inputs(now=103.0, drive_link="armed", drives_operational=True))
+    assert job.state == lj.HOLD, "the link back is not a Start"
+    job.tick(inputs(now=103.5, drive_link="fault", start_edge=True, start_edge_t=103.4))
+    assert job.state == lj.HOLD, "Start is refused while the link is in FAULT"
+    job.tick(inputs(now=104.0, drive_link="standby", start_edge=True, start_edge_t=103.9))
+    assert job.state in (lj.ARMED, lj.RUNNING)
+
+
+def test_a_drive_link_fault_overrides_a_device_hold():
+    job = run(make())
+    for t in (102.0, 102.6):
+        job.tick(inputs(now=t, track_ok=False, track_cause="track"))
+    assert job.hold_cause == "track"
+    job.tick(inputs(now=103.0, drive_link="fault"))
+    assert job.hold_cause == "drive_fault"
+
+
+def test_the_link_letting_go_under_a_running_vehicle_holds():
+    job = run(make())
+    job.tick(inputs(now=102.0, drive_link="standby"))
+    assert job.state == lj.HOLD and job.hold_cause == "drive_fault"

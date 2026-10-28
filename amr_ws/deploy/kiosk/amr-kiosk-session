@@ -1,0 +1,9 @@
+#!/bin/bash
+# Bare X session for the operator display. No desktop, no panel: a window
+# manager that only knows fullscreen, the display hot-plug watcher, and the
+# browser supervisor. LightDM autologs the "amrkiosk" user into this.
+xset s off; xset s noblank; xset -dpms
+/usr/local/bin/amr-display-hotplug.sh &
+unclutter -idle 1 -root &
+matchbox-window-manager -use_titlebar no -use_cursor yes &
+exec /usr/local/bin/amr-kiosk-browser

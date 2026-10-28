@@ -69,3 +69,22 @@ def want_power(
         if a.drive_power and _fresh(a.t_stamp, now, p.ask_timeout_s):
             return True, f"AUTO, the {a.source} run asks for power"
     return False, "AUTO, no run asking for power"
+
+
+class RetryBackoff:
+    """When to try a failed link action again (unified plan WP-B3). Measured from the end of
+    the action, not its start - a prepare that spent 3 s timing out must not be retried the
+    moment it returns - and doubled per consecutive failure up to cap_s: 2, 4, 8 ... 30 s.
+    A success resets it."""
+
+    def __init__(self, base_s: float, cap_s: float = 30.0) -> None:
+        self.base_s, self.cap_s = float(base_s), float(cap_s)
+        self.failures = 0
+
+    def next_at(self, ended: float, ok: bool) -> float:
+        if ok:
+            self.failures = 0
+            return ended + self.base_s
+        delay = min(self.cap_s, self.base_s * (2 ** self.failures))
+        self.failures += 1
+        return ended + delay

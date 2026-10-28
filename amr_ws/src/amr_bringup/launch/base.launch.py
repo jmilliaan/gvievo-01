@@ -8,7 +8,7 @@
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
                   imu_bias, scan_gate, ekf_local
 
-No web app, no Foxglove, no SLAM, no AMCL: those are the supervisor's other
+No web app, no SLAM, no AMCL: those are the supervisor's other
 groups. Every node listed as REQUIRED ends the launch when it exits, so a
 dead node cannot hide behind a live `ros2 launch` parent.
 
@@ -17,7 +17,7 @@ Domain guard: real:=true needs ROS_DOMAIN_ID=10; real:=false refuses it.
 
 import os
 
-from agv_core import paths
+from agv_core import config, paths
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -203,8 +203,9 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument(
                 "lidar", default_value="true", description="real: also start the nanoScan3"
             ),
-            DeclareLaunchArgument("pc_loss_ms", default_value="500"),
-            DeclareLaunchArgument("feedback_hz", default_value="50.0"),
+            # the profile's freshness block (WP-A10); a bench run may override them
+            DeclareLaunchArgument("pc_loss_ms", default_value=str(config.PC_LOSS_MS)),
+            DeclareLaunchArgument("feedback_hz", default_value=str(config.DRIVE_FEEDBACK_HZ)),
             DeclareLaunchArgument("gyro_sign", default_value="1.0"),
             DeclareLaunchArgument(
                 "panel", default_value="real", description="real: DIO island | fake: SIMULATED, bench only"

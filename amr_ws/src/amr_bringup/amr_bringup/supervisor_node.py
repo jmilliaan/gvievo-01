@@ -1,9 +1,9 @@
 """amr_supervisor: the main process of amr.service (unified plan §3, §5, §8).
 
-Owns four process groups - web, base, an optional Foxglove bridge, and at most
-one mode layer (mapping or navigation) - and the single source of motion
-authority, /amr/control_lease. Boots STARTING -> IDLE with base and web up and
-no layer, then on to LINE unless the profile is trackless-only (tracked false).
+Owns three process groups - web, base and at most one mode layer (mapping or
+navigation) - and the single source of motion authority, /amr/control_lease.
+Boots STARTING -> IDLE with base and web up and no layer, then on to LINE unless
+the profile is trackless-only (tracked false).
 Mode changes and survey operations are asynchronous operations (OperationState)
 driven by one serial loop; every step has a deadline and a
 failure lands in FAULT with motion inhibited, never in a half-switched stack.
@@ -38,6 +38,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_srvs.srv import Trigger
 
+from amr_base import drive_state
 from amr_base.gating import LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE, LEASE_MANUAL
 from amr_base.lean_node import LeanNode
 from amr_base.qos import LATCHED, RELIABLE_1
@@ -64,7 +65,7 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import GetOperation, RequestMode, RequestSurvey, SaveMap, StartSurvey
 
-# The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
+# The web comes back by itself: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
 RESPAWN_TRIES = 3
@@ -95,7 +96,6 @@ class Supervisor(LeanNode):
         dp("maps_dir", paths.maps_dir())
         dp("state_dir", paths.state_dir())
         dp("web", True)
-        dp("foxglove", True)
         dp("lidar", True)
         dp("slip_noise_std", 0.02)  # sim
         dp("clutter_count", 0)  # sim
@@ -210,6 +210,8 @@ class Supervisor(LeanNode):
         self.create_service(RequestSurvey, "/amr/supervisor/survey", self._srv_survey, callback_group=g)
         self.create_service(GetOperation, "/amr/operations/get", self._srv_get_op, callback_group=g)
         self.create_service(Trigger, "/amr/supervisor/recover", self._srv_recover, callback_group=g)
+        # WP-B4: Recover acknowledges a drive-link fault through drive_node (the only can0 owner)
+        self._cli_ack = self.create_client(Trigger, "/drives/ack_fault", callback_group=g)
         self._cli = {
             "start": self.create_client(StartSurvey, f"{INTERNAL}/start", callback_group=g),
             "returned": self.create_client(Trigger, f"{INTERNAL}/returned", callback_group=g),
@@ -225,7 +227,7 @@ class Supervisor(LeanNode):
                 Trigger, "/lifecycle_manager_navigation/is_active", callback_group=g
             ),
         }
-        self.create_timer(0.5, self._publish_mode)
+        self.create_steady_timer(0.5, self._publish_mode)
         self._thread = threading.Thread(target=self._loop, name="supervisor-loop", daemon=True)
         self.get_logger().info(
             f"instance {self.instance[:8]} real={self.real} maps={self.maps_dir} "
@@ -502,7 +504,31 @@ class Supervisor(LeanNode):
         # tick returns to IDLE by itself once it is ready, and Recover may try too.
         return None
 
+    def _ack_drive_fault(self, timeout_s: float = 15.0) -> tuple[bool, str]:
+        """Call /drives/ack_fault and hand back its answer verbatim ("cleanup owed" included).
+        Safe to wait here: the service runs in a reentrant group on a multi-threaded executor."""
+        if not self._cli_ack.wait_for_service(timeout_sec=0.5):
+            return False, "drive_node does not offer /drives/ack_fault (base not running?)"
+        done = threading.Event()
+        fut = self._cli_ack.call_async(Trigger.Request())
+        fut.add_done_callback(lambda _f: done.set())
+        if not done.wait(timeout_s):
+            return False, f"drive_node did not answer the fault acknowledgement within {timeout_s:.0f} s"
+        r = fut.result()
+        return bool(r.success), str(r.message)
+
     def _srv_recover(self, req, res):
+        # A drive-link FAULT first (owner decision 2026-10-25, unified plan WP-B4): after the
+        # power cycle the drives are acknowledged here - refused while a run still holds them.
+        if self.snap.drive_link_state() == drive_state.LINK_FAULT:
+            why = rd.drive_ack_refusal(self.snap, self._now(), self.generation)
+            if why:
+                res.success, res.message = False, f"drive fault not acknowledged: {why}"
+                return res
+            ok, msg = self._ack_drive_fault()
+            if not ok or self.mode != fsm.FAULT:
+                res.success, res.message = ok, f"drive fault: {msg}"
+                return res
         with self._lock:
             d = fsm.admit(self.mode, fsm.REQ_RECOVER, self._conditions())
             if not d.ok:
@@ -789,6 +815,7 @@ class Supervisor(LeanNode):
             revision=t.map_revision,
             generation=self.generation,
             autostart="false",
+            real=str(self.real).lower(),
         )
 
     def _start_line(self, t: fsm.Transaction):
@@ -997,10 +1024,6 @@ class Supervisor(LeanNode):
             if p("world_yaml").value:
                 base_args["world_yaml"] = p("world_yaml").value
         self.groups["base"] = self._launch("base", "base.launch.py", **base_args)
-        if p("foxglove").value:
-            argv = ["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"]
-            self._respawnable["foxglove"] = argv
-            self.groups["foxglove"] = self._spawn("foxglove", argv)
         self._boot_deadline = self._now() + self.budget["base_ready_s"]
         self._boot_reported = False
 
@@ -1150,7 +1173,7 @@ class Supervisor(LeanNode):
             self._publish_lease() if got else None
         except Exception:  # noqa: BLE001
             pass
-        for role in ("layer", "base", "foxglove", "web"):
+        for role in ("layer", "base", "web"):
             g = self.groups.get(role)
             if g is None:
                 continue

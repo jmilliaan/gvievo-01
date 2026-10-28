@@ -10,6 +10,7 @@ from bringup_fakes import Log
 
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
+from amr_bringup import readiness as rd
 from amr_bringup.supervisor_node import Supervisor
 
 
@@ -125,6 +126,7 @@ def test_q17_recovery_refuses_a_dead_base_with_the_restart_instruction():
     sv._conditions = lambda: fsm.Conditions(now=10.0)
     sv.fault_code = "BASE_EXITED"
     sv.groups = {"base": Dead()}
+    sv.snap = rd.Snapshots()  # no drive report: no drive-link fault to acknowledge (WP-B4)
     for name in ("_srv_recover", "_base_failure"):
         setattr(sv, name, types.MethodType(getattr(Supervisor, name), sv))
     res = types.SimpleNamespace(success=None, message="")

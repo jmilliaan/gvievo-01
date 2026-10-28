@@ -347,6 +347,20 @@ def test_config_profile():
     refuses("a gyro U-turn gate past 180 deg is refused",
             lambda d: d["autopilot"].update(u_turn_gyro_min_deg=200.0), "u_turn_gyro_min_deg")
 
+    # freshness (unified plan WP-A10): hard ceilings, consumers at or above the gate, the
+    # drive link's heartbeat inside its loss window.
+    fr = lambda **kw: lambda d: d["freshness"].update(**kw)  # noqa: E731
+    refuses("a command limit above the 0.2 s ceiling is refused", fr(cmd_s=0.25), "freshness.cmd_s")
+    refuses("a lease limit above 0.3 s is refused", fr(lease_s=0.31), "freshness.lease_s")
+    refuses("a permit limit above 0.3 s is refused", fr(permit_s=0.5), "freshness.permit_s")
+    refuses("a line consumer tighter than the gate is refused", fr(line_panel_s=0.1), "line_panel_s")
+    refuses("an executor consumer tighter than the gate is refused", fr(executor_drives_s=0.2),
+            "executor_drives_s")
+    refuses("pc_loss_ms 0 is refused (no drive-side response)", fr(pc_loss_ms=0), "pc_loss_ms")
+    refuses("a PC heartbeat at half the loss window is refused", fr(pc_heartbeat_ms=250), "pc_heartbeat_ms")
+    refuses("a driver timeout under three TPDO periods is refused", fr(feedback_hz=4.0), "three TPDO")
+    refuses("a missing freshness key is refused", lambda d: d["freshness"].pop("field_s"), "missing key")
+
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
     load_with(lambda d: d["blind_run"].update(max_rpm=9000))

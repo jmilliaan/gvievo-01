@@ -22,17 +22,31 @@ once) cancels back to where the Start came from, as does premove_timeout_s
 without torque ("drives did not power up"). Holds that resume by themselves
 keep their power and do not repeat the warning: nobody pressed anything.
 
-WHAT HOLDS THE VEHICLE, and how each resumes:
+WHAT HOLDS THE VEHICLE, and how each resumes. Only `field` resumes by itself
+(and `estop` behind auto_resume_estop): amr_base.hold_policy.AUTO_CAUSES, the
+owner's decision of 2026-10-25, shared with the executor. Every other hold waits
+for a physical Start once its cause is gone, then the pre-move warning.
 
-  field       protective field violated (/output_paths): resumes by itself
+  field       protective field violated (/output_paths): resumes by itself once
+              the field is proven clear; if the field state goes unknown while
+              held, it becomes a `prereq` hold
   estop       drive torque gone with the field clear: needs a physical Start,
               unless auto_resume_estop
+  panel       the I/O island reported its panel image invalid while ARMED,
+              RUNNING or in a powered hold: held at once, not debounced
   drives      wheel feedback or drive report went stale while running: stops
-              at once, resumes by itself once feedback is back
+              at once
   track       no usable tape reading: the ENGINE owns the grace distance, so
               this hold is only for a reading that never arrives at all
   rate        samples are fresh but too slow, or the MLS fell back to SDO.
               sensor_timeout_s cannot see this - see track.TrackReader
+  drive_fault drive_node's link went FAULT (or let go of the drives under a running
+              vehicle): held at once; power-cycle the drives, Recover, then Start
+  sensor      no MLS sample for SENSOR_TIMEOUT_S while running: a comms fault,
+              never the end of the tape. On a marker run the resume names the
+              wheel travel driven blind (blind_m)
+  prereq      any other prerequisite (panel stale, lease, drive report, field
+              state unknown) failed for prereq_grace_s while running
   rfid        the RFID stream broke while driving (link down, reconnect,
               buffer overrun) on a mission with tags: a station or the U-turn
               may have been driven past. Needs a physical Start once the link
@@ -70,10 +84,8 @@ IDLE, ARMED, RUNNING, HOLD, DONE, FAULT = 0, 1, 2, 3, 4, 5
 
 STATE_NAMES = wire.LINE_NAMES
 
-# Holds that clear themselves once the cause does. "estop" joins this set only
-# when auto_resume_estop is set, matching the executor's operator decision of
-# 2026-09-19 that an E-stop recovery is a deliberate human act.
-_AUTO_CAUSES = ("field", "drives", "rate", "track")
+# Which holds clear themselves is amr_base.hold_policy.AUTO_CAUSES, shared with the
+# executor: only the protective field (owner decision 2026-10-25, unified plan WP-A2).
 # Holds that keep HIGH for the resume (2026-10-09): the protective field (a
 # person stepped in) and the RFID link (no RFID event may change the speed).
 _PARK_CAUSES = ("field", "rfid")
@@ -86,6 +98,10 @@ _PARK_CAUSES = ("field", "rfid")
 # Only the speed is decided here: the hold keeps its E-stop terms (a physical Start).
 _PARKS_HIGH = _PARK_CAUSES + ("estop",)
 FIELD_RACE_S = 0.5
+# Holds a drive-link FAULT relabels (WP-A4): their own story stops mattering once the drives
+# need a power cycle. Station, RFID, marker, position and payload holds keep theirs: a Start
+# from them meets the fault in the pre-move check anyway.
+_DRIVE_FAULT_OVERRIDES = ("field", "estop", "panel", "drives", "track", "rate", "sensor", "prereq")
 # Kink pivot (see _kink_begin): ticks without tape before a corner is called (a one-tick
 # flicker at the sensor's edge is not one), and the least angle worth searching after a
 # hold took the rest of kink_max_deg.
@@ -112,7 +128,7 @@ class Inputs:
 
     # sensor
     sensor: dict                     # the engine's track dict
-    sensor_age_s: float              # decode-to-now, not publish-to-now
+    sensor_age_s: float | None       # decode-to-now, not publish-to-now; None = never decoded
     track_ok: bool                   # usable: fresh, fast enough, tpdo
     track_cause: str                 # "" when track_ok
 
@@ -130,6 +146,14 @@ class Inputs:
     torque_off: bool
     field_clear: bool | None       # None = no fresh /output_paths: UNKNOWN, not clear
     drives_fresh: bool
+    # A FRESH panel image that says valid=False: the I/O island itself reports it cannot
+    # read the panel. Unlike a stale image (debounced through panel_valid), this holds at
+    # once (WP-A2). Defaulted so callers that predate it are unchanged.
+    panel_link_lost: bool = False
+    # DriveStatus.link_state ("" = unknown: no check) and .operational (None = unknown).
+    # A link FAULT holds at once whatever the cached statuswords say (WP-A4).
+    drive_link: str = ""
+    drives_operational: bool | None = None
 
     # mission engine (2026-10-02). Defaults keep plain line following, and every
     # caller that predates the engine, unchanged.
@@ -199,6 +223,7 @@ class FollowJob:
         self.state = IDLE
         self.hold_cause = ""
         self._hold_since = None     # first tick of the current hold
+        self._hold_note = ""
         self._estop_was_field = False  # this "estop" hold saw the field within FIELD_RACE_S
         self.reason = ""
         self.accepted_t = None      # when the Start that began this run was accepted
@@ -216,6 +241,10 @@ class FollowJob:
         self.diag = {}
         self._counts_ref = None     # encoder counts at the last tick, for wheel travel
         self.step_m = None          # wheel travel this tick, None when counts are unavailable
+        # Wheel travel with the line sensor silent, or on a marker run with the marker stream
+        # down, the decel into the hold included (WP-A3). Survives a HOLD; a new run and a
+        # Start that has shown it to the operator clear it.
+        self.blind_m = 0.0
         self.kink = None            # the kink pivot in progress, see _kink_begin()
         self.kinks = 0              # kink pivots this run
         self._edge_gone = 0         # ticks the tape has been gone after leaving at the edge
@@ -448,6 +477,8 @@ class FollowJob:
         """The mission's position sources: the RFID link, and a marker run's MLS markers."""
         if self.tape is not None and self.tape.needs_link and not (i.rfid or {}).get("comms_ok", False):
             return "RFID link down (the mission needs its tags)"
+        if self.tape is not None and self.tape.needs_link and (i.rfid or {}).get("work_mode_mismatch"):
+            return "RFID reader not in active mode: it pushes no tags (check its configuration)"
         if self.tape is not None and self.tape.needs_markers and not (i.markers or {}).get("ok", False):
             return "MLS markers down (the run's U-turn and home stop are markers)"
         return ""
@@ -505,6 +536,7 @@ class FollowJob:
         self.f.reset()
         self.tape = self._new_tape()
         self.followed_m = 0.0
+        self.blind_m = 0.0
         self.accepted_t = i.now
         self.hold_cause = ""
         self._prereq.reset()
@@ -656,6 +688,8 @@ class FollowJob:
             return "LEASE_LINE not granted by the supervisor"
         if not i.drives_fresh:
             return "no fresh drive report"
+        if i.drive_link == "fault":
+            return "drive link FAULT: power-cycle the drives, wait for boot, then Recover"
         if torque and i.torque_off:
             return "drive torque is off"
         if i.field_clear is None:
@@ -666,6 +700,15 @@ class FollowJob:
             return {"rate": "tape samples too slow for control (see line_min_track_hz)",
                     "track": "no usable tape reading"}.get(i.track_cause, "tape reading unusable")
         return ""
+
+    def _prereq_cause(self, i: Inputs):
+        """The hold cause for a debounced prerequisite failure: the tape's own cause only
+        when the tape check is the one failing, else "prereq" (WP-A2: a stale panel used to
+        be labelled "track" whenever the track happened to be bad as well)."""
+        if not i.track_cause:
+            return "prereq"
+        rest = self._prerequisite(dataclasses.replace(i, track_ok=True, track_cause=""))
+        return "prereq" if rest else i.track_cause
 
     def _resume_speed(self, cause):
         """The speed a hold resumes at: HIGH as arrived after a parking hold (field, RFID
@@ -692,7 +735,7 @@ class FollowJob:
         return ""
 
     def _auto_causes(self):
-        return hold_policy.auto_causes(_AUTO_CAUSES, self.auto_resume_estop)
+        return hold_policy.auto_causes(self.auto_resume_estop)
 
     def _prereq_held(self, now, pre):
         """True once a prerequisite has failed CONTINUOUSLY for the grace.
@@ -714,6 +757,7 @@ class FollowJob:
         if self.diag:
             self.diag = dict(self.diag, v_base=0.0)     # hard_stop zeroed it: say so
         self._hold_since = None
+        self._hold_note = ""  # kept in the waiting reason of a hold for a person
         self._estop_was_field = False
         # A station stop parked HIGH (TapeRun._begin_stop); a protective-field or
         # RFID-link hold parks it (operator, 2026-10-09: back to HIGH after it, and no RFID
@@ -745,6 +789,8 @@ class FollowJob:
         self._loc = i.loc
         self._markers_tick(i.markers)
         self.step_m = self._wheel_travel(i)
+        if self.state in (RUNNING, HOLD) and self._blind(i):
+            self.blind_m += abs(self.step_m or 0.0)
         # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
         # did nothing while RUNNING and the wheels kept turning until the
         # follower was cleared by service. The node zeroes the command on
@@ -782,6 +828,29 @@ class FollowJob:
             self.state = FAULT
             return 0.0, 0.0
 
+        # The I/O island says it cannot read the panel: selector, Start and the E-stop state
+        # are unknown. Not debounced, and never a powered hold (WP-A2).
+        if i.panel_link_lost:
+            why = "the I/O island reported the panel image invalid"
+            if self.state == ARMED:
+                return self._premove_cancel(why)
+            if self.state == RUNNING or (self.state == HOLD and self.hold_cause in self._auto_causes()):
+                self._hold("panel", why)
+                return 0.0, 0.0
+
+        # drive_node gave the link up (FAULT), or let go of it under a running vehicle.
+        # Immediate and never a powered hold: the cached statuswords may still say
+        # "Operation enabled" (WP-A4).
+        link_down = i.drive_link == "fault" or (
+            self.state == RUNNING and i.drive_link not in ("", "armed"))
+        if link_down and self.hold_cause != "drive_fault":
+            why = f"drive link {i.drive_link}"
+            if self.state == ARMED:
+                return self._premove_cancel(why)
+            if self.state == RUNNING or (self.state == HOLD and self.hold_cause in _DRIVE_FAULT_OVERRIDES):
+                self._hold("drive_fault", why)
+                return 0.0, 0.0
+
         if self.state == ARMED:
             return self._premove_tick(i)
 
@@ -801,9 +870,14 @@ class FollowJob:
             # Tags read while held are still delivered exactly once - a branch or
             # slow-zone exit passed during a hold must still clear its latch - but
             # they cannot start a stop or a U-turn (TapeRun.scan, driving=False).
+            self.tape.held_auto = self.hold_cause in self._auto_causes()
             tags = self.tape.scan(i.now, i.rfid, False, self.f)
-            # Held, the vehicle is still: a link that dropped and came back cost
-            # no tags. A link still down is caught again on the first tick driving.
+            # Held for a person, the vehicle is still: a link that dropped and came back cost
+            # no tags. A link still down is caught again on the first tick driving. Held for
+            # the field it may still be braking: a lost link then may have cost a tag (WP-A9).
+            if self.tape.held_auto and self.tape.link_lost and self.tape.missed_while_held is None:
+                self.tape.missed_while_held = "a tag (the RFID link dropped)"
+            self.tape.held_auto = False
             self.tape.link_lost = self.tape.marker_lost = None
             if self.tape.fault:
                 return self._tape_fault()
@@ -814,7 +888,7 @@ class FollowJob:
 
         if self.state == RUNNING:
             if self._prereq_held(i.now, pre):
-                self._hold(i.track_cause or "pending", pre)
+                self._hold(self._prereq_cause(i), pre)
                 return 0.0, 0.0
             return self._run(i)
 
@@ -833,9 +907,14 @@ class FollowJob:
         # already on the field's or the E-stop's terms keeps them. Only holds that
         # keep their power can lose torque: the others are in standby on purpose.
         powered_hold = self.hold_cause in self._auto_causes()
-        if self.hold_cause not in ("field", "estop") and powered_hold and (
+        if self.hold_cause not in hold_policy.SAFETY_CAUSES and powered_hold and (
                 i.torque_off or i.field_clear is False):
             self._hold(self._safety_cause(i), "drive torque removed while held")
+            return 0.0, 0.0
+        if powered_hold and i.field_clear is None:
+            # A hold that would resume by itself needs the field PROVEN clear. With no fresh
+            # /output_paths that cannot happen, so it becomes a hold for a person (WP-A2).
+            self._hold("prereq", "protective field state unknown while held")
             return 0.0, 0.0
 
         if self.hold_cause == "station":
@@ -848,11 +927,24 @@ class FollowJob:
             # estop (by default), rfid and authority: a physical Start, not a timer.
             # The drives are in standby here, so torque comes with the Start.
             pre = self._prerequisite(i, torque=False) or self._rfid_check(i)
+            note = self._blind_note()
             if i.start_edge and not pre:
+                if note:
+                    self._marker_log.append(("warn", f"resumed: {note}"))
+                self.blind_m = 0.0
                 return self._begin_premove(i, "resume")
-            self.reason = f"held ({self.hold_cause}): press Start when clear"
+            extra = "; ".join(x for x in (self._hold_note, note) if x)
+            self.reason = (f"held ({self.hold_cause}): press Start when clear"
+                           + (f"; {extra}" if extra else ""))
             return 0.0, 0.0
 
+        if self.tape is not None and self.tape.missed_while_held:
+            # Never resume by itself past a stop or U-turn read while braking (WP-A9): the
+            # operator checks where the vehicle is. It is never applied as a stop either.
+            passed, self.tape.missed_while_held = self.tape.missed_while_held, None
+            self._hold("rfid", f"passed {passed} while held; check the position, then press Start")
+            self._hold_note = f"passed {passed} while held: check the position"
+            return 0.0, 0.0
         if pre:
             self._auto_since = None
             self.reason = f"held ({self.hold_cause}): {pre}"
@@ -1154,6 +1246,12 @@ class FollowJob:
             return self._kink_tick(i)
         if t.uturn_req is not None:
             return self._uturn_tick(i, tags)
+        if self._sensor_silent(i):
+            # A silent sensor is a comms fault, not the end of the tape: the engine would call
+            # it "sensor_lost" and end the run DONE, wherever it stopped (WP-A3, MLS-1).
+            age = "never" if i.sensor_age_s is None else f"{i.sensor_age_s:.2f} s"
+            self._hold("sensor", f"line sensor (MLS) silent ({age}); press Start once it is back")
+            return 0.0, 0.0
         self._speed_inputs(i)
         choice, high = t.steer(i.sensor, tags, self.f.followed_mm)
         stopping = t.stop is not None
@@ -1174,7 +1272,10 @@ class FollowJob:
             self._post_uturn_m += abs(v_now) * i.dt
             if self._post_uturn_m > POST_UTURN_M:
                 self._post_uturn_m = None
-        t.advance(self.step_m if self.step_m is not None else abs(v_now) * i.dt)
+        # Commanded travel stands in for counts only while the drives are known to be
+        # driving: a dead drive turns no wheel, and a stop must not be "reached" on paper.
+        commanded = abs(v_now) * i.dt if i.drives_operational is not False else 0.0
+        t.advance(self.step_m if self.step_m is not None else commanded)
         if t.fault:
             return self._tape_fault()
 
@@ -1212,6 +1313,22 @@ class FollowJob:
             return 0.0, 0.0
 
         return left, right
+
+    @staticmethod
+    def _sensor_silent(i: Inputs):
+        from agv_core import config as vehicle  # noqa: PLC0415  (profile-dependent)
+
+        return i.sensor_age_s is None or i.sensor_age_s > vehicle.SENSOR_TIMEOUT_S
+
+    def _blind(self, i: Inputs):
+        marker_run = self.tape is not None and self.tape.mrun is not None
+        return self._sensor_silent(i) or (marker_run and not self.markers_ok)
+
+    def _blind_note(self):
+        """The marker-run warning a resume carries, or "" (WP-A3)."""
+        if self.tape is None or self.tape.mrun is None or self.blind_m <= 0.0:
+            return ""
+        return f"markers may have been missed over {self.blind_m:.2f} m"
 
     # -- reporting ---------------------------------------------------------
     def _markers_tick(self, snap):

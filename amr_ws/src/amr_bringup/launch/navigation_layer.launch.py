@@ -2,7 +2,7 @@
 localization monitor, controller, behaviors, route executor (unified plan U1).
 
 The bundle <maps_dir>/<map_id>/rev<revision>/ is verified (hashes) before
-anything starts. No base, no web, no Foxglove, no SLAM. A map change is a
+anything starts. No base, no web, no SLAM. A map change is a
 new instance of this launch; nothing here is reused across maps.
 
     revision:=N        exact revision; "latest" is resolved ONCE here for the
@@ -90,6 +90,7 @@ def _compose(context):
     rev_dir = os.path.dirname(map_yaml)
     autostart = cfg("autostart").perform(context).lower() == "true"
     generation = int(cfg("generation").perform(context))
+    real = cfg("real").perform(context).lower() == "true"
     # Generation-private Nav2 outputs (unified plan §4.3 item 4): the mux of the
     # matching generation subscribes here; a replaced layer's controller keeps
     # publishing on ITS own topic and can never look fresh to the new mux.
@@ -226,6 +227,8 @@ def _compose(context):
                     "maps_dir": maps_dir,
                     "footprint_yaml": footprint_yaml,
                     "field_output_index": scanner_fields.protective_index(scanner_fields.load()),
+                    # The sim has no scanner: there, and ONLY there, the field is assumed clear.
+                    "field_source": "scanner" if real else "assume_clear",
                     **active_map,
                 }
             ],
@@ -247,6 +250,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("revision", default_value="latest"),
             DeclareLaunchArgument("footprint_yaml", default_value=""),
             DeclareLaunchArgument("generation", default_value="0"),
+            DeclareLaunchArgument("real", default_value="true"),
             DeclareLaunchArgument("autostart", default_value="true"),
             DeclareLaunchArgument(
                 "blank_dynamic", default_value=os.environ.get("AMR_LOC_BLANK_DYNAMIC", "false")

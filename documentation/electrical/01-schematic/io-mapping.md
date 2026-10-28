@@ -86,7 +86,7 @@ The selector and the reset button each have two NO poles. Pole 1 goes to the saf
 |---|---|---|
 | Q1 | HWTO1+ on Driver 01 **and** Driver 02 | Safe torque-off channel 1 |
 | Q2 | HWTO2+ on Driver 01 **and** Driver 02 | Safe torque-off channel 2 |
-| Q3 | Digital IO module **DI08** (sheet 09) | Non-safety status signal. Test pulses must be off for Q3 in the Flexi Soft config. AWG22 orange. |
+| Q3 | «placeholder: Q3 destination» | **Not DI08** (owner, 2026-10-28: DI08 is the Manual Arm switch). Where Q3 goes, and whether its test pulses are off, is to be confirmed. |
 | Q4 | not connected | spare |
 
 ### Safety lidars (sheet 03)
@@ -125,7 +125,7 @@ COM0 is tied to 1P24. Each input is a normally-open contact that pulls the input
 | DI05 | Pendant **LEFT** (NO) | |
 | DI06 | Pendant **RIGHT** (NO) | |
 | DI07 | not used | |
-| DI08 | Safety PLC **Q3** | COM1 group: Q3 switches 24 V onto the input. AWG22 orange. |
+| DI08 | **MANUAL ARM** switch | Owner, 2026-10-28 (was wrongly drawn as safety PLC Q3). COM1 group (COM1 = 1N24), so the switch closes 24 V onto the input. Switch type, terminal and wire colour: «placeholder». The software reads it as Manual Arm (`profiles/agv-01.json` di_names[8]). |
 | DI09–DI0F | not used | |
 | COM0 | 1P24 | Common for DI00–DI07 |
 | COM1 | 1N24 | Common for DI08–DI0F |

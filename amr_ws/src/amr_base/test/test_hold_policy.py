@@ -16,9 +16,32 @@ def test_product_causes_extend_the_texts():
     assert hp.hold_text("authority", "lease") == "lease"
 
 
-def test_auto_causes_add_estop_only_when_allowed():
-    assert hp.auto_causes(("field", "controller"), False) == ("field", "controller")
-    assert hp.auto_causes(("field",), True) == ("field", "estop")
+def test_only_the_field_resumes_by_itself():
+    """Owner decision 2026-10-25 (unified plan WP-A2), both products."""
+    assert hp.auto_causes(False) == ("field",)
+    assert hp.auto_causes(True) == ("field", "estop")
+
+
+def test_the_catalogue_agrees_with_the_policy():
+    """clears_by == 'auto' exactly for the causes that resume by themselves. `pending` is the
+    executor's few-hundred-ms classification of a wheel-feedback loss (it becomes a safety
+    hold or a FAULT, never a resume), so its 'wait a moment' row stays auto."""
+    from agv_core import alarms
+
+    for cause, code in alarms.HOLD_CODES.items():
+        if cause == "pending":
+            continue
+        auto = alarms.get(code).clears_by == "auto"
+        assert auto == (cause in hp.AUTO_CAUSES), (cause, code)
+    for cause in hp.SAFETY_CAUSES:
+        assert cause in alarms.HOLD_CODES, cause
+
+
+def test_every_device_cause_is_a_catalogue_cause():
+    from agv_core import alarms
+
+    assert set(hp.CAUSE_DEVICE) <= set(alarms.HOLD_CODES)
+    assert hp.hold_device("field") == "scanner" and hp.hold_device("station") == ""
 
 
 def test_debounce_needs_a_continuous_failure():

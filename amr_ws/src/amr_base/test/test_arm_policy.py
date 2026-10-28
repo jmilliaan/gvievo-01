@@ -45,3 +45,13 @@ def test_a_stale_or_invalid_panel_is_no_power_in_either_mode():
     assert want_power(NOW, panel(auto=True, valid=False), asks, P) == (False, "panel image invalid")
     assert want_power(NOW, panel(arm=True, valid=False), [], P)[0] is False
     assert want_power(NOW, panel(arm=True, t=NOW + 0.1), [], P)[0] is False
+
+
+def test_link_retries_back_off_from_the_end_of_the_action():
+    """WP-B3: 2, 4, 8 ... 30 s after consecutive failures, from when the action ENDED."""
+    from amr_base.arm_policy import RetryBackoff
+
+    b = RetryBackoff(2.0)
+    assert [b.next_at(100.0, False) - 100.0 for _ in range(6)] == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+    assert b.next_at(200.0, True) == 202.0 and b.failures == 0
+    assert b.next_at(300.0, False) == 302.0

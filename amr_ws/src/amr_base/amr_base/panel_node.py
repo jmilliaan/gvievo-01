@@ -95,7 +95,7 @@ class PanelNode(LeanNode):
             self.get_logger().warn("panel.enabled is false in the profile: publishing valid=false forever")
         self._dio_lock = ownerlock.acquire("dio", "panel_node")  # before any Modbus I/O (plan §9.2)
         self.link.start()
-        self.create_timer(1.0 / float(self.get_parameter("rate_hz").value), self._tick)
+        self.create_steady_timer(1.0 / float(self.get_parameter("rate_hz").value), self._tick)
         self.get_logger().info(
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, selector DI{config.PANEL_DI_AUTO} "
