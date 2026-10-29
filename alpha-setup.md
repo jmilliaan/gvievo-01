@@ -429,8 +429,8 @@ The `WARNING: Cannot call Open vSwitch` line from netplan is benign.
 Port assignment was determined by **carrier and ARP, not by the case label**;
 if a rebuilt vehicle has the cables the other way round, swap the interface
 names in the two files rather than re-cabling. The probe for that,
-`rfid-test.sh`, is **not in the repo** (`.gitignore` negates `*.sh` only at the
-old `manuals/rfid-setup/` path); without it, check by hand: plug one cable at a
+`rfid-test.sh`, is in `manuals/obsolete/rfid-setup/` (untracked until it is added: the
+`.gitignore` negation pointed at the old path until 2026-10-29); without it, check by hand: plug one cable at a
 time and watch `ip -br link` for which port gets carrier, then
 `ping -c2 -I enp2s0 192.168.1.200`.
 
@@ -1310,8 +1310,8 @@ Carried from 2026-09-21:
 - The three `/etc/netplan` files marked RECONSTRUCTED have not been diffed against
   the vehicle (root-only). `sudo cat /etc/netplan/*.yaml` and fold in any difference.
 - `50-amr.conf` (logind lid/idle ignores) is staged but not installed on the vehicle; only `ignore-power-key.conf` is.
-- `manuals/obsolete/rfid-setup/*.sh` are untracked because `.gitignore` negates
-  `manuals/rfid-setup/*.sh` (the old path). Fix the negation or the scripts will be lost.
+- `manuals/obsolete/rfid-setup/*.sh` are untracked: the `.gitignore` negation now names the
+  new path (2026-10-29), so `git add` them once or they will be lost.
 - The CANable udev rule matches one adapter's serial; a spare adapter needs its own line.
 - `sick_safetyscanners2` writes the scanner's channel-0 data-output settings over
   CoLa2 at every start; the *safety* configuration (fields, monitoring cases) is

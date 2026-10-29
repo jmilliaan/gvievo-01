@@ -134,7 +134,8 @@ amr_ws/            The ROS 2 workspace (colcon, symlink install).
 
 tests/             offline checks for agv_core (count: EXPECTED_CHECKS). run_all.py runs them.
 profiles/          One JSON per vehicle. Every tunable parameter lives here.
-manuals/           Device documentation, the SLAM plan, vehicle reports.
+manuals/           Device documentation, current plans and runbooks; obsolete/ = history
+                   (vehicle reports, the SLAM plan, finished or superseded plans).
 pyproject.toml     Packages agv_core; also the shared ruff and pytest config.
 ```
 
@@ -235,7 +236,7 @@ lower it to get a green run.
 Simulation launch tests are opt-in (`AMR_SIM_TESTS=1`) and check mechanisms,
 not tolerances. Vehicle acceptance is a witnessed session from a
 `VEHICLE-TEST-*.txt` file at the repo root; reports go to
-`manuals/vehicle-reports/`.
+`manuals/obsolete/vehicle-reports/`.
 
 ---
 

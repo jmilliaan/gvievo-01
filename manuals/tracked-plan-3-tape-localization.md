@@ -9,7 +9,7 @@ traffic come later.
 
 Supersedes, for the site:
 - the RFID role of `manuals/rfid-tag-table.md`: stops, branch orders and the U-turn trigger
-- D10 of `manuals/tracked-speed-plan-2-slam.md`: a taped path drawn in the route editor
+- D10 of `manuals/obsolete/tracked-speed-plan-2-slam.md`: a taped path drawn in the route editor
 
 Speed stays with the MLS markers (`tracked-speed-plan-1-no-slam.md`); this plan grants no HIGH.
 

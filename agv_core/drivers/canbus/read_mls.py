@@ -2,7 +2,7 @@
 """Read the SICK MLS magnetic line sensor on can0. Read-only - nothing moves.
 
 Restored 2026-09-19 from 8403dcb^ for line following as an engineering feature
-(manuals/slam-generalized-plan/line-follow-u11-layout-plan.md §1.1). The ROS
+(manuals/obsolete/slam-generalized-plan/line-follow-u11-layout-plan.md §1.1). The ROS
 side (amr_base/mls_track.py, inside drive_node) imports the decoders below; the
 CLI is for the bench and refuses to run while drive_node owns the bus.
 

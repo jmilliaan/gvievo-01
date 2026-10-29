@@ -57,7 +57,7 @@ MODULES = [
 # library: the guard-bypass checks in test_canmon (3) and the RPDO wiring
 # checks in test_rpdo (4) now read amr_base/canopen.py, the bus owner that
 # replaced canworker. Nothing added. Per-module counts before/after are in
-# manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md.
+# manuals/obsolete/vehicle-reports/2026-09-21-restructure-and-line-layer.md.
 # + 8 (2026-10-02): test_mls calibration summary (read_mls calibrate).
 # - 3 + 1 (2026-10-02): dead speed params removed (manual.*, motion.py, MANUAL_HALF_RPM);
 # one check that the retired manual section is refused.

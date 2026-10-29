@@ -3,7 +3,7 @@
 *** DIAGNOSTIC AND LOGGING ONLY. *** Nothing here may decide whether it is safe
 to move. The safety chain is lidar/encoders -> FX3 -> HWTO1/HWTO2 -> STO, wired
 in hardware. This is the channel beside it that says what happened and warns
-before a trip (manuals/can-monitoring-plan.txt section 0).
+before a trip (manuals/obsolete/can-monitoring-plan.txt section 0).
 
 WHY ROUND-ROBIN AND NOT A BURST
 -------------------------------

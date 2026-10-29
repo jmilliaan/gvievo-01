@@ -3,7 +3,7 @@
 Status: IMPLEMENTED in software 2026-10-08 (offline tests); floor acceptance (section 6) open. Drafted 2026-10-08, split 2026-10-08. Tracked (LINE)
 mode only. **No SLAM, no AMCL**: speed is decided by RFID tag pairs, an encoder distance
 budget and a curve guard. This is what goes on the floor first.
-Plan 2 (`tracked-speed-plan-2-slam.md`) adds localization redundancy on top, after this
+Plan 2 (`manuals/obsolete/tracked-speed-plan-2-slam.md`, archived 2026-10-29: superseded by tracked plans 3 and 4) adds localization redundancy on top, after this
 plan is proven on the vehicle. Nothing here depends on plan 2.
 
 ## 0. Decisions

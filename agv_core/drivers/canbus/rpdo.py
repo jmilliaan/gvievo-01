@@ -10,7 +10,7 @@ there is nothing to wait for, and the write becomes a queue append.
 
   manuals/obsolete/potential-ros-migration.md (historical) section 9 ranks this first of everything
   worth doing, above any framework change
-  manuals/slam-generalized-plan/hardware-reconciliation.md D-8 calls it a
+  manuals/obsolete/slam-generalized-plan/hardware-reconciliation.md D-8 calls it a
   prerequisite for the ROS drive node, not an optimisation
 
 WHY THIS IS A SEPARATE MODULE AND NOT A METHOD ON THE CONTROLLER

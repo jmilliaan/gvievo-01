@@ -4,7 +4,7 @@ Date: 2026-10-23. Read-only survey. Nothing was run on the vehicle, no service w
 
 Question asked of every hand-built engine in the stack: is there a maintained library, a Humble package, an OS feature or an unused function of the fitted hardware that should replace, augment or configure it? Every candidate was checked by a verifier against the installed packages, the local manuals and the code. Where the verifier corrected a fact, value or effort, the verifier wins and the entry says so. Downgraded entries are marked **downgraded**.
 
-Related plans: `manuals/sensor-dropout-hardening-plan.md` (cited as "plan P0-x / P1-x / P2-x"), `manuals/mls-marker-plan.md`, `manuals/tracked-plan-3-tape-localization.md`, `manuals/tracked-speed-plan-1-no-slam.md`, `manuals/map-merge-plan.md`. Many candidates turned out to be refinements of items already in those plans; those are folded in, not duplicated.
+Related plans: `manuals/sensor-dropout-hardening-plan.md` (cited as "plan P0-x / P1-x / P2-x"), `manuals/mls-marker-plan.md`, `manuals/tracked-plan-3-tape-localization.md`, `manuals/tracked-speed-plan-1-no-slam.md`, `manuals/obsolete/map-merge-plan.md`. Many candidates turned out to be refinements of items already in those plans; those are folded in, not duplicated.
 
 ---
 
@@ -121,7 +121,7 @@ Hand-built engines per area, as found in the code. "Why" is the repo's own state
 | Grid I/O | `amr_maps/grid.py` | PGM/YAML, raster, masks | No ROS/OpenCV deps; hardened parser |
 | Map edits | `amr_maps/edit.py` | Replayable polygon ops | Deterministic replay |
 | Map bundles | `map_bundle.py` | Staged, hashed, atomic | Partial save can never look approved |
-| Map merge (planned) | `manuals/map-merge-plan.md` | Grow base map | Existing tools lack gates/provenance |
+| Map merge (planned) | `manuals/obsolete/map-merge-plan.md` | Grow base map | Existing tools lack gates/provenance |
 | Stock-node config | `amcl.yaml`, `ekf.yaml`, `slam_mapping.yaml` | Tuned integration | Beamskip, no recovery, rate-only yaw |
 
 ### supervisor-ops

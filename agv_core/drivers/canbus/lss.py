@@ -9,7 +9,7 @@ WHY THIS EXISTS
 ---------------
 The SLAM plan's T0 is a 125 kbps -> 1 Mbps migration, and the three devices on
 can0 change bitrate by three DIFFERENT mechanisms
-(manuals/slam-generalized-plan/hardware-reconciliation.md section 5):
+(manuals/obsolete/slam-generalized-plan/hardware-reconciliation.md section 5):
 
     BLV-R x2    MEXE02 support software only - no DIP switch, and NOT LSS
     SICK MLS    LSS (CiA 305), or SICK's own configurator

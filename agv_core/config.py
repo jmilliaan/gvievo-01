@@ -157,7 +157,7 @@ freshness.*  (unified plan WP-A10, 2026-10-28; values unchanged from the ROS def
     cover at least three of its periods.
 
 monitor.*
-    Drive health monitoring - see manuals/can-monitoring-plan.txt.
+    Drive health monitoring - see manuals/obsolete/can-monitoring-plan.txt.
 
     *** DIAGNOSTIC ONLY. Nothing here may decide whether it is safe to move. ***
     The safety chain is lidar/encoders -> FX3 -> HWTO1/HWTO2 -> STO, in

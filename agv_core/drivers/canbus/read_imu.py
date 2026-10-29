@@ -13,7 +13,7 @@ motion, not achieved wheel motion, and the error lands as heading error on every
 direction reversal. The standard fix is gyro-odometry: let the gyro own heading
 and wheel odometry own translation only.
 
-  see manuals/slam-generalized-plan/hardware-reconciliation.md, D-2 and D-3
+  see manuals/obsolete/slam-generalized-plan/hardware-reconciliation.md, D-2 and D-3
 
 *** So the gyro is a NAVIGATION component that happens to live inside the line
 sensor. *** Tape following is back as the LINE layer (amr_line, 2026-09-21), so

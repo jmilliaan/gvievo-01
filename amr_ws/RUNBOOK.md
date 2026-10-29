@@ -397,7 +397,7 @@ Unlock PP only after all of these:
   | Halt option | 605Dh | 1 (default) |
   | Stopping method at alarm generation (p6) | 605Eh | 2 (default) |
   | Quick stop rate (p7) | 6085h | 1600 (also shortens alarm stops in PV) |
-- **Profile:** those values are entered under `pp.expect`, and `pp.vendor_ref` records who decided, when and on what basis (`manuals/agent-prompts/pp-profile-fill.md` does both, reading the drives back first).
+- **Profile:** those values are entered under `pp.expect`, and `pp.vendor_ref` records who decided, when and on what basis (`manuals/obsolete/agent-prompts/pp-profile-fill.md` does both, reading the drives back first).
 
 Software never writes those objects. Before every PP move the drive owner
 reads them back from both drives and refuses the move on any difference.
@@ -761,7 +761,7 @@ The first witnessed cutover from the legacy `agv_controller` unit to
 `amr.service` was done during U10, and the legacy controller (`main.py`,
 `app/`, `canworker.py`) and the interim `amr_nav.service` / `amr_mapping.service`
 units were deleted at U11 after the ported LINE mode was accepted on the vehicle
-(`manuals/vehicle-reports/2026-09-21-restructure-and-line-layer.md`). The last
+(`manuals/obsolete/vehicle-reports/2026-09-21-restructure-and-line-layer.md`). The last
 deployable legacy revision is the git tag `legacy-final`.
 
 On a vehicle that still carries the old units, retire them once:
@@ -786,7 +786,7 @@ stopped): every transfer completes.
 
 There is no second controller to fall back to. A rollback is a rollback of the
 *build*: engage E-stop, stop the service, check out the previous known-good
-commit (tags and `manuals/vehicle-reports/` record which builds were accepted),
+commit (tags and `manuals/obsolete/vehicle-reports/` record which builds were accepted),
 rebuild, and start again:
 
 ```bash
