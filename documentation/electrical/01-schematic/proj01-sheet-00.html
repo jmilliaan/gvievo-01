@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROJ01 Sheet 0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Export">
+  <strong>PROJ01 · Sheet 0 / «XX» · DC power single-line diagram</strong>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A4 portrait · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script>
+  // source: proj01-sheet-01 … -06 (no sketch). Overview of the power path only;
+  // terminal blocks, device cables and signal wiring stay on the detail sheets.
+  // Every 4-digit ref = sheet + line where the circuit is drawn in detail.
+  const META = {
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    content: 'DC POWER SINGLE-LINE DIAGRAM',
+    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
+    date: '«DD/MM/YY»', scale: '',
+    title: 'ELECTRIC DIAGRAM',
+    model: '«MODEL»', dwg: '«-00-00-»', sheet: 0, of: '«XX»',
+    note: '',
+    refs: [],
+  };
+
+  // 48 V feeders to the motor drivers (sheets 01, 02)
+  const DRIVES = [
+    { row: 3, cb: 'MCB-02', cbRef: '0105', net: '2P48', name: ['DRIVER 01', 'BLVD-KRD'], ref: '0202',
+      en: 'LEFT MOTOR' },
+    { row: 5, cb: 'MCB-03', cbRef: '0107', net: '3P48', name: ['DRIVER 02', 'BLVD-KRD'], ref: '0207',
+      en: 'RIGHT MOTOR' },
+  ];
+
+  // DC/DC converters off the 48 V bus, each with its own 2-pole output breaker and sub-bus
+  const BUCKS = [
+    { row: 7.5, name: ['BUCK01', '48→24V', '6.25A (150W)'], ref: '0110',
+      cb: 'MCB-04', rating: '2P 10A', cbRef: '0302', bus: ['1P24 / 1N24', '24V DC BUS'],
+      loads: [
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 01', 'NANOSCAN3'], ref: '0305' },
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 02', 'NANOSCAN3'], ref: '0308' },
+        { name: ['SAFETY PLC', 'XTIO + CPU MODULE'], ref: '0311' },
+        { name: ['AUDIO HORN 01', 'PATLITE'], ref: '0315' },
+        { name: ['DIGITAL IO', 'CK-EC5163'], ref: '0318' },
+        { name: ['DISPLAY', 'BARREL JACK'], ref: '0402' },
+        { name: ['LINE SENSOR 01', 'SICK MLSE'], ref: '0405' },
+        { name: ['FAN 01 – 03', 'NMB-MAT'], ref: '0408' },
+        { name: ['DRIVER 01 NET-VIN', 'BLVD-KRD'], ref: '0415' },
+        { name: ['DRIVER 02 NET-VIN', 'BLVD-KRD'], ref: '0418' },
+      ] },
+    { row: 18.5, name: ['BUCK02', '48→12V', '8.3A (100W)'], ref: '0114',
+      cb: 'MCB-05', rating: '2P 10A', cbRef: '0502', bus: ['1P12 / 1N12', '12V DC BUS'],
+      loads: [
+        { name: ['IPC POWER', 'BARREL JACK'], ref: '0505' },
+        { name: ['RFID READER', 'BARREL JACK'], ref: '0508' },
+      ] },
+  ];
+
+  JIS.render(document.getElementById('sheet'), {
+    meta: META,
+    file: 'PROJ01-00',
+    textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
+    label: 'DC power single-line diagram: 48 V battery through MCB-01 to the 48 V bus, two driver feeders, and BUCK01 / BUCK02 with MCB-04 / MCB-05 feeding the 24 V and 12 V loads.',
+    draw(s) {
+      const BUS = 24, SUB = 118, BUSW = 0.5;          // 48 V bus, 24 V / 12 V sub-bus
+      const BX = 52, BW = 24, DX = 106, DW = 28, LX = 144, LW = 34;
+      const ref = (x, y, t, anchor = 'middle') => s.text(x, y, t, { size: 1.5, anchor });
+
+      // cable spec on a vertical conductor (as sheet 01)
+      const wireV = (x, y, l1, l2) => {
+        s.line(x - 0.9, y, x + 1.6, y, 0.18);
+        s.path(`M${x + 1.15} ${y - 0.45} L${x + 1.15} ${y + 0.45} L${x} ${y} Z`, 0.1, '#111');
+        const w = Math.max(l1.length, l2.length) * 1.2 * s.textScale + 0.4;
+        s.line(x + 1.6, y, x + 3.2, y - 1.3, 0.18);
+        s.line(x + 3.2, y - 1.3, x + 3.2 + w, y - 1.3, 0.18);
+        s.text(x + 3.4, y - 1.8, l1, { size: 2 });
+        s.text(x + 3.4, y + 1.2, l2, { size: 2 });
+      };
+      // conductor count on a single line: n oblique strokes
+      const ticks = (x, y, n) => {
+        for (let i = 0; i < n; i++) s.line(x + 1.1 * i - 0.7, y + 1.3, x + 1.1 * i + 0.7, y - 1.3, 0.22);
+      };
+      // device box with centred name lines (first line bold)
+      const box = (x, w, y, lines, h) => {
+        s.rect(x, y - h / 2, w, h, 0.3);
+        const top = y - 1.9 * (lines.length - 1) + 0.9;
+        lines.forEach((t, i) => s.text(x + w / 2, top + 3.8 * i, t,
+          { size: i === 0 ? 2.1 : 1.9, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
+      };
+
+      /* ---- source: battery → MCB-01 → 48 V bus ---- */
+      const yBat = 14.6;
+      [[0, 6], [1.6, 3], [3.2, 6], [4.8, 3]].forEach(([dy, w]) =>
+        s.line(BUS - w / 2, yBat + dy, BUS + w / 2, yBat + dy, w === 3 ? 0.6 : 0.3));
+      s.text(BUS - 4.6, yBat + 0.9, '+', { size: 2 });
+      s.text(31, 16, 'BATTERY 48V DC', { size: 2.2, weight: 600 });
+      s.text(31, 19.6, '«CAPACITY Ah»', { size: 1.9 });
+      s.text(64, 16, 'BMS → CAN BUS', { size: 1.9 });
+      ref(64, 19.4, '0618', 'start');
+
+      const yCb = 33, yBus0 = yCb + 4.7, yEnd = s.row(BUCKS[1].row);
+      s.line(BUS, yBat + 4.8, BUS, yCb);
+      s.line(BUS, yCb, BUS, yBus0);
+      s.line(BUS, yBus0, BUS, yEnd, BUSW);
+      s.text(BUS + 2.6, s.row(10) + 0.7, '1P48 / 1N48', { size: 1.9, weight: 600 });
+      s.text(BUS + 2.6, s.row(10) + 4, '48V DC BUS', { size: 1.9 });
+
+      /* ---- 48 V feeders to the drivers ---- */
+      DRIVES.forEach(d => {
+        const y = s.row(d.row), MX = 162, MR = 4;
+        s.line(BUS, y, MX - MR, y); s.dot(BUS, y);
+        box(DX, DW, y, d.name, 9);
+        ref(DX + DW / 2, y + 7.4, d.ref);
+        s.text(66, y + 3.6, d.net, { size: 1.9 });
+        ticks(75, y, 3);
+        // motor
+        s.path(`M${MX + MR} ${y} A${MR} ${MR} 0 1 1 ${MX - MR} ${y} A${MR} ${MR} 0 1 1 ${MX + MR} ${y}`, 0.3, '#fff');
+        s.text(MX, y + 1, 'M', { size: 2.4, weight: 600, anchor: 'middle' });
+        s.desc(170, y + 0.8, d.en);
+        // cable marks and breaker last, so they cut the conductor
+        s.wire(31, [y], 'NYAF 2.5mm²', 'RED');
+        s.mccb(56, [y], d.cb);
+        s.text(56, y + 3.9, '1P 10A', { size: 1.9, anchor: 'middle' });   // under the line: clear of the name
+        ref(56, y + 6.9, d.cbRef);
+        s.wire(80, [y], 'LC03D06A', 'ORIENTAL MOTOR');
+        s.wire(137, [y], 'CCM010B1AAF', '');
+      });
+
+      /* ---- DC/DC converters, output breakers, 24 V / 12 V sub-buses ---- */
+      BUCKS.forEach(b => {
+        const y = s.row(b.row), ys = b.loads.map((_, k) => s.row(b.row + k));
+        const yl = ys[ys.length - 1];
+        s.line(BUS, y, LX, y);
+        if (b === BUCKS[0]) s.dot(BUS, y);              // 48 V bus ends at BUCK02 (corner, no dot)
+        s.line(SUB, y, SUB, yl, BUSW);
+        if (ys.length > 1) s.dot(SUB, y);
+        s.text(SUB - 1.6, y + 11.2, b.bus[0], { size: 1.9, weight: 600, anchor: 'end' });
+        s.text(SUB - 1.6, y + 14.5, b.bus[1], { size: 1.9, anchor: 'end' });
+        box(BX, BW, y, b.name, 14);
+        ref(BX + BW / 2, y + 9.6, b.ref);
+
+        b.loads.forEach((l, k) => {
+          if (k > 0) { s.line(SUB, ys[k], LX, ys[k]); if (k < ys.length - 1) s.dot(SUB, ys[k]); }
+          box(LX, LW, ys[k], l.name, 8);
+          ref(LX + LW + 2, ys[k] + 0.6, l.ref, 'start');
+          s.wire(123, [ys[k]], l.w || 'AWG22', 'BLUE');
+        });
+
+        s.wire(31, [y], 'NYAF 1.5mm²', 'RED');
+        s.wire(78, [y], 'NYAF 1.5mm²', 'RED');
+        s.mccb(103, [y], b.cb);
+        s.text(103, y + 3.9, b.rating, { size: 1.9, anchor: 'middle' });
+        ref(103, y + 6.9, b.cbRef);
+      });
+
+      // breaker and cable mark on the incoming line last, so they cut the conductor
+      wireV(BUS, 25.5, 'NYAF 4mm²', 'RED');
+      s.mccbV([BUS], yCb, 'MCB-01', '2P 32A');
+      ref(BUS + 16.5, yCb - 0.4, '0102', 'start');
+
+      /* ---- notes ---- */
+      const NX = 30, NY = s.row(12);
+      s.text(NX, NY, 'NOTES', { size: 2.1, weight: 600 });
+      [
+        '1. ALL CIRCUITS ARE 2-WIRE DC (+ / −), DRAWN',
+        '   SINGLE-LINE. UNMARKED LINE = 2 CONDUCTORS;',
+        '   /// = 3 CONDUCTORS (+ / − / PE).',
+        '2. MCB-02 / MCB-03 SWITCH THE + LINE ONLY;',
+        '   THE RETURN IS THE COMMON 1N48.',
+        '3. N24 AND N12 ARE COMMON (BUCK VOUT− JUMPER,',
+        '   SHEET 01).',
+        '4. 4-DIGIT NUMBER = SHEET + LINE OF THE DETAIL',
+        '   DRAWING (0305 = SHEET 03, LINE 05).',
+        '5. TERMINAL BLOCKS, DEVICE CABLES AND SIGNAL',
+        '   WIRING: SEE THE DETAIL SHEETS.',
+      ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
+    },
+  });
+</script>
+</body>
+</html>

@@ -37,3 +37,6 @@ tools/uhf-even/Sample/python/uhf/uhf_sample_Code/
 # Agent instruction files are per-developer, not source.
 AGENTS.md
 CLAUDE.md
+
+# VDA5050 spec is an upstream clone kept locally for reference, not source.
+documentation/VDA5050/
