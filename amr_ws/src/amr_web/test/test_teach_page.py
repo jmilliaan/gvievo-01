@@ -42,9 +42,13 @@ def test_the_site_lists_carry_machines_points_and_roles(tmp_path):
 def test_calls_and_confirmations_are_open_to_the_operator_and_checked(tmp_path):
     client, stub = app_for({}, tmp_path)
     client.post("/api/role", json={"role": "operator"})
-    page = client.get("/calls")
+    # Calls is on Run under the job since 2026-10-29 (one scrolling column, no tabs)
+    r = client.get("/calls")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/run#calls")
+    page = client.get("/run")
     assert page.status_code == 200 and b'data-confirm="confirm_released"' in page.data
-    assert b'href="/calls"' in page.data
+    assert b'id="calls"' in page.data and b'id="btn-line-select"' in page.data
+    assert b'class="tab' not in page.data and b'href="/calls"' not in page.data
     r = client.post("/api/line/trip", json={"action": "call", "arg": "MRU2"})
     assert r.status_code == 200 and stub.calls[-1] == ("line_trip", ("call", "MRU2"))
     r = client.post("/api/line/trip", json={"action": "confirm_off", "arg": "ignored"})
@@ -61,7 +65,7 @@ def test_the_site_mission_is_offered_as_a_job_only_when_live(tmp_path, monkeypat
     assert config.TAPE_LOC_SITE_MISSION not in client.get("/api/line/missions").get_json()["missions"]
     monkeypatch.setattr(config, "TAPE_LOC_LIVE", True)
     data = client.get("/api/line/missions").get_json()
-    assert config.TAPE_LOC_SITE_MISSION in data["missions"] and "Calls page" in data["notes"]["site-103"]
+    assert config.TAPE_LOC_SITE_MISSION in data["missions"] and "Run → Calls" in data["notes"]["site-103"]
 
 
 def test_high_speed_areas_are_drawn_by_the_engineer_on_the_teaching_map(tmp_path):

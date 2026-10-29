@@ -318,7 +318,7 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
                           "site-103" once the plant is
       shadow_circuit      the circuit of that mission the shadow locator follows
       live                tracked plan 4: false = shadow only; true = the site mission is a job
-                          (Calls page): trips stop, branch, turn and speed up by position
+                          (Run → Calls): trips stop, branch, turn and speed up by position
 
     Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
 

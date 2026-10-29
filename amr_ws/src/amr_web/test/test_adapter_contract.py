@@ -39,7 +39,7 @@ def _ros_members():
 
 def test_the_protocol_declares_every_member_the_server_uses():
     called = _called_on_adapter()
-    assert len(called) > 30
+    assert len(called) > 25  # the walk found the server's calls at all
     assert called <= _protocol(), sorted(called - _protocol())
 
 

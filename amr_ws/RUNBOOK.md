@@ -18,7 +18,8 @@ The physical controls remain authoritative:
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
 The web app is `http://192.168.2.20:5001/`. Its tabs are **Home**, **Run** (tape
-jobs), **Calls**, **Manual**, **Alarms** (events), **Mapping** (survey and AMCL
+jobs on top; machine calls, the trip and its confirmations under them - one scrolling column
+that scrolls to the calls when the site mission is the job), **Manual**, **Alarms** (events), **Mapping** (survey and AMCL
 position), and for the engineer **Teach**, **Monitor**, **I/O** and **Params**. Every page has the same left
 rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
 Generation, with the event log below. A tile with a yellow bar needs attention and
@@ -46,14 +47,14 @@ page offers **Restart**.
 
 ### Who sees what: operator and engineer
 
-The pages open in the **operator** view: **Home · Run · Calls · Manual · Alarms ·
+The pages open in the **operator** view: **Home · Run · Manual · Alarms ·
 Mapping** (Position and Jog tabs only), and nothing else. Home is one line of state, one sentence of action and one button,
 all chosen server-side from the alarm catalogue (`agv_core/alarms.py`, section 4).
 
 The **engineer** view adds Teach (the guided-run orders and the teach tools on one
 page; Guide was merged into it on 2026-10-28), Monitor, I/O, Params and the Survey
 tab on Mapping,
-and on Home opens **More** with the supervisor, readiness and the Return to idle /
+and on Home opens **More** with the supervisor, readiness and the Restart tape layer /
 Recover / Restart service buttons (the old Status page, merged 2026-10-24). Press `Op` in the header and type the PIN; press `Eng` to go back.
 
 **Drive faults (2026-10-28).** A latched drive alarm (8130h and the like) clears
@@ -103,17 +104,25 @@ One vehicle, two products, chosen by a single top-level key in
 |---|---|---|---|
 | `false` (default, the SLAM AMR) | `IDLE` | surveys and the AMCL position (no routes on the web since 2026-10-28) | LINE: "this vehicle is trackless (profile tracked=false)" |
 | `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
-| `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the **Navigation** switch on Home picks Tracked (LINE) or Idle; a survey starts from either on Mapping | nothing by product |
+| `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the tape follower, and a survey on Mapping (started from LINE) | nothing by product |
 
 The Home header's mode shows `LINE` and `/api/state` carries `product`
 (`"tape"` / `"slam"`). Switching = edit the key, then
 `sudo systemctl restart amr.service` (the key is missing → the profile refuses
 to load and the service does not start; the error names it). The boot entry
-into LINE happens once; leaving it afterwards is honoured and not undone. Jogging
-needs no mode change (MANUAL jogs in LINE too). On a `null` vehicle the Home
-**Navigation** switch is the way between the two: Tracked requests LINE, Idle
-requests IDLE (Mapping → Survey also has **Back to tracked**). Like every mode change it moves nothing and is refused unless the
-vehicle is stopped, nothing is running and there is no emergency.
+into LINE happens at boot. Jogging needs no mode change (MANUAL jogs in LINE too).
+Since 2026-10-29 there is no navigation switch: on a tape vehicle (`true`/`null`)
+IDLE is a way through, not a mode to park in. A saved or aborted survey and a
+**Recover** pass through IDLE and go back to LINE by themselves; if the tape
+layer cannot start, that swap faults and the next Recover tries once more. The
+web has no IDLE button. The engineer's one mode button is Home → More →
+**Restart tape layer** (LINE → LINE: stops and starts the tape layer, which
+loads a map or graph selected on Teach; from IDLE it enters LINE). A
+commissioning plan, which needs IDLE, is CLI only: `ros2 service call
+/amr/mode/request amr_interfaces/srv/RequestMode "{target: 1}"`. Like every
+mode change these move nothing and are refused unless the vehicle is stopped,
+nothing is running (the follower armed or running included) and there is no
+emergency.
 
 **The LINE follower's rules (after the 2026-09-21 review fixes):**
 
@@ -261,12 +270,11 @@ RIGHT DI07. The IO page shows the live bits under those names.
      and press **Returned to start** again, or abort.
 6. Optionally fill in **Review note** (for example "span 12.00 m measured
    11.96"), then press **Save map revision**. The state goes `SAVING` → saved,
-   and the supervisor returns to `IDLE` on its own.
+   and the supervisor goes back to `LINE` on its own (through `IDLE`).
 7. The map appears in the **Map** list as `<id> rev N`. A revision never changes
    after it is saved. Surveying the same map id again creates `rev N+1`.
-8. **Back to tracked** returns to LINE.
 
-**Abort survey** discards the survey and returns to `IDLE`. You cannot change
+**Abort survey** discards the survey and goes back to `LINE` the same way. You cannot change
 mode while an unsaved survey exists: save it or abort it first. A new
 survey can start straight away, with no service restart.
 
@@ -501,7 +509,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `MLS_SILENT` | warn | Stopped: the tape sensor stopped reporting | Check the tape sensor and its cable; once it reports again, check where the vehicle is, then press Start. | Line hold cause 'sensor': no MLS sample for longer than SENSOR_TIMEOUT_S while running. A silent sensor used to end the run DONE wherever it stopped (unified plan WP-A3). On a marker run the resume names the distance driven blind. |
 | `PANEL_LINK_LOST` | warn | Stopped: the control panel link dropped | Check the panel and the I/O island; once the panel answers, press Start. | Hold cause 'panel': the I/O island reported its image invalid while the vehicle was armed or moving, so selector, Start and E-stop state were unknown. Held at once, not after the grace, and never read as the protective field. |
 | `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route, then press Start. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. Waits for Start since 2026-10-28: only the protective field resumes by itself (owner decision, unified plan WP-A2). |
-| `PAYLOAD_UNCONFIRMED` | warn | Stopped before the U-turn: a release is not recorded | Check the trolley is released, confirm it on the Calls page, then press Start. | Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a release stop not served, so a trolley may still be attached. No sensor sees the trolley: the Calls page's confirmation is the record. Start alone does not pivot. |
+| `PAYLOAD_UNCONFIRMED` | warn | Stopped before the U-turn: a release is not recorded | Check the trolley is released, confirm it on Run → Calls, then press Start. | Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a release stop not served, so a trolley may still be attached. No sensor sees the trolley: the confirmation on Run → Calls is the record. Start alone does not pivot. |
 | `POSITION_UNSURE` | warn | Stopped: not sure enough where it is on the tape | Wait for localization to be READY (Teach page), then press Start. | Line layer hold cause 'position' (tracked plan 4): on a trip the tape locator's sigma was over its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held BEFORE the point. Start re-checks; it holds again while still unsure. |
 | `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
 | `RFID_TAG_OVERDUE` | warn | Stopped: no station tag where one was expected | Check where the vehicle is on the route (a tag may have been missed), then press Start. | Line hold cause 'rfid_overdue' (unified plan WP-A7): the run drove further than the mission's max_tag_gap_m without reading a tag of its table, so a stop or the U-turn tag may have been driven past. Counted afresh from the Start. |

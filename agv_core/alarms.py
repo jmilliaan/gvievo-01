@@ -214,10 +214,10 @@ def _rows() -> tuple[Alarm, ...]:
           "its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held "
           "BEFORE the point. Start re-checks; it holds again while still unsure."),
         a("PAYLOAD_UNCONFIRMED", WARN, "start_button", "Stopped before the U-turn: a release is not recorded",
-          "Check the trolley is released, confirm it on the Calls page, then press Start.",
+          "Check the trolley is released, confirm it on Run → Calls, then press Start.",
           "Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a "
           "release stop not served, so a trolley may still be attached. No sensor sees the trolley: the "
-          "Calls page's confirmation is the record. Start alone does not pivot."),
+          "confirmation on Run → Calls is the record. Start alone does not pivot."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
           "Tape mission stop row (role always, or the job's destination): a measured stop over "

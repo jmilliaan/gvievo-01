@@ -8,7 +8,7 @@
                 machines are stopped at twice: release westbound, take back eastbound.
     Payload     the guard for both U-turns (D9). No sensor sees the trolley (D10), so
                 "released" is the record of a served release stop, and "off at home" is
-                the operator's confirmation on the Calls page.
+                the operator's confirmation on Run → Calls.
 
 Where a trip turns (site D16, tracked plan 4): after its LAST release - at the mid-line U-turn
 point of the farthest called machine (its "uturn"), or at the circuit's tape-end U-turn when
@@ -136,7 +136,7 @@ class Trip:
             self.served.add(sid)
 
     def confirm_released(self):
-        """The operator confirms on the Calls page that every trolley of this trip is off
+        """The operator confirms on Run → Calls that every trolley of this trip is off
         (the payload HOLD before the U-turn): the release stops count as served."""
         g = self.m["GROUPS"][self.group]["machines"]
         for mc in self.machines:

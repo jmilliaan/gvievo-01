@@ -186,6 +186,7 @@ class Transaction:
     map_revision: int = 0
     map_sha256: str = ""
     notes: list[str] = field(default_factory=list)
+    then_line: bool = False  # an IDLE that is only a way back: commit starts LINE (tape vehicles)
 
     def advance(self) -> str:
         i = STEPS.index(self.step)

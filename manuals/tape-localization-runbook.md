@@ -114,8 +114,8 @@ Code 3 = a 60 mm strip **and** a 30 mm strip, as on the drawing
 
 1. O: put a floor mark (taped arrow) where the AGV parks at `line-a` Home. It is both the survey
    start and AMCL's starting pose.
-2. O: Home page → **Navigation → Trackless** (mode IDLE). Selector **MANUAL**, Manual Arm on.
-3. E/O: Maps page → Map id `site103`, start mark description "line-a Home arrow" → **New map**.
+2. O: Selector **MANUAL**, Manual Arm on. (No mode change: a survey starts from LINE, 2026-10-29.)
+3. E/O: Mapping page → Survey → Map id `site103`, start mark description "line-a Home arrow" → **New map**.
    Then follow `amr_ws/RUNBOOK.md` section 2.A, and in particular:
    - drive the whole laid circuit **in both directions**, on or next to the tape, slowly
    - include the HOME area, and as much of row 2, the left vertical and the middle line as is
@@ -124,9 +124,9 @@ Code 3 = a 60 mm strip **and** a 30 mm strip, as on the drawing
 4. Return to the mark → **Returned to start**. The closure must be a few cm and 1–2°; otherwise
    drive another loop.
 5. **Save map revision**. Write `site103 rev N` in the session log.
-6. Maps → **Edit areas**: mark places where trolleys and stock stand and move (the trolley and
-   tread supermarkets, trolley parking) as dynamic areas.
-7. O: Home page → **Navigation → Tracked** (mode LINE).
+6. Dynamic areas (trolley and tread supermarkets, trolley parking): the web editor is gone
+   (2026-10-28); use `ros2 run amr_mission map_edit` (`amr_ws/RUNBOOK.md` section 2).
+7. Nothing to do: the save returns the vehicle to LINE by itself.
 
 ### 2.4 Start localization beside LINE
 
@@ -191,7 +191,7 @@ and publishes only; the AGV moves by the panel's Start, or by jogging under MANU
 2. E: `cd ~/agv_can/amr_ws && colcon build --symlink-install` (new messages and services), then
    restart `amr.service` on O's go.
 3. Teach page → Map `site103`, rev `N` → **Select map**. This writes `~/.amr/line_graph.json`.
-4. Load it into LINE: Home → Navigation → **Trackless** → **Tracked** (or a service restart on O's
+4. Load it into LINE: Home → More → **Restart tape layer** (or a service restart on O's
    go). Teach → **Status** must say "teaching on site103 revN: no graph active". The LINE layer now
    runs map_server, AMCL and the localization monitor beside the follower.
 
@@ -339,7 +339,7 @@ High speed is where the tape runs inside an area drawn on the map, not between m
 
 1. E: **Publish** creates graph revision `g<N>` under the map. It never changes afterwards.
 2. g `N` → **Make active**.
-3. Load it: Trackless → Tracked, or a service restart on O's go. Status names the graph, and the
+3. Load it: Home → More → **Restart tape layer**, or a service restart on O's go. Status names the graph, and the
    Locator tile shows IDLE.
 
 ### 3.5 Shadow verification
@@ -360,17 +360,17 @@ High speed is where the tape runs inside an area drawn on the map, not between m
 The position engine (tracked plan 4) drives trips once the profile says `tape_loc.live: true`.
 That is after E2 (3.5 item 4). The site mission is then the line job at start-up (Run tracked lists
 it too), and the **Calls** tab runs it. The new LineState fields need `colcon build` of
-`amr_interfaces` (`amr_ws/README.md`). Without the build the Calls page says so, and trips still run.
+`amr_interfaces` (`amr_ws/README.md`). Without the build Run → Calls says so, and trips still run.
 
 ### 4.1 After power-on
 
 1. The service enters LINE. The Localisation tile shows UNLOCALIZED.
-2. With the AGV parked at HOME-N: Calls page → **At home** → confirm that the scans align → READY.
+2. With the AGV parked at HOME-N: Mapping → Position (or Teach → Pass) → **At home** → confirm that the scans align → READY.
 3. If the AGV is **not** at HOME-N: jog it there under MANUAL first.
 
 ### 4.2 Calls and trips
 
-1. **Calls.** A machine operator taps their machine on the Calls page (touch panel or laptop). The page lists pending calls per group (MRU, BTU).
+1. **Calls.** A machine operator taps their machine on Run → Calls (touch panel or laptop). The page lists pending calls per group (MRU, BTU).
 2. **A trip forms** at two calls of one group: "Trip MRU: MRU2, MRU4: press Start at the bay". A call for the other group waits.
 3. **Start at the bay.** O: selector **AUTO** → **Start** at HOME-N. Horn, then the AGV drives **empty** through the U-turn and stops at ATT.
 4. **Attach.** O attaches the trolleys → **Start**.
@@ -380,7 +380,7 @@ it too), and the **Calls** tab runs it. The new LineState fields need `colcon bu
      - the AGV stops at that machine's U-turn point and pivots there, empty;
      - with no U-turn point taught for that machine, it pivots at the tape end.
    - **MRU, inbound (eastbound):** it stops at the same machines in reverse order. Take the trolley back → **Start**.
-6. **Back at HOME-N:** release the trolleys → Calls page **Trolleys off**. The trip is done, and the next trip can start.
+6. **Back at HOME-N:** release the trolleys → Run → Calls **Trolleys off**. The trip is done, and the next trip can start.
 
 ### 4.3 What the screen shows
 
@@ -399,7 +399,7 @@ call again.
 |---|---|---|
 | HOLD `position` before a station or junction | "position uncertain before MW-2" | Check that nothing blocks the scanner's view (people, trolleys parked in the aisle). When the Locator line shows HEALTHY, press **Start**. If it does not recover within a minute: MANUAL, jog to HOME-N, **At home**, and call E |
 | HOLD `position` mid-route, localization LOST | "localization LOST (…)" | As above: it stays held, and every **Start** re-checks (`tape_loc.lost_fault_s` is not acted on yet). Not recovering: MANUAL, jog to HOME-N, **At home**, Reset. Handle the trolleys by hand |
-| HOLD `payload` at the U-turn (point or tape end) | "release not recorded for MRU1: a trolley may still be attached" | Check the trolley. If it is attached, release it here → Calls page **Released** → **Start**. The AGV never pivots with a trolley; Start alone does not pivot |
+| HOLD `payload` at the U-turn (point or tape end) | "release not recorded for MRU1: a trolley may still be attached" | Check the trolley. If it is attached, release it here → Run → Calls **Released** → **Start**. The AGV never pivots with a trolley; Start alone does not pivot |
 | Trip Start refused `payload` at HOME-N | "trolleys from the last trip not confirmed off" | Release them → **Trolleys off** → **Start** |
 | FAULT `wrong_branch` | "took the wrong tape after J-…" | The AGV is stopped. MANUAL: jog back to HOME-N, **At home**, Reset. Call E: the junction or its taught geometry needs checking |
 | Unexpected fork (logged, `LINE_LOC`) | "fork with no taught junction near S …" | Logged only, no hold yet. If it repeats, call E (tape damage or a changed layout) |

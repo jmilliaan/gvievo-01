@@ -173,7 +173,6 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         "level": top["level"] if top else "info",
         "button": cat.BUTTON.get(top["clears_by"], "") if top else "",
         "clears_by": top["clears_by"] if top else "",
-        "run_active": bool(run.get("state_name") in RUN_ACTIVE),
     }
 
 

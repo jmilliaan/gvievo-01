@@ -124,8 +124,6 @@ def test_coordinator_endpoints_delegate_and_never_touch_wheels(env):
             {"x_m": 1, "y_m": 2, "yaw_rad": 0.5, "map_id": "a", "map_revision": 2, "generation": 7},
             "set_initial_pose",
         ),
-        ("/api/mission/pause", {}, "pause"),
-        ("/api/mission/abort", {}, "abort"),
         ("/api/mission/ack", {}, "ack_fault"),
     ):
         r = client.post(path, json=body)
@@ -153,7 +151,8 @@ def test_mode_and_survey_are_asynchronous_operations(env):
     assert client.get("/api/operations/nope").status_code == 404
     # NAVIGATION is not entered from the web since 2026-10-28 (no routes, no trackless missions)
     n = len(stub.calls)
-    for bad in ({"target": "navigation", "map_id": "m", "map_revision": 2}, {"target": "fly"}):
+    nav = {"target": "navigation", "map_id": "m", "map_revision": 2}
+    for bad in (nav, {"target": "idle"}, {"target": "fly"}):
         assert client.post("/api/mode", json=bad).status_code == 400
     assert len(stub.calls) == n
     r = client.post("/api/survey/start", json={"map_id": "a", "description": "mark"})
@@ -245,17 +244,18 @@ def test_state_and_page_addresses(env):
     client, stub, maps, rev_dir, manifest = env
     assert client.get("/api/state").json["localization"]["state_name"] == "READY"
     assert client.get("/").status_code == 302
-    for page in ("/mapping", "/run", "/teach", "/calls"):
+    for page in ("/mapping", "/run", "/teach"):
         assert client.get(page).status_code == 200, page
     for old, new in (("/maps", "/mapping"), ("/survey-continue", "/mapping"), ("/run-trackless", "/mapping"),
-                     ("/run-tracked", "/run"), ("/guide", "/teach")):
+                     ("/run-tracked", "/run"), ("/guide", "/teach"), ("/calls", "/run#calls")):
         r = client.get(old)
         assert r.status_code == 302 and r.headers["Location"].endswith(new), old
     for gone in ("/editor", "/review", "/demo", "/api/demo", "/api/footprint", "/api/missions",
                  "/api/maps/sim_factory/1/dynamic.png", "/api/maps/sim_factory/1/routes/r1/1"):
         assert client.get(gone).status_code == 404, gone
-    for gone in ("/api/mission/run", "/api/mission/resume", "/api/missions", "/api/maps/sim_factory/1/edit",
-                 "/api/maps/sim_factory/1/routes/validate", "/api/maps/sim_factory/1/routes/save"):
+    for gone in ("/api/mission/run", "/api/mission/resume", "/api/mission/pause", "/api/mission/abort",
+                 "/api/missions", "/api/maps/sim_factory/1/edit", "/api/maps/sim_factory/1/routes/validate",
+                 "/api/maps/sim_factory/1/routes/save"):
         assert client.post(gone, json={}).status_code in (404, 405), gone
     assert stub.calls == []
 
@@ -273,7 +273,6 @@ def test_pages_fonts_and_style_guards(env):
         "/mapping",
         "/run",
         "/teach",
-        "/calls",
         "/monitor",
         "/io",
         "/alarms",
@@ -346,7 +345,6 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
         "/mapping",
         "/run",
         "/teach",
-        "/calls",
         "/monitor",
         "/io",
         "/alarms",

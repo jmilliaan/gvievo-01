@@ -8,7 +8,9 @@ and about which button the operator is offered - not about internals.
 
 import json
 import os
+import re
 import zipfile
+from pathlib import Path
 
 import pytest
 from agv_core import alarms as cat
@@ -325,7 +327,7 @@ def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
     assert '<details class="home-more">' in home, "the operator's More stays closed"
     client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
     home = client.get("/home").get_data(as_text=True)
-    for i in ("btn-restart", "btn-recover", "btn-idle", "home-ready"):
+    for i in ("btn-restart", "btn-recover", "btn-line", "home-ready"):
         assert f'id="{i}"' in home, i
 
 
@@ -665,20 +667,28 @@ def test_run_picks_by_tiles_and_keeps_the_follower_beside_the_rail(tmp_path):
     assert 'id="follower"' not in client.get("/manual").get_data(as_text=True)
 
 
-def test_tracked_idle_is_one_switch_on_home(tmp_path):
-    """2026-10-08: level 1 of navigation is a Home switch (tracked = LINE, the boot
-    default; idle since 2026-10-28, a survey starts from either). Run carries no mode
-    buttons, and a single-product vehicle has nothing to switch."""
-    client, _ = _product_app("both", tmp_path)
-    home = client.get("/home").get_data(as_text=True)
-    assert 'id="nav-tracked"' in home and 'data-target="line"' in home
-    assert 'id="nav-idle"' in home and 'data-target="idle"' in home
-    tracked = client.get("/run").get_data(as_text=True)
-    assert "btn-line-mode" not in tracked and "btn-line-idle" not in tracked
-    for product in ("tape", "slam"):
+def test_home_has_no_navigation_switch_and_line_is_the_engineers(tmp_path):
+    """2026-10-29: no Tracked/Idle switch on Home - the supervisor returns to LINE by itself
+    after a survey and after Recover - and no Return to idle. The one mode button is the
+    engineer's Restart tape layer (More), only on a vehicle with the tape product; /api/mode
+    takes LINE only, from the engineer only. No Pause/Abort: the web runs no trackless mission."""
+    for product in ("both", "tape", "slam"):
         (tmp_path / product).mkdir()
         client, _ = _product_app(product, tmp_path / product)
-        assert 'id="nav-tracked"' not in client.get("/home").get_data(as_text=True), product
+        client.post("/api/role", json={"role": "operator"})
+        home = client.get("/home").get_data(as_text=True)
+        assert 'id="nav-tracked"' not in home and 'id="nav-idle"' not in home, product
+        assert 'id="btn-line"' not in home, product  # the operator's Home
+        assert client.post("/api/mode", json={"target": "line"}).status_code == 403
+        client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
+        home = client.get("/home").get_data(as_text=True)
+        for gone in ("btn-idle", "home-pause", "home-abort"):
+            assert f'id="{gone}"' not in home, (product, gone)
+        assert ('id="btn-line"' in home) == (product != "slam"), product
+        if product != "slam":
+            assert 'btn-to-line' not in client.get("/mapping").get_data(as_text=True)
+    tracked = client.get("/run").get_data(as_text=True)
+    assert "btn-line-mode" not in tracked and "btn-line-idle" not in tracked
 
 
 def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
@@ -818,3 +828,16 @@ def test_a_drive_link_fault_is_a_drive_row_and_hides_drives_not_ready():
     assert web_alarms._drive_code(dict(fault, left="stale")) == "DRIVE_SILENT"
     assert web_alarms._drive_code(dict(fault, link="standby", left="Ready to switch on",
                                        right="Ready to switch on")) is None
+
+
+def test_every_button_has_a_style_class():
+    """2026-10-29: a <button> without a class renders as the browser's native grey button
+    (Teach had a dozen). Every button names one: big, tool, danger, tab, pick, dir, ui-size;
+    the PIN pad's keys (data-k) are styled by `dialog.pin-pad button`."""
+    pkg = Path(__file__).resolve().parents[1] / "amr_web"
+    bare = []
+    for f in sorted([*pkg.glob("templates/*.html"), *pkg.glob("static/*.js")]):
+        for tag in re.findall(r"<button\b[^>]*>", f.read_text()):
+            if "class=" not in tag and "data-k=" not in tag:
+                bare.append(f"{f.name}: {tag}")
+    assert not bare, bare

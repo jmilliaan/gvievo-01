@@ -544,7 +544,7 @@ class Supervisor(LeanNode):
                 self._set(fsm.FAULT, "restart required", res.message, self.fault_code or "BASE_EXITED")
                 return res
             op, _ = self.book.submit("", fsm.REQ_RECOVER)
-            self._begin_transaction(op, fsm.IDLE, "", 0, "", from_fault=True)
+            self._begin_transaction(op, fsm.IDLE, "", 0, "", from_fault=True, then_line=True)
             res.success, res.message = True, f"recovering, operation {op.operation_id}"
             return res
 
@@ -564,9 +564,10 @@ class Supervisor(LeanNode):
 
     # --------------------------------------------------------------- transaction
 
-    def _begin_transaction(self, op, target, map_id, rev, sha, from_fault=False) -> None:
+    def _begin_transaction(self, op, target, map_id, rev, sha, from_fault=False, then_line=False) -> None:
         self.txn = fsm.Transaction(op.operation_id, target, self.mode, self.generation + 1)
         self.txn.map_id, self.txn.map_revision, self.txn.map_sha256 = map_id, rev, sha
+        self.txn.then_line = then_line
         self.txn.notes.append("from_fault" if from_fault else "")
         self.requested = target
         self._set(fsm.TRANSITIONING, "inhibiting")
@@ -577,13 +578,21 @@ class Supervisor(LeanNode):
         after boot, once. Only a trackless-only vehicle (tracked false) stays in IDLE.
         No panel rule here - nothing can be moving at boot, the mux inhibits
         through the transition, and the follower still needs the physical Start under
-        AUTO before a wheel turns. Leaving LINE later (the Home switch to trackless) is
-        the operator's request and is not undone."""
+        AUTO before a wheel turns. Leaving LINE later (the engineer's Return to idle) is
+        the engineer's request and is not undone."""
         if self.tracked is False or self._auto_line_done or self.txn is not None:
             return
         self._auto_line_done = True
-        op, _ = self.book.submit(f"boot-line-{self.instance[:8]}", fsm.REQ_LINE)
-        self.get_logger().info(f"profile tracked={self.tracked}: entering LINE (the default mode)")
+        self._enter_line(f"boot-line-{self.instance[:8]}", "entering LINE (the default mode)")
+
+    def _enter_line(self, request_id: str, why: str) -> None:
+        """Start the swap to LINE without an admission check, as boot does: it only
+        follows a transaction that already proved the vehicle still (or came from FAULT),
+        the mux inhibits through it, and the follower still needs AUTO and the physical
+        Start. A LINE layer that cannot start fails the transaction into FAULT, and the
+        next Recover tries once more - one try per press, never a loop."""
+        op, _ = self.book.submit(request_id, fsm.REQ_LINE)
+        self.get_logger().info(f"profile tracked={self.tracked}: {why}")
         self._begin_transaction(op, fsm.LINE, "", 0, "")
 
     def _mark(self) -> None:
@@ -790,6 +799,12 @@ class Supervisor(LeanNode):
                 op, ops.SUCCEEDED, msg, map_id=t.map_id, map_revision=t.map_revision, map_sha256=t.map_sha256
             )
             self._set(t.target, "", "")
+            # 2026-10-29 (owner): on a tape vehicle IDLE is a way through, not a place to
+            # park. The end of a survey and a FAULT recovery go back to LINE by themselves;
+            # only the engineer's explicit Return to idle stays there.
+            if t.target == fsm.IDLE and t.then_line and self.tracked is not False:
+                after = "recovery" if "from_fault" in t.notes else "the survey"
+                self._enter_line("", f"back to LINE after {after}")
             return
 
     def _layer_start_budget(self, t: fsm.Transaction) -> float:
@@ -973,12 +988,12 @@ class Supervisor(LeanNode):
             # to IDLE, so the browser sees one SUCCEEDED only once the vehicle is
             # back in a stable mode (no BUSY window for the next request).
             self.book.phase(op_id, f"saved rev{rev}; returning to idle")
-            self._begin_transaction(self.book.get(op_id), fsm.IDLE, map_id, rev, sha)
+            self._begin_transaction(self.book.get(op_id), fsm.IDLE, map_id, rev, sha, then_line=True)
             self.txn.notes.append(r.message)
             return
         if name == "abort":
             self.book.phase(op_id, "aborted; returning to idle")
-            self._begin_transaction(self.book.get(op_id), fsm.IDLE, "", 0, "")
+            self._begin_transaction(self.book.get(op_id), fsm.IDLE, "", 0, "", then_line=True)
 
     # ------------------------------------------------------------------ the loop
 

@@ -29,7 +29,7 @@ from agv_core import alarms as catalogue
 from agv_core import paths
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
 
-from amr_base.wire import MODE_IDLE, MODE_LINE, SURVEY_OPS
+from amr_base.wire import MODE_LINE, SURVEY_OPS
 from amr_maps import grid as gridio
 from amr_mission import map_bundle as mb
 from amr_mission import survey_move as survey_movemod
@@ -50,8 +50,6 @@ class Adapter(Protocol):
     def set_initial_pose(
         self, x: float, y: float, yaw: float, map_id: str, map_revision: int, generation: int, sha256: str
     ) -> tuple[bool, str]: ...
-    def pause(self) -> tuple[bool, str]: ...
-    def abort(self) -> tuple[bool, str]: ...
     def ack_fault(self) -> tuple[bool, str]: ...
     # supervisor (unified plan §4.2, §6.2)
     def supervisor_identity(self) -> tuple[str, int]: ...
@@ -305,10 +303,9 @@ def create_app(
 
     @app.get("/calls")
     def page_calls():
-        """Machine calls and the trip (tracked plan 4). Operator and engineer. Nothing on it starts
-        the vehicle: a trip leaves HOME on AUTO + the physical Start."""
+        """Machine calls are on Run, under the job, since 2026-10-29."""
         _need(tracked_ok)
-        return render_template("calls.html", page="calls")
+        return redirect("/run#calls")
 
     # ---- tape layer: mission choice and arm/clear. Nothing here moves the vehicle:
     # a run starts only on the physical Start under AUTO (line_follow_node). ----
@@ -343,7 +340,7 @@ def create_app(
             if config.TAPE_LOC_LIVE:
                 site = config.TAPE_LOC_SITE_MISSION
                 names.append(site)
-                notes[site] = "trips from machine calls (Calls page), driven by position; Start at HOME"
+                notes[site] = "trips from machine calls (Run → Calls), driven by position; Start at HOME"
         except Exception:  # noqa: BLE001 - a dev box without a profile
             pass
         return jsonify({"missions": names, "destinations": dests, "errors": errors, "notes": notes})
@@ -384,7 +381,7 @@ def create_app(
         except missions.MissionError as e:
             return jsonify({"mission": name, "circuits": [], "stations": [], "points": [], "machines": {},
                             "live": live, "error": str(e)})
-        # Machines per group in circuit order (their release / swap stop), for the Calls page.
+        # Machines per group in circuit order (their release / swap stop), for Run's Calls part.
         machines = {}
         for g, row in m["GROUPS"].items():
             stops = [it["id"] for it in m["CIRCUITS"][row["circuit"]]["items"] if it["kind"] == "stop"]
@@ -692,16 +689,19 @@ def create_app(
 
     @app.post("/api/mode")
     def api_mode():
+        # One target since 2026-10-29: LINE, the engineer's Restart tape layer (LINE -> LINE
+        # replaces the layer; from IDLE it enters it). No NAVIGATION (2026-10-28), no IDLE:
+        # the supervisor passes through IDLE by itself. MAPPING is entered by a survey start.
+        denied = _engineer_only("restarting the tape layer needs")
+        if denied:
+            return denied
         d, err = _body()
         if err:
             return err
-        # NAVIGATION is not entered from the web since 2026-10-28 (no routes, no trackless
-        # missions); MAPPING is entered by a survey start.
-        target = {"idle": MODE_IDLE, "line": MODE_LINE}.get(str(d.get("target", "")).lower())
-        if target is None:
-            return _result(False, "target must be idle or line", 400)
+        if str(d.get("target", "")).lower() != "line":
+            return _result(False, "target must be line", 400)
         rid = str(d.get("request_id") or uuid.uuid4().hex)
-        return _accepted(*adapter.request_mode(target, "", 0, rid))
+        return _accepted(*adapter.request_mode(MODE_LINE, "", 0, rid))
 
     @app.post("/api/survey/<op>")
     def api_survey(op: str):
@@ -879,14 +879,6 @@ def create_app(
             return _result(False, f"{e} (x_m, y_m, yaw_rad, map_id, map_revision, generation required)", 400)
         # the adapter re-checks the identity against the live ModeState right before publishing (R12)
         return _call(adapter.set_initial_pose, x, y, yaw, map_id, map_rev, gen, str(d.get("sha256", "")))
-
-    @app.post("/api/mission/pause")
-    def api_mission_pause():
-        return _call(adapter.pause)
-
-    @app.post("/api/mission/abort")
-    def api_mission_abort():
-        return _call(adapter.abort)
 
     @app.post("/api/mission/ack")
     def api_mission_ack():

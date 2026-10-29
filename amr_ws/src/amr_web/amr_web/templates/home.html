@@ -5,21 +5,9 @@
    holds it, and the one button that clears it. Everything else is behind "More".
    Fits 1280x720 at ui=l with nothing below the fold. #}
 <section class="home">
-  {# Level 1 of the navigation hierarchy (2026-10-08): tracked (LINE) or idle. Tracked is the
-     boot default, so this is only pressed to leave it; a survey (Mapping page) starts from
-     either. A mode change moves nothing; the supervisor refuses it unless the vehicle is
-     stopped, idle and out of emergency. Only a vehicle that carries both products has a
-     choice to make. #}
-  {% if tracked_ok and trackless_ok %}
-  <div class="home-nav">
-    <span class="home-nav-label">Navigation</span>
-    <div class="seg" role="radiogroup" aria-label="Navigation type">
-      <button id="nav-tracked" class="tool" role="radio" data-target="line">Tracked</button>
-      <button id="nav-idle" class="tool" role="radio" data-target="idle">Idle</button>
-    </div>
-    <span id="nav-hint" class="home-nav-hint"></span>
-  </div>
-  {% endif %}
+  {# No navigation switch (2026-10-29): LINE is the only mode a tape vehicle runs in. The
+     supervisor enters it at boot and goes back to it by itself after a survey and after
+     Recover; IDLE is the engineer's (More), for commissioning or restarting the tape layer. #}
   {# Job beside the status (2026-10-08), the job wider: what the vehicle was told to do,
      then whether anything holds it. Display only; the job is set on Run. #}
   <div class="home-top">
@@ -50,8 +38,6 @@
     <div id="home-action" class="home-action"></div>
     <div class="bar" id="home-buttons">
       <button id="home-primary" class="big run" hidden></button>
-      <button id="home-pause" class="big" hidden>Pause</button>
-      <button id="home-abort" class="danger" hidden>Abort</button>
     </div>
   </div>
   {# The engineer's status (merged from the old Status page, 2026-10-24): the supervisor,
@@ -64,8 +50,10 @@
     <div class="home-eng">
       <div class="bar">
         {% if trackless_ok %}<a class="big" href="/mapping">Mapping</a>{% endif %}
-        <button id="btn-idle" class="big">Return to idle</button>
-        <button id="btn-recover" class="danger">Recover (FAULT → IDLE)</button>
+        {# One mode button (2026-10-29): LINE -> LINE replaces the tape layer, so a teach map or
+           graph selected on Teach loads without a service restart; from IDLE it enters LINE. #}
+        {% if tracked_ok %}<button id="btn-line" class="big" title="Stop and start the tape layer: loads the map and graph selected on Teach. Moves nothing; refused while the follower is armed or running">Restart tape layer</button>{% endif %}
+        <button id="btn-recover" class="danger">Recover (FAULT → {{ "LINE" if tracked_ok else "IDLE" }})</button>
         {# The operator only gets Restart as the primary button, and only when an alarm says
            the base cannot be rebuilt. An engineer restarts for other reasons (a rebuilt
            overlay, a changed amr.env) - with the same server-side refusals. #}
@@ -93,29 +81,6 @@ const ACTIONS = {
 };
 
 $('home-primary').onclick = () => { const fn = ACTIONS[$('home-primary').textContent]; if (fn) fn(); };
-$('home-pause').onclick = () => act('/api/mission/pause');
-$('home-abort').onclick = () => { if (confirm('Abort the run?')) act('/api/mission/abort'); };
-// Navigation switch. During a swap it shows where the vehicle is going, not where it was.
-let navBusy = false;
-for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
-  if (b.classList.contains('on') || navBusy) return;
-  navBusy = true;
-  operation('/api/mode', { target: b.dataset.target }, () => { navBusy = false; });
-};
-function navSwitch(m) {
-  if (!$('nav-tracked')) return;
-  const settled = m && ['IDLE', 'MAPPING', 'NAVIGATION', 'LINE'].includes(m.mode_name);
-  const where = m ? (m.mode_name === 'TRANSITIONING' ? m.requested_name : m.mode_name) : '';
-  const tracked = where === 'LINE';
-  $('nav-tracked').classList.toggle('on', !!m && tracked);
-  $('nav-idle').classList.toggle('on', !!m && !tracked && settled);
-  $('nav-tracked').setAttribute('aria-checked', String(!!m && tracked));
-  $('nav-idle').setAttribute('aria-checked', String(!!m && !tracked && settled));
-  for (const id of ['nav-tracked', 'nav-idle']) $(id).disabled = !settled || navBusy;
-  $('nav-hint').textContent = !m ? 'no supervisor'
-    : !settled ? (m.mode_name === 'TRANSITIONING' ? `switching to ${where.toLowerCase()}…` : m.mode_name)
-    : tracked ? 'magnetic tape · Run' : `${m.mode_name === 'IDLE' ? 'no layer running' : m.mode_name.toLowerCase()} · Mapping page`;
-}
 
 // One live tile: big value, one line under it, and a level ('' / 'warn' / 'off').
 function live(id, value, sub, level) {
@@ -201,13 +166,12 @@ function readiness(st) {
   ]);
 }
 if ($('home-ready')) {
-  $('btn-idle').onclick = () => operation('/api/mode', { target: 'idle' });
+  if ($('btn-line')) $('btn-line').onclick = () => operation('/api/mode', { target: 'line' });
   $('btn-recover').onclick = recover;
   $('btn-restart').onclick = () => restart('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.');
 }
 
 onState(st => {
-  navSwitch(st.mode);
   job(st);
   liveTiles(st);
   if ($('home-ready')) readiness(st);
@@ -226,8 +190,6 @@ function render(d) {
   const btn = $('home-primary');
   btn.hidden = !h.button;
   if (h.button) btn.textContent = h.button;
-  $('home-pause').hidden = !h.run_active;
-  $('home-abort').hidden = !h.run_active;
   const rows = d.alarms || [];
   $('home-list').innerHTML = rows.length ? rows.map(a => alarmRow(a,
     `${esc(a.code)}${a.clears_by ? ` · clears by ${esc(a.clears_by)}` : ''} · ${esc(a.detail)}`)).join('')

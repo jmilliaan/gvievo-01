@@ -11,28 +11,52 @@
 </div>
 {% endblock %}
 {% block body %}
-{# Run (2026-10-02; "Run tracked" until 2026-10-28): the magnetic-tape product. Pick a mission (or none for plain
-   line following) and, for a mission with destination stops, the destination (2026-10-08).
-   Anywhere on the line (2026-10-09); then the PHYSICAL Start under AUTO runs it - no software arm
-   since 2026-10-07 (motor arming is drive_node's, in every mode). Nothing on this page moves
-   the vehicle. Since 2026-10-24 missions and destinations are touch tiles, not drop-downs. #}
+{# Run (2026-10-02; "Run tracked" until 2026-10-28): the magnetic-tape product. Calls merged in
+   2026-10-29: one column that scrolls, the job on top and the calls under it.
+   - Job: pick a mission (or none for plain line following) and, for a mission with destination
+     stops, the destination (2026-10-08). Touch tiles since 2026-10-24.
+   - Calls (tracked plan 4, 2026-10-24): machines call the AGV; trip_calls calls of one group form
+     a trip, driven by position (amr_line.site_run) once the site mission is the job
+     (tape_loc.live). The two confirmations are records, not sensors (site D10): "Released" lets
+     a trip held before its U-turn (HOLD payload) pivot on the next Start; "Trolleys off" lets
+     the next trip leave HOME.
+   The column scrolls to Calls once when the job is the site mission (or the URL is #calls).
+   Nothing on this page moves the vehicle: the PHYSICAL Start under AUTO does - no software arm
+   since 2026-10-07 (motor arming is drive_node's, in every mode). #}
 <section id="line-job" class="line-job grow">
   <div class="job-pick">
-    <div class="bar two job-actions">
-      <button id="btn-line-select" class="big"><span>Set job</span><small id="lt-pick">–</small></button>
-      <button id="btn-line-clear" class="danger">Clear</button>
+    {# Two parts: Set job / Clear stays on top only while the job part is in view. #}
+    <div class="job-part">
+      <div class="bar two job-actions">
+        <button id="btn-line-select" class="big"><span>Set job</span><small id="lt-pick">–</small></button>
+        <button id="btn-line-clear" class="danger">Clear</button>
+      </div>
+      <h2>Mission <small id="lt-product">tape</small></h2>
+      <div id="lt-mission" class="pick-grid"></div>
+      <h2>Destination <small id="lt-dest-note"></small></h2>
+      <div id="lt-dest" class="pick-grid small"></div>
+      <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a stop, Start goes on after the start delay; a trip leaves HOME the same way.</div>
     </div>
-    <h2>Mission <small id="lt-product">tape</small></h2>
-    <div id="lt-mission" class="pick-grid"></div>
-    <h2>Destination <small id="lt-dest-note"></small></h2>
-    <div id="lt-dest" class="pick-grid small"></div>
-    <div class="warn-box"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. At a stop, Start goes on after the start delay.</div>
+    <div class="job-part" id="calls">
+      <div class="sep"></div>
+      <h2>Calls <small id="cl-site">site mission</small></h2>
+      <p class="note"><b>A machine button calls it; pressed again while it waits, it cancels the call.</b> <span id="cl-rule"></span></p>
+      <div id="cl-groups"></div>
+      <p id="cl-msg" class="note"></p>
+      <h2>Trip <small>position engine</small></h2>
+      <div id="cl-trip" class="tel-grid rows"></div>
+      <p id="cl-why" class="note"></p>
+      <h2>Confirm <small>by hand: no sensor sees the trolley</small></h2>
+      <div class="bar two">
+        <button id="cl-released" class="big" data-confirm="confirm_released" title="Before the U-turn (HOLD payload): every trolley of this trip is released">Released</button>
+        <button id="cl-off" class="big" data-confirm="confirm_off" title="At HOME: the trolleys are off; the next trip may leave">Trolleys off at HOME</button>
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="/static/linetrack.js"></script>
 <script>
-const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
 
 let DESTS = {}, MERR = {}, NOTES = {}, MISSIONS = [];
 // The operator's pick; '' is "none" (plain line following) / "no destination".
@@ -78,7 +102,7 @@ addEventListener('resize', placeFollower);
 
 async function loadMissions() {
   const { status, data } = await apiGet('/api/line/missions');
-  if (status !== 200) return;
+  if (status !== 200) { loaded.missions = true; return; }
   DESTS = data.destinations || {};
   MERR = data.errors || {};
   NOTES = data.notes || {};
@@ -86,6 +110,8 @@ async function loadMissions() {
   if (pick.mission && !MISSIONS.includes(pick.mission)) pick.mission = '';
   if (!(DESTS[pick.mission] || []).includes(pick.dest)) pick.dest = '';
   render();
+  loaded.missions = true;
+  scrollToCalls((lastState || {}).line);
 }
 loadMissions();
 
@@ -106,6 +132,74 @@ $('lt-dest').onclick = e => {
 $('btn-line-select').onclick = () => act('/api/line/mission', { name: pick.mission, destination: pick.dest });
 $('btn-line-clear').onclick = () => act('/api/line/clear');
 
+// ---- calls ----
+let waiting = new Set(), site = {};
+// Scroll to Calls once: for #calls (the old /calls address), or when the site mission is the job.
+// Only after both lists have rendered - the target moves while the tiles and machines fill in.
+const loaded = { missions: false, site: false };
+let scrolled = false;
+function scrollToCalls(ln) {
+  if (scrolled || !loaded.missions || !loaded.site) return;
+  const want = location.hash === '#calls' || (!!ln && !!site.mission && ln.mission === site.mission);
+  if (!want && !ln) return;  // no line state yet: decide when there is one
+  scrolled = true;
+  if (want) $('calls').scrollIntoView({ block: 'start' });
+}
+async function trip(action, arg) {
+  let r;
+  try { r = await api('/api/line/trip', { action, arg: arg || '' }); }
+  catch (e) { $('cl-msg').textContent = 'no response: it may not have been recorded'; return; }
+  $('cl-msg').textContent = r.data.message || '';
+  log(r.data.message || `refused (${r.status})`, r.data.ok ? '' : 'bad');
+}
+document.querySelectorAll('[data-confirm]').forEach(b => { b.onclick = () => trip(b.dataset.confirm); });
+async function loadSite() {
+  let r;
+  try { r = await apiGet('/api/line/site'); }
+  catch (e) { $('cl-site').textContent = 'site mission unavailable'; loaded.site = true; return; }
+  site = r.data || {};
+  $('cl-site').textContent = site.error ? `refused: ${site.error}` : `${site.mission}${site.live ? '' : ' · shadow only (tape_loc.live false)'}`;
+  $('cl-rule').textContent = site.trip_calls ? `${site.trip_calls} call${site.trip_calls > 1 ? 's' : ''} of one group form a trip; it starts at ${site.home}.` : '';
+  $('cl-groups').innerHTML = Object.entries(site.machines || {}).map(([g, ms]) =>
+    `<h3>${esc(g)}</h3><div class="bar four">${ms.map(m => `<button class="big" data-machine="${esc(m)}">${esc(m)}</button>`).join('')}</div>`).join('');
+  document.querySelectorAll('[data-machine]').forEach(b => {
+    b.onclick = () => trip(waiting.has(b.dataset.machine) ? 'cancel' : 'call', b.dataset.machine);
+  });
+  loaded.site = true;
+  scrollToCalls((lastState || {}).line);
+}
+loadSite();
+function calls(ln) {
+  scrollToCalls(ln);
+  if (!ln) {
+    tiles('cl-trip', [['Trip', '–', 'tape layer not running', 'bad', 'key']]);
+    document.querySelectorAll('[data-machine], [data-confirm]').forEach(b => { b.disabled = true; });
+    $('cl-why').textContent = '';
+    return;
+  }
+  if (!('trip_queue' in ln)) {
+    tiles('cl-trip', [['Trip', '–', 'this build has no trip fields: rebuild amr_interfaces', 'bad', 'key']]);
+    return;
+  }
+  // calls and confirmations are taken only while the site mission is the job (amr_line job.py)
+  const live = !!site.mission && ln.mission === site.mission;
+  waiting = new Set((ln.trip_queue || '').split(/\s+/).filter(Boolean));
+  document.querySelectorAll('[data-machine], [data-confirm]').forEach(b => { b.disabled = !live; });
+  document.querySelectorAll('[data-machine]').forEach(b => b.classList.toggle('on', waiting.has(b.dataset.machine)));
+  const hold = ln.state_name === 'HOLD' ? ln.hold_cause : '';
+  tiles('cl-trip', [
+    ['Trip', ln.trip || '–', ln.state_name || '', ln.state_name === 'FAULT' ? 'bad' : (hold ? 'warn' : ''), 'key'],
+    ['Next', ln.trip_next || '–', ln.station ? `at ${ln.station}` : ''],
+    ['Waiting', ln.trip_queue || '–', 'calls, in order'],
+    ['HOME', ln.trip_payload ? 'NOT confirmed' : 'trolleys off', ln.trip_payload || 'the next trip may leave', ln.trip_payload ? 'warn' : ''],
+    ['Where', ln.loc_health || '–', ln.loc_leg ? `${ln.loc_leg} · σ ${num(ln.loc_sigma_m, 3)} m` : '', ln.loc_health === 'LOST' ? 'bad' : ''],
+  ]);
+  $('cl-released').classList.toggle('on', hold === 'payload');
+  $('cl-why').textContent = site.mission && !live
+    ? `The job is ${ln.mission || 'none'}: calls are taken only while it is ${site.mission} (Mission above).`
+    : (ln.message || '');
+}
+
 onState(st => {
   const m = st.mode, ln = st.line;
   const inLine = m && m.mode_name === 'LINE';
@@ -119,7 +213,7 @@ onState(st => {
   if (!!(inLine && ln) !== editable) { editable = !editable; dirty = true; }
   if (dirty) render();
   if (!ln) {
-    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'switch to tracked on Home', 'warn']]);
+    tiles('lt-state', [['State', '–', inLine ? 'no line state yet' : 'tape layer not running', 'warn']]);
     $('lt-reason').textContent = '';
   } else {
     const uturn = ln.uturn_phase ? `U-turn ${ln.uturn_phase}` : '';
@@ -142,6 +236,7 @@ onState(st => {
     ] : []));
     $('lt-reason').textContent = ln.message || '';
   }
+  calls(ln);
   lineTrack(st.line_track);
   rfidTags(st.rfid);
   placeFollower();

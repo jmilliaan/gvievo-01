@@ -66,41 +66,41 @@
     </div>
     <div class="tabpane" data-tab="pass" hidden>
       <label class="field">Map <input id="tc-map" placeholder="map id"> rev <input id="tc-rev" size="3" inputmode="numeric"></label>
-      <div class="bar"><button data-act="map" id="btn-map">Select map</button><button data-act="status">Status</button></div>
+      <div class="bar"><button data-act="map" id="btn-map" class="tool" title="Loads when the tape layer restarts (Home → More)">Select map</button><button data-act="status" class="tool" title="The teach runtime's own line: selected map, graph, recording, built">Status</button></div>
       <label class="field">Circuit <select id="tc-circuit"></select></label>
       <div class="bar">
         <button data-act="pass_start" class="big">Record pass</button>
-        <button data-act="pass_stop">Stop pass</button>
+        <button data-act="pass_stop" class="big">Stop pass</button>
         <button data-act="pass_discard" class="danger">Discard</button>
-        <button data-act="passes">Passes</button>
+        <button data-act="passes" class="tool">Passes</button>
       </div>
       <label class="field">Station <select id="tc-station"></select></label>
       <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
       <div class="bar">
         <button id="btn-at-home" class="big" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>
-        <button id="btn-confirm" title="The live scan lies on the map's walls">Scans align</button>
+        <button id="btn-confirm" class="big run" title="The live scan lies on the map's walls">Scans align</button>
       </div>
     </div>
     <div class="tabpane" data-tab="marks" hidden>
       <label class="field">Mark <input id="tc-mark" placeholder="M-id"></label>
       <div class="bar">
-        <button data-act="marks">Marks</button>
+        <button data-act="marks" class="tool">Marks</button>
         <button data-act="mark_delete" class="danger">Delete mark</button>
       </div>
       {# Tracked plan 4: a mark (its M-id above) becomes a station, a mid-line U-turn point or a
          zone end; "-" takes the role off. Build puts it in the graph. #}
       <div class="bar">
         <label class="field">Role <select id="tc-role"></select></label>
-        <button data-act="mark_role" title="The mark named above (M-id) becomes this station or point">Set role</button>
-        <button data-act="roles" title="What is taught, from which mark, and what is not">Roles</button>
+        <button data-act="mark_role" class="big" title="The mark named above (M-id) becomes this station or point">Set role</button>
+        <button data-act="roles" class="tool" title="What is taught, from which mark, and what is not">Roles</button>
       </div>
       {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
          name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
          the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
       <div class="bar">
         <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
-        <button data-act="mark_offset" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
-        <button data-act="mark_along" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
+        <button data-act="mark_offset" class="big" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
+        <button data-act="mark_along" class="big" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
       </div>
       <p class="note"><a href="/tape-areas">High-speed areas →</a></p>
     </div>
@@ -111,7 +111,7 @@
       </div>
       <div class="bar">
         <label class="field">g <input id="tc-g" size="3" inputmode="numeric"></label>
-        <button data-act="activate">Make active</button>
+        <button data-act="activate" class="big" title="Loads when the tape layer restarts (Home → More)">Make active</button>
       </div>
     </div>
     <p id="tc-msg" class="note"></p>
@@ -197,8 +197,8 @@ onState(st => {
     : !sel ? 'no high zone in this mission'
       : sel === 'high' ? 'HIGH where the markers grant it' : 'zone markers ignored';
   if (!ln) {
-    const why = inLine ? 'no line state yet' : 'switch to tracked on Home';
-    tiles('gd-order', [['Order', '–', 'line layer not running (Tracked mode)', 'bad', 'key']]);
+    const why = inLine ? 'no line state yet' : 'tape layer not running (Home: Recover or Restart tape layer)';
+    tiles('gd-order', [['Order', '–', 'tape layer not running', 'bad', 'key']]);
     tiles('tc-loc', [['Locator', '–', why, 'warn']]);
     $('gd-run').innerHTML = '';
     $('tc-detail').textContent = '';

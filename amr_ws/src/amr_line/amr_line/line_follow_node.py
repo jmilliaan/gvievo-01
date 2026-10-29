@@ -272,7 +272,7 @@ class LineFollowNode(LeanNode):
         self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
         self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
         # Trips (tracked plan 4): machine calls, and the operator's two confirmations. They form
-        # and record; a trip moves only on AUTO + the physical Start at HOME (the Calls page).
+        # and record; a trip moves only on AUTO + the physical Start at HOME (Run → Calls).
         self.create_service(LineTeach, "/amr/line/trip", self._srv_trip)
         self._site_live()
         # Guided mission (2026-10-23): the engineer's branch order for the next fork. It only

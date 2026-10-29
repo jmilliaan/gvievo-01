@@ -2,9 +2,10 @@
 """P7 (unified plan §12.2): one unified workflow and a fresh restart of a layer.
 
 Opt-in (AMR_SIM_TESTS=1): boots the supervisor in simulation on its own
-domain and drives IDLE -> survey -> returned -> save -> IDLE -> NAVIGATION on
-the saved revision -> IDLE -> survey -> abort -> IDLE, then kills a required
-node of a running layer and recovers. Asserts unchanged base PIDs, generation
+domain and drives IDLE -> survey -> returned -> save -> LINE -> NAVIGATION on
+the saved revision -> IDLE -> survey -> abort -> LINE, then kills a required
+node of a running layer and recovers to LINE (on a tape vehicle IDLE is a way
+through, 2026-10-29). Asserts unchanged base PIDs, generation
 rotation, the lease at every stable mode, and zero descendants after SIGINT.
 ~3 min on the N97.
 """
@@ -315,8 +316,8 @@ def test_unified_workflow_and_layer_restart(stack):
     assert r.accepted
     st = p.wait_op(r.operation_id, 90)
     assert st.status == 1 and st.map_revision == 1 and st.map_sha256, st.message
-    assert p.wait_mode(1, 40)
-    settled_lease(p, 1)
+    assert p.wait_mode(7, 60), "a saved survey goes back to LINE by itself"
+    settled_lease(p, 9)
     assert (p.mode.last_survey_map_id, p.mode.last_survey_revision) == ("p7_map", 1)
 
     # navigation on that exact revision, then idle
@@ -409,13 +410,13 @@ def test_unified_workflow_and_layer_restart(stack):
     r = p.request_mode(1)
     assert r.accepted and p.wait_mode(1, 40)
 
-    # a second survey is a fresh layer; abort returns to idle
+    # a second survey is a fresh layer; abort returns to LINE
     r = p.survey(0, "p7_map", "again")
     assert r.accepted and p.wait_mode(2, 60)
     r = p.survey(3)
-    assert r.accepted and p.wait_mode(1, 40)
+    assert r.accepted and p.wait_mode(7, 60)
 
-    # required-node failure in a live layer -> FAULT, inhibited; recover -> IDLE
+    # required-node failure in a live layer -> FAULT, inhibited; recover -> IDLE -> LINE
     r = p.survey(0, "p7_map", "kill")
     assert r.accepted and p.wait_mode(2, 60)
     assert kill_owned(proc.pid, "async_slam_toolbox_node"), "no fixture-owned slam_toolbox to kill"
@@ -423,8 +424,8 @@ def test_unified_workflow_and_layer_restart(stack):
     settled_lease(p, 0)
     assert p.mode.fault_code == "LAYER_EXITED"
     r = p.call(p.c_recover, Trigger.Request())
-    assert r.success and p.wait_mode(1, 40)
-    settled_lease(p, 1)
+    assert r.success and p.wait_mode(7, 60)
+    settled_lease(p, 9)
 
     assert base_pids(proc.pid) == pids0, "base layer must survive every transition"
     assert p.mode.generation > gen0 + 6

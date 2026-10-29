@@ -326,8 +326,6 @@ class RosAdapter(LeanNode):
             "survey_move_stop": self.create_client(Trigger, "/amr/survey/move_stop", callback_group=g),
             "loc_confirm": self.create_client(Trigger, "/amr/localization/confirm", callback_group=g),
             "loc_reset": self.create_client(Trigger, "/amr/localization/reset", callback_group=g),
-            "pause": self.create_client(Trigger, "/amr/pause", callback_group=g),
-            "abort": self.create_client(Trigger, "/amr/abort", callback_group=g),
             "ack": self.create_client(Trigger, "/amr/ack_fault", callback_group=g),
             # supervisor (unified plan §4.2)
             "mode": self.create_client(RequestMode, "/amr/mode/request", callback_group=g),
@@ -989,12 +987,6 @@ class RosAdapter(LeanNode):
             True,
             f"initial pose ({x:.2f}, {y:.2f}, {math.degrees(yaw):.0f} deg) sent; converging, then confirm",
         )
-
-    def pause(self) -> tuple[bool, str]:
-        return self._trigger("pause")
-
-    def abort(self) -> tuple[bool, str]:
-        return self._trigger("abort")
 
     def ack_fault(self) -> tuple[bool, str]:
         return self._trigger("ack")

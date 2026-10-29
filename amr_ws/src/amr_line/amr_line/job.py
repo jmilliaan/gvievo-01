@@ -59,7 +59,7 @@ for a physical Start once its cause is gone, then the pre-move warning.
               enough where the AGV is before a stop, an order or the U-turn. Held BEFORE the
               point; a physical Start re-checks (tracked plan 4, 2026-10-24)
   payload     a trip at its U-turn with a release not recorded: no pivot with a trolley
-              attached. The Calls page's "released" confirmation, then a physical Start
+              attached. The "Released" confirmation on Run → Calls, then a physical Start
   authority   lease, generation or panel selector changed under the run.
               Never auto-resumes: something above this layer took control.
               An explicit act - the selector leaving AUTO on a valid panel,
@@ -348,7 +348,7 @@ class FollowJob:
                                                      if self.trip and machine in self.trip.machines else "")
 
     def confirm_released(self):
-        """The Calls page: every trolley of this trip is off (the HOLD payload before the U-turn).
+        """Run → Calls: every trolley of this trip is off (the HOLD payload before the U-turn).
         It records; the vehicle moves only on the physical Start."""
         if self.trip is None:
             return False, "no trip is being driven"
@@ -356,7 +356,7 @@ class FollowJob:
         return True, "releases confirmed: press the physical Start to pivot"
 
     def confirm_off(self):
-        """The Calls page: the trolleys are off at HOME; the next trip may leave the bay."""
+        """Run → Calls: the trolleys are off at HOME; the next trip may leave the bay."""
         if self.payload is None:
             return False, "no site mission is the job"
         if self.trip is not None:
@@ -365,7 +365,7 @@ class FollowJob:
         return True, "trolleys off at HOME confirmed: the next trip may leave"
 
     def trip_status(self):
-        """For the Calls page and LineState: (trip, next, queue, payload)."""
+        """For Run → Calls and LineState: (trip, next, queue, payload)."""
         if self.calls is None:
             return {"trip": "", "trip_next": "", "trip_queue": "", "trip_payload": ""}
         q = " ".join(m for m, _t in self.calls.pending)

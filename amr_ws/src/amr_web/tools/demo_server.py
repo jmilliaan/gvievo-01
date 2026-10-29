@@ -475,16 +475,7 @@ class DemoAdapter:
         )
 
     def request_mode(self, target, map_id, map_revision, request_id):
-        with self.lock:
-            if target == fsm.LINE:
-                return False, "", "demo: there is no line layer"
-            d = fsm.admit(self.mode["mode"], fsm.REQ_IDLE, self._conditions())
-            if not d.ok:
-                return False, "", d.reason
-            self._reset()
-            self.mode = mode_dict(generation=self.mode["generation"] + 1)
-            self._event(0, "supervisor", "MODE_CHANGE", "IDLE")
-            return True, self._op("mode"), "accepted"
+        return False, "", "demo: there is no line layer"  # the web only asks for LINE
 
     def survey_move(self, kind, value):
         return False, "demo: no vehicle to move"
@@ -626,12 +617,6 @@ class DemoAdapter:
             return True, "localisation reset"
 
     # Home's Pause / Abort / Ack: there is no trackless run in the demo.
-    def pause(self):
-        return False, "not executing"
-
-    def abort(self):
-        return False, "nothing to abort"
-
     def ack_fault(self):
         return False, "no fault"
 

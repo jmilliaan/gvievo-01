@@ -303,7 +303,7 @@ class SiteRun(TapeRun):
             return role
         ok, why = self.trip.may_pivot()
         if not ok:
-            return ("payload", f"{why}: no U-turn; confirm the release on the Calls page or go back "
+            return ("payload", f"{why}: no U-turn; confirm the release on Run → Calls or go back "
                                f"to the release stop")
         e = self.route.uturn
         self.stop = None

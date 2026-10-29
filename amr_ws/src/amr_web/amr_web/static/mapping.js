@@ -190,7 +190,6 @@ if (ENG) {
   $('btn-survey-returned').onclick = () => surveyOp('/api/survey/returned');
   $('btn-survey-save').onclick = () => surveyOp('/api/survey/save', { note: $('survey-note').value.trim() });
   $('btn-survey-abort').onclick = () => surveyOp('/api/survey/abort');
-  if ($('btn-to-line')) $('btn-to-line').onclick = () => surveyOp('/api/mode', { target: 'line' });
   $('tool-hint').onclick = () => { if (view.tool) { dropTools(); return; } view.tool = 'hint'; $('tool-hint').classList.add('on'); };
   $('cs-at-end').onclick = () => { dropTools(); setHint(surveyEnd(), 'survey end'); };
   $('cs-at-start').onclick = () => { dropTools(); setHint(startMark(), 'start mark'); };

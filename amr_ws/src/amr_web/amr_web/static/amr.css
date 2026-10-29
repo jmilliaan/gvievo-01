@@ -470,6 +470,11 @@ button.dir.stopbtn.active { background:var(--stop); border-color:var(--stop); co
 .job-actions > button.big { flex-direction:column; gap:.2rem; }
 .job-actions small { font:500 1.05rem var(--mono); letter-spacing:.02em; text-transform:none; color:var(--ink-2);
   max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Run: the job and the calls under it in one scrolling column (Calls merged in, 2026-10-29).
+   A part is the sticky bar's box, so Set job / Clear scrolls away with the job part. */
+.job-part { display:flex; flex-direction:column; gap:.8rem; }
+.job-part > * { flex:0 0 auto; margin:0; }
+.job-part h2 { margin:.2rem 0 0; }
 .pick-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(16rem,1fr)); gap:.5rem; }
 .pick-grid.small { grid-template-columns:repeat(auto-fill,minmax(10rem,1fr)); }
 .pick-grid.small button.pick { min-height:3.8rem; }
@@ -544,13 +549,6 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */
 .home { display:flex; flex-direction:column; gap:1rem; min-height:0; }
-/* Home: tracked / idle, a two-way segmented switch (2026-10-08) */
-.home-nav { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
-.home-nav-label { font:600 1.1rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); }
-.seg { display:inline-flex; }
-.seg button.tool { min-height:3.4rem; padding:.5rem 1.6rem; font-size:1.3rem; }
-.seg button.tool + button.tool { margin-left:-1px; }
-.home-nav-hint { color:var(--ink-2); font-size:1.2rem; }
 .home-state { min-width:0; border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; }
 /* Job and status side by side, the job wider (2026-10-08) */
 .home-top { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:.8rem; }

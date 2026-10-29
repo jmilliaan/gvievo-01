@@ -313,7 +313,7 @@ class TapeRuntime:
         sha = self.resolve_sha(map_id, rev) if self.resolve_sha else ""
         store.write_active(self.state_dir, map_id, rev, None, "")
         return True, (f"teaching map {map_id} rev{rev} ({sha[:12]}) selected: it is loaded when LINE "
-                      f"starts next (Navigation -> Trackless -> Tracked, or a service restart)")
+                      f"starts next (Home -> More -> Restart tape layer, or a service restart)")
 
     def _t_pass_start(self, t, arg):
         why = self._need_map()
@@ -608,7 +608,7 @@ class TapeRuntime:
         if bad:
             return False, bad
         store.write_active(self.state_dir, self.sel["map_id"], self.sel["map_revision"], int(arg), sha)
-        return True, f"g{arg} active: it is loaded when LINE starts next"
+        return True, f"g{arg} active: it is loaded when LINE starts next (Home -> More -> Restart tape layer)"
 
     # -- outputs ---------------------------------------------------------------------
     def drain_events(self):

@@ -87,7 +87,7 @@ function onState(fn) { stateListeners.push(fn); }
 let lastState = null;
 const MODE_LEVEL = { STARTING: 'warn', TRANSITIONING: 'warn', FAULT: 'bad', STOPPING: 'bad' };
 const LOC_LEVEL = { CHECKING: 'warn', LOST: 'bad' };
-const RUN_LEVEL = { BLOCKED: 'warn', PAUSED: 'warn', FAULT: 'bad' };
+const LINE_LEVEL = { IDLE: '', ARMED: 'warn', RUNNING: 'ok', HOLD: 'warn', DONE: '', FAULT: 'bad' };
 // Panel / drives / mux samples older than this are not current: alarms.FRESH_S, rendered by base.html.
 const FRESH_S = Number(document.documentElement.dataset.freshS) || 0.5;
 // The selector as the panel image says it: '–' none, STALE, INVALID, else AUTO / MANUAL.
@@ -125,9 +125,10 @@ function rail(st) {
   const l = st.localization;
   tile('tel-loc', l ? l.state_name : '–', st.localization_stale ? 'stale (replaced layer)' : (l ? '—' : 'no layer'),
        l ? LOC_LEVEL[l.state_name] : '', st.localization_stale);
-  const r = st.run;
-  tile('tel-run', r ? r.state_name : '–', st.run_stale ? 'stale (replaced layer)' : (r ? (r.step_id || '—') : 'no executor'),
-       r ? RUN_LEVEL[r.state_name] : '', st.run_stale);
+  // The tape follower's run (2026-10-29; was the trackless executor, which the web no longer starts).
+  const ln = st.line;
+  tile('tel-run', ln ? (ln.state_name || '–') : '–', ln ? (ln.hold_cause || ln.mission || '—') : 'no tape layer',
+       ln ? (LINE_LEVEL[ln.state_name] || '') : '');
   tile('tel-gen', m ? String(m.generation) : '–', st.lease ? 'lease' : 'no lease', st.lease ? '' : 'warn');
 }
 // Header chips beside NET: drive supply voltage and IPC CPU temperature (both <10 s old).
