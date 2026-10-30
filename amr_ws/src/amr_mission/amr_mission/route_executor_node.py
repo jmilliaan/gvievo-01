@@ -50,6 +50,13 @@ passed AND the drives report torque. Without torque within premove_timeout_s the
 (estop: Start again once the safety chain is reset). Auto-resumed holds keep their power and
 skip the warning: nobody pressed anything.
 
+Emergency (emergency-suite plan, owner answers 2026-10-30). A fresh PanelState whose
+`emergency` is not NORMAL ABORTS the run in any state - READY, the pre-move warning, EXECUTING,
+PAUSED, BLOCKED - with reason "emergency stop" (event code ESTOP). Nothing resumes: after
+release + Reset a new Load and Start are needed. Load and Start are refused while it is not
+NORMAL. The `estop` hold above is now only the inference from torque, used while the panel
+cannot say (stale) or before its DI08 has caught up with the drive report.
+
 Prerequisites are debounced (operator decision 2026-09-20): a prerequisite must FAIL
 CONTINUOUSLY for prereq_grace_s before it faults a run or unreadies a loaded mission, so one
 dropped frame is not a fault. This does not extend motion authority - the mux enforces panel,
@@ -140,6 +147,8 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
 
 
 class RouteExecutor(Node):
+    _abort_code = ""  # catalogue code for the next IDLE event (an emergency abort: ESTOP)
+
     def __init__(self) -> None:
         super().__init__("route_executor")
         self.declare_parameter("maps_dir", os.path.expanduser("~/amr_maps"))
@@ -359,12 +368,30 @@ class RouteExecutor(Node):
 
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, self._now()
+        if self._emergency(self._panel_t):
+            with self._lock:
+                self._emergency_abort()
         if m.start_edge:
             with self._lock:
                 self._start_edge()
         if m.reset_edge:
             with self._lock:
                 self._reset_edge()
+
+    def _emergency(self, now: float) -> bool:
+        """The panel says E-stop (PanelState.emergency != EMG_NORMAL) on a fresh image. A stale
+        panel says nothing here: the torque inference and the prerequisites cover it."""
+        m = self._panel
+        fresh = m is not None and now - self._panel_t <= self.panel_age
+        return fresh and int(m.emergency) != PanelState.EMG_NORMAL
+
+    def _emergency_abort(self) -> None:
+        """An emergency ends the run, in any state; nothing resumes (owner, 2026-10-30)."""
+        if self.fsm.state not in (fsm.READY, *fsm.ACTIVE):
+            return
+        self._abort_code = "ESTOP"
+        if self.fsm.abort("emergency stop"):
+            self._interrupt("emergency stop")
 
     def _reset_edge(self) -> None:
         """Physical Reset (review Q19): acknowledges THIS executor's FAULT, exactly like the
@@ -482,6 +509,9 @@ class RouteExecutor(Node):
 
     def _srv_run(self, req: RunMission.Request, res: RunMission.Response):
         with self._lock:
+            if self._emergency(self._now()):
+                res.accepted, res.message = False, "refused: E-stop active - release it and press Reset first"
+                return res
             try:
                 mission = store.load_mission(self.maps_dir, req.mission_id)
                 why = mission_matches_active_map(mission, self.active_map)
@@ -627,6 +657,11 @@ class RouteExecutor(Node):
         return True, ""
 
     def _start_edge(self) -> None:
+        if self._emergency(self._now()):
+            # at once: no pre-move lamp/horn, no wait (emergency plan §4.4)
+            self.fsm.reason = "Start refused: E-stop active - release it and press Reset first"
+            self._log_state()
+            return
         if self.fsm.state == fsm.READY:
             gate_ok, why = self._start_gate()
             pre = self._prereqs()
@@ -965,6 +1000,9 @@ class RouteExecutor(Node):
             now = self._now()
             if state != fsm.BLOCKED:
                 self.hold_cause, self._pending_since = "", None  # a hold ends with its BLOCKED
+            if self._emergency(now) and state in (fsm.READY, *fsm.ACTIVE):
+                self._emergency_abort()
+                state = self.fsm.state
             if state in fsm.ACTIVE or state == fsm.READY:
                 pre = self._prereqs()
                 held = self._prereq_held(now, pre)
@@ -1304,8 +1342,9 @@ class RouteExecutor(Node):
             if self.fsm.state == fsm.BLOCKED
             else (self.fault_code or "EXEC_ACTION_FAILED")
             if self.fsm.state == fsm.FAULT
-            else "MODE_CHANGE"
+            else self._abort_code or "MODE_CHANGE"
         )
+        self._abort_code = ""
         row = alarms.get(code)
         m = Event()
         m.header.stamp = self.get_clock().now().to_msg()

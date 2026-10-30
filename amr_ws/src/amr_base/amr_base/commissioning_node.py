@@ -273,6 +273,7 @@ class CommissioningNode(Node):
             authority=authority,
             start_edge_t=start_edge_t,
             pp_status=self._pp_view,
+            emergency=bool(panel_ok and getattr(self._panel, "emergency", 0) != PanelState.EMG_NORMAL),
         )
         before = self.job.phase
         wl, wr = self.job.tick(inputs)

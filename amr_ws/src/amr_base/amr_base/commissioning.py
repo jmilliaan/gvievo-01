@@ -105,6 +105,7 @@ class Inputs:
     authority: tuple[str, int] | None = None  # fresh lease (instance, generation), None if stale/none
     start_edge_t: float | None = None  # when the Start edge was received (same clock as `now`)
     pp_status: PpView | None = None  # latest /drives/pp_status (pp backend only)
+    emergency: bool = False  # a fresh PanelState.emergency != EMG_NORMAL: abort, never resume
 
 
 @dataclass
@@ -225,6 +226,8 @@ class Job:
     # -- the tick --
 
     def _authority(self, i: Inputs) -> str | None:
+        if i.emergency:
+            return "emergency stop"
         if not (i.panel_valid and i.panel_manual):
             return "panel not valid MANUAL"
         if not (i.lease_allowed & LEASE_COMMISSIONING):

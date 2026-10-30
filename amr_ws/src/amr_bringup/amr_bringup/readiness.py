@@ -92,6 +92,7 @@ class Snapshots:
         self.panel_t = None
         self.panel_valid = False
         self.panel_manual = False
+        self.panel_emergency = 0  # PanelState.emergency (amr_base/emergency.py), 0 = NORMAL
         self.mapping_gen = None
         self.mapping_state = None
         self.mapping_map_id = ""
@@ -137,6 +138,7 @@ class Snapshots:
             self.panel_t = time.monotonic()
             self.panel_valid = bool(m.valid)
             self.panel_manual = not bool(m.mode_auto)
+            self.panel_emergency = int(getattr(m, "emergency", 0))
 
     def on_mapping(self, m) -> None:
         with self._lock:
@@ -188,6 +190,15 @@ class Snapshots:
         with self._lock:
             return self.mux_t is not None and now - self.mux_t <= fresh_s and self.mux_gen == generation
 
+    def emergency(self, now: float, fresh_s: float = 1.0) -> int:
+        """The panel's emergency state, or 0 (NORMAL) when there is no fresh panel image: a
+        stale panel is PANEL_STALE's to report, and the mux has no authority without one."""
+        with self._lock:
+            return self.panel_emergency if self._panel_fresh_locked(now, fresh_s) else 0
+
+    def _panel_fresh_locked(self, now: float, fresh_s: float) -> bool:
+        return self.panel_t is not None and 0.0 <= now - self.panel_t <= fresh_s
+
     def mapping_state_for(self, generation: int) -> bool:
         with self._lock:
             return self.mapping_gen == generation and self.mapping_state is not None
@@ -214,6 +225,7 @@ class Snapshots:
                 operation_pending=operation_pending,
                 commissioning_active=self._commissioning_active_locked(now),  # lock already held
                 drives_ok=bool(self.drives_t is not None and now - self.drives_t <= 1.0 and self.drives_ok),
+                emergency=self.panel_emergency if self._panel_fresh_locked(now, 1.0) else 0,
             )
 
 

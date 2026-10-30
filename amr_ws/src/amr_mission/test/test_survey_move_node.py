@@ -210,3 +210,17 @@ def test_a_bug_in_the_loop_stops_the_move_and_the_node_lives_on():
     assert n.state == S.ABORTED and "internal error" in n.reason
     assert n.sent[-1].valid_for_s == 0.0  # revoked: the vehicle stops
     assert request(n, "straight", 1.0).accepted  # and the next move works
+
+
+def test_the_panel_emergency_aborts_a_move_and_refuses_a_new_one():
+    """Emergency plan §4.6: aborted on the panel's word, never resumed; started again by hand."""
+    n = node()
+    request(n, "straight", 3.0)
+    n._tick()
+    n._on_panel(PanelState(valid=True, emergency=PanelState.EMG_ACTIVE))
+    assert n.state == S.ABORTED and "emergency stop" in n.reason
+    assert n.sent[-1].valid_for_s == 0.0
+    feed(n)
+    n._panel.emergency = PanelState.EMG_RESET_NEEDED
+    r = request(n, "straight", 1.0)
+    assert not r.accepted and "emergency stop" in r.message

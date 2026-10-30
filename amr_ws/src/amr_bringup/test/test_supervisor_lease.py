@@ -22,12 +22,13 @@ def cond(**kw):
     return fsm.Conditions(**base)
 
 
-def allowed(mode, txn=None, inhibit_manual=False, commissioning=False):
+def allowed(mode, txn=None, inhibit_manual=False, commissioning=False, emergency=0):
     sv = types.SimpleNamespace(
         txn=txn,
         mode=mode,
         inhibit_manual=inhibit_manual,
-        snap=types.SimpleNamespace(commissioning_active=lambda now: commissioning),
+        snap=types.SimpleNamespace(commissioning_active=lambda now: commissioning,
+                                   emergency=lambda now: emergency),
         _now=lambda: 100.0,
     )
     return Supervisor._allowed(sv)
@@ -53,3 +54,27 @@ def test_lease_bits_per_mode():
 def test_a_trackless_vehicle_admits_navigation_and_a_survey():
     assert fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond()).ok
     assert fsm.admit(fsm.IDLE, fsm.REQ_SURVEY_START, cond()).ok
+
+
+def test_no_lease_and_no_mode_change_while_the_emergency_is_not_normal():
+    """Emergency plan §4.5: allowed = 0 (a second no-motion layer above the mux), and a
+    survey start or a mode replacement is refused with the reason; the mode itself stays."""
+    for emg in (1, 2, 3, 4):
+        for mode in (fsm.NAVIGATION, fsm.IDLE, fsm.MAPPING):
+            assert allowed(mode, emergency=emg) == 0
+            assert allowed(mode, commissioning=True, emergency=emg) == 0
+        for req in (fsm.REQ_SURVEY_START, fsm.REQ_NAVIGATION, fsm.REQ_IDLE):
+            d = fsm.admit(fsm.NAVIGATION, req, cond(emergency=emg))
+            assert not d.ok and "E-stop active" in d.reason, req
+    assert fsm.admit(fsm.NAVIGATION, fsm.REQ_SURVEY_ABORT, cond(emergency=1)).ok is False  # not surveying
+    assert fsm.admit(fsm.MAPPING, fsm.REQ_SURVEY_ABORT, cond(emergency=1)).ok, "stopping a survey is fine"
+
+
+def test_the_supervisor_reads_the_emergency_only_from_a_fresh_panel():
+    from amr_bringup.readiness import Snapshots
+
+    s = Snapshots()
+    s.on_panel(types.SimpleNamespace(valid=True, mode_auto=False, emergency=2))
+    now = s.panel_t
+    assert s.emergency(now) == 2 and s.conditions(now, 0, False).emergency == 2
+    assert s.emergency(now + 1.5) == 0, "stale: PANEL_STALE's to report"

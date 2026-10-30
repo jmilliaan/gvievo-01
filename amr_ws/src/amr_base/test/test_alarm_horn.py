@@ -63,3 +63,18 @@ def test_a_field_switches_the_horn_to_the_alarm_horn():
     assert motion_outputs(False, False, MOTION, MOVEMENT_HORN) == {LAMP: False, HORN: False}, "stopped"
     assert motion_outputs(False, True, MOTION, MOVEMENT_HORN) == {LAMP: True, HORN: False}, \
         "stopped by protective: lamp and alarm horn"
+
+
+def test_every_coil_is_low_while_not_normal():
+    """Owner, 2026-10-30: no lamp, no horn, no alarm horn in an emergency (DO00/DO01/DO02 and
+    the horn coil); outside it the motion/alarm rules are unchanged."""
+    from amr_base.panel_io import coil_image
+
+    ALARM, H = 2, 5
+    kw = dict(alarm_on=[ALARM], motion_on=MOTION, movement_horn=MOVEMENT_HORN, horn_ch=H)
+    assert coil_image(True, True, True, True, **kw) == {ALARM: True, LAMP: True, HORN: False, H: True}
+    assert coil_image(True, False, True, False, **kw) == {ALARM: False, LAMP: True, HORN: True, H: False}
+    for alarm in (False, True):
+        for turning in (False, True):
+            outs = coil_image(False, alarm, turning, True, **kw)
+            assert outs == {ALARM: False, LAMP: False, HORN: False, H: False}

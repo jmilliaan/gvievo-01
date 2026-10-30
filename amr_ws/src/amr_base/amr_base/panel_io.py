@@ -47,6 +47,7 @@ class PanelFrame:
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
     manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
+    estop_ok: bool = False  # panel.di_estop_ok HIGH for debounce_scans; LOW at once; False while invalid
 
 
 class PanelAdapter:
@@ -92,6 +93,11 @@ class PanelAdapter:
         # power-on powers the drives once the image is valid - power is not motion.
         self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
         self._last_arm: bool | None = None
+        # E-stop OK (DI08, Flexi Soft Q3): only the HIGH direction is debounced. One LOW scan,
+        # an invalid image or a comms gap is an emergency at once (emergency plan §4.1).
+        self.estop_scans = scans
+        self._estop_high = 0
+        self._last_estop: bool | None = None
         self.seq = 0
         self._last_scans: int | None = None  # DIO acquisition count behind the last evaluated frame
         self._last_frame: PanelFrame | None = None
@@ -129,6 +135,7 @@ class PanelAdapter:
                 comms_ok=True,
                 pendant=self._last_frame.pendant,
                 manual_arm=self._last_frame.manual_arm,
+                estop_ok=self._last_frame.estop_ok,
             )
         self._last_scans = scans
         intent = self.scan.scan(snapshot.get("di"), comms)
@@ -157,6 +164,14 @@ class PanelAdapter:
             if self._last_arm is not None or arm:
                 notes.append(f"Manual Arm {'on' if arm else 'off'}")
             self._last_arm = arm
+        # HIGH scans are counted from the first fresh image, so the one that completes the
+        # baseline is already believed: a boot with DI08 HIGH is never a one-scan "LOW".
+        high = comms and _bit(snapshot.get("di"), config.PANEL_DI_ESTOP_OK)
+        self._estop_high = self._estop_high + 1 if high else 0
+        estop_ok = bool(intent.valid) and self._estop_high >= self.estop_scans
+        if estop_ok != self._last_estop:
+            notes.append(f"E-stop OK (DI{config.PANEL_DI_ESTOP_OK}) {'HIGH' if estop_ok else 'LOW'}")
+            self._last_estop = estop_ok
         if self.pendant is not None and pend != self._last_pendant:
             held = [n for n in pend._fields if getattr(pend, n)]
             notes.append("pendant " + (" ".join(held).upper() if held else "released"))
@@ -171,6 +186,7 @@ class PanelAdapter:
             changed="; ".join(notes) or None,
             pendant=pend,
             manual_arm=arm,
+            estop_ok=estop_ok,
         )
         self._last_frame = frame
         return frame
@@ -206,6 +222,13 @@ class PanelAdapter:
         return intent.mode, pend
 
 
+def _bit(di, ch: int) -> bool:
+    try:
+        return bool(di[ch])
+    except (IndexError, TypeError):
+        return False
+
+
 # AUTO runs that count for the alarm horn: EXECUTING / BLOCKED (amr_interfaces RunState values).
 RUN_ACTIVE = (2, 4)
 
@@ -234,6 +257,24 @@ def motion_outputs(turning: bool, alarm: bool, channels, movement_horn) -> dict[
     MCQ4-4 - are on while the motors turn AND while the alarm sounds, so the lamp already
     turns during the 2 s pre-move warning (operator, 2026-10-27)."""
     return {ch: (turning and not alarm) if ch in movement_horn else (turning or alarm) for ch in channels}
+
+
+def coil_image(
+    normal: bool, alarm: bool, turning: bool, horn: bool,
+    alarm_on=None, motion_on=None, movement_horn=None, horn_ch=None,
+) -> dict[int, bool]:
+    """Every DIO coil panel_node drives this tick, by channel. While the emergency state is
+    not NORMAL every one is LOW - no lamp, no horn, no alarm horn (owner, 2026-10-30)."""
+    alarm_on = config.DIO_ALARM_ON if alarm_on is None else alarm_on
+    motion_on = config.DIO_MOTION_ON if motion_on is None else motion_on
+    movement_horn = config.DIO_MOVEMENT_HORN if movement_horn is None else movement_horn
+    if horn_ch is None and config.HORN_ENABLED:
+        horn_ch = config.HORN_DO_CHANNEL
+    outs = {ch: alarm for ch in alarm_on}
+    outs.update(motion_outputs(turning, alarm, motion_on, movement_horn))
+    if horn_ch is not None:
+        outs[horn_ch] = horn
+    return outs if normal else dict.fromkeys(outs, False)
 
 
 def horn_wanted(

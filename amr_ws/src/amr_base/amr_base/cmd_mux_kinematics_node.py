@@ -84,6 +84,7 @@ class CmdMuxKinematics(Node):
     _scale = 1.0
     _speed_ramp: gating.SpeedRamp | None = None
     _target = 1.0
+    _repress: gating.RepressGuard | None = None
 
     def __init__(self) -> None:
         super().__init__("cmd_mux_kinematics")
@@ -199,6 +200,7 @@ class CmdMuxKinematics(Node):
         self._scale = 1.0
         self._speed_ramp = gating.SpeedRamp()  # the ramped warning factor actually applied to AUTO
         self._target = 1.0
+        self._repress = gating.RepressGuard()  # a hand held through an E-stop must let go first
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
@@ -286,6 +288,7 @@ class CmdMuxKinematics(Node):
             bool(msg.pendant_rvs),
             bool(msg.pendant_left),
             bool(msg.pendant_right),
+            int(msg.emergency),
         )
 
     def _on_commissioning(self, msg: WheelVelocities) -> None:
@@ -379,6 +382,7 @@ class CmdMuxKinematics(Node):
             drives=self._drives,
             commissioning=self._commissioning,
         )
+        sel = self._repress_gate(sel)
         self._view = gating.field_view(self._now(), self._field, self.fp)
         sel, target = gating.field_limit(sel, self._view, self.gp, self.fp)
         if self._speed_ramp is None:
@@ -491,6 +495,31 @@ class CmdMuxKinematics(Node):
         self._pub.publish(out)
 
     _out = (0.0, 0.0)
+
+    def _repress_gate(self, sel: gating.Selection) -> gating.Selection:
+        """After an emergency, no hand source until every hand input has read released once.
+        The ESTOP selection itself (NONE) already zeroed the ramps; this keeps them at zero."""
+        if self._repress is None:
+            self._repress = gating.RepressGuard()
+        panel, now, gp = self._panel, self._now(), self.gp
+        if panel is None:
+            return sel
+        man, tel = self._manual.current, self._teleop
+        held = (
+            panel.fwd or panel.rvs or panel.left or panel.right
+            or (man is not None and now - man.t <= gp.cmd_timeout_s and (man.v, man.w) != (0.0, 0.0))
+            or (tel is not None and now - tel.t <= gp.cmd_timeout_s and (tel.v, tel.w) != (0.0, 0.0))
+        )
+        was = self._repress.blocked
+        blocked = self._repress.update(panel.emergency, held)
+        if was and not blocked:
+            self.get_logger().info("after the E-stop: hand inputs released, manual motion allowed again")
+        if blocked and sel.source in (gating.PENDANT, gating.MANUAL, gating.TELEOP):
+            return gating.Selection(
+                gating.NONE, 0.0, 0.0, "after the E-stop: release the pendant / jog once", sel.generation,
+                code="NO_SOURCE",
+            )
+        return sel
 
     def _publish_state(self) -> None:
         m = MuxState()

@@ -1,5 +1,8 @@
 """Drive power policy (2026-10-08): when drive_node powers the drives. Pure and clock-fed.
 
+    E-STOP   PanelState.emergency not NORMAL (amr_base/emergency.py): never powered, before
+             every rule below. STO has already cut torque; this stops the PC from fighting it
+             (the 2 s re-engage loop against STO, emergency plan §4.2)
     ARM      the pendant enable (panel.di_manual_arm, DI09 on MCQ4-4) gates BOTH modes:
              LOW is never powered, whatever the selector says (operator, 2026-10-27)
     MANUAL   powered while ARM is HIGH
@@ -30,6 +33,7 @@ class Panel:
     valid: bool
     mode_auto: bool
     manual_arm: bool
+    emergency: int = 0  # PanelState.emergency; 0 = EMG_NORMAL
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,8 @@ def want_power(
         return False, "panel state stale"
     if not panel.valid:
         return False, "panel image invalid"
+    if panel.emergency != 0:
+        return False, "E-stop (DI08)" if panel.emergency == 1 else "waiting for Reset"
     mode = "AUTO" if panel.mode_auto else "MANUAL"
     if not panel.manual_arm:
         return False, f"{mode}, pendant enable (arm) off"

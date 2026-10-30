@@ -128,7 +128,9 @@ class SurveyMoveNode(Node):
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, self._now()
         with self._lock:
-            if self.state == SurveyMoveState.MOVING and self._pendant(m):
+            if self.state == SurveyMoveState.MOVING and m.emergency != PanelState.EMG_NORMAL:
+                self._abort("emergency stop")  # never resumed: the operator starts it again
+            elif self.state == SurveyMoveState.MOVING and self._pendant(m):
                 self._abort("pendant button pressed")
 
     def _on_drives(self, m: DriveStatus) -> None:
@@ -163,6 +165,8 @@ class SurveyMoveNode(Node):
         pn = self._panel
         if pn is None or now - self._panel_t > self.input_age or not pn.valid:
             return "panel stale or invalid"
+        if pn.emergency != PanelState.EMG_NORMAL:
+            return "emergency stop"
         if pn.mode_auto:
             return "selector is not MANUAL"
         if self._pendant(pn):

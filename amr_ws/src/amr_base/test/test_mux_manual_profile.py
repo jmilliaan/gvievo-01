@@ -108,3 +108,33 @@ def test_follow_uses_d_max_and_alpha_max():
     up = _node()
     _run(up, gating.Selection(gating.FOLLOW, 0.85, 0.0, "follow", 0), 5)
     assert up._v == pytest.approx(0.15 * 0.1)
+
+
+def test_estop_zeroes_the_ramps_and_a_pendant_held_through_reset_stays_dead():
+    """Emergency plan §4.3 / §8 step 2: jog held, E-stop, release, Reset with the pendant
+    still held - the vehicle must not move until the pendant has been let go once."""
+    n = _node()
+    n._repress = gating.RepressGuard()
+
+    def panel(emg, fwd):
+        n._panel = gating.Panel(10.0, True, False, fwd=fwd, emergency=emg)
+
+    panel(0, True)
+    for _ in range(20):
+        n._tick()
+    assert n._v > 0.0 and n._a > 0.0
+    panel(1, True)
+    n._tick()
+    assert (n._v, n._a, n._out, n._last.code) == (0.0, 0.0, (0.0, 0.0), "ESTOP")
+    for emg in (2, 3, 0):  # released E-stop, Reset, NORMAL - the pendant held all along
+        panel(emg, True)
+        for _ in range(10):
+            n._tick()
+        assert (n._v, n._a, n._out) == (0.0, 0.0, (0.0, 0.0)), emg
+    assert "release the pendant" in n._last.reason
+    panel(0, False)
+    n._tick()
+    panel(0, True)
+    for _ in range(5):
+        n._tick()
+    assert n._v > 0.0 and n._last.source == gating.PENDANT

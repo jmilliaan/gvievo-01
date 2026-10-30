@@ -301,6 +301,8 @@ class Supervisor(Node):
             return 0
         if self.inhibit_manual:
             return 0
+        if self.snap.emergency(self._now()):
+            return 0  # E-stop (emergency plan §4.5): a second no-motion layer above the mux; no mode change
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
         if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
@@ -321,7 +323,8 @@ class Supervisor(Node):
         self.lease_seq += 1
         m.seq = self.lease_seq
         m.allowed = self._allowed()
-        m.inhibit_reason = "" if m.allowed else (self.phase or fsm.MODE_NAMES[self.mode])
+        why = self.phase or fsm.MODE_NAMES[self.mode]
+        m.inhibit_reason = "" if m.allowed else "emergency stop" if self.snap.emergency(self._now()) else why
         return m
 
     def _publish_lease(self) -> None:

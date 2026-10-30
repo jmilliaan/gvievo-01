@@ -114,6 +114,8 @@
     <origin xyz="$(arg imu_x) $(arg imu_y) $(arg imu_z)" rpy="0 0 0"/>
   </joint>
 
-  <!-- floor_cam_frame (spec §2.3) is deliberately absent: no camera on this vehicle (D-4). -->
+  <!-- floor_cam_frame (spec §2.3) is not here yet. The GLS621 floor-label reader is
+       mounted but not integrated; it will become gls_frame, generated from the
+       profile's gls mount keys (manuals/gls6-qr/gls6-system.md §3.6). -->
 
 </robot>

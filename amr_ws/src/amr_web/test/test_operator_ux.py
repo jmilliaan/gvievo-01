@@ -136,7 +136,9 @@ def test_a_field_stop_says_it_resumes_by_itself_and_offers_no_button():
     assert h["state"] == view.STOPPED_WILL_RESUME and h["button"] == ""
 
 
-def test_an_estop_hold_tells_the_operator_to_press_start():
+def test_an_inferred_estop_hold_sends_the_operator_to_the_cabinet_reset():
+    """The executor's torque-inferred 'estop' hold (panel stale or not yet reporting): the
+    same ESTOP words as the panel's emergency - release, then the physical Reset."""
     st = merged(
         run={
             "state_name": "BLOCKED",
@@ -149,7 +151,7 @@ def test_an_estop_hold_tells_the_operator_to_press_start():
         }
     )
     h = view.headline(st, view.standing(st))
-    assert h["state"] == view.STOPPED_NEEDS_YOU and "Start" in h["action"]
+    assert h["state"] == view.STOPPED_NEEDS_YOU and "Reset" in h["action"] and h["button"] == ""
 
 
 def test_an_executor_fault_offers_acknowledge():
@@ -547,10 +549,10 @@ def test_the_adapter_state_carries_no_tracked_keys(monkeypatch):
     a._lock = threading.Lock()
     a._now = lambda: 10.0
     for name in ("_mode", "_lease", "_panel", "_drives", "_mux", "_wheels", "_mapping", "_loc", "_run",
-                 "_survey_move", "_scan_recv_t", "_ipc_temp"):
+                 "_survey_move", "_scan_recv_t", "_ipc_temp", "_emg", "_emg_active_t"):
         setattr(a, name, None)
     for name in ("_mode_t", "_lease_t", "_panel_t", "_drives_t", "_mux_t", "_wheels_t", "_mapping_t",
-                 "_loc_t", "_run_t", "_survey_move_t", "_started_t"):
+                 "_loc_t", "_run_t", "_survey_move_t", "_started_t", "_emg_t"):
         setattr(a, name, 0.0)
     a._ipc_temp_t, a._diag = 10.0, {}
     a._disk_t, a._disk_cache = 10.0, {"free_mb": 1, "level": "ok", "path": "/"}

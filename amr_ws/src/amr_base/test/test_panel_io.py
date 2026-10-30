@@ -274,3 +274,36 @@ def test_a_held_pendant_dies_with_the_source_and_the_coincidence_hold_is_1_5_s()
     assert not f.pendant.fwd
     # the default hold is counted in acquisitions at the DIO scan period: 1.5 s, not 0.6 s
     assert ad.hold_scans * config.DIO_SCAN_PERIOD_S == pytest.approx(config.PANEL_COINCIDENCE_HOLD_S, abs=config.DIO_SCAN_PERIOD_S)
+
+
+def _estop_di(high):
+    bits = _di()
+    bits[config.PANEL_DI_ESTOP_OK] = high
+    return bits
+
+
+def test_estop_ok_low_counts_at_once_high_needs_debounce():
+    """DI08 (panel.di_estop_ok): going to EMERGENCY is one scan, leaving it needs
+    debounce_scans consecutive HIGH scans; an invalid image is never OK (fail-safe)."""
+    ad = _adapter()
+    f = _settle(ad, _estop_di(True))  # the first valid image: already OK, no boot-time LOW
+    assert f.valid and f.estop_ok
+    f = ad.tick(_snap(_estop_di(False)))  # one LOW scan: at once
+    assert not f.estop_ok and "LOW" in f.changed
+    f = ad.tick(_snap(_estop_di(True)))
+    assert not f.estop_ok, "one HIGH scan after a LOW is not believed"
+    f = ad.tick(_snap(_estop_di(True)))
+    assert f.estop_ok and "HIGH" in f.changed
+    f = ad.tick(_snap(_estop_di(True), new=False))  # same acquisition republished
+    assert f.estop_ok
+    f = ad.tick(_snap(_estop_di(True), comms=False))
+    assert not f.valid and not f.estop_ok
+
+
+def test_estop_ok_returns_with_the_image_after_a_comms_gap():
+    """Never valid with DI08 'LOW' for a scan just because the counter lagged the baseline:
+    that would be a false ESTOP event at every boot and after every DIO gap."""
+    ad = _adapter()
+    for comms in (True, True, False, True, True):
+        f = ad.tick(_snap(_estop_di(True), comms=comms))
+        assert f.estop_ok == f.valid, comms

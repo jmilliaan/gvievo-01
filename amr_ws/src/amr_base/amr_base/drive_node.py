@@ -250,7 +250,7 @@ class DriveNode(Node):
         with self._lock:
             self._panel = (t, bool(msg.valid), bool(msg.mode_auto))
             self._power_panel = arm_policy.Panel(
-                t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm)
+                t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm), int(msg.emergency)
             )
 
     def _on_ask(self, source: str, msg) -> None:

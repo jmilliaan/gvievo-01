@@ -129,11 +129,41 @@ async function pollAlarms() {
 }
 pollAlarms();
 
+// Emergency banner (base.html, emergency-suite plan §5.2): /api/state carries it already
+// decided (alarms.banner); this only draws it. The pages read the same object for their own
+// greyed controls (lastState.banner). --emg-h is the banner's height, taken off the Manual
+// pad's square so the pad stays above the fold at 1280x720 (amr.css .manual .pad).
+const mmss = s => { const t = Math.max(0, Math.floor(+s || 0)); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+function emgLayout() {
+  const el = document.getElementById('emg-banner'), on = !!el && !el.hidden;
+  document.documentElement.classList.toggle('emg', on);
+  document.documentElement.style.setProperty('--emg-h', on ? `${el.offsetHeight}px` : '0px');
+}
+function emgBanner(b) {
+  const el = document.getElementById('emg-banner');
+  if (!el) return;
+  el.hidden = !b;
+  if (b) {
+    el.classList.toggle('failed', !!b.failed);
+    document.getElementById('emg-title').textContent = b.title;
+    document.getElementById('emg-since').textContent = mmss(b.since_s);
+    document.getElementById('emg-note').textContent = b.note || '';
+    document.getElementById('emg-steps').innerHTML = (b.steps || []).map(s =>
+      `<li class="${s.done ? 'done' : ''}${s.now ? ' now' : ''}">${esc(s.text)}</li>`).join('');
+    const f = document.getElementById('emg-fail');
+    f.hidden = !b.failed; f.textContent = b.failed_text || '';
+  }
+  emgLayout();
+}
+emgLayout();
+window.addEventListener('resize', emgLayout);
+
 async function poll() {
   try {
     const { status, data } = await apiGet('/api/state');
     if (status === 200) {
       lastState = data;
+      emgBanner(data.banner || null);
       pill('pill-link', 'connected', 'ok');
       railStale(false);
       rail(data);

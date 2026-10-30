@@ -575,8 +575,14 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Switch the pendant enable (arm) on. AUTO: then press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while the mux had a command to apply. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
-| `ESTOP` | warn | Stopped: emergency stop or safety chain | Release the E-stop, then press Reset and Start on the panel. | Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
+
+### Cleared by: reset button
+
+| Code | Level | Operator sees | Operator does | Engineer's note |
+|---|---|---|---|---|
+| `ESTOP` | error | EMERGENCY STOP | Make the area safe. Release (twist) the E-stop button, then press the blue Reset button on the cabinet. | DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and aborts any run (emergency-suite plan). Also the executor's 'estop' hold when it can only infer it. |
+| `ESTOP_RESET_NEEDED` | warn | E-stop released: press Reset | Press the blue Reset button on the cabinet. | DI08 is HIGH again but no Reset edge has been seen since the emergency. |
 
 ### Cleared by: ack
 
@@ -650,6 +656,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 |---|---|---|---|---|
 | `CAN_DOWN` | error | The motor controllers cannot be reached | Call the engineer: check the CAN adapter (USB) and its cable. | can0 cannot be opened (the CANable unplugged or not enumerated). drive_node retries every 2 s and reports link_state 'no bus'; the row clears itself once the bus opens. |
 | `DISK_FULL` | error | No storage left: new maps cannot be saved | Call the engineer: the disk is full. A route already running is not affected. | Under 200 MB free. Survey start and map save are refused; navigation is deliberately NOT gated - a full disk must not stop a vehicle that is already moving. |
+| `ESTOP_RESET_FAILED` | error | Reset did not take | Check the E-stop is released and press Reset again. If it repeats, call the engineer. | Reset edge with DI08 HIGH, but the drives stayed in 'Switch on disabled' (STO held) for panel.estop_reset_timeout_s. DI08 dropping again is a new emergency, not this. |
 | `LOC_GATE_FAILED` | error | The position check stopped running | Call the engineer: the map/scan check failed. | Scan-consistency gate or the transform it needs failed; no evidence either way, so LOST. |
 | `LOC_STREAM_STALE` | error | A sensor the vehicle navigates by went quiet | Call the engineer: a sensor stopped (see the detail for which). | scan/wheels/imu/tf/amcl age over the spec 2.4 limits. |
 | `PANEL_STALE` | error | The control panel is not answering | Call the engineer: the panel wiring or the I/O island is down. | No fresh, valid PanelState: Modbus DIO at 192.168.1.40 lost, or panel_node down. No motion authority at all without it. |

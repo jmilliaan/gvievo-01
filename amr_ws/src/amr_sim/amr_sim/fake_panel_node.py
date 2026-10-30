@@ -7,6 +7,9 @@ terminal:
     /sim/panel/press_start  std_srvs/Trigger
     /sim/panel/press_reset  std_srvs/Trigger
     /sim/panel/set_valid    std_srvs/SetBool   false = DIO link lost (stale/invalid image)
+    /sim/panel/set_estop    std_srvs/SetBool   true = E-stop pressed (DI08 LOW), false = released
+The emergency fields run the real amr_base/emergency.py: press, release, then press_reset
+clears it (the sim drives are not observable, so a Reset with DI08 HIGH is taken at once).
 Jog pendant levels are bool parameters read every tick, so a terminal can drive
 without a browser:  ros2 param set /fake_panel pendant_fwd true  (also
 pendant_rvs / pendant_left / pendant_right).
@@ -22,6 +25,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_srvs.srv import SetBool, Trigger
 
+from amr_base import emergency
 from amr_interfaces.msg import PanelState
 
 PENDANT_PARAMS = ("pendant_fwd", "pendant_rvs", "pendant_left", "pendant_right")
@@ -36,6 +40,8 @@ class FakePanel(Node):
             self.declare_parameter(name, False)
         self.auto = bool(self.get_parameter("auto").value)
         self.valid = True
+        self.estop = False  # E-stop pressed: DI08 LOW
+        self.emergency = emergency.Emergency(3.0)
         self.seq = 0
         self._start_pending = False
         self._reset_pending = False
@@ -46,6 +52,7 @@ class FakePanel(Node):
         self._ui_t = 0.0
         self.create_service(SetBool, "/sim/panel/set_mode", self._set_mode)
         self.create_service(SetBool, "/sim/panel/set_valid", self._set_valid)
+        self.create_service(SetBool, "/sim/panel/set_estop", self._set_estop)
         self.create_service(Trigger, "/sim/panel/press_start", self._press_start)
         self.create_service(Trigger, "/sim/panel/press_reset", self._press_reset)
         self.create_timer(1.0 / self.get_parameter("rate_hz").value, self._tick)
@@ -60,6 +67,12 @@ class FakePanel(Node):
     def _set_valid(self, req, res):
         self.valid = bool(req.data)
         res.success, res.message = True, f"panel image {'valid' if self.valid else 'INVALID'}"
+        return res
+
+    def _set_estop(self, req, res):
+        self.estop = bool(req.data)
+        res.success, res.message = True, f"E-stop {'PRESSED' if self.estop else 'released'}"
+        self.get_logger().info(res.message)
         return res
 
     def _press_start(self, _req, res):
@@ -82,6 +95,11 @@ class FakePanel(Node):
         m.mode_auto = self.auto
         m.start_edge, self._start_pending = self._start_pending, False
         m.reset_edge, self._reset_pending = self._reset_pending, False
+        m.estop_ok = not self.estop
+        note = self.emergency.step(time.monotonic(), emergency.Inputs(True, m.estop_ok, m.reset_edge, None))
+        if note:
+            self.get_logger().info(note)
+        m.emergency = self.emergency.state
         self.seq += 1
         m.seq = self.seq
         levels = [bool(self.get_parameter(n).value) for n in PENDANT_PARAMS]

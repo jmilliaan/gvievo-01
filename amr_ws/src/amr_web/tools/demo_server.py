@@ -81,7 +81,10 @@ DI_NAMES = [
     "pendant_rvs",
     "pendant_left",
     "pendant_right",
-] + [f"spare{i}" for i in range(8, 16)]
+    "E-stop OK (safety PLC)",  # DI08, panel.di_estop_ok (emergency-suite plan)
+] + [f"spare{i}" for i in range(9, 16)]
+EMG_NAMES = {0: "NORMAL", 1: "ACTIVE", 2: "RESET_NEEDED", 3: "RESETTING", 4: "RESET_FAILED"}
+EMG_RESET_S = 1.5  # the demo's "drives leave STO" time after Reset
 DO_NAMES = ["horn_lights"] + [f"spare{i}" for i in range(1, 16)]
 SCENARIOS = [
     ("idle", "Idle"),
@@ -94,6 +97,8 @@ SCENARIOS = [
     ("runfault", "Run fault"),
     ("lost", "Loc lost"),
     ("layerfault", "Layer fault"),
+    ("estop", "E-stop (run aborted)"),
+    ("resetfail", "E-stop reset failed"),
     ("commissioning", "Commissioning"),
     ("offline", "Disconnected"),
 ]
@@ -257,6 +262,7 @@ class DemoAdapter:
     def _reset(self) -> None:
         self.mode = mode_dict()
         self.panel = {"valid": True, "mode_auto": False}
+        self.estop_ok, self.emg, self.emg_t, self.emg_active_t = True, 0, time.monotonic(), None
         self.drives = {"operational": True, "left": "Operation enabled", "right": "Operation enabled"}
         self.mapping = None
         self.loc = None
@@ -399,6 +405,16 @@ class DemoAdapter:
                     manual_available=True,
                 )
                 self._event(2, "supervisor", "LAYER_EXITED", self.mode["reason"])
+            elif name in ("estop", "resetfail"):
+                self._nav()
+                s.x, s.y, s.yaw = 4.2, 0.0, 0.0
+                self.loc = self._loc(2)
+                self.panel["mode_auto"] = True
+                self.run = self._run(2, step_index=0, step_id="s1", step_type="straight")
+                self._estop(pressed=True)
+                if name == "resetfail":
+                    self.estop_ok = True
+                    self._emg_set(4)
             elif name == "commissioning":
                 self.comm = {
                     "phase": 1,
@@ -457,16 +473,9 @@ class DemoAdapter:
                     self.run = self._run(5, reason="selector switched to MANUAL during the run")
                     self.exec_plan = None
                 return "AUTO" if self.panel["mode_auto"] else "MANUAL"
-            if what == "estop":
-                op = not self.drives["operational"]
-                st = "Operation enabled" if op else "Switch on disabled"
-                self.drives = {"operational": op, "left": st, "right": st}
-                if not op:
-                    self.exec_plan = None
-                    self.sim.v = self.sim.w = 0.0
-                    if self.run and self.run["state"] == 2:
-                        self.run = self._run(5, reason="drives not operational")
-                return "released" if op else "pressed"
+            if what == "estop":  # press, or twist to release (the PLC still wants Reset)
+                self._estop(pressed=self.estop_ok)
+                return "E-stop pressed" if not self.estop_ok else "E-stop released: press Reset"
             if what == "start":
                 if self.comm and self.comm["phase_name"] == "PREPARED" and not self.panel["mode_auto"]:
                     self.comm_t = time.monotonic()
@@ -491,10 +500,54 @@ class DemoAdapter:
                 self.pp_unlocked = not self.pp_unlocked
                 return "PP unlocked (demo only)" if self.pp_unlocked else "PP locked"
             if what == "reset":
+                if self.emg in (2, 4) and self.estop_ok:
+                    self._emg_set(3)
+                    return "Reset: resetting…"
+                if self.emg == 3:
+                    return "Reset: already resetting"
+                if self.emg:
+                    return "Reset ignored: the E-stop is still pressed"
                 if self.run and self.run["state"] == 5:
                     self.run = self._run(0, reason="fault acknowledged (physical Reset)")
                 return "reset"
         return "?"
+
+    # ---- emergency (the controller's emergency.py, played by hand) -----------------------
+
+    def _emg_set(self, state: int) -> None:
+        now = time.monotonic()
+        if state != self.emg:
+            self.emg_t = now
+            if state == 0:
+                self.emg_active_t = None
+            elif self.emg_active_t is None:
+                self.emg_active_t = now
+        self.emg = state
+        if state:
+            st = "Switch on disabled"
+            self.drives = {"operational": False, "left": st, "right": st}
+
+    def _estop(self, pressed: bool) -> None:
+        self.estop_ok = not pressed
+        if pressed:
+            self._emg_set(1)
+            self.exec_plan = None
+            self.manual = (0.0, 0.0, 0.0)
+            self.sim.v = self.sim.w = 0.0
+            # owner answer E3: an emergency aborts the run in any state; nothing resumes
+            if self.run and self.run["state"] in (1, 2, 3, 4):
+                self.run = self._run(0, reason="aborted: emergency stop")
+                self._event(2, "route_executor", "ESTOP", "run aborted: emergency stop")
+            self._event(2, "panel", "ESTOP", "E-stop pressed (DI08 LOW)")
+        elif self.emg == 1:
+            self._emg_set(2)
+            self._event(1, "panel", "ESTOP_RESET_NEEDED", "E-stop released, waiting for Reset")
+
+    def _emg_tick(self, now: float) -> None:
+        if self.emg == 3 and now - self.emg_t >= EMG_RESET_S:
+            self._emg_set(0)
+            self.drives = {"operational": True, "left": "Operation enabled", "right": "Operation enabled"}
+            self._event(0, "panel", "ESTOP", "emergency cleared")
 
     # ---- executor ---------------------------------------------------------------------
 
@@ -561,6 +614,7 @@ class DemoAdapter:
             with self.lock:
                 s = self.sim
                 now = time.monotonic()
+                self._emg_tick(now)
                 if self.exec_plan and self.drives["operational"] and self.panel["mode_auto"]:
                     self._exec_tick()
                 elif self.drives["operational"] and not self.panel["mode_auto"] and now < self.manual[2]:
@@ -668,11 +722,21 @@ class DemoAdapter:
                     "allowed": (1 if self.mode["manual_available"] else 0) | (2 if self.exec_plan else 0),
                 },
                 "panel": dict(self.panel, age_s=0.02),
+                "emergency": {
+                    "state": self.emg,
+                    "state_name": EMG_NAMES[self.emg],
+                    "estop_ok": self.estop_ok,
+                    "since_s": time.monotonic() - self.emg_t,
+                    "active_s": None if self.emg_active_t is None else time.monotonic() - self.emg_active_t,
+                },
                 "drives": dict(self.drives, age_s=0.05),
                 "mux": {
                     "source": src,
                     "inhibited": not self.drives["operational"],
-                    "reason": "" if self.drives["operational"] else "drives not operational",
+                    "code": "ESTOP" if self.emg else "",
+                    "reason": "E-stop"
+                    if self.emg
+                    else ("" if self.drives["operational"] else "drives not operational"),
                     "generation": self.mode["generation"],
                     "left_rad_s": wl,
                     "right_rad_s": wr,
@@ -962,6 +1026,7 @@ class DemoAdapter:
         with self.lock:
             di = [False] * 16
             di[3] = self.panel["mode_auto"]
+            di[8] = self.estop_ok
             horn = bool(self.drives["operational"] and (self.sim.v or self.sim.w))
         do = [False] * 16
         do[0] = horn

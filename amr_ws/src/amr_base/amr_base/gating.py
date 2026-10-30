@@ -9,6 +9,10 @@ Authority comes from three places, never from the command streams themselves:
     executor's; a stale or invalid panel image is no authority at all. Under
     MANUAL the panel image also carries the jog pendant levels, which win over
     every other manual stream while a direction is held;
+  * the emergency state (PanelState.emergency, amr_base/emergency.py): anything but
+    NORMAL on a fresh panel image is NONE, inhibited, code ESTOP, ahead of every
+    other rule. After NORMAL a hand input held through the Reset stays dead until it
+    has been seen released once (RepressGuard, in the node);
   * the executor's MotionPermit: FOLLOW or ROTATE, expiring 0.3 s after local
     receipt, honoured only under AUTO, only with the AUTONOMOUS lease class,
     and only if it carries the lease's instance and generation.
@@ -217,6 +221,26 @@ class Panel:
     rvs: bool = False
     left: bool = False
     right: bool = False
+    emergency: int = 0  # PanelState.emergency; 0 = EMG_NORMAL
+
+
+EMG_NORMAL = 0
+
+
+class RepressGuard:
+    """No motion from a hand held through an emergency (emergency plan §4.3). Blocked from
+    the first not-NORMAL sample until, at NORMAL, every hand input reads released at once:
+    the pendant, the browser jog, teleop. Reset alone never moves the vehicle."""
+
+    def __init__(self) -> None:
+        self.blocked = False
+
+    def update(self, emergency: int, held: bool) -> bool:
+        if emergency != EMG_NORMAL:
+            self.blocked = True
+        elif self.blocked and not held:
+            self.blocked = False
+        return self.blocked
 
 
 @dataclass
@@ -271,6 +295,10 @@ def select(
     # arriving as another source's command, which is how a mux stops honouring a job.
 ) -> Selection:
     gen = 0
+    if panel is not None and panel.emergency != EMG_NORMAL and _fresh(panel.t_recv, now, p.panel_timeout_s):
+        # Ahead of the lease, the drives and every source: the supervisor withholds the lease
+        # too, but the operator's reason is the E-stop, not "inhibited by supervisor".
+        return Selection(NONE, 0.0, 0.0, "E-stop: emergency not cleared", 0, True, code="ESTOP")
     if p.require_supervisor:
         if lease is None or not _fresh(lease.t_recv, now, p.lease_timeout_s):
             return Selection(NONE, 0.0, 0.0, "no supervisor lease", 0, True, code="NOT_LEASED")

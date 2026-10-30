@@ -58,6 +58,7 @@ from amr_interfaces.srv import (
     SurveyMove,
 )
 from amr_web import live
+from amr_web.alarms import EMG_NAMES, EMG_NORMAL
 from amr_web.eventlog import EventLog
 
 LATCHED = QoSProfile(
@@ -204,6 +205,11 @@ class RosAdapter(Node):
         self._lease_t = 0.0
         self._panel: dict | None = None
         self._panel_t = 0.0
+        # Emergency picture from PanelState (emergency-suite plan): when the state last
+        # changed, and when it left NORMAL (the banner's "since", across the reset steps).
+        self._emg: dict | None = None
+        self._emg_t = 0.0
+        self._emg_active_t: float | None = None
         self._drives: dict | None = None
         self._drives_t = 0.0
         self._mux: dict | None = None
@@ -434,8 +440,21 @@ class RosAdapter(Node):
 
     def _on_panel(self, m: PanelState) -> None:
         with self._lock:
+            now = self._now()
             self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto)}
-            self._panel_t = self._now()
+            self._panel_t = now
+            emg = int(getattr(m, "emergency", EMG_NORMAL))
+            if self._emg is None or emg != self._emg["state"]:
+                if emg == EMG_NORMAL:
+                    self._emg_active_t = None
+                elif self._emg_active_t is None:
+                    self._emg_active_t = now
+                self._emg_t = now
+            self._emg = {
+                "state": emg,
+                "state_name": EMG_NAMES.get(emg, str(emg)),
+                "estop_ok": bool(getattr(m, "estop_ok", False)),
+            }
 
     def _on_drives(self, m: DriveStatus) -> None:
         with self._lock:
@@ -649,6 +668,17 @@ class RosAdapter(Node):
                 "mode_age_s": (now - self._mode_t) if self._mode else None,
                 "lease": self._lease if self._lease and now - self._lease_t <= 1.0 else None,
                 "panel": dict(self._panel, age_s=now - self._panel_t) if self._panel else None,
+                # trusted only with a fresh, valid panel (alarms.emergency); since_s = in this
+                # state, active_s = since it left NORMAL (None while NORMAL)
+                "emergency": (
+                    dict(
+                        self._emg,
+                        since_s=now - self._emg_t,
+                        active_s=None if self._emg_active_t is None else now - self._emg_active_t,
+                    )
+                    if self._emg
+                    else None
+                ),
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "wheels": dict(self._wheels, age_s=now - self._wheels_t) if self._wheels else None,

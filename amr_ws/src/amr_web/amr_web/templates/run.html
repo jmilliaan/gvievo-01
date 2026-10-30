@@ -37,7 +37,7 @@
       </div>
       <div class="bar">
         <button id="btn-loc-confirm" class="big run">Confirm: scans align</button>
-        <button id="btn-loc-reset" class="big">Reset</button>
+        <button id="btn-loc-reset" class="big" title="Forget the localisation and start again from step 2">Reset localisation</button>
       </div>
       <div class="sep"></div>
       <h3>Jog <small>selector MANUAL</small></h3>
@@ -47,6 +47,7 @@
       <h2>Mission <small>route executor</small></h2>
       <label class="field">Mission <select id="run-mission"></select></label>
       <div class="bar"><button id="btn-run-load" class="big run">Load (READY)</button></div>
+      <p id="run-emg" class="note bad" hidden></p>
       <div id="run-state" class="tel-grid" style="margin-top:1rem"></div>
       <p id="run-reason" class="note"></p>
       <div class="warn-box" style="margin-top:1rem"><b>Motion starts only from the physical panel</b>: selector AUTO, then Start. Pause / abort / prepare-resume below; Start confirms a prepared resume.</div>

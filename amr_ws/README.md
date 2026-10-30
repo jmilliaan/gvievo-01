@@ -370,8 +370,11 @@ configuration (fields, monitoring cases), which stays humans-only.
 **Python environment.** User-site `numpy 2.2.6` + `opencv-python-headless 5.0`
 are a consistent pair and are what `amr_tools` (mask painting, T4) will use.
 They break `cv_bridge` (system, built on numpy 1.21). Nothing in this project
-uses `cv_bridge` — there is no camera (D-4) — so this is a known, accepted
-conflict. Do not import `cv_bridge`; if a camera ever appears, revisit.
+uses `cv_bridge`, so this is a known, accepted conflict. The only camera is the
+SICK GLS621 floor-label reader (`manuals/gls6-qr/gls6-system.md`). It decodes on
+the device and sends text telegrams over TCP, not images, so it needs no
+`cv_bridge` either. Do not import `cv_bridge`; if an image camera ever appears,
+revisit.
 
 **ROS domain / DDS scope (2026-09-16).** Vehicle = `ROS_DOMAIN_ID=10`,
 simulation = `20`, launch tests pin 61–67 (`amr_bringup/domains.py`). The shell on

@@ -116,6 +116,11 @@ onState(st => {
     tiles('loc-state', [['State', st.localization_stale ? 'STALE' : '–', st.localization_stale ? 'from a replaced layer' : 'activate a map', st.localization_stale ? 'bad' : '', 'key']]);
     $('loc-detail').innerHTML = ''; $('loc-reason').textContent = '';
   }
+  // Not NORMAL (alarms.banner): no load, no resume; the server refuses them too (409).
+  // An emergency aborts the run, so after NORMAL a new run is loaded and started.
+  const emg = st.banner ? (st.banner.reason || 'E-stop active') : '';
+  ['btn-run-load', 'btn-run-resume'].forEach(id => { $(id).disabled = !!emg; $(id).title = emg; });
+  $('run-emg').hidden = !emg; $('run-emg').textContent = emg;
   const r = st.run;
   if (r) {
     tiles('run-state', [

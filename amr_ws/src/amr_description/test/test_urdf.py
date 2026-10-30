@@ -8,7 +8,7 @@ import pytest
 
 URDF = os.path.join(os.path.dirname(__file__), "..", "urdf", "amr.urdf.xacro")
 
-# spec §2.3 minus floor_cam_frame (no camera, reconciliation D-4)
+# spec §2.3 minus floor_cam_frame (GLS621 not integrated yet; gls_frame later, gls6-system.md §3.6)
 REQUIRED_LINKS = {"base_footprint", "base_link", "laser_frame", "imu_frame"}
 VISUAL_ONLY_LINKS = {"wheel_left", "wheel_right"}
 
