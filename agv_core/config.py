@@ -110,6 +110,27 @@ panel.di_continue
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
     enable fails, and it is retried on a slow backoff, never latched.
 
+gls.xy_scale_m_per_count
+    What one XMCL/YMCL count is, in metres. 0 means NOT MEASURED, and it is
+    the shipped value: the camera then publishes raw counts only (GlsReading
+    calibrated = false) and nothing may turn a reading into a pose. Set it -
+    with x_sign, y_sign, angle_sign and angle_offset_rad - from the bench tests
+    in manuals/gls6-qr/gls6-system.md §7 (slide the label exactly +10 mm along
+    each printed arrow, rotate it 90 deg). Codes 18 mm apart differed by ~20
+    counts with the as-found template, so it is NOT plain mm.
+
+    *** A wrongly scaled label scales every offset. *** The printed label must
+    measure 75.0 mm, with 54.0 mm +-0.2 between the -27 and +27 ticks. On
+    2026-10-30 the per-code values disagreed in proportion to each code's
+    distance from the centre (~2.3 counts per 18 mm row): check the print
+    before trusting a scale measured on it.
+
+gls.mount_x_m / mount_y_m / mount_yaw_rad
+    T_BC: where the camera's optical axis meets the floor, in base_footprint.
+    The lens is NOT the housing centre (op-ins Fig. 17). Placeholder zeros
+    until the calibration spin (gls6-system.md §7.6). The URDF's gls_frame is
+    generated from these, so TF shows whatever is here.
+
 timing.loop_period_s / telemetry_period_s
     50 Hz bus loop; 5 Hz statusword + rpm + error register (6 fast reads).
 
@@ -403,6 +424,28 @@ _SCHEMA = {
         "driver_timeout_s":   ("DRIVER_TIMEOUT_S", float),
         "auto_start_delay_s": ("AUTO_START_DELAY_S", float),
         "premove_timeout_s":  ("PREMOVE_TIMEOUT_S", float),
+    },
+    # SICK GLS621 floor-label camera (manuals/gls6-qr/gls-wait-coding-plan.md §B.3).
+    "gls": {
+        "enabled":              ("GLS_ENABLED", bool),
+        "host":                 ("GLS_HOST", str),
+        "port":                 ("GLS_PORT", int),
+        "connect_timeout_s":    ("GLS_CONNECT_TIMEOUT_S", float),
+        "keepalive_s":          ("GLS_KEEPALIVE_S", float),
+        "verify_timeout_s":     ("GLS_VERIFY_TIMEOUT_S", float),
+        "frame_gap_s":          ("GLS_FRAME_GAP_S", float),
+        "stale_s":              ("GLS_STALE_S", float),
+        "expect_template":      ("GLS_EXPECT_TEMPLATE", str),
+        "min_codes":            ("GLS_MIN_CODES", int),
+        "outlier_m":            ("GLS_OUTLIER_M", float),
+        "xy_scale_m_per_count": ("GLS_XY_SCALE_M_PER_COUNT", float),
+        "x_sign":               ("GLS_X_SIGN", int),
+        "y_sign":               ("GLS_Y_SIGN", int),
+        "angle_sign":           ("GLS_ANGLE_SIGN", int),
+        "angle_offset_rad":     ("GLS_ANGLE_OFFSET_RAD", float),
+        "mount_x_m":            ("GLS_MOUNT_X_M", float),
+        "mount_y_m":            ("GLS_MOUNT_Y_M", float),
+        "mount_yaw_rad":        ("GLS_MOUNT_YAW_RAD", float),
     },
 }
 
@@ -840,6 +883,32 @@ def _validate(ns):
     check(g("AUTO_START_DELAY_S") < g("PREMOVE_TIMEOUT_S") <= 30.0,
           f"timing.premove_timeout_s ({g('PREMOVE_TIMEOUT_S')} s) must exceed "
           f"auto_start_delay_s ({g('AUTO_START_DELAY_S')} s) and be at most 30 s")
+
+    # -- gls --------------------------------------------------------------
+    check(bool(g("GLS_HOST").strip()), "gls.host must not be empty")
+    check(1 <= g("GLS_PORT") <= 65535, "gls.port must be in 1..65535")
+    for key in ("connect_timeout_s", "keepalive_s", "verify_timeout_s", "frame_gap_s", "stale_s"):
+        check(g(f"GLS_{key.upper()}") > 0, f"gls.{key} must be > 0")
+    # The camera images every ~61 ms (measured 2026-10-30); a gap that long would split
+    # nothing, but one far beyond it delays the last frame before every no-read.
+    check(g("GLS_FRAME_GAP_S") <= 0.5, "gls.frame_gap_s must be at most 0.5 s")
+    check(g("GLS_STALE_S") > g("GLS_FRAME_GAP_S"),
+          f"gls.stale_s ({g('GLS_STALE_S')}) must exceed frame_gap_s ({g('GLS_FRAME_GAP_S')}): "
+          "a frame is only complete after the gap")
+    # Everything downstream assumes the label-CENTRE values: the as-found template output each
+    # code's own position, 27 mm apart (gls6-system.md §5).
+    check("[$XMCL]" in g("GLS_EXPECT_TEMPLATE") and "[$YMCL]" in g("GLS_EXPECT_TEMPLATE"),
+          "gls.expect_template must output [$XMCL] and [$YMCL] (label centre, not each code)")
+    check(1 <= g("GLS_MIN_CODES") <= 16, "gls.min_codes must be in 1..16 (a label has 16 codes)")
+    check(g("GLS_OUTLIER_M") >= 0, "gls.outlier_m must be >= 0 (0 = off)")
+    check(0 <= g("GLS_XY_SCALE_M_PER_COUNT") <= 0.01,
+          "gls.xy_scale_m_per_count must be in 0..0.01 (0 = not measured yet)")
+    for key in ("x_sign", "y_sign", "angle_sign"):
+        check(g(f"GLS_{key.upper()}") in (1, -1), f"gls.{key} must be 1 or -1")
+    for key in ("angle_offset_rad", "mount_yaw_rad"):
+        check(abs(g(f"GLS_{key.upper()}")) <= math.pi, f"gls.{key} must be within +-pi")
+    for key in ("mount_x_m", "mount_y_m"):
+        check(abs(g(f"GLS_{key.upper()}")) <= 2.0, f"gls.{key} must be within +-2 m of base_footprint")
 
     return ns
 

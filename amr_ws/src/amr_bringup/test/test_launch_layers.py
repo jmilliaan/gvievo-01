@@ -35,7 +35,7 @@ BASE_EXES = {
     "robot_state_publisher",
 }
 HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node"}
-SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
+SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "fake_gls_node", "scan_synth_node"}
 MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
 NAV_EXES = {
     "map_server",
@@ -161,11 +161,45 @@ def test_sim_base_is_fakes_plus_estimation_and_one_description():
 def test_real_base_composes_hardware_once(monkeypatch):
     monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
     c = compose("base.launch.py", real="true")
-    # fake_panel is conditional (panel:=fake); this walk ignores conditions
-    assert set(c["exes"]) == HW_EXES | BASE_EXES | {"fake_panel_node"}
+    # fake_panel is conditional (panel:=fake); this walk ignores conditions. gls_node is there
+    # because the shipped profile has gls.enabled true (P2, gls-wait-coding-plan §B.4).
+    assert set(c["exes"]) == HW_EXES | BASE_EXES | {"fake_panel_node", "gls_node"}
+    assert c["exes"].count("gls_node") == 1
     assert c["exes"].count("robot_state_publisher") == 1  # the scanner include no longer brings a second one
     assert c["includes"].count("scanner.launch.py") == 1
     assert "web_node" not in c["exes"]
+
+
+def test_gls_node_is_optional_and_follows_the_profile(monkeypatch):
+    """The camera is outside the safety path: gls_node is not wrapped in required(), so an
+    unplugged camera never takes the base down, and gls.enabled false leaves it out."""
+    from agv_core import config as vehicle_config  # noqa: PLC0415
+
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    on = compose("base.launch.py", real="true")
+    monkeypatch.setattr(vehicle_config, "GLS_ENABLED", False)
+    off = compose("base.launch.py", real="true")
+    assert "gls_node" in on["exes"] and "gls_node" not in off["exes"]
+    assert on.get("handlers", 0) == off.get("handlers", 0), "no exit handler was added for gls_node"
+    assert set(on["exes"]) - set(off["exes"]) == {"gls_node"}
+
+
+def test_sim_gls_labels_reach_the_fake_camera():
+    """The labels parameter is the sim_gls_labels launch argument (a substitution, performed
+    here as launch would), and it defaults to none."""
+
+    def performed(c, value):
+        ctx = LaunchContext()
+        ctx.launch_configurations["sim_gls_labels"] = value
+        (p,) = c["params"]["fake_gls_node"]
+        return {_text(k, ctx): _text(v, ctx) for k, v in p.items()}
+
+    labels = "x0000y0000,1.0,0.0,0.0;x0100y0000,2.0,0.5,1.5708"
+    c = compose("base.launch.py", real="false", sim_gls_labels=labels)
+    assert performed(c, labels) == {"labels": labels}
+    ld = get_launch_description_from_any_launch_file(os.path.join(LAUNCH, "base.launch.py"))
+    default = [a for a in ld.entities if isinstance(a, DeclareLaunchArgument) and a.name == "sim_gls_labels"]
+    assert len(default) == 1 and _text(default[0].default_value, LaunchContext()) == ""
 
 
 def test_wrappers_compose_base_web_and_exactly_one_layer(tmp_path):

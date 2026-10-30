@@ -32,6 +32,7 @@ MODULES = [
     "test_lidar",
     "test_panel",
     "test_gls",
+    "test_gls_link",
     "test_layout",
 ]
 
@@ -103,7 +104,14 @@ MODULES = [
 # + 28 (2026-10-30): test_gls added (gls-wait-coding-plan P0): CoLa A framing (5), parsing
 #   incl. two results in one telegram as seen on the vehicle (5), frame aggregation (11),
 #   counts -> T_LC conversion (3), the read-only probe and its "gls" owner lock (4).
-EXPECTED_CHECKS = 525
+# + 75 (2026-10-30): P2 of gls-wait-coding-plan (§B.1/§B.3), the GLS621 link and its profile
+#   section. test_gls_link + 45 (new: value_matches and the string length prefix, connect
+#   readback and frame delivery incl. split / joined telegrams, mismatch and verify timeout
+#   drop every frame, keepalive cadence and comms_ok, reconnect / peer close / socket error,
+#   connect backoff doubling to the maximum, counters and the 64-frame queue, stop() ends the
+#   thread, only sRN ever sent); test_config + 30 (the gls block: enabled, scale 0 = not
+#   measured, template has [$XMCL]/[$YMCL]; 26 refusals, one per rule, and its bounds accepted).
+EXPECTED_CHECKS = 600
 
 
 # An exception on a helper thread only prints a traceback by default - the

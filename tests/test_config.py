@@ -228,6 +228,51 @@ def test_config_profile():
             lambda d: d["imu"].update(retry_period_s=d["imu"]["poll_period_s"]),
             "imu.retry_period_s")
 
+    # -- the GLS621 floor-label camera (gls-wait-coding-plan §B.3, P2) -------
+    check("the GLS camera is enabled", config.GLS_ENABLED is True, str(config.GLS_ENABLED))
+    check("the GLS scale ships as 0 = not measured: raw counts only",
+          config.GLS_XY_SCALE_M_PER_COUNT == 0.0, str(config.GLS_XY_SCALE_M_PER_COUNT))
+    check("the expected template outputs the label centre ([$XMCL], [$YMCL])",
+          "[$XMCL]" in config.GLS_EXPECT_TEMPLATE and "[$YMCL]" in config.GLS_EXPECT_TEMPLATE,
+          config.GLS_EXPECT_TEMPLATE)
+
+    def gls(**kw):
+        return lambda d: d["gls"].update(kw)
+
+    refuses("a profile without the gls section is refused",
+            lambda d: d.pop("gls"), "missing top-level")
+    refuses("a non-boolean gls.enabled is refused", gls(enabled=1), "gls.enabled")
+    refuses("an empty gls.host is refused", gls(host="  "), "gls.host")
+    for port in (0, 65536):
+        refuses(f"gls.port {port} is refused", gls(port=port), "gls.port")
+    for key in ("connect_timeout_s", "keepalive_s", "verify_timeout_s", "frame_gap_s", "stale_s"):
+        refuses(f"gls.{key} of 0 is refused", gls(**{key: 0.0}), f"gls.{key} must be > 0")
+    refuses("a frame gap over 0.5 s is refused", gls(frame_gap_s=0.6, stale_s=1.0),
+            "frame_gap_s must be at most")
+    refuses("a stale time not above the frame gap is refused", gls(frame_gap_s=0.2, stale_s=0.2),
+            "must exceed frame_gap_s")
+    for marker in ("[$XMCL]", "[$YMCL]"):
+        refuses(f"a template without {marker} is refused",
+                lambda d, m=marker: d["gls"].update(
+                    expect_template=d["gls"]["expect_template"].replace(m, "[$XCL]")),
+                "gls.expect_template")
+    for n in (0, 17):
+        refuses(f"gls.min_codes {n} is refused", gls(min_codes=n), "gls.min_codes")
+    refuses("a negative gls.outlier_m is refused", gls(outlier_m=-0.001), "gls.outlier_m")
+    for scale in (-1e-6, 0.0101):
+        refuses(f"gls.xy_scale_m_per_count {scale} is refused", gls(xy_scale_m_per_count=scale),
+                "gls.xy_scale_m_per_count")
+    for key, bad in (("x_sign", 0), ("y_sign", 2), ("angle_sign", -2)):
+        refuses(f"gls.{key} {bad} is refused", gls(**{key: bad}), f"gls.{key} must be 1 or -1")
+    for key, bad in (("angle_offset_rad", 3.15), ("mount_yaw_rad", -3.15)):
+        refuses(f"gls.{key} beyond pi is refused", gls(**{key: bad}), f"gls.{key}")
+    for key, bad in (("mount_x_m", 2.01), ("mount_y_m", -2.01)):
+        refuses(f"gls.{key} beyond 2 m is refused", gls(**{key: bad}), f"gls.{key}")
+    msg = load_with(gls(frame_gap_s=0.5, stale_s=0.51, min_codes=16, xy_scale_m_per_count=0.01,
+                        x_sign=-1, y_sign=-1, angle_sign=-1, angle_offset_rad=-math.pi,
+                        mount_yaw_rad=math.pi, mount_x_m=-2.0, mount_y_m=2.0, port=65535))
+    check("the gls bounds themselves are accepted", msg is None, msg or "")
+
     # The name in the file must match the file. A profile copied for a second
     # vehicle and not renamed would report the old identity in the event log
     # and in every run CSV header.

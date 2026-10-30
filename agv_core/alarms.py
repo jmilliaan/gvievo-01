@@ -35,7 +35,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 INFO, WARN, ERROR = "info", "warn", "error"
-CLEARS = ("auto", "start_button", "continue_button", "reset_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
+CLEARS = (
+    "auto", "start_button", "continue_button", "reset_button", "ack", "operator", "recover", "power_cycle",
+    "restart_service", "engineer",
+)
 # Worst first: the operator surface sorts standing alarms by this, so the one
 # sentence on the Home page is the one that actually holds the vehicle.
 SEVERITY_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
@@ -63,7 +66,8 @@ def _rows() -> tuple[Alarm, ...]:
           "on the cabinet.",
           "DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is "
           "the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and holds a "
-          "moving run (emergency-suite plan; it never ends a run or a wait). Also the executor's 'estop' hold when it can only infer it."),
+          "moving run (emergency-suite plan; it never ends a run or a wait). Also the executor's "
+          "'estop' hold when it can only infer it."),
         a("ESTOP_HOLD", WARN, "start_button", "Stopped by the E-stop: press Start or Continue",
           "Make sure the area is clear, then press Start or Continue. The route continues where it "
           "stopped.",
@@ -114,6 +118,17 @@ def _rows() -> tuple[Alarm, ...]:
           "2 s and reports link_state 'no bus'; the row clears itself once the bus opens."),
 
         # ---- the laser scanner ----
+        a("GLS_DOWN", WARN, "auto", "The floor-label camera is not answering",
+          "Nothing to do now: it never stops the vehicle. Tell the engineer if it stays.",
+          "gls_node: no reply to the read-only keepalive for 3 x gls.keepalive_s (cable, power, "
+          "enp3s0 192.168.4.2, or SOPAS left in Live mode, which mutes the host port). Outside the "
+          "safety path: no position fix from the camera until it answers again."),
+        a("GLS_CONFIG_MISMATCH", ERROR, "engineer", "The floor-label camera's settings changed",
+          "Call the engineer. The vehicle still runs; the camera is ignored.",
+          "gls_node read back OFtplstr1 / GlsCodeSel / DCDMVerISO15415 and they differ from the "
+          "profile (gls.expect_template) or REQUIRED in gls_link.py - e.g. the device was reset to "
+          "factory settings. Every frame is dropped until the next connect verifies. Re-apply the "
+          "saved SOPAS parameter file; never write settings from the vehicle."),
         a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "No /scan at all: the nanoScan3 driver could not reach 192.168.3.1:6060 (cable, power, "
@@ -320,6 +335,8 @@ def _rows() -> tuple[Alarm, ...]:
           "Nothing to do.", "Supervisor FSM transition; the text carries from -> to."),
         a("MUX_SOURCE", INFO, "auto", "The vehicle is taking commands from somewhere else",
           "Nothing to do.", "Command-source edge in the mux (pendant, manual, follow, rotate...)."),
+        a("GLS", INFO, "auto", "The floor-label camera changed",
+          "Nothing to do.", "gls_node: the GLS621 answers again after a GLS_DOWN."),
         a("PANEL", INFO, "auto", "The control panel changed",
           "Nothing to do.", "Selector, Start/Reset edge or pendant change from panel_node."),
         a("BOOT_READY", INFO, "auto", "The vehicle is ready",

@@ -3,8 +3,9 @@
     supervised:=true   mux and drive_node require the supervisor's ControlLease
                        and the keyboard teleop input is off (production);
                        false = unsupervised bench (wrappers), no lease needed
-    real:=true    drive_node (can0), panel_node (DIO) or fake panel, nanoScan3
-    real:=false   fake_base, fake_imu, fake_panel, optional scan_synth
+    real:=true    drive_node (can0), panel_node (DIO) or fake panel, nanoScan3,
+                  gls_node (GLS621 floor-label camera) when gls.enabled
+    real:=false   fake_base, fake_imu, fake_panel, fake_gls, optional scan_synth
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
                   imu_bias, scan_gate, ekf_local
 
@@ -17,6 +18,7 @@ Domain guard: real:=true needs ROS_DOMAIN_ID=10; real:=false refuses it.
 
 import os
 
+from agv_core import config as vehicle_config
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -79,6 +81,10 @@ def _compose(context):
         )
         if cfg("lidar").perform(context).lower() == "true":
             actions.append(include("amr_bringup", "scanner.launch.py"))
+        if vehicle_config.GLS_ENABLED:
+            # NOT required: the camera is outside the safety path, and an unplugged or
+            # misconfigured one must never take the base down (gls_node docstring)
+            actions.append(Node(package="amr_base", executable="gls_node", name="gls_node", output="screen"))
     else:
         actions += required(
             Node(
@@ -91,6 +97,15 @@ def _compose(context):
             "fake_base",
         )
         actions.append(Node(package="amr_sim", executable="fake_imu_node", name="fake_imu", output="screen"))
+        actions.append(
+            Node(
+                package="amr_sim",
+                executable="fake_gls_node",
+                name="fake_gls",
+                output="screen",
+                parameters=[{"labels": cfg("sim_gls_labels")}],
+            )
+        )
         actions.append(
             Node(
                 package="amr_sim",
@@ -198,6 +213,11 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("scan_synth", default_value="false", description="sim: raycast the world"),
             DeclareLaunchArgument("world_yaml", default_value=default_world()),
             DeclareLaunchArgument("clutter_count", default_value="0"),
+            DeclareLaunchArgument(
+                "sim_gls_labels",
+                default_value="",
+                description="sim: floor labels the fake GLS can see, 'id,x,y,yaw_rad;...' in the map frame",
+            ),
             OpaqueFunction(function=_compose),
         ]
     )

@@ -24,6 +24,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/OperationState.msg"
   "msg/IoImage.msg"
   "msg/Event.msg"
+  "msg/GlsReading.msg"
   "msg/SurveyMoveState.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"

@@ -1,6 +1,6 @@
 # GLS label fix + route wait step: coding plan (MCQ4-4)
 
-Branch `kyb-trackless` · 2026-10-30 · **P1 (Part A) implemented and committed (`ae373c8`); vehicle acceptance A pending. P0 implemented 2026-10-30, uncommitted.** P2–P6 not started
+Branch `kyb-trackless` · 2026-10-30 · **P1 committed (`ae373c8`), vehicle acceptance A pending. P0 committed (`4370b16`). P2 implemented 2026-10-30, uncommitted, tests being written.** P3–P6 not started. Physical tests (bench §7, acceptance A) deferred to one session.
 
 This plan extends [gls6-system.md](gls6-system.md), the design brief. Read the brief first. Where the two differ, this plan wins: it is built on the code as of `481ffda`, after the emergency suite landed. File:line references are from that commit. Check each one before you edit.
 
@@ -278,7 +278,7 @@ The module has three parts:
 **`GlsLink`**
 - It has an injectable `client_factory`, its own daemon thread, and reconnects with backoff.
 - `snapshot()` reports `comms_ok`, `rx_age_s`, the frame rate, the last frame and the error count. Health is judged by data arriving, not by socket state, as in `dio.py:40-45`.
-- **There is one socket, to 2112.** At connect it sends `sRN` for `OFtplstr1`, `GlsCodeSel`, `DCDMVerISO15415` and `DC2DContrast`. The replies arrive mixed with the result stream, and `parse` separates them. If a value differs from the expected one in the profile, or no reply arrives within `verify_timeout_s`, the link refuses to report frames and raises `GLS_CONFIG_MISMATCH`.
+- **There is one socket, to 2112.** At connect it sends `sRN` for `OFtplstr1`, `GlsCodeSel` and `DCDMVerISO15415`. `DC2DContrast` is a tuning value with no single right answer, so only `gls_probe --verify` shows it; the link doesn't check it. The replies arrive mixed with the result stream, and `parse` separates them. If a value differs from the expected one in the profile, or no reply arrives within `verify_timeout_s`, the link refuses to report frames and raises `GLS_CONFIG_MISMATCH`.
 - **It never writes a device parameter.**
 - Update the docstring in `drivers/__init__.py`.
 
