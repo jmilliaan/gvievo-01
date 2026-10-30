@@ -13,7 +13,7 @@ lever.
     auto            clears itself once the cause goes away; no button
     start_button    the physical Start button on the panel, after AUTO
     ack             Acknowledge on the Run page (an executor FAULT)
-    recover         Recover on the Status page (a supervisor FAULT)
+    recover         Recover on the Home page (a supervisor FAULT)
     operator        an operator act on a page (set the pose, pick a map)
     power_cycle     switch the drives off and on (a latched drive alarm)
     restart_service the service must be restarted (the base cannot be rebuilt)
@@ -160,7 +160,7 @@ def _rows() -> tuple[Alarm, ...]:
           "(outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the "
           "slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml."),
         a("FIELD_UNKNOWN", WARN, "engineer", "Stopped: no safety-scanner field data",
-          "Check the scanner cable and that its driver is running (Status page).",
+          "Check the scanner cable and that its driver is running (Monitor page).",
           "Supervised AUTO is zeroed with no fresh /output_paths: a field state nobody can see "
           "is not clear. The OSSD stop path does not depend on this data link."),
 
@@ -260,7 +260,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "Group.spawn failed (missing executable, bad environment)."),
         a("LAYER_EXITED", ERROR, "recover", "The mapping or navigation software stopped",
-          "Press Recover on the Status page, then load the mission again.",
+          "Press Recover on the Home page, then load the mission again.",
           "The mode layer's process group exited unrequested; the base is untouched."),
         a("LAYER_NOT_EMPTY", ERROR, "restart_service", "Needs service: old software would not go away",
           "Press Restart on the Home page.",
@@ -272,22 +272,22 @@ def _rows() -> tuple[Alarm, ...]:
           "Press Restart on the Home page.",
           "Teardown exceeded its budget; systemd's TimeoutStopSec (55 s) is the backstop."),
         a("LAYER_START_TIMEOUT", ERROR, "recover", "The new software did not start in time",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "The new layer did not report ready inside layer_start_s; see ~/.amr/logs/layer.log."),
         a("LAYER_NO_READINESS", ERROR, "recover", "The new software never reported ready",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "The layer produced no readiness signal at all: it probably died during entry."),
         a("SAVE_UNKNOWN_OUTCOME", WARN, "operator", "The map may or may not have been saved",
           "Check the Maps page for a new revision before saving again.",
           "The save RPC passed its deadline after the request was accepted; a late answer is ignored."),
         a("MUX_ACK_TIMEOUT", ERROR, "recover", "The mode change did not finish",
-          "Press Recover on the Status page.",
+          "Press Recover on the Home page.",
           "The mux never acknowledged the new generation inside the barrier budget."),
         a("LIFECYCLE_STARTUP", ERROR, "recover", "The new software did not become ready",
-          "Press Recover on the Status page, then try the mode change again.",
+          "Press Recover on the Home page, then try the mode change again.",
           "A lifecycle node failed to configure/activate during a transition."),
         a("COORDINATOR_UNAVAILABLE", ERROR, "recover", "The survey software is not answering",
-          "Press Recover on the Status page, then start the survey again.",
+          "Press Recover on the Home page, then start the survey again.",
           "mapping_session service missing when the supervisor needed it."),
         a("SURVEY_RPC_TIMEOUT", ERROR, "recover", "The survey command got no answer",
           "Check the Maps page for a new revision, then press Recover.",
@@ -296,7 +296,7 @@ def _rows() -> tuple[Alarm, ...]:
           "Fix what the Alarms page lists, then start the survey again.",
           "mapping_session refused the start request."),
         a("LOOP_ERROR", ERROR, "recover", "Internal error in the vehicle software",
-          "Press Recover on the Status page. If it repeats, save a report and call the engineer.",
+          "Press Recover on the Home page. If it repeats, save a report and call the engineer.",
           "The supervisor caught an exception in its loop and failed the running operation."),
         a("UNCLEAN_SHUTDOWN", WARN, "power_cycle", "The vehicle lost power last time",
           "Switch the drives off and on, then press the safety reset on the cabinet.",
@@ -326,19 +326,6 @@ def _rows() -> tuple[Alarm, ...]:
           "Nothing to do.", "End-of-boot report from the supervisor; the text lists anything missing."),
         a("RUN_SUMMARY", INFO, "auto", "A mission finished",
           "Nothing to do.", "One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause."),
-        a("PP_START", INFO, "auto", "A blind move started",
-          "Nothing to do.", "Profile-position (blind-run) move accepted by the drive owner."),
-        a("PP_REFUSED", WARN, "auto", "A blind move was refused",
-          "Nothing to do; ask the engineer if it was expected.",
-          "Blind-run move refused by the drive owner."),
-        a("PP_VETOED", WARN, "auto", "A blind move was stopped before it started",
-          "Nothing to do; ask the engineer if it was expected.",
-          "Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) "
-          "no longer allowed it; the veto's controlwords were sent."),
-        a("PP_FAULTED", WARN, "ack", "A blind move failed",
-          "Press Acknowledge on the Run page.", "Blind-run move faulted mid-flight."),
-        a("PP_ABANDONED", WARN, "auto", "A blind move was abandoned",
-          "Nothing to do.", "Blind-run move dropped (authority lost or the owner disarmed)."),
         a("WEB_BUG", WARN, "auto", "A page did not work",
           "Reload the page. Save a report if it keeps happening.",
           "Unhandled exception in the Flask app or the page script; the reference id is in the web log."),
@@ -437,7 +424,7 @@ def card() -> str:
            "| It says | Do this |", "|---|---|"]
     out += [f"| **{CATALOGUE[c].title}** | {CATALOGUE[c].action} |" for c in CARD_CODES if c in CATALOGUE]
     out += ["",
-            "Buttons: **Restart** is on the Home page, **Recover** on Status, "
+            "Buttons: **Restart** and **Recover** are on the Home page, "
             "**Acknowledge** on Run. Reset and Start are on the cabinet.",
             "", "Anything else: save a report from the Alarms page and call the engineer.", ""]
     return "\n".join(out)

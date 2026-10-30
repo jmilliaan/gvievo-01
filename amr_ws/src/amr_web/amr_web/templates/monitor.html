@@ -19,12 +19,14 @@
 <section>
   <h2>Readiness <small>supervisor · panel · drives · mux · localisation</small></h2>
   <div id="st-ready" class="tel-grid"></div>
+  {% if role == ENGINEER %}
   <div class="bar">
     {# The operator only gets this on Home, and only when an alarm says the base cannot
        be rebuilt. An engineer restarts for other reasons (a rebuilt overlay, a changed
        amr.env), so it lives here unconditionally - with the same server-side refusals. #}
     <button id="btn-restart" class="danger" title="sudo systemctl restart amr.service">Restart service</button>
   </div>
+  {% endif %}
   <p class="note">A mode change needs the vehicle <b>stopped</b>, nothing running and no emergency (selector MANUAL or AUTO alike); it replaces only the mapping/navigation software and never starts a route or a survey by itself.</p>
 </section>
 
@@ -36,7 +38,7 @@
 {% endblock %}
 {% block scripts %}<script>
 const $ = id => document.getElementById(id);
-$('btn-restart').onclick = () => {
+if ($('btn-restart')) $('btn-restart').onclick = () => {
   if (!confirm('Restart amr.service?\n\nThe drives disarm, any run and any mapping/navigation layer are lost, and this page reconnects in about 10 s. Refused while the wheels turn or a run is live.')) return;
   api('/api/service/restart').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 };

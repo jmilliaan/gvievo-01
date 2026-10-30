@@ -91,8 +91,11 @@ def test_config_profile():
             "unknown top-level")
     refuses("a leftover auto watchdog is refused",
             lambda d: d["timing"].update(auto_watchdog_s=1.5), "unknown key")
-    refuses("a blind-run speed above the motor limit is refused",
-            lambda d: d["blind_run"].update(max_rpm=9000), "blind_run.max_rpm")
+    # 2026-10-30: blind_run.* and pp.* went with the commissioning page.
+    refuses("the retired blind_run section is refused",
+            lambda d: d.update({"blind_run": {"max_rpm": 3000}}), "unknown top-level")
+    refuses("the retired pp section is refused",
+            lambda d: d.update({"pp": {"enabled": False}}), "unknown top-level")
     refuses("a bool where a number belongs is refused",
             lambda d: d["vehicle"].update(gear_ratio=True), "expected a number")
     # 2026-10-02: manual.* (read only by the deleted motion.py) and drivers.ramp.manual
@@ -100,37 +103,6 @@ def test_config_profile():
     refuses("the retired manual section is refused",
             lambda d: d.update({"manual": {"full_rpm": 1200, "half_ratio": 0.6}}),
             "unknown top-level")
-    # *** Profile position is LOCKED until the vendor has answered. *** The
-    # 400 W geared motor needs motion extension, which pp cannot select; a pp
-    # section switched on without the verified drive values or the vendor
-    # reference must not load.
-    # Either locked, or unlocked with every drive value and the vendor reference
-    # recorded - whichever state the vehicle's profile is in today.
-    check("pp is locked, or fully configured with a vendor reference",
-          config.PP_ENABLED is False
-          or (all(v is not None for v in config.PP_EXPECT.values())
-              and config.PP_VENDOR_REF.strip() != ""),
-          f"enabled={config.PP_ENABLED} expect={config.PP_EXPECT}")
-    # The vehicle's own profile may already carry every value (agv-01 does since
-    # 2026-09-18), so the test unsets them itself rather than assume a locked base.
-    def pp_unset(d):
-        d["pp"]["expect"] = {k: None for k in d["pp"]["expect"]}
-        d["pp"].update(enabled=True, vendor_ref="OM ticket 1")
-    refuses("pp enabled with unset drive values is refused", pp_unset, "null value")
-
-    def pp_all_set(d, ref):
-        d["pp"]["expect"] = {k: 1 for k in d["pp"]["expect"]}
-        d["pp"].update(enabled=True, vendor_ref=ref)
-    refuses("pp enabled without a vendor reference is refused",
-            lambda d: pp_all_set(d, " "), "vendor_ref")
-    check("pp enabled with every value and a vendor reference loads",
-          load_with(lambda d: pp_all_set(d, "OM ticket 1")) is None)
-    refuses("a pp.expect key missing is refused",
-            lambda d: d["pp"]["expect"].pop("halt_option"), "missing key")
-    refuses("a pp speed above the blind-run cap is refused",
-            lambda d: d["pp"].update(max_speed_mps=0.9), "pp.max_speed_mps")
-    refuses("a blind-run speed above 0.8 m/s is refused",
-            lambda d: d["blind_run"].update(max_speed_mps=1.0), "blind_run.max_speed_mps")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
     # an infinite manual watchdog would never expire. Python's json reader takes
     # the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so each form
@@ -287,10 +259,10 @@ def test_config_profile():
 
     # A rejected profile must leave the live one untouched - this is what makes
     # load() safe to call again later from a reload endpoint.
-    load_with(lambda d: d["blind_run"].update(max_rpm=9000))
+    load_with(lambda d: d["timing"].update(auto_start_delay_s=-1.0))
     check("a rejected profile leaves the live one intact",
-          config.BLIND_MAX_RPM != 9000,
-          f"BLIND_MAX_RPM={config.BLIND_MAX_RPM}")
+          config.AUTO_START_DELAY_S != -1.0,
+          f"AUTO_START_DELAY_S={config.AUTO_START_DELAY_S}")
 
 
 def test_derived_constants():

@@ -290,7 +290,7 @@ async function followOperation(id, onDone) {
     busy = true;
     const { status, data } = await api('/api/role', { role: 'engineer', pin });
     busy = false;
-    if (status === 200) { pad.close(); location.href = '/status'; return; }
+    if (status === 200) { pad.close(); location.href = '/home'; return; }
     pin = ''; draw();
     msg.textContent = (data && data.message) || 'wrong PIN';
   }

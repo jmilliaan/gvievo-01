@@ -32,7 +32,6 @@ from tf2_ros import Buffer, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
 
 from amr_interfaces.msg import (
-    CommissioningState,
     ControlLease,
     DriveStatus,
     Event,
@@ -43,13 +42,11 @@ from amr_interfaces.msg import (
     ModeState,
     MuxState,
     PanelState,
-    PpStatus,
     SurveyMoveState,
     WheelStates,
 )
 from amr_interfaces.srv import (
     GetOperation,
-    PlanCommissioning,
     RequestMode,
     RequestSurvey,
     RunMission,
@@ -85,7 +82,7 @@ MUX_NAMES = {
     2: "follow",
     3: "rotate",
     4: "manual",
-    5: "commissioning",
+    5: "commissioning",  # retired 2026-10-30; kept so old bags/logs read
     6: "pendant",
 }
 RELIABLE_1 = QoSProfile(
@@ -251,15 +248,7 @@ class RosAdapter(Node):
             self._event_n += 1
             self._events.append(dict(e, n=self._event_n, restored=True))
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
-        self._commissioning: dict | None = None
-        self._commissioning_t = 0.0
-        self.create_subscription(
-            CommissioningState, "/amr/commissioning_state", self._on_commissioning, LATCHED, callback_group=g
-        )
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
-        self._pp: dict | None = None
-        self._pp_t = 0.0
-        self.create_subscription(PpStatus, "/drives/pp_status", self._on_pp, RELIABLE_1, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
@@ -313,8 +302,6 @@ class RosAdapter(Node):
             "survey": self.create_client(RequestSurvey, "/amr/supervisor/survey", callback_group=g),
             "operation": self.create_client(GetOperation, "/amr/operations/get", callback_group=g),
             "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
-            "comm_plan": self.create_client(PlanCommissioning, "/amr/commissioning/plan", callback_group=g),
-            "comm_clear": self.create_client(Trigger, "/amr/commissioning/clear", callback_group=g),
         }
 
     # ---- subscriptions --------------------------------------------------------------
@@ -579,40 +566,6 @@ class RosAdapter(Node):
     def event_log_files(self) -> list[str]:
         return self._log.files()
 
-    def _on_commissioning(self, m: CommissioningState) -> None:
-        d = _msg_to_dict(m)
-        d["phase_name"] = ["IDLE", "PREPARED", "RUNNING", "SETTLING", "DONE", "ABORTED"][min(int(m.phase), 5)]
-        with self._lock:
-            self._commissioning, self._commissioning_t = d, self._now()
-
-    def _on_pp(self, m: PpStatus) -> None:
-        d = _msg_to_dict(m)
-        d.pop("header", None)
-        with self._lock:
-            self._pp, self._pp_t = d, self._now()
-
-    def pp_status(self) -> dict | None:
-        """The drive owner's pp executor (availability, state, last outcome), with its age."""
-        with self._lock:
-            return dict(self._pp, age_s=self._now() - self._pp_t) if self._pp else None
-
-    def commissioning(self) -> dict | None:
-        with self._lock:
-            return (
-                dict(self._commissioning, age_s=self._now() - self._commissioning_t)
-                if self._commissioning
-                else None
-            )
-
-    def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]:
-        r = self._call("comm_plan", PlanCommissioning.Request(plan_json=plan_json), timeout=5.0)
-        if r is None:
-            return False, "commissioning node unavailable", ""
-        return bool(r.ok), r.message, r.planned_json
-
-    def commissioning_clear(self) -> tuple[bool, str]:
-        return self._trigger("comm_clear")
-
     def diagnostics(self) -> dict:
         now = self._now()
         with self._lock:
@@ -642,8 +595,6 @@ class RosAdapter(Node):
             return False, "no supervisor lease"
         if lease["allowed"] & 1:
             return True, ""
-        if lease["allowed"] & 4:
-            return False, "a commissioning job is held or running; clear it first"
         return False, f"manual control withheld by the supervisor ({mode['mode_name'] if mode else '?'})"
 
     def state(self) -> dict[str, Any]:

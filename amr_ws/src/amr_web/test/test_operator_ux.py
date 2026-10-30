@@ -281,8 +281,9 @@ def test_events_carry_the_catalogue_title(tmp_path):
 
 
 def test_a_fresh_session_lands_on_the_engineer_view(tmp_path):
+    """2026-10-30: Status folded into Home and Monitor, so both roles land on Home."""
     client, _ = app_for(merged(), tmp_path)
-    assert client.get("/").headers["Location"].endswith("/status")
+    assert client.get("/").headers["Location"].endswith("/home")
     assert client.get("/api/role").get_json()["role"] == role.ENGINEER
 
 
@@ -301,8 +302,9 @@ def test_the_engineer_pin_opens_the_engineering_nav(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     assert client.post("/api/role", json={"role": "engineer", "pin": "0000"}).status_code == 403
     assert client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    body = client.get("/status").get_data(as_text=True)
-    assert "/params" in body and "/commissioning" in body
+    body = client.get("/home").get_data(as_text=True)
+    assert "/params" in body and "/monitor" in body
+    assert "/commissioning" not in body and 'href="/status"' not in body  # removed 2026-10-30
     # and the way back is always open: a guard you cannot leave is a trap
     assert client.post("/api/role", json={"role": "operator"}).status_code == 200
     assert "/params" not in client.get("/home").get_data(as_text=True)
@@ -313,9 +315,9 @@ def test_only_the_engineer_gets_an_unconditional_restart_button(tmp_path):
     rebuilt; an engineer restarts for other reasons (a rebuilt overlay, a changed env)."""
     client, _ = app_for(merged(), tmp_path)
     client.post("/api/role", json={"role": "operator"})
-    assert 'id="btn-restart"' not in client.get("/status").get_data(as_text=True)
+    assert 'id="btn-restart"' not in client.get("/monitor").get_data(as_text=True)
     client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
-    assert 'id="btn-restart"' in client.get("/status").get_data(as_text=True)
+    assert 'id="btn-restart"' in client.get("/monitor").get_data(as_text=True)
 
 
 def test_the_pin_lives_outside_the_repository_and_can_be_overridden(tmp_path, monkeypatch):
@@ -502,7 +504,7 @@ def test_the_adapter_reports_measured_wheel_speed_as_body_speed(monkeypatch):
 def test_one_run_tab_and_maps_routes_live_under_run(tmp_path):
     """2026-10-27 (trackless only): one Run tab, no tracked pages; Maps/Routes in its subnav."""
     client, _ = app_for(merged(), tmp_path)
-    body = client.get("/status").get_data(as_text=True)
+    body = client.get("/home").get_data(as_text=True)
     nav = body.split('<nav>')[1].split('</nav>')[0]
     assert '<a href="/run"' in nav and ">Run<" in nav
     assert "Run tracked" not in body and "Run trackless" not in body and ">Teach<" not in body
@@ -533,8 +535,8 @@ def test_base_renders_the_run_tab_with_no_product_variable(tmp_path):
 
     client, _ = app_for(merged(), tmp_path)
     app = client.application
-    with app.test_request_context("/status"):
-        body = render_template_string('{% extends "base.html" %}', page="status")
+    with app.test_request_context("/home"):
+        body = render_template_string('{% extends "base.html" %}', page="home")
     assert '<a href="/run"' in body and ">Run<" in body
     src = open(os.path.join(app.root_path, app.template_folder, "base.html"), encoding="utf-8").read()
     assert "trackless_ok" not in src and "tracked_ok" not in src and "product" not in src
@@ -580,7 +582,7 @@ def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
 
 def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
     client, _ = app_for(merged(), tmp_path)
-    for page in ("/home", "/status", "/manual"):
+    for page in ("/home", "/monitor", "/manual"):
         body = client.get(page).get_data(as_text=True)
         net = body.index('id="net"')
         assert net < body.index('id="supply"') < body.index('id="ipc-temp"'), page
@@ -634,3 +636,18 @@ def test_a_refused_continue_is_the_row_the_operator_reads_first():
     h = view.headline(st, view.standing(st))
     assert h["code"] == "CONTINUE_REFUSED" and h["state"].startswith(view.WAITING)
     assert [r["code"] for r in view.standing(st)][:2] == ["CONTINUE_REFUSED", "RUN_WAITING"]
+
+
+def test_the_status_and_commissioning_pages_are_gone(tmp_path):
+    """2026-10-30: Status folded into Home (mode, reason, fault, Return to idle, Recover) and
+    Monitor (map, readiness, standing codes, Restart); Commission removed with blind run/pp."""
+    client, _ = app_for(merged(), tmp_path)
+    for path in ("/status", "/commissioning", "/api/commissioning", "/api/commissioning/capabilities"):
+        assert client.get(path).status_code == 404, path
+    assert client.post("/api/commissioning/plan", json={"plan": {}}).status_code == 404
+    home = client.get("/home").get_data(as_text=True)
+    for el in ("home-mode", "home-reason", "home-fault", "home-idle", "home-recover"):
+        assert f'id="{el}"' in home, el
+    mon = client.get("/monitor").get_data(as_text=True)
+    for el in ('id="st-active"', 'id="st-standing"', 'id="st-ready"', 'id="mon"'):
+        assert el in mon, el

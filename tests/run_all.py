@@ -31,7 +31,7 @@ MODULES = [
     "test_dio",
     "test_lidar",
     "test_panel",
-    "test_blindrun",
+    "test_gls",
     "test_layout",
 ]
 
@@ -96,7 +96,14 @@ MODULES = [
 #   §A.2). test_config + 5 (DI13 is panel.di_continue; refused on Start, on the E-stop input,
 #   on a pendant channel, off the module); test_panel + 5 (test_continue: one edge per
 #   press, not a Start, no edge at boot, none across a reconnect, none without the channel).
-EXPECTED_CHECKS = 535
+# - 38 (2026-10-30): the commissioning page, agv_core/blindrun.py and profile position
+#   removed (plan noble-waddling-sutton). test_blindrun (32) deleted; test_config - 6
+#   (blind_run.max_rpm/max_speed_mps and the six pp lock checks replaced by two refusals
+#   of the retired sections; the rejected-profile check now mutates timing instead).
+# + 28 (2026-10-30): test_gls added (gls-wait-coding-plan P0): CoLa A framing (5), parsing
+#   incl. two results in one telegram as seen on the vehicle (5), frame aggregation (11),
+#   counts -> T_LC conversion (3), the read-only probe and its "gls" owner lock (4).
+EXPECTED_CHECKS = 525
 
 
 # An exception on a helper thread only prints a traceback by default - the

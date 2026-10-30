@@ -90,8 +90,8 @@ panel.di_manual_arm
     The pendant enable / arm input (DI09 on MCQ4-4). The drives are powered
     only while this input is HIGH, in MANUAL and AUTO alike (operator,
     2026-10-27); LOW leaves them in standby (CANopen up, encoders read, power
-    stage off), so a jog, a pendant press, a survey move, a commissioning pp
-    move or an AUTO run does nothing until it is switched on. Under AUTO power
+    stage off), so a jog, a pendant press, a survey move or an AUTO run does
+    nothing until it is switched on. Under AUTO power
     also needs the run to ask for it (amr_base/arm_policy.py).
 
     It replaces manual_auto_arm (the selector in MANUAL was itself the arm
@@ -212,53 +212,6 @@ horn.*
     Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
     it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
     rather than leaving it energised. See the derived value.
-
-blind_run.*
-    Encoder-only test moves from /blind, to measure the encoders before SLAM
-    relies on them. The page only SETS a plan; PB Start runs it, with the
-    selector in MANUAL and the vehicle armed. Reset, a selector move, web Stop,
-    a fault or lost 6064h feedback stops it. The plan survives a stop so the
-    same move can be run again.
-
-    Profile velocity mode with a software position loop: the faster wheel runs
-    a trapezoid on its REMAINING counts at accel_rpm_s, capped at max_rpm; the
-    other follows the planned ratio plus sync_kp (1/s) times its progress lag.
-    A segment ends within stop_tolerance_mm, then waits settle_s at standstill
-    before its counts are recorded. Overrunning by overrun_margin, or taking
-    twice the planned time, aborts. max_distance_m caps each wheel per segment.
-
-    Nothing steers on a sensor. The IMU yaw rate is written beside the encoder
-    heading in the run CSV so the two can be compared afterwards - see imu.* -
-    and that is the whole of its involvement.
-
-    max_speed_mps caps the centre-path speed of a blind move on either backend
-    (the /commissioning page offers up to this). Above ~0.4 m/s the protective
-    field sizing of the nanoScan3/FX3 must be confirmed first; that is a check
-    on the vehicle, not something this file can know.
-
-pp.*
-    Profile position (CiA 402 pp) blind moves, executed INSIDE the drives: the
-    drive's own position loop runs each wheel to a count target. LOCKED by
-    default (enabled false). The motor is a 400 W BLM with a 1:30 gearhead, and
-    the BLV-R manual (function edition 3-4/3-6) requires motion-extension mode
-    for that combination, which no positioning type offers. There is no vendor
-    confirmation: enabling pp is an INTERNAL engineering decision to accept
-    that risk, bounded by the settings below, the speed cap and a bench test
-    on blocks first. vendor_ref records who decided, when and on what basis;
-    the loader refuses enabled=true while it is empty.
-
-    expect.* are the values a human sets IN THE DRIVES with MEXE02 (and saves).
-    This software never writes them - they are on no allow-list in guard.py -
-    it reads them back from both drives before every pp move and refuses on
-    any difference, or while any of them is still null:
-      max_torque_permille     6072h  caps motor torque so torque x 30 stays
-                                     inside the gearhead's permissible torque
-      following_error_counts  6065h  how far a wheel may lag before bit 13
-      position_window_counts  6067h  "target reached" band
-      halt_option             605Dh  Halt decelerates on the profile ramp (1)
-      fault_reaction          605Eh  2 = quick-stop ramp (6085h), never 0 on a gear
-      quick_stop_decel        6085h  r/min/s
-    max_speed_mps is the pp cap, at most blind_run.max_speed_mps.
 
 timing.auto_start_delay_s
     The pre-move warning (2026-10-08): every move that follows an operator's
@@ -443,23 +396,6 @@ _SCHEMA = {
         "poll_period_s":  ("IMU_PERIOD_S", float),
         "retry_period_s": ("IMU_RETRY_PERIOD_S", float),
     },
-    "blind_run": {
-        "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
-        "max_rpm":           ("BLIND_MAX_RPM", float),
-        "accel_rpm_s":       ("BLIND_ACCEL_RPM_S", float),
-        "settle_s":          ("BLIND_SETTLE_S", float),
-        "stop_tolerance_mm": ("BLIND_STOP_TOLERANCE_MM", float),
-        "sync_kp":           ("BLIND_SYNC_KP", float),
-        "overrun_margin":    ("BLIND_OVERRUN_MARGIN", float),
-        "max_segments":      ("BLIND_MAX_SEGMENTS", int),
-        "max_speed_mps":     ("BLIND_MAX_SPEED_MPS", float),
-    },
-    # "expect" is nested and nullable; _read_pp_expect reads it (see pp.* notes).
-    "pp": {
-        "enabled":       ("PP_ENABLED", bool),
-        "vendor_ref":    ("PP_VENDOR_REF", str),
-        "max_speed_mps": ("PP_MAX_SPEED_MPS", float),
-    },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
         "telemetry_period_s": ("TELEMETRY_PERIOD_S", float),
@@ -596,37 +532,6 @@ def _read_ramp(raw):
     return out
 
 
-# pp.expect: the drive-side values verified before a pp move -> (index, name).
-PP_EXPECT_OBJECTS = {
-    "max_torque_permille":    0x6072,
-    "following_error_counts": 0x6065,
-    "position_window_counts": 0x6067,
-    "halt_option":            0x605D,
-    "fault_reaction":         0x605E,
-    "quick_stop_decel":       0x6085,
-}
-
-
-def _read_pp_expect(raw):
-    """pp.expect -> {name: int | None}. Every key present; null means "not
-    configured yet", which keeps pp unavailable rather than failing the load."""
-    block = raw.get("expect")
-    if not isinstance(block, dict):
-        raise ConfigError("pp.expect: missing or not an object")
-    unknown = set(block) - set(PP_EXPECT_OBJECTS)
-    if unknown:
-        raise ConfigError(f"pp.expect: unknown key(s) {sorted(unknown)}")
-    missing = set(PP_EXPECT_OBJECTS) - set(block)
-    if missing:
-        raise ConfigError(f"pp.expect: missing key(s) {sorted(missing)}")
-    return {k: None if block[k] is None else _coerce(block[k], int, f"pp.expect.{k}")
-            for k in PP_EXPECT_OBJECTS}
-
-
-
-
-
-
 def _parse(doc):
     """Raw JSON document -> flat namespace of primitives. Strict both ways."""
     if not isinstance(doc, dict):
@@ -655,8 +560,6 @@ def _parse(doc):
             allowed |= {"di_names", "do_names", "motion_on", "alarm_on", "movement_horn"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
-        if section == "pp":
-            allowed.add("expect")
         unknown = set(block) - allowed
         if unknown:
             raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}")
@@ -667,7 +570,6 @@ def _parse(doc):
             ns[name] = _coerce(block[key], want, f"{section}.{key}")
 
     ns["RAMP"] = _read_ramp(doc["drivers"])
-    ns["PP_EXPECT"] = _read_pp_expect(doc["pp"])
     # Sanity-check the counts BEFORE the name lists are sized against them, or
     # "num_di": 0 gets reported as a problem with di_names, which sends the
     # reader to fix the wrong key.
@@ -929,40 +831,6 @@ def _validate(ns):
           f"imu.retry_period_s ({g('IMU_RETRY_PERIOD_S')}) must exceed "
           f"poll_period_s ({g('IMU_PERIOD_S')})")
 
-    # -- blind run --------------------------------------------------------
-    check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
-          "blind_run.max_distance_m must be in (0, 50] m")
-    check(0 < g("BLIND_MAX_RPM") <= g("MOTOR_MAX_RPM"),
-          "blind_run.max_rpm must be in (0, motor_max_rpm]")
-    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["auto"]["accel"],
-          "blind_run.accel_rpm_s must be > 0 and within the drive ramp "
-          "(drivers.ramp.auto.accel), or the drive lags the plan")
-    check(g("BLIND_SETTLE_S") >= 0, "blind_run.settle_s must be >= 0")
-    check(0 < g("BLIND_STOP_TOLERANCE_MM") <= 50,
-          "blind_run.stop_tolerance_mm must be in (0, 50] mm")
-    check(g("BLIND_SYNC_KP") >= 0, "blind_run.sync_kp must be >= 0")
-    check(0 <= g("BLIND_OVERRUN_MARGIN") <= 0.5,
-          "blind_run.overrun_margin must be a fraction in [0, 0.5]")
-    check(1 <= g("BLIND_MAX_SEGMENTS") <= 32,
-          "blind_run.max_segments must be in 1..32")
-    check(0 < g("BLIND_MAX_SPEED_MPS") <= 0.8,
-          "blind_run.max_speed_mps must be in (0, 0.8] m/s")
-    check(g("BLIND_MAX_SPEED_MPS") * g("RPM_PER_MPS") <= g("BLIND_MAX_RPM") + 1e-6,
-          f"blind_run.max_speed_mps ({g('BLIND_MAX_SPEED_MPS')} m/s) needs more than "
-          f"blind_run.max_rpm ({g('BLIND_MAX_RPM'):g} r/min)")
-
-    # -- profile position (locked until someone records the decision) -------
-    check(0 < g("PP_MAX_SPEED_MPS") <= g("BLIND_MAX_SPEED_MPS"),
-          "pp.max_speed_mps must be in (0, blind_run.max_speed_mps]")
-    expect = g("PP_EXPECT")
-    for k, v in expect.items():
-        check(v is None or v >= 0, f"pp.expect.{k} must be >= 0 or null")
-    if g("PP_ENABLED"):
-        unset = sorted(k for k, v in expect.items() if v is None)
-        check(not unset, f"pp.enabled is true but pp.expect has null value(s) {unset}")
-        check(g("PP_VENDOR_REF").strip() != "",
-              "pp.enabled is true but pp.vendor_ref is empty - record who "
-              "authorised pp on this 400 W geared motor, when, and on what basis")
     check(g("AUTO_START_DELAY_S") >= 0,
           "timing.auto_start_delay_s must be >= 0")
     check(g("AUTO_START_DELAY_S") <= 10.0,

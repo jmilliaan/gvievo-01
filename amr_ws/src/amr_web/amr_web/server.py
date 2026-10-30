@@ -36,7 +36,6 @@ from amr_mission import map_bundle as mb
 from amr_navigation import footprint as fpmod
 from amr_navigation import store
 from amr_web import alarms as alarmview
-from amr_web import commissioning_log as clog
 from amr_web import demo as demomod
 from amr_web import jog, netcheck, reports, wifi
 from amr_web import role as rolemod
@@ -83,10 +82,6 @@ class Adapter(Protocol):
     def io_image(self) -> dict | None: ...
     def events(self, since: int = 0) -> list[dict]: ...
     def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None: ...
-    # commissioning (unified plan §7.2): plan/clear move nothing; only physical Start executes
-    def commissioning(self) -> dict | None: ...
-    def commissioning_plan(self, plan_json: str) -> tuple[bool, str, str]: ...
-    def commissioning_clear(self) -> tuple[bool, str]: ...
 
 
 def _result(ok: bool, message: str, status_fail: int = 409, **extra):
@@ -165,7 +160,6 @@ def create_app(
     # Session cookie carries the role only. The PIN never leaves the server.
     app.secret_key = rolemod.secret(state_dir)
     standing = alarmview.StandingTracker()
-    app.config["EVIDENCE_DIR"] = clog.evidence_dir(state_dir)
     fp = fpmod.load(footprint_path or fpmod.default_path())
     app.config["FOOTPRINT"] = fp
     _grids: dict[tuple[str, int], tuple[Any, gridio.Grid]] = {}
@@ -197,7 +191,7 @@ def create_app(
     # ---- pages -------------------------------------------------------------------
 
     def _role() -> str:
-        # Default is the engineer view (2026-10-02, commissioning); operator only once chosen.
+        # Default is the engineer view (2026-10-02); operator only once chosen.
         return rolemod.OPERATOR if session.get("role") == rolemod.OPERATOR else rolemod.ENGINEER
 
     @app.context_processor
@@ -227,7 +221,8 @@ def create_app(
 
     @app.get("/")
     def index():
-        return redirect("/home" if _role() == rolemod.OPERATOR else "/status")
+        # Home for both roles: the Status page folded into Home and Monitor (2026-10-30).
+        return redirect("/home")
 
     @app.get("/home")
     def page_home():
@@ -255,10 +250,6 @@ def create_app(
     def api_role_get():
         return jsonify({"role": _role()})
 
-    @app.get("/status")
-    def page_status():
-        return render_template("status.html", page="status")
-
     @app.get("/monitor")
     def page_monitor():
         return render_template("monitor.html", page="monitor")
@@ -280,10 +271,6 @@ def create_app(
     @app.get("/params")
     def page_params():
         return render_template("params.html", page="params")
-
-    @app.get("/commissioning")
-    def page_commissioning():
-        return render_template("commissioning.html", page="commissioning")
 
     @app.get("/manual")
     def page_manual():
@@ -677,83 +664,6 @@ def create_app(
                 "note": "profile = the vehicle profile; runtime = what the owning node reports it uses",
             }
         )
-
-    # ---- commissioning (unified plan §7.2) ----
-
-    @app.get("/api/commissioning")
-    def api_commissioning():
-        return jsonify(adapter.commissioning() if hasattr(adapter, "commissioning") else None)
-
-    @app.post("/api/commissioning/plan")
-    def api_commissioning_plan():
-        d, err = _body()
-        if err:
-            return err
-        plan = d.get("plan")
-        if not isinstance(plan, dict):
-            return _result(False, "plan object required", 400)
-        try:
-            text = json.dumps(plan)
-        except (TypeError, ValueError):
-            return _result(False, "plan is not JSON-serialisable", 400)
-        if len(text) > 20000:
-            return _result(False, "plan too large", 413)
-        ok, msg, planned = adapter.commissioning_plan(text)
-        body = {"ok": ok, "message": msg}
-        if ok and planned:
-            body["planned"] = json.loads(planned)
-        return jsonify(body), (200 if ok else 409)
-
-    @app.post("/api/commissioning/clear")
-    def api_commissioning_clear():
-        return _call(adapter.commissioning_clear)
-
-    @app.get("/api/commissioning/capabilities")
-    def api_commissioning_capabilities():
-        """What the blind-run form may offer: the profile's caps, and whether the drive
-        owner reports profile position available right now (locked until the decision
-        to run pp on this motor is recorded in pp.vendor_ref). Advisory: the commissioning node and
-        the drive owner enforce the same rules on their own."""
-
-        from agv_core import config  # noqa: PLC0415
-
-        st = adapter.pp_status() if hasattr(adapter, "pp_status") else None
-        fresh = st is not None and float(st.get("age_s", 1e9)) <= 1.0
-        if not fresh:
-            pp_ok, pp_reason = False, "no fresh pp status from the drive owner"
-        else:
-            pp_ok, pp_reason = bool(st.get("available")), str(st.get("reason", ""))
-        return jsonify(
-            {
-                "max_speed_mps": config.BLIND_MAX_SPEED_MPS,
-                "pp_max_speed_mps": config.PP_MAX_SPEED_MPS,
-                "max_distance_m": config.BLIND_MAX_DISTANCE_M,
-                "min_arc_radius_m": config.TRACK_M / 2.0,
-                "track_m": config.TRACK_M,
-                "decel_mps2": config.BLIND_ACCEL_RPM_S * config.MPS_PER_RPM,
-                "field_check_above_mps": 0.4,
-                "pp_available": pp_ok,
-                "pp_reason": "" if pp_ok else pp_reason,
-                "pp_status": st,
-            }
-        )
-
-    @app.get("/api/commissioning/history")
-    def api_commissioning_history():
-        return jsonify(clog.history(app.config["EVIDENCE_DIR"]))
-
-    @app.post("/api/commissioning/measurement")
-    def api_commissioning_measurement():
-        d, err = _body()
-        if err:
-            return err
-        try:
-            row = clog.save_measurement(app.config["EVIDENCE_DIR"], d.get("run"), d)
-        except clog.LogError as e:
-            return _result(False, str(e), 400)
-        except OSError as e:
-            return _result(False, f"measurement not stored: {e}", 500)
-        return jsonify({"ok": True, "message": "measurement stored", "row": row})
 
     # ---- live view (unified plan §6.4): bounded rates, encoded once per snapshot ----
 

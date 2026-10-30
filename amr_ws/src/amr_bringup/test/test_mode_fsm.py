@@ -62,8 +62,6 @@ def test_fault_transitioning_and_pending_operation_block_everything_but_recover(
     assert not fsm.admit(fsm.IDLE, fsm.REQ_RECOVER, cond()).ok
     d = fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond(operation_pending=True))
     assert not d.ok and d.reason.startswith("BUSY")
-    d = fsm.admit(fsm.IDLE, fsm.REQ_NAVIGATION, cond(commissioning_active=True))
-    assert not d.ok and "commissioning" in d.reason
 
 
 def test_duplicate_request_returns_existing_operation_and_book_is_bounded(tmp_path):

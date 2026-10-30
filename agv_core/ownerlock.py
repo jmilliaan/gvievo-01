@@ -24,7 +24,7 @@ import fcntl
 import os
 
 DEFAULT_DIR = "/run/lock/amr"
-RESOURCES = ("app", "can", "dio", "scanner")
+RESOURCES = ("app", "can", "dio", "scanner", "gls")
 
 
 class OwnerBusy(RuntimeError):

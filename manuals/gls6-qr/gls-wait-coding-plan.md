@@ -1,6 +1,6 @@
 # GLS label fix + route wait step: coding plan (MCQ4-4)
 
-Branch `kyb-trackless` · 2026-10-30 · **P1 (Part A) implemented 2026-10-30, uncommitted, not yet on the vehicle**; P0, P2–P6 not started
+Branch `kyb-trackless` · 2026-10-30 · **P1 (Part A) implemented and committed (`ae373c8`); vehicle acceptance A pending. P0 implemented 2026-10-30, uncommitted.** P2–P6 not started
 
 This plan extends [gls6-system.md](gls6-system.md), the design brief. Read the brief first. Where the two differ, this plan wins: it is built on the code as of `481ffda`, after the emergency suite landed. File:line references are from that commit. Check each one before you edit.
 
@@ -58,7 +58,7 @@ Out of scope:
   - READY and PAUSED are left alone. **Do not add WAITING to that condition.** WAITING just stays WAITING.
   - After NORMAL, a physical Start resumes `BLOCKED(estop)` through the pre-move warning, from the same pass and step. It never resumes by itself. Start and Load are still refused while not NORMAL.
   - New alarm row `ESTOP_HOLD`; `HOLD_CODES["estop"]` maps to it. Tests are in `amr_mission/test/test_emergency_hold.py`.
-  - Blind survey/pp moves still end on an emergency. The survey session and the commissioning job do not end.
+  - Blind survey moves still end on an emergency. The survey session does not end. (Commissioning and pp moves were removed 2026-10-30.)
 - **Resuming after an emergency (owner, 2026-10-30).** After release and Reset, the operator presses **PB Continue or PB Start**. Either one resumes, whether the run was stopped while driving or while WAITING. Both buttons need a fresh press after NORMAL: an edge seen during the emergency is dropped. Both go through the same checks and the same pre-move warning. The emergency suite has implemented Start. **Part A adds Continue** to the `BLOCKED(estop)` resume (§A.4). In `agv_core/alarms.py`, change `ESTOP_HOLD`'s action text to "press Start or Continue", then regenerate RUNBOOK §4. Nothing is queued: `_start_edge`'s first check refuses an edge while not NORMAL, so a fresh press after NORMAL happens automatically. Give the Continue handler the same first check.
 - **`RunState.msg`** is append-only (`RunState.msg:36`).
 
@@ -93,7 +93,8 @@ Out of scope:
   - The template outputs `$XMCL/$YMCL`.
   - ISO15415 verification is off.
   - The configuration is saved permanently.
-- **Result stream.** Port 2112 streams results at about 33 Hz. Each frame contains several codes, each with the same `$FAMS`.
+- **Result stream.** Port 2112 streams one telegram per decoded code; every code from one image has the same `$FAMS`. Measured with `gls_probe` on the vehicle, 2026-10-30, label at HOME: **about 14.5 frames/s** (`$FAMS` steps of about 60 ms; the brief's "~33 Hz" was not an image rate), about 70 telegrams/s, 4–5 codes per image, spread about 5 counts and 0.3–0.6° between the codes of one image.
+- **One telegram can carry several codes.** About 3 % of telegrams hold two results back to back with no separator (`…;946692806114D2x0000y0000;5;-33;…`). `agv_core.drivers.gls.parse` returns a list for that reason.
 - **Command replies.** CoLa `sRN` replies also arrive on 2112, mixed in with the results. On 2111, replies get buried in the diagnostics stream.
 - **Units and signs are still unknown** (brief §7). In one frame the codes still disagree by up to about 7 counts.
 
@@ -334,7 +335,7 @@ Add the notes to the TUNING NOTES docstring (`config.py:1070`). Extend `test_con
 - **Alarms:**
   - `GLS_DOWN` (WARN, `auto`): "The floor-label camera is not answering". It never stops a run.
   - `GLS_CONFIG_MISMATCH` (ERROR, `engineer`)
-- **Web.** Show the camera's status on the IO or Status page: connected, frame rate, codes per frame, last label.
+- **Web.** Show the camera's status on the IO or Monitor page (Status was removed 2026-10-30): connected, frame rate, codes per frame, last label.
 
 ### B.5 URDF `gls_frame`
 
