@@ -2,7 +2,7 @@
 
 Branch `kyb-trackless` · repo `/home/gvipc-evo-01/agv_can` · read-only analysis, 2026-10-21
 
-> **Status (2026-10-27):** P1-P6 were carried out in the working tree (uncommitted). P7 (vehicle deploy) and the D18 tags are still to do. The `amr_ws/deploy/netplan/` copies (D19) are not in yet: the live files are root-only.
+> **Status (2026-10-30):** P1-P6 are committed on `kyb-trackless` (`62959a6`, `ccd12fb`) and pushed. On gvipc-ce the overlay was clean-rebuilt and the unit reinstalled (P7 build/install); no tracked-era data was present to archive. **D24 is overridden by the owner: `kyb-trackless` (MCQ4-4) and `gvievo-main` are separate projects, so nothing here is merged into `gvievo-main` or `main`, and this vehicle deploys from `kyb-trackless`.** Still open: the D18 tags, the sim tests and the §6 on-vehicle checks, P3b (optional), and the D11 electrical-doc edit after the reader is physically removed.
 
 ---
 
@@ -76,7 +76,7 @@ Branch `kyb-trackless` · repo `/home/gvipc-evo-01/agv_can` · read-only analysi
 | D21 | Dead keys `imu.poll_period_s`, `imu.retry_period_s`, and `SafetyFieldStatus.msg` | **Leave them.** They are not tracked and are out of scope. Fix only the stale "DISPLAY ONLY" text in the `imu.*` tuning note. |
 | D22 | On-vehicle data left by tracked code: `~/amr_maps/<id>/tapegraph/`, `~/.amr/teach/`, `$AMR_STATE_DIR/line_graph.json`, `~/.amr/reports/tape_health/`, `~/.amr/mls_cal/` (`read_mls.CAL_DIR`, L379), the tracked-era `~/.amr/runs/<stamp>/` (from `run_log.sh`), `~/.amr/logs/events.jsonl*` (holds LINE_*/TRACK_*/RFID_*/MLS_* codes, which render as UNKNOWN "Something stopped the vehicle" through `server.py:757` → `alarms.get()`), and `~/.amr/operations.jsonl` (kind `line`, `boot-line-*`) | **Archive it all to a tarball, then purge the tape data and rotate both journals**, during the deploy. Purging `tapegraph/` is safe: it sits beside `rev<N>` and `map_bundle.REV_RE` ignores it. The alternative to rotating is a small `RETIRED_CODES` set in `alarms.get()` returning an INFO row. Not recommended: it leaves a tracked trace in code. |
 | D23 | GLS621 address | **Already resolved (2026-10-21).** The GLS is at 192.168.4.1 on enp3s0 (PC 192.168.4.2/24), so there is no clash with the nanoScan3 subnet (192.168.3.0/24). Update `gls6-system.md` and alpha-setup §2.2 to match, in Phase 6. |
-| D24 | Which branch the vehicle deploys from | Land `remove-tracked` → `kyb-trackless` → **`gvievo-main`** (the vehicle branch, `alpha-setup.md:62`), and into `main`, before P7. Expect conflicts on `gvievo-main` like those on `aop-demo-oct`. Update alpha-setup L62 if the vehicle branch changes. |
+| D24 | Which branch the vehicle deploys from | **Overridden 2026-10-30 (owner): `kyb-trackless` and `gvievo-main` are separate projects; no merge, MCQ4-4 deploys from `kyb-trackless`.** Original: Land `remove-tracked` → `kyb-trackless` → **`gvievo-main`** (the vehicle branch, `alpha-setup.md:62`), and into `main`, before P7. Expect conflicts on `gvievo-main` like those on `aop-demo-oct`. Update alpha-setup L62 if the vehicle branch changes. |
 | D25 | `0910-fix-plan-001.md` (mixed: A1 PP_VETOED, A2/B3 bag_report, A3 `tools/*.sh` gitignore, B5/F7 sim `can_confirm`, all trackless-relevant) | **Move it to `manuals/obsolete/`** (allow-listed) instead of deleting it. Its citations then stay valid (`readiness.py:62`, `test_unified_sim.py:379`, `.gitignore` L15/L31) once each says "manuals/obsolete/0910-fix-plan-001.md". |
 
 ### 2.2 Safety net
@@ -366,7 +366,7 @@ git grep -n -E "TRACKED|AUTO_HIGH_RPM|K_RATIO|SENSOR_LOOKAHEAD|SENSOR_MAX_MM|MLS
 
 ### Phase 7: deploy and cleanup on the vehicle (see §6)
 
-First merge into `gvievo-main` (D24) and `git pull` on the vehicle. Then, with `amr.service` stopped and the session witnessed:
+`git pull` `kyb-trackless` on the vehicle (no `gvievo-main` merge, D24 overridden). Then, with `amr.service` stopped and the session witnessed:
 
 ```bash
 cd ~/agv_can/amr_ws && rm -rf build install log && colcon build --symlink-install
