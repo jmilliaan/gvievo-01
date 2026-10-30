@@ -390,6 +390,8 @@ _SCHEMA = {
         "di_auto":        ("PANEL_DI_AUTO", int),
         "auto_when_on":   ("PANEL_AUTO_WHEN_ON", bool),
         "di_manual_arm":  ("PANEL_DI_MANUAL_ARM", int),
+        "di_estop_ok":    ("PANEL_DI_ESTOP_OK", int),
+        "estop_reset_timeout_s": ("PANEL_ESTOP_RESET_TIMEOUT_S", float),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
     },
@@ -838,20 +840,25 @@ def _validate(ns):
 
     # -- panel ------------------------------------------------------------
     chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
-             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM")}
+             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM"),
+             "di_estop_ok": g("PANEL_DI_ESTOP_OK")}
     for key, ch in chans.items():
         check(0 <= ch < g("DIO_NUM_DI"),
               f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
     # Two functions on one channel is a wiring or config error that would
     # otherwise present as phantom presses - a Reset edge every time Start is
     # pushed - which is a miserable thing to debug from the vehicle.
-    check(len(set(chans.values())) == 4,
+    check(len(set(chans.values())) == len(chans),
           f"panel channels must be distinct, got {chans}")
     if g("PENDANT_ENABLED"):
         jog = {g("PENDANT_DI_FWD"), g("PENDANT_DI_RVS"), g("PENDANT_DI_LEFT"), g("PENDANT_DI_RIGHT")}
         check(g("PANEL_DI_MANUAL_ARM") not in jog,
               f"panel.di_manual_arm ({g('PANEL_DI_MANUAL_ARM')}) is a pendant channel: "
               "every jog press would also power the drives")
+        check(g("PANEL_DI_ESTOP_OK") not in jog,
+              f"panel.di_estop_ok ({g('PANEL_DI_ESTOP_OK')}) is a pendant channel")
+    check(0.5 <= g("PANEL_ESTOP_RESET_TIMEOUT_S") <= 30.0,
+          "panel.estop_reset_timeout_s must be in 0.5..30 s")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
     # A selector change and a pendant press landing in the SAME scan is not a hand: on
     # 2026-09-17 the DIO image showed MANUAL+FWD for 1.02 s mid-route with nobody at the

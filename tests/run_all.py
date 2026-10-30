@@ -89,7 +89,10 @@ MODULES = [
 #   tape_loc blocks, the partial-autopilot check, the autopilot leftovers and limits) + 6
 #   (refusals of a leftover autopilot, rfid, mls or tape_loc section, the tracked key and
 #   vehicle.sensor_lookahead_m).
-EXPECTED_CHECKS = 518
+# + 7 (2026-10-30): emergency suite (manuals/emergency-suite-plan.md). test_config + 7 (DI08 is
+#   panel.di_estop_ok; refused on a panel button, the arm, a pendant channel, off the module;
+#   estop_reset_timeout_s outside 0.5..30 s).
+EXPECTED_CHECKS = 525
 
 
 # An exception on a helper thread only prints a traceback by default - the

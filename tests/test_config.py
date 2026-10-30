@@ -191,6 +191,20 @@ def test_config_profile():
             lambda d: d["panel"].update(di_manual_arm=d["panel"]["di_start"]), "distinct")
     refuses("a Manual Arm input on a pendant channel is refused",
             lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
+    # Emergency suite (2026-10-30): DI08 is the Flexi Soft's Q3, E-stop OK, HIGH = no emergency.
+    check("DI08 is the E-stop OK input", config.PANEL_DI_ESTOP_OK == 8, str(config.PANEL_DI_ESTOP_OK))
+    refuses("an E-stop input shared with a panel button is refused",
+            lambda d: d["panel"].update(di_estop_ok=d["panel"]["di_reset"]), "distinct")
+    refuses("an E-stop input on the arm channel is refused",
+            lambda d: d["panel"].update(di_estop_ok=d["panel"]["di_manual_arm"]), "distinct")
+    refuses("an E-stop input on a pendant channel is refused",
+            lambda d: d["panel"].update(di_estop_ok=d["pendant"]["di_rvs"]), "pendant channel")
+    refuses("an E-stop input the module does not have is refused",
+            lambda d: d["panel"].update(di_estop_ok=99), "di_estop_ok")
+    refuses("a reset timeout under 0.5 s is refused",
+            lambda d: d["panel"].update(estop_reset_timeout_s=0.2), "estop_reset_timeout_s")
+    refuses("a reset timeout over 30 s is refused",
+            lambda d: d["panel"].update(estop_reset_timeout_s=31.0), "estop_reset_timeout_s")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
     refuses("a pre-move timeout not above the warning is refused",

@@ -93,7 +93,9 @@
     "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,
-    "di_manual_arm": 9
+    "di_manual_arm": 9,
+    "di_estop_ok": 8,
+    "estop_reset_timeout_s": 3.0
   },
   "horn": {
     "enabled": false,

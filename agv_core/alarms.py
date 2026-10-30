@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 INFO, WARN, ERROR = "info", "warn", "error"
-CLEARS = ("auto", "start_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
+CLEARS = ("auto", "start_button", "reset_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
 # Worst first: the operator surface sorts standing alarms by this, so the one
 # sentence on the Home page is the one that actually holds the vehicle.
 SEVERITY_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
@@ -58,9 +58,19 @@ def _rows() -> tuple[Alarm, ...]:
         a("FIELD_BLOCKED", INFO, "auto", "Stopped: something is in the safety field",
           "Clear the area. The vehicle starts again by itself.",
           "Scanner OSSD -> FX3 -> STO. Executor hold cause 'field'; auto-resume after the hold window."),
-        a("ESTOP", WARN, "start_button", "Stopped: emergency stop or safety chain",
-          "Release the E-stop, then press Reset and Start on the panel.",
-          "Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile."),
+        a("ESTOP", ERROR, "reset_button", "EMERGENCY STOP",
+          "Make the area safe. Release (twist) the E-stop button, then press the blue Reset button "
+          "on the cabinet.",
+          "DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is "
+          "the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and aborts any "
+          "run (emergency-suite plan). Also the executor's 'estop' hold when it can only infer it."),
+        a("ESTOP_RESET_NEEDED", WARN, "reset_button", "E-stop released: press Reset",
+          "Press the blue Reset button on the cabinet.",
+          "DI08 is HIGH again but no Reset edge has been seen since the emergency."),
+        a("ESTOP_RESET_FAILED", ERROR, "engineer", "Reset did not take",
+          "Check the E-stop is released and press Reset again. If it repeats, call the engineer.",
+          "Reset edge with DI08 HIGH, but the drives stayed in 'Switch on disabled' (STO held) "
+          "for panel.estop_reset_timeout_s. DI08 dropping again is a new emergency, not this."),
         a("PATH_BLOCKED", WARN, "auto", "Stopped: the way ahead is blocked",
           "Clear the route. The vehicle tries again by itself.",
           "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT."),
@@ -372,6 +382,7 @@ def hold_code(cause: str) -> str:
 BUTTON = {
     "auto": "",
     "start_button": "",
+    "reset_button": "",  # physical Reset only, never a web button (emergency plan E4)
     "ack": "Acknowledge",
     "operator": "Set position",
     "recover": "Recover",

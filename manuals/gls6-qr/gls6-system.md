@@ -1,7 +1,7 @@
 # GLS621 home fix — design brief for gvievo-01 (trackless)
 
 Status: **design, not implemented.** Bench-tested sensor, no vehicle code yet.
-Date: 2026-10-20.
+Date: 2026-10-20. §5 device state updated 2026-10-30.
 
 This brief is for a coding agent with the full gvievo-01 repository. It records
 what was established on the bench and what the integration should look like.
@@ -108,11 +108,14 @@ Repo invariants that constrain this work:
 
 - A TCP client helper plus a telegram parser. Pure functions where possible, so `tests/` can cover them.
 - **Framing:** CoLa A. Each telegram is `0x02 … 0x03`. Bytes may arrive split or several telegrams per read, so buffer and split on ETX.
-- **Result telegram,** after the template change in §5: `<label code>;<XMCL>;<YMCL>;<angle>;<timestamp>`.
-  Example of the current (pre-fix) per-code output:
+- **Result telegram,** with the template in §5: `<label code>;<XMCL>;<YMCL>;<angle>;<timestamp>`.
+  Example captured on the vehicle on 2026-10-30, label at home (one frame, four of its codes):
 
   ```
-  D1x0000y0000;43;41;272.442077;946686732975
+  A2x0000y0000;11;9;0.593822;946687420249
+  D2x0000y0000;4;9;0.292423;946687420249
+  A1x0000y0000;11;11;0.298404;946687420249
+  D1x0000y0000;4;11;0.584598;946687420249
   ```
 
 - **Label code:** two characters for the code's position in the label (`A1`…`D4`: row letter, column digit), followed by the label ID (`x0000y0000`). Split them. Only the label ID identifies the label.
@@ -274,7 +277,11 @@ When a route ends at the home station and the vehicle has stopped:
 
 ---
 
-## 5. Device configuration: state as of 2026-10-20
+## 5. Device configuration: state as of 2026-10-30
+
+Template, ISO15415, contrast and code selection were read back from the device
+on the vehicle (192.168.4.1) on 2026-10-30 with CoLa A `sRN`. The other rows are
+from the 2026-10-20 bench session and were not re-read.
 
 Configured in SOPAS ET (CoLa A, Authorized Client; the default password is `client`, CoLa `SetAccessMode 3 F4724744`). CoLa communication names are in brackets. Numeric values in CoLa A replies are **hex**.
 
@@ -286,13 +293,13 @@ Configured in SOPAS ET (CoLa A, Authorized Client; the default password is `clie
 | Data Matrix | on (`DCDMAct` 1); QR off (`DCQRAct` 0) | DM had been off |
 | Min code contrast | **30 %** (`DC2DContrast` 0x1E) | **Was 70 %, which caused 100 % no-read** on the paper label |
 | Module size window | 0.5–0.9 mm (`DC2DMinModSize`/`MaxModSize`) | Label is 0.7 mm. Consider widening to 0.4–1.2 |
-| ISO15415 verification | **still on** (`DCDMVerISO15415` 1) | **TODO: turn off.** Print grading, slows each cycle |
+| ISO15415 verification | **off** (`DCDMVerISO15415` 0) | Turned off after the bench session (read back 2026-10-30). Print grading, slowed each cycle |
 | Trigger | continuous; output "for each image" ticked; transmission ASAP; output mode Multiple | ~33 Hz result stream |
 | Good-read condition | min 1 / max 1 codes (`EVmincodes`/`EVmaxcodes`) | Hidden in GLS mode. Output works anyway; left at 1 (a test write to 20 was reverted, not saved) |
-| Host output template | `[iec _GoodReadCond][f][$BC];[$X];[$Y];[$AN2P];[$FAMS][e][e]` (`OFtplstr1`) | **TODO: change `[$X]`→`[$XMCL]`, `[$Y]`→`[$YMCL]`** (SICK GLS default). As found, it outputs each code's own position, so codes disagree by ±27 mm. |
+| Host output template | `[iec _GoodReadCond][f][$BC];[$XMCL];[$YMCL];[$AN2P];[$FAMS][e][e]` (`OFtplstr1`) | Changed from `[$X];[$Y]` (read back 2026-10-30). As found on the bench, `$X/$Y` gave each code's own position, so codes disagreed by ±27 mm. With XMCL/YMCL the codes in one frame still differ by up to ~7 counts in x and y; see §7 item 1. |
 | Aux output | Reading Diagnostics | Human-readable per-code dump; not for runtime use |
 | Device name | "not defined" | Optional: set something like `gvievo-01-gls` |
-| Saved permanently? | **Not confirmed.** | TODO: save permanently, export the parameter file, commit it under `manuals/` or `profiles/` |
+| Saved permanently? | **Yes** (2026-10-30) | TODO: export the parameter file and commit it under `manuals/` or `profiles/` |
 
 **Pitfall:** in SOPAS **Live / Auto-Setup (setup mode) the host output is muted** (op-ins: "In Setup mode, data output via the host interface is deactivated"). The aux diagnostics keep flowing. If 2112 goes silent on the vehicle, check that nobody left SOPAS in Live mode.
 
@@ -317,17 +324,18 @@ Configured in SOPAS ET (CoLa A, Authorized Client; the default password is `clie
 
 ## 7. Open items: bench tests before code depends on them
 
-Run these with the template fixed to XMCL/YMCL. Log port 2112 raw to a file.
+The template is now XMCL/YMCL (§5). Log port 2112 raw to a file.
 
 1. **Units:** slide the label exactly +10 mm along its printed +X, then +Y, using a ruler or jig.
    - With the as-found `$X/$Y`, codes 18 mm apart differed by ~20 counts, so **it is not plain mm.** Determine `xy_scale_m_per_count` from XMCL/YMCL.
+   - With XMCL/YMCL the codes in one frame should agree, but on 2026-10-30 they ranged 4–11 counts in both x and y (the A codes read x=11, the D codes x=4). Find out why before you set the outlier tolerance in §3.1. It could be per-code geometry, a lens offset, or the scale.
    - Check it at 203 mm. It may depend on the focus or working-distance setting.
 2. **Signs:** from the same test, determine whether XMCL/YMCL is camera-in-label or label-in-camera, and set `x_sign`/`y_sign`.
 3. **Angle:** rotate the label about +90° and confirm the direction and zero.
    - As found, the label sitting ~90° rotated read ≈ 271.8°, with per-code variation of ±0.5°.
    - Set `angle_sign` and `angle_offset_rad`.
 4. **Repeatability:** 60 s static, per frame (after aggregation). Report σ for x, y and yaw. SICK publishes no repeatability figure, so this number sets `fix_spread_*` and `cov_floor_*`.
-5. **Rate:** frame rate and codes per frame after turning ISO15415 off. ~33 Hz was observed with it on.
+5. **Rate:** frame rate and codes per frame now that ISO15415 is off. ~33 Hz was observed with it on.
 6. **On the vehicle:** extrinsic calibration (`T_BC`).
    - Spin in place over the label.
    - The label-centre trace is a circle around the rotation centre. Its centre and radius give `mount_x/y`.
