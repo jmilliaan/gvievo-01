@@ -50,7 +50,7 @@ _EMG_CODE = {
 }
 # Said twice while an emergency row stands: the drives sit in 'Switch on disabled' because
 # of the E-stop, and the mux / an inferred executor hold report the same stop.
-_EMG_SAME_CAUSE = {"SAFETY_RESET_NEEDED", *_EMG_CODE.values()}
+_EMG_SAME_CAUSE = {"SAFETY_RESET_NEEDED", "ESTOP_HOLD", *_EMG_CODE.values()}
 # Why the web refuses a jog or a run start (409). Always starts "E-stop active".
 _EMG_REFUSAL = {
     EMG_ACTIVE: "E-stop active: release it and press Reset first",
@@ -58,7 +58,6 @@ _EMG_REFUSAL = {
     EMG_RESETTING: "E-stop active: resetting, wait for it to finish",
     EMG_RESET_FAILED: "E-stop active: the Reset did not take",
 }
-EMG_ABORT_REASON = "emergency stop"  # the executor's abort reason (route_executor_node)
 RESETTING_DETAIL = "resetting…"
 
 
@@ -249,17 +248,8 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
 
     title = top["title"] if top else "The vehicle is fine."
     action = top["action"] if top else "Nothing to do."
-    # After NORMAL: the emergency aborted the run (owner answer E3), nothing resumes.
-    aborted = (
-        text != EMERGENCY_STOP
-        and run.get("state_name") == "IDLE"
-        and EMG_ABORT_REASON in str(run.get("reason", "")).lower()
-    )
-    if aborted:
-        detail = "The run was aborted by the emergency stop."
-        if not top:
-            title = "Run aborted by the emergency stop"
-            action = "Start a new run: load the mission on Run, then press Start."
+    # After NORMAL a run the emergency stopped is held (ESTOP_HOLD, owner policy 2026-10-30):
+    # its row already says "press Start to continue", nothing to add here.
     return {
         "state": text,
         "detail": detail,

@@ -50,12 +50,14 @@ passed AND the drives report torque. Without torque within premove_timeout_s the
 (estop: Start again once the safety chain is reset). Auto-resumed holds keep their power and
 skip the warning: nobody pressed anything.
 
-Emergency (emergency-suite plan, owner answers 2026-10-30). A fresh PanelState whose
-`emergency` is not NORMAL ABORTS the run in any state - READY, the pre-move warning, EXECUTING,
-PAUSED, BLOCKED - with reason "emergency stop" (event code ESTOP). Nothing resumes: after
-release + Reset a new Load and Start are needed. Load and Start are refused while it is not
-NORMAL. The `estop` hold above is now only the inference from torque, used while the panel
-cannot say (stale) or before its DI08 has caught up with the drive report.
+Emergency (owner policy 2026-10-30, replacing the earlier abort): an emergency is a PHYSICAL
+stop, like the safety chain's - it never ends the run or any program. A fresh PanelState whose
+`emergency` is not NORMAL puts a moving run (EXECUTING, the pre-move warning included) into the
+`estop` hold above, and re-labels any other hold `estop`, so nothing resumes by itself; READY
+and PAUSED runs (and a waiting step) keep their state untouched. After release + Reset the
+operator presses Start: the pre-move warning runs and the route continues where it stopped.
+Load and Start are refused while it is not NORMAL. While the panel is stale, the torque
+inference above still classifies the stop.
 
 Prerequisites are debounced (operator decision 2026-09-20): a prerequisite must FAIL
 CONTINUOUSLY for prereq_grace_s before it faults a run or unreadies a loaded mission, so one
@@ -147,7 +149,7 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
 
 
 class RouteExecutor(Node):
-    _abort_code = ""  # catalogue code for the next IDLE event (an emergency abort: ESTOP)
+    _abort_code = ""  # catalogue code for the next IDLE event, if an abort names one
 
     def __init__(self) -> None:
         super().__init__("route_executor")
@@ -370,7 +372,7 @@ class RouteExecutor(Node):
         self._panel, self._panel_t = m, self._now()
         if self._emergency(self._panel_t):
             with self._lock:
-                self._emergency_abort()
+                self._emergency_hold()
         if m.start_edge:
             with self._lock:
                 self._start_edge()
@@ -385,13 +387,13 @@ class RouteExecutor(Node):
         fresh = m is not None and now - self._panel_t <= self.panel_age
         return fresh and int(m.emergency) != PanelState.EMG_NORMAL
 
-    def _emergency_abort(self) -> None:
-        """An emergency ends the run, in any state; nothing resumes (owner, 2026-10-30)."""
-        if self.fsm.state not in (fsm.READY, *fsm.ACTIVE):
-            return
-        self._abort_code = "ESTOP"
-        if self.fsm.abort("emergency stop"):
-            self._interrupt("emergency stop")
+    def _emergency_hold(self) -> None:
+        """A physical stop, never the end of the run (owner policy, 2026-10-30): a moving run
+        holds as `estop` (Start once NORMAL), any other hold becomes `estop` so it cannot
+        resume by itself, and READY / PAUSED keep their state."""
+        state = self.fsm.state
+        if state == fsm.EXECUTING or (state == fsm.BLOCKED and self.hold_cause != "estop"):
+            self._hold("estop", "emergency stop")
 
     def _reset_edge(self) -> None:
         """Physical Reset (review Q19): acknowledges THIS executor's FAULT, exactly like the
@@ -1000,8 +1002,8 @@ class RouteExecutor(Node):
             now = self._now()
             if state != fsm.BLOCKED:
                 self.hold_cause, self._pending_since = "", None  # a hold ends with its BLOCKED
-            if self._emergency(now) and state in (fsm.READY, *fsm.ACTIVE):
-                self._emergency_abort()
+            if self._emergency(now):
+                self._emergency_hold()
                 state = self.fsm.state
             if state in fsm.ACTIVE or state == fsm.READY:
                 pre = self._prereqs()

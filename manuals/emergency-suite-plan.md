@@ -212,3 +212,18 @@ Pure and table-driven where the logic lives:
   - `PanelState.estop_ok`, `PanelState.emergency` with `EMG_NORMAL/ACTIVE/RESET_NEEDED/RESETTING/RESET_FAILED = 0..4`
   - profile `panel.di_estop_ok: 8`, `panel.estop_reset_timeout_s: 3.0`
   - alarm codes `ESTOP` (ERROR, clears_by `reset_button`), `ESTOP_RESET_NEEDED`, `ESTOP_RESET_FAILED`
+
+### Owner policy update (2026-10-30, later): replaces E3
+
+"Emergency doesn't stop the sequence or any program. It focuses on a physical stop like what the safety chain does. This applies to waiting as well."
+
+- An emergency **never ends the run**:
+  - A moving run (EXECUTING, pre-move included) goes into the `estop` hold (BLOCKED).
+  - Any other hold is re-labelled `estop`, so it cannot auto-resume.
+  - READY, PAUSED and a waiting step keep their state untouched.
+- **Resume:** after release + Reset (NORMAL), the operator presses **Start**. The pre-move warning runs and the route continues from the step where it stopped. The hold never resumes by itself (alarm row `ESTOP_HOLD`, "press Start to continue").
+- **Unchanged:**
+  - the physical reaction: all outputs LOW, no drive power, mux inhibited, lease withheld
+  - Start/Load refused while not NORMAL
+  - physical Reset only
+- **Survey moves and commissioning pp moves** still end on an emergency. These are single blind moves that the safety chain's torque loss ended before the emergency suite existed. The mapping session and the commissioning job themselves are not ended.

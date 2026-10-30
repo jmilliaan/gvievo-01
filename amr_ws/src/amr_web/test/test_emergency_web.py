@@ -159,11 +159,17 @@ def test_the_headline_is_emergency_stop_above_needs_service():
     assert view.headline(st(0), view.standing(st(0)))["state"] == view.READY
 
 
-def test_after_normal_an_aborted_run_says_a_new_run_is_needed():
-    s = st(0, run={"state_name": "IDLE", "reason": "aborted: emergency stop", "mission_id": ""})
+def test_after_normal_the_held_run_says_press_start_to_continue():
+    """Owner policy 2026-10-30: the emergency held the run (it never ends it)."""
+    held = {"state_name": "BLOCKED", "hold_cause": "estop", "reason": "safety stop (E-stop / safety chain): "
+            "emergency stop", "mission_id": "m1", "step_index": 2, "step_id": "s3", "auto_resume": False}
+    s = st(0, run=held)
     h = view.headline(s, view.standing(s))
-    assert h["state"] == view.READY
-    assert "aborted" in h["detail"] and "new run" in h["action"]
+    assert h["state"] == view.STOPPED_NEEDS_YOU and h["code"] == "ESTOP_HOLD"
+    assert "press Start" in h["title"] and h["button"] == ""
+    # while the emergency still stands, the hold is the same stop said twice: banner only
+    s = st(1, run=held)
+    assert [r["code"] for r in view.standing(s)].count("ESTOP_HOLD") == 0
 
 
 def test_banner_steps_follow_the_state():

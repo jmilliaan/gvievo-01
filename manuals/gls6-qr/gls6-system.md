@@ -3,6 +3,10 @@
 Status: **design, not implemented.** Bench-tested sensor, no vehicle code yet.
 Date: 2026-10-20. §5 device state updated 2026-10-30.
 
+**Superseded in part by [gls-wait-coding-plan.md](gls-wait-coding-plan.md) (2026-10-30).** That plan covers HOME
+plus three destination labels at route wait steps, label poses stored as a separate label set instead of in the
+map revision, and `label_fix_node` in place of `home_fix_node`. Where the two differ, the coding plan wins.
+
 This brief is for a coding agent with the full gvievo-01 repository. It records
 what was established on the bench and what the integration should look like.
 Node, topic and file names below come from the repo's `README.md` and its

@@ -64,6 +64,10 @@ def _rows() -> tuple[Alarm, ...]:
           "DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is "
           "the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and aborts any "
           "run (emergency-suite plan). Also the executor's 'estop' hold when it can only infer it."),
+        a("ESTOP_HOLD", WARN, "start_button", "Stopped by the E-stop: press Start to continue",
+          "Make sure the area is clear, then press Start. The route continues where it stopped.",
+          "The run's 'estop' hold (owner policy 2026-10-30: an emergency is a physical stop and "
+          "never ends the run). Shown once the emergency is NORMAL again; never resumes by itself."),
         a("ESTOP_RESET_NEEDED", WARN, "reset_button", "E-stop released: press Reset",
           "Press the blue Reset button on the cabinet.",
           "DI08 is HIGH again but no Reset edge has been seen since the emergency."),
@@ -368,7 +372,7 @@ def describe(code: str, detail: str = "", since: float | None = None) -> dict:
 # as the rest of the operator surface.
 HOLD_CODES = {
     "field": "FIELD_BLOCKED",
-    "estop": "ESTOP",
+    "estop": "ESTOP_HOLD",
     "controller": "PATH_BLOCKED",
     "pending": "WAITING_FOR_PREREQ",
 }
