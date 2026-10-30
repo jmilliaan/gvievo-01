@@ -97,6 +97,14 @@ panel.di_manual_arm
     It replaces manual_auto_arm (the selector in MANUAL was itself the arm
     command, 2026-10-08): the drives are no longer powered while idle.
 
+panel.di_continue
+    PB Continue (DI0D on MCQ4-4, 2026-10-30). A pushbutton with exactly
+    Start's rules: rising edge only, no edge from a button held at power-on or
+    across a DIO reconnect. It releases a run WAITING at a route wait step (a
+    trolley hitch / release point) and resumes a held run as Start does; Start
+    also releases a wait (owner, 2026-10-30). Refused, not queued, during an
+    emergency: only a fresh press after NORMAL counts.
+
     *** Power is not motion. *** A powered manual vehicle holds zero; every
     millimetre still needs a jog HELD (manual_watchdog_s). And nothing here can
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
@@ -391,6 +399,7 @@ _SCHEMA = {
         "auto_when_on":   ("PANEL_AUTO_WHEN_ON", bool),
         "di_manual_arm":  ("PANEL_DI_MANUAL_ARM", int),
         "di_estop_ok":    ("PANEL_DI_ESTOP_OK", int),
+        "di_continue":    ("PANEL_DI_CONTINUE", int),
         "estop_reset_timeout_s": ("PANEL_ESTOP_RESET_TIMEOUT_S", float),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
@@ -841,7 +850,7 @@ def _validate(ns):
     # -- panel ------------------------------------------------------------
     chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
              "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM"),
-             "di_estop_ok": g("PANEL_DI_ESTOP_OK")}
+             "di_estop_ok": g("PANEL_DI_ESTOP_OK"), "di_continue": g("PANEL_DI_CONTINUE")}
     for key, ch in chans.items():
         check(0 <= ch < g("DIO_NUM_DI"),
               f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
@@ -857,6 +866,9 @@ def _validate(ns):
               "every jog press would also power the drives")
         check(g("PANEL_DI_ESTOP_OK") not in jog,
               f"panel.di_estop_ok ({g('PANEL_DI_ESTOP_OK')}) is a pendant channel")
+        check(g("PANEL_DI_CONTINUE") not in jog,
+              f"panel.di_continue ({g('PANEL_DI_CONTINUE')}) is a pendant channel: "
+              "every jog press would also release a waiting run")
     check(0.5 <= g("PANEL_ESTOP_RESET_TIMEOUT_S") <= 30.0,
           "panel.estop_reset_timeout_s must be in 0.5..30 s")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")

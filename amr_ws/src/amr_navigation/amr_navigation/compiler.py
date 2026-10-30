@@ -2,8 +2,9 @@
 
 A straight starts at the preceding endpoint and must lie forward along the
 current heading; a rotate keeps position and advances heading by its signed
-FULL angle (cw 270 stays -3pi/2). Anything else raises RouteError with the
-step id: the compiler never rounds a bend into a turn.
+FULL angle (cw 270 stays -3pi/2); a wait keeps the pose and moves nothing.
+Anything else raises RouteError with the step id: the compiler never rounds a
+bend into a turn.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from amr_navigation.route import (
     ROTATE,
     STRAIGHT,
     VEHICLE_ARC_W_MAX,
+    WAIT,
     Route,
     RouteError,
 )
@@ -53,6 +55,8 @@ class CompiledStep:
     v_mps: float = 0.0  # straight/arc: the speed this step runs at (the trackless speed;
     # half of it in reverse, less on a tight arc)
     reverse: bool = False  # travel is backwards along the heading (type REVERSE), facing forward
+    name: str = ""  # wait: the operator's name for the stop
+    label_id: str | None = None  # wait: the GLS floor label expected under the camera
     centre: tuple[float, float] | None = None  # arc: circle centre
     radius_m: float = 0.0  # arc
 
@@ -94,6 +98,21 @@ class CompiledRoute:
     total_turn_rad: float
     end: tuple[float, float, float]
     closes: bool  # end pose within tolerance of the start (needed for repeat_count > 1)
+
+
+def _check_wait(route: Route, i: int, sid: str) -> None:
+    """Placement rules for a wait (gls-wait-coding-plan §A.1): a wait is a stop the operator
+    releases, so something must come before it and after it, and the step it stops after
+    must be one whose endpoint can be tuned by its typed length - never an arc."""
+    if i == 0:
+        raise RouteError("a wait cannot be the first step: the route start is already a stop", sid)
+    if i == len(route.steps) - 1:
+        raise RouteError("a wait cannot be the last step: the end of the route is already a stop", sid)
+    prev = route.steps[i - 1].type
+    if prev == WAIT:
+        raise RouteError("two waits in a row: merge them", sid)
+    if prev == ARC:
+        raise RouteError("a wait cannot follow an arc: end the approach with a straight", sid)
 
 
 def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRoute:
@@ -230,6 +249,9 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
             total_len += length
             total_turn += theta
             x, y, yaw = end
+        elif s.type == WAIT:
+            _check_wait(route, i, sid)
+            steps.append(CompiledStep(sid, WAIT, (x, y, yaw), (x, y, yaw), name=s.name, label_id=s.label_id))
         elif s.type == ROTATE:
             if s.direction not in DIRECTIONS:
                 raise RouteError(f"direction must be one of {DIRECTIONS}", sid)

@@ -205,6 +205,16 @@ def test_config_profile():
             lambda d: d["panel"].update(estop_reset_timeout_s=0.2), "estop_reset_timeout_s")
     refuses("a reset timeout over 30 s is refused",
             lambda d: d["panel"].update(estop_reset_timeout_s=31.0), "estop_reset_timeout_s")
+    # Route wait steps (2026-10-30, gls-wait-coding-plan §A.2): DI0D is PB Continue.
+    check("DI13 is PB Continue", config.PANEL_DI_CONTINUE == 13, str(config.PANEL_DI_CONTINUE))
+    refuses("a Continue input shared with Start is refused",
+            lambda d: d["panel"].update(di_continue=d["panel"]["di_start"]), "distinct")
+    refuses("a Continue input on the E-stop channel is refused",
+            lambda d: d["panel"].update(di_continue=d["panel"]["di_estop_ok"]), "distinct")
+    refuses("a Continue input on a pendant channel is refused",
+            lambda d: d["panel"].update(di_continue=d["pendant"]["di_left"]), "pendant channel")
+    refuses("a Continue input the module does not have is refused",
+            lambda d: d["panel"].update(di_continue=16), "di_continue")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
     refuses("a pre-move timeout not above the warning is refused",

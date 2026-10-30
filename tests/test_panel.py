@@ -224,6 +224,39 @@ def test_pendant():
           intent(True, False, True, True) == (True, False, False, False))
 
 
+C = 13                                  # PB Continue (DI0D on MCQ4-4)
+
+
+def test_continue():
+    """PB Continue (2026-10-30) is a pushbutton with exactly Start's rules."""
+    print("\npanel: continue")
+
+    def img(cont=False, **kw):
+        di = image(**kw)
+        di[C] = cont
+        return di
+
+    sc = panel.PanelScan(R, S, A, 1, continue_ch=C)
+    out = run(sc, [img(), img(cont=True), img(cont=True), img()])
+    check("pressing Continue is one edge, holding it is not another",
+          [o.cont for o in out] == [False, True, False, False], str([o.cont for o in out]))
+    check("and it is not a Start", not any(o.start for o in out))
+
+    sc = panel.PanelScan(R, S, A, 1, continue_ch=C)
+    out = run(sc, [img(cont=True), img(cont=True)])
+    check("Continue held down at boot never fires", not any(o.cont for o in out))
+
+    sc = panel.PanelScan(R, S, A, 1, continue_ch=C)
+    run(sc, [img()])
+    sc.scan(img(), comms_ok=False)
+    out = run(sc, [img(cont=True), img(cont=True)])
+    check("a reconnect with Continue down is a baseline, not a press", not any(o.cont for o in out))
+
+    sc = scanner()
+    out = run(sc, [img(), img(cont=True)])
+    check("without a Continue channel, DI13 is never an edge", not any(o.cont for o in out))
+
+
 # The four controller-driven cases (Reset means ready, the manual watchdog,
 # edge-only events, panel loss ends a jog) went with canworker at U11
 # (2026-09-21); their ROS equivalents live in amr_base/test (panel_node,
@@ -235,4 +268,5 @@ TESTS = [
     test_comms_loss_cannot_synthesise_a_press,
     test_panel_profile,
     test_pendant,
+    test_continue,
 ]

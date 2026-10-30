@@ -16,7 +16,13 @@ action result alone:
              /odometry/filtered verifies direction and travel, centre drift is
              bounded, final map heading within tolerance; a paused turn resumes
              the REMAINING signed angle only;
-  always     localisation READY, fresh sensors and panel, no /initialpose.
+  wait       stop at the previous step's end until PB Continue or Start (trolley hitch /
+             release points, gls-wait-coding-plan §A.4): WAITING, drives disarmed, no
+             permit. The press re-checks localisation READY, AUTO, still wheels and the
+             wait pose, then runs the pre-move warning. A wait is a step boundary, so an
+             /initialpose while WAITING is accepted, and nothing that guards a moving run
+             (prerequisite faults, MANUAL takeover, the emergency hold) applies to it;
+  always     localisation READY, fresh sensors and panel, no /initialpose while moving.
 
 OBSTACLES ARE NOT THE EXECUTOR'S JOB (operator decision 2026-09-20). The scan-vs-envelope
 check that used to stop a run was removed: stopping for something in the way is the safety
@@ -74,7 +80,7 @@ import threading
 import rclpy
 from agv_core import alarms
 from agv_core import config as vehicle_config
-from amr_navigation.compiler import ARC, ROTATE, CompiledStep, wrap
+from amr_navigation.compiler import ARC, ROTATE, WAIT, CompiledStep, wrap
 from amr_navigation.route import VEHICLE_ARC_W_MAX
 from amr_navigation.validate import load_dynamic, load_keepout, validate
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
@@ -281,6 +287,8 @@ class RouteExecutor(Node):
             self._lock, self._now, self._on_goal_error, lambda msg: self.get_logger().warn(msg)
         )
         self._reset_step_state()
+        self.wait_since: float | None = None  # WAITING since (RunState.waiting_s)
+        self.continue_refused = ""  # why the last Continue/Start at a wait was refused
         self.last_initialpose_t: float | None = None
         self.paused_t: float | None = None
         self.odom_gap = False
@@ -373,9 +381,11 @@ class RouteExecutor(Node):
         if self._emergency(self._panel_t):
             with self._lock:
                 self._emergency_hold()
-        if m.start_edge:
+        # PB Continue does what Start does to a held run, and Start what Continue does to a
+        # wait (owner, 2026-10-30); only a new run needs Start itself. One press, one call.
+        if m.start_edge or m.continue_edge:
             with self._lock:
-                self._start_edge()
+                self._start_edge("Start" if m.start_edge else "Continue")
         if m.reset_edge:
             with self._lock:
                 self._reset_edge()
@@ -496,6 +506,11 @@ class RouteExecutor(Node):
                     "initial pose changed; progress-based resume is invalid, abort the run"
                 )
                 self.odom_gap = True
+            elif self.fsm.state == fsm.WAITING:
+                # a wait is a step boundary: nothing half-done to invalidate. The next straight
+                # drives to its absolute end point from wherever the corrected pose is, and
+                # the Continue gate checks the vehicle is still on the wait pose (plan §A.4)
+                self.get_logger().info("initial pose while WAITING: accepted (a step boundary)")
 
     def _on_scan(self, m: LaserScan) -> None:
         self._scan, self._scan_t = m, self._now()
@@ -658,10 +673,21 @@ class RouteExecutor(Node):
             return False, f"{d:.2f} m / {math.degrees(a):.1f} deg from the route start; reposition manually"
         return True, ""
 
-    def _start_edge(self) -> None:
+    def _start_edge(self, button: str = "Start") -> None:
+        """A physical Start or Continue edge. Refused, never queued, during an emergency: only
+        a fresh press after NORMAL counts (emergency plan; the same rule for both buttons)."""
         if self._emergency(self._now()):
             # at once: no pre-move lamp/horn, no wait (emergency plan §4.4)
-            self.fsm.reason = "Start refused: E-stop active - release it and press Reset first"
+            self.fsm.reason = f"{button} refused: E-stop active - release it and press Reset first"
+            if self.fsm.state == fsm.WAITING:
+                self.continue_refused = "E-stop active - release it and press Reset first"
+            self._log_state()
+            return
+        if self.fsm.state == fsm.WAITING:
+            self._continue_wait(button)
+            return
+        if self.fsm.state == fsm.READY and button != "Start":
+            self.fsm.reason = "Continue ignored: a new run needs Start"
             self._log_state()
             return
         if self.fsm.state == fsm.READY:
@@ -696,6 +722,46 @@ class RouteExecutor(Node):
                 self.hold_cause, self._auto_since = "", None
                 self._begin_premove()
             self._log_state()
+
+    def _wait_gate(self, st: CompiledStep | None) -> str | None:
+        """Why a wait may not be released now, or None. Everything is re-checked at the press:
+        the vehicle sat disarmed, possibly through an emergency, possibly nudged in MANUAL."""
+        pre = self._prereqs()
+        if pre:
+            return pre
+        if not self._auto():
+            return "selector is not AUTO"
+        if not self._wheels_still:
+            return "vehicle is moving"
+        if st is None or st.type != WAIT:
+            return "no wait step"
+        pose = self._pose()
+        if pose is None:
+            return "no pose"
+        d = math.hypot(pose[0] - st.start[0], pose[1] - st.start[1])
+        a = abs(wrap(pose[2] - st.start[2]))
+        if d > self.verify_pos or a > self.verify_yaw:
+            return f"{d:.2f} m / {math.degrees(a):.1f} deg off the wait pose; reposition or abort"
+        return None
+
+    def _enter_wait(self, st: CompiledStep, now: float) -> None:
+        if self.fsm.wait(st.name):
+            self.wait_since, self.continue_refused = now, ""
+            self._log_state(f"wait {st.id}")
+
+    def _continue_wait(self, button: str) -> None:
+        st = self._step()
+        why = self._wait_gate(st)
+        if why:
+            self.continue_refused = why
+            self.fsm.reason = f"{button} refused at {st.name if st is not None else 'the wait'}: {why}"
+            self._log_state()
+            return
+        self.continue_refused = ""
+        if self.fsm.continue_():
+            self._reset_step_state()
+            self._begin_premove()
+        self._log_state(f"{button} at a wait")
 
     def _begin_premove(self) -> None:
         self.phase, self._premove_since = PHASE_PREMOVE, self._now()
@@ -744,7 +810,11 @@ class RouteExecutor(Node):
         pose = self._pose()
         if pose is None:
             return False, "no pose"
-        if st.type != ROTATE:
+        if st.type == WAIT:  # held at a wait step before WAITING was entered: the wait pose
+            d = math.hypot(pose[0] - st.start[0], pose[1] - st.start[1])
+            if d > self.verify_pos or abs(wrap(pose[2] - st.start[2])) > self.verify_yaw:
+                return False, f"{d:.2f} m off the wait pose; abort and reposition"
+        elif st.type != ROTATE:
             along, cross = self._along_cross(st, pose)
             if abs(cross) > self.route.limits.cross_track_limit_m:
                 return False, f"outside the corridor ({cross:+.2f} m cross-track)"
@@ -867,7 +937,7 @@ class RouteExecutor(Node):
 
     @staticmethod
     def _chainable(st: CompiledStep) -> bool:
-        return st.type != ROTATE and not st.reverse
+        return st.type not in (ROTATE, WAIT) and not st.reverse
 
     def _chain(self, index: int) -> list[CompiledStep]:
         """The steps driven together from `index`: it and every chainable step after it."""
@@ -1053,7 +1123,8 @@ class RouteExecutor(Node):
                     self.fsm.abort("manual takeover: selector left AUTO")
                     self._interrupt("manual takeover")
             else:
-                # IDLE / DONE / FAULT: nothing is waiting on a prerequisite, so the grace timer
+                # IDLE / DONE / FAULT / WAITING: nothing is waiting on a prerequisite (a wait
+                # re-checks everything at the Continue press), so the grace timer
                 # must not survive into the next mission and fire on its first tick
                 self._prereq_since = None
             if self.fsm.state == fsm.EXECUTING:
@@ -1130,6 +1201,9 @@ class RouteExecutor(Node):
                         f"previous action goal not terminated within {self.goal_cancel_timeout:.1f} s",
                         "EXEC_ACTION_FAILED",
                     )
+                return
+            if st.type == WAIT:
+                self._enter_wait(st, now)
                 return
             if st.type != ROTATE:
                 if not self._send_follow(st, pose):
@@ -1344,6 +1418,8 @@ class RouteExecutor(Node):
             if self.fsm.state == fsm.BLOCKED
             else (self.fault_code or "EXEC_ACTION_FAILED")
             if self.fsm.state == fsm.FAULT
+            else "RUN_WAITING"
+            if self.fsm.state == fsm.WAITING
             else self._abort_code or "MODE_CHANGE"
         )
         self._abort_code = ""
@@ -1418,6 +1494,10 @@ class RouteExecutor(Node):
         m.auto_resume = blocked and self.auto_resume_enabled and self.hold_cause in self._auto_causes()
         m.drive_power = self.drive_power()
         m.premove = self.fsm.state == fsm.EXECUTING and self.phase == PHASE_PREMOVE
+        if self.fsm.state == fsm.WAITING and st is not None:
+            m.wait_name, m.wait_label_id = st.name, st.label_id or ""
+            m.waiting_s = self._now() - self.wait_since if self.wait_since is not None else 0.0
+            m.continue_refused = self.continue_refused
         pose = self._pose()
         if pose is not None:
             m.pose_valid, m.pose_x, m.pose_y, m.pose_yaw = True, pose[0], pose[1], pose[2]

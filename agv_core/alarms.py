@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 INFO, WARN, ERROR = "info", "warn", "error"
-CLEARS = ("auto", "start_button", "reset_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
+CLEARS = ("auto", "start_button", "continue_button", "reset_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
 # Worst first: the operator surface sorts standing alarms by this, so the one
 # sentence on the Home page is the one that actually holds the vehicle.
 SEVERITY_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
@@ -62,10 +62,11 @@ def _rows() -> tuple[Alarm, ...]:
           "Make the area safe. Release (twist) the E-stop button, then press the blue Reset button "
           "on the cabinet.",
           "DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is "
-          "the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and aborts any "
-          "run (emergency-suite plan). Also the executor's 'estop' hold when it can only infer it."),
-        a("ESTOP_HOLD", WARN, "start_button", "Stopped by the E-stop: press Start to continue",
-          "Make sure the area is clear, then press Start. The route continues where it stopped.",
+          "the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and holds a "
+          "moving run (emergency-suite plan; it never ends a run or a wait). Also the executor's 'estop' hold when it can only infer it."),
+        a("ESTOP_HOLD", WARN, "start_button", "Stopped by the E-stop: press Start or Continue",
+          "Make sure the area is clear, then press Start or Continue. The route continues where it "
+          "stopped.",
           "The run's 'estop' hold (owner policy 2026-10-30: an emergency is a physical stop and "
           "never ends the run). Shown once the emergency is NORMAL again; never resumes by itself."),
         a("ESTOP_RESET_NEEDED", WARN, "reset_button", "E-stop released: press Reset",
@@ -212,6 +213,16 @@ def _rows() -> tuple[Alarm, ...]:
         a("EXEC_POSE_INJECTED", ERROR, "ack", "The position was changed while the vehicle was moving",
           "Press Acknowledge on the Run page, then reload the mission.",
           "An /initialpose arrived during EXECUTING: progress is no longer trustworthy."),
+        a("RUN_WAITING", INFO, "continue_button", "Waiting at a stop: press Continue",
+          "Hitch or release the trolley, step clear, then press Continue (or Start).",
+          "The run is WAITING at a route wait step (gls-wait-coding-plan §A.4). Drives disarmed; "
+          "Continue re-checks localisation, AUTO, still wheels and the wait pose, then the "
+          "pre-move warning runs. Survives an emergency (owner, 2026-10-30)."),
+        a("CONTINUE_REFUSED", WARN, "continue_button", "Continue did not start the vehicle",
+          "Fix what the detail says, then press Continue again.",
+          "A Continue/Start at a wait failed its gate: E-stop not reset, MANUAL, localisation not "
+          "READY, wheels moving, or the vehicle moved off the wait pose (verify_position_m / "
+          "verify_heading_deg). RunState.continue_refused carries the reason."),
         a("EXEC_ROUTE_INVALID", ERROR, "operator", "This mission cannot be run",
           "Pick another mission, or call the engineer to fix this one.",
           "Route/mission failed to compile or validate against the active map revision."),
@@ -386,6 +397,7 @@ def hold_code(cause: str) -> str:
 BUTTON = {
     "auto": "",
     "start_button": "",
+    "continue_button": "",  # physical PB Continue (or Start) only, never a web button (plan W4)
     "reset_button": "",  # physical Reset only, never a web button (emergency plan E4)
     "ack": "Acknowledge",
     "operator": "Set position",

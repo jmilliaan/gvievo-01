@@ -11,7 +11,7 @@ agv-kim2a-controller/
 # depends on what run_log.sh records (manuals/obsolete/0910-fix-plan-001.md A3).
 !tools/*.sh
 
-# Blind-run logs are evidence, not source: keep them out of the tree.
+# Run logs are evidence, not source: keep them out of the tree.
 logs/
 
 # Tool caches. Ruff and pytest drop these wherever they are invoked from, which

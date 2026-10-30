@@ -132,7 +132,7 @@ MCQ4-4 assignment, given by the operator 2026-10-27 (supersedes the sheet 09 ass
 | DI0A | Destination 1: UBC | Feature to add later |
 | DI0B | Destination 2: ITG | Feature to add later |
 | DI0C | Destination 3: PISTON | Feature to add later |
-| DI0D | Continue run | Feature to add later |
+| DI0D | **PB Continue** (`panel.di_continue`) | Releases a run WAITING at a route wait step and resumes a held run, like Start (2026-10-30, `manuals/gls6-qr/gls-wait-coding-plan.md` §A.2) |
 | DI0E–DI0F | not used | |
 | COM0 | 1P24 | Common for DI00–DI07 |
 | COM1 | 1N24 | Common for DI08–DI0F |

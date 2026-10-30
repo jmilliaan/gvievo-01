@@ -45,6 +45,7 @@ class FakePanel(Node):
         self.seq = 0
         self._start_pending = False
         self._reset_pending = False
+        self._continue_pending = False
         self._pub = self.create_publisher(PanelState, "/amr/panel_state", 10)
         # 10 Hz copy for displays (CPU, 2026-10-02): the web shows the selector at 2 Hz.
         # Edges ride only the full topic - nothing that acts on Start/Reset reads this one.
@@ -55,6 +56,7 @@ class FakePanel(Node):
         self.create_service(SetBool, "/sim/panel/set_estop", self._set_estop)
         self.create_service(Trigger, "/sim/panel/press_start", self._press_start)
         self.create_service(Trigger, "/sim/panel/press_reset", self._press_reset)
+        self.create_service(Trigger, "/sim/panel/press_continue", self._press_continue)
         self.create_timer(1.0 / self.get_parameter("rate_hz").value, self._tick)
         self.get_logger().info(f"panel: {'AUTO' if self.auto else 'MANUAL'}")
 
@@ -81,6 +83,12 @@ class FakePanel(Node):
         self.get_logger().info(res.message)
         return res
 
+    def _press_continue(self, _req, res):
+        self._continue_pending = True
+        res.success, res.message = True, "Continue pressed"
+        self.get_logger().info(res.message)
+        return res
+
     def _press_reset(self, _req, res):
         self._reset_pending = True
         res.success, res.message = True, "Reset pressed"
@@ -95,6 +103,7 @@ class FakePanel(Node):
         m.mode_auto = self.auto
         m.start_edge, self._start_pending = self._start_pending, False
         m.reset_edge, self._reset_pending = self._reset_pending, False
+        m.continue_edge, self._continue_pending = self._continue_pending, False
         m.estop_ok = not self.estop
         note = self.emergency.step(time.monotonic(), emergency.Inputs(True, m.estop_ok, m.reset_edge, None))
         if note:

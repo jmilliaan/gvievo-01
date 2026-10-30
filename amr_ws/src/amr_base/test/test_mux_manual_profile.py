@@ -29,8 +29,7 @@ def _node(dt=0.02):
     n.gp = gating.Params()
     n._teleop = n._follow = n._rotate = n._permit = n._panel = n._lease = n._drives = None
     n._manual = gating.ManualIntake()
-    n._commissioning = None
-    n._v = n._wz = n._wl = n._wr = n._a = n._alpha = 0.0
+    n._v = n._wz = n._a = n._alpha = 0.0
     n._source, n._reason, n._applied_gen = "none", "", 0
     n._inhibited, n._event_seq = False, 0
     n._pub_event = SimpleNamespace(publish=lambda _m: None)

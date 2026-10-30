@@ -4,6 +4,8 @@ Branch `kyb-trackless` · repo `/home/gvipc-evo-01/agv_can` · read-only analysi
 
 > **Status (2026-10-30):** P1-P6 are committed on `kyb-trackless` (`62959a6`, `ccd12fb`) and pushed. On gvipc-ce the overlay was clean-rebuilt and the unit reinstalled (P7 build/install); no tracked-era data was present to archive. **D24 is overridden by the owner: `kyb-trackless` (MCQ4-4) and `gvievo-main` are separate projects, so nothing here is merged into `gvievo-main` or `main`, and this vehicle deploys from `kyb-trackless`.** Still open: the D18 tags, the sim tests and the §6 on-vehicle checks, P3b (optional), and the D11 electrical-doc edit after the reader is physically removed.
 
+> **Later (2026-10-30):** the Commission page, the commissioning node, `agv_core/blindrun.py` and the pp backend were removed, and the Status page folded into Home and Monitor (plan `noble-waddling-sutton`). The rows below that keep `commissioning`, `COMMISSIONING` (lease bit 4, mux 5; now retired, never reused), `blind_run` or `pp` describe the P1-P6 state, not today's.
+
 ---
 
 ## 1. Summary

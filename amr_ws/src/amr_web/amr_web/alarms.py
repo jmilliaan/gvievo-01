@@ -29,6 +29,7 @@ NOT_READY = "NOT READY"
 STOPPED_NEEDS_YOU = "STOPPED (needs you)"
 STOPPED_WILL_RESUME = "STOPPED (will resume)"
 RUNNING = "RUNNING"
+WAITING = "WAITING (press Continue)"
 READY = "READY"
 
 
@@ -170,6 +171,12 @@ def standing(state: dict[str, Any]) -> list[dict]:
             add(run.get("fault_code") or "EXEC_ACTION_FAILED", run.get("reason", ""))
         elif run.get("state_name") == "BLOCKED":
             add(run.get("fault_code") or cat.hold_code(run.get("hold_cause", "")), run.get("reason", ""))
+        elif run.get("state_name") == "WAITING":
+            # a refused press outranks the plain "waiting" row (WARN over INFO): its detail
+            # is the one thing the operator has to fix before pressing again
+            if run.get("continue_refused"):
+                add("CONTINUE_REFUSED", run["continue_refused"])
+            add("RUN_WAITING", run.get("wait_name", ""))
 
     # The scanner is the one failure nothing else reports: its driver is an optional
     # launch member, so an unplugged sensor kills mapping, navigation and localisation
@@ -236,12 +243,14 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         text = STOPPED_WILL_RESUME if run.get("auto_resume") else STOPPED_NEEDS_YOU
     elif top and top["level"] == "error":
         text = STOPPED_NEEDS_YOU
+    elif run.get("state_name") == "WAITING":
+        text = f"{WAITING} · {run.get('wait_name') or 'wait'}"
     elif run.get("state_name") in ("READY", "PAUSED", "DONE"):
         text = f"READY · {run.get('mission_id') or 'no mission'}"
     else:
         text = READY
 
-    if run.get("state_name") in ("EXECUTING", "PAUSED", "BLOCKED") and run.get("mission_id"):
+    if run.get("state_name") in ("EXECUTING", "PAUSED", "BLOCKED", "WAITING") and run.get("mission_id"):
         total = int(run.get("step_index", -1)) + 1
         step = f" · {run.get('step_id')}" if run.get("step_id") else ""
         detail = f"{run['mission_id']} · step {total}{step}"
@@ -259,7 +268,7 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         "level": "error" if text == EMERGENCY_STOP else (top["level"] if top else "info"),
         "button": cat.BUTTON.get(top["clears_by"], "") if top else "",
         "clears_by": top["clears_by"] if top else "",
-        "run_active": bool(run.get("state_name") in ("READY", "EXECUTING", "PAUSED", "BLOCKED")),
+        "run_active": bool(run.get("state_name") in ("READY", "EXECUTING", "PAUSED", "BLOCKED", "WAITING")),
     }
 
 

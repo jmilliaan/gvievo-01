@@ -5,7 +5,6 @@ import pytest
 from amr_base.gating import (
     FOLLOW,
     LEASE_AUTONOMOUS,
-    LEASE_COMMISSIONING,
     LEASE_MANUAL,
     MANUAL,
     NONE,
@@ -18,7 +17,6 @@ from amr_base.gating import (
     Params,
     Permit,
     Stamped,
-    Wheels,
     select,
 )
 
@@ -104,9 +102,7 @@ def test_pendant_needs_the_same_authority_as_any_manual_stream():
     assert s.source == NONE and s.inhibited
 
 
-def test_commissioning_substate_excludes_the_pendant():
-    wheels = Wheels(10.0, 1.0, 1.0, generation=3)
-    s = select(
-        10.0, None, None, None, None, panel(fwd=True), SUP, lease(LEASE_COMMISSIONING), None, DRIVES, wheels
-    )
-    assert s.source != PENDANT and s.wheels
+def test_a_retired_commissioning_lease_bit_grants_nothing():
+    """Bit 4 (COMMISSIONING) was retired 2026-10-30: alone it is not MANUAL."""
+    s = select(10.0, None, None, None, None, panel(fwd=True), SUP, lease(4), None, DRIVES)
+    assert s.source == NONE and s.reason == "MANUAL not allowed by supervisor"

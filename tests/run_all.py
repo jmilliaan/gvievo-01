@@ -92,7 +92,11 @@ MODULES = [
 # + 7 (2026-10-30): emergency suite (manuals/emergency-suite-plan.md). test_config + 7 (DI08 is
 #   panel.di_estop_ok; refused on a panel button, the arm, a pendant channel, off the module;
 #   estop_reset_timeout_s outside 0.5..30 s).
-EXPECTED_CHECKS = 525
+# + 10 (2026-10-30): route wait step + PB Continue (manuals/gls6-qr/gls-wait-coding-plan.md
+#   §A.2). test_config + 5 (DI13 is panel.di_continue; refused on Start, on the E-stop input,
+#   on a pendant channel, off the module); test_panel + 5 (test_continue: one edge per
+#   press, not a Start, no edge at boot, none across a reconnect, none without the channel).
+EXPECTED_CHECKS = 535
 
 
 # An exception on a helper thread only prints a traceback by default - the

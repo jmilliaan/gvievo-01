@@ -10,7 +10,7 @@ import numpy as np
 
 from amr_maps import grid as gridio
 from amr_navigation import footprint as fpmod
-from amr_navigation.compiler import ARC, ROTATE, CompiledRoute, compile_route
+from amr_navigation.compiler import ARC, ROTATE, WAIT, CompiledRoute, compile_route
 from amr_navigation.route import MAX_REPEAT, Route, RouteError
 
 ERROR, INFO = "error", "info"
@@ -141,9 +141,11 @@ def validate(
                 (st.centre, st.radius_m, st.start[2], st.signed_angle_rad),
                 dynamic=dyn,
             )
+        elif st.type == WAIT:  # the vehicle stands there: its footprint, like the start pose
+            c = _clearance(grid, fp, keepout, (st.start, st.start), None, dynamic=dyn)
         else:  # straight or reverse: the footprint translated along the line, either way
             c = _clearance(grid, fp, keepout, (st.start, st.end), None, dynamic=dyn)
-        what = {ROTATE: "rotation sweep", ARC: "arc sweep"}.get(st.type, "line")
+        what = {ROTATE: "rotation sweep", ARC: "arc sweep", WAIT: "wait pose"}.get(st.type, "line")
         if not c.clear:
             issues.append(Issue("clearance", f"{what} {_describe(c)} (margin included)", st.id))
         elif c.provisional:

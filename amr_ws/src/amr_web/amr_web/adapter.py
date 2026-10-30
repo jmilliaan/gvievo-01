@@ -68,7 +68,7 @@ SCAN_PERIOD_S = 0.1  # live-view scan projection rate cap (the page redraws at 5
 MAP_ODOM_FRESH_S = 2.0  # newest map->odom stamp older than this: no layer is localising
 STATE_NAMES = {0: "IDLE", 1: "MAPPING", 2: "RETURN_REVIEW", 3: "SAVING", 4: "SAVED"}
 LOC_NAMES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
-RUN_NAMES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
+RUN_NAMES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE", 7: "WAITING"}
 MODE_NAMES = {
     0: "STARTING",
     1: "IDLE",
@@ -876,9 +876,13 @@ class RosAdapter(Node):
                 m.pose.position = Point(x=st.start[0], y=st.start[1], z=0.3)
                 m.pose.orientation.w = 1.0
                 m.scale.z = 0.3
-                m.color = ColorRGBA(r=1.0, g=0.6, b=0.0, a=1.0)
-                deg = abs(math.degrees(st.signed_angle_rad))
-                m.text = f"{st.id}: {'CCW' if st.signed_angle_rad > 0 else 'CW'} {deg:.0f}"
+                if st.type == "wait":
+                    m.ns, m.color = "waits", ColorRGBA(r=0.2, g=0.6, b=1.0, a=1.0)
+                    m.text = f"{st.id}: WAIT {st.name}".rstrip()
+                else:
+                    m.color = ColorRGBA(r=1.0, g=0.6, b=0.0, a=1.0)
+                    deg = abs(math.degrees(st.signed_angle_rad))
+                    m.text = f"{st.id}: {'CCW' if st.signed_angle_rad > 0 else 'CW'} {deg:.0f}"
                 markers.markers.append(m)
         self._preview.publish(path)
         self._markers.publish(markers)

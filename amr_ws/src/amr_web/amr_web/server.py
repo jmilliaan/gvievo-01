@@ -1024,7 +1024,7 @@ def create_app(
         if moving:
             return _result(False, "the wheels are turning; stop the vehicle first", 409)
         run_state = (st.get("run") or {}).get("state_name")
-        if run_state in ("READY", "EXECUTING", "PAUSED", "BLOCKED"):
+        if run_state in ("READY", "EXECUTING", "PAUSED", "BLOCKED", "WAITING"):
             return _result(False, f"a run is {run_state}; abort it first", 409)
         cmd = ["sudo", "-n", "systemctl", "restart", "amr.service"]
         try:

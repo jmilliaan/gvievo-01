@@ -1,6 +1,6 @@
 # GLS label fix + route wait step: coding plan (MCQ4-4)
 
-Branch `kyb-trackless` · 2026-10-30 · plan only, nothing implemented
+Branch `kyb-trackless` · 2026-10-30 · **P1 (Part A) implemented 2026-10-30, uncommitted, not yet on the vehicle**; P0, P2–P6 not started
 
 This plan extends [gls6-system.md](gls6-system.md), the design brief. Read the brief first. Where the two differ, this plan wins: it is built on the code as of `481ffda`, after the emergency suite landed. File:line references are from that commit. Check each one before you edit.
 
@@ -111,8 +111,8 @@ Settle these before Part A. Each has a recommendation.
 | # | Question | Recommended | Why |
 |---|---|---|---|
 | W1 | Does WAITING survive an emergency? | **Decided (owner, 2026-10-30): yes.** An emergency is a physical stop only and never ends a run or a wait. After NORMAL, Continue needs a fresh press, READY and the wait pose gate (§A.4). | Covered by the emergency policy update (§2). |
-| W2 | Drive power while WAITING | **Released**, as in IDLE | The operator works at the vehicle. **First check on the bench whether BLV-R wheels free-wheel or brake when released.** If they free-wheel and a trolley can push the AGV, hold zero speed with torque instead. |
-| W3 | PB Start pressed at an ordinary wait, with no emergency involved | **Also continues**, the same as Continue | The owner already treats the two as interchangeable after an emergency (§2). If Start released only waits that an emergency had interrupted, the same wait would act differently depending on its history. **Confirm.** The alternative is to ignore Start with the hint "press Continue". |
+| W2 | Drive power while WAITING | **Decided (owner, 2026-10-30): disarmed**, as in IDLE (`drive_power` false). The wheels do not free-wheel when disarmed. | |
+| W3 | PB Start pressed at an ordinary wait, with no emergency involved | **Decided (owner, 2026-10-30): Start also continues**, the same as Continue | |
 | W4 | A Continue button in the web UI | **No** | Same reasoning as E4: the person releasing the vehicle must be at the vehicle. |
 | W5 | Pre-move warning on Continue | **Yes**, the same 2 s lamp + DO02 as Start | Someone is standing next to the vehicle. |
 | W6 | Selector switched to MANUAL while WAITING | **Stays WAITING.** Continue needs AUTO and the pose gate. | Nudging the vehicle by hand is allowed. If it moved too far, Continue is refused with a reason and the operator aborts. |
@@ -182,7 +182,8 @@ If all pass, it runs `fsm.continue_()` and `_begin_premove()` (W5), then the nex
 **Continue outside WAITING.** In a run held by an emergency while driving, a Continue edge does the same as a Start edge. It goes through the same `_start_edge` resume path: resume checks, then the pre-move warning (§2). Route both edges through one handler so their gating can't drift apart.
 
 **In WAITING:**
-- PB Start: continues, the same as Continue, if W3 is confirmed. Otherwise it is ignored with the reason "waiting at <name>: press Continue".
+- PB Start: continues, the same as Continue (W3).
+- PB Continue in READY does not start a new run: "Continue ignored: a new run needs Start".
 - `/initialpose`: **accepted.** No fault and no `invalidate_resume`: a wait is a step boundary, with nothing half-done. Only an odometry gap is recorded. This is the path for both an operator re-seed and the GLS fix.
 - Prerequisite failures **do not fault** a WAITING run, because nothing is moving. They only block Continue, with the reason shown. A LOST localisation can be re-seeded from the web; `adapter.py:840` only refuses while EXECUTING.
 - **Emergency: stays WAITING** (W1, policy update in §2). STO cuts power in hardware. The executor only marks the wait as interrupted and keeps the route.

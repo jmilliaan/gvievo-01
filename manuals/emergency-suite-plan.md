@@ -95,9 +95,9 @@ The state is published so every consumer sees the same picture. Two options:
 - The lease is withheld while not NORMAL (`_allowed()` returns 0). This adds a second, independent no-motion layer above the mux.
 - Refuse a survey start and mode changes that would move the vehicle while not NORMAL.
 
-### 4.6 Commissioning / pp moves / survey moves
+### 4.6 Survey moves
 
-- Abort an active pp move, survey move or commissioning move on EMERGENCY. Never resume them; they must be started again.
+- Abort an active survey move on EMERGENCY. Never resume it; it must be started again. (Commissioning and pp moves were removed with the commissioning page, 2026-10-30.)
 
 ## 5. Web app
 
@@ -226,4 +226,4 @@ Pure and table-driven where the logic lives:
   - the physical reaction: all outputs LOW, no drive power, mux inhibited, lease withheld
   - Start/Load refused while not NORMAL
   - physical Reset only
-- **Survey moves and commissioning pp moves** still end on an emergency. These are single blind moves that the safety chain's torque loss ended before the emergency suite existed. The mapping session and the commissioning job themselves are not ended.
+- **Survey moves** still end on an emergency. They are single blind moves that the safety chain's torque loss ended before the emergency suite existed. The mapping session itself is not ended. (Commissioning and pp moves no longer exist, 2026-10-30.)

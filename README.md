@@ -111,14 +111,14 @@ agv_core/          The vehicle library. No ROS, no Flask, no web tier.
   config.py          Loads and validates the profile. Everything imports this.
   kinematics.py      Wheel <-> body conversions from the profile geometry.
   ownerlock.py       The can/dio owner locks (fcntl); one owner per device.
-  panel.py, canmon.py, events.py, motion.py, blindrun.py, lidarframe.py
+  panel.py, canmon.py, events.py, motion.py, lidarframe.py
   drivers/           dio.py (Modbus I/O island)
   drivers/canbus/    CANopen decoders, the write deny-list (guard.py), RPDO
                      setup, and the bench tools listed above.
 
 amr_ws/            The ROS 2 workspace (colcon, symlink install).
   src/amr_base         drive_node (the can0 owner), panel_node, cmd_mux,
-                       odometry, commissioning, the MLS gyro reader
+                       odometry, the MLS gyro reader
   src/amr_bringup      the supervisor, launch files, deploy/ and env/
   src/amr_mission      routes, the run FSM, survey moves, the executor
   src/amr_navigation   route compiler, validation, Nav2 parameters
@@ -161,8 +161,8 @@ stamped commands on topics and holds a *permit*; nothing else touches the bus.
 
 ### Authority
 
-The supervisor grants one **lease** at a time (manual, autonomous or
-commissioning), the command mux applies only the source that lease allows, and the
+The supervisor grants one **lease** at a time (manual or autonomous),
+the command mux applies only the source that lease allows, and the
 physical panel gates every transition: MANUAL for jog, AUTO plus a Start edge
 for anything autonomous, Reset to end a run. A lease is bound to a
 *generation* that rotates on every mode swap, so a replaced layer's commands
@@ -175,8 +175,8 @@ deny-list on every write path of the bus owner (`amr_base.canopen`):
 
 | | |
 |---|---|
-| **permitted** | `6040h` controlword, `6060h` modes, `6083h`/`6084h` ramps, `60FFh` target velocity, `607Ah`/`6081h` for PP, `1017h` heartbeat, PDO communication parameters |
-| **refused** | `403Eh` (bit 6 is **FREE** — releases the holding brake on *both* drive wheels), `40D0h` clear ETO, `40C0h` alarm reset, `6040h` bit 7 fault reset, `1010h`/`1011h` store/restore, all `4xxxh` parameters, the PP safety objects |
+| **permitted** | `6040h` controlword, `6060h` modes, `6083h`/`6084h` ramps, `60FFh` target velocity, `1017h` heartbeat, PDO communication parameters |
+| **refused** | `403Eh` (bit 6 is **FREE** — releases the holding brake on *both* drive wheels), `40D0h` clear ETO, `40C0h` alarm reset, `6040h` bit 7 fault reset, `1010h`/`1011h` store/restore, all `4xxxh` parameters, `607Ah`/`6081h` and the position-mode safety objects (profile position was removed 2026-10-30) |
 
 A denied write raises rather than being silently dropped. RPDO mappings are
 admitted only if the mapped object is itself writable — a mapping is a write
@@ -206,7 +206,7 @@ Everything tunable lives in `profiles/<name>.json`, selected by `AGV_PROFILE`.
 3. **Validation runs before anything is published.**
 4. **`profile_name` must match the filename.**
 
-Speeds, ramps, the jog and pendant limits and the PP lock are all there. The
+Speeds, ramps and the jog and pendant limits are all there. The
 vehicle boots into IDLE. The web UI's Params page shows every
 value the running nodes actually use beside the profile's.
 
@@ -256,6 +256,6 @@ on blocks and set `vehicle.invert_left` / `invert_right`.
 
 ## Known gaps
 
-- **`6064h` scaling is unverified** beyond the commissioning runs.
+- **`6064h` scaling is unverified** beyond the (retired) blind-run commissioning runs.
 - **Backlash is unmeasured.** The encoders are motor-side of a 30:1 gearhead.
 - MEXE02 load inertia is still `0: Small (2×)`; should be `1: Medium (7.5×)`.

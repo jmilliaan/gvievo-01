@@ -15,7 +15,6 @@ from amr_web import role
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "amr_web"
 PAGES = (
     "/home",
-    "/status",
     "/manual",
     "/maps",
     "/editor",
@@ -25,7 +24,6 @@ PAGES = (
     "/io",
     "/alarms",
     "/params",
-    "/commissioning",
 )
 SOS = "Switch on disabled"
 READY = {

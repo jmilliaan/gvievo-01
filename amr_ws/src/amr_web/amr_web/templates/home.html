@@ -16,8 +16,11 @@
     <div class="home-state">
       <div id="home-line" class="home-big">connecting…</div>
       <div id="home-detail" class="home-detail"></div>
+      {# The supervisor's mode and its reason (moved from the retired Status page, 2026-10-30). #}
+      <div class="home-mode"><span>Mode</span> <b id="home-mode">–</b> <i id="home-reason"></i></div>
     </div>
   </div>
+  <div id="home-fault" class="warn-box stop" hidden></div>
   {# Live reading (2026-10-08), big enough to read from the floor: measured wheel speed.
      Display only, in every mode. #}
   <div class="home-live">
@@ -30,6 +33,10 @@
       <button id="home-primary" class="big run" hidden></button>
       <button id="home-pause" class="big" hidden>Pause</button>
       <button id="home-abort" class="danger" hidden>Abort</button>
+      {# Always offered (from the retired Status page); the supervisor refuses what the
+         current state does not allow. Recover is never also the primary button. #}
+      <button id="home-idle">Return to idle</button>
+      <button id="home-recover">Recover</button>
     </div>
   </div>
   <details class="home-more">
@@ -46,7 +53,6 @@ let headline = null;
 // The primary button is whatever the top alarm's clears_by says. One button, never two.
 const ACTIONS = {
   Acknowledge: () => api('/api/mission/ack').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
-  Recover:     () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')),
   'Set position': () => { location.href = '/run'; },
   Restart:     () => {
     if (!confirm('Restart the vehicle software?\n\nSwitch the drives off and on first if a drive alarm is standing. Nothing moves during a restart.')) return;
@@ -57,6 +63,19 @@ const ACTIONS = {
 $('home-primary').onclick = () => { const fn = ACTIONS[$('home-primary').textContent]; if (fn) fn(); };
 $('home-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 $('home-abort').onclick = () => { if (confirm('Abort the run?')) api('/api/mission/abort').then(r => log(r.data.message, r.status === 200 ? '' : 'bad')); };
+$('home-idle').onclick = () => operation('/api/mode', { target: 'idle' });
+$('home-recover').onclick = () => api('/api/recover').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+
+// The supervisor's mode, its reason, and the FAULT box.
+function mode(st) {
+  const m = st.mode;
+  const transition = m && m.mode_name === 'TRANSITIONING' && m.requested_name !== m.mode_name ? ` → ${m.requested_name}` : '';
+  $('home-mode').textContent = m ? `${m.mode_name}${transition} · ${m.phase || 'steady'}` : 'NO SUPERVISOR';
+  $('home-mode').className = m ? (MODE_LEVEL[m.mode_name] || '') : 'bad';
+  $('home-reason').textContent = m ? (m.fault_code ? '' : (m.reason || '')) : 'no ModeState from the supervisor';
+  $('home-fault').hidden = !(m && m.fault_code);
+  if (m && m.fault_code) $('home-fault').innerHTML = `<b>FAULT ${esc(m.fault_code)}</b> — ${esc(m.reason)}`;
+}
 // One live tile: big value, one line under it, and a level ('' / 'warn' / 'off').
 function live(id, value, sub, level) {
   const el = $(id);
@@ -90,6 +109,7 @@ function job(st) {
 
 onState(st => {
   job(st);
+  mode(st);
   liveTiles(st);
 });
 
@@ -111,8 +131,11 @@ function render(d) {
   $('home-title').textContent = h.title;
   $('home-action').textContent = h.action;
   const btn = $('home-primary');
-  btn.hidden = !h.button;
-  if (h.button) btn.textContent = h.button;
+  // Recover is the always-present button below; the alarm only highlights it.
+  const primary = h.button && h.button !== 'Recover' ? h.button : '';
+  btn.hidden = !primary;
+  if (primary) btn.textContent = primary;
+  $('home-recover').className = h.button === 'Recover' ? 'big run' : '';
   $('home-pause').hidden = !h.run_active;
   $('home-abort').hidden = !h.run_active;
   const rows = d.alarms || [];

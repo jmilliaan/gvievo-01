@@ -51,7 +51,7 @@ function onState(fn) { stateListeners.push(fn); }
 let lastState = null;
 const MODE_LEVEL = { STARTING: 'warn', TRANSITIONING: 'warn', FAULT: 'bad', STOPPING: 'bad' };
 const LOC_LEVEL = { CHECKING: 'warn', LOST: 'bad' };
-const RUN_LEVEL = { BLOCKED: 'warn', PAUSED: 'warn', FAULT: 'bad' };
+const RUN_LEVEL = { BLOCKED: 'warn', PAUSED: 'warn', WAITING: 'warn', FAULT: 'bad' };
 const FRESH_S = 0.5;  // panel / drives / mux samples older than this are not current
 
 function rail(st) {

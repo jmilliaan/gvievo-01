@@ -499,17 +499,6 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
   .pad.compact button.dir { aspect-ratio:auto; }
 }
 
-/* ---- blind run (/commissioning) ---- */
-label.check { display:flex; gap:.8rem; align-items:flex-start; margin:1rem 0 0; font:500 1.25rem var(--sans); color:var(--ink); cursor:pointer; }
-label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem 0 0; flex:none; }
-.br-ms { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; }
-.list > .row.br-hist { grid-template-columns:minmax(0,1.6fr) minmax(0,.5fr) minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,1.1fr); }
-.row.br-hist i.n { font-style:normal; font-weight:400; font-size:1.1rem; }
-@media (max-width:760px) {
-  .list > .row.br-hist { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
-  .br-ms { grid-template-columns:minmax(0,1fr); }
-}
-
 /* ---- operator home (plan phase 1): one state, one sentence, one button ----
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */
@@ -528,6 +517,13 @@ label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem
 .home-big.warn { color:var(--hazard-ink); }
 .home-big.error { color:var(--stop); }
 .home-detail { color:var(--ink-2); font-size:1.3rem; min-height:1.4em; margin-top:.2rem; }
+/* The supervisor's mode under the headline (from the retired Status page, 2026-10-30) */
+.home-mode { font:400 1.1rem var(--mono); color:var(--ink-3); margin-top:.3rem; overflow-wrap:anywhere; }
+.home-mode > span { text-transform:uppercase; letter-spacing:.1em; }
+.home-mode > b { font-weight:600; color:var(--ink); }
+.home-mode > b.warn { color:var(--hazard-ink); }
+.home-mode > b.bad { color:var(--stop); }
+.home-mode > i { font-style:normal; color:var(--ink-2); }
 /* Home live tile (2026-10-08): the measured speed, read from the floor */
 .home-live { display:grid; grid-template-columns:minmax(0, 1fr); gap:.8rem; }
 .live { border:1px solid var(--rule); background:var(--surface); padding:.45rem 1.2rem; display:flex; flex-direction:column; min-width:0; }

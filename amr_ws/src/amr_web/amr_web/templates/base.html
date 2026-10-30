@@ -25,7 +25,7 @@
 <header>
   <h1>AMR control</h1>
   {# Two navs, one page. The operator gets four tabs (everything they can act on);
-     the engineer keeps all ten. Hidden pages stay reachable by URL - the PIN is a
+     the engineer adds Monitor, I/O and Params. Hidden pages stay reachable by URL - the PIN is a
      mistake guard, not security (amr_web/role.py). #}
   <nav>
     <a href="/home"   class="{{ 'on' if page == 'home' }}">Home</a>
@@ -33,11 +33,9 @@
     <a href="/manual" class="{{ 'on' if page == 'manual' }}">Manual</a>
     <a href="/alarms" class="{{ 'on' if page == 'alarms' }}">Alarms</a>
     {% if role == ENGINEER %}
-    <a href="/status" class="{{ 'on' if page == 'status' }}">Status</a>
     <a href="/monitor" class="{{ 'on' if page == 'monitor' }}">Monitor</a>
     <a href="/io"     class="{{ 'on' if page == 'io' }}">I/O</a>
     <a href="/params" class="{{ 'on' if page == 'params' }}">Params</a>
-    <a href="/commissioning" class="{{ 'on' if page == 'commissioning' }}">Commission</a>
     {% endif %}
     {# The visitors' Demo page (/demo, demo.py) is DEPRECATED since 2026-10-02: no nav link;
        the route still serves for anyone who has the URL. #}

@@ -307,3 +307,25 @@ def test_estop_ok_returns_with_the_image_after_a_comms_gap():
     for comms in (True, True, False, True, True):
         f = ad.tick(_snap(_estop_di(True), comms=comms))
         assert f.estop_ok == f.valid, comms
+
+
+def _di_c(cont=False, **kw):
+    bits = _di(**kw)
+    bits[config.PANEL_DI_CONTINUE] = cont
+    return bits
+
+
+def test_continue_is_an_edge_with_starts_rules():
+    """PB Continue (DI13, 2026-10-30): one edge per press, none when held at power-on, none
+    from a repeated image, and not a Start."""
+    ad = _adapter()
+    f = _settle(ad, _di_c(cont=True, auto=True))
+    assert f.valid and not f.continue_edge, "held at power-on: a baseline, never a press"
+    _settle(ad, _di_c(auto=True))
+    ad.tick(_snap(_di_c(cont=True, auto=True)))
+    f = ad.tick(_snap(_di_c(cont=True, auto=True)))
+    assert f.continue_edge and not f.start_edge and "CONTINUE edge" in (f.changed or "")
+    f = ad.tick(_snap(_di_c(cont=True, auto=True), new=False))
+    assert not f.continue_edge, "a repeated image spends the edge"
+    f = _settle(ad, _di_c(cont=True, auto=True))
+    assert not f.continue_edge, "held: no repeat"

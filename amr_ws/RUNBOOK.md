@@ -575,14 +575,21 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `DRIVES_NOT_READY` | warn | Stopped: the motors are not powered | Switch the pendant enable (arm) on. AUTO: then press Start (after the cabinet's safety reset if the E-stop was used). | DriveStatus not operational while the mux had a command to apply. Since 2026-10-08 the drives are powered only on demand (DriveStatus.power_reason says why not). |
-| `ESTOP_HOLD` | warn | Stopped by the E-stop: press Start to continue | Make sure the area is clear, then press Start. The route continues where it stopped. | The run's 'estop' hold (owner policy 2026-10-30: an emergency is a physical stop and never ends the run). Shown once the emergency is NORMAL again; never resumes by itself. |
+| `ESTOP_HOLD` | warn | Stopped by the E-stop: press Start or Continue | Make sure the area is clear, then press Start or Continue. The route continues where it stopped. | The run's 'estop' hold (owner policy 2026-10-30: an emergency is a physical stop and never ends the run). Shown once the emergency is NORMAL again; never resumes by itself. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
+
+### Cleared by: continue button
+
+| Code | Level | Operator sees | Operator does | Engineer's note |
+|---|---|---|---|---|
+| `CONTINUE_REFUSED` | warn | Continue did not start the vehicle | Fix what the detail says, then press Continue again. | A Continue/Start at a wait failed its gate: E-stop not reset, MANUAL, localisation not READY, wheels moving, or the vehicle moved off the wait pose (verify_position_m / verify_heading_deg). RunState.continue_refused carries the reason. |
+| `RUN_WAITING` | info | Waiting at a stop: press Continue | Hitch or release the trolley, step clear, then press Continue (or Start). | The run is WAITING at a route wait step (gls-wait-coding-plan §A.4). Drives disarmed; Continue re-checks localisation, AUTO, still wheels and the wait pose, then the pre-move warning runs. Survives an emergency (owner, 2026-10-30). |
 
 ### Cleared by: reset button
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
-| `ESTOP` | error | EMERGENCY STOP | Make the area safe. Release (twist) the E-stop button, then press the blue Reset button on the cabinet. | DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and aborts any run (emergency-suite plan). Also the executor's 'estop' hold when it can only infer it. |
+| `ESTOP` | error | EMERGENCY STOP | Make the area safe. Release (twist) the E-stop button, then press the blue Reset button on the cabinet. | DI08 (panel.di_estop_ok, Flexi Soft Q3) LOW, or the panel image invalid/stale. STO is the Flexi Soft's; the PC withholds power and the lease, inhibits the mux and holds a moving run (emergency-suite plan; it never ends a run or a wait). Also the executor's 'estop' hold when it can only infer it. |
 | `ESTOP_RESET_NEEDED` | warn | E-stop released: press Reset | Press the blue Reset button on the cabinet. | DI08 is HIGH again but no Reset edge has been seen since the emergency. |
 
 ### Cleared by: ack

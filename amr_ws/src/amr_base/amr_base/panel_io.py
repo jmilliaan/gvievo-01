@@ -48,6 +48,7 @@ class PanelFrame:
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
     manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
     estop_ok: bool = False  # panel.di_estop_ok HIGH for debounce_scans; LOW at once; False while invalid
+    continue_edge: bool = False  # panel.di_continue rising edge (PB Continue), Start's rules
 
 
 class PanelAdapter:
@@ -77,6 +78,7 @@ class PanelAdapter:
             config.PANEL_DI_AUTO,
             scans,
             auto_when_on=config.PANEL_AUTO_WHEN_ON,
+            continue_ch=config.PANEL_DI_CONTINUE,
         )
         self.pendant = None
         if config.PENDANT_ENABLED if pendant is None else pendant:
@@ -151,6 +153,8 @@ class PanelAdapter:
             notes.append("START edge")
         if intent.reset:
             notes.append("RESET edge")
+        if intent.cont:
+            notes.append("CONTINUE edge")
 
         pend = panel_core.PENDANT_IDLE
         if self.pendant is not None:
@@ -187,6 +191,7 @@ class PanelAdapter:
             pendant=pend,
             manual_arm=arm,
             estop_ok=estop_ok,
+            continue_edge=bool(intent.cont),
         )
         self._last_frame = frame
         return frame

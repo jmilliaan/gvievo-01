@@ -257,15 +257,15 @@ def test_bus_owner_wiring():
 
 
 def test_pp_write_surface():
-    print("\nguard: the profile-position write surface")
+    print("\nguard: no profile-position write surface (pp removed 2026-10-30)")
 
-    check("607Ah target position is writable (the pp set-point)", guard.is_allowed(0x607A))
-    check("6081h profile velocity is writable (the pp speed)", guard.is_allowed(0x6081))
+    check("607Ah target position is NOT writable (pp removed)", not guard.is_allowed(0x607A))
+    check("6081h profile velocity is NOT writable (pp removed)", not guard.is_allowed(0x6081))
     for idx in guard.PP_CONFIG_READ_ONLY:
         check(f"{idx:04X}h pp safety configuration is NOT writable - MEXE02 only",
               not guard.is_allowed(idx))
-    check("607Ah may be carried by an RPDO (it is itself writable)",
-          guard.is_allowed(0x1601, (0x607A << 16) | 0x0020, 1))
+    check("607Ah may NOT be carried by an RPDO (it is not itself writable)",
+          not guard.is_allowed(0x1601, (0x607A << 16) | 0x0020, 1))
     check("6072h may NOT be smuggled in through an RPDO mapping",
           not guard.is_allowed(0x1601, (0x6072 << 16) | 0x0010, 1))
 

@@ -186,7 +186,7 @@ def test_deprecated_page_has_no_link_but_still_serves(tmp_path):
     assert cl.get("/demo").status_code == 200
     assert cl.get("/api/demo").get_json()["status"] == demo.WATCHING
     assert cl.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN}).status_code == 200
-    assert 'href="/demo"' not in cl.get("/status").get_data(as_text=True)
+    assert 'href="/demo"' not in cl.get("/monitor").get_data(as_text=True)
     assert cl.get("/demo").status_code == 200
 
 

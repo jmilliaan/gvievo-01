@@ -6,6 +6,7 @@ Three devices on the DIO module drive the vehicle's state:
     DI_START   momentary pushbutton, rising edge
     DI_AUTO    maintained selector, level. Which level means AUTO is the
                profile's panel.auto_when_on (true: ON = AUTO; false: ON = MANUAL)
+    DI_CONT    optional: PB Continue, momentary, rising edge (2026-10-30)
 
 This module reports what the operator ASKED FOR - a Reset edge, a Start edge,
 the selector position. It deliberately does not decide what the vehicle should
@@ -45,19 +46,24 @@ AUTO, MANUAL = "auto", "manual"
 # reset/start  - rising edge this scan
 # mode         - selector position, or None before the first baseline
 # mode_changed - the selector moved on this scan
+# cont         - PB Continue rising edge this scan (False without a Continue channel)
 PanelIntent = namedtuple("PanelIntent",
-                         "valid reset start mode mode_changed")
+                         "valid reset start mode mode_changed cont",
+                         defaults=(False,))
 
 IDLE_INTENT = PanelIntent(valid=False, reset=False, start=False,
                           mode=None, mode_changed=False)
 
 
 class PanelScan:
-    """Debounced edge detector over three channels of the DI image."""
+    """Debounced edge detector over three channels of the DI image, plus an
+    optional fourth: PB Continue, a pushbutton with exactly Start's rules (the
+    baseline and reconnect hazards above apply to it the same way)."""
 
     def __init__(self, reset_ch, start_ch, auto_ch, debounce_scans=2,
-                 auto_when_on=True):
+                 auto_when_on=True, continue_ch=None):
         self.channels = (int(reset_ch), int(start_ch), int(auto_ch))
+        self.continue_ch = None if continue_ch is None else int(continue_ch)
         self.auto_when_on = bool(auto_when_on)
         self.debounce_scans = max(1, int(debounce_scans))
         self._stable = None         # last accepted sample; None = not baselined
@@ -88,13 +94,14 @@ class PanelScan:
 
         try:
             reset_on, start_on, auto_on = (bool(di[c]) for c in self.channels)
+            cont_on = self.continue_ch is not None and bool(di[self.continue_ch])
         except (IndexError, TypeError):
             # A short or malformed image is not a button press.
             self.reset()
             return IDLE_INTENT
 
         # The selector is stored as "is AUTO", so everything below is polarity-free.
-        sample = (reset_on, start_on, auto_on == self.auto_when_on)
+        sample = (reset_on, start_on, auto_on == self.auto_when_on, cont_on)
 
         if not was_comms:
             self.reset()            # re-baseline on reconnect, see hazard 3
@@ -113,15 +120,16 @@ class PanelScan:
             self._stable = sample   # baseline: no edges, see hazard 2
             return self._steady()
 
-        was_reset, was_start, was_auto = self._stable
-        now_reset, now_start, now_auto = sample
+        was_reset, was_start, was_auto, was_cont = self._stable
+        now_reset, now_start, now_auto, now_cont = sample
         self._stable = sample
         return PanelIntent(
             valid=True,
             reset=now_reset and not was_reset,      # rising edge, hazard 1
             start=now_start and not was_start,
             mode=AUTO if now_auto else MANUAL,
-            mode_changed=now_auto != was_auto)
+            mode_changed=now_auto != was_auto,
+            cont=now_cont and not was_cont)
 
     def _steady(self):
         """A trusted image with no edges, or nothing if not yet baselined."""

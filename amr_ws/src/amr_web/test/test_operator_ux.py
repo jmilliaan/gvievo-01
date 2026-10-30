@@ -608,3 +608,29 @@ def test_the_adapter_never_assigns_one_attribute_twice_in_init():
                     names.append(e.attr)
     dup = sorted({n for n in names if names.count(n) > 1})
     assert not dup, f"assigned twice in RosAdapter.__init__: {dup}"
+
+
+# ---- route wait steps (gls-wait-coding-plan §A.5, 2026-10-30) ---------------------------
+
+
+def _waiting(**over):
+    run = {"state_name": "WAITING", "wait_name": "UBC hitch", "mission_id": "m1", "step_index": 1,
+           "step_id": "w1", "continue_refused": "", "reason": "waiting at UBC hitch"}
+    run.update(over)
+    return merged(run=run)
+
+
+def test_a_waiting_run_says_press_continue_and_offers_no_web_button():
+    st = _waiting()
+    rows = view.standing(st)
+    h = view.headline(st, rows)
+    assert h["state"] == f"{view.WAITING} · UBC hitch" and "Continue" in h["action"]
+    assert h["code"] == "RUN_WAITING" and h["button"] == "", "only the physical button releases a wait (W4)"
+    assert h["run_active"] and "step 2" in h["detail"]
+
+
+def test_a_refused_continue_is_the_row_the_operator_reads_first():
+    st = _waiting(continue_refused="0.25 m / 0.0 deg off the wait pose; reposition or abort")
+    h = view.headline(st, view.standing(st))
+    assert h["code"] == "CONTINUE_REFUSED" and h["state"].startswith(view.WAITING)
+    assert [r["code"] for r in view.standing(st)][:2] == ["CONTINUE_REFUSED", "RUN_WAITING"]

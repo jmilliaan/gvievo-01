@@ -32,7 +32,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from amr_base import gating
-from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew, slew_asym
+from amr_base.diff_drive import Geometry, clamp_wheels, inverse, scurve, slew_asym
 
 try:
     # The scanner's field outputs come from the SICK driver. Optional at import so a
@@ -194,14 +194,12 @@ class CmdMuxKinematics(Node):
         self._lease: gating.Lease | None = None
         self._manual = gating.ManualIntake()
         self._drives: gating.Drives | None = None
-        self._commissioning: gating.Wheels | None = None
         self._field: gating.Field | None = None
         self._view = gating.FieldView(False, False, False)
         self._scale = 1.0
         self._speed_ramp = gating.SpeedRamp()  # the ramped warning factor actually applied to AUTO
         self._target = 1.0
         self._repress = gating.RepressGuard()  # a hand held through an E-stop must let go first
-        self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
         self._v = 0.0
@@ -220,9 +218,6 @@ class CmdMuxKinematics(Node):
         self.create_subscription(ManualCommand, "/amr/manual_command", self._on_manual, RELIABLE_1)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, RELIABLE_1)
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED)
-        self.create_subscription(
-            WheelVelocities, "/amr/commissioning_wheels", self._on_commissioning, RELIABLE_1
-        )
         if self.fp.assume_clear:
             self.get_logger().warning("field_source=assume_clear: scanner fields ASSUMED clear (sim only)")
         elif OutputPaths is not None:
@@ -291,13 +286,6 @@ class CmdMuxKinematics(Node):
             int(msg.emergency),
         )
 
-    def _on_commissioning(self, msg: WheelVelocities) -> None:
-        wl, wr = float(msg.left_rad_s), float(msg.right_rad_s)
-        if math.isfinite(wl) and math.isfinite(wr):
-            self._commissioning = gating.Wheels(self._now(), wl, wr, int(msg.generation))
-        else:
-            self._commissioning = None  # never leave an earlier nonzero wheel target in force (R03)
-
     def _on_drives(self, msg: DriveStatus) -> None:
         self._drives = gating.Drives(self._now(), bool(msg.operational))
 
@@ -333,9 +321,7 @@ class CmdMuxKinematics(Node):
         self._teleop = self._follow = self._rotate = None
         self._permit = None
         self._manual.clear()
-        self._commissioning = None
         self._v = self._wz = self._a = self._alpha = 0.0
-        self._wl = self._wr = 0.0
         self._subscribe_nav(gen)
 
     def _subscribe_nav(self, gen: int) -> None:
@@ -380,7 +366,6 @@ class CmdMuxKinematics(Node):
             lease=self._lease,
             manual=self._manual.current,
             drives=self._drives,
-            commissioning=self._commissioning,
         )
         sel = self._repress_gate(sel)
         self._view = gating.field_view(self._now(), self._field, self.fp)
@@ -442,15 +427,7 @@ class CmdMuxKinematics(Node):
         if sel.source == gating.NONE or (sel.v == 0.0 and sel.w == 0.0 and sel.reason.endswith("timed out")):
             self._v = self._wz = 0.0  # loss of authority or an expired command: zero at once, never a ramp
             self._a = self._alpha = 0.0
-            self._wl = self._wr = 0.0
             wl, wr = 0.0, 0.0
-        elif sel.wheels:
-            # per-wheel targets (commissioning): the same hardware accel limit, applied per wheel
-            a_wheel = self.a_max / self.geom.wheel_radius_m
-            self._wl = slew(self._wl, sel.v, a_wheel, self.dt)
-            self._wr = slew(self._wr, sel.w, a_wheel, self.dt)
-            self._v = self._wz = 0.0
-            wl, wr = clamp_wheels(self._wl, self._wr, self.w_max)
         elif sel.source in (gating.PENDANT, gating.MANUAL):
             # manual: jerk-limited S-curve (trapezoidal acceleration), stops at d_max/delta_max
             self._v, self._a = scurve(
@@ -465,7 +442,6 @@ class CmdMuxKinematics(Node):
                 self.manual_jerk_w,
                 self.dt,
             )
-            self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         else:
             # the warning-field stop sets its own deceleration through the factor ramp;
@@ -478,12 +454,11 @@ class CmdMuxKinematics(Node):
                 yaw_down = max(yaw_down, getattr(self, "stop_delta_max", 0.0))
             self._wz = slew_asym(self._wz, sel.w, yaw_up, yaw_down, self.dt)
             self._a = self._alpha = 0.0
-            self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         if not (math.isfinite(wl) and math.isfinite(wr)):
             # last line before the drive owner (R03): nothing upstream may turn into full scale
             self.get_logger().error(f"nonfinite wheel output ({wl}, {wr}) from {name}; zeroed")
-            self._v = self._wz = self._wl = self._wr = self._a = self._alpha = 0.0
+            self._v = self._wz = self._a = self._alpha = 0.0
             wl, wr = 0.0, 0.0
         self._last = sel
         self._out = (wl, wr)

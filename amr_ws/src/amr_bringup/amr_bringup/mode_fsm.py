@@ -41,7 +41,8 @@ REQ_RECOVER = "recover"
 
 # executor RunState values that hold a job (RunState.msg)
 RUN_IDLE, RUN_READY, RUN_EXECUTING, RUN_PAUSED, RUN_BLOCKED, RUN_FAULT, RUN_DONE = range(7)
-JOB_HELD = {RUN_READY, RUN_EXECUTING, RUN_PAUSED, RUN_BLOCKED}
+RUN_WAITING = 7  # stopped at a route wait step, mid-run (gls-wait-coding-plan §A.3)
+JOB_HELD = {RUN_READY, RUN_EXECUTING, RUN_PAUSED, RUN_BLOCKED, RUN_WAITING}
 # survey MappingState values
 SURVEY_IDLE, SURVEY_MAPPING, SURVEY_RETURN_REVIEW, SURVEY_SAVING, SURVEY_SAVED = range(5)
 SURVEY_UNSAVED = {SURVEY_MAPPING, SURVEY_RETURN_REVIEW}
@@ -138,7 +139,7 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
     if c.commissioning_active:
         return Decision(False, "a commissioning job is prepared or running; clear it first")
     if state == NAVIGATION and c.run_state in JOB_HELD:
-        return Decision(False, "a mission is READY/EXECUTING/PAUSED/BLOCKED; abort it first")
+        return Decision(False, "a mission is READY/EXECUTING/PAUSED/BLOCKED/WAITING; abort it first")
     if state == NAVIGATION and c.run_state == RUN_FAULT:
         return Decision(False, "executor FAULT: acknowledge it first")
     if state == MAPPING:

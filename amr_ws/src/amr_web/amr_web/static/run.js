@@ -117,7 +117,7 @@ onState(st => {
     $('loc-detail').innerHTML = ''; $('loc-reason').textContent = '';
   }
   // Not NORMAL (alarms.banner): no load, no resume; the server refuses them too (409).
-  // An emergency aborts the run, so after NORMAL a new run is loaded and started.
+  // An emergency holds the run (owner policy 2026-10-30): after NORMAL, Start or Continue resumes it.
   const emg = st.banner ? (st.banner.reason || 'E-stop active') : '';
   ['btn-run-load', 'btn-run-resume'].forEach(id => { $(id).disabled = !!emg; $(id).title = emg; });
   $('run-emg').hidden = !emg; $('run-emg').textContent = emg;
@@ -126,14 +126,16 @@ onState(st => {
     tiles('run-state', [
       // a BLOCKED run is a hold with a cause (auto-resume plan 2026-09-19): say whether it continues by itself
       ['State', r.state_name, r.resume_prepared ? 'resume prepared'
-        : (r.state_name === 'BLOCKED' && r.hold_cause ? `${HOLD_NAMES[r.hold_cause] || r.hold_cause} · ${r.auto_resume ? 'resumes by itself' : 'press Start'}` : '—'),
+        : r.state_name === 'BLOCKED' && r.hold_cause ? `${HOLD_NAMES[r.hold_cause] || r.hold_cause} · ${r.auto_resume ? 'resumes by itself' : 'press Start'}`
+        // a route wait step (gls-wait-coding-plan §A.5): only the physical Continue/Start releases it
+        : r.state_name === 'WAITING' ? `${r.wait_name || 'wait'} · ${Math.round(r.waiting_s || 0)} s · press Continue` : '—',
         RUN_LEVEL[r.state_name], 'key'],
       ['Run', r.run_id || '—', r.mission_id || '—'],
       ['Step', r.step_id ? `${r.step_index} ${r.step_id}` : String(r.step_index), r.step_type && r.step_type !== 'rotate' && r.step_v_mps > 0 ? `${r.step_type} ${num(r.step_v_mps, 2)} m/s` : (r.step_type || '—')],
       ['Cross-track', num(r.cross_track_m, 3), 'm'],
       ['Remaining turn', num(r.remaining_turn_rad * 180 / Math.PI, 1), '°'],
     ]);
-    $('run-reason').textContent = r.reason || '';
+    $('run-reason').textContent = (r.reason || '') + (r.continue_refused ? ` — Continue refused: ${r.continue_refused}` : '');
   } else {
     tiles('run-state', [['State', st.run_stale ? 'STALE' : '–', st.run_stale ? 'from a replaced layer' : 'activate a map', st.run_stale ? 'bad' : '', 'key']]);
     $('run-reason').textContent = '';

@@ -6,7 +6,7 @@
 uint8 NONE=0
 uint8 MANUAL=1          # bitmask: jog / stamped browser commands under physical MANUAL
 uint8 AUTONOMOUS=2      # executor permit may be honoured (NAVIGATION only)
-uint8 COMMISSIONING=4   # exclusive IDLE substate (U8)
+uint8 COMMISSIONING=4   # retired 2026-10-30 (commissioning page removed), never granted or reused
 # bit 8 retired (LINE), never reuse
 std_msgs/Header header
 string instance

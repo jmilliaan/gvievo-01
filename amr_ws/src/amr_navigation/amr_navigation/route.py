@@ -8,6 +8,7 @@ so a re-surveyed map invalidates every route drawn on the old one.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import asdict, dataclass, field
 
 import yaml
@@ -29,6 +30,14 @@ ARC = "arc"
 ARC_MIN_DEG, ARC_MAX_DEG = 45.0, 180.0
 ARC_MIN_RADIUS_M = 1.0
 ARC_YAW_RATE_RATIO = 0.9  # of VEHICLE_ARC_W_MAX: headroom for the controller's corrections
+# A wait (2026-10-30, gls-wait-coding-plan §A.1) stops at the previous step's end pose until
+# the operator presses PB Continue (or Start): trolley hitch / release points. `name` is what
+# the operator reads ("UBC hitch"); `label_id` names the GLS floor label under the camera
+# there, a NAME (never a coordinate) checked against the map's label set. Placement rules
+# (never first or last, never two in a row, never straight after an arc) are the compiler's.
+WAIT = "wait"
+WAIT_NAME_MAX = 40
+LABEL_ID_RE = re.compile(r"^x\d{4}y\d{4}$")
 
 
 class RouteError(ValueError):
@@ -139,12 +148,14 @@ class Limits:
 @dataclass
 class Step:
     id: str
-    type: str  # STRAIGHT | ROTATE | REVERSE | ARC
+    type: str  # STRAIGHT | ROTATE | REVERSE | ARC | WAIT
     to: tuple[float, float] | None = None  # straight: end point (x_m, y_m)
     direction: str | None = None  # rotate / arc: cw | ccw
     angle_deg: float | None = None  # rotate: 45 | 90 | 180 | 270; arc: ARC_MIN_DEG..ARC_MAX_DEG
     distance_m: float | None = None  # reverse: how far back, 0 < d <= REVERSE_MAX_M
     radius_m: float | None = None  # arc: >= ARC_MIN_RADIUS_M
+    name: str = ""  # wait: shown to the operator
+    label_id: str | None = None  # wait: the GLS floor label expected there, or None
 
     def to_dict(self) -> dict:
         if self.type == STRAIGHT:
@@ -159,7 +170,14 @@ class Step:
                 "angle_deg": self.angle_deg,
                 "radius_m": self.radius_m,
             }
-        return {"id": self.id, "type": ROTATE, "direction": self.direction, "angle_deg": self.angle_deg}
+        if self.type == WAIT:
+            d = {"id": self.id, "type": WAIT, "name": self.name}
+            if self.label_id is not None:
+                d["label_id"] = self.label_id
+            return d
+        if self.type == ROTATE:
+            return {"id": self.id, "type": ROTATE, "direction": self.direction, "angle_deg": self.angle_deg}
+        raise RouteError(f"unknown step type {self.type!r}"[:200], self.id)
 
     @staticmethod
     def from_dict(d: dict) -> Step:
@@ -202,6 +220,14 @@ class Step:
             if r < ARC_MIN_RADIUS_M:
                 raise RouteError(f"arc radius_m must be at least {ARC_MIN_RADIUS_M:g} m, got {r:g}", sid)
             return Step(sid, ARC, direction=direction, angle_deg=a, radius_m=r)
+        if t == WAIT:
+            name = d.get("name", "")
+            if not isinstance(name, str) or len(name) > WAIT_NAME_MAX:
+                raise RouteError(f"wait name must be a string of at most {WAIT_NAME_MAX} characters", sid)
+            label = d.get("label_id")
+            if label is not None and (not isinstance(label, str) or not LABEL_ID_RE.match(label)):
+                raise RouteError(f"wait label_id must look like x0100y0000, got {label!r}"[:200], sid)
+            return Step(sid, WAIT, name=name, label_id=label)
         raise RouteError(f"unknown step type {t!r}"[:200], sid)
 
 

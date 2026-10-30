@@ -51,11 +51,12 @@ function poseAfter(n) {
     if (s.type === 'straight') { x = s.to.x_m; y = s.to.y_m; }
     else if (s.type === 'reverse') { x -= Math.cos(yaw) * s.distance_m; y -= Math.sin(yaw) * s.distance_m; }
     else if (s.type === 'arc') { const e = arcSamples({ x, y, yaw }, s, 1)[1]; x = e.x; y = e.y; yaw = e.yaw; }
-    else yaw += (s.direction === 'ccw' ? 1 : -1) * s.angle_deg * Math.PI / 180;
+    else if (s.type === 'rotate') yaw += (s.direction === 'ccw' ? 1 : -1) * s.angle_deg * Math.PI / 180;
+    // a wait keeps the pose
   }
   return { x, y, yaw };
 }
-function stepLength(i) { const s = route.steps[i]; if (s.type === 'arc') return s.radius_m * s.angle_deg * Math.PI / 180; const a = poseAfter(i), b = poseAfter(i + 1); return Math.hypot(b.x - a.x, b.y - a.y); }
+function stepLength(i) { const s = route.steps[i]; if (s.type === 'wait') return 0; if (s.type === 'arc') return s.radius_m * s.angle_deg * Math.PI / 180; const a = poseAfter(i), b = poseAfter(i + 1); return Math.hypot(b.x - a.x, b.y - a.y); }
 function nextId() { let i = route.steps.length + 1; while (route.steps.some(s => s.id === 's' + i)) i++; return 's' + i; }
 
 view.onDrag = (a, b, done) => {
@@ -115,6 +116,19 @@ function addArc(direction) {
   snapshot(); route.steps.push({ id, type: 'arc', direction, angle_deg: a, radius_m: r }); refresh();
   log(`${id}: arc ${direction === 'ccw' ? 'L' : 'R'} ${a}° R ${num(r, 2)} m (${num(arcSpeed(r), 2)} m/s)`);
 }
+// Wait (gls-wait-coding-plan §A.5): stop here until PB Continue or Start - a trolley hitch or
+// release point. Placement rules are the compiler's (never first or last, never two in a row,
+// never straight after an arc); Validate reports them against the step.
+$('btn-wait').onclick = () => {
+  if (!route.start) { log('set the start pose first', 'bad'); return; }
+  const name = $('ed-wait-name').value.trim(), label = $('ed-wait-label').value.trim();
+  if (name.length > 40) { log('a wait name is at most 40 characters', 'bad'); return; }
+  if (label && !/^x\d{4}y\d{4}$/.test(label)) { log('a floor label looks like x0100y0000', 'bad'); return; }
+  const id = nextId(), step = { id, type: 'wait', name };
+  if (label) step.label_id = label;
+  snapshot(); route.steps.push(step); refresh();
+  log(`${id}: wait${name ? ' at ' + name : ''}${label ? ' (label ' + label + ')' : ''}: press Continue to go on`);
+};
 $('btn-arc-l').onclick = () => addArc('ccw');
 $('btn-arc-r').onclick = () => addArc('cw');
 document.querySelectorAll('button.turn').forEach(b => b.addEventListener('click', () => {
@@ -190,6 +204,7 @@ function refresh() {
   $('ed-steps').innerHTML = route.steps.length ? route.steps.map((s, i) => `<div class="row three${bad.has(s.id) ? ' lv-error' : ''}"><span class="k">${esc(s.id)}</span>` +
     (s.type === 'straight' ? `<span class="n">straight</span><span class="v" title="to ${num(+s.to.x_m, 3)}, ${num(+s.to.y_m, 3)} m">${mm(stepLength(i))}<i>mm</i></span>`
      : s.type === 'reverse' ? `<span class="n">reverse <b title="backs up at half the trackless speed: ${num(SPEED_V / 2, 2)} m/s">◂${num(SPEED_V / 2, 2)}</b></span><span class="v">${mm(+s.distance_m)}<i>mm</i></span>`
+     : s.type === 'wait' ? `<span class="n">wait</span><span class="v" title="stops until PB Continue or Start">${esc(s.name || '—')}${s.label_id ? ` <i>${esc(s.label_id)}</i>` : ''}</span>`
      : s.type === 'arc' ? `<span class="n">arc ${s.direction === 'ccw' ? 'L' : 'R'} <b title="capped so the yaw rate stays under the turn cap">≤${num(arcSpeed(+s.radius_m), 2)}</b></span><span class="v" title="${mm(stepLength(i))} mm of arc">${esc(s.angle_deg)}° R ${num(+s.radius_m, 2)}<i>m</i></span>`
                            : `<span class="n">rotate</span><span class="v">${esc(String(s.direction).toUpperCase())} ${esc(s.angle_deg)}<i>°</i></span>`) + '</div>').join('')
     : '<div class="none">no steps</div>';
@@ -252,6 +267,7 @@ view.overlays.push((c, v) => {
       if (s.type === 'straight') v.dashed(sweptBox(a, Math.hypot(b.x - a.x, b.y - a.y)), checked(s.id, INK.route));
       else if (s.type === 'reverse') v.dashed(sweptBox(b, Math.hypot(b.x - a.x, b.y - a.y)), checked(s.id, INK.route));  // b is behind a, same heading
       else if (s.type === 'arc') v.dashed(sweptArc(a, s), checked(s.id, INK.route));
+      else if (s.type === 'wait') v.dashed(sweptBox(a, 0), checked(s.id, INK.pose));
       else v.dashed(sweptTurn(a, (s.direction === 'ccw' ? 1 : -1) * s.angle_deg * Math.PI / 180), checked(s.id, INK.turn));
       a = b;
     });
@@ -262,6 +278,7 @@ view.overlays.push((c, v) => {
     if (s.type === 'straight') { v.line(p.x, p.y, q.x, q.y, bad.has(s.id) ? INK.stop : INK.route, 3); v.text((p.x + q.x) / 2, (p.y + q.y) / 2, `${s.id} ${mm(Math.hypot(q.x - p.x, q.y - p.y))} mm`, INK.ink3); }
     else if (s.type === 'reverse') { v.dashed([[p.x, p.y], [q.x, q.y]], bad.has(s.id) ? INK.stop : INK.route); v.dot(q.x, q.y, INK.route, 4); v.text((p.x + q.x) / 2, (p.y + q.y) / 2, `${s.id} ◂ ${mm(Math.hypot(q.x - p.x, q.y - p.y))} mm`, INK.ink3); }
     else if (s.type === 'arc') { const pts = arcSamples(p, s, Math.max(8, Math.ceil(s.angle_deg / 3))); v.polyline(pts.map(t => [t.x, t.y]), bad.has(s.id) ? INK.stop : INK.route, 3); const m = pts[pts.length >> 1]; v.text(m.x, m.y, `${s.id} ⌒ R${num(+s.radius_m, 1)} ${s.angle_deg}°`, INK.ink3); v.arrow(q.x, q.y, q.yaw, 0.6, INK.turn); if (footprint) v.footprint(q.x, q.y, q.yaw, footprint.polygon, alpha(INK.turn, 0.4)); }
+    else if (s.type === 'wait') { v.dot(q.x, q.y, bad.has(s.id) ? INK.stop : INK.pose, 7); v.text(q.x, q.y, `${s.id} WAIT ${s.name || ''}`, INK.pose); }
     else { v.dot(q.x, q.y, bad.has(s.id) ? INK.stop : INK.turn, 6); v.text(q.x, q.y, `${s.id} ${s.direction.toUpperCase()} ${s.angle_deg}°`, INK.turn); v.arrow(q.x, q.y, q.yaw, 0.6, INK.turn); if (footprint) v.footprint(q.x, q.y, q.yaw, footprint.polygon, alpha(INK.turn, 0.4)); }
     p = q;
   });
