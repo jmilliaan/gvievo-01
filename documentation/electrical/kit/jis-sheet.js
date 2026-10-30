@@ -474,5 +474,6 @@
     });
   }
 
-  window.JIS = { render, G, X };
+  // Sheet is exported so iec-sheet.js can reuse the primitives on its A3 frame
+  window.JIS = { render, G, X, Sheet };
 })();

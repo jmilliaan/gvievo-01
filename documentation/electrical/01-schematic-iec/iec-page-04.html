@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Symbol legend: only the symbols used in this set, drawn with the same engine calls as the pages.
+  IEC.page(4, s => {
+    const COLS = [30, 160, 290], ROW0 = 26, DY = 34;
+    const cell = (i, title, lines, draw) => {
+      const x = COLS[i % 3], y = ROW0 + DY * Math.floor(i / 3);
+      draw(x + 14, y + 14);
+      s.text(x + 36, y + 8, title, { size: 2.8, weight: 600 });
+      lines.forEach((t, k) => s.text(x + 36, y + 13 + 3.8 * k, t, { size: 2.3 }));
+    };
+    const vline = (x, y, h = 9) => s.line(x, y - h, x, y + h, 0.3);
+
+    cell(0, 'Make contact (NO)', ['IEC 60617 S00227. Terminal numbers', 'per IEC 60947-5-1: 13-14, 23-24'],
+      (x, y) => { vline(x, y); s.contactV(x, y, 'no', ['13', '14']); });
+    cell(1, 'Break contact (NC)', ['IEC 60617 S00229. 11-12, 21-22'],
+      (x, y) => { vline(x, y); s.contactV(x, y, 'nc', ['11', '12']); });
+    cell(2, 'Push-button, momentary', ['Push operator, returns by spring'],
+      (x, y) => { vline(x + 4, y); s.operator([s.contactV(x + 4, y, 'no')], 'push'); });
+    cell(3, 'Emergency stop', ['Mushroom head, latching (turn to release),', 'positive opening (IEC 60947-5-1 Annex K)'],
+      (x, y) => { vline(x + 6, y); s.operator([s.contactV(x + 6, y, 'nc')], 'estop'); });
+    cell(4, 'Selector switch, maintained', ['Turn operator, latching. Position table', 'beside the switch: X = contact closed'],
+      (x, y) => { vline(x + 4, y); s.operator([s.contactV(x + 4, y, 'no')], 'turn'); });
+    cell(5, 'Circuit breaker', ['IEC 60617 S00287. Poles linked', 'by a dashed line'],
+      (x, y) => { [x - 4, x + 2].forEach(xx => vline(xx, y)); s.breaker([x - 4, x + 2], y, '', ''); });
+    cell(6, 'Terminal of a terminal strip', ['Strip tag left, terminal number right'],
+      (x, y) => { vline(x + 4, y); s.terminal(x + 4, y, '-XD1', 43); });
+    cell(7, 'Junction / crossing', ['Dot = connected. Crossing without', 'a dot = not connected'],
+      (x, y) => {
+        s.line(x - 8, y - 4, x + 8, y - 4, 0.3); s.line(x - 2, y - 9, x - 2, y + 9, 0.3); s.dot(x - 2, y - 4);
+        s.line(x - 8, y + 4, x + 8, y + 4, 0.3);
+      });
+    cell(8, 'Interruption point', ['The conductor continues at the target', 'and page.column shown'],
+      (x, y) => { s.line(x, y - 9, x, y + 1); s.offDown(x, y + 1, '-KE4:DI02', '/60.2'); });
+    cell(9, 'Potential rail', ['Name and source left, continuation', 'arrow and target right'],
+      (x, y) => s.rail(y, x - 12, x + 14, '1P24', '', '/31'));
+    cell(10, 'Module or device', ['Box with the terminals in use on its edge;', 'tag and type inside'],
+      (x, y) => s.module(x - 12, x + 14, y - 6, 15, [{ x: x - 6, name: 'I1' }, { x: x + 6, name: 'I2' }], []));
+    cell(11, 'Location box (dash-dot)', ['Devices inside are in the location', 'written at its top-left corner'],
+      (x, y) => s.locationBox(x - 13, y - 9, 27, 18, '+FR', ''));
+    cell(12, 'Cable', ['Line across the conductors of one', 'cable, with its tag and type'],
+      (x, y) => { [x - 8, x - 3].forEach(xx => vline(xx, y)); s.cable([x - 8, x - 3], y, '-WG1', ''); });
+    cell(13, 'Battery', ['IEC 60617 S00898, + at the long plate'],
+      (x, y) => { s.line(x, y - 9, x, y - 4, 0.3); s.line(x, y + 4, x, y + 9, 0.3); s.cells(x, y); });
+    cell(14, 'DC/DC converter, motor driver', ['Box with diagonal: input left, output right', '(= direct current, ~ alternating current)'],
+      (x, y) => { s.rect(x - 9, y - 8, 18, 16, 0.35); s.convMark(x - 9, y - 8, 18, 16, '=', '='); });
+    cell(15, 'Motor', ['Three-phase motor (brushless DC drive)'],
+      (x, y) => { s.line(x, y - 9, x, y - 6); s.motor(x, y + 1, 6); });
+    cell(16, 'Protective earth', ['IEC 60417-5019. Chassis bonding point'],
+      (x, y) => { s.line(x, y - 9, x, y - 1); s.pe(x, y - 1); });
+
+    s.note(30, ROW0 + DY * 6 + 4, [
+      'All contacts are drawn in rest position with every supply off. Symbols per IEC 60617 (online database); JIS C 0617 is identical.',
+    ], { size: 2.4 });
+  });
+</script>
+</body>
+</html>

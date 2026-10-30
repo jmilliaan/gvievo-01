@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 40 · Safety: E-stop, selector, reset</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Page">
+  <strong>Page 40 · Safety: emergency stop, mode selector, reset</strong>
+  <a href="iec-page-03.html">◀ 3</a>
+  <a href="iec-page-02.html">Contents</a>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A3 landscape · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // source: ../01-schematic/proj01-sheet-08.html (inputs I1, I2, I7, I8) and io-mapping.md.
+  // Second contacts of -SJ3 / -SJ4 run to the I/O module through -XD1:58 / -XD1:59 (old TB58 / TB59).
+  // Selector polarity: contacts close in MANUAL (profile panel.auto_when_on = false; I7 line is
+  // labelled MANUAL on sheet 08).
+  const PG = PROJECT.pages.find(p => p.no === 40);
+
+  // module terminals, x in mm
+  const T = { X1: 70, I1: 86, X2: 110, I2: 126, I7: 205, I8: 320 };
+  const SEL = [205, 245], RST = [320, 360];          // selector / reset poles
+  const Y = { p24: 26, n24: 33, loop: 70, contact: 120, xd: 162, off: 182, mod: 205 };
+
+  IEC.render(document.getElementById('sheet'), {
+    page: 40, file: 'iec-page-40',
+    description: PG.desc, location: PG.loc, func: PG.func, kind: PG.kind,
+    draw(s) {
+      /* ---- potential rails ---- */
+      s.rail(Y.p24, 25, 400, '1P24', '/31.9', '/42');
+      s.rail(Y.n24, 25, 400, '1N24', '/31.9', '/42');
+
+      /* ---- conductors (symbols are drawn afterwards and cut their own gaps) ---- */
+      // E-stop: test output X1 → contact 11-12 → I1; X2 → 21-22 → I2
+      [[T.X1, T.I1], [T.X2, T.I2]].forEach(([xo, xi]) => {
+        s.line(xo, Y.mod, xo, Y.loop); s.line(xo, Y.loop, xi, Y.loop); s.line(xi, Y.loop, xi, Y.mod);
+      });
+      // selector: 1P24 → 13-14 → I7; 1N24 → 23-24 → -XD1:59 → I/O module DI02
+      s.line(SEL[0], Y.p24, SEL[0], Y.mod); s.dot(SEL[0], Y.p24);
+      s.line(SEL[1], Y.n24, SEL[1], Y.off); s.dot(SEL[1], Y.n24);
+      // reset: 1P24 → 13-14 → I8; 1N24 → 23-24 → -XD1:58 → I/O module DI01
+      s.line(RST[0], Y.p24, RST[0], Y.mod); s.dot(RST[0], Y.p24);
+      s.line(RST[1], Y.n24, RST[1], Y.off); s.dot(RST[1], Y.n24);
+
+      /* ---- -SJ1 emergency stop (+FR) ---- */
+      s.locationBox(30, 96, 108, 46, '+FR', 'front panel');
+      const e1 = s.contactV(T.X1, Y.contact, 'nc', ['11', '12']);
+      const e2 = s.contactV(T.X2, Y.contact, 'nc', ['21', '22']);
+      s.operator([e1, e2], 'estop');
+      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC, positive opening', 'turn to release', 'SF1', '«part no.»']);
+
+      /* ---- -SJ4 mode selector (+FR) ---- */
+      s.locationBox(150, 96, 108, 46, '+FR', 'front panel');
+      const m1 = s.contactV(SEL[0], Y.contact, 'no', ['13', '14']);
+      const m2 = s.contactV(SEL[1], Y.contact, 'no', ['23', '24']);
+      s.operator([m1, m2], 'turn');
+      s.label(153, 107, '-SJ4', ['Selector MANUAL / AUTO', '2 NO, maintained', 'SF4']);
+      // switch-position table: X = contact closed
+      s.table(153, 122, [{ w: 15, title: 'Pos.' }, { w: 9, title: '13-14' }, { w: 9, title: '23-24' }],
+        [['MANUAL', 'X', 'X'], ['AUTO', '', '']], { size: 2, rowH: 5, headH: 5.5 });
+
+      /* ---- -SJ3 reset (+FR) ---- */
+      s.locationBox(270, 96, 108, 46, '+FR', 'front panel');
+      const r1 = s.contactV(RST[0], Y.contact, 'no', ['13', '14']);
+      const r2 = s.contactV(RST[1], Y.contact, 'no', ['23', '24']);
+      s.operator([r1, r2], 'push');
+      s.label(273, 107, '-SJ3', ['RESET push-button, blue', '2 NO, momentary', 'SF5', '«part no.»']);
+
+      /* ---- second contacts to the I/O module (page 60) ---- */
+      s.terminal(SEL[1], Y.xd, '-XD1', 59);
+      s.terminal(RST[1], Y.xd, '-XD1', 58);
+      s.offDown(SEL[1], Y.off, '-KE4:DI02', '/60.2');
+      s.offDown(RST[1], Y.off, '-KE4:DI01', '/60.1');
+
+      /* ---- -KE2 safety controller I/O module (+EB) ---- */
+      s.locationBox(45, 196, 300, 40, '+EB', 'electrical box');
+      s.module(60, 335, Y.mod, 24,
+        Object.entries(T).map(([name, x]) => ({ x, name })),
+        ['-KE2', 'SICK Flexi Soft FX3-XTIO84002 · safety controller I/O module (main module -KE1)',
+         'Other terminals: A1, A2 /43 · I3, I4 /42 · I5, I6 /41 · Q1, Q2 /42 · Q3, Q4 spare']);
+
+      /* ---- notes ---- */
+      s.note(136, 46, [
+        'Notes',
+        '1. Contacts drawn in rest position, supplies off.',
+        '   -SJ4 drawn in AUTO (contacts open).',
+        '2. X1, X2 are pulsed test outputs of -KE2.',
+        '   X1 → I1 and X2 → I2: odd/even pairing,',
+        '   SICK 8012478.',
+        '3. Wiring AWG22 (0.34 mm²) blue unless',
+        '   stated (page 3).',
+      ], { head: true });
+    },
+  });
+</script>
+</body>
+</html>

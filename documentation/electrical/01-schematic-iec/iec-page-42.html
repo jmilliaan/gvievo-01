@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 42</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Safe torque off and feedback. source: ../01-schematic/proj01-sheet-07.html (pins, TB43–TB54,
+  // jumpers removed) and sheet 08 (Q1/Q2, I3/I4). Q3 spare (owner, 2026-10-30).
+  IEC.page(42, s => {
+    const R1 = 26, R2 = 33, XD = 170, DB = 195;
+    const D = [
+      { tag: '-TA1', side: 'left', x1: 40, x2: 195, pins: [50, 72, 94, 140, 160, 180], xd: [43, 46, 45, 44, 47, 48] },
+      { tag: '-TA2', side: 'right', x1: 220, x2: 375, pins: [230, 252, 274, 320, 340, 360], xd: [49, 52, 51, 50, 53, 54] },
+    ];
+    const PIN = [['11', 'HWTO1+'], ['26', 'HWTO2+'], ['14', 'EDM−'], ['12', 'HWTO1−'], ['27', 'HWTO2−'], ['28', 'EDM+']];
+
+    s.rail(R1, 25, 400, '1P24', '/40', '/60');
+    s.rail(R2, 25, 400, '1N24', '/40', '/60');
+
+    /* ---- conductors ---- */
+    const [q1, q2, i3, i4] = [50, 72, 94, 118];
+    s.line(q1, 64, q1, DB); s.dot(q1, 100); s.line(q1, 100, 230, 100); s.line(230, 100, 230, DB);
+    s.line(q2, 64, q2, DB); s.dot(q2, 108); s.line(q2, 108, 252, 108); s.line(252, 108, 252, DB);
+    s.line(i3, 64, i3, DB);
+    s.line(i4, 64, i4, 116); s.line(i4, 116, 274, 116); s.line(274, 116, 274, DB);
+    D.forEach(d => {
+      [3, 4].forEach(k => { s.line(d.pins[k], R2, d.pins[k], DB); s.dot(d.pins[k], R2); });
+      s.line(d.pins[5], R1, d.pins[5], DB); s.dot(d.pins[5], R1);
+    });
+    s.wl(q1, 92, 'HWTO1'); s.wl(q2, 92, 'HWTO2'); s.wl(i3, 92, 'EDM-L'); s.wl(i4, 92, 'EDM-R');
+
+    /* ---- safety controller ---- */
+    s.module(35, 130, 42, 22, [{ x: q1, name: 'Q1' }, { x: q2, name: 'Q2' }, { x: i3, name: 'I3' }, { x: i4, name: 'I4' }],
+      ['-KE2', 'FX3-XTIO84002'], { edge: 'bottom' });
+
+    /* ---- drivers ---- */
+    D.forEach(d => {
+      s.module(d.x1, d.x2, DB, 34, d.pins.map((x, k) => ({ x, name: PIN[k][0], sub: PIN[k][1] })),
+        [d.tag, `Motor driver BLVD-KRD, ${d.side} · control connector (page 50)`, 'Factory jumpers 11–25, 12–26, 13–27 removed']);
+      s.terminals(d.pins.map((x, k) => [x, d.xd[k]]), XD, '-XD1');
+    });
+
+    s.note(192, 44, [
+      'Notes',
+      '1. SF1, SF2: Q1 and Q2 switch off → torque removed on both drivers (STO).',
+      '2. Driver HWTO: PL d, Cat. 3, PFHd 2.90 × 10⁻⁷ /h per driver (maker data).',
+      '3. EDM: -KE2 checks that torque is really off (I3 left, I4 right).',
+      '4. Bridges on the strip: -XD1:43–49 and 46–52 (drawn as junctions).',
+      '5. Q3, Q4 spare. Test pulses on Q1, Q2: «configuration report».',
+      '6. Wiring AWG22 (0.34 mm²) blue. All devices in +EB.',
+    ], { head: true, size: 2.3, lh: 3.9 });
+  });
+</script>
+</body>
+</html>

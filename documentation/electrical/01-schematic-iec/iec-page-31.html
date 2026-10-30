@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 31</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // 24 V control supply, part 2. source: ../01-schematic/proj01-sheet-04.html (TB15–TB24 → -XD1).
+  IEC.page(31, s => {
+    const R1 = 28, R2 = 36, XD = 80, BOX = 140;
+    s.rail(R1, 25, 400, '1P24', '/30.9', '/40');
+    s.rail(R2, 25, 400, '1N24', '/30.9', '/40');
+
+    const pair = (xp, xn, yEnd) => {
+      s.line(xp, R1, xp, yEnd); s.dot(xp, R1);
+      s.line(xn, R2, xn, yEnd); s.dot(xn, R2);
+    };
+    pair(45, 55, BOX);                                  // -PH1
+    pair(100, 110, BOX);                                // -BG3
+    pair(150, 160, BOX);                                // -GQ1 (and the fan bus)
+    pair(300, 316, BOX);                                // -TA1 network supply
+    pair(350, 366, BOX);                                // -TA2 network supply
+    // fans in parallel from one terminal pair
+    s.line(150, 110, 240, 110); s.dot(150, 110); s.dot(195, 110);
+    s.line(195, 110, 195, BOX); s.line(240, 110, 240, BOX);
+    s.line(160, 118, 250, 118); s.dot(160, 118); s.dot(205, 118);
+    s.line(205, 118, 205, BOX); s.line(250, 118, 250, BOX);
+
+    /* ---- devices ---- */
+    s.locationBox(34, 126, 57, 50, '+FR', '');
+    s.module(40, 88, BOX, 26, [{ x: 45, name: '+' }, { x: 55, name: '−' }], ['-PH1', 'Display']);
+    s.locationBox(94, 126, 49, 50, '+VH', '');
+    s.module(96, 140, BOX, 26, [{ x: 100, name: '+24V' }, { x: 110, name: '0V' }], ['-BG3', 'Line sensor', 'CAN /51']);
+    [['-GQ1', 145, 150, 160], ['-GQ2', 190, 195, 205], ['-GQ3', 235, 240, 250]].forEach(([t, x, a, b]) =>
+      s.module(x, x + 40, BOX, 26, [{ x: a, name: '+' }, { x: b, name: '−' }], [t, 'Fan NMB-MAT']));
+    s.module(290, 327, BOX, 30, [{ x: 300, name: '20', sub: 'VIN' }, { x: 316, name: '21', sub: 'GND' }], ['-TA1', 'network']);
+    s.module(340, 377, BOX, 30, [{ x: 350, name: '20', sub: 'VIN' }, { x: 366, name: '21', sub: 'GND' }], ['-TA2', 'network']);
+
+    /* ---- terminals, cables ---- */
+    [[[45, 15], [55, 16]], [[100, 17], [110, 18]], [[150, 19], [160, 20]], [[300, 21], [316, 22]], [[350, 23], [366, 24]]]
+      .forEach(g => s.terminals(g, XD, '-XD1'));
+    s.cable([45, 55], 100, '-WD10', 'Display power cable');
+    s.cable([100, 110], 92, '-WG2', 'SICK MLSE cable');
+
+    s.note(30, 195, [
+      'Notes',
+      '1. Control wiring AWG22 (0.34 mm²) blue unless marked (page 3).',
+      '2. -BG3 line sensor: the same cable carries CAN (page 51).',
+      '3. -TA1, -TA2: network supply only. Driver power: page 21.',
+      '4. All devices in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

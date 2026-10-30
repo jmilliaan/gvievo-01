@@ -63,7 +63,8 @@ Write to the Regulation, because it replaces the Directive during this project.
 | ISO 12100 | 2010, clause 6.4 | Information for use as a risk-reduction measure | Harmonised type-A |
 | ISO 13849-1 | 2023 | Performance levels (PL) of safety functions | Harmonised. The 2015 edition stays valid in parallel until 15 May 2027 |
 | ISO 13849-2 | 2012 | Validation of safety functions | — |
-| IEC 60204-1 | 2016 + AMD1:2021 (EN 60204-1:2018 + A1:2025) | Electrical equipment. Clause 17 covers documentation | Ed. 7 around 2028 |
+| **EN 1175** | **2025** | **The electrical standard for the vehicle (owner decision 2026-10-30)**: battery, wiring, electrical installation. It excludes automatic-operation functions of driverless trucks, which stay under ISO 3691-4 | Replaces EN 1175:2020 from 1 Dec 2025 |
+| IEC 60204-1 | 2016 + AMD1:2021 (EN 60204-1:2018 + A1:2025) | Not the governing standard. Used only as good practice for drawings, labelling and wire colours | Ed. 7 around 2028 |
 | ISO 7200 | 2004 | Title block and document-header fields (used on the manual's Document information page) | — |
 | IEC 81346-1 / -2 | 2022 / 2019 | Reference designations (tags), see section 7 | IEC 81346-2 Ed. 3 at FDIS stage |
 | IEC 62027 | 2011 | Parts list keyed by tag, one row per occurrence (component list) | — |
@@ -144,21 +145,32 @@ The minimum scheme agreed for the draft:
 
 The existing circuit diagrams use JIS-style device names (MCB-01, MCB-02 and so on). The component list will carry both until the drawings move to IEC tags.
 
-Proposed class letters. These are not verified against the IEC 81346-2 tables, and Ed. 3 may change them:
+Proposed tags (IEC 81346-2:2019 two-letter classes, from `documentation/electrical/01-schematic-iec/designation-map.md`, 2026-10-30). They are still proposals until the component list is issued:
 
-| Class | Objects |
+| Tag | Component |
 | --- | --- |
-| Q | circuit breakers, main switch |
-| F | fuses |
-| G | battery |
-| T | motor drivers |
-| M | motors |
-| K | safety controller, vehicle controller, relays |
-| S | E-STOP, push-buttons, selector, pendant |
-| B | scanners, line sensor |
-| P | horn, displays |
-| X | terminals, connectors |
-| W | cables |
+| `+EB-QA1` | Battery main breaker (main switch) |
+| `+EB-FC1`, `-FC2` | 48 V feeder breakers, left / right drive |
+| `+EB-FC3`, `-FC4` | 24 V and 12 V bus breakers |
+| `+BT-GB1` | Battery |
+| `+EB-TA1`, `-TA2` | Motor drivers left / right |
+| `+EB-TA3`, `-TA4` | DC/DC converters 24 V / 12 V |
+| `+VH-MA1`, `-MA2` | Motors left / right |
+| `+EB-KE1`, `-KE2` | Safety controller main module / I/O module |
+| `+EB-KE3` | Vehicle controller (industrial PC) |
+| `+EB-KE4` | I/O module |
+| `+FR-SJ1` | **E-STOP** |
+| `+FR-SJ2` | **START** |
+| `+FR-SJ3` | **RESET** |
+| `+FR-SJ4` | **MANUAL / AUTO** selector |
+| `+FR-SJ5` | **MANUAL ARM** |
+| `+PD-SJ6`…`-SJ9` | Pendant **FORWARD**, **REVERSE**, **LEFT**, **RIGHT** |
+| `+VH-BG1`, `-BG2` | Safety laser scanners front / rear |
+| `+VH-BG3` | Line sensor |
+| `+VH-PJ1` | Horn |
+| `+EB-XD1` | Terminal strip |
+
+Locations: `+EB` electrical box, `+FR` front panel, `+VH` vehicle body, `+BT` battery compartment, `+PD` pendant. The old single-letter classes (Q, F, K, S…) are superseded.
 
 ## 8. Vehicle facts (from the project's design files)
 
@@ -349,6 +361,9 @@ The horn is driven by software, so it is not safety-rated. There is no visual wa
    - **9.1 Overview table:** add a row "Warning sound": AUTO = alarm sound before start and at field events, movement sound while driving; MANUAL = movement sound while driving.
    - **10.1 daily check 7:** "Alarm sound for 2 s after **START**; movement sound while driving".
    - **14.1:** replace "The horn [confirm: alarm sound]" with "The alarm sound plays in AUTO while a scanner field is occupied".
+2. **Electrical standard (owner decision 2026-10-30):** in "Regulations and standards" → "Standards applied in the design", replace the row "EN 60204-1:2018 | Safety of machinery — Electrical equipment of machines…" with "EN 1175:2025 | Safety of industrial trucks — Electrical/electronic requirements". Do not list EN 60204-1.
+3. **Rear scanner — owner to confirm before editing:** on 2026-10-30 the owner decided, for the circuit diagrams, that the rear scanner is **not fitted in this revision**. The manual still describes front and rear scanners in 3.3, 3.4, 4.1, 4.2, 5.2, 8.4, 10.1, 13 and 16.1, and [REVIEW] 4. Ask the owner whether the manual should follow (one front scanner; rear safety function SF3 not present). Do not change it without that answer.
+4. **Wire colours:** no manual text depends on them. The wiring changes to black (48 V power) and blue (control and safety) before the circuit diagrams are issued.
 
 ### 10.3 Assumptions marked [confirm] in the manual
 

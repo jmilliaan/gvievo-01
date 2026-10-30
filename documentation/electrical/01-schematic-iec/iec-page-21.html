@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 21</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Motor drivers: power and motors. source: ../01-schematic/proj01-sheet-02.html (TB01–TB06 → -XD1:1–6)
+  // and sheet 07 notes 3, 4 (cables LC03D06A, CCM010B1AAF).
+  IEC.page(21, s => {
+    const Y = { p2: 28, p3: 36, n: 44, pe: 52, xd: 95, box: 135 };
+    const D = [
+      { pe: 50, p: 70, n: 90, m: 100, x1: 38, x2: 165, rail: 'p2', xd: [5, 1, 2], tag: '-TA1', side: 'left',
+        ma: '-MA1', wd: ['-WD2', '-WD6', '-WD8'] },
+      { pe: 240, p: 260, n: 280, m: 290, x1: 228, x2: 355, rail: 'p3', xd: [6, 3, 4], tag: '-TA2', side: 'right',
+        ma: '-MA2', wd: ['-WD3', '-WD7', '-WD9'] },
+    ];
+
+    /* ---- rails from page 20 ---- */
+    s.rail(Y.p2, 25, D[0].p, '2P48', '/20.2', false);
+    s.rail(Y.p3, 25, D[1].p, '3P48', '/20.4', false);
+    s.rail(Y.n, 25, D[1].n, '1N48', '/20.9', false);
+    s.rail(Y.pe, 32, D[1].pe, 'PE', '', false);
+    s.line(32, Y.pe, 32, 58); s.pe(32, 58);
+    s.text(22, 66, '-XE1', { size: 2.6, weight: 600 });
+    s.text(22, 69.6, 'chassis earth', { size: 2.2 });
+    s.text(22, 73.2, '«position: confirm»', { size: 2.2 });
+
+    D.forEach(d => {
+      /* conductors */
+      s.line(d.p, Y[d.rail], d.p, Y.box);
+      s.line(d.n, Y.n, d.n, Y.box); s.dot(d.n, Y.n);
+      s.line(d.pe, Y.pe, d.pe, Y.box); if (d === D[0]) s.dot(d.pe, Y.pe);
+      s.line(d.m, Y.box + 32, d.m, 215);
+
+      /* driver */
+      s.module(d.x1, d.x2, Y.box, 32, [{ x: d.pe, name: 'PE' }, { x: d.p, name: '+' }, { x: d.n, name: '−' }],
+        [d.tag, `Motor driver BLVD-KRD, ${d.side}`, 'Control /50 · CAN /51 · STO /42']);
+      s.dot(d.m, Y.box + 32, 0.5);
+      s.rect(d.x2 - 15, Y.box + 3, 12, 12, 0.3); s.convMark(d.x2 - 15, Y.box + 3, 12, 12, '=', '~');
+
+      /* motor (+VH) */
+      s.locationBox(d.m - 20, 198, 80, 47, '+VH', '');
+      s.motor(d.m, 222, 7);
+      s.label(d.m + 11, 214, d.ma, ['BLMR6400SKM-GFV-B', '400 W, gearhead 1:30', 'holding brake']);
+
+      /* terminals and cables last */
+      s.terminals([d.pe, d.p, d.n].map((x, i) => [x, d.xd[i]]), Y.xd, '-XD1');
+      s.cable([d.p, d.n], 75, d.wd[0], 'NYAF 2 × 2.5 mm², black');
+      s.cable([d.pe, d.p, d.n], 118, d.wd[1], 'Oriental Motor LC03D06A');
+      s.cable([d.m], 188, d.wd[2], 'Oriental Motor CCM010B1AAF (U, V, W, encoder)');
+    });
+
+    s.note(365, 140, [
+      'Notes',
+      '1. 48 V wiring',
+      '   black.',
+      '2. PE: bonding of',
+      '   the driver',
+      '   housings to',
+      '   the chassis.',
+      '3. Brake supply',
+      '   «via motor',
+      '   cable: confirm»',
+    ], { head: true, size: 2.2 });
+  });
+</script>
+</body>
+</html>

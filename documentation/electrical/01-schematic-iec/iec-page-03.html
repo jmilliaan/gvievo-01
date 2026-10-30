@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 3 · Designation key</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Page">
+  <strong>Page 3 · Designation key</strong>
+  <a href="iec-page-02.html">◀ 2</a>
+  <a href="iec-page-40.html">40 ▶</a>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A3 landscape · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from data/project.js. Change the data there, not here.
+  const PG = PROJECT.pages.find(p => p.no === 3);
+  const P = PROJECT;
+  const O = { size: 2.3, rowH: 5.8, headH: 6.4 };
+
+  IEC.render(document.getElementById('sheet'), {
+    page: 3, file: 'iec-page-03',
+    description: PG.desc, kind: PG.kind,
+    draw(s) {
+      const head = (x, y, t) => s.text(x, y, t, { size: 3, weight: 600 });
+      const L = 26, R = 222;
+
+      /* ---- left: designation format, locations, classes ---- */
+      head(L, 24, 'Reference designations (IEC 81346-1:2022, classes IEC 81346-2:2019)');
+      s.note(L, 30, [
+        'Form:  +LOCATION -PRODUCT :TERMINAL      example  +EB-KE2:I5  =  terminal I5 of -KE2 in the electrical box',
+        'Terminal strip:  -XD1:43  =  strip -XD1, terminal 43 (old drawings: TB43). The function aspect (=) is not used in this issue.',
+        'Numbering runs through the whole vehicle per class (-SJ1 … -SJ9). The same tag is on the device label on the vehicle.',
+      ], { size: 2.3, lh: 4 });
+
+      head(L, 50, 'Locations (+)');
+      let y = s.table(L, 53, [{ w: 18, title: 'Code', mono: true }, { w: 172, title: 'Location' }], P.locations, O);
+
+      head(L, y + 9, 'Classes used in this set');
+      y = s.table(L, y + 12, [
+        { w: 20, title: 'Class', mono: true }, { w: 114, title: 'Meaning' },
+        { w: 38, title: 'Tags', mono: true }, { w: 18, title: 'Check' },
+      ], P.classes.map(c => [c[0], c[1], c[2], c[3] ? '?verify' : '']), O);
+      s.note(L, y + 5, ['verify: code taken from a secondary source; to be checked against the purchased IEC 81346-2:2019.'], { size: 2.2 });
+
+      /* ---- right: potentials, colours, safety functions, cross-references ---- */
+      head(R, 24, 'Potentials');
+      y = s.table(R, 27, [{ w: 30, title: 'Name', mono: true }, { w: 128, title: 'Meaning' }, { w: 24, title: 'IEC 60445', mono: true }], P.potentials, O);
+      s.note(R, y + 5, P.potentialNotes, { size: 2.3, lh: 4 });
+
+      head(R, y + 18, 'Conductor colours (IEC 60204-1 13.2.4, used as good practice; EN 1175:2025 governs)');
+      y = s.table(R, y + 21, [{ w: 92, title: 'Circuit' }, { w: 32, title: 'Colour' }, { w: 58, title: 'Type / size' }], P.colours, O);
+
+      head(R, y + 9, 'Safety functions (EN ISO 13849-1)');
+      y = s.table(R, y + 12, [{ w: 13, title: 'ID', mono: true }, { w: 82, title: 'Function' }, { w: 69, title: 'Devices' }, { w: 18, title: 'Pages', mono: true }],
+        P.safetyFunctions, O);
+
+      head(R, y + 9, 'Cross-references');
+      s.note(R, y + 15, [
+        '/41.3  =  page 41, column 3.   .3  =  column 3 on the same page.   /41  =  page 41 (not yet drawn).',
+        'Arrow at a conductor end: the conductor continues at the reference shown.',
+        'Dash-dot box: the devices inside it are in the location written at its top-left corner.',
+        'Contacts are drawn in rest position, supplies off. Red text: open item, to be resolved before release.',
+      ], { size: 2.3, lh: 4 });
+    },
+  });
+</script>
+</body>
+</html>

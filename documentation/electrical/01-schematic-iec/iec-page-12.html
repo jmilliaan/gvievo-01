@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 12</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Safety chain overview. Same chain as the operation manual's figure IMG-03-01.
+  IEC.page(12, s => {
+    const blk = (x, y, w, h, lines) => s.box(x, y, w, h, lines, { size1: 2.8, size: 2.2 });
+    const lab = (x, y, t, a = 'start') => s.text(x, y, t, { size: 2.2, anchor: a });
+    const dashed = (x, y, w, h) => s.path(`M${x} ${y} h${w} v${h} h${-w} Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1');
+
+    // inputs
+    blk(30, 32, 70, 22, ['-SJ1', 'Emergency stop, 2 NC', '/40']);
+    blk(30, 72, 70, 22, ['-BG1', 'Safety laser scanner, front', '/41']);
+    blk(30, 112, 70, 22, ['-SJ4', 'Selector MANUAL / AUTO', '/40']);
+    blk(30, 152, 70, 22, ['-SJ3', 'RESET push-button', '/40']);
+    s.box(30, 192, 70, 22, ['(-BG2)', 'Rear scanner', 'not fitted in this revision'], { size1: 2.6, size: 2.1, sw: 0.01 });
+    dashed(30, 192, 70, 22);
+
+    // safety controller
+    s.rect(150, 32, 90, 182, 0.45);
+    s.text(195, 44, '-KE1 / -KE2', { size: 3.2, weight: 600, anchor: 'middle' });
+    s.text(195, 50, 'SICK Flexi Soft', { size: 2.4, anchor: 'middle' });
+    s.text(195, 55, 'FX3-CPU0 + FX3-XTIO84002', { size: 2.2, anchor: 'middle' });
+    s.text(195, 61, '/40 … /44', { size: 2.2, anchor: 'middle', mono: true });
+
+    s.arrow(100, 43, 150, 43); lab(103, 40, 'X1→I1, X2→I2 (SF1)');
+    s.arrow(100, 83, 150, 83); lab(103, 80, 'OSSD1/2 → I5/I6 (SF2)');
+    s.arrow(100, 123, 150, 123); lab(103, 120, 'I7: MANUAL (SF4)');
+    s.arrow(100, 163, 150, 163); lab(103, 160, 'I8: reset (SF5)');
+
+    // drives
+    blk(300, 55, 80, 26, ['-TA1', 'Motor driver left', 'HWTO1 / HWTO2 (STO)']);
+    blk(300, 135, 80, 26, ['-TA2', 'Motor driver right', 'HWTO1 / HWTO2 (STO)']);
+    s.arrow(240, 62, 300, 62); s.arrow(240, 142, 300, 142);
+    lab(244, 59, 'Q1, Q2 → STO (2 ch)');
+    lab(244, 139, 'Q1, Q2 → STO (2 ch)');
+    s.arrow(300, 76, 240, 76); lab(244, 73, 'EDM → I3');
+    s.arrow(300, 156, 240, 156); lab(244, 153, 'EDM → I4');
+    s.text(340, 92, '-MA1 holding brake applies', { size: 2.2, anchor: 'middle' });
+    s.text(340, 172, '-MA2 holding brake applies', { size: 2.2, anchor: 'middle' });
+
+    // vehicle controller: not part of the safety chain
+    s.box(300, 195, 80, 22, ['-KE3 vehicle controller', 'not part of any safety function', 'speed, horn, restart logic'], { size1: 2.5, size: 2.1, sw: 0.01 });
+    dashed(300, 195, 80, 22);
+
+    s.note(150, 228, [
+      'SF1 emergency stop, SF2 personnel detection front, SF4 mode selection, SF5 prevention of unexpected start-up (page 3).',
+      'Stop: torque removed on both drivers (STO, driver HWTO: PL d, Cat. 3, PFHd 2.90 × 10⁻⁷ /h per driver), holding brakes apply.',
+      'Stop category: «0, to confirm in the risk assessment»',
+    ], { size: 2.3, lh: 4 });
+  });
+</script>
+</body>
+</html>

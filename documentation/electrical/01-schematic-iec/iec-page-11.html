@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 11</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Communication overview. source: proj01-sheet-06 (CAN), -09 (Ethernet IN/OUT), profiles/agv-01.json
+  // (scanner data over Ethernet to the vehicle controller: not on the old sheets, marked uncertain).
+  IEC.page(11, s => {
+    const blk = (x, y, w, h, lines) => s.box(x, y, w, h, lines, { size1: 2.8, size: 2.2 });
+
+    /* ---- vehicle controller ---- */
+    blk(30, 95, 70, 40, ['-KE3', 'Vehicle controller', 'industrial PC', '12 V supply /32']);
+
+    /* ---- CAN ---- */
+    s.text(150, 28, 'CAN bus, 125 kbit/s, CANopen', { size: 3, weight: 600 });
+    blk(150, 40, 46, 20, ['-TF1', 'USB-to-CAN interface']);
+    s.arrow(100, 105, 120, 105); s.line(120, 105, 120, 50); s.arrow(120, 50, 150, 50);
+    s.text(103, 101, 'USB  -WG6', { size: 2.2 });
+    s.line(173, 60, 173, 80, 0.6);
+    s.line(173, 80, 392, 80, 0.9);
+    s.text(392, 76, 'CAN H / CAN L / CAN GND  /51', { size: 2.3, anchor: 'end', mono: true });
+    [['-TA1', 'Motor driver left', 'node 1', 215], ['-TA2', 'Motor driver right', 'node 2', 265],
+     ['-BG3', 'Line sensor MLSE', 'node 10', 315], ['-GB1', 'Battery BMS', '+BT', 365]].forEach(([t, d, n, x]) => {
+      s.dot(x, 80); s.line(x, 80, x, 92, 0.6);
+      blk(x - 22, 92, 44, 22, [t, d, n]);
+    });
+    s.text(173, 128, 'Bus termination 120 Ω at both ends: «location to confirm»', { size: 2.3 });
+
+    /* ---- Ethernet ---- */
+    s.text(150, 160, 'Ethernet', { size: 3, weight: 600 });
+    s.line(55, 135, 55, 180); s.arrow(55, 180, 150, 180);
+    s.text(60, 176, '-WG7', { size: 2.2 });
+    blk(150, 170, 52, 22, ['-KE4', 'I/O module', 'port IN → OUT']);
+    s.arrow(202, 180, 240, 180);
+    s.text(207, 176, '-WG8', { size: 2.2 });
+    blk(240, 170, 52, 22, ['-BG4', 'RFID reader', 'navigation feature']);
+    s.text(152, 200, 'I/O module and RFID reader share one Ethernet line (daisy chain through -KE4).', { size: 2.2 });
+
+    s.line(80, 135, 80, 225, 0.35, '1.5 1');
+    s.arrow(80, 225, 240, 225);
+    s.text(85, 221, '?-WG9  scanner data (fields, status) — not on the old sheets', { size: 2.2 });
+    blk(240, 214, 52, 22, ['-BG1', 'Safety scanner, front', 'data only, not safety']);
+
+    s.note(306, 214, [
+      'The safety stop of -BG1 does not use',
+      'this network: its OSSDs are wired to',
+      'the safety controller (page 41).',
+    ], { size: 2.2 });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 1 · Cover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Page">
+  <strong>Page 1 · Cover</strong>
+  <a href="iec-page-02.html">Contents ▶</a>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A3 landscape · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  const PG = PROJECT.pages.find(p => p.no === 1);
+  const D = PROJECT.doc;
+
+  IEC.render(document.getElementById('sheet'), {
+    page: 1, file: 'iec-page-01', noGrid: true,
+    description: PG.desc, kind: PG.kind,
+    draw(s) {
+      const X = 45;
+      s.text(X, 48, D.title, { size: 11, weight: 600 });
+      s.text(X, 66, 'Circuit diagram', { size: 8 });
+      s.text(X, 80, `Document number ${D.number}  ·  Revision ${D.revision}  ·  Language ${D.language}`, { size: 4 });
+
+      // draft notice
+      s.rect(X, 90, 355, 13, 0.4);
+      s.text(X + 4, 98.6, D.status, { size: 4, weight: 600 });
+
+      // related documents and standards
+      s.text(X, 120, 'Documents that belong with this circuit diagram', { size: 3.2, weight: 600 });
+      s.table(X, 124, [{ w: 120, title: 'Document' }, { w: 45, title: 'Number', mono: true }], PROJECT.related);
+
+      s.text(240, 120, 'Standards applied to this document', { size: 3.2, weight: 600 });
+      s.table(240, 124, [{ w: 160, title: 'Standard' }], PROJECT.standards.map(t => [t]));
+
+      // revision history
+      s.text(X, 182, 'Revision history', { size: 3.2, weight: 600 });
+      s.table(X, 186, [{ w: 14, title: 'Rev' }, { w: 151, title: 'Change' }, { w: 30, title: 'Date', mono: true }, { w: 45, title: 'Name' }],
+        D.revisions.map(r => [r.rev, r.change, r.date, r.name]));
+
+      // owner
+      s.text(X, 222, 'Legal owner', { size: 3.2, weight: 600 });
+      s.text(X, 231, D.owner, { size: 4.5, weight: 600 });
+      (D.ownerLines || []).forEach((t, i) => s.text(X, 238 + 4.5 * i, t, { size: 3 }));
+
+      s.note(240, 222, [
+        'This document and its contents are the property of the legal owner.',
+        'It is issued for the TÜV SÜD preliminary review only.',
+        'Do not use for production or wiring until it is released.',
+      ], { size: 2.6, lh: 4.2 });
+    },
+  });
+</script>
+</body>
+</html>

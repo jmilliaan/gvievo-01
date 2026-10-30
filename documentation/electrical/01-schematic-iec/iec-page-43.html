@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 43</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Safety controller supply and modules. source: ../01-schematic/proj01-sheet-03.html (TB11/TB12,
+  // CPU fed in parallel with the XTIO module) and io-mapping.md section 2.
+  IEC.page(43, s => {
+    const A1 = 60, A2 = 110, K2A1 = 200, K2A2 = 250, YM = 100;
+    s.fromTop(A1, 40, '1P24 · -XD1:11', '/30.4');
+    s.fromTop(A2, 40, '1N24 · -XD1:12', '/30.4');
+    s.line(A1, 40, A1, YM); s.dot(A1, 70); s.line(A1, 70, K2A1, 70); s.line(K2A1, 70, K2A1, YM);
+    s.line(A2, 40, A2, YM); s.dot(A2, 78); s.line(A2, 78, K2A2, 78); s.line(K2A2, 78, K2A2, YM);
+
+    s.module(45, 140, YM, 40, [{ x: A1, name: 'A1' }, { x: A2, name: 'A2' }],
+      ['-KE1', 'SICK Flexi Soft FX3-CPU0', 'Main module, system plug', 'Configuration checksum «CRC»']);
+    s.module(185, 300, YM, 40, [{ x: K2A1, name: 'A1' }, { x: K2A2, name: 'A2' }],
+      ['-KE2', 'SICK FX3-XTIO84002', '8 inputs, 2 test outputs, 4 outputs', 'I/O table: page 44']);
+    s.line(140, 130, 185, 130, 0.4, '2 1');
+    s.text(162.5, 127.5, 'FLEXBUS+', { size: 2.2, anchor: 'middle' });
+
+    const row = t => { const r = PROJECT.safetyIO.find(x => x[0] === t); return [r[0], r[2], r[5]]; };
+    const cols = [{ w: 20, title: 'Terminal', mono: true }, { w: 78, title: 'Connected to' }, { w: 18, title: 'Page', mono: true }];
+    const O = { size: 2.3, rowH: 5.6, headH: 6.4 };
+    s.text(45, 157, '-KE2 terminals: inputs', { size: 2.8, weight: 600 });
+    s.table(45, 160, cols, ['X1', 'X2', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8'].map(row), O);
+    s.text(185, 157, '-KE2 terminals: supply and outputs', { size: 2.8, weight: 600 });
+    s.table(185, 160, cols, ['A1', 'A2', 'Q1', 'Q2', 'Q3', 'Q4'].map(row), O);
+
+    s.note(310, 105, [
+      'Notes',
+      '1. Configuration: Flexi Soft Designer',
+      '   project «file», report «DOC-NO».',
+      '2. After any change of configuration',
+      '   or wiring: verify all safety',
+      '   functions (operation manual 8.5).',
+      '3. All devices in +EB.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

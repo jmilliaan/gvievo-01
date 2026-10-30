@@ -1,0 +1,60 @@
+/* Page chrome for IEC-style sheets. The drawing itself is SVG in mm (A3 landscape, 420 x 297). */
+:root {
+  --paper: #e6e8ec;
+  --surface: #ffffff;
+  --ink: #111111;
+  --ink-2: #3d4553;
+  --rule: #c9ced6;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.4 "IBM Plex Sans", Arial, sans-serif;
+}
+
+.toolbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 2px solid var(--ink);
+}
+.toolbar strong { margin-right: 8px; font-weight: 600; }
+.toolbar a { color: var(--ink); font: 600 12px "IBM Plex Mono", monospace; }
+.toolbar button {
+  border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink);
+  padding: 6px 12px; cursor: pointer;
+  font: 600 11px "IBM Plex Mono", monospace; letter-spacing: .06em; text-transform: uppercase;
+}
+.toolbar button.primary { background: var(--ink); color: #fff; }
+.toolbar button:disabled { opacity: .6; cursor: progress; }
+.toolbar button:focus-visible, .toolbar a:focus-visible { outline: 2px solid #2f6fa8; outline-offset: 2px; }
+.toolbar .status { margin-left: auto; color: var(--ink-2); font: 500 11px "IBM Plex Mono", monospace; text-transform: uppercase; }
+
+.wrap { padding: 20px 16px 40px; overflow-x: auto; }
+.sheet {
+  width: min(100%, 1400px);
+  aspect-ratio: 420 / 297;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 1px 0 var(--rule), 0 10px 30px rgba(20, 30, 50, .15);
+}
+.sheet svg { display: block; width: 100%; height: 100%; }
+
+/* #bare: sheet only, fixed 1587x1123 px (A3 landscape at 96 dpi) for headless screenshots */
+body.bare { background: #fff; }
+body.bare .toolbar { display: none; }
+body.bare .wrap { padding: 0; }
+body.bare .sheet { width: 1587px; height: 1123px; box-shadow: none; }
+
+@page { size: A3 landscape; margin: 0; }
+@media print {
+  body { background: #fff; }
+  .toolbar { display: none; }
+  .wrap { padding: 0; }
+  .sheet { width: 420mm; height: 297mm; box-shadow: none; }
+}

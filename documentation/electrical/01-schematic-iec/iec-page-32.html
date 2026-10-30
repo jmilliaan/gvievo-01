@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 32</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // 12 V supply. source: ../01-schematic/proj01-sheet-05.html (MCB-05 → -FC4, TB29–TB32 → -XD1).
+  IEC.page(32, s => {
+    const P = 40, N = 50, R1 = 70, R2 = 78, XD = 110, BOX = 160;
+    s.fromTop(P, 30, 'P12', '/20.8'); s.fromTop(N, 30, 'N12', '/20.8');
+    s.line(P, 30, P, R1); s.line(N, 30, N, R2);
+    s.rail(R1, P, 190, '1P12', '', false);
+    s.rail(R2, N, 200, '1N12', '', false);
+
+    // -KE3: taps; -BG4: rail ends
+    s.line(100, R1, 100, BOX); s.dot(100, R1);
+    s.line(110, R2, 110, BOX); s.dot(110, R2);
+    s.line(190, R1, 190, BOX); s.line(200, R2, 200, BOX);
+
+    s.module(85, 150, BOX, 30, [{ x: 100, name: '+12V' }, { x: 110, name: '0V' }],
+      ['-KE3', 'Vehicle controller (IPC)', 'CAN /51 · Ethernet /11']);
+    s.locationBox(172, 145, 76, 52, '+VH', '');
+    s.module(178, 242, BOX, 30, [{ x: 190, name: '+12V' }, { x: 200, name: '0V' }],
+      ['-BG4', 'RFID reader', 'navigation feature', 'Ethernet /11']);
+
+    s.breaker([P, N], 48, '-FC4', '2P 10 A DC');
+    s.terminals([[100, 29], [110, 30]], XD, '-XD1');
+    s.terminals([[190, 31], [200, 32]], XD, '-XD1');
+    s.cable([100, 110], 135, '-WD11', 'IPC power cable');
+    s.cable([190, 200], 135, '-WD12', 'RFID power cable');
+
+    s.note(270, 70, [
+      'Notes',
+      '1. 1N12 is joined to 1N24 at the converter',
+      '   outputs (page 20).',
+      '2. Control wiring AWG22 (0.34 mm²) blue to',
+      '   the terminals (page 3).',
+      '3. All devices in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

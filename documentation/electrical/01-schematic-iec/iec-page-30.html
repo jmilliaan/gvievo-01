@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 30</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // 24 V control supply, part 1. source: ../01-schematic/proj01-sheet-03.html (MCB-04 → -FC3,
+  // TB07–TB14, TB25/26 → -XD1). Rear scanner terminals 9/10 stay as spare (not fitted).
+  IEC.page(30, s => {
+    const P = 40, N = 50, R1 = 70, R2 = 78, XD = 110, BOX = 165;
+
+    /* ---- source and breaker ---- */
+    s.fromTop(P, 30, 'P24', '/20.6'); s.fromTop(N, 30, 'N24', '/20.6');
+    s.line(P, 30, P, R1); s.line(N, 30, N, R2);
+    s.rail(R1, P, 400, '1P24', '', '/31');
+    s.rail(R2, N, 400, '1N24', '', '/31');
+
+    // load pairs: + from 1P24, − from 1N24
+    const pair = (xp, xn, yEnd) => {
+      s.line(xp, R1, xp, yEnd); s.dot(xp, R1);
+      s.line(xn, R2, xn, yEnd); s.dot(xn, R2);
+    };
+    pair(80, 90, BOX);                                  // -BG1
+    pair(140, 150, XD);                                 // spare (rear scanner)
+    pair(185, 195, BOX);                                // -KE1, -KE2
+    pair(300, 310, BOX);                                // -PJ1
+    pair(365, 375, BOX);                                // -KE4
+    // safety controller: XTIO module in parallel with the main module
+    s.line(185, 140, 240, 140); s.dot(185, 140); s.line(240, 140, 240, BOX);
+    s.line(195, 148, 250, 148); s.dot(195, 148); s.line(250, 148, 250, BOX);
+
+    /* ---- devices ---- */
+    s.locationBox(62, 150, 64, 52, '+VH', '');
+    s.module(68, 120, BOX, 30, [{ x: 80, name: '+24V' }, { x: 90, name: '0V' }],
+      ['-BG1', 'Safety scanner, front', 'OSSD /41.3']);
+    s.text(135, 122, 'spare: rear scanner', { size: 2.2 });
+    s.text(135, 125.6, 'not fitted (SF3)', { size: 2.2 });
+    s.module(170, 220, BOX, 30, [{ x: 185, name: 'A1' }, { x: 195, name: 'A2' }], ['-KE1', 'FX3-CPU0', '/43']);
+    s.module(228, 278, BOX, 30, [{ x: 240, name: 'A1' }, { x: 250, name: 'A2' }], ['-KE2', 'FX3-XTIO84002', '/43']);
+    s.locationBox(285, 150, 62, 52, '+VH', '');
+    s.module(290, 342, BOX, 30, [{ x: 300, name: '+24V' }, { x: 310, name: '0V' }],
+      ['-PJ1', 'Horn PATLITE', 'COM = 0V (jumper)', 'sound inputs /61']);
+    s.module(352, 402, BOX, 30, [{ x: 365, name: '24V' }, { x: 375, name: '0V' }],
+      ['-KE4', 'CK-EC5163', 'PE not connected', 'I/O /60, /61']);
+
+    /* ---- breaker, terminals, cables ---- */
+    s.breaker([P, N], 48, '-FC3', '2P 10 A DC');
+    [[[80, 7], [90, 8]], [[140, 9], [150, 10]], [[185, 11], [195, 12]], [[300, 13], [310, 14]], [[365, 25], [375, 26]]]
+      .forEach(g => s.terminals(g, XD, '-XD1'));
+    s.cable([80, 90], 135, '-WG1', 'SICK connection cable');
+
+    s.note(30, 218, [
+      'Notes',
+      '1. Control wiring AWG22 (0.34 mm²) blue unless marked (page 3).',
+      '2. -XD1:27, 28: spare (former second supply of -KE4).',
+      '3. All devices in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

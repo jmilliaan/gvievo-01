@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 10</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Power overview (single line, block diagram). source: ../01-schematic/proj01-sheet-00.html
+  IEC.page(10, s => {
+    const H = 20, BUS = 150;
+    const blk = (x, y, w, lines) => s.box(x, y - H / 2, w, H, lines, { size1: 2.8, size: 2.2 });
+    const ref = (x, y, t) => s.text(x, y + H / 2 + 3.6, t, { size: 2.2, mono: true, anchor: 'middle' });
+
+    // battery → main breaker → 48 V bus
+    blk(30, 125, 46, ['-GB1', 'Battery 48 V', 'with BMS']); ref(53, 125, '/20');
+    s.arrow(76, 125, 92, 125);
+    blk(92, 125, 40, ['-QA1', 'Main breaker', '2P 32 A']); ref(112, 125, '/20');
+    s.arrow(132, 125, BUS, 125);
+    s.line(BUS, 45, BUS, 220, 0.9);
+    s.text(BUS - 2, 41, '48 V bus  1P48 / 1N48', { size: 2.6, weight: 600, anchor: 'middle' });
+
+    // drive branches
+    [['-FC1', '1P 10 A', '-TA1', 'left', '-MA1', 60], ['-FC2', '1P 10 A', '-TA2', 'right', '-MA2', 100]]
+      .forEach(([fc, r, ta, side, ma, y]) => {
+        s.dot(BUS, y); s.arrow(BUS, y, 170, y);
+        blk(170, y, 40, [fc, r]); ref(190, y, '/20');
+        s.arrow(210, y, 228, y);
+        blk(228, y, 56, [ta, `Motor driver, ${side}`, 'BLVD-KRD']); ref(256, y, '/21, /42');
+        s.arrow(284, y, 303, y);
+        s.motor(310, y, 7);
+        s.text(320, y - 2, ma, { size: 2.8, weight: 600 });
+        s.text(320, y + 2, '400 W, brake', { size: 2.2 });
+        ref(310, y + 1, '/21');
+      });
+
+    // converter branches with their loads
+    [['-TA3', '48 → 24 V', '150 W', '-FC3', '2P 10 A', 165, '/30',
+      ['24 V loads (1P24 / 1N24)', '-BG1 scanner, -KE1/-KE2 safety controller,', '-PJ1 horn, -KE4 I/O module  /30',
+       '-PH1 display, -BG3 line sensor, -GQ1…3 fans,', '-TA1/-TA2 network supply  /31']],
+     ['-TA4', '48 → 12 V', '100 W', '-FC4', '2P 10 A', 215, '/32',
+      ['12 V loads (1P12 / 1N12)', '-KE3 vehicle controller,', '-BG4 RFID reader  /32']]]
+      .forEach(([ta, v, p, fc, r, y, pg, loads]) => {
+        s.dot(BUS, y); s.arrow(BUS, y, 170, y);
+        blk(170, y, 46, [ta, `DC/DC ${v}`, `${p}, isolated`]); ref(193, y, '/20');
+        s.arrow(216, y, 234, y);
+        blk(234, y, 40, [fc, r]); ref(254, y, pg);
+        s.arrow(274, y, 292, y);
+        const h = 6 + 4 * loads.length;
+        s.rect(292, y - h / 2, 112, h, 0.35);
+        loads.forEach((t, k) => s.text(295, y - h / 2 + 5.5 + 4 * k, t, { size: i(k), weight: k ? 500 : 600 }));
+      });
+    function i(k) { return k ? 2.2 : 2.5; }
+
+    s.note(30, 175, [
+      'Notes',
+      '1. 48 V system floating: no conductor is connected to the chassis.',
+      '2. -TA3 and -TA4 are isolated; 1N48 is not joined to 1N24 / 1N12.',
+      '   1N24 and 1N12 are joined at the converter outputs (page 20).',
+      '3. -QA1 is the supply disconnecting device (lock-out, operation',
+      '   manual 15.1).',
+      '4. Overview only. Terminals and cables: detail pages.',
+    ], { head: true, size: 2.3 });
+  });
+</script>
+</body>
+</html>

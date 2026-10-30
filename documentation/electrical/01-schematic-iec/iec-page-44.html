@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 44</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from PROJECT.safetyIO in data/project.js.
+  IEC.page(44, s => {
+    s.text(30, 24, '-KE2  SICK FX3-XTIO84002 — safety controller I/O module (main module -KE1 FX3-CPU0)', { size: 3, weight: 600 });
+    const end = s.table(30, 30, [
+      { w: 22, title: 'Terminal', mono: true },
+      { w: 48, title: 'Signal' },
+      { w: 110, title: 'Device / connection' },
+      { w: 50, title: 'Test pulse' },
+      { w: 38, title: 'Safety function', mono: true },
+      { w: 20, title: 'Page', mono: true },
+    ], PROJECT.safetyIO, { rowH: 8 });
+
+    s.text(30, end + 12, 'Safety functions', { size: 3, weight: 600 });
+    s.table(30, end + 15, [{ w: 16, title: 'ID', mono: true }, { w: 120, title: 'Function' }, { w: 120, title: 'Devices' }],
+      PROJECT.safetyFunctions.map(r => [r[0], r[1], r[2]]), { size: 2.3, rowH: 5.8, headH: 6.4 });
+
+    s.note(300, end + 15, [
+      'Notes',
+      'Test-pulse settings come from the',
+      'Flexi Soft configuration report.',
+      'They are not shown on the hardware',
+      'and must be filled from the report.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

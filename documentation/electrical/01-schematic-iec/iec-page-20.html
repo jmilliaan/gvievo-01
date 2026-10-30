@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 20</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Battery, main breaker, 48 V distribution. source: ../01-schematic/proj01-sheet-01.html
+  // (MCB-01 → -QA1, MCB-02/03 → -FC1/-FC2, BUCK01/02 → -TA3/-TA4). Wiring colour per the
+  // 2026-10-30 decision: 48 V black.
+  IEC.page(20, s => {
+    const P = 45, N = 75, R1 = 55, R2 = 63;            // battery + / −, rails 1P48 / 1N48
+    const TA3 = { p: 235, n: 255, op: 272, on: 290 }, TA4 = { p: 320, n: 340, op: 362, on: 380 };
+
+    /* ---- conductors ---- */
+    s.line(P, 170, P, R1); s.line(N, 170, N, R2);
+    s.line(P, R1, TA4.p, R1, 0.35);
+    s.text(P + 2, R1 - 1.2, '1P48', { size: 2.5, weight: 600 });
+    s.rail(R2, N, 400, '1N48', '', '/21');
+    // feeders
+    [[130, '-FC1', '2P48', '/21.1'], [185, '-FC2', '3P48', '/21.6']].forEach(([x, , net, ref]) => {
+      s.line(x, R1, x, 125); s.dot(x, R1);
+      s.offDown(x, 125, net, ref);
+    });
+    // converter inputs
+    [TA3, TA4].forEach((t, i) => {
+      s.line(t.p, R1, t.p, 150); if (i === 0) s.dot(t.p, R1);
+      s.line(t.n, R2, t.n, 150); s.dot(t.n, R2);
+      s.line(t.op, 190, t.op, 222); s.line(t.on, 190, t.on, 222);
+    });
+    // 1N24 and 1N12 joined at the converter outputs
+    s.line(TA3.on, 205, TA4.on, 205); s.dot(TA3.on, 205); s.dot(TA4.on, 205);
+    s.text(TA3.on + 3, 203.6, 'N24 – N12 joined', { size: 2.1 });
+
+    /* ---- battery (+BT) ---- */
+    s.locationBox(25, 150, 90, 66, '+BT', '');
+    s.module(32, 105, 170, 38, [{ x: P, name: '+' }, { x: N, name: '−' }],
+      ['-GB1', 'Battery 48 V «Ah»', 'with BMS', 'BMS on CAN /51.8']);
+
+    /* ---- breakers and cables (after the conductors: they cut their own gaps) ---- */
+    s.breaker([P, N], 105, '-QA1', '2P 32 A DC');
+    s.text(N + 2.5, 112, 'Supply disconnecting device', { size: 2.2 });
+    s.text(N + 2.5, 115.6, 'lockable «confirm»', { size: 2.2 });
+    s.cable([P, N], 138, '-WD1', 'NYAF 2 × 4 mm², black');
+    s.breaker([130], 88, '-FC1', '1P 10 A DC');
+    s.breaker([185], 88, '-FC2', '1P 10 A DC');
+    s.cable([TA3.p, TA3.n], 125, '-WD4', 'NYAF 2 × 1.5 mm²');
+    s.cable([TA4.p, TA4.n], 125, '-WD5', 'NYAF 2 × 1.5 mm²');
+
+    /* ---- converters ---- */
+    const conv = (t, x1, x2, lines) => {
+      s.module(x1, x2, 150, 40, [{ x: t.p, name: '+IN' }, { x: t.n, name: '−IN' }], lines);
+      [[t.op, '+V'], [t.on, '−V']].forEach(([x, n]) => {
+        s.dot(x, 190, 0.5); s.text(x, 187.6, n, { size: 2.4, mono: true, anchor: 'middle', weight: 600 });
+      });
+      s.rect(x2 - 15, 153, 12, 12, 0.3); s.convMark(x2 - 15, 153, 12, 12);
+    };
+    conv(TA3, 222, 302, ['-TA3', 'DC/DC 48 → 24 V', '6.25 A (150 W), isolated']);
+    conv(TA4, 307, 395, ['-TA4', 'DC/DC 48 → 12 V', '8.3 A (100 W), isolated']);
+    s.offDown(TA3.op, 222, 'P24', '/30.0'); s.offDown(TA3.on, 222, 'N24', '/30.0');
+    s.offDown(TA4.op, 222, 'P12', '/32.0'); s.offDown(TA4.on, 222, 'N12', '/32.0');
+
+    s.note(130, 160, [
+      'Notes',
+      '1. 48 V system floating: no chassis connection.',
+      '2. 48 V wiring black (page 3).',
+      '3. -TA3, -TA4 isolated: 1N48 is not',
+      '   joined to 1N24 / 1N12.',
+      '4. All devices in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

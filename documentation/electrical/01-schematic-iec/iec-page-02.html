@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 2 · Contents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Page">
+  <strong>Page 2 · Contents</strong>
+  <a href="iec-page-01.html">◀ 1</a>
+  <a href="iec-page-03.html">3 ▶</a>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A3 landscape · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from PROJECT.pages: add or rename pages in data/project.js, not here.
+  const PG = PROJECT.pages.find(p => p.no === 2);
+  const GREY = '#8a8f98';
+
+  IEC.render(document.getElementById('sheet'), {
+    page: 2, file: 'iec-page-02',
+    description: PG.desc, kind: PG.kind,
+    draw(s) {
+      const rows = PROJECT.pages.map(p => [
+        String(p.no), p.desc, p.kind, p.loc || '', p.func || '',
+        p.drawn ? `Rev ${PROJECT.doc.revision}` : 'planned',
+      ]);
+      const end = s.table(40, 22, [
+        { w: 16, title: 'Page', align: 'right', mono: true },
+        { w: 150, title: 'Description' },
+        { w: 22, title: 'Kind', mono: true },
+        { w: 40, title: 'Location', mono: true },
+        { w: 36, title: 'Safety function', mono: true },
+        { w: 30, title: 'Status' },
+      ], rows, { rowH: 7, grey: r => (r[5] === 'planned' ? GREY : null) });
+
+      s.note(40, end + 9, [
+        'Page numbers are grouped by subject, so the gaps are intentional: 1–9 front matter, 10–19 overview,',
+        '20–29 48 V power, 30–39 control supplies, 40–49 safety, 50–59 drives, 60–69 control I/O,',
+        '70–79 terminals and cables, 80–89 lists. Grey pages are planned and not part of this issue.',
+        'Kind (IEC 61355-1): &AB list of documents, &EFS circuit diagram, &MA terminal diagram, &MB cable diagram, &PB parts list.',
+      ], { size: 2.5, lh: 4.2 });
+    },
+  });
+</script>
+</body>
+</html>

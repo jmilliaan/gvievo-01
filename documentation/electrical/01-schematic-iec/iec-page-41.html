@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 41</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Front safety laser scanner. source: ../01-schematic/proj01-sheet-08.html (I5/I6 = OSSD1/OSSD2),
+  // sheet 03 (supply TB07/TB08). Rear scanner not fitted (owner, 2026-10-30).
+  // Field sizes: amr_ws/src/amr_bringup/config/scanner_fields.yaml (front).
+  IEC.page(41, s => {
+    const T = { p: 70, n: 85, o1: 150, o2: 175, eth: 260 }, YM = 190;
+
+    /* ---- conductors ---- */
+    s.line(T.p, 63, T.p, 108); s.line(T.n, 63, T.n, 108);
+    s.line(T.o1, 63, T.o1, YM); s.line(T.o2, 63, T.o2, YM);
+    s.line(T.eth, 63, T.eth, 108, 0.3, '1.5 1');
+
+    /* ---- scanner (+VH) ---- */
+    s.locationBox(50, 28, 250, 42, '+VH', 'vehicle body, front');
+    s.module(55, 290, 35, 28, [
+      { x: T.p, name: '+24V' }, { x: T.n, name: '0V' }, { x: T.o1, name: 'OSSD1' }, { x: T.o2, name: 'OSSD2' },
+      { x: T.eth, name: 'ETH' },
+    ], ['-BG1', 'SICK nanoScan3 «type» · safety laser scanner, front'], { edge: 'bottom' });
+    s.text(200, 40, 'Protective field 0.50 × 0.80 m', { size: 2.3 });
+    s.text(200, 43.6, 'Warning fields 0.97 m, 1.77 m (not safety)', { size: 2.3 });
+    s.text(200, 47.2, 'Configuration report «DOC-NO»', { size: 2.3 });
+
+    s.offDown(T.p, 108, '-XD1:7', '/30.1');
+    s.offDown(T.n, 108, '-XD1:8', '/30.1');
+    s.offDown(T.eth, 108, '?-KE3 Ethernet', '/11');
+    s.wl(T.o1, 150, 'OSSD1'); s.wl(T.o2, 150, 'OSSD2');
+    s.text(T.o2 + 5, 130, 'SF2 personnel detection, front', { size: 2.5, weight: 600 });
+    s.text(T.o2 + 5, 134, 'OSSD pair, tested by the scanner', { size: 2.3 });
+
+    /* ---- safety controller (+EB) ---- */
+    s.module(120, 262, YM, 26, [{ x: T.o1, name: 'I5' }, { x: T.o2, name: 'I6' }],
+      ['-KE2', 'FX3-XTIO84002 · safety controller I/O module', 'Other terminals: /40, /42, /43']);
+
+    s.cable([T.p, T.n, T.o1, T.o2], 85, '-WG1', 'SICK connection cable (system plug)');
+
+    /* ---- rear scanner: not fitted ---- */
+    const bx = 300, by = 140;
+    s.path(`M${bx} ${by} h100 v34 h-100 Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1');
+    s.note(bx + 3, by + 6, [
+      'Rear scanner (-BG2, SF3)',
+      'Not fitted in this revision.',
+      '-XD1:9, 10 spare (page 30).',
+      'No OSSD inputs reserved on -KE2.',
+    ], { head: true, size: 2.3, lh: 4 });
+
+    s.note(30, 225, [
+      'Notes',
+      '1. -KE2 inputs I5 / I6 are configured as one OSSD input pair «configuration report».',
+      '2. The Ethernet link carries field and status data for the vehicle controller only (page 11).',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>
