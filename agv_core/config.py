@@ -125,6 +125,22 @@ gls.xy_scale_m_per_count
     distance from the centre (~2.3 counts per 18 mm row): check the print
     before trusting a scale measured on it.
 
+gls.swap_xy / x_sign / y_sign / angle_sign / angle_offset_rad
+    How the device's raw X/Y/angle become T_LC (gls.to_camera_pose): swap
+    first, then the signs. Bench 2026-10-30 (pendant over the HOME label, odom
+    logged): vehicle fore-aft moves the device's Y, reversing lowers it, so the
+    device's +Y is the vehicle's forward and swap_xy is true. The lateral sign,
+    the angle sign and the offset that keeps yaw consistent with the swapped
+    axes come from the sideways and spin tests (gls6-system.md §7.6).
+
+gls.fix_frames / fix_spread_xy_m / fix_spread_yaw_rad / stationary_s
+    What counts as ONE label observation, for "Record label here" and HOME at
+    survey start (gls-wait-coding-plan §C): the last fix_frames readings, all
+    the same label, taken after the wheels stood still for stationary_s, whose
+    camera-in-label poses lie within the two spreads of their mean. 15 frames
+    is ~1 s. The spreads are the plan's starting values (2 mm, 0.5 deg); tune
+    them from the bench repeatability (gls6-system.md §7.4) once the scale is in.
+
 gls.mount_x_m / mount_y_m / mount_yaw_rad
     T_BC: where the camera's optical axis meets the floor, in base_footprint.
     The lens is NOT the housing centre (op-ins Fig. 17). Placeholder zeros
@@ -443,9 +459,14 @@ _SCHEMA = {
         "y_sign":               ("GLS_Y_SIGN", int),
         "angle_sign":           ("GLS_ANGLE_SIGN", int),
         "angle_offset_rad":     ("GLS_ANGLE_OFFSET_RAD", float),
+        "swap_xy":              ("GLS_SWAP_XY", bool),
         "mount_x_m":            ("GLS_MOUNT_X_M", float),
         "mount_y_m":            ("GLS_MOUNT_Y_M", float),
         "mount_yaw_rad":        ("GLS_MOUNT_YAW_RAD", float),
+        "fix_frames":           ("GLS_FIX_FRAMES", int),
+        "fix_spread_xy_m":      ("GLS_FIX_SPREAD_XY_M", float),
+        "fix_spread_yaw_rad":   ("GLS_FIX_SPREAD_YAW_RAD", float),
+        "stationary_s":         ("GLS_STATIONARY_S", float),
     },
 }
 
@@ -909,6 +930,11 @@ def _validate(ns):
         check(abs(g(f"GLS_{key.upper()}")) <= math.pi, f"gls.{key} must be within +-pi")
     for key in ("mount_x_m", "mount_y_m"):
         check(abs(g(f"GLS_{key.upper()}")) <= 2.0, f"gls.{key} must be within +-2 m of base_footprint")
+    # 64 = GlsLink's frame queue; at ~14.6 frames/s that is 4.4 s of standing still
+    check(1 <= g("GLS_FIX_FRAMES") <= 64, "gls.fix_frames must be in 1..64")
+    check(0 < g("GLS_FIX_SPREAD_XY_M") <= 0.05, "gls.fix_spread_xy_m must be in (0, 0.05] m")
+    check(0 < g("GLS_FIX_SPREAD_YAW_RAD") <= 0.2, "gls.fix_spread_yaw_rad must be in (0, 0.2] rad")
+    check(0 < g("GLS_STATIONARY_S") <= 10.0, "gls.stationary_s must be in (0, 10] s")
 
     return ns
 

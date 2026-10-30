@@ -67,7 +67,11 @@ def validate(
     fp: fpmod.Footprint,
     keepout: gridio.Grid | None = None,
     dynamic: gridio.Grid | None = None,
+    labels: dict | None = None,
 ) -> Validation:
+    """`labels` is the floor-label set the route is checked against (store.load_labels doc):
+    a wait's label_id must be in it. Without one, a wait label is accepted as info only: it
+    is logged, never used for a fix (gls-wait-coding-plan §C.1)."""
     issues: list[Issue] = []
     if route.map.id != manifest.map_id or route.map.revision != manifest.revision:
         issues.append(
@@ -143,6 +147,8 @@ def validate(
             )
         elif st.type == WAIT:  # the vehicle stands there: its footprint, like the start pose
             c = _clearance(grid, fp, keepout, (st.start, st.start), None, dynamic=dyn)
+            if st.label_id:
+                issues.extend(_wait_label(st, labels))
         else:  # straight or reverse: the footprint translated along the line, either way
             c = _clearance(grid, fp, keepout, (st.start, st.end), None, dynamic=dyn)
         what = {ROTATE: "rotation sweep", ARC: "arc sweep", WAIT: "wait pose"}.get(st.type, "line")
@@ -151,6 +157,23 @@ def validate(
         elif c.provisional:
             issues.append(_provisional(what, c, st.id))
     return Validation(issues, compiled)
+
+
+def _wait_label(st, labels: dict | None) -> list[Issue]:
+    if labels is None:
+        return [
+            Issue(
+                "label_set",
+                f"label {st.label_id}: this map has no recorded label set, so the label is only "
+                "logged, never used for a position fix",
+                st.id,
+                INFO,
+            )
+        ]
+    if st.label_id not in {e["label_id"] for e in labels.get("labels", [])}:
+        rev = labels.get("revision", "?")
+        return [Issue("label_unknown", f"label {st.label_id} is not in label set rev{rev}", st.id)]
+    return []
 
 
 def _provisional(what: str, c: fpmod.Clearance, step_id: str | None) -> Issue:

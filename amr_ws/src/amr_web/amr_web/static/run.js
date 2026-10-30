@@ -47,6 +47,24 @@ $('btn-pose-survey').onclick = () => {
 };
 $('btn-loc-confirm').onclick = () => api('/api/localization/confirm').then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 $('btn-loc-reset').onclick = () => api('/api/localization/reset').then(r => log(r.data.message));
+// "Record label here" (engineer only: the button is absent for the operator)
+if ($('btn-gls-record')) $('btn-gls-record').onclick = () => {
+  const role = $('gls-role').value, name = $('gls-name').value.trim();
+  if (role === 'dest' && !name) { log('name the destination first (e.g. UBC)', 'bad'); return; }
+  api('/api/labels/record', { role, name }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
+};
+// The floor-label camera's last reading: what "Record label here" would see.
+function glsTiles(g) {
+  if (!g) { tiles('gls-state', [['Camera', '–', 'no reading', 'warn', 'key']]); return; }
+  const stale = g.age_s > 1.0;
+  const health = !g.comms_ok ? ['NOT ANSWERING', 'bad'] : g.config_ok === false ? ['SETTINGS DIFFER', 'bad'] : stale ? ['STALE', 'warn'] : ['OK', ''];
+  const rows = [['Camera', health[0], g.fps ? `${num(g.fps, 1)} frames/s` : '—', health[1], 'key'],
+    ['Label', g.valid && !stale ? g.label_id : 'none', g.valid && !stale ? `${g.n_codes} codes` : 'no label in view', g.valid && !stale ? '' : 'warn']];
+  if (g.valid && !stale) rows.push(g.calibrated
+    ? ['Offset', `${num(g.x_m * 1000, 1)}, ${num(g.y_m * 1000, 1)}`, `mm · ${num(g.yaw_rad * 180 / Math.PI, 1)}°`]
+    : ['Raw', `${num(g.x_counts, 0)}, ${num(g.y_counts, 0)}`, `counts · ${num(g.angle_deg, 1)}° · NOT CALIBRATED`, 'warn']);
+  tiles('gls-state', rows);
+}
 $('btn-run-load').onclick = () => api('/api/mission/run', { mission_id: $('run-mission').value }).then(r => log(r.data.message, r.status === 200 ? '' : 'bad'));
 $('btn-run-pause').onclick = () => api('/api/mission/pause').then(r => log(r.data.message));
 $('btn-run-resume').onclick = () => api('/api/mission/resume').then(r => log(r.data.message));
@@ -89,6 +107,8 @@ onState(st => {
   } else runMission = nowRun;
   const onActive = viewIsActive();
   $('tool-initialpose').disabled = !onActive; $('btn-loc-confirm').disabled = !onActive;
+  if ($('btn-gls-record')) $('btn-gls-record').disabled = !onActive;
+  glsTiles(st.gls);
   $('btn-pose-survey').disabled = !onActive || !(view.meta && view.meta.start && view.meta.start.x_m !== undefined);
   if (!onActive && view.tool === 'initialpose') dropPoseTool();
   if (view.tool === 'initialpose' && m && m.generation !== poseGen) dropPoseTool();

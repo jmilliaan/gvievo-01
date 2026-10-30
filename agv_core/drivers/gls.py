@@ -257,10 +257,14 @@ def to_camera_pose(
     y_sign: int = 1,
     angle_sign: int = 1,
     angle_offset_rad: float = 0.0,
+    swap_xy: bool = False,
 ) -> tuple[float, float, float]:
     """(x_m, y_m, yaw_rad) of the camera in the label frame, T_LC, from a frame's raw values.
     Every argument comes from the bench tests (gls6-system.md §7) via the profile; there is
-    deliberately no default scale. yaw is wrapped into (-pi, pi]."""
+    deliberately no default scale. swap_xy takes the label frame's x from the device's Y
+    (and y from X) before the signs: on MCQ4-4 the device's Y runs along the vehicle's
+    fore-aft axis (bench 2026-10-30). Swap, signs and angle offset together express any of
+    the 8 axis arrangements, mirrored ones included. yaw is wrapped into (-pi, pi]."""
     if not (math.isfinite(m_per_count) and m_per_count > 0.0):
         raise ValueError(f"m_per_count must be a positive number, got {m_per_count!r}")
     for name, s in (("x_sign", x_sign), ("y_sign", y_sign), ("angle_sign", angle_sign)):
@@ -268,7 +272,8 @@ def to_camera_pose(
             raise ValueError(f"{name} must be 1 or -1, got {s!r}")
     yaw = math.radians(wrap_deg(angle_sign * frame.angle_deg)) + angle_offset_rad
     yaw = math.atan2(math.sin(yaw), math.cos(yaw))
-    return x_sign * frame.x * m_per_count, y_sign * frame.y * m_per_count, yaw
+    a, b = (frame.y, frame.x) if swap_xy else (frame.x, frame.y)
+    return x_sign * a * m_per_count, y_sign * b * m_per_count, yaw
 
 
 def command(text: str) -> bytes:

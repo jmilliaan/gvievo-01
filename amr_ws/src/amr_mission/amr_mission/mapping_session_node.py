@@ -16,6 +16,7 @@ paused state is tracked locally (unpaused at launch).
 
 from __future__ import annotations
 
+import collections
 import math
 import os
 import threading
@@ -35,9 +36,10 @@ from slam_toolbox.srv import Pause, SerializePoseGraph
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_interfaces.msg import Event, MappingState, WheelStates
+from amr_interfaces.msg import Event, GlsReading, MappingState, WheelStates
 from amr_interfaces.srv import SaveMap, StartSurvey
 from amr_maps import grid as gridio
+from amr_mission import label_record
 from amr_mission import map_bundle as mb
 
 SENSOR_DATA = QoSProfile(
@@ -97,6 +99,9 @@ class MappingSession(Node):
         self._slam_stalled_s = 0.0  # >0: seconds of scans SLAM has not consumed
         self._last_imu_t: float | None = None
         self._last_wheels: tuple[float, bool] | None = None  # (t, still)
+        self._still_since: float | None = None
+        self._gls: collections.deque = collections.deque(maxlen=64)  # label_record.Sample
+        self._home: label_record.Observation | None = None  # HOME seen at survey start
         self._map: OccupancyGrid | None = None
         self._map_t: float | None = None
         self._slam_paused = False
@@ -112,6 +117,7 @@ class MappingSession(Node):
             WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA, callback_group=io_group
         )
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED, callback_group=io_group)
+        self.create_subscription(GlsReading, "/gls/reading", self._on_gls, 10, callback_group=io_group)
         self._pub = self.create_publisher(MappingState, "/amr/mapping_state", LATCHED)
         # Operator events: one per session-state change, plus an explicit save outcome.
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
@@ -183,6 +189,14 @@ class MappingSession(Node):
             and abs(msg.right_vel_rad_s) < self.w_eps
         )
         self._last_wheels = (self._now(), still)
+        if not still:
+            self._still_since = None
+        elif self._still_since is None:
+            self._still_since = self._last_wheels[0]
+
+    def _on_gls(self, msg: GlsReading) -> None:
+        if msg.valid:
+            self._gls.append(label_record.Sample(self._now(), msg, None))
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         self._map, self._map_t = msg, self._now()
@@ -276,13 +290,19 @@ class MappingSession(Node):
             self._set(self._state, res.message)
             return res
         x, y, yaw = self._pose_in_map()
+        # HOME (gls-wait-coding-plan §C.3): the label under the camera at the start mark, if
+        # there is one. T_MB is the start reference itself. Never a reason to refuse a survey.
+        obs, why = label_record.observe(list(self._gls), self._still_since, self._now(), need_pose=False)
+        home = label_record.at(obs, (x, y, yaw)) if obs else None
         with self._lock:
             self._map_id, self._description = req.map_id, req.description
             self._start = mb.StartReference(x, y, yaw, req.description)
             self._review, self._saved_path, self._revision = None, "", 0
+            self._home = home
+        seen = f"; HOME label {home.label_id} seen" if home else f"; no HOME label ({why})"
         self._set(
             MappingState.MAPPING,
-            f"surveying '{req.map_id}' from ({x:.2f}, {y:.2f}, {math.degrees(yaw):.1f} deg)",
+            f"surveying '{req.map_id}' from ({x:.2f}, {y:.2f}, {math.degrees(yaw):.1f} deg){seen}",
         )
         res.accepted, res.message = True, self._message
         return res
@@ -313,7 +333,7 @@ class MappingSession(Node):
             res.success, res.message = False, "save in progress"
             return res
         with self._lock:
-            self._start, self._review = None, None
+            self._start, self._review, self._home = None, None, None
         self._set(MappingState.IDLE, "survey aborted; relaunch mapping for a clean graph")
         res.success, res.message = True, self._message
         return res
@@ -353,9 +373,25 @@ class MappingSession(Node):
             return res
         with self._lock:
             self._revision, self._saved_path = revision, dest
-        self._set(MappingState.SAVED, f"published {dest} (bundle {manifest.sha256[:12]})")
+        labels = self._save_home(revision, manifest.sha256)
+        self._set(MappingState.SAVED, f"published {dest} (bundle {manifest.sha256[:12]}){labels}")
         res.ok, res.path, res.revision, res.message = True, dest, revision, self._message
         return res
+
+    def _save_home(self, revision: int, sha256: str) -> str:
+        """The new revision's first label set, with the HOME seen at survey start. After the
+        bundle is published, so a failure here costs the label, never the map."""
+        if self._home is None:
+            return "; no HOME label recorded"
+        try:
+            rev, text, _ = label_record.record(
+                self.maps_dir, (self._map_id, revision, sha256), self._home, "home", "", "survey"
+            )
+        except Exception as e:  # noqa: BLE001 - the map is saved; say what the label lacks
+            self.event("LABEL_RECORD_FAILED", str(e))
+            return f"; HOME label NOT saved: {e}"
+        self.event("LABEL_RECORDED", f"{text} (label set rev{rev}, from the survey start)")
+        return f"; {text}"
 
     def _save_locked(self, req: SaveMap.Request, stage_holder: list):
         """The save transaction proper; runs under the map's writer lock.

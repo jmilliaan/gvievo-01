@@ -73,6 +73,7 @@ drive, lease and permit freshness itself and stops the vehicle whatever the exec
 
 from __future__ import annotations
 
+import collections
 import math
 import os
 import threading
@@ -101,19 +102,21 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
+    GlsReading,
     LocalizationState,
     MotionPermit,
     PanelState,
     RunState,
     WheelStates,
 )
-from amr_interfaces.srv import RunMission
+from amr_interfaces.srv import RecordLabel, RunMission
 
 try:  # the nanoScan3 driver's output paths (OSSD state); absent in sim and on the laptop
     from sick_safetyscanners2_interfaces.msg import OutputPaths
 except ImportError:  # pragma: no cover - depends on the installed driver
     OutputPaths = None
 from amr_mission import goal_attempts as ga
+from amr_mission import label_record
 from amr_mission import map_bundle as mb
 from amr_mission import run_fsm as fsm
 from amr_navigation import footprint as fpmod
@@ -156,6 +159,7 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
 
 class RouteExecutor(Node):
     _abort_code = ""  # catalogue code for the next IDLE event, if an abort names one
+    _still_since: float | None = None  # wheels at rest since ("Record label here")
 
     def __init__(self) -> None:
         super().__init__("route_executor")
@@ -300,6 +304,8 @@ class RouteExecutor(Node):
         self._wheels_t = 0.0
         self._wheels_valid = False
         self._wheels_still = False
+        self._still_since = None
+        self._gls: collections.deque = collections.deque(maxlen=64)  # label_record.Sample
         self._odom_t = 0.0
         self._odom_yaw_prev: float | None = None
         self._odom_yaw_acc = 0.0
@@ -325,6 +331,7 @@ class RouteExecutor(Node):
             WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA, callback_group=io
         )
         self.create_subscription(Odometry, "/odometry/filtered", self._on_odom, 10, callback_group=io)
+        self.create_subscription(GlsReading, "/gls/reading", self._on_gls, 10, callback_group=io)
         self.create_subscription(DriveStatus, "/drives/status", self._on_drives, 10, callback_group=io)
         if OutputPaths is not None:
             self.create_subscription(
@@ -360,6 +367,7 @@ class RouteExecutor(Node):
         self.create_service(Trigger, "/amr/abort", self._srv_abort, callback_group=srv)
         self.create_service(Trigger, "/amr/resume", self._srv_resume, callback_group=srv)
         self.create_service(Trigger, "/amr/ack_fault", self._srv_ack, callback_group=srv)
+        self.create_service(RecordLabel, "/amr/labels/record", self._srv_record_label, callback_group=srv)
         self.create_timer(0.1, self._tick, callback_group=srv)
         self.create_timer(0.5, self._publish_state, callback_group=io)
         self.get_logger().info(f"IDLE; maps_dir {self.maps_dir}; footprint reach {self.fp.reach_m:.2f} m")
@@ -425,6 +433,16 @@ class RouteExecutor(Node):
         self._wheels_still = (
             self._wheels_valid and abs(m.left_vel_rad_s) < self.w_eps and abs(m.right_vel_rad_s) < self.w_eps
         )
+        if not self._wheels_still:
+            self._still_since = None
+        elif self._still_since is None:
+            self._still_since = self._wheels_t
+
+    def _on_gls(self, m: GlsReading) -> None:
+        """Buffered with the map pose at receipt, for "Record label here" only: P3 records,
+        it never corrects (gls-wait-coding-plan §10)."""
+        if m.valid:
+            self._gls.append(label_record.Sample(self._now(), m, self._pose()))
 
     def _init_hold_state(self) -> None:
         self.hold_cause = ""  # why the run is BLOCKED (module docstring), "" otherwise
@@ -545,9 +563,10 @@ class RouteExecutor(Node):
                 )
                 if sha != mission["route"]["sha256"]:
                     raise store.StoreError("route file hash differs from the mission manifest")
+                labels = store.mission_labels(self.maps_dir, mission)
                 rev_dir = mb.revision_dir(self.maps_dir, manifest.map_id, manifest.revision)
                 dynamic = load_dynamic(rev_dir)
-                v = validate(route, manifest, grid, self.fp, load_keepout(rev_dir), dynamic)
+                v = validate(route, manifest, grid, self.fp, load_keepout(rev_dir), dynamic, labels)
                 if not v.ok:
                     raise store.StoreError(
                         "route invalid on this map: "
@@ -620,6 +639,42 @@ class RouteExecutor(Node):
             res.success, res.message = self.fsm.ack(), self.fsm.reason
             self._log_state()
             return res
+
+    def _srv_record_label(self, req: RecordLabel.Request, res: RecordLabel.Response):
+        """"Record label here" (gls-wait-coding-plan §C.2): the label under the camera into
+        a new label-set revision of the ACTIVE map. Only localised, stationary and not
+        driving a step; writes a file, never moves anything."""
+        now = self._now()
+        why = None
+        if not self.active_map[0] or not self.active_map[2]:
+            why = "no active map (unsupervised stack): nothing to record against"
+        elif self.fsm.state == fsm.EXECUTING:
+            why = "a run is driving: record when it is stopped"
+        elif self._loc is None or now - self._loc_t > self.loc_age:
+            why = "no localisation state"
+        elif self._loc.state != LocalizationState.READY:
+            why = "localisation is not READY: confirm the pose first"
+        elif now - self._wheels_t > self.wheels_age or not self._wheels_valid:
+            why = "no wheel feedback"
+        if why is None:
+            obs, why = label_record.observe(list(self._gls), self._still_since, now)
+        if why is None:
+            try:
+                rev, text, gone = label_record.record(
+                    self.maps_dir, self.active_map, obs, req.role, req.name, "amcl", req.note
+                )
+            except store.StoreError as e:
+                why = str(e)
+        if why is not None:
+            res.ok, res.message = False, f"label not recorded: {why}"
+            self.get_logger().warn(res.message)
+            return res
+        res.ok, res.label_id, res.revision = True, obs.label_id, rev
+        res.x_m, res.y_m, res.yaw_rad = obs.t_ml
+        res.message = f"recorded {text} (label set rev{rev})" + (f"; replaces {gone}" if gone else "")
+        self.get_logger().info(res.message)
+        self._note(Event.INFO, "LABEL_RECORDED", res.message)
+        return res
 
     # ---- readiness ------------------------------------------------------------------------
 
@@ -1430,6 +1485,15 @@ class RouteExecutor(Node):
         m.level = {alarms.ERROR: Event.ERROR, alarms.WARN: Event.WARN}.get(row.severity, Event.INFO)
         m.code = code
         m.text = f"run {fsm.NAMES[self.fsm.state]} {self.fsm.progress()}: {self.fsm.reason}"
+        self._event_seq += 1
+        m.seq = self._event_seq
+        self._event_pub.publish(m)
+
+    def _note(self, level: int, code: str, text: str) -> None:
+        """A one-off operator event that is not a run-state change."""
+        m = Event()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.source, m.level, m.code, m.text = "route_executor", level, code, text
         self._event_seq += 1
         m.seq = self._event_seq
         self._event_pub.publish(m)

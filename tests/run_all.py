@@ -33,6 +33,7 @@ MODULES = [
     "test_panel",
     "test_gls",
     "test_gls_link",
+    "test_glspose",
     "test_layout",
 ]
 
@@ -111,7 +112,16 @@ MODULES = [
 #   connect backoff doubling to the maximum, counters and the 64-frame queue, stop() ends the
 #   thread, only sRN ever sent); test_config + 30 (the gls block: enabled, scale 0 = not
 #   measured, template has [$XMCL]/[$YMCL]; 26 refusals, one per rule, and its bounds accepted).
-EXPECTED_CHECKS = 600
+# + 32 (2026-10-30): P3 of gls-wait-coding-plan (§C), label poses bound to the map. test_glspose
+#   + 21 (new: wrap / compose / inverse round trips at six yaws, label_in_map <-> base_in_map, a
+#   hand-worked T_ML with a turned mount, circular mean and spreads across +-pi, every observe()
+#   refusal and only the last n frames counting); test_config + 11 (gls.fix_frames,
+#   fix_spread_xy_m, fix_spread_yaw_rad, stationary_s: shipped values, 8 bound refusals, a
+#   fractional fix_frames refused, the bounds accepted).
+# + 4 (2026-10-30): gls.swap_xy (the device's Y is the vehicle's fore-aft, bench 2026-10-30).
+#   test_gls + 2 (to_camera_pose swaps X/Y, the signs apply after the swap); test_config + 2
+#   (ships true, a non-boolean refused).
+EXPECTED_CHECKS = 636
 
 
 # An exception on a helper thread only prints a traceback by default - the

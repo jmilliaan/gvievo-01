@@ -496,6 +496,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `GLS` | info | The floor-label camera changed | Nothing to do. | gls_node: the GLS621 answers again after a GLS_DOWN. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
+| `LABEL_RECORDED` | info | A floor label was recorded on the map | Nothing to do. | Record label here, or HOME at survey start: a new label-set revision (gls-wait-coding-plan §C). New missions bind it; existing ones keep theirs. |
 | `MODE_CHANGE` | info | The vehicle changed mode | Nothing to do. | Supervisor FSM transition; the text carries from -> to. |
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, rotate...). |
 | `NO_PERMIT` | info | Waiting for a mission step | Nothing to do; the executor drives this. | AUTO with no MotionPermit, or a permit whose source has no fresh /cmd_vel. |
@@ -548,6 +549,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOC_LOST` | error | The vehicle lost its position | Set the initial pose on the Run page and confirm the scans line up. | Umbrella code for a LocalizationState LOST without a more specific cause. |
 | `LOC_SCAN_MISMATCH` | error | The vehicle is not where it thinks it is | Set the initial pose on the Run page and confirm the scans line up. | Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous wrong-pose signature. |
 | `MAP_SAVE_FAILED` | error | The map was not saved | Try Save again on the Maps page. If it fails twice, call the engineer. | mapping_session save returned an error; the survey is still open. |
+| `LABEL_RECORD_FAILED` | warn | The HOME floor label was not saved with the map | Park on HOME, localise, then use Record label here. | mapping_session saw the HOME label at survey start but could not write the new map's label set (the text says why). The map itself was saved. |
 | `LOC_NOT_SET` | warn | The vehicle does not know where it is yet | On the Run page: pick the map, set the initial pose, then confirm. | LocalizationState UNLOCALIZED: no accepted initial pose since the layer started. |
 | `SAVE_UNKNOWN_OUTCOME` | warn | The map may or may not have been saved | Check the Maps page for a new revision before saving again. | The save RPC passed its deadline after the request was accepted; a late answer is ignored. |
 | `SURVEY_NOT_READY` | warn | The vehicle is not ready to survey | Fix what the Alarms page lists, then start the survey again. | mapping_session refused: sensor ages or mode preconditions not met. |

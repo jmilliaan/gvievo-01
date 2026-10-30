@@ -841,6 +841,9 @@ class DemoAdapter:
             self.run = self._run(0, reason="fault acknowledged")
             return True, "acknowledged"
 
+    def record_label(self, role, name, note):
+        return False, "label not recorded: the demo has no floor-label camera"
+
     # ---- diagnostics ------------------------------------------------------------------
 
     def diagnostics(self) -> dict:

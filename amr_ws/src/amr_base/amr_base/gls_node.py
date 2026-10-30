@@ -48,7 +48,7 @@ def outlier_counts(outlier_m: float, scale: float) -> float | None:
 
 
 def fill(m: GlsReading, frame: gls.Frame | None, snap: dict, scale: float, signs=(1, 1, 1),
-         angle_offset_rad: float = 0.0) -> GlsReading:
+         angle_offset_rad: float = 0.0, swap_xy: bool = False) -> GlsReading:
     """GlsReading fields from one frame (None = nothing in view) and the link's snapshot.
     Pure apart from the message object, so it is tested without a graph."""
     m.comms_ok = bool(snap.get("comms_ok"))
@@ -66,7 +66,7 @@ def fill(m: GlsReading, frame: gls.Frame | None, snap: dict, scale: float, signs
     m.spread_counts = float(frame.spread_xy)
     m.device_ts_ms = int(frame.ts_ms)
     if m.calibrated:
-        m.x_m, m.y_m, m.yaw_rad = gls.to_camera_pose(frame, scale, *signs, angle_offset_rad)
+        m.x_m, m.y_m, m.yaw_rad = gls.to_camera_pose(frame, scale, *signs, angle_offset_rad, swap_xy)
         m.spread_xy_m = frame.spread_xy * scale
         m.spread_yaw_rad = math.radians(frame.spread_deg)
     if not frame.valid:
@@ -128,7 +128,9 @@ class GlsNode(Node):
         m = GlsReading()
         m.header.stamp = self.get_clock().now().to_msg()
         m.header.frame_id = FRAME_ID
-        self._pub.publish(fill(m, frame, snap, self.scale, self.signs, config.GLS_ANGLE_OFFSET_RAD))
+        self._pub.publish(
+            fill(m, frame, snap, self.scale, self.signs, config.GLS_ANGLE_OFFSET_RAD, config.GLS_SWAP_XY)
+        )
 
     def _report(self, snap: dict) -> None:
         """One event per health transition, never per tick."""

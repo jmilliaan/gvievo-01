@@ -103,6 +103,13 @@ def test_conversion():
     check("signs and the angle offset apply, yaw wrapped",
           math.isclose(x, -0.01) and math.isclose(y, 0.005) and math.isclose(yaw, math.pi / 2),
           f"{x} {y} {yaw}")
+    x, y, yaw = gls.to_camera_pose(f, 0.0001, swap_xy=True)
+    check("swap_xy takes the label x from the device Y and y from X",
+          math.isclose(x, -0.005) and math.isclose(y, 0.01) and math.isclose(yaw, math.pi / 2),
+          f"{x} {y} {yaw}")
+    x, y, yaw = gls.to_camera_pose(f, 0.0001, x_sign=-1, y_sign=1, swap_xy=True)
+    check("the signs apply after the swap (x_sign negates the device Y)",
+          math.isclose(x, 0.005) and math.isclose(y, 0.01), f"{x} {y} {yaw}")
     refused = []
     for kw in ({"m_per_count": 0.0}, {"m_per_count": float("nan")}, {"m_per_count": 1e-4, "x_sign": 0}):
         try:

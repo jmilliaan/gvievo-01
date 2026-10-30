@@ -129,6 +129,10 @@ def _rows() -> tuple[Alarm, ...]:
           "profile (gls.expect_template) or REQUIRED in gls_link.py - e.g. the device was reset to "
           "factory settings. Every frame is dropped until the next connect verifies. Re-apply the "
           "saved SOPAS parameter file; never write settings from the vehicle."),
+        a("LABEL_RECORD_FAILED", WARN, "operator", "The HOME floor label was not saved with the map",
+          "Park on HOME, localise, then use Record label here.",
+          "mapping_session saw the HOME label at survey start but could not write the new map's "
+          "label set (the text says why). The map itself was saved."),
         a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "No /scan at all: the nanoScan3 driver could not reach 192.168.3.1:6060 (cable, power, "
@@ -341,6 +345,9 @@ def _rows() -> tuple[Alarm, ...]:
           "Nothing to do.", "Selector, Start/Reset edge or pendant change from panel_node."),
         a("BOOT_READY", INFO, "auto", "The vehicle is ready",
           "Nothing to do.", "End-of-boot report from the supervisor; the text lists anything missing."),
+        a("LABEL_RECORDED", INFO, "auto", "A floor label was recorded on the map",
+          "Nothing to do.", "Record label here, or HOME at survey start: a new label-set revision "
+          "(gls-wait-coding-plan §C). New missions bind it; existing ones keep theirs."),
         a("RUN_SUMMARY", INFO, "auto", "A mission finished",
           "Nothing to do.", "One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause."),
         a("WEB_BUG", WARN, "auto", "A page did not work",

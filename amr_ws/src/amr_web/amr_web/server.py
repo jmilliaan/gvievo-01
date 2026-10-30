@@ -66,6 +66,7 @@ class Adapter(Protocol):
     def abort(self) -> tuple[bool, str]: ...
     def prepare_resume(self) -> tuple[bool, str]: ...
     def ack_fault(self) -> tuple[bool, str]: ...
+    def record_label(self, role: str, name: str, note: str) -> tuple[bool, str]: ...
     # supervisor (unified plan §4.2, §6.2)
     def supervisor_identity(self) -> tuple[str, int]: ...
     def request_mode(
@@ -187,6 +188,11 @@ def create_app(
                 "edits": mb.load_edits(rev_dir),
             }
         return _extras[key]
+
+    def labels_for(map_id: str, rev: int) -> tuple[dict, str] | None:
+        """The newest floor-label set recorded on that map revision (never cached: recording
+        a label adds a revision without a new map revision), or None."""
+        return store.latest_labels(app.config["MAPS_DIR"], map_id, rev)
 
     # ---- pages -------------------------------------------------------------------
 
@@ -467,7 +473,8 @@ def create_app(
         route = Route.from_dict(payload)
         route.map.id, route.map.revision, route.map.sha256 = map_id, rev, m.sha256
         ex = extras(map_id, rev)
-        return route, validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
+        lab = labels_for(map_id, rev)
+        return route, validate(route, m, g, fp, ex["keepout"], ex["dynamic"], lab[0] if lab else None)
 
     def _compiled_dict(compiled) -> dict:
         return {
@@ -543,7 +550,8 @@ def create_app(
         except (store.StoreError, mb.BundleError) as e:
             return _result(False, str(e), 404)
         ex = extras(map_id, rev)
-        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
+        lab = labels_for(map_id, rev)
+        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"], lab[0] if lab else None)
         body = {
             "route": route.to_dict(),
             "sha256": sha,
@@ -579,25 +587,62 @@ def create_app(
         try:
             m, g = bundle(map_id, rev)
             route, sha = store.load_route(app.config["MAPS_DIR"], map_id, route_id, rrev)
+            # a mission binds the newest label set of its map revision (gls-wait-coding-plan §C.1)
+            lab = labels_for(map_id, rev)
         except RouteError as e:
             return _result(False, f"stored route unreadable: {e}", 422)
         except (store.StoreError, mb.BundleError, gridio.GridError) as e:
             return _result(False, str(e), 404)
+        if lab is not None and lab[0]["map"].get("sha256") != m.sha256:
+            lab = None  # recorded on another bundle of this revision: not this map's labels
         ex = extras(map_id, rev)
-        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"])
+        v = validate(route, m, g, fp, ex["keepout"], ex["dynamic"], lab[0] if lab else None)
         if not v.ok:
             return jsonify({"ok": False, "issues": [i.to_dict() for i in v.issues]}), 422
-        # route ids/revisions are per map; missions share one directory: the default id names the map
-        mission_id = d.get("mission_id") or f"{map_id}_rev{rev}_{route_id}_rev{rrev}"
+        # route ids/revisions are per map; missions share one directory: the default id names the
+        # map, and the label set when one is bound (a newer set is a new mission, not a conflict)
+        bound = {"revision": lab[0]["revision"], "sha256": lab[1]} if lab else None
+        mission_id = d.get("mission_id") or (
+            f"{map_id}_rev{rev}_{route_id}_rev{rrev}" + (f"_labels{bound['revision']}" if bound else "")
+        )
         try:
             path = store.save_mission(
-                app.config["MAPS_DIR"], mission_id, map_id, rev, m.sha256, route_id, rrev, sha
+                app.config["MAPS_DIR"], mission_id, map_id, rev, m.sha256, route_id, rrev, sha, bound
             )
         except store.StoreConflict as e:
             return _result(False, str(e), 409)
         except store.StoreError as e:
             return _result(False, str(e), 400)
-        return jsonify({"ok": True, "mission_id": mission_id, "path": path})
+        return jsonify({"ok": True, "mission_id": mission_id, "path": path, "labels": bound})
+
+    # ---- floor labels (gls-wait-coding-plan §C) ------------------------------------
+
+    @app.get("/api/maps/<map_id>/<int:rev>/labels")
+    def api_labels(map_id: str, rev: int):
+        try:
+            bundle(map_id, rev)
+            lab = labels_for(map_id, rev)
+        except (store.StoreError, mb.BundleError, gridio.GridError) as e:
+            return _result(False, str(e), 404)
+        if lab is None:
+            return jsonify({"ok": True, "revision": None, "sha256": None, "labels": []})
+        doc, sha = lab
+        return jsonify({"ok": True, "revision": doc["revision"], "sha256": sha, "labels": doc["labels"]})
+
+    @app.post("/api/labels/record")
+    def api_label_record():
+        """"Record label here": the executor checks the vehicle and writes the file."""
+        d, err = _body()
+        if err:
+            return err
+        role, name, note = d.get("role"), d.get("name", ""), d.get("note", "")
+        if role not in ("home", "dest") or not isinstance(name, str) or not isinstance(note, str):
+            return _result(False, "role ('home' or 'dest'), name and note (text) required", 400)
+        if role == "dest" and not name.strip():
+            return _result(False, "a destination label needs a name", 400)
+        if not hasattr(adapter, "record_label"):
+            return _result(False, "label recording is not available here", 409)
+        return _call(adapter.record_label, role, name.strip()[:40], note[:200])
 
     # ---- coordinator calls (services on the robot; the browser never commands wheels) ----
 

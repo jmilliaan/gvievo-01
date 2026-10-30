@@ -272,6 +272,24 @@ def test_config_profile():
                         x_sign=-1, y_sign=-1, angle_sign=-1, angle_offset_rad=-math.pi,
                         mount_yaw_rad=math.pi, mount_x_m=-2.0, mount_y_m=2.0, port=65535))
     check("the gls bounds themselves are accepted", msg is None, msg or "")
+    check("gls.swap_xy ships true: the device's Y is the vehicle's fore-aft (bench 2026-10-30)",
+          config.GLS_SWAP_XY is True, str(config.GLS_SWAP_XY))
+    refuses("a non-boolean gls.swap_xy is refused", gls(swap_xy=1), "gls.swap_xy")
+    # -- one label observation (gls-wait-coding-plan §C.2, P3) ---------------
+    check("the label-observation keys ship as 15 frames / 2 mm / 0.009 rad / 1 s",
+          (config.GLS_FIX_FRAMES, config.GLS_FIX_SPREAD_XY_M, config.GLS_FIX_SPREAD_YAW_RAD,
+           config.GLS_STATIONARY_S) == (15, 0.002, 0.009, 1.0),
+          str((config.GLS_FIX_FRAMES, config.GLS_FIX_SPREAD_XY_M, config.GLS_FIX_SPREAD_YAW_RAD,
+               config.GLS_STATIONARY_S)))
+    for key, bad in (("fix_frames", 0), ("fix_frames", 65), ("fix_spread_xy_m", 0.0),
+                     ("fix_spread_xy_m", 0.0501), ("fix_spread_yaw_rad", 0.0),
+                     ("fix_spread_yaw_rad", 0.201), ("stationary_s", 0.0), ("stationary_s", 10.01)):
+        refuses(f"gls.{key} {bad} is refused", gls(**{key: bad}), f"gls.{key} must be in")
+    refuses("a fractional gls.fix_frames is refused", gls(fix_frames=15.5), "gls.fix_frames")
+    msg = load_with(gls(fix_frames=64, fix_spread_xy_m=0.05, fix_spread_yaw_rad=0.2, stationary_s=10.0))
+    msg2 = load_with(gls(fix_frames=1))
+    check("the label-observation bounds themselves are accepted", msg is None and msg2 is None,
+          msg or msg2 or "")
 
     # The name in the file must match the file. A profile copied for a second
     # vehicle and not renamed would report the old identity in the event log

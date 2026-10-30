@@ -1,6 +1,6 @@
 # GLS label fix + route wait step: coding plan (MCQ4-4)
 
-Branch `kyb-trackless` · 2026-10-30 · **P1 committed (`ae373c8`), vehicle acceptance A pending. P0 committed (`4370b16`). P2 implemented 2026-10-30, uncommitted, tests being written.** P3–P6 not started. Physical tests (bench §7, acceptance A) deferred to one session.
+Branch `kyb-trackless` · 2026-10-30 · **P1 committed (`ae373c8`), vehicle acceptance A pending. P0 committed (`4370b16`), P2 committed (`0322c76`). P3 implemented 2026-10-30, uncommitted, tests being written.** P4–P6 not started. Physical tests (bench §7, acceptance A) deferred to one session.
 
 This plan extends [gls6-system.md](gls6-system.md), the design brief. Read the brief first. Where the two differ, this plan wins: it is built on the code as of `481ffda`, after the emergency suite landed. File:line references are from that commit. Check each one before you edit.
 
@@ -96,7 +96,10 @@ Out of scope:
 - **Result stream.** Port 2112 streams one telegram per decoded code; every code from one image has the same `$FAMS`. Measured with `gls_probe` on the vehicle, 2026-10-30, label at HOME: **about 14.5 frames/s** (`$FAMS` steps of about 60 ms; the brief's "~33 Hz" was not an image rate), about 70 telegrams/s, 4–5 codes per image, spread about 5 counts and 0.3–0.6° between the codes of one image.
 - **One telegram can carry several codes.** About 3 % of telegrams hold two results back to back with no separator (`…;946692806114D2x0000y0000;5;-33;…`). `agv_core.drivers.gls.parse` returns a list for that reason.
 - **Command replies.** CoLa `sRN` replies also arrive on 2112, mixed in with the results. On 2111, replies get buried in the diagnostics stream.
-- **Units and signs are still unknown** (brief §7). In one frame the codes still disagree by up to about 7 counts.
+- **Axes and units, bench 2026-10-30** (agv-can-a5, `manuals/gls6-qr/bench-results-2026-10-30.md`):
+  - The device's **Y is the vehicle's fore-aft axis**: reversing lowers it. So `gls.swap_xy` is true. The lateral sign, the angle sign and `T_BC` wait for the spin test.
+  - **Scale cross-check: about 0.95 mm/count**, from a fit against wheel odometry (rms 2.6 counts). It is not in the profile yet.
+  - **Label print: tick span 54.5 mm on both axes**, against 54.0 nominal (+0.9 %, isotropic). That is only about 0.2 counts per 18 mm row, so the print does **not** explain the per-code bias (about 2.3 counts per row) or the 4–11 count spread between the codes of one frame. The code-to-code pitch measures 18 mm on both axes (operator, by caliper). The print is therefore right, and the cause lies in the device: its configured code layout or working distance. That is still open.
 
 ### Emergency suite: rules from agv-can-14, 2026-10-30
 
@@ -489,7 +492,7 @@ Hitch and release points are fixed by the trolleys, so this is Case B from the p
 4. Correct the two typed lengths and save a new route revision. Expect it to settle in 1–2 tries.
 5. Park on the label and use "Record label here" (§C.2).
 
-**Capture window warning.** The whole label is visible only within about ±35 mm sideways and **±20 mm fore-aft**. Nav2's goal tolerance is ±50 mm (`nav2_params.yaml:24`). Measure the real window (bench §7.7). If stops scatter beyond it, use a 2×2 patch of labels. That needs the IDs from brief §2 and a decision, not code.
+**Capture window warning.** The datasheet estimate was about ±35 mm sideways and ±20 mm fore-aft. The bench on 2026-10-30 measured the fore-aft window on the vehicle: the label is read within about ±75 device counts (≈ ±72 mm at the odometry cross-check scale, 2 codes at the edges), and with ≥4 codes within about −62..+56 counts (≈ ±55 mm). That is comfortably wider than Nav2's ±50 mm goal tolerance (`nav2_params.yaml:24`). The sideways window is not measured yet. `fake_gls_node` keeps the conservative ±20 / ±35 mm. If stops scatter beyond the window, use a 2×2 patch of labels. That needs the IDs from brief §2 and a decision, not code.
 
 ## 9. Open items: not decisions, not in this plan
 
@@ -528,7 +531,7 @@ Each phase ends green: `tests/run_all.py` with `EXPECTED_CHECKS` raised delibera
 ### A: wait step (P1)
 
 1. The route HOME → wait "UBC hitch" → HOME stops at the wait and shows WAITING on the Run page and the headline. The drives follow W2.
-2. Start during WAITING does nothing and shows the hint. Continue gives the 2 s warning, then the run carries on to HOME and reaches DONE.
+2. Continue gives the 2 s warning, then the run carries on to HOME and reaches DONE. In a second trial, Start does the same (W3).
 3. Continue in MANUAL is refused. Back in AUTO, it works.
 4. Jog the vehicle about 0.2 m away in MANUAL. Continue is refused with the pose reason.
 5. E-stop during WAITING: it stays WAITING and the route is kept. Continue or Start pressed during the E-stop does nothing. After release and Reset, a fresh press of either one resumes.

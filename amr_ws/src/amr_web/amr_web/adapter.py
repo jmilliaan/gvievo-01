@@ -35,6 +35,7 @@ from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
     Event,
+    GlsReading,
     IoImage,
     LocalizationState,
     ManualCommand,
@@ -47,6 +48,7 @@ from amr_interfaces.msg import (
 )
 from amr_interfaces.srv import (
     GetOperation,
+    RecordLabel,
     RequestMode,
     RequestSurvey,
     RunMission,
@@ -186,6 +188,9 @@ def initial_pose_mismatch(mode, map_id: str, map_revision: int, generation: int,
 
 
 class RosAdapter(Node):
+    _gls: dict | None = None  # the floor-label camera's last reading (Run page)
+    _gls_t = 0.0
+
     def __init__(self) -> None:
         super().__init__("amr_web")
         self._lock = threading.Lock()
@@ -249,6 +254,7 @@ class RosAdapter(Node):
             self._events.append(dict(e, n=self._event_n, restored=True))
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
+        self.create_subscription(GlsReading, "/gls/reading", self._on_gls, 5, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
         self.live = live.LiveStore()
@@ -297,6 +303,7 @@ class RosAdapter(Node):
             "abort": self.create_client(Trigger, "/amr/abort", callback_group=g),
             "resume": self.create_client(Trigger, "/amr/resume", callback_group=g),
             "ack": self.create_client(Trigger, "/amr/ack_fault", callback_group=g),
+            "record_label": self.create_client(RecordLabel, "/amr/labels/record", callback_group=g),
             # supervisor (unified plan §4.2)
             "mode": self.create_client(RequestMode, "/amr/mode/request", callback_group=g),
             "survey": self.create_client(RequestSurvey, "/amr/supervisor/survey", callback_group=g),
@@ -339,6 +346,15 @@ class RosAdapter(Node):
         d["state_name"] = LOC_NAMES.get(m.state, str(m.state))
         with self._lock:
             self._loc, self._loc_t = d, self._now()
+
+    def _on_gls(self, m: GlsReading) -> None:
+        d = {
+            k: getattr(m, k)
+            for k in ("valid", "comms_ok", "config_ok", "calibrated", "label_id", "x_m", "y_m",
+                      "yaw_rad", "n_codes", "x_counts", "y_counts", "angle_deg", "fps", "detail")
+        }
+        with self._lock:
+            self._gls, self._gls_t = d, self._now()
 
     def _on_run(self, m) -> None:
         d = _msg_to_dict(m)
@@ -633,6 +649,7 @@ class RosAdapter(Node):
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "wheels": dict(self._wheels, age_s=now - self._wheels_t) if self._wheels else None,
+                "gls": dict(self._gls, age_s=now - self._gls_t) if self._gls else None,
                 "ipc_temp": self._ipc(now),
                 "drive_supply": self._drive_supply(now),
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,
@@ -857,6 +874,14 @@ class RosAdapter(Node):
 
     def ack_fault(self) -> tuple[bool, str]:
         return self._trigger("ack")
+
+    def record_label(self, role: str, name: str, note: str) -> tuple[bool, str]:
+        r = self._call("record_label", RecordLabel.Request(role=role, name=name, note=note))
+        return (
+            (False, "executor unavailable (navigation not running?)")
+            if r is None
+            else (bool(r.ok), r.message)
+        )
 
 
 class Spinner:

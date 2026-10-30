@@ -77,6 +77,33 @@ def test_fill_calibrated_applies_scale_signs_and_offset():
     assert m.x_counts == 120.0, "raw counts stay alongside the pose"
 
 
+def test_fill_swap_xy_takes_x_from_the_device_y_before_the_signs():
+    """gls.swap_xy (shipped true, bench 2026-10-30): label x from device Y, y from X; signs after."""
+    scale = 2.5e-4
+    m = gn.fill(GlsReading(), frame(), SNAP_OK, scale, signs=(-1, 1, 1), swap_xy=True)
+    assert m.valid and m.calibrated
+    assert m.x_m == pytest.approx(40.0 * scale) and m.y_m == pytest.approx(120.0 * scale)
+    assert m.yaw_rad == pytest.approx(math.pi / 2)
+    assert (m.x_m, m.y_m, m.yaw_rad) == pytest.approx(gls.to_camera_pose(frame(), scale, -1, 1, 1, 0.0, True))
+    assert (m.x_counts, m.y_counts) == (120.0, -40.0), "the raw counts are never swapped"
+    m = gn.fill(GlsReading(), frame(), SNAP_OK, 0.0, swap_xy=True)
+    assert not m.calibrated and (m.x_m, m.y_m) == (0.0, 0.0), "uncalibrated: no pose, swapped or not"
+
+
+def test_tick_passes_the_profile_swap_to_fill(monkeypatch):
+    n = _node()
+    n.link = _Link()
+    n._report = lambda s: None
+    n.scale = 1e-4
+    for swap in (True, False):
+        monkeypatch.setattr(config, "GLS_SWAP_XY", swap)
+        n.published.clear()
+        n.link.queue = [(gn.time.monotonic(), frame())]
+        n._tick()
+        (m,) = n.published
+        assert (m.x_m, m.y_m) == pytest.approx((-0.004, 0.012) if swap else (0.012, -0.004))
+
+
 # ---- helpers ---------------------------------------------------------------------------
 
 

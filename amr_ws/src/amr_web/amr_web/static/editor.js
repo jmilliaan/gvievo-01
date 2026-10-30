@@ -178,7 +178,7 @@ $('btn-mission').onclick = async () => {
   if (!savedRef) { log('save this draft as a revision first', 'bad'); return; }
   if (savedRef.map_id !== mapId || +savedRef.map_revision !== +mapRev) { log('the saved revision belongs to another map; save on this map first', 'bad'); return; }
   const { status, data } = await api('/api/missions', { map_id: savedRef.map_id, map_revision: savedRef.map_revision, route_id: savedRef.route_id, route_revision: savedRef.revision });
-  if (status === 200) log(`mission ${data.mission_id} created`);
+  if (status === 200) log(`mission ${data.mission_id} created` + (data.labels ? ` with label set rev${data.labels.revision}` : ' (no label set on this map: labels are only logged)'));
 };
 function showResult(d) {
   if (!d) { $('ed-result').innerHTML = '<div class="none">not validated since the last edit</div>'; return; }
@@ -300,6 +300,16 @@ async function reloadRouteList(c) {
   if (!stillSameMap(c)) return;  // a list for a map no longer selected
   const sel = $('ed-load'); sel.innerHTML = '<option value="">— new —</option>';
   Object.entries(data.routes || {}).forEach(([rid, revs]) => revs.forEach(r => { const o = document.createElement('option'); o.value = `${rid}/${r}`; o.textContent = `${rid} rev${r}`; sel.appendChild(o); }));
+  await reloadLabels(c);
+}
+// The wait's label dropdown (gls-wait-coding-plan §C.1): the newest label set of this map revision.
+async function reloadLabels(c) {
+  const { data } = await apiGet(`/api/maps/${mapId}/${mapRev}/labels`);
+  if (!stillSameMap(c)) return;
+  const sel = $('ed-wait-label');
+  const labels = (data && data.labels) || [];
+  sel.innerHTML = `<option value="">${labels.length ? '— no label —' : '— no labels recorded on this map —'}</option>`;
+  labels.filter(l => l.role === 'dest').forEach(l => { const o = document.createElement('option'); o.value = l.label_id; o.textContent = `${l.name} (${l.label_id})`; sel.appendChild(o); });
 }
 $('ed-load').onchange = async e => {
   if (!e.target.value) return;

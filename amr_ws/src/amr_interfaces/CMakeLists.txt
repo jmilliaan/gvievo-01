@@ -35,6 +35,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RequestSurvey.srv"
   "srv/GetOperation.srv"
   "srv/SurveyMove.srv"
+  "srv/RecordLabel.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

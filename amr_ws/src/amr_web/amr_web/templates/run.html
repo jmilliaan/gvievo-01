@@ -39,6 +39,18 @@
         <button id="btn-loc-confirm" class="big run">Confirm: scans align</button>
         <button id="btn-loc-reset" class="big" title="Forget the localisation and start again from step 2">Reset localisation</button>
       </div>
+      {# Floor label under the GLS camera (gls-wait-coding-plan §C.2): engineer-only, since
+         recording writes the map's label set that every new mission binds. #}
+      <div class="sep"></div>
+      <h3>Floor label <small>GLS camera</small></h3>
+      <div id="gls-state" class="tel-grid"></div>
+      {% if role == ENGINEER %}
+      <div class="bar">
+        <select id="gls-role" title="HOME is recorded once per map; destinations by name"><option value="dest">Destination</option><option value="home">HOME</option></select>
+        <input id="gls-name" type="text" maxlength="40" placeholder="UBC" title="the destination's name (HOME needs none)">
+        <button id="btn-gls-record" class="tool" title="Localised, stationary, over the label: writes a new label-set revision of the active map">Record label here</button>
+      </div>
+      {% endif %}
       <div class="sep"></div>
       <h3>Jog <small>selector MANUAL</small></h3>
       <div id="jog-run"></div>
