@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 60</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // I/O module inputs. source: ../01-schematic/proj01-sheet-09.html and io-mapping.md section 3.
+  // DI00–DI07: COM0 = 1P24, contacts switch the input to 1N24. DI08 (COM1 = 1N24): MANUAL ARM switch
+  // closes 1P24 onto the input.
+  IEC.page(60, s => {
+    const R1 = 26, R2 = 33, CT = 110, MOD = 205;
+    const DI = { DI00: 55, DI01: 95, DI02: 125, DI03: 165, DI04: 190, DI05: 215, DI06: 240, DI08: 290, COM0: 335, COM1: 365 };
+    s.rail(R1, 25, 400, '1P24', '/42', '/61');
+    s.rail(R2, 25, 400, '1N24', '/42', '/61');
+
+    /* ---- conductors ---- */
+    s.line(DI.DI00, R2, DI.DI00, MOD); s.dot(DI.DI00, R2);
+    s.fromTop(DI.DI01, 70, '-SJ3:24', '/40.8'); s.line(DI.DI01, 70, DI.DI01, MOD);
+    s.fromTop(DI.DI02, 70, '-SJ4:24', '/40.5'); s.line(DI.DI02, 70, DI.DI02, MOD);
+    // pendant: common from 1N24, one NO button per direction
+    s.line(150, R2, 150, 85); s.dot(150, R2);
+    s.line(150, 85, 240, 85);
+    ['DI03', 'DI04', 'DI05', 'DI06'].forEach((k, i) => { s.line(DI[k], 85, DI[k], MOD); if (i < 3) s.dot(DI[k], 85); });
+    s.line(DI.DI08, R1, DI.DI08, MOD); s.dot(DI.DI08, R1);
+    s.line(DI.COM0, R1, DI.COM0, MOD); s.dot(DI.COM0, R1);
+    s.line(DI.COM1, R2, DI.COM1, MOD); s.dot(DI.COM1, R2);
+
+    /* ---- START (+FR) ---- */
+    s.locationBox(26, 92, 62, 40, '+FR', '');
+    s.operator([s.contactV(DI.DI00, CT, 'no', ['13', '14'])], 'push');
+    s.label(62, 106, '-SJ2', ['START', '1 NO']);
+
+    /* ---- pendant (+PD) ---- */
+    s.locationBox(142, 75, 122, 62, '+PD', 'pendant');
+    [['DI03', '-SJ6', 'FORWARD'], ['DI04', '-SJ7', 'REVERSE'], ['DI05', '-SJ8', 'LEFT'], ['DI06', '-SJ9', 'RIGHT']].forEach(([k, t, n]) => {
+      s.operator([s.contactV(DI[k], CT, 'no', ['13', '14'])], 'push');
+      s.text(DI[k] + 2, 122, t, { size: 2.5, weight: 600 });
+      s.text(DI[k] + 2, 125.6, n, { size: 2.1 });
+    });
+    s.cable([DI.DI03, DI.DI06], 145, '-WG10', 'pendant cable');
+
+    /* ---- MANUAL ARM (+FR) ---- */
+    s.locationBox(270, 92, 58, 40, '+FR', '');
+    s.contactV(DI.DI08, CT, 'no', ['13', '14']);
+    s.label(296, 106, '-SJ5', ['MANUAL ARM', '«switch type»']);
+
+    /* ---- I/O module ---- */
+    s.module(35, 395, MOD, 30, Object.entries(DI).map(([name, x]) => ({ x, name })),
+      ['-KE4', 'CK-EC5163 I/O module, inputs · outputs /61 · I/O table /62',
+       'DI00–DI07: common COM0 = 1P24, input on when switched to 1N24 · DI08–DI0F: common COM1 = 1N24, input on when switched to 1P24']);
+
+    s.note(172, 44, [
+      'Notes',
+      '1. -SJ4 contact closed = MANUAL (DI02 on).',
+      '2. Pendant buttons: hold to run (software).',
+      '3. Wiring AWG22 blue. All in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

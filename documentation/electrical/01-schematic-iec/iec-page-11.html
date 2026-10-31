@@ -17,8 +17,8 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // Communication overview. source: proj01-sheet-06 (CAN), -09 (Ethernet IN/OUT), profiles/agv-01.json
-  // (scanner data over Ethernet to the vehicle controller: not on the old sheets, marked uncertain).
+  // Communication overview. source: proj01-sheet-06 (CAN), -09 (Ethernet IN/OUT), profiles/agv-01.json.
+  // IPC ports enp1s0 → scanner, enp2s0 → I/O module → RFID; termination built into -TF1 (owner, 2026-10-31).
   IEC.page(11, s => {
     const blk = (x, y, w, h, lines) => s.box(x, y, w, h, lines, { size1: 2.8, size: 2.2 });
 
@@ -38,11 +38,13 @@
       s.dot(x, 80); s.line(x, 80, x, 92, 0.6);
       blk(x - 22, 92, 44, 22, [t, d, n]);
     });
-    s.text(173, 128, 'Bus termination 120 Ω at both ends: «location to confirm»', { size: 2.3 });
+    s.text(173, 128, 'Bus termination 120 Ω: built into -TF1. Far bus end: «confirm»', { size: 2.3 });
 
     /* ---- Ethernet ---- */
     s.text(150, 160, 'Ethernet', { size: 3, weight: 600 });
     s.line(55, 135, 55, 180); s.arrow(55, 180, 150, 180);
+    s.text(56, 139, 'enp2s0', { size: 2.2, mono: true });
+    s.text(81, 139, 'enp1s0', { size: 2.2, mono: true });
     s.text(60, 176, '-WG7', { size: 2.2 });
     blk(150, 170, 52, 22, ['-KE4', 'I/O module', 'port IN → OUT']);
     s.arrow(202, 180, 240, 180);
@@ -50,9 +52,9 @@
     blk(240, 170, 52, 22, ['-BG4', 'RFID reader', 'navigation feature']);
     s.text(152, 200, 'I/O module and RFID reader share one Ethernet line (daisy chain through -KE4).', { size: 2.2 });
 
-    s.line(80, 135, 80, 225, 0.35, '1.5 1');
+    s.line(80, 135, 80, 225);
     s.arrow(80, 225, 240, 225);
-    s.text(85, 221, '?-WG9  scanner data (fields, status) — not on the old sheets', { size: 2.2 });
+    s.text(85, 221, '-WG9  scanner data (fields, status)', { size: 2.2 });
     blk(240, 214, 52, 22, ['-BG1', 'Safety scanner, front', 'data only, not safety']);
 
     s.note(306, 214, [

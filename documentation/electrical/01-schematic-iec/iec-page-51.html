@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 51</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // CAN bus. source: ../01-schematic/proj01-sheet-06.html (Belden 9841, MLSE cable
+  // white = CAN H / black = CAN L) and profiles/agv-01.json (125 kbit/s, node IDs 1, 2, 10).
+  IEC.page(51, s => {
+    const Y = { h: 60, l: 68, g: 76 }, END = 372, BOX = 160;
+
+    /* ---- vehicle controller and USB-to-CAN interface ---- */
+    s.box(30, 22, 58, 22, ['-KE3', 'Vehicle controller'], { size1: 2.8, size: 2.3 });
+    s.arrow(88, 33, 110, 33);
+    s.text(99, 30.5, 'USB', { size: 2.2, anchor: 'middle' });
+    s.text(99, 38.5, '-WG6', { size: 2.2, anchor: 'middle' });
+    s.module(110, 172, 22, 22, [{ x: 125, name: 'H' }, { x: 140, name: 'L' }, { x: 155, name: 'GND' }],
+      ['-TF1', 'USB-to-CAN interface'], { edge: 'bottom' });
+
+    /* ---- bus ---- */
+    [[125, Y.h], [140, Y.l], [155, Y.g]].forEach(([x, y]) => { s.line(x, 44, x, y); s.line(x, y, END, y, 0.45); s.line(END, y - 1.2, END, y + 1.2, 0.35); });
+    s.text(END + 2, Y.h + 0.8, 'CAN H', { size: 2.3, mono: true });
+    s.text(END + 2, Y.l + 0.8, 'CAN L', { size: 2.3, mono: true });
+    s.text(END + 2, Y.g + 0.8, 'CAN GND', { size: 2.3, mono: true });
+
+    const DEV = [
+      { tag: '-TA1', d: 'Motor driver left', xs: [190, 202, 214], t: [['6', 'CAN-H'], ['5', 'CAN-L'], ['7', 'GND']], x1: 182, x2: 232, wg: ['-WG3', 'Belden 9841'] },
+      { tag: '-TA2', d: 'Motor driver right', xs: [245, 257, 269], t: [['6', 'CAN-H'], ['5', 'CAN-L'], ['7', 'GND']], x1: 237, x2: 287, wg: ['-WG4', 'Belden 9841'] },
+      { tag: '-BG3', d: 'Line sensor', xs: [300, 312], t: [['H', 'white'], ['L', 'black']], x1: 294, x2: 336, wg: ['-WG2', 'MLSE cable'], loc: '+VH' },
+      { tag: '-GB1', d: 'Battery BMS', xs: [350, 362], t: [['H', ''], ['L', '']], x1: 344, x2: 392, wg: ['-WG5', 'Belden 9841'], loc: '+BT' },
+    ];
+    const ys = [Y.h, Y.l, Y.g];
+    DEV.forEach(d => {
+      d.xs.forEach((x, k) => { s.line(x, ys[k], x, BOX); s.dot(x, ys[k]); });
+      if (d.loc) s.locationBox(d.x1 - 4, 148, d.x2 - d.x1 + 8, 46, d.loc, '');
+      s.module(d.x1, d.x2, BOX, 30, d.xs.map((x, k) => ({ x, name: d.t[k][0], sub: d.t[k][1] })), [d.tag, d.d]);
+      s.cable(d.xs, 133, d.wg[0], d.wg[1]);
+    });
+
+    s.note(30, 92, [
+      'Notes',
+      '1. CAN 125 kbit/s, CANopen. Node IDs: -TA1 1, -TA2 2, -BG3 10.',
+      '2. -WG3, -WG4: Belden 9841 twisted pair for',
+      '   CAN H / CAN L plus one AWG22 core for GND.',
+      '3. Termination 120 Ω: built into -TF1.',
+      '   Far bus end: «confirm».',
+      '4. Cable shield connection: «confirm».',
+      '5. All devices in +EB unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

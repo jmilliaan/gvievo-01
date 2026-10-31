@@ -17,10 +17,10 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // 24 V control supply, part 1. source: ../01-schematic/proj01-sheet-03.html (MCB-04 → -FC3,
-  // TB07–TB14, TB25/26 → -XD1). Rear scanner terminals 9/10 stay as spare (not fitted).
+  // 24 V control supply, part 1. source: ../01-schematic/proj01-sheet-03.html (MCB-04 → -FC3).
+  // Rear scanner not fitted: no supply drawn for it.
   IEC.page(30, s => {
-    const P = 40, N = 50, R1 = 70, R2 = 78, XD = 110, BOX = 165;
+    const P = 40, N = 50, R1 = 70, R2 = 78, BOX = 165;
 
     /* ---- source and breaker ---- */
     s.fromTop(P, 30, 'P24', '/20.6'); s.fromTop(N, 30, 'N24', '/20.6');
@@ -34,7 +34,6 @@
       s.line(xn, R2, xn, yEnd); s.dot(xn, R2);
     };
     pair(80, 90, BOX);                                  // -BG1
-    pair(140, 150, XD);                                 // spare (rear scanner)
     pair(185, 195, BOX);                                // -KE1, -KE2
     pair(300, 310, BOX);                                // -PJ1
     pair(365, 375, BOX);                                // -KE4
@@ -46,8 +45,6 @@
     s.locationBox(62, 150, 64, 52, '+VH', '');
     s.module(68, 120, BOX, 30, [{ x: 80, name: '+24V' }, { x: 90, name: '0V' }],
       ['-BG1', 'Safety scanner, front', 'OSSD /41.3']);
-    s.text(135, 122, 'spare: rear scanner', { size: 2.2 });
-    s.text(135, 125.6, 'not fitted (SF3)', { size: 2.2 });
     s.module(170, 220, BOX, 30, [{ x: 185, name: 'A1' }, { x: 195, name: 'A2' }], ['-KE1', 'FX3-CPU0', '/43']);
     s.module(228, 278, BOX, 30, [{ x: 240, name: 'A1' }, { x: 250, name: 'A2' }], ['-KE2', 'FX3-XTIO84002', '/43']);
     s.locationBox(285, 150, 62, 52, '+VH', '');
@@ -56,16 +53,14 @@
     s.module(352, 402, BOX, 30, [{ x: 365, name: '24V' }, { x: 375, name: '0V' }],
       ['-KE4', 'CK-EC5163', 'PE not connected', 'I/O /60, /61']);
 
-    /* ---- breaker, terminals, cables ---- */
+    /* ---- breaker, cables ---- */
     s.breaker([P, N], 48, '-FC3', '2P 10 A DC');
-    [[[80, 7], [90, 8]], [[140, 9], [150, 10]], [[185, 11], [195, 12]], [[300, 13], [310, 14]], [[365, 25], [375, 26]]]
-      .forEach(g => s.terminals(g, XD, '-XD1'));
     s.cable([80, 90], 135, '-WG1', 'SICK connection cable');
 
     s.note(30, 218, [
       'Notes',
       '1. Control wiring AWG22 (0.34 mm²) blue unless marked (page 3).',
-      '2. -XD1:27, 28: spare (former second supply of -KE4).',
+      '2. Rear scanner (SF3) not fitted in this revision.',
       '3. All devices in +EB unless boxed.',
     ], { head: true });
   });

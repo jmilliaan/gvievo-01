@@ -28,7 +28,7 @@
 <script src="data/project.js"></script>
 <script>
   // source: ../01-schematic/proj01-sheet-08.html (inputs I1, I2, I7, I8) and io-mapping.md.
-  // Second contacts of -SJ3 / -SJ4 run to the I/O module through -XD1:58 / -XD1:59 (old TB58 / TB59).
+  // Second contacts of -SJ3 / -SJ4 run to the I/O module (old TB58 / TB59).
   // Selector polarity: contacts close in MANUAL (profile panel.auto_when_on = false; I7 line is
   // labelled MANUAL on sheet 08).
   const PG = PROJECT.pages.find(p => p.no === 40);
@@ -36,7 +36,7 @@
   // module terminals, x in mm
   const T = { X1: 70, I1: 86, X2: 110, I2: 126, I7: 205, I8: 320 };
   const SEL = [205, 245], RST = [320, 360];          // selector / reset poles
-  const Y = { p24: 26, n24: 33, loop: 70, contact: 120, xd: 162, off: 182, mod: 205 };
+  const Y = { p24: 26, n24: 33, loop: 70, contact: 120, off: 182, mod: 205 };
 
   IEC.render(document.getElementById('sheet'), {
     page: 40, file: 'iec-page-40',
@@ -51,10 +51,10 @@
       [[T.X1, T.I1], [T.X2, T.I2]].forEach(([xo, xi]) => {
         s.line(xo, Y.mod, xo, Y.loop); s.line(xo, Y.loop, xi, Y.loop); s.line(xi, Y.loop, xi, Y.mod);
       });
-      // selector: 1P24 → 13-14 → I7; 1N24 → 23-24 → -XD1:59 → I/O module DI02
+      // selector: 1P24 → 13-14 → I7; 1N24 → 23-24 → I/O module DI02
       s.line(SEL[0], Y.p24, SEL[0], Y.mod); s.dot(SEL[0], Y.p24);
       s.line(SEL[1], Y.n24, SEL[1], Y.off); s.dot(SEL[1], Y.n24);
-      // reset: 1P24 → 13-14 → I8; 1N24 → 23-24 → -XD1:58 → I/O module DI01
+      // reset: 1P24 → 13-14 → I8; 1N24 → 23-24 → I/O module DI01
       s.line(RST[0], Y.p24, RST[0], Y.mod); s.dot(RST[0], Y.p24);
       s.line(RST[1], Y.n24, RST[1], Y.off); s.dot(RST[1], Y.n24);
 
@@ -63,7 +63,7 @@
       const e1 = s.contactV(T.X1, Y.contact, 'nc', ['11', '12']);
       const e2 = s.contactV(T.X2, Y.contact, 'nc', ['21', '22']);
       s.operator([e1, e2], 'estop');
-      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC, positive opening', 'turn to release', 'SF1', '«part no.»']);
+      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC', 'positive opening', 'turn to release', 'SF1', '«part no.»']);
 
       /* ---- -SJ4 mode selector (+FR) ---- */
       s.locationBox(150, 96, 108, 46, '+FR', 'front panel');
@@ -83,13 +83,11 @@
       s.label(273, 107, '-SJ3', ['RESET push-button, blue', '2 NO, momentary', 'SF5', '«part no.»']);
 
       /* ---- second contacts to the I/O module (page 60) ---- */
-      s.terminal(SEL[1], Y.xd, '-XD1', 59);
-      s.terminal(RST[1], Y.xd, '-XD1', 58);
       s.offDown(SEL[1], Y.off, '-KE4:DI02', '/60.2');
       s.offDown(RST[1], Y.off, '-KE4:DI01', '/60.1');
 
       /* ---- -KE2 safety controller I/O module (+EB) ---- */
-      s.locationBox(45, 196, 300, 40, '+EB', 'electrical box');
+      s.locationBox(30, 196, 315, 40, '+EB', 'electrical box');
       s.module(60, 335, Y.mod, 24,
         Object.entries(T).map(([name, x]) => ({ x, name })),
         ['-KE2', 'SICK Flexi Soft FX3-XTIO84002 · safety controller I/O module (main module -KE1)',

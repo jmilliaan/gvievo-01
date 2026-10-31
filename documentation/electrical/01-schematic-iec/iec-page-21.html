@@ -17,14 +17,14 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // Motor drivers: power and motors. source: ../01-schematic/proj01-sheet-02.html (TB01–TB06 → -XD1:1–6)
+  // Motor drivers: power and motors. source: ../01-schematic/proj01-sheet-02.html
   // and sheet 07 notes 3, 4 (cables LC03D06A, CCM010B1AAF).
   IEC.page(21, s => {
-    const Y = { p2: 28, p3: 36, n: 44, pe: 52, xd: 95, box: 135 };
+    const Y = { p2: 28, p3: 36, n: 44, pe: 52, box: 135 };
     const D = [
-      { pe: 50, p: 70, n: 90, m: 100, x1: 38, x2: 165, rail: 'p2', xd: [5, 1, 2], tag: '-TA1', side: 'left',
+      { pe: 50, p: 70, n: 90, m: 100, x1: 38, x2: 165, rail: 'p2', tag: '-TA1', side: 'left',
         ma: '-MA1', wd: ['-WD2', '-WD6', '-WD8'] },
-      { pe: 240, p: 260, n: 280, m: 290, x1: 228, x2: 355, rail: 'p3', xd: [6, 3, 4], tag: '-TA2', side: 'right',
+      { pe: 240, p: 260, n: 280, m: 290, x1: 228, x2: 355, rail: 'p3', tag: '-TA2', side: 'right',
         ma: '-MA2', wd: ['-WD3', '-WD7', '-WD9'] },
     ];
 
@@ -36,7 +36,6 @@
     s.line(32, Y.pe, 32, 58); s.pe(32, 58);
     s.text(22, 66, '-XE1', { size: 2.6, weight: 600 });
     s.text(22, 69.6, 'chassis earth', { size: 2.2 });
-    s.text(22, 73.2, '«position: confirm»', { size: 2.2 });
 
     D.forEach(d => {
       /* conductors */
@@ -56,8 +55,7 @@
       s.motor(d.m, 222, 7);
       s.label(d.m + 11, 214, d.ma, ['BLMR6400SKM-GFV-B', '400 W, gearhead 1:30', 'holding brake']);
 
-      /* terminals and cables last */
-      s.terminals([d.pe, d.p, d.n].map((x, i) => [x, d.xd[i]]), Y.xd, '-XD1');
+      /* cables last */
       s.cable([d.p, d.n], 75, d.wd[0], 'NYAF 2 × 2.5 mm², black');
       s.cable([d.pe, d.p, d.n], 118, d.wd[1], 'Oriental Motor LC03D06A');
       s.cable([d.m], 188, d.wd[2], 'Oriental Motor CCM010B1AAF (U, V, W, encoder)');
@@ -71,9 +69,13 @@
       '   the driver',
       '   housings to',
       '   the chassis.',
-      '3. Brake supply',
-      '   «via motor',
-      '   cable: confirm»',
+      '3. Motor and',
+      '   brake are fed',
+      '   by the driver.',
+      '   All their power',
+      '   comes in on',
+      '   -WD6 / -WD7',
+      '   (LC03, 48 V).',
     ], { head: true, size: 2.2 });
   });
 </script>

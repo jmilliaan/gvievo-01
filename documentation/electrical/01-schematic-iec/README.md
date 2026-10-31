@@ -11,12 +11,23 @@ This folder is for the IEC-style version of the AGV circuit diagrams. The curren
 | `data/project.js` | **The single source of the page data:** title block, page list, locations, classes, potentials, colours and safety functions. The cover, contents and key pages are generated from it |
 | `iec-page-NN.html` | One page per file. Open it in a browser; the toolbar has **Download PNG** and **Print / PDF** (choose A3 landscape, no margins) |
 
-Drawn so far (Rev A draft): pages 1 (cover), 2 (contents), 3 (designation key) and 40 (safety: E-stop, selector, reset).
+Status (Rev A draft, 2026-10-31): **all 24 pages are drawn.** The list is on page 2. The full set is printed to `circuit-diagrams.pdf`.
+
+**No terminal strip (owner decision, 2026-10-31):** the old TB numbers are not used. Wires are identified by the potential or signal name on their wire markers, and each conductor end by the device terminal (`-KE2:I3`). The terminal diagrams (old pages 70–71) were removed; a separate assembly wiring diagram will follow later.
+
+- **Table pages:** 44, 62, 75 and 80 are generated from `data/project.js`.
+- **Red text:** every red item is open and must be resolved before issue. The browser console lists them. Besides the title-block placeholders and part numbers, these are:
+  - the CAN termination at the far bus end, and the cable shield (pages 11, 51);
+  - the MANUAL ARM switch type (page 60);
+  - the Flexi Soft test-pulse settings (pages 42–44);
+  - the stop category (page 12).
 
 **Engine:** `../kit/iec-sheet.js` with `../kit/iec-sheet.css`. It loads after `../kit/jis-sheet.js` and reuses its primitives. It adds:
 - the A3 landscape frame, the 0–9 column grid and the ISO 7200 title block;
 - vertical-flow symbols: `contactV`, `operator` (push / estop / turn), `terminal`, `offDown`, `rail`, `module`, `locationBox`, `label`;
-- `table` and `note`.
+- `table` and `note`;
+- `TEXT_SCALE = 1.2`: all text is drawn 20 % larger than the sizes in the page code (owner, 2026-11-01). A page that has no room can pass `{ textScale: 1.1 }` to `IEC.page()`. Text marked `maxw` (table cells, title block) is squeezed to fit its box;
+- a layout check: open a page with `#check` and it lists any text that overlaps other text, crosses a line or box edge, or leaves the frame.
 
 **To add a page:**
 1. Copy `iec-page-40.html` to the new page number.
@@ -141,7 +152,7 @@ Kept as separate documents (IEC 60204-1 17.2 f):
 
 ## 5. Reference designations (IEC 81346)
 
-**Format:** `=FUNCTION +LOCATION -PRODUCT :TERMINAL`, for example `+EB-KE2:I5` is terminal I5 of the safety controller I/O module in the electrical box. Terminals follow IEC 61666, so `-XD1:43` is strip XD1, terminal 43.
+**Format:** `=FUNCTION +LOCATION -PRODUCT :TERMINAL`, for example `+EB-KE2:I5` is terminal I5 of the safety controller I/O module in the electrical box. Terminals follow IEC 61666.
 
 **Class codes are two letters since IEC 81346-2:2009.**
 - The single letters in our standards draft of 2026-10-29 (Q, F, K, S…) are the **old** IEC 61346-2 / DIN 40719 scheme. They are **superseded** by the two-letter codes in `designation-map.md`.

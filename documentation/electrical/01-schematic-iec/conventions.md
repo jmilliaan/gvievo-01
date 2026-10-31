@@ -20,9 +20,9 @@ Items marked **[decide]** are proposals waiting for the owner. Items marked **[v
 
 | Field | Content now |
 | --- | --- |
-| Legal owner | `«MANUFACTURER»` |
+| Legal owner | PT INTI GANDA PERDANA |
 | Document number | `«DOC-NO»`, the same on every page. The operation manual refers to it |
-| Title | `[PRODUCT NAME] driverless towing vehicle — circuit diagram` |
+| Title | `AGV I-PRIME driverless towing vehicle — circuit diagram` |
 | Document type | Circuit diagram (`&EFS`) |
 | Page description | One line, for example "Safety circuit: E-stop and scanners" |
 | Page / of | `41` / total pages |
@@ -71,10 +71,8 @@ Pages are numbered in groups, so pages can be inserted without renumbering every
 
 - **Numbering:** sequential within each class across the whole vehicle: `-SJ1`, `-SJ2`, … Do not restart per location.
 - **Terminals:** IEC 61666, `tag:terminal`:
-  - `-KE2:I5` is terminal I5 of the safety controller I/O module;
-  - `-XD1:43` is terminal 43 of strip XD1.
-- **Terminal strip:** the old TB numbers keep their number on one strip: **TBnn → `-XD1:nn`**. TB43 becomes `-XD1:43`. This keeps the physical terminal labels nearly unchanged.
-  - Splitting into strips by voltage or signal type (for example `-XD1` 48 V, `-XD2` 24 V, `-XG1` signals) is common practice, but it would renumber everything. Not now.
+  - `-KE2:I5` is terminal I5 of the safety controller I/O module.
+- **No terminal strip (decided 2026-10-31):** the old TB numbers are not drawn. The vehicle carries no matching terminal numbers, so drawing them would confuse an assessor comparing drawing and vehicle. Wires are identified by the potential or signal name on their wire markers (1P24, HWTO1, DI03). A separate assembly wiring diagram will follow.
 - **Full tag on the sheet:** written next to the symbol, with its type and rating underneath. For example:
 
   ```

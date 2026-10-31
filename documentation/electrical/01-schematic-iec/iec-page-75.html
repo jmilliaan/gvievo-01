@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 75</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from PROJECT.cables in data/project.js.
+  IEC.page(75, s => {
+    s.text(30, 24, 'Cables: power (-WD) and control / data (-WG)', { size: 3, weight: 600 });
+    s.table(30, 30, [
+      { w: 18, title: 'Tag', mono: true },
+      { w: 62, title: 'Type' },
+      { w: 34, title: 'Cores × size' },
+      { w: 54, title: 'From', mono: true },
+      { w: 54, title: 'To', mono: true },
+      { w: 22, title: 'Pages', mono: true },
+      { w: 20, title: 'Length' },
+    ], PROJECT.cables, { size: 2.3, rowH: 6.2, headH: 6.6 });
+
+    s.note(300, 34, [
+      'Notes',
+      '1. Single-core panel wiring is not',
+      '   listed: AWG22 blue (control, safety)',
+      '   and NYAF black (48 V) inside +EB and',
+      '   to the front panel +FR. It is',
+      '   identified by the potential or signal',
+      '   name on each wire marker (page 3).',
+      '2. Lengths are to be measured on the',
+      '   built vehicle.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

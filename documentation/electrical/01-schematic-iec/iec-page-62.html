@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 62</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from PROJECT.io in data/project.js.
+  IEC.page(62, s => {
+    const d = PROJECT.devices.find(r => r[0] === '-KE4') || [];
+    s.text(30, 24, `-KE4  ${d[3] || ''} — ${d[1] || 'I/O module'} (+EB)`, { size: 3, weight: 600 });
+    const end = s.table(30, 30, [
+      { w: 24, title: 'Channel', mono: true },
+      { w: 30, title: 'Signal', mono: true },
+      { w: 32, title: 'Device' },
+      { w: 112, title: 'Function' },
+      { w: 16, title: 'Page', mono: true },
+    ], PROJECT.io, { size: 2.3, rowH: 6.2, headH: 6.6, grey: r => /^spare/.test(r[3]) ? '#777' : null });
+
+    s.note(30, end + 10, [
+      'Input commons',
+      'DI00 … DI07: common COM0 = 1P24. An input is active when it is switched to 1N24.',
+      'DI08 … DI0F: common COM1 = 1N24. An input is active when it is switched to 1P24.',
+    ], { head: true, lh: 4 });
+  });
+</script>
+</body>
+</html>

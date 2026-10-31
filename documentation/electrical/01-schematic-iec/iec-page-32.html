@@ -17,9 +17,9 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // 12 V supply. source: ../01-schematic/proj01-sheet-05.html (MCB-05 → -FC4, TB29–TB32 → -XD1).
+  // 12 V supply. source: ../01-schematic/proj01-sheet-05.html (MCB-05 → -FC4).
   IEC.page(32, s => {
-    const P = 40, N = 50, R1 = 70, R2 = 78, XD = 110, BOX = 160;
+    const P = 40, N = 50, R1 = 70, R2 = 78, BOX = 160;
     s.fromTop(P, 30, 'P12', '/20.8'); s.fromTop(N, 30, 'N12', '/20.8');
     s.line(P, 30, P, R1); s.line(N, 30, N, R2);
     s.rail(R1, P, 190, '1P12', '', false);
@@ -37,8 +37,6 @@
       ['-BG4', 'RFID reader', 'navigation feature', 'Ethernet /11']);
 
     s.breaker([P, N], 48, '-FC4', '2P 10 A DC');
-    s.terminals([[100, 29], [110, 30]], XD, '-XD1');
-    s.terminals([[190, 31], [200, 32]], XD, '-XD1');
     s.cable([100, 110], 135, '-WD11', 'IPC power cable');
     s.cable([190, 200], 135, '-WD12', 'RFID power cable');
 
@@ -46,8 +44,8 @@
       'Notes',
       '1. 1N12 is joined to 1N24 at the converter',
       '   outputs (page 20).',
-      '2. Control wiring AWG22 (0.34 mm²) blue to',
-      '   the terminals (page 3).',
+      '2. Control wiring AWG22 (0.34 mm²) blue',
+      '   (page 3).',
       '3. All devices in +EB unless boxed.',
     ], { head: true });
   });

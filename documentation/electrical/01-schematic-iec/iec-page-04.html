@@ -40,8 +40,8 @@
       (x, y) => { vline(x + 4, y); s.operator([s.contactV(x + 4, y, 'no')], 'turn'); });
     cell(5, 'Circuit breaker', ['IEC 60617 S00287. Poles linked', 'by a dashed line'],
       (x, y) => { [x - 4, x + 2].forEach(xx => vline(xx, y)); s.breaker([x - 4, x + 2], y, '', ''); });
-    cell(6, 'Terminal of a terminal strip', ['Strip tag left, terminal number right'],
-      (x, y) => { vline(x + 4, y); s.terminal(x + 4, y, '-XD1', 43); });
+    cell(6, 'Wire marker', ['Potential or signal name printed on', 'the wire marker, written along the wire'],
+      (x, y) => { vline(x + 4, y); s.wl(x + 4, y, 'HWTO1'); });
     cell(7, 'Junction / crossing', ['Dot = connected. Crossing without', 'a dot = not connected'],
       (x, y) => {
         s.line(x - 8, y - 4, x + 8, y - 4, 0.3); s.line(x - 2, y - 9, x - 2, y + 9, 0.3); s.dot(x - 2, y - 4);

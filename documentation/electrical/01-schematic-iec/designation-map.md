@@ -57,7 +57,7 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | `+PD-SJ6` | PENDANT FORWARD | Pendant button, NO → `-KE4:DI03` | +PD | SH.09 | N | |
 | `+PD-SJ7` | PENDANT REVERSE | Pendant button, NO → `-KE4:DI04` | +PD | SH.09 | N | |
 | `+PD-SJ8` | PENDANT LEFT | Pendant button, NO → `-KE4:DI05` | +PD | SH.09 | N | |
-| `+PD-SJ9` | PENDANT RIGHT | Pendant button, NO → `-KE4:DI06` | +PD | SH.09 | N | Common return through one terminal (TB64) |
+| `+PD-SJ9` | PENDANT RIGHT | Pendant button, NO → `-KE4:DI06` | +PD | SH.09 | N | Common return on one wire (old TB64) |
 | `+VH-PJ1` | AUDIO HORN 01 | Audio horn PATLITE. Sound 1 (DO0) = movement, sound 2 (DO1) = alarm | +VH **[confirm]** | 0315 | N | Software-driven warning device |
 | `+FR-PH1` | DISPLAY | Display, 24 V barrel jack | +FR **[confirm]** | 0402 | N | |
 
@@ -75,8 +75,8 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | `+EB-GQ1` | FAN 01 | Fan NMB-MAT, 24 V | +EB | 0408 | N | **[verify]** GQ for fans |
 | `+EB-GQ2` | FAN 02 | Fan NMB-MAT, 24 V | +EB | SH.04 | N | |
 | `+EB-GQ3` | FAN 03 | Fan NMB-MAT, 24 V | +EB | SH.04 | N | |
-| `+EB-XD1` | TB01 – TB72 | Terminal strip; terminal nn = old TBnn | +EB | all | Y (terminals 43–54: STO / EDM) | See `conventions.md` section 4 |
-| `+EB-XE1` | PE | PE / chassis earth point | +EB | — | N | Not drawn on the current sheets **[confirm]** |
+| — | TB01 – TB72 | Not drawn (owner decision, 2026-10-31): wires are identified by their wire markers | +EB | all | — | See `conventions.md` section 4 |
+| `+EB-XE1` | PE | PE / chassis earth point | +EB | — | N | Drawn on page 21; its physical position is not documented (owner decision, 2026-10-31) |
 
 ## Cables (to be numbered from the cable list)
 

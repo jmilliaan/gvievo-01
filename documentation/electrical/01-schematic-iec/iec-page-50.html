@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 50</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Motor driver control connector. source: ../01-schematic/proj01-sheet-07.html (BLVD-KRD 28-pin
+  // pinout, jumpers 11–25 / 12–26 / 13–27 removed).
+  // [pin, signal, connected to, wire marker, page]; no connection = only pin and signal
+  const PINS = [
+    [1, 'OUT0+'], [2, 'OUT0−'], [3, 'OUT1+'], [4, 'OUT1−'],
+    [5, 'CAN_L', 'CAN L', 'CAN L', '51'],
+    [6, 'CAN_H', 'CAN H', 'CAN H', '51'],
+    [7, 'CAN_GND', 'CAN GND', 'CAN GND', '51'],
+    [8, '485GND'], [9, 'TR+'], [10, 'TR−'],
+    [11, 'HWTO1+', '-KE2:Q1 (STO channel 1)', 'HWTO1', '42'],
+    [12, 'HWTO1−', '1N24', '1N24', '42'],
+    [13, '0V'],
+    [14, 'EDM−', '-KE2:I3 (left) / I4 (right)', 'EDM-L / EDM-R', '42'],
+    [15, 'IN-COM'], [16, 'IN0'], [17, 'IN1'], [18, 'IN2'], [19, 'IN3'],
+    [20, 'NET-VIN', '1P24', '1P24', '31'],
+    [21, 'NET-GND', '1N24', '1N24', '31'],
+    [22, '485GND'], [23, 'TR+'], [24, 'TR−'], [25, '+V'],
+    [26, 'HWTO2+', '-KE2:Q2 (STO channel 2)', 'HWTO2', '42'],
+    [27, 'HWTO2−', '1N24', '1N24', '42'],
+    [28, 'EDM+', '1P24', '1P24', '42'],
+  ];
+  const JUMPERS = [[11, 25], [12, 26], [13, 27]];
+
+  IEC.page(50, s => {
+    /* ---- connector face ---- */
+    const CX0 = 40, PITCH = 6.5, RY = [36, 47];
+    const px = n => CX0 + PITCH * ((n - 1) % 14), py = n => RY[n > 14 ? 1 : 0];
+    s.text(30, 24, 'BLVD-KRD control connector, 28 pins (same on -TA1 and -TA2), view on the driver', { size: 3, weight: 600 });
+    s.rect(34, 30, 97, 23, 0.35);
+    JUMPERS.forEach(([a, b]) => s.line(px(a), py(a) + 1.5, px(b), py(b) - 1.5, 0.3, '0.9 0.7'));
+    PINS.forEach(p => { s.ring(px(p[0]), py(p[0]), 1.4); if (p[2]) s.dot(px(p[0]), py(p[0]), 0.7); });
+    [1, 7, 14].forEach(n => s.text(px(n), 28.5, String(n), { size: 2.2, mono: true, anchor: 'middle' }));
+    [15, 21, 28].forEach(n => s.text(px(n), 57.5, String(n), { size: 2.2, mono: true, anchor: 'middle' }));
+    s.dot(140, 34, 0.7); s.text(143, 35, '= wired pin', { size: 2.3 });
+    s.line(138, 41, 142, 41, 0.3, '0.9 0.7'); s.text(143, 42, '= factory jumper, removed', { size: 2.3 });
+
+    /* ---- pin tables ---- */
+    const cols = [
+      { w: 11, title: 'Pin', mono: true, align: 'right' }, { w: 22, title: 'Signal', mono: true },
+      { w: 72, title: 'Connected to' }, { w: 38, title: 'Wire marker', mono: true },
+      { w: 14, title: 'Page', mono: true },
+    ];
+    const rows = PINS.map(p => p[2] ? [String(p[0]), p[1], p[2], p[3], p[4]] : [String(p[0]), p[1], '—', '', '']);
+    const O = { size: 2.3, rowH: 6.6, headH: 7, grey: r => (r[2] === '—' ? '#8a8f98' : null) };
+    s.table(30, 66, cols, rows.slice(0, 14), O);
+    s.table(218, 66, cols, rows.slice(14), O);
+
+    s.note(30, 175, [
+      'Notes',
+      '1. Factory jumpers 11–25, 12–26 and 13–27 are removed on both drivers: the hardwired torque-off (HWTO) inputs are driven by the safety controller (page 42).',
+      '2. Grey pins are not connected. The drivers take no commands on their digital inputs; motion is commanded over CAN only (page 51).',
+      '3. Driver power: Oriental Motor cable LC03D06A (page 21). Motor and encoder: Oriental Motor cable CCM010B1AAF (page 21).',
+      '4. Driver parameters (CANopen node ID, ramps, limits): separate parameter list «DOC-NO».',
+    ], { head: true, lh: 4.2 });
+  });
+</script>
+</body>
+</html>

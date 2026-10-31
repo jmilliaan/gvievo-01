@@ -17,13 +17,13 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // Safe torque off and feedback. source: ../01-schematic/proj01-sheet-07.html (pins, TB43–TB54,
+  // Safe torque off and feedback. source: ../01-schematic/proj01-sheet-07.html (pins,
   // jumpers removed) and sheet 08 (Q1/Q2, I3/I4). Q3 spare (owner, 2026-10-30).
   IEC.page(42, s => {
-    const R1 = 26, R2 = 33, XD = 170, DB = 195;
+    const R1 = 26, R2 = 33, DB = 195;
     const D = [
-      { tag: '-TA1', side: 'left', x1: 40, x2: 195, pins: [50, 72, 94, 140, 160, 180], xd: [43, 46, 45, 44, 47, 48] },
-      { tag: '-TA2', side: 'right', x1: 220, x2: 375, pins: [230, 252, 274, 320, 340, 360], xd: [49, 52, 51, 50, 53, 54] },
+      { tag: '-TA1', side: 'left', x1: 40, x2: 195, pins: [50, 72, 94, 140, 160, 180] },
+      { tag: '-TA2', side: 'right', x1: 220, x2: 375, pins: [230, 252, 274, 320, 340, 360] },
     ];
     const PIN = [['11', 'HWTO1+'], ['26', 'HWTO2+'], ['14', 'EDM−'], ['12', 'HWTO1−'], ['27', 'HWTO2−'], ['28', 'EDM+']];
 
@@ -50,7 +50,6 @@
     D.forEach(d => {
       s.module(d.x1, d.x2, DB, 34, d.pins.map((x, k) => ({ x, name: PIN[k][0], sub: PIN[k][1] })),
         [d.tag, `Motor driver BLVD-KRD, ${d.side} · control connector (page 50)`, 'Factory jumpers 11–25, 12–26, 13–27 removed']);
-      s.terminals(d.pins.map((x, k) => [x, d.xd[k]]), XD, '-XD1');
     });
 
     s.note(192, 44, [
@@ -58,7 +57,7 @@
       '1. SF1, SF2: Q1 and Q2 switch off → torque removed on both drivers (STO).',
       '2. Driver HWTO: PL d, Cat. 3, PFHd 2.90 × 10⁻⁷ /h per driver (maker data).',
       '3. EDM: -KE2 checks that torque is really off (I3 left, I4 right).',
-      '4. Bridges on the strip: -XD1:43–49 and 46–52 (drawn as junctions).',
+      '4. HWTO1 and HWTO2 are looped from -TA1 to -TA2 (junctions).',
       '5. Q3, Q4 spare. Test pulses on Q1, Q2: «configuration report».',
       '6. Wiring AWG22 (0.34 mm²) blue. All devices in +EB.',
     ], { head: true, size: 2.3, lh: 3.9 });

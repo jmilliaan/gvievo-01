@@ -17,9 +17,9 @@
 <script src="../kit/iec-sheet.js"></script>
 <script src="data/project.js"></script>
 <script>
-  // 24 V control supply, part 2. source: ../01-schematic/proj01-sheet-04.html (TB15–TB24 → -XD1).
+  // 24 V control supply, part 2. source: ../01-schematic/proj01-sheet-04.html.
   IEC.page(31, s => {
-    const R1 = 28, R2 = 36, XD = 80, BOX = 140;
+    const R1 = 28, R2 = 36, BOX = 140;
     s.rail(R1, 25, 400, '1P24', '/30.9', '/40');
     s.rail(R2, 25, 400, '1N24', '/30.9', '/40');
 
@@ -28,7 +28,7 @@
       s.line(xn, R2, xn, yEnd); s.dot(xn, R2);
     };
     pair(45, 55, BOX);                                  // -PH1
-    pair(100, 110, BOX);                                // -BG3
+    pair(104, 114, BOX);                                // -BG3
     pair(150, 160, BOX);                                // -GQ1 (and the fan bus)
     pair(300, 316, BOX);                                // -TA1 network supply
     pair(350, 366, BOX);                                // -TA2 network supply
@@ -42,17 +42,15 @@
     s.locationBox(34, 126, 57, 50, '+FR', '');
     s.module(40, 88, BOX, 26, [{ x: 45, name: '+' }, { x: 55, name: '−' }], ['-PH1', 'Display']);
     s.locationBox(94, 126, 49, 50, '+VH', '');
-    s.module(96, 140, BOX, 26, [{ x: 100, name: '+24V' }, { x: 110, name: '0V' }], ['-BG3', 'Line sensor', 'CAN /51']);
+    s.module(96, 140, BOX, 26, [{ x: 104, name: '+24V' }, { x: 114, name: '0V' }], ['-BG3', 'Line sensor', 'CAN /51']);
     [['-GQ1', 145, 150, 160], ['-GQ2', 190, 195, 205], ['-GQ3', 235, 240, 250]].forEach(([t, x, a, b]) =>
       s.module(x, x + 40, BOX, 26, [{ x: a, name: '+' }, { x: b, name: '−' }], [t, 'Fan NMB-MAT']));
     s.module(290, 327, BOX, 30, [{ x: 300, name: '20', sub: 'VIN' }, { x: 316, name: '21', sub: 'GND' }], ['-TA1', 'network']);
     s.module(340, 377, BOX, 30, [{ x: 350, name: '20', sub: 'VIN' }, { x: 366, name: '21', sub: 'GND' }], ['-TA2', 'network']);
 
-    /* ---- terminals, cables ---- */
-    [[[45, 15], [55, 16]], [[100, 17], [110, 18]], [[150, 19], [160, 20]], [[300, 21], [316, 22]], [[350, 23], [366, 24]]]
-      .forEach(g => s.terminals(g, XD, '-XD1'));
+    /* ---- cables ---- */
     s.cable([45, 55], 100, '-WD10', 'Display power cable');
-    s.cable([100, 110], 92, '-WG2', 'SICK MLSE cable');
+    s.cable([104, 114], 92, '-WG2', 'SICK MLSE cable');
 
     s.note(30, 195, [
       'Notes',

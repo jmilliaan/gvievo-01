@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 61</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // I/O module outputs. source: ../01-schematic/proj01-sheet-09.html (DO0/DO1 → horn, commons TB66–TB69)
+  // and agv_core/config.py (DO0 movement sound, DO1 alarm sound, DO8 switched with motion).
+  IEC.page(61, s => {
+    const MT = 40, MB = 70, R1 = 215, R2 = 222;
+    const O = { DO0: 60, DO1: 80, C01: 100, DO2: 130, DO3: 145, C23: 160, DO4: 185, DO5: 200, C45: 215, DO6: 240, DO7: 255, C67: 270 };
+
+    s.rail(R1, 25, 300, '1P24', '/60', false);
+    s.rail(R2, 25, 300, '1N24', '/60', false);
+
+    /* ---- conductors ---- */
+    s.line(O.DO0, MB, O.DO0, 150); s.line(O.DO1, MB, O.DO1, 150);
+    s.line(O.C01, MB, O.C01, R2); s.dot(O.C01, R2);
+    s.line(O.C23, MB, O.C23, R1); s.dot(O.C23, R1);
+    s.line(O.C45, MB, O.C45, R2); s.dot(O.C45, R2);
+    s.line(O.C67, MB, O.C67, R2); s.dot(O.C67, R2);
+
+    /* ---- I/O module ---- */
+    const lab = { C01: 'C', C23: 'C', C45: 'C', C67: 'C' };
+    s.module(40, 290, MT, MB - MT, Object.entries(O).map(([k, x]) => ({ x, name: lab[k] || k })),
+      ['-KE4', 'CK-EC5163 I/O module, relay outputs: each output closes to the common C of its pair'], { edge: 'bottom' });
+
+    /* ---- horn (+VH) ---- */
+    s.locationBox(35, 140, 61, 56, '+VH', '');
+    s.module(40, 92, 150, 40, [{ x: O.DO0, name: 'S1' }, { x: O.DO1, name: 'S2' }],
+      ['-PJ1', 'Horn PATLITE', 'S1 movement, S2 alarm', 'supply /30.7, COM = 0V']);
+
+
+    s.note(300, 44, [
+      'Notes',
+      '1. DO0, sound 1 (movement): on while',
+      '   the wheels turn, in every mode.',
+      '2. DO1, sound 2 (alarm): 2 s after START',
+      '   before moving, and while a scanner',
+      '   field is occupied in AUTO. Sound 1 is',
+      '   off while sound 2 plays.',
+      '3. The horn is software-driven, not a',
+      '   safety function.',
+      '4. DO2 … DO7 spare; commons wired.',
+      '   DO8 … DOB not wired. The software also',
+      '   switches DO8 with motion: free output',
+      '   for a warning lamp.',
+      '5. Wiring AWG22 blue. All in +EB',
+      '   unless boxed.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

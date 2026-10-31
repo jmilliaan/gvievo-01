@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 80</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Generated from PROJECT.devices in data/project.js.
+  IEC.page(80, s => {
+    s.text(30, 24, 'Parts list: all devices shown in this circuit diagram', { size: 3, weight: 600 });
+    s.table(30, 29, [
+      { w: 16, title: 'Tag', mono: true },
+      { w: 86, title: 'Description' },
+      { w: 28, title: 'Maker' },
+      { w: 38, title: 'Part number', mono: true },
+      { w: 34, title: 'Rating' },
+      { w: 20, title: 'Location', mono: true },
+      { w: 26, title: 'Pages', mono: true },
+      { w: 16, title: 'Safety' },
+    ], PROJECT.devices, { size: 2.3, rowH: 5.8, headH: 6.4 });
+
+    s.note(304, 33, [
+      'Notes',
+      'Safety = Y: the part carries a safety',
+      'function (see page 44, SF1 … SF5).',
+      'Values in red are placeholders or',
+      'uncertain; fill them before issue.',
+    ], { head: true });
+  });
+</script>
+</body>
+</html>

@@ -21,8 +21,8 @@
   // CPU fed in parallel with the XTIO module) and io-mapping.md section 2.
   IEC.page(43, s => {
     const A1 = 60, A2 = 110, K2A1 = 200, K2A2 = 250, YM = 100;
-    s.fromTop(A1, 40, '1P24 · -XD1:11', '/30.4');
-    s.fromTop(A2, 40, '1N24 · -XD1:12', '/30.4');
+    s.fromTop(A1, 40, '1P24', '/30.4');
+    s.fromTop(A2, 40, '1N24', '/30.4');
     s.line(A1, 40, A1, YM); s.dot(A1, 70); s.line(A1, 70, K2A1, 70); s.line(K2A1, 70, K2A1, YM);
     s.line(A2, 40, A2, YM); s.dot(A2, 78); s.line(A2, 78, K2A2, 78); s.line(K2A2, 78, K2A2, YM);
 

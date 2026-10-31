@@ -67,7 +67,7 @@ Pages 30 and 31 may fit on one A3 page.
 
 | Page | Content | Source | Kind |
 | --- | --- | --- | --- |
-| 70–71 | Terminal diagram `-XD1`: terminal, internal target, external target, cable and core, size, potential, page | new, from the TB numbers on all sheets | &MA |
+| ~~70–71~~ | ~~Terminal diagram `-XD1`~~: removed 2026-10-31 (no terminal strip drawn). A separate assembly wiring diagram will follow | — | — |
 | 75 | Cable overview: tag, type, cores × size, shield, length, from, to, page | `proj01-cable-labels.xlsx` | &MB |
 
 ## Lists (80–89)

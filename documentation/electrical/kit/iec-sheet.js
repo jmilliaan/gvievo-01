@@ -33,9 +33,12 @@
 
     // Text defaults for IEC sheets: sans, 2.5 mm. { mono: true } for terminal numbers and codes.
     // { fill } greys out normal text; review markers ('?', '«…»') stay red.
+    // { maxw } squeezes the text to that width (mm) once the fonts have loaded (see fit()).
+    // Sizes are multiplied by this.textScale (TEXT_SCALE unless the page sets its own).
     text(x, y, s, o = {}) {
       const t = JIS.Sheet.prototype.text.call(this, x, y, s, Object.assign({ size: 2.5 }, o, { sans: !o.mono }));
       if (t && o.fill && t.getAttribute('fill') === INK) t.setAttribute('fill', o.fill);
+      if (t && o.maxw) t.dataset.maxw = o.maxw;
       return t;
     },
 
@@ -112,8 +115,9 @@
     // Interruption point at the lower end of a vertical conductor: arrow, target and reference
     offDown(x, y, target, ref) {
       this.path(`M${x - 0.9} ${y - 1.8} L${x + 0.9} ${y - 1.8} L${x} ${y} Z`, 0.1, INK);
-      this.text(x, y + 3.4, target, { size: 2.3, anchor: 'middle' });
-      if (ref) this.text(x, y + 6.4, ref, { size: 2.3, anchor: 'middle', mono: true });
+      const k = this.textScale;
+      this.text(x, y + 3.4 * k, target, { size: 2.3, anchor: 'middle' });
+      if (ref) this.text(x, y + 6.6 * k, ref, { size: 2.3, anchor: 'middle', mono: true });
     },
 
     // Horizontal potential rail: name and source left, continuation arrow and target right.
@@ -121,7 +125,7 @@
     rail(y, x1, x2, name, fromRef, toRef) {
       this.line(x1, y, x2, y, 0.35);
       this.text(x1 + 1, y - 1.2, name, { size: 2.5, weight: 600 });
-      if (fromRef) this.text(x1 + 1 + name.length * 1.7 + 3, y - 1.2, fromRef, { size: 2.2, mono: true });
+      if (fromRef) this.text(x1 + 1 + name.length * 1.55 * this.textScale + 1.8, y - 1.2, fromRef, { size: 2.2, mono: true });
       if (toRef === false) return;
       this.path(`M${x2} ${y - 0.9} L${x2 + 1.8} ${y} L${x2} ${y + 0.9} Z`, 0.1, INK);
       if (toRef) this.text(x2 - 1, y - 1.2, toRef, { size: 2.2, mono: true, anchor: 'end' });
@@ -132,15 +136,15 @@
     // label = lines written inside: first line (the tag) bold.
     module(x1, x2, y, h, terms, label, o = {}) {
       this.rect(x1, y, x2 - x1, h, 0.35);
-      const bottom = o.edge === 'bottom', ey = bottom ? y + h : y;
+      const bottom = o.edge === 'bottom', ey = bottom ? y + h : y, k = this.textScale;
       terms.forEach(t => {
         this.dot(t.x, ey, 0.5);
-        const ty = bottom ? ey - 2.2 : ey + 4;
+        const ty = bottom ? ey - 2.2 : ey + 4 * k;
         this.text(t.x, ty, t.name, { size: 2.4, mono: true, anchor: 'middle', weight: 600 });
-        if (t.sub) this.text(t.x, bottom ? ty - 3.3 : ty + 3.3, t.sub, { size: 2, anchor: 'middle' });
+        if (t.sub) this.text(t.x, bottom ? ty - 3.3 * k : ty + 3.3 * k, t.sub, { size: 2, anchor: 'middle' });
       });
-      const ly = bottom ? y + 5 : y + (terms.some(t => t.sub) ? 13.5 : 10);
-      (label || []).forEach((t, i) => this.text(x1 + 3, ly + 4.2 * i, t,
+      const ly = bottom ? y + 5 * k : y + (terms.some(t => t.sub) ? 13.5 : 10) * k;
+      (label || []).forEach((t, i) => this.text(x1 + 3, ly + 4.2 * k * i, t,
         { size: i === 0 ? 3 : 2.4, weight: i === 0 ? 600 : 500 }));
     },
 
@@ -157,14 +161,14 @@
       if (xs.length > 1) this.line(xs[0] - 1.3, y, xs[xs.length - 1] - 1.3, y, 0.22, '0.9 0.6');
       const xr = xs[xs.length - 1] + 2.5;
       this.text(xr, y - 0.6, tag, { size: 3, weight: 600 });
-      if (rating) this.text(xr, y + 3, rating, { size: 2.3 });
+      if (rating) this.text(xr, y + 3 * this.textScale, rating, { size: 2.3 });
     },
 
     // Plain box with centred lines (overview blocks, third-party devices). First line bold.
     box(x, y, w, h, lines, o = {}) {
       this.rect(x, y, w, h, o.sw || 0.35);
-      const top = y + h / 2 - 2.1 * (lines.length - 1) + 0.9;
-      lines.forEach((t, i) => this.text(x + w / 2, top + 4.2 * i, t,
+      const k = this.textScale, top = y + h / 2 - 2.1 * k * (lines.length - 1) + 0.9 * k;
+      lines.forEach((t, i) => this.text(x + w / 2, top + 4.2 * k * i, t,
         { size: i === 0 ? (o.size1 || 2.8) : (o.size || 2.3), weight: i === 0 ? 600 : 500, anchor: 'middle' }));
     },
 
@@ -205,13 +209,14 @@
       this.line(x1 + 1.2, y, x2 - 1.2, y, 0.22);
       this.line(x2 - 1.2, y, x2, y - 1.2, 0.22);
       this.text(x2 + 1.2, y - 0.4, tag, { size: 2.4, weight: 600 });
-      if (spec) this.text(x2 + 1.2, y + 3, spec, { size: 2.1 });
+      if (spec) this.text(x2 + 1.2, y + 3 * this.textScale, spec, { size: 2.1 });
     },
 
     // Interruption point at the upper start of a vertical conductor: source and reference above
     fromTop(x, y, source, ref) {
       this.path(`M${x - 0.9} ${y - 1.8} L${x + 0.9} ${y - 1.8} L${x} ${y} Z`, 0.1, INK);
-      this.text(x, y - 6.4, source, { size: 2.3, anchor: 'middle' });
+      const k = this.textScale;
+      this.text(x, y - 3.2 - (ref ? 3.2 * k : 0), source, { size: 2.3, anchor: 'middle' });
       if (ref) this.text(x, y - 3.2, ref, { size: 2.3, anchor: 'middle', mono: true });
     },
 
@@ -224,20 +229,22 @@
     },
 
     // Wire label (potential or signal name) written along a vertical conductor
-    wl(x, y, t) { this.text(x + 1.3, y, t, { size: 2.1, mono: true, rotate: -90 }); },
+    // (rotated -90°, so the letters stand left of the baseline: keep the baseline clear of the wire)
+    wl(x, y, t) { this.text(x + 0.8 + 1.6 * this.textScale, y, t, { size: 2.1, mono: true, rotate: -90 }); },
 
     // Location box (dash-dot) around devices that sit in one location, label top-left
     locationBox(x, y, w, h, code, name) {
       el('rect', { x, y, width: w, height: h, fill: 'none', stroke: INK, 'stroke-width': 0.25,
         'stroke-dasharray': '4 1 0.8 1' }, this.svg);
       this.text(x + 1.5, y + 3.6, code, { size: 2.8, weight: 600 });
-      if (name) this.text(x + 1.5 + code.length * 2.1 + 2, y + 3.6, name, { size: 2.3 });
+      if (name) this.text(x + 1.5 + code.length * 2.1 * this.textScale + 2, y + 3.6, name, { size: 2.3 });
     },
 
     // Device label: tag (bold) then description lines
     label(x, y, tag, lines = [], anchor = 'start') {
       this.text(x, y, tag, { size: 3, weight: 600, anchor });
-      lines.forEach((t, i) => this.text(x, y + 3.9 + 3.3 * i, t, { size: 2.3, anchor }));
+      const k = this.textScale;
+      lines.forEach((t, i) => this.text(x, y + (3.9 + 3.3 * i) * k, t, { size: 2.3, anchor }));
     },
 
     // Simple table. cols = [{ w, title, mono?, align? }], rows = arrays of cell text.
@@ -251,7 +258,7 @@
       let cx = x;
       cols.forEach((c, i) => {
         if (i) this.line(cx, y, cx, y + H, 0.15);
-        this.text(cx + 1.5, y + hh - 2.2, c.title, { size, weight: 600 });
+        this.text(cx + 1.5, y + hh - 2.2, c.title, { size, weight: 600, maxw: c.w - 2.5 });
         cx += c.w;
       });
       rows.forEach((r, ri) => {
@@ -263,7 +270,7 @@
           if (v !== '' && v != null) {
             const right = c.align === 'right';
             this.text(right ? rx + c.w - 1.5 : rx + 1.5, ry + rh - 1.9, v,
-              { size, mono: !!c.mono, anchor: right ? 'end' : 'start', fill: o.grey && o.grey(r) });
+              { size, mono: !!c.mono, anchor: right ? 'end' : 'start', fill: o.grey && o.grey(r), maxw: c.w - 2.5 });
           }
           rx += c.w;
         });
@@ -273,7 +280,7 @@
 
     // Free note block, one string per line
     note(x, y, lines, o = {}) {
-      lines.forEach((t, i) => this.text(x, y + (o.lh || 3.6) * i, t, { size: o.size || 2.3, weight: i === 0 && o.head ? 600 : 500 }));
+      lines.forEach((t, i) => this.text(x, y + (o.lh || 3.6) * this.textScale * i, t, { size: o.size || 2.3, weight: i === 0 && o.head ? 600 : 500 }));
     },
   };
 
@@ -304,6 +311,7 @@
     bx.slice(1, -1).forEach(x => s.line(x, y0, x, y1, 0.3));
     const cap = (x, y, t) => s.text(x + 1.2, y + 2.6, t, { size: 1.8, fill: '#555' });
     const val = (x, y, t, o = {}) => s.text(x + 1.2, y + rh - 1.6, t, Object.assign({ size: 2.6 }, o));
+    const w = i => bx[i + 1] - bx[i] - 3;
 
     // block 1: revision table
     const rev = doc.revisions || [];
@@ -314,38 +322,38 @@
     rev.slice(-3).forEach((r, i) => {
       const yy = y0 + rh * (i + 2) - 2.2;
       s.text(bx[0] + 1.2, yy, r.rev, { size: 2.2 });
-      s.text(bx[0] + 1.2 + RC[1], yy, r.change, { size: 2.2 });
+      s.text(bx[0] + 1.2 + RC[1], yy, r.change, { size: 2.2, maxw: RC[2] - RC[1] - 2.4 });
       s.text(bx[0] + 1.2 + RC[2], yy, r.date, { size: 2.0, mono: true });
       s.text(bx[0] + 1.2 + RC[3], yy, r.name, { size: 2.2 });
     });
 
     // block 2: legal owner
     cap(bx[1], y0, 'Legal owner');
-    s.text(bx[1] + 3, y0 + 13, doc.owner, { size: 4, weight: 600 });
-    (doc.ownerLines || []).forEach((t, i) => s.text(bx[1] + 3, y0 + 19 + 3.4 * i, t, { size: 2.3 }));
+    s.text(bx[1] + 3, y0 + 13, doc.owner, { size: 4, weight: 600, maxw: w(1) - 3 });
+    (doc.ownerLines || []).forEach((t, i) => s.text(bx[1] + 3, y0 + 19 + 3.4 * s.textScale * i, t, { size: 2.3, maxw: w(1) - 3 }));
 
     // block 3: date / created / checked / approved
     [['Date of issue', doc.date], ['Created by', doc.created], ['Checked by', doc.checked], ['Approved by', doc.approved]]
       .forEach(([c, v], i) => {
         if (i) s.line(bx[2], y0 + rh * i, bx[3], y0 + rh * i, 0.12);
-        cap(bx[2], y0 + rh * i, c); val(bx[2], y0 + rh * i, v, { size: 2.4 });
+        cap(bx[2], y0 + rh * i, c); val(bx[2], y0 + rh * i, v, { size: 2.4, maxw: w(2) });
       });
 
     // block 4: title, document type, page description
     cap(bx[3], y0, 'Title');
-    s.text(bx[3] + 2, y0 + 8.4, doc.title, { size: 3.4, weight: 600 });
+    s.text(bx[3] + 2, y0 + 8.4, doc.title, { size: 3.4, weight: 600, maxw: w(3) });
     s.line(bx[3], y0 + rh * 1.5, bx[4], y0 + rh * 1.5, 0.12);
     cap(bx[3], y0 + rh * 1.5, 'Document type');
     s.text(bx[3] + 2, y0 + rh * 1.5 + 6.6, doc.type, { size: 2.6 });
     s.line(bx[3], y0 + rh * 2.5, bx[4], y0 + rh * 2.5, 0.25);
     cap(bx[3], y0 + rh * 2.5, 'Page description');
-    s.text(bx[3] + 2, y0 + rh * 4 - 2.4, m.description, { size: 3.6, weight: 600 });
+    s.text(bx[3] + 2, y0 + rh * 4 - 2.4, m.description, { size: 3.6, weight: 600, maxw: w(3) });
 
     // block 5: function / location / document kind / language
     [['Function (=)', m.func || ''], ['Location (+)', m.location || ''], ['Document kind', m.kind || '&EFS'], ['Language', doc.language || 'en']]
       .forEach(([c, v], i) => {
         if (i) s.line(bx[4], y0 + rh * i, bx[5], y0 + rh * i, 0.12);
-        cap(bx[4], y0 + rh * i, c); val(bx[4], y0 + rh * i, v, { size: 2.6, mono: true });
+        cap(bx[4], y0 + rh * i, c); val(bx[4], y0 + rh * i, v, { size: 2.6, mono: true, maxw: w(4) });
       });
 
     // block 6: document number, revision, page, number of pages
@@ -361,6 +369,66 @@
     if (doc.status) s.text(14, G.fy2 - 2, doc.status, { size: 2.6, weight: 600, rotate: -90, fill: '#555' });
   }
 
+  // All text is drawn this much larger than the sizes written in the code (owner, 2026-11-01:
+  // 10-20 % bigger). A page that has no room can pass a smaller textScale to IEC.page().
+  const TEXT_SCALE = 1.2;
+
+  // Squeeze texts marked { maxw } that came out wider than their box (table cells, title block).
+  function fit(svg) {
+    svg.querySelectorAll('text[data-maxw]').forEach(t => {
+      const max = +t.dataset.maxw;
+      if (t.getComputedTextLength() > max) {
+        t.setAttribute('textLength', max);
+        t.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+    });
+  }
+
+  // Layout check (open a page with #check): lists texts that overlap other texts, cross a
+  // line or a box edge, or leave the frame. Written into <pre id="check"> for headless runs.
+  function report(svg) {
+    const inv = svg.getScreenCTM().inverse();
+    const mm = r => {
+      const p = new DOMPoint(r.left, r.top).matrixTransform(inv), q = new DOMPoint(r.right, r.bottom).matrixTransform(inv);
+      return { x1: p.x, y1: p.y, x2: q.x, y2: q.y };
+    };
+    const texts = [...svg.querySelectorAll('text')].map(t => {
+      const b = mm(t.getBoundingClientRect()), rot = t.hasAttribute('transform');
+      const sh = rot ? { x: 0.2 * (b.x2 - b.x1), y: 0.1 } : { x: 0.1, y: 0.2 * (b.y2 - b.y1) };
+      return { s: t.textContent, b: { x1: b.x1 + sh.x, x2: b.x2 - sh.x, y1: b.y1 + sh.y, y2: b.y2 - sh.y } };
+    });
+    const segs = [];
+    svg.querySelectorAll('line').forEach(l => segs.push(['x1', 'y1', 'x2', 'y2'].map(a => +l.getAttribute(a))));
+    svg.querySelectorAll('rect[stroke]').forEach(r => {
+      const x = +r.getAttribute('x'), y = +r.getAttribute('y'), w = +r.getAttribute('width'), h = +r.getAttribute('height');
+      segs.push([x, y, x + w, y], [x, y + h, x + w, y + h], [x, y, x, y + h], [x + w, y, x + w, y + h]);
+    });
+    const hit = (b, [x1, y1, x2, y2]) => {
+      if (x1 === x2) return x1 > b.x1 && x1 < b.x2 && Math.max(y1, y2) > b.y1 && Math.min(y1, y2) < b.y2;
+      if (y1 === y2) return y1 > b.y1 && y1 < b.y2 && Math.max(x1, x2) > b.x1 && Math.min(x1, x2) < b.x2;
+      for (let i = 0; i <= 20; i++) {
+        const x = x1 + (x2 - x1) * i / 20, y = y1 + (y2 - y1) * i / 20;
+        if (x > b.x1 && x < b.x2 && y > b.y1 && y < b.y2) return true;
+      }
+      return false;
+    };
+    const status = ((window.PROJECT || {}).doc || {}).status;
+    const out = [];
+    texts.forEach((a, i) => {
+      const b = a.b, at = `"${a.s}" @${b.x1.toFixed(0)},${b.y2.toFixed(0)}`;
+      if ((b.x1 < G.fx || b.x2 > G.fx2 || b.y1 < G.fy || b.y2 > G.fy2) && a.s !== status) out.push(`frame  ${at}`);
+      texts.slice(i + 1).forEach(c => {
+        const o = c.b;
+        if (b.x1 < o.x2 && o.x1 < b.x2 && b.y1 < o.y2 && o.y1 < b.y2) out.push(`text   ${at}  x  "${c.s}"`);
+      });
+      if (segs.some(sg => hit(b, sg))) out.push(`line   ${at}`);
+    });
+    const pre = document.createElement('pre');
+    pre.id = 'check';
+    pre.textContent = out.join('\n') || 'OK';
+    document.body.appendChild(pre);
+  }
+
   /* ---------------- render + export ---------------- */
   function render(host, spec) {
     if (location.hash === '#bare') document.body.classList.add('bare');
@@ -368,8 +436,12 @@
     el('rect', { x: 0, y: 0, width: G.W, height: G.H, fill: '#fff' }, svg);
     const s = new JIS.Sheet(svg);
     Object.assign(s, SYM);
+    s.textScale = TEXT_SCALE;
     frame(s, spec, spec.page);
+    s.textScale = spec.textScale || TEXT_SCALE;
     spec.draw(s, { G, col });
+    const ready = (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => fit(svg));
+    if (location.hash === '#check') ready.then(() => report(svg));
 
     const status = document.getElementById('status');
     if (s.flags.length) {
