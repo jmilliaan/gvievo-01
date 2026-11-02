@@ -1,0 +1,30 @@
+map_id: kyb-map-01
+revision: 1
+created: 2026-11-02T15:42:19+0700
+frame_id: map
+resolution: 0.05000000074505806
+origin:
+- 54.33651089628703
+- -50.76054995373699
+- 0.0
+width: 1210
+height: 1487
+start:
+  x_m: 90.03788893247435
+  y_m: -27.352176681076696
+  yaw_rad: -0.10194309918666979
+  description: HP-no-tape
+review:
+  dx_m: 0.08994253876561231
+  dy_m: -0.049308610901707794
+  dyaw_rad: -0.017534584916835447
+  note: seams ok
+files:
+  map.pgm: 374c96595f40b677e9fc35e447a1928dc360aa5eea80f03c833c7925926b873b
+  map.yaml: 50d550747bf1d6991ae8a2ddcefd9e0f502ab02e38272f4b0f4a7beba74555c4
+  posegraph.data: 3bc0f3ba8825b7e1c547e1c9e5bac26ea73437d01b5fe12f9c7fbf170273d1ae
+  posegraph.posegraph: 5ad8f221b4bd8c126e17b309516fb430abf040652521a5eb5fd09d467958d2d4
+software:
+  slam: slam_toolbox online_async
+  profile: slam_mapping.yaml
+sha256: 968de91922b3d7e0b81aa78644505401755506fcd7ddce380af9d32bc4f828f2
