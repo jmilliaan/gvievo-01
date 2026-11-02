@@ -384,7 +384,7 @@ The label poses `T_ML` belong to a map revision. They go in a **separate, revisi
     - `spread_xy_m`, `spread_yaw_rad`
     - `note`
 - **Rules:**
-  - exactly one `home`
+  - **at most one** `home`, and at least one label. A map surveyed without a HOME label has none (owner, 2026-11-02); destinations are recorded on it all the same.
   - unique IDs and unique names
   - IDs match `^x\d{4}y\d{4}$`
 - **Functions:** `save_labels`, `load_labels`, `list_labels`. Tests go in `test_route.py`, or in a new `test_labels.py` there.
@@ -411,6 +411,7 @@ It writes a new label-set revision with `method: amcl`, the spread and the date.
 
 - At `_srv_start` (`:263-288`), also average `/gls/reading` over the same stationary window. If HOME is seen, keep `T_LC`.
 - At save, after the bundle is published, write label set rev1 for the new map with `HOME`, `method: survey`. `T_MB(start)` is the start mark itself.
+- **HOME is optional** (owner, 2026-11-02). With no label under the camera at the start mark (none laid, camera off, or not calibrated), the survey starts and saves as usual, says "mapping without a HOME label (why)", and writes no label set. HOME can be recorded later with "Record label here", or never.
 - The closure residual at the end of a survey is later work (brief §3.5) and is not in this plan.
 
 ## 7. Parts D–F: label fixes
@@ -447,6 +448,8 @@ It writes a new label-set revision with `method: amcl`, the spread and the date.
 | DONE or IDLE, parked at HOME | HOME | yes: within 0.30 m / 10° | `correct_at_home`, outside the deadband |
 | WAITING with a `label_id` | that ID | yes: within 0.30 m / 10° | `correct_at_waits`, outside the deadband |
 | EXECUTING, PAUSED, BLOCKED, READY | — | — | **never.** The executor would fault, and READY has a start gate. |
+
+**A map without HOME** (owner, 2026-11-02): the two HOME rows never apply. Boot localisation stays the operator-confirm path, and there is no re-zero at DONE; the waits' labels still give fixes under `correct_at_waits`.
 
 **Rules that always apply:**
 - An ID that isn't in the mission's label set, or isn't the expected one, is reported and nothing is applied.
@@ -519,7 +522,7 @@ Each phase ends green: `tests/run_all.py` with `EXPECTED_CHECKS` raised delibera
 | P0 | `gls_probe` + the `"gls"` lock + the `gls.py` parser and tests | — | Bench §7 can be run. Start it in parallel. |
 | P1 | Part A: wait step, PB Continue, WAITING, web, alarms | W2–W7 answered; the emergency-hold change is committed | On-vehicle acceptance A (below) |
 | P2 | Part B: GlsLink, `gls_node`, `GlsReading`, profile `gls`, URDF frame, fake node | P0 | The camera is visible in the web and in Foxglove, read-only |
-| P3 | Part C: label store, mission binding, "Record label here", HOME at survey start | P2 | HOME and three destinations recorded on the production map |
+| P3 | Part C: label store, mission binding, "Record label here", HOME at survey start (optional) | P2 | The three destinations recorded on the production map, and HOME if one is laid |
 | P4 | `glspose`, `label_fix`, `label_fix_node`, `LabelFix`, drift log, executor label gate, both switches off | P3 | Log-only data from production |
 | P5 | Readiness auto-confirm, `correct_at_home: true` | P4 + bench §7 | Acceptance B |
 | P6 | `correct_at_waits: true` | P5 + the drift log | Acceptance C |
@@ -537,7 +540,7 @@ Each phase ends green: `tests/run_all.py` with `EXPECTED_CHECKS` raised delibera
 5. E-stop during WAITING: it stays WAITING and the route is kept. Continue or Start pressed during the E-stop does nothing. After release and Reset, a fresh press of either one resumes.
 6. E-stop while driving: the vehicle stops on STO and the run is kept. After release and Reset, a fresh press of Continue, and in a second trial of Start, gives the 2 s warning and then resumes.
 
-### B: HOME (P5)
+### B: HOME (P5; only on a map with a HOME label)
 
 1. Boot parked on HOME: READY with no operator input, with `LOC_CONFIRMED_BY_LABEL` logged. Cover the label: the operator-confirm path still works.
 2. After N runs, the drift log shows a residual at HOME for each run, and the vehicle re-zeros at DONE.

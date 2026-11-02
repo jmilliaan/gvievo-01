@@ -291,7 +291,8 @@ class MappingSession(Node):
             return res
         x, y, yaw = self._pose_in_map()
         # HOME (gls-wait-coding-plan §C.3): the label under the camera at the start mark, if
-        # there is one. T_MB is the start reference itself. Never a reason to refuse a survey.
+        # there is one. T_MB is the start reference itself. OPTIONAL: a map may be surveyed
+        # without a HOME label (owner 2026-11-02), so it is never a reason to refuse a survey.
         obs, why = label_record.observe(list(self._gls), self._still_since, self._now(), need_pose=False)
         home = label_record.at(obs, (x, y, yaw)) if obs else None
         with self._lock:
@@ -299,7 +300,7 @@ class MappingSession(Node):
             self._start = mb.StartReference(x, y, yaw, req.description)
             self._review, self._saved_path, self._revision = None, "", 0
             self._home = home
-        seen = f"; HOME label {home.label_id} seen" if home else f"; no HOME label ({why})"
+        seen = f"; HOME label {home.label_id} seen" if home else f"; mapping without a HOME label ({why})"
         self._set(
             MappingState.MAPPING,
             f"surveying '{req.map_id}' from ({x:.2f}, {y:.2f}, {math.degrees(yaw):.1f} deg){seen}",
@@ -382,7 +383,7 @@ class MappingSession(Node):
         """The new revision's first label set, with the HOME seen at survey start. After the
         bundle is published, so a failure here costs the label, never the map."""
         if self._home is None:
-            return "; no HOME label recorded"
+            return "; saved without a HOME label"
         try:
             rev, text, _ = label_record.record(
                 self.maps_dir, (self._map_id, revision, sha256), self._home, "home", "", "survey"

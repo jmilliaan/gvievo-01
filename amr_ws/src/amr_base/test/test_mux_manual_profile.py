@@ -25,11 +25,13 @@ def _node(dt=0.02):
     n.w_max = 100.0
     n.a_max, n.alpha_max, n.d_max, n.delta_max = 0.15, 0.4, 0.5, 1.0
     n.manual_a_max, n.manual_alpha_max, n.manual_jerk, n.manual_jerk_w = 0.3, 0.4, 1.0, 2.0
+    n.manual_d_max = 0.5
     n.dt = dt
     n.gp = gating.Params()
     n._teleop = n._follow = n._rotate = n._permit = n._panel = n._lease = n._drives = None
     n._manual = gating.ManualIntake()
-    n._v = n._wz = n._a = n._alpha = 0.0
+    n._commissioning = None
+    n._v = n._wz = n._wl = n._wr = n._a = n._alpha = 0.0
     n._source, n._reason, n._applied_gen = "none", "", 0
     n._inhibited, n._event_seq = False, 0
     n._pub_event = SimpleNamespace(publish=lambda _m: None)
@@ -67,6 +69,28 @@ def test_pendant_follows_the_s_curve_and_follow_the_plain_ramp():
     m = _node()
     _run(m, gating.Selection(gating.FOLLOW, 0.5, 0.0, "follow", 0), 5)
     assert m._v == pytest.approx(0.15 * 0.1) and m._a == 0.0  # 0.15 m/s^2 from the first tick
+
+
+def test_pendant_release_brakes_at_manual_d_max_not_d_max():
+    """2026-11-02: manual has its own deceleration; the autonomous d_max is untouched."""
+    n = _node()
+    n.manual_a_max, n.manual_d_max = 0.15, 0.25
+    _run(n, gating.Selection(gating.PENDANT, 0.5, 0.0, "pendant", 0), 250)  # 5 s
+    assert n._v == pytest.approx(0.5)
+    peak, t = 0.0, 0
+    while n._v > 0.0 and t < 500:
+        v0 = n._v
+        _run(n, gating.Selection(gating.PENDANT, 0.0, 0.0, "pendant", 0), 1)
+        peak, t = max(peak, (v0 - n._v) / n.dt), t + 1
+    assert n._v == 0.0
+    assert peak == pytest.approx(0.25, abs=1e-6)  # never harder than manual_d_max
+    assert 0.5 / 0.25 < t * n.dt < 0.5 / 0.25 + 0.25 / 1.0  # 2.0 s at 0.25, plus the jerk-in
+
+    m = _node()
+    m.manual_d_max = 0.25
+    _run(m, gating.Selection(gating.FOLLOW, 0.5, 0.0, "follow", 0), 250)
+    _run(m, gating.Selection(gating.FOLLOW, 0.0, 0.0, "follow", 0), 1)
+    assert m._v == pytest.approx(0.5 - 0.5 * m.dt), "FOLLOW still stops at d_max"
 
 
 def test_loss_of_authority_zeroes_speed_and_acceleration_state():

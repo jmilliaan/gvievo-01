@@ -110,8 +110,6 @@ def record(
     )
     new = store.with_label(old, entry)
     gone = [f"{e['name']} ({e['label_id']})" for e in old if e not in new]
-    if not any(e["role"] == "home" for e in new):
-        raise store.StoreError("record HOME first: a label set needs exactly one home label")
     revision, _path, _sha = store.save_labels(maps_dir, map_id, map_rev, map_sha, new)
     x, y, yaw = obs.t_ml
     text = f"{name} = {obs.label_id} at ({x:.3f}, {y:.3f}) m, {math.degrees(yaw):.1f} deg"

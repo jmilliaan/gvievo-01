@@ -128,11 +128,9 @@ MAP = ("hall", 1, "mapsha")
 
 def test_record_rules(tmp_path):
     d = str(tmp_path)
-    with pytest.raises(store.StoreError, match="record HOME first"):
-        lr.record(d, MAP, obs(), "dest", "UBC", "amcl")
-    assert store.list_labels(d, "hall") == []
     with pytest.raises(store.StoreError, match="role must be"):
         lr.record(d, MAP, obs(), "station", "UBC", "amcl")
+    assert store.list_labels(d, "hall") == []
     rev, text, gone = lr.record(d, MAP, obs("x0000y0000", (1.0, 2.0, math.pi / 2)), "home", "  ", "survey")
     assert (rev, gone) == (1, "") and text == "HOME = x0000y0000 at (1.000, 2.000) m, 90.0 deg"
     doc, _ = store.latest_labels(d, "hall", 1)
@@ -164,15 +162,47 @@ def test_record_starts_afresh_on_another_bundle_or_map_revision(tmp_path):
     lr.record(d, MAP, obs("x0000y0000"), "home", "", "survey")
     lr.record(d, MAP, obs(), "dest", "UBC", "amcl")
     # same map id and revision, another bundle sha: the old labels are not carried over
-    with pytest.raises(store.StoreError, match="record HOME first"):
-        lr.record(d, ("hall", 1, "othersha"), obs("x0200y0000"), "dest", "UBD", "amcl")
-    rev, _, gone = lr.record(d, ("hall", 1, "othersha"), obs("x0000y0000"), "home", "", "amcl")
+    rev, _, gone = lr.record(d, ("hall", 1, "othersha"), obs("x0200y0000"), "dest", "UBD", "amcl")
     assert rev == 3 and gone == ""
     doc, _ = store.latest_labels(d, "hall", 1)
-    assert [e["label_id"] for e in doc["labels"]] == ["x0000y0000"] and doc["map"]["sha256"] == "othersha"
-    # another map revision never inherits rev1's set
-    with pytest.raises(store.StoreError, match="record HOME first"):
-        lr.record(d, ("hall", 2, "sha2"), obs(), "dest", "UBC", "amcl")
+    assert [e["label_id"] for e in doc["labels"]] == ["x0200y0000"] and doc["map"]["sha256"] == "othersha"
+    rev, _, gone = lr.record(d, ("hall", 1, "othersha"), obs("x0000y0000"), "home", "", "amcl")
+    assert rev == 4 and gone == ""
+    doc, _ = store.latest_labels(d, "hall", 1)
+    assert [e["label_id"] for e in doc["labels"]] == ["x0200y0000", "x0000y0000"]
+    # another map revision never inherits rev1's set: its first set holds just the new dest
+    rev, _, _ = lr.record(d, ("hall", 2, "sha2"), obs(), "dest", "UBC", "amcl")
+    doc, _ = store.latest_labels(d, "hall", 2)
+    assert rev == 5 and [(e["label_id"], e["role"]) for e in doc["labels"]] == [("x0100y0000", "dest")]
+    assert doc["map"] == {"id": "hall", "revision": 2, "sha256": "sha2"}
+
+
+def test_record_a_dest_with_no_label_set_then_home_later(tmp_path):
+    # a map surveyed without a HOME label (owner 2026-11-02): a dest is the first entry
+    d = str(tmp_path)
+    rev, text, gone = lr.record(d, MAP, obs(), "dest", "UBC", "amcl")
+    assert (rev, gone) == (1, "") and text.startswith("UBC = x0100y0000 at (5.000, 1.000) m")
+    doc, _ = store.latest_labels(d, "hall", 1)
+    assert doc["revision"] == 1 and doc["map"] == {"id": "hall", "revision": 1, "sha256": "mapsha"}
+    assert [(e["label_id"], e["role"], e["name"]) for e in doc["labels"]] == [("x0100y0000", "dest", "UBC")]
+    # another dest onto the destinations-only set
+    rev, _, gone = lr.record(d, MAP, obs("x0200y0000"), "dest", "UBD", "amcl")
+    assert (rev, gone) == (2, "")
+    # HOME recorded later is added, nothing replaced
+    rev, _, gone = lr.record(d, MAP, obs("x0000y0000"), "home", "", "amcl")
+    assert (rev, gone) == (3, "")
+    doc, _ = store.latest_labels(d, "hall", 1)
+    assert [(e["label_id"], e["role"]) for e in doc["labels"]] == [
+        ("x0100y0000", "dest"),
+        ("x0200y0000", "dest"),
+        ("x0000y0000", "home"),
+    ]
+    # a second HOME replaces the first
+    rev, _, gone = lr.record(d, MAP, obs("x0900y0900"), "home", "", "amcl")
+    assert (rev, gone) == (4, "HOME (x0000y0000)")
+    doc, _ = store.latest_labels(d, "hall", 1)
+    homes = [e["label_id"] for e in doc["labels"] if e["role"] == "home"]
+    assert homes == ["x0900y0900"] and len(doc["labels"]) == 3
 
 
 # ---- the executor's "Record label here" -------------------------------------------------
@@ -242,10 +272,11 @@ def test_record_label_refusals_in_order(tmp_path):
     n._gls.clear()
     assert "no floor-label reading" in call(n).message
     n = executor(tmp_path)
-    assert "needs a name" in call(n, "dest").message  # record()'s refusals come back as text
-    r = call(n, "dest", "UBC")
-    assert "record HOME first" in r.message
+    r = call(n, "dest")  # record()'s refusals come back as text
+    assert "needs a name" in r.message
     assert not r.ok and r.message.startswith("label not recorded:") and r.label_id == "" and r.revision == 0
+    r = call(n, "station", "UBC")
+    assert not r.ok and "role must be" in r.message
     assert n.events == [] and store.list_labels(str(tmp_path), "hall") == []
 
 
@@ -262,9 +293,26 @@ def test_record_label_success_fields_and_one_event(tmp_path, mount):
     assert e.text == r.message and e.seq == 1
     doc, _ = store.latest_labels(str(tmp_path), "hall", 1)
     assert doc["labels"][0]["method"] == "amcl" and doc["labels"][0]["x_m"] == pytest.approx(want[0])
-    # re-recorded as a dest of the same id: replaces the home, so the set has none -> refused
+    # re-recorded as a dest of the same id: replaces the home; a set with no home is valid
     r = call(n, "dest", "UBC")
-    assert not r.ok and "record HOME first" in r.message and len(n.events) == 1
+    assert r.ok and r.revision == 2 and "replaces HOME (x0100y0000)" in r.message and len(n.events) == 2
+    doc, _ = store.latest_labels(str(tmp_path), "hall", 1)
+    assert [(e["label_id"], e["role"], e["name"]) for e in doc["labels"]] == [("x0100y0000", "dest", "UBC")]
+
+
+def test_record_label_a_dest_with_no_home(tmp_path, mount):
+    n = executor(tmp_path)  # no label set on the active map yet
+    r = call(n, "dest", "UBC", "hitch")
+    assert r.ok and r.label_id == "x0100y0000" and r.revision == 1, r.message
+    want = glspose.label_in_map((4.0, 1.0, 0.5), mount, (0.002, -0.001, 0.03))
+    assert (r.x_m, r.y_m, r.yaw_rad) == pytest.approx(want, abs=1e-12)
+    assert r.message.startswith("recorded UBC = x0100y0000") and "label set rev1" in r.message
+    (e,) = n.events
+    assert (e.code, e.level) == ("LABEL_RECORDED", Event.INFO) and e.text == r.message
+    doc, _ = store.latest_labels(str(tmp_path), "hall", 1)
+    assert [(x["role"], x["name"], x["method"], x["note"]) for x in doc["labels"]] == [
+        ("dest", "UBC", "amcl", "hitch")
+    ]
 
 
 def test_on_gls_buffers_valid_readings_with_the_pose_and_wheels_track_rest(tmp_path):
@@ -331,10 +379,12 @@ def test_srv_run_checks_the_bound_label_set(tmp_path):
     dest = store.label_entry("x0100y0000", "dest", "UBC", (15.0, 0.0, 0.0), "amcl", 15, 0.0, 0.0)
     _, _, lsha1 = store.save_labels(maps, "sim_factory", 1, man.sha256, [_home()])  # no UBC
     _, _, lsha2 = store.save_labels(maps, "sim_factory", 1, man.sha256, [_home(), dest])
+    _, _, lsha3 = store.save_labels(maps, "sim_factory", 1, man.sha256, [dest])  # no HOME
     for mid, lab in (
         ("unknown", {"revision": 1, "sha256": lsha1}),
         ("badsha", {"revision": 2, "sha256": lsha1}),
         ("good", {"revision": 2, "sha256": lsha2}),
+        ("dests", {"revision": 3, "sha256": lsha3}),
         ("none", None),
     ):
         store.save_mission(maps, mid, "sim_factory", 1, man.sha256, "r1", 1, rsha, lab)
@@ -351,6 +401,8 @@ def test_srv_run_checks_the_bound_label_set(tmp_path):
     r = run("unknown")
     assert not r.accepted and "route invalid" in r.message and "x0100y0000" in r.message
     r = run("good")
+    assert r.accepted, r.message
+    r = run("dests")  # a destinations-only set (owner 2026-11-02) binds like any other
     assert r.accepted, r.message
     r = run("none")  # no set bound: the wait label is logged only, never a refusal
     assert r.accepted, r.message
@@ -398,7 +450,7 @@ def test_survey_start_with_and_without_home_never_refuses(tmp_path, mount):
     ):
         sv = session(tmp_path, gls, still)
         r = start(sv)
-        assert r.accepted and "no HOME label (" in r.message and sv._home is None
+        assert r.accepted and "; mapping without a HOME label (" in r.message and sv._home is None
         assert sv._state == MappingState.MAPPING
     sv = session(tmp_path, samples(t_mb=None))
     start(sv)
@@ -432,7 +484,8 @@ def test_no_home_saves_the_map_and_no_label_set(tmp_path):
     sv = session(tmp_path)
     start(sv)
     r = _saved(sv, tmp_path)
-    assert r.ok and "no HOME label recorded" in r.message and sv.events == []
+    assert r.ok and r.message.endswith("; saved without a HOME label") and sv.events == []
+    assert r.revision == 1 and sv._state == MappingState.SAVED
     assert store.list_labels(str(tmp_path), "hall") == []
 
 

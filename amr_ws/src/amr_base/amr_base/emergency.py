@@ -6,8 +6,8 @@
     RESETTING     Reset seen with DI08 HIGH: waiting for the drives to leave STO
     RESET_FAILED  the drives still held STO panel.estop_reset_timeout_s after the Reset
 
-Inputs per tick: the panel image valid AND fresh, DI08 as a level whose HIGH is debounced
-by the adapter (LOW counts at once), the Reset edge, and whether the drives report STO
+Inputs per tick: the panel image valid AND fresh, DI08 as a level filtered by the adapter
+(HIGH over debounce_scans, LOW over estop_low_scans), the Reset edge, and whether the drives report STO
 held ("Switch on disabled", sto_held(); None when the drives cannot be observed).
 
     from          when                                         to

@@ -24,6 +24,7 @@ setup(
             "drive_node = amr_base.drive_node:main",
             "gls_node = amr_base.gls_node:main",
             "panel_node = amr_base.panel_node:main",
+            "commissioning_node = amr_base.commissioning_node:main",
         ],
     },
 )

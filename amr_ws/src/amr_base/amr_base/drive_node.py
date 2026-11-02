@@ -2,6 +2,7 @@
 
     /cmd_wheel_vel  (WheelVelocities, mux, 50 Hz)  ->  RPDO1 to both drives
     TPDO1/TPDO2 from both drives                   ->  /wheel_states  (WheelStates)
+    6077h torque in TPDO1 (diagnostic, logging)     ->  /drives/torque (DriveTorque)
     MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
 
@@ -57,6 +58,7 @@ from amr_base.mls_imu import ImuSample, MlsImu
 from amr_interfaces.msg import (
     ControlLease,
     DriveStatus,
+    DriveTorque,
     Event,
     PanelState,
     RunState,
@@ -171,6 +173,8 @@ class DriveNode(Node):
         self._pub_wheels_ui = self.create_publisher(WheelStates, "/wheel_states_ui", SENSOR_DATA)
         self._wheels_ui_t = 0.0
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
+        # Motor torque beside each WheelStates, for run logs (towing-load groundwork). Nothing reads it.
+        self._pub_torque = self.create_publisher(DriveTorque, "/drives/torque", SENSOR_DATA)
         self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
@@ -577,6 +581,12 @@ class DriveNode(Node):
             m.counts_valid = bool(m.left_valid and m.right_valid)
         m.counts_per_wheel_rev = float(scale.counts_per_wheel_rev or 0.0) if scale else 0.0
         self._safe_publish(self._pub_wheels, m)
+        tq = DriveTorque()
+        tq.header.stamp = m.header.stamp
+        tfb = canopen.torque_feedback(link, now, max_age, ((config.LEFT, True), (config.RIGHT, False)))
+        tq.left_torque_pct, tq.left_torque_limited, tq.left_valid = tfb[config.LEFT]
+        tq.right_torque_pct, tq.right_torque_limited, tq.right_valid = tfb[config.RIGHT]
+        self._safe_publish(self._pub_torque, tq)
         if now - self._wheels_ui_t >= WHEELS_UI_PERIOD_S:
             self._wheels_ui_t = now
             self._safe_publish(self._pub_wheels_ui, m)
@@ -664,6 +674,8 @@ class DriveNode(Node):
                 KeyValue(key="statusword", value=f"0x{(t.statusword or 0):04X}"),
                 KeyValue(key="error_register", value=f"0x{(t.error_register or 0):02X}"),
                 KeyValue(key="rpm", value=str(t.rpm if t.rpm is not None else "")),
+                KeyValue(key="torque_actual [%]", value="" if t.torque is None else f"{t.torque * 0.1:.1f}"),
+                KeyValue(key="torque_limited", value=str(t.torque_limited)),
                 KeyValue(key="position_counts", value=str(t.position if t.position is not None else "")),
                 KeyValue(key="nmt", value=t.nmt or ""),
                 KeyValue(

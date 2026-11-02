@@ -61,6 +61,7 @@ The state is published so every consumer sees the same picture. Two options:
 
 - Read DI08 as a debounced level, like DI09: `panel.di_estop_ok: 8`, a new profile key.
   - Debounce only the HIGH direction: going to EMERGENCY must be immediate (one scan), and leaving it must persist for `debounce_scans`.
+  - Amended 2026-11-02: LOW is now filtered too, by `panel.estop_low_scans` (2 on agv-01). Q3 test pulses read as single LOW scans every 400 ms in bursts and kept powering the drives off. An invalid image or a comms gap is still an emergency at once. STO is the Flexi Soft's and is not delayed.
   - Add `config._validate` rules: the channel is distinct from the panel/pendant/arm channels, and is required while `panel.enabled`.
 - Run `emergency.py`, set `PanelState.estop_ok` / `emergency`, and log every transition.
 - **Outputs during EMERGENCY:**
@@ -98,6 +99,7 @@ The state is published so every consumer sees the same picture. Two options:
 ### 4.6 Survey moves
 
 - Abort an active survey move on EMERGENCY. Never resume it; it must be started again. (Commissioning and pp moves were removed with the commissioning page, 2026-10-30.)
+- The blind run, restored 2026-11-02 on `/blindrun` (PV only), is treated the same way: an EMERGENCY aborts a running job, never to resume (owner, 2026-11-02). A single measured move cut by a stop measures the stop.
 
 ## 5. Web app
 

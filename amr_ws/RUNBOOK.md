@@ -13,9 +13,10 @@ The physical controls remain authoritative:
 
 The web app is `http://192.168.2.20:5001/` and opens on **Home**. Its tabs are
 **Home**, **Run** (with **Maps** for surveys and **Routes** for the route editor),
-**Manual**, **Alarms** (events), **Monitor**, **I/O** and **Params**. The Status and
-Commission pages were removed on 2026-10-30: Home shows the mode, its reason, the
-fault banner, Return to idle and Recover; Monitor has the rest. Every page has the same left
+**Manual**, **Alarms** (events), **Monitor**, **I/O**, **Params** and **Blind run**. The
+Status and Commission pages were removed on 2026-10-30: Home shows the mode, its reason,
+the fault banner, Return to idle and Recover; Monitor has the rest. The blind run came
+back on 2026-11-02 as its own page (§3, PV only). Every page has the same left
 rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
 Generation, with the event log below. A tile with a yellow bar needs attention and
 a red bar means a fault or stale data. If the whole rail is greyed out and the
@@ -46,7 +47,7 @@ The pages open in the **operator** view: **Home · Run · Manual · Alarms**, an
 nothing else. Home is one line of state, one sentence of action and one button,
 all chosen server-side from the alarm catalogue (`agv_core/alarms.py`, section 4).
 
-The **engineer** view adds Maps, Routes, Monitor, I/O and Params. Press `Op` in the header and type the PIN; press `Eng` to go back.
+The **engineer** view adds Maps, Routes, Monitor, I/O, Params and Blind run. Press `Op` in the header and type the PIN; press `Eng` to go back.
 The PIN is **1805** by default and lives in `~/.amr/web.json` (0600, created on
 first run) or in `AMR_WEB_ENGINEER_PIN`, never in the repository. It is a mistake
 guard, not security: every endpoint is still reachable directly on the network,
@@ -461,11 +462,56 @@ cycle where required by the drive procedure.
 - **Restart service** (the same server-side refusals as on Home);
 - the `/diagnostics` cards: `drive/left`, `drive/right`, `can/bus` and `imu/mls`.
 
-The commissioning page, its encoder-only blind-run planner and the profile-position
-(PP) backend were removed on 2026-10-30. Encoder moves while mapping are the
-preset survey moves on **Maps** (straight X m, rotate 45-180°). Lease bit 4 and
-mux source 5 (COMMISSIONING) are retired and never reused; 607Ah/6081h are no
-longer writable (`agv_core/drivers/canbus/guard.py`).
+### Blind run (`/blindrun`, engineer view)
+
+Encoder-only test moves, to measure the encoders and the vehicle on the floor
+(restored 2026-11-02; the other branches had it on their Commission page). It is
+an exclusive IDLE substate: while a move is held or running,
+ordinary jog and mapping/navigation mode requests are refused. These are not the
+preset survey moves on **Maps**, which stay as they are.
+
+1. Select **MANUAL**, switch the drives on (DI09), make sure the vehicle is
+   stopped and the test area is clear.
+2. Pick the move and fill in its numbers:
+   - **Straight**: forward/reverse and distance (m).
+   - **Rotate**: CCW/CW and angle (°).
+   - **Arc**: left/right, angle (°) and radius (m). An arc always goes forwards,
+     and its radius must be at least half the track (0.244 m); tighter, use Rotate.
+   - **Speed**: 0.05–0.80 m/s (`blind_run.max_speed_mps`). Above 0.40 m/s the
+     page warns and shows the ramped stopping distance. Confirm the
+     nanoScan3/FX3 protective field is sized for the speed before going above 0.40.
+3. Tick the checklist (area clear, E-stop in reach, speed within the field
+   sizing), then **Hold move**. This validates the move and moves nothing.
+   Holding is refused unless the supervisor is in IDLE, the wheels are known to
+   be still and the encoder scale is fresh. Several segments can be held as
+   JSON under **Advanced**. A plan `id` may use letters, digits, `_`, `.` and
+   `-` only, starts with a letter or digit, max 64.
+4. Review **Held move**: the wheel count targets and the commanded dx/dy/heading.
+5. Press physical **Start** once to execute. Only a Start pressed after the plan
+   was held counts. Browser input cannot start it.
+6. **Clear / abort** stops and invalidates the job. So do the selector to AUTO,
+   an **E-stop**, panel loss, a supervisor restart or generation change, an
+   encoder-scale change and stale wheel counts. An aborted run still writes its
+   evidence, including the interrupted segment. `DONE` or `ABORTED` cannot
+   replay on another Start; hold the move again. An E-stop aborts a blind run
+   like a survey move, never to resume (owner, 2026-11-02): a move cut by a
+   stop measures the stop, not the move. Runs and waits on a route are held
+   instead (§2 C).
+7. Measure where the vehicle ended up, in the start frame: x forward, y left,
+   heading counter-clockwise +. Measure the axle-midpoint mark, and take the
+   heading from a second mark ~1 m ahead. Enter dx/dy (mm) and heading (°)
+   under **Measured result** and **Save measurement**. **History** then lists
+   commanded, measured and error per run. The measurement is stored beside the
+   evidence (`~/.amr/commissioning/<run>.measured.json`); saving again replaces it.
+8. Keep the displayed evidence path with the test record. If the reason says
+   `evidence NOT written`, the file is missing; do not record an old path.
+
+Profile velocity only: the software position loop runs in the commissioning
+node and goes through the mux like any other source (`blind_run.*` in the
+profile). The profile-position (PP) backend was removed on 2026-10-30 and is
+not part of this; 607Ah/6081h stay unwritable (`agv_core/drivers/canbus/guard.py`).
+Lease bit 4 and mux source 5 (COMMISSIONING) carry the job again, with their old
+meaning.
 
 ## 4. Fault recovery
 

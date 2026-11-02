@@ -640,11 +640,12 @@ def test_a_refused_continue_is_the_row_the_operator_reads_first():
 
 def test_the_status_and_commissioning_pages_are_gone(tmp_path):
     """2026-10-30: Status folded into Home (mode, reason, fault, Return to idle, Recover) and
-    Monitor (map, readiness, standing codes, Restart); Commission removed with blind run/pp."""
+    Monitor (map, readiness, standing codes, Restart); Commission removed with pp. The blind
+    run came back on 2026-11-02 as its own page, /blindrun (PV only), not as /commissioning."""
     client, _ = app_for(merged(), tmp_path)
-    for path in ("/status", "/commissioning", "/api/commissioning", "/api/commissioning/capabilities"):
+    for path in ("/status", "/commissioning"):
         assert client.get(path).status_code == 404, path
-    assert client.post("/api/commissioning/plan", json={"plan": {}}).status_code == 404
+    assert client.get("/blindrun").status_code == 200
     home = client.get("/home").get_data(as_text=True)
     for el in ("home-mode", "home-reason", "home-fault", "home-idle", "home-recover"):
         assert f'id="{el}"' in home, el

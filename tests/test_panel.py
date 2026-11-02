@@ -152,6 +152,12 @@ def test_panel_profile():
             lambda d: d["panel"].update(di_reset=-1), "channel in 0..")
     refused("debounce_scans below 1 is refused",
             lambda d: d["panel"].update(debounce_scans=0), "debounce_scans")
+    refused("estop_low_scans below 1 is refused",
+            lambda d: d["panel"].update(estop_low_scans=0), "estop_low_scans")
+    refused("an E-stop LOW filter longer than 0.2 s is refused",
+            lambda d: d["panel"].update(estop_low_scans=5), "estop_low_scans")
+    refused("manual_arm_scans below 1 is refused",
+            lambda d: d["panel"].update(manual_arm_scans=0), "manual_arm_scans")
     refused("the panel cannot be enabled without the DI scan that feeds it",
             lambda d: d["dio"].update(enabled=False), "never respond")
 

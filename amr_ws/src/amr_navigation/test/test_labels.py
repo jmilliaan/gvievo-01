@@ -27,6 +27,14 @@ def good_set():
     return [entry(), entry("x0100y0000", "dest", "UBC", (5.0, 0.0, 0.0), "amcl")]
 
 
+def dests_only():
+    """A map surveyed without a HOME label (owner 2026-11-02): destinations only."""
+    return [
+        entry("x0100y0000", "dest", "UBC", (5.0, 0.0, 0.0), "amcl"),
+        entry("x0200y0000", "dest", "UBD", (9.0, 1.0, 0.0), "amcl"),
+    ]
+
+
 # ---- save / load / list / latest ------------------------------------------------------
 
 
@@ -59,8 +67,10 @@ def test_save_load_list_and_latest_across_two_map_revisions(tmp_path):
 
 def test_save_refuses_a_bad_set_or_map_revision_and_writes_nothing(tmp_path):
     d = str(tmp_path)
-    with pytest.raises(store.StoreError, match="exactly one home"):
-        store.save_labels(d, "hall", 1, "s", [entry("x0100y0000", "dest", "UBC")])
+    with pytest.raises(store.StoreError, match="at most one home"):
+        store.save_labels(d, "hall", 1, "s", good_set() + [entry("x0200y0000", "home", "HOME2")])
+    with pytest.raises(store.StoreError, match="at least one label"):
+        store.save_labels(d, "hall", 1, "s", [])
     for bad in (0, True, "1"):
         with pytest.raises(store.StoreError, match="revision"):
             store.save_labels(d, "hall", bad, "s", good_set())
@@ -100,9 +110,12 @@ def _with(i, **kw):
         (_with(1, n_frames=15.0), "n_frames must be a positive"),
         (_with(1, label_id="x0000y0000"), "appears twice"),
         (_with(1, name="HOME"), "appears twice"),
-        ([entry("x0100y0000", "dest", "UBC")], "exactly one home"),
-        ([], "exactly one home"),
-        (good_set() + [entry("x0200y0000", "home", "HOME2")], "exactly one home"),
+        ([], "at least one label"),
+        (good_set() + [entry("x0200y0000", "home", "HOME2")], "at most one home label, has 2"),
+        (
+            [entry(), entry("x0200y0000", "home", "HOME2"), entry("x0300y0000", "home", "HOME3")],
+            "at most one home label, has 3",
+        ),
     ],
 )
 def test_check_labels_rules(labels, why):
@@ -122,6 +135,12 @@ def test_check_labels_refuses_a_trailing_newline_or_non_ascii_digits(lid):
 def test_check_labels_accepts_a_good_set_and_integer_poses():
     assert store.check_labels(good_set()) is None
     assert store.check_labels([entry(x_m=1, y_m=0, yaw_rad=0)]) is None
+
+
+def test_check_labels_accepts_a_set_with_no_home():
+    # a map may be surveyed and used without a HOME label (owner 2026-11-02)
+    assert store.check_labels(dests_only()) is None
+    assert store.check_labels([entry("x0100y0000", "dest", "UBC")]) is None
 
 
 # ---- identity: the file must be the set it is asked for ----------------------------------
@@ -157,7 +176,11 @@ def test_load_refuses_a_bad_map_revision_or_entries(tmp_path):
     doc["map"]["revision"] = 1
     doc["labels"][1]["role"] = "home"
     open(p, "w").write(yaml.safe_dump(doc))
-    with pytest.raises(store.StoreError, match="exactly one home"):
+    with pytest.raises(store.StoreError, match="at most one home"):
+        store.load_labels(d, "hall", 1)
+    doc["labels"] = []
+    open(p, "w").write(yaml.safe_dump(doc))
+    with pytest.raises(store.StoreError, match="at least one label"):
         store.load_labels(d, "hall", 1)
 
 
@@ -172,8 +195,26 @@ def test_a_corrupt_newest_set_is_an_error_not_a_fallback(tmp_path):
     # a newest set whose entries break the rules is an error too, not the older set
     doc = {"revision": 2, "map": {"id": "hall", "revision": 1, "sha256": "s"}, "labels": []}
     open(p2, "w").write(yaml.safe_dump(doc))
-    with pytest.raises(store.StoreError, match="exactly one home"):
+    with pytest.raises(store.StoreError, match="at least one label"):
         store.latest_labels(d, "hall", 1)
+    doc["labels"] = [entry(), entry("x0200y0000", "home", "HOME2")]
+    open(p2, "w").write(yaml.safe_dump(doc))
+    with pytest.raises(store.StoreError, match="at most one home"):
+        store.latest_labels(d, "hall", 1)
+
+
+def test_a_destinations_only_set_saves_loads_and_is_the_latest(tmp_path):
+    d = str(tmp_path)
+    r1, p1, sha1 = store.save_labels(d, "hall", 1, "mapsha1", dests_only())
+    assert r1 == 1 and store.list_labels(d, "hall") == [1]
+    doc, sha = store.load_labels(d, "hall", 1)
+    assert sha == sha1 == store.sha256_file(p1)
+    assert [(e["label_id"], e["role"]) for e in doc["labels"]] == [
+        ("x0100y0000", "dest"),
+        ("x0200y0000", "dest"),
+    ]
+    doc, sha = store.latest_labels(d, "hall", 1)
+    assert (doc["revision"], sha) == (1, sha1) and not [e for e in doc["labels"] if e["role"] == "home"]
 
 
 # ---- with_label --------------------------------------------------------------------------
@@ -193,6 +234,29 @@ def test_with_label_replacement_rules():
     out = store.with_label(s, entry("x0100y0000", "home", "HOME"))  # a dest re-recorded as home
     assert [(e["label_id"], e["role"]) for e in out] == [("x0100y0000", "home")]
     assert store.with_label([], entry())[0]["label_id"] == "x0000y0000"
+
+
+def test_with_label_on_a_destinations_only_set():
+    s = dests_only()
+    out = store.with_label(s, entry("x0300y0000", "dest", "UBE"))  # another dest: appended
+    assert [e["name"] for e in out] == ["UBC", "UBD", "UBE"] and len(s) == 2
+    assert store.check_labels(out) is None
+    out = store.with_label(s, entry())  # HOME added later: nothing replaced
+    assert [(e["label_id"], e["role"]) for e in out] == [
+        ("x0100y0000", "dest"),
+        ("x0200y0000", "dest"),
+        ("x0000y0000", "home"),
+    ]
+    assert store.check_labels(out) is None
+    out = store.with_label(out, entry("x0900y0900", "home", "Gate"))  # a second HOME replaces the first
+    assert [(e["label_id"], e["role"]) for e in out] == [
+        ("x0100y0000", "dest"),
+        ("x0200y0000", "dest"),
+        ("x0900y0900", "home"),
+    ]
+    out = store.with_label(s, entry("x0100y0000", "dest", "UBC-2"))  # same id still replaces
+    assert [(e["label_id"], e["name"]) for e in out] == [("x0200y0000", "UBD"), ("x0100y0000", "UBC-2")]
+    assert store.check_labels(out) is None
 
 
 # ---- missions bind a label set -----------------------------------------------------------
@@ -266,6 +330,14 @@ def test_mission_labels_checks_the_hash_and_the_map(tmp_path):
         store.mission_labels(d, mission("gone", 1, "mapsha1", {"revision": 9, "sha256": sha1}))
 
 
+def test_mission_labels_returns_a_destinations_only_set(tmp_path):
+    d = str(tmp_path)
+    _, _, sha = store.save_labels(d, "hall", 1, "mapsha1", dests_only())
+    store.save_mission(d, "m", "hall", 1, "mapsha1", "r1", 1, "rsha", {"revision": 1, "sha256": sha})
+    doc = store.mission_labels(d, store.load_mission(d, "m"))
+    assert doc["revision"] == 1 and [e["role"] for e in doc["labels"]] == ["dest", "dest"]
+
+
 # ---- validate(): a wait's label against the bound set --------------------------------------
 
 
@@ -310,3 +382,14 @@ def test_validate_against_a_set_refuses_an_unknown_label_and_accepts_a_known_one
     (e,) = [i for i in v.issues if i.code == "label_unknown"]
     assert e.severity != INFO and e.step_id == "w1" and "x0700y0000" in e.message and "rev4" in e.message
     assert not [i for i in v.issues if i.code == "label_set"]
+
+
+def test_validate_against_a_destinations_only_set(tmp_path):
+    d = str(tmp_path)
+    _, _, sha = store.save_labels(d, "sim_factory", 1, "abc123", dests_only())
+    store.save_mission(d, "m", "sim_factory", 1, "abc123", "r1", 1, "rsha", {"revision": 1, "sha256": sha})
+    doc = store.mission_labels(d, store.load_mission(d, "m"))  # the set the mission binds
+    v = validate(wait_route("x0100y0000"), Manifest, build(), FP, labels=doc)
+    assert v.ok and not [i for i in v.issues if i.code.startswith("label")], [i.to_dict() for i in v.issues]
+    v = validate(wait_route("x0000y0000"), Manifest, build(), FP, labels=doc)  # no HOME in this set
+    assert not v.ok and [i for i in v.issues if i.code == "label_unknown"]

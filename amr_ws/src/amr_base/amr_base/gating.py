@@ -34,8 +34,8 @@ from dataclasses import dataclass
 
 # Mirrors amr_interfaces/msg/MuxState.msg. APPEND ONLY; every value needs a NAMES
 # entry (test_gating.test_names_cover_the_enum pins that). 7 (LINE) is retired with the
-# tracked product (2026-10) and 5 (COMMISSIONING) with the commissioning page (2026-10-30);
-# do not reuse them. The names stay so old bags and logs still read.
+# tracked product (2026-10); do not reuse it. 5 (COMMISSIONING) was retired on 2026-10-30 and
+# came back with the blind run on 2026-11-02, with the same meaning.
 NONE, TELEOP, FOLLOW, ROTATE, MANUAL, COMMISSIONING, PENDANT = 0, 1, 2, 3, 4, 5, 6
 NAMES = {
     NONE: "none",
@@ -47,9 +47,8 @@ NAMES = {
     PENDANT: "pendant",
 }
 
-# ControlLease.allowed bits (bit 8, LINE, is retired with the tracked product, 2026-10;
-# bit 4, COMMISSIONING, with the commissioning page, 2026-10-30)
-LEASE_MANUAL, LEASE_AUTONOMOUS = 1, 2
+# ControlLease.allowed bits (bit 8, LINE, is retired with the tracked product, 2026-10)
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
 
 
 @dataclass(frozen=True)
@@ -185,6 +184,16 @@ def finite_or_zero(t: float, v: float, w: float) -> Stamped:
 
 
 @dataclass
+class Wheels:
+    """A per-wheel command (commissioning) as received."""
+
+    t: float
+    left: float
+    right: float
+    generation: int = 0
+
+
+@dataclass
 class Permit:
     t_recv: float
     source: int
@@ -258,6 +267,7 @@ class Selection:
     reason: str
     generation: int = 0  # the lease generation applied (0 unsupervised)
     inhibited: bool = False  # true when the supervisor/drives gate closed, not merely "no command"
+    wheels: bool = False  # v/w are per-wheel rad/s (COMMISSIONING), not a body twist
     # Alarm catalogue code for `reason` (agv_core/alarms.py). KEYWORD ONLY at every call
     # site: select() returns are read positionally by tests, and `reason` stays the
     # engineer's wording - the code is what the operator surface looks up.
@@ -279,9 +289,11 @@ def select(
     lease: Lease | None = None,
     manual: Manual | None = None,
     drives: Drives | None = None,
+    commissioning: Wheels | None = None,
     # APPEND ONLY. select() is called positionally (amr_base/test/test_pendant_gating.py
-    # passes bare arguments), so a parameter inserted above this line re-binds every
-    # argument after it with no error anywhere.
+    # passes bare arguments), so a parameter inserted above this line re-binds
+    # every argument after it with no error anywhere - commissioning wheels
+    # arriving as another source's command, which is how a mux stops honouring a job.
 ) -> Selection:
     gen = 0
     if panel is not None and panel.emergency != EMG_NORMAL and _fresh(panel.t_recv, now, p.panel_timeout_s):
@@ -304,6 +316,15 @@ def select(
         return Selection(NONE, 0.0, 0.0, "no panel authority", gen, code="PANEL_STALE")
 
     if not panel.auto:
+        # Commissioning: the supervisor grants this class INSTEAD of MANUAL while a
+        # job is prepared/running; only a fresh per-wheel command of this generation counts.
+        if p.require_supervisor and (lease.allowed & LEASE_COMMISSIONING):
+            c = commissioning
+            if c is not None and c.generation == lease.generation and _fresh(c.t, now, p.cmd_timeout_s):
+                return Selection(COMMISSIONING, c.left, c.right, "commissioning", gen, False, True)
+            return Selection(
+                NONE, 0.0, 0.0, "commissioning: no fresh wheel command", gen, code="SOURCE_TIMED_OUT"
+            )
         if p.require_supervisor and not (lease.allowed & LEASE_MANUAL):
             return Selection(NONE, 0.0, 0.0, "MANUAL not allowed by supervisor", gen, True, code="NOT_LEASED")
         # Physical pendant: a held deadman outranks any browser or keyboard stream.

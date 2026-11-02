@@ -31,6 +31,7 @@ MODULES = [
     "test_dio",
     "test_lidar",
     "test_panel",
+    "test_blindrun",
     "test_gls",
     "test_gls_link",
     "test_glspose",
@@ -121,7 +122,12 @@ MODULES = [
 # + 4 (2026-10-30): gls.swap_xy (the device's Y is the vehicle's fore-aft, bench 2026-10-30).
 #   test_gls + 2 (to_camera_pose swaps X/Y, the signs apply after the swap); test_config + 2
 #   (ships true, a non-boolean refused).
-EXPECTED_CHECKS = 636
+# + 3 (2026-11-02): test_panel, the DI08 / DI09 input filters (estop_low_scans below 1 and
+#   above 0.2 s refused, manual_arm_scans below 1 refused).
+# + 33 (2026-11-02): the blind run is back (PV only; pp stays removed). test_blindrun (32)
+#   restored as it was; test_config + 1 (the retired-section refusal for blind_run gives way
+#   to the max_rpm and max_speed_mps refusals).
+EXPECTED_CHECKS = 672
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -92,6 +92,8 @@
     "di_auto": 1,
     "auto_when_on": false,
     "debounce_scans": 2,
+    "estop_low_scans": 2,
+    "manual_arm_scans": 3,
     "coincidence_hold_s": 1.5,
     "di_manual_arm": 9,
     "di_estop_ok": 8,
@@ -133,6 +135,17 @@
     "enabled": true,
     "poll_period_s": 0.04,
     "retry_period_s": 2.0
+  },
+  "blind_run": {
+    "max_distance_m": 10.0,
+    "max_rpm": 3000.0,
+    "accel_rpm_s": 800.0,
+    "settle_s": 0.5,
+    "stop_tolerance_mm": 1.0,
+    "sync_kp": 2.0,
+    "overrun_margin": 0.02,
+    "max_segments": 8,
+    "max_speed_mps": 0.8
   },
   "timing": {
     "loop_period_s": 0.02,

@@ -136,9 +136,11 @@ def _compose(context):
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
-            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve to 0.3 m/s^2 with
-            # 1.0 m/s^3 (1.9 s to full speed); driving + turning arcs with the slow wheel at 66 %
-            # of the fast one; a spin in place stays at 0.3 rad/s.
+            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve with 1.0 m/s^3;
+            # driving + turning arcs with the slow wheel at 66 % of the fast one; a spin in
+            # place stays at 0.3 rad/s. 2026-11-02: softened to 0.15 m/s^2 up (3.5 s to full
+            # speed) and 0.25 m/s^2 down (~0.56 m from 0.5 m/s on release) - manual only, AUTO
+            # keeps a_max/d_max. A timeout or loss of authority still zeroes at once (6084h).
             parameters=[
                 {
                     **gate,
@@ -152,7 +154,8 @@ def _compose(context):
                     "alpha_max": 0.4,
                     "d_max": 0.5,
                     "delta_max": 1.0,
-                    "manual_a_max": 0.3,
+                    "manual_a_max": 0.15,
+                    "manual_d_max": 0.25,
                     "manual_jerk": 1.0,
                     "pendant_v_m_s": 0.5,
                     "pendant_w_rad_s": 0.39,
@@ -177,6 +180,16 @@ def _compose(context):
         Node(package="amr_localization", executable="scan_gate_node", name="scan_gate", output="screen"),
         "scan_gate",
     )
+    if supervised:  # the blind run (/blindrun page, unified plan §7.2); an exclusive IDLE substate
+        actions.append(
+            Node(
+                package="amr_base",
+                executable="commissioning_node",
+                name="commissioning_node",
+                output="screen",
+                parameters=[{"state_dir": os.environ.get("AMR_STATE_DIR", os.path.expanduser("~/.amr"))}],
+            )
+        )
     actions += required(
         Node(
             package="robot_localization",

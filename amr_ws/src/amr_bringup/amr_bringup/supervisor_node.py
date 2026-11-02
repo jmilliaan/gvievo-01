@@ -43,6 +43,7 @@ from amr_bringup import operations as ops
 from amr_bringup import readiness as rd
 from amr_bringup.process_supervisor import Group
 from amr_interfaces.msg import (
+    CommissioningState,
     ControlLease,
     DriveStatus,
     Event,
@@ -67,8 +68,9 @@ SENSOR = QoSProfile(
     depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE
 )
 
-# ControlLease.allowed bits. Bits 8 (LINE) and 4 (COMMISSIONING, 2026-10-30) retired, never reuse.
-LEASE_MANUAL, LEASE_AUTONOMOUS = 1, 2
+# ControlLease.allowed bits. Bit 8 retired (LINE), never reuse. Bit 4 (COMMISSIONING) was
+# retired on 2026-10-30 and came back with the blind run on 2026-11-02, same meaning.
+LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
 # The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
@@ -178,6 +180,13 @@ class Supervisor(Node):
         self.create_subscription(RunState, "/amr/run_state", self.snap.on_run, LATCHED, callback_group=g)
         self.create_subscription(
             LocalizationState, "/amr/localization_state", self.snap.on_loc, LATCHED, callback_group=g
+        )
+        self.create_subscription(
+            CommissioningState,
+            "/amr/commissioning_state",
+            self.snap.on_commissioning,
+            LATCHED,
+            callback_group=g,
         )
         self._pub_lease = self.create_publisher(ControlLease, "/amr/control_lease", RELIABLE_1)
         self._pub_mode = self.create_publisher(ModeState, "/amr/mode_state", LATCHED)
@@ -297,6 +306,8 @@ class Supervisor(Node):
             return 0  # E-stop (emergency plan §4.5): a second no-motion layer above the mux; no mode change
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
+        if self.mode == fsm.IDLE and self.snap.commissioning_active(self._now()):
+            return LEASE_COMMISSIONING  # exclusive IDLE substate: no ordinary jog meanwhile
         return LEASE_MANUAL
 
     def _conditions(self) -> fsm.Conditions:

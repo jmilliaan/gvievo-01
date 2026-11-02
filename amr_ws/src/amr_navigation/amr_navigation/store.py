@@ -224,10 +224,13 @@ def list_labels(maps_dir: str, map_id: str) -> list[int]:
 
 
 def check_labels(labels) -> str | None:
-    """Why a list of label entries is not a valid set, or None. Exactly one home; IDs
-    and names unique; IDs like x0100y0000; every pose finite."""
+    """Why a list of label entries is not a valid set, or None. Not empty; at most one
+    home (a map surveyed without a HOME label has none, owner 2026-11-02); IDs and names
+    unique; IDs like x0100y0000; every pose finite."""
     if not isinstance(labels, list):
         return "labels must be a list"
+    if not labels:
+        return "a label set needs at least one label"
     ids, names, homes = set(), set(), 0
     for i, e in enumerate(labels):
         if not isinstance(e, dict):
@@ -255,8 +258,8 @@ def check_labels(labels) -> str | None:
         ids.add(lid)
         names.add(name)
         homes += e["role"] == "home"
-    if homes != 1:
-        return f"a label set needs exactly one home label, has {homes}"
+    if homes > 1:
+        return f"a label set has at most one home label, has {homes}"
     return None
 
 

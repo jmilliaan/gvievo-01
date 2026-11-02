@@ -15,12 +15,18 @@ invert flags are applied exactly once, here.
 PDO layout (spec §3.2: statusword + velocity + position do not fit one frame):
 
     RPDO1  0x200+n  6040h controlword u16 | 60FFh target velocity i32   (PC -> drive, 50 Hz)
-    TPDO1  0x180+n  6041h statusword  u16 | 606Ch velocity actual i32   (drive -> PC, event timer)
+    TPDO1  0x180+n  6041h statusword  u16 | 606Ch velocity actual i32 | 6077h torque actual i16
+                                                                         (drive -> PC, event timer)
     TPDO2  0x280+n  6064h position    i32 | 1001h error register u8     (drive -> PC, event timer)
 
 TPDOs are transmission type 255 with an event timer, so the drive pushes them
 at a fixed period whether or not the value changed, and an inhibit time equal
 to that period so a changing value cannot push them faster.
+
+6077h rides in TPDO1's two spare bytes (2026-11-02, groundwork for towing-load
+sensing): no new frames, +16 bits per TPDO1, ~1.6 kbit/s for both drives at
+50 Hz (~1.3 % of 125 kbps). It is DIAGNOSTIC ONLY - logged on /drives/torque,
+never an input to whether or how the vehicle moves.
 
 PC-loss response (spec §3.3): the drive is told to CONSUME a heartbeat that
 this process produces (1016h = PC node id + timeout). If the PC dies, the
@@ -68,30 +74,39 @@ TRANSMISSION_EVENT = 255
 
 MAP_STATUSWORD = (0x6041 << 16) | 0x0010
 MAP_VELOCITY_ACTUAL = (0x606C << 16) | 0x0020
+MAP_TORQUE_ACTUAL = (0x6077 << 16) | 0x0010
 MAP_POSITION_ACTUAL = (0x6064 << 16) | 0x0020
 MAP_ERROR_REGISTER = (0x1001 << 16) | 0x0008
 
 _TPDO1 = struct.Struct("<Hi")  # statusword, velocity r/min
+_TPDO1_TORQUE = struct.Struct("<h")  # 6077h after them, 0.1 % of rated torque
 _TPDO2 = struct.Struct("<iB")  # position counts, error register
 
 HEARTBEAT_COB_BASE = 0x700
 NMT_OPERATIONAL = 0x05
 CW_OPERATION_ENABLED = rpdo.CW_OPERATION_ENABLED
 OPERATION_ENABLED_MASK, OPERATION_ENABLED = 0x6F, 0x27
+# Statusword bit 15 (BLV-R, manufacturer-specific): TLC, torque limit control - the
+# output torque has reached the motor's maximum or the active torque limiting value.
+SW_TORQUE_LIMITED = 1 << 15
 
 
-def tpdo_configuration_steps(node: int, period_ms: int) -> list[tuple[int, int, int, int, str]]:
-    """The SDO writes that put statusword+velocity on TPDO1 and position+error on TPDO2.
+def tpdo_configuration_steps(
+    node: int, period_ms: int, torque: bool = True
+) -> list[tuple[int, int, int, int, str]]:
+    """The SDO writes that put statusword+velocity+torque on TPDO1 and position+error on TPDO2.
 
     Same disable → remap → enable ordering rpdo.configuration_steps uses (BLV-R
     manual §4.7.1). Returned as data so it can be checked against the deny-list
-    and asserted in tests before a frame is sent.
+    and asserted in tests before a frame is sent. `torque=False` is the pre-2026-11-02
+    layout (no 6077h), the fallback configure_pdos uses if a drive refuses it.
     """
     if not 1 <= period_ms <= 65535:
         raise ValueError(f"TPDO event timer {period_ms} ms out of range 1..65535")
     steps = []
     for comm, mapping, cob_base, entries, label in (
-        (TPDO1_COMM, TPDO1_MAP, TPDO1_COB_BASE, (MAP_STATUSWORD, MAP_VELOCITY_ACTUAL), "TPDO1"),
+        (TPDO1_COMM, TPDO1_MAP, TPDO1_COB_BASE,
+         (MAP_STATUSWORD, MAP_VELOCITY_ACTUAL) + ((MAP_TORQUE_ACTUAL,) if torque else ()), "TPDO1"),
         (TPDO2_COMM, TPDO2_MAP, TPDO2_COB_BASE, (MAP_POSITION_ACTUAL, MAP_ERROR_REGISTER), "TPDO2"),
     ):
         cob = cob_base + node
@@ -112,11 +127,20 @@ def tpdo_configuration_steps(node: int, period_ms: int) -> list[tuple[int, int, 
     return steps
 
 
-def decode_tpdo1(data: bytes) -> tuple[int, int]:
-    """TPDO1 payload -> (statusword, velocity actual r/min)."""
+def decode_tpdo1(data: bytes) -> tuple[int, int, int | None]:
+    """TPDO1 payload -> (statusword, velocity actual r/min, torque actual 0.1 % or None).
+
+    A 6-byte frame (a drive still on the old mapping) is still statusword and
+    velocity; only the torque is missing. Torque is diagnostic, so its absence
+    must not cost the wheel feedback.
+    """
+    data = bytes(data)
     if len(data) < _TPDO1.size:
         raise ValueError(f"TPDO1 payload is {_TPDO1.size} bytes, got {len(data)}")
-    return _TPDO1.unpack_from(bytes(data), 0)
+    sw, rpm = _TPDO1.unpack_from(data, 0)
+    if len(data) < _TPDO1.size + _TPDO1_TORQUE.size:
+        return sw, rpm, None
+    return sw, rpm, _TPDO1_TORQUE.unpack_from(data, _TPDO1.size)[0]
 
 
 def decode_tpdo2(data: bytes) -> tuple[int, int]:
@@ -198,6 +222,12 @@ class WheelScale:
 
     def wheel_rad_s(self, motor_rpm: float, left: bool) -> float:
         return motor_rpm * RAD_S_PER_RPM / self.gear_ratio * self._sign(left)
+
+    def torque_pct(self, raw: int, left: bool) -> float:
+        """6077h (0.1 % of rated motor torque) -> % with this wheel's sign. The drive's
+        torque coordinate follows its velocity coordinate (opman_fun:1328), so the same
+        invert flag that makes velocity wheel-forward makes torque wheel-forward too."""
+        return raw * 0.1 * self._sign(left)
 
     def wheel_rad(self, counts: int, left: bool) -> float | None:
         if not self.counts_per_wheel_rev:
@@ -288,6 +318,7 @@ DISARMED, STANDBY, ARMED, FAULT = "disarmed", "standby", "armed", "fault"
 class DriveTelemetry:
     statusword: int | None = None
     rpm: int | None = None
+    torque: int | None = None  # 6077h, 0.1 % of rated torque; None = this TPDO1 did not carry it
     position: int | None = None
     error_register: int | None = None
     t_status: float | None = None  # monotonic receive time of the last TPDO1
@@ -305,6 +336,10 @@ class DriveTelemetry:
         if self.statusword is None:
             return None
         return (self.statusword & OPERATION_ENABLED_MASK) == OPERATION_ENABLED
+
+    @property
+    def torque_limited(self) -> bool:
+        return bool(self.statusword is not None and self.statusword & SW_TORQUE_LIMITED)
 
     @property
     def faulted(self) -> bool:
@@ -394,9 +429,9 @@ class DriveLink:
 
     def _make_tpdo1(self, nid):
         def on(m):
-            sw, rpm = decode_tpdo1(m.data)
+            sw, rpm, torque = decode_tpdo1(m.data)
             t = self.telemetry[nid]
-            t.statusword, t.rpm = sw & 0xFFFF, rpm
+            t.statusword, t.rpm, t.torque = sw & 0xFFFF, rpm, torque
             t.t_status = t.t_alive = time.monotonic()
 
         return on
@@ -531,8 +566,17 @@ class DriveLink:
         """RPDO1 (setpoint) and TPDO1/2 (feedback). Pre-operational only (CiA 301)."""
         for nid in self.nodes:
             rpdo.configure(self.router, nid, self._sdo_write_tuple)
-            for index, sub, value, size, what in tpdo_configuration_steps(nid, feedback_period_ms):
-                self.write(nid, index, sub, value, size, what)
+            try:
+                self._write_steps(nid, tpdo_configuration_steps(nid, feedback_period_ms))
+            except RuntimeError as e:
+                # Torque is diagnostic: a drive that will not map 6077h still gets its
+                # wheel feedback (the steps start by disabling the PDO, so a rerun is clean).
+                self.log(f"node {nid}: TPDO1 with torque refused ({e}); mapping it without 6077h")
+                self._write_steps(nid, tpdo_configuration_steps(nid, feedback_period_ms, torque=False))
+
+    def _write_steps(self, nid, steps) -> None:
+        for index, sub, value, size, what in steps:
+            self.write(nid, index, sub, value, size, what)
 
     def _sdo_write_tuple(self, bus, node, index, sub, value, size):
         try:
@@ -931,6 +975,23 @@ def wheel_feedback(
         pos = positions[n].update(t.position, valid, scale, left, link.arm_epoch)
         vel = scale.wheel_rad_s(t.rpm, left) if (scale and status_ok and t.rpm is not None) else 0.0
         out[n] = (pos, vel, valid)
+    return out
+
+
+def torque_feedback(link: DriveLink, now: float, max_age: float, wheels) -> dict:
+    """Per wheel (torque_pct, torque_limited, valid) for one DriveTorque. Diagnostic only.
+
+    Valid needs a fresh TPDO1 that carried 6077h and a known scale (for the sign);
+    the drive's state does not matter - a disabled power stage honestly reads 0 %.
+    """
+    out = {}
+    scale = link.scale
+    for n, left in wheels:
+        t = link.telemetry[n]
+        status_ok, _ = link.feedback_fresh(n, now, max_age)
+        valid = bool(status_ok and t.torque is not None and scale is not None)
+        pct = scale.torque_pct(t.torque, left) if valid else 0.0
+        out[n] = (pct, t.torque_limited if status_ok else False, valid)
     return out
 
 

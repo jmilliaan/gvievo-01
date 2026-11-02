@@ -499,6 +499,17 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
   .pad.compact button.dir { aspect-ratio:auto; }
 }
 
+/* ---- blind run (/blindrun) ---- */
+label.check { display:flex; gap:.8rem; align-items:flex-start; margin:1rem 0 0; font:500 1.25rem var(--sans); color:var(--ink); cursor:pointer; }
+label.check input { display:inline-block; width:auto; min-height:0; margin:.2rem 0 0; flex:none; }
+.br-ms { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; }
+.list > .row.br-hist { grid-template-columns:minmax(0,1.6fr) minmax(0,.5fr) minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,1.1fr); }
+.row.br-hist i.n { font-style:normal; font-weight:400; font-size:1.1rem; }
+@media (max-width:760px) {
+  .list > .row.br-hist { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .br-ms { grid-template-columns:minmax(0,1fr); }
+}
+
 /* ---- operator home (plan phase 1): one state, one sentence, one button ----
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */

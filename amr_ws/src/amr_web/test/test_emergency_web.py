@@ -24,6 +24,7 @@ PAGES = (
     "/io",
     "/alarms",
     "/params",
+    "/blindrun",
 )
 SOS = "Switch on disabled"
 READY = {

@@ -433,6 +433,7 @@ def test_pages_fonts_and_style_guards(env):
         "/io",
         "/alarms",
         "/params",
+        "/blindrun",
     ):
         r = client.get(page)
         assert r.status_code == 200, page
@@ -509,6 +510,7 @@ def test_every_element_id_a_page_script_uses_exists_on_that_page(env):
         "/io",
         "/alarms",
         "/params",
+        "/blindrun",
     ):
         client.post("/api/role", json={"role": "operator"})
         html = client.get(page).data.decode()
@@ -709,6 +711,8 @@ _JSON_POSTS = [
     "/api/localization/initialpose",
     "/api/mission/run",
     "/api/missions",
+    "/api/commissioning/plan",
+    "/api/commissioning/measurement",
     "/api/maps/sim_factory/1/edit",
     "/api/maps/sim_factory/1/routes/validate",
     "/api/maps/sim_factory/1/routes/save",

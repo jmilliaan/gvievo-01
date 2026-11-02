@@ -91,9 +91,11 @@ def test_config_profile():
             "unknown top-level")
     refuses("a leftover auto watchdog is refused",
             lambda d: d["timing"].update(auto_watchdog_s=1.5), "unknown key")
-    # 2026-10-30: blind_run.* and pp.* went with the commissioning page.
-    refuses("the retired blind_run section is refused",
-            lambda d: d.update({"blind_run": {"max_rpm": 3000}}), "unknown top-level")
+    refuses("a blind-run speed above the motor limit is refused",
+            lambda d: d["blind_run"].update(max_rpm=9000), "blind_run.max_rpm")
+    refuses("a blind-run speed above 0.8 m/s is refused",
+            lambda d: d["blind_run"].update(max_speed_mps=1.0), "blind_run.max_speed_mps")
+    # 2026-10-30: pp.* went with profile position (blind_run.* came back 2026-11-02, PV only).
     refuses("the retired pp section is refused",
             lambda d: d.update({"pp": {"enabled": False}}), "unknown top-level")
     refuses("a bool where a number belongs is refused",

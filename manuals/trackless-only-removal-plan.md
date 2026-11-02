@@ -6,6 +6,8 @@ Branch `kyb-trackless` · repo `/home/gvipc-evo-01/agv_can` · read-only analysi
 
 > **Later (2026-10-30):** the Commission page, the commissioning node, `agv_core/blindrun.py` and the pp backend were removed, and the Status page folded into Home and Monitor (plan `noble-waddling-sutton`). The rows below that keep `commissioning`, `COMMISSIONING` (lease bit 4, mux 5; now retired, never reused), `blind_run` or `pp` describe the P1-P6 state, not today's.
 
+> **Later (2026-11-02):** the blind run is back on `kyb-trackless` as its own page, `/blindrun`: `agv_core/blindrun.py`, the commissioning node, `CommissioningState`/`PlanCommissioning`, lease bit 4 and mux source 5 with their old meaning, and `blind_run.*` in the profile. PV only: the pp backend stays removed. An emergency aborts a running job, like a survey move (owner, 2026-11-02).
+
 ---
 
 ## 1. Summary

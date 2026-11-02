@@ -46,8 +46,9 @@ class PanelFrame:
     comms_ok: bool
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
-    manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
-    estop_ok: bool = False  # panel.di_estop_ok HIGH for debounce_scans; LOW at once; False while invalid
+    manual_arm: bool = False  # panel.di_manual_arm, manual_arm_scans either way; False while invalid
+    # panel.di_estop_ok: HIGH for debounce_scans, LOW for estop_low_scans; False at once while invalid
+    estop_ok: bool = False
     continue_edge: bool = False  # panel.di_continue rising edge (PB Continue), Start's rules
 
 
@@ -59,8 +60,14 @@ class PanelAdapter:
         debounce_scans: int | None = None,
         pendant: bool | None = None,
         coincidence_hold_scans: int | None = None,
+        estop_low_scans: int | None = None,
+        manual_arm_scans: int | None = None,
     ) -> None:
         scans = config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans
+        if estop_low_scans is None:
+            estop_low_scans = config.PANEL_ESTOP_LOW_SCANS
+        if manual_arm_scans is None:
+            manual_arm_scans = config.PANEL_MANUAL_ARM_SCANS
         # Coincidence guard: the selector and the pendant changing in the SAME debounced scan
         # is not a hand (2026-09-17: MANUAL+FWD appeared together for 1.02 s mid-route with
         # nobody at the box, aborting the run and handing the mux a phantom FWD). Both changes
@@ -92,13 +99,18 @@ class PanelAdapter:
                 scans,
             )
         # Pendant enable / arm (DI09): a debounced LEVEL, like the pendant. A switch already on at
-        # power-on powers the drives once the image is valid - power is not motion.
-        self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
+        # power-on powers the drives once the image is valid - power is not motion. Its own
+        # filter (panel.manual_arm_scans), both directions.
+        self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), manual_arm_scans)
         self._last_arm: bool | None = None
-        # E-stop OK (DI08, Flexi Soft Q3): only the HIGH direction is debounced. One LOW scan,
-        # an invalid image or a comms gap is an emergency at once (emergency plan §4.1).
+        # E-stop OK (DI08, Flexi Soft Q3): HIGH needs debounce_scans, LOW needs estop_low_scans
+        # (2026-11-02: one-scan Q3 test pulses were tripping it). An invalid image or a comms
+        # gap is still an emergency at once (emergency plan §4.1).
         self.estop_scans = scans
+        self.estop_low_scans = max(1, int(estop_low_scans))
         self._estop_high = 0
+        self._estop_low = 0
+        self._estop_believed = False
         self._last_estop: bool | None = None
         self.seq = 0
         self._last_scans: int | None = None  # DIO acquisition count behind the last evaluated frame
@@ -172,7 +184,14 @@ class PanelAdapter:
         # baseline is already believed: a boot with DI08 HIGH is never a one-scan "LOW".
         high = comms and _bit(snapshot.get("di"), config.PANEL_DI_ESTOP_OK)
         self._estop_high = self._estop_high + 1 if high else 0
-        estop_ok = bool(intent.valid) and self._estop_high >= self.estop_scans
+        self._estop_low = 0 if high else self._estop_low + 1
+        if not intent.valid:
+            self._estop_believed = False
+        elif self._estop_believed:
+            self._estop_believed = self._estop_low < self.estop_low_scans
+        else:
+            self._estop_believed = self._estop_high >= self.estop_scans
+        estop_ok = self._estop_believed
         if estop_ok != self._last_estop:
             notes.append(f"E-stop OK (DI{config.PANEL_DI_ESTOP_OK}) {'HIGH' if estop_ok else 'LOW'}")
             self._last_estop = estop_ok

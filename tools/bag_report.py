@@ -6,8 +6,8 @@
 Writes <run>/csv/*.csv and prints the timeline: run states, steps and holds,
 localization states, field warnings, mux source changes, drive power, panel
 edges, DO changes, events and rosout warnings. Then, per step of the run
-(/amr/run_state step changes): duration, distance, mean and max speed and peak
-cross-track error.
+(/amr/run_state step changes): duration, distance, mean and max speed, peak
+cross-track error and, when /drives/torque was recorded, the motor torque.
 Time is seconds from the first recorded message (bag receive time).
 """
 import csv
@@ -94,6 +94,18 @@ def main(run):
             else:
                 hi = mid - 1
         return series[lo][col]
+
+    # -- motor torque (6077h, diagnostic): % of RATED motor torque, wheel-forward positive.
+    # sum_pct is the drive force both wheels together put into the floor - the number a
+    # towed load raises; v_mps is the encoder speed at the same instant, for gating on cruise.
+    torque = []
+    for t, m in bag.get("/drives/torque", []):
+        torque.append((t - t0, m.left_torque_pct, m.right_torque_pct,
+                       m.left_torque_pct + m.right_torque_pct, at(wheels, t - t0, 1),
+                       int(m.left_torque_limited), int(m.right_torque_limited),
+                       m.left_valid and m.right_valid))
+    write_csv(csvd, "torque.csv", ["t", "left_pct", "right_pct", "sum_pct", "v_mps",
+                                   "left_tlc", "right_tlc", "valid"], torque)
 
     # -- gyro --------------------------------------------------------------------------
     imu, gyaw = [], 0.0
@@ -217,6 +229,13 @@ def main(run):
             line += f"  v mean {sum(sp) / len(sp):5.2f} max {max(sp):5.2f} m/s"
         if xt:
             line += f"  cross-track max {max(xt, key=abs):+.3f} m"
+        tq = [row for row in torque if a <= row[0] < b and row[7]]
+        if tq:
+            s = [row[3] for row in tq]
+            line += f"  torque sum mean {sum(s) / len(s):+6.1f} max {max(s, key=abs):+6.1f} %"
+            tlc = sum(1 for row in tq if row[5] or row[6])
+            if tlc:
+                line += f"  AT TORQUE LIMIT {tlc} samples"
         print(line)
 
 

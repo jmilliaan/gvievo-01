@@ -97,6 +97,25 @@ panel.di_manual_arm
     It replaces manual_auto_arm (the selector in MANUAL was itself the arm
     command, 2026-10-08): the drives are no longer powered while idle.
 
+panel.estop_low_scans / manual_arm_scans
+    Input filters for DI08 (E-stop OK, Flexi Soft Q3) and DI09 (pendant
+    enable / arm), in DIO scans (dio.scan_period_s each).
+
+    estop_low_scans: DI08 must read LOW this many consecutive scans before
+    the PC calls it an emergency (2026-11-02). With 1, a single LOW scan
+    tripped it: Q3 was dropping LOW for one scan every 400 ms in bursts (83
+    one-scan pulses in the logs, 30 Oct - 2 Nov; Q3 test pulses, which
+    io-mapping.md says must be off), and each one powered the drives off
+    and wanted a Reset. 2 rejects those at the cost of 50 ms on a real
+    press. This filters only the PC's picture: STO is the Flexi Soft's, in
+    hardware, and nothing here delays it. An invalid image or a comms gap
+    is still an emergency at once; leaving one still needs debounce_scans
+    HIGH scans. Capped at 0.2 s.
+
+    manual_arm_scans: DI09 must read the same level this many consecutive
+    scans before it is believed, either way (it was debounce_scans). A
+    switch, not a pushbutton, so it can afford a little more. Capped at 0.5 s.
+
 panel.di_continue
     PB Continue (DI0D on MCQ4-4, 2026-10-30). A pushbutton with exactly
     Start's rules: rising edge only, no edge from a button held at power-on or
@@ -250,6 +269,31 @@ horn.*
     it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
     rather than leaving it energised. See the derived value.
 
+blind_run.*
+    Encoder-only test moves from the Blind run page (/blindrun), to measure
+    the encoders before SLAM relies on them. The page only SETS a plan; PB
+    Start runs it, with the selector in MANUAL and the vehicle armed. Clear, a
+    selector move to AUTO, an emergency, a fault or lost 6064h feedback aborts
+    it, never to resume (an emergency too, like a survey move: owner,
+    2026-11-02). Hold the move again to re-run it.
+
+    Profile velocity mode with a software position loop: the faster wheel runs
+    a trapezoid on its REMAINING counts at accel_rpm_s, capped at max_rpm; the
+    other follows the planned ratio plus sync_kp (1/s) times its progress lag.
+    A segment ends within stop_tolerance_mm, then waits settle_s at standstill
+    before its counts are recorded. Overrunning by overrun_margin, or taking
+    twice the planned time, aborts. max_distance_m caps each wheel per segment.
+
+    Nothing steers on a sensor. The IMU yaw rate is written beside the encoder
+    heading in the evidence so the two can be compared afterwards - see imu.* -
+    and that is the whole of its involvement.
+
+    max_speed_mps caps the centre-path speed of a blind move (the page offers
+    up to this). Above ~0.4 m/s the protective field sizing of the
+    nanoScan3/FX3 must be confirmed first; that is a check on the vehicle, not
+    something this file can know. Profile position (pp) was removed on
+    2026-10-30 and is not part of this (2026-11-02, blind run restored).
+
 timing.auto_start_delay_s
     The pre-move warning (2026-10-08): every move that follows an operator's
     Start under AUTO - a run start, or a resume after an E-stop - first powers
@@ -392,6 +436,8 @@ _SCHEMA = {
         "di_continue":    ("PANEL_DI_CONTINUE", int),
         "estop_reset_timeout_s": ("PANEL_ESTOP_RESET_TIMEOUT_S", float),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
+        "estop_low_scans": ("PANEL_ESTOP_LOW_SCANS", int),
+        "manual_arm_scans": ("PANEL_MANUAL_ARM_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
     },
     "horn": {
@@ -432,6 +478,17 @@ _SCHEMA = {
         "enabled":        ("IMU_ENABLED", bool),
         "poll_period_s":  ("IMU_PERIOD_S", float),
         "retry_period_s": ("IMU_RETRY_PERIOD_S", float),
+    },
+    "blind_run": {
+        "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
+        "max_rpm":           ("BLIND_MAX_RPM", float),
+        "accel_rpm_s":       ("BLIND_ACCEL_RPM_S", float),
+        "settle_s":          ("BLIND_SETTLE_S", float),
+        "stop_tolerance_mm": ("BLIND_STOP_TOLERANCE_MM", float),
+        "sync_kp":           ("BLIND_SYNC_KP", float),
+        "overrun_margin":    ("BLIND_OVERRUN_MARGIN", float),
+        "max_segments":      ("BLIND_MAX_SEGMENTS", int),
+        "max_speed_mps":     ("BLIND_MAX_SPEED_MPS", float),
     },
     "timing": {
         "loop_period_s":      ("LOOP_PERIOD_S", float),
@@ -838,6 +895,14 @@ def _validate(ns):
     check(0.5 <= g("PANEL_ESTOP_RESET_TIMEOUT_S") <= 30.0,
           "panel.estop_reset_timeout_s must be in 0.5..30 s")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
+    # The DI08 LOW filter delays the PC's emergency picture (never the Flexi Soft's STO):
+    # cap it so a real press is still seen within ~0.2 s.
+    check(1 <= g("PANEL_ESTOP_LOW_SCANS")
+          and g("PANEL_ESTOP_LOW_SCANS") * g("DIO_SCAN_PERIOD_S") <= 0.2 + 1e-9,
+          "panel.estop_low_scans must be >= 1 and at most 0.2 s of DIO scans")
+    check(1 <= g("PANEL_MANUAL_ARM_SCANS")
+          and g("PANEL_MANUAL_ARM_SCANS") * g("DIO_SCAN_PERIOD_S") <= 0.5 + 1e-9,
+          "panel.manual_arm_scans must be >= 1 and at most 0.5 s of DIO scans")
     # A selector change and a pendant press landing in the SAME scan is not a hand: on
     # 2026-09-17 the DIO image showed MANUAL+FWD for 1.02 s mid-route with nobody at the
     # box. Such a coincidence is held back this long before it is believed (0 disables).
@@ -894,6 +959,28 @@ def _validate(ns):
     check(g("IMU_RETRY_PERIOD_S") > g("IMU_PERIOD_S"),
           f"imu.retry_period_s ({g('IMU_RETRY_PERIOD_S')}) must exceed "
           f"poll_period_s ({g('IMU_PERIOD_S')})")
+
+    # -- blind run --------------------------------------------------------
+    check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,
+          "blind_run.max_distance_m must be in (0, 50] m")
+    check(0 < g("BLIND_MAX_RPM") <= g("MOTOR_MAX_RPM"),
+          "blind_run.max_rpm must be in (0, motor_max_rpm]")
+    check(0 < g("BLIND_ACCEL_RPM_S") <= g("RAMP")["auto"]["accel"],
+          "blind_run.accel_rpm_s must be > 0 and within the drive ramp "
+          "(drivers.ramp.auto.accel), or the drive lags the plan")
+    check(g("BLIND_SETTLE_S") >= 0, "blind_run.settle_s must be >= 0")
+    check(0 < g("BLIND_STOP_TOLERANCE_MM") <= 50,
+          "blind_run.stop_tolerance_mm must be in (0, 50] mm")
+    check(g("BLIND_SYNC_KP") >= 0, "blind_run.sync_kp must be >= 0")
+    check(0 <= g("BLIND_OVERRUN_MARGIN") <= 0.5,
+          "blind_run.overrun_margin must be a fraction in [0, 0.5]")
+    check(1 <= g("BLIND_MAX_SEGMENTS") <= 32,
+          "blind_run.max_segments must be in 1..32")
+    check(0 < g("BLIND_MAX_SPEED_MPS") <= 0.8,
+          "blind_run.max_speed_mps must be in (0, 0.8] m/s")
+    check(g("BLIND_MAX_SPEED_MPS") * g("RPM_PER_MPS") <= g("BLIND_MAX_RPM") + 1e-6,
+          f"blind_run.max_speed_mps ({g('BLIND_MAX_SPEED_MPS')} m/s) needs more than "
+          f"blind_run.max_rpm ({g('BLIND_MAX_RPM'):g} r/min)")
 
     check(g("AUTO_START_DELAY_S") >= 0,
           "timing.auto_start_delay_s must be >= 0")

@@ -25,8 +25,10 @@ def _snap(di, comms=True, detail="ok", age=0.01, connected=True, new=True):
     return {"comms_ok": comms, "di": di, "detail": detail, "rx_age_s": age, "connected": connected, "scans": _ACQ[0]}
 
 
-def _adapter():
-    return panel_io.PanelAdapter(debounce_scans=2)
+def _adapter(estop_low_scans=1, manual_arm_scans=2):
+    return panel_io.PanelAdapter(
+        debounce_scans=2, estop_low_scans=estop_low_scans, manual_arm_scans=manual_arm_scans
+    )
 
 
 def _settle(ad, di, n=2, comms=True):
@@ -154,7 +156,7 @@ def test_pendant_is_held_at_power_on_and_dropped_on_comms_loss():
 
 
 def test_manual_arm_is_a_debounced_level_and_dies_with_the_image():
-    """DI08 (panel.di_manual_arm): under MANUAL the drives are powered only while it is HIGH."""
+    """DI09 (panel.di_manual_arm): under MANUAL the drives are powered only while it is HIGH."""
     ad = _adapter()
 
     def di(arm):
@@ -283,8 +285,8 @@ def _estop_di(high):
 
 
 def test_estop_ok_low_counts_at_once_high_needs_debounce():
-    """DI08 (panel.di_estop_ok): going to EMERGENCY is one scan, leaving it needs
-    debounce_scans consecutive HIGH scans; an invalid image is never OK (fail-safe)."""
+    """DI08 (panel.di_estop_ok) with estop_low_scans=1: going to EMERGENCY is one scan, leaving
+    it needs debounce_scans consecutive HIGH scans; an invalid image is never OK (fail-safe)."""
     ad = _adapter()
     f = _settle(ad, _estop_di(True))  # the first valid image: already OK, no boot-time LOW
     assert f.valid and f.estop_ok
@@ -298,6 +300,59 @@ def test_estop_ok_low_counts_at_once_high_needs_debounce():
     assert f.estop_ok
     f = ad.tick(_snap(_estop_di(True), comms=False))
     assert not f.valid and not f.estop_ok
+
+
+def test_estop_low_filter_rejects_one_scan_pulses():
+    """2026-11-02: Q3 read LOW for one scan every 8 scans (400 ms) in bursts. With
+    estop_low_scans=2 such a train never trips; two LOW scans in a row do."""
+    ad = _adapter(estop_low_scans=2)
+    f = _settle(ad, _estop_di(True))
+    assert f.estop_ok
+    for _ in range(10):  # one LOW scan, seven HIGH, ten times over
+        f = ad.tick(_snap(_estop_di(False)))
+        assert f.estop_ok and not f.changed, "a one-scan LOW is filtered"
+        for _ in range(7):
+            f = ad.tick(_snap(_estop_di(True)))
+            assert f.estop_ok
+    f = ad.tick(_snap(_estop_di(False)))
+    f = ad.tick(_snap(_estop_di(False), new=False))  # a republished image is not a 2nd scan
+    assert f.estop_ok
+    f = ad.tick(_snap(_estop_di(False)))
+    assert not f.estop_ok and "LOW" in f.changed, "two LOW scans are a press"
+    f = ad.tick(_snap(_estop_di(True)))
+    assert not f.estop_ok, "leaving still needs debounce_scans HIGH"
+    f = ad.tick(_snap(_estop_di(True)))
+    assert f.estop_ok
+
+
+def test_estop_low_filter_never_delays_an_invalid_image():
+    """The filter is for DI08's level only: a comms gap is an emergency on the same tick."""
+    ad = _adapter(estop_low_scans=2)
+    f = _settle(ad, _estop_di(True))
+    assert f.estop_ok
+    f = ad.tick(_snap(_estop_di(True), comms=False))
+    assert not f.valid and not f.estop_ok
+
+
+def test_manual_arm_filter_has_its_own_scan_count():
+    """DI09 (panel.manual_arm_scans): a level must hold that many scans, either way."""
+    ad = _adapter(manual_arm_scans=3)
+
+    def di(arm):
+        bits = _di()
+        bits[config.PANEL_DI_MANUAL_ARM] = arm
+        return bits
+
+    f = _settle(ad, di(True), n=3)
+    assert f.manual_arm
+    for _ in range(2):  # two LOW scans: not believed
+        f = ad.tick(_snap(di(False)))
+        assert f.manual_arm
+    f = ad.tick(_snap(di(True)))
+    assert f.manual_arm, "a two-scan dropout is filtered"
+    for _ in range(3):
+        f = ad.tick(_snap(di(False)))
+    assert not f.manual_arm and "Manual Arm off" in f.changed
 
 
 def test_estop_ok_returns_with_the_image_after_a_comms_gap():
