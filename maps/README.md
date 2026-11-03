@@ -9,6 +9,8 @@ Each `<map_id>/rev<N>/` holds:
 - `map.png`: preview of `map.pgm` (white = free, black = occupied, grey = unknown)
 - `map.pgm`, `map.yaml`: the occupancy grid as saved (0.05 m per pixel)
 - `manifest.yaml`: start pose, survey closure review, and the sha256 of every bundle file
+- `<map_id>-rev<N>-edits.json` (optional): map edits drawn on that revision off the vehicle,
+  to be applied on the AGV as a new revision. See [EDITS.md](EDITS.md)
 
 `posegraph.posegraph` / `posegraph.data` (slam_toolbox's serialised graph, ~55 MB per
 revision) are left out: nothing reloads them, and they would bloat the history. The
