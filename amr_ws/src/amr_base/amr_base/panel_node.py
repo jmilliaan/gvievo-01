@@ -109,8 +109,10 @@ class PanelNode(Node):
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, continue DI{config.PANEL_DI_CONTINUE}, selector DI{config.PANEL_DI_AUTO} "
             f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}), "
-            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}, E-stop OK DI{config.PANEL_DI_ESTOP_OK}; "
-            f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}; "
+            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}, E-stop OK DI{config.PANEL_DI_ESTOP_OK}, "
+            + (", ".join(f"{n} DI{ch}" for n, ch, _r in config.PANEL_DESTINATIONS) or "no destinations")
+            + "; "
+            + f"horn {f'DO{config.HORN_DO_CHANNEL}' if config.HORN_ENABLED else 'disabled'}; "
             + (
                 f"pendant fwd DI{config.PENDANT_DI_FWD}, "
                 f"rvs DI{config.PENDANT_DI_RVS}, left DI{config.PENDANT_DI_LEFT}, "
@@ -166,6 +168,7 @@ class PanelNode(Node):
         m.start_edge = frame.start_edge
         m.reset_edge = frame.reset_edge
         m.continue_edge = frame.continue_edge
+        m.dest_edge = frame.dest_edge
         m.seq = frame.seq
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
         m.manual_arm = frame.manual_arm

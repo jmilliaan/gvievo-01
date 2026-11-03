@@ -1,0 +1,13 @@
+1793681522.2787573 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-11-52-02-277703-gvipc-ce-150267
+1793681522.2819417 [INFO] [launch]: Default logging verbosity is set to INFO
+1793681522.5569916 [INFO] [drive_node-2]: process started with pid [150287]
+1793681522.5574505 [INFO] [sick_safetyscanners2_node-4]: process started with pid [150291]
+1793681522.5589921 [INFO] [robot_state_publisher-1]: process started with pid [150285]
+1793681522.5591855 [INFO] [panel_node-3]: process started with pid [150289]
+1793681522.5593352 [INFO] [gls_node-5]: process started with pid [150293]
+1793681522.5594645 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [150295]
+1793681522.5595713 [INFO] [diff_drive_odom_node-7]: process started with pid [150297]
+1793681522.5596750 [INFO] [imu_bias_node-8]: process started with pid [150303]
+1793681522.5597708 [INFO] [scan_gate_node-9]: process started with pid [150319]
+1793681522.5598974 [INFO] [commissioning_node-10]: process started with pid [150321]
+1793681522.5599978 [INFO] [ekf_node-11]: process started with pid [150323]

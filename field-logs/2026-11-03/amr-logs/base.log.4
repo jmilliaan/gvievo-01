@@ -1,0 +1,603 @@
+[INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-13-30-26-430781-gvipc-ce-22336
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [drive_node-2]: process started with pid [22367]
+[INFO] [sick_safetyscanners2_node-4]: process started with pid [22371]
+[INFO] [robot_state_publisher-1]: process started with pid [22365]
+[INFO] [panel_node-3]: process started with pid [22369]
+[INFO] [gls_node-5]: process started with pid [22373]
+[INFO] [cmd_mux_kinematics_node-6]: process started with pid [22375]
+[INFO] [diff_drive_odom_node-7]: process started with pid [22377]
+[INFO] [imu_bias_node-8]: process started with pid [22379]
+[INFO] [scan_gate_node-9]: process started with pid [22398]
+[INFO] [commissioning_node-10]: process started with pid [22401]
+[INFO] [ekf_node-11]: process started with pid [22403]
+[robot_state_publisher-1] [INFO] [1793687426.689911368] [robot_state_publisher]: got segment base_footprint
+[robot_state_publisher-1] [INFO] [1793687426.690039853] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-1] [INFO] [1793687426.690074037] [robot_state_publisher]: got segment gls_frame
+[robot_state_publisher-1] [INFO] [1793687426.690085939] [robot_state_publisher]: got segment imu_frame
+[robot_state_publisher-1] [INFO] [1793687426.690096251] [robot_state_publisher]: got segment laser_frame
+[robot_state_publisher-1] [INFO] [1793687426.690106574] [robot_state_publisher]: got segment wheel_left
+[robot_state_publisher-1] [INFO] [1793687426.690116402] [robot_state_publisher]: got segment wheel_right
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.685164090] [sick_safetyscanners2_node]: Initializing SickSafetyscannersRos2 Node[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.688841509] [SickSafetyscanners]: frame_id: laser_frame[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689077029] [SickSafetyscanners]: sensor_ip: 192.168.3.10[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689103250] [SickSafetyscanners]: interface_ip: 0.0.0.0[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689120639] [SickSafetyscanners]: host_ip: 192.168.3.1[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689136183] [SickSafetyscanners]: host_udp_port: 6060[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689153043] [SickSafetyscanners]: channel: 0[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689168661] [SickSafetyscanners]: channel_enabled: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689183630] [SickSafetyscanners]: skip: 1[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689199133] [SickSafetyscanners]: angle_start: -1.658000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689218245] [SickSafetyscanners]: angle_end: 1.658000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689234628] [SickSafetyscanners]: time_offset: 0.000000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689251491] [SickSafetyscanners]: general_system_state: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689267359] [SickSafetyscanners]: derived_settings: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689298517] [SickSafetyscanners]: measurement_data: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689314720] [SickSafetyscanners]: intrusion_data: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689329832] [SickSafetyscanners]: application_io_data: true[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689345103] [SickSafetyscanners]: use_persistent_config: false[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689361653] [SickSafetyscanners]: min_intensities: 0.000000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689379513] [SickSafetyscanners]: expected_frequency: 34.000000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689398287] [SickSafetyscanners]: frequency_tolerance: 0.100000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689419306] [SickSafetyscanners]: timestamp_min_acceptable: -1.000000[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.689430394] [SickSafetyscanners]: timestamp_max_acceptable: 1.000000[0m
+[sick_safetyscanners2_node-4] [INFO]: Command Method Acknowledged.
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.697919763] [SickSafetyscanners]: Communication to Sensor set up[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.697960731] [SickSafetyscanners]: Reading Type code settings[0m
+[sick_safetyscanners2_node-4] [INFO]: Command Variable Acknowledged.
+[sick_safetyscanners2_node-4] [INFO]: Type Code: NANS3-AAAZ30AN1P02
+[sick_safetyscanners2_node-4] [INFO]: Command Variable Acknowledged.
+[sick_safetyscanners2_node-4] [INFO]: Processing reply...
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.703957137] [SickSafetyscanners]: Reading Metadata[0m
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.706437837] [SickSafetyscanners]: Reading firmware version[0m
+[sick_safetyscanners2_node-4] [INFO]: Command Variable Acknowledged.
+[sick_safetyscanners2_node-4] [INFO]: Firmware Version: R01.94
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.715261462] [SickSafetyscanners]: Run[0m
+[sick_safetyscanners2_node-4] [INFO]: Command Method Acknowledged.
+[sick_safetyscanners2_node-4] [0m[INFO] [1793687426.720372867] [sick_safetyscanners2_node]: Node Configured and running[0m
+[gls_node-5] [INFO] [1793687427.359942423] [gls_node]: GLS621 at 192.168.4.1:2112, read-only; NOT CALIBRATED: raw counts only
+[panel_node-3] [INFO] [1793687427.652716910] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[panel_node-3] [INFO] [1793687427.653931432] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[panel_node-3] [INFO] [1793687427.695921283] [panel_node]: DIO comms ok
+[panel_node-3] [INFO] [1793687427.759984302] [panel_node]: panel image valid; selector MANUAL
+[panel_node-3] [WARN] [1793687427.760872865] [panel_node]: emergency EMERGENCY -> EMERGENCY: DI08 LOW (E-stop)
+[panel_node-3] [INFO] [1793687427.798574683] [panel_node]: Manual Arm on
+[imu_bias_node-8] [INFO] [1793687427.864746731] [imu_bias]: waiting for 2.3 s stationary to calibrate
+[cmd_mux_kinematics_node-6] [INFO] [1793687427.933865694] [cmd_mux_kinematics]: r=0.09 track=0.487 w_max=13.96 rad/s a_max=0.300 alpha_max=0.400
+[cmd_mux_kinematics_node-6] [INFO] [1793687427.935334827] [cmd_mux_kinematics]: command source: none -> none (no supervisor lease)
+[commissioning_node-10] [INFO] [1793687427.937003075] [commissioning_node]: commissioning idle; evidence -> /home/gvipc-evo-01/.amr/commissioning
+[cmd_mux_kinematics_node-6] [INFO] [1793687427.940525774] [cmd_mux_kinematics]: supervisor generation 0 -> 1 (ab37ed18): caches cleared
+[cmd_mux_kinematics_node-6] [INFO] [1793687427.954010772] [cmd_mux_kinematics]: command source: none -> none (E-stop: emergency not cleared)
+[diff_drive_odom_node-7] [INFO] [1793687427.999078931] [diff_drive_odom]: r=0.09 track=0.487 publish_tf=False
+[drive_node-2] [0m[INFO] [1793687428.205867072] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01[0m
+[drive_node-2] [0m[INFO] [1793687428.220844058] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)[0m
+[drive_node-2] [0m[INFO] [1793687428.221357752] [drive_node]: drive power not wanted: E-stop (DI08)[0m
+[drive_node-2] [0m[INFO] [1793687428.777547088] [drive_node]: encoder scale 1080000 counts per wheel turn[0m
+[drive_node-2] [0m[INFO] [1793687428.778558736] [drive_node]: drives in standby (linked, power stage off)[0m
+[drive_node-2] [0m[INFO] [1793687428.786364209] [drive_node]: drives standby, imu sdo[0m
+[imu_bias_node-8] [INFO] [1793687431.159585825] [imu_bias]: gyro z bias -0.3868 deg/s (window 1)
+[imu_bias_node-8] [INFO] [1793687433.484141622] [imu_bias]: gyro z bias -0.3866 deg/s (window 2)
+[imu_bias_node-8] [INFO] [1793687435.788797928] [imu_bias]: gyro z bias -0.3870 deg/s (window 3)
+[imu_bias_node-8] [INFO] [1793687438.089795461] [imu_bias]: gyro z bias -0.3827 deg/s (window 4)
+[imu_bias_node-8] [INFO] [1793687440.391672951] [imu_bias]: gyro z bias -0.3803 deg/s (window 5)
+[imu_bias_node-8] [INFO] [1793687442.693320173] [imu_bias]: gyro z bias -0.3881 deg/s (window 6)
+[imu_bias_node-8] [INFO] [1793687444.997360540] [imu_bias]: gyro z bias -0.3836 deg/s (window 7)
+[panel_node-3] [INFO] [1793687445.795355463] [panel_node]: E-stop OK (DI8) HIGH
+[panel_node-3] [WARN] [1793687445.796773811] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[drive_node-2] [0m[INFO] [1793687445.817921816] [drive_node]: drive power not wanted: waiting for Reset[0m
+[panel_node-3] [INFO] [1793687446.795057145] [panel_node]: RESET edge
+[panel_node-3] [WARN] [1793687446.796670425] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[imu_bias_node-8] [INFO] [1793687447.317726554] [imu_bias]: gyro z bias -0.3853 deg/s (window 8)
+[imu_bias_node-8] [INFO] [1793687449.622455981] [imu_bias]: gyro z bias -0.3846 deg/s (window 9)
+[panel_node-3] [WARN] [1793687449.815672396] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[panel_node-3] [INFO] [1793687450.674950834] [panel_node]: RESET edge
+[panel_node-3] [WARN] [1793687450.675805331] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[panel_node-3] [INFO] [1793687451.035606377] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[drive_node-2] [0m[INFO] [1793687451.049907659] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687451.054073297] [cmd_mux_kinematics]: after the E-stop: hand inputs released, manual motion allowed again
+[cmd_mux_kinematics_node-6] [INFO] [1793687451.055284461] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[cmd_mux_kinematics_node-6] [INFO] [1793687451.114297671] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[drive_node-2] [0m[INFO] [1793687451.424720960] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793687451.430326665] [drive_node]: drives armed, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687451.433998869] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793687453.780285189] [imu_bias]: gyro z bias -0.3857 deg/s (window 10)
+[imu_bias_node-8] [INFO] [1793687456.081463895] [imu_bias]: gyro z bias -0.3889 deg/s (window 11)
+[scan_gate_node-9] [WARN] [1793687458.119922246] [scan_gate]: 13 scans expired without an odom transform in the last 30 s (released 249, thinned 248, received 511)
+[imu_bias_node-8] [INFO] [1793687458.406212818] [imu_bias]: gyro z bias -0.3838 deg/s (window 12)
+[imu_bias_node-8] [INFO] [1793687460.710957316] [imu_bias]: gyro z bias -0.3818 deg/s (window 13)
+[imu_bias_node-8] [INFO] [1793687463.011906915] [imu_bias]: gyro z bias -0.3881 deg/s (window 14)
+[imu_bias_node-8] [INFO] [1793687465.313931780] [imu_bias]: gyro z bias -0.3836 deg/s (window 15)
+[imu_bias_node-8] [INFO] [1793687467.614634946] [imu_bias]: gyro z bias -0.3831 deg/s (window 16)
+[imu_bias_node-8] [INFO] [1793687469.915977270] [imu_bias]: gyro z bias -0.3813 deg/s (window 17)
+[imu_bias_node-8] [INFO] [1793687472.217407680] [imu_bias]: gyro z bias -0.3840 deg/s (window 18)
+[imu_bias_node-8] [INFO] [1793687474.520531047] [imu_bias]: gyro z bias -0.3883 deg/s (window 19)
+[imu_bias_node-8] [INFO] [1793687476.846492262] [imu_bias]: gyro z bias -0.3843 deg/s (window 20)
+[imu_bias_node-8] [INFO] [1793687479.150254581] [imu_bias]: gyro z bias -0.3784 deg/s (window 21)
+[imu_bias_node-8] [INFO] [1793687481.450552939] [imu_bias]: gyro z bias -0.3859 deg/s (window 22)
+[imu_bias_node-8] [INFO] [1793687483.752681834] [imu_bias]: gyro z bias -0.3821 deg/s (window 23)
+[imu_bias_node-8] [INFO] [1793687486.057157402] [imu_bias]: gyro z bias -0.3829 deg/s (window 24)
+[imu_bias_node-8] [INFO] [1793687488.359807482] [imu_bias]: gyro z bias -0.3915 deg/s (window 25)
+[imu_bias_node-8] [INFO] [1793687490.661291034] [imu_bias]: gyro z bias -0.3857 deg/s (window 26)
+[imu_bias_node-8] [INFO] [1793687492.971495776] [imu_bias]: gyro z bias -0.3868 deg/s (window 27)
+[imu_bias_node-8] [INFO] [1793687495.277402844] [imu_bias]: gyro z bias -0.3872 deg/s (window 28)
+[imu_bias_node-8] [INFO] [1793687497.592537589] [imu_bias]: gyro z bias -0.3912 deg/s (window 29)
+[imu_bias_node-8] [INFO] [1793687499.912657919] [imu_bias]: gyro z bias -0.3914 deg/s (window 30)
+[imu_bias_node-8] [INFO] [1793687502.213881169] [imu_bias]: gyro z bias -0.3866 deg/s (window 31)
+[imu_bias_node-8] [INFO] [1793687504.518418714] [imu_bias]: gyro z bias -0.3887 deg/s (window 32)
+[imu_bias_node-8] [INFO] [1793687506.821162055] [imu_bias]: gyro z bias -0.3850 deg/s (window 33)
+[imu_bias_node-8] [INFO] [1793687509.140760737] [imu_bias]: gyro z bias -0.3890 deg/s (window 34)
+[imu_bias_node-8] [INFO] [1793687511.441038191] [imu_bias]: gyro z bias -0.3874 deg/s (window 35)
+[imu_bias_node-8] [INFO] [1793687513.750606279] [imu_bias]: gyro z bias -0.3893 deg/s (window 36)
+[imu_bias_node-8] [INFO] [1793687516.069998387] [imu_bias]: gyro z bias -0.3894 deg/s (window 37)
+[imu_bias_node-8] [INFO] [1793687518.380406067] [imu_bias]: gyro z bias -0.3868 deg/s (window 38)
+[imu_bias_node-8] [INFO] [1793687520.700174737] [imu_bias]: gyro z bias -0.3824 deg/s (window 39)
+[imu_bias_node-8] [INFO] [1793687523.000788770] [imu_bias]: gyro z bias -0.3919 deg/s (window 40)
+[imu_bias_node-8] [INFO] [1793687525.311869869] [imu_bias]: gyro z bias -0.3891 deg/s (window 41)
+[imu_bias_node-8] [INFO] [1793687527.614080880] [imu_bias]: gyro z bias -0.3881 deg/s (window 42)
+[imu_bias_node-8] [INFO] [1793687529.934632182] [imu_bias]: gyro z bias -0.3887 deg/s (window 43)
+[imu_bias_node-8] [INFO] [1793687532.254875207] [imu_bias]: gyro z bias -0.3870 deg/s (window 44)
+[imu_bias_node-8] [INFO] [1793687534.557384641] [imu_bias]: gyro z bias -0.3845 deg/s (window 45)
+[imu_bias_node-8] [INFO] [1793687536.857600711] [imu_bias]: gyro z bias -0.3866 deg/s (window 46)
+[imu_bias_node-8] [INFO] [1793687539.161016544] [imu_bias]: gyro z bias -0.3872 deg/s (window 47)
+[imu_bias_node-8] [INFO] [1793687541.462488603] [imu_bias]: gyro z bias -0.3859 deg/s (window 48)
+[imu_bias_node-8] [INFO] [1793687543.766271706] [imu_bias]: gyro z bias -0.3834 deg/s (window 49)
+[imu_bias_node-8] [INFO] [1793687546.070559308] [imu_bias]: gyro z bias -0.3813 deg/s (window 50)
+[imu_bias_node-8] [INFO] [1793687548.371267153] [imu_bias]: gyro z bias -0.3922 deg/s (window 51)
+[imu_bias_node-8] [INFO] [1793687550.691451302] [imu_bias]: gyro z bias -0.3863 deg/s (window 52)
+[imu_bias_node-8] [INFO] [1793687552.992800110] [imu_bias]: gyro z bias -0.3857 deg/s (window 53)
+[imu_bias_node-8] [INFO] [1793687555.293831929] [imu_bias]: gyro z bias -0.3826 deg/s (window 54)
+[imu_bias_node-8] [INFO] [1793687557.594781993] [imu_bias]: gyro z bias -0.3859 deg/s (window 55)
+[imu_bias_node-8] [INFO] [1793687559.895485896] [imu_bias]: gyro z bias -0.3876 deg/s (window 56)
+[imu_bias_node-8] [INFO] [1793687562.197905866] [imu_bias]: gyro z bias -0.3812 deg/s (window 57)
+[imu_bias_node-8] [INFO] [1793687564.500352409] [imu_bias]: gyro z bias -0.3914 deg/s (window 58)
+[imu_bias_node-8] [INFO] [1793687566.806563653] [imu_bias]: gyro z bias -0.3883 deg/s (window 59)
+[imu_bias_node-8] [INFO] [1793687569.109469595] [imu_bias]: gyro z bias -0.3872 deg/s (window 60)
+[imu_bias_node-8] [INFO] [1793687571.411990000] [imu_bias]: gyro z bias -0.3829 deg/s (window 61)
+[imu_bias_node-8] [INFO] [1793687573.731935504] [imu_bias]: gyro z bias -0.3866 deg/s (window 62)
+[imu_bias_node-8] [INFO] [1793687576.052227328] [imu_bias]: gyro z bias -0.3878 deg/s (window 63)
+[imu_bias_node-8] [INFO] [1793687578.353783976] [imu_bias]: gyro z bias -0.3866 deg/s (window 64)
+[imu_bias_node-8] [INFO] [1793687580.657562582] [imu_bias]: gyro z bias -0.3872 deg/s (window 65)
+[imu_bias_node-8] [INFO] [1793687582.962423957] [imu_bias]: gyro z bias -0.3895 deg/s (window 66)
+[imu_bias_node-8] [INFO] [1793687585.266931286] [imu_bias]: gyro z bias -0.3885 deg/s (window 67)
+[imu_bias_node-8] [INFO] [1793687587.571653077] [imu_bias]: gyro z bias -0.3872 deg/s (window 68)
+[imu_bias_node-8] [INFO] [1793687589.872864591] [imu_bias]: gyro z bias -0.3868 deg/s (window 69)
+[imu_bias_node-8] [INFO] [1793687592.174845744] [imu_bias]: gyro z bias -0.3851 deg/s (window 70)
+[imu_bias_node-8] [INFO] [1793687594.478910405] [imu_bias]: gyro z bias -0.3922 deg/s (window 71)
+[imu_bias_node-8] [INFO] [1793687596.782941839] [imu_bias]: gyro z bias -0.3863 deg/s (window 72)
+[imu_bias_node-8] [INFO] [1793687599.103198601] [imu_bias]: gyro z bias -0.3805 deg/s (window 73)
+[imu_bias_node-8] [INFO] [1793687601.406168763] [imu_bias]: gyro z bias -0.3849 deg/s (window 74)
+[imu_bias_node-8] [INFO] [1793687603.711941555] [imu_bias]: gyro z bias -0.3886 deg/s (window 75)
+[imu_bias_node-8] [INFO] [1793687606.013393434] [imu_bias]: gyro z bias -0.3900 deg/s (window 76)
+[imu_bias_node-8] [INFO] [1793687608.314223064] [imu_bias]: gyro z bias -0.3872 deg/s (window 77)
+[imu_bias_node-8] [INFO] [1793687610.621320588] [imu_bias]: gyro z bias -0.3857 deg/s (window 78)
+[imu_bias_node-8] [INFO] [1793687612.922585435] [imu_bias]: gyro z bias -0.3866 deg/s (window 79)
+[imu_bias_node-8] [INFO] [1793687615.229847766] [imu_bias]: gyro z bias -0.3889 deg/s (window 80)
+[imu_bias_node-8] [INFO] [1793687617.532611960] [imu_bias]: gyro z bias -0.3846 deg/s (window 81)
+[imu_bias_node-8] [INFO] [1793687619.835341519] [imu_bias]: gyro z bias -0.3846 deg/s (window 82)
+[imu_bias_node-8] [INFO] [1793687622.138458222] [imu_bias]: gyro z bias -0.3897 deg/s (window 83)
+[imu_bias_node-8] [INFO] [1793687624.441766956] [imu_bias]: gyro z bias -0.3878 deg/s (window 84)
+[imu_bias_node-8] [INFO] [1793687626.746901477] [imu_bias]: gyro z bias -0.3876 deg/s (window 85)
+[imu_bias_node-8] [INFO] [1793687629.050742654] [imu_bias]: gyro z bias -0.3822 deg/s (window 86)
+[imu_bias_node-8] [INFO] [1793687631.352219752] [imu_bias]: gyro z bias -0.3887 deg/s (window 87)
+[imu_bias_node-8] [INFO] [1793687633.655681258] [imu_bias]: gyro z bias -0.3876 deg/s (window 88)
+[imu_bias_node-8] [INFO] [1793687635.961256002] [imu_bias]: gyro z bias -0.3878 deg/s (window 89)
+[imu_bias_node-8] [INFO] [1793687638.262788943] [imu_bias]: gyro z bias -0.3834 deg/s (window 90)
+[imu_bias_node-8] [INFO] [1793687640.567926826] [imu_bias]: gyro z bias -0.3913 deg/s (window 91)
+[imu_bias_node-8] [INFO] [1793687642.871131816] [imu_bias]: gyro z bias -0.3904 deg/s (window 92)
+[imu_bias_node-8] [INFO] [1793687645.173255998] [imu_bias]: gyro z bias -0.3830 deg/s (window 93)
+[imu_bias_node-8] [INFO] [1793687647.475428182] [imu_bias]: gyro z bias -0.3832 deg/s (window 94)
+[imu_bias_node-8] [INFO] [1793687649.778558751] [imu_bias]: gyro z bias -0.3823 deg/s (window 95)
+[imu_bias_node-8] [INFO] [1793687652.087845261] [imu_bias]: gyro z bias -0.3811 deg/s (window 96)
+[imu_bias_node-8] [INFO] [1793687654.392432163] [imu_bias]: gyro z bias -0.3874 deg/s (window 97)
+[imu_bias_node-8] [INFO] [1793687656.693337572] [imu_bias]: gyro z bias -0.3876 deg/s (window 98)
+[imu_bias_node-8] [INFO] [1793687658.995618318] [imu_bias]: gyro z bias -0.3826 deg/s (window 99)
+[imu_bias_node-8] [INFO] [1793687661.301765945] [imu_bias]: gyro z bias -0.3859 deg/s (window 100)
+[imu_bias_node-8] [INFO] [1793687663.602910809] [imu_bias]: gyro z bias -0.3874 deg/s (window 101)
+[imu_bias_node-8] [INFO] [1793687665.915853911] [imu_bias]: gyro z bias -0.3780 deg/s (window 102)
+[imu_bias_node-8] [INFO] [1793687668.232028146] [imu_bias]: gyro z bias -0.3834 deg/s (window 103)
+[imu_bias_node-8] [INFO] [1793687670.538794068] [imu_bias]: gyro z bias -0.3866 deg/s (window 104)
+[imu_bias_node-8] [INFO] [1793687672.853302044] [imu_bias]: gyro z bias -0.3913 deg/s (window 105)
+[imu_bias_node-8] [INFO] [1793687675.163222636] [imu_bias]: gyro z bias -0.3855 deg/s (window 106)
+[imu_bias_node-8] [INFO] [1793687677.467960414] [imu_bias]: gyro z bias -0.3849 deg/s (window 107)
+[imu_bias_node-8] [INFO] [1793687679.768545233] [imu_bias]: gyro z bias -0.3926 deg/s (window 108)
+[imu_bias_node-8] [INFO] [1793687682.073791420] [imu_bias]: gyro z bias -0.3835 deg/s (window 109)
+[imu_bias_node-8] [INFO] [1793687684.376025823] [imu_bias]: gyro z bias -0.3893 deg/s (window 110)
+[imu_bias_node-8] [INFO] [1793687686.679143409] [imu_bias]: gyro z bias -0.3866 deg/s (window 111)
+[imu_bias_node-8] [INFO] [1793687688.981145945] [imu_bias]: gyro z bias -0.3836 deg/s (window 112)
+[imu_bias_node-8] [INFO] [1793687691.305381476] [imu_bias]: gyro z bias -0.3853 deg/s (window 113)
+[imu_bias_node-8] [INFO] [1793687693.606539572] [imu_bias]: gyro z bias -0.3840 deg/s (window 114)
+[imu_bias_node-8] [INFO] [1793687695.912497344] [imu_bias]: gyro z bias -0.3879 deg/s (window 115)
+[imu_bias_node-8] [INFO] [1793687698.218803052] [imu_bias]: gyro z bias -0.3834 deg/s (window 116)
+[imu_bias_node-8] [INFO] [1793687700.537149123] [imu_bias]: gyro z bias -0.3881 deg/s (window 117)
+[imu_bias_node-8] [INFO] [1793687702.839205295] [imu_bias]: gyro z bias -0.3893 deg/s (window 118)
+[imu_bias_node-8] [INFO] [1793687705.148268123] [imu_bias]: gyro z bias -0.3872 deg/s (window 119)
+[imu_bias_node-8] [INFO] [1793687707.468490156] [imu_bias]: gyro z bias -0.3929 deg/s (window 120)
+[imu_bias_node-8] [INFO] [1793687709.772412164] [imu_bias]: gyro z bias -0.3855 deg/s (window 121)
+[imu_bias_node-8] [INFO] [1793687712.079006175] [imu_bias]: gyro z bias -0.3870 deg/s (window 122)
+[imu_bias_node-8] [INFO] [1793687714.381584306] [imu_bias]: gyro z bias -0.3855 deg/s (window 123)
+[imu_bias_node-8] [INFO] [1793687716.684614950] [imu_bias]: gyro z bias -0.3912 deg/s (window 124)
+[imu_bias_node-8] [INFO] [1793687719.010610206] [imu_bias]: gyro z bias -0.3863 deg/s (window 125)
+[imu_bias_node-8] [INFO] [1793687721.315729040] [imu_bias]: gyro z bias -0.3870 deg/s (window 126)
+[imu_bias_node-8] [INFO] [1793687723.621363231] [imu_bias]: gyro z bias -0.3861 deg/s (window 127)
+[imu_bias_node-8] [INFO] [1793687725.921588771] [imu_bias]: gyro z bias -0.3895 deg/s (window 128)
+[imu_bias_node-8] [INFO] [1793687728.221962899] [imu_bias]: gyro z bias -0.3940 deg/s (window 129)
+[imu_bias_node-8] [INFO] [1793687730.532180532] [imu_bias]: gyro z bias -0.3868 deg/s (window 130)
+[imu_bias_node-8] [INFO] [1793687732.851961202] [imu_bias]: gyro z bias -0.3879 deg/s (window 131)
+[imu_bias_node-8] [INFO] [1793687735.152504064] [imu_bias]: gyro z bias -0.3883 deg/s (window 132)
+[imu_bias_node-8] [INFO] [1793687737.455271631] [imu_bias]: gyro z bias -0.3830 deg/s (window 133)
+[imu_bias_node-8] [INFO] [1793687739.759400136] [imu_bias]: gyro z bias -0.3849 deg/s (window 134)
+[imu_bias_node-8] [INFO] [1793687742.062545233] [imu_bias]: gyro z bias -0.3876 deg/s (window 135)
+[cmd_mux_kinematics_node-6] [INFO] [1793687744.359305507] [cmd_mux_kinematics]: supervisor generation 1 -> 2 (ab37ed18): caches cleared
+[cmd_mux_kinematics_node-6] [INFO] [1793687744.372966651] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[drive_node-2] [33m[WARN] [1793687744.377113129] [drive_node]: setpoint gated to zero: inhibited by supervisor[0m
+[imu_bias_node-8] [INFO] [1793687744.384834505] [imu_bias]: gyro z bias -0.3846 deg/s (window 136)
+[imu_bias_node-8] [INFO] [1793687746.702832830] [imu_bias]: gyro z bias -0.3897 deg/s (window 137)
+[imu_bias_node-8] [INFO] [1793687749.017289991] [imu_bias]: gyro z bias -0.3844 deg/s (window 138)
+[imu_bias_node-8] [INFO] [1793687751.329498432] [imu_bias]: gyro z bias -0.3893 deg/s (window 139)
+[cmd_mux_kinematics_node-6] [INFO] [1793687752.634208590] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793687753.633816555] [imu_bias]: gyro z bias -0.3927 deg/s (window 140)
+[imu_bias_node-8] [INFO] [1793687755.955749805] [imu_bias]: gyro z bias -0.3913 deg/s (window 141)
+[imu_bias_node-8] [INFO] [1793687758.256497527] [imu_bias]: gyro z bias -0.3859 deg/s (window 142)
+[imu_bias_node-8] [INFO] [1793687760.575883737] [imu_bias]: gyro z bias -0.3818 deg/s (window 143)
+[imu_bias_node-8] [INFO] [1793687762.881335135] [imu_bias]: gyro z bias -0.3870 deg/s (window 144)
+[imu_bias_node-8] [INFO] [1793687765.185212778] [imu_bias]: gyro z bias -0.3898 deg/s (window 145)
+[panel_node-3] [INFO] [1793687765.715466216] [panel_node]: selector AUTO
+[drive_node-2] [0m[INFO] [1793687765.720856013] [drive_node]: drive power not wanted: AUTO, no run asking for power[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687765.734140955] [cmd_mux_kinematics]: command source: none -> none (AUTO, no motion permit)
+[drive_node-2] [0m[INFO] [1793687765.750920314] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power[0m
+[drive_node-2] [0m[INFO] [1793687765.761492864] [drive_node]: drives standby, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687765.774301137] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[imu_bias_node-8] [INFO] [1793687767.490565550] [imu_bias]: gyro z bias -0.3846 deg/s (window 146)
+[imu_bias_node-8] [INFO] [1793687769.795113558] [imu_bias]: gyro z bias -0.3905 deg/s (window 147)
+[imu_bias_node-8] [INFO] [1793687772.099927878] [imu_bias]: gyro z bias -0.3863 deg/s (window 148)
+[panel_node-3] [INFO] [1793687772.615175964] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687774.420921983] [imu_bias]: gyro z bias -0.3905 deg/s (window 149)
+[imu_bias_node-8] [INFO] [1793687776.733602654] [imu_bias]: gyro z bias -0.3908 deg/s (window 150)
+[imu_bias_node-8] [INFO] [1793687779.033678099] [imu_bias]: gyro z bias -0.3851 deg/s (window 151)
+[panel_node-3] [INFO] [1793687780.175297838] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687781.349253132] [imu_bias]: gyro z bias -0.3889 deg/s (window 152)
+[panel_node-3] [INFO] [1793687783.395950103] [panel_node]: START edge
+[imu_bias_node-8] [INFO] [1793687783.667779935] [imu_bias]: gyro z bias -0.3878 deg/s (window 153)
+[panel_node-3] [INFO] [1793687785.115218589] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687785.971453474] [imu_bias]: gyro z bias -0.3831 deg/s (window 154)
+[panel_node-3] [INFO] [1793687786.035076114] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687788.289880927] [imu_bias]: gyro z bias -0.3915 deg/s (window 155)
+[imu_bias_node-8] [INFO] [1793687790.606719664] [imu_bias]: gyro z bias -0.3868 deg/s (window 156)
+[imu_bias_node-8] [INFO] [1793687792.908239647] [imu_bias]: gyro z bias -0.3901 deg/s (window 157)
+[imu_bias_node-8] [INFO] [1793687795.231999735] [imu_bias]: gyro z bias -0.3904 deg/s (window 158)
+[imu_bias_node-8] [INFO] [1793687797.540505401] [imu_bias]: gyro z bias -0.3926 deg/s (window 159)
+[imu_bias_node-8] [INFO] [1793687799.859828932] [imu_bias]: gyro z bias -0.3841 deg/s (window 160)
+[imu_bias_node-8] [INFO] [1793687802.181361717] [imu_bias]: gyro z bias -0.3812 deg/s (window 161)
+[imu_bias_node-8] [INFO] [1793687804.515646026] [imu_bias]: gyro z bias -0.3893 deg/s (window 162)
+[imu_bias_node-8] [INFO] [1793687806.832482165] [imu_bias]: gyro z bias -0.3874 deg/s (window 163)
+[imu_bias_node-8] [INFO] [1793687809.135988550] [imu_bias]: gyro z bias -0.3958 deg/s (window 164)
+[imu_bias_node-8] [INFO] [1793687811.439135528] [imu_bias]: gyro z bias -0.3866 deg/s (window 165)
+[imu_bias_node-8] [INFO] [1793687813.739442987] [imu_bias]: gyro z bias -0.3912 deg/s (window 166)
+[imu_bias_node-8] [INFO] [1793687816.046483239] [imu_bias]: gyro z bias -0.3808 deg/s (window 167)
+[imu_bias_node-8] [INFO] [1793687818.348365915] [imu_bias]: gyro z bias -0.3933 deg/s (window 168)
+[imu_bias_node-8] [INFO] [1793687820.671243580] [imu_bias]: gyro z bias -0.3886 deg/s (window 169)
+[imu_bias_node-8] [INFO] [1793687822.973303544] [imu_bias]: gyro z bias -0.3894 deg/s (window 170)
+[imu_bias_node-8] [INFO] [1793687825.288669251] [imu_bias]: gyro z bias -0.3935 deg/s (window 171)
+[imu_bias_node-8] [INFO] [1793687827.611175553] [imu_bias]: gyro z bias -0.3855 deg/s (window 172)
+[imu_bias_node-8] [INFO] [1793687829.929291566] [imu_bias]: gyro z bias -0.3855 deg/s (window 173)
+[imu_bias_node-8] [INFO] [1793687832.235994528] [imu_bias]: gyro z bias -0.3906 deg/s (window 174)
+[imu_bias_node-8] [INFO] [1793687834.539613540] [imu_bias]: gyro z bias -0.3845 deg/s (window 175)
+[imu_bias_node-8] [INFO] [1793687836.844873859] [imu_bias]: gyro z bias -0.3891 deg/s (window 176)
+[imu_bias_node-8] [INFO] [1793687839.148444162] [imu_bias]: gyro z bias -0.3954 deg/s (window 177)
+[imu_bias_node-8] [INFO] [1793687841.452028976] [imu_bias]: gyro z bias -0.3874 deg/s (window 178)
+[imu_bias_node-8] [INFO] [1793687843.759815749] [imu_bias]: gyro z bias -0.3855 deg/s (window 179)
+[imu_bias_node-8] [INFO] [1793687846.067426230] [imu_bias]: gyro z bias -0.3861 deg/s (window 180)
+[imu_bias_node-8] [INFO] [1793687848.370791863] [imu_bias]: gyro z bias -0.3904 deg/s (window 181)
+[imu_bias_node-8] [INFO] [1793687850.676370973] [imu_bias]: gyro z bias -0.3855 deg/s (window 182)
+[imu_bias_node-8] [INFO] [1793687852.975897585] [imu_bias]: gyro z bias -0.3879 deg/s (window 183)
+[imu_bias_node-8] [INFO] [1793687855.292437794] [imu_bias]: gyro z bias -0.3886 deg/s (window 184)
+[imu_bias_node-8] [INFO] [1793687857.610876095] [imu_bias]: gyro z bias -0.3915 deg/s (window 185)
+[imu_bias_node-8] [INFO] [1793687859.915250066] [imu_bias]: gyro z bias -0.3901 deg/s (window 186)
+[imu_bias_node-8] [INFO] [1793687862.220011898] [imu_bias]: gyro z bias -0.3851 deg/s (window 187)
+[imu_bias_node-8] [INFO] [1793687864.525861774] [imu_bias]: gyro z bias -0.3868 deg/s (window 188)
+[imu_bias_node-8] [INFO] [1793687866.832092416] [imu_bias]: gyro z bias -0.3935 deg/s (window 189)
+[imu_bias_node-8] [INFO] [1793687869.134816682] [imu_bias]: gyro z bias -0.3908 deg/s (window 190)
+[imu_bias_node-8] [INFO] [1793687871.436258085] [imu_bias]: gyro z bias -0.3908 deg/s (window 191)
+[imu_bias_node-8] [INFO] [1793687873.743475848] [imu_bias]: gyro z bias -0.3839 deg/s (window 192)
+[imu_bias_node-8] [INFO] [1793687876.049260043] [imu_bias]: gyro z bias -0.3920 deg/s (window 193)
+[imu_bias_node-8] [INFO] [1793687878.370741012] [imu_bias]: gyro z bias -0.3868 deg/s (window 194)
+[imu_bias_node-8] [INFO] [1793687880.695894944] [imu_bias]: gyro z bias -0.3958 deg/s (window 195)
+[imu_bias_node-8] [INFO] [1793687883.005247368] [imu_bias]: gyro z bias -0.3870 deg/s (window 196)
+[imu_bias_node-8] [INFO] [1793687885.308590212] [imu_bias]: gyro z bias -0.3896 deg/s (window 197)
+[imu_bias_node-8] [INFO] [1793687887.612073086] [imu_bias]: gyro z bias -0.3919 deg/s (window 198)
+[imu_bias_node-8] [INFO] [1793687889.911932969] [imu_bias]: gyro z bias -0.3857 deg/s (window 199)
+[imu_bias_node-8] [INFO] [1793687892.220196947] [imu_bias]: gyro z bias -0.3850 deg/s (window 200)
+[imu_bias_node-8] [INFO] [1793687894.544099965] [imu_bias]: gyro z bias -0.3904 deg/s (window 201)
+[imu_bias_node-8] [INFO] [1793687896.845755104] [imu_bias]: gyro z bias -0.3899 deg/s (window 202)
+[imu_bias_node-8] [INFO] [1793687899.150555017] [imu_bias]: gyro z bias -0.3905 deg/s (window 203)
+[imu_bias_node-8] [INFO] [1793687901.451582571] [imu_bias]: gyro z bias -0.3880 deg/s (window 204)
+[imu_bias_node-8] [INFO] [1793687903.751700008] [imu_bias]: gyro z bias -0.3912 deg/s (window 205)
+[imu_bias_node-8] [INFO] [1793687906.062157331] [imu_bias]: gyro z bias -0.3909 deg/s (window 206)
+[imu_bias_node-8] [INFO] [1793687908.366209266] [imu_bias]: gyro z bias -0.3918 deg/s (window 207)
+[imu_bias_node-8] [INFO] [1793687910.669075816] [imu_bias]: gyro z bias -0.3892 deg/s (window 208)
+[imu_bias_node-8] [INFO] [1793687912.978223132] [imu_bias]: gyro z bias -0.3866 deg/s (window 209)
+[imu_bias_node-8] [INFO] [1793687915.296554420] [imu_bias]: gyro z bias -0.3896 deg/s (window 210)
+[imu_bias_node-8] [INFO] [1793687917.605150384] [imu_bias]: gyro z bias -0.3882 deg/s (window 211)
+[imu_bias_node-8] [INFO] [1793687919.907990679] [imu_bias]: gyro z bias -0.3897 deg/s (window 212)
+[panel_node-3] [INFO] [1793687920.854463324] [panel_node]: selector MANUAL
+[drive_node-2] [0m[INFO] [1793687920.877719868] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793687921.250286075] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793687921.253696619] [drive_node]: drives armed, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687921.274254609] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793687923.613364803] [imu_bias]: gyro z bias -0.3833 deg/s (window 213)
+[imu_bias_node-8] [INFO] [1793687925.914820336] [imu_bias]: gyro z bias -0.3793 deg/s (window 214)
+[panel_node-3] [INFO] [1793687927.135885991] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793687927.154684625] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687927.738714302] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687927.754277178] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687928.035732393] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793687928.054797674] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687928.995085821] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687929.014064206] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687929.234290542] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793687929.254403153] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687929.955560730] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687929.974683356] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687930.494583731] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793687930.513260739] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687930.895064110] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687930.914205600] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687931.255232573] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793687931.275157769] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687932.154969424] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687932.173919669] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687932.715993221] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793687932.734317739] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687933.115852573] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687933.134271164] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687933.675521535] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793687933.696832366] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687933.917166939] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687933.934745478] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687935.477075963] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793687935.494442868] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687935.736609690] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687935.754800912] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687936.395101572] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793687936.414490866] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687936.595897941] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687936.614127384] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793687938.095099014] [panel_node]: pendant RVS
+[cmd_mux_kinematics_node-6] [INFO] [1793687938.114342106] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793687938.555496462] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793687938.574507726] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793687941.156140771] [imu_bias]: gyro z bias -0.3808 deg/s (window 215)
+[panel_node-3] [INFO] [1793687941.635787108] [panel_node]: selector AUTO
+[drive_node-2] [0m[INFO] [1793687941.654006118] [drive_node]: drive power not wanted: AUTO, no run asking for power[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687941.654057677] [cmd_mux_kinematics]: command source: none -> none (AUTO, no motion permit)
+[drive_node-2] [0m[INFO] [1793687941.683883221] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power[0m
+[drive_node-2] [0m[INFO] [1793687941.693248532] [drive_node]: drives standby, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793687941.694387494] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[imu_bias_node-8] [INFO] [1793687943.456506346] [imu_bias]: gyro z bias -0.3920 deg/s (window 216)
+[imu_bias_node-8] [INFO] [1793687945.760315779] [imu_bias]: gyro z bias -0.3896 deg/s (window 217)
+[imu_bias_node-8] [INFO] [1793687948.066449902] [imu_bias]: gyro z bias -0.3958 deg/s (window 218)
+[imu_bias_node-8] [INFO] [1793687950.372062628] [imu_bias]: gyro z bias -0.3885 deg/s (window 219)
+[imu_bias_node-8] [INFO] [1793687952.673241926] [imu_bias]: gyro z bias -0.3904 deg/s (window 220)
+[imu_bias_node-8] [INFO] [1793687954.979985102] [imu_bias]: gyro z bias -0.3905 deg/s (window 221)
+[imu_bias_node-8] [INFO] [1793687957.305317483] [imu_bias]: gyro z bias -0.3928 deg/s (window 222)
+[imu_bias_node-8] [INFO] [1793687959.615870069] [imu_bias]: gyro z bias -0.3879 deg/s (window 223)
+[imu_bias_node-8] [INFO] [1793687961.935828360] [imu_bias]: gyro z bias -0.3889 deg/s (window 224)
+[imu_bias_node-8] [INFO] [1793687964.244226455] [imu_bias]: gyro z bias -0.3886 deg/s (window 225)
+[imu_bias_node-8] [INFO] [1793687966.551957875] [imu_bias]: gyro z bias -0.3913 deg/s (window 226)
+[imu_bias_node-8] [INFO] [1793687968.854420555] [imu_bias]: gyro z bias -0.3876 deg/s (window 227)
+[imu_bias_node-8] [INFO] [1793687971.160241460] [imu_bias]: gyro z bias -0.3900 deg/s (window 228)
+[imu_bias_node-8] [INFO] [1793687973.465711448] [imu_bias]: gyro z bias -0.3920 deg/s (window 229)
+[panel_node-3] [INFO] [1793687974.275367158] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687975.783997074] [imu_bias]: gyro z bias -0.3876 deg/s (window 230)
+[panel_node-3] [INFO] [1793687977.795121296] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687978.101457588] [imu_bias]: gyro z bias -0.3899 deg/s (window 231)
+[panel_node-3] [INFO] [1793687978.514198867] [panel_node]: DEST ITG edge
+[panel_node-3] [INFO] [1793687979.214678499] [panel_node]: DEST ITG edge
+[panel_node-3] [INFO] [1793687980.314192754] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687980.401564630] [imu_bias]: gyro z bias -0.3900 deg/s (window 232)
+[panel_node-3] [INFO] [1793687982.534341382] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793687982.715732920] [imu_bias]: gyro z bias -0.3939 deg/s (window 233)
+[imu_bias_node-8] [INFO] [1793687985.032907762] [imu_bias]: gyro z bias -0.3912 deg/s (window 234)
+[imu_bias_node-8] [INFO] [1793687987.351102839] [imu_bias]: gyro z bias -0.3929 deg/s (window 235)
+[imu_bias_node-8] [INFO] [1793687989.672418378] [imu_bias]: gyro z bias -0.3909 deg/s (window 236)
+[imu_bias_node-8] [INFO] [1793687991.992769415] [imu_bias]: gyro z bias -0.3874 deg/s (window 237)
+[imu_bias_node-8] [INFO] [1793687994.300174920] [imu_bias]: gyro z bias -0.3868 deg/s (window 238)
+[imu_bias_node-8] [INFO] [1793687996.620350998] [imu_bias]: gyro z bias -0.3904 deg/s (window 239)
+[imu_bias_node-8] [INFO] [1793687998.931136180] [imu_bias]: gyro z bias -0.3874 deg/s (window 240)
+[imu_bias_node-8] [INFO] [1793688001.233161165] [imu_bias]: gyro z bias -0.3927 deg/s (window 241)
+[imu_bias_node-8] [INFO] [1793688003.538830893] [imu_bias]: gyro z bias -0.3948 deg/s (window 242)
+[imu_bias_node-8] [INFO] [1793688005.844169697] [imu_bias]: gyro z bias -0.3935 deg/s (window 243)
+[imu_bias_node-8] [INFO] [1793688008.144859346] [imu_bias]: gyro z bias -0.3885 deg/s (window 244)
+[imu_bias_node-8] [INFO] [1793688010.451880531] [imu_bias]: gyro z bias -0.3879 deg/s (window 245)
+[imu_bias_node-8] [INFO] [1793688012.757248763] [imu_bias]: gyro z bias -0.3916 deg/s (window 246)
+[imu_bias_node-8] [INFO] [1793688015.065596620] [imu_bias]: gyro z bias -0.3917 deg/s (window 247)
+[imu_bias_node-8] [INFO] [1793688017.371621914] [imu_bias]: gyro z bias -0.3866 deg/s (window 248)
+[imu_bias_node-8] [INFO] [1793688019.676157974] [imu_bias]: gyro z bias -0.3844 deg/s (window 249)
+[imu_bias_node-8] [INFO] [1793688021.984005044] [imu_bias]: gyro z bias -0.3944 deg/s (window 250)
+[imu_bias_node-8] [INFO] [1793688024.287911041] [imu_bias]: gyro z bias -0.3863 deg/s (window 251)
+[imu_bias_node-8] [INFO] [1793688026.612282608] [imu_bias]: gyro z bias -0.3887 deg/s (window 252)
+[imu_bias_node-8] [INFO] [1793688028.927673672] [imu_bias]: gyro z bias -0.3874 deg/s (window 253)
+[imu_bias_node-8] [INFO] [1793688031.231567307] [imu_bias]: gyro z bias -0.3881 deg/s (window 254)
+[imu_bias_node-8] [INFO] [1793688033.535414882] [imu_bias]: gyro z bias -0.3910 deg/s (window 255)
+[imu_bias_node-8] [INFO] [1793688035.839003836] [imu_bias]: gyro z bias -0.3844 deg/s (window 256)
+[imu_bias_node-8] [INFO] [1793688038.148542476] [imu_bias]: gyro z bias -0.3855 deg/s (window 257)
+[imu_bias_node-8] [INFO] [1793688040.452540116] [imu_bias]: gyro z bias -0.3935 deg/s (window 258)
+[imu_bias_node-8] [INFO] [1793688042.757631964] [imu_bias]: gyro z bias -0.3948 deg/s (window 259)
+[imu_bias_node-8] [INFO] [1793688045.066465256] [imu_bias]: gyro z bias -0.3838 deg/s (window 260)
+[imu_bias_node-8] [INFO] [1793688047.370965066] [imu_bias]: gyro z bias -0.3889 deg/s (window 261)
+[imu_bias_node-8] [INFO] [1793688049.674131736] [imu_bias]: gyro z bias -0.3836 deg/s (window 262)
+[imu_bias_node-8] [INFO] [1793688051.985715486] [imu_bias]: gyro z bias -0.3913 deg/s (window 263)
+[imu_bias_node-8] [INFO] [1793688054.302503379] [imu_bias]: gyro z bias -0.3827 deg/s (window 264)
+[imu_bias_node-8] [INFO] [1793688056.616994137] [imu_bias]: gyro z bias -0.3866 deg/s (window 265)
+[imu_bias_node-8] [INFO] [1793688058.932163155] [imu_bias]: gyro z bias -0.3767 deg/s (window 266)
+[panel_node-3] [INFO] [1793688059.414364523] [panel_node]: selector MANUAL
+[drive_node-2] [0m[INFO] [1793688059.431457054] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793688059.806226522] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793688059.813116619] [drive_node]: drives armed, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793688059.833253350] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688060.674434240] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793688060.693522381] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688061.474281848] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688061.493349371] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688062.014184906] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688062.033752849] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688063.174408687] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688063.193568603] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688063.634395825] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688063.653319663] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688064.174318311] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688064.193263219] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688064.374356639] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688064.393313030] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688064.934497897] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688064.954199271] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688065.134816506] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793688065.153421203] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688065.935290552] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688065.954364054] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688067.894364274] [panel_node]: pendant RVS
+[cmd_mux_kinematics_node-6] [INFO] [1793688067.913462635] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688068.795788645] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688068.813638118] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688069.115519343] [panel_node]: pendant RVS
+[cmd_mux_kinematics_node-6] [INFO] [1793688069.133459263] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688070.094617275] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688070.113384465] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688070.754459312] [panel_node]: pendant RVS
+[cmd_mux_kinematics_node-6] [INFO] [1793688070.773406836] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688071.114587146] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688071.133395661] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793688073.744748757] [imu_bias]: gyro z bias -0.3901 deg/s (window 267)
+[panel_node-3] [INFO] [1793688075.975949930] [panel_node]: selector AUTO
+[drive_node-2] [0m[INFO] [1793688075.992890684] [drive_node]: drive power not wanted: AUTO, no run asking for power[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793688075.994584770] [cmd_mux_kinematics]: command source: none -> none (AUTO, no motion permit)
+[drive_node-2] [0m[INFO] [1793688076.027207157] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power[0m
+[imu_bias_node-8] [INFO] [1793688076.065639368] [imu_bias]: gyro z bias -0.3826 deg/s (window 268)
+[drive_node-2] [0m[INFO] [1793688076.066024572] [drive_node]: drives standby, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793688076.073906589] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[imu_bias_node-8] [INFO] [1793688078.368323227] [imu_bias]: gyro z bias -0.3927 deg/s (window 269)
+[imu_bias_node-8] [INFO] [1793688080.673434452] [imu_bias]: gyro z bias -0.3857 deg/s (window 270)
+[imu_bias_node-8] [INFO] [1793688082.976100311] [imu_bias]: gyro z bias -0.3866 deg/s (window 271)
+[imu_bias_node-8] [INFO] [1793688085.280971782] [imu_bias]: gyro z bias -0.3868 deg/s (window 272)
+[imu_bias_node-8] [INFO] [1793688087.588483024] [imu_bias]: gyro z bias -0.3896 deg/s (window 273)
+[imu_bias_node-8] [INFO] [1793688089.908907327] [imu_bias]: gyro z bias -0.3895 deg/s (window 274)
+[imu_bias_node-8] [INFO] [1793688092.212024692] [imu_bias]: gyro z bias -0.3909 deg/s (window 275)
+[imu_bias_node-8] [INFO] [1793688094.517228323] [imu_bias]: gyro z bias -0.3882 deg/s (window 276)
+[imu_bias_node-8] [INFO] [1793688096.822308796] [imu_bias]: gyro z bias -0.3936 deg/s (window 277)
+[imu_bias_node-8] [INFO] [1793688099.128112009] [imu_bias]: gyro z bias -0.3882 deg/s (window 278)
+[imu_bias_node-8] [INFO] [1793688101.448439741] [imu_bias]: gyro z bias -0.3922 deg/s (window 279)
+[imu_bias_node-8] [INFO] [1793688103.753027317] [imu_bias]: gyro z bias -0.3918 deg/s (window 280)
+[imu_bias_node-8] [INFO] [1793688106.056181345] [imu_bias]: gyro z bias -0.3881 deg/s (window 281)
+[imu_bias_node-8] [INFO] [1793688108.357798982] [imu_bias]: gyro z bias -0.3951 deg/s (window 282)
+[imu_bias_node-8] [INFO] [1793688110.659689003] [imu_bias]: gyro z bias -0.3900 deg/s (window 283)
+[imu_bias_node-8] [INFO] [1793688112.973764413] [imu_bias]: gyro z bias -0.3909 deg/s (window 284)
+[imu_bias_node-8] [INFO] [1793688115.282334799] [imu_bias]: gyro z bias -0.3895 deg/s (window 285)
+[imu_bias_node-8] [INFO] [1793688117.604036383] [imu_bias]: gyro z bias -0.3868 deg/s (window 286)
+[imu_bias_node-8] [INFO] [1793688119.908199168] [imu_bias]: gyro z bias -0.3929 deg/s (window 287)
+[imu_bias_node-8] [INFO] [1793688122.214119626] [imu_bias]: gyro z bias -0.3836 deg/s (window 288)
+[panel_node-3] [INFO] [1793688124.035465447] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793688124.516030083] [imu_bias]: gyro z bias -0.3889 deg/s (window 289)
+[panel_node-3] [INFO] [1793688125.754390742] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793688126.830655835] [imu_bias]: gyro z bias -0.3876 deg/s (window 290)
+[panel_node-3] [INFO] [1793688127.054467541] [panel_node]: DEST ITG edge
+[imu_bias_node-8] [INFO] [1793688129.150188908] [imu_bias]: gyro z bias -0.3920 deg/s (window 291)
+[imu_bias_node-8] [INFO] [1793688131.466888368] [imu_bias]: gyro z bias -0.3861 deg/s (window 292)
+[imu_bias_node-8] [INFO] [1793688133.785818898] [imu_bias]: gyro z bias -0.3863 deg/s (window 293)
+[imu_bias_node-8] [INFO] [1793688136.108138520] [imu_bias]: gyro z bias -0.3885 deg/s (window 294)
+[imu_bias_node-8] [INFO] [1793688138.426887637] [imu_bias]: gyro z bias -0.3851 deg/s (window 295)
+[panel_node-3] [INFO] [1793688140.554842322] [panel_node]: pendant LEFT
+[imu_bias_node-8] [INFO] [1793688140.726879041] [imu_bias]: gyro z bias -0.3929 deg/s (window 296)
+[panel_node-3] [INFO] [1793688141.095076828] [panel_node]: pendant released
+[imu_bias_node-8] [INFO] [1793688143.027113336] [imu_bias]: gyro z bias -0.3900 deg/s (window 297)
+[panel_node-3] [INFO] [1793688144.315646236] [panel_node]: selector MANUAL
+[drive_node-2] [0m[INFO] [1793688144.336674959] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793688144.713316979] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on[0m
+[drive_node-2] [0m[INFO] [1793688144.719794910] [drive_node]: drives armed, imu sdo[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793688144.733382688] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688145.376248986] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793688145.394252079] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688146.275238039] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688146.294148757] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688146.995371172] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688147.013790446] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688147.095596339] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688147.114250289] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688147.535406022] [panel_node]: pendant RVS
+[cmd_mux_kinematics_node-6] [INFO] [1793688147.554392305] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688149.195144834] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688149.214135767] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688149.595336415] [panel_node]: pendant RIGHT
+[cmd_mux_kinematics_node-6] [INFO] [1793688149.614173415] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688150.515409427] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688150.534336713] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688151.015675177] [panel_node]: pendant LEFT
+[cmd_mux_kinematics_node-6] [INFO] [1793688151.034215545] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688151.375217527] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688151.394650127] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688151.975851160] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688151.994416945] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688153.596034630] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688153.614127415] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[panel_node-3] [INFO] [1793688154.156298905] [panel_node]: pendant FWD
+[cmd_mux_kinematics_node-6] [INFO] [1793688154.174401970] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[panel_node-3] [INFO] [1793688154.655478206] [panel_node]: pendant released
+[cmd_mux_kinematics_node-6] [INFO] [1793688154.673315732] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793688157.243190974] [imu_bias]: gyro z bias -0.3924 deg/s (window 298)
+[imu_bias_node-8] [INFO] [1793688159.559923971] [imu_bias]: gyro z bias -0.3930 deg/s (window 299)
+[imu_bias_node-8] [INFO] [1793688161.876183803] [imu_bias]: gyro z bias -0.3944 deg/s (window 300)
+[imu_bias_node-8] [INFO] [1793688164.192164143] [imu_bias]: gyro z bias -0.3878 deg/s (window 301)
+[imu_bias_node-8] [INFO] [1793688166.496004802] [imu_bias]: gyro z bias -0.3917 deg/s (window 302)
+[imu_bias_node-8] [INFO] [1793688168.799581736] [imu_bias]: gyro z bias -0.3925 deg/s (window 303)
+[imu_bias_node-8] [INFO] [1793688171.099860130] [imu_bias]: gyro z bias -0.3877 deg/s (window 304)
+[imu_bias_node-8] [INFO] [1793688173.408724268] [imu_bias]: gyro z bias -0.3888 deg/s (window 305)
+[cmd_mux_kinematics_node-6] [INFO] [1793688175.152532348] [cmd_mux_kinematics]: supervisor generation 2 -> 3 (ab37ed18): caches cleared
+[drive_node-2] [33m[WARN] [1793688175.160882120] [drive_node]: setpoint gated to zero: inhibited by supervisor[0m
+[cmd_mux_kinematics_node-6] [INFO] [1793688175.161387296] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[imu_bias_node-8] [INFO] [1793688175.719067509] [imu_bias]: gyro z bias -0.3841 deg/s (window 306)
+[cmd_mux_kinematics_node-6] [INFO] [1793688176.274188160] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[imu_bias_node-8] [INFO] [1793688178.024320064] [imu_bias]: gyro z bias -0.3882 deg/s (window 307)
+[imu_bias_node-8] [INFO] [1793688180.348410749] [imu_bias]: gyro z bias -0.3904 deg/s (window 308)
+[imu_bias_node-8] [INFO] [1793688182.662781966] [imu_bias]: gyro z bias -0.3893 deg/s (window 309)
+[imu_bias_node-8] [INFO] [1793688184.964910009] [imu_bias]: gyro z bias -0.3881 deg/s (window 310)
+[imu_bias_node-8] [INFO] [1793688187.268606758] [imu_bias]: gyro z bias -0.3838 deg/s (window 311)
+[imu_bias_node-8] [INFO] [1793688189.573534349] [imu_bias]: gyro z bias -0.3888 deg/s (window 312)
+[imu_bias_node-8] [INFO] [1793688191.876894228] [imu_bias]: gyro z bias -0.3906 deg/s (window 313)
+[imu_bias_node-8] [INFO] [1793688194.195536374] [imu_bias]: gyro z bias -0.3883 deg/s (window 314)
+[imu_bias_node-8] [INFO] [1793688196.498154010] [imu_bias]: gyro z bias -0.3913 deg/s (window 315)
+[imu_bias_node-8] [INFO] [1793688198.814556932] [imu_bias]: gyro z bias -0.3855 deg/s (window 316)
+[imu_bias_node-8] [INFO] [1793688201.137288533] [imu_bias]: gyro z bias -0.3913 deg/s (window 317)
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [ekf_node-11]: sending signal 'SIGINT' to process[ekf_node-11]
+[INFO] [commissioning_node-10]: sending signal 'SIGINT' to process[commissioning_node-10]
+[INFO] [scan_gate_node-9]: sending signal 'SIGINT' to process[scan_gate_node-9]
+[INFO] [imu_bias_node-8]: sending signal 'SIGINT' to process[imu_bias_node-8]
+[INFO] [diff_drive_odom_node-7]: sending signal 'SIGINT' to process[diff_drive_odom_node-7]
+[INFO] [cmd_mux_kinematics_node-6]: sending signal 'SIGINT' to process[cmd_mux_kinematics_node-6]
+[INFO] [gls_node-5]: sending signal 'SIGINT' to process[gls_node-5]
+[INFO] [sick_safetyscanners2_node-4]: sending signal 'SIGINT' to process[sick_safetyscanners2_node-4]
+[INFO] [panel_node-3]: sending signal 'SIGINT' to process[panel_node-3]
+[INFO] [drive_node-2]: sending signal 'SIGINT' to process[drive_node-2]
+[INFO] [robot_state_publisher-1]: sending signal 'SIGINT' to process[robot_state_publisher-1]
+[cmd_mux_kinematics_node-6] [INFO] [1793688203.173242882] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[ekf_node-11] [INFO] [1793688203.173956492] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[sick_safetyscanners2_node-4] [0m[INFO] [1793688203.195852386] [rclcpp]: signal_handler(SIGINT/SIGTERM)[0m
+[robot_state_publisher-1] [INFO] [1793688203.202991176] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[drive_node-2] [0m[INFO] [1793688203.347433022] [drive_node]: bus closed, drives de-energised[0m
+[drive_node-2] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:389
+[INFO] [sick_safetyscanners2_node-4]: process has finished cleanly [pid 22371]
+[INFO] [robot_state_publisher-1]: process has finished cleanly [pid 22365]
+[INFO] [commissioning_node-10]: process has finished cleanly [pid 22401]
+[INFO] [ekf_node-11]: process has finished cleanly [pid 22403]
+[INFO] [launch]: process[ekf_node-11] was required: shutting down launched system
+[INFO] [scan_gate_node-9]: process has finished cleanly [pid 22398]
+[INFO] [launch]: process[scan_gate_node-9] was required: shutting down launched system
+[INFO] [imu_bias_node-8]: process has finished cleanly [pid 22379]
+[INFO] [gls_node-5]: process has finished cleanly [pid 22373]
+[INFO] [diff_drive_odom_node-7]: process has finished cleanly [pid 22377]
+[INFO] [launch]: process[diff_drive_odom_node-7] was required: shutting down launched system
+[INFO] [panel_node-3]: process has finished cleanly [pid 22369]
+[INFO] [launch]: process[panel_node-3] was required: shutting down launched system
+[INFO] [drive_node-2]: process has finished cleanly [pid 22367]
+[INFO] [launch]: process[drive_node-2] was required: shutting down launched system
+[INFO] [cmd_mux_kinematics_node-6]: process has finished cleanly [pid 22375]
+[INFO] [launch]: process[cmd_mux_kinematics_node-6] was required: shutting down launched system

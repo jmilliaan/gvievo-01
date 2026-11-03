@@ -1,0 +1,10 @@
+[INFO] [1793691004.124589633] [amr_supervisor]: instance 5ac81b48 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793691004.130388239] [amr_supervisor]: swept 1 stale generation files
+[INFO] [1793691004.146824546] [amr_supervisor]: spawned base pgid=80893 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793691006.877429358] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793691811.711647082] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793691812.263740765] [amr_supervisor]: stopped base: clean (base pgid=80893 leader=0 members=0)
+[INFO] [1793691813.101311889] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=80894 leader=0 members=0)
+[INFO] [1793691813.455878961] [amr_supervisor]: stopped web: clean (web pgid=80892 leader=0 members=0)
+[INFO] [1793691813.456497828] [amr_supervisor]: teardown: groups stopped in 1.7 s
+[INFO] [1793691813.457112252] [amr_supervisor]: teardown: executor down at 1.7 s

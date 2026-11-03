@@ -1,0 +1,29 @@
+[INFO] [1793681592.439288689] [amcl]: 
+	amcl lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793681592.439955709] [amcl]: Creating
+[INFO] [1793681595.679180702] [amcl]: Configuring
+[INFO] [1793681595.679296892] [amcl]: initTransforms
+[INFO] [1793681595.688399028] [amcl]: initPubSub
+[INFO] [1793681595.693642868] [amcl]: Subscribed to map topic.
+[INFO] [1793681595.718346109] [amcl]: Received a 1210 X 1487 map @ 0.050 m/pix
+[INFO] [1793681595.809944593] [amcl]: Activating
+[INFO] [1793681595.810040922] [amcl]: Creating bond (amcl) to lifecycle manager.
+[INFO] [1793681595.923149825] [amcl]: createLaserObject
+[WARN] [1793681597.680096189] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793681599.779856104] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [1793681600.522835320] [amcl]: initialPoseReceived
+[WARN] [1793681600.523207911] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793681600.522960 but the latest data is at time 1793681600.516582, when looking up transform from frame [base_footprint] to frame [odom])
+[INFO] [1793681600.523281911] [amcl]: Setting pose (1793681600.523282): 90.038 -27.352 -0.102
+[INFO] [1793681600.535860146] [amcl]: Requesting no-motion update
+[INFO] [1793681601.136067780] [amcl]: Requesting no-motion update
+[INFO] [1793681601.735958742] [amcl]: Requesting no-motion update
+[INFO] [1793681602.336240877] [amcl]: Requesting no-motion update
+[INFO] [1793681602.936065143] [amcl]: Requesting no-motion update
+[INFO] [1793681603.535937130] [amcl]: Requesting no-motion update
+[INFO] [1793681604.136053233] [amcl]: Requesting no-motion update
+[INFO] [1793681604.636081384] [amcl]: Requesting no-motion update
+[INFO] [1793681605.235960935] [amcl]: Requesting no-motion update
+[INFO] [1793681605.836111152] [amcl]: Requesting no-motion update
+[INFO] [1793681606.436094061] [amcl]: Requesting no-motion update

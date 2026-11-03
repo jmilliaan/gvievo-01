@@ -1,0 +1,6 @@
+[INFO] [1793675472.102725197] [mapping_session]: maps_dir /home/gvipc-evo-01/amr_maps; state IDLE
+[INFO] [1793675473.242662609] [mapping_session]: IDLE -> MAPPING: surveying 'kyb-map-02' from (0.00, 0.00, 0.0 deg); mapping without a HOME label (no floor-label reading: is a label under the camera?)
+[ERROR] [1793677246.056289284] [mapping_session]: SLAM stalled: scans arrive but slam_toolbox consumed none for 5 s (map->odom stamp frozen); abort the survey and start again
+[INFO] [1793677614.487183483] [mapping_session]: MAPPING -> RETURN_REVIEW: closure as estimated: dx +0.075 m, dy +0.036 m, dyaw -1.04 deg - review seams, then save or drive another loop
+[INFO] [1793677667.101187977] [mapping_session]: RETURN_REVIEW -> SAVING: pausing SLAM and serialising
+[INFO] [1793677668.942614948] [mapping_session]: SAVING -> SAVED: published /home/gvipc-evo-01/amr_maps/kyb-map-02/rev1 (bundle 14260b2f9800); saved without a HOME label

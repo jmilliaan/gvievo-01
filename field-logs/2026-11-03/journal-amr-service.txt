@@ -1,0 +1,198 @@
+2026-11-03T09:29:59+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T09:30:01+0700 gvipc-ce amr-supervisor.sh[984]: [INFO] [1793673001.308662277] [amr_supervisor]: instance 322165f4 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T09:30:01+0700 gvipc-ce amr-supervisor.sh[984]: [WARN] [1793673001.312454721] [amr_supervisor]: Power was lost at 16:09 while IDLE. The drives lost the PC heartbeat and latched; they need to be switched off and on.
+2026-11-03T09:30:01+0700 gvipc-ce amr-supervisor.sh[984]: [INFO] [1793673001.321647301] [amr_supervisor]: spawned base pgid=1471 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T09:30:01+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T09:30:04+0700 gvipc-ce amr-supervisor.sh[984]: [INFO] [1793673004.486854502] [amr_supervisor]: mode STARTING -> IDLE ()
+-- Boot 76e43c61c12742e19009d52e1d613a37 --
+2026-11-03T09:42:28+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T09:42:30+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793673750.238153144] [amr_supervisor]: instance 6f9b54f6 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T09:42:30+0700 gvipc-ce amr-supervisor.sh[997]: [WARN] [1793673750.241461426] [amr_supervisor]: Power was lost at 09:30 while IDLE. The drives lost the PC heartbeat and latched; they need to be switched off and on.
+2026-11-03T09:42:30+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793673750.252535502] [amr_supervisor]: spawned base pgid=1433 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T09:42:30+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T09:42:33+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793673753.698515510] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T10:10:49+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T10:10:49+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675449.763324107] [amr_supervisor]: signal 2: shutting down
+2026-11-03T10:10:50+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675450.318795182] [amr_supervisor]: stopped base: clean (base pgid=1433 leader=0 members=0)
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675451.169616761] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=1434 leader=0 members=0)
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675451.538341496] [amr_supervisor]: stopped web: clean (web pgid=1432 leader=0 members=0)
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675451.538856864] [amr_supervisor]: teardown: groups stopped in 1.8 s
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: [INFO] [1793675451.539396534] [amr_supervisor]: teardown: executor down at 1.8 s
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: teardown: loop joined at 1.8 s
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: teardown: node destroyed at 2.0 s
+2026-11-03T10:10:51+0700 gvipc-ce amr-supervisor.sh[997]: teardown: done at 2.0 s
+2026-11-03T10:10:51+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T10:10:51+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T10:10:51+0700 gvipc-ce systemd[1]: amr.service: Consumed 59min 9.934s CPU time.
+2026-11-03T10:10:51+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T10:10:52+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675452.491777935] [amr_supervisor]: instance cc6acf86 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T10:10:52+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675452.511597542] [amr_supervisor]: spawned base pgid=28343 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T10:10:52+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T10:10:55+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675455.247903956] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T10:11:10+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675470.403017040] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T10:11:10+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675470.938266991] [amr_supervisor]: spawned layer pgid=29003 leader=alive members=1: mapping_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps generation:=2 internal:=true
+2026-11-03T10:11:13+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793675473.441394990] [amr_supervisor]: mode TRANSITIONING -> MAPPING ()
+2026-11-03T10:47:49+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793677669.296349102] [amr_supervisor]: mode MAPPING -> TRANSITIONING (inhibiting)
+2026-11-03T10:47:51+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793677671.108003404] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+2026-11-03T11:44:15+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681055.896862650] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T11:44:16+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681056.421016545] [amr_supervisor]: spawned layer pgid=137551 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=4 autostart:=false
+2026-11-03T11:44:24+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681064.137114355] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T11:44:58+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681098.887896175] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T11:45:00+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681100.075214110] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+2026-11-03T11:46:12+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681172.056381355] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T11:46:12+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681172.580400172] [amr_supervisor]: spawned layer pgid=140129 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=6 autostart:=false
+2026-11-03T11:46:20+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681180.196581586] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T11:51:58+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T11:51:58+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681518.422048406] [amr_supervisor]: signal 2: shutting down
+2026-11-03T11:51:58+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681518.990886005] [amr_supervisor]: stopped layer: clean (layer pgid=140129 leader=0 members=0)
+2026-11-03T11:51:59+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681519.531675808] [amr_supervisor]: stopped base: clean (base pgid=28343 leader=0 members=0)
+2026-11-03T11:52:00+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681520.578903288] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=28344 leader=0 members=0)
+2026-11-03T11:52:00+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681520.948317499] [amr_supervisor]: stopped web: clean (web pgid=28342 leader=0 members=0)
+2026-11-03T11:52:00+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681520.948798798] [amr_supervisor]: teardown: groups stopped in 2.5 s
+2026-11-03T11:52:00+0700 gvipc-ce amr-supervisor.sh[28297]: [INFO] [1793681520.949355301] [amr_supervisor]: teardown: executor down at 2.5 s
+2026-11-03T11:52:00+0700 gvipc-ce amr-supervisor.sh[28297]: teardown: loop joined at 2.5 s
+2026-11-03T11:52:01+0700 gvipc-ce amr-supervisor.sh[28297]: teardown: node destroyed at 2.7 s
+2026-11-03T11:52:01+0700 gvipc-ce amr-supervisor.sh[28297]: teardown: done at 2.7 s
+2026-11-03T11:52:01+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T11:52:01+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T11:52:01+0700 gvipc-ce systemd[1]: amr.service: Consumed 4h 12min 7.243s CPU time.
+2026-11-03T11:52:01+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T11:52:01+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681521.893914517] [amr_supervisor]: instance dbeb849d real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T11:52:01+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681521.899813977] [amr_supervisor]: swept 1 stale generation files
+2026-11-03T11:52:01+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681521.918511580] [amr_supervisor]: spawned base pgid=150267 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T11:52:01+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T11:52:04+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681524.540513818] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T11:53:11+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681591.280839902] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T11:53:11+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681591.849484898] [amr_supervisor]: spawned layer pgid=151912 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=2 autostart:=false
+2026-11-03T11:53:19+0700 gvipc-ce amr-supervisor.sh[150230]: [INFO] [1793681599.574570260] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+-- Boot d6f4fe895284419a81fdc8a7958e43f2 --
+2026-11-03T13:07:59+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T13:08:01+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793686081.630720100] [amr_supervisor]: instance a44c5e49 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T13:08:01+0700 gvipc-ce amr-supervisor.sh[982]: [WARN] [1793686081.634275134] [amr_supervisor]: Power was lost at 11:55 while STOPPING. The drives lost the PC heartbeat and latched; they need to be switched off and on.
+2026-11-03T13:08:01+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793686081.637583432] [amr_supervisor]: swept 1 stale generation files
+2026-11-03T13:08:01+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793686081.648134627] [amr_supervisor]: spawned base pgid=1430 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T13:08:01+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T13:08:05+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793686085.215372840] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T13:29:21+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T13:29:21+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687361.608867491] [amr_supervisor]: signal 2: shutting down
+2026-11-03T13:29:22+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687362.159699393] [amr_supervisor]: stopped base: clean (base pgid=1430 leader=0 members=0)
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687363.004761500] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=1431 leader=0 members=0)
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687363.365373251] [amr_supervisor]: stopped web: clean (web pgid=1429 leader=0 members=0)
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687363.365846204] [amr_supervisor]: teardown: groups stopped in 1.8 s
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: [INFO] [1793687363.366382272] [amr_supervisor]: teardown: executor down at 1.8 s
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: teardown: loop joined at 1.8 s
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: teardown: node destroyed at 1.8 s
+2026-11-03T13:29:23+0700 gvipc-ce amr-supervisor.sh[982]: teardown: done at 1.8 s
+2026-11-03T13:29:23+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T13:29:23+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T13:29:23+0700 gvipc-ce systemd[1]: amr.service: Consumed 40min 20.303s CPU time.
+2026-11-03T13:30:25+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T13:30:26+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687426.043922846] [amr_supervisor]: instance ab37ed18 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T13:30:26+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687426.069091559] [amr_supervisor]: spawned base pgid=22336 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T13:30:26+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T13:30:28+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687428.803689253] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T13:35:44+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687744.355734396] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T13:35:44+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687744.872243990] [amr_supervisor]: spawned layer pgid=28106 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+2026-11-03T13:35:52+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793687752.612874786] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T13:42:55+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688175.083568117] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T13:42:56+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688176.258725807] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+2026-11-03T13:43:23+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T13:43:23+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688203.155698996] [amr_supervisor]: signal 2: shutting down
+2026-11-03T13:43:23+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688203.718807199] [amr_supervisor]: stopped base: clean (base pgid=22336 leader=0 members=0)
+2026-11-03T13:43:24+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688204.791500528] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=22337 leader=0 members=0)
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688205.150674480] [amr_supervisor]: stopped web: clean (web pgid=22335 leader=0 members=0)
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688205.151184886] [amr_supervisor]: teardown: groups stopped in 2.0 s
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: [INFO] [1793688205.151708254] [amr_supervisor]: teardown: executor down at 2.0 s
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: teardown: loop joined at 2.0 s
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: teardown: node destroyed at 2.0 s
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[22302]: teardown: done at 2.0 s
+2026-11-03T13:43:25+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T13:43:25+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T13:43:25+0700 gvipc-ce systemd[1]: amr.service: Consumed 35min 24.407s CPU time.
+2026-11-03T13:43:25+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688205.873250725] [amr_supervisor]: instance c93a2bc3 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688205.877497983] [amr_supervisor]: swept 1 stale generation files
+2026-11-03T13:43:25+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688205.895094646] [amr_supervisor]: spawned base pgid=36688 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T13:43:25+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T13:43:28+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688208.743855794] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T13:43:32+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688212.749161370] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T13:43:33+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688213.265917495] [amr_supervisor]: spawned layer pgid=37065 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+2026-11-03T13:43:40+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688220.886109396] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T13:44:32+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688272.585503139] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T13:44:33+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688273.871602607] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+2026-11-03T13:44:35+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688275.275920612] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T13:44:35+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688275.792794856] [amr_supervisor]: spawned layer pgid=38233 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=4 autostart:=false
+2026-11-03T13:44:43+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688283.632579166] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T13:46:51+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688411.827130586] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T13:46:52+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688412.832706892] [amr_supervisor]: spawned layer pgid=40429 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=5 autostart:=false
+2026-11-03T13:47:00+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688420.558268149] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T13:47:04+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688424.881794034] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T13:47:05+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688425.909322686] [amr_supervisor]: spawned layer pgid=40808 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=6 autostart:=false
+2026-11-03T13:47:13+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793688433.650375736] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T14:30:00+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T14:30:00+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691000.111873007] [amr_supervisor]: signal 2: shutting down
+2026-11-03T14:30:00+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691000.698508274] [amr_supervisor]: stopped layer: clean (layer pgid=40808 leader=0 members=0)
+2026-11-03T14:30:02+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691002.053085333] [amr_supervisor]: stopped base: clean (base pgid=36688 leader=0 members=0)
+2026-11-03T14:30:02+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691002.824252477] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=36689 leader=0 members=0)
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691003.182056369] [amr_supervisor]: stopped web: clean (web pgid=36687 leader=0 members=0)
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691003.182956911] [amr_supervisor]: teardown: groups stopped in 3.1 s
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: [INFO] [1793691003.183874257] [amr_supervisor]: teardown: executor down at 3.1 s
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: teardown: loop joined at 3.1 s
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: teardown: node destroyed at 3.3 s
+2026-11-03T14:30:03+0700 gvipc-ce amr-supervisor.sh[36654]: teardown: done at 3.3 s
+2026-11-03T14:30:03+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T14:30:03+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T14:30:03+0700 gvipc-ce systemd[1]: amr.service: Consumed 2h 35min 45.430s CPU time.
+2026-11-03T14:30:03+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T14:30:04+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691004.124589633] [amr_supervisor]: instance 5ac81b48 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T14:30:04+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691004.130388239] [amr_supervisor]: swept 1 stale generation files
+2026-11-03T14:30:04+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691004.146824546] [amr_supervisor]: spawned base pgid=80893 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T14:30:04+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T14:30:06+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691006.877429358] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T14:43:31+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T14:43:31+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691811.711647082] [amr_supervisor]: signal 2: shutting down
+2026-11-03T14:43:32+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691812.263740765] [amr_supervisor]: stopped base: clean (base pgid=80893 leader=0 members=0)
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691813.101311889] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=80894 leader=0 members=0)
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691813.455878961] [amr_supervisor]: stopped web: clean (web pgid=80892 leader=0 members=0)
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691813.456497828] [amr_supervisor]: teardown: groups stopped in 1.7 s
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: [INFO] [1793691813.457112252] [amr_supervisor]: teardown: executor down at 1.7 s
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: teardown: loop joined at 1.7 s
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: teardown: node destroyed at 2.0 s
+2026-11-03T14:43:33+0700 gvipc-ce amr-supervisor.sh[80857]: teardown: done at 2.0 s
+2026-11-03T14:43:33+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T14:43:33+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T14:43:33+0700 gvipc-ce systemd[1]: amr.service: Consumed 25min 46.407s CPU time.
+2026-11-03T14:43:33+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T14:43:34+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691814.442672774] [amr_supervisor]: instance d8bb2d54 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T14:43:34+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691814.447396161] [amr_supervisor]: swept 1 stale generation files
+2026-11-03T14:43:34+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691814.468647853] [amr_supervisor]: spawned base pgid=95423 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T14:43:34+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T14:43:37+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691817.207460169] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T14:43:52+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691832.318501532] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T14:43:52+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691832.843765596] [amr_supervisor]: spawned layer pgid=96065 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+2026-11-03T14:44:00+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793691840.662915322] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T15:10:31+0700 gvipc-ce systemd[1]: Stopping Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T15:10:31+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693431.268808550] [amr_supervisor]: signal 2: shutting down
+2026-11-03T15:10:31+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693431.828254683] [amr_supervisor]: stopped layer: clean (layer pgid=96065 leader=0 members=0)
+2026-11-03T15:10:32+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693432.358112744] [amr_supervisor]: stopped base: clean (base pgid=95423 leader=0 members=0)
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693433.429591761] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=95424 leader=0 members=0)
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693433.787789886] [amr_supervisor]: stopped web: clean (web pgid=95422 leader=0 members=0)
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693433.788597109] [amr_supervisor]: teardown: groups stopped in 2.5 s
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: [INFO] [1793693433.789457167] [amr_supervisor]: teardown: executor down at 2.5 s
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: teardown: loop joined at 2.5 s
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: teardown: node destroyed at 2.7 s
+2026-11-03T15:10:33+0700 gvipc-ce amr-supervisor.sh[95386]: teardown: done at 2.7 s
+2026-11-03T15:10:34+0700 gvipc-ce systemd[1]: amr.service: Deactivated successfully.
+2026-11-03T15:10:34+0700 gvipc-ce systemd[1]: Stopped Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T15:10:34+0700 gvipc-ce systemd[1]: amr.service: Consumed 1h 26min 5.531s CPU time.
+2026-11-03T15:10:34+0700 gvipc-ce systemd[1]: Starting Unified AMR supervisor, hardware, web UI, mapping and navigation...
+2026-11-03T15:10:34+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693434.737081795] [amr_supervisor]: instance 4dc9f89e real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+2026-11-03T15:10:34+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693434.743082196] [amr_supervisor]: swept 2 stale generation files
+2026-11-03T15:10:34+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693434.756032062] [amr_supervisor]: spawned base pgid=124557 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+2026-11-03T15:10:34+0700 gvipc-ce systemd[1]: Started Unified AMR supervisor, hardware, web UI, mapping and navigation.
+2026-11-03T15:10:37+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693437.497064994] [amr_supervisor]: mode STARTING -> IDLE ()
+2026-11-03T15:10:44+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693444.217779968] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+2026-11-03T15:10:44+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693444.742685145] [amr_supervisor]: spawned layer pgid=124973 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+2026-11-03T15:10:52+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793693452.570324754] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+2026-11-03T15:28:20+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793694500.019916715] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+2026-11-03T15:28:21+0700 gvipc-ce amr-supervisor.sh[124523]: [INFO] [1793694501.195965387] [amr_supervisor]: mode TRANSITIONING -> IDLE ()

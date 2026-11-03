@@ -1,0 +1,28 @@
+[INFO] [1793693436.279759657] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793693436.283567743] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793693436.343931680] [panel_node]: DIO comms ok
+[INFO] [1793693436.385804141] [panel_node]: panel image valid; selector AUTO; E-stop OK (DI8) HIGH
+[INFO] [1793693436.386622367] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793693436.444021200] [panel_node]: Manual Arm on
+[INFO] [1793693467.484013326] [panel_node]: DEST ITG edge
+[INFO] [1793693480.403074196] [panel_node]: DEST ITG edge
+[INFO] [1793693490.684363546] [panel_node]: DEST ITG edge
+[INFO] [1793693512.343759820] [panel_node]: DEST ITG edge
+[INFO] [1793693515.443419844] [panel_node]: alarm horn on
+[INFO] [1793693517.484620640] [panel_node]: alarm horn off
+[INFO] [1793693928.983949423] [panel_node]: CONTINUE edge
+[INFO] [1793693929.004157034] [panel_node]: alarm horn on
+[INFO] [1793693931.084280046] [panel_node]: alarm horn off
+[INFO] [1793693971.563667209] [panel_node]: alarm horn on
+[INFO] [1793693973.164212513] [panel_node]: alarm horn off
+[INFO] [1793694013.163516398] [panel_node]: alarm horn on
+[INFO] [1793694014.764573641] [panel_node]: alarm horn off
+[INFO] [1793694190.183189101] [panel_node]: CONTINUE edge
+[INFO] [1793694190.203331042] [panel_node]: alarm horn on
+[INFO] [1793694192.283339070] [panel_node]: alarm horn off
+[INFO] [1793694200.063927028] [panel_node]: alarm horn on
+[INFO] [1793694200.763741376] [panel_node]: alarm horn off
+[INFO] [1793694482.703953554] [panel_node]: RESET edge
+[INFO] [1793694487.003860493] [panel_node]: selector MANUAL
+[INFO] [1793694539.563733589] [panel_node]: pendant FWD
+[INFO] [1793694543.243815903] [panel_node]: pendant released

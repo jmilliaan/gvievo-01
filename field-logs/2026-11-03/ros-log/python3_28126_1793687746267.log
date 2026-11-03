@@ -1,0 +1,15 @@
+[INFO] [1793687746.387355876] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[INFO] [1793687746.452717569] [localization_monitor]: UNLOCALIZED: no initial pose
+[INFO] [1793687749.384586994] [localization_monitor]: map 3577x1846 loaded for scan consistency
+[INFO] [1793687753.771365191] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793687753.853109191] [localization_monitor]: CHECKING: stale: tf
+[INFO] [1793687761.721259655] [localization_monitor]: READY: operator confirmed
+[INFO] [1793687761.754863700] [localization_monitor]: READY: operator confirmed scan alignment
+[INFO] [1793687954.939561119] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793687954.955281431] [localization_monitor]: CHECKING: no AMCL update yet - converging in place (or drive slowly)
+[INFO] [1793687964.003149706] [localization_monitor]: READY: operator confirmed
+[INFO] [1793687964.054159686] [localization_monitor]: READY: operator confirmed scan alignment
+[INFO] [1793688095.782292552] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793688095.855333058] [localization_monitor]: CHECKING: no AMCL update yet - converging in place (or drive slowly)
+[INFO] [1793688102.355232150] [localization_monitor]: READY: operator confirmed
+[INFO] [1793688102.453982415] [localization_monitor]: READY: operator confirmed scan alignment

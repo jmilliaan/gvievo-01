@@ -129,9 +129,9 @@ MCQ4-4 assignment, given by the operator 2026-10-27 (supersedes the sheet 09 ass
 | DI07 | not connected | |
 | DI08 | **Emergency signal from the safety PLC** | Normally HIGH, LOW = emergency. Named in the profile only; the software still infers an E-stop from the drives dropping out. |
 | DI09 | **Pendant enable / arm** (`panel.di_manual_arm`) | HIGH arms the motors; LOW disarms them in MANUAL and AUTO alike |
-| DI0A | Destination 1: UBC | Feature to add later |
-| DI0B | Destination 2: ITG | Feature to add later |
-| DI0C | Destination 3: PISTON | Feature to add later |
+| DI0A | **PB Destination UBC** (`panel.destinations`) | Momentary. In AUTO with no run under way, loads the newest saved mission for its route on the active map and starts it (pre-move warning; PB Start not needed). Route set per button in the profile (2026-11-03) |
+| DI0B | **PB Destination ITG** (`panel.destinations`) | Momentary. In AUTO with no run under way, loads the newest saved mission for its route on the active map and starts it (pre-move warning; PB Start not needed). Route set per button in the profile (2026-11-03) |
+| DI0C | **PB Destination PISTON** (`panel.destinations`) | Momentary. In AUTO with no run under way, loads the newest saved mission for its route on the active map and starts it (pre-move warning; PB Start not needed). Route set per button in the profile (2026-11-03) |
 | DI0D | **PB Continue** (`panel.di_continue`) | Releases a run WAITING at a route wait step and resumes a held run, like Start (2026-10-30, `manuals/gls6-qr/gls-wait-coding-plan.md` §A.2) |
 | DI0E–DI0F | not used | |
 | COM0 | 1P24 | Common for DI00–DI07 |

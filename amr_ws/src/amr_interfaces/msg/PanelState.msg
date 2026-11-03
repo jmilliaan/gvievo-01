@@ -29,3 +29,8 @@ uint8 emergency
 # rising edge on THIS message, same baseline/reconnect rules as start_edge. Continues a run
 # WAITING at a route wait step, and resumes a held run exactly as Start does.
 bool continue_edge
+# Destination buttons (panel.destinations, DI0A UBC / DI0B ITG / DI0C PISTON on MCQ4-4;
+# 2026-11-03): 1-based index of the button whose rising edge is on THIS message, 0 = none.
+# Start's baseline/reconnect rules, and only while it is the one destination button held.
+# In AUTO with no run under way it loads that destination's mission and starts it.
+uint8 dest_edge

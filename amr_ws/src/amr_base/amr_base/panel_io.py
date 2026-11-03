@@ -50,6 +50,9 @@ class PanelFrame:
     # panel.di_estop_ok: HIGH for debounce_scans, LOW for estop_low_scans; False at once while invalid
     estop_ok: bool = False
     continue_edge: bool = False  # panel.di_continue rising edge (PB Continue), Start's rules
+    # panel.destinations: 1-based index of the destination button pressed on THIS frame, 0 = none.
+    # Start's rules, and only while it is the one destination button held (core/panel.single_press)
+    dest_edge: int = 0
 
 
 class PanelAdapter:
@@ -102,6 +105,9 @@ class PanelAdapter:
         # power-on powers the drives once the image is valid - power is not motion. Its own
         # filter (panel.manual_arm_scans), both directions.
         self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), manual_arm_scans)
+        # Destination buttons (DI10-12 on MCQ4-4, 2026-11-03): momentary, Start's rules.
+        self.destinations = tuple(config.PANEL_DESTINATIONS)
+        self.dest = panel_core.ButtonEdges(tuple(ch for _n, ch, _r in self.destinations), scans)
         self._last_arm: bool | None = None
         # E-stop OK (DI08, Flexi Soft Q3): HIGH needs debounce_scans, LOW needs estop_low_scans
         # (2026-11-02: one-scan Q3 test pulses were tripping it). An invalid image or a comms
@@ -167,6 +173,17 @@ class PanelAdapter:
             notes.append("RESET edge")
         if intent.cont:
             notes.append("CONTINUE edge")
+        dest_edge = 0
+        if self.destinations:
+            got = self.dest.scan(snapshot.get("di"), comms)
+            if intent.valid and got is not None:
+                edges, held = got
+                k = panel_core.single_press(edges, held)
+                if k is not None:
+                    dest_edge = k + 1
+                    notes.append(f"DEST {self.destinations[k][0]} edge")
+                elif any(edges):
+                    notes.append("destination buttons pressed together: ignored")
 
         pend = panel_core.PENDANT_IDLE
         if self.pendant is not None:
@@ -211,6 +228,7 @@ class PanelAdapter:
             manual_arm=arm,
             estop_ok=estop_ok,
             continue_edge=bool(intent.cont),
+            dest_edge=dest_edge,
         )
         self._last_frame = frame
         return frame

@@ -1,0 +1,20 @@
+[INFO] [1793686084.588802369] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793686084.603264853] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793686084.603968025] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793686085.138442092] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793686085.139468413] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793686085.141913011] [drive_node]: drives standby, imu sdo
+[WARN] [1793686086.804435042] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[INFO] [1793686089.003939154] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793686089.006966956] [drive_node]: drives armed, imu sdo
+[INFO] [1793686099.938554363] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; MANUAL, pendant enable (arm) on
+[INFO] [1793686099.946058502] [drive_node]: drives standby, imu sdo
+[INFO] [1793686100.008840508] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793687183.012493300] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793687184.057107436] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793687184.423026776] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793687184.425955625] [drive_node]: drives armed, imu sdo
+[INFO] [1793687230.366707857] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; MANUAL, pendant enable (arm) on
+[INFO] [1793687230.374676070] [drive_node]: drives standby, imu sdo
+[INFO] [1793687230.388776991] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793687361.808372457] [drive_node]: bus closed, drives de-energised

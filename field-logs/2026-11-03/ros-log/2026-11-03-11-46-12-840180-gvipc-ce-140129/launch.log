@@ -1,0 +1,33 @@
+1793681172.8410406 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-11-46-12-840180-gvipc-ce-140129
+1793681172.8411720 [INFO] [launch]: Default logging verbosity is set to INFO
+1793681173.2138512 [INFO] [map_server-1]: process started with pid [140146]
+1793681173.2140927 [INFO] [amcl-2]: process started with pid [140148]
+1793681173.2141995 [INFO] [localization_monitor_node-3]: process started with pid [140150]
+1793681173.2142980 [INFO] [controller_server-4]: process started with pid [140152]
+1793681173.2143931 [INFO] [behavior_server-5]: process started with pid [140154]
+1793681173.2144825 [INFO] [route_executor_node-6]: process started with pid [140156]
+1793681176.1904709 [INFO] [lifecycle_manager-7]: process started with pid [140294]
+1793681179.2075694 [INFO] [lifecycle_manager-8]: process started with pid [140372]
+1793681518.4398348 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793681518.4451368 [INFO] [lifecycle_manager-8]: sending signal 'SIGINT' to process[lifecycle_manager-8]
+1793681518.4465914 [INFO] [lifecycle_manager-7]: sending signal 'SIGINT' to process[lifecycle_manager-7]
+1793681518.4485428 [INFO] [route_executor_node-6]: sending signal 'SIGINT' to process[route_executor_node-6]
+1793681518.4504368 [INFO] [behavior_server-5]: sending signal 'SIGINT' to process[behavior_server-5]
+1793681518.4549072 [INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+1793681518.4564631 [INFO] [localization_monitor_node-3]: sending signal 'SIGINT' to process[localization_monitor_node-3]
+1793681518.4886942 [INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+1793681518.4901788 [INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+1793681518.7397571 [INFO] [localization_monitor_node-3]: process has finished cleanly [pid 140150]
+1793681518.7401810 [INFO] [launch]: process[localization_monitor_node-3] was required: shutting down launched system
+1793681518.7579310 [INFO] [lifecycle_manager-8]: process has finished cleanly [pid 140372]
+1793681518.7816682 [INFO] [behavior_server-5]: process has finished cleanly [pid 140154]
+1793681518.7824225 [INFO] [launch]: process[behavior_server-5] was required: shutting down launched system
+1793681518.8179333 [INFO] [map_server-1]: process has finished cleanly [pid 140146]
+1793681518.8183625 [INFO] [launch]: process[map_server-1] was required: shutting down launched system
+1793681518.8196447 [INFO] [amcl-2]: process has finished cleanly [pid 140148]
+1793681518.8201020 [INFO] [launch]: process[amcl-2] was required: shutting down launched system
+1793681518.8215029 [INFO] [route_executor_node-6]: process has finished cleanly [pid 140156]
+1793681518.8217742 [INFO] [launch]: process[route_executor_node-6] was required: shutting down launched system
+1793681518.8483958 [INFO] [controller_server-4]: process has finished cleanly [pid 140152]
+1793681518.8487728 [INFO] [launch]: process[controller_server-4] was required: shutting down launched system
+1793681518.8742442 [INFO] [lifecycle_manager-7]: process has finished cleanly [pid 140294]

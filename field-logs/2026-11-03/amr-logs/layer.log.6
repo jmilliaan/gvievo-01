@@ -1,0 +1,293 @@
+[INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-13-35-45-136073-gvipc-ce-28106
+[INFO] [launch]: Default logging verbosity is set to INFO
+[navigation_layer] map kyb-map-02 rev3 bundle 97cb9e928e65 (/home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml)
+[INFO] [map_server-1]: process started with pid [28122]
+[INFO] [amcl-2]: process started with pid [28124]
+[INFO] [localization_monitor_node-3]: process started with pid [28126]
+[INFO] [controller_server-4]: process started with pid [28128]
+[INFO] [behavior_server-5]: process started with pid [28130]
+[INFO] [route_executor_node-6]: process started with pid [28132]
+[behavior_server-5] [INFO] [1793687745.548165249] [behavior_server]: 
+[behavior_server-5] 	behavior_server lifecycle node launched. 
+[behavior_server-5] 	Waiting on external lifecycle transitions to activate
+[behavior_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1793687745.558457464] [amcl]: 
+[amcl-2] 	amcl lifecycle node launched. 
+[amcl-2] 	Waiting on external lifecycle transitions to activate
+[amcl-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1793687745.562302360] [amcl]: Creating
+[controller_server-4] [INFO] [1793687745.571328151] [controller_server]: 
+[controller_server-4] 	controller_server lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793687745.579365886] [controller_server]: Creating controller server
+[map_server-1] [INFO] [1793687745.591182686] [map_server]: 
+[map_server-1] 	map_server lifecycle node launched. 
+[map_server-1] 	Waiting on external lifecycle transitions to activate
+[map_server-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-1] [INFO] [1793687745.591360428] [map_server]: Creating
+[controller_server-4] [INFO] [1793687745.611427861] [local_costmap.local_costmap]: 
+[controller_server-4] 	local_costmap lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793687745.617396286] [local_costmap.local_costmap]: Creating Costmap
+[localization_monitor_node-3] [INFO] [1793687746.387355876] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[localization_monitor_node-3] [INFO] [1793687746.452717569] [localization_monitor]: UNLOCALIZED: no initial pose
+[route_executor_node-6] [INFO] [1793687746.598204097] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[route_executor_node-6] [INFO] [1793687746.677574298] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[INFO] [lifecycle_manager-7]: process started with pid [28269]
+[lifecycle_manager-7] [INFO] [1793687748.516310748] [lifecycle_manager_localization]: Creating
+[lifecycle_manager-7] [INFO] [1793687748.521581696] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-7] [INFO] [1793687748.639515937] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-7] [INFO] [1793687748.639630737] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[map_server-1] [INFO] [1793687748.640197844] [map_server]: Configuring
+[map_server-1] [INFO] [1793687748.640376169] [map_io]: Loading yaml file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml
+[map_server-1] [INFO] [1793687748.640939817] [map_io]: resolution: 0.05
+[map_server-1] [INFO] [1793687748.640969167] [map_io]: origin[0]: -155.737
+[map_server-1] [INFO] [1793687748.640983295] [map_io]: origin[1]: -23.9909
+[map_server-1] [INFO] [1793687748.640995435] [map_io]: origin[2]: 0
+[map_server-1] [INFO] [1793687748.641007973] [map_io]: free_thresh: 0.196
+[map_server-1] [INFO] [1793687748.641020289] [map_io]: occupied_thresh: 0.65
+[map_server-1] [INFO] [1793687748.641032593] [map_io]: mode: trinary
+[map_server-1] [INFO] [1793687748.641066430] [map_io]: negate: 0
+[map_server-1] [INFO] [1793687748.647860235] [map_io]: Loading image_file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm
+[map_server-1] [INFO] [1793687749.224239201] [map_io]: Read map /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm: 3577 X 1846 map @ 0.05 m/cell
+[lifecycle_manager-7] [INFO] [1793687749.236497740] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[amcl-2] [INFO] [1793687749.237962030] [amcl]: Configuring
+[amcl-2] [INFO] [1793687749.238174965] [amcl]: initTransforms
+[amcl-2] [INFO] [1793687749.246154105] [amcl]: initPubSub
+[amcl-2] [INFO] [1793687749.250155550] [amcl]: Subscribed to map topic.
+[lifecycle_manager-7] [INFO] [1793687749.254785247] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[map_server-1] [INFO] [1793687749.255529580] [map_server]: Activating
+[map_server-1] [INFO] [1793687749.270012994] [map_server]: Creating bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793687749.282364754] [amcl]: Received a 3577 X 1846 map @ 0.050 m/pix
+[lifecycle_manager-7] [INFO] [1793687749.377862113] [lifecycle_manager_localization]: Server map_server connected with bond.
+[lifecycle_manager-7] [INFO] [1793687749.377945667] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[localization_monitor_node-3] [INFO] [1793687749.384586994] [localization_monitor]: map 3577x1846 loaded for scan consistency
+[amcl-2] [INFO] [1793687749.393726072] [amcl]: Activating
+[amcl-2] [INFO] [1793687749.393792068] [amcl]: Creating bond (amcl) to lifecycle manager.
+[amcl-2] [INFO] [1793687749.395207542] [amcl]: createLaserObject
+[lifecycle_manager-7] [INFO] [1793687749.498711727] [lifecycle_manager_localization]: Server amcl connected with bond.
+[lifecycle_manager-7] [INFO] [1793687749.498771300] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-7] [INFO] [1793687749.498787217] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[amcl-2] [WARN] [1793687751.440171384] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [lifecycle_manager-8]: process started with pid [28334]
+[lifecycle_manager-8] [INFO] [1793687751.537230156] [lifecycle_manager_navigation]: Creating
+[lifecycle_manager-8] [INFO] [1793687751.544900624] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-8] [INFO] [1793687751.599023314] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-8] [INFO] [1793687751.600409708] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-4] [INFO] [1793687751.601240392] [controller_server]: Configuring controller interface
+[controller_server-4] [INFO] [1793687751.601760153] [controller_server]: getting goal checker plugins..
+[controller_server-4] [INFO] [1793687751.601995426] [controller_server]: Controller frequency set to 20.0000Hz
+[controller_server-4] [INFO] [1793687751.602113023] [local_costmap.local_costmap]: Configuring
+[controller_server-4] [INFO] [1793687751.610443175] [local_costmap.local_costmap]: Using plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793687751.625712588] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[controller_server-4] [INFO] [1793687751.631952920] [local_costmap.local_costmap]: Initialized plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793687751.632462133] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[controller_server-4] [INFO] [1793687751.634629861] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[controller_server-4] [INFO] [1793687751.658121883] [controller_server]: Created progress_checker : progress_checker of type nav2_controller::SimpleProgressChecker
+[controller_server-4] [INFO] [1793687751.662649449] [controller_server]: Created goal checker : precise of type nav2_controller::SimpleGoalChecker
+[controller_server-4] [INFO] [1793687751.663968417] [controller_server]: Controller Server has precise  goal checkers available.
+[controller_server-4] [INFO] [1793687751.667021839] [controller_server]: Created controller : FollowPath of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793687751.675762691] [controller_server]: Controller Server has FollowPath  controllers available.
+[lifecycle_manager-8] [INFO] [1793687751.685979832] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793687751.686295844] [behavior_server]: Configuring
+[behavior_server-5] [INFO] [1793687751.697378978] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors/Spin
+[behavior_server-5] [INFO] [1793687751.699784224] [behavior_server]: Configuring spin
+[lifecycle_manager-8] [INFO] [1793687751.705503527] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-4] [INFO] [1793687751.705720917] [controller_server]: Activating
+[controller_server-4] [INFO] [1793687751.705797472] [local_costmap.local_costmap]: Activating
+[controller_server-4] [INFO] [1793687751.705820412] [local_costmap.local_costmap]: Checking transform
+[controller_server-4] [INFO] [1793687751.705951000] [local_costmap.local_costmap]: start
+[controller_server-4] [INFO] [1793687751.957017885] [controller_server]: Activating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793687751.957163519] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793687752.067441715] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793687752.067571926] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793687752.070555360] [behavior_server]: Activating
+[behavior_server-5] [INFO] [1793687752.070654079] [behavior_server]: Activating spin
+[behavior_server-5] [INFO] [1793687752.070697083] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793687752.181897873] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793687752.182000084] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-8] [INFO] [1793687752.182038093] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[amcl-2] [WARN] [1793687753.548625467] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [INFO] [1793687753.769973153] [amcl]: initialPoseReceived
+[amcl-2] [WARN] [1793687753.770177826] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793687753.770036 but the latest data is at time 1793687753.732313, when looking up transform from frame [base_footprint] to frame [odom])
+[amcl-2] [INFO] [1793687753.770216522] [amcl]: Setting pose (1793687753.770216): 0.000 0.000 0.000
+[localization_monitor_node-3] [INFO] [1793687753.771365191] [localization_monitor]: initial pose received: CHECKING
+[amcl-2] [INFO] [1793687753.852503922] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793687753.853109191] [localization_monitor]: CHECKING: stale: tf
+[amcl-2] [INFO] [1793687754.452636580] [amcl]: Requesting no-motion update
+[amcl-2] Reallocing temp weights 2000 - 180
+[amcl-2] [INFO] [1793687754.953020068] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687755.552797704] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687756.052677890] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687756.553382342] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687757.153211301] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687757.655799754] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687758.188386882] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687758.752582680] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687759.254118794] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687759.853673090] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687760.354087639] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687760.953280580] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687761.555023549] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793687761.721259655] [localization_monitor]: READY: operator confirmed
+[localization_monitor_node-3] [INFO] [1793687761.754863700] [localization_monitor]: READY: operator confirmed scan alignment
+[route_executor_node-6] [WARN] [1793687775.805825038] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687775.807927590] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687775.809123255] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687775.809861009] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793687783.276425620] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687783.277962195] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687783.278976846] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687783.279759215] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[route_executor_node-6] [INFO] [1793687783.401060726] [route_executor]: READY pass 1/1 step -1 init: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793687788.300963542] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687788.302277252] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687788.303263886] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687788.304094161] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793687791.462575461] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687791.463536977] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687791.464487731] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687791.465271540] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[localization_monitor_node-3] [INFO] [1793687954.939561119] [localization_monitor]: initial pose received: CHECKING
+[amcl-2] [INFO] [1793687954.940205068] [amcl]: initialPoseReceived
+[amcl-2] [WARN] [1793687954.940396336] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793687954.940314 but the latest data is at time 1793687954.917411, when looking up transform from frame [base_footprint] to frame [odom])
+[amcl-2] [INFO] [1793687954.940451811] [amcl]: Setting pose (1793687954.940451): 0.000 0.000 0.000
+[amcl-2] [INFO] [1793687954.953429040] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793687954.955281431] [localization_monitor]: CHECKING: no AMCL update yet - converging in place (or drive slowly)
+[amcl-2] [INFO] [1793687955.553265598] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793687955.571298776] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged; settling (0.3/2.0 s))
+[amcl-2] [INFO] [1793687956.053879523] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687956.654937838] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687957.253839228] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687957.854935399] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687958.453454367] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687959.055267776] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687959.553638935] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687960.057173352] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687960.655072206] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687961.254074687] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687961.855205530] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687962.453459147] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687962.954143730] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793687963.555345325] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793687964.003149706] [localization_monitor]: READY: operator confirmed
+[localization_monitor_node-3] [INFO] [1793687964.054159686] [localization_monitor]: READY: operator confirmed scan alignment
+[route_executor_node-6] [WARN] [1793687977.368905963] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687977.369826738] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687977.370978176] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687977.372297262] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.5 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793687980.649881931] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687980.651208550] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687980.652178057] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687980.653149032] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: wheel feedback stale
+[route_executor_node-6] [WARN] [1793687983.519075935] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687983.520040479] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687983.521015208] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687983.521933365] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: wheel feedback stale
+[route_executor_node-6] [WARN] [1793687986.566967873] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687986.568538344] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687986.569409930] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687986.570214812] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.6 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793687989.691251391] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793687989.697652120] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793687989.698920878] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793687989.700564821] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.6 deg from the route start; reposition manually
+[amcl-2] [INFO] [1793688095.780204382] [amcl]: initialPoseReceived
+[amcl-2] [WARN] [1793688095.780391916] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793688095.780310 but the latest data is at time 1793688095.749376, when looking up transform from frame [base_footprint] to frame [odom])
+[amcl-2] [INFO] [1793688095.780439524] [amcl]: Setting pose (1793688095.780439): 0.000 0.000 0.000
+[localization_monitor_node-3] [INFO] [1793688095.782292552] [localization_monitor]: initial pose received: CHECKING
+[amcl-2] [INFO] [1793688095.854197263] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793688095.855333058] [localization_monitor]: CHECKING: no AMCL update yet - converging in place (or drive slowly)
+[amcl-2] [INFO] [1793688096.353534406] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793688096.366326295] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged; settling (0.2/2.0 s))
+[amcl-2] [INFO] [1793688096.953880008] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688097.555250326] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688098.154730159] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688098.753351253] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688099.353221239] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688099.853477305] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688100.453428132] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688101.053284571] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688101.553670496] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793688102.155101491] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793688102.355232150] [localization_monitor]: READY: operator confirmed
+[localization_monitor_node-3] [INFO] [1793688102.453982415] [localization_monitor]: READY: operator confirmed scan alignment
+[route_executor_node-6] [WARN] [1793688127.167166959] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793688127.168832118] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793688127.170462950] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793688127.171586547] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793688130.447154835] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793688130.450177301] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793688130.451105656] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793688130.451994758] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[route_executor_node-6] [WARN] [1793688133.604607013] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793688133.605788075] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793688133.606960829] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793688133.607934364] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[route_executor_node-6] [INFO] [1793688172.965132018] [route_executor]: IDLE pass 1/1 step -1 init: aborted by operator [aborted]
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [lifecycle_manager-8]: sending signal 'SIGINT' to process[lifecycle_manager-8]
+[INFO] [lifecycle_manager-7]: sending signal 'SIGINT' to process[lifecycle_manager-7]
+[INFO] [route_executor_node-6]: sending signal 'SIGINT' to process[route_executor_node-6]
+[INFO] [behavior_server-5]: sending signal 'SIGINT' to process[behavior_server-5]
+[INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+[INFO] [localization_monitor_node-3]: sending signal 'SIGINT' to process[localization_monitor_node-3]
+[INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+[INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+[lifecycle_manager-8] [INFO] [1793688175.382471414] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-8] [INFO] [1793688175.382581914] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-8] [INFO] [1793688175.382636004] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[lifecycle_manager-7] [INFO] [1793688175.385381197] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-7] [INFO] [1793688175.385790465] [lifecycle_manager_localization]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_localization)
+[lifecycle_manager-7] [INFO] [1793688175.385900692] [lifecycle_manager_localization]: [34m[1mTerminating bond timer...[0m[0m
+[behavior_server-5] [INFO] [1793688175.397985778] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[behavior_server-5] [INFO] [1793688175.398302774] [behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[behavior_server-5] [INFO] [1793688175.398455586] [behavior_server]: Deactivating
+[behavior_server-5] [INFO] [1793688175.398517295] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793688175.403963167] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-4] [INFO] [1793688175.404192022] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-4] [INFO] [1793688175.404312472] [controller_server]: Deactivating
+[controller_server-4] [INFO] [1793688175.404351263] [controller_server]: Deactivating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793688175.404397053] [local_costmap.local_costmap]: Deactivating
+[behavior_server-5] [INFO] [1793688175.409749030] [behavior_server]: Cleaning up
+[behavior_server-5] [INFO] [1793688175.441105878] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[amcl-2] [INFO] [1793688175.445175003] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[amcl-2] [INFO] [1793688175.445350492] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[amcl-2] [INFO] [1793688175.445431480] [amcl]: Deactivating
+[amcl-2] [INFO] [1793688175.445461932] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[map_server-1] [INFO] [1793688175.446434344] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-1] [INFO] [1793688175.446546046] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-1] [INFO] [1793688175.446622308] [map_server]: Deactivating
+[map_server-1] [INFO] [1793688175.446650239] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793688175.455740587] [amcl]: Cleaning up
+[map_server-1] [INFO] [1793688175.456848683] [map_server]: Cleaning up
+[map_server-1] [INFO] [1793688175.457481012] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793688175.470478580] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[controller_server-4] [INFO] [1793688175.506228843] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793688175.516488797] [controller_server]: Cleaning up
+[controller_server-4] [INFO] [1793688175.516564651] [controller_server]: Cleaning up controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793688175.516670409] [local_costmap.local_costmap]: Cleaning up
+[controller_server-4] [INFO] [1793688175.550590294] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793688175.565742868] [local_costmap.local_costmap]: Destroying
+[map_server-1] [INFO] [1793688175.585139867] [map_server]: Destroying
+[behavior_server-5] [INFO] [1793688175.590030079] [behavior_server]: Destroying
+[controller_server-4] [INFO] [1793688175.594312251] [controller_server]: Destroying
+[lifecycle_manager-8] [INFO] [1793688175.604913110] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[amcl-2] [INFO] [1793688175.612011918] [amcl]: Destroying
+[lifecycle_manager-7] [INFO] [1793688175.619101769] [lifecycle_manager_localization]: Destroying lifecycle_manager_localization
+[INFO] [localization_monitor_node-3]: process has finished cleanly [pid 28126]
+[INFO] [launch]: process[localization_monitor_node-3] was required: shutting down launched system
+[INFO] [controller_server-4]: process has finished cleanly [pid 28128]
+[INFO] [launch]: process[controller_server-4] was required: shutting down launched system
+[INFO] [route_executor_node-6]: process has finished cleanly [pid 28132]
+[INFO] [launch]: process[route_executor_node-6] was required: shutting down launched system
+[INFO] [amcl-2]: process has finished cleanly [pid 28124]
+[INFO] [launch]: process[amcl-2] was required: shutting down launched system
+[INFO] [map_server-1]: process has finished cleanly [pid 28122]
+[INFO] [launch]: process[map_server-1] was required: shutting down launched system
+[INFO] [lifecycle_manager-7]: process has finished cleanly [pid 28269]
+[INFO] [lifecycle_manager-8]: process has finished cleanly [pid 28334]
+[INFO] [behavior_server-5]: process has finished cleanly [pid 28130]
+[INFO] [launch]: process[behavior_server-5] was required: shutting down launched system

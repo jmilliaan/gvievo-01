@@ -580,7 +580,7 @@ def test_r23_existing_revision_is_never_replaced(tmp_path):
     assert b"other" not in open(path, "rb").read()
 
 
-# ---- ONE trackless speed, 0.60 m/s, a vehicle constant (2026-10-02) ----
+# ---- ONE trackless speed, 0.60 m/s (arcs 0.30 since 2026-11-03), a vehicle constant (2026-10-02) ----
 
 
 def test_trackless_speed_is_the_vehicle_constant_and_old_speed_keys_are_dropped():
@@ -678,10 +678,10 @@ def test_arc_step_bounds_geometry_and_speed():
     mid = st.samples[len(st.samples) // 2]
     assert math.hypot(mid[0] - 0.0, mid[1] - 1.0) == pytest.approx(1.0) and 0 < mid[2] < math.pi / 2
     assert c.total_turn_rad == pytest.approx(math.pi / 2) and c.total_length_m == pytest.approx(math.pi / 2)
-    # speed (2026-10-02): the trackless speed, or less where v/R would pass 90 % of the ARC
-    # turn ceiling 0.45 (R 1.0 -> 0.405, R 0.5 -> 0.2025)
-    assert st.v_mps == pytest.approx(0.405) and st.v_mps == arc_speed(r.limits, 1.0)
-    assert arc_speed(r.limits, 5.0) == pytest.approx(0.60) and arc_speed(r.limits, 0.5) == pytest.approx(
+    # speed (2026-11-03): ARC_V_MPS 0.30 whatever the straights run at, or less where v/R would pass 90 % of
+    # the ARC turn ceiling 0.45 (R 0.5 -> 0.2025)
+    assert st.v_mps == pytest.approx(0.30) and st.v_mps == arc_speed(r.limits, 1.0)
+    assert arc_speed(r.limits, 5.0) == pytest.approx(0.30) and arc_speed(r.limits, 0.5) == pytest.approx(
         0.2025
     )
     # cw mirrors; 180 deg ends across the diameter

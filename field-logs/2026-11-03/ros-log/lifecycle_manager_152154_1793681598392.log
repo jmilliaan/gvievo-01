@@ -1,0 +1,11 @@
+[INFO] [1793681598.415878386] [lifecycle_manager_navigation]: Creating
+[INFO] [1793681598.420840678] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[INFO] [1793681598.567466263] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[INFO] [1793681598.567581024] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[INFO] [1793681598.638059002] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[INFO] [1793681598.655617819] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[INFO] [1793681599.015097274] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[INFO] [1793681599.015212756] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[INFO] [1793681599.124150345] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[INFO] [1793681599.124242452] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[INFO] [1793681599.124276507] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m

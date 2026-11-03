@@ -1,0 +1,112 @@
+[INFO] [1793688208.125427552] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793688208.140759760] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793688208.142550828] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793688208.669266162] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793688208.670128565] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793688208.672581266] [drive_node]: drives standby, imu sdo
+[INFO] [1793688210.531251763] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793688210.538223883] [drive_node]: drives armed, imu sdo
+[WARN] [1793688212.756545513] [drive_node]: setpoint gated to zero: inhibited by supervisor
+[INFO] [1793688236.231927524] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688236.261428143] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688236.334125178] [drive_node]: drives standby, imu sdo
+[INFO] [1793688248.538580500] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793688248.922182564] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793688248.924459687] [drive_node]: drives armed, imu sdo
+[INFO] [1793688265.057906075] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688265.089669202] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688265.102524954] [drive_node]: drives standby, imu sdo
+[INFO] [1793688299.737574880] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793688300.116513187] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793688300.122641381] [drive_node]: drives armed, imu sdo
+[INFO] [1793688302.289087151] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688302.316999981] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688302.371507869] [drive_node]: drives standby, imu sdo
+[INFO] [1793688307.519641536] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793688307.901910515] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793688307.904919495] [drive_node]: drives armed, imu sdo
+[WARN] [1793688411.832108173] [drive_node]: setpoint gated to zero: inhibited by supervisor
+[WARN] [1793688424.896819876] [drive_node]: setpoint gated to zero: inhibited by supervisor
+[INFO] [1793688443.123128845] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688443.153275102] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688443.165988185] [drive_node]: drives standby, imu sdo
+[INFO] [1793688449.153246122] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793688449.530041095] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793688449.537971332] [drive_node]: drives armed, imu sdo
+[INFO] [1793688786.082659137] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688786.112010189] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688786.149351760] [drive_node]: drives standby, imu sdo
+[INFO] [1793688821.201607878] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793688821.582140587] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793688821.585285661] [drive_node]: drives armed, imu sdo
+[INFO] [1793688852.271192334] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793688852.301208846] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793688852.354746502] [drive_node]: drives standby, imu sdo
+[INFO] [1793688856.066683488] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793688856.450868550] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793688856.459727191] [drive_node]: drives armed, imu sdo
+[INFO] [1793689064.983225503] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793689065.014114555] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793689065.049694105] [drive_node]: drives standby, imu sdo
+[INFO] [1793689232.146751145] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793689232.526375222] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793689232.531814015] [drive_node]: drives armed, imu sdo
+[INFO] [1793689403.825568376] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793689403.857074067] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793689403.865860284] [drive_node]: drives standby, imu sdo
+[INFO] [1793690002.084747198] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793690002.469093853] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793690002.476155839] [drive_node]: drives armed, imu sdo
+[INFO] [1793690013.228638388] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793690013.256422613] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793690013.309450305] [drive_node]: drives standby, imu sdo
+[INFO] [1793690036.385238556] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793690036.771527160] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690036.776768508] [drive_node]: drives armed, imu sdo
+[INFO] [1793690054.412814411] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1]; AUTO, the run run asks for power
+[INFO] [1793690054.426658969] [drive_node]: drives standby, imu sdo
+[INFO] [1793690056.705504404] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690056.710382395] [drive_node]: drives armed, imu sdo
+[INFO] [1793690379.403122842] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793690379.433712117] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793690379.489618195] [drive_node]: drives standby, imu sdo
+[INFO] [1793690384.492230502] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793690384.876910657] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690384.885815797] [drive_node]: drives armed, imu sdo
+[INFO] [1793690415.689040008] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793690415.717704421] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793690415.750566813] [drive_node]: drives standby, imu sdo
+[INFO] [1793690509.266833436] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793690509.647060059] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690509.652973280] [drive_node]: drives armed, imu sdo
+[INFO] [1793690576.311548146] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1]; AUTO, the run run asks for power
+[INFO] [1793690576.373990908] [drive_node]: drives standby, imu sdo
+[INFO] [1793690578.673329664] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690578.680609082] [drive_node]: drives armed, imu sdo
+[INFO] [1793690741.357055027] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793690741.389400779] [drive_node]: drives standby, imu sdo
+[INFO] [1793690743.726212745] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690743.734923177] [drive_node]: drives armed, imu sdo
+[INFO] [1793690757.361031995] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793690757.379147312] [drive_node]: drives standby, imu sdo
+[INFO] [1793690759.735484334] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690759.744411196] [drive_node]: drives armed, imu sdo
+[INFO] [1793690796.433994741] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793690796.444987154] [drive_node]: drives standby, imu sdo
+[INFO] [1793690798.802100880] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690798.807385738] [drive_node]: drives armed, imu sdo
+[INFO] [1793690811.773433616] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793690811.785600262] [drive_node]: drives standby, imu sdo
+[INFO] [1793690814.127356646] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690814.132732612] [drive_node]: drives armed, imu sdo
+[INFO] [1793690902.762549294] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793690902.798959486] [drive_node]: drives standby, imu sdo
+[INFO] [1793690905.122040210] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793690905.133294832] [drive_node]: drives armed, imu sdo
+[INFO] [1793690936.633965195] [drive_node]: drive power not wanted: AUTO, pendant enable (arm) off
+[INFO] [1793690936.662419085] [drive_node]: drives in standby (power off): power not wanted; AUTO, pendant enable (arm) off
+[INFO] [1793690936.674787345] [drive_node]: drives standby, imu sdo
+[INFO] [1793690944.963864939] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793690970.443949910] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793690971.371569088] [drive_node]: drive power not wanted: MANUAL, pendant enable (arm) off
+[INFO] [1793691000.871281132] [drive_node]: bus closed, drives de-energised

@@ -1,0 +1,61 @@
+[INFO] [1793686084.170801694] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793686084.189952469] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793686084.354852376] [panel_node]: DIO comms ok
+[INFO] [1793686084.411319105] [panel_node]: panel image valid; selector MANUAL; E-stop OK (DI8) HIGH
+[INFO] [1793686084.412302918] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793686084.451300302] [panel_node]: Manual Arm on
+[INFO] [1793686086.911730680] [panel_node]: RESET edge
+[INFO] [1793686088.872009506] [panel_node]: RESET edge
+[INFO] [1793686091.891693001] [panel_node]: pendant LEFT
+[INFO] [1793686096.271609939] [panel_node]: pendant released
+[INFO] [1793686097.131724916] [panel_node]: pendant FWD
+[INFO] [1793686099.031753129] [panel_node]: pendant released
+[INFO] [1793686099.991926414] [panel_node]: E-stop OK (DI8) LOW
+[WARN] [1793686099.993509799] [panel_node]: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793687180.691104470] [panel_node]: pendant RVS
+[INFO] [1793687181.430811711] [panel_node]: pendant released
+[INFO] [1793687182.991174758] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793687182.992331183] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793687183.851013479] [panel_node]: RESET edge
+[WARN] [1793687183.852040146] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793687184.051247913] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[INFO] [1793687184.990835059] [panel_node]: pendant RVS
+[INFO] [1793687189.470890094] [panel_node]: pendant released
+[INFO] [1793687190.570932520] [panel_node]: pendant LEFT
+[INFO] [1793687191.270894144] [panel_node]: pendant released
+[INFO] [1793687191.611027918] [panel_node]: pendant RIGHT
+[INFO] [1793687196.630901349] [panel_node]: pendant released
+[INFO] [1793687197.330974353] [panel_node]: pendant RIGHT
+[INFO] [1793687198.491037084] [panel_node]: pendant released
+[INFO] [1793687200.090929357] [panel_node]: pendant FWD
+[INFO] [1793687201.551147804] [panel_node]: pendant FWD LEFT
+[INFO] [1793687202.090940519] [panel_node]: pendant FWD
+[INFO] [1793687203.410916991] [panel_node]: pendant released
+[INFO] [1793687204.010944222] [panel_node]: pendant LEFT
+[INFO] [1793687205.551006673] [panel_node]: pendant released
+[INFO] [1793687206.010980243] [panel_node]: pendant RVS
+[INFO] [1793687208.632002918] [panel_node]: pendant released
+[INFO] [1793687209.192402250] [panel_node]: pendant RIGHT
+[INFO] [1793687209.531760230] [panel_node]: pendant released
+[INFO] [1793687212.651264376] [panel_node]: pendant RIGHT
+[INFO] [1793687213.451853849] [panel_node]: pendant released
+[INFO] [1793687214.711918620] [panel_node]: pendant LEFT
+[INFO] [1793687215.211735727] [panel_node]: pendant released
+[INFO] [1793687216.552272122] [panel_node]: pendant RVS
+[INFO] [1793687217.412128019] [panel_node]: pendant released
+[INFO] [1793687217.871955785] [panel_node]: pendant RVS
+[INFO] [1793687218.371893391] [panel_node]: pendant released
+[INFO] [1793687218.871771025] [panel_node]: pendant RIGHT
+[INFO] [1793687219.471691785] [panel_node]: pendant released
+[INFO] [1793687220.171712273] [panel_node]: pendant LEFT
+[INFO] [1793687220.631927874] [panel_node]: pendant released
+[INFO] [1793687221.791811939] [panel_node]: pendant RIGHT
+[INFO] [1793687221.991822165] [panel_node]: pendant released
+[INFO] [1793687222.331675898] [panel_node]: pendant RIGHT
+[INFO] [1793687222.631671910] [panel_node]: pendant released
+[INFO] [1793687223.451925925] [panel_node]: pendant RVS
+[INFO] [1793687225.192432282] [panel_node]: pendant released
+[INFO] [1793687225.811895610] [panel_node]: pendant RVS
+[INFO] [1793687226.351804197] [panel_node]: pendant released
+[INFO] [1793687230.370933032] [panel_node]: E-stop OK (DI8) LOW
+[WARN] [1793687230.371895202] [panel_node]: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)

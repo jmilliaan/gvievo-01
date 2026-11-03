@@ -1,0 +1,25 @@
+[INFO] [1793688205.873250725] [amr_supervisor]: instance c93a2bc3 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793688205.877497983] [amr_supervisor]: swept 1 stale generation files
+[INFO] [1793688205.895094646] [amr_supervisor]: spawned base pgid=36688 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793688208.743855794] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793688212.749161370] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793688213.265917495] [amr_supervisor]: spawned layer pgid=37065 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+[INFO] [1793688220.886109396] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793688272.585503139] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793688273.871602607] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+[INFO] [1793688275.275920612] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793688275.792794856] [amr_supervisor]: spawned layer pgid=38233 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=4 autostart:=false
+[INFO] [1793688283.632579166] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793688411.827130586] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793688412.832706892] [amr_supervisor]: spawned layer pgid=40429 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=5 autostart:=false
+[INFO] [1793688420.558268149] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793688424.881794034] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793688425.909322686] [amr_supervisor]: spawned layer pgid=40808 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=6 autostart:=false
+[INFO] [1793688433.650375736] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793691000.111873007] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793691000.698508274] [amr_supervisor]: stopped layer: clean (layer pgid=40808 leader=0 members=0)
+[INFO] [1793691002.053085333] [amr_supervisor]: stopped base: clean (base pgid=36688 leader=0 members=0)
+[INFO] [1793691002.824252477] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=36689 leader=0 members=0)
+[INFO] [1793691003.182056369] [amr_supervisor]: stopped web: clean (web pgid=36687 leader=0 members=0)
+[INFO] [1793691003.182956911] [amr_supervisor]: teardown: groups stopped in 3.1 s
+[INFO] [1793691003.183874257] [amr_supervisor]: teardown: executor down at 3.1 s

@@ -1,0 +1,23 @@
+[INFO] [1793675452.491777935] [amr_supervisor]: instance cc6acf86 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793675452.511597542] [amr_supervisor]: spawned base pgid=28343 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793675455.247903956] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793675470.403017040] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793675470.938266991] [amr_supervisor]: spawned layer pgid=29003 leader=alive members=1: mapping_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps generation:=2 internal:=true
+[INFO] [1793675473.441394990] [amr_supervisor]: mode TRANSITIONING -> MAPPING ()
+[INFO] [1793677669.296349102] [amr_supervisor]: mode MAPPING -> TRANSITIONING (inhibiting)
+[INFO] [1793677671.108003404] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+[INFO] [1793681055.896862650] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793681056.421016545] [amr_supervisor]: spawned layer pgid=137551 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=4 autostart:=false
+[INFO] [1793681064.137114355] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793681098.887896175] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793681100.075214110] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+[INFO] [1793681172.056381355] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793681172.580400172] [amr_supervisor]: spawned layer pgid=140129 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=6 autostart:=false
+[INFO] [1793681180.196581586] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793681518.422048406] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793681518.990886005] [amr_supervisor]: stopped layer: clean (layer pgid=140129 leader=0 members=0)
+[INFO] [1793681519.531675808] [amr_supervisor]: stopped base: clean (base pgid=28343 leader=0 members=0)
+[INFO] [1793681520.578903288] [amr_supervisor]: stopped foxglove: clean (foxglove pgid=28344 leader=0 members=0)
+[INFO] [1793681520.948317499] [amr_supervisor]: stopped web: clean (web pgid=28342 leader=0 members=0)
+[INFO] [1793681520.948798798] [amr_supervisor]: teardown: groups stopped in 2.5 s
+[INFO] [1793681520.949355301] [amr_supervisor]: teardown: executor down at 2.5 s

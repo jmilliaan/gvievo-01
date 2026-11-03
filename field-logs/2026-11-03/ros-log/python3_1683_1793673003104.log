@@ -1,0 +1,5 @@
+[INFO] [1793673003.434614005] [cmd_mux_kinematics]: r=0.09 track=0.487 w_max=13.96 rad/s a_max=0.300 alpha_max=0.400
+[INFO] [1793673003.436329680] [cmd_mux_kinematics]: command source: none -> none (no supervisor lease)
+[INFO] [1793673003.447317504] [cmd_mux_kinematics]: supervisor generation 0 -> 1 (322165f4): caches cleared
+[INFO] [1793673003.476874317] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[INFO] [1793673003.532938829] [cmd_mux_kinematics]: command source: none -> none (E-stop: emergency not cleared)

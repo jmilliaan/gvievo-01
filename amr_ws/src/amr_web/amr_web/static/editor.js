@@ -29,8 +29,8 @@ const mm = m => num(Math.round(m * 1000), 0);
 const MIN_STRAIGHT_M = 0.05;
 const REVERSE_MAX_M = 2.0;  // amr_navigation.route.REVERSE_MAX_M: the rear is outside the scanner's field
 const ARC_MIN_R = 1.0, ARC_MIN_DEG = 45, ARC_MAX_DEG = 180;  // amr_navigation.route ARC_* bounds
-// mirrors amr_navigation compiler.arc_speed: the trackless speed, lowered so v/R <= 0.9 x VEHICLE_ARC_W_MAX
-const ARC_YAW_RATE_RATIO = 0.9, VEHICLE_ARC_W_MAX = 0.45;
+// mirrors amr_navigation compiler.arc_speed: 0.30 m/s (ARC_V_MPS), lowered so v/R <= 0.9 x VEHICLE_ARC_W_MAX
+const ARC_V_MPS = 0.30, ARC_YAW_RATE_RATIO = 0.9, VEHICLE_ARC_W_MAX = 0.45;
 // Same construction as compiler.arc_centre / arc_pose: the circle to the left for +1 (ccw).
 function arcCentre(x, y, yaw, r, sign) { return [x - sign * r * Math.sin(yaw), y + sign * r * Math.cos(yaw)]; }
 function arcPose(c, r, yaw0, sign, phi) { const yaw = yaw0 + sign * phi; return { x: c[0] + sign * r * Math.sin(yaw), y: c[1] - sign * r * Math.cos(yaw), yaw }; }
@@ -38,7 +38,7 @@ function arcSamples(a, s, n) {  // poses along step s (an arc) from pose a, n+1 
   const sign = s.direction === 'ccw' ? 1 : -1, c = arcCentre(a.x, a.y, a.yaw, s.radius_m, sign), th = s.angle_deg * Math.PI / 180;
   return Array.from({ length: n + 1 }, (_, k) => arcPose(c, s.radius_m, a.yaw, sign, th * k / n));
 }
-const arcSpeed = r => Math.min(SPEED_V, ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * r);
+const arcSpeed = r => Math.min(ARC_V_MPS, SPEED_V, ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * r);
 
 function setTool(t) {
   const was = view.tool;

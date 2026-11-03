@@ -1,0 +1,218 @@
+[INFO] [1793691834.596055210] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793691834.669549761] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793691900.545781870] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793691900.546314842] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793691900.549057288] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793691900.556149765] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261103-144500-1 started: warning, moving in 2.0 s
+[INFO] [1793691902.570152481] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793691902.773311912] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793691907.964575853] [route_executor]: step s1 (straight) passed (pass 1/1 step 0): +0.010 m cross-track, continuing
+[INFO] [1793691907.976017851] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 32
+[INFO] [1793691918.663927117] [route_executor]: step s2 (arc) passed (pass 1/1 step 1): -0.013 m cross-track, continuing
+[INFO] [1793691918.665723523] [route_executor]: EXECUTING pass 1/1 step 2 goal: pass 1/1 step 2 of 32
+[INFO] [1793691943.566708708] [route_executor]: step s3 (straight) passed (pass 1/1 step 2): +0.013 m cross-track, continuing
+[INFO] [1793691943.571773608] [route_executor]: EXECUTING pass 1/1 step 3 goal: pass 1/1 step 3 of 32
+[INFO] [1793691954.065319593] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.012 m cross-track, continuing
+[INFO] [1793691954.077341805] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 32
+[INFO] [1793692227.763396269] [route_executor]: step s5 (straight) passed (pass 1/1 step 4): -0.011 m cross-track, continuing
+[INFO] [1793692227.765078617] [route_executor]: EXECUTING pass 1/1 step 5 goal: pass 1/1 step 5 of 32
+[INFO] [1793692238.263250155] [route_executor]: step s6 (arc) passed (pass 1/1 step 5): +0.030 m cross-track, continuing
+[INFO] [1793692238.265091955] [route_executor]: EXECUTING pass 1/1 step 6 goal: pass 1/1 step 6 of 32
+[INFO] [1793692294.764330241] [route_executor]: step s7 (straight) passed (pass 1/1 step 6): -0.020 m cross-track, continuing
+[INFO] [1793692294.769300419] [route_executor]: EXECUTING pass 1/1 step 7 goal: pass 1/1 step 7 of 32
+[INFO] [1793692310.263942583] [route_executor]: step s8 (arc) passed (pass 1/1 step 7): +0.025 m cross-track, continuing
+[INFO] [1793692310.265710577] [route_executor]: EXECUTING pass 1/1 step 8 goal: pass 1/1 step 8 of 32
+[INFO] [1793692315.663333340] [route_executor]: step s9 (arc) passed (pass 1/1 step 8): -0.001 m cross-track, continuing
+[INFO] [1793692315.665031603] [route_executor]: EXECUTING pass 1/1 step 9 goal: pass 1/1 step 9 of 32
+[INFO] [1793692329.664544789] [route_executor]: EXECUTING pass 1/1 step 9 settle: pass 1/1 step 9 of 32
+[INFO] [1793692330.263848547] [route_executor]: step s10 (straight) done (pass 1/1 step 9): 0.002 m / 0.66 deg from expected
+[INFO] [1793692330.264934584] [route_executor]: EXECUTING pass 1/1 step 10 init: pass 1/1 step 10 of 32
+[INFO] [1793692330.366602609] [route_executor]: WAITING pass 1/1 step 10 init: waiting at ITG-RELEASE (pass 1/1 step 10): press Continue [wait s11]
+[INFO] [1793692335.875797285] [route_executor]: EXECUTING pass 1/1 step 11 premove: pass 1/1 step 11 of 32: warning, moving in 2.0 s [Continue at a wait]
+[INFO] [1793692337.964695975] [route_executor]: EXECUTING pass 1/1 step 11 init: moving: pass 1/1 step 11
+[INFO] [1793692338.089922099] [route_executor]: EXECUTING pass 1/1 step 11 goal: moving: pass 1/1 step 11
+[INFO] [1793692348.962966174] [route_executor]: step s12 (arc) passed (pass 1/1 step 11): -0.034 m cross-track, continuing
+[INFO] [1793692348.964657181] [route_executor]: EXECUTING pass 1/1 step 12 goal: pass 1/1 step 12 of 32
+[INFO] [1793692351.667743931] [route_executor]: step s13 (arc) passed (pass 1/1 step 12): -0.052 m cross-track, continuing
+[INFO] [1793692351.676088085] [route_executor]: EXECUTING pass 1/1 step 13 goal: pass 1/1 step 13 of 32
+[INFO] [1793692351.966161618] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)]
+[INFO] [1793692352.071454274] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) | auto-resume waiting: vehicle is moving
+[INFO] [1793692352.269117157] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692354.264430126] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692354.378418085] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692355.473662030] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 4 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 4 s; continues by itself once clear)]
+[INFO] [1793692355.567629888] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 4 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692357.663193757] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692357.778878922] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692358.163547314] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 6 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 6 s; continues by itself once clear)]
+[INFO] [1793692358.263998734] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 6 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692360.365589486] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692360.483528836] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692360.864344069] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 9 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 9 s; continues by itself once clear)]
+[INFO] [1793692360.966078711] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 9 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692363.066156695] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692363.172638664] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692363.565109782] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 12 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 12 s; continues by itself once clear)]
+[INFO] [1793692363.675655944] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 12 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692365.764068290] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692365.877955391] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692366.263740970] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 14 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 14 s; continues by itself once clear)]
+[INFO] [1793692366.363972893] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 14 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692368.464067003] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692368.582274625] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692368.965038076] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 17 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 17 s; continues by itself once clear)]
+[INFO] [1793692369.073753213] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 17 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692371.063932209] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692371.180138607] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692371.565410085] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 20 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 20 s; continues by itself once clear)]
+[INFO] [1793692371.663852110] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 20 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692373.763960804] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692373.880456769] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692374.264290547] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 22 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 22 s; continues by itself once clear)]
+[INFO] [1793692374.364085529] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 22 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692376.462168111] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692376.579539010] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692376.963963992] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 25 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 25 s; continues by itself once clear)]
+[INFO] [1793692377.064144916] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 25 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692379.067843827] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692379.178633631] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692379.565978569] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 28 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 28 s; continues by itself once clear)]
+[INFO] [1793692379.664012297] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 28 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692381.673945022] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692381.785981098] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692382.163670056] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 30 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 30 s; continues by itself once clear)]
+[INFO] [1793692382.264000522] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 30 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692384.364299403] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692384.477184315] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692384.863770759] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 33 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 33 s; continues by itself once clear)]
+[INFO] [1793692384.964335014] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 33 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692387.066366831] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692387.183757645] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692387.565509046] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 36 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 36 s; continues by itself once clear)]
+[INFO] [1793692387.663902720] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 36 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692389.763175202] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692389.873634672] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692391.162696387] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 39 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 39 s; continues by itself once clear)]
+[INFO] [1793692391.263959865] [route_executor]: BLOCKED pass 1/1 step 13 init: path blocked ahead: controller aborted the straight (blocked 39 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692393.364492688] [route_executor]: EXECUTING pass 1/1 step 13 init: auto-resumed after controller (pass 1/1 step 13) [auto-resume]
+[INFO] [1793692393.480333687] [route_executor]: EXECUTING pass 1/1 step 13 goal: auto-resumed after controller (pass 1/1 step 13)
+[INFO] [1793692394.664064624] [route_executor]: step s14 (straight) passed (pass 1/1 step 13): -0.104 m cross-track, continuing
+[INFO] [1793692394.665850464] [route_executor]: EXECUTING pass 1/1 step 14 goal: pass 1/1 step 14 of 32
+[INFO] [1793692397.262302532] [route_executor]: step s15 (arc) passed (pass 1/1 step 14): -0.054 m cross-track, continuing
+[INFO] [1793692397.268130735] [route_executor]: EXECUTING pass 1/1 step 15 goal: pass 1/1 step 15 of 32
+[INFO] [1793692406.262567291] [route_executor]: step s16 (straight) passed (pass 1/1 step 15): -0.030 m cross-track, continuing
+[INFO] [1793692406.267123963] [route_executor]: EXECUTING pass 1/1 step 16 goal: pass 1/1 step 16 of 32
+[INFO] [1793692408.763463429] [route_executor]: step s17 (arc) passed (pass 1/1 step 16): +0.023 m cross-track, continuing
+[INFO] [1793692408.765272434] [route_executor]: EXECUTING pass 1/1 step 17 goal: pass 1/1 step 17 of 32
+[INFO] [1793692412.066088012] [route_executor]: step s18 (arc) passed (pass 1/1 step 17): +0.066 m cross-track, continuing
+[INFO] [1793692412.074911127] [route_executor]: EXECUTING pass 1/1 step 18 goal: pass 1/1 step 18 of 32
+[INFO] [1793692416.168592857] [route_executor]: EXECUTING pass 1/1 step 18 settle: pass 1/1 step 18 of 32
+[WARN] [1793692416.182935438] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261103-144500-1', pass_index=0, step_index=13, attempt=17)
+[INFO] [1793692416.864174510] [route_executor]: step s19 (straight) done (pass 1/1 step 18): 0.006 m / 5.42 deg from expected
+[INFO] [1793692416.865600613] [route_executor]: EXECUTING pass 1/1 step 19 init: pass 1/1 step 19 of 32
+[INFO] [1793692416.963405194] [route_executor]: WAITING pass 1/1 step 19 init: waiting at ITG-ATTACH (pass 1/1 step 19): press Continue [wait s20]
+[INFO] [1793692507.476181030] [route_executor]: EXECUTING pass 1/1 step 20 premove: pass 1/1 step 20 of 32: warning, moving in 2.0 s [Continue at a wait]
+[INFO] [1793692509.562819107] [route_executor]: EXECUTING pass 1/1 step 20 init: moving: pass 1/1 step 20
+[INFO] [1793692509.764150538] [route_executor]: EXECUTING pass 1/1 step 20 goal: moving: pass 1/1 step 20
+[INFO] [1793692521.763257791] [route_executor]: step s21 (arc) passed (pass 1/1 step 20): -0.018 m cross-track, continuing
+[INFO] [1793692521.764537039] [route_executor]: EXECUTING pass 1/1 step 21 goal: pass 1/1 step 21 of 32
+[INFO] [1793692579.170595962] [route_executor]: step s22 (straight) passed (pass 1/1 step 21): +0.016 m cross-track, continuing
+[INFO] [1793692579.176326943] [route_executor]: EXECUTING pass 1/1 step 22 goal: pass 1/1 step 22 of 32
+[INFO] [1793692589.762197775] [route_executor]: step s23 (arc) passed (pass 1/1 step 22): -0.029 m cross-track, continuing
+[INFO] [1793692589.763217948] [route_executor]: EXECUTING pass 1/1 step 23 goal: pass 1/1 step 23 of 32
+[INFO] [1793692596.565420734] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque [safety stop (protective field): drives lost torque]
+[INFO] [1793692596.567087583] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: drives have no torque
+[WARN] [1793692596.612562725] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261103-144500-1', pass_index=0, step_index=20, attempt=18)
+[INFO] [1793692596.662013232] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: vehicle is moving
+[INFO] [1793692596.861875233] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: drives have no torque
+[INFO] [1793692606.563953610] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: wheel feedback invalid
+[INFO] [1793692606.662437504] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: drives have no torque
+[INFO] [1793692616.762728732] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: wheel feedback stale
+[INFO] [1793692616.863886093] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume: clear, continuing in 2 s
+[INFO] [1793692618.961682579] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after field (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692619.143945667] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after field (pass 1/1 step 23)
+[INFO] [1793692619.461537019] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)]
+[INFO] [1793692619.566102418] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692621.662813924] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692621.842387115] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692622.162357740] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear)]
+[INFO] [1793692622.263809542] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692624.263705394] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692624.485376174] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692624.864319724] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear)]
+[INFO] [1793692624.966504730] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692627.070456559] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692627.239599806] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692627.565780324] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear)]
+[INFO] [1793692627.664187328] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692629.666462972] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692629.845806407] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692630.163750359] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear)]
+[INFO] [1793692630.264189295] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692632.363219859] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692632.542608327] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692632.862859773] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear)]
+[INFO] [1793692632.966196923] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692635.065650264] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692635.243886218] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692635.565963525] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear)]
+[INFO] [1793692635.664506371] [route_executor]: BLOCKED pass 1/1 step 23 init: path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793692637.763855323] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after controller (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692637.950307344] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after controller (pass 1/1 step 23)
+[INFO] [1793692638.163974791] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque [safety stop (protective field): drives lost torque]
+[INFO] [1793692638.178354137] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: drives have no torque
+[WARN] [1793692638.203892343] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261103-144500-1', pass_index=0, step_index=23, attempt=26)
+[INFO] [1793692640.263525612] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume waiting: wheel feedback stale
+[INFO] [1793692640.463888158] [route_executor]: BLOCKED pass 1/1 step 23 init: safety stop (protective field): drives lost torque | auto-resume: clear, continuing in 2 s
+[INFO] [1793692642.463680480] [route_executor]: EXECUTING pass 1/1 step 23 init: auto-resumed after field (pass 1/1 step 23) [auto-resume]
+[INFO] [1793692642.649659183] [route_executor]: EXECUTING pass 1/1 step 23 goal: auto-resumed after field (pass 1/1 step 23)
+[INFO] [1793692870.162768676] [route_executor]: step s24 (straight) passed (pass 1/1 step 23): -0.015 m cross-track, continuing
+[INFO] [1793692870.163955701] [route_executor]: EXECUTING pass 1/1 step 24 goal: pass 1/1 step 24 of 32
+[INFO] [1793692880.673802079] [route_executor]: step s25 (arc) passed (pass 1/1 step 24): +0.029 m cross-track, continuing
+[INFO] [1793692880.675275032] [route_executor]: EXECUTING pass 1/1 step 25 goal: pass 1/1 step 25 of 32
+[INFO] [1793692907.361998488] [route_executor]: step s26 (straight) passed (pass 1/1 step 25): +0.009 m cross-track, continuing
+[INFO] [1793692907.363086555] [route_executor]: EXECUTING pass 1/1 step 26 goal: pass 1/1 step 26 of 32
+[INFO] [1793692907.762032303] [route_executor]: step s27 (straight) passed (pass 1/1 step 26): +0.017 m cross-track, continuing
+[INFO] [1793692907.763054500] [route_executor]: EXECUTING pass 1/1 step 27 goal: pass 1/1 step 27 of 32
+[INFO] [1793692923.162739879] [route_executor]: step s28 (arc) passed (pass 1/1 step 27): -0.043 m cross-track, continuing
+[INFO] [1793692923.163994209] [route_executor]: EXECUTING pass 1/1 step 28 goal: pass 1/1 step 28 of 32
+[INFO] [1793692928.462460164] [route_executor]: step s29 (arc) passed (pass 1/1 step 28): -0.001 m cross-track, continuing
+[INFO] [1793692928.463843508] [route_executor]: EXECUTING pass 1/1 step 29 goal: pass 1/1 step 29 of 32
+[INFO] [1793692953.664373937] [route_executor]: EXECUTING pass 1/1 step 29 settle: pass 1/1 step 29 of 32
+[INFO] [1793692954.064484821] [route_executor]: step s30 (straight) done (pass 1/1 step 29): 0.001 m / 0.76 deg from expected
+[INFO] [1793692954.065828776] [route_executor]: EXECUTING pass 1/1 step 30 init: pass 1/1 step 30 of 32
+[INFO] [1793692954.162106897] [route_executor]: WAITING pass 1/1 step 30 init: waiting at ITG-RELEASE-HP (pass 1/1 step 30): press Continue [wait s31]
+[INFO] [1793693106.534550129] [route_executor]: EXECUTING pass 1/1 step 31 premove: pass 1/1 step 31 of 32: warning, moving in 2.0 s [Continue at a wait]
+[INFO] [1793693108.566252268] [route_executor]: EXECUTING pass 1/1 step 31 init: moving: pass 1/1 step 31
+[INFO] [1793693108.679694154] [route_executor]: EXECUTING pass 1/1 step 31 goal: moving: pass 1/1 step 31
+[INFO] [1793693109.065177099] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)]
+[INFO] [1793693109.164272191] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693111.264755087] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693111.373267042] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693111.763960011] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear)]
+[INFO] [1793693111.864518231] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 3 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693113.964614668] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693114.076841560] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693114.464328412] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear)]
+[INFO] [1793693114.576687067] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 5 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693116.664364061] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693116.777307039] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693117.164238500] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear)]
+[INFO] [1793693117.269890662] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 8 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693119.265073983] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693119.380596671] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693119.763854242] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear)]
+[INFO] [1793693119.863040857] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 11 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693121.863435004] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693121.972413153] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693122.363222651] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear)]
+[INFO] [1793693122.464110896] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 13 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693124.565845511] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693124.682663842] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693125.466687126] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear)]
+[INFO] [1793693125.569273824] [route_executor]: BLOCKED pass 1/1 step 31 init: path blocked ahead: controller aborted the straight (blocked 16 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[INFO] [1793693127.668872215] [route_executor]: EXECUTING pass 1/1 step 31 init: auto-resumed after controller (pass 1/1 step 31) [auto-resume]
+[INFO] [1793693127.781755994] [route_executor]: EXECUTING pass 1/1 step 31 goal: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693134.263833962] [route_executor]: EXECUTING pass 1/1 step 31 settle: auto-resumed after controller (pass 1/1 step 31)
+[INFO] [1793693134.864240547] [route_executor]: step s32 (straight) done (pass 1/1 step 31): 0.042 m / 0.53 deg from expected
+[INFO] [1793693134.865769008] [route_executor]: DONE pass 1/1 step 32 init: run 20261103-144500-1 complete (1 passes)

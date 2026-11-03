@@ -1,0 +1,86 @@
+[INFO] [1793687427.652716910] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793687427.653931432] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793687427.695921283] [panel_node]: DIO comms ok
+[INFO] [1793687427.759984302] [panel_node]: panel image valid; selector MANUAL
+[WARN] [1793687427.760872865] [panel_node]: emergency EMERGENCY -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793687427.798574683] [panel_node]: Manual Arm on
+[INFO] [1793687445.795355463] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793687445.796773811] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793687446.795057145] [panel_node]: RESET edge
+[WARN] [1793687446.796670425] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[WARN] [1793687449.815672396] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793687450.674950834] [panel_node]: RESET edge
+[WARN] [1793687450.675805331] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793687451.035606377] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[INFO] [1793687765.715466216] [panel_node]: selector AUTO
+[INFO] [1793687772.615175964] [panel_node]: DEST ITG edge
+[INFO] [1793687780.175297838] [panel_node]: DEST ITG edge
+[INFO] [1793687783.395950103] [panel_node]: START edge
+[INFO] [1793687785.115218589] [panel_node]: DEST ITG edge
+[INFO] [1793687786.035076114] [panel_node]: DEST ITG edge
+[INFO] [1793687920.854463324] [panel_node]: selector MANUAL
+[INFO] [1793687927.135885991] [panel_node]: pendant LEFT
+[INFO] [1793687927.738714302] [panel_node]: pendant released
+[INFO] [1793687928.035732393] [panel_node]: pendant RIGHT
+[INFO] [1793687928.995085821] [panel_node]: pendant released
+[INFO] [1793687929.234290542] [panel_node]: pendant FWD
+[INFO] [1793687929.955560730] [panel_node]: pendant released
+[INFO] [1793687930.494583731] [panel_node]: pendant RIGHT
+[INFO] [1793687930.895064110] [panel_node]: pendant released
+[INFO] [1793687931.255232573] [panel_node]: pendant LEFT
+[INFO] [1793687932.154969424] [panel_node]: pendant released
+[INFO] [1793687932.715993221] [panel_node]: pendant RIGHT
+[INFO] [1793687933.115852573] [panel_node]: pendant released
+[INFO] [1793687933.675521535] [panel_node]: pendant RIGHT
+[INFO] [1793687933.917166939] [panel_node]: pendant released
+[INFO] [1793687935.477075963] [panel_node]: pendant LEFT
+[INFO] [1793687935.736609690] [panel_node]: pendant released
+[INFO] [1793687936.395101572] [panel_node]: pendant LEFT
+[INFO] [1793687936.595897941] [panel_node]: pendant released
+[INFO] [1793687938.095099014] [panel_node]: pendant RVS
+[INFO] [1793687938.555496462] [panel_node]: pendant released
+[INFO] [1793687941.635787108] [panel_node]: selector AUTO
+[INFO] [1793687974.275367158] [panel_node]: DEST ITG edge
+[INFO] [1793687977.795121296] [panel_node]: DEST ITG edge
+[INFO] [1793687978.514198867] [panel_node]: DEST ITG edge
+[INFO] [1793687979.214678499] [panel_node]: DEST ITG edge
+[INFO] [1793687980.314192754] [panel_node]: DEST ITG edge
+[INFO] [1793687982.534341382] [panel_node]: DEST ITG edge
+[INFO] [1793688059.414364523] [panel_node]: selector MANUAL
+[INFO] [1793688060.674434240] [panel_node]: pendant LEFT
+[INFO] [1793688061.474281848] [panel_node]: pendant released
+[INFO] [1793688062.014184906] [panel_node]: pendant FWD
+[INFO] [1793688063.174408687] [panel_node]: pendant released
+[INFO] [1793688063.634395825] [panel_node]: pendant FWD
+[INFO] [1793688064.174318311] [panel_node]: pendant released
+[INFO] [1793688064.374356639] [panel_node]: pendant FWD
+[INFO] [1793688064.934497897] [panel_node]: pendant released
+[INFO] [1793688065.134816506] [panel_node]: pendant RIGHT
+[INFO] [1793688065.935290552] [panel_node]: pendant released
+[INFO] [1793688067.894364274] [panel_node]: pendant RVS
+[INFO] [1793688068.795788645] [panel_node]: pendant released
+[INFO] [1793688069.115519343] [panel_node]: pendant RVS
+[INFO] [1793688070.094617275] [panel_node]: pendant released
+[INFO] [1793688070.754459312] [panel_node]: pendant RVS
+[INFO] [1793688071.114587146] [panel_node]: pendant released
+[INFO] [1793688075.975949930] [panel_node]: selector AUTO
+[INFO] [1793688124.035465447] [panel_node]: DEST ITG edge
+[INFO] [1793688125.754390742] [panel_node]: DEST ITG edge
+[INFO] [1793688127.054467541] [panel_node]: DEST ITG edge
+[INFO] [1793688140.554842322] [panel_node]: pendant LEFT
+[INFO] [1793688141.095076828] [panel_node]: pendant released
+[INFO] [1793688144.315646236] [panel_node]: selector MANUAL
+[INFO] [1793688145.376248986] [panel_node]: pendant LEFT
+[INFO] [1793688146.275238039] [panel_node]: pendant released
+[INFO] [1793688146.995371172] [panel_node]: pendant FWD
+[INFO] [1793688147.095596339] [panel_node]: pendant released
+[INFO] [1793688147.535406022] [panel_node]: pendant RVS
+[INFO] [1793688149.195144834] [panel_node]: pendant released
+[INFO] [1793688149.595336415] [panel_node]: pendant RIGHT
+[INFO] [1793688150.515409427] [panel_node]: pendant released
+[INFO] [1793688151.015675177] [panel_node]: pendant LEFT
+[INFO] [1793688151.375217527] [panel_node]: pendant released
+[INFO] [1793688151.975851160] [panel_node]: pendant FWD
+[INFO] [1793688153.596034630] [panel_node]: pendant released
+[INFO] [1793688154.156298905] [panel_node]: pendant FWD
+[INFO] [1793688154.655478206] [panel_node]: pendant released

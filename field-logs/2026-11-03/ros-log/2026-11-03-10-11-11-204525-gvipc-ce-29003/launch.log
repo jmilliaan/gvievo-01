@@ -1,0 +1,14 @@
+1793675471.2053790 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-10-11-11-204525-gvipc-ce-29003
+1793675471.2055147 [INFO] [launch]: Default logging verbosity is set to INFO
+1793675471.2632627 [INFO] [async_slam_toolbox_node-1]: process started with pid [29011]
+1793675471.2635369 [INFO] [mapping_session_node-2]: process started with pid [29013]
+1793675471.2636707 [INFO] [survey_move_node-3]: process started with pid [29015]
+1793677669.5099094 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793677669.5127416 [INFO] [survey_move_node-3]: sending signal 'SIGINT' to process[survey_move_node-3]
+1793677669.5135410 [INFO] [mapping_session_node-2]: sending signal 'SIGINT' to process[mapping_session_node-2]
+1793677669.5142570 [INFO] [async_slam_toolbox_node-1]: sending signal 'SIGINT' to process[async_slam_toolbox_node-1]
+1793677669.7082434 [ERROR] [async_slam_toolbox_node-1]: process has died [pid 29011, exit code -6, cmd '/opt/ros/humble/lib/slam_toolbox/async_slam_toolbox_node --ros-args -r __node:=slam_toolbox --params-file /home/gvipc-evo-01/agv_can/amr_ws/install/amr_bringup/share/amr_bringup/config/slam_mapping.yaml'].
+1793677669.7086401 [INFO] [launch]: process[async_slam_toolbox_node-1] was required: shutting down launched system
+1793677670.6306562 [INFO] [survey_move_node-3]: process has finished cleanly [pid 29015]
+1793677670.6499324 [INFO] [mapping_session_node-2]: process has finished cleanly [pid 29013]
+1793677670.6502120 [INFO] [launch]: process[mapping_session_node-2] was required: shutting down launched system

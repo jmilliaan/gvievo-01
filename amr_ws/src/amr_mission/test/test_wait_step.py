@@ -175,3 +175,15 @@ def test_abort_from_a_wait():
     n._interrupt = lambda _why: None
     res = n._srv_abort(None, SimpleNamespace(success=None, message=""))
     assert res.success and n.fsm.state == fsm.IDLE
+
+
+def test_continue_at_a_wait_clears_the_local_costmap_before_the_warning():
+    """Owner 2026-11-03: whoever walked round the vehicle at the wait left marks beside it that
+    the scanner can never clear; Continue drops them before the pre-move warning."""
+    n = node()
+    calls = []
+    n._clear_cli = SimpleNamespace(service_is_ready=lambda: True, call_async=calls.append)
+    n._note = lambda *_a: None
+    n._on_panel(panel(cont=True))
+    assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE
+    assert len(calls) == 1

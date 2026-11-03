@@ -188,6 +188,48 @@ class DebouncedLevels:
         return self._stable
 
 
+class ButtonEdges:
+    """Rising edges over a set of momentary pushbuttons (the destination
+    buttons), with PanelScan's three rules: an edge is a believed (debounced)
+    level going high; the first believed image is a baseline with no edges, so
+    a button taped down at power-on never fires; and a comms loss or a
+    malformed image drops the baseline, so a reconnect cannot invent a press.
+
+    scan() returns (edges, held): two tuples of bools in channel order, or
+    None while there is nothing trustworthy to report.
+    """
+
+    def __init__(self, channels, debounce_scans=2):
+        self.levels = DebouncedLevels(channels, debounce_scans)
+        self._prev = None
+
+    def reset(self):
+        self.levels.reset()
+        self._prev = None
+
+    def scan(self, di, comms_ok):
+        now = self.levels.scan(di, comms_ok)
+        if now is None:
+            self._prev = None       # lost or not yet believed: re-baseline next
+            return None
+        prev, self._prev = self._prev, now
+        if prev is None:
+            return tuple(False for _ in now), now   # baseline, hazard 2 / 3
+        return tuple(n and not p for n, p in zip(now, prev)), now
+
+
+def single_press(edges, held):
+    """The 0-based index of the one button pressed this scan, or None. A press
+    counts only while it is the only button of the set held down: two at once
+    is not a choice, and neither is a second press while another is held."""
+    if edges is None:
+        return None
+    pressed = [i for i, e in enumerate(edges) if e]
+    if len(pressed) != 1 or sum(bool(h) for h in held) != 1:
+        return None
+    return pressed[0]
+
+
 # fwd/rvs/left/right - what the pendant is asking for
 PendantIntent = namedtuple("PendantIntent", "fwd rvs left right")
 

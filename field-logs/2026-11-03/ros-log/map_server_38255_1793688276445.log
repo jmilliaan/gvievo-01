@@ -1,0 +1,25 @@
+[INFO] [1793688276.511506373] [map_server]: 
+	map_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793688276.513603776] [map_server]: Creating
+[INFO] [1793688279.570793151] [map_server]: Configuring
+[INFO] [1793688279.570973447] [map_io]: Loading yaml file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml
+[INFO] [1793688279.571608769] [map_io]: resolution: 0.05
+[INFO] [1793688279.571645309] [map_io]: origin[0]: -155.737
+[INFO] [1793688279.571662127] [map_io]: origin[1]: -23.9909
+[INFO] [1793688279.571676143] [map_io]: origin[2]: 0
+[INFO] [1793688279.571690271] [map_io]: free_thresh: 0.196
+[INFO] [1793688279.571704040] [map_io]: occupied_thresh: 0.65
+[INFO] [1793688279.571718996] [map_io]: mode: trinary
+[INFO] [1793688279.571734342] [map_io]: negate: 0
+[INFO] [1793688279.572156411] [map_io]: Loading image_file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm
+[INFO] [1793688280.154642088] [map_io]: Read map /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm: 3577 X 1846 map @ 0.05 m/cell
+[INFO] [1793688280.187215033] [map_server]: Activating
+[INFO] [1793688280.203342770] [map_server]: Creating bond (map_server) to lifecycle manager.
+[INFO] [1793688412.090952033] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793688412.091275552] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[INFO] [1793688412.091382311] [map_server]: Deactivating
+[INFO] [1793688412.091413290] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[INFO] [1793688412.102363826] [map_server]: Cleaning up
+[INFO] [1793688412.102832574] [map_server]: Destroying bond (map_server) to lifecycle manager.

@@ -1,0 +1,23 @@
+[INFO] [1793693436.905055190] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793693436.919306632] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793693436.920106164] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793693437.468099796] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793693437.469199149] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793693437.471749501] [drive_node]: drives standby, imu sdo
+[INFO] [1793693515.450069446] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793693515.830269034] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793693515.841678709] [drive_node]: drives armed, imu sdo
+[INFO] [1793693888.386599011] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793693888.415312392] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793693888.476958492] [drive_node]: drives standby, imu sdo
+[INFO] [1793693929.005990320] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793693929.389009373] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793693929.395416318] [drive_node]: drives armed, imu sdo
+[INFO] [1793694160.971101369] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793694161.004676603] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793694161.041642408] [drive_node]: drives standby, imu sdo
+[INFO] [1793694190.193250487] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793694190.561882203] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793694190.566027976] [drive_node]: drives armed, imu sdo
+[INFO] [1793694487.009992621] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[WARN] [1793694500.108024918] [drive_node]: setpoint gated to zero: inhibited by supervisor

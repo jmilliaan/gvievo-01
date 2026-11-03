@@ -1,0 +1,4 @@
+[INFO] [1793673001.308662277] [amr_supervisor]: instance 322165f4 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[WARN] [1793673001.312454721] [amr_supervisor]: Power was lost at 16:09 while IDLE. The drives lost the PC heartbeat and latched; they need to be switched off and on.
+[INFO] [1793673001.321647301] [amr_supervisor]: spawned base pgid=1471 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793673004.486854502] [amr_supervisor]: mode STARTING -> IDLE ()

@@ -127,7 +127,12 @@ MODULES = [
 # + 33 (2026-11-02): the blind run is back (PV only; pp stays removed). test_blindrun (32)
 #   restored as it was; test_config + 1 (the retired-section refusal for blind_run gives way
 #   to the max_rpm and max_speed_mps refusals).
-EXPECTED_CHECKS = 672
+# + 19 (2026-11-03): destination buttons (panel.destinations: DI10 UBC, DI11 ITG, DI12 PISTON).
+#   test_config + 11 (shipped channels; refused on Continue, on another destination, on a pendant
+#   channel, off the module, a duplicate or empty name, a route id with a slash, an unknown key,
+#   the key missing); test_panel + 8 (test_destinations: one edge per press, none at boot or
+#   across a reconnect, debounce, two at once or a second while one is held select nothing).
+EXPECTED_CHECKS = 691
 
 
 # An exception on a helper thread only prints a traceback by default - the

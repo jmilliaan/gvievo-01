@@ -18,6 +18,7 @@ from amr_navigation.route import (
     ARC_MAX_DEG,
     ARC_MIN_DEG,
     ARC_MIN_RADIUS_M,
+    ARC_V_MPS,
     ARC_YAW_RATE_RATIO,
     DIRECTIONS,
     REVERSE,
@@ -81,9 +82,10 @@ def arc_pose(
 
 
 def arc_speed(lim, radius: float) -> float:
-    """An arc's speed: the trackless speed, or less so the yaw rate v/R stays under the arc
-    turn ceiling (the mux clamps w to the permit; v alone would run the arc wide)."""
-    return min(float(lim.linear_mps), ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * radius)
+    """An arc's speed: ARC_V_MPS (0.30 m/s, owner 2026-11-03, never above the trackless speed),
+    or less so the yaw rate v/R stays under the arc turn ceiling (the mux clamps w to the
+    permit; v alone would run the arc wide)."""
+    return min(ARC_V_MPS, float(lim.linear_mps), ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * radius)
 
 
 def step_speed(lim, length_m: float) -> float:

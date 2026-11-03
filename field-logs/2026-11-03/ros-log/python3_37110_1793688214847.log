@@ -1,0 +1,7 @@
+[INFO] [1793688214.978429388] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793688215.044394404] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793688241.370787114] [route_executor]: permitted lateral error 0.15 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793688241.371238985] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793688241.376798036] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793688241.377482379] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.243 m / 0.5 deg from the route start (allowed 0.15 m / 5.0 deg); reposition manually
+[INFO] [1793688271.509851796] [route_executor]: IDLE pass 1/1 step -1 init: aborted by operator [aborted]

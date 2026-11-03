@@ -263,6 +263,52 @@ def test_continue():
     check("without a Continue channel, DI13 is never an edge", not any(o.cont for o in out))
 
 
+def test_destinations():
+    """Destination buttons (2026-11-03): Start's edge rules, and one button at a time."""
+    print("\npanel: destination buttons")
+    U, I, P = 10, 11, 12
+
+    def img(*down):
+        di = [False] * 16
+        for ch in down:
+            di[ch] = True
+        return di
+
+    def edges(be, frames, comms_ok=True):
+        return [be.scan(f, comms_ok) for f in frames]
+
+    be = panel.ButtonEdges((U, I, P), 1)
+    out = edges(be, [img(), img(I), img(I), img()])
+    check("pressing ITG is one edge, holding it is not another",
+          [o[0] for o in out] == [(False,) * 3, (False, True, False), (False,) * 3, (False,) * 3],
+          str(out))
+    check("a single press selects that button",
+          panel.single_press(*out[1]) == 1, str(panel.single_press(*out[1])))
+
+    be = panel.ButtonEdges((U, I, P), 1)
+    out = edges(be, [img(P), img(P)])
+    check("a destination held down at boot never fires", not any(any(o[0]) for o in out))
+
+    be = panel.ButtonEdges((U, I, P), 1)
+    edges(be, [img()])
+    check("comms loss reports nothing", be.scan(img(U), comms_ok=False) is None)
+    out = edges(be, [img(U), img(U)])
+    check("a reconnect with UBC down is a baseline, not a press", not any(any(o[0]) for o in out))
+
+    be = panel.ButtonEdges((U, I, P), 2)
+    out = edges(be, [img(), img(), img(U), img()])
+    check("a one-scan blip is not a press under debounce 2", not any(o and any(o[0]) for o in out), str(out))
+
+    be = panel.ButtonEdges((U, I, P), 1)
+    out = edges(be, [img(), img(U, P)])
+    check("two pressed together select nothing", panel.single_press(*out[1]) is None)
+    be = panel.ButtonEdges((U, I, P), 1)
+    out = edges(be, [img(), img(U), img(U, I)])
+    check("a second press while another is held selects nothing",
+          panel.single_press(*out[2]) is None and out[2][0] == (False, True, False))
+    check("nothing to report selects nothing", panel.single_press(None, None) is None)
+
+
 # The four controller-driven cases (Reset means ready, the manual watchdog,
 # edge-only events, panel loss ends a jog) went with canworker at U11
 # (2026-09-21); their ROS equivalents live in amr_base/test (panel_node,
@@ -275,4 +321,5 @@ TESTS = [
     test_panel_profile,
     test_pendant,
     test_continue,
+    test_destinations,
 ]

@@ -1,0 +1,1376 @@
+[INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-15-10-45-013420-gvipc-ce-124973
+[INFO] [launch]: Default logging verbosity is set to INFO
+[navigation_layer] map kyb-map-02 rev3 bundle 97cb9e928e65 (/home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml)
+[INFO] [map_server-1]: process started with pid [124992]
+[INFO] [amcl-2]: process started with pid [124995]
+[INFO] [localization_monitor_node-3]: process started with pid [124997]
+[INFO] [controller_server-4]: process started with pid [124999]
+[INFO] [behavior_server-5]: process started with pid [125001]
+[INFO] [route_executor_node-6]: process started with pid [125011]
+[map_server-1] [INFO] [1793693445.421733274] [map_server]: 
+[map_server-1] 	map_server lifecycle node launched. 
+[map_server-1] 	Waiting on external lifecycle transitions to activate
+[map_server-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-1] [INFO] [1793693445.422035084] [map_server]: Creating
+[controller_server-4] [INFO] [1793693445.426000245] [controller_server]: 
+[controller_server-4] 	controller_server lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[behavior_server-5] [INFO] [1793693445.429900367] [behavior_server]: 
+[behavior_server-5] 	behavior_server lifecycle node launched. 
+[behavior_server-5] 	Waiting on external lifecycle transitions to activate
+[behavior_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793693445.435580773] [controller_server]: Creating controller server
+[amcl-2] [INFO] [1793693445.439276022] [amcl]: 
+[amcl-2] 	amcl lifecycle node launched. 
+[amcl-2] 	Waiting on external lifecycle transitions to activate
+[amcl-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793693445.443650560] [local_costmap.local_costmap]: 
+[controller_server-4] 	local_costmap lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793693445.444423242] [local_costmap.local_costmap]: Creating Costmap
+[amcl-2] [INFO] [1793693445.447926515] [amcl]: Creating
+[localization_monitor_node-3] [INFO] [1793693446.312117910] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[localization_monitor_node-3] [INFO] [1793693446.379973906] [localization_monitor]: UNLOCALIZED: no initial pose
+[route_executor_node-6] [INFO] [1793693446.500123286] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[route_executor_node-6] [INFO] [1793693446.567479500] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[INFO] [lifecycle_manager-7]: process started with pid [125137]
+[lifecycle_manager-7] [INFO] [1793693448.415648550] [lifecycle_manager_localization]: Creating
+[lifecycle_manager-7] [INFO] [1793693448.420428316] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-7] [INFO] [1793693448.452099582] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-7] [INFO] [1793693448.452160786] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[map_server-1] [INFO] [1793693448.452562304] [map_server]: Configuring
+[map_server-1] [INFO] [1793693448.452678379] [map_io]: Loading yaml file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml
+[map_server-1] [INFO] [1793693448.453163320] [map_io]: resolution: 0.05
+[map_server-1] [INFO] [1793693448.453192068] [map_io]: origin[0]: -155.737
+[map_server-1] [INFO] [1793693448.453206212] [map_io]: origin[1]: -23.9909
+[map_server-1] [INFO] [1793693448.453217122] [map_io]: origin[2]: 0
+[map_server-1] [INFO] [1793693448.453228294] [map_io]: free_thresh: 0.196
+[map_server-1] [INFO] [1793693448.453238671] [map_io]: occupied_thresh: 0.65
+[map_server-1] [INFO] [1793693448.453249896] [map_io]: mode: trinary
+[map_server-1] [INFO] [1793693448.453261920] [map_io]: negate: 0
+[map_server-1] [INFO] [1793693448.453552060] [map_io]: Loading image_file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm
+[map_server-1] [INFO] [1793693449.019580262] [map_io]: Read map /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm: 3577 X 1846 map @ 0.05 m/cell
+[lifecycle_manager-7] [INFO] [1793693449.033466194] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[amcl-2] [INFO] [1793693449.033763790] [amcl]: Configuring
+[amcl-2] [INFO] [1793693449.033870254] [amcl]: initTransforms
+[amcl-2] [INFO] [1793693449.044732773] [amcl]: initPubSub
+[amcl-2] [INFO] [1793693449.049870520] [amcl]: Subscribed to map topic.
+[lifecycle_manager-7] [INFO] [1793693449.054100991] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[map_server-1] [INFO] [1793693449.054355064] [map_server]: Activating
+[map_server-1] [INFO] [1793693449.071356557] [map_server]: Creating bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793693449.168634820] [amcl]: Received a 3577 X 1846 map @ 0.050 m/pix
+[lifecycle_manager-7] [INFO] [1793693449.177026230] [lifecycle_manager_localization]: Server map_server connected with bond.
+[lifecycle_manager-7] [INFO] [1793693449.177122083] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[localization_monitor_node-3] [INFO] [1793693449.182160007] [localization_monitor]: map 3577x1846 loaded for scan consistency
+[amcl-2] [INFO] [1793693449.265452400] [amcl]: Activating
+[amcl-2] [INFO] [1793693449.265498718] [amcl]: Creating bond (amcl) to lifecycle manager.
+[amcl-2] [INFO] [1793693449.317744632] [amcl]: createLaserObject
+[lifecycle_manager-7] [INFO] [1793693449.369702875] [lifecycle_manager_localization]: Server amcl connected with bond.
+[lifecycle_manager-7] [INFO] [1793693449.369765471] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-7] [INFO] [1793693449.369784909] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[INFO] [lifecycle_manager-8]: process started with pid [125215]
+[lifecycle_manager-8] [INFO] [1793693451.426874585] [lifecycle_manager_navigation]: Creating
+[lifecycle_manager-8] [INFO] [1793693451.430451819] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[amcl-2] [WARN] [1793693451.470417930] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [INFO] [1793693451.470647894] [amcl]: Message Filter dropping message: frame 'laser_frame' at time 1793693449.035 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[lifecycle_manager-8] [INFO] [1793693451.544289616] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-8] [INFO] [1793693451.544405639] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-4] [INFO] [1793693451.545033170] [controller_server]: Configuring controller interface
+[controller_server-4] [INFO] [1793693451.545425991] [controller_server]: getting goal checker plugins..
+[controller_server-4] [INFO] [1793693451.545657212] [controller_server]: Controller frequency set to 20.0000Hz
+[controller_server-4] [INFO] [1793693451.545751940] [local_costmap.local_costmap]: Configuring
+[controller_server-4] [INFO] [1793693451.561564626] [local_costmap.local_costmap]: Using plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793693451.574327442] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[controller_server-4] [INFO] [1793693451.581949068] [local_costmap.local_costmap]: Initialized plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793693451.582216273] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[controller_server-4] [INFO] [1793693451.583643579] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[controller_server-4] [INFO] [1793693451.600030645] [controller_server]: Created progress_checker : progress_checker of type nav2_controller::SimpleProgressChecker
+[controller_server-4] [INFO] [1793693451.601662355] [controller_server]: Created goal checker : precise of type nav2_controller::SimpleGoalChecker
+[controller_server-4] [INFO] [1793693451.602098296] [controller_server]: Controller Server has precise  goal checkers available.
+[controller_server-4] [INFO] [1793693451.602879606] [controller_server]: Created controller : FollowPath of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793693451.609091188] [controller_server]: Controller Server has FollowPath  controllers available.
+[lifecycle_manager-8] [INFO] [1793693451.617204495] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793693451.617556948] [behavior_server]: Configuring
+[behavior_server-5] [INFO] [1793693451.624192669] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors/Spin
+[behavior_server-5] [INFO] [1793693451.625245356] [behavior_server]: Configuring spin
+[lifecycle_manager-8] [INFO] [1793693451.632841292] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-4] [INFO] [1793693451.633036858] [controller_server]: Activating
+[controller_server-4] [INFO] [1793693451.633097485] [local_costmap.local_costmap]: Activating
+[controller_server-4] [INFO] [1793693451.633117109] [local_costmap.local_costmap]: Checking transform
+[controller_server-4] [INFO] [1793693451.633256504] [local_costmap.local_costmap]: start
+[controller_server-4] [INFO] [1793693451.883939539] [controller_server]: Activating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793693451.884078279] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793693451.991699888] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793693451.991757913] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793693451.992089274] [behavior_server]: Activating
+[behavior_server-5] [INFO] [1793693451.992126728] [behavior_server]: Activating spin
+[behavior_server-5] [INFO] [1793693451.992146072] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793693452.106921917] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793693452.107017451] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-8] [INFO] [1793693452.107041405] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[amcl-2] [WARN] [1793693453.537533350] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [INFO] [1793693453.887599083] [amcl]: initialPoseReceived
+[amcl-2] [WARN] [1793693453.887781717] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793693453.887669 but the latest data is at time 1793693453.868272, when looking up transform from frame [base_footprint] to frame [odom])
+[amcl-2] [INFO] [1793693453.887807956] [amcl]: Setting pose (1793693453.887808): 0.000 0.000 0.000
+[localization_monitor_node-3] [INFO] [1793693453.888784674] [localization_monitor]: initial pose received: CHECKING
+[amcl-2] [INFO] [1793693453.979271481] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793693453.979964207] [localization_monitor]: CHECKING: no AMCL update yet - converging in place (or drive slowly)
+[amcl-2] [INFO] [1793693454.479211797] [amcl]: Requesting no-motion update
+[amcl-2] Reallocing temp weights 2000 - 180
+[amcl-2] [INFO] [1793693455.080685285] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693455.682626326] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693456.278950884] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693456.779901485] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693457.382114927] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693457.979851149] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693458.509799076] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693459.079704609] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693459.581063635] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693460.179946449] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693460.779879501] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693461.280516893] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693461.880956729] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693462.480010838] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693463.080818111] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693463.679557251] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693464.180646065] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693464.780880386] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693465.379636430] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693465.880508377] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693466.482384356] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693467.079728355] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693467.679334597] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693468.179359330] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693468.779110935] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693469.279239069] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693469.879064987] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693470.379232240] [amcl]: Requesting no-motion update
+[route_executor_node-6] [WARN] [1793693470.659576780] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793693470.660117796] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793693470.662895917] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793693470.665267354] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693470.881006665] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793693471.269199293] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693471.479491578] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693472.007354397] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693472.580446223] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693473.193203573] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693473.779173198] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693474.279788786] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693474.879816424] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693475.479540442] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693475.980400049] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693476.581786091] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693477.080123129] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693477.679960689] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693478.281645583] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693478.879615280] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693479.379894272] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693479.880007628] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693480.480733118] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693481.079058712] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693481.579590910] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693482.179310860] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693482.679179838] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693483.183073589] [amcl]: Requesting no-motion update
+[route_executor_node-6] [WARN] [1793693483.552607661] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793693483.554079464] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793693483.555308920] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793693483.558389074] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693483.779537489] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793693484.072888373] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693484.279848248] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693484.780017068] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693485.380972089] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693485.980781736] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693486.482657451] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693487.079798438] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693487.680007842] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693488.180142670] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693488.779802363] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693489.380633907] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693489.979970145] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693490.481894605] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693491.079141903] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693491.679028168] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693492.179399959] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693492.779151029] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693493.279483638] [amcl]: Requesting no-motion update
+[route_executor_node-6] [WARN] [1793693493.859672959] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793693493.861066693] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793693493.862085171] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793693493.862853633] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693493.879144538] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793693494.368840279] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged and stable - confirm that scans align with fixed structure)
+[amcl-2] [INFO] [1793693494.379792605] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693494.980083954] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693495.480247963] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693495.995616995] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693496.579271837] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693497.079081862] [amcl]: Requesting no-motion update
+[route_executor_node-6] [INFO] [1793693497.165716160] [route_executor]: IDLE pass 1/1 step -1 init: abort ignored in IDLE
+[amcl-2] [INFO] [1793693497.580864019] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693498.180086130] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693498.807339819] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693499.392310655] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693499.979108544] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693500.479172591] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693501.079285725] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693501.579271954] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693502.080284023] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693502.680741842] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693503.280655447] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693503.780211614] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793693504.379565170] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793693504.401178503] [localization_monitor]: READY: operator confirmed
+[localization_monitor_node-3] [INFO] [1793693504.480637666] [localization_monitor]: READY: operator confirmed scan alignment
+[route_executor_node-6] [WARN] [1793693515.426387744] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793693515.427191742] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793693515.428397007] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[route_executor_node-6] [INFO] [1793693515.429696377] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261103-151155-1 started: warning, moving in 2.0 s
+[route_executor_node-6] [INFO] [1793693517.475218851] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[controller_server-4] [INFO] [1793693517.671338028] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793693517.679507855] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[route_executor_node-6] [INFO] [1793693522.870062451] [route_executor]: step s1 (straight) passed (pass 1/1 step 0): -0.006 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693522.872067947] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 32
+[route_executor_node-6] [INFO] [1793693533.768280050] [route_executor]: step s2 (arc) passed (pass 1/1 step 1): -0.021 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693533.776500721] [route_executor]: EXECUTING pass 1/1 step 2 goal: pass 1/1 step 2 of 32
+[route_executor_node-6] [INFO] [1793693555.270008895] [route_executor]: step s3 (straight) passed (pass 1/1 step 2): +0.012 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693555.272061689] [route_executor]: EXECUTING pass 1/1 step 3 goal: pass 1/1 step 3 of 32
+[route_executor_node-6] [INFO] [1793693565.770364201] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.018 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693565.772194123] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 32
+[route_executor_node-6] [INFO] [1793693794.568363910] [route_executor]: step s5 (straight) passed (pass 1/1 step 4): -0.018 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693794.570145118] [route_executor]: EXECUTING pass 1/1 step 5 goal: pass 1/1 step 5 of 32
+[route_executor_node-6] [INFO] [1793693805.174647211] [route_executor]: step s6 (arc) passed (pass 1/1 step 5): +0.029 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693805.186217410] [route_executor]: EXECUTING pass 1/1 step 6 goal: pass 1/1 step 6 of 32
+[route_executor_node-6] [INFO] [1793693852.972354904] [route_executor]: step s7 (straight) passed (pass 1/1 step 6): -0.014 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693852.981768141] [route_executor]: EXECUTING pass 1/1 step 7 goal: pass 1/1 step 7 of 32
+[route_executor_node-6] [INFO] [1793693868.666959339] [route_executor]: step s8 (arc) passed (pass 1/1 step 7): +0.035 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693868.668161120] [route_executor]: EXECUTING pass 1/1 step 8 goal: pass 1/1 step 8 of 32
+[route_executor_node-6] [INFO] [1793693873.868531410] [route_executor]: step s9 (arc) passed (pass 1/1 step 8): -0.011 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793693873.874124186] [route_executor]: EXECUTING pass 1/1 step 9 goal: pass 1/1 step 9 of 32
+[controller_server-4] [INFO] [1793693887.672475987] [controller_server]: Reached the goal!
+[route_executor_node-6] [INFO] [1793693887.769596585] [route_executor]: EXECUTING pass 1/1 step 9 settle: pass 1/1 step 9 of 32
+[route_executor_node-6] [INFO] [1793693888.268824920] [route_executor]: step s10 (straight) done (pass 1/1 step 9): 0.005 m / 0.03 deg from expected
+[route_executor_node-6] [INFO] [1793693888.270195230] [route_executor]: EXECUTING pass 1/1 step 10 init: pass 1/1 step 10 of 32
+[route_executor_node-6] [INFO] [1793693888.370450015] [route_executor]: WAITING pass 1/1 step 10 init: waiting at ITG-RELEASE (pass 1/1 step 10): press Continue [wait s11]
+[route_executor_node-6] [INFO] [1793693928.989685831] [route_executor]: EXECUTING pass 1/1 step 11 premove: pass 1/1 step 11 of 32: warning, moving in 2.0 s [Continue at a wait]
+[route_executor_node-6] [INFO] [1793693931.070212690] [route_executor]: EXECUTING pass 1/1 step 11 init: moving: pass 1/1 step 11
+[controller_server-4] [INFO] [1793693931.170904713] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793693931.173851424] [route_executor]: EXECUTING pass 1/1 step 11 goal: moving: pass 1/1 step 11
+[controller_server-4] [WARN] [1793693934.222630505] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.272897081] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.321852424] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.372682320] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.421789243] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.472620124] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693934.522459254] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693934.522574203] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693934.522733534] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693934.566340944] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 0 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 0 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693934.669242239] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 0 s; continues by itself once clear) | auto-resume waiting: vehicle is moving
+[route_executor_node-6] [INFO] [1793693934.971814294] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 0 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693936.970894396] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693937.082828383] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793693937.082959088] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693937.086341323] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.134653675] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.184932036] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.234931182] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.286099515] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.334536369] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693937.384810108] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693937.384941202] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693937.385162545] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693937.473879920] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 3 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 3 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693937.570681632] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 3 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693939.571120929] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693939.678795450] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693939.680434964] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693939.686273318] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693939.729644486] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693939.780600725] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693939.830636092] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693939.880469409] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693939.930670952] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693939.980055847] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693939.980140405] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693939.980270915] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693940.068411028] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 6 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 6 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693940.168900933] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 6 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693942.269524814] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693942.382751691] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693942.384701415] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693942.385079394] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693942.434768798] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693942.484659622] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693942.534328480] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693942.584692266] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693942.634612217] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693942.684339511] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693942.684438349] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693942.684548978] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693942.768650672] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 8 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 8 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693942.869838501] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 8 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693944.971677627] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693945.081420327] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693945.082881173] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693945.088426975] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693945.133259189] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693945.183027496] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693945.233412754] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693945.283097871] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693945.333230636] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693945.383195401] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693945.383309814] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693945.383498867] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693945.471109194] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 11 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 11 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693945.568372494] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 11 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693947.569199593] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693947.681534239] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693947.682702516] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693947.687744511] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693947.733150928] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693947.783315499] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693947.833323228] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693947.883288974] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693947.933273550] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693947.982406474] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693947.982460495] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693947.982566408] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693948.069097111] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 14 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 14 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693948.171572780] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 14 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693950.274710014] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693950.380534074] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693950.382302603] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693950.387456699] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693950.431386715] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693950.481832348] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693950.532489243] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693950.582241443] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693950.632447278] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693950.682316612] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693950.682416921] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693950.682553076] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693950.767028438] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 16 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 16 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693950.866332143] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 16 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693952.870725180] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693952.981603176] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793693952.983270586] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693952.983329010] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.033453286] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.083441585] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.132614225] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.183311754] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.233469778] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693953.283843086] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693953.283959789] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693953.284172361] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693953.369520926] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 19 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 19 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693953.470039322] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 19 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693955.572515798] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693955.680933008] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693955.682181797] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693955.694995211] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693955.732695927] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693955.782772640] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693955.832701131] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693955.882515508] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693955.931798282] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693955.982478088] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693955.982574292] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693955.982757764] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693956.069411244] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 22 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 22 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693956.169105550] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 22 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693958.266897478] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693958.372236205] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693958.373877071] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693958.381179531] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693958.424008350] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693958.473963151] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693958.524177888] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693958.574038289] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693958.624585593] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693958.673932663] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693958.674030809] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693958.674241721] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693958.767844086] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 24 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 24 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693958.869657037] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 24 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693960.972851609] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693961.082114637] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693961.083925962] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693961.091470644] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693961.132939919] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693961.183906579] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693961.233862966] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693961.283647208] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693961.333654839] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693961.383890462] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693961.384003338] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693961.384168899] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693961.470934226] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 27 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 27 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693961.568953108] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 27 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693963.671232038] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693963.778114643] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693963.779840718] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693963.789735181] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693963.829954980] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693963.879929000] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693963.929526741] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693963.979943526] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693964.030256652] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693964.079679481] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693964.079764216] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693964.079900317] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693964.167246774] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 30 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 30 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693964.271040571] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 30 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693966.370143729] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693966.481490358] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693966.483232472] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693966.493228653] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693966.533452652] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693966.582431746] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693966.633500819] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693966.683192780] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693966.733052694] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693966.783227270] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693966.783333938] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693966.783490985] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693966.869178081] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 32 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 32 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693966.970531854] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 32 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693969.070012360] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693969.177547924] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693969.178472446] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693969.184628539] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693969.228807948] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693969.278999741] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693969.329131054] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693969.379761360] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693969.429211898] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693969.479508953] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693969.479625314] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693969.479831092] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693969.571948909] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 35 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 35 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693969.670485795] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 35 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693971.674479194] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693971.780070710] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693971.781859883] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693971.789424749] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693971.831881482] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693971.881799186] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693971.931949813] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693971.982097460] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693972.031918274] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693972.083093587] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693972.083224971] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693972.083376490] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693972.166274413] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 38 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 38 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693972.268469434] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 38 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693974.269290348] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693974.371655713] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693974.372606117] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693974.375704696] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693974.423556950] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693974.472426423] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693974.523547919] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693974.573249704] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693974.623373578] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693974.672847056] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693974.672909257] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693974.673013117] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693974.768446025] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 40 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 40 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693974.870392919] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 40 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693976.971143951] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693977.080005575] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693977.081558562] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693977.089742889] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693977.131735280] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693977.181797816] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693977.231859899] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693977.281856363] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693977.330849425] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693977.381887151] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693977.382005457] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693977.382185805] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693977.468833622] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 43 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 43 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693977.569572612] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 43 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693979.671106736] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693979.781321202] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693979.782872894] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693979.790357950] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693979.833570737] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693979.882645443] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693979.933054836] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693979.982662355] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693980.033386712] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693980.082748954] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693980.082833578] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693980.082994938] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693980.167670873] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 46 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 46 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693980.266315404] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 46 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693982.268746501] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693982.376341411] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693982.378301941] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693982.382435795] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693982.427813281] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693982.478295101] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693982.528143549] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693982.577394139] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693982.627825925] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693982.678731049] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693982.678861814] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693982.679039857] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693982.771739770] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 48 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 48 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693982.866732641] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 48 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693984.967307887] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693985.071833631] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693985.073256751] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693985.083572237] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693985.122769614] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693985.172871579] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693985.222947329] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693985.272716066] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693985.322907250] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693985.372846680] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693985.372921079] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693985.373014764] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693985.466644183] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 51 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 51 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693985.566175440] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 51 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693987.568010134] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693987.671334118] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693987.672134318] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693987.675332659] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693987.723181715] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693987.773019653] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693987.823223686] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693987.873036667] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693987.923091457] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693987.973061243] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693987.973159066] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693987.973314637] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693988.067991315] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 53 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 53 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693988.168983951] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 53 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693990.174934871] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693990.280086611] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693990.281803563] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693990.291174106] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693990.332014911] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693990.381756264] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693990.432070380] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693990.481240301] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693990.531984835] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693990.581698110] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693990.581828869] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693990.581920052] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693990.669875517] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 56 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 56 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693990.768970832] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 56 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693992.768770665] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693992.873199297] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693992.874154732] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693992.879408592] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693992.924173212] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693992.974018231] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693993.024649008] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693993.073997914] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693993.124137589] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693993.175533681] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693993.175613339] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693993.175729690] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693993.267421901] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 59 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 59 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693993.365696781] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 59 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693995.366153301] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693995.477842388] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693995.479519482] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693995.485910507] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693995.529348840] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693995.579561527] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693995.629688950] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693995.679591365] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693995.729454066] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693995.778688990] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693995.778738788] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693995.778803811] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693995.868083261] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 61 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 61 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693995.971094091] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 61 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793693997.972151542] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793693998.080685294] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793693998.082444701] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793693998.094074184] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793693998.131989485] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693998.182363960] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693998.232587869] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693998.282476472] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693998.332552175] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793693998.382473916] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793693998.382569284] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793693998.382690701] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793693998.471126494] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 64 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 64 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793693998.571532804] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 64 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694000.669177608] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694000.780378563] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694000.782164832] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694000.787545756] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694000.832304228] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694000.882831801] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694000.932287069] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694000.984160575] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694001.032332305] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694001.081755321] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694001.081843545] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694001.082034536] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694001.167908357] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 67 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 67 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694001.270328899] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 67 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694003.274215098] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694003.372240121] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694003.373072193] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694003.382027382] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694003.423452201] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694003.473503494] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694003.524084695] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694003.573971995] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694003.624032846] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694003.673947258] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694003.674060585] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694003.674214021] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694003.768996607] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 69 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 69 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694003.869949813] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 69 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694005.968924690] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694006.074997652] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694006.075897268] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694006.086868043] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694006.126581711] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694006.176621714] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694006.226580095] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694006.276738256] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694006.329955053] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694006.375904898] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694006.375973078] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694006.376081509] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694006.470139073] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 72 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 72 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694006.569231387] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 72 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694008.675561644] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694008.781195695] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694008.782866017] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694008.792337499] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694008.833070712] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694008.882464597] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694008.933329862] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694008.982771069] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694009.033138871] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694009.083111097] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694009.083233526] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694009.083383228] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694009.165587354] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 75 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 75 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694009.267567179] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 75 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694011.371223245] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694011.510797034] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694011.511672302] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694011.520927846] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694011.562170723] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694011.612559617] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694011.663243200] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694011.712650486] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694011.762862584] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694011.812591193] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694011.812697128] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694011.812871665] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694011.869205298] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 77 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 77 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694011.968531501] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 77 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694014.068348218] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694014.178786356] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694014.180381382] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694014.187703170] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694014.230524810] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694014.280237024] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694014.331576754] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694014.380196493] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694014.430646272] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694014.480619337] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694014.480728799] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694014.480885805] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694014.567586283] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 80 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 80 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694014.668390496] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 80 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694016.770245844] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694016.879976635] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694016.881247878] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694016.891108167] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694016.931792809] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694016.981616568] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694017.031126098] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694017.081411098] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694017.131734499] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694017.181621573] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694017.181717530] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694017.181859199] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694017.267728497] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 83 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 83 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694017.369368027] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 83 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694019.469522411] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694019.576574484] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694019.577843824] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694019.583214417] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694019.627328730] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694019.679372535] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694019.728283676] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694019.778479991] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694019.828222687] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694019.878661909] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694019.878787281] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694019.878970739] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694019.970217586] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 85 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 85 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694020.072006353] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 85 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694022.168550271] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694022.274892078] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694022.275887456] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694022.285561320] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694022.327387784] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694022.376582100] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694022.426650845] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694022.476699847] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694022.526659720] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694022.576096528] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694022.576177279] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694022.576330852] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694022.668512503] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 88 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 88 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694022.767792940] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 88 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694024.769407067] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694024.879273926] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694024.881085034] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694024.889888360] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694024.931159066] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694024.981126047] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694025.031078355] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694025.081208842] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694025.130168362] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694025.181305702] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694025.181460478] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694025.182406830] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694025.266730343] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 91 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 91 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694025.366699066] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 91 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694027.371393043] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694027.479332177] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694027.481034723] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694027.489414890] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694027.531201531] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694027.581053916] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694027.631213245] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694027.681739321] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694027.730312359] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694027.781382872] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694027.781493745] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694027.781648974] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694027.869562313] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 93 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 93 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694027.970575217] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 93 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694029.972203797] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694030.078718079] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694030.080405878] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694030.087548633] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694030.130572289] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694030.179654858] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694030.229670099] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694030.279870093] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694030.329570743] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694030.380668624] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694030.380786642] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694030.380964681] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694030.473196135] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 96 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 96 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694030.567813495] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 96 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694032.669299488] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694032.776837883] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694032.778205577] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694032.788455597] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694032.828570494] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694032.877644326] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694032.928520138] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694032.978920489] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694033.028564346] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694033.078580899] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694033.078706653] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694033.078881464] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694033.171842009] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 99 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 99 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694033.271269034] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 99 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694035.368934770] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694035.478652810] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694035.479840571] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694035.486670355] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694035.529904530] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694035.580226319] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694035.630318604] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694035.680406594] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694035.730382262] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694035.780407224] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694035.780518724] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694035.780656056] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694035.870972023] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 101 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 101 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694035.972137640] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 101 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694037.969855254] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694038.080144380] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694038.081412784] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694038.087729078] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694038.131694818] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694038.181016054] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694038.231669754] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694038.281917130] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694038.331880638] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694038.381991039] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694038.382122291] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694038.382307728] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694038.470260230] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 104 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 104 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694038.568787881] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 104 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694040.668995077] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694040.778823562] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694040.780458519] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694040.787453821] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694040.830577796] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694040.880763668] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694040.930143820] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694040.980536680] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694041.030632119] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694041.080617571] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694041.080751775] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694041.081020909] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694041.168169771] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 107 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 107 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694041.269321579] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 107 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694043.269381576] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694043.378658523] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694043.379966564] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694043.390223884] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694043.430382577] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694043.479589051] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694043.530138523] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694043.580477507] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694043.630465856] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694043.680019780] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694043.680112398] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694043.680236446] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694043.768435213] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 109 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 109 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694043.868356085] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 109 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694045.869531902] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694045.982398627] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694045.984224175] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694045.992017714] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694046.033773727] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694046.084262577] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694046.134202219] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694046.184280336] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694046.234416153] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694046.284386556] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694046.284499428] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694046.284661662] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694046.369254102] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 112 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 112 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694046.471860015] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 112 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694048.470403549] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694048.582600172] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694048.584509968] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694048.592531646] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694048.634399932] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694048.684168345] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694048.733611981] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694048.784447647] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694048.834674929] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694048.884148489] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694048.884266883] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694048.884429373] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694048.980713626] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 114 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 114 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694049.069032352] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 114 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694051.069457278] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694051.179629608] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694051.181260682] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694051.188386469] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694051.231093222] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694051.281520689] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694051.331445203] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694051.382365953] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694051.431275979] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694051.482291583] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694051.482403075] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694051.482610587] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694051.569209171] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 117 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 117 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694051.672780533] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 117 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694053.671405981] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694053.779620837] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793694053.780880847] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694053.781416435] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694053.831445793] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694053.881529405] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694053.931257323] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694053.981407776] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694054.030489728] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694054.081509228] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694054.081618641] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694054.085111443] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694054.169199559] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 120 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 120 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694054.269426611] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 120 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694056.372369612] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694056.480841923] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694056.482385100] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694056.495111248] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694056.532755015] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694056.582703839] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694056.631909541] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694056.682487477] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694056.733227764] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694056.782602882] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694056.782715240] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694056.782875986] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694056.866601776] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 122 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 122 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694056.967002745] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 122 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694058.970659486] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694059.079180124] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694059.080789341] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694059.088025409] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694059.130911913] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694059.181106569] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694059.231061865] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694059.280859653] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694059.331068398] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694059.380960552] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694059.381086262] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694059.381256214] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694059.468760948] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 125 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 125 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694059.568993864] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 125 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694061.670029276] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694061.783190023] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694061.785101435] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694061.792698997] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694061.836023952] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694061.885327567] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694061.935070601] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694061.985160937] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694062.035951671] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694062.085126733] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694062.085243623] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694062.085459831] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694062.165787690] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 128 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 128 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694062.269287887] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 128 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694064.272131575] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694064.370285023] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694064.371095714] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694064.374857754] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694064.422261375] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694064.471921381] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694064.522130019] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694064.571555500] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694064.621873025] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694064.671858002] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694064.671951304] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694064.672106804] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694064.767716929] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 130 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 130 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694064.866395374] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 130 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694066.868518217] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694066.981083953] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694066.982728558] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694066.997886981] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694067.034273046] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694067.081990781] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694067.133137261] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694067.182958184] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694067.233129746] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694067.283007369] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694067.283148303] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694067.283301949] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694067.368458410] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 133 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 133 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694067.470636500] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 133 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694069.569129032] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694069.679950444] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694069.681589023] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694069.689611808] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694069.731643300] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694069.781772544] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694069.831735571] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694069.883763574] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694069.930936217] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694069.981797493] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694069.981896801] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694069.982064771] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694070.073662280] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 136 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 136 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694070.172062344] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 136 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694072.267883657] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694072.379068843] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694072.380611748] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694072.382371622] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694072.430333079] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694072.480758305] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694072.530570923] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694072.580702771] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694072.630445382] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694072.680857275] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694072.680997751] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694072.681218292] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694072.768355307] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 138 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 138 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694072.868960157] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 138 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694074.869497113] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694074.982145325] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694074.983979862] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694074.984659892] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694075.033578846] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694075.084399534] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694075.133993949] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694075.183240005] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694075.233818850] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694075.285677733] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694075.285813916] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694075.286000405] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694075.372074094] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 141 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 141 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694075.472974553] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 141 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694077.568508253] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694077.677084000] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694077.678773312] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694077.679580123] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694077.728867517] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694077.778784573] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694077.828558375] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694077.878910096] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694077.928851816] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694077.979328773] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694077.979450010] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694077.979618903] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694078.069458147] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 144 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 144 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694078.170397884] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 144 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694080.269431656] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694080.379332325] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793694080.380397072] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694080.381121137] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.431065413] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.480504963] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.531205606] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.581305629] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.631495911] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694080.681244792] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694080.681355205] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694080.681509368] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694080.769244700] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 146 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 146 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694080.868968026] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 146 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694082.872327383] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694082.980727957] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694082.982414597] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694082.993869668] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694083.032740151] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694083.082413113] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694083.132026166] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694083.182179082] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694083.232376172] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694083.281619421] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694083.281669683] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694083.281754764] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694083.367703197] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 149 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 149 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694083.471358878] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 149 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694085.568109531] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694085.673789406] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694085.674842358] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694085.680660975] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694085.725609195] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694085.775523414] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694085.825574431] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694085.875737164] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694085.925504679] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694085.975707672] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694085.975824771] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694085.975960854] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694086.069089849] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 152 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 152 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694086.168670566] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 152 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694088.270379907] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694088.379170485] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694088.380781944] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694088.390876962] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694088.430913669] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694088.481069694] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694088.531005991] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694088.582432537] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694088.631012376] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694088.681109408] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694088.681218287] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694088.681368347] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694088.771079457] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 154 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 154 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694088.872173912] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 154 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694090.868907656] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694090.979502162] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694090.980825257] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694090.992992971] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694091.030513668] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694091.081316210] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694091.131103332] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694091.180317888] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694091.231189081] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694091.281251957] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694091.281356750] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694091.281503571] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694091.365461315] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 157 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 157 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694091.473210773] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 157 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694093.471972393] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694093.580417873] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694093.582124520] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694093.594123769] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694093.632462457] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694093.681874493] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694093.732201668] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694093.782191525] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694093.832206820] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694093.882226948] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694093.882356792] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694093.882555125] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694093.970985719] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 159 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 159 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694094.070155403] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 159 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694096.069782946] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694096.174710883] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694096.175503882] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694096.187022672] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694096.227484300] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694096.275529287] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694096.326525818] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694096.376238839] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694096.426801893] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694096.476105037] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694096.476188978] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694096.476307597] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694096.569424028] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 162 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 162 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694096.673277864] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 162 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694098.771081891] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694098.879923728] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694098.881594642] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694098.891608333] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694098.931645547] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694098.981815770] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694099.031208254] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694099.081682682] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694099.132956613] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694099.181785238] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694099.181875025] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694099.182017254] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694099.270773199] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 165 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 165 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694099.365793150] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 165 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694101.374292514] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694101.482007193] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694101.483889769] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694101.496844364] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694101.532961455] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694101.583787234] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694101.634070950] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694101.683763916] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694101.733076147] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694101.783879509] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694101.783997081] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694101.784186101] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694101.868921136] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 167 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 167 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694101.969958894] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 167 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694103.971022831] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694104.075722071] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694104.077640069] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694104.080023409] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694104.127620524] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694104.177839532] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694104.227389591] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694104.277930088] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694104.327238415] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694104.377833272] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694104.377961467] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694104.378191468] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694104.470152531] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 170 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 170 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694104.568251948] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 170 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694106.672258701] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694106.781446372] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694106.783306022] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694106.793055316] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694106.833166901] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694106.883273026] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694106.933379674] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694106.982954689] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694107.033002424] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694107.082960239] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694107.083039998] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694107.083184156] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694107.167943593] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 173 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 173 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694107.268814344] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 173 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694109.370254614] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694109.481138105] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694109.482808297] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694109.492059257] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694109.532923306] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694109.582771364] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694109.632170152] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694109.682956542] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694109.732942635] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694109.783039948] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694109.783168906] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694109.783350085] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694109.867922110] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 175 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 175 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694109.969031509] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 175 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694112.070334841] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694112.186026276] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694112.188003280] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694112.194704891] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694112.238014876] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694112.287857395] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694112.338106821] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694112.387877075] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694112.437821784] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694112.487891555] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694112.488004910] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694112.488194198] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694112.569506964] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 178 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 178 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694112.671428938] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 178 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694114.672419639] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694114.774956321] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694114.776235312] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694114.786773704] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694114.826505898] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694114.876805884] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694114.926554991] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694114.976571304] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694115.026332801] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694115.076546305] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694115.076672224] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694115.076887782] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694115.173480178] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 181 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 181 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694115.267847941] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 181 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694117.269958653] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694117.372373080] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694117.373282780] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694117.378967664] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694117.424129620] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694117.473505424] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694117.524203810] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694117.574100882] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694117.624188604] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694117.674177843] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694117.674274766] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694117.674410435] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694117.770185040] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 183 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 183 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694117.873788109] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 183 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694119.970960890] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694120.078615444] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1793694120.080024282] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[route_executor_node-6] [INFO] [1793694120.090450562] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694120.130291156] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694120.180429918] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694120.230581357] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694120.280612016] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694120.329973811] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694120.380381215] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694120.380487220] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694120.380650860] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694120.472235162] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 186 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 186 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694120.569267575] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 186 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[route_executor_node-6] [INFO] [1793694122.568916207] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694122.672312529] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793694122.673341285] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[controller_server-4] [WARN] [1793694122.673882483] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.724127207] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.774168802] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.824170585] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.873876497] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.924132135] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [WARN] [1793694122.974054215] [controller_server]: RegulatedPurePursuitController detected collision ahead!
+[controller_server-4] [ERROR] [1793694122.974149672] [controller_server]: Controller patience exceeded
+[controller_server-4] [WARN] [1793694122.974296870] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[route_executor_node-6] [INFO] [1793694123.069284073] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 189 s; continues by itself once clear) [path blocked ahead: controller aborted the arc (blocked 189 s; continues by itself once clear)]
+[route_executor_node-6] [INFO] [1793694123.165527746] [route_executor]: BLOCKED pass 1/1 step 11 init: path blocked ahead: controller aborted the arc (blocked 189 s; continues by itself once clear) | auto-resume: clear, continuing in 2 s
+[controller_server-4] [INFO] [1793694124.494919932] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[route_executor_node-6] [INFO] [1793694125.171876207] [route_executor]: EXECUTING pass 1/1 step 11 init: auto-resumed after controller (pass 1/1 step 11) [auto-resume]
+[controller_server-4] [INFO] [1793694125.277145638] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793694125.289681910] [route_executor]: EXECUTING pass 1/1 step 11 goal: auto-resumed after controller (pass 1/1 step 11)
+[route_executor_node-6] [INFO] [1793694133.670300430] [route_executor]: step s12 (arc) passed (pass 1/1 step 11): -0.032 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694133.672072368] [route_executor]: EXECUTING pass 1/1 step 12 goal: pass 1/1 step 12 of 32
+[route_executor_node-6] [INFO] [1793694136.266432123] [route_executor]: step s13 (arc) passed (pass 1/1 step 12): -0.054 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694136.267400307] [route_executor]: EXECUTING pass 1/1 step 13 goal: pass 1/1 step 13 of 32
+[route_executor_node-6] [INFO] [1793694137.468670650] [route_executor]: step s14 (straight) passed (pass 1/1 step 13): -0.102 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694137.469590813] [route_executor]: EXECUTING pass 1/1 step 14 goal: pass 1/1 step 14 of 32
+[route_executor_node-6] [INFO] [1793694139.868882441] [route_executor]: step s15 (arc) passed (pass 1/1 step 14): -0.058 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694139.870661647] [route_executor]: EXECUTING pass 1/1 step 15 goal: pass 1/1 step 15 of 32
+[route_executor_node-6] [INFO] [1793694148.367983868] [route_executor]: step s16 (straight) passed (pass 1/1 step 15): -0.039 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694148.370086088] [route_executor]: EXECUTING pass 1/1 step 16 goal: pass 1/1 step 16 of 32
+[route_executor_node-6] [INFO] [1793694150.967372240] [route_executor]: step s17 (arc) passed (pass 1/1 step 16): +0.031 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694150.968231411] [route_executor]: EXECUTING pass 1/1 step 17 goal: pass 1/1 step 17 of 32
+[route_executor_node-6] [INFO] [1793694155.569611589] [route_executor]: step s18 (arc) passed (pass 1/1 step 17): +0.067 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694155.571458034] [route_executor]: EXECUTING pass 1/1 step 18 goal: pass 1/1 step 18 of 32
+[route_executor_node-6] [INFO] [1793694160.375867762] [route_executor]: EXECUTING pass 1/1 step 18 settle: pass 1/1 step 18 of 32
+[controller_server-4] [INFO] [1793694160.378840134] [controller_server]: Goal was canceled. Stopping the robot.
+[controller_server-4] [INFO] [1793694160.378961708] [controller_server]: [follow_path] [ActionServer] Client requested to cancel the goal. Cancelling.
+[route_executor_node-6] [WARN] [1793694160.392794380] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261103-151155-1', pass_index=0, step_index=11, attempt=74)
+[route_executor_node-6] [INFO] [1793694160.868866549] [route_executor]: step s19 (straight) done (pass 1/1 step 18): 0.008 m / 5.54 deg from expected
+[route_executor_node-6] [INFO] [1793694160.870311648] [route_executor]: EXECUTING pass 1/1 step 19 init: pass 1/1 step 19 of 32
+[route_executor_node-6] [INFO] [1793694160.970454043] [route_executor]: WAITING pass 1/1 step 19 init: waiting at ITG-ATTACH (pass 1/1 step 19): press Continue [wait s20]
+[route_executor_node-6] [INFO] [1793694190.187472867] [route_executor]: EXECUTING pass 1/1 step 20 premove: pass 1/1 step 20 of 32: warning, moving in 2.0 s [Continue at a wait]
+[route_executor_node-6] [INFO] [1793694192.265659636] [route_executor]: EXECUTING pass 1/1 step 20 init: moving: pass 1/1 step 20
+[controller_server-4] [INFO] [1793694192.457466211] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793694192.457624929] [route_executor]: EXECUTING pass 1/1 step 20 goal: moving: pass 1/1 step 20
+[route_executor_node-6] [INFO] [1793694204.668772124] [route_executor]: step s21 (arc) passed (pass 1/1 step 20): -0.016 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694204.670059079] [route_executor]: EXECUTING pass 1/1 step 21 goal: pass 1/1 step 21 of 32
+[route_executor_node-6] [INFO] [1793694253.269106794] [route_executor]: step s22 (straight) passed (pass 1/1 step 21): +0.021 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694253.270504086] [route_executor]: EXECUTING pass 1/1 step 22 goal: pass 1/1 step 22 of 32
+[route_executor_node-6] [INFO] [1793694263.469023825] [route_executor]: step s23 (arc) passed (pass 1/1 step 22): -0.033 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694263.470164173] [route_executor]: EXECUTING pass 1/1 step 23 goal: pass 1/1 step 23 of 32
+[route_executor_node-6] [INFO] [1793694457.473108151] [route_executor]: step s24 (straight) passed (pass 1/1 step 23): -0.008 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694457.474998768] [route_executor]: EXECUTING pass 1/1 step 24 goal: pass 1/1 step 24 of 32
+[route_executor_node-6] [INFO] [1793694467.770700130] [route_executor]: step s25 (arc) passed (pass 1/1 step 24): +0.024 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793694467.773884320] [route_executor]: EXECUTING pass 1/1 step 25 goal: pass 1/1 step 25 of 32
+[route_executor_node-6] [INFO] [1793694487.084885798] [route_executor]: IDLE pass 1/1 step -1 init: manual takeover: selector left AUTO [manual takeover]
+[controller_server-4] [INFO] [1793694487.107765893] [controller_server]: Goal was canceled. Stopping the robot.
+[controller_server-4] [INFO] [1793694487.107840859] [controller_server]: [follow_path] [ActionServer] Client requested to cancel the goal. Cancelling.
+[route_executor_node-6] [WARN] [1793694487.114417751] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261103-151155-1', pass_index=0, step_index=20, attempt=75)
+[route_executor_node-6] [INFO] [1793694495.871647268] [route_executor]: IDLE pass 1/1 step -1 init: abort ignored in IDLE
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [lifecycle_manager-8]: sending signal 'SIGINT' to process[lifecycle_manager-8]
+[INFO] [lifecycle_manager-7]: sending signal 'SIGINT' to process[lifecycle_manager-7]
+[INFO] [route_executor_node-6]: sending signal 'SIGINT' to process[route_executor_node-6]
+[INFO] [behavior_server-5]: sending signal 'SIGINT' to process[behavior_server-5]
+[INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+[INFO] [localization_monitor_node-3]: sending signal 'SIGINT' to process[localization_monitor_node-3]
+[INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+[INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+[lifecycle_manager-8] [INFO] [1793694500.321421743] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-8] [INFO] [1793694500.321576371] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-8] [INFO] [1793694500.321628159] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[lifecycle_manager-7] [INFO] [1793694500.323345002] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-7] [INFO] [1793694500.323595130] [lifecycle_manager_localization]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_localization)
+[lifecycle_manager-7] [INFO] [1793694500.323699442] [lifecycle_manager_localization]: [34m[1mTerminating bond timer...[0m[0m
+[behavior_server-5] [INFO] [1793694500.334107025] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[behavior_server-5] [INFO] [1793694500.335196011] [behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[behavior_server-5] [INFO] [1793694500.335338504] [behavior_server]: Deactivating
+[behavior_server-5] [INFO] [1793694500.335396508] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793694500.341526292] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-4] [INFO] [1793694500.341767022] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-4] [INFO] [1793694500.341925249] [controller_server]: Deactivating
+[controller_server-4] [INFO] [1793694500.341978133] [controller_server]: Deactivating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793694500.342838320] [local_costmap.local_costmap]: Deactivating
+[behavior_server-5] [INFO] [1793694500.347566104] [behavior_server]: Cleaning up
+[amcl-2] [INFO] [1793694500.368732493] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[amcl-2] [INFO] [1793694500.368854365] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[amcl-2] [INFO] [1793694500.368935696] [amcl]: Deactivating
+[amcl-2] [INFO] [1793694500.368964358] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[map_server-1] [INFO] [1793694500.370755745] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-1] [INFO] [1793694500.370883411] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-1] [INFO] [1793694500.370959372] [map_server]: Deactivating
+[map_server-1] [INFO] [1793694500.370986253] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[behavior_server-5] [INFO] [1793694500.374859653] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[map_server-1] [INFO] [1793694500.381189993] [map_server]: Cleaning up
+[amcl-2] [INFO] [1793694500.381771751] [amcl]: Cleaning up
+[map_server-1] [INFO] [1793694500.383755492] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793694500.415441149] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[controller_server-4] [INFO] [1793694500.433665324] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793694500.444165730] [controller_server]: Cleaning up
+[controller_server-4] [INFO] [1793694500.444218566] [controller_server]: Cleaning up controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793694500.444271174] [local_costmap.local_costmap]: Cleaning up
+[controller_server-4] [INFO] [1793694500.479904304] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[amcl-2] [INFO] [1793694500.508543353] [amcl]: Destroying
+[map_server-1] [INFO] [1793694500.517642783] [map_server]: Destroying
+[controller_server-4] [INFO] [1793694500.541988622] [local_costmap.local_costmap]: Destroying
+[behavior_server-5] [INFO] [1793694500.547096348] [behavior_server]: Destroying
+[lifecycle_manager-8] [INFO] [1793694500.548394215] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[lifecycle_manager-7] [INFO] [1793694500.555868382] [lifecycle_manager_localization]: Destroying lifecycle_manager_localization
+[controller_server-4] [INFO] [1793694500.605527124] [controller_server]: Destroying
+[INFO] [localization_monitor_node-3]: process has finished cleanly [pid 124997]
+[INFO] [launch]: process[localization_monitor_node-3] was required: shutting down launched system
+[INFO] [route_executor_node-6]: process has finished cleanly [pid 125011]
+[INFO] [launch]: process[route_executor_node-6] was required: shutting down launched system
+[INFO] [amcl-2]: process has finished cleanly [pid 124995]
+[INFO] [launch]: process[amcl-2] was required: shutting down launched system
+[INFO] [map_server-1]: process has finished cleanly [pid 124992]
+[INFO] [launch]: process[map_server-1] was required: shutting down launched system
+[INFO] [lifecycle_manager-8]: process has finished cleanly [pid 125215]
+[INFO] [lifecycle_manager-7]: process has finished cleanly [pid 125137]
+[INFO] [behavior_server-5]: process has finished cleanly [pid 125001]
+[INFO] [launch]: process[behavior_server-5] was required: shutting down launched system
+[INFO] [controller_server-4]: process has finished cleanly [pid 124999]
+[INFO] [launch]: process[controller_server-4] was required: shutting down launched system

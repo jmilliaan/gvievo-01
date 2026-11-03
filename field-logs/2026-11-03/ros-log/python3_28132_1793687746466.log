@@ -1,0 +1,54 @@
+[INFO] [1793687746.598204097] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793687746.677574298] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793687775.805825038] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687775.807927590] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687775.809123255] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687775.809861009] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[WARN] [1793687783.276425620] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687783.277962195] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687783.278976846] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687783.279759215] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[INFO] [1793687783.401060726] [route_executor]: READY pass 1/1 step -1 init: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[WARN] [1793687788.300963542] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687788.302277252] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687788.303263886] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687788.304094161] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[WARN] [1793687791.462575461] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687791.463536977] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687791.464487731] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687791.465271540] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.2 deg from the route start; reposition manually
+[INFO] [1793687955.571298776] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged; settling (0.3/2.0 s))
+[WARN] [1793687977.368905963] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687977.369826738] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687977.370978176] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687977.372297262] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.5 deg from the route start; reposition manually
+[WARN] [1793687980.649881931] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687980.651208550] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687980.652178057] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687980.653149032] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: wheel feedback stale
+[WARN] [1793687983.519075935] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687983.520040479] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687983.521015208] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687983.521933365] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: wheel feedback stale
+[WARN] [1793687986.566967873] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687986.568538344] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687986.569409930] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687986.570214812] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.6 deg from the route start; reposition manually
+[WARN] [1793687989.691251391] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793687989.697652120] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793687989.698920878] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793687989.700564821] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.10 m / 0.6 deg from the route start; reposition manually
+[INFO] [1793688096.366326295] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (converged; settling (0.2/2.0 s))
+[WARN] [1793688127.167166959] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793688127.168832118] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793688127.170462950] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793688127.171586547] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[WARN] [1793688130.447154835] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793688130.450177301] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793688130.451105656] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793688130.451994758] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[WARN] [1793688133.604607013] [route_executor]: permitted lateral error 0.10 m (cross-track limit / start gate) exceeds the validated footprint margin 0.05 m
+[INFO] [1793688133.605788075] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev1 loaded (32 steps x 1 passes); AUTO + Start to run
+[INFO] [1793688133.606960829] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev1 loaded
+[INFO] [1793688133.607934364] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: 0.13 m / 1.4 deg from the route start; reposition manually
+[INFO] [1793688172.965132018] [route_executor]: IDLE pass 1/1 step -1 init: aborted by operator [aborted]

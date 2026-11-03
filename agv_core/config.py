@@ -129,6 +129,21 @@ panel.di_continue
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
     enable fails, and it is retried on a slow backoff, never latched.
 
+panel.destinations
+    The destination pushbuttons (MCQ4-4, owner 2026-11-03: DI0A UBC, DI0B ITG,
+    DI0C PISTON), a list of {"name", "di", "route_id"}. Momentary, with Start's
+    rules: rising edge only, none from a button held at power-on or across a
+    DIO reconnect, and a press counts only while it is the ONLY destination
+    button down. In AUTO, with no run under way (IDLE, READY or DONE), a press
+    loads the newest saved mission for `route_id` on the active map (highest
+    route revision, then label set) and starts it as Start would: the start
+    gate at the route's start pose, the prerequisites, then the pre-move
+    warning. PB Start is not needed. Ignored in MANUAL, during a run (moving,
+    held or WAITING: Continue is the button there), in FAULT and during an
+    emergency. An empty route_id is a button with no route yet: a press is
+    refused with that reason. Route IDs, not mission IDs, so a new route or
+    map revision is picked up once it is saved as a mission.
+
 gls.xy_scale_m_per_count
     What one XMCL/YMCL count is, in metres. 0 means NOT MEASURED, and it is
     the shipped value: the camera then publishes raw counts only (GlsReading
@@ -627,6 +642,41 @@ def _read_zone_bytes(raw, where):
     return list(raw)
 
 
+MAX_DESTINATIONS = 8  # PanelState.dest_edge is a 1-based index
+
+
+def _read_destinations(raw, where):
+    """panel.destinations -> a tuple of (name, di, route_id), in button order.
+
+    Channel ranges and clashes with the other panel inputs are checked in
+    _validate, beside the rest of the panel channels."""
+    if not isinstance(raw, list):
+        raise ConfigError(f"{where}: expected a list of destinations")
+    if len(raw) > MAX_DESTINATIONS:
+        raise ConfigError(f"{where}: at most {MAX_DESTINATIONS} destinations, got {len(raw)}")
+    out = []
+    for i, d in enumerate(raw):
+        at = f"{where}[{i}]"
+        if not isinstance(d, dict):
+            raise ConfigError(f"{at}: expected an object")
+        keys = {"name", "di", "route_id"}
+        if set(d) != keys:
+            raise ConfigError(f"{at}: needs exactly the keys {sorted(keys)}, got {sorted(d)}")
+        name = _coerce(d["name"], str, f"{at}.name").strip()
+        if not name:
+            raise ConfigError(f"{at}.name: must not be empty")
+        di = _coerce(d["di"], int, f"{at}.di")
+        route_id = _coerce(d["route_id"], str, f"{at}.route_id").strip()
+        # the map store's own rule for a file name (amr_navigation/store._plain)
+        if route_id and (re.search(r"[/\\\0]", route_id) or route_id.startswith(".")):
+            raise ConfigError(f"{at}.route_id: {route_id!r} is not a plain route id")
+        out.append((name, di, route_id))
+    names = [n.casefold() for n, _, _ in out]
+    if len(set(names)) != len(names):
+        raise ConfigError(f"{where}: two destinations share a name")
+    return tuple(out)
+
+
 def _read_ramp(raw):
     """drivers.ramp -> {"auto": {...}} of ints."""
     ramp = raw.get("ramp")
@@ -681,6 +731,8 @@ def _parse(doc):
             allowed |= {"di_names", "do_names", "motion_on", "alarm_on", "movement_horn"}
         if section == "lidar":
             allowed |= {"zone_bytes"}
+        if section == "panel":
+            allowed |= {"destinations"}
         unknown = set(block) - allowed
         if unknown:
             raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}")
@@ -709,6 +761,8 @@ def _parse(doc):
         doc["dio"].get("movement_horn", []), ns["DIO_NUM_DO"], "dio.movement_horn")
     ns["LIDAR_ZONE_BYTES"] = _read_zone_bytes(
         doc["lidar"]["zone_bytes"], "lidar.zone_bytes")
+    ns["PANEL_DESTINATIONS"] = _read_destinations(
+        doc["panel"]["destinations"], "panel.destinations")
     return ns
 
 
@@ -880,6 +934,12 @@ def _validate(ns):
     # Two functions on one channel is a wiring or config error that would
     # otherwise present as phantom presses - a Reset edge every time Start is
     # pushed - which is a miserable thing to debug from the vehicle.
+    for name, ch, _route in g("PANEL_DESTINATIONS"):
+        key = f"destination {name}"
+        check(0 <= ch < g("DIO_NUM_DI"),
+              f"panel.destinations {name} di ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
+        check(key not in chans, f"panel.destinations: {name} is listed twice")
+        chans[key] = ch
     check(len(set(chans.values())) == len(chans),
           f"panel channels must be distinct, got {chans}")
     if g("PENDANT_ENABLED"):
@@ -892,6 +952,10 @@ def _validate(ns):
         check(g("PANEL_DI_CONTINUE") not in jog,
               f"panel.di_continue ({g('PANEL_DI_CONTINUE')}) is a pendant channel: "
               "every jog press would also release a waiting run")
+        for name, ch, _route in g("PANEL_DESTINATIONS"):
+            check(ch not in jog,
+                  f"panel.destinations {name} di ({ch}) is a pendant channel: "
+                  "every jog press would also start a run")
     check(0.5 <= g("PANEL_ESTOP_RESET_TIMEOUT_S") <= 30.0,
           "panel.estop_reset_timeout_s must be in 0.5..30 s")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
@@ -1325,6 +1389,12 @@ def describe():
             mh = g["DIO_MOVEMENT_HORN"]
             rows.append(_row(section, "movement_horn", "DIO_MOVEMENT_HORN", mh, notes,
                              text=(" \u00b7 ".join(f"DO{c:02d}" for c in mh) + " off while the alarm horn sounds") if mh else "none",
+                             unit=""))
+        if section == "panel":
+            dests = g["PANEL_DESTINATIONS"]
+            rows.append(_row(section, "destinations", "PANEL_DESTINATIONS", dests, notes,
+                             text=" · ".join(f"DI{ch:02d} {n} → {r or '(no route)'}"
+                                                  for n, ch, r in dests) or "none",
                              unit=""))
         if section == "lidar":
             rows.append(_row(section, "zone_bytes", "LIDAR_ZONE_BYTES",

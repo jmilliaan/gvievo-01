@@ -1,0 +1,8 @@
+[INFO] [1793691815.134429216] [robot_state_publisher]: got segment base_footprint
+[INFO] [1793691815.134557169] [robot_state_publisher]: got segment base_link
+[INFO] [1793691815.134576570] [robot_state_publisher]: got segment gls_frame
+[INFO] [1793691815.134588107] [robot_state_publisher]: got segment imu_frame
+[INFO] [1793691815.134598726] [robot_state_publisher]: got segment laser_frame
+[INFO] [1793691815.134608915] [robot_state_publisher]: got segment wheel_left
+[INFO] [1793691815.134618980] [robot_state_publisher]: got segment wheel_right
+[INFO] [1793693431.858263160] [rclcpp]: signal_handler(SIGINT/SIGTERM)

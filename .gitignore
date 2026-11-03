@@ -26,3 +26,7 @@ log/
 # Agent instruction files are per-developer, not source.
 AGENTS.md
 CLAUDE.md
+
+# Vehicle logs copied in on purpose (2026-11-03): kept as evidence, so exempt from the
+# *.log / log/ rules above. Only this folder; other run logs stay out of the tree.
+!field-logs/**

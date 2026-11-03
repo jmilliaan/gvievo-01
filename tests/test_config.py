@@ -189,6 +189,25 @@ def test_config_profile():
             lambda d: d["panel"].update(di_continue=d["pendant"]["di_left"]), "pendant channel")
     refuses("a Continue input the module does not have is refused",
             lambda d: d["panel"].update(di_continue=16), "di_continue")
+    # Destination buttons (owner 2026-11-03): DI10 UBC, DI11 ITG, DI12 PISTON.
+    check("DI10-12 are the destination buttons",
+          [(n, ch) for n, ch, _r in config.PANEL_DESTINATIONS] == [("UBC", 10), ("ITG", 11), ("PISTON", 12)],
+          str(config.PANEL_DESTINATIONS))
+
+    def dest(i, **kw):
+        return lambda d: d["panel"]["destinations"][i].update(**kw)
+    refuses("a destination button shared with Continue is refused",
+            dest(0, di=13), "distinct")
+    refuses("two destinations on one channel are refused", dest(1, di=10), "distinct")
+    refuses("a destination button on a pendant channel is refused",
+            dest(2, di=base["pendant"]["di_fwd"]), "pendant channel")
+    refuses("a destination button the module does not have is refused", dest(0, di=16), "di (16)")
+    refuses("two destinations with one name are refused", dest(1, name="ubc"), "share a name")
+    refuses("an empty destination name is refused", dest(1, name=" "), "must not be empty")
+    refuses("a route id with a slash is refused", dest(1, route_id="../x"), "plain route id")
+    refuses("an unknown destination key is refused", dest(1, mission_id="x"), "exactly the keys")
+    refuses("a missing panel.destinations is refused",
+            lambda d: d["panel"].pop("destinations"), "destinations")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
     refuses("a pre-move timeout not above the warning is refused",

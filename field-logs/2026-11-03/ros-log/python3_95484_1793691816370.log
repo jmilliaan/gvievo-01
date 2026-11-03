@@ -1,0 +1,54 @@
+[INFO] [1793691816.620947229] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793691816.635160863] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793691816.635702029] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793691817.184192582] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793691817.185355251] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793691817.189363711] [drive_node]: drives standby, imu sdo
+[INFO] [1793691819.019399368] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793691819.024144414] [drive_node]: drives armed, imu sdo
+[WARN] [1793691832.328553004] [drive_node]: setpoint gated to zero: inhibited by supervisor
+[INFO] [1793691842.020335448] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793691842.049165368] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793691842.082280925] [drive_node]: drives standby, imu sdo
+[INFO] [1793691900.560707626] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793691900.939347972] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793691900.944311102] [drive_node]: drives armed, imu sdo
+[INFO] [1793692330.375594760] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793692330.405121735] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793692330.420830669] [drive_node]: drives standby, imu sdo
+[INFO] [1793692335.882537218] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793692336.271276220] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793692336.276182085] [drive_node]: drives armed, imu sdo
+[INFO] [1793692416.981714588] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793692417.014804593] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793692417.023901352] [drive_node]: drives standby, imu sdo
+[INFO] [1793692507.479912958] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793692507.858892578] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793692507.863793578] [drive_node]: drives armed, imu sdo
+[INFO] [1793692596.458716260] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793692596.476491634] [drive_node]: drives standby, imu sdo
+[WARN] [1793692598.509735404] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692600.518690400] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692602.529640361] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692604.548970320] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692606.554610176] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692608.569145787] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692610.580075295] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692612.599809182] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793692614.609918311] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[INFO] [1793692616.805521144] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793692616.809204656] [drive_node]: drives armed, imu sdo
+[INFO] [1793692638.030864527] [drive_node]: drives in standby (power off): drive left Operation enabled (ETO?): [1, 2]; AUTO, the run run asks for power
+[INFO] [1793692638.093705260] [drive_node]: drives standby, imu sdo
+[INFO] [1793692640.380129999] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793692640.382786441] [drive_node]: drives armed, imu sdo
+[INFO] [1793692954.180338742] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793692954.212961564] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793692954.219468293] [drive_node]: drives standby, imu sdo
+[INFO] [1793693106.555036244] [drive_node]: drive power wanted: AUTO, the run run asks for power
+[INFO] [1793693106.938518553] [drive_node]: drives powered (targets zero): AUTO, the run run asks for power
+[INFO] [1793693106.943717983] [drive_node]: drives armed, imu sdo
+[INFO] [1793693134.879760857] [drive_node]: drive power not wanted: AUTO, no run asking for power
+[INFO] [1793693134.917360669] [drive_node]: drives in standby (power off): power not wanted; AUTO, no run asking for power
+[INFO] [1793693134.927961134] [drive_node]: drives standby, imu sdo
+[INFO] [1793693432.010124217] [drive_node]: bus closed, drives de-energised

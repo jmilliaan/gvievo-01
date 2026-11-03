@@ -1,0 +1,71 @@
+[INFO] [1793681523.684671150] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793681523.693440706] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793681523.768127044] [panel_node]: DIO comms ok
+[INFO] [1793681523.831376081] [panel_node]: panel image valid; selector MANUAL; E-stop OK (DI8) HIGH
+[INFO] [1793681523.832518889] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793681523.870528936] [panel_node]: Manual Arm on
+[INFO] [1793681553.927722540] [panel_node]: pendant RVS
+[INFO] [1793681555.347986156] [panel_node]: pendant RVS RIGHT
+[INFO] [1793681556.748003349] [panel_node]: pendant RVS
+[INFO] [1793681556.947866864] [panel_node]: pendant released
+[INFO] [1793681558.407838281] [panel_node]: pendant RVS
+[INFO] [1793681559.807871962] [panel_node]: pendant RVS RIGHT
+[INFO] [1793681560.627894404] [panel_node]: pendant RVS
+[INFO] [1793681560.767953854] [panel_node]: pendant RVS RIGHT
+[INFO] [1793681561.327841536] [panel_node]: pendant RVS
+[INFO] [1793681561.627813163] [panel_node]: pendant RVS RIGHT
+[INFO] [1793681562.487778810] [panel_node]: pendant released
+[INFO] [1793681563.687846609] [panel_node]: pendant RIGHT
+[INFO] [1793681564.187809614] [panel_node]: pendant released
+[INFO] [1793681564.948001343] [panel_node]: pendant RIGHT
+[INFO] [1793681565.147970612] [panel_node]: pendant released
+[INFO] [1793681565.647926866] [panel_node]: pendant RIGHT
+[INFO] [1793681566.047918323] [panel_node]: pendant released
+[INFO] [1793681566.307998797] [panel_node]: pendant FWD
+[INFO] [1793681567.208016334] [panel_node]: pendant released
+[INFO] [1793681567.468081080] [panel_node]: pendant RIGHT
+[INFO] [1793681568.067966679] [panel_node]: pendant released
+[INFO] [1793681568.407816444] [panel_node]: pendant FWD
+[INFO] [1793681569.567925981] [panel_node]: pendant released
+[INFO] [1793681569.827948572] [panel_node]: pendant LEFT
+[INFO] [1793681570.367923267] [panel_node]: pendant released
+[INFO] [1793681571.268054820] [panel_node]: pendant FWD
+[INFO] [1793681572.427939173] [panel_node]: pendant released
+[INFO] [1793681572.728119107] [panel_node]: pendant LEFT
+[INFO] [1793681573.087861614] [panel_node]: pendant released
+[INFO] [1793681573.487771274] [panel_node]: pendant FWD
+[INFO] [1793681574.087796746] [panel_node]: pendant FWD RIGHT
+[INFO] [1793681574.247887815] [panel_node]: pendant FWD
+[INFO] [1793681574.387904127] [panel_node]: pendant released
+[INFO] [1793681575.147896163] [panel_node]: pendant RIGHT
+[INFO] [1793681575.687884133] [panel_node]: pendant released
+[INFO] [1793681575.847875864] [panel_node]: pendant FWD
+[INFO] [1793681577.267899516] [panel_node]: pendant released
+[INFO] [1793681577.607890209] [panel_node]: pendant LEFT
+[INFO] [1793681578.167854436] [panel_node]: pendant released
+[INFO] [1793681579.527825970] [panel_node]: pendant LEFT
+[INFO] [1793681579.827855649] [panel_node]: pendant released
+[INFO] [1793681580.388048767] [panel_node]: pendant LEFT
+[INFO] [1793681580.547964249] [panel_node]: pendant released
+[INFO] [1793681581.087921972] [panel_node]: pendant FWD
+[INFO] [1793681582.147879259] [panel_node]: pendant released
+[INFO] [1793681582.547997974] [panel_node]: pendant FWD
+[INFO] [1793681583.048090911] [panel_node]: pendant released
+[INFO] [1793681631.327673885] [panel_node]: pendant LEFT
+[INFO] [1793681634.648510366] [panel_node]: pendant released
+[INFO] [1793681634.747816045] [panel_node]: pendant FWD
+[INFO] [1793681638.208415996] [panel_node]: pendant FWD RIGHT
+[INFO] [1793681640.587506225] [panel_node]: pendant released
+[INFO] [1793681641.488155865] [panel_node]: pendant RVS
+[INFO] [1793681642.047954212] [panel_node]: pendant RVS LEFT
+[INFO] [1793681642.447756977] [panel_node]: pendant RVS
+[INFO] [1793681642.887660360] [panel_node]: pendant RVS RIGHT
+[INFO] [1793681644.107987246] [panel_node]: pendant released
+[INFO] [1793681645.468246640] [panel_node]: pendant RIGHT
+[INFO] [1793681646.768238908] [panel_node]: pendant released
+[INFO] [1793681646.967709878] [panel_node]: pendant RVS
+[INFO] [1793681649.447221766] [panel_node]: pendant released
+[INFO] [1793681650.247970372] [panel_node]: pendant LEFT
+[INFO] [1793681651.407371717] [panel_node]: pendant released
+[INFO] [1793681652.267140469] [panel_node]: pendant RVS
+[INFO] [1793681652.968097579] [panel_node]: pendant released

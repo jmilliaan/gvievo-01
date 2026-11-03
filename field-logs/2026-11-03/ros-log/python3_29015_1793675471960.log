@@ -1,0 +1,184 @@
+[INFO] [1793675479.550000081] [survey_move]: move 8067456d: forward 2.00 m
+[INFO] [1793675488.085529855] [survey_move]: move 8067456d done (forward 2.00 m, achieved 1.993 m): SLAM corrected 5 cm / 0.0 deg over this move
+[INFO] [1793675542.328262577] [survey_move]: move 90786c4f: spin left 45 deg
+[INFO] [1793675548.585310641] [survey_move]: move 90786c4f done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675555.214669834] [survey_move]: move 9e8e69bf: forward 1.50 m
+[INFO] [1793675562.586592459] [survey_move]: move 9e8e69bf done (forward 1.50 m, achieved 1.490 m): SLAM corrected 3 cm / 0.0 deg over this move
+[INFO] [1793675563.538616631] [survey_move]: move 50bb3b71: spin left 45 deg
+[INFO] [1793675569.885402792] [survey_move]: move 50bb3b71 done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675597.896081872] [survey_move]: move c1eaca7b: forward 6.00 m
+[INFO] [1793675616.385221132] [survey_move]: move c1eaca7b done (forward 6.00 m, achieved 5.991 m): SLAM corrected 6 cm / 0.2 deg over this move
+[INFO] [1793675629.448051770] [survey_move]: move 84ee9301: spin right 45 deg
+[INFO] [1793675635.585032086] [survey_move]: move 84ee9301 done (spin right 45 deg, achieved -44.7 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675639.912377191] [survey_move]: move fb4311e4: forward 1.00 m
+[INFO] [1793675646.085805582] [survey_move]: move fb4311e4 done (forward 1.00 m, achieved 0.996 m): SLAM corrected 1 cm / 0.2 deg over this move
+[INFO] [1793675646.870281581] [survey_move]: move 9d377fa2: spin left 45 deg
+[INFO] [1793675652.936194254] [survey_move]: move 9d377fa2 done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675688.526857290] [survey_move]: move d87bbe29: forward 9.00 m
+[INFO] [1793675714.336057633] [survey_move]: move d87bbe29 done (forward 9.00 m, achieved 8.994 m): SLAM corrected 13 cm / 0.6 deg over this move
+[INFO] [1793675715.344001671] [survey_move]: move a19734ad: forward 9.00 m
+[INFO] [1793675741.285581890] [survey_move]: move a19734ad done (forward 9.00 m, achieved 8.995 m): SLAM corrected 7 cm / 0.4 deg over this move
+[INFO] [1793675742.974391927] [survey_move]: move 0bca12fc: spin left 45 deg
+[INFO] [1793675748.836449608] [survey_move]: move 0bca12fc done (spin left 45 deg, achieved 44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675749.531135807] [survey_move]: move 2b997413: forward 2.00 m
+[INFO] [1793675758.135714379] [survey_move]: move 2b997413 done (forward 2.00 m, achieved 1.991 m): SLAM corrected 3 cm / 0.2 deg over this move
+[INFO] [1793675759.550670979] [survey_move]: move 76dbc8f9: spin left 135 deg
+[INFO] [1793675772.985536406] [survey_move]: move 76dbc8f9 done (spin left 135 deg, achieved 134.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675796.898084238] [survey_move]: move c594f4b8: forward 6.00 m
+[INFO] [1793675815.436684970] [survey_move]: move c594f4b8 done (forward 6.00 m, achieved 5.993 m): SLAM corrected 8 cm / 0.9 deg over this move
+[INFO] [1793675819.544999893] [survey_move]: move 4e6002b8: forward 4.00 m
+[INFO] [1793675833.085616892] [survey_move]: move 4e6002b8 done (forward 4.00 m, achieved 3.995 m): SLAM corrected 5 cm / 0.2 deg over this move
+[INFO] [1793675834.947474052] [survey_move]: move 8a71e10c: spin right 45 deg
+[INFO] [1793675841.036082205] [survey_move]: move 8a71e10c done (spin right 45 deg, achieved -44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675841.823398230] [survey_move]: move 0be308f5: forward 1.00 m
+[INFO] [1793675847.936774105] [survey_move]: move 0be308f5 done (forward 1.00 m, achieved 0.996 m): SLAM corrected 5 cm / 0.2 deg over this move
+[INFO] [1793675849.540087978] [survey_move]: move f3737dc3: spin right 45 deg
+[INFO] [1793675855.385657888] [survey_move]: move f3737dc3 done (spin right 45 deg, achieved -44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793675856.339380855] [survey_move]: move a1b891a3: forward 9.00 m
+[INFO] [1793675882.084884965] [survey_move]: move a1b891a3 done (forward 9.00 m, achieved 8.990 m): SLAM corrected 14 cm / 0.2 deg over this move
+[INFO] [1793675885.089847523] [survey_move]: move 86b1c6a1: forward 9.00 m
+[INFO] [1793675910.885014553] [survey_move]: move 86b1c6a1 done (forward 9.00 m, achieved 8.992 m): SLAM corrected 11 cm / 0.6 deg over this move
+[INFO] [1793675918.471089628] [survey_move]: move 2fd7b960: forward 9.00 m
+[INFO] [1793675944.336479726] [survey_move]: move 2fd7b960 done (forward 9.00 m, achieved 8.995 m): SLAM corrected 7 cm / 0.0 deg over this move
+[INFO] [1793675955.280788567] [survey_move]: move bceac408: forward 9.00 m
+[INFO] [1793675981.136283321] [survey_move]: move bceac408 done (forward 9.00 m, achieved 8.994 m): SLAM corrected 9 cm / 0.2 deg over this move
+[INFO] [1793675983.728013350] [survey_move]: move 8ba158d2: forward 9.00 m
+[INFO] [1793676009.585544580] [survey_move]: move 8ba158d2 done (forward 9.00 m, achieved 8.992 m): SLAM corrected 6 cm / 0.0 deg over this move
+[INFO] [1793676011.574779606] [survey_move]: move cf726fdf: forward 9.00 m
+[INFO] [1793676037.385196424] [survey_move]: move cf726fdf done (forward 9.00 m, achieved 8.992 m): SLAM corrected 12 cm / 0.0 deg over this move
+[INFO] [1793676038.458834978] [survey_move]: move 03a96d54: forward 9.00 m
+[INFO] [1793676064.286843126] [survey_move]: move 03a96d54 done (forward 9.00 m, achieved 8.991 m): SLAM corrected 10 cm / 0.0 deg over this move
+[INFO] [1793676069.075708545] [survey_move]: move de70efe4: forward 9.00 m
+[INFO] [1793676094.884463904] [survey_move]: move de70efe4 done (forward 9.00 m, achieved 8.992 m): SLAM corrected 9 cm / 0.0 deg over this move
+[INFO] [1793676098.635056085] [survey_move]: move ea1759bb: forward 9.00 m
+[INFO] [1793676124.385920282] [survey_move]: move ea1759bb done (forward 9.00 m, achieved 8.990 m): SLAM corrected 10 cm / 0.2 deg over this move
+[INFO] [1793676129.317757323] [survey_move]: move 0e30eae9: forward 9.00 m
+[INFO] [1793676155.136101173] [survey_move]: move 0e30eae9 done (forward 9.00 m, achieved 8.994 m): SLAM corrected 11 cm / 0.0 deg over this move
+[INFO] [1793676157.867339891] [survey_move]: move 6d558e4d: forward 9.00 m
+[INFO] [1793676183.585486154] [survey_move]: move 6d558e4d done (forward 9.00 m, achieved 8.994 m): SLAM corrected 16 cm / 0.2 deg over this move
+[INFO] [1793676185.508381611] [survey_move]: move 09ad9a54: forward 9.00 m
+[INFO] [1793676211.285471071] [survey_move]: move 09ad9a54 done (forward 9.00 m, achieved 8.991 m): SLAM corrected 12 cm / 0.2 deg over this move
+[INFO] [1793676217.211178960] [survey_move]: move 0de67a38: forward 9.00 m
+[INFO] [1793676243.085469297] [survey_move]: move 0de67a38 done (forward 9.00 m, achieved 8.994 m): SLAM corrected 8 cm / 0.0 deg over this move
+[INFO] [1793676244.162500424] [survey_move]: move 257c09bb: forward 9.00 m
+[INFO] [1793676270.135676148] [survey_move]: move 257c09bb done (forward 9.00 m, achieved 8.993 m): SLAM corrected 7 cm / 0.0 deg over this move
+[INFO] [1793676271.497606605] [survey_move]: move e03c1082: forward 9.00 m
+[INFO] [1793676297.385292717] [survey_move]: move e03c1082 done (forward 9.00 m, achieved 8.991 m): SLAM corrected 6 cm / 0.0 deg over this move
+[INFO] [1793676306.026431134] [survey_move]: move cccd5f64: forward 3.00 m
+[INFO] [1793676317.136015482] [survey_move]: move cccd5f64 done (forward 3.00 m, achieved 2.992 m): SLAM corrected 3 cm / 0.0 deg over this move
+[INFO] [1793676317.841265028] [survey_move]: move b103d1ae: spin right 45 deg
+[INFO] [1793676324.034901949] [survey_move]: move b103d1ae done (spin right 45 deg, achieved -44.7 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676325.245160706] [survey_move]: move 82d3077e: forward 2.00 m
+[INFO] [1793676333.884270642] [survey_move]: move 82d3077e done (forward 2.00 m, achieved 1.990 m): SLAM corrected 3 cm / 0.4 deg over this move
+[INFO] [1793676336.430719189] [survey_move]: move d670f2be: forward 1.50 m
+[INFO] [1793676343.736677834] [survey_move]: move d670f2be done (forward 1.50 m, achieved 1.490 m): SLAM corrected 1 cm / 0.0 deg over this move
+[INFO] [1793676344.658008328] [survey_move]: move 019fb467: spin right 45 deg
+[INFO] [1793676350.736597162] [survey_move]: move 019fb467 done (spin right 45 deg, achieved -44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676354.489875598] [survey_move]: move 43a0235f: forward 9.00 m
+[INFO] [1793676380.385471718] [survey_move]: move 43a0235f done (forward 9.00 m, achieved 8.991 m): SLAM corrected 8 cm / 0.4 deg over this move
+[INFO] [1793676381.252973510] [survey_move]: move f36ebd0f: forward 9.00 m
+[INFO] [1793676407.185515163] [survey_move]: move f36ebd0f done (forward 9.00 m, achieved 8.992 m): SLAM corrected 5 cm / 0.2 deg over this move
+[INFO] [1793676408.974890482] [survey_move]: move d59d8b72: forward 9.00 m
+[INFO] [1793676434.884369206] [survey_move]: move d59d8b72 done (forward 9.00 m, achieved 8.992 m): SLAM corrected 8 cm / 0.4 deg over this move
+[INFO] [1793676443.023037460] [survey_move]: move 8f938a15: forward 4.00 m
+[INFO] [1793676456.534588388] [survey_move]: move 8f938a15 done (forward 4.00 m, achieved 3.992 m): SLAM corrected 5 cm / 0.2 deg over this move
+[INFO] [1793676457.935471221] [survey_move]: move 18b266e3: spin right 90 deg
+[INFO] [1793676468.137312478] [survey_move]: move 18b266e3 done (spin right 90 deg, achieved -89.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676470.654678846] [survey_move]: move 641b1f54: forward 3.00 m
+[INFO] [1793676481.736982204] [survey_move]: move 641b1f54 done (forward 3.00 m, achieved 2.995 m): SLAM corrected 8 cm / 0.6 deg over this move
+[INFO] [1793676482.661184958] [survey_move]: move 69681381: spin right 45 deg
+[INFO] [1793676488.736447354] [survey_move]: move 69681381 done (spin right 45 deg, achieved -44.7 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676491.596588566] [survey_move]: move 50053471: forward 2.50 m
+[INFO] [1793676501.437302172] [survey_move]: move 50053471 done (forward 2.50 m, achieved 2.495 m): SLAM corrected 2 cm / 0.4 deg over this move
+[INFO] [1793676502.169445989] [survey_move]: move a6cb0dd0: spin left 45 deg
+[INFO] [1793676508.335457895] [survey_move]: move a6cb0dd0 done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676509.519857636] [survey_move]: move b2863ce6: forward 5.00 m
+[INFO] [1793676525.436281226] [survey_move]: move b2863ce6 done (forward 5.00 m, achieved 4.991 m): SLAM corrected 7 cm / 0.4 deg over this move
+[INFO] [1793676536.292083017] [survey_move]: move 21220528: forward 2.00 m
+[INFO] [1793676544.934326818] [survey_move]: move 21220528 done (forward 2.00 m, achieved 1.991 m): SLAM corrected 2 cm / 0.0 deg over this move
+[INFO] [1793676550.226247822] [survey_move]: move fb3faeed: spin left 180 deg
+[INFO] [1793676568.084476491] [survey_move]: move fb3faeed done (spin left 180 deg, achieved 179.7 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676573.756347963] [survey_move]: move 22a3490c: forward 6.00 m
+[INFO] [1793676592.285351745] [survey_move]: move 22a3490c done (forward 6.00 m, achieved 5.993 m): SLAM corrected 8 cm / 1.0 deg over this move
+[INFO] [1793676595.975016105] [survey_move]: move 3d6933f2: forward 4.00 m
+[INFO] [1793676609.485244893] [survey_move]: move 3d6933f2 done (forward 4.00 m, achieved 3.992 m): SLAM corrected 3 cm / 0.2 deg over this move
+[INFO] [1793676613.041422890] [survey_move]: move 6d2a01f3: spin left 45 deg
+[INFO] [1793676619.084513442] [survey_move]: move 6d2a01f3 done (spin left 45 deg, achieved 44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676625.197196104] [survey_move]: move a5283c7f: forward 1.50 m
+[INFO] [1793676632.536097247] [survey_move]: move a5283c7f done (forward 1.50 m, achieved 1.490 m): SLAM corrected 2 cm / 0.2 deg over this move
+[INFO] [1793676642.157113632] [survey_move]: move c83a2062: forward 1.00 m
+[INFO] [1793676648.285414403] [survey_move]: move c83a2062 done (forward 1.00 m, achieved 0.990 m): SLAM corrected 1 cm / 0.0 deg over this move
+[INFO] [1793676649.141543243] [survey_move]: move 3191d065: spin left 45 deg
+[INFO] [1793676655.185231993] [survey_move]: move 3191d065 done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676656.460690487] [survey_move]: move 676545ba: forward 9.00 m
+[INFO] [1793676682.335768675] [survey_move]: move 676545ba done (forward 9.00 m, achieved 8.994 m): SLAM corrected 8 cm / 0.0 deg over this move
+[INFO] [1793676691.841988258] [survey_move]: move 44e998ac: forward 9.00 m
+[INFO] [1793676717.634326066] [survey_move]: move 44e998ac done (forward 9.00 m, achieved 8.991 m): SLAM corrected 8 cm / 0.4 deg over this move
+[INFO] [1793676725.489082135] [survey_move]: move 6207418f: forward 8.00 m
+[INFO] [1793676748.884594981] [survey_move]: move 6207418f done (forward 8.00 m, achieved 7.991 m): SLAM corrected 9 cm / 0.0 deg over this move
+[INFO] [1793676755.486154242] [survey_move]: move 74f8c1c1: forward 2.00 m
+[INFO] [1793676764.134463554] [survey_move]: move 74f8c1c1 done (forward 2.00 m, achieved 1.992 m): SLAM corrected 3 cm / 0.1 deg over this move
+[INFO] [1793676767.239423516] [survey_move]: move cbfe20d4: spin left 45 deg
+[INFO] [1793676773.436326959] [survey_move]: move cbfe20d4 done (spin left 45 deg, achieved 44.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676774.849736044] [survey_move]: move 13beed19: forward 2.00 m
+[INFO] [1793676783.385431885] [survey_move]: move 13beed19 done (forward 2.00 m, achieved 1.991 m): SLAM corrected 3 cm / 0.2 deg over this move
+[INFO] [1793676787.016780568] [survey_move]: move 2ebd5a67: spin left 45 deg
+[INFO] [1793676793.284485005] [survey_move]: move 2ebd5a67 done (spin left 45 deg, achieved 44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793676805.057883131] [survey_move]: move 389a6fc3: forward 8.00 m
+[INFO] [1793676828.436867819] [survey_move]: move 389a6fc3 done (forward 8.00 m, achieved 7.993 m): SLAM corrected 5 cm / 0.0 deg over this move
+[INFO] [1793676834.879175420] [survey_move]: move 3795c7c0: forward 10.00 m
+[INFO] [1793676863.284486733] [survey_move]: move 3795c7c0 done (forward 10.00 m, achieved 9.991 m): SLAM corrected 6 cm / 0.5 deg over this move
+[INFO] [1793676865.147434231] [survey_move]: move f213f7b2: forward 10.00 m
+[WARN] [1793676880.274461131] [survey_move]: move f213f7b2 aborted: pendant button pressed
+[INFO] [1793676892.604829384] [survey_move]: move 586ec1fd: forward 10.00 m
+[INFO] [1793676921.034426180] [survey_move]: move 586ec1fd done (forward 10.00 m, achieved 9.991 m): SLAM corrected 5 cm / 0.0 deg over this move
+[INFO] [1793676922.805955559] [survey_move]: move 84f27e08: forward 10.00 m
+[INFO] [1793676951.234654136] [survey_move]: move 84f27e08 done (forward 10.00 m, achieved 9.993 m): SLAM corrected 9 cm / 0.3 deg over this move
+[INFO] [1793676952.691106513] [survey_move]: move 9963b1da: forward 10.00 m
+[INFO] [1793676981.184579757] [survey_move]: move 9963b1da done (forward 10.00 m, achieved 9.994 m): SLAM corrected 8 cm / 0.1 deg over this move
+[INFO] [1793676982.081002191] [survey_move]: move 1bbbb51c: forward 10.00 m
+[INFO] [1793677010.434625830] [survey_move]: move 1bbbb51c done (forward 10.00 m, achieved 9.992 m): SLAM corrected 1 cm / 0.5 deg over this move
+[INFO] [1793677011.553050499] [survey_move]: move 7a7635a5: forward 10.00 m
+[INFO] [1793677039.934650121] [survey_move]: move 7a7635a5 done (forward 10.00 m, achieved 9.991 m): SLAM corrected 9 cm / 0.0 deg over this move
+[INFO] [1793677044.876329718] [survey_move]: move 4851e8ce: forward 10.00 m
+[INFO] [1793677073.234507372] [survey_move]: move 4851e8ce done (forward 10.00 m, achieved 9.990 m): SLAM corrected 9 cm / 0.1 deg over this move
+[INFO] [1793677103.156252495] [survey_move]: move 262cc70a: forward 10.00 m
+[INFO] [1793677131.534911038] [survey_move]: move 262cc70a done (forward 10.00 m, achieved 9.991 m): SLAM corrected 11 cm / 0.0 deg over this move
+[INFO] [1793677138.681327309] [survey_move]: move 212577e7: forward 10.00 m
+[INFO] [1793677167.184432758] [survey_move]: move 212577e7 done (forward 10.00 m, achieved 9.995 m): SLAM corrected 6 cm / 0.2 deg over this move
+[INFO] [1793677175.381877188] [survey_move]: move ef2c56a6: forward 10.00 m
+[INFO] [1793677203.884475365] [survey_move]: move ef2c56a6 done (forward 10.00 m, achieved 9.994 m): SLAM corrected 14 cm / 0.1 deg over this move
+[INFO] [1793677224.781505791] [survey_move]: move 439d91dd: forward 6.00 m
+[INFO] [1793677243.235285618] [survey_move]: move 439d91dd done (forward 6.00 m, achieved 5.991 m): SLAM corrected 7 cm / 1.0 deg over this move
+[INFO] [1793677249.133564965] [survey_move]: move 845175e1: spin right 45 deg
+[INFO] [1793677255.134859148] [survey_move]: move 845175e1 done (spin right 45 deg, achieved -44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677256.410336363] [survey_move]: move 3958e3fb: spin right 45 deg
+[INFO] [1793677262.234481776] [survey_move]: move 3958e3fb done (spin right 45 deg, achieved -44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677269.151843930] [survey_move]: move 97b273a6: forward 10.00 m
+[INFO] [1793677297.584798227] [survey_move]: move 97b273a6 done (forward 10.00 m, achieved 9.991 m): SLAM corrected 12 cm / 0.0 deg over this move
+[INFO] [1793677303.422978808] [survey_move]: move 3e3c7836: forward 5.00 m
+[INFO] [1793677319.484579505] [survey_move]: move 3e3c7836 done (forward 5.00 m, achieved 4.995 m): SLAM corrected 5 cm / 0.0 deg over this move
+[INFO] [1793677321.230429984] [survey_move]: move 2b7d9e3b: spin left 45 deg
+[INFO] [1793677327.434749587] [survey_move]: move 2b7d9e3b done (spin left 45 deg, achieved 44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677345.785509395] [survey_move]: move ac0a2cc4: forward 3.00 m
+[INFO] [1793677356.884565863] [survey_move]: move ac0a2cc4 done (forward 3.00 m, achieved 2.993 m): SLAM corrected 4 cm / 0.0 deg over this move
+[INFO] [1793677364.789324459] [survey_move]: move 6752b6b7: spin left 45 deg
+[INFO] [1793677370.685352972] [survey_move]: move 6752b6b7 done (spin left 45 deg, achieved 44.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677375.426870859] [survey_move]: move a281416c: forward 9.00 m
+[INFO] [1793677401.284795443] [survey_move]: move a281416c done (forward 9.00 m, achieved 8.991 m): SLAM corrected 5 cm / 0.2 deg over this move
+[INFO] [1793677412.273268794] [survey_move]: move 33eb073c: forward 6.00 m
+[INFO] [1793677430.736554249] [survey_move]: move 33eb073c done (forward 6.00 m, achieved 5.992 m): SLAM corrected 3 cm / 0.0 deg over this move
+[INFO] [1793677434.308218180] [survey_move]: move 4d9905ae: spin left 45 deg
+[INFO] [1793677440.484569246] [survey_move]: move 4d9905ae done (spin left 45 deg, achieved 44.7 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677451.227622108] [survey_move]: move 793a9b0e: forward 3.00 m
+[INFO] [1793677462.284814131] [survey_move]: move 793a9b0e done (forward 3.00 m, achieved 2.992 m): SLAM corrected 5 cm / 0.0 deg over this move
+[INFO] [1793677472.254314680] [survey_move]: move dab7d653: spin right 180 deg
+[INFO] [1793677490.484540918] [survey_move]: move dab7d653 done (spin right 180 deg, achieved -179.5 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677494.174391586] [survey_move]: move 0c8bd60e: spin left 90 deg
+[INFO] [1793677504.484555695] [survey_move]: move 0c8bd60e done (spin left 90 deg, achieved 89.6 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677518.129007859] [survey_move]: move 60cdf4e6: reverse 4.00 m
+[INFO] [1793677531.736411244] [survey_move]: move 60cdf4e6 done (reverse 4.00 m, achieved -3.993 m): SLAM corrected 2 cm / 0.2 deg over this move
+[INFO] [1793677536.396569654] [survey_move]: move 65451059: spin left 45 deg
+[INFO] [1793677542.334696374] [survey_move]: move 65451059 done (spin left 45 deg, achieved 44.9 deg): SLAM corrected 0 cm / 0.0 deg over this move
+[INFO] [1793677547.313372349] [survey_move]: move e0261c97: reverse 1.50 m
+[INFO] [1793677554.736089611] [survey_move]: move e0261c97 done (reverse 1.50 m, achieved -1.493 m): SLAM corrected 2 cm / 0.2 deg over this move

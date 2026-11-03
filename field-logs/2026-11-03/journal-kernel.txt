@@ -1,0 +1,1123 @@
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Linux version 6.8.0-138-generic (buildd@lcy02-amd64-008) (x86_64-linux-gnu-gcc-12 (Ubuntu 12.3.0-1ubuntu1~22.04.3) 12.3.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #138~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Aug  7 13:43:15 UTC  (Ubuntu 6.8.0-138.138~22.04.1-generic 6.8.12)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Command line: BOOT_IMAGE=/vmlinuz-6.8.0-138-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv ro
+2026-11-03T13:07:57+0700 gvipc-ce kernel: KERNEL supported cpus:
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   Intel GenuineIntel
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   AMD AuthenticAMD
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   Hygon HygonGenuine
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   Centaur CentaurHauls
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   zhaoxin   Shanghai  
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/split lock detection: #AC: crashing the kernel on kernel split_locks and warning on user-space split_locks
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-provided physical RAM map:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009dfff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000000009e000-0x000000000009efff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000000009f000-0x000000000009ffff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000000a0000-0x00000000000fffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000000100000-0x000000004541ffff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000045420000-0x0000000045420fff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000045421000-0x000000004545efff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000004545f000-0x000000004545ffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000045460000-0x00000000720edfff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000720ee000-0x00000000751edfff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000751ee000-0x00000000752cefff] ACPI data
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000752cf000-0x000000007538efff] ACPI NVS
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000007538f000-0x0000000075ffefff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000075fff000-0x0000000075ffffff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000076000000-0x0000000079ffffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000007aa00000-0x000000007abfffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x000000007b000000-0x00000000803fffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000c0000000-0x00000000cfffffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000fe000000-0x00000000fe010fff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000fec00000-0x00000000fec00fff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000fed00000-0x00000000fed00fff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000fed20000-0x00000000fed7ffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000fee00000-0x00000000fee00fff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x00000000ff000000-0x00000000ffffffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: BIOS-e820: [mem 0x0000000100000000-0x000000027fbfffff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NX (Execute Disable) protection: active
+2026-11-03T13:07:57+0700 gvipc-ce kernel: APIC: Static calls initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: EFI v2.8 by American Megatrends
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: ACPI=0x7534b000 ACPI 2.0=0x7534b014 TPMFinalLog=0x7531a000 SMBIOS=0x75ccd000 SMBIOS 3.0=0x75ccc000 MEMATTR=0x6c57d418 ESRT=0x6f0a4798 MOKvar=0x75cd1000 TPMEventLog=0x75217018 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Remove mem70: MMIO range=[0xc0000000-0xcfffffff] (256MB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: remove [mem 0xc0000000-0xcfffffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Not removing mem71: MMIO range=[0xfe000000-0xfe010fff] (68KB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Not removing mem72: MMIO range=[0xfec00000-0xfec00fff] (4KB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Not removing mem73: MMIO range=[0xfed00000-0xfed00fff] (4KB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Not removing mem75: MMIO range=[0xfee00000-0xfee00fff] (4KB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Remove mem76: MMIO range=[0xff000000-0xffffffff] (16MB) from e820 map
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: remove [mem 0xff000000-0xffffffff] reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: secureboot: Secure boot disabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: SMBIOS 3.5.0 present.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMI: INTEL Default string/BKHD-1264-SFP, BIOS 5.27 02/24/2025
+2026-11-03T13:07:57+0700 gvipc-ce kernel: tsc: Detected 800.000 MHz processor
+2026-11-03T13:07:57+0700 gvipc-ce kernel: tsc: Detected 806.400 MHz TSC
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: remove [mem 0x000a0000-0x000fffff] usable
+2026-11-03T13:07:57+0700 gvipc-ce kernel: last_pfn = 0x27fc00 max_arch_pfn = 0x400000000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: MTRR map: 6 entries (3 fixed + 3 variable; max 23), built from 10 variable MTRRs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/PAT: Configuration [0-7]: WB  WC  UC- UC  WB  WP  UC- WT  
+2026-11-03T13:07:57+0700 gvipc-ce kernel: last_pfn = 0x76000 max_arch_pfn = 0x400000000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: esrt: Reserving ESRT space from 0x000000006f0a4798 to 0x000000006f0a4848.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: update [mem 0x6f0a4000-0x6f0a4fff] usable ==> reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Using GB pages for direct mapping
+2026-11-03T13:07:57+0700 gvipc-ce kernel: secureboot: Secure boot disabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAMDISK: [mem 0x59d62000-0x64699fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Early table checksum verification disabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: RSDP 0x000000007534B014 000024 (v02 ALASKA)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: XSDT 0x000000007534A728 000104 (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: FACP 0x00000000752CC000 000114 (v06 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: DSDT 0x0000000075256000 07534A (v02 ALASKA A M I    01072009 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: FACS 0x000000007538E000 000040
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: FIDT 0x0000000075255000 00009C (v01 ALASKA A M I    01072009 AMI  00010013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x00000000752CE000 00038C (v02 PmaxDv Pmax_Dev 00000001 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007524F000 005D0B (v02 CpuRef CpuSsdt  00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007524C000 002935 (v02 SaSsdt SaSsdt   00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075248000 0033D3 (v02 INTEL  IgfxSsdt 00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007523A000 00D487 (v02 INTEL  TcssSsdt 00001000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: HPET 0x00000000752CD000 000038 (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: APIC 0x0000000075239000 0001DC (v05 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: MCFG 0x0000000075238000 00003C (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075236000 001F1A (v02 ALASKA Ther_Rvp 00001000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: UEFI 0x0000000075301000 000048 (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: NHLT 0x0000000075235000 00002D (v00 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LPIT 0x0000000075234000 0000CC (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075230000 002A83 (v02 ALASKA PtidDevc 00001000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007522D000 002357 (v02 ALASKA TbtTypeC 00000000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: DBGP 0x000000007522C000 000034 (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: DBG2 0x000000007522B000 000054 (v00 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075229000 001919 (v02 ALASKA UsbCTabl 00001000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: DMAR 0x0000000075228000 000088 (v02 INTEL  EDK2     00000002      01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: FPDT 0x0000000075227000 000044 (v01 ALASKA A M I    01072009 AMI  01000013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075226000 00066B (v02 INTEL  xh_adl_N 00000000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x0000000075222000 003AEA (v02 SocGpe SocGpe   00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007521E000 0039DA (v02 SocCmn SocCmn   00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0x000000007521D000 000144 (v02 Intel  ADebTabl 00001000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: TPM2 0x000000007521C000 00004C (v04 ALASKA A M I    00000001 AMI  00000000)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PHAT 0x000000007521B000 0005F1 (v01 ALASKA A M I    00000005 MSFT 0100000D)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: WSMT 0x0000000075233000 000028 (v01 ALASKA A M I    01072009 AMI  00010013)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving FACP table memory at [mem 0x752cc000-0x752cc113]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving DSDT table memory at [mem 0x75256000-0x752cb349]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving FACS table memory at [mem 0x7538e000-0x7538e03f]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving FIDT table memory at [mem 0x75255000-0x7525509b]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x752ce000-0x752ce38b]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7524f000-0x75254d0a]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7524c000-0x7524e934]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75248000-0x7524b3d2]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7523a000-0x75247486]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving HPET table memory at [mem 0x752cd000-0x752cd037]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving APIC table memory at [mem 0x75239000-0x752391db]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving MCFG table memory at [mem 0x75238000-0x7523803b]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75236000-0x75237f19]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving UEFI table memory at [mem 0x75301000-0x75301047]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving NHLT table memory at [mem 0x75235000-0x7523502c]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving LPIT table memory at [mem 0x75234000-0x752340cb]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75230000-0x75232a82]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7522d000-0x7522f356]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving DBGP table memory at [mem 0x7522c000-0x7522c033]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving DBG2 table memory at [mem 0x7522b000-0x7522b053]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75229000-0x7522a918]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving DMAR table memory at [mem 0x75228000-0x75228087]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving FPDT table memory at [mem 0x75227000-0x75227043]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75226000-0x7522666a]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x75222000-0x75225ae9]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7521e000-0x752219d9]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving SSDT table memory at [mem 0x7521d000-0x7521d143]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving TPM2 table memory at [mem 0x7521c000-0x7521c04b]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving PHAT table memory at [mem 0x7521b000-0x7521b5f0]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Reserving WSMT table memory at [mem 0x75233000-0x75233027]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: No NUMA configuration found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Faking a node at [mem 0x0000000000000000-0x000000027fbfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NODE_DATA(0) allocated [mem 0x27fbd5000-0x27fbfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Zone ranges:
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   DMA32    [mem 0x0000000001000000-0x00000000ffffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   Normal   [mem 0x0000000100000000-0x000000027fbfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   Device   empty
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Movable zone start for each node
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Early memory node ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000000001000-0x000000000009dfff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x000000000009f000-0x000000000009ffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000000100000-0x000000004541ffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000045421000-0x000000004545efff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000045460000-0x00000000720edfff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000075fff000-0x0000000075ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   node   0: [mem 0x0000000100000000-0x000000027fbfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Initmem setup node 0 [mem 0x0000000000001000-0x000000027fbfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA: 1 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA: 1 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA: 96 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA32: 1 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA32: 1 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone DMA32: 16145 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone Normal: 8192 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: On node 0, zone Normal: 1024 pages in unavailable ranges
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Reserving Intel graphics memory at [mem 0x7c800000-0x803fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PM-Timer IO Port: 0x1808
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x01] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x02] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x03] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x04] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x05] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x06] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x07] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x08] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x09] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0a] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0b] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0c] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0d] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0e] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x0f] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x10] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x11] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x12] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x13] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x14] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x15] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x16] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x17] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: LAPIC_NMI (acpi_id[0x00] high edge lint[0x1])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: IOAPIC[0]: apic_id 2, version 32, address 0xfec00000, GSI 0-119
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 0 global_irq 2 dfl dfl)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 9 global_irq 9 high level)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Using ACPI (MADT) for SMP configuration information
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: HPET id: 0x8086a201 base: 0xfed00000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: TSC deadline timer available
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smpboot: Allowing 8 CPUs, 0 hotplug CPUs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x00000000-0x00000fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x0009e000-0x0009efff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x000a0000-0x000fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x45420000-0x45420fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x4545f000-0x4545ffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x6f0a4000-0x6f0a4fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x720ee000-0x75ffefff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: hibernation: Registered nosave memory: [mem 0x76000000-0xffffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: [mem 0x80400000-0xfdffffff] available for PCI devices
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Booting paravirtualized kernel on bare hardware
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1910969940391419 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: setup_percpu: NR_CPUS:8192 nr_cpumask_bits:8 nr_cpu_ids:8 nr_node_ids:1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: percpu: Embedded 86 pages/cpu s229376 r8192 d114688 u524288
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pcpu-alloc: s229376 r8192 d114688 u524288 alloc=1*2097152
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pcpu-alloc: [0] 0 1 2 3 [0] 4 5 6 7 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Kernel command line: BOOT_IMAGE=/vmlinuz-6.8.0-138-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv ro
+2026-11-03T13:07:57+0700 gvipc-ce kernel: random: crng init done
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Dentry cache hash table entries: 1048576 (order: 11, 8388608 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Inode-cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Fallback order for Node 0: 0 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Built 1 zonelists, mobility grouping on.  Total pages: 2006905
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Policy zone: Normal
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mem auto-init: stack:all(zero), heap alloc:on, heap free:off
+2026-11-03T13:07:57+0700 gvipc-ce kernel: software IO TLB: area num 8.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Memory: 7653880K/8155692K available (22528K kernel code, 4438K rwdata, 14008K rodata, 4928K init, 4784K bss, 501552K reserved, 0K cma-reserved)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=8, Nodes=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ftrace: allocating 58339 entries in 228 pages
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ftrace: allocated 228 pages with 4 groups
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Dynamic Preempt: voluntary
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu: Preemptible hierarchical RCU implementation.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu:         RCU restricting CPUs from NR_CPUS=8192 to nr_cpu_ids=8.
+2026-11-03T13:07:57+0700 gvipc-ce kernel:         Trampoline variant of Tasks RCU enabled.
+2026-11-03T13:07:57+0700 gvipc-ce kernel:         Rude variant of Tasks RCU enabled.
+2026-11-03T13:07:57+0700 gvipc-ce kernel:         Tracing variant of Tasks RCU enabled.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu: RCU calculated value of scheduler-enlistment delay is 100 jiffies.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=8
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RCU Tasks: Setting shift to 3 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=8.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RCU Tasks Rude: Setting shift to 3 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=8.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RCU Tasks Trace: Setting shift to 3 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=8.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NR_IRQS: 524544, nr_irqs: 2048, preallocated irqs: 16
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu: srcu_init: Setting srcu_struct sizes based on contention.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Console: colour dummy device 80x25
+2026-11-03T13:07:57+0700 gvipc-ce kernel: printk: legacy console [tty0] enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Core revision 20230628
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: hpet: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 99544814920 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: APIC: Switch to symmetric I/O mode setup
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: Host address width 39
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: DRHD base: 0x000000fed90000 flags: 0x0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: dmar0: reg_base_addr fed90000 ver 4:0 cap 1c0000c40660462 ecap 29a00f0505e
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: DRHD base: 0x000000fed91000 flags: 0x1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: dmar1: reg_base_addr fed91000 ver 5:0 cap d2008c40660462 ecap f050da
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: RMRR base: 0x0000007c000000 end: 0x000000803fffff
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR-IR: IOAPIC id 2 under DRHD base  0xfed91000 IOMMU 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR-IR: HPET id 0 under DRHD base 0xfed91000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR-IR: Queued invalidation will be enabled to support x2apic and Intr-remapping.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR-IR: Enabled IRQ remapping in x2apic mode
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x2apic enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: APIC: Switched APIC routing to: cluster x2apic
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ..TIMER: vector=0x30 apic1=0 pin1=2 apic2=-1 pin2=-1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0xb9fb05486c, max_idle_ns: 440795231721 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Calibrating delay loop (skipped), value calculated using timer frequency.. 1612.80 BogoMIPS (lpj=806400)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: CPU0: Thermal monitoring enabled (TM1)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/cpu: User Mode Instruction Prevention (UMIP) activated
+2026-11-03T13:07:57+0700 gvipc-ce kernel: process: using mwait in idle threads
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Spectre V2 : Mitigation: Enhanced / Automatic IBRS
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Spectre V2 : mitigation: Enabling conditional Indirect Branch Prediction Barrier
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Register File Data Sampling: Mitigation: Clear Register File
+2026-11-03T13:07:57+0700 gvipc-ce kernel: VMSCAPE: Mitigation: IBPB before exit to userspace
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Supporting XSAVE feature 0x200: 'Protection Keys User registers'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Supporting XSAVE feature 0x800: 'Control-flow User registers'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: xstate_offset[9]:  832, xstate_sizes[9]:    8
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: xstate_offset[11]:  840, xstate_sizes[11]:   16
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/fpu: Enabled xstate features 0xa07, context size is 856 bytes, using 'compacted' format.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Freeing SMP alternatives memory: 48K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pid_max: default: 32768 minimum: 301
+2026-11-03T13:07:57+0700 gvipc-ce kernel: LSM: initializing lsm=lockdown,capability,landlock,yama,apparmor,integrity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: landlock: Up and running.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Yama: becoming mindful.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: AppArmor: AppArmor initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Mount-cache hash table entries: 16384 (order: 5, 131072 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Mountpoint-cache hash table entries: 16384 (order: 5, 131072 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smpboot: CPU0: Intel(R) Core(TM) i3-N300 (family: 0x6, model: 0xbe, stepping: 0x0)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Performance Events: XSAVE Architectural LBR, PEBS fmt4+-baseline, PEBS-via-PT,  AnyThread deprecated, Gracemont events, 32-deep LBR, full-width counters, Intel PMU driver.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... version:                5
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... bit width:              48
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... generic registers:      6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... value mask:             0000ffffffffffff
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... max period:             00007fffffffffff
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... fixed-purpose events:   3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ... event mask:             000000070000003f
+2026-11-03T13:07:57+0700 gvipc-ce kernel: signal: max sigframe size: 3632
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Estimated ratio of average max frequency by base frequency (times 1024): 4480
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu: Hierarchical SRCU implementation.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rcu:         Max phase no-delay instances is 400.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NMI watchdog: Enabled. Permanently consumes one hw-PMU counter.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smp: Bringing up secondary CPUs ...
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smpboot: x86: Booting SMP configuration:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: .... node  #0, CPUs:      #1 #2 #3 #4 #5 #6 #7
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smp: Brought up 1 node, 8 CPUs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smpboot: Max logical packages: 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: smpboot: Total of 8 processors activated (12902.40 BogoMIPS)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: devtmpfs: initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/mm: Memory block size: 128MB
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PM: Registering ACPI NVS region [mem 0x752cf000-0x7538efff] (786432 bytes)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1911260446275000 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: futex hash table entries: 2048 (order: 5, 131072 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pinctrl core: initialized pinctrl subsystem
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM: RTC time: 06:07:51, date: 2026-11-03
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_NETLINK/PF_ROUTE protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMA: preallocated 1024 KiB GFP_KERNEL pool for atomic allocations
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMA: preallocated 1024 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMA: preallocated 1024 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+2026-11-03T13:07:57+0700 gvipc-ce kernel: audit: initializing netlink subsys (disabled)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: audit: type=2000 audit(1793686071.045:1): state=initialized audit_enabled=0 res=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal_sys: Registered thermal governor 'fair_share'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal_sys: Registered thermal governor 'bang_bang'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal_sys: Registered thermal governor 'step_wise'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal_sys: Registered thermal governor 'user_space'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal_sys: Registered thermal governor 'power_allocator'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cpuidle: using governor ladder
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cpuidle: using governor menu
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efi: Freeing EFI boot services memory: 65704K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI FADT declares the system doesn't support PCIe ASPM, so disable it
+2026-11-03T13:07:57+0700 gvipc-ce kernel: acpiphp: ACPI Hot Plug PCI Controller Driver version: 0.5
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: ECAM [mem 0xc0000000-0xcfffffff] (base 0xc0000000) for domain 0000 [bus 00-ff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: Using configuration type 1 for base access
+2026-11-03T13:07:57+0700 gvipc-ce kernel: kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+2026-11-03T13:07:57+0700 gvipc-ce kernel: HugeTLB: 16380 KiB vmemmap can be freed for a 1.00 GiB page
+2026-11-03T13:07:57+0700 gvipc-ce kernel: HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+2026-11-03T13:07:57+0700 gvipc-ce kernel: HugeTLB: 28 KiB vmemmap can be freed for a 2.00 MiB page
+2026-11-03T13:07:57+0700 gvipc-ce kernel: fbcon: Taking over console
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Added _OSI(Module Device)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Added _OSI(Processor Device)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Added _OSI(Processor Aggregator Device)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: 14 ACPI AML tables successfully acquired and loaded
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF89258124E000 000394 (v02 PmRef  Cpu0Cst  00003001 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581BE2A00 000161 (v02 PmRef  Cpu0Ist  00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581BE2800 0001AB (v02 PmRef  Cpu0Psd  00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581DEA000 0004B5 (v02 PmRef  Cpu0Hwp  00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581DF2000 001BAF (v02 PmRef  ApIst    00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581DF0000 001038 (v02 PmRef  ApHwp    00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581DF6000 001349 (v02 PmRef  ApPsd    00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Dynamic OEM Table Load:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: SSDT 0xFFFF892581DC8000 000FBB (v02 PmRef  ApCst    00003000 INTL 20200717)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: _OSC evaluated successfully for all CPUs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Interpreter enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PM: (supports S0 S5)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Using IOAPIC for interrupt routing
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: Ignoring E820 reservations for host bridge windows
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: Enabled 7 GPEs in block 00 to 7F
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_SB_.PC00.CNVW.WRST: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_SB_.PC00.TBT0: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_SB_.PC00.TBT1: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_TZ_.FN00: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_TZ_.FN01: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_TZ_.FN02: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_TZ_.FN03: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \_TZ_.FN04: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: \PIN_: New power resource
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI Root Bridge [PC00] (domain 0000 [bus 00-fe])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: acpi PNP0A08:00: _OSC: OS supports [ExtendedConfig ASPM ClockPM Segments MSI EDR HPX-Type3]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: acpi PNP0A08:00: _OSC: platform does not support [PCIeHotplug SHPCHotplug PME AER]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: acpi PNP0A08:00: _OSC: OS now controls [PCIeCapability LTR DPC]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: acpi PNP0A08:00: FADT indicates ASPM is unsupported, using BIOS configuration
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI host bridge to bus 0000:00
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [io  0x0000-0x0cf7 window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [io  0x0d00-0xffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [mem 0x000a0000-0x000bffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [mem 0x000e0000-0x000fffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [mem 0x80400000-0xbfffffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [mem 0x4000000000-0x7fffffffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: root bus resource [bus 00-fe]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:00.0: [8086:4617] type 00 class 0x060000 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: [8086:46d0] type 00 class 0x030000 PCIe Root Complex Integrated Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: BAR 0 [mem 0x60e8000000-0x60e8ffffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: BAR 2 [mem 0x4000000000-0x400fffffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: BAR 4 [io  0x5000-0x503f]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: DMAR: Skip IOMMU disabling for graphics
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: VF BAR 0 [mem 0x60e1000000-0x60e1ffffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: VF BAR 0 [mem 0x60e1000000-0x60e7ffffff 64bit]: contains BAR 0 for 7 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: VF BAR 2 [mem 0x6000000000-0x601fffffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: VF BAR 2 [mem 0x6000000000-0x60dfffffff 64bit pref]: contains BAR 2 for 7 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:08.0: [8086:467e] type 00 class 0x088000 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:08.0: BAR 0 [mem 0x60e912b000-0x60e912bfff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:0d.0: [8086:464e] type 00 class 0x0c0330 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:0d.0: BAR 0 [mem 0x60e9110000-0x60e911ffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:0d.0: PME# supported from D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.0: [8086:54ed] type 00 class 0x0c0330 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.0: BAR 0 [mem 0x60e9100000-0x60e910ffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.0: PME# supported from D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.2: [8086:54ef] type 00 class 0x050000 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.2: BAR 0 [mem 0x60e9124000-0x60e9127fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.2: BAR 2 [mem 0x60e912a000-0x60e912afff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:16.0: [8086:54e0] type 00 class 0x078000 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:16.0: BAR 0 [mem 0x60e9129000-0x60e9129fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:16.0: PME# supported from D3hot
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: [8086:54b8] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: PCI bridge to [bus 01]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0:   bridge window [mem 0x81200000-0x813fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: [8086:54b9] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: PCI bridge to [bus 02]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1:   bridge window [mem 0x81000000-0x811fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: [8086:54ba] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: PCI bridge to [bus 03]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2:   bridge window [mem 0x80e00000-0x80ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: [8086:54bb] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: PCI bridge to [bus 04-05]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3:   bridge window [mem 0x81500000-0x815fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: [8086:54be] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: PCI bridge to [bus 06]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6:   bridge window [io  0x4000-0x4fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6:   bridge window [mem 0x80400000-0x80dfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: [8086:54b0] type 01 class 0x060400 PCIe Root Port
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: PCI bridge to [bus 07]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [io  0x3000-0x3fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [mem 0x81400000-0x814fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [mem 0x60e0000000-0x60e03fffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: PTM enabled (root), 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.0: [8086:5481] type 00 class 0x060100 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.3: [8086:54c8] type 00 class 0x040100 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.3: BAR 0 [mem 0x60e9120000-0x60e9123fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.3: BAR 4 [mem 0x60e9000000-0x60e90fffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.3: PME# supported from D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.4: [8086:54a3] type 00 class 0x0c0500 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.4: BAR 0 [mem 0x60e9128000-0x60e91280ff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.4: BAR 4 [io  0xefa0-0xefbf]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.5: [8086:54a4] type 00 class 0x0c8000 conventional PCI endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.5: BAR 0 [mem 0xfe010000-0xfe010fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:01:00.0: [8086:125c] type 00 class 0x020000 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:01:00.0: BAR 0 [mem 0x81200000-0x812fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:01:00.0: BAR 3 [mem 0x81300000-0x81303fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: PCI bridge to [bus 01]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:02:00.0: [8086:125c] type 00 class 0x020000 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:02:00.0: BAR 0 [mem 0x81000000-0x810fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:02:00.0: BAR 3 [mem 0x81100000-0x81103fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:02:00.0: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: PCI bridge to [bus 02]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:03:00.0: [8086:125c] type 00 class 0x020000 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:03:00.0: BAR 0 [mem 0x80e00000-0x80efffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:03:00.0: BAR 3 [mem 0x80f00000-0x80f03fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:03:00.0: PME# supported from D0 D3hot D3cold
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: PCI bridge to [bus 03]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: [1ed0:2283] type 00 class 0x010802 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: BAR 0 [mem 0x81550000-0x81553fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: ROM [mem 0x81500000-0x8150ffff pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: VF BAR 0 [mem 0x81510000-0x81513fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: VF BAR 0 [mem 0x81510000-0x8154ffff 64bit]: contains BAR 0 for 16 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: 7.876 Gb/s available PCIe bandwidth, limited by 8.0 GT/s PCIe x1 link at 0000:00:1c.3 (capable of 31.504 Gb/s with 8.0 GT/s PCIe x4 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: PCI bridge to [bus 04-05]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: PCI bridge to [bus 06]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: [8086:10fb] type 00 class 0x020000 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: BAR 0 [mem 0x81420000-0x8143ffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: BAR 2 [io  0x3020-0x303f]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: BAR 4 [mem 0x81444000-0x81447fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: PME# supported from D0 D3hot
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: VF BAR 0 [mem 0x60e0300000-0x60e0303fff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: VF BAR 0 [mem 0x60e0300000-0x60e03fffff 64bit pref]: contains BAR 0 for 64 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: VF BAR 3 [mem 0x60e0200000-0x60e0203fff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: VF BAR 3 [mem 0x60e0200000-0x60e02fffff 64bit pref]: contains BAR 3 for 64 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: 16.000 Gb/s available PCIe bandwidth, limited by 5.0 GT/s PCIe x4 link at 0000:00:1d.0 (capable of 32.000 Gb/s with 5.0 GT/s PCIe x8 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: [8086:10fb] type 00 class 0x020000 PCIe Endpoint
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: BAR 0 [mem 0x81400000-0x8141ffff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: BAR 2 [io  0x3000-0x301f]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: BAR 4 [mem 0x81440000-0x81443fff 64bit]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: PME# supported from D0 D3hot
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: VF BAR 0 [mem 0x60e0100000-0x60e0103fff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: VF BAR 0 [mem 0x60e0100000-0x60e01fffff 64bit pref]: contains BAR 0 for 64 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: VF BAR 3 [mem 0x60e0000000-0x60e0003fff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: VF BAR 3 [mem 0x60e0000000-0x60e00fffff 64bit pref]: contains BAR 3 for 64 VFs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: PCI bridge to [bus 07]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKA configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKB configured for IRQ 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKC configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKD configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKE configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKF configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKG configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: PCI: Interrupt link LNKH configured for IRQ 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: iommu: Default domain type: Translated
+2026-11-03T13:07:57+0700 gvipc-ce kernel: iommu: DMA domain TLB invalidation policy: lazy mode
+2026-11-03T13:07:57+0700 gvipc-ce kernel: SCSI subsystem initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: libata version 3.00 loaded.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: bus type USB registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new interface driver usbfs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new interface driver hub
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new device driver usb
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pps_core: LinuxPPS API ver. 1 registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PTP clock support registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EDAC MC: Ver: 3.0.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: efivars: Registered efivars operations
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NetLabel: Initializing
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NetLabel:  domain hash size = 128
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NetLabel:  unlabeled traffic allowed by default
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mctp: management component transport protocol core
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_MCTP protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: Using ACPI for IRQ routing
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: pci_cache_line_size set to 64 bytes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.5: BAR 0 [mem 0xfe010000-0xfe010fff]: can't claim; no compatible bridge window
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x0009e000-0x0009ffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x45420000-0x47ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x4545f000-0x47ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x6f0a4000-0x6fffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x720ee000-0x73ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x76000000-0x77ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: e820: reserve RAM buffer [mem 0x27fc00000-0x27fffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: vgaarb: setting as boot VGA device
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: vgaarb: bridge control possible
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: vgaarb: VGA device added: decodes=io+mem,owns=mem,locks=none
+2026-11-03T13:07:57+0700 gvipc-ce kernel: vgaarb: loaded
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hpet0: at MMIO 0xfed00000, IRQs 2, 8, 0, 0, 0, 0, 0, 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hpet0: 8 comparators, 64-bit 19.200000 MHz counter
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: Switched to clocksource tsc-early
+2026-11-03T13:07:57+0700 gvipc-ce kernel: VFS: Disk quotas dquot_6.6.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: AppArmor: AppArmor Filesystem Enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pnp: PnP ACPI init
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:00: [io  0x0a00-0x0a2f] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:00: [io  0x0a30-0x0a3f] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:00: [io  0x0a40-0x0a4f] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: IRQ 4 override to edge, high(!)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pnp 00:01: [dma 0 disabled]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:02: [io  0x0680-0x069f] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:02: [io  0x164e-0x164f] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfedc0000-0xfedc7fff] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfeda0000-0xfeda0fff] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfeda1000-0xfeda1fff] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xc0000000-0xcfffffff] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfed20000-0xfed7ffff] could not be reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfed90000-0xfed93fff] could not be reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfed45000-0xfed8ffff] could not be reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:03: [mem 0xfee00000-0xfeefffff] could not be reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: system 00:04: [io  0x2000-0x20fe] has been reserved
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pnp: PnP ACPI: found 6 devices
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: acpi_pm: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 2085701024 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_INET protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: IP idents hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: tcp_listen_portaddr_hash hash table entries: 4096 (order: 4, 65536 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: TCP established hash table entries: 65536 (order: 7, 524288 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: TCP bind hash table entries: 65536 (order: 9, 2097152 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: TCP: Hash tables configured (established 65536 bind 65536)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: MPTCP token hash table entries: 8192 (order: 6, 196608 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: UDP hash table entries: 4096 (order: 5, 131072 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: UDP-Lite hash table entries: 4096 (order: 5, 131072 bytes, linear)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_UNIX/PF_LOCAL protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_XDP protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: bridge window [mem 0x00100000-0x000fffff 64bit pref] to [bus 06] add_size 200000 add_align 100000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: bridge window [mem 0x4010000000-0x40101fffff 64bit pref]: assigned
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.5: BAR 0 [mem 0x81600000-0x81600fff]: assigned
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: PCI bridge to [bus 01]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0:   bridge window [mem 0x81200000-0x813fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: PCI bridge to [bus 02]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1:   bridge window [mem 0x81000000-0x811fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: PCI bridge to [bus 03]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2:   bridge window [mem 0x80e00000-0x80ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: PCI bridge to [bus 04-05]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3:   bridge window [mem 0x81500000-0x815fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: PCI bridge to [bus 06]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6:   bridge window [io  0x4000-0x4fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6:   bridge window [mem 0x80400000-0x80dfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6:   bridge window [mem 0x4010000000-0x40101fffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: PCI bridge to [bus 07]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [io  0x3000-0x3fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [mem 0x81400000-0x814fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0:   bridge window [mem 0x60e0000000-0x60e03fffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 4 [io  0x0000-0x0cf7 window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 5 [io  0x0d00-0xffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 6 [mem 0x000a0000-0x000bffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 7 [mem 0x000e0000-0x000fffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 8 [mem 0x80400000-0xbfffffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:00: resource 9 [mem 0x4000000000-0x7fffffffff window]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:01: resource 1 [mem 0x81200000-0x813fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:02: resource 1 [mem 0x81000000-0x811fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:03: resource 1 [mem 0x80e00000-0x80ffffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:04: resource 1 [mem 0x81500000-0x815fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:06: resource 0 [io  0x4000-0x4fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:06: resource 1 [mem 0x80400000-0x80dfffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:06: resource 2 [mem 0x4010000000-0x40101fffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:07: resource 0 [io  0x3000-0x3fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:07: resource 1 [mem 0x81400000-0x814fffff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci_bus 0000:07: resource 2 [mem 0x60e0000000-0x60e03fffff 64bit pref]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI: CLS 64 bytes, default 64
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: No ATSR found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: No SATC found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature fl1gp_support inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature pgsel_inv inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature nwfs inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature dit inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature sc_support inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: IOMMU feature dev_iotlb_support inconsistent
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: dmar0: Using Queued invalidation
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: dmar1: Using Queued invalidation
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Trying to unpack rootfs image as initramfs...
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:02.0: Adding to iommu group 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:00.0: Adding to iommu group 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:08.0: Adding to iommu group 2
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:0d.0: Adding to iommu group 3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.0: Adding to iommu group 4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:14.2: Adding to iommu group 4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:16.0: Adding to iommu group 5
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.0: Adding to iommu group 6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.1: Adding to iommu group 7
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.2: Adding to iommu group 8
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.3: Adding to iommu group 9
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1c.6: Adding to iommu group 10
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1d.0: Adding to iommu group 11
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.0: Adding to iommu group 12
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.3: Adding to iommu group 12
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.4: Adding to iommu group 12
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:00:1f.5: Adding to iommu group 12
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:01:00.0: Adding to iommu group 13
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:02:00.0: Adding to iommu group 14
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:03:00.0: Adding to iommu group 15
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:04:00.0: Adding to iommu group 16
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.0: Adding to iommu group 17
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pci 0000:07:00.1: Adding to iommu group 18
+2026-11-03T13:07:57+0700 gvipc-ce kernel: DMAR: Intel(R) Virtualization Technology for Directed I/O
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PCI-DMA: Using software bounce buffering for IO (SWIOTLB)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: software IO TLB: mapped [mem 0x000000006857d000-0x000000006c57d000] (64MB)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0xb9fb05486c, max_idle_ns: 440795231721 ns
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clocksource: Switched to clocksource tsc
+2026-11-03T13:07:57+0700 gvipc-ce kernel: platform rtc_cmos: registered platform RTC device (no PNP device found)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Initialise system trusted keyrings
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type blacklist registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: workingset: timestamp_bits=36 max_order=21 bucket_order=0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: zbud: loaded
+2026-11-03T13:07:57+0700 gvipc-ce kernel: squashfs: version 4.0 (2009/01/31) Phillip Lougher
+2026-11-03T13:07:57+0700 gvipc-ce kernel: fuse: init (API version 7.39)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: integrity: Platform Keyring initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: integrity: Machine keyring initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type asymmetric registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Asymmetric key parser 'x509' registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: io scheduler mq-deadline registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: shpchp: Standard Hot Plug PCI Controller Driver version: 0.4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: Sleep Button as /devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0E:00/input/input0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: button: Sleep Button [SLPB]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: Power Button as /devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0C:00/input/input1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: button: Power Button [PWRB]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: Power Button as /devices/LNXSYSTM:00/LNXPWRBN:00/input/input2
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: button: Power Button [PWRF]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: thermal LNXTHERM:00: registered as thermal_zone0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: thermal: Thermal Zone [TZ00] (28 C)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Serial: 8250/16550 driver, 32 ports, IRQ sharing enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: 00:01: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Linux agpgart interface v0.103
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop: module loaded
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: bus type drm_connector registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: tun: Universal TUN/TAP device driver, 1.6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PPP generic driver version 2.4.2
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i8042: PNP: No PS/2 controller found.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mousedev: PS/2 mouse device common for all mice
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rtc_cmos rtc_cmos: RTC can wake from S4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rtc_cmos rtc_cmos: registered as rtc0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rtc_cmos rtc_cmos: setting system clock to 2026-11-03T06:07:51 UTC (1793686071)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rtc_cmos rtc_cmos: alarms up to one month, y3k, 114 bytes nvram
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i2c_dev: i2c /dev entries driver
+2026-11-03T13:07:57+0700 gvipc-ce kernel: device-mapper: core: CONFIG_IMA_DISABLE_HTABLE is disabled. Duplicate IMA measurements will not be recorded in the IMA log.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: device-mapper: uevent: version 1.0.3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: device-mapper: ioctl: 4.48.0-ioctl (2023-03-01) initialised: dm-devel@redhat.com
+2026-11-03T13:07:57+0700 gvipc-ce kernel: intel_pstate: Intel P-state driver initializing
+2026-11-03T13:07:57+0700 gvipc-ce kernel: intel_pstate: HWP enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ledtrig-cpu: registered to indicate activity on CPUs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: [drm] Initialized simpledrm 1.0.0 20200625 for simple-framebuffer.0 on minor 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Console: switching to colour frame buffer device 128x48
+2026-11-03T13:07:57+0700 gvipc-ce kernel: simple-framebuffer simple-framebuffer.0: [drm] fb0: simpledrmdrmfb frame buffer device
+2026-11-03T13:07:57+0700 gvipc-ce kernel: drop_monitor: Initializing network drop monitor service
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_INET6 protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Freeing initrd memory: 173280K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Segment Routing with IPv6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: In-situ OAM (IOAM) with IPv6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_PACKET protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type dns_resolver registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ENERGY_PERF_BIAS: Set to 'normal', was 'performance'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: microcode: Current revision: 0x00000021
+2026-11-03T13:07:57+0700 gvipc-ce kernel: microcode: Updated early from: 0x0000001c
+2026-11-03T13:07:57+0700 gvipc-ce kernel: resctrl: L2 allocation detected
+2026-11-03T13:07:57+0700 gvipc-ce kernel: IPI shorthand broadcast: enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: sched_clock: Marking stable (1095002156, 2185427)->(1099557274, -2369691)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: registered taskstats version 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loading compiled-in X.509 certificates
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Build time autogenerated kernel key: 03c33e7a3eb9f1bb240db7665813fa030f4400ba'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Live Patch Signing 2025 Kmod: d541cef61dc7e793b7eb7e899970a2eef0b5dc8c'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Live Patch Signing: 14df34d1a87cf37625abec039ef2bf521249b969'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Kernel Module Signing 2025 Kmod: 4627603d2357a2a3f81006370894c221175893e9'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Kernel Module Signing: 88f752e560a1e0737e31163a466ad7b70a850c19'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: blacklist: Loading compiled-in revocation X.509 certificates
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing: 61482aa2830d0ab2ad5af10b7250da9033ddcef0'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2017): 242ade75ac4a15e50d50c84b0d45ff3eae707a03'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (ESM 2018): 365188c1d374d6b07c3c8f240f8ef722433d6a8b'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2019): c0746fd6c5da3ae827864651ad66ae47fe24b3e8'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v1): a8d54bbb3825cfb94fa13c9f8a594a195c107b8d'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v2): 4cf046892d6fd3c9a5b03f98d845f90851dc6a8c'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v3): 100437bb6de6e469b581e61cd66bce3ef4ed53af'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (Ubuntu Core 2019): c1d57b8f6b743f23ee41f4f7ee292f06eecadfb9'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type .fscrypt registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type fscrypt-provisioning registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type trusted registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cryptd: max_cpu_qlen set to 1000
+2026-11-03T13:07:57+0700 gvipc-ce kernel: AVX2 version of gcm_enc/dec engaged.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: AES CTR mode by8 optimization enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Key type encrypted registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: AppArmor: AppArmor sha256 policy hashing enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loading compiled-in module X.509 certificates
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'Build time autogenerated kernel key: 03c33e7a3eb9f1bb240db7665813fa030f4400ba'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ima: Allocated hash algorithm: sha256
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ima: No architecture policies found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: Initialising EVM extended attributes:
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.selinux
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.SMACK64
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.SMACK64EXEC
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.SMACK64TRANSMUTE
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.SMACK64MMAP
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.apparmor
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.ima
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: security.capability
+2026-11-03T13:07:57+0700 gvipc-ce kernel: evm: HMAC attrs: 0x1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: PM:   Magic number: 2:953:113
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAS: Correctable Errors collector initialized.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: clk: Disabling unused clocks
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Freeing unused decrypted memory: 2028K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Freeing unused kernel image (initmem) memory: 4928K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Write protecting the kernel read-only data: 36864k
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Freeing unused kernel image (rodata/data gap) memory: 328K
+2026-11-03T13:07:57+0700 gvipc-ce kernel: x86/mm: Checked W+X mappings: passed, no W+X pages found.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Run /init as init process
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   with arguments:
+2026-11-03T13:07:57+0700 gvipc-ce kernel:     /init
+2026-11-03T13:07:57+0700 gvipc-ce kernel:   with environment:
+2026-11-03T13:07:57+0700 gvipc-ce kernel:     HOME=/
+2026-11-03T13:07:57+0700 gvipc-ce kernel:     TERM=linux
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: new USB bus registered, assigned bus number 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Intel(R) 2.5G Ethernet Linux Driver
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Copyright(c) 2018 Intel Corporation.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0: PTM enabled, 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0: can't disable ASPM; OS doesn't have ASPM control
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: hcc params 0x20007fc1 hci version 0x120 quirks 0x0000000200009810
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i801_smbus 0000:00:1f.4: enabling device (0000 -> 0003)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i801_smbus 0000:00:1f.4: SPD Write Disable is set
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i801_smbus 0000:00:1f.4: SMBus using PCI interrupt
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: new USB bus registered, assigned bus number 2
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:0d.0: Host supports USB 3.2 Enhanced SuperSpeed
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb1: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.08
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb1: Product: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb1: Manufacturer: Linux 6.8.0-138-generic xhci-hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb1: SerialNumber: 0000:00:0d.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 1-0:1.0: USB hub found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 1-0:1.0: 1 port detected
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i2c i2c-0: 1/2 memory slots populated (from DMI)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i2c i2c-0: Memory type 0x22 not supported yet, not instantiating SPD
+2026-11-03T13:07:57+0700 gvipc-ce kernel: dca service started, version 1.12.1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: nvme 0000:04:00.0: platform quirk: setting simple suspend
+2026-11-03T13:07:57+0700 gvipc-ce kernel: nvme nvme0: pci function 0000:04:00.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb2: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.08
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb2: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb2: Product: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb2: Manufacturer: Linux 6.8.0-138-generic xhci-hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb2: SerialNumber: 0000:00:0d.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 2-0:1.0: USB hub found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 2-0:1.0: 2 ports detected
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: new USB bus registered, assigned bus number 3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: hcc params 0x20007fc1 hci version 0x120 quirks 0x0000100200009810
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: new USB bus registered, assigned bus number 4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xhci_hcd 0000:00:14.0: Host supports USB 3.1 Enhanced SuperSpeed
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe: Intel(R) 10 Gigabit PCI Express Network Driver
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb3: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.08
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe: Copyright (c) 1999-2016 Intel Corporation.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb3: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb3: Product: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb3: Manufacturer: Linux 6.8.0-138-generic xhci-hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb3: SerialNumber: 0000:00:14.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 3-0:1.0: USB hub found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 3-0:1.0: 12 ports detected
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb4: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.08
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0 (unnamed net_device) (uninitialized): PHC added
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb4: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb4: Product: xHCI Host Controller
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb4: Manufacturer: Linux 6.8.0-138-generic xhci-hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb usb4: SerialNumber: 0000:00:14.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 4-0:1.0: USB hub found
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hub 4-0:1.0: 4 ports detected
+2026-11-03T13:07:57+0700 gvipc-ce kernel: nvme nvme0: allocated 127 MiB host memory buffer.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: nvme nvme0: 8/0/0 default/read/poll queues
+2026-11-03T13:07:57+0700 gvipc-ce kernel:  nvme0n1: p1 p2 p3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0: 4.000 Gb/s available PCIe bandwidth (5.0 GT/s PCIe x1 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0 eth0: MAC: 00:e0:b4:6c:81:08
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0: PTM enabled, 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0: can't disable ASPM; OS doesn't have ASPM control
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0 (unnamed net_device) (uninitialized): PHC added
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0: 4.000 Gb/s available PCIe bandwidth (5.0 GT/s PCIe x1 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0 eth1: MAC: 00:e0:b4:6c:81:09
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0: PTM enabled, 4ns granularity
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0: can't disable ASPM; OS doesn't have ASPM control
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0 (unnamed net_device) (uninitialized): PHC added
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0: 4.000 Gb/s available PCIe bandwidth (5.0 GT/s PCIe x1 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0 eth2: MAC: 00:e0:b4:6c:81:0a
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: enabling device (0006 -> 0007)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] VT-d active for gfx access
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:01:00.0 enp1s0: renamed from eth0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Console: switching to colour dummy device 80x25
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: vgaarb: deactivate vga console
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] Using Transparent Hugepages
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] *ERROR* Unexpected child device config size 40 (expected 39 for VBT version 256)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=mem
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] Finished loading DMC firmware i915/adlp_dmc.bin (v2.20)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: GuC firmware i915/tgl_guc_70.bin version 70.20.0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: HuC firmware i915/tgl_huc.bin version 7.9.3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: HuC: authenticated for all workloads
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: GUC: submission enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: GUC: SLPC enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] GT0: GUC: RC enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:02:00.0 enp2s0: renamed from eth1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] Protected Xe Path (PXP) protected content support initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: igc 0000:03:00.0 enp3s0: renamed from eth2
+2026-11-03T13:07:57+0700 gvipc-ce kernel: [drm] Initialized i915 1.6.0 20230929 for 0000:00:02.0 on minor 1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ACPI: video: Video Device [GFX0] (multi-head: yes  rom: no  post: no)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: Video Bus as /devices/LNXSYSTM:00/LNXSYBUS:00/PNP0A08:00/LNXVIDEO:00/input/input3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: display version: 13
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: cursor_needs_physical: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_cdclk_crawl: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_cdclk_squash: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_ddi: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_dp_mst: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_dsb: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_fpga_dbg: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_gmch: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_hotplug: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_hti: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_ipc: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_overlay: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_psr: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_psr_hw_tracking: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: overlay_needs_physical: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: supports_tv: no
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_hdcp: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_dmc: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: has_dsc: yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 display info: rawclk rate: 19200 kHz
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-2: new full-speed USB device number 2 using xhci_hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: fbcon: i915drmfb (fb0) is primary device
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Console: switching to colour frame buffer device 128x48
+2026-11-03T13:07:57+0700 gvipc-ce kernel: i915 0000:00:02.0: [drm] fb0: i915drmfb frame buffer device
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-2: New USB device found, idVendor=27c6, idProduct=0818, bcdDevice= 1.33
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-2: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-2: Product: TouchScreen
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-2: Manufacturer: WingCool Inc.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: new high-speed USB device number 3 using xhci_hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: Multiqueue Enabled: Rx Queue count = 8, Tx Queue count = 8 XDP Queue count = 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: 16.000 Gb/s available PCIe bandwidth, limited by 5.0 GT/s PCIe x4 link at 0000:00:1d.0 (capable of 32.000 Gb/s with 5.0 GT/s PCIe x8 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: MAC: 2, PHY: 1, PBA No: FFFFFF-0FF
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: 00:e0:b4:6c:7c:04
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: New USB device found, idVendor=2357, idProduct=0120, bcdDevice= 2.00
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: Product: 802.11ac WLAN Adapter 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: Manufacturer: Realtek 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-3: SerialNumber: 00e04c000001
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0: Intel(R) 10 Gigabit Network Connection
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-5: new full-speed USB device number 4 using xhci_hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-5: New USB device found, idVendor=8087, idProduct=0032, bcdDevice= 0.00
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-5: New USB device strings: Mfr=0, Product=0, SerialNumber=0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: new full-speed USB device number 5 using xhci_hcd
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: New USB device found, idVendor=16d0, idProduct=117e, bcdDevice= 2.00
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: Product: CANable2 b158aa7 github.com/normaldotcom/canable2.git
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: Manufacturer: Openlight Labs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usb 3-8: SerialNumber: 209E337A3743
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hid: raw HID events driver (C) Jiri Kosina
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new interface driver usbhid
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbhid: USB HID core driver
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: WingCool Inc. TouchScreen Touchscreen as /devices/pci0000:00/0000:00:14.0/usb3/3-2/3-2:1.0/0003:27C6:0818.0001/input/input4
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hid-generic 0003:27C6:0818.0001: input,hiddev0,hidraw0: USB HID v1.10 Device [WingCool Inc. TouchScreen] on usb-0000:00:14.0-2/input0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hid-generic 0003:27C6:0818.0002: hidraw1: USB HID v1.10 Device [WingCool Inc. TouchScreen] on usb-0000:00:14.0-2/input1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: Multiqueue Enabled: Rx Queue count = 8, Tx Queue count = 8 XDP Queue count = 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: 16.000 Gb/s available PCIe bandwidth, limited by 5.0 GT/s PCIe x4 link at 0000:00:1d.0 (capable of 32.000 Gb/s with 5.0 GT/s PCIe x8 link)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: MAC: 2, PHY: 1, PBA No: FFFFFF-0FF
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: 00:e0:b4:6c:7c:05
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1: Intel(R) 10 Gigabit Network Connection
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.1 enp7s0f1: renamed from eth1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: ixgbe 0000:07:00.0 enp7s0f0: renamed from eth0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: avx2x4   gen() 22004 MB/s
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: avx2x2   gen() 28340 MB/s
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: avx2x1   gen() 22710 MB/s
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: using algorithm avx2x2 gen() 28340 MB/s
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: .... xor() 15975 MB/s, rmw enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: raid6: using avx2x2 recovery algorithm
+2026-11-03T13:07:57+0700 gvipc-ce kernel: xor: automatically using best checksumming function   avx       
+2026-11-03T13:07:57+0700 gvipc-ce kernel: async_tx: api initialized (async)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Btrfs loaded, zoned=yes, fsverity=yes
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EXT4-fs (dm-0): mounted filesystem a690e794-ab99-4295-b413-107b8d5288b2 ro with ordered data mode. Quota mode: none.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Inserted module 'autofs4'
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: systemd 249.11-0ubuntu3.23 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY -P11KIT -QRENCODE +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Detected architecture x86-64.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Hostname set to <gvipc-ce>.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: block nvme0n1: the capability attribute has been deprecated.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Configuration file /run/systemd/system/netplan-wpa-wlxccbabd97834f.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Queued start job for default target Graphical Interface.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Created slice Slice /system/modprobe.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Created slice Slice /system/systemd-fsck.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Created slice User and Session Slice.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Started Forward Password Requests to Wall Directory Watch.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Set up automount Arbitrary Executable File Formats File System Automount Point.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Reached target Slice Units.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Reached target Mounting snaps.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Reached target Swaps.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Reached target System Time Set.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Reached target Local Verity Protected Volumes.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Device-mapper event daemon FIFOs.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on LVM2 poll daemon socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on multipathd control socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Syslog Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on fsck to fsckd communication Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on initctl Compatibility Named Pipe.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Journal Audit Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Journal Socket (/dev/log).
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Journal Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on Network Service Netlink Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on udev Control Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Listening on udev Kernel Socket.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounting Huge Pages File System...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounting POSIX Message Queue File System...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounting Kernel Debug File System...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounting Kernel Trace File System...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Journal Service...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Set the console keyboard layout...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Create List of Static Device Nodes...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Monitoring of LVM2 mirrors, snapshots etc. using dmeventd or progress polling...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Condition check resulted in LXD - agent being skipped.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Load Kernel Module configfs...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Load Kernel Module drm...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Load Kernel Module efi_pstore...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Load Kernel Module fuse...
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pstore: Using crash dump compression: deflate
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Condition check resulted in OpenVSwitch configuration for cleanup being skipped.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Condition check resulted in File System Check on Root Device being skipped.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: pstore: Registered efi_pstore as persistent store backend
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Load Kernel Modules...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Remount Root and Kernel File Systems...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Starting Coldplug All udev Devices...
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounted Huge Pages File System.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounted POSIX Message Queue File System.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounted Kernel Debug File System.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Mounted Kernel Trace File System.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Create List of Static Device Nodes.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Monitoring of LVM2 mirrors, snapshots etc. using dmeventd or progress polling.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EXT4-fs (dm-0): re-mounted a690e794-ab99-4295-b413-107b8d5288b2 r/w.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: modprobe@configfs.service: Deactivated successfully.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Load Kernel Module configfs.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: modprobe@drm.service: Deactivated successfully.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Load Kernel Module drm.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: modprobe@efi_pstore.service: Deactivated successfully.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Load Kernel Module efi_pstore.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: modprobe@fuse.service: Deactivated successfully.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Load Kernel Module fuse.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Load Kernel Modules.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Finished Remount Root and Kernel File Systems.
+2026-11-03T13:07:57+0700 gvipc-ce systemd[1]: Started Journal Service.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: alua: device handler registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: emc: device handler registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: rdac: device handler registered
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop0: detected capacity change from 0 to 8
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop1: detected capacity change from 0 to 379712
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop2: detected capacity change from 0 to 130960
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop3: detected capacity change from 0 to 130632
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop4: detected capacity change from 0 to 151512
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop5: detected capacity change from 0 to 136784
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop6: detected capacity change from 0 to 124152
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop7: detected capacity change from 0 to 100880
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop8: detected capacity change from 0 to 103920
+2026-11-03T13:07:57+0700 gvipc-ce kernel: loop9: detected capacity change from 0 to 1260056
+2026-11-03T13:07:57+0700 gvipc-ce kernel: intel_pmc_core INT33A1:00:  initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mei_me 0000:00:16.0: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: resource: resource sanity check: requesting [mem 0x00000000fedc0000-0x00000000fedcffff], which spans more than pnp 00:03 [mem 0xfedc0000-0xfedc7fff]
+2026-11-03T13:07:57+0700 gvipc-ce kernel: caller igen6_probe+0x1bb/0x5f0 [igen6_edac] mapping multiple BARs
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EDAC MC0: Giving out device to module igen6_edac controller Intel_client_SoC MC#0: DEV 0000:00:00.0 (INTERRUPT)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EDAC igen6 MC0: HANDLING IBECC MEMORY ERROR
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EDAC igen6 MC0: ADDR 0x7fffffffe0 
+2026-11-03T13:07:57+0700 gvipc-ce kernel: EDAC igen6: v2.5.1
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cdc_acm 3-8:1.0: ttyACM0: USB ACM device
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new interface driver cdc_acm
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mei_me 0000:00:16.0: hbm: dma setup response: failure = 3 REJECTED
+2026-11-03T13:07:57+0700 gvipc-ce kernel: cfg80211: Loading compiled-in X.509 certificates for regulatory database
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Loaded X.509 cert 'wens: 61c038651aabdcf94bd0ac7ff06c7248db18c600'
+2026-11-03T13:07:57+0700 gvipc-ce kernel: input: WingCool Inc. TouchScreen as /devices/pci0000:00/0000:00:14.0/usb3/3-2/3-2:1.0/0003:27C6:0818.0001/input/input6
+2026-11-03T13:07:57+0700 gvipc-ce kernel: hid-multitouch 0003:27C6:0818.0001: input,hiddev0,hidraw0: USB HID v1.10 Device [WingCool Inc. TouchScreen] on usb-0000:00:14.0-2/input0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Creating 1 MTD partitions on "0000:00:1f.5":
+2026-11-03T13:07:57+0700 gvipc-ce kernel: 0x000000000000-0x000001000000 : "BIOS"
+2026-11-03T13:07:57+0700 gvipc-ce kernel: 8821au: loading out-of-tree module taints kernel.
+2026-11-03T13:07:57+0700 gvipc-ce kernel: 8821au: module verification failed: signature and/or required key missing - tainting kernel
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: Core ver 2.22
+2026-11-03T13:07:57+0700 gvipc-ce kernel: NET: Registered PF_BLUETOOTH protocol family
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: HCI device and connection manager initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: HCI socket layer initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: L2CAP socket layer initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: SCO socket layer initialized
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAPL PMU: API unit is 2^-32 Joules, 3 fixed counters, 655360 ms ovfl timer
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAPL PMU: hw unit of domain pp0-core 2^-14 Joules
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAPL PMU: hw unit of domain package 2^-14 Joules
+2026-11-03T13:07:57+0700 gvipc-ce kernel: RAPL PMU: hw unit of domain pp1-gpu 2^-14 Joules
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mei_hdcp 0000:00:16.0-b638ab7e-94e2-4ea2-a552-d1c54b627f04: bound 0000:00:02.0 (ops i915_hdcp_ops [i915])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: mei_pxp 0000:00:16.0-fbf6fcf1-96cf-4e2e-a6a6-1bab8cbe36b1: bound 0000:00:02.0 (ops i915_pxp_tee_component_ops [i915])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: usbcore: registered new interface driver btusb
+2026-11-03T13:07:57+0700 gvipc-ce kernel: snd_hda_intel 0000:00:1f.3: DSP detected with PCI class/subclass/prog-if info 0x040100
+2026-11-03T13:07:57+0700 gvipc-ce kernel: snd_hda_intel 0000:00:1f.3: enabling device (0000 -> 0002)
+2026-11-03T13:07:57+0700 gvipc-ce kernel: snd_hda_intel 0000:00:1f.3: bound 0000:00:02.0 (ops i915_audio_component_bind_ops [i915])
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Device revision is 0
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Secure boot is enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: OTP lock is enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: API lock is enabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Debug lock is disabled
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Minimum firmware build 1 week 10 2014
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Bootloader timestamp 2019.40 buildtype 1 build 38
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: No support for _PRR ACPI method
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Found device firmware: intel/ibt-0041-0041.sfi
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Boot Address: 0x100800
+2026-11-03T13:07:57+0700 gvipc-ce kernel: Bluetooth: hci0: Firmware Version: 132-5.22
+2026-11-03T13:07:58+0700 gvipc-ce kernel: EXT4-fs (nvme0n1p2): mounted filesystem 04cdd5c7-5c31-4cb3-8184-d8aebe823cc3 r/w with ordered data mode. Quota mode: none.
+2026-11-03T13:07:58+0700 gvipc-ce kernel: usbcore: registered new interface driver rtl8821au
+2026-11-03T13:07:58+0700 gvipc-ce kernel: rtl8821au 3-3:1.0 wlxccbabd97834f: renamed from wlan0
+2026-11-03T13:07:58+0700 gvipc-ce kernel: input: HDA Intel PCH HDMI/DP,pcm=3 as /devices/pci0000:00/0000:00:1f.3/sound/card0/input8
+2026-11-03T13:07:58+0700 gvipc-ce kernel: input: HDA Intel PCH HDMI/DP,pcm=7 as /devices/pci0000:00/0000:00:1f.3/sound/card0/input9
+2026-11-03T13:07:58+0700 gvipc-ce kernel: input: HDA Intel PCH HDMI/DP,pcm=8 as /devices/pci0000:00/0000:00:1f.3/sound/card0/input10
+2026-11-03T13:07:58+0700 gvipc-ce kernel: input: HDA Intel PCH HDMI/DP,pcm=9 as /devices/pci0000:00/0000:00:1f.3/sound/card0/input11
+2026-11-03T13:07:58+0700 gvipc-ce kernel: intel_tcc_cooling: TCC Offset locked
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.116:2): apparmor="STATUS" operation="profile_load" profile="unconfined" name="lsb_release" pid=728 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.116:3): apparmor="STATUS" operation="profile_load" profile="unconfined" name="nvidia_modprobe" pid=729 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.116:4): apparmor="STATUS" operation="profile_load" profile="unconfined" name="nvidia_modprobe//kmod" pid=729 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.117:5): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/bin/man" pid=734 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.117:6): apparmor="STATUS" operation="profile_load" profile="unconfined" name="man_filter" pid=734 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.117:7): apparmor="STATUS" operation="profile_load" profile="unconfined" name="man_groff" pid=734 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.124:8): apparmor="STATUS" operation="profile_load" profile="unconfined" name="tcpdump" pid=735 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.125:9): apparmor="STATUS" operation="profile_load" profile="unconfined" name="ubuntu_pro_apt_news" pid=731 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.126:10): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/lib/NetworkManager/nm-dhcp-client.action" pid=730 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: audit: type=1400 audit(1793686078.126:11): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/lib/NetworkManager/nm-dhcp-helper" pid=730 comm="apparmor_parser"
+2026-11-03T13:07:58+0700 gvipc-ce kernel: intel_rapl_msr: PL4 support detected.
+2026-11-03T13:07:58+0700 gvipc-ce kernel: intel_rapl_common: Found RAPL domain package
+2026-11-03T13:07:58+0700 gvipc-ce kernel: intel_rapl_common: Found RAPL domain core
+2026-11-03T13:07:58+0700 gvipc-ce kernel: intel_rapl_common: Found RAPL domain uncore
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Waiting for firmware download to complete
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Firmware loaded in 1311098 usecs
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Waiting for device to boot
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Device booted in 26461 usecs
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Found Intel DDC parameters: intel/ibt-0041-0041.ddc
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Applying Intel DDC parameters completed
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Firmware timestamp 2022.5 buildtype 1 build 38020
+2026-11-03T13:07:59+0700 gvipc-ce kernel: Bluetooth: hci0: Firmware SHA1: 0xf9af51d3
+2026-11-03T13:07:59+0700 gvipc-ce kernel: CAN device driver interface
+2026-11-03T13:07:59+0700 gvipc-ce kernel: slcan: serial line CAN interface driver
+2026-11-03T13:07:59+0700 gvipc-ce kernel: can0: slcan on ttyACM0.
+2026-11-03T13:08:01+0700 gvipc-ce kernel: igc 0000:01:00.0 enp1s0: NIC Link is Up 100 Mbps Full Duplex, Flow Control: RX/TX
+2026-11-03T13:08:02+0700 gvipc-ce kernel: igc 0000:02:00.0 enp2s0: NIC Link is Up 100 Mbps Full Duplex, Flow Control: RX
+2026-11-03T13:08:04+0700 gvipc-ce kernel: can: controller area network core
+2026-11-03T13:08:04+0700 gvipc-ce kernel: NET: Registered PF_CAN protocol family
+2026-11-03T13:08:04+0700 gvipc-ce kernel: can: raw protocol
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: new high-speed USB device number 6 using xhci_hcd
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: New USB device found, idVendor=2717, idProduct=ff40, bcdDevice= 2.23
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: Product: Xiaomi 14T Pro
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: Manufacturer: Xiaomi
+2026-11-03T13:17:38+0700 gvipc-ce kernel: usb 3-4: SerialNumber: 49LBOBKVVSDIHY8H
+2026-11-03T13:17:40+0700 gvipc-ce kernel: usb 3-4: USB disconnect, device number 6
+2026-11-03T13:17:40+0700 gvipc-ce kernel: usb 3-4: new high-speed USB device number 7 using xhci_hcd
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usb 3-4: New USB device found, idVendor=2717, idProduct=ff80, bcdDevice= 2.23
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usb 3-4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usb 3-4: Product: Xiaomi 14T Pro
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usb 3-4: Manufacturer: Xiaomi
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usb 3-4: SerialNumber: 49LBOBKVVSDIHY8H
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usbcore: registered new interface driver cdc_ether
+2026-11-03T13:17:41+0700 gvipc-ce kernel: rndis_host 3-4:1.0 usb0: register 'rndis_host' at usb-0000:00:14.0-4, RNDIS device, 66:f5:22:c7:41:35
+2026-11-03T13:17:41+0700 gvipc-ce kernel: usbcore: registered new interface driver rndis_host
+2026-11-03T13:17:41+0700 gvipc-ce kernel: rndis_host 3-4:1.0 enx66f522c74135: renamed from usb0
+2026-11-03T13:26:02+0700 gvipc-ce kernel: perf: interrupt took too long (2512 > 2500), lowering kernel.perf_event_max_sample_rate to 79000
+2026-11-03T13:32:21+0700 gvipc-ce kernel: perf: interrupt took too long (3175 > 3140), lowering kernel.perf_event_max_sample_rate to 63000
+2026-11-03T13:39:10+0700 gvipc-ce kernel: perf: interrupt took too long (3984 > 3968), lowering kernel.perf_event_max_sample_rate to 50000
+2026-11-03T13:51:53+0700 gvipc-ce kernel: perf: interrupt took too long (4983 > 4980), lowering kernel.perf_event_max_sample_rate to 40000
+2026-11-03T14:14:15+0700 gvipc-ce kernel: usb 3-4: USB disconnect, device number 7
+2026-11-03T14:14:15+0700 gvipc-ce kernel: rndis_host 3-4:1.0 enx66f522c74135: unregister 'rndis_host' usb-0000:00:14.0-4, RNDIS device
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: new high-speed USB device number 8 using xhci_hcd
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: New USB device found, idVendor=2717, idProduct=ff40, bcdDevice= 2.23
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: Product: Xiaomi 14T Pro
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: Manufacturer: Xiaomi
+2026-11-03T14:22:43+0700 gvipc-ce kernel: usb 3-4: SerialNumber: 49LBOBKVVSDIHY8H
+2026-11-03T14:22:45+0700 gvipc-ce kernel: usb 3-4: USB disconnect, device number 8
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: new high-speed USB device number 9 using xhci_hcd
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: New USB device found, idVendor=2717, idProduct=ff80, bcdDevice= 2.23
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: Product: Xiaomi 14T Pro
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: Manufacturer: Xiaomi
+2026-11-03T14:22:46+0700 gvipc-ce kernel: usb 3-4: SerialNumber: 49LBOBKVVSDIHY8H
+2026-11-03T14:22:46+0700 gvipc-ce kernel: rndis_host 3-4:1.0 usb0: register 'rndis_host' at usb-0000:00:14.0-4, RNDIS device, 7e:a9:25:c3:40:a2
+2026-11-03T14:22:46+0700 gvipc-ce kernel: rndis_host 3-4:1.0 enx7ea925c340a2: renamed from usb0
+2026-11-03T14:27:14+0700 gvipc-ce kernel: perf: interrupt took too long (6230 > 6228), lowering kernel.perf_event_max_sample_rate to 32000

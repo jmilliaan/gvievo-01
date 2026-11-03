@@ -308,25 +308,24 @@ The route editor moves nothing. The mode can stay `IDLE`.
      changes the route, its undo history or the last validation.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
-   `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.60 m/s, new routes
-   0.55 (2026-09-19). Use 0.15–0.20 m/s for a first run. **Long straight
-   speed**: a straight strictly longer than *Long straight from* (default
-   4 m) runs at this speed, up to 0.85 m/s (new routes 0.85); leave the field
-   empty for no boost. Boosted straights show `▲0.85` in the step list and
-   the result shows how many. **Arc speed** (new routes 0.40 m/s): never
-   above the speed cap. Existing routes keep their stored speeds until they
-   are edited and saved again (re-save them after the first vehicle run at
-   the new speeds). Autonomous acceleration is 0.15 m/s² (mux `a_max`), so a
-   straight reaches 0.85 only after about 2.4 m.
+   `[pass p/P]` in the run reason. **Speed** is not a route setting
+   (2026-10-02): every forward straight runs at 0.60 m/s
+   (`route.VEHICLE_V_MAX`), every arc at 0.30 m/s (`route.ARC_V_MPS`,
+   2026-11-03), and a reverse at half the straight speed, 0.30 m/s.
+   Since 2026-11-03 every autonomous speed change is a smooth S-curve (mux
+   `auto_jerk` 0.4 m/s³, at most `a_max` 0.2 m/s² up and `d_max` 0.25 m/s²
+   down): a start reaches 0.60 m/s after about 1.0 m (3.4 s). Field and
+   emergency stops are not softened: while a warning field is in force the
+   vehicle brakes at `field_d_max` 0.5 m/s² (warning 1) or the drive's ramp
+   (warning 2), and loss of authority still stops at once.
    Consecutive straights and arcs are driven as ONE continuous move (no
-   stop between them); a rotate or a reverse ends such a chain. Before a
-   slower chained step (a normal straight after a boosted one, an arc) the
-   speed tapers early enough for the mux to reach the lower speed at the
-   boundary (executor `taper_decel` 0.4 m/s², `taper_lead_s` 0.3: 0.96 m for
-   0.85 → 0.40, 0.34 m for 0.55 → 0.40); at the end of a chain the
-   controller's own ramp over the last 1.0 m brings it to the stop.
-   Routes saved before 2026-09-18 never boost until re-saved with the field
-   set. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
+   stop between them); a rotate or a reverse ends such a chain. Before an
+   arc the speed tapers early enough for the S-curve to reach 0.30 before
+   the boundary (executor `taper_decel` 0.25 m/s², `taper_jerk` 0.4 m/s³,
+   `taper_lead_s` 0.3): 0.60 → 0.30 starts 1.0 m before the arc, takes
+   0.78 m and is done about 0.2 m before it; after the arc it speeds back
+   up over about 0.9 m. At the end of a chain the controller's own ramp over
+   the last 1.5 m (`approach_velocity_scaling_dist`) brings it to the stop. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
    to back up along the current heading, facing forward: at most 2000 mm
    and at half the speed cap (never the boost). The nanoScan3 does not
    cover the rear, so a reverse is driven blind: keep it short, keep the
@@ -425,7 +424,8 @@ The route editor moves nothing. The mode can stay `IDLE`.
        as an override.
      - Executor parameters: `auto_resume_enabled` (false = the old
        Prepare resume + Start), `auto_resume_clear_s` 2.0,
-       `auto_resume_estop` false, `controller_abort_retries` 3,
+       `auto_resume_estop` false, a blocked path (controller abort) is retried
+       until it clears, never a FAULT,
        `prereq_grace_s` 0.5.
    - **Abort** ends the run. The mission must be loaded again.
 8. **Finished.** The run state is `DONE`. Load the same or another mission and
@@ -543,11 +543,12 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `GENERATION_MISMATCH` | warn | Motion is held after a mode change | Wait. If it stays, press Restart on the Home page. | A command or permit carries a superseded generation; the mux drops it by design. |
 | `GLS_DOWN` | warn | The floor-label camera is not answering | Nothing to do now: it never stops the vehicle. Tell the engineer if it stays. | gls_node: no reply to the read-only keepalive for 3 x gls.keepalive_s (cable, power, enp3s0 192.168.4.2, or SOPAS left in Live mode, which mutes the host port). Outside the safety path: no position fix from the camera until it answers again. |
 | `NOT_LEASED` | warn | Waiting for the supervisor | Wait. If it stays, press Restart on the Home page. | Mux has no fresh ControlLease (supervisor down, starting or in a transaction). |
-| `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. |
+| `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route. The vehicle tries again by itself. | Nav2 controller aborted the step (hold cause 'controller'). Retried every few seconds for as long as the path is blocked, never a FAULT (owner 2026-11-03). |
 | `SERVICE_CRASHED` | warn | The vehicle software restarted itself | Nothing to do. Tell the engineer if it keeps happening. | A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason. |
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
+| `COSTMAP_CLEARED` | info | The vehicle refreshed its view of nearby obstacles | Nothing to do. | route_executor cleared the controller's local costmap: at a Continue that releases a wait, or after costmap_clear_after_s (10 s) of a blocked path. Marks behind the scanner's view never clear by themselves (2026-11-03, route-itg-02 s12). |
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor hold cause 'field'; auto-resume after the hold window. |
 | `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `GLS` | info | The floor-label camera changed | Nothing to do. | gls_node: the GLS621 answers again after a GLS_DOWN. |
@@ -605,6 +606,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOC_LOST` | error | The vehicle lost its position | Set the initial pose on the Run page and confirm the scans line up. | Umbrella code for a LocalizationState LOST without a more specific cause. |
 | `LOC_SCAN_MISMATCH` | error | The vehicle is not where it thinks it is | Set the initial pose on the Run page and confirm the scans line up. | Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous wrong-pose signature. |
 | `MAP_SAVE_FAILED` | error | The map was not saved | Try Save again on the Maps page. If it fails twice, call the engineer. | mapping_session save returned an error; the survey is still open. |
+| `DEST_REFUSED` | warn | The destination button did not start a run | Fix what the detail says, then press the destination button again. | A UBC/ITG/PISTON press (panel.destinations, 2026-11-03) started nothing: MANUAL, a run already under way (moving, held or WAITING), a FAULT, the E-stop, no route assigned in the profile, no saved mission for the route on the active map, or the Start refusal (off the route start pose, localisation not READY, ...). |
 | `LABEL_RECORD_FAILED` | warn | The HOME floor label was not saved with the map | Park on HOME, localise, then use Record label here. | mapping_session saw the HOME label at survey start but could not write the new map's label set (the text says why). The map itself was saved. |
 | `LOC_NOT_SET` | warn | The vehicle does not know where it is yet | On the Run page: pick the map, set the initial pose, then confirm. | LocalizationState UNLOCALIZED: no accepted initial pose since the layer started. |
 | `SAVE_UNKNOWN_OUTCOME` | warn | The map may or may not have been saved | Check the Maps page for a new revision before saving again. | The save RPC passed its deadline after the request was accepted; a late answer is ignored. |

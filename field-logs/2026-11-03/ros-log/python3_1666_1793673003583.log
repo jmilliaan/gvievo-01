@@ -1,0 +1,6 @@
+[INFO] [1793673003.907303935] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793673003.922212485] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793673003.922955126] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793673004.462653066] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793673004.463654172] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793673004.467778650] [drive_node]: drives standby, imu sdo

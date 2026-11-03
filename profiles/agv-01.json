@@ -98,7 +98,12 @@
     "di_manual_arm": 9,
     "di_estop_ok": 8,
     "di_continue": 13,
-    "estop_reset_timeout_s": 3.0
+    "estop_reset_timeout_s": 3.0,
+    "destinations": [
+      {"name": "UBC", "di": 10, "route_id": ""},
+      {"name": "ITG", "di": 11, "route_id": "route-itg-02"},
+      {"name": "PISTON", "di": 12, "route_id": ""}
+    ]
   },
   "horn": {
     "enabled": false,

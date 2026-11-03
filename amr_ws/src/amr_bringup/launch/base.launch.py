@@ -150,13 +150,15 @@ def _compose(context):
                     "field_source": "scanner" if real else "assume_clear",
                     # path indices, polarity, the x0.5 factor and the warning-2 stop distance: config/scanner_fields.yaml
                     **scanner_fields.mux_params(scanner_fields.load()),
-                    "a_max": 0.3,
+                    "a_max": 0.2,  # auto start acceleration: 0.3 -> 0.2 m/s^2 (-33 %, owner 2026-11-03)
                     "alpha_max": 0.4,
-                    "d_max": 0.5,
+                    "d_max": 0.25,  # auto braking (not warning-field / emergency stops): 0.5 -> 0.25 (2026-11-03)
                     "delta_max": 1.0,
                     "manual_a_max": 0.15,
                     "manual_d_max": 0.25,
                     "manual_jerk": 1.0,
+                    "auto_jerk": 0.4,  # auto linear speed S-curve (2026-11-03): smoother slopes
+                    "field_d_max": 0.5,  # warning-field slowdowns keep the old braking (not softened)
                     "pendant_v_m_s": 0.5,
                     "pendant_w_rad_s": 0.39,
                     "pendant_turn_ratio": 0.66,  # manual corner: inner wheel 66 % of the outer

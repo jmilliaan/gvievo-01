@@ -1,0 +1,8 @@
+[INFO] [1793681593.269143204] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[INFO] [1793681593.335371396] [localization_monitor]: UNLOCALIZED: no initial pose
+[INFO] [1793681595.730455915] [localization_monitor]: map 1210x1487 loaded for scan consistency
+[INFO] [1793681600.526243486] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793681600.536897761] [localization_monitor]: CHECKING: stale: tf
+[INFO] [1793681606.513030965] [localization_monitor]: READY: operator confirmed
+[INFO] [1793681606.535635406] [localization_monitor]: READY: operator confirmed scan alignment
+[INFO] [1793681652.836378096] [localization_monitor]: LOST: scan passes through mapped obstacles (25 % of beams)

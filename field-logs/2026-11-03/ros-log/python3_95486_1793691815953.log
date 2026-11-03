@@ -1,0 +1,41 @@
+[INFO] [1793691816.231971703] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793691816.237108595] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793691816.272141978] [panel_node]: DIO comms ok
+[INFO] [1793691816.287819182] [panel_node]: panel image valid; selector MANUAL; E-stop OK (DI8) HIGH
+[INFO] [1793691816.295710328] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793691816.329965321] [panel_node]: Manual Arm on
+[INFO] [1793691842.007826914] [panel_node]: selector AUTO
+[INFO] [1793691897.488406676] [panel_node]: DEST ITG edge
+[INFO] [1793691900.568494973] [panel_node]: alarm horn on
+[INFO] [1793691902.567962099] [panel_node]: alarm horn off
+[INFO] [1793692335.868985875] [panel_node]: CONTINUE edge
+[INFO] [1793692335.888791189] [panel_node]: alarm horn on
+[INFO] [1793692337.989891021] [panel_node]: alarm horn off
+[INFO] [1793692351.948852229] [panel_node]: alarm horn on
+[INFO] [1793692390.048980723] [panel_node]: alarm horn off
+[INFO] [1793692390.649394961] [panel_node]: alarm horn on
+[INFO] [1793692392.249154516] [panel_node]: alarm horn off
+[INFO] [1793692394.350878967] [panel_node]: alarm horn on
+[INFO] [1793692394.648952291] [panel_node]: alarm horn off
+[INFO] [1793692396.049999139] [panel_node]: alarm horn on
+[INFO] [1793692396.448762524] [panel_node]: alarm horn off
+[INFO] [1793692507.468403492] [panel_node]: CONTINUE edge
+[INFO] [1793692507.488561806] [panel_node]: alarm horn on
+[INFO] [1793692509.567808057] [panel_node]: alarm horn off
+[INFO] [1793692517.349410401] [panel_node]: alarm horn on
+[INFO] [1793692517.948831125] [panel_node]: alarm horn off
+[INFO] [1793692596.247605913] [panel_node]: alarm horn on
+[INFO] [1793692616.549996407] [panel_node]: alarm horn off
+[INFO] [1793692637.248802219] [panel_node]: alarm horn on
+[INFO] [1793692637.549368000] [panel_node]: alarm horn off
+[INFO] [1793692638.048883789] [panel_node]: alarm horn on
+[INFO] [1793692639.849535658] [panel_node]: alarm horn off
+[INFO] [1793692639.948964740] [panel_node]: alarm horn on
+[INFO] [1793692640.448726595] [panel_node]: alarm horn off
+[INFO] [1793692665.549218512] [panel_node]: alarm horn on
+[INFO] [1793692665.749089978] [panel_node]: alarm horn off
+[INFO] [1793692666.749102879] [panel_node]: alarm horn on
+[INFO] [1793692667.048681390] [panel_node]: alarm horn off
+[INFO] [1793693106.528644194] [panel_node]: CONTINUE edge
+[INFO] [1793693106.548805388] [panel_node]: alarm horn on
+[INFO] [1793693108.569001931] [panel_node]: alarm horn off

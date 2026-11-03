@@ -384,3 +384,38 @@ def test_continue_is_an_edge_with_starts_rules():
     assert not f.continue_edge, "a repeated image spends the edge"
     f = _settle(ad, _di_c(cont=True, auto=True))
     assert not f.continue_edge, "held: no repeat"
+
+
+def _di_d(*dests, **kw):
+    bits = _di(**kw)
+    for k in dests:  # 1-based, like PanelState.dest_edge
+        bits[config.PANEL_DESTINATIONS[k - 1][1]] = True
+    return bits
+
+
+def test_destination_buttons_are_edges_with_starts_rules():
+    """DI10-12 (2026-11-03): one edge per press as a 1-based index, none at power-on, none
+    from a repeated image, none for two at once, and never a Start or a Continue."""
+    itg = [n for n, _c, _r in config.PANEL_DESTINATIONS].index("ITG") + 1
+    ad = _adapter()
+    f = _settle(ad, _di_d(itg, auto=True))
+    assert f.valid and f.dest_edge == 0, "held at power-on: a baseline, never a press"
+    _settle(ad, _di_d(auto=True))
+    ad.tick(_snap(_di_d(itg, auto=True)))
+    f = ad.tick(_snap(_di_d(itg, auto=True)))
+    assert f.dest_edge == itg and not f.start_edge and not f.continue_edge
+    assert "DEST ITG edge" in (f.changed or "")
+    assert ad.tick(_snap(_di_d(itg, auto=True), new=False)).dest_edge == 0, "a repeated image spends it"
+    assert _settle(ad, _di_d(itg, auto=True)).dest_edge == 0, "held: no repeat"
+    _settle(ad, _di_d(auto=True))
+    ad.tick(_snap(_di_d(1, 3, auto=True)))
+    f = ad.tick(_snap(_di_d(1, 3, auto=True)))
+    assert f.dest_edge == 0 and "pressed together" in (f.changed or "")
+
+
+def test_destination_press_is_dropped_with_the_image():
+    ad = _adapter()
+    _settle(ad, _di_d(auto=True))
+    ad.tick(_snap(_di_d(2, auto=True), comms=False))
+    f = _settle(ad, _di_d(2, auto=True))
+    assert f.dest_edge == 0, "a reconnect with the button down is a baseline"

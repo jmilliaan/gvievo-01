@@ -1,0 +1,14 @@
+[INFO] [1793688416.407382412] [lifecycle_manager_localization]: Creating
+[INFO] [1793688416.411122737] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[INFO] [1793688416.523460743] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[INFO] [1793688416.523536222] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[INFO] [1793688416.716464716] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[INFO] [1793688416.736838375] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[INFO] [1793688416.849996603] [lifecycle_manager_localization]: Server map_server connected with bond.
+[INFO] [1793688416.850103684] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[INFO] [1793688416.986339830] [lifecycle_manager_localization]: Server amcl connected with bond.
+[INFO] [1793688416.986394064] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[INFO] [1793688416.986409062] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[INFO] [1793688425.112153739] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793688425.112361873] [lifecycle_manager_localization]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_localization)
+[INFO] [1793688425.112462542] [lifecycle_manager_localization]: [34m[1mTerminating bond timer...[0m[0m

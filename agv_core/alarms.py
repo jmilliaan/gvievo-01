@@ -82,7 +82,8 @@ def _rows() -> tuple[Alarm, ...]:
           "for panel.estop_reset_timeout_s. DI08 dropping again is a new emergency, not this."),
         a("PATH_BLOCKED", WARN, "auto", "Stopped: the way ahead is blocked",
           "Clear the route. The vehicle tries again by itself.",
-          "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT."),
+          "Nav2 controller aborted the step (hold cause 'controller'). Retried every few seconds "
+          "for as long as the path is blocked, never a FAULT (owner 2026-11-03)."),
         a("WAITING_FOR_PREREQ", INFO, "auto", "Waiting: a sensor or the panel is not ready yet",
           "Wait a moment. If it stays, look at the Alarms page.",
           "Hold cause 'pending': a prerequisite went stale inside the grace window."),
@@ -242,6 +243,12 @@ def _rows() -> tuple[Alarm, ...]:
           "A Continue/Start at a wait failed its gate: E-stop not reset, MANUAL, localisation not "
           "READY, wheels moving, or the vehicle moved off the wait pose (verify_position_m / "
           "verify_heading_deg). RunState.continue_refused carries the reason."),
+        a("DEST_REFUSED", WARN, "operator", "The destination button did not start a run",
+          "Fix what the detail says, then press the destination button again.",
+          "A UBC/ITG/PISTON press (panel.destinations, 2026-11-03) started nothing: MANUAL, a run "
+          "already under way (moving, held or WAITING), a FAULT, the E-stop, no route assigned "
+          "in the profile, no saved mission for the route on the active map, or the Start "
+          "refusal (off the route start pose, localisation not READY, ...)."),
         a("EXEC_ROUTE_INVALID", ERROR, "operator", "This mission cannot be run",
           "Pick another mission, or call the engineer to fix this one.",
           "Route/mission failed to compile or validate against the active map revision."),
@@ -348,6 +355,10 @@ def _rows() -> tuple[Alarm, ...]:
         a("LABEL_RECORDED", INFO, "auto", "A floor label was recorded on the map",
           "Nothing to do.", "Record label here, or HOME at survey start: a new label-set revision "
           "(gls-wait-coding-plan §C). New missions bind it; existing ones keep theirs."),
+        a("COSTMAP_CLEARED", INFO, "auto", "The vehicle refreshed its view of nearby obstacles",
+          "Nothing to do.", "route_executor cleared the controller's local costmap: at a Continue that "
+          "releases a wait, or after costmap_clear_after_s (10 s) of a blocked path. Marks behind the "
+          "scanner's view never clear by themselves (2026-11-03, route-itg-02 s12)."),
         a("RUN_SUMMARY", INFO, "auto", "A mission finished",
           "Nothing to do.", "One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause."),
         a("WEB_BUG", WARN, "auto", "A page did not work",

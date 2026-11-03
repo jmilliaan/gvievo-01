@@ -114,6 +114,14 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("manual_jerk", 1.0)  # m/s^3: 0.3 s to full acceleration
         self.declare_parameter("manual_alpha_max", 0.0)  # 0 = same as alpha_max
         self.declare_parameter("manual_jerk_w", 2.0)  # rad/s^3
+        # Autonomous speed changes follow the same jerk-limited S-curve (owner 2026-11-03: the
+        # taper before an arc stepped the deceleration 0 -> 0.5 m/s^2 at once). Linear speed
+        # only: the yaw rate keeps its plain slew so path tracking is unchanged. Field slowdowns
+        # are NOT softened: while a warning field is in force the plain slew brakes at
+        # field_d_max (warning 1, the pre-2026-11-03 0.5 m/s^2) or the drive's ramp (warning 2
+        # stop); loss of authority is still zero at once.
+        self.declare_parameter("auto_jerk", 0.4)  # m/s^3 (base.launch sets it)
+        self.declare_parameter("field_d_max", 0.5)  # m/s^2, warning-field slowdowns
         self.declare_parameter("teleop_timeout_s", 0.5)
         self.declare_parameter("cmd_timeout_s", 0.2)
         self.declare_parameter("permit_timeout_s", 0.3)
@@ -153,6 +161,8 @@ class CmdMuxKinematics(Node):
         self.manual_alpha_max = min(p("manual_alpha_max").value or self.alpha_max, hw_alpha_max)
         self.manual_jerk = max(1e-3, float(p("manual_jerk").value))
         self.manual_jerk_w = max(1e-3, float(p("manual_jerk_w").value))
+        self.auto_jerk = max(1e-3, float(p("auto_jerk").value))
+        self.field_d_max = min(float(p("field_d_max").value), hw_a_max)
         if self.a_max < p("a_max").value or self.alpha_max < p("alpha_max").value:
             self.get_logger().warn(
                 f"accel limits clamped to hardware: a_max={self.a_max:.3f} "
@@ -473,13 +483,24 @@ class CmdMuxKinematics(Node):
             # the warning-field stop sets its own deceleration through the factor ramp;
             # the slew must not stretch it, so only the drive's ramp bounds it then
             stopping = self._speed_ramp.stopping
-            d_max = max(self.d_max, getattr(self, "stop_d_max", 0.0)) if stopping else self.d_max
-            self._v = slew_asym(self._v, sel.v, self.a_max, d_max, self.dt)
+            field = self._speed_ramp.target < 1.0  # a warning field is slowing or stopping the run
+            if stopping:
+                d_max = max(self.d_max, getattr(self, "stop_d_max", 0.0))
+                self._v, self._a = slew_asym(self._v, sel.v, self.a_max, d_max, self.dt), 0.0
+            elif field:
+                d_max = max(self.d_max, getattr(self, "field_d_max", 0.5))
+                self._v, self._a = slew_asym(self._v, sel.v, self.a_max, d_max, self.dt), 0.0
+            else:
+                # jerk-limited: speed changes (start, taper, approach) build their acceleration
+                self._v, self._a = scurve(
+                    self._v, self._a, sel.v, self.a_max, self.d_max,
+                    getattr(self, "auto_jerk", 1.0), self.dt,
+                )
             yaw_up, yaw_down = self.alpha_max, self.delta_max
             if stopping:
                 yaw_down = max(yaw_down, getattr(self, "stop_delta_max", 0.0))
             self._wz = slew_asym(self._wz, sel.w, yaw_up, yaw_down, self.dt)
-            self._a = self._alpha = 0.0
+            self._alpha = 0.0
             self._wl = self._wr = 0.0
             wl, wr = clamp_wheels(*inverse(self.geom, self._v, self._wz), self.w_max)
         if not (math.isfinite(wl) and math.isfinite(wr)):

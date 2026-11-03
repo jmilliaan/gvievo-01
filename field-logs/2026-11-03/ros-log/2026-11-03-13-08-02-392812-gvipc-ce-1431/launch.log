@@ -1,0 +1,77 @@
+1793686082.3943274 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-13-08-02-392812-gvipc-ce-1431
+1793686082.3945186 [INFO] [launch]: Default logging verbosity is set to INFO
+1793686082.6169150 [INFO] [foxglove_bridge-1]: process started with pid [1623]
+1793686082.9723942 [foxglove_bridge-1] [INFO] [1793686082.969672989] [foxglove_bridge]: Starting foxglove_bridge (humble, 3.6.0@)
+1793686082.9943967 [foxglove_bridge-1] [2026-11-03T06:08:02Z INFO  foxglove::websocket::server] Started server on 0.0.0.0:8765
+1793686082.9946067 [foxglove_bridge-1] [INFO] [1793686082.992745997] [foxglove_bridge]: Server listening on port 8765
+1793686083.0104434 [foxglove_bridge-1] [INFO] [1793686083.009757799] [foxglove_bridge]: Advertising new channel 2 for topic "/wheel_states_ui"
+1793686083.0186932 [foxglove_bridge-1] [INFO] [1793686083.015134614] [foxglove_bridge]: Advertising new channel 3 for topic "/tf"
+1793686083.0203979 [foxglove_bridge-1] [INFO] [1793686083.019625973] [foxglove_bridge]: Advertising new channel 4 for topic "/rosout"
+1793686083.0244601 [foxglove_bridge-1] [INFO] [1793686083.020788044] [foxglove_bridge]: Advertising new channel 5 for topic "/robot_description"
+1793686083.0247819 [foxglove_bridge-1] [INFO] [1793686083.020861773] [foxglove_bridge]: Advertising new channel 6 for topic "/tf_static"
+1793686083.0332842 [foxglove_bridge-1] [INFO] [1793686083.032763470] [foxglove_bridge]: Advertising new channel 7 for topic "/raw_data"
+1793686083.0421171 [foxglove_bridge-1] [INFO] [1793686083.040404440] [foxglove_bridge]: Advertising new channel 8 for topic "/odometry/filtered"
+1793686083.0422938 [foxglove_bridge-1] [INFO] [1793686083.040484242] [foxglove_bridge]: Advertising new channel 9 for topic "/odom_raw"
+1793686083.0463417 [foxglove_bridge-1] [INFO] [1793686083.042609730] [foxglove_bridge]: Advertising new channel 10 for topic "/map"
+1793686083.0515127 [foxglove_bridge-1] [INFO] [1793686083.047904061] [foxglove_bridge]: Advertising new channel 11 for topic "/joint_states"
+1793686083.0592525 [foxglove_bridge-1] [INFO] [1793686083.049239995] [foxglove_bridge]: Advertising new channel 12 for topic "/initialpose"
+1793686083.0605810 [foxglove_bridge-1] [INFO] [1793686083.059966618] [foxglove_bridge]: Advertising new channel 13 for topic "/gls/reading"
+1793686083.0607419 [foxglove_bridge-1] [INFO] [1793686083.060054003] [foxglove_bridge]: Advertising new channel 14 for topic "/wheel_states"
+1793686083.0657980 [foxglove_bridge-1] [INFO] [1793686083.062031844] [foxglove_bridge]: Advertising new channel 15 for topic "/extended_scan"
+1793686083.0659680 [foxglove_bridge-1] [INFO] [1793686083.065180484] [foxglove_bridge]: Advertising new channel 16 for topic "/drives/status"
+1793686083.0679450 [foxglove_bridge-1] [INFO] [1793686083.067395327] [foxglove_bridge]: Advertising new channel 17 for topic "/diagnostics"
+1793686083.0767524 [foxglove_bridge-1] [INFO] [1793686083.075239036] [foxglove_bridge]: Advertising new channel 18 for topic "/amr/run_state"
+1793686083.0786853 [foxglove_bridge-1] [INFO] [1793686083.076472069] [foxglove_bridge]: Advertising new channel 19 for topic "/parameter_events"
+1793686083.0801473 [foxglove_bridge-1] [INFO] [1793686083.079150597] [foxglove_bridge]: Advertising new channel 20 for topic "/amr/route_markers"
+1793686083.0804632 [foxglove_bridge-1] [INFO] [1793686083.079728231] [foxglove_bridge]: Advertising new channel 21 for topic "/amr/panel_state_ui"
+1793686083.0815678 [foxglove_bridge-1] [INFO] [1793686083.080692633] [foxglove_bridge]: Advertising new channel 22 for topic "/output_paths"
+1793686083.0819550 [foxglove_bridge-1] [INFO] [1793686083.081263719] [foxglove_bridge]: Advertising new channel 23 for topic "/amr/survey_move_state"
+1793686083.0835330 [foxglove_bridge-1] [INFO] [1793686083.082993478] [foxglove_bridge]: Advertising new channel 24 for topic "/amr/route_preview"
+1793686083.0836985 [foxglove_bridge-1] [INFO] [1793686083.083083270] [foxglove_bridge]: Advertising new channel 25 for topic "/amr/panel_state"
+1793686083.1147797 [foxglove_bridge-1] [INFO] [1793686083.099197890] [foxglove_bridge]: Advertising new channel 26 for topic "/amr/mux_state"
+1793686083.1149879 [foxglove_bridge-1] [INFO] [1793686083.110153670] [foxglove_bridge]: Advertising new channel 27 for topic "/amr/mapping_state"
+1793686083.1150897 [foxglove_bridge-1] [INFO] [1793686083.114175862] [foxglove_bridge]: Advertising new channel 28 for topic "/imu/data"
+1793686083.1344278 [foxglove_bridge-1] [INFO] [1793686083.122202472] [foxglove_bridge]: Advertising new channel 29 for topic "/amr/localization_state"
+1793686083.1346078 [foxglove_bridge-1] [INFO] [1793686083.126981016] [foxglove_bridge]: Advertising new channel 30 for topic "/amr/mode_state"
+1793686083.1444278 [foxglove_bridge-1] [INFO] [1793686083.134954257] [foxglove_bridge]: Advertising new channel 31 for topic "/amr/manual_command"
+1793686083.1446276 [foxglove_bridge-1] [INFO] [1793686083.143141713] [foxglove_bridge]: Advertising new channel 32 for topic "/amr/io"
+1793686083.1492577 [foxglove_bridge-1] [INFO] [1793686083.144938915] [foxglove_bridge]: Advertising new channel 33 for topic "/amr/events"
+1793686083.1494050 [foxglove_bridge-1] [INFO] [1793686083.145297674] [foxglove_bridge]: Advertising new channel 34 for topic "/scan"
+1793686083.1702936 [foxglove_bridge-1] [INFO] [1793686083.156146197] [foxglove_bridge]: Advertising new channel 35 for topic "/amr/control_lease"
+1793686083.1704671 [foxglove_bridge-1] [INFO] [1793686083.156231472] [foxglove_bridge]: Advertising new channel 36 for topic "/set_pose"
+1793686083.1705487 [foxglove_bridge-1] [INFO] [1793686083.163144760] [foxglove_bridge]: Advertising new channel 37 for topic "/amr/commissioning_state"
+1793686084.3406310 [foxglove_bridge-1] [INFO] [1793686084.340338237] [foxglove_bridge]: Advertising new channel 38 for topic "/imu/data_raw"
+1793686084.3427041 [foxglove_bridge-1] [INFO] [1793686084.342415185] [foxglove_bridge]: Advertising new channel 39 for topic "/cmd_wheel_vel"
+1793686084.3436379 [foxglove_bridge-1] [INFO] [1793686084.342813347] [foxglove_bridge]: Advertising new channel 40 for topic "/cmd_vel_teleop"
+1793686084.3437839 [foxglove_bridge-1] [INFO] [1793686084.342897271] [foxglove_bridge]: Advertising new channel 41 for topic "/scan_gated"
+1793686084.3438661 [foxglove_bridge-1] [INFO] [1793686084.342960852] [foxglove_bridge]: Advertising new channel 42 for topic "/amr/layers/g1/cmd_vel_rotate"
+1793686084.3439443 [foxglove_bridge-1] [INFO] [1793686084.342984936] [foxglove_bridge]: Advertising new channel 43 for topic "/amr/layers/g1/cmd_vel"
+1793686084.3461072 [foxglove_bridge-1] [INFO] [1793686084.345499005] [foxglove_bridge]: Advertising new channel 44 for topic "/amr/motion_permit"
+1793686084.3462858 [foxglove_bridge-1] [INFO] [1793686084.345593045] [foxglove_bridge]: Advertising new channel 45 for topic "/amr/commissioning_wheels"
+1793686084.9255962 [foxglove_bridge-1] [INFO] [1793686084.925152306] [foxglove_bridge]: Advertising new channel 46 for topic "/drives/torque"
+1793687362.1323988 [foxglove_bridge-1] [INFO] [1793687362.132136260] [foxglove_bridge]: Removing channel 46 for topic "/drives/torque" (amr_interfaces/msg/DriveTorque)
+1793687362.1325400 [foxglove_bridge-1] [INFO] [1793687362.132194881] [foxglove_bridge]: Removing channel 45 for topic "/amr/commissioning_wheels" (amr_interfaces/msg/WheelVelocities)
+1793687362.1325881 [foxglove_bridge-1] [INFO] [1793687362.132206709] [foxglove_bridge]: Removing channel 44 for topic "/amr/motion_permit" (amr_interfaces/msg/MotionPermit)
+1793687362.1326282 [foxglove_bridge-1] [INFO] [1793687362.132215743] [foxglove_bridge]: Removing channel 43 for topic "/amr/layers/g1/cmd_vel" (geometry_msgs/msg/Twist)
+1793687362.1326656 [foxglove_bridge-1] [INFO] [1793687362.132224087] [foxglove_bridge]: Removing channel 42 for topic "/amr/layers/g1/cmd_vel_rotate" (geometry_msgs/msg/Twist)
+1793687362.1327024 [foxglove_bridge-1] [INFO] [1793687362.132233398] [foxglove_bridge]: Removing channel 41 for topic "/scan_gated" (sensor_msgs/msg/LaserScan)
+1793687362.1327393 [foxglove_bridge-1] [INFO] [1793687362.132240997] [foxglove_bridge]: Removing channel 40 for topic "/cmd_vel_teleop" (geometry_msgs/msg/Twist)
+1793687362.1329319 [foxglove_bridge-1] [INFO] [1793687362.132248481] [foxglove_bridge]: Removing channel 39 for topic "/cmd_wheel_vel" (amr_interfaces/msg/WheelVelocities)
+1793687362.1329787 [foxglove_bridge-1] [INFO] [1793687362.132256085] [foxglove_bridge]: Removing channel 38 for topic "/imu/data_raw" (sensor_msgs/msg/Imu)
+1793687362.1330159 [foxglove_bridge-1] [INFO] [1793687362.132264265] [foxglove_bridge]: Removing channel 36 for topic "/set_pose" (geometry_msgs/msg/PoseWithCovarianceStamped)
+1793687362.1330631 [foxglove_bridge-1] [INFO] [1793687362.132274411] [foxglove_bridge]: Removing channel 11 for topic "/joint_states" (sensor_msgs/msg/JointState)
+1793687362.1331041 [foxglove_bridge-1] [INFO] [1793687362.132282724] [foxglove_bridge]: Removing channel 9 for topic "/odom_raw" (nav_msgs/msg/Odometry)
+1793687362.1331389 [foxglove_bridge-1] [INFO] [1793687362.132290451] [foxglove_bridge]: Removing channel 8 for topic "/odometry/filtered" (nav_msgs/msg/Odometry)
+1793687362.1331744 [foxglove_bridge-1] [INFO] [1793687362.132297956] [foxglove_bridge]: Removing channel 7 for topic "/raw_data" (sick_safetyscanners2_interfaces/msg/RawMicroScanData)
+1793687362.1332150 [foxglove_bridge-1] [INFO] [1793687362.132305568] [foxglove_bridge]: Removing channel 5 for topic "/robot_description" (std_msgs/msg/String)
+1793687362.1333194 [foxglove_bridge-1] [INFO] [1793687362.132313982] [foxglove_bridge]: Removing channel 15 for topic "/extended_scan" (sick_safetyscanners2_interfaces/msg/ExtendedLaserScan)
+1793687362.1333585 [foxglove_bridge-1] [INFO] [1793687362.132323974] [foxglove_bridge]: Removing channel 22 for topic "/output_paths" (sick_safetyscanners2_interfaces/msg/OutputPaths)
+1793687362.1333930 [foxglove_bridge-1] [INFO] [1793687362.132333802] [foxglove_bridge]: Removing channel 28 for topic "/imu/data" (sensor_msgs/msg/Imu)
+1793687362.1638649 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793687362.1647613 [INFO] [foxglove_bridge-1]: sending signal 'SIGINT' to process[foxglove_bridge-1]
+1793687362.1651535 [foxglove_bridge-1] [INFO] [1793687362.164975095] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+1793687362.1658504 [foxglove_bridge-1] [INFO] [1793687362.165670398] [foxglove_bridge]: Shutting down foxglove_bridge
+1793687362.6345222 [foxglove_bridge-1] [2026-11-03T06:29:22Z INFO  foxglove::websocket::server] Shutting down
+1793687362.6350870 [foxglove_bridge-1] [2026-11-03T06:29:22Z INFO  foxglove::websocket::server] Shutdown complete
+1793687362.6360307 [foxglove_bridge-1] [INFO] [1793687362.634083687] [foxglove_bridge]: Shutdown complete
+1793687362.9506884 [INFO] [foxglove_bridge-1]: process has finished cleanly [pid 1623]

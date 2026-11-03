@@ -1,0 +1,4 @@
+[INFO] [1793675454.375533179] [gls_node]: GLS621 at 192.168.4.1:2112, read-only; NOT CALIBRATED: raw counts only
+[INFO] [1793675454.377238103] [gls_node]: GLS answering: connected, settings verified
+[INFO] [1793675454.380364383] [gls_node]: GLS settings verified
+[WARN] [1793681018.657921231] [gls_node]: GLS not answering: connected, settings verified

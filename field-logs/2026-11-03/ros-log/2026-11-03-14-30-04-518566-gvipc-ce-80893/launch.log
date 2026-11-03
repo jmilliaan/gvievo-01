@@ -1,0 +1,42 @@
+1793691004.5197301 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-14-30-04-518566-gvipc-ce-80893
+1793691004.5199239 [INFO] [launch]: Default logging verbosity is set to INFO
+1793691004.7753205 [INFO] [drive_node-2]: process started with pid [80917]
+1793691004.7794762 [INFO] [sick_safetyscanners2_node-4]: process started with pid [80921]
+1793691004.7814701 [INFO] [robot_state_publisher-1]: process started with pid [80915]
+1793691004.7816517 [INFO] [panel_node-3]: process started with pid [80919]
+1793691004.7817802 [INFO] [gls_node-5]: process started with pid [80923]
+1793691004.7818847 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [80925]
+1793691004.7819855 [INFO] [diff_drive_odom_node-7]: process started with pid [80931]
+1793691004.7821059 [INFO] [imu_bias_node-8]: process started with pid [80944]
+1793691004.7822168 [INFO] [scan_gate_node-9]: process started with pid [80949]
+1793691004.7823148 [INFO] [commissioning_node-10]: process started with pid [80951]
+1793691004.7824051 [INFO] [ekf_node-11]: process started with pid [80960]
+1793691811.7264359 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793691811.7322514 [INFO] [ekf_node-11]: sending signal 'SIGINT' to process[ekf_node-11]
+1793691811.7343371 [INFO] [commissioning_node-10]: sending signal 'SIGINT' to process[commissioning_node-10]
+1793691811.7374258 [INFO] [scan_gate_node-9]: sending signal 'SIGINT' to process[scan_gate_node-9]
+1793691811.7403014 [INFO] [imu_bias_node-8]: sending signal 'SIGINT' to process[imu_bias_node-8]
+1793691811.7435887 [INFO] [diff_drive_odom_node-7]: sending signal 'SIGINT' to process[diff_drive_odom_node-7]
+1793691811.7466073 [INFO] [cmd_mux_kinematics_node-6]: sending signal 'SIGINT' to process[cmd_mux_kinematics_node-6]
+1793691811.7510793 [INFO] [gls_node-5]: sending signal 'SIGINT' to process[gls_node-5]
+1793691811.7549634 [INFO] [sick_safetyscanners2_node-4]: sending signal 'SIGINT' to process[sick_safetyscanners2_node-4]
+1793691811.7574573 [INFO] [panel_node-3]: sending signal 'SIGINT' to process[panel_node-3]
+1793691811.7606776 [INFO] [drive_node-2]: sending signal 'SIGINT' to process[drive_node-2]
+1793691811.7654631 [INFO] [robot_state_publisher-1]: sending signal 'SIGINT' to process[robot_state_publisher-1]
+1793691811.9850004 [INFO] [sick_safetyscanners2_node-4]: process has finished cleanly [pid 80921]
+1793691811.9874880 [INFO] [robot_state_publisher-1]: process has finished cleanly [pid 80915]
+1793691812.0460598 [INFO] [imu_bias_node-8]: process has finished cleanly [pid 80944]
+1793691812.0464590 [INFO] [ekf_node-11]: process has finished cleanly [pid 80960]
+1793691812.0472975 [INFO] [launch]: process[ekf_node-11] was required: shutting down launched system
+1793691812.0521159 [INFO] [scan_gate_node-9]: process has finished cleanly [pid 80949]
+1793691812.0525472 [INFO] [launch]: process[scan_gate_node-9] was required: shutting down launched system
+1793691812.0552783 [INFO] [gls_node-5]: process has finished cleanly [pid 80923]
+1793691812.0567439 [INFO] [diff_drive_odom_node-7]: process has finished cleanly [pid 80931]
+1793691812.0571637 [INFO] [launch]: process[diff_drive_odom_node-7] was required: shutting down launched system
+1793691812.0850704 [INFO] [panel_node-3]: process has finished cleanly [pid 80919]
+1793691812.0855286 [INFO] [launch]: process[panel_node-3] was required: shutting down launched system
+1793691812.0943456 [ERROR] [commissioning_node-10]: process has died [pid 80951, exit code 1, cmd '/home/gvipc-evo-01/agv_can/amr_ws/install/amr_base/lib/amr_base/commissioning_node --ros-args -r __node:=commissioning_node --params-file /tmp/launch_params_lzvt985_'].
+1793691812.1045709 [INFO] [cmd_mux_kinematics_node-6]: process has finished cleanly [pid 80925]
+1793691812.1048152 [INFO] [launch]: process[cmd_mux_kinematics_node-6] was required: shutting down launched system
+1793691812.1728966 [INFO] [drive_node-2]: process has finished cleanly [pid 80917]
+1793691812.1732256 [INFO] [launch]: process[drive_node-2] was required: shutting down launched system
