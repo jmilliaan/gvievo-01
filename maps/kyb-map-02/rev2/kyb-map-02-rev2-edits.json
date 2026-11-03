@@ -1,0 +1,334 @@
+{
+ "format": "amr-map-edits",
+ "version": 1,
+ "parent": {
+  "map_id": "kyb-map-02",
+  "revision": 2,
+  "sha256": "fbd8fcabeb5af870368596298db1a4fa0d57a82ee8573fc804dc0d44ae5f6e40"
+ },
+ "created": "2026-11-03T11:36:50+0700",
+ "note": "fix (remove) home pos trolley train",
+ "apply": "ros2 run amr_mission map_edit --map kyb-map-02 --rev 2 --ops <this file> --note '...'",
+ "summary": {
+  "ops": 11,
+  "cells_changed": 1333,
+  "now_occupied": 0,
+  "now_free": 1333,
+  "now_unknown": 0,
+  "dynamic_cells": 0,
+  "dynamic_added": 0,
+  "dynamic_cleared": 0
+ },
+ "groups": [
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "4.12 × 2.67 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "9.66 × 2.59 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.17 × 1.50 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "2.71 × 2.05 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "2.08 × 3.16 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "0.46 × 0.66 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.46 × 1.96 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "0.39 × 0.47 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.65 × 1.12 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.94 × 3.35 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.84 × 0.57 m",
+   "ops": 1
+  }
+ ],
+ "ops": [
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -3.8706,
+     -1.5865
+    ],
+    [
+     0.2467,
+     -1.5865
+    ],
+    [
+     0.2467,
+     1.0858
+    ],
+    [
+     -3.8706,
+     1.0858
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -11.7094,
+     -1.6261
+    ],
+    [
+     -2.0495,
+     -1.6261
+    ],
+    [
+     -2.0495,
+     0.967
+    ],
+    [
+     -11.7094,
+     0.967
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -15.3395,
+     -0.1477
+    ],
+    [
+     -14.1742,
+     -0.1477
+    ],
+    [
+     -14.1742,
+     1.3523
+    ],
+    [
+     -15.3395,
+     1.3523
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -14.2733,
+     -0.7676
+    ],
+    [
+     -11.5584,
+     -0.7676
+    ],
+    [
+     -11.5584,
+     1.2779
+    ],
+    [
+     -14.2733,
+     1.2779
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -18.4388,
+     0.3358
+    ],
+    [
+     -16.356,
+     0.3358
+    ],
+    [
+     -16.356,
+     3.497
+    ],
+    [
+     -18.4388,
+     3.497
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -18.7363,
+     3.5094
+    ],
+    [
+     -18.2776,
+     3.5094
+    ],
+    [
+     -18.2776,
+     4.1665
+    ],
+    [
+     -18.7363,
+     4.1665
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -18.3528,
+     13.4025
+    ],
+    [
+     -16.8907,
+     13.4025
+    ],
+    [
+     -16.8907,
+     15.3607
+    ],
+    [
+     -18.3528,
+     15.3607
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -18.4672,
+     13.7138
+    ],
+    [
+     -18.0811,
+     13.7138
+    ],
+    [
+     -18.0811,
+     14.1844
+    ],
+    [
+     -18.4672,
+     14.1844
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -16.2692,
+     13.6597
+    ],
+    [
+     -14.6213,
+     13.6597
+    ],
+    [
+     -14.6213,
+     14.7761
+    ],
+    [
+     -16.2692,
+     14.7761
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -16.4287,
+     10.922
+    ],
+    [
+     -14.4884,
+     10.922
+    ],
+    [
+     -14.4884,
+     14.2711
+    ],
+    [
+     -16.4287,
+     14.2711
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -1.4381,
+     0.6845
+    ],
+    [
+     0.3978,
+     0.6845
+    ],
+    [
+     0.3978,
+     1.2524
+    ],
+    [
+     -1.4381,
+     1.2524
+    ]
+   ],
+   "value": "free"
+  }
+ ]
+}
