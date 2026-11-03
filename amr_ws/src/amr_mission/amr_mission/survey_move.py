@@ -33,7 +33,7 @@ class MoveError(ValueError):
 
 @dataclass(frozen=True)
 class Profile:
-    v_mps: float = 0.30  # operator decision 2026-09-19
+    v_mps: float = 0.40  # operator decision 2026-11-03 (0.30 from 2026-09-19)
     w_rad_s: float = 0.20
     decel_mps2: float = 0.15  # our own slow-down, gentler than the mux's so it is followed
     decel_rad_s2: float = 0.15
