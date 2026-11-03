@@ -1,0 +1,418 @@
+{
+ "format": "amr-map-edits",
+ "version": 1,
+ "parent": {
+  "map_id": "kyb-map-02",
+  "revision": 1,
+  "sha256": "14260b2f98004926744acaf15cfe1896b2456c0ac94f2549246a752eb58cf3c9"
+ },
+ "created": "2026-11-03T10:55:45+0700",
+ "note": "remove dirty obstacles",
+ "apply": "ros2 run amr_mission map_edit --map kyb-map-02 --rev 1 --ops <this file> --note '...'",
+ "summary": {
+  "ops": 14,
+  "cells_changed": 605,
+  "now_occupied": 0,
+  "now_free": 605,
+  "now_unknown": 0,
+  "dynamic_cells": 0,
+  "dynamic_added": 0,
+  "dynamic_cleared": 0
+ },
+ "groups": [
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.58 × 1.61 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.04 × 0.69 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "0.84 × 0.43 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "2.72 × 3.01 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.33 × 2.19 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.72 × 0.85 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "2.10 × 0.89 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.17 × 0.68 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.49 × 0.78 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "3.36 × 1.70 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.05 × 1.15 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "0.70 × 0.85 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "1.50 × 1.43 m",
+   "ops": 1
+  },
+  {
+   "tool": "rectangle",
+   "action": "free",
+   "detail": "2.02 × 2.16 m",
+   "ops": 1
+  }
+ ],
+ "ops": [
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -0.6493,
+     -0.6076
+    ],
+    [
+     0.9261,
+     -0.6076
+    ],
+    [
+     0.9261,
+     1.0028
+    ],
+    [
+     -0.6493,
+     1.0028
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -0.8827,
+     -0.8293
+    ],
+    [
+     0.1559,
+     -0.8293
+    ],
+    [
+     0.1559,
+     -0.1408
+    ],
+    [
+     -0.8827,
+     -0.1408
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -1.5012,
+     -0.6835
+    ],
+    [
+     -0.661,
+     -0.6835
+    ],
+    [
+     -0.661,
+     -0.2517
+    ],
+    [
+     -1.5012,
+     -0.2517
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     0.7624,
+     -1.5026
+    ],
+    [
+     3.4808,
+     -1.5026
+    ],
+    [
+     3.4808,
+     1.5106
+    ],
+    [
+     0.7624,
+     1.5106
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     2.2352,
+     10.4553
+    ],
+    [
+     3.565,
+     10.4553
+    ],
+    [
+     3.565,
+     12.6491
+    ],
+    [
+     2.2352,
+     12.6491
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -0.3099,
+     14.6301
+    ],
+    [
+     1.4053,
+     14.6301
+    ],
+    [
+     1.4053,
+     15.4766
+    ],
+    [
+     -0.3099,
+     15.4766
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -0.2374,
+     16.4001
+    ],
+    [
+     1.8672,
+     16.4001
+    ],
+    [
+     1.8672,
+     17.2932
+    ],
+    [
+     -0.2374,
+     17.2932
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -13.8077,
+     16.4943
+    ],
+    [
+     -12.6375,
+     16.4943
+    ],
+    [
+     -12.6375,
+     17.173
+    ],
+    [
+     -13.8077,
+     17.173
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -81.3247,
+     17.0306
+    ],
+    [
+     -79.8338,
+     17.0306
+    ],
+    [
+     -79.8338,
+     17.8097
+    ],
+    [
+     -81.3247,
+     17.8097
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -93.4872,
+     16.4684
+    ],
+    [
+     -90.1264,
+     16.4684
+    ],
+    [
+     -90.1264,
+     18.1708
+    ],
+    [
+     -93.4872,
+     18.1708
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -90.1441,
+     16.4331
+    ],
+    [
+     -89.0944,
+     16.4331
+    ],
+    [
+     -89.0944,
+     17.5798
+    ],
+    [
+     -90.1441,
+     17.5798
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -136.0047,
+     30.2992
+    ],
+    [
+     -135.3079,
+     30.2992
+    ],
+    [
+     -135.3079,
+     31.1501
+    ],
+    [
+     -136.0047,
+     31.1501
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -136.5483,
+     49.5579
+    ],
+    [
+     -135.0457,
+     49.5579
+    ],
+    [
+     -135.0457,
+     50.9877
+    ],
+    [
+     -136.5483,
+     50.9877
+    ]
+   ],
+   "value": "free"
+  },
+  {
+   "op": "paint",
+   "polygon": [
+    [
+     -0.1151,
+     -0.1639
+    ],
+    [
+     1.9046,
+     -0.1639
+    ],
+    [
+     1.9046,
+     1.9992
+    ],
+    [
+     -0.1151,
+     1.9992
+    ]
+   ],
+   "value": "free"
+  }
+ ]
+}
