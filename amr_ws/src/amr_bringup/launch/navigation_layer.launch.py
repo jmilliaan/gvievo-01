@@ -2,7 +2,7 @@
 localization monitor, controller, behaviors, route executor (unified plan U1).
 
 The bundle <maps_dir>/<map_id>/rev<revision>/ is verified (hashes) before
-anything starts. No base, no web, no Foxglove, no SLAM. A map change is a
+anything starts. No base, no web, no SLAM. A map change is a
 new instance of this launch; nothing here is reused across maps.
 
     revision:=N        exact revision; "latest" is resolved ONCE here for the

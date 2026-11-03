@@ -40,6 +40,18 @@ ARC_V_MPS = 0.30  # every arc (corner) at 0.30 m/s, whatever the straights run a
 WAIT = "wait"
 WAIT_NAME_MAX = 40
 LABEL_ID_RE = re.compile(r"^x\d{4}y\d{4}$")
+# The home leg (2026-11-03): the route's last step drives forward from wherever the step
+# before it ends to the route's start pose (HOME), arriving on HOME's heading. No parameters:
+# the compiler builds it (amr_navigation.scurve.home_leg), a straight when the vehicle is
+# already on HOME's line, else an S-curve. Bounded: it starts behind HOME, at most
+# HOME_MAX_RUNUP_M back, within HOME_MAX_HEADING_DEG of HOME's heading; the curve never
+# points more than HOME_MAX_SLOPE_DEG off HOME's line nor turns tighter than
+# HOME_MIN_RADIUS_M (owner 2026-11-03: 1.0 m, the arc minimum).
+HOME = "home"
+HOME_MAX_RUNUP_M = 5.0
+HOME_MAX_HEADING_DEG = 20.0
+HOME_MAX_SLOPE_DEG = 30.0
+HOME_MIN_RADIUS_M = 1.0
 
 
 class RouteError(ValueError):
@@ -150,7 +162,7 @@ class Limits:
 @dataclass
 class Step:
     id: str
-    type: str  # STRAIGHT | ROTATE | REVERSE | ARC | WAIT
+    type: str  # STRAIGHT | ROTATE | REVERSE | ARC | WAIT | HOME
     to: tuple[float, float] | None = None  # straight: end point (x_m, y_m)
     direction: str | None = None  # rotate / arc: cw | ccw
     angle_deg: float | None = None  # rotate: 45 | 90 | 180 | 270; arc: ARC_MIN_DEG..ARC_MAX_DEG
@@ -177,6 +189,8 @@ class Step:
             if self.label_id is not None:
                 d["label_id"] = self.label_id
             return d
+        if self.type == HOME:
+            return {"id": self.id, "type": HOME}
         if self.type == ROTATE:
             return {"id": self.id, "type": ROTATE, "direction": self.direction, "angle_deg": self.angle_deg}
         raise RouteError(f"unknown step type {self.type!r}"[:200], self.id)
@@ -230,6 +244,8 @@ class Step:
             if label is not None and (not isinstance(label, str) or not LABEL_ID_RE.match(label)):
                 raise RouteError(f"wait label_id must look like x0100y0000, got {label!r}"[:200], sid)
             return Step(sid, WAIT, name=name, label_id=label)
+        if t == HOME:
+            return Step(sid, HOME)
         raise RouteError(f"unknown step type {t!r}"[:200], sid)
 
 

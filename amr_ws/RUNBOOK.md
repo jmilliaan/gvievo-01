@@ -1,7 +1,7 @@
 # Unified AMR operator and cutover runbook
 
 `amr.service` is the intended production service. It starts the hardware base,
-operator web app and optional Foxglove bridge, then stays in **IDLE**. It does
+operator web app, then stays in **IDLE**. It does
 not load a map, start a survey or run a route after boot. The operator selects mapping or navigation from Run.
 
 The physical controls remain authoritative:
@@ -64,14 +64,14 @@ Home and the rail must show:
 - Localisation and Run `–` (and, on Monitor, Active map `—`).
 
 Stopping the service revokes the control lease first. The supervisor then stops
-the active layer, base, Foxglove and web process groups. The base shutdown
+the active layer, base and web process groups. The base shutdown
 zeros wheel commands, clears the drive heartbeat consumer and de-energizes the
 drives; the panel owner drives its output coil low. After stop, check that no
 child remains:
 
 ```bash
 systemctl show amr.service -p ActiveState -p SubState -p MainPID -p Result
-pgrep -af 'amr_|nav2|slam_toolbox|foxglove' || true
+pgrep -af 'amr_|nav2|slam_toolbox' || true
 ```
 
 Do not use process-name kills during normal operation. The supervisor owns the
@@ -313,19 +313,20 @@ The route editor moves nothing. The mode can stay `IDLE`.
    (`route.VEHICLE_V_MAX`), every arc at 0.30 m/s (`route.ARC_V_MPS`,
    2026-11-03), and a reverse at half the straight speed, 0.30 m/s.
    Since 2026-11-03 every autonomous speed change is a smooth S-curve (mux
-   `auto_jerk` 0.4 m/s³, at most `a_max` 0.2 m/s² up and `d_max` 0.25 m/s²
-   down): a start reaches 0.60 m/s after about 1.0 m (3.4 s). Field and
+   `auto_jerk` 0.1 m/s³, at most `a_max` 0.1 m/s² up and `d_max` 0.125 m/s²
+   down; twice as long as the first smoothing, after the field runs that
+   day): a start reaches 0.60 m/s after about 2.0 m (6.9 s). Field and
    emergency stops are not softened: while a warning field is in force the
    vehicle brakes at `field_d_max` 0.5 m/s² (warning 1) or the drive's ramp
    (warning 2), and loss of authority still stops at once.
    Consecutive straights and arcs are driven as ONE continuous move (no
    stop between them); a rotate or a reverse ends such a chain. Before an
    arc the speed tapers early enough for the S-curve to reach 0.30 before
-   the boundary (executor `taper_decel` 0.25 m/s², `taper_jerk` 0.4 m/s³,
-   `taper_lead_s` 0.3): 0.60 → 0.30 starts 1.0 m before the arc, takes
-   0.78 m and is done about 0.2 m before it; after the arc it speeds back
-   up over about 0.9 m. At the end of a chain the controller's own ramp over
-   the last 1.5 m (`approach_velocity_scaling_dist`) brings it to the stop. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
+   the boundary (executor `taper_decel` 0.125 m/s², `taper_jerk` 0.1 m/s³,
+   `taper_lead_s` 0.3): 0.60 → 0.30 starts 1.82 m before the arc, takes
+   1.59 m (3.5 s) and is done about 0.2 m before it; after the arc it speeds
+   back up over about 1.7 m (3.9 s). At the end of a chain the controller's own ramp over
+   the last 3.0 m (`approach_velocity_scaling_dist`) brings it to the stop. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
    to back up along the current heading, facing forward: at most 2000 mm
    and at half the speed cap (never the boost). The nanoScan3 does not
    cover the rear, so a reverse is driven blind: keep it short, keep the
@@ -342,6 +343,15 @@ The route editor moves nothing. The mode can stay `IDLE`.
    watch the cross-track on the first arcs. Above 0.40 m/s the nanoScan3 protective field must be validated for
    the speed first (stopping from 0.85 needs about 0.72 m at 0.5 m/s² plus
    the reaction time).
+   **Go home** (2026-11-03): the last step. End the route up to 5 m behind the
+   start pose (HOME), roughly facing it, and press *Go home*: the vehicle drives
+   forward to HOME and stops on HOME's heading. Already on HOME's line it is a
+   straight; otherwise the editor draws an S-curve (never tighter than R 1.0 m,
+   never more than 30° off HOME's line, at most 20° heading error at its start)
+   that runs at 0.30 m/s. The route then always closes, so a repeat count above 1
+   works without hand-tuning the last straight. When it cannot be built the log
+   says why and how far back to end the route instead. A wait (a release point)
+   may come right before it.
 5. Press **Validate**. The robot checks the route against the map, including
    the footprint along every straight and the area every turn actually sweeps
    (a 90° turn does not check behind the vehicle; a 180° does). The footprint
@@ -643,7 +653,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
 | `BASE_EXITED` | error | Needs service: the vehicle software stopped | Switch the drives off and on, then press Restart on the Home page. | The base process group died. Recovery cannot rebuild it: the drives must be re-armed. |
-| `BOOT_ERROR` | error | Needs service: the vehicle software failed to start | Press Restart on the Home page. If it repeats, call the engineer. | Exception while spawning the base/web/foxglove groups; see journalctl -u amr.service. |
+| `BOOT_ERROR` | error | Needs service: the vehicle software failed to start | Press Restart on the Home page. If it repeats, call the engineer. | Exception while spawning the base/web groups; see journalctl -u amr.service. |
 | `LAYER_NOT_EMPTY` | error | Needs service: old software would not go away | Press Restart on the Home page. | STOP_OLD found surviving members of the previous layer's process group. |
 | `LAYER_STOP_TIMEOUT` | error | Needs service: software would not stop | Press Restart on the Home page. | The layer did not exit inside its stop budget. |
 | `SPAWN_FAILED` | error | Needs service: a program would not start | Press Restart on the Home page. If it repeats, call the engineer. | Group.spawn failed (missing executable, bad environment). |
@@ -730,7 +740,7 @@ sudo systemctl stop amr.service
 cd ~/agv_can/amr_ws && rm -rf build install log && colcon build --symlink-install
 sudo ./deploy/install.sh && ./deploy/validate.sh
 ls install/*/lib/*/ install/*/share/*/launch/ | grep -E 'rfid|tape|line_layer|p0_loc|web_panel'   # must be empty
-sudo systemctl restart amr.service      # witnessed; supervisor, web and foxglove_bridge together
+sudo systemctl restart amr.service      # witnessed; supervisor and web together
 ```
 
 On a vehicle that ran the tracked product, archive the tape-era data to a
@@ -842,8 +852,10 @@ The last deployable legacy revision is commit `aa02ec7`, tagged `legacy-final`
 
 The tracked product (tape follower, MLS tape reading, RFID, tape missions) was
 removed on 2026-10-27 (`manuals/trackless-only-removal-plan.md`); its last
-build is the tag `tracked-final`. Bags and Foxglove layouts recorded before
-then decode only against that build.
+build is the tag `tracked-final`. Bags recorded before then decode only against
+that build. The Foxglove bridge was removed on 2026-11-03
+(`manuals/foxglove-removal-plan.md`): nothing listens on :8765, and remote views go
+through the web app.
 
 On a vehicle that still carries the old units, retire them once:
 

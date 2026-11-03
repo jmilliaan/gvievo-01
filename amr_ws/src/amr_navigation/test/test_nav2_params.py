@@ -16,9 +16,9 @@ def test_nav2_ceilings_mirror_route_constants():
     assert follow["desired_linear_vel"] == VEHICLE_V_MAX
     assert spin["max_rotational_vel"] == VEHICLE_W_MAX
     # RPP's approach ramp is linear in DISTANCE (v = v0 d/D), so its decel demand peaks at
-    # v0^2/D right before the floor; that must stay under the mux decel (base.launch d_max 0.25
-    # since 2026-11-03).
+    # v0^2/D right before the floor; that must stay under the mux decel (base.launch d_max 0.125
+    # since 2026-11-03, twice-as-long slopes).
     d = follow["approach_velocity_scaling_dist"]
-    assert VEHICLE_V_MAX**2 / d <= 0.25
+    assert VEHICLE_V_MAX**2 / d <= 0.125
     # the collision check looks about 0.64 m ahead at the ceiling (2026-11-03: 1 m less 33 %)
     assert 0.6 <= follow["max_allowed_time_to_collision_up_to_carrot"] * VEHICLE_V_MAX <= 0.7

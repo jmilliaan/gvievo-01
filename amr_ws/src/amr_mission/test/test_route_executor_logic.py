@@ -608,17 +608,51 @@ def test_speed_boost_2_taper_and_arc_turn_cap_on_the_lead_in_straight():
     assert m._step_speed(t1, (5.5, 0.0, 0.0)) == 0.55  # tapered: RPP's approach starts from the base
 
 
-def test_taper_into_an_arc_starts_one_metre_before_it_with_the_shipped_slopes():
-    """Owner 2026-11-03: straights 0.60, arcs 0.30, a smoother slope that starts 1 m before the
-    arc. The shipped executor defaults (taper_decel 0.25 = mux d_max, taper_jerk 0.4 = mux
-    auto_jerk) put the start at 1.0 m; the mux S-curve with the same numbers needs 0.78 m."""
+def test_taper_into_an_arc_starts_early_enough_with_the_shipped_slopes():
+    """Owner 2026-11-03: straights 0.60, arcs 0.30, slopes twice as long as the first
+    smoothing (mux a_max 0.1 / d_max 0.125 / auto_jerk 0.1). The shipped executor defaults
+    (taper_decel 0.125 = mux d_max, taper_jerk 0.1 = mux auto_jerk) put the start 1.82 m
+    before the arc; the mux S-curve with the same numbers needs 1.59 m."""
     from amr_base.diff_drive import scurve
 
     n = make_node([CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (5.0, 0.0, 0.0), length_m=5.0)])
-    n.taper_decel, n.taper_lead_s, n.taper_jerk = 0.25, 0.3, 0.4
-    assert n._taper_dist(0.60, 0.30) == pytest.approx(1.0, abs=0.005)
+    n.taper_decel, n.taper_lead_s, n.taper_jerk = 0.125, 0.3, 0.1
+    assert n._taper_dist(0.60, 0.30) == pytest.approx(1.82, abs=0.005)
     v, a, x = 0.60, 0.0, 0.0
     while v > 0.30:
-        v, a = scurve(v, a, 0.30, 0.2, 0.25, 0.4, 0.02)
+        v, a = scurve(v, a, 0.30, 0.1, 0.125, 0.1, 0.02)
         x += v * 0.02
-    assert 0.7 < x < 1.0 - 0.6 * 0.3, "reaches 0.30 before the arc, with the lead to spare"
+    assert 1.4 < x < 1.82 - 0.6 * 0.3, "reaches 0.30 before the arc, with the lead to spare"
+
+
+def test_home_leg_progress_chain_overshoot_and_turn_cap():
+    from amr_navigation.scurve import home_leg
+
+    # the route ends 2 m behind HOME (the origin, facing +x), 0.2 m left and turned 5 deg left;
+    # a straight leads into the S-curve home and the two run as one goal
+    yaw0 = math.radians(5.0)
+    p0 = (-2.0 - 2.0 * math.cos(yaw0), 0.2 - 2.0 * math.sin(yaw0), yaw0)
+    p1 = (-2.0, 0.2, yaw0)
+    c, s = math.cos(yaw0), math.sin(yaw0)
+    line = [(p0[0] + 0.1 * k * c, p0[1] + 0.1 * k * s, yaw0) for k in range(21)]
+    s1 = CompiledStep("s1", STRAIGHT, p0, p1, length_m=2.0, samples=line, v_mps=0.5)
+    leg = home_leg(p1, (0.0, 0.0, 0.0))
+    home = (0.0, 0.0, 0.0)
+    s2 = CompiledStep("s2", "home", p1, home, length_m=leg.length_m, samples=leg.samples, v_mps=0.30, leg=leg)
+    n = make_node([s1, s2])
+    _clock_stub(n)
+    n.goal_overshoot_m = 0.045
+    assert [s.id for s in n._chain(0)] == ["s1", "s2"]
+    # progress and cross-track on the curve come from its samples
+    mid = leg.samples[len(leg.samples) // 2]
+    along, cross = n._along_cross(s2, mid)
+    assert 0.3 * leg.length_m < along < 0.7 * leg.length_m and cross == pytest.approx(0.0, abs=1e-6)
+    assert n._along_cross(s2, (0.1, 0.0, 0.0))[0] == pytest.approx(leg.length_m + 0.1)
+    # one path for both; the extra pose sits past HOME along HOME's heading (+x), not the
+    # 5 deg the leg started on
+    n.fsm.start(True, True)
+    p = n._follow_path(s1, 0.0)
+    last = p.poses[-1].pose.position
+    assert (last.x, last.y) == (pytest.approx(0.045), pytest.approx(0.0, abs=1e-9))
+    # a curved home leg in the chain lifts the turn cap to the arc ceiling, as an arc does
+    assert n._step_w_max(s1) == pytest.approx(max(0.24, ren.VEHICLE_ARC_W_MAX))

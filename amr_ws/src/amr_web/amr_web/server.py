@@ -505,9 +505,27 @@ def create_app(
                     "centre": list(s.centre) if s.centre is not None else None,
                     "signed_angle_deg": float(np.degrees(s.signed_angle_rad)),
                     "duration_est_s": s.duration_est_s,
+                    **_home_dict(s),
                 }
                 for s in compiled.steps
             ],
+        }
+
+    def _home_dict(s) -> dict:
+        """A home leg's own shape: its samples and how far off HOME's line it started."""
+        if s.leg is None:
+            return {}
+        leg = s.leg
+        return {
+            "samples": [list(p) for p in s.samples],
+            "home": {
+                "straight": leg.straight,
+                "run_up_m": leg.run_up_m,
+                "offset_m": leg.offset_m,
+                "heading_err_deg": float(np.degrees(leg.heading_err_rad)),
+                "min_radius_m": None if leg.straight else leg.min_radius_m,
+                "text": leg.describe(),
+            },
         }
 
     @app.post("/api/maps/<map_id>/<int:rev>/routes/validate")
@@ -591,6 +609,7 @@ def create_app(
                             "radius_m": s.radius_m,
                             "signed_angle_deg": float(np.degrees(s.signed_angle_rad)),
                             "name": s.name,
+                            **({"samples": [list(p[:2]) for p in s.samples]} if s.leg is not None else {}),
                         }
                         for s in compiled.steps
                     ],

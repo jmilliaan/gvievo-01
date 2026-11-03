@@ -2,7 +2,8 @@
 
 A straight starts at the preceding endpoint and must lie forward along the
 current heading; a rotate keeps position and advances heading by its signed
-FULL angle (cw 270 stays -3pi/2); a wait keeps the pose and moves nothing.
+FULL angle (cw 270 stays -3pi/2); a wait keeps the pose and moves nothing; the
+home leg (last step only) drives to the start pose along scurve.home_leg.
 Anything else raises RouteError with the step id: the compiler never rounds a
 bend into a turn.
 """
@@ -21,6 +22,7 @@ from amr_navigation.route import (
     ARC_V_MPS,
     ARC_YAW_RATE_RATIO,
     DIRECTIONS,
+    HOME,
     REVERSE,
     REVERSE_MAX_M,
     REVERSE_SPEED_RATIO,
@@ -31,6 +33,7 @@ from amr_navigation.route import (
     Route,
     RouteError,
 )
+from amr_navigation.scurve import HomeLeg, home_leg
 
 COLLINEAR_TOL_M = 0.001  # lateral offset of `to` from the heading line
 MIN_LENGTH_M = 0.05
@@ -60,6 +63,7 @@ class CompiledStep:
     label_id: str | None = None  # wait: the GLS floor label expected under the camera
     centre: tuple[float, float] | None = None  # arc: circle centre
     radius_m: float = 0.0  # arc
+    leg: HomeLeg | None = None  # home: the leg it was built from (offset, run-up, tightest radius)
 
     @property
     def travel_yaw(self) -> float:
@@ -254,6 +258,37 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
         elif s.type == WAIT:
             _check_wait(route, i, sid)
             steps.append(CompiledStep(sid, WAIT, (x, y, yaw), (x, y, yaw), name=s.name, label_id=s.label_id))
+        elif s.type == HOME:
+            if i != len(route.steps) - 1:
+                raise RouteError("the home leg must be the last step: it ends the route at HOME", sid)
+            home = (route.start.x_m, route.start.y_m, route.start.yaw_rad)
+            try:
+                leg = home_leg((x, y, yaw), home, spacing)
+            except RouteError as e:
+                raise RouteError(str(e), sid) from None
+            n_samples += len(leg.samples)
+            if n_samples > MAX_SAMPLES:
+                raise RouteError(f"route too long: more than {MAX_SAMPLES} path samples", sid)
+            # a straight runs at the trackless speed, an S-curve at an arc's speed for its tightest radius
+            v = step_speed(lim, leg.length_m) if leg.straight else arc_speed(lim, leg.min_radius_m)
+            turn = wrap(home[2] - yaw)
+            steps.append(
+                CompiledStep(
+                    sid,
+                    HOME,
+                    (x, y, yaw),
+                    home,
+                    length_m=leg.length_m,
+                    samples=leg.samples,
+                    signed_angle_rad=turn,
+                    duration_est_s=leg.length_m / v,
+                    v_mps=v,
+                    leg=leg,
+                )
+            )
+            total_len += leg.length_m
+            total_turn += abs(turn)
+            x, y, yaw = home
         elif s.type == ROTATE:
             if s.direction not in DIRECTIONS:
                 raise RouteError(f"direction must be one of {DIRECTIONS}", sid)

@@ -521,7 +521,7 @@ Each phase ends green: `tests/run_all.py` with `EXPECTED_CHECKS` raised delibera
 |---|---|---|---|
 | P0 | `gls_probe` + the `"gls"` lock + the `gls.py` parser and tests | — | Bench §7 can be run. Start it in parallel. |
 | P1 | Part A: wait step, PB Continue, WAITING, web, alarms | W2–W7 answered; the emergency-hold change is committed | On-vehicle acceptance A (below) |
-| P2 | Part B: GlsLink, `gls_node`, `GlsReading`, profile `gls`, URDF frame, fake node | P0 | The camera is visible in the web and in Foxglove, read-only |
+| P2 | Part B: GlsLink, `gls_node`, `GlsReading`, profile `gls`, URDF frame, fake node | P0 | The camera is visible in the web and in TF, read-only |
 | P3 | Part C: label store, mission binding, "Record label here", HOME at survey start (optional) | P2 | The three destinations recorded on the production map, and HOME if one is laid |
 | P4 | `glspose`, `label_fix`, `label_fix_node`, `LabelFix`, drift log, executor label gate, both switches off | P3 | Log-only data from production |
 | P5 | Readiness auto-confirm, `correct_at_home: true` | P4 + bench §7 | Acceptance B |

@@ -236,7 +236,7 @@ Suggested keys, all primitives:
 - `fix_deadband_xy_m`, `fix_deadband_yaw_rad`
 - `cov_floor_xy_m`, `cov_floor_yaw_rad`
 
-Also add the camera to the URDF as a fixed `gls_frame`, so it shows in TF and Foxglove. Generate it from the same profile values; don't keep a second copy.
+Also add the camera to the URDF as a fixed `gls_frame`, so it shows in TF and the web app. Generate it from the same profile values; don't keep a second copy.
 
 ### 3.7 Route executor: re-zero step
 

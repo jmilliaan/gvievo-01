@@ -178,6 +178,7 @@ view.overlays.push((c, v) => {
       const pts = Array.from({ length: n + 1 }, (_, k) => { const yaw = s.start[2] + sign * th * k / n; return [s.centre[0] + sign * s.radius_m * Math.sin(yaw), s.centre[1] - sign * s.radius_m * Math.cos(yaw)]; });
       v.polyline(pts, INK.route, 2); v.dot(s.end[0], s.end[1], INK.turn, 4);
     }
+    else if (s.type === 'home' && s.samples) { v.polyline(s.samples.map(p => [p[0], p[1]]), INK.route, 2); v.dot(s.end[0], s.end[1], INK.pose, 5); }
     else v.dot(s.start[0], s.start[1], INK.turn, 5);
   });
 });

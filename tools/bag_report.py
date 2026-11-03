@@ -8,6 +8,9 @@ localization states, field warnings, mux source changes, drive power, panel
 edges, DO changes, events and rosout warnings. Then, per step of the run
 (/amr/run_state step changes): duration, distance, mean and max speed, peak
 cross-track error and, when /drives/torque was recorded, the motor torque.
+Then SLIP / IMPACT: hitch snatches, torque collapses and wheel-vs-gyro yaw-rate
+mismatches (agv_core/slip_events.py), each with the map->odom correction and the
+worst localization state that followed it.
 Time is seconds from the first recorded message (bag receive time).
 """
 import csv
@@ -20,12 +23,13 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from agv_core import config  # noqa: E402
+from agv_core import config, slip_events  # noqa: E402
 
 RUN_STATES = {0: "IDLE", 1: "READY", 2: "EXECUTING", 3: "PAUSED", 4: "BLOCKED", 5: "FAULT", 6: "DONE"}
 LOC_STATES = {0: "UNLOCALIZED", 1: "CHECKING", 2: "READY", 3: "LOST"}
 MUX_SOURCES = {0: "none", 1: "teleop", 2: "follow", 3: "rotate", 4: "manual", 5: "commissioning",
                6: "pendant"}
+RATED_MOTOR_NM = 1.27  # BLV motor rated torque, the 100 % of 6077h
 
 
 def read_bag(path):
@@ -98,14 +102,18 @@ def main(run):
     # -- motor torque (6077h, diagnostic): % of RATED motor torque, wheel-forward positive.
     # sum_pct is the drive force both wheels together put into the floor - the number a
     # towed load raises; v_mps is the encoder speed at the same instant, for gating on cruise.
+    # *_nm is WHEEL torque: % x rated 1.27 N·m x gear ratio, no gearhead efficiency.
+    nm = RATED_MOTOR_NM * config.GEAR_RATIO / 100.0
     torque = []
     for t, m in bag.get("/drives/torque", []):
-        torque.append((t - t0, m.left_torque_pct, m.right_torque_pct,
-                       m.left_torque_pct + m.right_torque_pct, at(wheels, t - t0, 1),
+        s = m.left_torque_pct + m.right_torque_pct
+        torque.append((t - t0, m.left_torque_pct, m.right_torque_pct, s, at(wheels, t - t0, 1),
                        int(m.left_torque_limited), int(m.right_torque_limited),
-                       m.left_valid and m.right_valid))
+                       m.left_valid and m.right_valid,
+                       m.left_torque_pct * nm, m.right_torque_pct * nm, s * nm))
     write_csv(csvd, "torque.csv", ["t", "left_pct", "right_pct", "sum_pct", "v_mps",
-                                   "left_tlc", "right_tlc", "valid"], torque)
+                                   "left_tlc", "right_tlc", "valid",
+                                   "left_nm", "right_nm", "sum_nm"], torque)
 
     # -- gyro --------------------------------------------------------------------------
     imu, gyaw = [], 0.0
@@ -118,8 +126,20 @@ def main(run):
     write_csv(csvd, "imu.csv", ["t", "yaw_rate_rad_s", "yaw_gyro_deg"], imu)
 
     # -- commands ----------------------------------------------------------------------
-    write_csv(csvd, "cmd_wheel_vel.csv", ["t", "left_rad_s", "right_rad_s"],
-              [(t - t0, m.left_rad_s, m.right_rad_s) for t, m in bag.get("/cmd_wheel_vel", [])])
+    cmd = [(t - t0, m.left_rad_s, m.right_rad_s, r * (m.left_rad_s + m.right_rad_s) / 2.0)
+           for t, m in bag.get("/cmd_wheel_vel", [])]
+    write_csv(csvd, "cmd_wheel_vel.csv", ["t", "left_rad_s", "right_rad_s", "v_mps"], cmd)
+
+    # -- map->odom: AMCL's correction of the odometry ----------------------------------
+    map_odom = []
+    for t, m in bag.get("/tf", []):
+        for tf in m.transforms:
+            if tf.header.frame_id == "map" and tf.child_frame_id == "odom":
+                q = tf.transform.rotation
+                map_odom.append((t - t0, tf.transform.translation.x, tf.transform.translation.y,
+                                 math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                            1.0 - 2.0 * (q.y * q.y + q.z * q.z))))
+    write_csv(csvd, "map_odom.csv", ["t", "x_m", "y_m", "yaw_rad"], map_odom)
 
     # -- run state ---------------------------------------------------------------------
     fields = ["state", "run_id", "mission_id", "route_id", "step_index", "step_id", "step_type",
@@ -151,6 +171,28 @@ def main(run):
             was = row["state"]
     write_csv(csvd, "localization_state.csv", ["t"] + loc_fields, loc)
 
+    # -- slip / impact (agv_core/slip_events.py) ---------------------------------------
+    s_torque = [(row[0], row[10], row[7]) for row in torque]
+    s_cmd = [(row[0], row[3]) for row in cmd]
+    s_wheels = [(row[0], row[1], row[2], row[7]) for row in wheels]
+    s_gyro = [(row[0], row[1]) for row in imu]
+    s_loc = [(row[0], row[1]) for row in loc]
+    slips = slip_events.detect(s_torque, s_cmd, s_wheels, s_gyro, map_odom, s_loc)
+    for e in slips:
+        unit = "rad/s" if e.kind == "yaw" else "N·m"
+        ev(e.t + t0, f"slip: {e.kind} {e.size:+.2f} {unit}")
+    ix_step_id = fields.index("step_id") + 1
+
+    def fmt(x, spec):
+        return "" if x is None else format(x, spec)
+
+    write_csv(csvd, "slip_events.csv",
+              ["t", "kind", "size", "unit", "duration_s", "v_mps", "cmd_mps", "map_odom_m",
+               "map_odom_deg", "loc_worst", "step"],
+              [(f"{e.t:.3f}", e.kind, f"{e.size:.3f}", "rad/s" if e.kind == "yaw" else "Nm",
+                f"{e.duration_s:.3f}", fmt(e.v_mps, ".3f"), fmt(e.cmd_mps, ".3f"),
+                fmt(e.map_odom_m, ".3f"), fmt(e.map_odom_deg, ".2f"), e.loc_worst,
+                at(rows, e.t, ix_step_id) if rows else "") for e in slips])
     # -- mux, drives, panel, I/O -------------------------------------------------------
     mux, was = [], None
     for t, m in bag.get("/amr/mux_state", []):
@@ -231,12 +273,54 @@ def main(run):
             line += f"  cross-track max {max(xt, key=abs):+.3f} m"
         tq = [row for row in torque if a <= row[0] < b and row[7]]
         if tq:
-            s = [row[3] for row in tq]
-            line += f"  torque sum mean {sum(s) / len(s):+6.1f} max {max(s, key=abs):+6.1f} %"
+            s = [row[10] for row in tq]
+            line += f"  wheel torque sum mean {sum(s) / len(s):+6.1f} max {max(s, key=abs):+6.1f} N·m"
             tlc = sum(1 for row in tq if row[5] or row[6])
             if tlc:
                 line += f"  AT TORQUE LIMIT {tlc} samples"
+        n_slip = sum(1 for e in slips if a <= e.t < b)
+        if n_slip:
+            line += f"  SLIP/IMPACT {n_slip}"
         print(line)
+
+    # Slip and impact candidates. The thresholds are first guesses (slip_events.py), so
+    # the run's largest values are listed too, whether or not they crossed them.
+    se = slip_events
+    print(f"\nSLIP / IMPACT  (snatch >= {se.SNATCH_NM:.0f} N·m/sample, collapse to "
+          f"<= {100 * (1 - se.COLLAPSE_FRAC):.0f} % in {se.COLLAPSE_WINDOW_S:.1f} s, "
+          f"yaw residual >= {se.YAW_RAD_S:.2f} rad/s; first guesses)")
+    if not torque:
+        print("  no /drives/torque in this bag: snatch and collapse not checked")
+    base = se.map_odom_baseline(map_odom, s_wheels)
+    print("  map->odom shift over 2 s while moving, p95: "
+          + ("n/a" if base is None else f"{base:.3f} m") + "  (what an event's shift compares to)")
+    for e in slips:
+        unit = "rad/s" if e.kind == "yaw" else "N·m"
+        line = (f"  {e.t:8.2f}  {e.kind:11s} {e.size:+7.2f} {unit:5s}"
+                f"  v {fmt(e.v_mps, '5.2f') or '  -  '} m/s")
+        if e.map_odom_m is not None:
+            line += f"  map->odom {e.map_odom_m:.3f} m {e.map_odom_deg:4.1f} deg"
+        if e.loc_worst:
+            line += f"  loc {e.loc_worst}"
+        print(line)
+    if not slips:
+        print("  none over the thresholds")
+    jumps = se.top(se.torque_jumps(s_torque, s_cmd, s_wheels))
+    print("  largest torque jumps:  "
+          + (", ".join(f"{e.t:.2f}s {e.size:+.1f}" for e in jumps) or "none") + " N·m")
+    resid = se.top(se.Event(t, "yaw", x) for t, x in se.yaw_residuals(s_wheels, s_gyro))
+    print("  largest yaw residuals: "
+          + (", ".join(f"{e.t:.2f}s {e.size:+.3f}" for e in resid) or "none") + " rad/s")
+    k = se.yaw_gain(s_wheels, s_gyro)
+    if k is None:
+        print("  wheel/gyro yaw gain: too little turning to fit")
+    elif k <= 0:
+        print(f"  wheel/gyro yaw gain {k:.3f}: the gyro and the encoders disagree on the "
+              "direction of turn - check drive_node gyro_sign")
+    else:
+        print(f"  wheel/gyro yaw gain {k:.3f}: the encoders read turns {100 * (k - 1):+.1f} %; "
+              f"track width that would agree ~{config.TRACK_M * k:.3f} m "
+              f"(profile {config.TRACK_M:.3f})")
 
 
 if __name__ == "__main__":

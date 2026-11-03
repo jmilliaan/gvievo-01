@@ -9,7 +9,7 @@
     both          exactly one robot_state_publisher, cmd_mux, diff_drive_odom,
                   imu_bias, scan_gate, ekf_local
 
-No web app, no Foxglove, no SLAM, no AMCL: those are the supervisor's other
+No web app, no SLAM, no AMCL: those are the supervisor's other
 groups. Every node listed as REQUIRED ends the launch when it exits, so a
 dead node cannot hide behind a live `ros2 launch` parent.
 
@@ -150,14 +150,17 @@ def _compose(context):
                     "field_source": "scanner" if real else "assume_clear",
                     # path indices, polarity, the x0.5 factor and the warning-2 stop distance: config/scanner_fields.yaml
                     **scanner_fields.mux_params(scanner_fields.load()),
-                    "a_max": 0.2,  # auto start acceleration: 0.3 -> 0.2 m/s^2 (-33 %, owner 2026-11-03)
+                    # auto speed changes take twice as long (owner 2026-11-03, after the field
+                    # runs): a_max and d_max halved, auto_jerk quartered, so dv/a + a/j doubles.
+                    # 0 -> 0.60 m/s in 6.9 s / 2.0 m; 0.60 -> 0.30 before an arc in 3.5 s / 1.6 m.
+                    "a_max": 0.1,  # auto start acceleration: 0.3 -> 0.2 -> 0.1 m/s^2 (2026-11-03)
                     "alpha_max": 0.4,
-                    "d_max": 0.25,  # auto braking (not warning-field / emergency stops): 0.5 -> 0.25 (2026-11-03)
+                    "d_max": 0.125,  # auto braking, not field/emergency stops: 0.5 -> 0.25 -> 0.125
                     "delta_max": 1.0,
                     "manual_a_max": 0.15,
                     "manual_d_max": 0.25,
                     "manual_jerk": 1.0,
-                    "auto_jerk": 0.4,  # auto linear speed S-curve (2026-11-03): smoother slopes
+                    "auto_jerk": 0.1,  # auto linear speed S-curve: 0.4 -> 0.1 m/s^3 (2026-11-03)
                     "field_d_max": 0.5,  # warning-field slowdowns keep the old braking (not softened)
                     "pendant_v_m_s": 0.5,
                     "pendant_w_rad_s": 0.39,

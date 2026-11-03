@@ -62,6 +62,8 @@ function measureSnapSet(routes, extra) {
         if (arc) { add(arc.c[0], arc.c[1], 'centre', `${id} arc centre`); paths.push({ arc, label: `on ${id} arc` }); }
       } else if (s.type === 'straight' || s.type === 'reverse') {
         paths.push({ seg: [s.start.slice(0, 2), s.end.slice(0, 2)], label: `on ${id}` });
+      } else if (s.type === 'home' && Array.isArray(s.samples)) {
+        for (let k = 1; k < s.samples.length; k++) paths.push({ seg: [s.samples[k - 1].slice(0, 2), s.samples[k].slice(0, 2)], label: `on ${id} home leg` });
       }
     });
   });

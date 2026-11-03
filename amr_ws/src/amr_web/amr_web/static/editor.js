@@ -39,6 +39,58 @@ function arcSamples(a, s, n) {  // poses along step s (an arc) from pose a, n+1 
   return Array.from({ length: n + 1 }, (_, k) => arcPose(c, s.radius_m, a.yaw, sign, th * k / n));
 }
 const arcSpeed = r => Math.min(ARC_V_MPS, SPEED_V, ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * r);
+// The home leg (2026-11-03): mirrors amr_navigation.scurve.home_leg for the preview - a quintic
+// lateral profile in HOME's frame from the route's end pose to the start pose (HOME). The
+// compiler's result is the one validated and driven. Bounds mirror amr_navigation.route HOME_*.
+const HOME_MAX_RUNUP_M = 5.0, HOME_MAX_HEADING_DEG = 20, HOME_MAX_SLOPE_DEG = 30, HOME_MIN_R = 1.0, HOME_STRAIGHT_TOL_M = 0.001;
+const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+function homeProfile(t, off, run, s0) {  // y, dy/dx, d2y/dx2 at t (0 = start, 1 = HOME)
+  const t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t, b = run * s0;
+  const y = off * (1 - 10 * t3 + 15 * t4 - 6 * t5) + b * (t - 6 * t3 + 8 * t4 - 3 * t5);
+  const dy = off * (-30 * t2 + 60 * t3 - 30 * t4) + b * (1 - 18 * t2 + 32 * t3 - 15 * t4);
+  const ddy = off * (-60 * t + 180 * t2 - 120 * t3) + b * (-36 * t + 96 * t2 - 60 * t3);
+  return [y, dy / run, ddy / (run * run)];
+}
+function homeShape(off, run, s0) {  // [steepest |dy/dx|, tightest radius]
+  let steep = 0, kmax = 0;
+  for (let k = 0; k <= 400; k++) { const [, dy, ddy] = homeProfile(k / 400, off, run, s0); steep = Math.max(steep, Math.abs(dy)); kmax = Math.max(kmax, Math.abs(ddy) / Math.pow(1 + dy * dy, 1.5)); }
+  return [steep, kmax > 0 ? 1 / kmax : Infinity];
+}
+const homeFits = (off, run, s0) => { const [st, r] = homeShape(off, run, s0); return st <= Math.tan(HOME_MAX_SLOPE_DEG * Math.PI / 180) && r >= HOME_MIN_R; };
+function homeSuggest(off, run, s0) {
+  for (let d = run; d <= HOME_MAX_RUNUP_M + 1e-9; d += 0.05) if (homeFits(off, d, s0)) return `end the route at least ${mm(d)} mm behind HOME`;
+  return `it does not fit within ${mm(HOME_MAX_RUNUP_M)} mm: end the route closer to HOME's line`;
+}
+// { ok, samples [{x, y, yaw}], length, runUp, offset (+ left of HOME's line), err (rad), minR, straight } or { ok: false, why }
+function homeLeg(a, h) {
+  const c = Math.cos(h.yaw), s = Math.sin(h.yaw), dx = a.x - h.x, dy = a.y - h.y;
+  const along = dx * c + dy * s, off = -dx * s + dy * c, err = wrapAngle(a.yaw - h.yaw), run = -along;
+  if (run < MIN_STRAIGHT_M) return { ok: false, why: `the route ends ${mm(along)} mm along HOME's heading, not behind HOME: the home leg only drives forward` };
+  if (run > HOME_MAX_RUNUP_M + 1e-9) return { ok: false, why: `the route ends ${mm(run)} mm behind HOME; the home leg drives at most ${mm(HOME_MAX_RUNUP_M)} mm: end it closer to HOME` };
+  if (Math.abs(err) > HOME_MAX_HEADING_DEG * Math.PI / 180 + 1e-12) return { ok: false, why: `the vehicle faces ${num(err * 180 / Math.PI, 1)}° off HOME's heading; at most ${HOME_MAX_HEADING_DEG}°: add a turn first` };
+  const s0 = Math.tan(err);
+  if (Math.abs(off) <= HOME_STRAIGHT_TOL_M && Math.abs(run * s0) <= HOME_STRAIGHT_TOL_M) {
+    const n = Math.max(1, Math.ceil(run / 0.05));
+    const samples = Array.from({ length: n + 1 }, (_, k) => ({ x: h.x - c * run * (1 - k / n), y: h.y - s * run * (1 - k / n), yaw: h.yaw }));
+    return { ok: true, samples, length: run, runUp: run, offset: off, err, minR: Infinity, straight: true };
+  }
+  const [steep, minR] = homeShape(off, run, s0);
+  const what = `${mm(Math.abs(off))} mm sideways and ${num(err * 180 / Math.PI, 1)}° over a ${mm(run)} mm run-up`;
+  if (steep > Math.tan(HOME_MAX_SLOPE_DEG * Math.PI / 180)) return { ok: false, why: `${what}: the S-curve would point ${num(Math.atan(steep) * 180 / Math.PI, 0)}° off HOME's line (at most ${HOME_MAX_SLOPE_DEG}°); ${homeSuggest(off, run, s0)}` };
+  if (minR < HOME_MIN_R) return { ok: false, why: `${what} needs a ${num(minR, 2)} m radius, tighter than ${num(HOME_MIN_R, 2)} m; ${homeSuggest(off, run, s0)}` };
+  const n = Math.max(2, Math.ceil(run / (0.05 * Math.cos(Math.atan(steep))))), samples = [];
+  for (let k = 0; k <= n; k++) {
+    const t = k / n, [y, d] = homeProfile(t, off, run, s0), xl = -run * (1 - t);
+    samples.push({ x: h.x + c * xl - s * y, y: h.y + s * xl + c * y, yaw: h.yaw + Math.atan(d) });
+  }
+  samples[0] = { x: a.x, y: a.y, yaw: a.yaw }; samples[n] = { x: h.x, y: h.y, yaw: h.yaw };
+  let length = 0; for (let k = 1; k <= n; k++) length += Math.hypot(samples[k].x - samples[k - 1].x, samples[k].y - samples[k - 1].y);
+  return { ok: true, samples, length, runUp: run, offset: off, err, minR, straight: false };
+}
+const homeText = L => L.straight ? `straight ${mm(L.length)} mm to HOME`
+  : `S-curve ${mm(L.length)} mm to HOME: ${mm(Math.abs(L.offset))} mm ${L.offset > 0 ? 'left' : 'right'}, ${num(L.err * 180 / Math.PI, 1)}°, tightest R ${num(L.minR, 2)} m`;
+// The leg of step i (a home step) from the pose the route reaches before it.
+const homeLegAt = i => homeLeg(poseAfter(i), poseAfter(0));
 
 function setTool(t) {
   const was = view.tool;
@@ -63,11 +115,16 @@ function poseAfter(n) {
     else if (s.type === 'reverse') { x -= Math.cos(yaw) * s.distance_m; y -= Math.sin(yaw) * s.distance_m; }
     else if (s.type === 'arc') { const e = arcSamples({ x, y, yaw }, s, 1)[1]; x = e.x; y = e.y; yaw = e.yaw; }
     else if (s.type === 'rotate') yaw += (s.direction === 'ccw' ? 1 : -1) * s.angle_deg * Math.PI / 180;
+    else if (s.type === 'home') { x = route.start.x_m; y = route.start.y_m; yaw = route.start.yaw_deg * Math.PI / 180; }
     // a wait keeps the pose
   }
   return { x, y, yaw };
 }
-function stepLength(i) { const s = route.steps[i]; if (s.type === 'wait') return 0; if (s.type === 'arc') return s.radius_m * s.angle_deg * Math.PI / 180; const a = poseAfter(i), b = poseAfter(i + 1); return Math.hypot(b.x - a.x, b.y - a.y); }
+function stepLength(i) {
+  const s = route.steps[i]; if (s.type === 'wait') return 0; if (s.type === 'arc') return s.radius_m * s.angle_deg * Math.PI / 180;
+  if (s.type === 'home') { const L = homeLegAt(i); return L.ok ? L.length : 0; }
+  const a = poseAfter(i), b = poseAfter(i + 1); return Math.hypot(b.x - a.x, b.y - a.y);
+}
 function nextId() { let i = route.steps.length + 1; while (route.steps.some(s => s.id === 's' + i)) i++; return 's' + i; }
 
 view.onDrag = (a, b, done) => {
@@ -143,6 +200,19 @@ $('btn-wait').onclick = () => {
   if (label) step.label_id = label;
   snapshot(); route.steps.push(step); refresh();
   log(`${id}: wait${name ? ' at ' + name : ''}${label ? ' (label ' + label + ')' : ''}: press Continue to go on`);
+};
+// Go home (2026-11-03): the route's last step, from where it ends now to the start pose (HOME): a
+// straight when already on HOME's line, else an S-curve. Refused here with the reason when it
+// cannot be built; Validate checks it again, with the footprint sweep.
+$('btn-home').onclick = () => {
+  if (!route.start) { log('set the start pose first', 'bad'); return; }
+  if (!route.steps.length) { log('draw the route first: the home leg returns to the start pose from where the route ends', 'bad'); return; }
+  if (route.steps.some(s => s.type === 'home')) { log('the route already ends with a home leg', 'bad'); return; }
+  const L = homeLegAt(route.steps.length);
+  if (!L.ok) { log(`home leg: ${L.why}`, 'bad'); return; }
+  const id = nextId();
+  snapshot(); route.steps.push({ id, type: 'home' }); refresh();
+  log(`${id}: home leg, ${homeText(L)}`);
 };
 $('btn-arc-l').onclick = () => addArc('ccw');
 $('btn-arc-r').onclick = () => addArc('cw');
@@ -223,10 +293,17 @@ function refresh() {
      : s.type === 'reverse' ? `<span class="n">reverse <b title="backs up at half the trackless speed: ${num(SPEED_V / 2, 2)} m/s">◂${num(SPEED_V / 2, 2)}</b></span><span class="v">${mm(+s.distance_m)}<i>mm</i></span>`
      : s.type === 'wait' ? `<span class="n">wait</span><span class="v" title="stops until PB Continue or Start">${esc(s.name || '—')}${s.label_id ? ` <i>${esc(s.label_id)}</i>` : ''}</span>`
      : s.type === 'arc' ? `<span class="n">arc ${s.direction === 'ccw' ? 'L' : 'R'} <b title="capped so the yaw rate stays under the turn cap">≤${num(arcSpeed(+s.radius_m), 2)}</b></span><span class="v" title="${mm(stepLength(i))} mm of arc">${esc(s.angle_deg)}° R ${num(+s.radius_m, 2)}<i>m</i></span>`
+     : s.type === 'home' ? homeRow(i)
                            : `<span class="n">rotate</span><span class="v">${esc(String(s.direction).toUpperCase())} ${esc(s.angle_deg)}<i>°</i></span>`) + '</div>').join('')
     : '<div class="none">no steps</div>';
   $('ed-repeat').value = route.repeat_count;
   view.draw();
+}
+function homeRow(i) {
+  const L = homeLegAt(i);
+  if (!L.ok) return `<span class="n">home</span><span class="v" title="${esc(L.why)}">cannot reach HOME</span>`;
+  const speed = L.straight ? SPEED_V : arcSpeed(L.minR);
+  return `<span class="n">home <b title="${esc(homeText(L))}">${L.straight ? 'straight' : 'S-curve'} ${num(speed, 2)}</b></span><span class="v" title="${esc(homeText(L))}">${mm(L.length)}<i>mm</i></span>`;
 }
 // The areas validation checks (amr_navigation.footprint), drawn from the same polygon + margin.
 // A straight sweeps the grown footprint box along the heading; a turn sweeps it through the
@@ -251,6 +328,13 @@ function sweptArc(pose, s) {
   const back = [at(poses[poses.length - 1], x1, inner)];
   poses.slice().reverse().forEach(p => back.push(at(p, x0, inner)));
   return fwd.concat(back);
+}
+// The home leg's band: the convex hull of the grown box at each sample (the curve turns at most
+// 30 deg off HOME's line, so the hull adds little over the true sweep and never hides any of it).
+function sweptPath(samples) {
+  const [x0, x1, y0, y1] = grown(), pts = [];
+  samples.forEach(p => { const c = Math.cos(p.yaw), s = Math.sin(p.yaw); [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].forEach(q => pts.push([p.x + c * q[0] - s * q[1], p.y + s * q[0] + c * q[1]])); });
+  return hull(pts);
 }
 function sweptTurn(pose, signed) {
   const [x0, x1, y0, y1] = grown(), pts = [], n = Math.max(1, Math.ceil(Math.abs(signed) / (Math.PI / 36)));
@@ -285,6 +369,7 @@ view.overlays.push((c, v) => {
       else if (s.type === 'reverse') v.dashed(sweptBox(b, Math.hypot(b.x - a.x, b.y - a.y)), checked(s.id, INK.route));  // b is behind a, same heading
       else if (s.type === 'arc') v.dashed(sweptArc(a, s), checked(s.id, INK.route));
       else if (s.type === 'wait') v.dashed(sweptBox(a, 0), checked(s.id, INK.pose));
+      else if (s.type === 'home') { const L = homeLeg(a, poseAfter(0)); if (L.ok) v.dashed(sweptPath(L.samples), checked(s.id, INK.route)); }
       else v.dashed(sweptTurn(a, (s.direction === 'ccw' ? 1 : -1) * s.angle_deg * Math.PI / 180), checked(s.id, INK.turn));
       a = b;
     });
@@ -296,6 +381,12 @@ view.overlays.push((c, v) => {
     else if (s.type === 'reverse') { v.dashed([[p.x, p.y], [q.x, q.y]], bad.has(s.id) ? INK.stop : INK.route); v.dot(q.x, q.y, INK.route, 4); v.text((p.x + q.x) / 2, (p.y + q.y) / 2, `${s.id} ◂ ${mm(Math.hypot(q.x - p.x, q.y - p.y))} mm`, INK.ink3); }
     else if (s.type === 'arc') { const pts = arcSamples(p, s, Math.max(8, Math.ceil(s.angle_deg / 3))); v.polyline(pts.map(t => [t.x, t.y]), bad.has(s.id) ? INK.stop : INK.route, 3); const m = pts[pts.length >> 1]; v.text(m.x, m.y, `${s.id} ⌒ R${num(+s.radius_m, 1)} ${s.angle_deg}°`, INK.ink3); v.arrow(q.x, q.y, q.yaw, 0.6, INK.turn); if (footprint) v.footprint(q.x, q.y, q.yaw, footprint.polygon, alpha(INK.turn, 0.4)); }
     else if (s.type === 'wait') { v.dot(q.x, q.y, bad.has(s.id) ? INK.stop : INK.pose, 7); v.text(q.x, q.y, `${s.id} WAIT ${s.name || ''}`, INK.pose); }
+    else if (s.type === 'home') {
+      const L = homeLeg(p, q);
+      if (L.ok) { v.polyline(L.samples.map(t => [t.x, t.y]), bad.has(s.id) ? INK.stop : INK.route, 3); const m = L.samples[L.samples.length >> 1]; v.text(m.x, m.y, `${s.id} HOME ${L.straight ? '' : 'S '}${mm(L.length)} mm`, INK.ink3); }
+      else { v.dashed([[p.x, p.y], [q.x, q.y]], INK.stop); v.text((p.x + q.x) / 2, (p.y + q.y) / 2, `${s.id} home: cannot reach HOME`, INK.stop); }
+      v.arrow(q.x, q.y, q.yaw, 0.6, INK.pose);
+    }
     else { v.dot(q.x, q.y, bad.has(s.id) ? INK.stop : INK.turn, 6); v.text(q.x, q.y, `${s.id} ${s.direction.toUpperCase()} ${s.angle_deg}°`, INK.turn); v.arrow(q.x, q.y, q.yaw, 0.6, INK.turn); if (footprint) v.footprint(q.x, q.y, q.yaw, footprint.polygon, alpha(INK.turn, 0.4)); }
     p = q;
   });
@@ -362,6 +453,7 @@ function draftGeometry() {
   const steps = route.steps.map((s, i) => {
     const a = P[i], b = P[i + 1], g = { id: s.id, type: s.type, start: [a.x, a.y, a.yaw], end: [b.x, b.y, b.yaw], centre: null, radius_m: 0, signed_angle_deg: 0, name: s.name || '' };
     if (s.type === 'arc') { const sign = s.direction === 'ccw' ? 1 : -1; g.centre = arcCentre(a.x, a.y, a.yaw, +s.radius_m, sign); g.radius_m = +s.radius_m; g.signed_angle_deg = sign * s.angle_deg; }
+    if (s.type === 'home') { const L = homeLeg(a, b); if (L.ok) g.samples = L.samples.map(t => [t.x, t.y]); }
     return g;
   });
   return { label: 'draft', start: [P[0].x, P[0].y, P[0].yaw], steps };
@@ -442,6 +534,7 @@ view.overlays.push((c, v) => {
     if (s.type === 'straight' || s.type === 'reverse') v.line(s.start[0], s.start[1], s.end[0], s.end[1], faint, 1.5);
     else if (s.type === 'arc') { const arc = measureArcOf(s); if (arc) v.polyline(measureArcPoints(arc, Math.max(8, Math.ceil(Math.abs(arc.sweep) / 0.05))), faint, 1.5); }
     else if (s.type === 'wait') v.dot(s.end[0], s.end[1], faint, 4);
+    else if (s.type === 'home' && Array.isArray(s.samples)) v.polyline(s.samples, faint, 1.5);
   }));
   const a = measure.a, b = measure.b || (a ? measure.hover : null);
   if (!measure.b) snapGlyph(v, measure.hover, INK.preview);

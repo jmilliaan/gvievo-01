@@ -577,7 +577,7 @@ sudo apt install -y \
   ros-humble-slam-toolbox ros-humble-robot-localization \
   ros-humble-sick-safetyscanners2 \
   ros-humble-robot-state-publisher ros-humble-xacro \
-  ros-humble-foxglove-bridge ros-humble-teleop-twist-keyboard ros-humble-tf2-tools \
+  ros-humble-teleop-twist-keyboard ros-humble-tf2-tools \
   ros-humble-rosbag2-storage-mcap \
   ros-humble-launch-testing ros-humble-launch-testing-ros \
   ros-humble-ament-lint-auto ros-humble-ament-lint-common \
@@ -724,7 +724,7 @@ The repo carries the unit and its helpers under `amr_ws/deploy/`:
 | File | Role |
 |---|---|
 | `amr.service` | the **only** application boot unit; `BindsTo` can0; `EnvironmentFile=amr.env`; `ExecStartPre` creates `/run/lock/amr` (1777), `~/.amr`, `~/amr_maps`; `KillSignal=SIGINT`, `TimeoutStopSec=55`; `Restart=on-failure` 3×/60 s |
-| `amr.env` | `AMR_MAPS_DIR`, `AMR_STATE_DIR`, feature flags `AMR_WEB/AMR_FOXGLOVE/AMR_LIDAR=true`, `AMR_LOC_BLANK_DYNAMIC=false`. **Paths and switches only; boot never selects a map or resumes a job.** |
+| `amr.env` | `AMR_MAPS_DIR`, `AMR_STATE_DIR`, feature flags `AMR_WEB/AMR_LIDAR=true`, `AMR_LOC_BLANK_DYNAMIC=false`. **Paths and switches only; boot never selects a map or resumes a job.** |
 | `amr-supervisor.sh` | `ExecStart`: sources ROS + overlay + `env/vehicle.sh`, runs `amr_bringup.supervisor_node -p real:=true ...` |
 | `amr-launch.sh` | the same overlay for `ros2 launch` children; exports `PYTHONPATH=<repo root>` |
 | `validate.sh` | no-side-effect check: paths, `bash -n`, `systemd-analyze verify`, every `${VAR}` in Exec lines defined in `amr.env`, `agv_core/` present |
@@ -789,8 +789,7 @@ Boot check (RUNBOOK §1): Status page Mode `IDLE`, Selector `MANUAL`/`AUTO` not
 
 What the supervisor owns from here: `base.launch.py real:=true` (drive_node =
 `can0` owner, panel_node = I/O island owner, nanoScan3 driver, mux, odom, EKF),
-`amr_web.web_node` on `0.0.0.0:5001`, `foxglove_bridge` on `:8765`, and one
-mode layer at a time. Bench tools take the `/run/lock/amr` owner lock and refuse
+`amr_web.web_node` on `0.0.0.0:5001`, and one mode layer at a time. Bench tools take the `/run/lock/amr` owner lock and refuse
 while the service holds it — **stop the service before any bench work.**
 
 ---
@@ -1229,7 +1228,7 @@ NoDisplay=true
 | 3 | `NetworkManager` + `nm-online` | `agv_field`; `network-online.target` after link or ~30 s | yes, bounded |
 | 4 | `canable@can0.service` | `slcand` + `can0` UP @125 kbps → `sys-subsystem-net-devices-can0.device` | yes — `amr.service` `BindsTo` it |
 | 5 | `nginx` | `:80` holding page | no |
-| 6 | `amr.service` | lock dir, state/maps dirs, supervisor → base (can0, DIO, scanner), web `:5001`, foxglove `:8765`; **IDLE** | |
+| 6 | `amr.service` | lock dir, state/maps dirs, supervisor → base (can0, DIO, scanner), web `:5001`; **IDLE** | |
 | 7 | `lightdm` → `amr-kiosk-session` | Chromium on `http://127.0.0.1/`; independent of 6 | |
 
 Stop path: `systemctl stop amr` sends SIGINT → supervisor revokes lease, stops
@@ -1267,7 +1266,7 @@ Run all of these once, in order, before the vehicle leaves the bench.
 3. **Peers**: `ping -c3 -I enp1s0 192.168.1.40`, `ping -c3 -I enp2s0 192.168.3.10`, `ping -c3 -I enp3s0 192.168.4.1` all 0 % loss.
 4. **CAN** (service stopped): `candump -n 20 can0` shows TPDOs from `0x181/0x182` (`0x18A` only if the MLS is still Operational from boot); `python3 -m agv_core.drivers.canbus.verify_bus` → nodes 1, 2, 10 answer; `verify_drivers` → BLV-R identity.
 5. **Bench tools refuse while the service runs** (`/run/lock/amr` owner named in the error).
-6. **`amr.service` reaches IDLE** (RUNBOOK §1 boot check) with `journalctl -u amr.service` free of tracebacks; `pgrep -af 'amr_|nav2|slam_toolbox|foxglove'` empty after `systemctl stop amr`.
+6. **`amr.service` reaches IDLE** (RUNBOOK §1 boot check) with `journalctl -u amr.service` free of tracebacks; `pgrep -af 'amr_|nav2|slam_toolbox'` empty after `systemctl stop amr`.
 7. **Panel**: on the I/O page each Start/Reset press produces one edge, the selector tracks, a held Start produces one edge (RUNBOOK T12).
 8. **Scanner**: `ros2 topic hz /scan` ≈ 34 Hz; `/output_paths` publishes; contamination warning absent.
 9. **Kiosk escape table** (7.7) passes; `sudo pkill -9 Xorg` does not touch `amr.service` (`journalctl -u amr -u canable@can0 --since -2min` shows nothing new).

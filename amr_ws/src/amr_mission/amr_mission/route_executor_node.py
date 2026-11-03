@@ -83,8 +83,9 @@ import threading
 import rclpy
 from agv_core import alarms
 from agv_core import config as vehicle_config
-from amr_navigation.compiler import ARC, ROTATE, WAIT, CompiledStep, wrap
+from amr_navigation.compiler import ARC, HOME, ROTATE, WAIT, CompiledStep, wrap
 from amr_navigation.route import VEHICLE_ARC_W_MAX
+from amr_navigation.scurve import along_cross as path_along_cross
 from amr_navigation.validate import load_dynamic, load_keepout, validate
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import FollowPath, Spin
@@ -231,11 +232,12 @@ class RouteExecutor(Node):
         # Speed tapers between chained steps (a boosted straight into a normal one, a straight
         # into an arc at its arc speed) and at the end of a boosted straight: the lower speed is asked
         # early enough that the mux's auto S-curve reaches it before the boundary: the time of a
-        # jerk-limited slowdown at taper_decel / taper_jerk (= mux d_max 0.25 / auto_jerk 0.4,
-        # 2026-11-03) times the mean speed, plus taper_lead_s of travel. 0.60 -> 0.30 m/s: 1.0 m.
-        self.declare_parameter("taper_decel", 0.25)
+        # jerk-limited slowdown at taper_decel / taper_jerk (= mux d_max 0.125 / auto_jerk 0.1,
+        # 2026-11-03, twice-as-long slopes) times the mean speed, plus taper_lead_s of travel.
+        # 0.60 -> 0.30 m/s: 1.82 m.
+        self.declare_parameter("taper_decel", 0.125)
         self.declare_parameter("taper_lead_s", 0.3)
-        self.declare_parameter("taper_jerk", 0.4)
+        self.declare_parameter("taper_jerk", 0.1)
         # auto-resume after a stop whose cause clears by itself (see the module docstring)
         self.declare_parameter("auto_resume_enabled", True)
         self.declare_parameter("auto_resume_clear_s", 2.0)
@@ -1038,7 +1040,10 @@ class RouteExecutor(Node):
         """Progress along the step's TRAVEL direction (positive = the way the step goes, so a
         reverse step counts up while backing) and the signed lateral offset (positive =
         left of travel). An arc measures both from its centre: progress is the swept angle
-        times the radius, the offset is how far inside (left, for a left arc) the circle."""
+        times the radius, the offset is how far inside (left, for a left arc) the circle.
+        The home leg measures both against its own samples (scurve.along_cross)."""
+        if st.type == HOME:
+            return path_along_cross(st.samples, pose)
         if st.type == ARC:
             sign = 1.0 if st.signed_angle_rad >= 0 else -1.0
             cx, cy = st.centre
@@ -1164,9 +1169,10 @@ class RouteExecutor(Node):
             last = nxt
         over = max(0.0, min(self.goal_overshoot_m, self.route.limits.position_tolerance_m))
         if over > 0.0 and path.poses:
-            # past the end along the travel direction there: the end tangent for an arc, the
-            # (possibly reversed) heading for a line; poses keep the forward heading
-            end_dir = last.end[2] if last.type == ARC else last.travel_yaw
+            # past the end along the travel direction there: the end tangent for an arc or the
+            # home leg (HOME's heading), the (possibly reversed) heading for a line; poses keep
+            # the forward heading
+            end_dir = last.end[2] if last.type in (ARC, HOME) else last.travel_yaw
             add(last.end[0] + math.cos(end_dir) * over, last.end[1] + math.sin(end_dir) * over, last.end[2])
         return path
 
@@ -1191,9 +1197,10 @@ class RouteExecutor(Node):
 
     def _step_w_max(self, st: CompiledStep) -> float:
         """The permit's turn cap: the route's spin cap, or the arc ceiling for the WHOLE of a
-        chain that holds an arc - RPP's carrot starts curving a lookahead before the arc
-        begins, so the straight leading into it needs the arc's yaw rate too."""
-        if st.type != ROTATE and any(s.type == ARC for s in self._chain(self.fsm.step_index)):
+        chain that holds an arc or a curved home leg - RPP's carrot starts curving a lookahead
+        before the curve begins, so the straight leading into it needs the curve's yaw rate too."""
+        chain = self._chain(self.fsm.step_index) if st.type != ROTATE else []
+        if any(s.type == ARC or (s.type == HOME and s.leg is not None and not s.leg.straight) for s in chain):
             return max(float(self.route.limits.w_mps), VEHICLE_ARC_W_MAX)
         return float(self.route.limits.w_mps)
 

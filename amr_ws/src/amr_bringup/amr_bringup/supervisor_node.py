@@ -1,7 +1,7 @@
 """amr_supervisor: the main process of amr.service (unified plan §3, §5, §8).
 
-Owns four process groups - web, base, an optional Foxglove bridge, and at most
-one mode layer (mapping or navigation) - and the single source of motion
+Owns three process groups - web, base, and at most one mode layer (mapping or
+navigation) - and the single source of motion
 authority, /amr/control_lease. Boots STARTING -> IDLE with base and web up and
 no layer, and stays in IDLE until a client asks for a mode.
 Mode changes and survey operations are asynchronous operations (OperationState)
@@ -71,7 +71,7 @@ SENSOR = QoSProfile(
 # ControlLease.allowed bits. Bit 8 retired (LINE), never reuse. Bit 4 (COMMISSIONING) was
 # retired on 2026-10-30 and came back with the blind run on 2026-11-02, same meaning.
 LEASE_MANUAL, LEASE_AUTONOMOUS, LEASE_COMMISSIONING = 1, 2, 4
-# The web (and foxglove) come back by themselves: 10 s apart, three tries, then the
+# The web comes back by itself: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
 RESPAWN_BACKOFF_S = 10.0
 RESPAWN_TRIES = 3
@@ -100,7 +100,6 @@ class Supervisor(Node):
         dp("maps_dir", os.path.expanduser("~/amr_maps"))
         dp("state_dir", os.path.expanduser("~/.amr"))
         dp("web", True)
-        dp("foxglove", True)
         dp("lidar", True)
         dp("slip_noise_std", 0.02)  # sim
         dp("clutter_count", 0)  # sim
@@ -939,12 +938,6 @@ class Supervisor(Node):
             if p("world_yaml").value:
                 base_args["world_yaml"] = p("world_yaml").value
         self.groups["base"] = self._launch("base", "base.launch.py", **base_args)
-        if p("foxglove").value:
-            argv = ["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"]
-            self._respawnable["foxglove"] = argv
-            self.groups["foxglove"] = Group.spawn(
-                "foxglove", argv, env=self._env(), log_path=os.path.join(self._logs, "foxglove.log")
-            )
         self._boot_deadline = self._now() + self.budget["base_ready_s"]
         self._boot_reported = False
 
@@ -1093,7 +1086,7 @@ class Supervisor(Node):
             self._publish_lease() if got else None
         except Exception:  # noqa: BLE001
             pass
-        for role in ("layer", "base", "foxglove", "web"):
+        for role in ("layer", "base", "web"):
             g = self.groups.get(role)
             if g is None:
                 continue

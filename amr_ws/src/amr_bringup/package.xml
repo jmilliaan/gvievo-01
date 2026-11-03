@@ -8,7 +8,6 @@
   <license>Proprietary</license>
 
   <exec_depend>sick_safetyscanners2</exec_depend>
-  <exec_depend>foxglove_bridge</exec_depend>
   <exec_depend>amr_description</exec_depend>
   <exec_depend>amr_base</exec_depend>
   <exec_depend>amr_interfaces</exec_depend>

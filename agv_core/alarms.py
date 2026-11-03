@@ -281,7 +281,7 @@ def _rows() -> tuple[Alarm, ...]:
           "The base process group died. Recovery cannot rebuild it: the drives must be re-armed."),
         a("BOOT_ERROR", ERROR, "restart_service", "Needs service: the vehicle software failed to start",
           "Press Restart on the Home page. If it repeats, call the engineer.",
-          "Exception while spawning the base/web/foxglove groups; see journalctl -u amr.service."),
+          "Exception while spawning the base/web groups; see journalctl -u amr.service."),
         a("SPAWN_FAILED", ERROR, "restart_service", "Needs service: a program would not start",
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "Group.spawn failed (missing executable, bad environment)."),

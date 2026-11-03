@@ -35,6 +35,7 @@ MODULES = [
     "test_gls",
     "test_gls_link",
     "test_glspose",
+    "test_slip_events",
     "test_layout",
 ]
 
@@ -132,7 +133,10 @@ MODULES = [
 #   channel, off the module, a duplicate or empty name, a route id with a slash, an unknown key,
 #   the key missing); test_panel + 8 (test_destinations: one edge per press, none at boot or
 #   across a reconnect, debounce, two at once or a second while one is held select nothing).
-EXPECTED_CHECKS = 691
+# + 40 (2026-11-03): test_slip_events (towing-load Phase 1, agv_core/slip_events.py): clean
+#   runs quiet (4), snatch (9), collapse, snatch -> slip and regrip (7), wheel vs gyro yaw (8),
+#   the localization consequence and baseline (7), merging and top-N (5).
+EXPECTED_CHECKS = 731
 
 
 # An exception on a helper thread only prints a traceback by default - the

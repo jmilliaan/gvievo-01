@@ -10,7 +10,7 @@ import numpy as np
 
 from amr_maps import grid as gridio
 from amr_navigation import footprint as fpmod
-from amr_navigation.compiler import ARC, ROTATE, WAIT, CompiledRoute, compile_route
+from amr_navigation.compiler import ARC, HOME, ROTATE, WAIT, CompiledRoute, compile_route
 from amr_navigation.route import MAX_REPEAT, Route, RouteError
 
 ERROR, INFO = "error", "info"
@@ -149,9 +149,13 @@ def validate(
             c = _clearance(grid, fp, keepout, (st.start, st.start), None, dynamic=dyn)
             if st.label_id:
                 issues.extend(_wait_label(st, labels))
+        elif st.type == HOME:  # the footprint driven along the leg's own samples
+            c = _clearance(grid, fp, keepout, None, None, dynamic=dyn, path=st.samples)
         else:  # straight or reverse: the footprint translated along the line, either way
             c = _clearance(grid, fp, keepout, (st.start, st.end), None, dynamic=dyn)
-        what = {ROTATE: "rotation sweep", ARC: "arc sweep", WAIT: "wait pose"}.get(st.type, "line")
+        what = {ROTATE: "rotation sweep", ARC: "arc sweep", WAIT: "wait pose", HOME: "home leg sweep"}.get(
+            st.type, "line"
+        )
         if not c.clear:
             issues.append(Issue("clearance", f"{what} {_describe(c)} (margin included)", st.id))
         elif c.provisional:
@@ -191,11 +195,17 @@ def keepout_misalignment(grid: gridio.Grid, keepout: gridio.Grid) -> str | None:
     return gridio.mask_misalignment(grid, keepout)
 
 
-def _clearance(grid, fp, keepout, line, turn, arc=None, dynamic=None) -> fpmod.Clearance:
+def _clearance(grid, fp, keepout, line, turn, arc=None, dynamic=None, path=None) -> fpmod.Clearance:
     # Bounds first: a sweep leaving the map is rejected outright, and the (clipped) mask of
     # an off-map sweep is never rasterised, so absurd coordinates cost nothing.
     # `turn` is ((x, y, yaw), signed_angle): the exact sweep of that rotation, not a disc.
     # `arc` is (centre, radius, yaw0, signed_angle): the footprint driven along the circle.
+    # `path` is sampled poses (the home leg), densified to the cell size before sweeping.
+    if path is not None:
+        if fpmod.poses_outside(grid, fp, path):
+            return fpmod.Clearance(0, 0, 0, 0, outside=True)
+        poses = fpmod.path_poses(path, grid.meta.resolution)
+        return fpmod.check(grid, fpmod.swept_poses(grid, fp, poses), keepout, dynamic=dynamic)
     if line is not None:
         if fpmod.line_outside(grid, fp, *line):
             return fpmod.Clearance(0, 0, 0, 0, outside=True)
