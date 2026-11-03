@@ -33,6 +33,13 @@
       <button id="btn-undo" class="tool">Undo</button><button id="btn-redo" class="tool">Redo</button><button id="btn-clear" class="danger">Clear steps</button>
     </div>
     <div class="sep"></div>
+    <h3>Measure <small>view only · never changes the route</small></h3>
+    <div class="bar" style="margin-top:0">
+      <button id="tool-measure" class="tool" title="Click two points: distance, ΔX and ΔY in map mm. Snaps to waits, arc centres, step ends and route lines">Measure</button>
+      <label class="check" style="margin:0;align-items:center" title="Off (or hold Shift): measure from exactly where you click"><input id="ed-snap" type="checkbox" checked> Snap</label>
+    </div>
+    <div id="ed-measure"><div class="none">select Measure, then click two points on the map</div></div>
+    <div class="sep"></div>
     <h3>Limits</h3>
     <label class="field">Repeat count <input id="ed-repeat" type="number" min="1" max="100" value="1"></label>
     <p class="note">Speed <b id="ed-speed" data-v="{{ '%.2f' % trackless_v }}">{{ '%.2f' % trackless_v }}</b> m/s — the vehicle's trackless speed, not a route setting. Reverse runs at half; a tight arc slower.</p>
@@ -53,4 +60,4 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/editor.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/mapview.js"></script><script src="/static/measure.js"></script><script src="/static/editor.js"></script>{% endblock %}

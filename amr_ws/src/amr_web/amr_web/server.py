@@ -26,6 +26,7 @@ from typing import Any, Protocol
 
 import numpy as np
 from agv_core import alarms as catalogue
+from amr_navigation.compiler import compile_route
 from amr_navigation.route import VEHICLE_V_MAX, Route, RouteError
 from amr_navigation.validate import load_dynamic, load_keepout, validate
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
@@ -551,6 +552,51 @@ def create_app(
         return jsonify(
             {"ok": True, "route_id": route.route_id, "revision": revision, "sha256": sha, "path": path}
         )
+
+    # The route editor's Measure tool snaps to saved routes (2026-11-03). All revisions of a map
+    # share one frame (edits repaint cells, never move the origin), so every route of the map id
+    # is a valid target. Compiled only: no clearance sweep and no ROS route preview, unlike
+    # api_route_get, so fetching every route is cheap and moves nothing on the vehicle's displays.
+    ROUTE_GEOMETRY_MAX = 50
+
+    @app.get("/api/maps/<map_id>/<int:rev>/routes/geometry")
+    def api_route_geometry(map_id: str, rev: int):
+        try:
+            bundle(map_id, rev)
+        except (mb.BundleError, gridio.GridError) as e:
+            return _result(False, str(e), 404)
+        listed = store.list_routes(app.config["MAPS_DIR"], map_id)
+        out = []
+        for rid, revs in list(listed.items())[:ROUTE_GEOMETRY_MAX]:
+            rrev = revs[-1]
+            try:
+                route, _sha = store.load_route(app.config["MAPS_DIR"], map_id, rid, rrev)
+                compiled = compile_route(route)
+            except (store.StoreError, ValueError) as e:  # RouteError is a ValueError
+                out.append({"route_id": rid, "revision": rrev, "error": str(e)})
+                continue
+            out.append(
+                {
+                    "route_id": rid,
+                    "revision": rrev,
+                    "map_revision": route.map.revision,
+                    "start": [route.start.x_m, route.start.y_m, route.start.yaw_rad],
+                    "steps": [
+                        {
+                            "id": s.id,
+                            "type": s.type,
+                            "start": list(s.start),
+                            "end": list(s.end),
+                            "centre": list(s.centre) if s.centre is not None else None,
+                            "radius_m": s.radius_m,
+                            "signed_angle_deg": float(np.degrees(s.signed_angle_rad)),
+                            "name": s.name,
+                        }
+                        for s in compiled.steps
+                    ],
+                }
+            )
+        return jsonify({"routes": out, "truncated": len(listed) > ROUTE_GEOMETRY_MAX})
 
     @app.get("/api/maps/<map_id>/<int:rev>/routes/<route_id>/<int:rrev>")
     def api_route_get(map_id: str, rev: int, route_id: str, rrev: int):

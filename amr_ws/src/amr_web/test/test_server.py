@@ -774,3 +774,39 @@ def test_survey_move_value_must_be_a_finite_number(env):
     )
     assert r.status_code == 422
     assert not any(c[0] == "survey_move" for c in stub.calls)
+
+
+def test_route_geometry_for_the_measure_tool_is_compiled_only(env):
+    """Measure tool (2026-11-03): the newest revision of every saved route, with arc centres and
+    wait points; never validated, never previewed; a broken file is listed, not fatal."""
+    client, stub, maps, rev_dir, manifest = env
+    arc = {"id": "s3", "type": "arc", "direction": "ccw", "angle_deg": 45, "radius_m": 1.5}
+    wait = {"id": "s2", "type": "wait", "name": "hitch"}
+    r = client.post("/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 5.0, 0.0), wait, arc]))
+    assert r.status_code == 200, r.json
+    r = client.post("/api/maps/sim_factory/1/routes/save", json=route_payload([S("s1", 4.0, 0.0), wait, arc]))
+    assert r.json["revision"] == 2
+    from amr_navigation import store
+
+    bad = store.route_path(maps, "sim_factory", "broken", 1)
+    import os
+
+    os.makedirs(os.path.dirname(bad))
+    with open(bad, "w") as f:
+        f.write("not: [a route")
+    previews = len(stub.previews)
+    r = client.get("/api/maps/sim_factory/1/routes/geometry")
+    assert r.status_code == 200 and r.json["truncated"] is False
+    by_id = {x["route_id"]: x for x in r.json["routes"]}
+    assert "error" in by_id["broken"]
+    g = by_id["r1"]
+    assert g["revision"] == 2 and g["map_revision"] == 1  # the newest revision only
+    assert g["start"] == pytest.approx([0.0, 0.0, 0.0])
+    steps = {s["id"]: s for s in g["steps"]}
+    assert steps["s1"]["end"][:2] == pytest.approx([4.0, 0.0])
+    assert steps["s2"]["type"] == "wait" and steps["s2"]["name"] == "hitch"
+    assert steps["s2"]["end"][:2] == pytest.approx([4.0, 0.0])
+    assert steps["s3"]["centre"] == pytest.approx([4.0, 1.5]) and steps["s3"]["radius_m"] == 1.5
+    assert steps["s3"]["signed_angle_deg"] == pytest.approx(45.0)
+    assert len(stub.previews) == previews  # nothing published to ROS
+    assert client.get("/api/maps/nope/1/routes/geometry").status_code == 404

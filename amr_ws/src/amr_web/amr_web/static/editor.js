@@ -40,7 +40,18 @@ function arcSamples(a, s, n) {  // poses along step s (an arc) from pose a, n+1 
 }
 const arcSpeed = r => Math.min(SPEED_V, ARC_YAW_RATE_RATIO * VEHICLE_ARC_W_MAX * r);
 
-function setTool(t) { view.tool = t; view._linePreview = null; ['tool-start', 'tool-line'].forEach(id => $(id).classList.toggle('on', id === 'tool-' + t)); $('ed-hint').textContent = t === 'start' ? 'Click the start position, drag towards the heading, release.' : t === 'line' ? 'Click a point, or type a length in mm and press Add: the straight goes along the current heading.' : 'Wheel = zoom, drag = pan.'; view.draw(); }
+function setTool(t) {
+  const was = view.tool;
+  view.tool = t; view._linePreview = null;
+  ['tool-start', 'tool-line', 'tool-measure'].forEach(id => $(id).classList.toggle('on', id === 'tool-' + t));
+  $('ed-hint').textContent = t === 'start' ? 'Click the start position, drag towards the heading, release.'
+    : t === 'line' ? 'Click a point, or type a length in mm and press Add: the straight goes along the current heading.'
+    : t === 'measure' ? 'Measure: click A, then B. Snaps to waits, arc centres, step ends and route lines (this draft and the saved routes, drawn faint). Shift or untick Snap = exactly where you click. Esc clears. Drag = pan.'
+    : 'Wheel = zoom, drag = pan.';
+  if (was === 'measure' && t !== 'measure') clearMeasure();
+  if (t === 'measure' && was !== 'measure') { showMeasure(); loadSavedGeometry(); }
+  view.draw();
+}
 
 // Heading after the last step, from the authored primitives (same rules as the compiler).
 function poseAfter(n) {
@@ -81,11 +92,15 @@ function addStraight(along) {
   return true;
 }
 view.onClick = w => {
+  if (view.tool === 'measure') { measureClick(w); return; }
   if (view.tool === 'start') { snapshot(); route.start = { x_m: w[0], y_m: w[1], yaw_deg: route.start ? route.start.yaw_deg : 0 }; refresh(); return; }
   if (view.tool === 'line') { const along = alongTo(w); if (along === null) { log('set the start pose first', 'bad'); return; } addStraight(along); }
 };
 // Preview of the straight a click (or the typed length) would add: metres along the heading, or null.
-view.onHover = w => { view._linePreview = (view.tool === 'line' && w) ? alongTo(w) : null; };
+view.onHover = w => {
+  view._linePreview = (view.tool === 'line' && w) ? alongTo(w) : null;
+  if (view.tool === 'measure') { measure.hover = w ? snapAt(w) : null; if (measure.a && !measure.b) showMeasure(); }
+};
 $('ed-len').oninput = e => { const v = e.target.valueAsNumber; view._linePreview = Number.isFinite(v) ? v / 1000 : null; view.draw(); };
 $('btn-line-len').onclick = () => {
   const v = $('ed-len').valueAsNumber;
@@ -145,6 +160,7 @@ $('btn-start-survey').onclick = () => {
   log(`route start = survey start (${num(st.x_m, 2)}, ${num(st.y_m, 2)}, ${num(route.start.yaw_deg, 1)}°)${st.description ? ' — ' + st.description : ''}`);
 };
 $('tool-line').onclick = () => setTool(view.tool === 'line' ? null : 'line');
+$('tool-measure').onclick = () => setTool(view.tool === 'measure' ? null : 'measure');
 $('btn-undo').onclick = undo; $('btn-redo').onclick = redo;
 $('btn-clear').onclick = () => { snapshot(); route.steps = []; refresh(); };
 $('ed-repeat').onchange = e => { snapshot(); route.repeat_count = +e.target.value; refresh(); };
@@ -172,6 +188,7 @@ $('btn-save').onclick = async () => {
     if (stillCurrent(c)) savedRef = Object.assign({ route_id: data.route_id, revision: data.revision }, forMap);
     else log('saved, but the draft changed meanwhile: save again to create a mission from it', 'warn');
     if (stillSameMap(c)) await reloadRouteList(c);
+    if (stillSameMap(c) && view.tool === 'measure') await loadSavedGeometry();
   } else if (stillCurrent(c)) { lastResult = data; showResult(data); refresh(); }
 };
 $('btn-mission').onclick = async () => {
@@ -325,11 +342,120 @@ $('ed-map').onchange = async e => {
   [mapId, mapRev] = e.target.value.split('/'); mapRev = +mapRev;
   mapToken += 1; draftToken += 1;  // everything in flight for the previous map is void
   const c = ctx();
-  route = { route_id: $('ed-route-id').value, start: null, steps: [], repeat_count: 1, limits: DEFAULT_LIMITS() }; history = []; future = []; lastResult = null; savedRef = null; refresh();
+  route = { route_id: $('ed-route-id').value, start: null, steps: [], repeat_count: 1, limits: DEFAULT_LIMITS() }; history = []; future = []; lastResult = null; savedRef = null;
+  savedGeom = { map: -1, routes: [] }; clearMeasure(); refresh();
   await view.load(mapId, mapRev);
   if (!stillSameMap(c)) return;
   await reloadRouteList(c);
+  if (view.tool === 'measure') await loadSavedGeometry();
 };
+// --- Measure (view only, 2026-11-03): two clicks -> distance, dX, dY in map mm, snapped to route
+// features (static/measure.js). Never touches the draft, its undo history or the last validation.
+view.panTools = new Set(['measure']);
+let measure = { a: null, b: null, hover: null }, savedGeom = { map: -1, routes: [] }, snapCache = null, shiftHeld = false;
+function clearMeasure() { measure = { a: null, b: null, hover: null }; showMeasure(); }
+// The draft in the compiler's step shape: the same poses the overlay draws.
+function draftGeometry() {
+  if (!route.start) return null;
+  const P = [poseAfter(0)];
+  route.steps.forEach((s, i) => P.push(poseAfter(i + 1)));
+  const steps = route.steps.map((s, i) => {
+    const a = P[i], b = P[i + 1], g = { id: s.id, type: s.type, start: [a.x, a.y, a.yaw], end: [b.x, b.y, b.yaw], centre: null, radius_m: 0, signed_angle_deg: 0, name: s.name || '' };
+    if (s.type === 'arc') { const sign = s.direction === 'ccw' ? 1 : -1; g.centre = arcCentre(a.x, a.y, a.yaw, +s.radius_m, sign); g.radius_m = +s.radius_m; g.signed_angle_deg = sign * s.angle_deg; }
+    return g;
+  });
+  return { label: 'draft', start: [P[0].x, P[0].y, P[0].yaw], steps };
+}
+// Rebuilt only when the draft, the map or the saved routes changed: hover stays cheap.
+function snapSet() {
+  const key = `${draftToken}/${mapToken}/${savedGeom.map}/${savedGeom.routes.length}`;
+  if (snapCache && snapCache.key === key) return snapCache.set;
+  const routes = [draftGeometry(), ...savedGeom.routes].filter(Boolean);
+  const st = view.meta && view.meta.start, extra = st && st.x_m !== undefined ? [{ x: st.x_m, y: st.y_m, kind: 'vertex', label: 'survey start' }] : [];
+  snapCache = { key, set: measureSnapSet(routes, extra) };
+  return snapCache.set;
+}
+// Snap reach: ~14 screen px (22 on a touch panel), whatever the zoom.
+function snapTolM() {
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const k = typeof uiScale === 'function' ? uiScale() : 1;
+  return view.meta && view.scale > 0 ? (coarse ? 22 : 14) * k * view.meta.resolution / view.scale : 0;
+}
+function snapAt(w) {
+  const on = $('ed-snap').checked !== false && !shiftHeld;
+  return on ? measureSnap(w, snapSet(), snapTolM()) : { x: w[0], y: w[1], kind: 'free', label: 'free point' };
+}
+function measureClick(w) {
+  const p = snapAt(w);
+  if (!measure.a || measure.b) measure = { a: p, b: null, hover: p };
+  else measure.b = p;
+  showMeasure();
+}
+const signedMm = m => (m > 0 ? '+' : '') + mm(m);
+function showMeasure() {
+  const a = measure.a, b = measure.b || (a ? measure.hover : null);
+  if (!a) { $('ed-measure').innerHTML = `<div class="none">${view.tool === 'measure' ? 'click point A on the map' : 'select Measure, then click two points on the map'}</div>`; return; }
+  const pt = (n, p) => `<div class="row three"><span class="k">${n}</span><span class="n">${esc(p.label)}</span><span class="v">${num(p.x, 3)}, ${num(p.y, 3)}<i>m</i></span></div>`;
+  const parts = [pt('A', a)];
+  if (b) {
+    const d = measureDelta(a, b);
+    parts.unshift(`<div class="tel-grid">${[['Distance', mm(d.dist)], ['ΔX', signedMm(d.dx)], ['ΔY', signedMm(d.dy)]]
+      .map(([l, v]) => `<div class="tel"><span>${l}</span><b>${esc(v)}</b><i>mm</i></div>`).join('')}</div>`);
+    parts.push(pt(measure.b ? 'B' : 'B?', b));
+  }
+  $('ed-measure').innerHTML = `<div class="list">${parts.join('')}</div>`;
+}
+// Newest revision of every saved route on this map (same frame for all its revisions): compiled
+// only, never validated or previewed, so asking costs little and moves nothing.
+async function loadSavedGeometry() {
+  if (!mapId) return;
+  const c = ctx();
+  const { status, data } = await apiGet(`/api/maps/${mapId}/${mapRev}/routes/geometry`);
+  if (!stillSameMap(c)) return;
+  const routes = status === 200 && data && Array.isArray(data.routes) ? data.routes.filter(r => !r.error && Array.isArray(r.steps)) : [];
+  savedGeom = { map: c.m, routes: routes.map(r => ({ label: `${r.route_id} r${r.revision}`, start: r.start, steps: r.steps })) };
+  snapCache = null; view.draw();
+}
+if (window.addEventListener) {
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Shift') shiftHeld = true;
+    if (e.key === 'Escape' && view.tool === 'measure') { clearMeasure(); view.draw(); }
+  });
+  window.addEventListener('keyup', e => { if (e.key === 'Shift') shiftHeld = false; });
+  window.addEventListener('blur', () => { shiftHeld = false; });
+}
+// Glyph per snap kind: wait = square, arc centre = cross, step end = ring, on a line = diamond.
+function snapGlyph(v, p, color) {
+  if (!p || p.kind === 'free') return;
+  const c = v.ctx, s = v.worldToScreen(p.x, p.y), r = 7;
+  c.save(); c.strokeStyle = color; c.lineWidth = 2; c.beginPath();
+  if (p.kind === 'wait') c.rect(s[0] - r, s[1] - r, 2 * r, 2 * r);
+  else if (p.kind === 'centre') { c.moveTo(s[0] - r, s[1]); c.lineTo(s[0] + r, s[1]); c.moveTo(s[0], s[1] - r); c.lineTo(s[0], s[1] + r); }
+  else if (p.kind === 'vertex') c.arc(s[0], s[1], r, 0, 2 * Math.PI);
+  else { c.moveTo(s[0], s[1] - r); c.lineTo(s[0] + r, s[1]); c.lineTo(s[0], s[1] + r); c.lineTo(s[0] - r, s[1]); c.closePath(); }
+  c.stroke(); c.restore();
+}
+view.overlays.push((c, v) => {
+  if (v.tool !== 'measure') return;
+  const faint = alpha(INK.ink3, 0.7);
+  savedGeom.routes.forEach(r => (r.steps || []).forEach(s => {
+    if (s.type === 'straight' || s.type === 'reverse') v.line(s.start[0], s.start[1], s.end[0], s.end[1], faint, 1.5);
+    else if (s.type === 'arc') { const arc = measureArcOf(s); if (arc) v.polyline(measureArcPoints(arc, Math.max(8, Math.ceil(Math.abs(arc.sweep) / 0.05))), faint, 1.5); }
+    else if (s.type === 'wait') v.dot(s.end[0], s.end[1], faint, 4);
+  }));
+  const a = measure.a, b = measure.b || (a ? measure.hover : null);
+  if (!measure.b) snapGlyph(v, measure.hover, INK.preview);
+  if (a && b) {
+    const sa = v.worldToScreen(a.x, a.y), sk = v.worldToScreen(b.x, a.y), sb = v.worldToScreen(b.x, b.y);
+    c.save(); c.strokeStyle = alpha(INK.accent, 0.6); c.lineWidth = 1; c.setLineDash([4, 4]);
+    c.beginPath(); c.moveTo(sa[0], sa[1]); c.lineTo(sk[0], sk[1]); c.lineTo(sb[0], sb[1]); c.stroke(); c.restore();
+    v.line(a.x, a.y, b.x, b.y, INK.accent, 2);
+    const d = measureDelta(a, b);
+    v.text((a.x + b.x) / 2, (a.y + b.y) / 2, `${mm(d.dist)} mm  ΔX ${signedMm(d.dx)}  ΔY ${signedMm(d.dy)}`, INK.accent);
+  }
+  if (a) { v.dot(a.x, a.y, INK.accent, 4); snapGlyph(v, a, INK.accent); }
+  if (measure.b) { v.dot(b.x, b.y, INK.accent, 4); snapGlyph(v, b, INK.accent); }
+});
 (async () => {
   footprint = (await apiGet('/api/footprint')).data;
   mapsIndex = await fillMapSelect($('ed-map'));

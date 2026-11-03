@@ -296,6 +296,16 @@ The route editor moves nothing. The mode can stay `IDLE`.
      to the left.
    - **Undo**, **Redo** and **Clear steps** edit the list. The step list
      (`s1`, `s2`, …) is shown under **Steps**.
+   - **Measure** (2026-11-03, view only): click point A, then point B. The
+     panel and the map show the distance, ΔX and ΔY in mm, in map
+     coordinates (B − A). A click snaps, in this order, to a wait point, an
+     arc centre, a step end (or turn point, route start, survey start), or
+     else onto a route line. Snapping covers the route being drawn and the
+     newest revision of every saved route on this map (drawn faint while
+     Measure is on). Untick **Snap**, or hold Shift, to measure from exactly
+     where you click. A third click starts a new measurement; Esc or
+     switching the tool off clears it. Dragging still pans. Measuring never
+     changes the route, its undo history or the last validation.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
    `[pass p/P]` in the run reason. **Speed cap**: 0.05–0.60 m/s, new routes
