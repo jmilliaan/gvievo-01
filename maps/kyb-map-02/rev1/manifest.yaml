@@ -1,0 +1,30 @@
+map_id: kyb-map-02
+revision: 1
+created: 2026-11-03T10:47:48+0700
+frame_id: map
+resolution: 0.05000000074505806
+origin:
+- -155.73662141709215
+- -23.990941401828913
+- 0.0
+width: 3577
+height: 1846
+start:
+  x_m: 4.117470100284844e-06
+  y_m: 1.7886097043331275e-09
+  yaw_rad: 0.000458009073956767
+  description: default-hp
+review:
+  dx_m: 0.07545526193571453
+  dy_m: 0.035600469874710994
+  dyaw_rad: -0.018078684799247558
+  note: loop closed
+files:
+  map.pgm: b03aaed554966dea7654ff6ddc335bab444b221d37db77c628bb5822e0c0bac1
+  map.yaml: 4785e934bc5c891842e32f33a665baf4430dc0b882cbc6e5613bdbff0afbbde8
+  posegraph.data: 89e80d291b6b8361d1b3da8f2c17e032fe5c82064962dd16896d404d737e9085
+  posegraph.posegraph: a64efa2b6ac69ceadff5f41fc0bd4d56214dc7c8a737429aa999f76a1f4e2a72
+software:
+  slam: slam_toolbox online_async
+  profile: slam_mapping.yaml
+sha256: 14260b2f98004926744acaf15cfe1896b2456c0ac94f2549246a752eb58cf3c9

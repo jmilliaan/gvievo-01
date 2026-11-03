@@ -55,7 +55,7 @@ def test_straight_arrives_within_a_centimetre_at_the_survey_speed():
     (x, y, yaw), t, reason, peak_v, _ = drive(ctl, pose=(1.0, 2.0, math.pi / 2))
     assert reason == "" and abs(ctl.achieved() - 3.0) <= 0.011
     assert (x, y) == (pytest.approx(1.0, abs=0.01), pytest.approx(5.0, abs=0.011))
-    assert peak_v <= 0.30 + 1e-9 and peak_v > 0.28
+    assert peak_v <= 0.40 + 1e-9 and peak_v > 0.38
     assert t < ctl.nominal_s + 3.0
 
 

@@ -18,3 +18,4 @@ be copied back into `~/amr_maps` as-is.
 | Map | Rev | Saved | Start | Closure | Note |
 |---|---|---|---|---|---|
 | kyb-map-01 | 1 | 2026-11-02 15:42 | HP-no-tape | dx 0.09 m, dy −0.05 m, dyaw −1.0° | seams ok |
+| kyb-map-02 | 1 | 2026-11-03 10:47 | default-hp | dx 0.08 m, dy 0.04 m, dyaw −1.0° | loop closed; first survey with 0.40 m/s preset moves |

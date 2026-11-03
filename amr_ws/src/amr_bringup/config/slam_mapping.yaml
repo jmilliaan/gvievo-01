@@ -40,7 +40,7 @@ slam_toolbox:
 
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.2         # survey at <= 0.3 m/s: a node every ~0.7 s
+    minimum_travel_distance: 0.2         # preset moves at 0.40 m/s: a node every ~0.5 s
     minimum_travel_heading: 0.2
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
