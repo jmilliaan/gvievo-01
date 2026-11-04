@@ -309,13 +309,13 @@ The route editor moves nothing. The mode can stay `IDLE`.
 4. **Repeat count**: how many times the route runs back to back, 1–100. Use 1
    unless the route returns to its own start pose. A repeated run shows
    `[pass p/P]` in the run reason. **Speed** is not a route setting
-   (2026-10-02): every forward straight runs at 0.60 m/s
+   (2026-10-02): every forward straight runs at 0.72 m/s
    (`route.VEHICLE_V_MAX`), every arc at 0.30 m/s (`route.ARC_V_MPS`,
-   2026-11-03), and a reverse at half the straight speed, 0.30 m/s.
+   2026-11-03), and a reverse at 0.30 m/s (`route.REVERSE_V_MPS`).
    Since 2026-11-03 every autonomous speed change is a smooth S-curve (mux
    `auto_jerk` 0.1 m/s³, at most `a_max` 0.1 m/s² up and `d_max` 0.125 m/s²
    down; twice as long as the first smoothing, after the field runs that
-   day): a start reaches 0.60 m/s after about 2.0 m (6.9 s). Field and
+   day): a start reaches 0.72 m/s after about 2.9 m (8.1 s). Field and
    emergency stops are not softened: while a warning field is in force the
    vehicle brakes at `field_d_max` 0.5 m/s² (warning 1) or the drive's ramp
    (warning 2), and loss of authority still stops at once.
@@ -323,16 +323,17 @@ The route editor moves nothing. The mode can stay `IDLE`.
    stop between them); a rotate or a reverse ends such a chain. Before an
    arc the speed tapers early enough for the S-curve to reach 0.30 before
    the boundary (executor `taper_decel` 0.125 m/s², `taper_jerk` 0.1 m/s³,
-   `taper_lead_s` 0.3): 0.60 → 0.30 starts 1.82 m before the arc, takes
-   1.59 m (3.5 s) and is done about 0.2 m before it; after the arc it speeds
-   back up over about 1.7 m (3.9 s). At the end of a chain the controller's own ramp over
-   the last 3.0 m (`approach_velocity_scaling_dist`) brings it to the stop. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
+   `taper_lead_s` 0.3): 0.72 → 0.30 starts 2.57 m before the arc, takes
+   2.30 m (4.5 s) and is done about 0.3 m before it; after the arc it speeds
+   back up over about 2.6 m (5.1 s). At the end of a chain the controller's own ramp over
+   the last 3.4 m (`approach_velocity_scaling_dist`, kept under half the 7 m
+   local costmap, or every speed runs scaled down) brings it to the stop. **Reverse** (2026-09-18): type a distance in mm and press *Reverse*
    to back up along the current heading, facing forward: at most 2000 mm
-   and at half the speed cap (never the boost). The nanoScan3 does not
+   and at 0.30 m/s. The nanoScan3 does not
    cover the rear, so a reverse is driven blind: keep it short, keep the
    area behind clear, and stay within reach of the E-stop for the first
    ones. Shown dashed with `◂` in the editor. **Arc** (2026-09-18): radius
-   (≥ 1.0 m, twice the track) and angle (45–180°), *Arc L* / *Arc R*; the
+   (≥ 1.0 m, twice the track) and angle (10–180°, up to 2 decimals), *Arc L* / *Arc R*; the
    vehicle drives forward along the circle and leaves with the heading turned
    by the angle;
    an arc runs at the route's arc speed (0.40 m/s, whatever the straight

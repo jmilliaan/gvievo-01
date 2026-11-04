@@ -146,7 +146,7 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("warning_active_level", False)
         self.declare_parameter("warning_decel_s", 1.0)  # each step down, seconds
         self.declare_parameter("warning_accel_s", 1.0)  # each step up, seconds
-        self.declare_parameter("warning_stop_m", 0.40)  # a factor-0 warning stops in this distance
+        self.declare_parameter("warning_stop_m", 0.38)  # a factor-0 warning stops in this distance
         self.declare_parameter("field_fresh_s", 0.5)
 
         p = self.get_parameter

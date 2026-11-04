@@ -152,7 +152,7 @@ def _compose(context):
                     **scanner_fields.mux_params(scanner_fields.load()),
                     # auto speed changes take twice as long (owner 2026-11-03, after the field
                     # runs): a_max and d_max halved, auto_jerk quartered, so dv/a + a/j doubles.
-                    # 0 -> 0.60 m/s in 6.9 s / 2.0 m; 0.60 -> 0.30 before an arc in 3.5 s / 1.6 m.
+                    # 0 -> 0.72 m/s in 8.1 s / 2.9 m; 0.72 -> 0.30 before an arc in 4.5 s / 2.3 m.
                     "a_max": 0.1,  # auto start acceleration: 0.3 -> 0.2 -> 0.1 m/s^2 (2026-11-03)
                     "alpha_max": 0.4,
                     "d_max": 0.125,  # auto braking, not field/emergency stops: 0.5 -> 0.25 -> 0.125

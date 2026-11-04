@@ -234,7 +234,7 @@ class RouteExecutor(Node):
         # early enough that the mux's auto S-curve reaches it before the boundary: the time of a
         # jerk-limited slowdown at taper_decel / taper_jerk (= mux d_max 0.125 / auto_jerk 0.1,
         # 2026-11-03, twice-as-long slopes) times the mean speed, plus taper_lead_s of travel.
-        # 0.60 -> 0.30 m/s: 1.82 m.
+        # 0.72 -> 0.30 m/s: 2.57 m.
         self.declare_parameter("taper_decel", 0.125)
         self.declare_parameter("taper_lead_s", 0.3)
         self.declare_parameter("taper_jerk", 0.1)
@@ -1219,18 +1219,20 @@ class RouteExecutor(Node):
 
     def _step_speed(self, st: CompiledStep, pose) -> float:
         """The speed the vehicle may run at HERE on a forward step: its compiled speed, tapered
-        to the NEXT chained step's speed (a tight arc runs below the trackless speed) early
-        enough that the mux decel reaches it at the boundary."""
+        to the first slower step of the chain (an arc runs below the trackless speed), however
+        many steps lie between, early enough that the mux decel reaches it at the boundary."""
         v = float(st.v_mps)
         if pose is None:
             return v
-        nxt = self._next_in_chain()
-        base = float(self.route.limits.linear_mps)
-        v_next = float(nxt.v_mps) if nxt is not None else min(v, base)
-        if v_next >= v:
-            return v
         along, _ = self._along_cross(st, pose)
-        if st.length_m - along < self._taper_dist(v, v_next):
+        remaining = st.length_m - along
+        v_next = min(v, float(self.route.limits.linear_mps))  # the chain's end
+        for nxt in self._chain(self.fsm.step_index)[1:]:
+            if float(nxt.v_mps) < v:
+                v_next = float(nxt.v_mps)
+                break
+            remaining += nxt.length_m
+        if v_next < v and remaining < self._taper_dist(v, v_next):
             return v_next
         return v
 

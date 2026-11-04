@@ -15,7 +15,7 @@ function el(id, tag) {
 ['ed-canvas', 'tool-start', 'tool-line', 'btn-start-survey', 'btn-undo', 'btn-redo', 'btn-clear', 'btn-validate', 'btn-save',
  'btn-mission', 'ed-steps', 'ed-result', 'ed-hint', 'ed-route-id', 'ed-load', 'ed-map'].forEach(id => el(id));
 el('ed-repeat', 'INPUT').value = '1';
-el('ed-speed').dataset.v = '0.60';   // read-only: route.VEHICLE_V_MAX rendered by the server (2026-10-02)
+el('ed-speed').dataset.v = '0.72';   // read-only: route.VEHICLE_V_MAX rendered by the server (2026-10-02)
 // the typed straight length: a number input read through valueAsNumber (NaN when empty), as in the browser
 Object.defineProperty(el('ed-len', 'INPUT'), 'valueAsNumber', { get() { return this.value === '' ? NaN : Number(this.value); } });
 el('btn-line-len', 'BUTTON'); el('btn-reverse-len', 'BUTTON'); el('btn-arc-l', 'BUTTON'); el('btn-arc-r', 'BUTTON');

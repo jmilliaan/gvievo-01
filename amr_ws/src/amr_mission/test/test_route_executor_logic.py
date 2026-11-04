@@ -609,20 +609,53 @@ def test_speed_boost_2_taper_and_arc_turn_cap_on_the_lead_in_straight():
 
 
 def test_taper_into_an_arc_starts_early_enough_with_the_shipped_slopes():
-    """Owner 2026-11-03: straights 0.60, arcs 0.30, slopes twice as long as the first
-    smoothing (mux a_max 0.1 / d_max 0.125 / auto_jerk 0.1). The shipped executor defaults
-    (taper_decel 0.125 = mux d_max, taper_jerk 0.1 = mux auto_jerk) put the start 1.82 m
-    before the arc; the mux S-curve with the same numbers needs 1.59 m."""
+    """Straights 0.72 (2026-11-04), arcs 0.30, slopes twice as long as the first smoothing
+    (mux a_max 0.1 / d_max 0.125 / auto_jerk 0.1). The shipped executor defaults
+    (taper_decel 0.125 = mux d_max, taper_jerk 0.1 = mux auto_jerk) put the start 2.57 m
+    before the arc; the mux S-curve with the same numbers needs 2.30 m."""
     from amr_base.diff_drive import scurve
 
     n = make_node([CompiledStep("s1", STRAIGHT, (0.0, 0.0, 0.0), (5.0, 0.0, 0.0), length_m=5.0)])
     n.taper_decel, n.taper_lead_s, n.taper_jerk = 0.125, 0.3, 0.1
-    assert n._taper_dist(0.60, 0.30) == pytest.approx(1.82, abs=0.005)
-    v, a, x = 0.60, 0.0, 0.0
+    assert n._taper_dist(0.72, 0.30) == pytest.approx(2.57, abs=0.005)
+    v, a, x = 0.72, 0.0, 0.0
     while v > 0.30:
         v, a = scurve(v, a, 0.30, 0.1, 0.125, 0.1, 0.02)
         x += v * 0.02
-    assert 1.4 < x < 1.82 - 0.6 * 0.3, "reaches 0.30 before the arc, with the lead to spare"
+    assert 1.9 < x < 2.57 - 0.72 * 0.3, "reaches 0.30 before the arc, with the lead to spare"
+
+
+def test_taper_looks_past_a_short_straight_to_the_arc():
+    """route-itg-02's s26 (13.2 m) -> s27 (0.2 m) -> arc s28: the slowdown starts on s26."""
+    from amr_navigation.route import ARC
+
+    s26 = CompiledStep("s26", STRAIGHT, (0.0, 0.0, 0.0), (13.2, 0.0, 0.0), length_m=13.2, v_mps=0.72)
+    s27 = CompiledStep("s27", STRAIGHT, (13.2, 0.0, 0.0), (13.4, 0.0, 0.0), length_m=0.2, v_mps=0.72)
+    s28 = CompiledStep("s28", ARC, (13.4, 0.0, 0.0), (16.4, 3.0, math.pi / 2), length_m=4.71, v_mps=0.3)
+    n = make_node([s26, s27, s28])
+    _clock_stub(n)
+    n.route.limits.linear_mps = 0.72
+    n.taper_decel, n.taper_lead_s, n.taper_jerk = 0.125, 0.3, 0.1
+    n.fsm.start(True, True)
+    # 2.57 m before the arc is 2.37 m before the end of s26
+    assert n._step_speed(s26, (10.8, 0.0, 0.0)) == 0.72
+    assert n._step_speed(s26, (10.9, 0.0, 0.0)) == 0.3
+
+
+def test_approach_ramp_reaches_the_floor_before_the_endpoint():
+    """RPP's ramp over the last 3.4 m from 0.72 asks a little more than the mux d_max 0.125:
+    the speed lags it (2026-11-04), by little enough to be at the 0.05 floor before the end."""
+    from amr_base.diff_drive import scurve
+
+    v, a, x, lag = 0.72, 0.0, 0.0, 0.0
+    while x < 3.4:
+        target = max(0.05, 0.72 * (3.4 - x) / 3.4)
+        v, a = scurve(v, a, target, 0.1, 0.125, 0.1, 0.02)
+        x += v * 0.02
+        lag = max(lag, v - target)
+        if x > 3.2:
+            assert v < 0.06
+    assert lag < 0.11
 
 
 def test_home_leg_progress_chain_overshoot_and_turn_cap():

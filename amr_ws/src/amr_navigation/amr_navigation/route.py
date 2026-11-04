@@ -19,16 +19,18 @@ DIRECTIONS = ("cw", "ccw")
 STRAIGHT, ROTATE, REVERSE = "straight", "rotate", "reverse"
 # A reverse straight (2026-09-18) backs up along the current heading, facing forward. The
 # rear is outside the nanoScan3 field (275 deg, blind sector behind), so it is bounded:
-# at most REVERSE_MAX_M and at half the trackless speed.
+# at most REVERSE_MAX_M and at REVERSE_V_MPS, whatever the straights run at (2026-11-04,
+# half the trackless speed before).
 REVERSE_MAX_M = 2.0
-REVERSE_SPEED_RATIO = 0.5
+REVERSE_V_MPS = 0.30
 # An arc (2026-09-18) drives forward along a circle of radius_m through angle_deg, left
-# (ccw) or right (cw). Bounded: at least an eighth of a circle, at most a half, and a
-# radius of at least twice the wheel track (2 x 0.487 -> 1.0 m). It runs at ARC_V_MPS (owner
-# 2026-11-03: 0.30 m/s), lowered further only where the yaw rate v/R would exceed
-# VEHICLE_ARC_W_MAX (compiler.arc_speed).
+# (ccw) or right (cw). Bounded: at least 10 deg (owner 2026-11-04, was 45), at most a half
+# circle, to two decimals, and a radius of at least twice the wheel track (2 x 0.487 -> 1.0 m).
+# It runs at ARC_V_MPS (owner 2026-11-03: 0.30 m/s), lowered further only where the yaw rate v/R
+# would exceed VEHICLE_ARC_W_MAX (compiler.arc_speed).
 ARC = "arc"
-ARC_MIN_DEG, ARC_MAX_DEG = 45.0, 180.0
+ARC_MIN_DEG, ARC_MAX_DEG = 10.0, 180.0
+ARC_DEG_DECIMALS = 2
 ARC_MIN_RADIUS_M = 1.0
 ARC_YAW_RATE_RATIO = 0.9  # of VEHICLE_ARC_W_MAX: headroom for the controller's corrections
 ARC_V_MPS = 0.30  # every arc (corner) at 0.30 m/s, whatever the straights run at (owner 2026-11-03)
@@ -77,7 +79,7 @@ FRAMES = ("map",)
 # ONE trackless speed (2026-10-02): every forward straight and arc runs at VEHICLE_V_MAX.
 # It is no longer a route setting; the long-straight boost and the separate arc speed are
 # gone. Older files still load: their speed keys (LEGACY_SPEED_LIMITS) are read and dropped.
-VEHICLE_V_MAX = 0.60  # straights; arcs run at ARC_V_MPS (owner 2026-11-03)
+VEHICLE_V_MAX = 0.72  # straights, 0.60 until 2026-11-04; arcs run at ARC_V_MPS (owner 2026-11-03)
 VEHICLE_W_MAX = 0.37  # spin: 0.24 -> 0.34 (+40 %) on 2026-09-18, -> 0.37 (+10 %) on 2026-09-19
 # Arcs turn at v/R: 0.40 m/s on the 1.0 m minimum radius is 0.40 rad/s, above the spin cap.
 # Their own ceiling (the permit w_max of an arc step) keeps 0.40 m/s possible from R 1.0 m.
@@ -232,6 +234,8 @@ class Step:
                 raise RouteError(
                     f"arc angle_deg must be in [{ARC_MIN_DEG:g}, {ARC_MAX_DEG:g}], got {a:g}", sid
                 )
+            if abs(a - round(a, ARC_DEG_DECIMALS)) > 1e-9:
+                raise RouteError(f"arc angle_deg has at most {ARC_DEG_DECIMALS} decimals, got {a!r}", sid)
             r = _float(_field(d, "radius_m", "step", sid), "step.radius_m", lim=1000.0, step_id=sid)
             if r < ARC_MIN_RADIUS_M:
                 raise RouteError(f"arc radius_m must be at least {ARC_MIN_RADIUS_M:g} m, got {r:g}", sid)

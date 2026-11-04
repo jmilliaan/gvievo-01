@@ -53,7 +53,7 @@ def test_editor_does_not_mark_long_straights_any_more():
     assert "error" not in out, out
     rows = out["long_rows"]
     assert "4000<i>mm</i>" in rows and "4500<i>mm</i>" in rows and "▲" not in rows
-    assert "◂0.30" in out["reverse_rows"]  # reverse at half the 0.60 trackless speed
+    assert "◂0.30" in out["reverse_rows"]  # reverse at REVERSE_V_MPS
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
@@ -79,7 +79,7 @@ def test_editor_arc_step_bounds_and_end_pose():
     assert "error" not in out, out
     assert out["arc_refused"] is True  # R 0.5 and 30 deg
     assert "arc L" in out["arc_rows"] and "90° R 1.00" in out["arc_rows"]
-    assert "≤0.41" in out["arc_rows"]  # the 0.60 speed, held to 0.9 x 0.45 x R 1.0 = 0.405 by the turn cap
+    assert "≤0.41" in out["arc_rows"]  # the 0.72 speed, held to 0.9 x 0.45 x R 1.0 = 0.405 by the turn cap
     assert out["arc_saved_step"] == {
         "id": "s7",
         "type": "arc",

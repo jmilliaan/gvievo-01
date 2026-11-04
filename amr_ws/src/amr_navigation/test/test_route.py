@@ -580,18 +580,18 @@ def test_r23_existing_revision_is_never_replaced(tmp_path):
     assert b"other" not in open(path, "rb").read()
 
 
-# ---- ONE trackless speed, 0.60 m/s (arcs 0.30 since 2026-11-03), a vehicle constant (2026-10-02) ----
+# ---- ONE trackless speed, 0.72 m/s (arcs 0.30 since 2026-11-03), a vehicle constant (2026-10-02) ----
 
 
 def test_trackless_speed_is_the_vehicle_constant_and_old_speed_keys_are_dropped():
     from amr_navigation.compiler import step_speed
     from amr_navigation.route import VEHICLE_V_MAX, VEHICLE_W_MAX
 
-    assert (VEHICLE_V_MAX, VEHICLE_W_MAX) == (0.60, 0.37)
+    assert (VEHICLE_V_MAX, VEHICLE_W_MAX) == (0.72, 0.37)
     d = good_dict()
     del d["limits"]
     r = Route.from_dict(d)
-    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.60, 0.37)
+    assert (r.limits.linear_mps, r.limits.angular_rad_s) == (0.72, 0.37)
     c = compile_route(r)
     assert c.steps[1].time_allowance_s > math.radians(270) / 0.37
     # a file saved before 2026-10-02 still loads; its speeds are read and dropped, never written back
@@ -599,7 +599,7 @@ def test_trackless_speed_is_the_vehicle_constant_and_old_speed_keys_are_dropped(
     d["limits"] = {"linear_mps": 0.3, "long_linear_mps": 0.85, "long_min_length_m": 4.0,
                    "arc_linear_mps": 0.4, "angular_rad_s": 0.10}
     r = Route.from_dict(d)
-    assert r.limits.linear_mps == 0.60 and r.limits.angular_rad_s == 0.10
+    assert r.limits.linear_mps == 0.72 and r.limits.angular_rad_s == 0.10
     assert set(r.to_dict()["limits"]).isdisjoint({"linear_mps", "long_linear_mps", "long_min_length_m", "arc_linear_mps"})
     assert compile_route(r).steps[1].time_allowance_s > math.radians(270) / 0.10
     # angular above the ceiling is CLAMPED (old files carry 0.30) and never rewritten
@@ -608,14 +608,14 @@ def test_trackless_speed_is_the_vehicle_constant_and_old_speed_keys_are_dropped(
     assert r.limits.angular_rad_s == VEHICLE_W_MAX + 0.1 and r.limits.w_mps == VEHICLE_W_MAX
     assert r.to_dict()["limits"]["angular_rad_s"] == VEHICLE_W_MAX + 0.1
     # every forward straight runs at the one speed, whatever its length (no long-straight boost)
-    assert step_speed(r.limits, 2.0) == step_speed(r.limits, 40.0) == 0.60
+    assert step_speed(r.limits, 2.0) == step_speed(r.limits, 40.0) == 0.72
     d["steps"] = [
         {"id": "s1", "type": "straight", "to": {"x_m": 3.0, "y_m": 0.0}},
         {"id": "s2", "type": "straight", "to": {"x_m": 9.0, "y_m": 0.0}},
     ]
     c = compile_route(Route.from_dict(d))
-    assert [s.v_mps for s in c.steps] == [0.60, 0.60]
-    assert c.steps[1].duration_est_s == pytest.approx(6.0 / 0.60)
+    assert [s.v_mps for s in c.steps] == [0.72, 0.72]
+    assert c.steps[1].duration_est_s == pytest.approx(6.0 / 0.72)
 
 
 def test_reverse_step_is_bounded_slow_and_backs_along_the_heading():
@@ -635,7 +635,10 @@ def test_reverse_step_is_bounded_slow_and_backs_along_the_heading():
     assert st.end == pytest.approx((1.5, 0.0, 0.0))
     assert st.length_m == 1.5 and st.samples[0] == pytest.approx((3.0, 0.0, 0.0))
     assert st.samples[-1] == pytest.approx((1.5, 0.0, 0.0)) and all(s[2] == 0.0 for s in st.samples)
-    assert st.v_mps == pytest.approx(0.30)  # half the trackless speed: the rear is outside the scanner field
+    assert st.v_mps == pytest.approx(0.30)  # REVERSE_V_MPS: the rear is outside the scanner field
+    with pytest.MonkeyPatch.context() as mp:  # whatever the straights run at
+        mp.setattr("amr_navigation.route.VEHICLE_V_MAX", 0.85)
+        assert compile_route(r).steps[1].v_mps == pytest.approx(0.30)
     assert st.travel_yaw == pytest.approx(math.pi)
     assert c.total_length_m == pytest.approx(4.5) and c.end == pytest.approx((1.5, 0.0, 0.0))
     # bounded to REVERSE_MAX_M, and never zero
@@ -660,14 +663,21 @@ def test_arc_step_bounds_geometry_and_speed():
     r = Route.from_dict(d)
     assert r.steps[0].type == ARC and r.to_dict()["steps"][0] == {**arc, "angle_deg": 90.0}
     for bad in (
-        {"angle_deg": 44},
+        {"angle_deg": 9.99},
         {"angle_deg": 181},
+        {"angle_deg": 33.333},
         {"radius_m": ARC_MIN_RADIUS_M - 0.01},
         {"direction": "left"},
     ):
         d["steps"] = [{**arc, **bad}]
         with pytest.raises(RouteError):
             Route.from_dict(d)
+    # the small end of the range, and two decimals, compile: 10 deg at R 1 is 0.175 m of arc
+    for good in (10, 33.33, 179.99):
+        d["steps"] = [{**arc, "angle_deg": good}]
+        st = compile_route(Route.from_dict(d)).steps[0]
+        assert st.signed_angle_rad == pytest.approx(math.radians(good))
+        assert st.length_m == pytest.approx(math.radians(good)) and len(st.samples) >= 2
     # ccw 90 deg, R 1 from the origin heading +x: centre (0, 1), end (1, 1) heading +y
     d["steps"] = [arc]
     c = compile_route(Route.from_dict(d))

@@ -25,7 +25,7 @@ from amr_navigation.route import (
     HOME,
     REVERSE,
     REVERSE_MAX_M,
-    REVERSE_SPEED_RATIO,
+    REVERSE_V_MPS,
     ROTATE,
     STRAIGHT,
     VEHICLE_ARC_W_MAX,
@@ -199,7 +199,7 @@ def compile_route(route: Route, spacing: float = SAMPLE_SPACING_M) -> CompiledRo
                 raise RouteError(f"route too long: more than {MAX_SAMPLES} path samples", sid)
             samples = [(x - c * dist * k / n, y - sn * dist * k / n, yaw) for k in range(n + 1)]
             end = (x - c * dist, y - sn * dist, yaw)
-            v = REVERSE_SPEED_RATIO * float(lim.linear_mps)
+            v = min(REVERSE_V_MPS, float(lim.linear_mps))
             steps.append(
                 CompiledStep(
                     sid,

@@ -588,7 +588,7 @@ def test_validate_route_with_an_arc_and_a_reverse(env):
     q = math.pi / 4
     assert steps[1]["end"] == pytest.approx([5.0 + 1.5 * math.sin(q), 1.5 - 1.5 * math.cos(q), q])
     assert steps[1]["v_mps"] == pytest.approx(0.30)  # arcs: ARC_V_MPS 0.30 (R 1.5 cap 0.6075)
-    assert steps[2]["v_mps"] == pytest.approx(0.30)  # reverse: half the trackless 0.60
+    assert steps[2]["v_mps"] == pytest.approx(0.30)  # reverse: REVERSE_V_MPS
     assert steps[2]["end"][0] == pytest.approx(steps[1]["end"][0] - math.cos(q))
     assert len(stub.previews) == 1  # the preview carries the arc and reverse samples too
     # a 90 deg arc of the same radius turns the nose into the racks: clearance fails on that step

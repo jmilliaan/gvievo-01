@@ -59,7 +59,7 @@ and confirm the web UI loads.
 **What changed.** The route editor has a new last step, **Go home**. From wherever the route
 ends, up to 5 m behind the route's start pose (HOME) and within 20° of its heading, the vehicle
 drives forward to HOME and stops on HOME's heading:
-- a straight at 0.60 m/s if it is already on HOME's line;
+- a straight at 0.72 m/s if it is already on HOME's line;
 - otherwise a quintic S-curve at 0.30 m/s, never tighter than R 1.0 m and never more than
   30° off HOME's line.
 
@@ -143,7 +143,7 @@ threshold is a first guess.
 
 1. Run `bag_report.py` on every bag from section 2. It must finish without a traceback and
    print the SLIP / IMPACT section.
-2. **Sanity:** sum torque at a steady 0.60 m/s with no trolley should be small and positive. The
+2. **Sanity:** sum torque at a steady 0.72 m/s with no trolley should be small and positive. The
    `wheel/gyro yaw gain` line should read about 1.00 (0.95–1.05). A **negative** gain means
    `gyro_sign` is wrong: report it, do not change it.
 3. **Towing set** (only if the operator agrees, trolley hitched). Make 5 start-ups for each of
@@ -238,7 +238,8 @@ drive heartbeat; that is expected and recovers on start.
 **What changed:**
 - mux: `a_max` 0.2 → 0.1 m/s², `d_max` 0.25 → 0.125 m/s², `auto_jerk` 0.4 → 0.1 m/s³;
 - executor: `taper_decel` 0.25 → 0.125, `taper_jerk` 0.4 → 0.1;
-- Nav2: `approach_velocity_scaling_dist` 1.5 → 3.0 m.
+- Nav2: `approach_velocity_scaling_dist` 1.5 → 3.0 → 3.4 m, local costmap 5 × 5 → 7 × 7 m
+  (2026-11-04: at 3.0 m on the 5 m costmap RPP warned of a permanent slowdown).
 
 **Untouched:** warning-field braking (`field_d_max` 0.5), the warning-2 stop, E-stop/STO, the
 manual and pendant ramps, and rotation (`alpha_max` / `delta_max`).
@@ -260,7 +261,7 @@ manual and pendant ramps, and rotation (`alpha_max` / `delta_max`).
    # after NAVIGATION is selected on kyb-map-02 rev 3:
    ros2 param get /route_executor taper_decel                           # 0.125
    ros2 param get /route_executor taper_jerk                            # 0.1
-   ros2 param get /controller_server FollowPath.approach_velocity_scaling_dist   # 3.0
+   ros2 param get /controller_server FollowPath.approach_velocity_scaling_dist   # 3.4
    ```
 
    Pass: all six match. If any value is old, the build or the restart did not take: stop here.
@@ -274,11 +275,11 @@ manual and pendant ramps, and rotation (`alpha_max` / `delta_max`).
    Then run `python3 ~/agv_can/tools/bag_report.py <bag dir>`.
 
    Pass:
-   - From rest to 0.60 m/s takes about 6.9 s / 2.0 m (`wheels.csv` `v_mps`; it was 3.4 s / 1.0 m).
-   - Before each corner the speed falls from 0.60 to 0.30 over about 3.5 s and is at 0.30 before
+   - From rest to 0.72 m/s takes about 8.1 s / 2.9 m (`wheels.csv` `v_mps`; it was 3.4 s / 1.0 m).
+   - Before each corner the speed falls from 0.72 to 0.30 over about 4.5 s and is at 0.30 before
      the corner starts.
    - The 3.14 m corners (s2, s4, s6, s23, s25) take about 10.5 s each.
-   - After a corner it is back to 0.60 within about 3.9 s.
+   - After a corner it is back to 0.72 within about 5.1 s.
    - Every stop (the three waits and the end) passes the executor's end check: no FAULT, and
      each `step sNN (...) done: X m / Y deg` line in the layer log is within limits (position
      tolerance 0.05 m on this route).

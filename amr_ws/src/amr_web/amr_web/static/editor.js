@@ -5,7 +5,7 @@ let mapId = null, mapRev = null, footprint = null, mapsIndex = [];
 const DEFAULT_LIMITS = () => ({});
 // The one trackless speed (2026-10-02): amr_navigation.route.VEHICLE_V_MAX, rendered into the page.
 // Speed keys in older route files are dropped here and by the server; nothing writes them back.
-const SPEED_V = +(document.getElementById('ed-speed').dataset.v) || 0.60;
+const SPEED_V = +(document.getElementById('ed-speed').dataset.v) || 0.72;
 const LEGACY_SPEED_KEYS = ['linear_mps', 'long_linear_mps', 'long_min_length_m', 'arc_linear_mps'];
 const routeLimits = l => Object.fromEntries(Object.entries(l || {}).filter(([k]) => !LEGACY_SPEED_KEYS.includes(k)));
 let route = { route_id: '', start: null, steps: [], repeat_count: 1, limits: DEFAULT_LIMITS() };
@@ -27,8 +27,8 @@ function redo() { if (!future.length) return; history.push(JSON.stringify(route)
 // Distances are authored and stored in metres; the operator reads and types them in mm (0 dp).
 const mm = m => num(Math.round(m * 1000), 0);
 const MIN_STRAIGHT_M = 0.05;
-const REVERSE_MAX_M = 2.0;  // amr_navigation.route.REVERSE_MAX_M: the rear is outside the scanner's field
-const ARC_MIN_R = 1.0, ARC_MIN_DEG = 45, ARC_MAX_DEG = 180;  // amr_navigation.route ARC_* bounds
+const REVERSE_MAX_M = 2.0, REVERSE_V_MPS = 0.30;  // amr_navigation.route REVERSE_*: the rear is outside the scanner's field
+const ARC_MIN_R = 1.0, ARC_MIN_DEG = 10, ARC_MAX_DEG = 180, ARC_DEG_DECIMALS = 2;  // amr_navigation.route ARC_* bounds
 // mirrors amr_navigation compiler.arc_speed: 0.30 m/s (ARC_V_MPS), lowered so v/R <= 0.9 x VEHICLE_ARC_W_MAX
 const ARC_V_MPS = 0.30, ARC_YAW_RATE_RATIO = 0.9, VEHICLE_ARC_W_MAX = 0.45;
 // Same construction as compiler.arc_centre / arc_pose: the circle to the left for +1 (ccw).
@@ -175,7 +175,7 @@ $('btn-reverse-len').onclick = () => {
   if (d < MIN_STRAIGHT_M || d > REVERSE_MAX_M) { log(`a reverse is ${mm(MIN_STRAIGHT_M)}–${mm(REVERSE_MAX_M)} mm`, 'bad'); return; }
   const id = nextId();
   snapshot(); route.steps.push({ id, type: 'reverse', distance_m: d }); refresh();
-  log(`${id}: reverse ${mm(d)} mm (half speed, rear not scanned)`);
+  log(`${id}: reverse ${mm(d)} mm (${num(REVERSE_V_MPS, 2)} m/s, rear not scanned)`);
 };
 // Arc: forward along a circle, left or right. Bounds mirror the schema; the speed is capped
 // by the compiler so v/R stays under the turn cap (shown in the step list).
@@ -184,6 +184,7 @@ function addArc(direction) {
   const r = $('ed-arc-radius').valueAsNumber, a = $('ed-arc-angle').valueAsNumber;
   if (!(r >= ARC_MIN_R)) { log(`arc radius is at least ${ARC_MIN_R} m (2 x track)`, 'bad'); return; }
   if (!(a >= ARC_MIN_DEG && a <= ARC_MAX_DEG)) { log(`arc angle is ${ARC_MIN_DEG}–${ARC_MAX_DEG}°`, 'bad'); return; }
+  if (Math.abs(a - +a.toFixed(ARC_DEG_DECIMALS)) > 1e-9) { log(`arc angle has at most ${ARC_DEG_DECIMALS} decimals`, 'bad'); return; }
   const id = nextId();
   snapshot(); route.steps.push({ id, type: 'arc', direction, angle_deg: a, radius_m: r }); refresh();
   log(`${id}: arc ${direction === 'ccw' ? 'L' : 'R'} ${a}° R ${num(r, 2)} m (${num(arcSpeed(r), 2)} m/s)`);
@@ -290,7 +291,7 @@ function refresh() {
   view._linePreview = null;  // the route changed: a preview made for the old end pose is void
   $('ed-steps').innerHTML = route.steps.length ? route.steps.map((s, i) => `<div class="row three${bad.has(s.id) ? ' lv-error' : ''}"><span class="k">${esc(s.id)}</span>` +
     (s.type === 'straight' ? `<span class="n">straight</span><span class="v" title="to ${num(+s.to.x_m, 3)}, ${num(+s.to.y_m, 3)} m">${mm(stepLength(i))}<i>mm</i></span>`
-     : s.type === 'reverse' ? `<span class="n">reverse <b title="backs up at half the trackless speed: ${num(SPEED_V / 2, 2)} m/s">◂${num(SPEED_V / 2, 2)}</b></span><span class="v">${mm(+s.distance_m)}<i>mm</i></span>`
+     : s.type === 'reverse' ? `<span class="n">reverse <b title="backs up at ${num(REVERSE_V_MPS, 2)} m/s">◂${num(REVERSE_V_MPS, 2)}</b></span><span class="v">${mm(+s.distance_m)}<i>mm</i></span>`
      : s.type === 'wait' ? `<span class="n">wait</span><span class="v" title="stops until PB Continue or Start">${esc(s.name || '—')}${s.label_id ? ` <i>${esc(s.label_id)}</i>` : ''}</span>`
      : s.type === 'arc' ? `<span class="n">arc ${s.direction === 'ccw' ? 'L' : 'R'} <b title="capped so the yaw rate stays under the turn cap">≤${num(arcSpeed(+s.radius_m), 2)}</b></span><span class="v" title="${mm(stepLength(i))} mm of arc">${esc(s.angle_deg)}° R ${num(+s.radius_m, 2)}<i>m</i></span>`
      : s.type === 'home' ? homeRow(i)

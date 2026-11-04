@@ -1,6 +1,6 @@
 """Scanner fields gate AUTO (2026-10-02): protective zeroes, warning 1 (outer) x0.5 ramped
-in 1 s, warning 2 (inner) a deceleration stop within 0.40 m (0.47 2026-10-07, 0.40 2026-10-08), the stricter
-winning, unknown zeroes."""
+in 1 s, warning 2 (inner) a deceleration stop within 0.38 m (0.47 2026-10-07, 0.40 2026-10-08,
+0.38 2026-11-04), the stricter winning, unknown zeroes."""
 
 import inspect
 import os
@@ -29,7 +29,7 @@ from amr_base.gating import (
 
 # agv-01 (config/scanner_fields.yaml): path 0 protective, path 2 outer warning, path 1 inner.
 FP = FieldParams(protective_index=0, warning_indices=(2, 1), warning_scales=(0.5, 0.0), warning_active_level=False,
-                 warning_stop_m=0.40)
+                 warning_stop_m=0.38)
 SUP = Params(require_supervisor=True)
 
 
@@ -132,9 +132,9 @@ def test_the_saved_field_set_matches_the_scanner_and_feeds_these_params():
     p = sf.mux_params(doc)
     got = (p["protective_index"], tuple(p["warning_indices"]), tuple(p["warning_scales"]), p["warning_active_level"])
     assert got == (FP.protective_index, FP.warning_indices, FP.warning_scales, FP.warning_active_level)
-    assert p["warning_stop_m"] == FP.warning_stop_m == 0.40
+    assert p["warning_stop_m"] == FP.warning_stop_m == 0.38
     gap = doc["fields"]["warning_2"]["rect"]["x_max"] - doc["fields"]["protective"]["rect"]["x_max"]
-    assert gap - p["warning_stop_m"] == pytest.approx(0.07), "latency margin before the protective field"
+    assert gap - p["warning_stop_m"] == pytest.approx(0.09), "latency margin before the protective field"
     w2 = doc["fields"]["warning_2"]
 
     def with_w2(**kw):
@@ -169,20 +169,20 @@ def _run_stop(v_cmd, k0=1.0, d_max=0.5, stop_d_max=0.7540 * 4 / 3, dt=0.02):
     raise AssertionError("never stopped")
 
 
-@pytest.mark.parametrize("v_cmd,k0", [(0.85, 1.0), (0.55, 1.0), (0.6, 1.0), (0.5, 1.0), (0.85, 0.5), (0.6, 0.5)])
+@pytest.mark.parametrize("v_cmd,k0", [(0.85, 1.0), (0.55, 1.0), (0.72, 1.0), (0.6, 1.0), (0.5, 1.0), (0.85, 0.5), (0.6, 0.5)])
 def test_warning_2_stops_within_the_gap_to_the_protective_field(v_cmd, k0):
     """Operator, 2026-10-07: warning 2 front edge 0.97 m, protective 0.50 m: the stop takes
-    ~0.40 m from any AUTO speed (tracked NORMAL 0.5 / HIGH 0.85, trackless 0.6), straight in or
-    already slowed by warning 1; 0.07 m of the 0.47 m gap is left for detection latency."""
+    ~0.38 m from any AUTO speed (tracked NORMAL 0.5 / HIGH 0.85, trackless 0.72), straight in or
+    already slowed by warning 1; 0.09 m of the 0.47 m gap is left for detection latency."""
     dist, peak = _run_stop(v_cmd, k0)
-    assert dist == pytest.approx(0.40, abs=0.01), dist
+    assert dist == pytest.approx(0.38, abs=0.01), dist
     v0 = v_cmd * k0
-    assert peak == pytest.approx(v0 * v0 / (2 * 0.40), rel=0.05), "a constant decel, no harder"
+    assert peak == pytest.approx(v0 * v0 / (2 * 0.38), rel=0.05), "a constant decel, no harder"
 
 
 def test_stop_timing_falls_back_for_a_spin_or_no_distance():
-    assert stop_time(0.85, FP) == pytest.approx(2 * 0.40 / 0.85)
-    assert stop_time(-0.6, FP) == pytest.approx(2 * 0.40 / 0.6), "reversing stops the same"
+    assert stop_time(0.85, FP) == pytest.approx(2 * 0.38 / 0.85)
+    assert stop_time(-0.6, FP) == pytest.approx(2 * 0.38 / 0.6), "reversing stops the same"
     assert stop_time(0.01, FP) is None, "spinning in place: warning_decel_s"
     assert stop_time(0.85, FieldParams()) is None, "no stop distance set"
     r = SpeedRamp()
