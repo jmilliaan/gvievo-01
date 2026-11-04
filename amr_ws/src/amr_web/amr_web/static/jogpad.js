@@ -11,10 +11,11 @@
 function jogpad(root, opts) {
   const o = Object.assign({ compact: false }, opts || {});
   const owner = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).slice(0, 32);
-  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.50 m/s = mux pendant_v_m_s.
-  // Diagonals drive like the pendant: the FAST wheel at V, the slow one at TURN_RATIO of it
-  // (= pendant_turn_ratio), the side set by the turn direction. Spins at the pendant's rate.
-  const V = 0.50, TRACK_M = 0.487, TURN_RATIO = 0.66, SPIN = 0.39;
+  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.70 m/s = mux pendant_v_m_s.
+  // Diagonals drive like the pendant: the FAST wheel at CORNER_V (= pendant_corner_v_m_s), the
+  // slow one at TURN_RATIO of it (= pendant_turn_ratio), the side set by the turn direction.
+  // Spins at the pendant's rate. SURVEY_V only labels the mux's survey_v_max_m_s.
+  const V = 0.70, CORNER_V = 0.50, SURVEY_V = 0.50, TRACK_M = 0.487, TURN_RATIO = 0.66, SPIN = 0.39;
   const CELLS = [
     ['fl', '↖', 'Fwd-L', ''], ['f', '▲', 'Fwd', '↑ / W'], ['fr', '↗', 'Fwd-R', ''],
     ['l', '◀', 'Left', '← / A'], ['stop', '■', 'Stop', 'Space'], ['r', '▶', 'Right', '→ / D'],
@@ -28,7 +29,7 @@ function jogpad(root, opts) {
         <div class="jog-emg" hidden><b>E-stop active</b></div>
       </div>
       <div class="jog-foot">
-        <div class="tel"><span>Speed</span><b>${V.toFixed(2)}</b><i>m/s · corners ${Math.round(TURN_RATIO * 100)} % inner wheel</i></div>
+        <div class="tel"><span>Speed</span><b>${V.toFixed(2)}</b><i>m/s · ${SURVEY_V.toFixed(2)} surveying · corners ${CORNER_V.toFixed(2)}, ${Math.round(TURN_RATIO * 100)} % inner wheel</i></div>
         <div class="tel"><span>Jog</span><b class="jog-status">not held</b><i>held, not latched · release = stop</i></div>
       </div>
       <p class="legend keys">Hold a button or <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>); <kbd>Space</kbd> stops.
@@ -45,12 +46,11 @@ function jogpad(root, opts) {
   let releasing = false;
 
   function body(dir) {
-    const v = V;
     const [a, b] = DIRS[dir];
     if (a === 0) return { v: 0, w: b * SPIN };
-    if (b === 0) return { v: a * v, w: 0 };
-    const slow = v * TURN_RATIO;
-    return { v: a * (v + slow) / 2, w: b * (v - slow) / TRACK_M };
+    if (b === 0) return { v: a * V, w: 0 };
+    const slow = CORNER_V * TURN_RATIO;
+    return { v: a * (CORNER_V + slow) / 2, w: b * (CORNER_V - slow) / TRACK_M };
   }
   // The physical input is recorded BEFORE the press request goes out, so a release that
   // happens while it is in flight has something to cancel. A press whose input was

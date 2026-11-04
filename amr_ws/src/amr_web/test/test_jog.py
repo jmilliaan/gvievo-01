@@ -65,7 +65,7 @@ def test_expired_ticket_needs_a_new_press_and_lifetime_never_regrows(sessions):
         js.refresh(s.id, c.ticket, 3, 0.3, 0.0, "inst", 3)
     s = js.press("tab-A", "inst", 3)
     c = js.refresh(s.id, s.ticket, 1, 5.0, -9.0, "inst", 3)
-    assert (c.v, c.w) == (jog.V_MAX, -jog.W_MAX)  # clamped to the survey caps
+    assert (c.v, c.w) == (jog.V_MAX, -jog.W_MAX)  # clamped to the manual caps
     assert c.valid_for_s <= jog.CMD_S
 
 

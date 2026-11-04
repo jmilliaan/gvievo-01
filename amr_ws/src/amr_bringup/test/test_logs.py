@@ -16,7 +16,7 @@ def test_a_spawn_starts_a_fresh_log_and_keeps_the_last_five(tmp_path):
     p = tmp_path / "base.log"
     for run in range(8):
         p.write_text(f"run {run}\n")
-        logs.rotate(str(p))
+        logs.rotate(str(p), keep=5)
     assert not p.exists()  # rotated away, ready for the new child to create
     assert (tmp_path / "base.log.1").read_text() == "run 7\n"  # newest kept
     assert (tmp_path / "base.log.5").read_text() == "run 3\n"  # oldest kept

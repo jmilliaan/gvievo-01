@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import time
 
-KEEP = 5
+KEEP = 30  # 5 until 2026-11-04: layer.log turns over at every mode change, a morning was gone by noon
 MAX_BYTES = 50 * 1024 * 1024
 
 

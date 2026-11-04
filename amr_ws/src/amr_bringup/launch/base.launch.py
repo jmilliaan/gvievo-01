@@ -136,11 +136,12 @@ def _compose(context):
             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
-            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve with 1.0 m/s^3;
-            # driving + turning arcs with the slow wheel at 66 % of the fast one; a spin in
-            # place stays at 0.3 rad/s. 2026-11-02: softened to 0.15 m/s^2 up (3.5 s to full
-            # speed) and 0.25 m/s^2 down (~0.56 m from 0.5 m/s on release) - manual only, AUTO
-            # keeps a_max/d_max. A timeout or loss of authority still zeroes at once (6084h).
+            # Manual (pendant / browser jog, 2026-11-04): 0.7 m/s, S-curve with 1.0 m/s^3;
+            # driving + turning arcs with the fast wheel at 0.5 m/s and the slow one at 66 % of
+            # it; a spin in place stays at 0.39 rad/s; 0.5 m/s while surveying. 0.15 m/s^2 up
+            # (4.8 s to full speed, 2026-11-02) and 0.5 m/s^2 down (~0.65 m from 0.7 m/s on release;
+            # 0.25 from 2026-11-02 would be 1.05 m) - manual only, AUTO keeps a_max/d_max.
+            # A timeout or loss of authority still zeroes at once (6084h).
             parameters=[
                 {
                     **gate,
@@ -158,14 +159,16 @@ def _compose(context):
                     "d_max": 0.125,  # auto braking, not field/emergency stops: 0.5 -> 0.25 -> 0.125
                     "delta_max": 1.0,
                     "manual_a_max": 0.15,
-                    "manual_d_max": 0.25,
+                    "manual_d_max": 0.5,
                     "manual_jerk": 1.0,
                     "auto_jerk": 0.1,  # auto linear speed S-curve: 0.4 -> 0.1 m/s^3 (2026-11-03)
                     "field_d_max": 0.5,  # warning-field slowdowns keep the old braking (not softened)
-                    "pendant_v_m_s": 0.5,
+                    "pendant_v_m_s": 0.7,
+                    "pendant_corner_v_m_s": 0.5,
                     "pendant_w_rad_s": 0.39,
                     "pendant_turn_ratio": 0.66,  # manual corner: inner wheel 66 % of the outer
                     "survey_w_max_rad_s": 0.27,  # manual spin cap while surveying (pendant + jog)
+                    "survey_v_max_m_s": 0.5,  # manual speed cap while surveying (pendant + jog)
                 }
             ],
         ),

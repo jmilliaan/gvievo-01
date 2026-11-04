@@ -61,10 +61,11 @@ class Params:
     drives_timeout_s: float = 0.3
     require_supervisor: bool = False  # production sets True; the bench wrappers leave it False
     teleop_enabled: bool = True  # /cmd_vel_teleop is an engineering input; production turns it off
-    # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v (the FAST wheel's speed); with LEFT
-    # or RIGHT held as well the vehicle arcs with the slow wheel at pendant_turn_ratio of the
-    # fast one (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
-    pendant_v: float = 0.50  # body m/s while FWD or RVS is held (0.60 tried and reverted 09-19)
+    # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v; with LEFT or RIGHT held as well the
+    # vehicle arcs with the FAST wheel at pendant_corner_v and the slow wheel at pendant_turn_ratio
+    # of it (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
+    pendant_v: float = 0.70  # body m/s while FWD or RVS is held (0.50 until 2026-11-04)
+    pendant_corner_v: float = 0.50  # the fast wheel in a corner: 0.70 would double the sideways pull
     pendant_w: float = 0.39  # body rad/s for a spin in place (0.30 until 2026-09-19, +30 %)
     pendant_turn_ratio: float = 0.66  # slow wheel / fast wheel while driving and turning (0.75 until 2026-10-02)
     track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
@@ -79,6 +80,14 @@ def survey_spin_cap(w: float, surveying: bool, cap: float) -> float:
     return max(-cap, min(cap, w))
 
 
+def survey_speed_cap(v: float, surveying: bool, cap: float) -> float:
+    """A manual speed while surveying is capped at `cap` (2026-11-04, manual 0.70 m/s: a survey at
+    0.60 came out rotated on 2026-09-19, and 0.50 is the speed surveys have been good at)."""
+    if not surveying:
+        return v
+    return max(-cap, min(cap, v))
+
+
 def pendant_twist(p: Params, fwd: bool, rvs: bool, left: bool, right: bool) -> tuple[float, float]:
     """Body (v, w) for the held pendant directions (opposing pairs already cancelled)."""
     drive = int(fwd) - int(rvs)
@@ -87,7 +96,8 @@ def pendant_twist(p: Params, fwd: bool, rvs: bool, left: bool, right: bool) -> t
         return 0.0, p.pendant_w * turn
     if turn == 0:
         return p.pendant_v * drive, 0.0
-    fast, slow = p.pendant_v, p.pendant_v * p.pendant_turn_ratio
+    fast = min(p.pendant_v, p.pendant_corner_v)
+    slow = fast * p.pendant_turn_ratio
     v = drive * (fast + slow) / 2.0
     # +w turns left (ccw): the right wheel is the fast one. In reverse the same lever still
     # swings the front to the left (v < 0 and w > 0 arc the front leftwards).

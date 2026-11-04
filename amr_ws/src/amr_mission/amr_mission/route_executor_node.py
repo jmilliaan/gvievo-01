@@ -83,6 +83,7 @@ import threading
 import rclpy
 from agv_core import alarms
 from agv_core import config as vehicle_config
+from amr_mission.run_trace import RunTrace
 from amr_navigation.compiler import ARC, HOME, ROTATE, WAIT, CompiledStep, wrap
 from amr_navigation.route import VEHICLE_ARC_W_MAX
 from amr_navigation.scurve import along_cross as path_along_cross
@@ -335,6 +336,8 @@ class RouteExecutor(Node):
         self._panel: PanelState | None = None
         self._wheels_t = 0.0
         self._wheels_valid = False
+        self._wheel_vel = (0.0, 0.0)
+        self._trace = RunTrace(os.path.expanduser("~/.amr/logs/run-traces"))
         self._wheels_still = False
         self._still_since = None
         self._gls: collections.deque = collections.deque(maxlen=64)  # label_record.Sample
@@ -468,6 +471,7 @@ class RouteExecutor(Node):
         self._wheels_t = self._now()
         # R07: receipt is not evidence. Prerequisites need the drive's validity flags too.
         self._wheels_valid = bool(m.left_valid and m.right_valid)
+        self._wheel_vel = (m.left_vel_rad_s, m.right_vel_rad_s)
         self._wheels_still = (
             self._wheels_valid and abs(m.left_vel_rad_s) < self.w_eps and abs(m.right_vel_rad_s) < self.w_eps
         )
@@ -1778,6 +1782,16 @@ class RouteExecutor(Node):
         if self.fsm.n_passes > 1 and self.fsm.state in (*fsm.ACTIVE, fsm.DONE):
             m.reason += f" [pass {self.fsm.pass_index + 1}/{self.fsm.n_passes}]"
         self._state_pub.publish(m)
+        if self.fsm.state in (*fsm.ACTIVE, fsm.WAITING):
+            # Sampled here, not only at state changes, or the summary's peak misses the run itself.
+            self._run_peak_cross = max(self._run_peak_cross, abs(self.cross_track))
+            self._trace.write(
+                self.fsm.run_id, fsm.NAMES[m.state], m.step_id, m.step_type, m.step_v_mps,
+                float(self._wheel_vel[0]), float(self._wheel_vel[1]),
+                m.pose_x, m.pose_y, m.pose_yaw, m.cross_track_m, m.localization_state, m.hold_cause,
+            )
+        else:
+            self._trace.close()
 
 
 def main(args=None) -> None:

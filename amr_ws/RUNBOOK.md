@@ -116,10 +116,10 @@ NetworkManager before `amr.service` starts.
 a pad button, or hold W/A/S/D or the arrow keys, to drive. The held button turns
 blue. Releasing stops the vehicle, even if you let go before the page has
 received its jog session. So do Space, Esc, the centre **Stop** button, switching
-browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20, 0.30
-and 0.40 m/s (2026-09-19; the server caps jog at 0.40 m/s and 0.39 rad/s). The diagonal
-buttons drive like the pendant: the fast wheel at the selected speed, the slow one at 75 %
-of it. Left/Right spin at 1.95 × the selected speed in rad/s, at most 0.39 rad/s.
+browser tabs or windows, and typing in a text field. There is one manual speed, the
+pendant's: 0.70 m/s (the server caps jog at 0.70 m/s and 0.39 rad/s), 0.50 m/s while
+surveying. The diagonal buttons drive like the pendant: the fast wheel at 0.50 m/s, the slow
+one at 66 % of it. Left/Right spin at 0.39 rad/s.
 Surveys may use any setting; check the survey's return review (see below) after the first
 fast one.
 
@@ -135,17 +135,18 @@ holds that wait for Start drop to standby, holds that clear by themselves keep p
 authority as the jog pad (selector **MANUAL**, Manual Arm on, no fault) and
 needs no browser. Hold a direction button to drive; releasing it stops the
 vehicle. Opposing buttons pressed together cancel each other. The pendant
-outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
-parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`; 0.60 was tried and
-reverted on 2026-09-19 after a survey at that speed came out rotated); FWD/RVS
-with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
-(`pendant_turn_ratio`, fast wheel 0.50 m/s, slow 0.375); LEFT/RIGHT alone
+outranks the jog pad while a direction is held. Speeds (2026-11-04, mux
+parameters in `base.launch.py`): FWD/RVS 0.70 m/s (`pendant_v_m_s`); FWD/RVS
+with LEFT/RIGHT arcs with the fast wheel at 0.50 m/s (`pendant_corner_v_m_s`) and the
+slow one at 66 % of it (`pendant_turn_ratio`, 0.33 m/s); LEFT/RIGHT alone
 spins in place at 0.39 rad/s (`pendant_w_rad_s`). **While surveying** (mode MAPPING)
-every manual spin, pendant and jog pad alike, is capped at 0.27 rad/s (mux
+every manual move, pendant and jog pad alike, is capped at 0.50 m/s (mux
+`survey_v_max_m_s`; a survey at 0.60 came out rotated on 2026-09-19) and 0.27 rad/s (mux
 `survey_w_max_rad_s`): a fast spin smears the scans the map is built from. Manual sources follow an
-S-curve: acceleration builds at 1.0 m/s³ to 0.3 m/s² (`manual_jerk`,
-`manual_a_max`), so 0 → 0.50 m/s takes about 1.9 s; releasing a button still
-stops at the drives' ramp. Wiring
+S-curve: acceleration builds at 1.0 m/s³ to 0.15 m/s² (`manual_jerk`,
+`manual_a_max`), so 0 → 0.70 m/s takes about 4.8 s and 1.7 m; releasing a button brakes at
+0.5 m/s² (`manual_d_max`) and stops in about 0.65 m from full speed. The warning
+fields do not slow manual driving, so let go early. Wiring
 (profile `pendant`, 0-based DI channels): FWD DI04, RVS DI05, LEFT DI06,
 RIGHT DI07. The IO page shows the live bits under those names.
 

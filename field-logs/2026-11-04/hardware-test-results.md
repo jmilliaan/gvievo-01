@@ -31,6 +31,9 @@ Python 3.10.12, pytest 6.2.5.
 | 1 restart and web UI | Pass, with note 3 | Service active at 09:27:26, `/home` answers 200 | |
 | 4B.1 mux values | Pass, with note 4 | `a_max` 0.1, `d_max` 0.125, `auto_jerk` 0.1, `field_d_max` 0.5 by `ros2 param get` | |
 | 4B.1 executor and Nav2 values | Pass | `taper_decel` 0.125, `taper_jerk` 0.1, `FollowPath.approach_velocity_scaling_dist` 3.0, NAVIGATION on kyb-map-02 rev 3 (layer started 09:32:18) | |
+| Retest on `28fd613` | Pass | Service up 10:40:13. pytest 997 passed, 19 skipped, 6 xfailed (now including `amr_web`); `run_all.py` 731 checks; `test_alarms.py` 5 passed, domain 89 | |
+| 4B.1 on `28fd613` | Pass | All values as in the updated document: `a_max` 0.1, `d_max` 0.125, `auto_jerk` 0.1, `taper_decel` 0.125, `taper_jerk` 0.1, `approach_velocity_scaling_dist` 3.4; also `desired_linear_vel` 0.72 | 20261104-104146 |
+| First run, rev 2 by ITG button | Stopped by localization, see note 9 | 10:37:36 start, 10:37:45 `LOC_JUMP` 0.16 m / 0.0° (limit 0.15 m), run FAULT at 10 s, peak cross-track 0.02 m. Not recorded | |
 
 ## Notes
 
@@ -58,4 +61,56 @@ Python 3.10.12, pytest 6.2.5.
    and the last leg is now the home step, which is also what test 2.5 asks for. Geometry was
    checked against rev 1 and with the map validator. Its mission,
    `kyb-map-02_rev3_route-itg-02_rev2`, was created at 09:58 on the owner's request, so the ITG
-   button now loads rev 2. Not driven yet. 4B as written names rev 1, whose mission still exists.
+   button now loads rev 2. 4B as written names rev 1, whose mission still exists; runs started
+   with the ITG button are on rev 2, which is a deviation from the document.
+9. The 10:37 stop has no recording, so its cause is unproven. Before the next run, at 10:43,
+   `cov_xx` read 3.3e-08 m² after AMCL had been sitting still doing no-motion updates, against
+   about 3e-04 m² just after the jump. To check in the 20261104-104146 bag: whether a collapsed
+   particle cloud at rest makes corrections arrive as steps once the vehicle moves.
+10. The 10:47 stop was not localization: kernel log shows `enp3s0` (GLS621) link down 10:46:14 and
+    `enp2s0` (nanoScan3) link down 10:47:19, back at 10:47:38 and 10:47:32. `stale: scan` was still
+    reported at 10:49:45. Cause of the link loss not found.
+    The 10:58 stop (run stamp 20261104-104146) was `LOC_SCAN_MISMATCH`, 21 % at the s12 U-turn. The
+    operator reports the trolleys moved since the survey. Offline, on the live scan at that spot:
+    `scan_long` 0.184 without and 0.053 with the operator's dynamic areas. Map rev 4 (rev 3 plus those
+    areas, same `map.pgm`), `route-itg-02` rev 3 (same geometry as rev 2) and mission
+    `kyb-map-02_rev4_route-itg-02_rev3` were created 11:11. Not driven yet.
+11. `bag_report.py`'s "map->odom shift" is inflated far from the odom origin: a 1.9° heading
+    correction read as 4.56 m at about 136 m out, while the jump monitor, which measures at the
+    vehicle, read 0. Compare its p95 with care.
+12. Run page banner `WEB_BUG /run: The operation was aborted.` / `signal is aborted without reason`
+    at 10:41:44, 10:41:56, 10:43:00 and 10:43:45, from `amr.js`'s 8 s request timeout. No run was
+    active and no drive or run event came with them. Which request timed out is not logged. Likely
+    the route preview: `GET .../routes/route-itg-02/<rev>` took 3.5 s at load average 8, re-runs the
+    clearance check on every fetch, the page repeats it, and two browsers were open. `loadMissions`
+    has no catch, so a timeout surfaces as a page error. Offline tests were running 10:41:46–10:42:56
+    and added load, but the 10:41:44 and 10:43:45 errors fall outside the time their requests were
+    open. Also: the Run page's mission list defaults to the first entry (rev 1), while the ITG
+    button loads rev 2.
+13. Run on `kyb-map-02_rev4_route-itg-02_rev3` (recorder stamp 20261104-111942) faulted at 11:46:45
+    after 313 s: `EXEC_OFF_PATH`, cross-track +0.10 m at 4.54 m along the s8 arc. Localization stayed
+    READY. A one-off route, `route-itg-02-salvage` rev 1, was built at 11:51 from the stopped pose: a
+    tangent arc ccw 30.74° R 5.306 m onto the s10 line, then the rest of rev 3, ending on a straight
+    instead of the home step. Validated on map rev 4. Cause of the drift not analysed yet.
+14. First salvage run faulted at 11:53:30: `EXEC_OFF_PATH`, cross-track +0.20 m at 0.68 m along s1,
+    about 6 s after moving. The operator reports heavy wheel slip and does not trust the encoders. A
+    second salvage revision was built from that stop.
+15. `route-itg-02` rev 4 (owner's drawing, 11:59): inbound s8/s9 bulge replaced by one 90° cw arc at
+    R 1.8 m onto the release line. Mission `kyb-map-02_rev4_route-itg-02_rev4`; the ITG button loads it
+    on map rev 4. The return leg from the release stop on is unchanged. Not driven yet.
+16. Rejected Resets explained for 11:39–11:40 (recording 20261104-111942): `protective_clear` went False
+    at 11:39:48.62 and the drives dropped to Switch on disabled in the same sample. All Reset presses
+    failed while the field stayed occupied, whatever their length (0.20–3.80 s). The field cleared at
+    11:40:35.82 and the drives left STO at 11:40:35.83, with no press in the 4 s before. For comparison,
+    10:49:30 (recording 20261104-104146): field clear, a 0.20 s press worked at once. This replaces the
+    press-length suspicion from earlier in the session. The 09:16 and 10:19 failures were not recorded,
+    so they are unconfirmed.
+17. `route-itg-02` rev 5 (owner's drawing): rev 4 with the north half moved a further 0.2 m (0.4 m from
+    rev 1) and the R 1.8 m entry kept. Mission `kyb-map-02_rev4_route-itg-02_rev5`; the ITG button loads
+    it on map rev 4. Not driven yet.
+18. The 11:59:41 `EXEC_ENDPOINT_MISSED` (0.009 m / 9.9°) tripped the 8° `verify_heading_deg` limit. RPP's 0.8 m
+    look-ahead cut the R 1 m S-bend, and the vehicle reached the stop still turning back onto the 0.4 m final
+    straight. The slow stretch before it follows `approach_velocity_scaling_dist` 3.4 m applied to the 0.30 m/s
+    arc limit: 0.097 m/s at 1.07 m from the stop against 0.094 predicted.
+    `route-itg-02` rev 6 (owner's choice): S-bend moved 0.8 m east, attach stop fixed, final straight 1.2 m, upper
+    straight 3.4 m. Mission `kyb-map-02_rev4_route-itg-02_rev6`. Not driven yet.

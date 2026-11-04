@@ -91,10 +91,10 @@ def test_editor_arc_step_bounds_and_end_pose():
     assert out["after_arc_to"] == pytest.approx({"x_m": 11.3, "y_m": 2.0})
 
 
-def test_browser_jog_caps_are_the_2026_10_02_manual_speeds():
+def test_browser_jog_caps_are_the_manual_speeds():
     from amr_web import jog
 
-    assert (jog.V_MAX, jog.W_MAX) == (0.50, 0.39)  # = the pendant's pendant_v / pendant_w
+    assert (jog.V_MAX, jog.W_MAX) == (0.70, 0.39)  # = the pendant's pendant_v / pendant_w
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")

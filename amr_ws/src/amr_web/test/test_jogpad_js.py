@@ -42,5 +42,5 @@ def test_jogpad_one_manual_speed_corner_ratio_and_spin():
     left, right = fr["v"] - fr["w"] * track / 2, fr["v"] + fr["w"] * track / 2
     assert left == pytest.approx(0.50) and right == pytest.approx(0.33) and fr["w"] < 0
     assert out["speed_r"]["v"] == 0 and out["speed_r"]["w"] == pytest.approx(-0.39)
-    assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.5), 0)
+    assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.7), 0)
     assert out["speed_l"]["v"] == 0 and out["speed_l"]["w"] == pytest.approx(0.39)

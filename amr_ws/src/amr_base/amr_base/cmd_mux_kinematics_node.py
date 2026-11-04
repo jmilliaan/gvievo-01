@@ -129,12 +129,14 @@ class CmdMuxKinematics(Node):
         self.declare_parameter("rate_hz", 50.0)
         self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
-        self.declare_parameter("pendant_v_m_s", 0.50)
+        self.declare_parameter("pendant_v_m_s", 0.70)
+        self.declare_parameter("pendant_corner_v_m_s", 0.50)  # the fast wheel while driving + turning
         self.declare_parameter("pendant_w_rad_s", 0.39)  # spin in place (0.30 until 2026-09-19, +30 %)
         self.declare_parameter("pendant_turn_ratio", 0.66)  # slow wheel / fast wheel while driving + turning
         # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
         # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
         self.declare_parameter("survey_w_max_rad_s", 0.27)
+        self.declare_parameter("survey_v_max_m_s", 0.50)  # and the manual speed (2026-11-04)
         self.declare_parameter("lease_timeout_s", 0.3)
         self.declare_parameter("drives_timeout_s", 0.3)
         # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
@@ -178,6 +180,7 @@ class CmdMuxKinematics(Node):
             require_supervisor=bool(p("require_supervisor").value),
             teleop_enabled=bool(p("teleop_enabled").value),
             pendant_v=max(0.0, float(p("pendant_v_m_s").value)),
+            pendant_corner_v=max(0.0, float(p("pendant_corner_v_m_s").value)),
             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
             pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
             track_m=float(p("track_width_m").value),
@@ -196,6 +199,7 @@ class CmdMuxKinematics(Node):
         )
         self.dt = 1.0 / p("rate_hz").value
         self.survey_w_max = max(0.0, float(p("survey_w_max_rad_s").value))
+        self.survey_v_max = max(0.0, float(p("survey_v_max_m_s").value))
         self._surveying = False  # the supervisor's last /amr/mode_state said MAPPING
 
         self._teleop: gating.Stamped | None = None
@@ -466,7 +470,13 @@ class CmdMuxKinematics(Node):
         elif sel.source in (gating.PENDANT, gating.MANUAL):
             # manual: jerk-limited S-curve (trapezoidal acceleration), stops at manual_d_max/delta_max
             self._v, self._a = scurve(
-                self._v, self._a, sel.v, self.manual_a_max, self.manual_d_max, self.manual_jerk, self.dt
+                self._v,
+                self._a,
+                gating.survey_speed_cap(sel.v, self._surveying, self.survey_v_max),
+                self.manual_a_max,
+                self.manual_d_max,
+                self.manual_jerk,
+                self.dt,
             )
             self._wz, self._alpha = scurve(
                 self._wz,
