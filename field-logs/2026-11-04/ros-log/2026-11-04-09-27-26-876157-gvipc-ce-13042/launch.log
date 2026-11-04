@@ -1,0 +1,42 @@
+1793759246.8772061 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-09-27-26-876157-gvipc-ce-13042
+1793759246.8773723 [INFO] [launch]: Default logging verbosity is set to INFO
+1793759247.0868602 [INFO] [drive_node-2]: process started with pid [13075]
+1793759247.0872216 [INFO] [sick_safetyscanners2_node-4]: process started with pid [13079]
+1793759247.0935662 [INFO] [robot_state_publisher-1]: process started with pid [13073]
+1793759247.0957484 [INFO] [panel_node-3]: process started with pid [13077]
+1793759247.0960104 [INFO] [gls_node-5]: process started with pid [13081]
+1793759247.0961368 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [13083]
+1793759247.0962429 [INFO] [diff_drive_odom_node-7]: process started with pid [13085]
+1793759247.0963569 [INFO] [imu_bias_node-8]: process started with pid [13090]
+1793759247.0964680 [INFO] [scan_gate_node-9]: process started with pid [13107]
+1793759247.0965817 [INFO] [commissioning_node-10]: process started with pid [13109]
+1793759247.0966845 [INFO] [ekf_node-11]: process started with pid [13111]
+1793761782.3548081 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793761782.3595264 [INFO] [ekf_node-11]: sending signal 'SIGINT' to process[ekf_node-11]
+1793761782.3609996 [INFO] [commissioning_node-10]: sending signal 'SIGINT' to process[commissioning_node-10]
+1793761782.3623102 [INFO] [scan_gate_node-9]: sending signal 'SIGINT' to process[scan_gate_node-9]
+1793761782.3636112 [INFO] [imu_bias_node-8]: sending signal 'SIGINT' to process[imu_bias_node-8]
+1793761782.3650429 [INFO] [diff_drive_odom_node-7]: sending signal 'SIGINT' to process[diff_drive_odom_node-7]
+1793761782.3664429 [INFO] [cmd_mux_kinematics_node-6]: sending signal 'SIGINT' to process[cmd_mux_kinematics_node-6]
+1793761782.3680837 [INFO] [gls_node-5]: sending signal 'SIGINT' to process[gls_node-5]
+1793761782.3695061 [INFO] [sick_safetyscanners2_node-4]: sending signal 'SIGINT' to process[sick_safetyscanners2_node-4]
+1793761782.3709977 [INFO] [panel_node-3]: sending signal 'SIGINT' to process[panel_node-3]
+1793761782.3723738 [INFO] [drive_node-2]: sending signal 'SIGINT' to process[drive_node-2]
+1793761782.3736961 [INFO] [robot_state_publisher-1]: sending signal 'SIGINT' to process[robot_state_publisher-1]
+1793761782.5033667 [ERROR] [drive_node-2]: process has died [pid 13075, exit code -2, cmd '/home/gvipc-evo-01/agv_can/amr_ws/install/amr_base/lib/amr_base/drive_node --ros-args -r __node:=drive_node --params-file /tmp/launch_params_etrtazb3'].
+1793761782.5036695 [INFO] [launch]: process[drive_node-2] was required: shutting down launched system
+1793761783.4171257 [INFO] [sick_safetyscanners2_node-4]: process has finished cleanly [pid 13079]
+1793761783.4214625 [INFO] [ekf_node-11]: process has finished cleanly [pid 13111]
+1793761783.4225419 [INFO] [launch]: process[ekf_node-11] was required: shutting down launched system
+1793761783.4241118 [INFO] [robot_state_publisher-1]: process has finished cleanly [pid 13073]
+1793761783.4850132 [INFO] [scan_gate_node-9]: process has finished cleanly [pid 13107]
+1793761783.4854667 [INFO] [launch]: process[scan_gate_node-9] was required: shutting down launched system
+1793761783.4902027 [INFO] [gls_node-5]: process has finished cleanly [pid 13081]
+1793761783.4910352 [INFO] [diff_drive_odom_node-7]: process has finished cleanly [pid 13085]
+1793761783.4913530 [INFO] [launch]: process[diff_drive_odom_node-7] was required: shutting down launched system
+1793761783.4925675 [INFO] [commissioning_node-10]: process has finished cleanly [pid 13109]
+1793761783.4940903 [INFO] [imu_bias_node-8]: process has finished cleanly [pid 13090]
+1793761783.6115956 [INFO] [cmd_mux_kinematics_node-6]: process has finished cleanly [pid 13083]
+1793761783.6119447 [INFO] [launch]: process[cmd_mux_kinematics_node-6] was required: shutting down launched system
+1793761783.6222990 [INFO] [panel_node-3]: process has finished cleanly [pid 13077]
+1793761783.6225791 [INFO] [launch]: process[panel_node-3] was required: shutting down launched system

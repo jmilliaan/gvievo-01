@@ -1,0 +1,13 @@
+1793696079.8775501 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-03-15-54-39-876344-gvipc-ce-1427
+1793696079.8777039 [INFO] [launch]: Default logging verbosity is set to INFO
+1793696080.1794362 [INFO] [drive_node-2]: process started with pid [1625]
+1793696080.1797881 [INFO] [sick_safetyscanners2_node-4]: process started with pid [1631]
+1793696080.1807175 [INFO] [robot_state_publisher-1]: process started with pid [1623]
+1793696080.1810100 [INFO] [panel_node-3]: process started with pid [1627]
+1793696080.1811757 [INFO] [gls_node-5]: process started with pid [1633]
+1793696080.1812868 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [1635]
+1793696080.1813910 [INFO] [diff_drive_odom_node-7]: process started with pid [1641]
+1793696080.1814833 [INFO] [imu_bias_node-8]: process started with pid [1643]
+1793696080.1815774 [INFO] [scan_gate_node-9]: process started with pid [1645]
+1793696080.1816702 [INFO] [commissioning_node-10]: process started with pid [1654]
+1793696080.1817610 [INFO] [ekf_node-11]: process started with pid [1656]

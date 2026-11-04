@@ -1,0 +1,7 @@
+[INFO] [1793777150.858623688] [amr_supervisor]: instance a063853e real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793777150.865473862] [amr_supervisor]: swept 1 stale generation files
+[INFO] [1793777150.883720790] [amr_supervisor]: spawned base pgid=92847 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793777153.623197004] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793777171.250560240] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793777171.772140105] [amr_supervisor]: spawned layer pgid=93357 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=4 generation:=2 autostart:=false
+[INFO] [1793777179.386562021] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()

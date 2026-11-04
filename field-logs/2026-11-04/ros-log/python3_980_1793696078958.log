@@ -1,0 +1,4 @@
+[INFO] [1793696079.163191108] [amr_supervisor]: instance 7c6c599e real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793696079.168371314] [amr_supervisor]: swept 2 stale generation files
+[INFO] [1793696079.176610184] [amr_supervisor]: spawned base pgid=1427 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793696082.629955585] [amr_supervisor]: mode STARTING -> IDLE ()

@@ -1,0 +1,14 @@
+[INFO] [1793759545.230248058] [lifecycle_manager_navigation]: Creating
+[INFO] [1793759545.236805767] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[INFO] [1793759545.350117529] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[INFO] [1793759545.350209640] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[INFO] [1793759545.431149005] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[INFO] [1793759545.453832266] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[INFO] [1793759545.765915422] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[INFO] [1793759545.766019010] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[INFO] [1793759545.878303606] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[INFO] [1793759545.878409290] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[INFO] [1793759545.878443179] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[INFO] [1793761780.971077078] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793761780.971170782] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[INFO] [1793761780.971226520] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m

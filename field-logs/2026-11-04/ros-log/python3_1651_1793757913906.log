@@ -1,0 +1,22 @@
+[INFO] [1793757914.250652932] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793757914.265582866] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793757914.266351578] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793757914.816131161] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793757914.817090820] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793757914.819615309] [drive_node]: drives standby, imu sdo
+[INFO] [1793757973.770226571] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793757988.750578401] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793757989.130042368] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793757989.136533996] [drive_node]: drives armed, imu sdo
+[INFO] [1793757998.336777149] [drive_node]: drive power not wanted: MANUAL, pendant enable (arm) off
+[INFO] [1793757998.362592374] [drive_node]: drives in standby (power off): power not wanted; MANUAL, pendant enable (arm) off
+[INFO] [1793757998.433851431] [drive_node]: drives standby, imu sdo
+[INFO] [1793758252.783240727] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793758253.164917058] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793758253.176485232] [drive_node]: drives armed, imu sdo
+[INFO] [1793758293.936944579] [drive_node]: drive power not wanted: MANUAL, pendant enable (arm) off
+[INFO] [1793758293.966638120] [drive_node]: drives in standby (power off): power not wanted; MANUAL, pendant enable (arm) off
+[INFO] [1793758294.004027517] [drive_node]: drives standby, imu sdo
+[INFO] [1793758327.001307222] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793758327.377348979] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793758327.381428054] [drive_node]: drives armed, imu sdo

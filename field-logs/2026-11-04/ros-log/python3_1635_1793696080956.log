@@ -1,0 +1,17 @@
+[INFO] [1793696081.219399383] [cmd_mux_kinematics]: r=0.09 track=0.487 w_max=13.96 rad/s a_max=0.200 alpha_max=0.400
+[INFO] [1793696081.221011678] [cmd_mux_kinematics]: command source: none -> none (no supervisor lease)
+[INFO] [1793696081.223225946] [cmd_mux_kinematics]: supervisor generation 0 -> 1 (7c6c599e): caches cleared
+[INFO] [1793696081.228411515] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[INFO] [1793696081.701656631] [cmd_mux_kinematics]: command source: none -> none (E-stop: emergency not cleared)
+[INFO] [1793696081.883514375] [cmd_mux_kinematics]: after the E-stop: hand inputs released, manual motion allowed again
+[INFO] [1793696081.884519843] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[INFO] [1793696082.643280693] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[INFO] [1793696100.083691217] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[INFO] [1793696103.083709684] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[INFO] [1793696103.443777467] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[INFO] [1793696104.643525902] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[INFO] [1793696106.723637358] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[INFO] [1793696107.223819026] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[INFO] [1793696110.482792171] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)
+[INFO] [1793696111.183478774] [cmd_mux_kinematics]: command source: none -> pendant (pendant)
+[INFO] [1793696113.183562661] [cmd_mux_kinematics]: command source: pendant -> none (MANUAL, no fresh command)

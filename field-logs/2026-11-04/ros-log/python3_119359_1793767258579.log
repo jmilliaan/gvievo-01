@@ -1,0 +1,70 @@
+[INFO] [1793767258.712774362] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793767258.783325909] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793767291.757483841] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793767291.758044060] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev4_route-itg-02_rev3 loaded (34 steps x 1 passes); AUTO + Start to run
+[INFO] [1793767291.760392528] [route_executor]: destination ITG: mission kyb-map-02_rev4_route-itg-02_rev3 loaded
+[INFO] [1793767291.761805989] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261104-114131-1 started: warning, moving in 2.0 s
+[INFO] [1793767293.782802713] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793767294.006313000] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793767301.988277483] [route_executor]: step s1 (straight) passed (pass 1/1 step 0): +0.014 m cross-track, continuing
+[INFO] [1793767301.990668330] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 34
+[INFO] [1793767312.685610950] [route_executor]: step s2 (arc) passed (pass 1/1 step 1): -0.025 m cross-track, continuing
+[INFO] [1793767312.687750670] [route_executor]: EXECUTING pass 1/1 step 2 goal: pass 1/1 step 2 of 34
+[INFO] [1793767332.779292977] [route_executor]: step s3 (straight) passed (pass 1/1 step 2): +0.012 m cross-track, continuing
+[INFO] [1793767332.791703686] [route_executor]: EXECUTING pass 1/1 step 3 goal: pass 1/1 step 3 of 34
+[INFO] [1793767343.281545737] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.022 m cross-track, continuing
+[INFO] [1793767343.284187239] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 34
+[INFO] [1793767536.784169762] [route_executor]: step s5 (straight) passed (pass 1/1 step 4): -0.014 m cross-track, continuing
+[INFO] [1793767536.787137580] [route_executor]: EXECUTING pass 1/1 step 5 goal: pass 1/1 step 5 of 34
+[INFO] [1793767547.083193377] [route_executor]: step s6 (arc) passed (pass 1/1 step 5): +0.033 m cross-track, continuing
+[INFO] [1793767547.085020319] [route_executor]: EXECUTING pass 1/1 step 6 goal: pass 1/1 step 6 of 34
+[INFO] [1793767589.485395285] [route_executor]: step s7 (straight) passed (pass 1/1 step 6): -0.024 m cross-track, continuing
+[INFO] [1793767589.487008490] [route_executor]: EXECUTING pass 1/1 step 7 goal: pass 1/1 step 7 of 34
+[INFO] [1793767605.087830515] [route_executor]: FAULT pass 1/1 step 7 init: cross-track +0.10 m exceeds 0.10 m at 4.54 m along [cross-track +0.10 m exceeds 0.10 m at 4.54 m along]
+[WARN] [1793767605.104042638] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261104-114131-1', pass_index=0, step_index=0, attempt=1)
+[INFO] [1793767944.366052691] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission
+[WARN] [1793767969.786782094] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793767969.787961971] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev4_route-itg-02-salvage_rev1 loaded (26 steps x 1 passes); AUTO + Start to run
+[INFO] [1793768002.323542539] [route_executor]: EXECUTING pass 1/1 step 0 premove: run 20261104-115322-2 started: warning, moving in 2.0 s
+[INFO] [1793768004.385469914] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793768004.489572677] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793768010.078533522] [route_executor]: FAULT pass 1/1 step 0 init: cross-track +0.20 m exceeds 0.20 m at 0.68 m along [cross-track +0.20 m exceeds 0.20 m at 0.68 m along]
+[WARN] [1793768010.101297068] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261104-115322-2', pass_index=0, step_index=0, attempt=2)
+[INFO] [1793768184.403335834] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission
+[WARN] [1793768198.401281364] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793768198.402113988] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev4_route-itg-02-salvage_rev2 loaded (26 steps x 1 passes); AUTO + Start to run
+[INFO] [1793768198.405669134] [route_executor]: EXECUTING pass 1/1 step 0 premove: run 20261104-115638-3 started: warning, moving in 2.0 s
+[INFO] [1793768200.484207348] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793768200.589162609] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793768214.380211820] [route_executor]: step s1 (arc) passed (pass 1/1 step 0): -0.010 m cross-track, continuing
+[INFO] [1793768214.384513744] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 26
+[INFO] [1793768229.285829550] [route_executor]: EXECUTING pass 1/1 step 1 settle: pass 1/1 step 1 of 26
+[INFO] [1793768229.878132363] [route_executor]: step s2 (straight) done (pass 1/1 step 1): 0.007 m / 2.12 deg from expected
+[INFO] [1793768229.884536273] [route_executor]: EXECUTING pass 1/1 step 2 init: pass 1/1 step 2 of 26
+[INFO] [1793768229.985031017] [route_executor]: WAITING pass 1/1 step 2 init: waiting at ITG-RELEASE (pass 1/1 step 2): press Continue [wait s3]
+[INFO] [1793768328.768123141] [route_executor]: local costmap cleared (Continue at ITG-RELEASE): stale obstacle marks beside the vehicle dropped
+[INFO] [1793768328.769773541] [route_executor]: EXECUTING pass 1/1 step 3 premove: pass 1/1 step 3 of 26: warning, moving in 2.0 s [Continue at a wait]
+[INFO] [1793768330.786600056] [route_executor]: EXECUTING pass 1/1 step 3 init: moving: pass 1/1 step 3
+[INFO] [1793768330.903672113] [route_executor]: EXECUTING pass 1/1 step 3 goal: moving: pass 1/1 step 3
+[INFO] [1793768337.784276043] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.003 m cross-track, continuing
+[INFO] [1793768337.794141734] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 26
+[INFO] [1793768338.185399326] [route_executor]: step s5 (straight) passed (pass 1/1 step 4): -0.020 m cross-track, continuing
+[INFO] [1793768338.187284635] [route_executor]: EXECUTING pass 1/1 step 5 goal: pass 1/1 step 5 of 26
+[INFO] [1793768343.485678320] [route_executor]: step s6 (arc) passed (pass 1/1 step 5): -0.018 m cross-track, continuing
+[INFO] [1793768343.493892158] [route_executor]: EXECUTING pass 1/1 step 6 goal: pass 1/1 step 6 of 26
+[INFO] [1793768345.985085103] [route_executor]: step s7 (arc) passed (pass 1/1 step 6): -0.079 m cross-track, continuing
+[INFO] [1793768345.989657860] [route_executor]: EXECUTING pass 1/1 step 7 goal: pass 1/1 step 7 of 26
+[INFO] [1793768347.286415667] [route_executor]: step s8 (straight) passed (pass 1/1 step 7): -0.123 m cross-track, continuing
+[INFO] [1793768347.288371720] [route_executor]: EXECUTING pass 1/1 step 8 goal: pass 1/1 step 8 of 26
+[INFO] [1793768350.682513269] [route_executor]: step s9 (arc) passed (pass 1/1 step 8): -0.074 m cross-track, continuing
+[INFO] [1793768350.683628798] [route_executor]: EXECUTING pass 1/1 step 9 goal: pass 1/1 step 9 of 26
+[INFO] [1793768358.882243324] [route_executor]: step s10 (straight) passed (pass 1/1 step 9): -0.018 m cross-track, continuing
+[INFO] [1793768358.883327925] [route_executor]: EXECUTING pass 1/1 step 10 goal: pass 1/1 step 10 of 26
+[INFO] [1793768363.689853321] [route_executor]: step s11 (arc) passed (pass 1/1 step 10): +0.083 m cross-track, continuing
+[INFO] [1793768363.695427825] [route_executor]: EXECUTING pass 1/1 step 11 goal: pass 1/1 step 11 of 26
+[INFO] [1793768373.984651892] [route_executor]: step s12 (arc) passed (pass 1/1 step 11): +0.094 m cross-track, continuing
+[INFO] [1793768373.986684687] [route_executor]: EXECUTING pass 1/1 step 12 goal: pass 1/1 step 12 of 26
+[INFO] [1793768380.879485049] [route_executor]: EXECUTING pass 1/1 step 12 settle: pass 1/1 step 12 of 26
+[WARN] [1793768380.897961206] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261104-115638-3', pass_index=0, step_index=3, attempt=4)
+[INFO] [1793768381.476964895] [route_executor]: FAULT pass 1/1 step 12 init: endpoint missed: 0.009 m / 9.9 deg [endpoint missed: 0.009 m / 9.9 deg]
+[INFO] [1793768715.155230320] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission

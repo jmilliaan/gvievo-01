@@ -1,0 +1,14 @@
+[INFO] [1793696081.967946721] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793696081.982728614] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793696081.983852080] [drive_node]: drive power not wanted: MANUAL, pendant enable (arm) off
+[INFO] [1793696082.538626418] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793696082.539248421] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793696082.541233732] [drive_node]: drives standby, imu sdo
+[INFO] [1793696089.629338163] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[WARN] [1793696089.832727996] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793696091.835779518] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793696093.852854547] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793696095.875898239] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[WARN] [1793696097.878695983] [drive_node]: cannot power the drives: node 1 did not reach Operation enabled (statusword 0x1270, Switch on disabled) - retrying in 2 s
+[INFO] [1793696100.068637213] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793696100.076919135] [drive_node]: drives armed, imu sdo

@@ -1,0 +1,245 @@
+[INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-10-52-14-420773-gvipc-ce-54575
+[INFO] [launch]: Default logging verbosity is set to INFO
+[navigation_layer] map kyb-map-02 rev3 bundle 97cb9e928e65 (/home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml)
+[INFO] [map_server-1]: process started with pid [54596]
+[INFO] [amcl-2]: process started with pid [54598]
+[INFO] [localization_monitor_node-3]: process started with pid [54600]
+[INFO] [controller_server-4]: process started with pid [54602]
+[INFO] [behavior_server-5]: process started with pid [54604]
+[INFO] [route_executor_node-6]: process started with pid [54606]
+[behavior_server-5] [INFO] [1793764334.827986492] [behavior_server]: 
+[behavior_server-5] 	behavior_server lifecycle node launched. 
+[behavior_server-5] 	Waiting on external lifecycle transitions to activate
+[behavior_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1793764334.834504162] [amcl]: 
+[amcl-2] 	amcl lifecycle node launched. 
+[amcl-2] 	Waiting on external lifecycle transitions to activate
+[amcl-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1793764334.835230416] [amcl]: Creating
+[map_server-1] [INFO] [1793764334.871403073] [map_server]: 
+[map_server-1] 	map_server lifecycle node launched. 
+[map_server-1] 	Waiting on external lifecycle transitions to activate
+[map_server-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-1] [INFO] [1793764334.872724540] [map_server]: Creating
+[controller_server-4] [INFO] [1793764334.881193565] [controller_server]: 
+[controller_server-4] 	controller_server lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793764334.894645349] [controller_server]: Creating controller server
+[controller_server-4] [INFO] [1793764334.926382182] [local_costmap.local_costmap]: 
+[controller_server-4] 	local_costmap lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1793764334.928545708] [local_costmap.local_costmap]: Creating Costmap
+[localization_monitor_node-3] [INFO] [1793764335.659620143] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[localization_monitor_node-3] [INFO] [1793764335.725659522] [localization_monitor]: UNLOCALIZED: no initial pose
+[route_executor_node-6] [INFO] [1793764335.891519367] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[route_executor_node-6] [INFO] [1793764335.957277604] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[INFO] [lifecycle_manager-7]: process started with pid [54721]
+[lifecycle_manager-7] [INFO] [1793764337.818631266] [lifecycle_manager_localization]: Creating
+[lifecycle_manager-7] [INFO] [1793764337.824754511] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-7] [INFO] [1793764337.868148795] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-7] [INFO] [1793764337.871013832] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[map_server-1] [INFO] [1793764337.871525955] [map_server]: Configuring
+[map_server-1] [INFO] [1793764337.871686386] [map_io]: Loading yaml file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.yaml
+[map_server-1] [INFO] [1793764337.872188158] [map_io]: resolution: 0.05
+[map_server-1] [INFO] [1793764337.872212676] [map_io]: origin[0]: -155.737
+[map_server-1] [INFO] [1793764337.872225760] [map_io]: origin[1]: -23.9909
+[map_server-1] [INFO] [1793764337.872236469] [map_io]: origin[2]: 0
+[map_server-1] [INFO] [1793764337.872247774] [map_io]: free_thresh: 0.196
+[map_server-1] [INFO] [1793764337.872258475] [map_io]: occupied_thresh: 0.65
+[map_server-1] [INFO] [1793764337.872269923] [map_io]: mode: trinary
+[map_server-1] [INFO] [1793764337.872281639] [map_io]: negate: 0
+[map_server-1] [INFO] [1793764337.872574946] [map_io]: Loading image_file: /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm
+[map_server-1] [INFO] [1793764338.464869045] [map_io]: Read map /home/gvipc-evo-01/amr_maps/kyb-map-02/rev3/map.pgm: 3577 X 1846 map @ 0.05 m/cell
+[lifecycle_manager-7] [INFO] [1793764338.480910530] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[amcl-2] [INFO] [1793764338.481991605] [amcl]: Configuring
+[amcl-2] [INFO] [1793764338.482201098] [amcl]: initTransforms
+[amcl-2] [INFO] [1793764338.489382608] [amcl]: initPubSub
+[amcl-2] [INFO] [1793764338.493331578] [amcl]: Subscribed to map topic.
+[lifecycle_manager-7] [INFO] [1793764338.496745226] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[map_server-1] [INFO] [1793764338.496983266] [map_server]: Activating
+[map_server-1] [INFO] [1793764338.512329929] [map_server]: Creating bond (map_server) to lifecycle manager.
+[localization_monitor_node-3] [INFO] [1793764338.611090979] [localization_monitor]: map 3577x1846 loaded for scan consistency
+[lifecycle_manager-7] [INFO] [1793764338.618032308] [lifecycle_manager_localization]: Server map_server connected with bond.
+[lifecycle_manager-7] [INFO] [1793764338.618115268] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[amcl-2] [INFO] [1793764338.618350722] [amcl]: Activating
+[amcl-2] [INFO] [1793764338.618416580] [amcl]: Creating bond (amcl) to lifecycle manager.
+[amcl-2] [INFO] [1793764338.722630559] [amcl]: Received a 3577 X 1846 map @ 0.050 m/pix
+[amcl-2] [INFO] [1793764338.816714027] [amcl]: createLaserObject
+[lifecycle_manager-7] [INFO] [1793764338.823158598] [lifecycle_manager_localization]: Server amcl connected with bond.
+[lifecycle_manager-7] [INFO] [1793764338.823277317] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-7] [INFO] [1793764338.823323428] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[INFO] [lifecycle_manager-8]: process started with pid [54798]
+[lifecycle_manager-8] [INFO] [1793764340.823089989] [lifecycle_manager_navigation]: Creating
+[lifecycle_manager-8] [INFO] [1793764340.829061029] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-8] [INFO] [1793764340.872758843] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-8] [INFO] [1793764340.872924275] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-4] [INFO] [1793764340.873389272] [controller_server]: Configuring controller interface
+[controller_server-4] [INFO] [1793764340.873762807] [controller_server]: getting goal checker plugins..
+[controller_server-4] [INFO] [1793764340.874282271] [controller_server]: Controller frequency set to 20.0000Hz
+[controller_server-4] [INFO] [1793764340.874411022] [local_costmap.local_costmap]: Configuring
+[controller_server-4] [INFO] [1793764340.883427681] [local_costmap.local_costmap]: Using plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793764340.888349602] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[controller_server-4] [INFO] [1793764340.892397492] [local_costmap.local_costmap]: Initialized plugin "obstacle_layer"
+[controller_server-4] [INFO] [1793764340.892587752] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[controller_server-4] [INFO] [1793764340.893876223] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[controller_server-4] [INFO] [1793764340.906901512] [controller_server]: Created progress_checker : progress_checker of type nav2_controller::SimpleProgressChecker
+[controller_server-4] [INFO] [1793764340.907964126] [controller_server]: Created goal checker : precise of type nav2_controller::SimpleGoalChecker
+[controller_server-4] [INFO] [1793764340.908405890] [controller_server]: Controller Server has precise  goal checkers available.
+[controller_server-4] [INFO] [1793764340.909160366] [controller_server]: Created controller : FollowPath of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793764340.913267419] [controller_server]: Controller Server has FollowPath  controllers available.
+[lifecycle_manager-8] [INFO] [1793764340.925439451] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793764340.925759933] [behavior_server]: Configuring
+[behavior_server-5] [INFO] [1793764340.936257578] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors/Spin
+[behavior_server-5] [INFO] [1793764340.938029938] [behavior_server]: Configuring spin
+[lifecycle_manager-8] [INFO] [1793764340.951926942] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-4] [INFO] [1793764340.952146077] [controller_server]: Activating
+[controller_server-4] [INFO] [1793764340.952218307] [local_costmap.local_costmap]: Activating
+[controller_server-4] [INFO] [1793764340.952252037] [local_costmap.local_costmap]: Checking transform
+[controller_server-4] [INFO] [1793764340.952389956] [local_costmap.local_costmap]: start
+[amcl-2] [WARN] [1793764341.081113351] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [INFO] [1793764341.081371444] [amcl]: Message Filter dropping message: frame 'laser_frame' at time 1793764338.466 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[controller_server-4] [INFO] [1793764341.203462342] [controller_server]: Activating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793764341.203657206] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793764341.314962298] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793764341.315212552] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[behavior_server-5] [INFO] [1793764341.315763308] [behavior_server]: Activating
+[behavior_server-5] [INFO] [1793764341.315882244] [behavior_server]: Activating spin
+[behavior_server-5] [INFO] [1793764341.315945684] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[lifecycle_manager-8] [INFO] [1793764341.427867950] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[lifecycle_manager-8] [INFO] [1793764341.428034846] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-8] [INFO] [1793764341.428151841] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[amcl-2] [WARN] [1793764343.117609260] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [WARN] [1793764345.197627617] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [WARN] [1793764347.198009895] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[amcl-2] [INFO] [1793764348.504648236] [amcl]: initialPoseReceived
+[amcl-2] [WARN] [1793764348.505084166] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793764348.504947 but the latest data is at time 1793764348.489855, when looking up transform from frame [base_footprint] to frame [odom])
+[amcl-2] [INFO] [1793764348.505213931] [amcl]: Setting pose (1793764348.505213): 0.000 0.000 0.000
+[localization_monitor_node-3] [INFO] [1793764348.507009378] [localization_monitor]: initial pose received: CHECKING
+[amcl-2] [INFO] [1793764348.525367701] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793764348.525949776] [localization_monitor]: CHECKING: stale: tf
+[amcl-2] [INFO] [1793764349.035886937] [amcl]: Requesting no-motion update
+[amcl-2] Reallocing temp weights 2000 - 180
+[amcl-2] [INFO] [1793764349.626005613] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764350.126079125] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764350.726074507] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764351.353608900] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764351.953959275] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764352.549227162] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764353.125361328] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764353.627800911] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764354.225657956] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764354.826010145] [amcl]: Requesting no-motion update
+[amcl-2] [INFO] [1793764355.350246309] [amcl]: Requesting no-motion update
+[localization_monitor_node-3] [INFO] [1793764355.460824795] [localization_monitor]: READY: operator confirmed
+[localization_monitor_node-3] [INFO] [1793764355.526796208] [localization_monitor]: READY: operator confirmed scan alignment
+[route_executor_node-6] [WARN] [1793764363.502955243] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[route_executor_node-6] [INFO] [1793764363.503545231] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+[route_executor_node-6] [INFO] [1793764363.504652725] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev2 loaded
+[route_executor_node-6] [INFO] [1793764363.505540094] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261104-105243-1 started: warning, moving in 2.0 s
+[route_executor_node-6] [INFO] [1793764365.555879543] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[controller_server-4] [INFO] [1793764365.760846445] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793764365.765951917] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[route_executor_node-6] [INFO] [1793764373.867426744] [route_executor]: step s1 (straight) passed (pass 1/1 step 0): +0.005 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764373.869453232] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 34
+[route_executor_node-6] [INFO] [1793764384.360609752] [route_executor]: step s2 (arc) passed (pass 1/1 step 1): -0.013 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764384.361622674] [route_executor]: EXECUTING pass 1/1 step 2 goal: pass 1/1 step 2 of 34
+[route_executor_node-6] [INFO] [1793764404.461530246] [route_executor]: step s3 (straight) passed (pass 1/1 step 2): +0.011 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764404.466571299] [route_executor]: EXECUTING pass 1/1 step 3 goal: pass 1/1 step 3 of 34
+[route_executor_node-6] [INFO] [1793764414.861782376] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.020 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764414.865265102] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 34
+[route_executor_node-6] [INFO] [1793764606.660645039] [route_executor]: step s5 (straight) passed (pass 1/1 step 4): -0.012 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764606.663196533] [route_executor]: EXECUTING pass 1/1 step 5 goal: pass 1/1 step 5 of 34
+[route_executor_node-6] [INFO] [1793764617.066230179] [route_executor]: step s6 (arc) passed (pass 1/1 step 5): +0.024 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764617.068190217] [route_executor]: EXECUTING pass 1/1 step 6 goal: pass 1/1 step 6 of 34
+[route_executor_node-6] [INFO] [1793764658.860672996] [route_executor]: step s7 (straight) passed (pass 1/1 step 6): -0.019 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764658.869674166] [route_executor]: EXECUTING pass 1/1 step 7 goal: pass 1/1 step 7 of 34
+[route_executor_node-6] [INFO] [1793764674.262890166] [route_executor]: step s8 (arc) passed (pass 1/1 step 7): +0.035 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764674.266922686] [route_executor]: EXECUTING pass 1/1 step 8 goal: pass 1/1 step 8 of 34
+[route_executor_node-6] [INFO] [1793764679.565439155] [route_executor]: step s9 (arc) passed (pass 1/1 step 8): +0.005 m cross-track, continuing
+[route_executor_node-6] [INFO] [1793764679.569136680] [route_executor]: EXECUTING pass 1/1 step 9 goal: pass 1/1 step 9 of 34
+[controller_server-4] [INFO] [1793764697.062079001] [controller_server]: Reached the goal!
+[route_executor_node-6] [INFO] [1793764697.163791618] [route_executor]: EXECUTING pass 1/1 step 9 settle: pass 1/1 step 9 of 34
+[route_executor_node-6] [INFO] [1793764697.763364155] [route_executor]: step s10 (straight) done (pass 1/1 step 9): 0.006 m / 0.39 deg from expected
+[route_executor_node-6] [INFO] [1793764697.764267665] [route_executor]: EXECUTING pass 1/1 step 10 init: pass 1/1 step 10 of 34
+[route_executor_node-6] [INFO] [1793764697.865215359] [route_executor]: WAITING pass 1/1 step 10 init: waiting at ITG-RELEASE (pass 1/1 step 10): press Continue [wait s11]
+[controller_server-4] [INFO] [1793764709.582566846] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[route_executor_node-6] [INFO] [1793764709.588597332] [route_executor]: local costmap cleared (Continue at ITG-RELEASE): stale obstacle marks beside the vehicle dropped
+[route_executor_node-6] [INFO] [1793764709.590102840] [route_executor]: EXECUTING pass 1/1 step 11 premove: pass 1/1 step 11 of 34: warning, moving in 2.0 s [Continue at a wait]
+[route_executor_node-6] [INFO] [1793764711.664254236] [route_executor]: EXECUTING pass 1/1 step 11 init: moving: pass 1/1 step 11
+[controller_server-4] [INFO] [1793764711.773087405] [controller_server]: Received a goal, begin computing control effort.
+[route_executor_node-6] [INFO] [1793764711.777343807] [route_executor]: EXECUTING pass 1/1 step 11 goal: moving: pass 1/1 step 11
+[localization_monitor_node-3] [INFO] [1793764717.925641988] [localization_monitor]: LOST: scan passes through mapped obstacles (21 % of beams)
+[route_executor_node-6] [INFO] [1793764718.564243145] [route_executor]: FAULT pass 1/1 step 11 init: localisation not READY (scan passes through mapped obstacles (21 % of beams)) for 0.5 s [localisation not READY (scan passes through mapped obstacles (21 % of beams)) for 0.5 s]
+[controller_server-4] [INFO] [1793764718.573618761] [controller_server]: Goal was canceled. Stopping the robot.
+[controller_server-4] [INFO] [1793764718.574962823] [controller_server]: [follow_path] [ActionServer] Client requested to cancel the goal. Cancelling.
+[route_executor_node-6] [WARN] [1793764718.584118685] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261104-105243-1', pass_index=0, step_index=11, attempt=2)
+[route_executor_node-6] [INFO] [1793764733.182282650] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission
+[route_executor_node-6] [WARN] [1793764988.349884667] [route_executor]: UBC refused: E-stop active - release it and press Reset first
+[route_executor_node-6] [INFO] [1793764988.351239073] [route_executor]: IDLE pass 1/1 step -1 init: UBC refused: E-stop active - release it and press Reset first
+[route_executor_node-6] [WARN] [1793765250.603725331] [route_executor]: UBC refused: E-stop active - release it and press Reset first
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [lifecycle_manager-8]: sending signal 'SIGINT' to process[lifecycle_manager-8]
+[INFO] [lifecycle_manager-7]: sending signal 'SIGINT' to process[lifecycle_manager-7]
+[INFO] [route_executor_node-6]: sending signal 'SIGINT' to process[route_executor_node-6]
+[INFO] [behavior_server-5]: sending signal 'SIGINT' to process[behavior_server-5]
+[INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+[INFO] [localization_monitor_node-3]: sending signal 'SIGINT' to process[localization_monitor_node-3]
+[INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+[INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+[lifecycle_manager-8] [INFO] [1793765906.889637883] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-8] [INFO] [1793765906.889770437] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-8] [INFO] [1793765906.889832174] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[lifecycle_manager-7] [INFO] [1793765906.891718424] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-7] [INFO] [1793765906.891816722] [lifecycle_manager_localization]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_localization)
+[lifecycle_manager-7] [INFO] [1793765906.891861848] [lifecycle_manager_localization]: [34m[1mTerminating bond timer...[0m[0m
+[behavior_server-5] [INFO] [1793765906.893945343] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[behavior_server-5] [INFO] [1793765906.894118509] [behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[behavior_server-5] [INFO] [1793765906.894197541] [behavior_server]: Deactivating
+[behavior_server-5] [INFO] [1793765906.894228295] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793765906.896002739] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-4] [INFO] [1793765906.896089295] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-4] [INFO] [1793765906.896169759] [controller_server]: Deactivating
+[controller_server-4] [INFO] [1793765906.896197398] [controller_server]: Deactivating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793765906.896229333] [local_costmap.local_costmap]: Deactivating
+[behavior_server-5] [INFO] [1793765906.904551009] [behavior_server]: Cleaning up
+[behavior_server-5] [INFO] [1793765906.936982992] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[amcl-2] [INFO] [1793765906.940501055] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[amcl-2] [INFO] [1793765906.940733882] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[amcl-2] [INFO] [1793765906.940824676] [amcl]: Deactivating
+[amcl-2] [INFO] [1793765906.940853049] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[map_server-1] [INFO] [1793765906.942290629] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-1] [INFO] [1793765906.942416266] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-1] [INFO] [1793765906.942500063] [map_server]: Deactivating
+[map_server-1] [INFO] [1793765906.942528131] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1793765906.951248675] [amcl]: Cleaning up
+[map_server-1] [INFO] [1793765906.952776752] [map_server]: Cleaning up
+[map_server-1] [INFO] [1793765906.953706319] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793765906.953429437] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793765906.964012169] [controller_server]: Cleaning up
+[controller_server-4] [INFO] [1793765906.964248565] [controller_server]: Cleaning up controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-4] [INFO] [1793765906.964476385] [local_costmap.local_costmap]: Cleaning up
+[amcl-2] [INFO] [1793765906.996774046] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[map_server-1] [INFO] [1793765907.010876272] [map_server]: Destroying
+[controller_server-4] [INFO] [1793765907.040216688] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1793765907.064424355] [local_costmap.local_costmap]: Destroying
+[behavior_server-5] [INFO] [1793765907.079667898] [behavior_server]: Destroying
+[amcl-2] [INFO] [1793765907.090585237] [amcl]: Destroying
+[lifecycle_manager-7] [INFO] [1793765907.092723320] [lifecycle_manager_localization]: Destroying lifecycle_manager_localization
+[lifecycle_manager-8] [INFO] [1793765907.101486396] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[controller_server-4] [INFO] [1793765907.110555437] [controller_server]: Destroying
+[INFO] [map_server-1]: process has finished cleanly [pid 54596]
+[INFO] [launch]: process[map_server-1] was required: shutting down launched system
+[INFO] [localization_monitor_node-3]: process has finished cleanly [pid 54600]
+[INFO] [launch]: process[localization_monitor_node-3] was required: shutting down launched system
+[INFO] [route_executor_node-6]: process has finished cleanly [pid 54606]
+[INFO] [launch]: process[route_executor_node-6] was required: shutting down launched system
+[INFO] [amcl-2]: process has finished cleanly [pid 54598]
+[INFO] [launch]: process[amcl-2] was required: shutting down launched system
+[INFO] [controller_server-4]: process has finished cleanly [pid 54602]
+[INFO] [launch]: process[controller_server-4] was required: shutting down launched system
+[INFO] [lifecycle_manager-7]: process has finished cleanly [pid 54721]
+[INFO] [lifecycle_manager-8]: process has finished cleanly [pid 54798]
+[INFO] [behavior_server-5]: process has finished cleanly [pid 54604]
+[INFO] [launch]: process[behavior_server-5] was required: shutting down launched system

@@ -1,0 +1,17 @@
+stamp 20261104-111942
+28fd613af3f6e0d1a42c8286da3b5039196c8447
+ M amr_ws/RUNBOOK.md
+ M amr_ws/src/amr_base/amr_base/cmd_mux_kinematics_node.py
+ M amr_ws/src/amr_base/amr_base/gating.py
+ M amr_ws/src/amr_base/test/test_mux_manual_profile.py
+ M amr_ws/src/amr_base/test/test_pendant_gating.py
+ M amr_ws/src/amr_bringup/launch/base.launch.py
+ M amr_ws/src/amr_web/amr_web/jog.py
+ M amr_ws/src/amr_web/amr_web/static/jogpad.js
+ M amr_ws/src/amr_web/test/jogpad_harness.js
+ M amr_ws/src/amr_web/test/test_editor_js.py
+ M amr_ws/src/amr_web/test/test_jog.py
+ M amr_ws/src/amr_web/test/test_jogpad_js.py
+ M field-logs/2026-11-04/hardware-test-results.md
+?? amr_ws/deploy/harden-os.sh
+?? maps/kyb-map-02/rev3/new-edits.json

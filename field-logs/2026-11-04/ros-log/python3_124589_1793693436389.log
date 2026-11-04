@@ -1,0 +1,2 @@
+[INFO] [1793693436.655705281] [gls_node]: GLS621 at 192.168.4.1:2112, read-only; NOT CALIBRATED: raw counts only
+[ERROR] [1793695695.901519114] [gls_node]: GLS settings: no reply to OFtplstr1, GlsCodeSel, DCDMVerISO15415

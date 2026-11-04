@@ -1,0 +1,33 @@
+1793773515.0920570 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-13-25-15-090676-gvipc-ce-23680
+1793773515.0922012 [INFO] [launch]: Default logging verbosity is set to INFO
+1793773515.4969378 [INFO] [map_server-1]: process started with pid [23703]
+1793773515.4972177 [INFO] [amcl-2]: process started with pid [23705]
+1793773515.4973388 [INFO] [localization_monitor_node-3]: process started with pid [23707]
+1793773515.4974389 [INFO] [controller_server-4]: process started with pid [23709]
+1793773515.4975295 [INFO] [behavior_server-5]: process started with pid [23711]
+1793773515.4976156 [INFO] [route_executor_node-6]: process started with pid [23713]
+1793773518.4969811 [INFO] [lifecycle_manager-7]: process started with pid [23888]
+1793773521.5003228 [INFO] [lifecycle_manager-8]: process started with pid [23963]
+1793777148.4536951 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793777148.4579053 [INFO] [lifecycle_manager-8]: sending signal 'SIGINT' to process[lifecycle_manager-8]
+1793777148.4605727 [INFO] [lifecycle_manager-7]: sending signal 'SIGINT' to process[lifecycle_manager-7]
+1793777148.4639032 [INFO] [route_executor_node-6]: sending signal 'SIGINT' to process[route_executor_node-6]
+1793777148.4660800 [INFO] [behavior_server-5]: sending signal 'SIGINT' to process[behavior_server-5]
+1793777148.4681804 [INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+1793777148.4703381 [INFO] [localization_monitor_node-3]: sending signal 'SIGINT' to process[localization_monitor_node-3]
+1793777148.4916589 [INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+1793777148.4929743 [INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+1793777148.7723317 [INFO] [lifecycle_manager-8]: process has finished cleanly [pid 23963]
+1793777148.7975850 [INFO] [behavior_server-5]: process has finished cleanly [pid 23711]
+1793777148.7980337 [INFO] [launch]: process[behavior_server-5] was required: shutting down launched system
+1793777148.8352387 [INFO] [route_executor_node-6]: process has finished cleanly [pid 23713]
+1793777148.8355823 [INFO] [launch]: process[route_executor_node-6] was required: shutting down launched system
+1793777148.8526368 [ERROR] [localization_monitor_node-3]: process has died [pid 23707, exit code 1, cmd '/home/gvipc-evo-01/agv_can/amr_ws/install/amr_localization/lib/amr_localization/localization_monitor_node --ros-args -r __node:=localization_monitor --params-file /tmp/launch_params_9fh0uh90'].
+1793777148.8529644 [INFO] [launch]: process[localization_monitor_node-3] was required: shutting down launched system
+1793777148.8756902 [INFO] [lifecycle_manager-7]: process has finished cleanly [pid 23888]
+1793777148.9262104 [INFO] [amcl-2]: process has finished cleanly [pid 23705]
+1793777148.9270651 [INFO] [launch]: process[amcl-2] was required: shutting down launched system
+1793777148.9322317 [INFO] [map_server-1]: process has finished cleanly [pid 23703]
+1793777148.9327445 [INFO] [launch]: process[map_server-1] was required: shutting down launched system
+1793777148.9397576 [INFO] [controller_server-4]: process has finished cleanly [pid 23709]
+1793777148.9402900 [INFO] [launch]: process[controller_server-4] was required: shutting down launched system

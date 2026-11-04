@@ -1,0 +1,41 @@
+1793763613.9341793 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-10-40-13-933097-gvipc-ce-38162
+1793763613.9343534 [INFO] [launch]: Default logging verbosity is set to INFO
+1793763614.1477790 [INFO] [drive_node-2]: process started with pid [38192]
+1793763614.1481116 [INFO] [sick_safetyscanners2_node-4]: process started with pid [38196]
+1793763614.1566000 [INFO] [robot_state_publisher-1]: process started with pid [38190]
+1793763614.1568828 [INFO] [panel_node-3]: process started with pid [38194]
+1793763614.1570401 [INFO] [gls_node-5]: process started with pid [38198]
+1793763614.1571548 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [38200]
+1793763614.1572568 [INFO] [diff_drive_odom_node-7]: process started with pid [38202]
+1793763614.1573527 [INFO] [imu_bias_node-8]: process started with pid [38206]
+1793763614.1574433 [INFO] [scan_gate_node-9]: process started with pid [38224]
+1793763614.1575341 [INFO] [commissioning_node-10]: process started with pid [38226]
+1793763614.1576271 [INFO] [ekf_node-11]: process started with pid [38229]
+1793768990.3170173 [ERROR] [drive_node-2]: process has died [pid 38192, exit code 1, cmd '/home/gvipc-evo-01/agv_can/amr_ws/install/amr_base/lib/amr_base/drive_node --ros-args -r __node:=drive_node --params-file /tmp/launch_params__soyu68m'].
+1793768990.3175614 [INFO] [launch]: process[drive_node-2] was required: shutting down launched system
+1793768990.3234560 [INFO] [ekf_node-11]: sending signal 'SIGINT' to process[ekf_node-11]
+1793768990.3260236 [INFO] [commissioning_node-10]: sending signal 'SIGINT' to process[commissioning_node-10]
+1793768990.3280470 [INFO] [scan_gate_node-9]: sending signal 'SIGINT' to process[scan_gate_node-9]
+1793768990.3303413 [INFO] [imu_bias_node-8]: sending signal 'SIGINT' to process[imu_bias_node-8]
+1793768990.3328018 [INFO] [diff_drive_odom_node-7]: sending signal 'SIGINT' to process[diff_drive_odom_node-7]
+1793768990.3342671 [INFO] [cmd_mux_kinematics_node-6]: sending signal 'SIGINT' to process[cmd_mux_kinematics_node-6]
+1793768990.3386776 [INFO] [gls_node-5]: sending signal 'SIGINT' to process[gls_node-5]
+1793768990.3407681 [INFO] [sick_safetyscanners2_node-4]: sending signal 'SIGINT' to process[sick_safetyscanners2_node-4]
+1793768990.3450506 [INFO] [panel_node-3]: sending signal 'SIGINT' to process[panel_node-3]
+1793768990.3467090 [INFO] [robot_state_publisher-1]: sending signal 'SIGINT' to process[robot_state_publisher-1]
+1793768990.5071242 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793768991.3860223 [INFO] [sick_safetyscanners2_node-4]: process has finished cleanly [pid 38196]
+1793768991.3893363 [INFO] [robot_state_publisher-1]: process has finished cleanly [pid 38190]
+1793768991.4042389 [INFO] [ekf_node-11]: process has finished cleanly [pid 38229]
+1793768991.4047630 [INFO] [launch]: process[ekf_node-11] was required: shutting down launched system
+1793768991.4414406 [INFO] [imu_bias_node-8]: process has finished cleanly [pid 38206]
+1793768991.4443040 [INFO] [commissioning_node-10]: process has finished cleanly [pid 38226]
+1793768991.4447734 [INFO] [scan_gate_node-9]: process has finished cleanly [pid 38224]
+1793768991.4451487 [INFO] [launch]: process[scan_gate_node-9] was required: shutting down launched system
+1793768991.4492631 [INFO] [gls_node-5]: process has finished cleanly [pid 38198]
+1793768991.4505904 [INFO] [diff_drive_odom_node-7]: process has finished cleanly [pid 38202]
+1793768991.4510567 [INFO] [launch]: process[diff_drive_odom_node-7] was required: shutting down launched system
+1793768991.4962008 [INFO] [cmd_mux_kinematics_node-6]: process has finished cleanly [pid 38200]
+1793768991.4964695 [INFO] [launch]: process[cmd_mux_kinematics_node-6] was required: shutting down launched system
+1793768991.5996466 [INFO] [panel_node-3]: process has finished cleanly [pid 38194]
+1793768991.5999670 [INFO] [launch]: process[panel_node-3] was required: shutting down launched system

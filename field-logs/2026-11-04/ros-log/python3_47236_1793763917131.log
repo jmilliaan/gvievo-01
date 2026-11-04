@@ -1,0 +1,26 @@
+[INFO] [1793763917.269615699] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793763917.349896652] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793763946.176055858] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793763946.178945668] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+[INFO] [1793763946.181971115] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev2 loaded
+[INFO] [1793763946.182709558] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261104-104546-1 started: warning, moving in 2.0 s
+[INFO] [1793763948.247798402] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793763948.450065467] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793763956.545862765] [route_executor]: step s1 (straight) passed (pass 1/1 step 0): +0.010 m cross-track, continuing
+[INFO] [1793763956.548294194] [route_executor]: EXECUTING pass 1/1 step 1 goal: pass 1/1 step 1 of 34
+[INFO] [1793763967.139186673] [route_executor]: step s2 (arc) passed (pass 1/1 step 1): -0.021 m cross-track, continuing
+[INFO] [1793763967.143117775] [route_executor]: EXECUTING pass 1/1 step 2 goal: pass 1/1 step 2 of 34
+[INFO] [1793763987.249016558] [route_executor]: step s3 (straight) passed (pass 1/1 step 2): +0.012 m cross-track, continuing
+[INFO] [1793763987.266791706] [route_executor]: EXECUTING pass 1/1 step 3 goal: pass 1/1 step 3 of 34
+[INFO] [1793763997.737382311] [route_executor]: step s4 (arc) passed (pass 1/1 step 3): -0.015 m cross-track, continuing
+[INFO] [1793763997.738801432] [route_executor]: EXECUTING pass 1/1 step 4 goal: pass 1/1 step 4 of 34
+[INFO] [1793764040.040067877] [route_executor]: BLOCKED pass 1/1 step 4 init: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear) [path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)]
+[INFO] [1793764040.143222749] [route_executor]: FAULT pass 1/1 step 4 init: localisation not READY (stale: scan) for 0.5 s [localisation not READY (stale: scan) for 0.5 s]
+[INFO] [1793764170.448332226] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission [fault acknowledged by physical Reset]
+[INFO] [1793764180.508413330] [route_executor]: IDLE pass 1/1 step -1 init: nothing to acknowledge (IDLE)
+[WARN] [1793764185.927221929] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793764185.928991672] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+[INFO] [1793764185.930260771] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev2 loaded
+[INFO] [1793764185.931122715] [route_executor]: READY pass 1/1 step -1 init: ITG: Start refused: localisation not READY (stale: scan)
+[INFO] [1793764185.934472290] [route_executor]: READY pass 1/1 step -1 init: Continue ignored: a new run needs Start
+[INFO] [1793764186.446554944] [route_executor]: IDLE pass 1/1 step -1 init: localisation not READY (stale: scan)

@@ -1,0 +1,3 @@
+[WARN] [1793762009.080465629] [scan_gate]: 501 scans expired without an odom transform in the last 30 s (released 0, thinned 0, received 510)
+[WARN] [1793762039.051687194] [scan_gate]: 511 scans expired without an odom transform in the last 30 s (released 0, thinned 0, received 1021)
+[WARN] [1793762069.051628908] [scan_gate]: 221 scans expired without an odom transform in the last 30 s (released 149, thinned 149, received 1531)

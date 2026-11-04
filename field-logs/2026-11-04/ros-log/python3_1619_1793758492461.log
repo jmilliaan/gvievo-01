@@ -1,0 +1,33 @@
+[INFO] [1793758492.686141638] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793758492.687346813] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793758492.880764413] [panel_node]: DIO comms ok
+[INFO] [1793758492.924864166] [panel_node]: panel image valid; selector MANUAL
+[WARN] [1793758492.926579119] [panel_node]: emergency EMERGENCY -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793758492.979128815] [panel_node]: Manual Arm on
+[INFO] [1793758561.118049493] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793758561.119826305] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793758561.977508748] [panel_node]: RESET edge
+[WARN] [1793758561.979322334] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793758564.938063663] [panel_node]: RESET edge
+[WARN] [1793758564.998433411] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793758569.777637044] [panel_node]: RESET edge
+[WARN] [1793758569.779150385] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793758571.738084389] [panel_node]: RESET edge
+[WARN] [1793758572.797880608] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793758573.357680366] [panel_node]: RESET edge
+[WARN] [1793758573.359454767] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793758574.857451429] [panel_node]: RESET edge
+[WARN] [1793758576.377950716] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793758577.437433979] [panel_node]: E-stop OK (DI8) LOW
+[WARN] [1793758577.438979965] [panel_node]: emergency RESET_FAILED -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793758578.597624152] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793758578.599313647] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793758579.357549977] [panel_node]: RESET edge
+[WARN] [1793758579.359213693] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793758581.577459312] [panel_node]: RESET edge
+[WARN] [1793758582.377863087] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793758586.358420489] [panel_node]: RESET edge
+[WARN] [1793758586.360907941] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793758588.537666702] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[INFO] [1793758590.917680842] [panel_node]: pendant LEFT
+[INFO] [1793758592.038095598] [panel_node]: pendant released

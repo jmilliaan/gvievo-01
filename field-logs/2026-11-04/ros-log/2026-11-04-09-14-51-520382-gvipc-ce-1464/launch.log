@@ -1,0 +1,42 @@
+1793758491.5218916 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-09-14-51-520382-gvipc-ce-1464
+1793758491.5220351 [INFO] [launch]: Default logging verbosity is set to INFO
+1793758491.8039365 [INFO] [drive_node-2]: process started with pid [1617]
+1793758491.8042769 [INFO] [sick_safetyscanners2_node-4]: process started with pid [1621]
+1793758491.8052142 [INFO] [robot_state_publisher-1]: process started with pid [1615]
+1793758491.8054633 [INFO] [panel_node-3]: process started with pid [1619]
+1793758491.8056095 [INFO] [gls_node-5]: process started with pid [1623]
+1793758491.8057208 [INFO] [cmd_mux_kinematics_node-6]: process started with pid [1625]
+1793758491.8089225 [INFO] [diff_drive_odom_node-7]: process started with pid [1627]
+1793758491.8091509 [INFO] [imu_bias_node-8]: process started with pid [1629]
+1793758491.8092711 [INFO] [scan_gate_node-9]: process started with pid [1631]
+1793758491.8093746 [INFO] [commissioning_node-10]: process started with pid [1633]
+1793758491.8094728 [INFO] [ekf_node-11]: process started with pid [1636]
+1793759113.8088403 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1793759113.8149900 [INFO] [ekf_node-11]: sending signal 'SIGINT' to process[ekf_node-11]
+1793759113.8172035 [INFO] [commissioning_node-10]: sending signal 'SIGINT' to process[commissioning_node-10]
+1793759113.8200188 [INFO] [scan_gate_node-9]: sending signal 'SIGINT' to process[scan_gate_node-9]
+1793759113.8241310 [INFO] [imu_bias_node-8]: sending signal 'SIGINT' to process[imu_bias_node-8]
+1793759113.8269999 [INFO] [diff_drive_odom_node-7]: sending signal 'SIGINT' to process[diff_drive_odom_node-7]
+1793759113.8297579 [INFO] [cmd_mux_kinematics_node-6]: sending signal 'SIGINT' to process[cmd_mux_kinematics_node-6]
+1793759113.8353322 [INFO] [gls_node-5]: sending signal 'SIGINT' to process[gls_node-5]
+1793759113.8390863 [INFO] [sick_safetyscanners2_node-4]: sending signal 'SIGINT' to process[sick_safetyscanners2_node-4]
+1793759113.8458772 [INFO] [panel_node-3]: sending signal 'SIGINT' to process[panel_node-3]
+1793759113.8489835 [INFO] [drive_node-2]: sending signal 'SIGINT' to process[drive_node-2]
+1793759113.8511043 [INFO] [robot_state_publisher-1]: sending signal 'SIGINT' to process[robot_state_publisher-1]
+1793759114.0648556 [INFO] [sick_safetyscanners2_node-4]: process has finished cleanly [pid 1621]
+1793759114.0805938 [INFO] [robot_state_publisher-1]: process has finished cleanly [pid 1615]
+1793759114.1280634 [INFO] [ekf_node-11]: process has finished cleanly [pid 1636]
+1793759114.1284883 [INFO] [launch]: process[ekf_node-11] was required: shutting down launched system
+1793759114.1385231 [INFO] [imu_bias_node-8]: process has finished cleanly [pid 1629]
+1793759114.1401114 [INFO] [commissioning_node-10]: process has finished cleanly [pid 1633]
+1793759114.1452556 [INFO] [scan_gate_node-9]: process has finished cleanly [pid 1631]
+1793759114.1454771 [INFO] [gls_node-5]: process has finished cleanly [pid 1623]
+1793759114.1457062 [INFO] [launch]: process[scan_gate_node-9] was required: shutting down launched system
+1793759114.1476092 [INFO] [diff_drive_odom_node-7]: process has finished cleanly [pid 1627]
+1793759114.1478612 [INFO] [launch]: process[diff_drive_odom_node-7] was required: shutting down launched system
+1793759114.2431698 [INFO] [panel_node-3]: process has finished cleanly [pid 1619]
+1793759114.2435617 [INFO] [launch]: process[panel_node-3] was required: shutting down launched system
+1793759114.2762570 [INFO] [drive_node-2]: process has finished cleanly [pid 1617]
+1793759114.2765696 [INFO] [launch]: process[drive_node-2] was required: shutting down launched system
+1793759114.2806697 [INFO] [cmd_mux_kinematics_node-6]: process has finished cleanly [pid 1625]
+1793759114.2809131 [INFO] [launch]: process[cmd_mux_kinematics_node-6] was required: shutting down launched system

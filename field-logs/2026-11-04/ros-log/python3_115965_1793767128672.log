@@ -1,0 +1,6 @@
+[INFO] [1793767128.811191446] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793767128.876053771] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793767173.502439826] [route_executor]: ITG: no saved mission for route route-itg-02 on map kyb-map-01 rev1 - save it as a mission in the editor
+[INFO] [1793767173.503830770] [route_executor]: IDLE pass 1/1 step -1 init: ITG: no saved mission for route route-itg-02 on map kyb-map-01 rev1 - save it as a mission in the editor
+[WARN] [1793767182.216577318] [route_executor]: ITG: no saved mission for route route-itg-02 on map kyb-map-01 rev1 - save it as a mission in the editor
+[INFO] [1793767219.973814359] [route_executor]: IDLE pass 1/1 step -1 init: abort ignored in IDLE

@@ -1,0 +1,5 @@
+[INFO] [1793761979.054219054] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793761979.055912443] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793761979.182312794] [panel_node]: DIO comms ok
+[INFO] [1793761979.210938904] [panel_node]: panel image valid; selector MANUAL
+[WARN] [1793761979.211817765] [panel_node]: emergency EMERGENCY -> EMERGENCY: DI08 LOW (E-stop)

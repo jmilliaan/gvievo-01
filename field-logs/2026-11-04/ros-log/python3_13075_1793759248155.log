@@ -1,0 +1,22 @@
+[INFO] [1793759248.448679161] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793759248.463677212] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793759248.464321991] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793759249.025310706] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793759249.026322267] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793759249.036763815] [drive_node]: drives standby, imu sdo
+[INFO] [1793759358.115561338] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793759359.266862061] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793759359.641467493] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793759359.646377068] [drive_node]: drives armed, imu sdo
+[INFO] [1793759385.724166791] [drive_node]: drive power not wanted: MANUAL, pendant enable (arm) off
+[INFO] [1793759385.755859015] [drive_node]: drives in standby (power off): power not wanted; MANUAL, pendant enable (arm) off
+[INFO] [1793759385.790099175] [drive_node]: drives standby, imu sdo
+[INFO] [1793760496.108362789] [drive_node]: drive power not wanted: E-stop (DI08)
+[ERROR] [1793761474.015903178] [drive_node]: FAULT: drive silent: [1]
+[INFO] [1793761474.129513237] [drive_node]: drives fault (drive silent: [1]), imu sdo
+[ERROR] [1793761780.942483336] [drive_node]: bus thread error: CanOperationError('Error receiving: No such device [Error Code 19]')
+[INFO] [1793761780.945023746] [drive_node]: node 1: could not clear 1016h (Failed to transmit: No such device or address [Error Code 6]); it will fault when we stop
+[INFO] [1793761780.946170055] [drive_node]: node 2: could not clear 1016h (Failed to transmit: No such device or address [Error Code 6]); it will fault when we stop
+[INFO] [1793761780.947306833] [drive_node]: disarm incomplete, will retry on the next disarm: node 1: 1016h; node 2: 1016h; node 1: 60FFh=0 (Failed to transmit: No such device or address [Error Code 6]); node 2: 60FFh=0 (Failed to transmit: No such device or address [Error Code 6]); node 1: 6040h=0x0006 (Failed to transmit: No such device or address [Error Code 6]); node 1: 6040h=0x0000 (Failed to transmit: No such device or address [Error Code 6]); node 2: 6040h=0x0006 (Failed to transmit: No such device or address [Error Code 6]); node 2: 6040h=0x0000 (Failed to transmit: No such device or address [Error Code 6]); NMT pre-operational (Failed to transmit: No such device or address [Error Code 6])
+[INFO] [1793761780.951482713] [drive_node]: bus closed, drives de-energised
+[FATAL] [1793761781.390792058] [drive_node]: bus thread ended: {'state': 'bus error', 'reason': "CanOperationError('Error receiving: No such device [Error Code 19]')", 'mode': 'off'}

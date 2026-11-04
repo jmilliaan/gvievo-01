@@ -1,0 +1,45 @@
+[INFO] [1793761979.799801872] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793761980.301666694] [drive_node]: node 1 refused a heartbeat interval (node 1: producer heartbeat time (1017h) failed: timeout); liveness falls back to TPDOs
+[INFO] [1793761980.803431691] [drive_node]: node 2 refused a heartbeat interval (node 2: producer heartbeat time (1017h) failed: timeout); liveness falls back to TPDOs
+[INFO] [1793761980.813639867] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793761980.816149486] [drive_node]: drive power not wanted: E-stop (DI08)
+[WARN] [1793761981.619932908] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[INFO] [1793761981.627420201] [drive_node]: drives disarmed, imu sdo
+[WARN] [1793761983.627281822] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761985.630842232] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761987.634595713] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761989.639676187] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761991.648161372] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761993.649178559] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761995.653620220] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761997.656417594] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793761999.660177300] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762001.664167821] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762003.667442739] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762005.673033428] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762007.676806788] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762009.680787094] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762011.685196506] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762013.691369985] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762015.699216391] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762017.701677794] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762019.704453401] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762021.708432535] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762023.717246977] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762025.719728732] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762027.724882971] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762029.731887067] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762031.733126471] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762033.735667358] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762035.739092506] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762037.742224185] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762039.745284952] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762041.747635301] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762043.748157392] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762045.751088774] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762047.752765979] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[WARN] [1793762049.756818514] [drive_node]: cannot link the drives: preflight failed: node 1 (left): not responding; node 2 (right): not responding - retrying in 2 s
+[INFO] [1793762051.502626556] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793762051.503767757] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793762051.516446236] [drive_node]: drives standby, imu sdo
+[INFO] [1793762217.468685556] [drive_node]: bus closed, drives de-energised

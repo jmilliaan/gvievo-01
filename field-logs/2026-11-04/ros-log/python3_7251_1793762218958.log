@@ -1,0 +1,12 @@
+[INFO] [1793762219.109745300] [amr_supervisor]: instance aa17f407 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793762219.134496879] [amr_supervisor]: spawned base pgid=7288 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793762221.653369438] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793763259.672857958] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793763260.197725771] [amr_supervisor]: spawned layer pgid=29411 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+[INFO] [1793763268.018144191] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793763611.219000615] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793763611.733177870] [amr_supervisor]: stopped layer: clean (layer pgid=29411 leader=0 members=0)
+[INFO] [1793763612.214732888] [amr_supervisor]: stopped base: clean (base pgid=7288 leader=0 members=0)
+[INFO] [1793763612.570962896] [amr_supervisor]: stopped web: clean (web pgid=7287 leader=0 members=0)
+[INFO] [1793763612.571768015] [amr_supervisor]: teardown: groups stopped in 1.4 s
+[INFO] [1793763612.572569578] [amr_supervisor]: teardown: executor down at 1.4 s

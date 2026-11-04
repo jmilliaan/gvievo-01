@@ -1,0 +1,1270 @@
+run /home/gvipc-evo-01/.amr/runs/20261104-104146
+  1274.6 s recorded, /amcl_pose 2038, /amr/control_lease 12689, /amr/events 219, /amr/io 6373, /amr/localization_state 2589, /amr/mode_state 2559, /amr/mux_state 12746, /amr/panel_state 63730, /amr/run_state 2569, /cmd_wheel_vel 63729, /diagnostics 7569, /drives/status 12590, /drives/torque 56315, /imu/data 57682, /odom_raw 56301, /output_paths 21469, /rosout 1351, /tf 66470, /wheel_states 56313
+
+TIMELINE
+      0.05  run: IDLE  (no mission loaded)
+      0.07  localization: CHECKING  (converged and stable - confirm that scans align with fixed structure)
+      0.12  mux: source none, warning level 0, protective clear, scale 1.00
+      0.13  drives: operational=True link=armed power_wanted=True (MANUAL, pendant enable (arm) on)
+      0.17  DO on: none
+    107.35  event [amr_supervisor] MODE_CHANGE: NAVIGATION -> TRANSITIONING: inhibiting
+    107.36  rosout drive_node: setpoint gated to zero: inhibited by supervisor
+    107.36  event [cmd_mux_kinematics] INHIBITED: command source none -> none: inhibited by supervisor
+    107.36  event [cmd_mux_kinematics] INHIBITED: motion inhibited: inhibited by supervisor
+    110.23  event [localization_monitor] LOC_NOT_SET: localisation UNLOCALIZED: no initial pose
+    110.23  localization: UNLOCALIZED  (no initial pose)
+    110.64  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: no mission loaded
+    114.57  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    116.27  event [amr_supervisor] MODE_CHANGE: TRANSITIONING -> NAVIGATION: 
+    116.28  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    116.57  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    118.69  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    120.69  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    122.81  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    124.91  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    127.03  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    129.15  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    131.25  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    133.39  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    135.47  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    137.49  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    139.49  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    141.59  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    143.71  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    145.71  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    147.71  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    149.73  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    151.81  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    153.83  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    155.97  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    158.05  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    160.17  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    162.27  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    164.39  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    166.39  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    168.53  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    170.61  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    172.73  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    174.85  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    176.95  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    179.11  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    181.19  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    183.33  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    185.43  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    187.53  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    189.55  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    191.63  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    193.79  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    195.91  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    197.99  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    199.88  event [amr_supervisor] MODE_CHANGE: NAVIGATION -> TRANSITIONING: inhibiting
+    199.90  event [cmd_mux_kinematics] INHIBITED: command source none -> none: inhibited by supervisor
+    199.90  event [cmd_mux_kinematics] INHIBITED: motion inhibited: inhibited by supervisor
+    199.90  rosout drive_node: setpoint gated to zero: inhibited by supervisor
+    200.03  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    202.73  event [localization_monitor] LOC_NOT_SET: localisation UNLOCALIZED: no initial pose
+    202.94  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: no mission loaded
+    208.02  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    208.82  event [amr_supervisor] MODE_CHANGE: TRANSITIONING -> NAVIGATION: 
+    208.84  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    210.09  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    212.21  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    214.33  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    214.40  rosout amcl: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793763928.812550 but the latest data is at time 1
+    214.41  localization: CHECKING  (initial pose received; converging)
+    214.43  event [localization_monitor] LOC_NOT_CONFIRMED: localisation CHECKING: stale: tf
+    220.82  localization: READY  (operator confirmed scan alignment)
+    220.83  event [localization_monitor] MODE_CHANGE: localisation READY: operator confirmed scan alignment
+    224.01  event [panel_node] PANEL: selector AUTO
+    224.13  event [drive_node] MODE_CHANGE: drives are not powered
+    224.13  drives: operational=False link=standby power_wanted=False (AUTO, no run asking for power)
+    224.14  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+    224.14  event [cmd_mux_kinematics] DRIVES_NOT_READY: motion inhibited: drives not operational or stale
+    228.39  event [panel_node] PANEL: DEST ITG edge
+    231.77  rosout route_executor: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+    231.77  event [route_executor] MODE_CHANGE: run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+    231.77  run: READY  (mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run)
+    231.77  event [route_executor] MODE_CHANGE: run EXECUTING pass 1/1 step 0: ITG: run 20261104-104546-1 started: warning, moving in 2.0 s
+    231.77  drive power: True
+    231.77  pre-move: True
+    231.77  run: EXECUTING  (ITG: run 20261104-104546-1 started: warning, moving in 2.0 s)
+    231.77  step: s1
+    231.97  DO on: DO00, DO02
+    232.17  drives: operational=True link=armed power_wanted=True (AUTO, the run run asks for power)
+    232.17  event [drive_node] MODE_CHANGE: drives are powered
+    232.18  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    233.83  pre-move: False
+    233.97  DO on: none
+    234.04  event [cmd_mux_kinematics] MUX_SOURCE: command source none -> follow: follow
+    234.12  mux: source follow, warning level 0, protective clear, scale 1.00
+    234.17  DO on: DO00, DO01
+    235.46  slip: collapse -38.60 N·m
+    236.03  slip: snatch +10.71 N·m
+    236.39  slip: snatch +19.93 N·m
+    237.12  slip: snatch +34.06 N·m
+    240.58  slip: snatch +14.86 N·m
+    241.65  slip: snatch +40.23 N·m
+    242.14  step: s2
+    248.27  slip: snatch +35.70 N·m
+    252.73  step: s3
+    252.93  slip: collapse -37.26 N·m
+    254.29  slip: snatch +19.28 N·m
+    255.76  slip: snatch +29.83 N·m
+    258.95  slip: snatch +20.12 N·m
+    260.42  slip: snatch +20.15 N·m
+    261.88  slip: snatch +13.18 N·m
+    262.83  slip: snatch +20.42 N·m
+    263.76  slip: snatch +25.18 N·m
+    264.16  slip: snatch +20.73 N·m
+    264.48  rosout gls_node: GLS not answering: connected, settings verified
+    264.48  event [gls_node] GLS_DOWN: floor-label camera not answering: connected, settings verified
+    265.58  slip: snatch +20.23 N·m
+    266.81  slip: snatch +10.48 N·m
+    267.15  slip: snatch +17.87 N·m
+    267.83  slip: snatch +13.41 N·m
+    268.37  slip: snatch +14.94 N·m
+    269.19  slip: snatch +20.27 N·m
+    270.43  slip: snatch -31.39 N·m
+    272.86  step: s4
+    277.39  slip: snatch +41.00 N·m
+    283.33  step: s5
+    283.57  slip: collapse -32.08 N·m
+    285.79  slip: snatch +30.48 N·m
+    287.46  slip: snatch +20.42 N·m
+    290.08  slip: snatch +11.16 N·m
+    290.59  slip: snatch +19.96 N·m
+    291.92  slip: snatch +20.88 N·m
+    292.87  slip: snatch +16.99 N·m
+    297.10  slip: snatch +15.43 N·m
+    298.07  slip: snatch +20.69 N·m
+    300.45  slip: snatch +16.34 N·m
+    302.54  slip: snatch +26.06 N·m
+    302.97  slip: snatch +13.68 N·m
+    303.44  slip: snatch +17.95 N·m
+    304.49  slip: snatch +19.93 N·m
+    305.36  slip: snatch +25.98 N·m
+    306.17  slip: snatch +15.58 N·m
+    308.27  slip: snatch +19.96 N·m
+    309.57  slip: snatch +17.49 N·m
+    310.68  slip: snatch +20.80 N·m
+    311.27  slip: snatch +20.84 N·m
+    312.14  slip: snatch +20.15 N·m
+    313.80  slip: snatch +17.60 N·m
+    315.49  slip: snatch +17.95 N·m
+    316.35  slip: snatch +16.73 N·m
+    316.97  slip: snatch +23.62 N·m
+    319.30  slip: snatch +11.93 N·m
+    319.60  slip: snatch +19.20 N·m
+    321.94  slip: snatch +16.34 N·m
+    322.61  slip: snatch +18.29 N·m
+    323.70  slip: snatch +23.09 N·m
+    325.03  event [localization_monitor] LOC_STREAM_STALE: localisation LOST: stale: scan
+    325.03  localization: LOST  (stale: scan)
+    325.34  event [cmd_mux_kinematics] SOURCE_TIMED_OUT: command source follow -> none: permit FOLLOW, no fresh /cmd_vel
+    325.39  rosout controller_server: Exception in transformPose: Lookup would require extrapolation into the future.  Requested time 1793764039.562915 but the latest data is at time 1793764039.5350
+    325.39  rosout controller_server: Unable to transform robot pose into global plan's frame
+    325.39  rosout controller_server: Control loop missed its desired rate of 20.0000Hz
+    325.42  mux: source none, warning level 0, protective VIOLATED, scale 0.00
+    325.59  rosout controller_server: Exception in transformPose: Lookup would require extrapolation into the future.  Requested time 1793764039.784140 but the latest data is at time 1793764039.5350
+    325.59  rosout controller_server: Unable to transform robot pose into global plan's frame
+    325.59  rosout controller_server: Controller patience exceeded
+    325.59  rosout controller_server: [follow_path] [ActionServer] Aborting handle.
+    325.63  event [route_executor] PATH_BLOCKED: run BLOCKED pass 1/1 step 4: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)
+    325.63  hold: controller
+    325.63  run: BLOCKED  (path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear))
+    325.73  event [route_executor] RUN_SUMMARY: kyb-map-02_rev3_route-itg-02_rev2 FAULT after 94 s; peak cross-track 0.00 m; holds: controller x1
+    325.73  event [route_executor] EXEC_PREREQ_LOST: run FAULT pass 1/1 step 4: localisation not READY (stale: scan) for 0.5 s
+    325.73  drive power: False
+    325.73  run: FAULT  (localisation not READY (stale: scan) for 0.5 s)
+    325.98  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+    325.98  event [cmd_mux_kinematics] DRIVES_NOT_READY: motion inhibited: drives not operational or stale
+    326.09  event [drive_node] MODE_CHANGE: drives are not powered
+    326.09  drives: operational=False link=standby power_wanted=False (AUTO, no run asking for power)
+    326.17  DO on: none
+    338.42  mux: source none, warning level 2, protective clear, scale 1.00
+    342.52  mux: source none, warning level 2, protective VIOLATED, scale 1.00
+    346.54  event [gls_node] GLS: floor-label camera answering again: connected, settings verified
+    351.09  event [panel_node] PANEL: E-stop OK (DI8) LOW
+    351.09  rosout panel_node: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)
+    351.09  event [panel_node] ESTOP: EMERGENCY STOP (DI08 LOW (E-stop)): release the E-stop, then press Reset
+    351.10  event [cmd_mux_kinematics] ESTOP: command source none -> none: E-stop: emergency not cleared
+    351.62  mux: source none, warning level 2, protective clear, scale 1.00
+    364.52  mux: source none, warning level 1, protective clear, scale 1.00
+    364.72  mux: source none, warning level 2, protective clear, scale 1.00
+    374.32  mux: source none, warning level 1, protective clear, scale 1.00
+    375.72  mux: source none, warning level 0, protective clear, scale 1.00
+    392.62  mux: source none, warning level 2, protective clear, scale 1.00
+    420.92  mux: source none, warning level 1, protective clear, scale 1.00
+    421.02  mux: source none, warning level 0, protective clear, scale 1.00
+    423.02  mux: source none, warning level 1, protective clear, scale 1.00
+    423.42  mux: source none, warning level 0, protective clear, scale 1.00
+    423.82  mux: source none, warning level 1, protective clear, scale 1.00
+    424.52  mux: source none, warning level 0, protective clear, scale 1.00
+    424.72  mux: source none, warning level 1, protective clear, scale 1.00
+    426.52  mux: source none, warning level 0, protective clear, scale 1.00
+    426.82  mux: source none, warning level 1, protective clear, scale 1.00
+    454.01  event [panel_node] PANEL: E-stop OK (DI8) HIGH
+    454.01  rosout panel_node: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+    454.01  event [panel_node] ESTOP_RESET_NEEDED: E-stop released: press Reset
+    455.82  mux: source none, warning level 0, protective clear, scale 1.00
+    456.03  event [panel_node] PANEL: RESET edge
+    456.03  rosout panel_node: emergency RESET_NEEDED -> RESETTING: Reset pressed
+    456.03  event [panel_node] ESTOP: Reset pressed: waiting for the drives to leave STO
+    456.03  PANEL Reset
+    456.04  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: fault acknowledged; load a mission
+    456.04  run: IDLE  (fault acknowledged; load a mission)
+    456.04  step: 
+    456.17  event [panel_node] ESTOP: cleared: emergency stop
+    456.18  event [cmd_mux_kinematics] INHIBITED: command source none -> none: inhibited by supervisor
+    456.28  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+    457.33  event [panel_node] PANEL: START edge
+    457.33  PANEL Start
+    459.19  event [panel_node] PANEL: START edge
+    459.19  PANEL Start
+    459.49  event [panel_node] PANEL: START edge
+    459.49  PANEL Start
+    468.29  event [panel_node] PANEL: DEST ITG edge
+    469.13  event [panel_node] PANEL: CONTINUE edge
+    471.09  event [panel_node] PANEL: CONTINUE edge
+    471.52  rosout route_executor: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+    471.52  event [route_executor] MODE_CHANGE: run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+    471.52  run: READY  (mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run)
+    471.52  event [route_executor] DEST_REFUSED: ITG: Start refused: localisation not READY (stale: scan)
+    472.04  event [route_executor] RUN_SUMMARY: kyb-map-02_rev3_route-itg-02_rev2 IDLE after 1 s; peak cross-track 0.00 m; holds: none
+    472.04  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: localisation not READY (stale: scan)
+    472.04  run: IDLE  (localisation not READY (stale: scan))
+    473.81  event [panel_node] PANEL: selector MANUAL
+    474.21  event [drive_node] MODE_CHANGE: drives are powered
+    474.21  drives: operational=True link=armed power_wanted=True (MANUAL, pendant enable (arm) on)
+    474.22  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    480.25  event [panel_node] PANEL: pendant RVS
+    480.32  mux: source pendant, warning level 0, protective clear, scale 1.00
+    480.37  DO on: DO00, DO01
+    480.76  slip: collapse -5.37 N·m
+    480.81  event [panel_node] PANEL: pendant released
+    480.82  mux: source none, warning level 0, protective clear, scale 1.00
+    480.97  DO on: none
+    483.49  event [panel_node] PANEL: pendant RVS
+    483.52  mux: source pendant, warning level 0, protective clear, scale 1.00
+    483.77  DO on: DO00, DO01
+    484.12  slip: collapse -27.05 N·m
+    484.45  slip: snatch -12.42 N·m
+    484.99  slip: snatch -16.23 N·m
+    485.32  mux: source pendant, warning level 1, protective clear, scale 1.00
+    486.02  mux: source pendant, warning level 2, protective clear, scale 1.00
+    486.02  slip: collapse -30.44 N·m
+    486.13  slip: snatch -32.46 N·m
+    486.22  mux: source pendant, warning level 1, protective clear, scale 1.00
+    486.92  mux: source pendant, warning level 2, protective clear, scale 1.00
+    487.41  event [panel_node] PANEL: pendant RVS RIGHT
+    487.42  mux: source pendant, warning level 2, protective VIOLATED, scale 1.00
+    487.61  event [panel_node] PANEL: pendant RVS
+    487.62  mux: source pendant, warning level 0, protective clear, scale 1.00
+    487.92  mux: source pendant, warning level 1, protective clear, scale 1.00
+    488.01  slip: collapse -30.37 N·m
+    488.02  mux: source pendant, warning level 2, protective clear, scale 1.00
+    488.67  event [panel_node] PANEL: pendant RVS RIGHT
+    488.72  mux: source pendant, warning level 1, protective clear, scale 1.00
+    488.82  mux: source pendant, warning level 2, protective clear, scale 1.00
+    488.91  event [panel_node] PANEL: pendant RVS
+    489.15  slip: snatch -31.78 N·m
+    489.54  slip: collapse -43.62 N·m
+    490.53  event [panel_node] PANEL: pendant released
+    490.62  mux: source none, warning level 2, protective clear, scale 1.00
+    490.72  mux: source none, warning level 2, protective VIOLATED, scale 1.00
+    490.92  mux: source none, warning level 2, protective clear, scale 1.00
+    491.37  DO on: none
+    492.12  mux: source none, warning level 1, protective clear, scale 1.00
+    492.22  mux: source none, warning level 0, protective clear, scale 1.00
+    493.61  event [panel_node] PANEL: pendant RVS
+    493.62  mux: source pendant, warning level 0, protective clear, scale 1.00
+    493.77  DO on: DO00, DO01
+    494.06  slip: collapse -34.90 N·m
+    494.47  slip: snatch -31.32 N·m
+    496.03  slip: snatch +35.36 N·m
+    496.23  event [panel_node] PANEL: pendant released
+    496.32  mux: source none, warning level 0, protective clear, scale 1.00
+    496.42  mux: source none, warning level 1, protective clear, scale 1.00
+    496.52  mux: source none, warning level 2, protective clear, scale 1.00
+    496.72  mux: source none, warning level 1, protective clear, scale 1.00
+    496.77  DO on: none
+    497.53  event [panel_node] PANEL: pendant RVS
+    497.62  mux: source pendant, warning level 0, protective clear, scale 1.00
+    497.77  DO on: DO00, DO01
+    498.12  slip: collapse -32.88 N·m
+    498.46  slip: snatch -10.97 N·m
+    498.86  slip: snatch -12.57 N·m
+    499.35  slip: snatch -25.87 N·m
+    499.51  event [panel_node] PANEL: pendant RVS LEFT
+    500.11  event [panel_node] PANEL: pendant RVS
+    500.24  slip: snatch -36.96 N·m
+    500.95  slip: collapse -34.21 N·m
+    503.95  event [panel_node] PANEL: pendant RVS RIGHT
+    504.09  event [panel_node] PANEL: pendant RVS
+    504.32  slip: collapse -31.17 N·m
+    504.35  event [panel_node] PANEL: pendant RVS RIGHT
+    504.55  event [panel_node] PANEL: pendant RVS
+    504.91  event [panel_node] PANEL: pendant RVS RIGHT
+    505.35  event [panel_node] PANEL: pendant RVS
+    506.12  slip: collapse -35.17 N·m
+    516.07  event [panel_node] PANEL: pendant released
+    516.12  mux: source none, warning level 0, protective clear, scale 1.00
+    516.77  DO on: none
+    516.79  event [panel_node] PANEL: pendant LEFT
+    516.82  mux: source pendant, warning level 0, protective clear, scale 1.00
+    516.97  DO on: DO00, DO01
+    518.31  event [panel_node] PANEL: pendant released
+    518.32  mux: source none, warning level 0, protective clear, scale 1.00
+    518.41  slip: yaw -0.20 rad/s
+    518.57  DO on: none
+    518.77  DO on: DO00, DO01
+    518.97  DO on: none
+    520.03  event [panel_node] PANEL: pendant LEFT
+    520.12  mux: source pendant, warning level 0, protective clear, scale 1.00
+    520.17  DO on: DO00, DO01
+    521.89  event [panel_node] PANEL: pendant released
+    521.92  mux: source none, warning level 0, protective clear, scale 1.00
+    522.00  slip: yaw -0.18 rad/s
+    522.19  event [panel_node] PANEL: pendant LEFT
+    522.22  mux: source pendant, warning level 0, protective clear, scale 1.00
+    523.59  event [panel_node] PANEL: pendant released
+    523.62  mux: source none, warning level 0, protective clear, scale 1.00
+    523.68  slip: yaw -0.20 rad/s
+    523.89  event [panel_node] PANEL: pendant FWD
+    523.92  mux: source pendant, warning level 0, protective clear, scale 1.00
+    523.97  DO on: none
+    524.17  DO on: DO00, DO01
+    524.57  slip: collapse -13.37 N·m
+    524.87  slip: snatch +16.34 N·m
+    525.24  slip: collapse -25.37 N·m
+    525.43  slip: snatch +17.18 N·m
+    526.15  slip: collapse -35.47 N·m
+    526.21  slip: snatch -30.14 N·m
+    530.33  event [panel_node] PANEL: pendant FWD LEFT
+    530.69  event [panel_node] PANEL: pendant FWD
+    530.83  event [panel_node] PANEL: pendant FWD LEFT
+    531.03  event [panel_node] PANEL: pendant FWD
+    531.07  slip: collapse -28.58 N·m
+    531.09  slip: snatch +40.58 N·m
+    534.71  slip: snatch +32.23 N·m
+    536.31  slip: snatch +33.95 N·m
+    540.95  event [panel_node] PANEL: pendant FWD RIGHT
+    541.09  event [panel_node] PANEL: pendant FWD
+    541.45  slip: snatch +35.93 N·m
+    541.47  slip: snatch_slip -28.58 N·m
+    541.69  event [panel_node] PANEL: pendant FWD RIGHT
+    542.11  event [panel_node] PANEL: pendant FWD
+    542.45  event [panel_node] PANEL: pendant FWD LEFT
+    542.59  slip: collapse -11.89 N·m
+    542.67  event [panel_node] PANEL: pendant FWD
+    542.77  event [panel_node] PANEL: pendant FWD LEFT
+    543.37  event [panel_node] PANEL: pendant FWD
+    543.45  slip: collapse -34.33 N·m
+    548.35  event [panel_node] PANEL: pendant FWD LEFT
+    548.55  event [panel_node] PANEL: pendant FWD
+    548.89  slip: snatch +21.49 N·m
+    548.97  slip: snatch_slip -36.61 N·m
+    549.11  event [panel_node] PANEL: pendant FWD LEFT
+    549.75  slip: snatch +12.15 N·m
+    549.87  event [panel_node] PANEL: pendant FWD
+    550.02  slip: snatch_slip -32.27 N·m
+    550.26  slip: snatch -30.59 N·m
+    554.03  event [panel_node] PANEL: pendant FWD LEFT
+    554.43  event [panel_node] PANEL: pendant FWD
+    554.69  slip: collapse -39.62 N·m
+    554.77  slip: snatch +20.12 N·m
+    556.41  event [panel_node] PANEL: pendant FWD LEFT
+    556.44  slip: snatch +36.16 N·m
+    556.55  event [panel_node] PANEL: pendant FWD
+    556.80  slip: collapse -22.02 N·m
+    556.87  event [panel_node] PANEL: pendant FWD LEFT
+    559.37  event [panel_node] PANEL: pendant FWD
+    559.40  slip: collapse -28.50 N·m
+    559.49  event [panel_node] PANEL: pendant FWD LEFT
+    559.93  event [panel_node] PANEL: pendant FWD
+    559.99  slip: collapse -18.48 N·m
+    560.33  slip: collapse -43.85 N·m
+    560.85  event [panel_node] PANEL: pendant FWD LEFT
+    561.35  event [panel_node] PANEL: pendant FWD
+    561.45  event [panel_node] PANEL: pendant FWD LEFT
+    561.58  slip: collapse -32.19 N·m
+    561.75  event [panel_node] PANEL: pendant FWD
+    564.07  event [panel_node] PANEL: pendant FWD RIGHT
+    564.31  event [panel_node] PANEL: pendant FWD
+    564.47  event [panel_node] PANEL: pendant FWD RIGHT
+    564.67  event [panel_node] PANEL: pendant FWD
+    564.92  slip: collapse -24.19 N·m
+    565.70  slip: snatch +13.75 N·m
+    565.87  event [panel_node] PANEL: pendant FWD RIGHT
+    566.03  event [panel_node] PANEL: pendant FWD
+    566.13  event [panel_node] PANEL: pendant FWD RIGHT
+    566.27  event [panel_node] PANEL: pendant FWD
+    566.31  slip: snatch +20.99 N·m
+    566.53  slip: snatch_slip -35.93 N·m
+    566.72  slip: snatch +20.54 N·m
+    567.79  event [panel_node] PANEL: pendant FWD LEFT
+    567.89  event [panel_node] PANEL: pendant FWD
+    568.17  slip: collapse -18.48 N·m
+    568.19  slip: snatch +20.84 N·m
+    568.59  event [panel_node] PANEL: pendant FWD LEFT
+    568.85  event [panel_node] PANEL: pendant FWD
+    568.99  event [panel_node] PANEL: pendant FWD LEFT
+    569.15  event [panel_node] PANEL: pendant FWD
+    569.64  slip: collapse -29.72 N·m
+    570.11  slip: snatch +26.86 N·m
+    570.35  event [panel_node] PANEL: pendant FWD RIGHT
+    570.75  event [panel_node] PANEL: pendant FWD
+    570.81  slip: snatch +15.28 N·m
+    571.14  slip: snatch -14.74 N·m
+    571.14  slip: snatch_slip -26.37 N·m
+    571.60  slip: collapse -30.52 N·m
+    571.66  slip: snatch +36.65 N·m
+    572.47  event [panel_node] PANEL: pendant FWD LEFT
+    572.57  event [panel_node] PANEL: pendant FWD
+    573.83  event [panel_node] PANEL: pendant FWD LEFT
+    573.97  event [panel_node] PANEL: pendant FWD
+    574.23  slip: collapse -29.45 N·m
+    574.79  event [panel_node] PANEL: pendant FWD LEFT
+    575.03  event [panel_node] PANEL: pendant FWD
+    575.23  event [panel_node] PANEL: pendant FWD LEFT
+    575.33  event [panel_node] PANEL: pendant FWD
+    575.67  slip: collapse -45.22 N·m
+    575.69  slip: snatch +32.73 N·m
+    581.73  event [panel_node] PANEL: pendant FWD RIGHT
+    581.83  event [panel_node] PANEL: pendant FWD
+    582.11  slip: collapse -20.92 N·m
+    582.53  event [panel_node] PANEL: pendant FWD RIGHT
+    582.63  event [panel_node] PANEL: pendant FWD
+    582.82  slip: collapse -23.51 N·m
+    583.19  event [panel_node] PANEL: pendant FWD RIGHT
+    583.29  event [panel_node] PANEL: pendant FWD
+    583.47  slip: collapse -17.72 N·m
+    583.67  slip: snatch +27.01 N·m
+    583.95  event [panel_node] PANEL: pendant FWD LEFT
+    584.05  event [panel_node] PANEL: pendant FWD
+    584.32  slip: collapse -21.76 N·m
+    584.35  event [panel_node] PANEL: pendant FWD LEFT
+    584.49  event [panel_node] PANEL: pendant FWD
+    584.68  slip: collapse -36.00 N·m
+    584.85  event [panel_node] PANEL: pendant FWD RIGHT
+    584.95  event [panel_node] PANEL: pendant FWD
+    585.05  event [panel_node] PANEL: pendant FWD RIGHT
+    585.15  event [panel_node] PANEL: pendant FWD
+    585.33  slip: collapse -14.74 N·m
+    586.51  event [panel_node] PANEL: pendant FWD LEFT
+    586.61  event [panel_node] PANEL: pendant FWD
+    586.76  slip: snatch -28.27 N·m
+    586.82  slip: snatch_slip -31.55 N·m
+    588.09  event [panel_node] PANEL: pendant FWD LEFT
+    588.19  event [panel_node] PANEL: pendant FWD
+    588.39  event [panel_node] PANEL: pendant FWD LEFT
+    588.40  slip: collapse -32.92 N·m
+    588.49  event [panel_node] PANEL: pendant FWD
+    588.89  event [panel_node] PANEL: pendant FWD LEFT
+    589.19  event [panel_node] PANEL: pendant FWD
+    589.45  slip: snatch +20.38 N·m
+    589.61  slip: snatch_slip -17.53 N·m
+    590.02  slip: collapse -33.26 N·m
+    590.06  slip: snatch +26.94 N·m
+    591.21  event [panel_node] PANEL: pendant released
+    591.22  mux: source none, warning level 0, protective clear, scale 1.00
+    591.97  DO on: none
+    595.23  event [panel_node] PANEL: pendant RIGHT
+    595.32  mux: source pendant, warning level 0, protective clear, scale 1.00
+    595.37  DO on: DO00, DO01
+    595.57  slip: yaw +0.07 rad/s
+    595.63  event [panel_node] PANEL: pendant released
+    595.72  mux: source none, warning level 0, protective clear, scale 1.00
+    595.97  DO on: none
+    597.49  event [panel_node] PANEL: pendant RIGHT
+    597.52  mux: source pendant, warning level 0, protective clear, scale 1.00
+    597.77  DO on: DO00, DO01
+    597.89  event [panel_node] PANEL: pendant released
+    597.92  mux: source none, warning level 0, protective clear, scale 1.00
+    597.98  slip: yaw +0.08 rad/s
+    598.37  DO on: none
+    598.85  event [panel_node] PANEL: pendant LEFT
+    598.92  mux: source pendant, warning level 0, protective clear, scale 1.00
+    598.95  event [panel_node] PANEL: pendant released
+    598.97  DO on: DO00, DO01
+    599.02  mux: source none, warning level 0, protective clear, scale 1.00
+    599.17  event [panel_node] PANEL: pendant FWD
+    599.17  DO on: none
+    599.22  mux: source pendant, warning level 0, protective clear, scale 1.00
+    599.37  DO on: DO00, DO01
+    599.68  slip: collapse -7.73 N·m
+    599.77  event [panel_node] PANEL: pendant released
+    599.82  mux: source none, warning level 0, protective clear, scale 1.00
+    599.86  slip: snatch -15.93 N·m
+    600.17  DO on: none
+    605.56  event [amr_supervisor] MODE_CHANGE: NAVIGATION -> TRANSITIONING: inhibiting
+    605.58  rosout drive_node: setpoint gated to zero: inhibited by supervisor
+    605.58  event [cmd_mux_kinematics] INHIBITED: command source none -> none: inhibited by supervisor
+    605.58  event [cmd_mux_kinematics] INHIBITED: motion inhibited: inhibited by supervisor
+    608.54  event [localization_monitor] LOC_NOT_SET: localisation UNLOCALIZED: no initial pose
+    608.54  localization: UNLOCALIZED  (no initial pose)
+    608.73  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: no mission loaded
+    612.83  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    614.57  event [amr_supervisor] MODE_CHANGE: TRANSITIONING -> NAVIGATION: 
+    614.60  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    614.93  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    617.07  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    618.62  event [amr_supervisor] MODE_CHANGE: NAVIGATION -> TRANSITIONING: inhibiting
+    618.63  rosout drive_node: setpoint gated to zero: inhibited by supervisor
+    618.64  event [cmd_mux_kinematics] INHIBITED: command source none -> none: inhibited by supervisor
+    618.64  event [cmd_mux_kinematics] INHIBITED: motion inhibited: inhibited by supervisor
+    621.32  event [localization_monitor] LOC_NOT_SET: localisation UNLOCALIZED: no initial pose
+    621.55  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: no mission loaded
+    626.67  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    627.47  event [amr_supervisor] MODE_CHANGE: TRANSITIONING -> NAVIGATION: 
+    627.50  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    628.71  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    630.79  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    632.79  rosout amcl: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+    634.10  rosout amcl: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793764348.504947 but the latest data is at time 1
+    634.10  localization: CHECKING  (initial pose received; converging)
+    634.12  event [localization_monitor] LOC_NOT_CONFIRMED: localisation CHECKING: stale: tf
+    641.05  localization: READY  (operator confirmed scan alignment)
+    641.12  event [localization_monitor] MODE_CHANGE: localisation READY: operator confirmed scan alignment
+    643.89  event [panel_node] PANEL: selector AUTO
+    643.94  drives: operational=False link=standby power_wanted=False (AUTO, no run asking for power)
+    643.94  event [drive_node] MODE_CHANGE: drives are not powered
+    643.96  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+    643.96  event [cmd_mux_kinematics] DRIVES_NOT_READY: motion inhibited: drives not operational or stale
+    645.85  event [panel_node] PANEL: DEST ITG edge
+    649.09  rosout route_executor: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+    649.09  event [route_executor] MODE_CHANGE: run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+    649.09  run: READY  (mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run)
+    649.10  event [route_executor] MODE_CHANGE: run EXECUTING pass 1/1 step 0: ITG: run 20261104-105243-1 started: warning, moving in 2.0 s
+    649.10  drive power: True
+    649.10  pre-move: True
+    649.10  run: EXECUTING  (ITG: run 20261104-105243-1 started: warning, moving in 2.0 s)
+    649.10  step: s1
+    649.17  DO on: DO00, DO02
+    649.49  drives: operational=True link=armed power_wanted=True (AUTO, the run run asks for power)
+    649.49  event [drive_node] MODE_CHANGE: drives are powered
+    649.50  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    651.15  pre-move: False
+    651.17  DO on: none
+    651.36  event [cmd_mux_kinematics] MUX_SOURCE: command source none -> follow: follow
+    651.42  mux: source follow, warning level 0, protective clear, scale 1.00
+    651.57  DO on: DO00, DO01
+    652.39  slip: collapse -5.14 N·m
+    652.72  slip: collapse -13.75 N·m
+    653.06  slip: snatch +10.33 N·m
+    653.26  slip: snatch_slip -24.61 N·m
+    653.67  slip: snatch +13.03 N·m
+    654.39  slip: collapse -30.21 N·m
+    654.45  slip: snatch +24.69 N·m
+    655.96  slip: snatch +25.95 N·m
+    658.45  slip: snatch +24.04 N·m
+    659.46  step: s2
+    663.89  slip: snatch +38.48 N·m
+    669.95  step: s3
+    670.10  slip: collapse -37.76 N·m
+    670.99  slip: snatch +28.08 N·m
+    671.69  slip: snatch +20.99 N·m
+    672.33  slip: snatch +36.88 N·m
+    676.16  slip: snatch +20.57 N·m
+    676.70  slip: snatch +17.95 N·m
+    678.48  slip: snatch +19.32 N·m
+    682.41  slip: snatch +17.87 N·m
+    682.90  slip: snatch +11.13 N·m
+    683.25  slip: snatch +16.12 N·m
+    683.79  slip: snatch +14.97 N·m
+    684.37  slip: snatch +18.02 N·m
+    686.60  slip: snatch -37.15 N·m
+    688.19  slip: snatch -19.01 N·m
+    689.30  slip: snatch +32.65 N·m
+    690.06  step: s4
+    694.03  slip: snatch +30.71 N·m
+    694.66  slip: snatch +33.38 N·m
+    700.46  step: s5
+    700.67  slip: collapse -40.12 N·m
+    703.13  slip: snatch +28.04 N·m
+    704.79  slip: snatch +26.56 N·m
+    705.98  slip: snatch +22.02 N·m
+    706.99  slip: snatch +17.18 N·m
+    708.22  slip: snatch +11.09 N·m
+    708.59  slip: snatch +16.76 N·m
+    709.40  slip: snatch +12.27 N·m
+    710.02  slip: snatch +14.48 N·m
+    710.37  slip: snatch +15.74 N·m
+    710.93  slip: snatch +22.06 N·m
+    712.76  slip: snatch +23.28 N·m
+    713.31  slip: snatch +17.30 N·m
+    714.43  slip: snatch +19.66 N·m
+    715.09  slip: snatch +12.46 N·m
+    715.82  slip: snatch +13.53 N·m
+    717.07  slip: snatch +25.91 N·m
+    718.14  slip: snatch +13.56 N·m
+    718.87  slip: snatch +19.16 N·m
+    720.71  slip: snatch +14.67 N·m
+    721.25  slip: snatch +18.52 N·m
+    721.63  slip: snatch +16.19 N·m
+    722.50  slip: snatch +22.97 N·m
+    723.42  slip: snatch +22.48 N·m
+    725.64  slip: snatch +18.52 N·m
+    726.51  slip: snatch +23.01 N·m
+    729.12  slip: snatch +17.26 N·m
+    730.15  slip: snatch +19.32 N·m
+    731.61  slip: snatch +17.68 N·m
+    732.03  slip: snatch +16.42 N·m
+    732.54  slip: snatch +12.08 N·m
+    733.25  slip: snatch +24.27 N·m
+    734.70  slip: snatch +30.78 N·m
+    735.35  slip: snatch +20.08 N·m
+    735.74  slip: snatch +13.03 N·m
+    736.21  slip: snatch +10.10 N·m
+    736.74  slip: snatch +17.68 N·m
+    737.57  slip: snatch +24.12 N·m
+    740.30  slip: snatch +19.81 N·m
+    741.81  slip: snatch +17.75 N·m
+    742.70  slip: snatch +16.08 N·m
+    743.09  slip: snatch +13.11 N·m
+    743.61  slip: snatch +17.72 N·m
+    744.46  slip: snatch +19.39 N·m
+    744.98  slip: snatch +18.71 N·m
+    745.61  slip: snatch +15.43 N·m
+    747.06  slip: snatch +13.87 N·m
+    747.49  slip: snatch +21.45 N·m
+    749.13  slip: snatch +17.41 N·m
+    750.00  slip: snatch +13.14 N·m
+    750.32  slip: snatch +22.14 N·m
+    750.62  slip: snatch +21.41 N·m
+    751.71  slip: snatch +15.05 N·m
+    752.28  slip: snatch +21.60 N·m
+    753.76  slip: snatch +13.98 N·m
+    754.21  slip: snatch +10.44 N·m
+    754.61  slip: snatch +16.92 N·m
+    755.74  slip: snatch +29.91 N·m
+    759.49  slip: snatch +17.56 N·m
+    760.25  slip: snatch -21.26 N·m
+    761.27  slip: snatch +15.01 N·m
+    762.08  slip: snatch +19.05 N·m
+    762.85  slip: snatch +19.58 N·m
+    763.33  slip: snatch +22.59 N·m
+    763.82  slip: snatch +18.63 N·m
+    764.70  slip: snatch +20.23 N·m
+    766.58  slip: snatch +18.25 N·m
+    767.78  slip: snatch +25.91 N·m
+    769.13  slip: snatch +18.97 N·m
+    771.19  slip: snatch +24.27 N·m
+    772.73  slip: snatch +21.98 N·m
+    774.12  slip: snatch -20.38 N·m
+    775.17  slip: snatch +12.15 N·m
+    775.68  slip: snatch +13.37 N·m
+    776.26  slip: snatch +23.24 N·m
+    778.15  slip: snatch +22.82 N·m
+    779.25  slip: snatch +21.18 N·m
+    779.90  slip: snatch +12.08 N·m
+    780.32  slip: snatch +26.33 N·m
+    782.06  slip: snatch +12.00 N·m
+    782.38  slip: snatch +15.62 N·m
+    782.79  slip: snatch -14.29 N·m
+    783.51  slip: snatch +15.09 N·m
+    784.07  slip: snatch +17.41 N·m
+    784.76  slip: snatch +21.11 N·m
+    786.54  slip: snatch +10.48 N·m
+    786.89  slip: snatch +17.98 N·m
+    787.31  slip: snatch +20.54 N·m
+    788.55  slip: snatch +18.97 N·m
+    791.82  slip: snatch +17.30 N·m
+    793.18  slip: snatch +20.96 N·m
+    794.17  slip: snatch -17.34 N·m
+    795.18  slip: snatch +20.12 N·m
+    796.73  slip: snatch +22.21 N·m
+    799.16  slip: snatch +12.92 N·m
+    799.50  slip: snatch +18.21 N·m
+    800.49  slip: snatch +14.78 N·m
+    800.87  slip: snatch +20.88 N·m
+    801.99  slip: snatch +19.58 N·m
+    802.81  slip: snatch +17.41 N·m
+    804.62  slip: snatch +19.66 N·m
+    805.81  slip: snatch +20.99 N·m
+    807.30  slip: snatch +17.18 N·m
+    807.77  slip: snatch +10.82 N·m
+    808.25  slip: snatch +21.26 N·m
+    809.89  slip: snatch +20.50 N·m
+    811.16  slip: snatch +19.20 N·m
+    812.43  slip: snatch +30.63 N·m
+    815.12  slip: snatch +20.04 N·m
+    818.87  slip: snatch +16.80 N·m
+    819.59  slip: snatch +21.72 N·m
+    820.36  slip: snatch +19.77 N·m
+    820.72  slip: snatch +16.88 N·m
+    821.39  slip: snatch +22.67 N·m
+    822.72  slip: snatch +16.61 N·m
+    823.73  slip: snatch +18.44 N·m
+    824.63  slip: snatch +19.62 N·m
+    825.45  slip: snatch +17.56 N·m
+    826.26  slip: snatch +29.79 N·m
+    828.17  slip: snatch +14.97 N·m
+    828.54  slip: snatch +22.44 N·m
+    829.43  slip: snatch +19.96 N·m
+    831.11  slip: snatch +19.20 N·m
+    832.71  slip: snatch +16.50 N·m
+    834.27  slip: snatch +21.60 N·m
+    836.96  slip: snatch +26.75 N·m
+    839.40  slip: snatch +19.89 N·m
+    840.85  slip: snatch +22.52 N·m
+    843.58  slip: snatch +27.39 N·m
+    847.41  slip: snatch +17.45 N·m
+    848.21  slip: snatch +20.80 N·m
+    850.27  slip: snatch +20.27 N·m
+    852.01  slip: snatch +15.05 N·m
+    852.45  slip: snatch +17.03 N·m
+    853.40  slip: snatch +17.68 N·m
+    854.81  slip: snatch +18.10 N·m
+    855.18  slip: snatch +17.87 N·m
+    856.81  slip: snatch +14.63 N·m
+    857.39  slip: snatch +20.99 N·m
+    858.56  slip: snatch +17.83 N·m
+    859.91  slip: snatch +23.96 N·m
+    861.66  slip: snatch +11.93 N·m
+    862.02  slip: snatch +18.48 N·m
+    865.03  slip: snatch +10.93 N·m
+    865.45  slip: snatch +20.27 N·m
+    868.08  slip: snatch -15.54 N·m
+    869.01  slip: snatch +19.93 N·m
+    871.84  slip: snatch +10.59 N·m
+    872.76  slip: snatch +18.90 N·m
+    874.14  slip: snatch +24.38 N·m
+    876.62  slip: snatch +14.90 N·m
+    876.95  slip: snatch +18.33 N·m
+    878.97  slip: snatch +15.13 N·m
+    879.61  slip: snatch +22.75 N·m
+    883.57  slip: snatch +18.52 N·m
+    884.18  slip: snatch +18.10 N·m
+    886.77  slip: snatch +16.50 N·m
+    887.78  slip: snatch +10.74 N·m
+    888.19  slip: snatch +18.36 N·m
+    888.82  slip: snatch +24.46 N·m
+    891.17  slip: snatch +13.41 N·m
+    891.47  slip: snatch -28.77 N·m
+    892.25  step: s6
+    892.80  slip: snatch +38.06 N·m
+    901.74  slip: snatch +24.92 N·m
+    902.66  step: s7
+    902.87  slip: collapse -33.41 N·m
+    904.17  slip: snatch +27.66 N·m
+    904.45  slip: snatch_slip -35.59 N·m
+    907.30  slip: snatch +16.95 N·m
+    908.65  slip: snatch +14.33 N·m
+    909.61  slip: snatch +16.95 N·m
+    910.17  slip: snatch +15.62 N·m
+    911.33  slip: snatch +15.81 N·m
+    912.68  slip: snatch +22.40 N·m
+    914.58  slip: snatch +12.27 N·m
+    914.96  slip: snatch +14.33 N·m
+    915.55  slip: snatch +20.69 N·m
+    916.62  slip: snatch +15.24 N·m
+    917.85  slip: snatch +13.72 N·m
+    918.30  slip: snatch +11.16 N·m
+    918.66  slip: snatch +17.75 N·m
+    919.29  slip: snatch +24.69 N·m
+    919.71  slip: snatch +21.68 N·m
+    921.64  slip: snatch +15.93 N·m
+    922.93  slip: snatch +20.42 N·m
+    923.74  slip: snatch +26.67 N·m
+    925.31  slip: snatch +24.46 N·m
+    928.07  slip: snatch +18.33 N·m
+    929.16  slip: snatch +18.40 N·m
+    929.54  slip: snatch +13.45 N·m
+    929.87  slip: snatch +10.44 N·m
+    930.25  slip: snatch +12.19 N·m
+    930.67  slip: snatch +11.24 N·m
+    931.26  slip: snatch +13.53 N·m
+    931.67  slip: snatch +19.32 N·m
+    933.10  slip: snatch +14.74 N·m
+    933.50  slip: snatch +14.59 N·m
+    934.25  slip: snatch +23.66 N·m
+    937.02  slip: snatch +22.97 N·m
+    937.57  slip: snatch +19.39 N·m
+    938.44  slip: snatch +18.29 N·m
+    939.13  slip: snatch +13.56 N·m
+    940.11  slip: snatch +20.31 N·m
+    941.13  slip: snatch +30.78 N·m
+    942.71  slip: snatch +41.15 N·m
+    944.46  step: s8
+    952.67  slip: snatch +42.56 N·m
+    959.86  step: s9
+    960.71  slip: snatch -14.29 N·m
+    961.33  slip: snatch +21.11 N·m
+    962.10  slip: snatch +32.77 N·m
+    964.83  slip: snatch +28.50 N·m
+    965.16  step: s10
+    965.43  slip: collapse -23.01 N·m
+    966.60  slip: collapse -37.26 N·m
+    966.73  slip: snatch -34.44 N·m
+    975.65  slip: snatch +13.75 N·m
+    982.76  event [cmd_mux_kinematics] NO_PERMIT: command source follow -> none: AUTO, no motion permit
+    982.82  mux: source none, warning level 0, protective clear, scale 1.00
+    982.82  slip: snatch -17.07 N·m
+    983.17  DO on: none
+    983.35  step: s11
+    983.45  drive power: False
+    983.45  run: 7  (waiting at ITG-RELEASE (pass 1/1 step 10): press Continue)
+    983.46  event [route_executor] RUN_WAITING: run WAITING pass 1/1 step 10: waiting at ITG-RELEASE (pass 1/1 step 10): press Continue
+    983.53  drives: operational=False link=standby power_wanted=False (AUTO, no run asking for power)
+    983.53  event [drive_node] MODE_CHANGE: drives are not powered
+    983.54  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+    983.54  event [cmd_mux_kinematics] DRIVES_NOT_READY: motion inhibited: drives not operational or stale
+    989.92  mux: source none, warning level 1, protective clear, scale 1.00
+    991.42  mux: source none, warning level 0, protective clear, scale 1.00
+    995.17  event [panel_node] PANEL: CONTINUE edge
+    995.18  event [route_executor] COSTMAP_CLEARED: local costmap cleared (Continue at ITG-RELEASE): stale obstacle marks beside the vehicle dropped
+    995.18  event [route_executor] MODE_CHANGE: run EXECUTING pass 1/1 step 11: pass 1/1 step 11 of 34: warning, moving in 2.0 s
+    995.18  drive power: True
+    995.18  pre-move: True
+    995.18  run: EXECUTING  (pass 1/1 step 11 of 34: warning, moving in 2.0 s)
+    995.18  step: s12
+    995.37  DO on: DO00, DO02
+    995.58  drives: operational=True link=armed power_wanted=True (AUTO, the run run asks for power)
+    995.58  event [drive_node] MODE_CHANGE: drives are powered
+    995.58  event [cmd_mux_kinematics] INHIBITED: motion no longer inhibited
+    997.25  pre-move: False
+    997.37  DO on: none
+    997.38  event [cmd_mux_kinematics] MUX_SOURCE: command source none -> follow: follow
+    997.42  mux: source follow, warning level 0, protective clear, scale 1.00
+    997.57  DO on: DO00, DO01
+    998.14  slip: collapse -14.02 N·m
+    998.77  slip: collapse -35.81 N·m
+    999.42  slip: snatch +14.44 N·m
+   1000.89  slip: snatch +25.18 N·m
+   1001.78  slip: snatch +21.91 N·m
+   1003.52  event [localization_monitor] LOC_SCAN_MISMATCH: localisation LOST: scan passes through mapped obstacles (21 % of beams)
+   1003.52  localization: LOST  (scan passes through mapped obstacles (21 % of beams))
+   1004.15  event [route_executor] RUN_SUMMARY: kyb-map-02_rev3_route-itg-02_rev2 FAULT after 355 s; peak cross-track 0.02 m; holds: none
+   1004.15  event [route_executor] EXEC_PREREQ_LOST: run FAULT pass 1/1 step 11: localisation not READY (scan passes through mapped obstacles (21 % of beams)) for 0.5 s
+   1004.15  drive power: False
+   1004.15  run: FAULT  (localisation not READY (scan passes through mapped obstacles (21 % of beams)) for 0.5 s)
+   1004.16  event [cmd_mux_kinematics] NO_PERMIT: command source follow -> none: AUTO, no motion permit
+   1004.17  rosout route_executor: ignoring result of obsolete goal Attempt(run_id='20261104-105243-1', pass_index=0, step_index=11, attempt=2)
+   1004.22  mux: source none, warning level 0, protective clear, scale 1.00
+   1004.40  event [cmd_mux_kinematics] DRIVES_NOT_READY: command source none -> none: drives not operational or stale
+   1004.40  event [cmd_mux_kinematics] DRIVES_NOT_READY: motion inhibited: drives not operational or stale
+   1004.57  DO on: none
+   1004.58  drives: operational=False link=standby power_wanted=False (AUTO, no run asking for power)
+   1004.58  event [drive_node] MODE_CHANGE: drives are not powered
+   1018.77  event [route_executor] MODE_CHANGE: run IDLE pass 1/1 step -1: fault acknowledged; load a mission
+   1018.77  run: IDLE  (fault acknowledged; load a mission)
+   1018.77  step: 
+   1031.82  mux: source none, warning level 2, protective clear, scale 1.00
+   1039.02  mux: source none, warning level 1, protective clear, scale 1.00
+   1039.12  mux: source none, warning level 0, protective clear, scale 1.00
+   1273.93  event [panel_node] PANEL: DEST UBC edge; E-stop OK (DI8) LOW
+   1273.93  rosout panel_node: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)
+   1273.93  event [panel_node] ESTOP: EMERGENCY STOP (DI08 LOW (E-stop)): release the E-stop, then press Reset
+   1273.94  event [cmd_mux_kinematics] ESTOP: command source none -> none: E-stop: emergency not cleared
+   1273.94  rosout route_executor: UBC refused: E-stop active - release it and press Reset first
+   1273.94  event [route_executor] DEST_REFUSED: UBC refused: E-stop active - release it and press Reset first
+
+STEPS (EXECUTING)
+    231.77-  242.14  s1             10.4 s    1.83 m  v mean  0.18 max  0.30 m/s  cross-track max +0.052 m  wheel torque sum mean   +5.4 max  +31.0 N·m  SLIP/IMPACT 6
+    242.14-  252.73  s2             10.6 s    3.18 m  v mean  0.30 max  0.30 m/s  cross-track max +0.022 m  wheel torque sum mean   +5.0 max  +34.9 N·m  SLIP/IMPACT 1
+    252.73-  272.86  s3             20.1 s   12.16 m  v mean  0.60 max  0.72 m/s  cross-track max -0.029 m  wheel torque sum mean   +6.8 max  +32.7 N·m  SLIP/IMPACT 16
+    272.86-  283.33  s4             10.5 s    3.14 m  v mean  0.30 max  0.30 m/s  cross-track max +0.029 m  wheel torque sum mean   +5.0 max  +27.9 N·m  SLIP/IMPACT 1
+    283.33-  325.63  s5             42.3 s   29.32 m  v mean  0.69 max  0.72 m/s  cross-track max -0.022 m  wheel torque sum mean   +7.8 max  +28.8 N·m  SLIP/IMPACT 30
+    649.10-  659.46  s1             10.4 s    1.83 m  v mean  0.18 max  0.30 m/s  cross-track max +0.052 m  wheel torque sum mean   +5.0 max  +31.3 N·m  SLIP/IMPACT 9
+    659.46-  669.95  s2             10.5 s    3.15 m  v mean  0.30 max  0.30 m/s  cross-track max +0.025 m  wheel torque sum mean   +5.1 max  +26.5 N·m  SLIP/IMPACT 1
+    669.95-  690.06  s3             20.1 s   12.16 m  v mean  0.60 max  0.72 m/s  cross-track max -0.025 m  wheel torque sum mean   +6.6 max  +31.7 N·m  SLIP/IMPACT 15
+    690.06-  700.46  s4             10.4 s    3.11 m  v mean  0.30 max  0.30 m/s  cross-track max +0.027 m  wheel torque sum mean   +5.5 max  +29.7 N·m  SLIP/IMPACT 2
+    700.46-  892.25  s5            191.8 s  135.85 m  v mean  0.71 max  0.72 m/s  cross-track max -0.028 m  wheel torque sum mean   +6.9 max  +35.9 N·m  SLIP/IMPACT 162
+    892.25-  902.66  s6             10.4 s    3.12 m  v mean  0.30 max  0.30 m/s  cross-track max -0.029 m  wheel torque sum mean   +4.5 max  +29.4 N·m  SLIP/IMPACT 2
+    902.66-  944.46  s7             41.8 s   27.85 m  v mean  0.67 max  0.72 m/s  cross-track max +0.028 m  wheel torque sum mean   +6.5 max  +31.1 N·m  SLIP/IMPACT 40
+    944.46-  959.86  s8             15.4 s    4.62 m  v mean  0.30 max  0.30 m/s  cross-track max -0.033 m  wheel torque sum mean   +4.8 max  +32.0 N·m  SLIP/IMPACT 1
+    959.86-  965.16  s9              5.3 s    1.59 m  v mean  0.30 max  0.30 m/s  cross-track max +0.058 m  wheel torque sum mean   +3.7 max  +27.4 N·m  SLIP/IMPACT 4
+    965.16-  983.35  s10            18.2 s    4.88 m  v mean  0.27 max  0.67 m/s  cross-track max -0.017 m  wheel torque sum mean   +4.6 max  +31.9 N·m  SLIP/IMPACT 5
+    995.18- 1004.15  s12             9.0 s    1.43 m  v mean  0.17 max  0.30 m/s  cross-track max +0.084 m  wheel torque sum mean   +4.2 max  +26.1 N·m  SLIP/IMPACT 5
+
+SLIP / IMPACT  (snatch >= 10 N·m/sample, collapse to <= 60 % in 0.1 s, yaw residual >= 0.05 rad/s; first guesses)
+  map->odom shift over 2 s while moving, p95: 1.492 m  (what an event's shift compares to)
+    235.46  collapse     -38.60 N·m    v  0.09 m/s  map->odom 0.109 m  0.3 deg  loc READY
+    236.03  snatch       +10.71 N·m    v  0.15 m/s  map->odom 0.045 m  0.2 deg  loc READY
+    236.39  snatch       +19.93 N·m    v  0.18 m/s  map->odom 0.011 m  0.3 deg  loc READY
+    237.12  snatch       +34.06 N·m    v  0.25 m/s  map->odom 0.029 m  0.2 deg  loc READY
+    240.58  snatch       +14.86 N·m    v  0.30 m/s  map->odom 0.021 m  0.2 deg  loc READY
+    241.65  snatch       +40.23 N·m    v  0.30 m/s  map->odom 0.077 m  0.3 deg  loc READY
+    248.27  snatch       +35.70 N·m    v  0.30 m/s  map->odom 0.036 m  0.3 deg  loc READY
+    252.93  collapse     -37.26 N·m    v  0.30 m/s  map->odom 0.102 m  0.6 deg  loc READY
+    254.29  snatch       +19.28 N·m    v  0.40 m/s  map->odom 0.063 m  0.5 deg  loc READY
+    255.76  snatch       +29.83 N·m    v  0.55 m/s  map->odom 0.097 m  0.7 deg  loc READY
+    258.95  snatch       +20.12 N·m    v  0.72 m/s  map->odom 0.065 m  0.6 deg  loc READY
+    260.42  snatch       +20.15 N·m    v  0.72 m/s  map->odom 0.094 m  0.7 deg  loc READY
+    261.88  snatch       +13.18 N·m    v  0.72 m/s  map->odom 0.039 m  0.3 deg  loc READY
+    262.83  snatch       +20.42 N·m    v  0.72 m/s  map->odom 0.058 m  0.3 deg  loc READY
+    263.76  snatch       +25.18 N·m    v  0.72 m/s  map->odom 0.043 m  0.2 deg  loc READY
+    264.16  snatch       +20.73 N·m    v  0.72 m/s  map->odom 0.080 m  0.4 deg  loc READY
+    265.58  snatch       +20.23 N·m    v  0.72 m/s  map->odom 0.057 m  0.3 deg  loc READY
+    266.81  snatch       +10.48 N·m    v  0.72 m/s  map->odom 0.104 m  0.5 deg  loc READY
+    267.15  snatch       +17.87 N·m    v  0.72 m/s  map->odom 0.073 m  0.3 deg  loc READY
+    267.83  snatch       +13.41 N·m    v  0.72 m/s  map->odom 0.055 m  0.2 deg  loc READY
+    268.37  snatch       +14.94 N·m    v  0.69 m/s  map->odom 0.116 m  0.5 deg  loc READY
+    269.19  snatch       +20.27 N·m    v  0.60 m/s  map->odom 0.097 m  0.4 deg  loc READY
+    270.43  snatch       -31.39 N·m    v  0.45 m/s  map->odom 0.066 m  0.3 deg  loc READY
+    277.39  snatch       +41.00 N·m    v  0.30 m/s  map->odom 0.149 m  0.3 deg  loc READY
+    283.57  collapse     -32.08 N·m    v  0.30 m/s  map->odom 0.177 m  0.6 deg  loc READY
+    285.79  snatch       +30.48 N·m    v  0.49 m/s  map->odom 0.212 m  0.6 deg  loc READY
+    287.46  snatch       +20.42 N·m    v  0.66 m/s  map->odom 0.178 m  0.3 deg  loc READY
+    290.08  snatch       +11.16 N·m    v  0.72 m/s  map->odom 0.052 m  0.3 deg  loc READY
+    290.59  snatch       +19.96 N·m    v  0.72 m/s  map->odom 0.107 m  0.4 deg  loc READY
+    291.92  snatch       +20.88 N·m    v  0.72 m/s  map->odom 0.131 m  0.4 deg  loc READY
+    292.87  snatch       +16.99 N·m    v  0.72 m/s  map->odom 0.182 m  0.6 deg  loc READY
+    297.10  snatch       +15.43 N·m    v  0.72 m/s  map->odom 0.128 m  0.3 deg  loc READY
+    298.07  snatch       +20.69 N·m    v  0.72 m/s  map->odom 0.250 m  0.6 deg  loc READY
+    300.45  snatch       +16.34 N·m    v  0.72 m/s  map->odom 0.155 m  0.3 deg  loc READY
+    302.54  snatch       +26.06 N·m    v  0.72 m/s  map->odom 0.186 m  0.7 deg  loc READY
+    302.97  snatch       +13.68 N·m    v  0.72 m/s  map->odom 0.223 m  0.8 deg  loc READY
+    303.44  snatch       +17.95 N·m    v  0.72 m/s  map->odom 0.177 m  0.5 deg  loc READY
+    304.49  snatch       +19.93 N·m    v  0.72 m/s  map->odom 0.317 m  1.0 deg  loc READY
+    305.36  snatch       +25.98 N·m    v  0.72 m/s  map->odom 0.140 m  0.5 deg  loc READY
+    306.17  snatch       +15.58 N·m    v  0.72 m/s  map->odom 0.244 m  0.8 deg  loc READY
+    308.27  snatch       +19.96 N·m    v  0.72 m/s  map->odom 0.288 m  0.7 deg  loc READY
+    309.57  snatch       +17.49 N·m    v  0.72 m/s  map->odom 0.208 m  0.4 deg  loc READY
+    310.68  snatch       +20.80 N·m    v  0.72 m/s  map->odom 0.222 m  0.5 deg  loc READY
+    311.27  snatch       +20.84 N·m    v  0.72 m/s  map->odom 0.207 m  0.6 deg  loc READY
+    312.14  snatch       +20.15 N·m    v  0.72 m/s  map->odom 0.108 m  0.3 deg  loc READY
+    313.80  snatch       +17.60 N·m    v  0.72 m/s  map->odom 0.118 m  0.3 deg  loc READY
+    315.49  snatch       +17.95 N·m    v  0.72 m/s  map->odom 0.135 m  0.2 deg  loc READY
+    316.35  snatch       +16.73 N·m    v  0.72 m/s  map->odom 0.218 m  0.5 deg  loc READY
+    316.97  snatch       +23.62 N·m    v  0.72 m/s  map->odom 0.223 m  0.5 deg  loc READY
+    319.30  snatch       +11.93 N·m    v  0.72 m/s  map->odom 0.200 m  0.4 deg  loc READY
+    319.60  snatch       +19.20 N·m    v  0.72 m/s  map->odom 0.314 m  0.7 deg  loc READY
+    321.94  snatch       +16.34 N·m    v  0.72 m/s  map->odom 0.269 m  0.5 deg  loc READY
+    322.61  snatch       +18.29 N·m    v  0.72 m/s  map->odom 0.217 m  0.4 deg  loc LOST
+    323.70  snatch       +23.09 N·m    v  0.72 m/s  map->odom 0.274 m  0.5 deg  loc LOST
+    480.76  collapse      -5.37 N·m    v -0.06 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    484.12  collapse     -27.05 N·m    v -0.08 m/s  map->odom 0.298 m  0.5 deg  loc LOST
+    484.45  snatch       -12.42 N·m    v -0.12 m/s  map->odom 0.296 m  0.6 deg  loc LOST
+    484.99  snatch       -16.23 N·m    v -0.21 m/s  map->odom 0.296 m  0.6 deg  loc LOST
+    486.02  collapse     -30.44 N·m    v -0.36 m/s  map->odom 0.283 m  0.5 deg  loc LOST
+    486.13  snatch       -32.46 N·m    v -0.38 m/s  map->odom 0.178 m  0.3 deg  loc LOST
+    488.01  collapse     -30.37 N·m    v -0.47 m/s  map->odom 0.112 m  0.2 deg  loc LOST
+    489.15  snatch       -31.78 N·m    v -0.44 m/s  map->odom 0.156 m  0.3 deg  loc LOST
+    489.54  collapse     -43.62 N·m    v -0.48 m/s  map->odom 0.205 m  0.4 deg  loc LOST
+    494.06  collapse     -34.90 N·m    v -0.05 m/s  map->odom 0.211 m  0.4 deg  loc LOST
+    494.47  snatch       -31.32 N·m    v -0.11 m/s  map->odom 0.211 m  0.4 deg  loc LOST
+    496.03  snatch       +35.36 N·m    v -0.35 m/s  map->odom 0.243 m  0.5 deg  loc LOST
+    498.12  collapse     -32.88 N·m    v -0.07 m/s  map->odom 0.367 m  0.7 deg  loc LOST
+    498.46  snatch       -10.97 N·m    v -0.12 m/s  map->odom 0.189 m  0.4 deg  loc LOST
+    498.86  snatch       -12.57 N·m    v -0.18 m/s  map->odom 0.189 m  0.4 deg  loc LOST
+    499.35  snatch       -25.87 N·m    v -0.26 m/s  map->odom 0.310 m  0.6 deg  loc LOST
+    500.24  snatch       -36.96 N·m    v -0.39 m/s  map->odom 0.477 m  0.9 deg  loc LOST
+    500.95  collapse     -34.21 N·m    v -0.49 m/s  map->odom 0.146 m  0.3 deg  loc LOST
+    504.32  collapse     -31.17 N·m    v -0.48 m/s  map->odom 0.632 m  1.3 deg  loc LOST
+    506.12  collapse     -35.17 N·m    v -0.49 m/s  map->odom 0.155 m  0.4 deg  loc LOST
+    518.41  yaw           -0.20 rad/s  v  0.00 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    522.00  yaw           -0.18 rad/s  v -0.00 m/s  map->odom 0.220 m  0.5 deg  loc LOST
+    523.68  yaw           -0.20 rad/s  v -0.00 m/s  map->odom 0.157 m  0.4 deg  loc LOST
+    524.57  collapse     -13.37 N·m    v  0.08 m/s  map->odom 0.155 m  0.4 deg  loc LOST
+    524.87  snatch       +16.34 N·m    v  0.13 m/s  map->odom 0.155 m  0.4 deg  loc LOST
+    525.24  collapse     -25.37 N·m    v  0.19 m/s  map->odom 0.161 m  0.4 deg  loc LOST
+    525.43  snatch       +17.18 N·m    v  0.22 m/s  map->odom 0.104 m  0.3 deg  loc LOST
+    526.15  collapse     -35.47 N·m    v  0.32 m/s  map->odom 0.219 m  0.5 deg  loc LOST
+    526.21  snatch       -30.14 N·m    v  0.33 m/s  map->odom 0.359 m  0.8 deg  loc LOST
+    531.07  collapse     -28.58 N·m    v  0.42 m/s  map->odom 0.158 m  0.5 deg  loc LOST
+    531.09  snatch       +40.58 N·m    v  0.42 m/s  map->odom 0.249 m  0.7 deg  loc LOST
+    534.71  snatch       +32.23 N·m    v  0.50 m/s  map->odom 0.148 m  0.4 deg  loc LOST
+    536.31  snatch       +33.95 N·m    v  0.50 m/s  map->odom 0.205 m  0.7 deg  loc LOST
+    541.45  snatch       +35.93 N·m    v  0.50 m/s  map->odom 0.282 m  0.7 deg  loc LOST
+    541.47  snatch_slip  -28.58 N·m    v  0.50 m/s  map->odom 0.137 m  0.4 deg  loc LOST
+    542.59  collapse     -11.89 N·m    v  0.43 m/s  map->odom 0.193 m  0.6 deg  loc LOST
+    543.45  collapse     -34.33 N·m    v  0.42 m/s  map->odom 0.135 m  0.3 deg  loc LOST
+    548.89  snatch       +21.49 N·m    v  0.47 m/s  map->odom 0.301 m  0.9 deg  loc LOST
+    548.97  snatch_slip  -36.61 N·m    v  0.48 m/s  map->odom 0.301 m  0.9 deg  loc LOST
+    549.75  snatch       +12.15 N·m    v  0.41 m/s  map->odom 0.235 m  0.7 deg  loc LOST
+    550.02  snatch_slip  -32.27 N·m    v  0.42 m/s  map->odom 0.214 m  0.7 deg  loc LOST
+    550.26  snatch       -30.59 N·m    v  0.46 m/s  map->odom 0.102 m  0.4 deg  loc LOST
+    554.69  collapse     -39.62 N·m    v  0.41 m/s  map->odom 0.178 m  0.3 deg  loc LOST
+    554.77  snatch       +20.12 N·m    v  0.42 m/s  map->odom 0.178 m  0.3 deg  loc LOST
+    556.44  snatch       +36.16 N·m    v  0.50 m/s  map->odom 1.114 m  3.0 deg  loc LOST
+    556.80  collapse     -22.02 N·m    v  0.48 m/s  map->odom 0.159 m  0.3 deg  loc LOST
+    559.40  collapse     -28.50 N·m    v  0.42 m/s  map->odom 0.322 m  1.3 deg  loc LOST
+    559.99  collapse     -18.48 N·m    v  0.41 m/s  map->odom 0.243 m  1.0 deg  loc LOST
+    560.33  collapse     -43.85 N·m    v  0.46 m/s  map->odom 0.206 m  0.5 deg  loc LOST
+    561.58  collapse     -32.19 N·m    v  0.42 m/s  map->odom 0.690 m  2.2 deg  loc LOST
+    564.92  collapse     -24.19 N·m    v  0.42 m/s  map->odom 0.531 m  2.3 deg  loc LOST
+    565.70  snatch       +13.75 N·m    v  0.50 m/s  map->odom 0.898 m  4.1 deg  loc LOST
+    566.31  snatch       +20.99 N·m    v  0.46 m/s  map->odom 0.631 m  1.7 deg  loc LOST
+    566.53  snatch_slip  -35.93 N·m    v  0.44 m/s  map->odom 0.628 m  0.7 deg  loc LOST
+    566.72  snatch       +20.54 N·m    v  0.46 m/s  map->odom 0.657 m  0.6 deg  loc LOST
+    568.17  collapse     -18.48 N·m    v  0.50 m/s  map->odom 0.266 m  1.0 deg  loc LOST
+    568.19  snatch       +20.84 N·m    v  0.50 m/s  map->odom 0.266 m  1.2 deg  loc LOST
+    569.64  collapse     -29.72 N·m    v  0.46 m/s  map->odom 0.097 m  0.4 deg  loc LOST
+    570.11  snatch       +26.86 N·m    v  0.50 m/s  map->odom 0.072 m  0.4 deg  loc LOST
+    570.81  snatch       +15.28 N·m    v  0.42 m/s  map->odom 0.106 m  0.6 deg  loc LOST
+    571.14  snatch       -14.74 N·m    v  0.42 m/s  map->odom 0.093 m  0.5 deg  loc LOST
+    571.14  snatch_slip  -26.37 N·m    v  0.42 m/s  map->odom 0.093 m  0.5 deg  loc LOST
+    571.60  collapse     -30.52 N·m    v  0.49 m/s  map->odom 0.106 m  0.6 deg  loc LOST
+    571.66  snatch       +36.65 N·m    v  0.50 m/s  map->odom 0.106 m  0.7 deg  loc LOST
+    574.23  collapse     -29.45 N·m    v  0.48 m/s  map->odom 0.103 m  0.7 deg  loc LOST
+    575.67  collapse     -45.22 N·m    v  0.44 m/s  map->odom 0.078 m  0.6 deg  loc LOST
+    575.69  snatch       +32.73 N·m    v  0.44 m/s  map->odom 0.092 m  0.7 deg  loc LOST
+    582.11  collapse     -20.92 N·m    v  0.50 m/s  map->odom 0.074 m  0.6 deg  loc LOST
+    582.82  collapse     -23.51 N·m    v  0.49 m/s  map->odom 0.042 m  0.5 deg  loc LOST
+    583.47  collapse     -17.72 N·m    v  0.49 m/s  map->odom 0.048 m  0.9 deg  loc LOST
+    583.67  snatch       +27.01 N·m    v  0.50 m/s  map->odom 0.041 m  0.6 deg  loc LOST
+    584.32  collapse     -21.76 N·m    v  0.50 m/s  map->odom 0.029 m  0.6 deg  loc LOST
+    584.68  collapse     -36.00 N·m    v  0.48 m/s  map->odom 0.046 m  0.7 deg  loc LOST
+    585.33  collapse     -14.74 N·m    v  0.49 m/s  map->odom 0.059 m  0.4 deg  loc LOST
+    586.76  snatch       -28.27 N·m    v  0.49 m/s  map->odom 0.089 m  0.4 deg  loc LOST
+    586.82  snatch_slip  -31.55 N·m    v  0.49 m/s  map->odom 0.022 m  0.2 deg  loc LOST
+    588.40  collapse     -32.92 N·m    v  0.49 m/s  map->odom 0.054 m  0.5 deg  loc LOST
+    589.45  snatch       +20.38 N·m    v  0.42 m/s  map->odom 0.042 m  0.6 deg  loc LOST
+    589.61  snatch_slip  -17.53 N·m    v  0.44 m/s  map->odom 0.039 m  0.5 deg  loc LOST
+    590.02  collapse     -33.26 N·m    v  0.50 m/s  map->odom 0.048 m  0.6 deg  loc LOST
+    590.06  snatch       +26.94 N·m    v  0.50 m/s  map->odom 0.048 m  0.6 deg  loc LOST
+    595.57  yaw           +0.07 rad/s  v  0.00 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    597.98  yaw           +0.08 rad/s  v  0.00 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    599.68  collapse      -7.73 N·m    v  0.06 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    599.86  snatch       -15.93 N·m    v  0.05 m/s  map->odom 0.000 m  0.0 deg  loc LOST
+    652.39  collapse      -5.14 N·m    v  0.05 m/s  map->odom 0.038 m  0.5 deg  loc READY
+    652.72  collapse     -13.75 N·m    v  0.08 m/s  map->odom 0.092 m  0.5 deg  loc READY
+    653.06  snatch       +10.33 N·m    v  0.12 m/s  map->odom 0.092 m  0.5 deg  loc READY
+    653.26  snatch_slip  -24.61 N·m    v  0.14 m/s  map->odom 0.109 m  0.5 deg  loc READY
+    653.67  snatch       +13.03 N·m    v  0.18 m/s  map->odom 0.077 m  0.4 deg  loc READY
+    654.39  collapse     -30.21 N·m    v  0.25 m/s  map->odom 0.077 m  0.4 deg  loc READY
+    654.45  snatch       +24.69 N·m    v  0.26 m/s  map->odom 0.066 m  0.4 deg  loc READY
+    655.96  snatch       +25.95 N·m    v  0.30 m/s  map->odom 0.055 m  0.4 deg  loc READY
+    658.45  snatch       +24.04 N·m    v  0.30 m/s  map->odom 0.095 m  0.2 deg  loc READY
+    663.89  snatch       +38.48 N·m    v  0.30 m/s  map->odom 0.047 m  0.9 deg  loc READY
+    670.10  collapse     -37.76 N·m    v  0.30 m/s  map->odom 0.076 m  0.5 deg  loc READY
+    670.99  snatch       +28.08 N·m    v  0.35 m/s  map->odom 0.038 m  0.3 deg  loc READY
+    671.69  snatch       +20.99 N·m    v  0.42 m/s  map->odom 0.060 m  0.3 deg  loc READY
+    672.33  snatch       +36.88 N·m    v  0.49 m/s  map->odom 0.058 m  0.5 deg  loc READY
+    676.16  snatch       +20.57 N·m    v  0.72 m/s  map->odom 0.071 m  0.5 deg  loc READY
+    676.70  snatch       +17.95 N·m    v  0.72 m/s  map->odom 0.120 m  0.5 deg  loc READY
+    678.48  snatch       +19.32 N·m    v  0.72 m/s  map->odom 0.129 m  0.5 deg  loc READY
+    682.41  snatch       +17.87 N·m    v  0.72 m/s  map->odom 0.090 m  0.4 deg  loc READY
+    682.90  snatch       +11.13 N·m    v  0.72 m/s  map->odom 0.062 m  0.3 deg  loc READY
+    683.25  snatch       +16.12 N·m    v  0.72 m/s  map->odom 0.159 m  0.6 deg  loc READY
+    683.79  snatch       +14.97 N·m    v  0.72 m/s  map->odom 0.157 m  0.6 deg  loc READY
+    684.37  snatch       +18.02 N·m    v  0.72 m/s  map->odom 0.187 m  0.6 deg  loc READY
+    686.60  snatch       -37.15 N·m    v  0.58 m/s  map->odom 0.053 m  0.2 deg  loc READY
+    688.19  snatch       -19.01 N·m    v  0.38 m/s  map->odom 0.101 m  0.3 deg  loc READY
+    689.30  snatch       +32.65 N·m    v  0.30 m/s  map->odom 0.056 m  0.1 deg  loc READY
+    694.03  snatch       +30.71 N·m    v  0.30 m/s  map->odom 0.032 m  0.2 deg  loc READY
+    694.66  snatch       +33.38 N·m    v  0.30 m/s  map->odom 0.233 m  1.0 deg  loc READY
+    700.67  collapse     -40.12 N·m    v  0.30 m/s  map->odom 0.354 m  1.4 deg  loc READY
+    703.13  snatch       +28.04 N·m    v  0.51 m/s  map->odom 0.141 m  0.5 deg  loc READY
+    704.79  snatch       +26.56 N·m    v  0.68 m/s  map->odom 0.195 m  0.8 deg  loc READY
+    705.98  snatch       +22.02 N·m    v  0.72 m/s  map->odom 0.118 m  0.4 deg  loc READY
+    706.99  snatch       +17.18 N·m    v  0.72 m/s  map->odom 0.105 m  0.3 deg  loc READY
+    708.22  snatch       +11.09 N·m    v  0.72 m/s  map->odom 0.133 m  0.4 deg  loc READY
+    708.59  snatch       +16.76 N·m    v  0.72 m/s  map->odom 0.138 m  0.5 deg  loc READY
+    709.40  snatch       +12.27 N·m    v  0.72 m/s  map->odom 0.101 m  0.3 deg  loc READY
+    710.02  snatch       +14.48 N·m    v  0.72 m/s  map->odom 0.113 m  0.4 deg  loc READY
+    710.37  snatch       +15.74 N·m    v  0.72 m/s  map->odom 0.126 m  0.3 deg  loc READY
+    710.93  snatch       +22.06 N·m    v  0.72 m/s  map->odom 0.158 m  0.4 deg  loc READY
+    712.76  snatch       +23.28 N·m    v  0.72 m/s  map->odom 0.110 m  0.4 deg  loc READY
+    713.31  snatch       +17.30 N·m    v  0.72 m/s  map->odom 0.197 m  0.7 deg  loc READY
+    714.43  snatch       +19.66 N·m    v  0.72 m/s  map->odom 0.175 m  0.4 deg  loc READY
+    715.09  snatch       +12.46 N·m    v  0.72 m/s  map->odom 0.250 m  0.7 deg  loc READY
+    715.82  snatch       +13.53 N·m    v  0.72 m/s  map->odom 0.164 m  0.4 deg  loc READY
+    717.07  snatch       +25.91 N·m    v  0.72 m/s  map->odom 0.118 m  0.4 deg  loc READY
+    718.14  snatch       +13.56 N·m    v  0.72 m/s  map->odom 0.183 m  0.5 deg  loc READY
+    718.87  snatch       +19.16 N·m    v  0.72 m/s  map->odom 0.129 m  0.4 deg  loc READY
+    720.71  snatch       +14.67 N·m    v  0.72 m/s  map->odom 0.160 m  0.5 deg  loc READY
+    721.25  snatch       +18.52 N·m    v  0.72 m/s  map->odom 0.090 m  0.3 deg  loc READY
+    721.63  snatch       +16.19 N·m    v  0.72 m/s  map->odom 0.174 m  0.4 deg  loc READY
+    722.50  snatch       +22.97 N·m    v  0.72 m/s  map->odom 0.193 m  0.6 deg  loc READY
+    723.42  snatch       +22.48 N·m    v  0.72 m/s  map->odom 0.293 m  0.9 deg  loc READY
+    725.64  snatch       +18.52 N·m    v  0.72 m/s  map->odom 0.167 m  0.3 deg  loc READY
+    726.51  snatch       +23.01 N·m    v  0.72 m/s  map->odom 0.237 m  0.4 deg  loc READY
+    729.12  snatch       +17.26 N·m    v  0.72 m/s  map->odom 0.314 m  0.6 deg  loc READY
+    730.15  snatch       +19.32 N·m    v  0.72 m/s  map->odom 0.179 m  0.4 deg  loc READY
+    731.61  snatch       +17.68 N·m    v  0.72 m/s  map->odom 0.318 m  0.7 deg  loc READY
+    732.03  snatch       +16.42 N·m    v  0.72 m/s  map->odom 0.231 m  0.4 deg  loc READY
+    732.54  snatch       +12.08 N·m    v  0.72 m/s  map->odom 0.170 m  0.4 deg  loc READY
+    733.25  snatch       +24.27 N·m    v  0.72 m/s  map->odom 0.213 m  0.5 deg  loc READY
+    734.70  snatch       +30.78 N·m    v  0.72 m/s  map->odom 0.190 m  0.4 deg  loc READY
+    735.35  snatch       +20.08 N·m    v  0.72 m/s  map->odom 0.115 m  0.2 deg  loc READY
+    735.74  snatch       +13.03 N·m    v  0.72 m/s  map->odom 0.140 m  0.2 deg  loc READY
+    736.21  snatch       +10.10 N·m    v  0.72 m/s  map->odom 0.227 m  0.5 deg  loc READY
+    736.74  snatch       +17.68 N·m    v  0.72 m/s  map->odom 0.214 m  0.4 deg  loc READY
+    737.57  snatch       +24.12 N·m    v  0.72 m/s  map->odom 0.325 m  0.7 deg  loc READY
+    740.30  snatch       +19.81 N·m    v  0.72 m/s  map->odom 0.399 m  0.8 deg  loc READY
+    741.81  snatch       +17.75 N·m    v  0.72 m/s  map->odom 0.211 m  0.4 deg  loc READY
+    742.70  snatch       +16.08 N·m    v  0.72 m/s  map->odom 0.310 m  0.5 deg  loc READY
+    743.09  snatch       +13.11 N·m    v  0.72 m/s  map->odom 0.200 m  0.4 deg  loc READY
+    743.61  snatch       +17.72 N·m    v  0.72 m/s  map->odom 0.461 m  0.7 deg  loc READY
+    744.46  snatch       +19.39 N·m    v  0.72 m/s  map->odom 0.243 m  0.4 deg  loc READY
+    744.98  snatch       +18.71 N·m    v  0.72 m/s  map->odom 0.348 m  0.6 deg  loc READY
+    745.61  snatch       +15.43 N·m    v  0.72 m/s  map->odom 0.368 m  0.6 deg  loc READY
+    747.06  snatch       +13.87 N·m    v  0.72 m/s  map->odom 0.446 m  0.7 deg  loc READY
+    747.49  snatch       +21.45 N·m    v  0.72 m/s  map->odom 0.334 m  0.5 deg  loc READY
+    749.13  snatch       +17.41 N·m    v  0.72 m/s  map->odom 0.368 m  0.6 deg  loc READY
+    750.00  snatch       +13.14 N·m    v  0.72 m/s  map->odom 0.210 m  0.3 deg  loc READY
+    750.32  snatch       +22.14 N·m    v  0.72 m/s  map->odom 0.252 m  0.4 deg  loc READY
+    750.62  snatch       +21.41 N·m    v  0.72 m/s  map->odom 0.312 m  0.5 deg  loc READY
+    751.71  snatch       +15.05 N·m    v  0.72 m/s  map->odom 0.199 m  0.3 deg  loc READY
+    752.28  snatch       +21.60 N·m    v  0.72 m/s  map->odom 0.479 m  0.7 deg  loc READY
+    753.76  snatch       +13.98 N·m    v  0.72 m/s  map->odom 0.534 m  0.8 deg  loc READY
+    754.21  snatch       +10.44 N·m    v  0.72 m/s  map->odom 0.409 m  0.6 deg  loc READY
+    754.61  snatch       +16.92 N·m    v  0.72 m/s  map->odom 0.388 m  0.6 deg  loc READY
+    755.74  snatch       +29.91 N·m    v  0.72 m/s  map->odom 0.421 m  0.6 deg  loc READY
+    759.49  snatch       +17.56 N·m    v  0.72 m/s  map->odom 0.361 m  0.5 deg  loc READY
+    760.25  snatch       -21.26 N·m    v  0.72 m/s  map->odom 0.319 m  0.4 deg  loc READY
+    761.27  snatch       +15.01 N·m    v  0.72 m/s  map->odom 0.638 m  0.8 deg  loc READY
+    762.08  snatch       +19.05 N·m    v  0.72 m/s  map->odom 0.315 m  0.4 deg  loc READY
+    762.85  snatch       +19.58 N·m    v  0.72 m/s  map->odom 0.294 m  0.4 deg  loc READY
+    763.33  snatch       +22.59 N·m    v  0.72 m/s  map->odom 0.413 m  0.5 deg  loc READY
+    763.82  snatch       +18.63 N·m    v  0.72 m/s  map->odom 0.340 m  0.4 deg  loc READY
+    764.70  snatch       +20.23 N·m    v  0.72 m/s  map->odom 0.482 m  0.6 deg  loc READY
+    766.58  snatch       +18.25 N·m    v  0.72 m/s  map->odom 0.540 m  0.6 deg  loc READY
+    767.78  snatch       +25.91 N·m    v  0.72 m/s  map->odom 0.513 m  0.6 deg  loc READY
+    769.13  snatch       +18.97 N·m    v  0.72 m/s  map->odom 1.009 m  1.1 deg  loc READY
+    771.19  snatch       +24.27 N·m    v  0.72 m/s  map->odom 0.909 m  1.0 deg  loc READY
+    772.73  snatch       +21.98 N·m    v  0.72 m/s  map->odom 0.585 m  0.6 deg  loc READY
+    774.12  snatch       -20.38 N·m    v  0.72 m/s  map->odom 0.197 m  0.2 deg  loc READY
+    775.17  snatch       +12.15 N·m    v  0.72 m/s  map->odom 0.342 m  0.3 deg  loc READY
+    775.68  snatch       +13.37 N·m    v  0.72 m/s  map->odom 0.752 m  0.8 deg  loc READY
+    776.26  snatch       +23.24 N·m    v  0.72 m/s  map->odom 0.532 m  0.5 deg  loc READY
+    778.15  snatch       +22.82 N·m    v  0.72 m/s  map->odom 0.350 m  0.4 deg  loc READY
+    779.25  snatch       +21.18 N·m    v  0.72 m/s  map->odom 0.571 m  0.6 deg  loc READY
+    779.90  snatch       +12.08 N·m    v  0.72 m/s  map->odom 0.311 m  0.3 deg  loc READY
+    780.32  snatch       +26.33 N·m    v  0.72 m/s  map->odom 0.563 m  0.6 deg  loc READY
+    782.06  snatch       +12.00 N·m    v  0.72 m/s  map->odom 0.177 m  0.2 deg  loc READY
+    782.38  snatch       +15.62 N·m    v  0.72 m/s  map->odom 0.245 m  0.2 deg  loc READY
+    782.79  snatch       -14.29 N·m    v  0.72 m/s  map->odom 0.320 m  0.3 deg  loc READY
+    783.51  snatch       +15.09 N·m    v  0.72 m/s  map->odom 0.678 m  0.6 deg  loc READY
+    784.07  snatch       +17.41 N·m    v  0.72 m/s  map->odom 1.019 m  1.0 deg  loc READY
+    784.76  snatch       +21.11 N·m    v  0.72 m/s  map->odom 0.520 m  0.5 deg  loc READY
+    786.54  snatch       +10.48 N·m    v  0.72 m/s  map->odom 0.401 m  0.4 deg  loc READY
+    786.89  snatch       +17.98 N·m    v  0.72 m/s  map->odom 0.382 m  0.3 deg  loc READY
+    787.31  snatch       +20.54 N·m    v  0.72 m/s  map->odom 0.200 m  0.2 deg  loc READY
+    788.55  snatch       +18.97 N·m    v  0.72 m/s  map->odom 0.307 m  0.3 deg  loc READY
+    791.82  snatch       +17.30 N·m    v  0.72 m/s  map->odom 0.524 m  0.4 deg  loc READY
+    793.18  snatch       +20.96 N·m    v  0.72 m/s  map->odom 0.438 m  0.4 deg  loc READY
+    794.17  snatch       -17.34 N·m    v  0.72 m/s  map->odom 0.297 m  0.3 deg  loc READY
+    795.18  snatch       +20.12 N·m    v  0.72 m/s  map->odom 0.394 m  0.3 deg  loc READY
+    796.73  snatch       +22.21 N·m    v  0.72 m/s  map->odom 0.377 m  0.3 deg  loc READY
+    799.16  snatch       +12.92 N·m    v  0.72 m/s  map->odom 0.474 m  0.4 deg  loc READY
+    799.50  snatch       +18.21 N·m    v  0.72 m/s  map->odom 0.845 m  0.7 deg  loc READY
+    800.49  snatch       +14.78 N·m    v  0.72 m/s  map->odom 0.578 m  0.5 deg  loc READY
+    800.87  snatch       +20.88 N·m    v  0.72 m/s  map->odom 0.400 m  0.3 deg  loc READY
+    801.99  snatch       +19.58 N·m    v  0.72 m/s  map->odom 0.644 m  0.5 deg  loc READY
+    802.81  snatch       +17.41 N·m    v  0.72 m/s  map->odom 0.561 m  0.4 deg  loc READY
+    804.62  snatch       +19.66 N·m    v  0.72 m/s  map->odom 0.702 m  0.5 deg  loc READY
+    805.81  snatch       +20.99 N·m    v  0.72 m/s  map->odom 0.706 m  0.5 deg  loc READY
+    807.30  snatch       +17.18 N·m    v  0.72 m/s  map->odom 0.956 m  0.7 deg  loc READY
+    807.77  snatch       +10.82 N·m    v  0.72 m/s  map->odom 0.621 m  0.5 deg  loc READY
+    808.25  snatch       +21.26 N·m    v  0.72 m/s  map->odom 1.030 m  0.8 deg  loc READY
+    809.89  snatch       +20.50 N·m    v  0.72 m/s  map->odom 0.560 m  0.4 deg  loc READY
+    811.16  snatch       +19.20 N·m    v  0.72 m/s  map->odom 1.149 m  0.8 deg  loc READY
+    812.43  snatch       +30.63 N·m    v  0.72 m/s  map->odom 0.696 m  0.5 deg  loc READY
+    815.12  snatch       +20.04 N·m    v  0.72 m/s  map->odom 0.695 m  0.5 deg  loc READY
+    818.87  snatch       +16.80 N·m    v  0.72 m/s  map->odom 0.920 m  0.6 deg  loc READY
+    819.59  snatch       +21.72 N·m    v  0.72 m/s  map->odom 0.703 m  0.5 deg  loc READY
+    820.36  snatch       +19.77 N·m    v  0.72 m/s  map->odom 0.614 m  0.4 deg  loc READY
+    820.72  snatch       +16.88 N·m    v  0.72 m/s  map->odom 1.077 m  0.7 deg  loc READY
+    821.39  snatch       +22.67 N·m    v  0.72 m/s  map->odom 0.847 m  0.6 deg  loc READY
+    822.72  snatch       +16.61 N·m    v  0.72 m/s  map->odom 1.021 m  0.7 deg  loc READY
+    823.73  snatch       +18.44 N·m    v  0.72 m/s  map->odom 0.742 m  0.5 deg  loc READY
+    824.63  snatch       +19.62 N·m    v  0.72 m/s  map->odom 0.838 m  0.5 deg  loc READY
+    825.45  snatch       +17.56 N·m    v  0.72 m/s  map->odom 1.281 m  0.8 deg  loc READY
+    826.26  snatch       +29.79 N·m    v  0.72 m/s  map->odom 1.042 m  0.6 deg  loc READY
+    828.17  snatch       +14.97 N·m    v  0.72 m/s  map->odom 1.006 m  0.6 deg  loc READY
+    828.54  snatch       +22.44 N·m    v  0.72 m/s  map->odom 0.741 m  0.5 deg  loc READY
+    829.43  snatch       +19.96 N·m    v  0.72 m/s  map->odom 1.617 m  1.0 deg  loc READY
+    831.11  snatch       +19.20 N·m    v  0.72 m/s  map->odom 1.495 m  0.9 deg  loc READY
+    832.71  snatch       +16.50 N·m    v  0.72 m/s  map->odom 1.210 m  0.7 deg  loc READY
+    834.27  snatch       +21.60 N·m    v  0.72 m/s  map->odom 1.592 m  1.0 deg  loc READY
+    836.96  snatch       +26.75 N·m    v  0.72 m/s  map->odom 1.553 m  0.9 deg  loc READY
+    839.40  snatch       +19.89 N·m    v  0.72 m/s  map->odom 1.858 m  1.1 deg  loc READY
+    840.85  snatch       +22.52 N·m    v  0.72 m/s  map->odom 1.381 m  0.8 deg  loc READY
+    843.58  snatch       +27.39 N·m    v  0.72 m/s  map->odom 1.004 m  0.6 deg  loc READY
+    847.41  snatch       +17.45 N·m    v  0.72 m/s  map->odom 1.507 m  0.8 deg  loc READY
+    848.21  snatch       +20.80 N·m    v  0.72 m/s  map->odom 0.826 m  0.4 deg  loc READY
+    850.27  snatch       +20.27 N·m    v  0.72 m/s  map->odom 0.514 m  0.3 deg  loc READY
+    852.01  snatch       +15.05 N·m    v  0.72 m/s  map->odom 0.767 m  0.4 deg  loc READY
+    852.45  snatch       +17.03 N·m    v  0.72 m/s  map->odom 1.528 m  0.8 deg  loc READY
+    853.40  snatch       +17.68 N·m    v  0.72 m/s  map->odom 1.344 m  0.7 deg  loc READY
+    854.81  snatch       +18.10 N·m    v  0.72 m/s  map->odom 0.969 m  0.5 deg  loc READY
+    855.18  snatch       +17.87 N·m    v  0.72 m/s  map->odom 1.150 m  0.6 deg  loc READY
+    856.81  snatch       +14.63 N·m    v  0.72 m/s  map->odom 0.658 m  0.3 deg  loc READY
+    857.39  snatch       +20.99 N·m    v  0.72 m/s  map->odom 1.160 m  0.6 deg  loc READY
+    858.56  snatch       +17.83 N·m    v  0.72 m/s  map->odom 1.390 m  0.7 deg  loc READY
+    859.91  snatch       +23.96 N·m    v  0.72 m/s  map->odom 1.932 m  1.0 deg  loc READY
+    861.66  snatch       +11.93 N·m    v  0.72 m/s  map->odom 0.948 m  0.5 deg  loc READY
+    862.02  snatch       +18.48 N·m    v  0.72 m/s  map->odom 1.161 m  0.6 deg  loc READY
+    865.03  snatch       +10.93 N·m    v  0.72 m/s  map->odom 0.430 m  0.2 deg  loc READY
+    865.45  snatch       +20.27 N·m    v  0.72 m/s  map->odom 1.140 m  0.5 deg  loc READY
+    868.08  snatch       -15.54 N·m    v  0.72 m/s  map->odom 0.844 m  0.4 deg  loc READY
+    869.01  snatch       +19.93 N·m    v  0.72 m/s  map->odom 1.062 m  0.5 deg  loc READY
+    871.84  snatch       +10.59 N·m    v  0.72 m/s  map->odom 0.694 m  0.3 deg  loc READY
+    872.76  snatch       +18.90 N·m    v  0.72 m/s  map->odom 0.778 m  0.4 deg  loc READY
+    874.14  snatch       +24.38 N·m    v  0.72 m/s  map->odom 0.764 m  0.3 deg  loc READY
+    876.62  snatch       +14.90 N·m    v  0.72 m/s  map->odom 0.565 m  0.3 deg  loc READY
+    876.95  snatch       +18.33 N·m    v  0.72 m/s  map->odom 1.520 m  0.7 deg  loc READY
+    878.97  snatch       +15.13 N·m    v  0.72 m/s  map->odom 1.071 m  0.5 deg  loc READY
+    879.61  snatch       +22.75 N·m    v  0.72 m/s  map->odom 2.475 m  1.1 deg  loc READY
+    883.57  snatch       +18.52 N·m    v  0.72 m/s  map->odom 0.691 m  0.3 deg  loc READY
+    884.18  snatch       +18.10 N·m    v  0.72 m/s  map->odom 1.201 m  0.5 deg  loc READY
+    886.77  snatch       +16.50 N·m    v  0.72 m/s  map->odom 1.584 m  0.7 deg  loc READY
+    887.78  snatch       +10.74 N·m    v  0.71 m/s  map->odom 0.996 m  0.4 deg  loc READY
+    888.19  snatch       +18.36 N·m    v  0.68 m/s  map->odom 1.420 m  0.6 deg  loc READY
+    888.82  snatch       +24.46 N·m    v  0.60 m/s  map->odom 0.719 m  0.3 deg  loc READY
+    891.17  snatch       +13.41 N·m    v  0.32 m/s  map->odom 0.529 m  0.2 deg  loc READY
+    891.47  snatch       -28.77 N·m    v  0.31 m/s  map->odom 0.529 m  0.2 deg  loc READY
+    892.80  snatch       +38.06 N·m    v  0.30 m/s  map->odom 1.403 m  0.6 deg  loc READY
+    901.74  snatch       +24.92 N·m    v  0.30 m/s  map->odom 0.852 m  0.4 deg  loc READY
+    902.87  collapse     -33.41 N·m    v  0.30 m/s  map->odom 0.623 m  0.2 deg  loc READY
+    904.17  snatch       +27.66 N·m    v  0.39 m/s  map->odom 0.844 m  0.3 deg  loc READY
+    904.45  snatch_slip  -35.59 N·m    v  0.42 m/s  map->odom 0.813 m  0.4 deg  loc READY
+    907.30  snatch       +16.95 N·m    v  0.70 m/s  map->odom 1.078 m  0.4 deg  loc READY
+    908.65  snatch       +14.33 N·m    v  0.72 m/s  map->odom 0.823 m  0.3 deg  loc READY
+    909.61  snatch       +16.95 N·m    v  0.72 m/s  map->odom 0.780 m  0.3 deg  loc READY
+    910.17  snatch       +15.62 N·m    v  0.72 m/s  map->odom 0.630 m  0.3 deg  loc READY
+    911.33  snatch       +15.81 N·m    v  0.72 m/s  map->odom 1.774 m  0.7 deg  loc READY
+    912.68  snatch       +22.40 N·m    v  0.72 m/s  map->odom 0.980 m  0.4 deg  loc READY
+    914.58  snatch       +12.27 N·m    v  0.72 m/s  map->odom 1.058 m  0.4 deg  loc READY
+    914.96  snatch       +14.33 N·m    v  0.72 m/s  map->odom 2.194 m  0.9 deg  loc READY
+    915.55  snatch       +20.69 N·m    v  0.72 m/s  map->odom 1.981 m  0.8 deg  loc READY
+    916.62  snatch       +15.24 N·m    v  0.72 m/s  map->odom 2.214 m  0.9 deg  loc READY
+    917.85  snatch       +13.72 N·m    v  0.72 m/s  map->odom 2.099 m  0.9 deg  loc READY
+    918.30  snatch       +11.16 N·m    v  0.72 m/s  map->odom 1.922 m  0.8 deg  loc READY
+    918.66  snatch       +17.75 N·m    v  0.72 m/s  map->odom 2.955 m  1.2 deg  loc READY
+    919.29  snatch       +24.69 N·m    v  0.72 m/s  map->odom 2.264 m  0.9 deg  loc READY
+    919.71  snatch       +21.68 N·m    v  0.72 m/s  map->odom 2.027 m  0.8 deg  loc READY
+    921.64  snatch       +15.93 N·m    v  0.72 m/s  map->odom 1.978 m  0.8 deg  loc READY
+    922.93  snatch       +20.42 N·m    v  0.72 m/s  map->odom 1.014 m  0.4 deg  loc READY
+    923.74  snatch       +26.67 N·m    v  0.72 m/s  map->odom 0.866 m  0.4 deg  loc READY
+    925.31  snatch       +24.46 N·m    v  0.72 m/s  map->odom 0.897 m  0.4 deg  loc READY
+    928.07  snatch       +18.33 N·m    v  0.72 m/s  map->odom 1.087 m  0.4 deg  loc READY
+    929.16  snatch       +18.40 N·m    v  0.72 m/s  map->odom 0.634 m  0.3 deg  loc READY
+    929.54  snatch       +13.45 N·m    v  0.72 m/s  map->odom 0.993 m  0.4 deg  loc READY
+    929.87  snatch       +10.44 N·m    v  0.72 m/s  map->odom 1.130 m  0.5 deg  loc READY
+    930.25  snatch       +12.19 N·m    v  0.72 m/s  map->odom 0.958 m  0.4 deg  loc READY
+    930.67  snatch       +11.24 N·m    v  0.72 m/s  map->odom 0.406 m  0.2 deg  loc READY
+    931.26  snatch       +13.53 N·m    v  0.72 m/s  map->odom 0.505 m  0.2 deg  loc READY
+    931.67  snatch       +19.32 N·m    v  0.72 m/s  map->odom 0.935 m  0.3 deg  loc READY
+    933.10  snatch       +14.74 N·m    v  0.72 m/s  map->odom 0.779 m  0.3 deg  loc READY
+    933.50  snatch       +14.59 N·m    v  0.72 m/s  map->odom 0.693 m  0.3 deg  loc READY
+    934.25  snatch       +23.66 N·m    v  0.72 m/s  map->odom 1.231 m  0.5 deg  loc READY
+    937.02  snatch       +22.97 N·m    v  0.72 m/s  map->odom 1.398 m  0.6 deg  loc READY
+    937.57  snatch       +19.39 N·m    v  0.72 m/s  map->odom 0.418 m  0.2 deg  loc READY
+    938.44  snatch       +18.29 N·m    v  0.72 m/s  map->odom 0.394 m  0.2 deg  loc READY
+    939.13  snatch       +13.56 N·m    v  0.72 m/s  map->odom 0.594 m  0.2 deg  loc READY
+    940.11  snatch       +20.31 N·m    v  0.70 m/s  map->odom 0.769 m  0.3 deg  loc READY
+    941.13  snatch       +30.78 N·m    v  0.59 m/s  map->odom 0.831 m  0.3 deg  loc READY
+    942.71  snatch       +41.15 N·m    v  0.40 m/s  map->odom 0.987 m  0.4 deg  loc READY
+    952.67  snatch       +42.56 N·m    v  0.30 m/s  map->odom 2.037 m  0.8 deg  loc READY
+    960.71  snatch       -14.29 N·m    v  0.30 m/s  map->odom 0.755 m  0.3 deg  loc READY
+    961.33  snatch       +21.11 N·m    v  0.30 m/s  map->odom 0.829 m  0.3 deg  loc READY
+    962.10  snatch       +32.77 N·m    v  0.30 m/s  map->odom 1.325 m  0.5 deg  loc READY
+    964.83  snatch       +28.50 N·m    v  0.30 m/s  map->odom 1.894 m  0.8 deg  loc READY
+    965.43  collapse     -23.01 N·m    v  0.30 m/s  map->odom 1.844 m  0.8 deg  loc READY
+    966.60  collapse     -37.26 N·m    v  0.38 m/s  map->odom 2.945 m  1.2 deg  loc READY
+    966.73  snatch       -34.44 N·m    v  0.40 m/s  map->odom 2.945 m  1.2 deg  loc READY
+    975.65  snatch       +13.75 N·m    v  0.13 m/s  map->odom 1.633 m  0.7 deg  loc READY
+    982.82  snatch       -17.07 N·m    v  0.02 m/s  map->odom 0.000 m  0.0 deg  loc READY
+    998.14  collapse     -14.02 N·m    v  0.03 m/s  map->odom 1.547 m  0.7 deg  loc READY
+    998.77  collapse     -35.81 N·m    v  0.09 m/s  map->odom 1.188 m  0.5 deg  loc READY
+    999.42  snatch       +14.44 N·m    v  0.15 m/s  map->odom 0.897 m  0.4 deg  loc READY
+   1000.89  snatch       +25.18 N·m    v  0.29 m/s  map->odom 0.814 m  0.3 deg  loc READY
+   1001.78  snatch       +21.91 N·m    v  0.30 m/s  map->odom 2.818 m  1.2 deg  loc LOST
+  largest torque jumps:  953.30s +42.6, 951.20s +41.1, 281.11s +41.0, 534.06s +40.6, 246.97s +40.2 N·m
+  largest yaw residuals: 523.74s -0.203, 518.47s -0.200, 522.08s -0.180, 1004.58s -0.136, 598.00s +0.078 rad/s
+  wheel/gyro yaw gain 0.970: the encoders read turns -3.0 %; track width that would agree ~0.472 m (profile 0.487)

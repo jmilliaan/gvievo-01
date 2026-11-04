@@ -1,0 +1,14 @@
+[INFO] [1793758493.549010773] [drive_node]: bus up on socketcan:can0 at 125 kbps, profile agv-01
+[INFO] [1793758493.567330438] [drive_node]: MLS yaw rate by SDO polling at 50 Hz (1806h disabled)
+[INFO] [1793758493.568103644] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793758494.093465598] [drive_node]: encoder scale 1080000 counts per wheel turn
+[INFO] [1793758494.094665943] [drive_node]: drives in standby (linked, power stage off)
+[INFO] [1793758494.102650726] [drive_node]: drives standby, imu sdo
+[INFO] [1793758561.132091311] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793758577.448396674] [drive_node]: drive power not wanted: E-stop (DI08)
+[INFO] [1793758578.621054607] [drive_node]: drive power not wanted: waiting for Reset
+[INFO] [1793758588.556044367] [drive_node]: drive power wanted: MANUAL, pendant enable (arm) on
+[INFO] [1793758588.938326051] [drive_node]: drives powered (targets zero): MANUAL, pendant enable (arm) on
+[INFO] [1793758588.944863648] [drive_node]: drives armed, imu sdo
+[WARN] [1793759113.806479494] [drive_node]: setpoint gated to zero: inhibited by supervisor
+[INFO] [1793759114.018118897] [drive_node]: bus closed, drives de-energised

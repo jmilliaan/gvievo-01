@@ -1,0 +1,10 @@
+mission_id: kyb-map-02_rev4_route-itg-02_rev4
+created: 2026-11-04T12:00:01+0700
+map:
+  id: kyb-map-02
+  revision: 4
+  sha256: 6c6ef3f4ac571ebc068432cab7ea138a51f2c3c16fdbd6757bd805898c842602
+route:
+  id: route-itg-02
+  revision: 4
+  sha256: 311f68dba531e978f03098892b26c717832152ed9ad41e4a6e86c290e76fc4c7

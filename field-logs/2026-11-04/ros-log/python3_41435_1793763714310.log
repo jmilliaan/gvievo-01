@@ -1,0 +1,26 @@
+[INFO] [1793763714.368427640] [rosbag2_recorder]: Press SPACE for pausing/resuming
+[INFO] [1793763714.382394142] [rosbag2_recorder]: Listening for topics...
+[INFO] [1793763714.382592299] [rosbag2_recorder]: Event publisher thread: Starting
+[INFO] [1793763714.395042735] [rosbag2_recorder]: Subscribed to topic '/tf'
+[INFO] [1793763714.402890086] [rosbag2_recorder]: Subscribed to topic '/rosout'
+[INFO] [1793763714.409647746] [rosbag2_recorder]: Subscribed to topic '/diagnostics'
+[INFO] [1793763714.409878599] [rosbag2_recorder]: Recording...
+[INFO] [1793763714.426873052] [rosbag2_recorder]: Subscribed to topic '/drives/torque'
+[INFO] [1793763714.433769699] [rosbag2_recorder]: Subscribed to topic '/amr/mode_state'
+[INFO] [1793763714.439204451] [rosbag2_recorder]: Subscribed to topic '/output_paths'
+[INFO] [1793763714.444541521] [rosbag2_recorder]: Subscribed to topic '/wheel_states'
+[INFO] [1793763714.448686297] [rosbag2_recorder]: Subscribed to topic '/imu/data'
+[INFO] [1793763714.452304354] [rosbag2_recorder]: Subscribed to topic '/amr/control_lease'
+[INFO] [1793763714.455667392] [rosbag2_recorder]: Subscribed to topic '/amr/run_state'
+[INFO] [1793763714.460633115] [rosbag2_recorder]: Subscribed to topic '/amcl_pose'
+[INFO] [1793763714.464533201] [rosbag2_recorder]: Subscribed to topic '/odom_raw'
+[INFO] [1793763714.468683260] [rosbag2_recorder]: Subscribed to topic '/amr/events'
+[INFO] [1793763714.472306020] [rosbag2_recorder]: Subscribed to topic '/amr/io'
+[INFO] [1793763714.474591063] [rosbag2_recorder]: Subscribed to topic '/amr/localization_state'
+[INFO] [1793763714.477057144] [rosbag2_recorder]: Subscribed to topic '/amr/mux_state'
+[INFO] [1793763714.479664444] [rosbag2_recorder]: Subscribed to topic '/cmd_wheel_vel'
+[INFO] [1793763714.483336432] [rosbag2_recorder]: Subscribed to topic '/amr/panel_state'
+[INFO] [1793763714.487284312] [rosbag2_recorder]: Subscribed to topic '/drives/status'
+[INFO] [1793764989.063667576] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while
+[INFO] [1793764989.066582557] [rosbag2_recorder]: Event publisher thread: Exiting
+[INFO] [1793764989.066678297] [rosbag2_recorder]: Recording stopped

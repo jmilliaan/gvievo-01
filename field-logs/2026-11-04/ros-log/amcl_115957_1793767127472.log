@@ -1,0 +1,64 @@
+[INFO] [1793767127.513021998] [amcl]: 
+	amcl lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793767127.513989845] [amcl]: Creating
+[INFO] [1793767130.800352523] [amcl]: Configuring
+[INFO] [1793767130.800589794] [amcl]: initTransforms
+[INFO] [1793767130.812533875] [amcl]: initPubSub
+[INFO] [1793767130.817192303] [amcl]: Subscribed to map topic.
+[INFO] [1793767130.932008682] [amcl]: Received a 1210 X 1487 map @ 0.050 m/pix
+[INFO] [1793767130.966863997] [amcl]: Activating
+[INFO] [1793767130.966992535] [amcl]: Creating bond (amcl) to lifecycle manager.
+[INFO] [1793767131.037228656] [amcl]: createLaserObject
+[INFO] [1793767131.592786817] [amcl]: Message Filter dropping message: frame 'laser_frame' at time 1793767130.764 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[WARN] [1793767132.939204295] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767135.057891583] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767137.158353227] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767139.258379618] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767141.258686578] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767143.378313611] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767145.497887847] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767147.498646789] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793767149.618420912] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [1793767150.421622937] [amcl]: initialPoseReceived
+[WARN] [1793767150.421985530] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793767150.421853 but the latest data is at time 1793767150.379058, when looking up transform from frame [base_footprint] to frame [odom])
+[INFO] [1793767150.422087236] [amcl]: Setting pose (1793767150.422087): 90.038 -27.352 -0.102
+[INFO] [1793767150.481400157] [amcl]: Requesting no-motion update
+[INFO] [1793767150.982062724] [amcl]: Requesting no-motion update
+[INFO] [1793767151.482999558] [amcl]: Requesting no-motion update
+[INFO] [1793767152.081777430] [amcl]: Requesting no-motion update
+[INFO] [1793767152.582654747] [amcl]: Requesting no-motion update
+[INFO] [1793767153.182073429] [amcl]: Requesting no-motion update
+[INFO] [1793767153.782132787] [amcl]: Requesting no-motion update
+[INFO] [1793767154.282779186] [amcl]: Requesting no-motion update
+[INFO] [1793767154.782552467] [amcl]: Requesting no-motion update
+[INFO] [1793767155.383575269] [amcl]: Requesting no-motion update
+[INFO] [1793767155.985083293] [amcl]: Requesting no-motion update
+[INFO] [1793767156.582152545] [amcl]: Requesting no-motion update
+[INFO] [1793767157.182078003] [amcl]: Requesting no-motion update
+[INFO] [1793767157.782065600] [amcl]: Requesting no-motion update
+[INFO] [1793767158.382025134] [amcl]: Requesting no-motion update
+[INFO] [1793767158.882251642] [amcl]: Requesting no-motion update
+[INFO] [1793767159.390899788] [amcl]: Requesting no-motion update
+[INFO] [1793767159.982256757] [amcl]: Requesting no-motion update
+[INFO] [1793767160.582107510] [amcl]: Requesting no-motion update
+[INFO] [1793767161.083792893] [amcl]: Requesting no-motion update
+[INFO] [1793767161.682036762] [amcl]: Requesting no-motion update
+[INFO] [1793767162.182708076] [amcl]: Requesting no-motion update
+[INFO] [1793767162.683414013] [amcl]: Requesting no-motion update
+[INFO] [1793767163.282031502] [amcl]: Requesting no-motion update
+[INFO] [1793767163.782488150] [amcl]: Requesting no-motion update
+[INFO] [1793767164.382053332] [amcl]: Requesting no-motion update
+[INFO] [1793767164.982395569] [amcl]: Requesting no-motion update
+[INFO] [1793767165.583459426] [amcl]: Requesting no-motion update
+[INFO] [1793767166.212643643] [amcl]: Requesting no-motion update
+[INFO] [1793767166.799081585] [amcl]: Requesting no-motion update
+[INFO] [1793767167.396033284] [amcl]: Requesting no-motion update
+[INFO] [1793767167.982252814] [amcl]: Requesting no-motion update
+[INFO] [1793767256.063922392] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793767256.064054217] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[INFO] [1793767256.064174703] [amcl]: Deactivating
+[INFO] [1793767256.064267240] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[INFO] [1793767256.074498383] [amcl]: Cleaning up
+[INFO] [1793767256.102509322] [amcl]: Destroying bond (amcl) to lifecycle manager.

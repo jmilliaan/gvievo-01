@@ -1,0 +1,26 @@
+stdin is not a terminal device. Keyboard handling disabled.[INFO] [1793765989.476387261] [rosbag2_recorder]: Press SPACE for pausing/resuming
+[INFO] [1793765989.478495866] [rosbag2_recorder]: Listening for topics...
+[INFO] [1793765989.478667503] [rosbag2_recorder]: Event publisher thread: Starting
+[INFO] [1793765989.479862098] [rosbag2_recorder]: Subscribed to topic '/rosout'
+[INFO] [1793765989.480022383] [rosbag2_recorder]: Recording...
+[INFO] [1793765989.590996579] [rosbag2_recorder]: Subscribed to topic '/drives/torque'
+[INFO] [1793765989.596154089] [rosbag2_recorder]: Subscribed to topic '/amr/mode_state'
+[INFO] [1793765989.598244500] [rosbag2_recorder]: Subscribed to topic '/output_paths'
+[INFO] [1793765989.606864198] [rosbag2_recorder]: Subscribed to topic '/drives/status'
+[INFO] [1793765989.608416014] [rosbag2_recorder]: Subscribed to topic '/amr/panel_state'
+[INFO] [1793765989.610105204] [rosbag2_recorder]: Subscribed to topic '/wheel_states'
+[INFO] [1793765989.618762086] [rosbag2_recorder]: Subscribed to topic '/imu/data'
+[INFO] [1793765989.628101154] [rosbag2_recorder]: Subscribed to topic '/amr/control_lease'
+[INFO] [1793765989.632360860] [rosbag2_recorder]: Subscribed to topic '/amcl_pose'
+[INFO] [1793765989.635197806] [rosbag2_recorder]: Subscribed to topic '/odom_raw'
+[INFO] [1793765989.638547376] [rosbag2_recorder]: Subscribed to topic '/amr/run_state'
+[INFO] [1793765989.642482739] [rosbag2_recorder]: Subscribed to topic '/tf'
+[INFO] [1793765989.646563207] [rosbag2_recorder]: Subscribed to topic '/amr/io'
+[INFO] [1793765989.652507753] [rosbag2_recorder]: Subscribed to topic '/amr/events'
+[INFO] [1793765989.657045497] [rosbag2_recorder]: Subscribed to topic '/diagnostics'
+[INFO] [1793765989.660267790] [rosbag2_recorder]: Subscribed to topic '/amr/localization_state'
+[INFO] [1793765989.663030732] [rosbag2_recorder]: Subscribed to topic '/amr/mux_state'
+[INFO] [1793765989.665703715] [rosbag2_recorder]: Subscribed to topic '/cmd_wheel_vel'
+[INFO] [1793768989.121914096] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while
+[INFO] [1793768989.126925740] [rosbag2_recorder]: Event publisher thread: Exiting
+[INFO] [1793768989.127239590] [rosbag2_recorder]: Recording stopped

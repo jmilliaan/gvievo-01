@@ -1,0 +1,34 @@
+[INFO] [1793763613.529567448] [amr_supervisor]: instance 686f0e75 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[INFO] [1793763613.534827400] [amr_supervisor]: swept 1 stale generation files
+[INFO] [1793763613.548412652] [amr_supervisor]: spawned base pgid=38162 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793763616.285108958] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793763688.018212796] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793763688.537221794] [amr_supervisor]: spawned layer pgid=40485 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=2 autostart:=false
+[INFO] [1793763696.254564213] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793763821.760531838] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793763822.926975527] [amr_supervisor]: spawned layer pgid=44563 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=3 autostart:=false
+[INFO] [1793763830.675882797] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793763914.287684855] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793763915.522070795] [amr_supervisor]: spawned layer pgid=47197 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=4 autostart:=false
+[INFO] [1793763923.225879998] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793764319.967233753] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793764321.240953917] [amr_supervisor]: spawned layer pgid=54193 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=5 autostart:=false
+[INFO] [1793764328.983248798] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793764333.029222980] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793764334.151591038] [amr_supervisor]: spawned layer pgid=54575 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=3 generation:=6 autostart:=false
+[INFO] [1793764341.882686309] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793765906.669328711] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793765907.690036447] [amr_supervisor]: spawned layer pgid=87620 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=4 generation:=7 autostart:=false
+[INFO] [1793765916.027014701] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793767125.765006049] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793767126.886217457] [amr_supervisor]: spawned layer pgid=115935 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-01 revision:=1 generation:=8 autostart:=false
+[INFO] [1793767134.618209951] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793767255.775005562] [amr_supervisor]: mode NAVIGATION -> TRANSITIONING (inhibiting)
+[INFO] [1793767256.903590090] [amr_supervisor]: spawned layer pgid=119326 leader=alive members=1: navigation_layer.launch.py maps_dir:=/home/gvipc-evo-01/amr_maps map_id:=kyb-map-02 revision:=4 generation:=9 autostart:=false
+[INFO] [1793767264.722646845] [amr_supervisor]: mode TRANSITIONING -> NAVIGATION ()
+[INFO] [1793768989.075437647] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793768990.502758706] [amr_supervisor]: stopped layer: clean (layer pgid=119326 leader=0 members=0)
+[INFO] [1793768991.645255449] [amr_supervisor]: stopped base: clean (base pgid=38162 leader=0 members=0)
+[INFO] [1793768992.849885627] [amr_supervisor]: stopped web: clean (web pgid=38161 leader=0 members=0)
+[INFO] [1793768992.850382687] [amr_supervisor]: teardown: groups stopped in 3.8 s
+[INFO] [1793768992.850871983] [amr_supervisor]: teardown: executor down at 3.8 s

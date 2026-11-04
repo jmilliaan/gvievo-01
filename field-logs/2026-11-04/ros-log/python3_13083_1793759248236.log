@@ -1,0 +1,12 @@
+[INFO] [1793759248.445079285] [cmd_mux_kinematics]: r=0.09 track=0.487 w_max=13.96 rad/s a_max=0.100 alpha_max=0.400
+[INFO] [1793759248.446824316] [cmd_mux_kinematics]: command source: none -> none (no supervisor lease)
+[INFO] [1793759248.448505703] [cmd_mux_kinematics]: supervisor generation 0 -> 1 (947bab6a): caches cleared
+[INFO] [1793759248.458146755] [cmd_mux_kinematics]: command source: none -> none (E-stop: emergency not cleared)
+[INFO] [1793759359.278764503] [cmd_mux_kinematics]: after the E-stop: hand inputs released, manual motion allowed again
+[INFO] [1793759359.279991362] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[INFO] [1793759359.659066866] [cmd_mux_kinematics]: command source: none -> none (MANUAL, no fresh command)
+[INFO] [1793759385.799046598] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[INFO] [1793759538.075192912] [cmd_mux_kinematics]: supervisor generation 1 -> 2 (947bab6a): caches cleared
+[INFO] [1793759538.078747593] [cmd_mux_kinematics]: command source: none -> none (inhibited by supervisor)
+[INFO] [1793759546.338331684] [cmd_mux_kinematics]: command source: none -> none (drives not operational or stale)
+[INFO] [1793760496.118690566] [cmd_mux_kinematics]: command source: none -> none (E-stop: emergency not cleared)

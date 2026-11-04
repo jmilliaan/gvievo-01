@@ -1,0 +1,425 @@
+diff --git a/amr_ws/RUNBOOK.md b/amr_ws/RUNBOOK.md
+index 624462d..15b0f6d 100644
+--- a/amr_ws/RUNBOOK.md
++++ b/amr_ws/RUNBOOK.md
+@@ -116,10 +116,10 @@ NetworkManager before `amr.service` starts.
+ a pad button, or hold W/A/S/D or the arrow keys, to drive. The held button turns
+ blue. Releasing stops the vehicle, even if you let go before the page has
+ received its jog session. So do Space, Esc, the centre **Stop** button, switching
+-browser tabs or windows, and typing in a text field. The speed menu offers 0.10, 0.20, 0.30
+-and 0.40 m/s (2026-09-19; the server caps jog at 0.40 m/s and 0.39 rad/s). The diagonal
+-buttons drive like the pendant: the fast wheel at the selected speed, the slow one at 75 %
+-of it. Left/Right spin at 1.95 × the selected speed in rad/s, at most 0.39 rad/s.
++browser tabs or windows, and typing in a text field. There is one manual speed, the
++pendant's: 0.70 m/s (the server caps jog at 0.70 m/s and 0.39 rad/s), 0.50 m/s while
++surveying. The diagonal buttons drive like the pendant: the fast wheel at 0.50 m/s, the slow
++one at 66 % of it. Left/Right spin at 0.39 rad/s.
+ Surveys may use any setting; check the survey's return review (see below) after the first
+ fast one.
+ 
+@@ -135,17 +135,18 @@ holds that wait for Start drop to standby, holds that clear by themselves keep p
+ authority as the jog pad (selector **MANUAL**, Manual Arm on, no fault) and
+ needs no browser. Hold a direction button to drive; releasing it stops the
+ vehicle. Opposing buttons pressed together cancel each other. The pendant
+-outranks the jog pad while a direction is held. Speeds (2026-09-19, mux
+-parameters in `base.launch.py`): FWD/RVS 0.50 m/s (`pendant_v_m_s`; 0.60 was tried and
+-reverted on 2026-09-19 after a survey at that speed came out rotated); FWD/RVS
+-with LEFT/RIGHT arcs with the slow wheel at 75 % of the fast one
+-(`pendant_turn_ratio`, fast wheel 0.50 m/s, slow 0.375); LEFT/RIGHT alone
++outranks the jog pad while a direction is held. Speeds (2026-11-04, mux
++parameters in `base.launch.py`): FWD/RVS 0.70 m/s (`pendant_v_m_s`); FWD/RVS
++with LEFT/RIGHT arcs with the fast wheel at 0.50 m/s (`pendant_corner_v_m_s`) and the
++slow one at 66 % of it (`pendant_turn_ratio`, 0.33 m/s); LEFT/RIGHT alone
+ spins in place at 0.39 rad/s (`pendant_w_rad_s`). **While surveying** (mode MAPPING)
+-every manual spin, pendant and jog pad alike, is capped at 0.27 rad/s (mux
++every manual move, pendant and jog pad alike, is capped at 0.50 m/s (mux
++`survey_v_max_m_s`; a survey at 0.60 came out rotated on 2026-09-19) and 0.27 rad/s (mux
+ `survey_w_max_rad_s`): a fast spin smears the scans the map is built from. Manual sources follow an
+-S-curve: acceleration builds at 1.0 m/s³ to 0.3 m/s² (`manual_jerk`,
+-`manual_a_max`), so 0 → 0.50 m/s takes about 1.9 s; releasing a button still
+-stops at the drives' ramp. Wiring
++S-curve: acceleration builds at 1.0 m/s³ to 0.15 m/s² (`manual_jerk`,
++`manual_a_max`), so 0 → 0.70 m/s takes about 4.8 s and 1.7 m; releasing a button brakes at
++0.5 m/s² (`manual_d_max`) and stops in about 0.65 m from full speed. The warning
++fields do not slow manual driving, so let go early. Wiring
+ (profile `pendant`, 0-based DI channels): FWD DI04, RVS DI05, LEFT DI06,
+ RIGHT DI07. The IO page shows the live bits under those names.
+ 
+diff --git a/amr_ws/src/amr_base/amr_base/cmd_mux_kinematics_node.py b/amr_ws/src/amr_base/amr_base/cmd_mux_kinematics_node.py
+index ae4c62e..6898988 100644
+--- a/amr_ws/src/amr_base/amr_base/cmd_mux_kinematics_node.py
++++ b/amr_ws/src/amr_base/amr_base/cmd_mux_kinematics_node.py
+@@ -129,12 +129,14 @@ class CmdMuxKinematics(Node):
+         self.declare_parameter("rate_hz", 50.0)
+         self.declare_parameter("require_supervisor", False)  # production: True (unified plan §4.2)
+         self.declare_parameter("teleop_enabled", True)  # /cmd_vel_teleop, engineering only
+-        self.declare_parameter("pendant_v_m_s", 0.50)
++        self.declare_parameter("pendant_v_m_s", 0.70)
++        self.declare_parameter("pendant_corner_v_m_s", 0.50)  # the fast wheel while driving + turning
+         self.declare_parameter("pendant_w_rad_s", 0.39)  # spin in place (0.30 until 2026-09-19, +30 %)
+         self.declare_parameter("pendant_turn_ratio", 0.66)  # slow wheel / fast wheel while driving + turning
+         # manual spin cap while SURVEYING (supervisor mode MAPPING), pendant and browser jog alike:
+         # 0.39 x 0.7 (2026-09-19) - a fast spin smears each scan and a survey came out rotated
+         self.declare_parameter("survey_w_max_rad_s", 0.27)
++        self.declare_parameter("survey_v_max_m_s", 0.50)  # and the manual speed (2026-11-04)
+         self.declare_parameter("lease_timeout_s", 0.3)
+         self.declare_parameter("drives_timeout_s", 0.3)
+         # Scanner fields (2026-10-02): zero AUTO on the protective field, scale it while
+@@ -178,6 +180,7 @@ class CmdMuxKinematics(Node):
+             require_supervisor=bool(p("require_supervisor").value),
+             teleop_enabled=bool(p("teleop_enabled").value),
+             pendant_v=max(0.0, float(p("pendant_v_m_s").value)),
++            pendant_corner_v=max(0.0, float(p("pendant_corner_v_m_s").value)),
+             pendant_w=max(0.0, float(p("pendant_w_rad_s").value)),
+             pendant_turn_ratio=min(1.0, max(0.0, float(p("pendant_turn_ratio").value))),
+             track_m=float(p("track_width_m").value),
+@@ -196,6 +199,7 @@ class CmdMuxKinematics(Node):
+         )
+         self.dt = 1.0 / p("rate_hz").value
+         self.survey_w_max = max(0.0, float(p("survey_w_max_rad_s").value))
++        self.survey_v_max = max(0.0, float(p("survey_v_max_m_s").value))
+         self._surveying = False  # the supervisor's last /amr/mode_state said MAPPING
+ 
+         self._teleop: gating.Stamped | None = None
+@@ -466,7 +470,13 @@ class CmdMuxKinematics(Node):
+         elif sel.source in (gating.PENDANT, gating.MANUAL):
+             # manual: jerk-limited S-curve (trapezoidal acceleration), stops at manual_d_max/delta_max
+             self._v, self._a = scurve(
+-                self._v, self._a, sel.v, self.manual_a_max, self.manual_d_max, self.manual_jerk, self.dt
++                self._v,
++                self._a,
++                gating.survey_speed_cap(sel.v, self._surveying, self.survey_v_max),
++                self.manual_a_max,
++                self.manual_d_max,
++                self.manual_jerk,
++                self.dt,
+             )
+             self._wz, self._alpha = scurve(
+                 self._wz,
+diff --git a/amr_ws/src/amr_base/amr_base/gating.py b/amr_ws/src/amr_base/amr_base/gating.py
+index 61dc610..eb34ebe 100644
+--- a/amr_ws/src/amr_base/amr_base/gating.py
++++ b/amr_ws/src/amr_base/amr_base/gating.py
+@@ -61,10 +61,11 @@ class Params:
+     drives_timeout_s: float = 0.3
+     require_supervisor: bool = False  # production sets True; the bench wrappers leave it False
+     teleop_enabled: bool = True  # /cmd_vel_teleop is an engineering input; production turns it off
+-    # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v (the FAST wheel's speed); with LEFT
+-    # or RIGHT held as well the vehicle arcs with the slow wheel at pendant_turn_ratio of the
+-    # fast one (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
+-    pendant_v: float = 0.50  # body m/s while FWD or RVS is held (0.60 tried and reverted 09-19)
++    # Jog pendant (2026-09-18): FWD/RVS drive at pendant_v; with LEFT or RIGHT held as well the
++    # vehicle arcs with the FAST wheel at pendant_corner_v and the slow wheel at pendant_turn_ratio
++    # of it (no wheel ever exceeds pendant_v); LEFT/RIGHT alone spins in place at pendant_w.
++    pendant_v: float = 0.70  # body m/s while FWD or RVS is held (0.50 until 2026-11-04)
++    pendant_corner_v: float = 0.50  # the fast wheel in a corner: 0.70 would double the sideways pull
+     pendant_w: float = 0.39  # body rad/s for a spin in place (0.30 until 2026-09-19, +30 %)
+     pendant_turn_ratio: float = 0.66  # slow wheel / fast wheel while driving and turning (0.75 until 2026-10-02)
+     track_m: float = 0.487  # wheel track, for the arc's yaw rate (config.TRACK_M on the mux)
+@@ -79,6 +80,14 @@ def survey_spin_cap(w: float, surveying: bool, cap: float) -> float:
+     return max(-cap, min(cap, w))
+ 
+ 
++def survey_speed_cap(v: float, surveying: bool, cap: float) -> float:
++    """A manual speed while surveying is capped at `cap` (2026-11-04, manual 0.70 m/s: a survey at
++    0.60 came out rotated on 2026-09-19, and 0.50 is the speed surveys have been good at)."""
++    if not surveying:
++        return v
++    return max(-cap, min(cap, v))
++
++
+ def pendant_twist(p: Params, fwd: bool, rvs: bool, left: bool, right: bool) -> tuple[float, float]:
+     """Body (v, w) for the held pendant directions (opposing pairs already cancelled)."""
+     drive = int(fwd) - int(rvs)
+@@ -87,7 +96,8 @@ def pendant_twist(p: Params, fwd: bool, rvs: bool, left: bool, right: bool) -> t
+         return 0.0, p.pendant_w * turn
+     if turn == 0:
+         return p.pendant_v * drive, 0.0
+-    fast, slow = p.pendant_v, p.pendant_v * p.pendant_turn_ratio
++    fast = min(p.pendant_v, p.pendant_corner_v)
++    slow = fast * p.pendant_turn_ratio
+     v = drive * (fast + slow) / 2.0
+     # +w turns left (ccw): the right wheel is the fast one. In reverse the same lever still
+     # swings the front to the left (v < 0 and w > 0 arc the front leftwards).
+diff --git a/amr_ws/src/amr_base/test/test_mux_manual_profile.py b/amr_ws/src/amr_base/test/test_mux_manual_profile.py
+index aaf6377..599e777 100644
+--- a/amr_ws/src/amr_base/test/test_mux_manual_profile.py
++++ b/amr_ws/src/amr_base/test/test_mux_manual_profile.py
+@@ -42,7 +42,7 @@ def _node(dt=0.02):
+     n.get_logger = lambda: _Logger()
+     n.get_clock = lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: Time()))
+     n._pub = SimpleNamespace(publish=lambda _m: None)
+-    n.survey_w_max, n._surveying = 0.27, False
++    n.survey_w_max, n.survey_v_max, n._surveying = 0.27, 0.50, False
+     return n
+ 
+ 
+@@ -111,6 +111,35 @@ def test_loss_of_authority_zeroes_speed_and_acceleration_state():
+     assert (n._v, n._a, n._out) == (0.0, 0.0, (0.0, 0.0))
+ 
+ 
++def test_manual_speed_is_capped_while_surveying():
++    from amr_interfaces.msg import ModeState
++
++    assert gating.survey_speed_cap(0.7, True, 0.5) == 0.5
++    assert gating.survey_speed_cap(-0.7, True, 0.5) == -0.5
++    assert gating.survey_speed_cap(0.7, False, 0.5) == 0.7
++    n = _node()
++    n.manual_a_max, n.manual_d_max = 0.15, 0.5
++    n._on_mode(ModeState(mode=ModeState.MAPPING))
++    _run(n, gating.Selection(gating.PENDANT, 0.7, 0.0, "pendant", 0), 500)  # 10 s
++    assert n._v == pytest.approx(0.5)
++    n._on_mode(ModeState(mode=ModeState.IDLE))
++    _run(n, gating.Selection(gating.PENDANT, 0.7, 0.0, "pendant", 0), 500)
++    assert n._v == pytest.approx(0.7)
++
++
++def test_release_from_full_manual_speed_stops_in_about_0_65_m():
++    """Manual 0.70 m/s (2026-11-04), manual_d_max 0.5: the shipped release stop."""
++    n = _node()
++    n.manual_a_max, n.manual_d_max = 0.15, 0.5
++    _run(n, gating.Selection(gating.PENDANT, 0.7, 0.0, "pendant", 0), 500)
++    assert n._v == pytest.approx(0.7)
++    x, t = 0.0, 0
++    while n._v > 0.0 and t < 500:
++        _run(n, gating.Selection(gating.PENDANT, 0.0, 0.0, "pendant", 0), 1)
++        x, t = x + n._v * n.dt, t + 1
++    assert n._v == 0.0 and 0.55 < x < 0.70, x
++
++
+ def test_manual_spin_is_capped_while_surveying():
+     from amr_interfaces.msg import ModeState
+ 
+diff --git a/amr_ws/src/amr_base/test/test_pendant_gating.py b/amr_ws/src/amr_base/test/test_pendant_gating.py
+index 9b28e4c..16a9c6c 100644
+--- a/amr_ws/src/amr_base/test/test_pendant_gating.py
++++ b/amr_ws/src/amr_base/test/test_pendant_gating.py
+@@ -59,15 +59,15 @@ def test_directions_map_to_a_twist_at_the_configured_speeds():
+     assert (s.v, s.w) == (pytest.approx(-0.21875), pytest.approx(0.125))  # same lever sense as before
+ 
+ 
+-def test_pendant_defaults_are_the_2026_10_02_manual_speeds():
++def test_pendant_defaults_are_the_manual_speeds():
+     from amr_base.diff_drive import Geometry, inverse
+ 
+     p = Params()
+-    assert (p.pendant_v, p.pendant_w, p.pendant_turn_ratio) == (0.50, 0.39, 0.66)
++    assert (p.pendant_v, p.pendant_corner_v, p.pendant_w, p.pendant_turn_ratio) == (0.70, 0.50, 0.39, 0.66)
+     g = Geometry(0.09, p.track_m)
+     s = select(10.0, None, None, None, None, panel(fwd=True, left=True), p)
+     wl, wr = (x * g.wheel_radius_m for x in inverse(g, s.v, s.w))
+-    assert wr == pytest.approx(0.50) and wl == pytest.approx(0.33)  # inner (left) wheel 66 %, none above 0.5
++    assert wr == pytest.approx(0.50) and wl == pytest.approx(0.33)  # corners: inner (left) 66 %, none above 0.5
+     s = select(10.0, None, None, None, None, panel(fwd=True, right=True), p)
+     wl, wr = (x * g.wheel_radius_m for x in inverse(g, s.v, s.w))
+     assert wl == pytest.approx(0.50) and wr == pytest.approx(0.33)  # turning right: the right wheel is inner
+diff --git a/amr_ws/src/amr_bringup/launch/base.launch.py b/amr_ws/src/amr_bringup/launch/base.launch.py
+index fe04eda..886e12b 100644
+--- a/amr_ws/src/amr_bringup/launch/base.launch.py
++++ b/amr_ws/src/amr_bringup/launch/base.launch.py
+@@ -136,11 +136,12 @@ def _compose(context):
+             # at the hardware-class 0.5 m/s^2 / 1.0 rad/s^2, stated explicitly: leaving delta_max at
+             # its "same as alpha_max" default made every Spin coast 2.6 deg past its target
+             # (0.19 rad/s stopped at 0.4 rad/s^2, vehicle 2026-09-17).
+-            # Manual (pendant / browser jog, 2026-09-18): 0.5 m/s, S-curve with 1.0 m/s^3;
+-            # driving + turning arcs with the slow wheel at 66 % of the fast one; a spin in
+-            # place stays at 0.3 rad/s. 2026-11-02: softened to 0.15 m/s^2 up (3.5 s to full
+-            # speed) and 0.25 m/s^2 down (~0.56 m from 0.5 m/s on release) - manual only, AUTO
+-            # keeps a_max/d_max. A timeout or loss of authority still zeroes at once (6084h).
++            # Manual (pendant / browser jog, 2026-11-04): 0.7 m/s, S-curve with 1.0 m/s^3;
++            # driving + turning arcs with the fast wheel at 0.5 m/s and the slow one at 66 % of
++            # it; a spin in place stays at 0.39 rad/s; 0.5 m/s while surveying. 0.15 m/s^2 up
++            # (4.8 s to full speed, 2026-11-02) and 0.5 m/s^2 down (~0.65 m from 0.7 m/s on release;
++            # 0.25 from 2026-11-02 would be 1.05 m) - manual only, AUTO keeps a_max/d_max.
++            # A timeout or loss of authority still zeroes at once (6084h).
+             parameters=[
+                 {
+                     **gate,
+@@ -158,14 +159,16 @@ def _compose(context):
+                     "d_max": 0.125,  # auto braking, not field/emergency stops: 0.5 -> 0.25 -> 0.125
+                     "delta_max": 1.0,
+                     "manual_a_max": 0.15,
+-                    "manual_d_max": 0.25,
++                    "manual_d_max": 0.5,
+                     "manual_jerk": 1.0,
+                     "auto_jerk": 0.1,  # auto linear speed S-curve: 0.4 -> 0.1 m/s^3 (2026-11-03)
+                     "field_d_max": 0.5,  # warning-field slowdowns keep the old braking (not softened)
+-                    "pendant_v_m_s": 0.5,
++                    "pendant_v_m_s": 0.7,
++                    "pendant_corner_v_m_s": 0.5,
+                     "pendant_w_rad_s": 0.39,
+                     "pendant_turn_ratio": 0.66,  # manual corner: inner wheel 66 % of the outer
+                     "survey_w_max_rad_s": 0.27,  # manual spin cap while surveying (pendant + jog)
++                    "survey_v_max_m_s": 0.5,  # manual speed cap while surveying (pendant + jog)
+                 }
+             ],
+         ),
+diff --git a/amr_ws/src/amr_web/amr_web/jog.py b/amr_ws/src/amr_web/amr_web/jog.py
+index 9701732..78b2f71 100644
+--- a/amr_ws/src/amr_web/amr_web/jog.py
++++ b/amr_ws/src/amr_web/amr_web/jog.py
+@@ -16,8 +16,9 @@ Rules the tests pin:
+   * after the ticket deadline (server monotonic clock) nothing revives the
+     session; a new press is required. Only the remaining lifetime travels
+     into the ROS command (valid_for_s), never a fresh 0.2 s per late arrival;
+-  * limits are the manual caps: 0.50 m/s (= the pendant's pendant_v_m_s, one manual speed
+-    since 2026-10-02; 0.40 before) and 0.39 rad/s, survey included, not the vehicle's.
++  * limits are the manual caps: 0.70 m/s (= the pendant's pendant_v_m_s, one manual speed
++    since 2026-10-02; 0.50 until 2026-11-04) and 0.39 rad/s, not the vehicle's. The mux holds
++    a survey to its own caps.
+ """
+ 
+ from __future__ import annotations
+@@ -26,7 +27,7 @@ import math
+ import secrets
+ from dataclasses import dataclass
+ 
+-V_MAX, W_MAX = 0.50, 0.39
++V_MAX, W_MAX = 0.70, 0.39
+ TICKET_S = 1.0  # a refresh must arrive within this; the browser sends every 0.1 s. Wider than
+ # CMD_S on purpose: the ROBOT stops 0.2 s after the last refresh regardless; this only decides
+ # whether a still-held button may resume after a link hiccup without a new press. At 0.25 s a
+diff --git a/amr_ws/src/amr_web/amr_web/static/jogpad.js b/amr_ws/src/amr_web/amr_web/static/jogpad.js
+index e1a9721..cc3c227 100644
+--- a/amr_ws/src/amr_web/amr_web/static/jogpad.js
++++ b/amr_ws/src/amr_web/amr_web/static/jogpad.js
+@@ -11,10 +11,11 @@
+ function jogpad(root, opts) {
+   const o = Object.assign({ compact: false }, opts || {});
+   const owner = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).slice(0, 32);
+-  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.50 m/s = mux pendant_v_m_s.
+-  // Diagonals drive like the pendant: the FAST wheel at V, the slow one at TURN_RATIO of it
+-  // (= pendant_turn_ratio), the side set by the turn direction. Spins at the pendant's rate.
+-  const V = 0.50, TRACK_M = 0.487, TURN_RATIO = 0.66, SPIN = 0.39;
++  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.70 m/s = mux pendant_v_m_s.
++  // Diagonals drive like the pendant: the FAST wheel at CORNER_V (= pendant_corner_v_m_s), the
++  // slow one at TURN_RATIO of it (= pendant_turn_ratio), the side set by the turn direction.
++  // Spins at the pendant's rate. SURVEY_V only labels the mux's survey_v_max_m_s.
++  const V = 0.70, CORNER_V = 0.50, SURVEY_V = 0.50, TRACK_M = 0.487, TURN_RATIO = 0.66, SPIN = 0.39;
+   const CELLS = [
+     ['fl', '↖', 'Fwd-L', ''], ['f', '▲', 'Fwd', '↑ / W'], ['fr', '↗', 'Fwd-R', ''],
+     ['l', '◀', 'Left', '← / A'], ['stop', '■', 'Stop', 'Space'], ['r', '▶', 'Right', '→ / D'],
+@@ -28,7 +29,7 @@ function jogpad(root, opts) {
+         <div class="jog-emg" hidden><b>E-stop active</b></div>
+       </div>
+       <div class="jog-foot">
+-        <div class="tel"><span>Speed</span><b>${V.toFixed(2)}</b><i>m/s · corners ${Math.round(TURN_RATIO * 100)} % inner wheel</i></div>
++        <div class="tel"><span>Speed</span><b>${V.toFixed(2)}</b><i>m/s · ${SURVEY_V.toFixed(2)} surveying · corners ${CORNER_V.toFixed(2)}, ${Math.round(TURN_RATIO * 100)} % inner wheel</i></div>
+         <div class="tel"><span>Jog</span><b class="jog-status">not held</b><i>held, not latched · release = stop</i></div>
+       </div>
+       <p class="legend keys">Hold a button or <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>); <kbd>Space</kbd> stops.
+@@ -45,12 +46,11 @@ function jogpad(root, opts) {
+   let releasing = false;
+ 
+   function body(dir) {
+-    const v = V;
+     const [a, b] = DIRS[dir];
+     if (a === 0) return { v: 0, w: b * SPIN };
+-    if (b === 0) return { v: a * v, w: 0 };
+-    const slow = v * TURN_RATIO;
+-    return { v: a * (v + slow) / 2, w: b * (v - slow) / TRACK_M };
++    if (b === 0) return { v: a * V, w: 0 };
++    const slow = CORNER_V * TURN_RATIO;
++    return { v: a * (CORNER_V + slow) / 2, w: b * (CORNER_V - slow) / TRACK_M };
+   }
+   // The physical input is recorded BEFORE the press request goes out, so a release that
+   // happens while it is in flight has something to cancel. A press whose input was
+diff --git a/amr_ws/src/amr_web/test/jogpad_harness.js b/amr_ws/src/amr_web/test/jogpad_harness.js
+index 52cfa56..de99a78 100644
+--- a/amr_ws/src/amr_web/test/jogpad_harness.js
++++ b/amr_ws/src/amr_web/test/jogpad_harness.js
+@@ -108,7 +108,7 @@ const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh'
+   pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(3);
+   out.refreshes_after_focus_while_pending = nonzeroRefreshes();
+   doc.activeElement = null;
+-  // 7. 2026-10-02: ONE manual speed, 0.50; a diagonal keeps the fast wheel at 0.50 and the
++  // 7. 2026-11-04: ONE manual speed, 0.70; a diagonal keeps the fast wheel at 0.50 and the
+   //    slow one at 66 % of it; a spin runs at 0.39 rad/s
+   const holdBody = async (btn) => {
+     calls.length = 0;
+diff --git a/amr_ws/src/amr_web/test/test_editor_js.py b/amr_ws/src/amr_web/test/test_editor_js.py
+index 5732fc2..6c48d33 100644
+--- a/amr_ws/src/amr_web/test/test_editor_js.py
++++ b/amr_ws/src/amr_web/test/test_editor_js.py
+@@ -91,10 +91,10 @@ def test_editor_arc_step_bounds_and_end_pose():
+     assert out["after_arc_to"] == pytest.approx({"x_m": 11.3, "y_m": 2.0})
+ 
+ 
+-def test_browser_jog_caps_are_the_2026_10_02_manual_speeds():
++def test_browser_jog_caps_are_the_manual_speeds():
+     from amr_web import jog
+ 
+-    assert (jog.V_MAX, jog.W_MAX) == (0.50, 0.39)  # = the pendant's pendant_v / pendant_w
++    assert (jog.V_MAX, jog.W_MAX) == (0.70, 0.39)  # = the pendant's pendant_v / pendant_w
+ 
+ 
+ @pytest.mark.skipif(NODE is None, reason="node not installed")
+diff --git a/amr_ws/src/amr_web/test/test_jog.py b/amr_ws/src/amr_web/test/test_jog.py
+index 6e107c7..169475a 100644
+--- a/amr_ws/src/amr_web/test/test_jog.py
++++ b/amr_ws/src/amr_web/test/test_jog.py
+@@ -65,7 +65,7 @@ def test_expired_ticket_needs_a_new_press_and_lifetime_never_regrows(sessions):
+         js.refresh(s.id, c.ticket, 3, 0.3, 0.0, "inst", 3)
+     s = js.press("tab-A", "inst", 3)
+     c = js.refresh(s.id, s.ticket, 1, 5.0, -9.0, "inst", 3)
+-    assert (c.v, c.w) == (jog.V_MAX, -jog.W_MAX)  # clamped to the survey caps
++    assert (c.v, c.w) == (jog.V_MAX, -jog.W_MAX)  # clamped to the manual caps
+     assert c.valid_for_s <= jog.CMD_S
+ 
+ 
+diff --git a/amr_ws/src/amr_web/test/test_jogpad_js.py b/amr_ws/src/amr_web/test/test_jogpad_js.py
+index 53cb27b..f213af3 100644
+--- a/amr_ws/src/amr_web/test/test_jogpad_js.py
++++ b/amr_ws/src/amr_web/test/test_jogpad_js.py
+@@ -42,5 +42,5 @@ def test_jogpad_one_manual_speed_corner_ratio_and_spin():
+     left, right = fr["v"] - fr["w"] * track / 2, fr["v"] + fr["w"] * track / 2
+     assert left == pytest.approx(0.50) and right == pytest.approx(0.33) and fr["w"] < 0
+     assert out["speed_r"]["v"] == 0 and out["speed_r"]["w"] == pytest.approx(-0.39)
+-    assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.5), 0)
++    assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.7), 0)
+     assert out["speed_l"]["v"] == 0 and out["speed_l"]["w"] == pytest.approx(0.39)
+diff --git a/field-logs/2026-11-04/hardware-test-results.md b/field-logs/2026-11-04/hardware-test-results.md
+index dd24e56..8c116e8 100644
+--- a/field-logs/2026-11-04/hardware-test-results.md
++++ b/field-logs/2026-11-04/hardware-test-results.md
+@@ -31,6 +31,9 @@ Python 3.10.12, pytest 6.2.5.
+ | 1 restart and web UI | Pass, with note 3 | Service active at 09:27:26, `/home` answers 200 | |
+ | 4B.1 mux values | Pass, with note 4 | `a_max` 0.1, `d_max` 0.125, `auto_jerk` 0.1, `field_d_max` 0.5 by `ros2 param get` | |
+ | 4B.1 executor and Nav2 values | Pass | `taper_decel` 0.125, `taper_jerk` 0.1, `FollowPath.approach_velocity_scaling_dist` 3.0, NAVIGATION on kyb-map-02 rev 3 (layer started 09:32:18) | |
++| Retest on `28fd613` | Pass | Service up 10:40:13. pytest 997 passed, 19 skipped, 6 xfailed (now including `amr_web`); `run_all.py` 731 checks; `test_alarms.py` 5 passed, domain 89 | |
++| 4B.1 on `28fd613` | Pass | All values as in the updated document: `a_max` 0.1, `d_max` 0.125, `auto_jerk` 0.1, `taper_decel` 0.125, `taper_jerk` 0.1, `approach_velocity_scaling_dist` 3.4; also `desired_linear_vel` 0.72 | 20261104-104146 |
++| First run, rev 2 by ITG button | Stopped by localization, see note 9 | 10:37:36 start, 10:37:45 `LOC_JUMP` 0.16 m / 0.0° (limit 0.15 m), run FAULT at 10 s, peak cross-track 0.02 m. Not recorded | |
+ 
+ ## Notes
+ 
+@@ -58,4 +61,29 @@ Python 3.10.12, pytest 6.2.5.
+    and the last leg is now the home step, which is also what test 2.5 asks for. Geometry was
+    checked against rev 1 and with the map validator. Its mission,
+    `kyb-map-02_rev3_route-itg-02_rev2`, was created at 09:58 on the owner's request, so the ITG
+-   button now loads rev 2. Not driven yet. 4B as written names rev 1, whose mission still exists.
++   button now loads rev 2. 4B as written names rev 1, whose mission still exists; runs started
++   with the ITG button are on rev 2, which is a deviation from the document.
++9. The 10:37 stop has no recording, so its cause is unproven. Before the next run, at 10:43,
++   `cov_xx` read 3.3e-08 m² after AMCL had been sitting still doing no-motion updates, against
++   about 3e-04 m² just after the jump. To check in the 20261104-104146 bag: whether a collapsed
++   particle cloud at rest makes corrections arrive as steps once the vehicle moves.
++10. The 10:47 stop was not localization: kernel log shows `enp3s0` (GLS621) link down 10:46:14 and
++    `enp2s0` (nanoScan3) link down 10:47:19, back at 10:47:38 and 10:47:32. `stale: scan` was still
++    reported at 10:49:45. Cause of the link loss not found.
++    The 10:58 stop (run stamp 20261104-104146) was `LOC_SCAN_MISMATCH`, 21 % at the s12 U-turn. The
++    operator reports the trolleys moved since the survey. Offline, on the live scan at that spot:
++    `scan_long` 0.184 without and 0.053 with the operator's dynamic areas. Map rev 4 (rev 3 plus those
++    areas, same `map.pgm`), `route-itg-02` rev 3 (same geometry as rev 2) and mission
++    `kyb-map-02_rev4_route-itg-02_rev3` were created 11:11. Not driven yet.
++11. `bag_report.py`'s "map->odom shift" is inflated far from the odom origin: a 1.9° heading
++    correction read as 4.56 m at about 136 m out, while the jump monitor, which measures at the
++    vehicle, read 0. Compare its p95 with care.
++12. Run page banner `WEB_BUG /run: The operation was aborted.` / `signal is aborted without reason`
++    at 10:41:44, 10:41:56, 10:43:00 and 10:43:45, from `amr.js`'s 8 s request timeout. No run was
++    active and no drive or run event came with them. Which request timed out is not logged. Likely
++    the route preview: `GET .../routes/route-itg-02/<rev>` took 3.5 s at load average 8, re-runs the
++    clearance check on every fetch, the page repeats it, and two browsers were open. `loadMissions`
++    has no catch, so a timeout surfaces as a page error. Offline tests were running 10:41:46–10:42:56
++    and added load, but the 10:41:44 and 10:43:45 errors fall outside the time their requests were
++    open. Also: the Run page's mission list defaults to the first entry (rev 1), while the ITG
++    button loads rev 2.

@@ -1,0 +1,30 @@
+[INFO] [1793763614.134652222] [sick_safetyscanners2_node]: Initializing SickSafetyscannersRos2 Node
+[INFO] [1793763614.135095548] [SickSafetyscanners]: frame_id: laser_frame
+[INFO] [1793763614.135116983] [SickSafetyscanners]: sensor_ip: 192.168.3.10
+[INFO] [1793763614.135126272] [SickSafetyscanners]: interface_ip: 0.0.0.0
+[INFO] [1793763614.135134033] [SickSafetyscanners]: host_ip: 192.168.3.1
+[INFO] [1793763614.135141746] [SickSafetyscanners]: host_udp_port: 6060
+[INFO] [1793763614.135150077] [SickSafetyscanners]: channel: 0
+[INFO] [1793763614.135157501] [SickSafetyscanners]: channel_enabled: true
+[INFO] [1793763614.135164544] [SickSafetyscanners]: skip: 1
+[INFO] [1793763614.135172002] [SickSafetyscanners]: angle_start: -1.658000
+[INFO] [1793763614.135184182] [SickSafetyscanners]: angle_end: 1.658000
+[INFO] [1793763614.135192421] [SickSafetyscanners]: time_offset: 0.000000
+[INFO] [1793763614.135201395] [SickSafetyscanners]: general_system_state: true
+[INFO] [1793763614.135209351] [SickSafetyscanners]: derived_settings: true
+[INFO] [1793763614.135216658] [SickSafetyscanners]: measurement_data: true
+[INFO] [1793763614.135223569] [SickSafetyscanners]: intrusion_data: true
+[INFO] [1793763614.135230749] [SickSafetyscanners]: application_io_data: true
+[INFO] [1793763614.135237613] [SickSafetyscanners]: use_persistent_config: false
+[INFO] [1793763614.135245096] [SickSafetyscanners]: min_intensities: 0.000000
+[INFO] [1793763614.135253484] [SickSafetyscanners]: expected_frequency: 34.000000
+[INFO] [1793763614.135263132] [SickSafetyscanners]: frequency_tolerance: 0.100000
+[INFO] [1793763614.135271692] [SickSafetyscanners]: timestamp_min_acceptable: -1.000000
+[INFO] [1793763614.135279673] [SickSafetyscanners]: timestamp_max_acceptable: 1.000000
+[INFO] [1793763614.143392717] [SickSafetyscanners]: Communication to Sensor set up
+[INFO] [1793763614.143443254] [SickSafetyscanners]: Reading Type code settings
+[INFO] [1793763614.145814311] [SickSafetyscanners]: Reading Metadata
+[INFO] [1793763614.148073934] [SickSafetyscanners]: Reading firmware version
+[INFO] [1793763614.154541960] [SickSafetyscanners]: Run
+[INFO] [1793763614.156298499] [sick_safetyscanners2_node]: Node Configured and running
+[INFO] [1793768990.341236245] [rclcpp]: signal_handler(SIGINT/SIGTERM)

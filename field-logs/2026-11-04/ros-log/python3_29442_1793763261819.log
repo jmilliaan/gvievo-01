@@ -1,0 +1,14 @@
+[INFO] [1793763261.962996218] [route_executor]: IDLE; maps_dir /home/gvipc-evo-01/amr_maps; footprint reach 1.15 m
+[INFO] [1793763262.036210150] [route_executor]: IDLE pass 1/1 step -1 init: no mission loaded
+[WARN] [1793763456.352783590] [route_executor]: permitted lateral error 0.30 m (cross-track limit / start gate / resume corridor) exceeds the validated footprint margin 0.05 m
+[INFO] [1793763456.353203021] [route_executor]: READY pass 1/1 step -1 init: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run
+[INFO] [1793763456.354178015] [route_executor]: destination ITG: mission kyb-map-02_rev3_route-itg-02_rev2 loaded
+[INFO] [1793763456.355046452] [route_executor]: EXECUTING pass 1/1 step 0 premove: ITG: run 20261104-103736-1 started: warning, moving in 2.0 s
+[INFO] [1793763458.436258065] [route_executor]: EXECUTING pass 1/1 step 0 init: moving: pass 1/1 step 0
+[INFO] [1793763458.662539416] [route_executor]: EXECUTING pass 1/1 step 0 goal: moving: pass 1/1 step 0
+[INFO] [1793763466.442595783] [route_executor]: FAULT pass 1/1 step 0 init: localisation not READY (localisation corrected by 0.16 m / 0.0 deg) for 0.5 s [localisation not READY (localisation corrected by 0.16 m / 0.0 deg) for 0.5 s]
+[WARN] [1793763466.458492550] [route_executor]: ignoring result of obsolete goal Attempt(run_id='20261104-103736-1', pass_index=0, step_index=0, attempt=1)
+[INFO] [1793763472.139216756] [route_executor]: IDLE pass 1/1 step -1 init: fault acknowledged; load a mission
+[INFO] [1793763568.734210473] [route_executor]: IDLE pass 1/1 step -1 init: abort ignored in IDLE
+[INFO] [1793763583.414197805] [route_executor]: IDLE pass 1/1 step -1 init: nothing to acknowledge (IDLE)
+[INFO] [1793763584.235447802] [route_executor]: IDLE pass 1/1 step -1 init: abort ignored in IDLE

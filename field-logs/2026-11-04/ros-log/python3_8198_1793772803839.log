@@ -1,0 +1,3 @@
+[INFO] [1793772804.023624946] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[INFO] [1793772804.093771165] [localization_monitor]: UNLOCALIZED: no initial pose
+[INFO] [1793772807.105150579] [localization_monitor]: map 3577x1846 loaded for scan consistency

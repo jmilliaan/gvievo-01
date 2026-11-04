@@ -1,0 +1,42 @@
+[INFO] [1793777172.547185866] [amcl]: 
+	amcl lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793777172.551046185] [amcl]: Creating
+[INFO] [1793777176.244296110] [amcl]: Configuring
+[INFO] [1793777176.244430938] [amcl]: initTransforms
+[INFO] [1793777176.254727125] [amcl]: initPubSub
+[INFO] [1793777176.260046615] [amcl]: Subscribed to map topic.
+[INFO] [1793777176.294773664] [amcl]: Received a 3577 X 1846 map @ 0.050 m/pix
+[INFO] [1793777176.408327362] [amcl]: Activating
+[INFO] [1793777176.408391546] [amcl]: Creating bond (amcl) to lifecycle manager.
+[INFO] [1793777176.487287014] [amcl]: createLaserObject
+[WARN] [1793777178.573822967] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [1793777178.574019488] [amcl]: Message Filter dropping message: frame 'laser_frame' at time 1793777176.216 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[WARN] [1793777180.627600729] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793777182.727299647] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793777184.847617780] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793777186.967324338] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793777189.087410730] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793777191.187404799] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [1793777193.063000434] [amcl]: initialPoseReceived
+[WARN] [1793777193.063197149] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793777193.063094 but the latest data is at time 1793777193.049880, when looking up transform from frame [base_footprint] to frame [odom])
+[INFO] [1793777193.063237908] [amcl]: Setting pose (1793777193.063238): 0.000 0.000 0.000
+[INFO] [1793777193.152899431] [amcl]: Requesting no-motion update
+[INFO] [1793777193.653118511] [amcl]: Requesting no-motion update
+[INFO] [1793777194.280806210] [amcl]: Requesting no-motion update
+[INFO] [1793777194.862176015] [amcl]: Requesting no-motion update
+[INFO] [1793777195.460541064] [amcl]: Requesting no-motion update
+[INFO] [1793777196.053051705] [amcl]: Requesting no-motion update
+[INFO] [1793777196.553300336] [amcl]: Requesting no-motion update
+[INFO] [1793777197.153897051] [amcl]: Requesting no-motion update
+[INFO] [1793777197.752852507] [amcl]: Requesting no-motion update
+[INFO] [1793777198.254022928] [amcl]: Requesting no-motion update
+[INFO] [1793777198.853231063] [amcl]: Requesting no-motion update
+[INFO] [1793777199.353548581] [amcl]: Requesting no-motion update
+[INFO] [1793777199.953237886] [amcl]: Requesting no-motion update
+[INFO] [1793777200.453460185] [amcl]: Requesting no-motion update
+[INFO] [1793777201.053904628] [amcl]: Requesting no-motion update
+[INFO] [1793777201.653455038] [amcl]: Requesting no-motion update
+[INFO] [1793777202.253769089] [amcl]: Requesting no-motion update
+[INFO] [1793777202.853221974] [amcl]: Requesting no-motion update

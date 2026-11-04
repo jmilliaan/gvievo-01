@@ -1,0 +1,7 @@
+[INFO] [1793696080.260847603] [robot_state_publisher]: got segment base_footprint
+[INFO] [1793696080.261028263] [robot_state_publisher]: got segment base_link
+[INFO] [1793696080.261055694] [robot_state_publisher]: got segment gls_frame
+[INFO] [1793696080.261071205] [robot_state_publisher]: got segment imu_frame
+[INFO] [1793696080.261085687] [robot_state_publisher]: got segment laser_frame
+[INFO] [1793696080.261098099] [robot_state_publisher]: got segment wheel_left
+[INFO] [1793696080.261110699] [robot_state_publisher]: got segment wheel_right

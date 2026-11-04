@@ -1,0 +1,225 @@
+{"t":1793763716.953416,"source":"amr_web","level":"warn","code":"WEB_BUG","text":"/run: signal is aborted without reason","seq":0}
+{"t":1793763780.2872589,"source":"amr_web","level":"warn","code":"WEB_BUG","text":"/run: The operation was aborted. ","seq":0}
+{"t":1793763821.7615027,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"NAVIGATION -> TRANSITIONING: inhibiting","seq":5}
+{"t":1793763821.7761734,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"command source none -> none: inhibited by supervisor","seq":11}
+{"t":1793763821.7789345,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"motion inhibited: inhibited by supervisor","seq":12}
+{"t":1793763824.643408,"source":"localization_monitor","level":"warn","code":"LOC_NOT_SET","text":"localisation UNLOCALIZED: no initial pose","seq":1}
+{"t":1793763825.0554457,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: no mission loaded","seq":1}
+{"t":1793763825.6022174,"source":"amr_web","level":"warn","code":"WEB_BUG","text":"/run: signal is aborted without reason","seq":0}
+{"t":1793763830.731707,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"TRANSITIONING -> NAVIGATION: ","seq":6}
+{"t":1793763830.7555988,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":13}
+{"t":1793763914.288402,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"NAVIGATION -> TRANSITIONING: inhibiting","seq":7}
+{"t":1793763914.3081334,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"command source none -> none: inhibited by supervisor","seq":14}
+{"t":1793763914.309621,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"motion inhibited: inhibited by supervisor","seq":15}
+{"t":1793763917.1434233,"source":"localization_monitor","level":"warn","code":"LOC_NOT_SET","text":"localisation UNLOCALIZED: no initial pose","seq":1}
+{"t":1793763917.3511496,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: no mission loaded","seq":1}
+{"t":1793763923.2272923,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"TRANSITIONING -> NAVIGATION: ","seq":8}
+{"t":1793763923.2482896,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":16}
+{"t":1793763928.8450425,"source":"localization_monitor","level":"info","code":"LOC_NOT_CONFIRMED","text":"localisation CHECKING: stale: tf","seq":2}
+{"t":1793763935.2428565,"source":"localization_monitor","level":"info","code":"MODE_CHANGE","text":"localisation READY: operator confirmed scan alignment","seq":3}
+{"t":1793763938.4209077,"source":"panel_node","level":"info","code":"PANEL","text":"selector AUTO","seq":5}
+{"t":1793763938.53952,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are not powered","seq":2}
+{"t":1793763938.5490444,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":17}
+{"t":1793763938.55076,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"motion inhibited: drives not operational or stale","seq":18}
+{"t":1793763942.8012705,"source":"panel_node","level":"info","code":"PANEL","text":"DEST ITG edge","seq":6}
+{"t":1793763946.1803286,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run","seq":2}
+{"t":1793763946.184126,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run EXECUTING pass 1/1 step 0: ITG: run 20261104-104546-1 started: warning, moving in 2.0 s","seq":3}
+{"t":1793763946.5887773,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are powered","seq":3}
+{"t":1793763946.5903568,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":19}
+{"t":1793763948.4609728,"source":"cmd_mux_kinematics","level":"info","code":"MUX_SOURCE","text":"command source none -> follow: follow","seq":20}
+{"t":1793763978.8928056,"source":"gls_node","level":"warn","code":"GLS_DOWN","text":"floor-label camera not answering: connected, settings verified","seq":1}
+{"t":1793764039.4434307,"source":"localization_monitor","level":"error","code":"LOC_STREAM_STALE","text":"localisation LOST: stale: scan","seq":4}
+{"t":1793764039.7485344,"source":"cmd_mux_kinematics","level":"info","code":"SOURCE_TIMED_OUT","text":"command source follow -> none: permit FOLLOW, no fresh /cmd_vel","seq":21}
+{"t":1793764040.0417278,"source":"route_executor","level":"warn","code":"PATH_BLOCKED","text":"run BLOCKED pass 1/1 step 4: path blocked ahead: controller aborted the straight (blocked 0 s; continues by itself once clear)","seq":4}
+{"t":1793764040.144511,"source":"route_executor","level":"error","code":"RUN_SUMMARY","text":"kyb-map-02_rev3_route-itg-02_rev2 FAULT after 94 s; peak cross-track 0.00 m; holds: controller x1","seq":5}
+{"t":1793764040.1484902,"source":"route_executor","level":"error","code":"EXEC_PREREQ_LOST","text":"run FAULT pass 1/1 step 4: localisation not READY (stale: scan) for 0.5 s","seq":6}
+{"t":1793764040.3894317,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":22}
+{"t":1793764040.391263,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"motion inhibited: drives not operational or stale","seq":23}
+{"t":1793764040.505495,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are not powered","seq":4}
+{"t":1793764060.9518936,"source":"gls_node","level":"info","code":"GLS","text":"floor-label camera answering again: connected, settings verified","seq":2}
+{"t":1793764065.4999037,"source":"panel_node","level":"info","code":"PANEL","text":"E-stop OK (DI8) LOW","seq":7}
+{"t":1793764065.501549,"source":"panel_node","level":"error","code":"ESTOP","text":"EMERGENCY STOP (DI08 LOW (E-stop)): release the E-stop, then press Reset","seq":8}
+{"t":1793764065.5081193,"source":"cmd_mux_kinematics","level":"warn","code":"ESTOP","text":"command source none -> none: E-stop: emergency not cleared","seq":24}
+{"t":1793764168.4209075,"source":"panel_node","level":"info","code":"PANEL","text":"E-stop OK (DI8) HIGH","seq":9}
+{"t":1793764168.4249625,"source":"panel_node","level":"warn","code":"ESTOP_RESET_NEEDED","text":"E-stop released: press Reset","seq":10}
+{"t":1793764170.4409442,"source":"panel_node","level":"info","code":"PANEL","text":"RESET edge","seq":11}
+{"t":1793764170.444771,"source":"panel_node","level":"info","code":"ESTOP","text":"Reset pressed: waiting for the drives to leave STO","seq":12}
+{"t":1793764170.4515479,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: fault acknowledged; load a mission","seq":7}
+{"t":1793764170.5803692,"source":"panel_node","level":"info","code":"ESTOP","text":"cleared: emergency stop","seq":13}
+{"t":1793764170.5901208,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"command source none -> none: inhibited by supervisor","seq":25}
+{"t":1793764170.689536,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":26}
+{"t":1793764171.7432942,"source":"panel_node","level":"info","code":"PANEL","text":"START edge","seq":14}
+{"t":1793764173.6025462,"source":"panel_node","level":"info","code":"PANEL","text":"START edge","seq":15}
+{"t":1793764173.9011986,"source":"panel_node","level":"info","code":"PANEL","text":"START edge","seq":16}
+{"t":1793764182.6995618,"source":"panel_node","level":"info","code":"PANEL","text":"DEST ITG edge","seq":17}
+{"t":1793764183.53967,"source":"panel_node","level":"info","code":"PANEL","text":"CONTINUE edge","seq":18}
+{"t":1793764185.4996274,"source":"panel_node","level":"info","code":"PANEL","text":"CONTINUE edge","seq":19}
+{"t":1793764185.9298763,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run","seq":8}
+{"t":1793764185.9324262,"source":"route_executor","level":"warn","code":"DEST_REFUSED","text":"ITG: Start refused: localisation not READY (stale: scan)","seq":9}
+{"t":1793764186.4472427,"source":"route_executor","level":"info","code":"RUN_SUMMARY","text":"kyb-map-02_rev3_route-itg-02_rev2 IDLE after 1 s; peak cross-track 0.00 m; holds: none","seq":10}
+{"t":1793764186.4498672,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: localisation not READY (stale: scan)","seq":11}
+{"t":1793764188.2229586,"source":"panel_node","level":"info","code":"PANEL","text":"selector MANUAL","seq":20}
+{"t":1793764188.6173754,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are powered","seq":5}
+{"t":1793764188.6292357,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":27}
+{"t":1793764194.6608071,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":21}
+{"t":1793764195.2259753,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":22}
+{"t":1793764197.9014034,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":23}
+{"t":1793764201.8212483,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS RIGHT","seq":24}
+{"t":1793764202.019511,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":25}
+{"t":1793764203.084518,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS RIGHT","seq":26}
+{"t":1793764203.3206012,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":27}
+{"t":1793764204.9414794,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":28}
+{"t":1793764208.0208938,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":29}
+{"t":1793764210.6411057,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":30}
+{"t":1793764211.9418123,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":31}
+{"t":1793764213.9210234,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS LEFT","seq":32}
+{"t":1793764214.520278,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":33}
+{"t":1793764218.3638375,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS RIGHT","seq":34}
+{"t":1793764218.5010102,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":35}
+{"t":1793764218.7607265,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS RIGHT","seq":36}
+{"t":1793764218.9607468,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":37}
+{"t":1793764219.321353,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS RIGHT","seq":38}
+{"t":1793764219.7641475,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RVS","seq":39}
+{"t":1793764230.482566,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":40}
+{"t":1793764231.2007873,"source":"panel_node","level":"info","code":"PANEL","text":"pendant LEFT","seq":41}
+{"t":1793764232.720587,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":42}
+{"t":1793764234.4421625,"source":"panel_node","level":"info","code":"PANEL","text":"pendant LEFT","seq":43}
+{"t":1793764236.301144,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":44}
+{"t":1793764236.600727,"source":"panel_node","level":"info","code":"PANEL","text":"pendant LEFT","seq":45}
+{"t":1793764238.001,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":46}
+{"t":1793764238.3011096,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":47}
+{"t":1793764244.742146,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":48}
+{"t":1793764245.1027696,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":49}
+{"t":1793764245.2426107,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":50}
+{"t":1793764245.4421396,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":51}
+{"t":1793764255.3609576,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":52}
+{"t":1793764255.500587,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":53}
+{"t":1793764256.0999823,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":54}
+{"t":1793764256.5207977,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":55}
+{"t":1793764256.8595243,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":56}
+{"t":1793764257.080982,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":57}
+{"t":1793764257.181788,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":58}
+{"t":1793764257.7822337,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":59}
+{"t":1793764262.7595901,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":60}
+{"t":1793764262.9610734,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":61}
+{"t":1793764263.5227408,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":62}
+{"t":1793764264.2815032,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":63}
+{"t":1793764268.4410026,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":64}
+{"t":1793764268.8410113,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":65}
+{"t":1793764270.8212845,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":66}
+{"t":1793764270.9610574,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":67}
+{"t":1793764271.2813876,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":68}
+{"t":1793764273.7808647,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":69}
+{"t":1793764273.900211,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":70}
+{"t":1793764274.345353,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":71}
+{"t":1793764275.2604103,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":72}
+{"t":1793764275.7603815,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":73}
+{"t":1793764275.8613372,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":74}
+{"t":1793764276.163111,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":75}
+{"t":1793764278.4816585,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":76}
+{"t":1793764278.7232602,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":77}
+{"t":1793764278.8794582,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":78}
+{"t":1793764279.0830445,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":79}
+{"t":1793764280.279784,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":80}
+{"t":1793764280.4414902,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":81}
+{"t":1793764280.5412145,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":82}
+{"t":1793764280.6817875,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":83}
+{"t":1793764282.199432,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":84}
+{"t":1793764282.3009508,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":85}
+{"t":1793764283.0008464,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":86}
+{"t":1793764283.2603374,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":87}
+{"t":1793764283.4009702,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":88}
+{"t":1793764283.5605521,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":89}
+{"t":1793764284.7594316,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":90}
+{"t":1793764285.1608772,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":91}
+{"t":1793764286.8801684,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":92}
+{"t":1793764286.9795911,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":93}
+{"t":1793764288.242039,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":94}
+{"t":1793764288.3815296,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":95}
+{"t":1793764289.2037995,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":96}
+{"t":1793764289.4402494,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":97}
+{"t":1793764289.6412802,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":98}
+{"t":1793764289.741666,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":99}
+{"t":1793764296.142848,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":100}
+{"t":1793764296.2406461,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":101}
+{"t":1793764296.9410539,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":102}
+{"t":1793764297.04113,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":103}
+{"t":1793764297.6014767,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":104}
+{"t":1793764297.7023344,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":105}
+{"t":1793764298.361047,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":106}
+{"t":1793764298.4610724,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":107}
+{"t":1793764298.762662,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":108}
+{"t":1793764298.9018328,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":109}
+{"t":1793764299.2617576,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":110}
+{"t":1793764299.360893,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":111}
+{"t":1793764299.4593472,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD RIGHT","seq":112}
+{"t":1793764299.5605443,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":113}
+{"t":1793764300.921216,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":114}
+{"t":1793764301.0229464,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":115}
+{"t":1793764302.5011504,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":116}
+{"t":1793764302.5999937,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":117}
+{"t":1793764302.803689,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":118}
+{"t":1793764302.9012122,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":119}
+{"t":1793764303.3021781,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD LEFT","seq":120}
+{"t":1793764303.6013901,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":121}
+{"t":1793764305.6214988,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":122}
+{"t":1793764309.6398067,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RIGHT","seq":123}
+{"t":1793764310.0421915,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":124}
+{"t":1793764311.9013934,"source":"panel_node","level":"info","code":"PANEL","text":"pendant RIGHT","seq":125}
+{"t":1793764312.3011057,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":126}
+{"t":1793764313.261079,"source":"panel_node","level":"info","code":"PANEL","text":"pendant LEFT","seq":127}
+{"t":1793764313.3615444,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":128}
+{"t":1793764313.580935,"source":"panel_node","level":"info","code":"PANEL","text":"pendant FWD","seq":129}
+{"t":1793764314.1822097,"source":"panel_node","level":"info","code":"PANEL","text":"pendant released","seq":130}
+{"t":1793764319.9686012,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"NAVIGATION -> TRANSITIONING: inhibiting","seq":9}
+{"t":1793764319.98986,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"command source none -> none: inhibited by supervisor","seq":28}
+{"t":1793764319.991297,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"motion inhibited: inhibited by supervisor","seq":29}
+{"t":1793764322.9509723,"source":"localization_monitor","level":"warn","code":"LOC_NOT_SET","text":"localisation UNLOCALIZED: no initial pose","seq":1}
+{"t":1793764323.1454637,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: no mission loaded","seq":1}
+{"t":1793764328.9865665,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"TRANSITIONING -> NAVIGATION: ","seq":10}
+{"t":1793764329.0086255,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":30}
+{"t":1793764333.0299234,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"NAVIGATION -> TRANSITIONING: inhibiting","seq":11}
+{"t":1793764333.049769,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"command source none -> none: inhibited by supervisor","seq":31}
+{"t":1793764333.0505466,"source":"cmd_mux_kinematics","level":"warn","code":"INHIBITED","text":"motion inhibited: inhibited by supervisor","seq":32}
+{"t":1793764335.7266643,"source":"localization_monitor","level":"warn","code":"LOC_NOT_SET","text":"localisation UNLOCALIZED: no initial pose","seq":1}
+{"t":1793764335.9614072,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: no mission loaded","seq":1}
+{"t":1793764341.8839724,"source":"amr_supervisor","level":"info","code":"MODE_CHANGE","text":"TRANSITIONING -> NAVIGATION: ","seq":12}
+{"t":1793764341.9094455,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":33}
+{"t":1793764348.526628,"source":"localization_monitor","level":"info","code":"LOC_NOT_CONFIRMED","text":"localisation CHECKING: stale: tf","seq":2}
+{"t":1793764355.5282755,"source":"localization_monitor","level":"info","code":"MODE_CHANGE","text":"localisation READY: operator confirmed scan alignment","seq":3}
+{"t":1793764358.3006127,"source":"panel_node","level":"info","code":"PANEL","text":"selector AUTO","seq":131}
+{"t":1793764358.3501453,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are not powered","seq":6}
+{"t":1793764358.368907,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":34}
+{"t":1793764358.3711774,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"motion inhibited: drives not operational or stale","seq":35}
+{"t":1793764360.2606587,"source":"panel_node","level":"info","code":"PANEL","text":"DEST ITG edge","seq":132}
+{"t":1793764363.5041523,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run READY pass 1/1 step -1: mission kyb-map-02_rev3_route-itg-02_rev2 loaded (34 steps x 1 passes); AUTO + Start to run","seq":2}
+{"t":1793764363.5063226,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run EXECUTING pass 1/1 step 0: ITG: run 20261104-105243-1 started: warning, moving in 2.0 s","seq":3}
+{"t":1793764363.9035597,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are powered","seq":7}
+{"t":1793764363.9085312,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":36}
+{"t":1793764365.8017836,"source":"cmd_mux_kinematics","level":"info","code":"MUX_SOURCE","text":"command source none -> follow: follow","seq":37}
+{"t":1793764697.169037,"source":"cmd_mux_kinematics","level":"info","code":"NO_PERMIT","text":"command source follow -> none: AUTO, no motion permit","seq":38}
+{"t":1793764697.8663626,"source":"route_executor","level":"info","code":"RUN_WAITING","text":"run WAITING pass 1/1 step 10: waiting at ITG-RELEASE (pass 1/1 step 10): press Continue","seq":4}
+{"t":1793764697.9444606,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are not powered","seq":8}
+{"t":1793764697.9488132,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":39}
+{"t":1793764697.9507551,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"motion inhibited: drives not operational or stale","seq":40}
+{"t":1793764709.5803816,"source":"panel_node","level":"info","code":"PANEL","text":"CONTINUE edge","seq":133}
+{"t":1793764709.5896914,"source":"route_executor","level":"info","code":"COSTMAP_CLEARED","text":"local costmap cleared (Continue at ITG-RELEASE): stale obstacle marks beside the vehicle dropped","seq":5}
+{"t":1793764709.5912004,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run EXECUTING pass 1/1 step 11: pass 1/1 step 11 of 34: warning, moving in 2.0 s","seq":6}
+{"t":1793764709.9881,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are powered","seq":9}
+{"t":1793764709.9915035,"source":"cmd_mux_kinematics","level":"info","code":"INHIBITED","text":"motion no longer inhibited","seq":41}
+{"t":1793764711.789163,"source":"cmd_mux_kinematics","level":"info","code":"MUX_SOURCE","text":"command source none -> follow: follow","seq":42}
+{"t":1793764717.9264119,"source":"localization_monitor","level":"error","code":"LOC_SCAN_MISMATCH","text":"localisation LOST: scan passes through mapped obstacles (21 % of beams)","seq":4}
+{"t":1793764718.5653212,"source":"route_executor","level":"error","code":"RUN_SUMMARY","text":"kyb-map-02_rev3_route-itg-02_rev2 FAULT after 355 s; peak cross-track 0.02 m; holds: none","seq":7}
+{"t":1793764718.568879,"source":"route_executor","level":"error","code":"EXEC_PREREQ_LOST","text":"run FAULT pass 1/1 step 11: localisation not READY (scan passes through mapped obstacles (21 % of beams)) for 0.5 s","seq":8}
+{"t":1793764718.571961,"source":"cmd_mux_kinematics","level":"info","code":"NO_PERMIT","text":"command source follow -> none: AUTO, no motion permit","seq":43}
+{"t":1793764718.8090606,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"command source none -> none: drives not operational or stale","seq":44}
+{"t":1793764718.8109393,"source":"cmd_mux_kinematics","level":"warn","code":"DRIVES_NOT_READY","text":"motion inhibited: drives not operational or stale","seq":45}
+{"t":1793764718.9945986,"source":"drive_node","level":"info","code":"MODE_CHANGE","text":"drives are not powered","seq":10}
+{"t":1793764733.183381,"source":"route_executor","level":"info","code":"MODE_CHANGE","text":"run IDLE pass 1/1 step -1: fault acknowledged; load a mission","seq":9}
+{"t":1793764876.66473,"source":"amr_web","level":"warn","code":"WEB_BUG","text":"/run: NetworkError when attempting to fetch resource.","seq":0}
+{"t":1793764988.3411212,"source":"panel_node","level":"info","code":"PANEL","text":"DEST UBC edge; E-stop OK (DI8) LOW","seq":134}
+{"t":1793764988.3449109,"source":"panel_node","level":"error","code":"ESTOP","text":"EMERGENCY STOP (DI08 LOW (E-stop)): release the E-stop, then press Reset","seq":135}
+{"t":1793764988.3515468,"source":"cmd_mux_kinematics","level":"warn","code":"ESTOP","text":"command source none -> none: E-stop: emergency not cleared","seq":46}
+{"t":1793764988.3536131,"source":"route_executor","level":"warn","code":"DEST_REFUSED","text":"UBC refused: E-stop active - release it and press Reset first","seq":10}
+{"t":1793764989.3401957,"source":"panel_node","level":"info","code":"PANEL","text":"E-stop OK (DI8) HIGH","seq":136}
+{"t":1793764989.3411696,"source":"panel_node","level":"warn","code":"ESTOP_RESET_NEEDED","text":"E-stop released: press Reset","seq":137}

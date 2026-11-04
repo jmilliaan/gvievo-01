@@ -1,0 +1,240 @@
+[INFO] [1793763689.216734269] [amcl]: 
+	amcl lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793763689.217410751] [amcl]: Creating
+[INFO] [1793763692.839176149] [amcl]: Configuring
+[INFO] [1793763692.839302726] [amcl]: initTransforms
+[INFO] [1793763692.848942272] [amcl]: initPubSub
+[INFO] [1793763692.852595830] [amcl]: Subscribed to map topic.
+[INFO] [1793763692.972542086] [amcl]: Received a 3577 X 1846 map @ 0.050 m/pix
+[INFO] [1793763693.069121217] [amcl]: Activating
+[INFO] [1793763693.069185717] [amcl]: Creating bond (amcl) to lifecycle manager.
+[INFO] [1793763693.177933578] [amcl]: createLaserObject
+[WARN] [1793763695.416365953] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793763697.417523648] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793763699.517413419] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[WARN] [1793763701.637167773] [amcl]: AMCL cannot publish a pose or update the transform. Please set the initial pose...
+[INFO] [1793763702.652632127] [amcl]: initialPoseReceived
+[WARN] [1793763702.652870549] [amcl]: Failed to transform initial pose in time (Lookup would require extrapolation into the future.  Requested time 1793763702.652712 but the latest data is at time 1793763702.610556, when looking up transform from frame [base_footprint] to frame [odom])
+[INFO] [1793763702.652932431] [amcl]: Setting pose (1793763702.652932): 0.000 0.000 0.000
+[INFO] [1793763702.659505811] [amcl]: Requesting no-motion update
+[INFO] [1793763703.258254191] [amcl]: Requesting no-motion update
+[INFO] [1793763703.759088244] [amcl]: Requesting no-motion update
+[INFO] [1793763704.360937437] [amcl]: Requesting no-motion update
+[INFO] [1793763704.960017282] [amcl]: Requesting no-motion update
+[INFO] [1793763705.560023680] [amcl]: Requesting no-motion update
+[INFO] [1793763706.158717689] [amcl]: Requesting no-motion update
+[INFO] [1793763706.659661144] [amcl]: Requesting no-motion update
+[INFO] [1793763707.258465063] [amcl]: Requesting no-motion update
+[INFO] [1793763707.859787189] [amcl]: Requesting no-motion update
+[INFO] [1793763708.459549458] [amcl]: Requesting no-motion update
+[INFO] [1793763708.960946626] [amcl]: Requesting no-motion update
+[INFO] [1793763709.558346227] [amcl]: Requesting no-motion update
+[INFO] [1793763710.058573801] [amcl]: Requesting no-motion update
+[INFO] [1793763710.559177524] [amcl]: Requesting no-motion update
+[INFO] [1793763711.059673487] [amcl]: Requesting no-motion update
+[INFO] [1793763711.561623550] [amcl]: Requesting no-motion update
+[INFO] [1793763712.160632196] [amcl]: Requesting no-motion update
+[INFO] [1793763712.758620317] [amcl]: Requesting no-motion update
+[INFO] [1793763713.358787349] [amcl]: Requesting no-motion update
+[INFO] [1793763713.861512309] [amcl]: Requesting no-motion update
+[INFO] [1793763714.364112719] [amcl]: Requesting no-motion update
+[INFO] [1793763714.959156287] [amcl]: Requesting no-motion update
+[INFO] [1793763715.558636470] [amcl]: Requesting no-motion update
+[INFO] [1793763716.058803087] [amcl]: Requesting no-motion update
+[INFO] [1793763716.658573195] [amcl]: Requesting no-motion update
+[INFO] [1793763717.259207990] [amcl]: Requesting no-motion update
+[INFO] [1793763717.859979049] [amcl]: Requesting no-motion update
+[INFO] [1793763718.359086305] [amcl]: Requesting no-motion update
+[INFO] [1793763718.859862180] [amcl]: Requesting no-motion update
+[INFO] [1793763719.459192058] [amcl]: Requesting no-motion update
+[INFO] [1793763720.058804281] [amcl]: Requesting no-motion update
+[INFO] [1793763720.559837216] [amcl]: Requesting no-motion update
+[INFO] [1793763721.160495064] [amcl]: Requesting no-motion update
+[INFO] [1793763721.758362351] [amcl]: Requesting no-motion update
+[INFO] [1793763722.258453381] [amcl]: Requesting no-motion update
+[INFO] [1793763722.759887394] [amcl]: Requesting no-motion update
+[INFO] [1793763723.265848261] [amcl]: Requesting no-motion update
+[INFO] [1793763723.866164807] [amcl]: Requesting no-motion update
+[INFO] [1793763724.465460202] [amcl]: Requesting no-motion update
+[INFO] [1793763725.058422767] [amcl]: Requesting no-motion update
+[INFO] [1793763725.559012119] [amcl]: Requesting no-motion update
+[INFO] [1793763726.059784310] [amcl]: Requesting no-motion update
+[INFO] [1793763726.660094352] [amcl]: Requesting no-motion update
+[INFO] [1793763727.259426599] [amcl]: Requesting no-motion update
+[INFO] [1793763727.858414147] [amcl]: Requesting no-motion update
+[INFO] [1793763728.358428667] [amcl]: Requesting no-motion update
+[INFO] [1793763728.958447063] [amcl]: Requesting no-motion update
+[INFO] [1793763729.558326269] [amcl]: Requesting no-motion update
+[INFO] [1793763730.059753061] [amcl]: Requesting no-motion update
+[INFO] [1793763730.658515559] [amcl]: Requesting no-motion update
+[INFO] [1793763731.258555726] [amcl]: Requesting no-motion update
+[INFO] [1793763731.758508240] [amcl]: Requesting no-motion update
+[INFO] [1793763732.358352550] [amcl]: Requesting no-motion update
+[INFO] [1793763732.858632525] [amcl]: Requesting no-motion update
+[INFO] [1793763733.360750528] [amcl]: Requesting no-motion update
+[INFO] [1793763733.868701224] [amcl]: Requesting no-motion update
+[INFO] [1793763734.458396519] [amcl]: Requesting no-motion update
+[INFO] [1793763735.058469844] [amcl]: Requesting no-motion update
+[INFO] [1793763735.559074917] [amcl]: Requesting no-motion update
+[INFO] [1793763736.059351871] [amcl]: Requesting no-motion update
+[INFO] [1793763736.658504689] [amcl]: Requesting no-motion update
+[INFO] [1793763737.258393180] [amcl]: Requesting no-motion update
+[INFO] [1793763737.859303649] [amcl]: Requesting no-motion update
+[INFO] [1793763738.459776266] [amcl]: Requesting no-motion update
+[INFO] [1793763739.059291607] [amcl]: Requesting no-motion update
+[INFO] [1793763739.658418648] [amcl]: Requesting no-motion update
+[INFO] [1793763740.158395846] [amcl]: Requesting no-motion update
+[INFO] [1793763740.658640136] [amcl]: Requesting no-motion update
+[INFO] [1793763741.258531469] [amcl]: Requesting no-motion update
+[INFO] [1793763741.758479148] [amcl]: Requesting no-motion update
+[INFO] [1793763742.358520682] [amcl]: Requesting no-motion update
+[INFO] [1793763742.858944741] [amcl]: Requesting no-motion update
+[INFO] [1793763743.458993539] [amcl]: Requesting no-motion update
+[INFO] [1793763744.058401029] [amcl]: Requesting no-motion update
+[INFO] [1793763744.658354241] [amcl]: Requesting no-motion update
+[INFO] [1793763745.158964033] [amcl]: Requesting no-motion update
+[INFO] [1793763745.758422580] [amcl]: Requesting no-motion update
+[INFO] [1793763746.258601298] [amcl]: Requesting no-motion update
+[INFO] [1793763746.858822419] [amcl]: Requesting no-motion update
+[INFO] [1793763747.459136074] [amcl]: Requesting no-motion update
+[INFO] [1793763747.959585372] [amcl]: Requesting no-motion update
+[INFO] [1793763748.559285651] [amcl]: Requesting no-motion update
+[INFO] [1793763749.160048683] [amcl]: Requesting no-motion update
+[INFO] [1793763749.759474526] [amcl]: Requesting no-motion update
+[INFO] [1793763750.359152106] [amcl]: Requesting no-motion update
+[INFO] [1793763750.960197866] [amcl]: Requesting no-motion update
+[INFO] [1793763751.559714947] [amcl]: Requesting no-motion update
+[INFO] [1793763752.158432807] [amcl]: Requesting no-motion update
+[INFO] [1793763752.758390846] [amcl]: Requesting no-motion update
+[INFO] [1793763753.358712943] [amcl]: Requesting no-motion update
+[INFO] [1793763753.859278279] [amcl]: Requesting no-motion update
+[INFO] [1793763754.459674857] [amcl]: Requesting no-motion update
+[INFO] [1793763754.960009144] [amcl]: Requesting no-motion update
+[INFO] [1793763755.559158467] [amcl]: Requesting no-motion update
+[INFO] [1793763756.159573549] [amcl]: Requesting no-motion update
+[INFO] [1793763756.758436564] [amcl]: Requesting no-motion update
+[INFO] [1793763757.358393839] [amcl]: Requesting no-motion update
+[INFO] [1793763757.858835801] [amcl]: Requesting no-motion update
+[INFO] [1793763758.359456562] [amcl]: Requesting no-motion update
+[INFO] [1793763758.958576394] [amcl]: Requesting no-motion update
+[INFO] [1793763759.459463616] [amcl]: Requesting no-motion update
+[INFO] [1793763760.058439754] [amcl]: Requesting no-motion update
+[INFO] [1793763760.558744205] [amcl]: Requesting no-motion update
+[INFO] [1793763761.158451007] [amcl]: Requesting no-motion update
+[INFO] [1793763761.686964294] [amcl]: Requesting no-motion update
+[INFO] [1793763762.258495438] [amcl]: Requesting no-motion update
+[INFO] [1793763762.761181604] [amcl]: Requesting no-motion update
+[INFO] [1793763763.358403973] [amcl]: Requesting no-motion update
+[INFO] [1793763763.858932488] [amcl]: Requesting no-motion update
+[INFO] [1793763764.458308567] [amcl]: Requesting no-motion update
+[INFO] [1793763764.958880451] [amcl]: Requesting no-motion update
+[INFO] [1793763765.559959986] [amcl]: Requesting no-motion update
+[INFO] [1793763766.158468279] [amcl]: Requesting no-motion update
+[INFO] [1793763766.658474949] [amcl]: Requesting no-motion update
+[INFO] [1793763767.158385702] [amcl]: Requesting no-motion update
+[INFO] [1793763767.658663327] [amcl]: Requesting no-motion update
+[INFO] [1793763768.159236718] [amcl]: Requesting no-motion update
+[INFO] [1793763768.758392113] [amcl]: Requesting no-motion update
+[INFO] [1793763769.258414102] [amcl]: Requesting no-motion update
+[INFO] [1793763769.787535903] [amcl]: Requesting no-motion update
+[INFO] [1793763770.358405146] [amcl]: Requesting no-motion update
+[INFO] [1793763770.871156942] [amcl]: Requesting no-motion update
+[INFO] [1793763771.458368623] [amcl]: Requesting no-motion update
+[INFO] [1793763771.959131154] [amcl]: Requesting no-motion update
+[INFO] [1793763772.460471234] [amcl]: Requesting no-motion update
+[INFO] [1793763772.960352751] [amcl]: Requesting no-motion update
+[INFO] [1793763773.558539595] [amcl]: Requesting no-motion update
+[INFO] [1793763774.160918419] [amcl]: Requesting no-motion update
+[INFO] [1793763774.759210280] [amcl]: Requesting no-motion update
+[INFO] [1793763775.365407274] [amcl]: Requesting no-motion update
+[INFO] [1793763775.958561977] [amcl]: Requesting no-motion update
+[INFO] [1793763776.461200619] [amcl]: Requesting no-motion update
+[INFO] [1793763777.059370802] [amcl]: Requesting no-motion update
+[INFO] [1793763777.559636133] [amcl]: Requesting no-motion update
+[INFO] [1793763778.158416485] [amcl]: Requesting no-motion update
+[INFO] [1793763778.660826153] [amcl]: Requesting no-motion update
+[INFO] [1793763779.159424777] [amcl]: Requesting no-motion update
+[INFO] [1793763779.659298174] [amcl]: Requesting no-motion update
+[INFO] [1793763780.170988729] [amcl]: Requesting no-motion update
+[INFO] [1793763780.758305672] [amcl]: Requesting no-motion update
+[INFO] [1793763781.259573590] [amcl]: Requesting no-motion update
+[INFO] [1793763781.791357034] [amcl]: Requesting no-motion update
+[INFO] [1793763782.376255804] [amcl]: Requesting no-motion update
+[INFO] [1793763782.959580837] [amcl]: Requesting no-motion update
+[INFO] [1793763783.460313591] [amcl]: Requesting no-motion update
+[INFO] [1793763784.059842503] [amcl]: Requesting no-motion update
+[INFO] [1793763784.559965231] [amcl]: Requesting no-motion update
+[INFO] [1793763785.159796385] [amcl]: Requesting no-motion update
+[INFO] [1793763785.659212337] [amcl]: Requesting no-motion update
+[INFO] [1793763786.160440861] [amcl]: Requesting no-motion update
+[INFO] [1793763786.758817491] [amcl]: Requesting no-motion update
+[INFO] [1793763787.358377857] [amcl]: Requesting no-motion update
+[INFO] [1793763787.858512516] [amcl]: Requesting no-motion update
+[INFO] [1793763788.359652009] [amcl]: Requesting no-motion update
+[INFO] [1793763788.958520784] [amcl]: Requesting no-motion update
+[INFO] [1793763789.460969687] [amcl]: Requesting no-motion update
+[INFO] [1793763790.058580977] [amcl]: Requesting no-motion update
+[INFO] [1793763790.658279615] [amcl]: Requesting no-motion update
+[INFO] [1793763791.160139820] [amcl]: Requesting no-motion update
+[INFO] [1793763791.760063326] [amcl]: Requesting no-motion update
+[INFO] [1793763792.259207495] [amcl]: Requesting no-motion update
+[INFO] [1793763792.762818889] [amcl]: Requesting no-motion update
+[INFO] [1793763793.362807486] [amcl]: Requesting no-motion update
+[INFO] [1793763793.861047690] [amcl]: Requesting no-motion update
+[INFO] [1793763794.458773203] [amcl]: Requesting no-motion update
+[INFO] [1793763794.959141421] [amcl]: Requesting no-motion update
+[INFO] [1793763795.558942319] [amcl]: Requesting no-motion update
+[INFO] [1793763796.059704255] [amcl]: Requesting no-motion update
+[INFO] [1793763796.659010144] [amcl]: Requesting no-motion update
+[INFO] [1793763797.258472111] [amcl]: Requesting no-motion update
+[INFO] [1793763797.759036755] [amcl]: Requesting no-motion update
+[INFO] [1793763798.359869224] [amcl]: Requesting no-motion update
+[INFO] [1793763798.958530594] [amcl]: Requesting no-motion update
+[INFO] [1793763799.559274057] [amcl]: Requesting no-motion update
+[INFO] [1793763800.158575070] [amcl]: Requesting no-motion update
+[INFO] [1793763800.659276765] [amcl]: Requesting no-motion update
+[INFO] [1793763801.160882480] [amcl]: Requesting no-motion update
+[INFO] [1793763801.659444049] [amcl]: Requesting no-motion update
+[INFO] [1793763802.258958469] [amcl]: Requesting no-motion update
+[INFO] [1793763802.760067728] [amcl]: Requesting no-motion update
+[INFO] [1793763803.359658149] [amcl]: Requesting no-motion update
+[INFO] [1793763803.959229561] [amcl]: Requesting no-motion update
+[INFO] [1793763804.562060969] [amcl]: Requesting no-motion update
+[INFO] [1793763805.059481201] [amcl]: Requesting no-motion update
+[INFO] [1793763805.659407140] [amcl]: Requesting no-motion update
+[INFO] [1793763806.159243297] [amcl]: Requesting no-motion update
+[INFO] [1793763806.759805086] [amcl]: Requesting no-motion update
+[INFO] [1793763807.260646305] [amcl]: Requesting no-motion update
+[INFO] [1793763807.859347249] [amcl]: Requesting no-motion update
+[INFO] [1793763808.359339201] [amcl]: Requesting no-motion update
+[INFO] [1793763808.860282001] [amcl]: Requesting no-motion update
+[INFO] [1793763809.458426364] [amcl]: Requesting no-motion update
+[INFO] [1793763809.961162912] [amcl]: Requesting no-motion update
+[INFO] [1793763810.560029802] [amcl]: Requesting no-motion update
+[INFO] [1793763811.159408028] [amcl]: Requesting no-motion update
+[INFO] [1793763811.758354943] [amcl]: Requesting no-motion update
+[INFO] [1793763812.258973170] [amcl]: Requesting no-motion update
+[INFO] [1793763812.859522612] [amcl]: Requesting no-motion update
+[INFO] [1793763813.360580900] [amcl]: Requesting no-motion update
+[INFO] [1793763813.958925684] [amcl]: Requesting no-motion update
+[INFO] [1793763814.559806101] [amcl]: Requesting no-motion update
+[INFO] [1793763815.061089352] [amcl]: Requesting no-motion update
+[INFO] [1793763815.659041728] [amcl]: Requesting no-motion update
+[INFO] [1793763816.260659834] [amcl]: Requesting no-motion update
+[INFO] [1793763816.858461201] [amcl]: Requesting no-motion update
+[INFO] [1793763817.359479221] [amcl]: Requesting no-motion update
+[INFO] [1793763817.958473501] [amcl]: Requesting no-motion update
+[INFO] [1793763818.558500384] [amcl]: Requesting no-motion update
+[INFO] [1793763819.158259547] [amcl]: Requesting no-motion update
+[INFO] [1793763819.658321804] [amcl]: Requesting no-motion update
+[INFO] [1793763820.258387889] [amcl]: Requesting no-motion update
+[INFO] [1793763820.858295953] [amcl]: Requesting no-motion update
+[INFO] [1793763821.460629319] [amcl]: Requesting no-motion update
+[INFO] [1793763822.094440385] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793763822.094611216] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[INFO] [1793763822.094872876] [amcl]: Deactivating
+[INFO] [1793763822.094953293] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[INFO] [1793763822.105209521] [amcl]: Cleaning up
+[INFO] [1793763822.146505330] [amcl]: Destroying bond (amcl) to lifecycle manager.

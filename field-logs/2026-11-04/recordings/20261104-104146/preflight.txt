@@ -1,0 +1,8 @@
+pre-flight (/home/gvipc-evo-01/.amr/runs/20261104-104146)
+  ok    amr.service up since Wed 2026-11-04 10:40:13 WIB, no newer code on disk
+  ok    run: state=0 mission='' route='' reason='no mission loaded'
+  WARN  localization state 1 (2 = READY): converged and stable - confirm that scans align with fixed structure
+  ok    mode: 3 (3 = NAVIGATION) phase=
+  ok    drives: operational=true link=armed power_reason='MANUAL, pendant enable (arm) on'
+  ok    93 GB free
+  WARN  pidstat not installed (apt install sysstat): no per-process CPU

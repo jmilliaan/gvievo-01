@@ -1,0 +1,175 @@
+schema_version: 1
+route_id: route-itg-02
+revision: 6
+map:
+  id: kyb-map-02
+  revision: 4
+  sha256: 6c6ef3f4ac571ebc068432cab7ea138a51f2c3c16fdbd6757bd805898c842602
+frame_id: map
+start:
+  x_m: 4.117470100284844e-06
+  y_m: 1.7886097043331275e-09
+  yaw_deg: 0.026241986916417936
+limits:
+  angular_rad_s: 0.37
+  position_tolerance_m: 0.05
+  heading_tolerance_deg: 2.0
+  cross_track_limit_m: 0.1
+steps:
+- id: s1
+  type: straight
+  to:
+    x_m: 1.800003928675023
+    y_m: 0.0008244180929085986
+- id: s2
+  type: arc
+  direction: ccw
+  angle_deg: 90.0
+  radius_m: 2.0
+- id: s3
+  type: straight
+  to:
+    x_m: 3.793499990279913
+    y_m: 14.201738946825408
+- id: s4
+  type: arc
+  direction: ccw
+  angle_deg: 89.75
+  radius_m: 2.0
+- id: s5
+  type: straight
+  to:
+    x_m: -134.69764827964755
+    y_m: 16.73388169086887
+- id: s6
+  type: arc
+  direction: cw
+  angle_deg: 90.0
+  radius_m: 2.0
+- id: s7
+  type: straight
+  to:
+    x_m: -136.58426819187844
+    y_m: 45.7698980609475
+- id: s8
+  type: arc
+  direction: cw
+  angle_deg: 90.0
+  radius_m: 1.8
+- id: s9
+  type: straight
+  to:
+    x_m: -126.74888646862411
+    y_m: 47.531501337602336
+- id: s10
+  type: wait
+  name: ITG-RELEASE
+- id: s11
+  type: arc
+  direction: ccw
+  angle_deg: 90.0
+  radius_m: 1.0
+- id: s12
+  type: straight
+  to:
+    x_m: -125.74342666857265
+    y_m: 48.92758535745232
+- id: s13
+  type: arc
+  direction: ccw
+  angle_deg: 90.0
+  radius_m: 1.0
+- id: s14
+  type: arc
+  direction: ccw
+  angle_deg: 45.0
+  radius_m: 1.0
+- id: s15
+  type: straight
+  to:
+    x_m: -127.73170410719842
+    y_m: 49.359617548815564
+- id: s16
+  type: arc
+  direction: cw
+  angle_deg: 45.0
+  radius_m: 1.0
+- id: s17
+  type: straight
+  to:
+    x_m: -131.8399234057975
+    y_m: 49.08276606459759
+- id: s18
+  type: arc
+  direction: cw
+  angle_deg: 45.0
+  radius_m: 1.0
+- id: s19
+  type: arc
+  direction: ccw
+  angle_deg: 45.0
+  radius_m: 1.0
+- id: s20
+  type: straight
+  to:
+    x_m: -134.45182935869218
+    y_m: 49.67875733419513
+- id: s21
+  type: wait
+  name: ITG-ATTACH
+- id: s22
+  type: arc
+  direction: ccw
+  angle_deg: 90.0
+  radius_m: 2.1
+- id: s23
+  type: straight
+  to:
+    x_m: -136.6726825074554
+    y_m: 18.737194489186347
+- id: s24
+  type: arc
+  direction: ccw
+  angle_deg: 90.0
+  radius_m: 2.0
+- id: s25
+  type: straight
+  to:
+    x_m: -18.481394476910395
+    y_m: 16.275602792588987
+- id: s26
+  type: arc
+  direction: cw
+  angle_deg: 90.0
+  radius_m: 2.0
+- id: s27
+  type: straight
+  to:
+    x_m: -16.54077035113072
+    y_m: 1.0679080954153939
+- id: s28
+  type: straight
+  to:
+    x_m: -16.541551411956533
+    y_m: 0.8679096205612431
+- id: s29
+  type: arc
+  direction: ccw
+  angle_deg: 135.0
+  radius_m: 2.0
+- id: s30
+  type: arc
+  direction: cw
+  angle_deg: 45.0
+  radius_m: 2.0
+- id: s31
+  type: straight
+  to:
+    x_m: -1.2164764375162687
+    y_m: -0.02037335656638438
+- id: s32
+  type: wait
+  name: ITG-RELEASE-HP
+- id: s33
+  type: home
+repeat_count: 1

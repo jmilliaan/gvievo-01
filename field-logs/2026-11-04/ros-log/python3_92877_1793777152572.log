@@ -1,0 +1,67 @@
+[INFO] [1793777152.897551675] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793777152.900032558] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793777152.938040632] [panel_node]: DIO comms ok
+[INFO] [1793777152.977924952] [panel_node]: panel image valid; selector AUTO; E-stop OK (DI8) HIGH
+[INFO] [1793777152.978558437] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793777153.038900013] [panel_node]: Manual Arm on
+[INFO] [1793777273.918857894] [panel_node]: DEST ITG edge
+[INFO] [1793777277.818153683] [panel_node]: alarm horn on
+[INFO] [1793777279.858547020] [panel_node]: alarm horn off
+[INFO] [1793777617.538774687] [panel_node]: CONTINUE edge
+[INFO] [1793777617.558926671] [panel_node]: alarm horn on
+[INFO] [1793777619.659193752] [panel_node]: alarm horn off
+[INFO] [1793777628.498825490] [panel_node]: alarm horn on
+[INFO] [1793777629.299102987] [panel_node]: alarm horn off
+[INFO] [1793777629.598662731] [panel_node]: alarm horn on
+[INFO] [1793777630.099761100] [panel_node]: alarm horn off
+[INFO] [1793778144.318807622] [panel_node]: CONTINUE edge
+[INFO] [1793778144.359540928] [panel_node]: alarm horn on
+[INFO] [1793778146.459114486] [panel_node]: alarm horn off
+[INFO] [1793778154.199238919] [panel_node]: alarm horn on
+[INFO] [1793778154.498624552] [panel_node]: alarm horn off
+[INFO] [1793778156.499380251] [panel_node]: alarm horn on
+[INFO] [1793778156.999151559] [panel_node]: alarm horn off
+[INFO] [1793778464.939080998] [panel_node]: CONTINUE edge
+[INFO] [1793778464.979109275] [panel_node]: alarm horn on
+[INFO] [1793778467.040466728] [panel_node]: alarm horn off
+[INFO] [1793778817.257802528] [panel_node]: DEST ITG edge
+[INFO] [1793778820.998404815] [panel_node]: alarm horn on
+[INFO] [1793778823.058945788] [panel_node]: alarm horn off
+[INFO] [1793778884.199538876] [panel_node]: alarm horn on
+[INFO] [1793778884.599207364] [panel_node]: alarm horn off
+[INFO] [1793778884.698867028] [panel_node]: alarm horn on
+[INFO] [1793778885.098259455] [panel_node]: alarm horn off
+[INFO] [1793779478.459729209] [panel_node]: E-stop OK (DI8) LOW
+[WARN] [1793779478.461471338] [panel_node]: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793779585.158165431] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793779585.159228285] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793779585.958096076] [panel_node]: RESET edge
+[WARN] [1793779585.959028222] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793779586.217900249] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[INFO] [1793779588.078033701] [panel_node]: selector MANUAL
+[INFO] [1793779589.217983810] [panel_node]: RESET edge
+[INFO] [1793779608.497995159] [panel_node]: pendant RVS
+[INFO] [1793779612.118017021] [panel_node]: pendant released
+[INFO] [1793779613.918096331] [panel_node]: pendant RVS
+[INFO] [1793779615.478108044] [panel_node]: pendant RVS LEFT
+[INFO] [1793779615.778136263] [panel_node]: pendant RVS
+[INFO] [1793779616.238096303] [panel_node]: pendant RVS RIGHT
+[INFO] [1793779616.778144243] [panel_node]: pendant RVS
+[INFO] [1793779619.439234112] [panel_node]: pendant RVS RIGHT
+[INFO] [1793779619.738086871] [panel_node]: pendant RVS
+[INFO] [1793779620.259542406] [panel_node]: pendant RVS RIGHT
+[INFO] [1793779624.918558032] [panel_node]: pendant RVS
+[INFO] [1793779625.018166705] [panel_node]: pendant released
+[INFO] [1793779625.878198328] [panel_node]: pendant FWD
+[INFO] [1793779627.598119406] [panel_node]: pendant FWD LEFT
+[INFO] [1793779627.938141551] [panel_node]: pendant FWD
+[INFO] [1793779628.438115183] [panel_node]: pendant FWD RIGHT
+[INFO] [1793779629.598882955] [panel_node]: pendant FWD
+[INFO] [1793779629.898067840] [panel_node]: pendant FWD RIGHT
+[INFO] [1793779630.398042211] [panel_node]: pendant FWD
+[INFO] [1793779633.758134796] [panel_node]: pendant FWD LEFT
+[INFO] [1793779634.978411368] [panel_node]: pendant FWD
+[INFO] [1793779635.278123285] [panel_node]: pendant FWD LEFT
+[INFO] [1793779635.778096875] [panel_node]: pendant FWD
+[INFO] [1793779636.178085727] [panel_node]: pendant FWD RIGHT
+[INFO] [1793779636.378055414] [panel_node]: pendant FWD

@@ -1,0 +1,189 @@
+{
+  "profile_name": "agv-01",
+  "vehicle": {
+    "track_m": 0.487,
+    "wheel_dia_m": 0.18,
+    "gear_ratio": 30.0,
+    "motor_max_rpm": 4000.0,
+    "invert_left": false,
+    "invert_right": false
+  },
+  "drivers": {
+    "ramp": {
+      "auto": {
+        "accel": 2400,
+        "decel": 3200
+      }
+    }
+  },
+  "dio": {
+    "motion_on": [0, 1],
+    "alarm_on": [2],
+    "movement_horn": [1],
+    "enabled": true,
+    "ip": "192.168.1.40",
+    "port": 502,
+    "device_id": 1,
+    "scan_period_s": 0.05,
+    "timeout_s": 0.02,
+    "reconnect_period_s": 0.5,
+    "silent_warn_s": 2.0,
+    "di_base": 0,
+    "do_base": 0,
+    "num_di": 16,
+    "num_do": 16,
+    "di_flipped": false,
+    "di_names": [
+      "PB Start",
+      "SS Manual/Auto",
+      "PB Reset",
+      "Pendant FWD",
+      "Pendant RVS",
+      "Pendant LEFT",
+      "Pendant RIGHT",
+      "[NC]",
+      "E-stop OK (safety PLC)",
+      "Pendant Enable / Arm",
+      "Dest 1 UBC",
+      "Dest 2 ITG",
+      "Dest 3 PISTON",
+      "Continue Run",
+      "[SPARE]",
+      "[SPARE]"
+    ],
+    "do_names": [
+      "Rotary Lamp",
+      "Horn",
+      "Alarm Horn",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]",
+      "[SPARE]"
+    ]
+  },
+  "lidar": {
+    "enabled": true,
+    "host_ip": "192.168.3.1",
+    "sensor_ip": "192.168.3.10",
+    "port": 6060,
+    "reassembly_timeout_s": 0.06,
+    "zone_block": 0,
+    "zone_bytes": [
+      6,
+      12,
+      13
+    ],
+    "zone_active_low": false,
+    "zones_validated": false
+  },
+  "panel": {
+    "enabled": true,
+    "di_reset": 2,
+    "di_start": 0,
+    "di_auto": 1,
+    "auto_when_on": false,
+    "debounce_scans": 2,
+    "estop_low_scans": 2,
+    "manual_arm_scans": 3,
+    "coincidence_hold_s": 1.5,
+    "di_manual_arm": 9,
+    "di_estop_ok": 8,
+    "di_continue": 13,
+    "estop_reset_timeout_s": 3.0,
+    "destinations": [
+      {"name": "UBC", "di": 10, "route_id": ""},
+      {"name": "ITG", "di": 11, "route_id": "route-itg-02"},
+      {"name": "PISTON", "di": 12, "route_id": ""}
+    ]
+  },
+  "horn": {
+    "enabled": false,
+    "do_channel": 0
+  },
+  "pendant": {
+    "enabled": true,
+    "di_fwd": 3,
+    "di_rvs": 4,
+    "di_left": 5,
+    "di_right": 6
+  },
+  "can": {
+    "bitrate": 125000,
+    "channel": "can0",
+    "adapter_serial": "2087327F5548",
+    "left_node": 1,
+    "right_node": 2,
+    "sensor_node": 10,
+    "heartbeat_ms": 200,
+    "use_rpdo": false
+  },
+  "monitor": {
+    "enabled": true,
+    "poll_period_s": 0.1,
+    "driver_temp_warn_c": 70.0,
+    "driver_temp_trip_c": 85.0,
+    "motor_temp_warn_c": 80.0,
+    "motor_temp_trip_c": 95.0,
+    "bus_v_warn_low": 42.0,
+    "bus_v_warn_high": 56.0
+  },
+  "imu": {
+    "enabled": true,
+    "poll_period_s": 0.04,
+    "retry_period_s": 2.0
+  },
+  "blind_run": {
+    "max_distance_m": 10.0,
+    "max_rpm": 3000.0,
+    "accel_rpm_s": 800.0,
+    "settle_s": 0.5,
+    "stop_tolerance_mm": 1.0,
+    "sync_kp": 2.0,
+    "overrun_margin": 0.02,
+    "max_segments": 8,
+    "max_speed_mps": 0.8
+  },
+  "timing": {
+    "loop_period_s": 0.02,
+    "telemetry_period_s": 0.2,
+    "manual_watchdog_s": 0.6,
+    "driver_timeout_s": 0.6,
+    "auto_start_delay_s": 2.0,
+    "premove_timeout_s": 8.0
+  },
+  "gls": {
+    "enabled": true,
+    "host": "192.168.4.1",
+    "port": 2112,
+    "connect_timeout_s": 2.0,
+    "keepalive_s": 2.0,
+    "verify_timeout_s": 3.0,
+    "frame_gap_s": 0.1,
+    "stale_s": 0.5,
+    "expect_template": "\\x02[iec _GoodReadCond][f][$BC];[$XMCL];[$YMCL];[$AN2P];[$FAMS][e][e]\\x03",
+    "min_codes": 2,
+    "outlier_m": 0.0,
+    "xy_scale_m_per_count": 0.0,
+    "x_sign": 1,
+    "y_sign": 1,
+    "angle_sign": 1,
+    "angle_offset_rad": 0.0,
+    "swap_xy": true,
+    "mount_x_m": 0.0,
+    "mount_y_m": 0.0,
+    "mount_yaw_rad": 0.0,
+    "fix_frames": 15,
+    "fix_spread_xy_m": 0.002,
+    "fix_spread_yaw_rad": 0.009,
+    "stationary_s": 1.0
+  }
+}

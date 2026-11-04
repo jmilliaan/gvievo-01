@@ -1,0 +1,369 @@
+[INFO] [1793693436.279759657] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793693436.283567743] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793693436.343931680] [panel_node]: DIO comms ok
+[INFO] [1793693436.385804141] [panel_node]: panel image valid; selector AUTO; E-stop OK (DI8) HIGH
+[INFO] [1793693436.386622367] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793693436.444021200] [panel_node]: Manual Arm on
+[INFO] [1793693467.484013326] [panel_node]: DEST ITG edge
+[INFO] [1793693480.403074196] [panel_node]: DEST ITG edge
+[INFO] [1793693490.684363546] [panel_node]: DEST ITG edge
+[INFO] [1793693512.343759820] [panel_node]: DEST ITG edge
+[INFO] [1793693515.443419844] [panel_node]: alarm horn on
+[INFO] [1793693517.484620640] [panel_node]: alarm horn off
+[INFO] [1793693928.983949423] [panel_node]: CONTINUE edge
+[INFO] [1793693929.004157034] [panel_node]: alarm horn on
+[INFO] [1793693931.084280046] [panel_node]: alarm horn off
+[INFO] [1793693971.563667209] [panel_node]: alarm horn on
+[INFO] [1793693973.164212513] [panel_node]: alarm horn off
+[INFO] [1793694013.163516398] [panel_node]: alarm horn on
+[INFO] [1793694014.764573641] [panel_node]: alarm horn off
+[INFO] [1793694190.183189101] [panel_node]: CONTINUE edge
+[INFO] [1793694190.203331042] [panel_node]: alarm horn on
+[INFO] [1793694192.283339070] [panel_node]: alarm horn off
+[INFO] [1793694200.063927028] [panel_node]: alarm horn on
+[INFO] [1793694200.763741376] [panel_node]: alarm horn off
+[INFO] [1793694482.703953554] [panel_node]: RESET edge
+[INFO] [1793694487.003860493] [panel_node]: selector MANUAL
+[INFO] [1793694539.563733589] [panel_node]: pendant FWD
+[INFO] [1793694543.243815903] [panel_node]: pendant released
+[INFO] [1793694588.823734428] [panel_node]: Manual Arm off
+[INFO] [1793694590.243634176] [panel_node]: Manual Arm on
+[INFO] [1793694634.123663242] [panel_node]: pendant FWD
+[INFO] [1793694634.583890810] [panel_node]: pendant released
+[INFO] [1793694778.643715553] [panel_node]: pendant FWD
+[INFO] [1793694779.243781992] [panel_node]: pendant released
+[INFO] [1793694781.603892875] [panel_node]: pendant LEFT
+[INFO] [1793694789.904465211] [panel_node]: pendant released
+[INFO] [1793694806.583774582] [panel_node]: pendant FWD
+[INFO] [1793694811.103810062] [panel_node]: pendant released
+[INFO] [1793694811.363753629] [panel_node]: pendant FWD
+[INFO] [1793694832.383847832] [panel_node]: pendant FWD LEFT
+[INFO] [1793694832.583760460] [panel_node]: pendant FWD
+[INFO] [1793694833.223745845] [panel_node]: pendant FWD LEFT
+[INFO] [1793694833.883775045] [panel_node]: pendant FWD
+[INFO] [1793694834.423779757] [panel_node]: pendant FWD LEFT
+[INFO] [1793694834.643698163] [panel_node]: pendant FWD
+[INFO] [1793694834.983737148] [panel_node]: pendant FWD LEFT
+[INFO] [1793694836.243743251] [panel_node]: pendant FWD
+[INFO] [1793694837.702977194] [panel_node]: pendant FWD LEFT
+[INFO] [1793694838.103851062] [panel_node]: pendant FWD
+[INFO] [1793694838.543744580] [panel_node]: pendant FWD LEFT
+[INFO] [1793694838.743725901] [panel_node]: pendant FWD
+[INFO] [1793694838.943754787] [panel_node]: pendant FWD LEFT
+[INFO] [1793694840.363773193] [panel_node]: pendant FWD
+[INFO] [1793694841.523713459] [panel_node]: pendant FWD LEFT
+[INFO] [1793694842.363672347] [panel_node]: pendant FWD
+[INFO] [1793694844.183748904] [panel_node]: pendant FWD LEFT
+[INFO] [1793694844.783744539] [panel_node]: pendant FWD
+[INFO] [1793694846.243623129] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694846.443777728] [panel_node]: pendant FWD
+[INFO] [1793694887.943760722] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694888.143703040] [panel_node]: pendant FWD
+[INFO] [1793694888.543945233] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694888.703846570] [panel_node]: pendant FWD
+[INFO] [1793694888.904008595] [panel_node]: pendant FWD LEFT
+[INFO] [1793694889.143663311] [panel_node]: pendant FWD
+[INFO] [1793694889.303916594] [panel_node]: pendant FWD LEFT
+[INFO] [1793694889.443738929] [panel_node]: pendant FWD
+[INFO] [1793694889.563765067] [panel_node]: pendant FWD LEFT
+[INFO] [1793694889.663827432] [panel_node]: pendant FWD
+[INFO] [1793694894.683800028] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694894.883584881] [panel_node]: pendant FWD
+[INFO] [1793694895.223953381] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694895.343855601] [panel_node]: pendant FWD
+[INFO] [1793694896.043726949] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694896.183778934] [panel_node]: pendant FWD
+[INFO] [1793694896.343609557] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694896.443810097] [panel_node]: pendant FWD
+[INFO] [1793694896.903856144] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694897.243705957] [panel_node]: pendant FWD
+[INFO] [1793694900.883861728] [panel_node]: pendant FWD LEFT
+[INFO] [1793694901.083736790] [panel_node]: pendant FWD
+[INFO] [1793694922.583794466] [panel_node]: pendant FWD LEFT
+[INFO] [1793694922.843748432] [panel_node]: pendant FWD
+[INFO] [1793694923.643783588] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694923.843668713] [panel_node]: pendant FWD
+[INFO] [1793694924.083901577] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694924.243625218] [panel_node]: pendant FWD
+[INFO] [1793694924.743680330] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694924.843960737] [panel_node]: pendant FWD
+[INFO] [1793694927.043723493] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694927.243784508] [panel_node]: pendant FWD
+[INFO] [1793694931.883755414] [panel_node]: pendant FWD LEFT
+[INFO] [1793694931.983678713] [panel_node]: pendant FWD
+[INFO] [1793694932.283937358] [panel_node]: pendant FWD LEFT
+[INFO] [1793694932.423521107] [panel_node]: pendant FWD
+[INFO] [1793694932.583592386] [panel_node]: pendant FWD LEFT
+[INFO] [1793694932.843973496] [panel_node]: pendant FWD
+[INFO] [1793694948.503625257] [panel_node]: pendant FWD LEFT
+[INFO] [1793694948.663838665] [panel_node]: pendant FWD
+[INFO] [1793694949.423832497] [panel_node]: pendant FWD LEFT
+[INFO] [1793694949.563658102] [panel_node]: pendant FWD
+[INFO] [1793694949.722972479] [panel_node]: pendant FWD LEFT
+[INFO] [1793694949.823820834] [panel_node]: pendant FWD
+[INFO] [1793694950.263805703] [panel_node]: pendant FWD LEFT
+[INFO] [1793694951.123797048] [panel_node]: pendant FWD
+[INFO] [1793694951.983794439] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694952.223652825] [panel_node]: pendant FWD
+[INFO] [1793694952.523724998] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694953.343758563] [panel_node]: pendant FWD
+[INFO] [1793694953.683823684] [panel_node]: pendant FWD LEFT
+[INFO] [1793694954.543753750] [panel_node]: pendant FWD
+[INFO] [1793694958.463764998] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694958.603737971] [panel_node]: pendant FWD
+[INFO] [1793694959.103685235] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694959.363708304] [panel_node]: pendant FWD
+[INFO] [1793694959.463570577] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694959.663843019] [panel_node]: pendant FWD
+[INFO] [1793694961.383757640] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694961.523813855] [panel_node]: pendant FWD
+[INFO] [1793694962.223727732] [panel_node]: pendant FWD RIGHT
+[INFO] [1793694962.423695207] [panel_node]: pendant FWD
+[INFO] [1793694987.324409409] [panel_node]: pendant released
+[INFO] [1793695003.063787567] [panel_node]: pendant FWD
+[INFO] [1793695088.443567349] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695088.643687366] [panel_node]: pendant FWD
+[INFO] [1793695088.803778154] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695089.003777130] [panel_node]: pendant FWD
+[INFO] [1793695089.963807767] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695090.663780834] [panel_node]: pendant FWD
+[INFO] [1793695090.863879019] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695091.003717565] [panel_node]: pendant FWD
+[INFO] [1793695092.424266217] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695092.624216911] [panel_node]: pendant FWD
+[INFO] [1793695092.763442402] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695093.023866924] [panel_node]: pendant FWD
+[INFO] [1793695093.263643617] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695093.463696207] [panel_node]: pendant FWD
+[INFO] [1793695094.724219450] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695095.423716458] [panel_node]: pendant FWD
+[INFO] [1793695097.044066752] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695097.183768460] [panel_node]: pendant FWD
+[INFO] [1793695100.203814060] [panel_node]: pendant FWD LEFT
+[INFO] [1793695100.563875047] [panel_node]: pendant FWD
+[INFO] [1793695100.663708357] [panel_node]: pendant FWD LEFT
+[INFO] [1793695101.763648688] [panel_node]: pendant FWD
+[INFO] [1793695102.123763170] [panel_node]: pendant FWD LEFT
+[INFO] [1793695102.363627303] [panel_node]: pendant FWD
+[INFO] [1793695102.663715731] [panel_node]: pendant FWD LEFT
+[INFO] [1793695103.084275355] [panel_node]: pendant FWD
+[INFO] [1793695103.165499504] [panel_node]: pendant FWD LEFT
+[INFO] [1793695103.823834996] [panel_node]: pendant FWD
+[INFO] [1793695104.023809031] [panel_node]: pendant FWD LEFT
+[INFO] [1793695104.183659919] [panel_node]: pendant FWD
+[INFO] [1793695104.483654428] [panel_node]: pendant FWD LEFT
+[INFO] [1793695104.723722770] [panel_node]: pendant FWD
+[INFO] [1793695104.983706242] [panel_node]: pendant FWD LEFT
+[INFO] [1793695105.484320393] [panel_node]: pendant FWD
+[INFO] [1793695114.883729684] [panel_node]: pendant FWD LEFT
+[INFO] [1793695115.083696972] [panel_node]: pendant FWD
+[INFO] [1793695115.844382710] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695116.043752300] [panel_node]: pendant FWD
+[INFO] [1793695116.603844129] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695116.743765545] [panel_node]: pendant FWD
+[INFO] [1793695116.943656639] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695117.103645338] [panel_node]: pendant FWD
+[INFO] [1793695117.404414964] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695117.603859346] [panel_node]: pendant FWD
+[INFO] [1793695124.843714548] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695125.003753118] [panel_node]: pendant FWD
+[INFO] [1793695125.643755654] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695125.803670679] [panel_node]: pendant FWD
+[INFO] [1793695128.023628717] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695128.163614557] [panel_node]: pendant FWD
+[INFO] [1793695140.343750735] [panel_node]: pendant FWD LEFT
+[INFO] [1793695140.483596067] [panel_node]: pendant FWD
+[INFO] [1793695140.643853698] [panel_node]: pendant FWD LEFT
+[INFO] [1793695140.943994508] [panel_node]: pendant FWD
+[INFO] [1793695159.544072168] [panel_node]: pendant FWD LEFT
+[INFO] [1793695159.703721979] [panel_node]: pendant FWD
+[INFO] [1793695160.503913905] [panel_node]: pendant FWD LEFT
+[INFO] [1793695160.643808310] [panel_node]: pendant FWD
+[INFO] [1793695161.303724990] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695161.443820616] [panel_node]: pendant FWD
+[INFO] [1793695161.603904989] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695161.703915180] [panel_node]: pendant FWD
+[INFO] [1793695162.203873536] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695162.363703327] [panel_node]: pendant FWD
+[INFO] [1793695173.783778079] [panel_node]: pendant FWD LEFT
+[INFO] [1793695173.884496565] [panel_node]: pendant FWD
+[INFO] [1793695174.423893067] [panel_node]: pendant FWD LEFT
+[INFO] [1793695174.523739833] [panel_node]: pendant FWD
+[INFO] [1793695174.623821043] [panel_node]: pendant FWD LEFT
+[INFO] [1793695175.283857147] [panel_node]: pendant FWD
+[INFO] [1793695176.143922602] [panel_node]: pendant FWD LEFT
+[INFO] [1793695177.203764485] [panel_node]: pendant FWD
+[INFO] [1793695178.403742286] [panel_node]: pendant FWD LEFT
+[INFO] [1793695179.163723277] [panel_node]: pendant FWD
+[INFO] [1793695179.463871124] [panel_node]: pendant FWD LEFT
+[INFO] [1793695179.863743195] [panel_node]: pendant FWD
+[INFO] [1793695180.963890885] [panel_node]: pendant FWD LEFT
+[INFO] [1793695181.463638615] [panel_node]: pendant FWD
+[INFO] [1793695181.563700887] [panel_node]: pendant FWD LEFT
+[INFO] [1793695181.723801927] [panel_node]: pendant FWD
+[INFO] [1793695182.663701366] [panel_node]: pendant FWD LEFT
+[INFO] [1793695183.523738691] [panel_node]: pendant FWD
+[INFO] [1793695183.623683728] [panel_node]: pendant FWD LEFT
+[INFO] [1793695183.823791552] [panel_node]: pendant FWD
+[INFO] [1793695191.823759229] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695192.084139667] [panel_node]: pendant FWD
+[INFO] [1793695192.983715131] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695193.143819260] [panel_node]: pendant FWD
+[INFO] [1793695221.103801390] [panel_node]: pendant FWD LEFT
+[INFO] [1793695221.243791812] [panel_node]: pendant FWD
+[INFO] [1793695221.563678075] [panel_node]: pendant FWD LEFT
+[INFO] [1793695221.803667859] [panel_node]: pendant FWD
+[INFO] [1793695222.364296970] [panel_node]: pendant FWD LEFT
+[INFO] [1793695222.563769214] [panel_node]: pendant FWD
+[INFO] [1793695233.983697783] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695234.062818357] [panel_node]: pendant FWD
+[INFO] [1793695234.323986057] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695234.584474182] [panel_node]: pendant FWD
+[INFO] [1793695234.823701704] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695234.923724959] [panel_node]: pendant FWD
+[INFO] [1793695235.823760630] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695235.984415883] [panel_node]: pendant FWD
+[INFO] [1793695236.084400949] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695236.284263360] [panel_node]: pendant FWD
+[INFO] [1793695236.384471215] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695236.483838282] [panel_node]: pendant FWD
+[INFO] [1793695237.642814662] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695237.843848307] [panel_node]: pendant FWD
+[INFO] [1793695237.943722570] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695238.043722085] [panel_node]: pendant FWD
+[INFO] [1793695238.903804324] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695239.043627482] [panel_node]: pendant FWD
+[INFO] [1793695239.142871636] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695239.303619160] [panel_node]: pendant FWD
+[INFO] [1793695239.603816980] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695239.743851984] [panel_node]: pendant FWD
+[INFO] [1793695239.963929766] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695240.603753938] [panel_node]: pendant FWD
+[INFO] [1793695240.763598392] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695240.863721942] [panel_node]: pendant FWD
+[INFO] [1793695241.003855552] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695241.103734308] [panel_node]: pendant FWD
+[INFO] [1793695241.823067037] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695242.363537953] [panel_node]: pendant FWD
+[INFO] [1793695242.463699583] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695242.624201566] [panel_node]: pendant FWD
+[INFO] [1793695242.723900115] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695242.823685965] [panel_node]: pendant FWD
+[INFO] [1793695242.963773554] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695243.063693034] [panel_node]: pendant FWD
+[INFO] [1793695243.263628286] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695243.363669736] [panel_node]: pendant FWD
+[INFO] [1793695243.463741126] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695243.563826960] [panel_node]: pendant FWD
+[INFO] [1793695243.823734297] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695243.923998878] [panel_node]: pendant FWD
+[INFO] [1793695244.223265631] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695244.383915702] [panel_node]: pendant FWD
+[INFO] [1793695244.483504018] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695244.624094301] [panel_node]: pendant FWD
+[INFO] [1793695244.723686953] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695244.923854834] [panel_node]: pendant FWD
+[INFO] [1793695245.043776252] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695245.243834631] [panel_node]: pendant FWD
+[INFO] [1793695245.343668915] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695245.483772284] [panel_node]: pendant FWD
+[INFO] [1793695245.583736787] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695245.743788619] [panel_node]: pendant FWD
+[INFO] [1793695257.103629583] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695257.303788204] [panel_node]: pendant FWD
+[INFO] [1793695257.803710198] [panel_node]: pendant FWD LEFT
+[INFO] [1793695257.903773559] [panel_node]: pendant FWD
+[INFO] [1793695258.063835733] [panel_node]: pendant FWD LEFT
+[INFO] [1793695258.204191772] [panel_node]: pendant FWD
+[INFO] [1793695277.923754100] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695278.163582005] [panel_node]: pendant FWD
+[INFO] [1793695278.763762114] [panel_node]: pendant FWD LEFT
+[INFO] [1793695278.963723701] [panel_node]: pendant FWD
+[INFO] [1793695279.063734645] [panel_node]: pendant FWD LEFT
+[INFO] [1793695279.183829914] [panel_node]: pendant FWD
+[INFO] [1793695279.283690294] [panel_node]: pendant FWD LEFT
+[INFO] [1793695279.423721689] [panel_node]: pendant FWD
+[INFO] [1793695279.583585386] [panel_node]: pendant FWD LEFT
+[INFO] [1793695279.683720001] [panel_node]: pendant FWD
+[INFO] [1793695280.983666694] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695281.123762080] [panel_node]: pendant FWD
+[INFO] [1793695281.543701135] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695281.683760014] [panel_node]: pendant FWD
+[INFO] [1793695281.783755674] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695281.984076519] [panel_node]: pendant FWD
+[INFO] [1793695284.503394053] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695284.603874945] [panel_node]: pendant FWD
+[INFO] [1793695284.702888166] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695284.843756733] [panel_node]: pendant FWD
+[INFO] [1793695285.203623805] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695285.363705343] [panel_node]: pendant FWD
+[INFO] [1793695285.603863306] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695286.063658993] [panel_node]: pendant FWD
+[INFO] [1793695295.423714407] [panel_node]: pendant FWD LEFT
+[INFO] [1793695295.623738352] [panel_node]: pendant FWD
+[INFO] [1793695296.523739007] [panel_node]: pendant FWD LEFT
+[INFO] [1793695296.683713974] [panel_node]: pendant FWD
+[INFO] [1793695297.383693799] [panel_node]: pendant FWD LEFT
+[INFO] [1793695297.523656245] [panel_node]: pendant FWD
+[INFO] [1793695297.623700727] [panel_node]: pendant FWD LEFT
+[INFO] [1793695297.723668878] [panel_node]: pendant FWD
+[INFO] [1793695316.283886856] [panel_node]: pendant released
+[INFO] [1793695319.803752118] [panel_node]: pendant FWD
+[INFO] [1793695320.143655343] [panel_node]: pendant released
+[INFO] [1793695321.203910216] [panel_node]: pendant FWD
+[INFO] [1793695328.844100188] [panel_node]: pendant FWD LEFT
+[INFO] [1793695329.043916034] [panel_node]: pendant FWD
+[INFO] [1793695329.343702409] [panel_node]: pendant FWD LEFT
+[INFO] [1793695329.503806539] [panel_node]: pendant FWD
+[INFO] [1793695329.703767995] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695329.903811093] [panel_node]: pendant FWD
+[INFO] [1793695330.003748099] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695330.403676179] [panel_node]: pendant FWD
+[INFO] [1793695330.663729640] [panel_node]: pendant released
+[INFO] [1793695331.263765216] [panel_node]: pendant FWD
+[INFO] [1793695331.423902758] [panel_node]: pendant FWD LEFT
+[INFO] [1793695331.523402487] [panel_node]: pendant LEFT
+[INFO] [1793695331.623846852] [panel_node]: pendant released
+[INFO] [1793695332.083625860] [panel_node]: pendant LEFT
+[INFO] [1793695332.523931324] [panel_node]: pendant FWD
+[INFO] [1793695332.723664569] [panel_node]: pendant released
+[INFO] [1793695333.023925880] [panel_node]: pendant FWD
+[INFO] [1793695338.003904749] [panel_node]: pendant FWD RIGHT
+[INFO] [1793695338.143866576] [panel_node]: pendant FWD
+[INFO] [1793695338.703941888] [panel_node]: pendant released
+[INFO] [1793695339.063737460] [panel_node]: pendant LEFT
+[INFO] [1793695339.263669958] [panel_node]: pendant released
+[INFO] [1793695339.463733488] [panel_node]: pendant LEFT
+[INFO] [1793695339.603741329] [panel_node]: pendant released
+[INFO] [1793695340.403762231] [panel_node]: pendant LEFT
+[INFO] [1793695340.763913172] [panel_node]: pendant FWD
+[INFO] [1793695340.863959537] [panel_node]: pendant released
+[INFO] [1793695341.363734475] [panel_node]: pendant LEFT
+[INFO] [1793695341.763898599] [panel_node]: pendant released
+[INFO] [1793695342.163954615] [panel_node]: pendant LEFT
+[INFO] [1793695342.723702527] [panel_node]: pendant released
+[INFO] [1793695343.123873704] [panel_node]: pendant FWD
+[INFO] [1793695345.583745373] [panel_node]: pendant FWD LEFT
+[INFO] [1793695345.743882864] [panel_node]: pendant FWD
+[INFO] [1793695346.083659690] [panel_node]: pendant released
+[INFO] [1793695346.383785714] [panel_node]: pendant LEFT
+[INFO] [1793695346.483749376] [panel_node]: pendant released
+[INFO] [1793695347.343822109] [panel_node]: pendant LEFT
+[INFO] [1793695348.003823995] [panel_node]: pendant released
+[INFO] [1793695348.443645581] [panel_node]: pendant LEFT
+[INFO] [1793695349.003847342] [panel_node]: pendant released
+[INFO] [1793695349.363678336] [panel_node]: pendant FWD
+[INFO] [1793695355.303606746] [panel_node]: pendant released
+[INFO] [1793695440.303732578] [panel_node]: DEST ITG edge
+[INFO] [1793695441.883675781] [panel_node]: E-stop OK (DI8) LOW
+[WARN] [1793695441.885202402] [panel_node]: emergency NORMAL -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793695497.743712687] [panel_node]: selector AUTO
+[INFO] [1793695498.403817363] [panel_node]: selector MANUAL
+[INFO] [1793695573.063844582] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793695573.065333119] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793695577.143751294] [panel_node]: RESET edge
+[WARN] [1793695577.145262001] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793695577.283832247] [panel_node]: emergency RESETTING -> NORMAL: drives out of STO
+[INFO] [1793695582.723761090] [panel_node]: pendant RVS
+[INFO] [1793695588.043920959] [panel_node]: pendant released
+[INFO] [1793695590.563890575] [panel_node]: Manual Arm off

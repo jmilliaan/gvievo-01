@@ -1,0 +1,16 @@
+[INFO] [1793767257.631895330] [behavior_server]: 
+	behavior_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1793767263.762119248] [behavior_server]: Configuring
+[INFO] [1793767263.771024019] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors/Spin
+[INFO] [1793767263.772134120] [behavior_server]: Configuring spin
+[INFO] [1793767264.144771326] [behavior_server]: Activating
+[INFO] [1793767264.144996220] [behavior_server]: Activating spin
+[INFO] [1793767264.145195177] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[INFO] [1793768989.142097159] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1793768989.142245309] [behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[INFO] [1793768989.142355768] [behavior_server]: Deactivating
+[INFO] [1793768989.146196879] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[INFO] [1793768989.159159179] [behavior_server]: Cleaning up
+[INFO] [1793768989.197247372] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.

@@ -1,0 +1,8 @@
+pre-flight (/home/gvipc-evo-01/.amr/runs/20261104-111942)
+  WARN  amr.service started Wed 2026-11-04 10:40:13 WIB but /home/gvipc-evo-01/agv_can/amr_ws/src/amr_web/amr_web/jog.py changed later: RESTART it to run the current code
+  ok    run: state=0 mission='' route='' reason='no mission loaded'
+  ok    localization READY
+  ok    mode: 3 (3 = NAVIGATION) phase=
+  ok    drives: operational=false link=standby power_reason='AUTO, no run asking for power'
+  ok    92 GB free
+  WARN  pidstat not installed (apt install sysstat): no per-process CPU

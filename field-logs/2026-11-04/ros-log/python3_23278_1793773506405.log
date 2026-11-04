@@ -1,0 +1,144 @@
+[INFO] [1793773506.732307722] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793773506.741736458] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793773506.819066496] [panel_node]: DIO comms ok
+[INFO] [1793773506.858093074] [panel_node]: panel image valid; selector MANUAL; E-stop OK (DI8) HIGH
+[INFO] [1793773506.860492689] [panel_node]: emergency EMERGENCY -> NORMAL: panel back, DI08 HIGH
+[INFO] [1793773506.918003635] [panel_node]: Manual Arm on
+[INFO] [1793773758.318431117] [panel_node]: selector AUTO
+[INFO] [1793773774.598661602] [panel_node]: DEST ITG edge
+[INFO] [1793773774.638456002] [panel_node]: alarm horn on
+[INFO] [1793773776.739252187] [panel_node]: alarm horn off
+[INFO] [1793773851.859738463] [panel_node]: alarm horn on
+[INFO] [1793773883.358971354] [panel_node]: alarm horn off
+[INFO] [1793774160.298701871] [panel_node]: CONTINUE edge
+[INFO] [1793774160.319936188] [panel_node]: alarm horn on
+[INFO] [1793774162.338986316] [panel_node]: alarm horn off
+[INFO] [1793774172.758562590] [panel_node]: alarm horn on
+[INFO] [1793774173.959178959] [panel_node]: alarm horn off
+[INFO] [1793774481.179058028] [panel_node]: CONTINUE edge
+[INFO] [1793774481.198952578] [panel_node]: alarm horn on
+[INFO] [1793774483.238016193] [panel_node]: alarm horn off
+[INFO] [1793774490.858198607] [panel_node]: alarm horn on
+[INFO] [1793774491.058522660] [panel_node]: alarm horn off
+[INFO] [1793774492.358850076] [panel_node]: alarm horn on
+[INFO] [1793774492.459131830] [panel_node]: alarm horn off
+[INFO] [1793774493.159003278] [panel_node]: alarm horn on
+[INFO] [1793774493.658983282] [panel_node]: alarm horn off
+[INFO] [1793774799.477950378] [panel_node]: CONTINUE edge
+[INFO] [1793774799.498468278] [panel_node]: alarm horn on
+[INFO] [1793774801.539571868] [panel_node]: alarm horn off
+[INFO] [1793774948.818960420] [panel_node]: CONTINUE edge
+[INFO] [1793774951.318798150] [panel_node]: DEST ITG edge
+[INFO] [1793774955.138185413] [panel_node]: alarm horn on
+[INFO] [1793774957.239225890] [panel_node]: alarm horn off
+[INFO] [1793775073.458200181] [panel_node]: alarm horn on
+[INFO] [1793775073.659023916] [panel_node]: alarm horn off
+[INFO] [1793775074.358785677] [panel_node]: alarm horn on
+[INFO] [1793775074.558149674] [panel_node]: alarm horn off
+[INFO] [1793775304.077750027] [panel_node]: CONTINUE edge
+[INFO] [1793775304.098344595] [panel_node]: alarm horn on
+[INFO] [1793775306.138938891] [panel_node]: alarm horn off
+[INFO] [1793775315.058704727] [panel_node]: alarm horn on
+[INFO] [1793775315.959043140] [panel_node]: alarm horn off
+[INFO] [1793775470.398724148] [panel_node]: CONTINUE edge
+[INFO] [1793775470.437969815] [panel_node]: alarm horn on
+[INFO] [1793775472.439112943] [panel_node]: alarm horn off
+[INFO] [1793775480.059174009] [panel_node]: alarm horn on
+[INFO] [1793775480.459324929] [panel_node]: alarm horn off
+[INFO] [1793775481.859035393] [panel_node]: alarm horn on
+[INFO] [1793775481.958062186] [panel_node]: alarm horn off
+[INFO] [1793775482.558957594] [panel_node]: alarm horn on
+[INFO] [1793775483.258635653] [panel_node]: alarm horn off
+[INFO] [1793775792.158554912] [panel_node]: CONTINUE edge
+[INFO] [1793775792.178886302] [panel_node]: alarm horn on
+[INFO] [1793775794.239122149] [panel_node]: alarm horn off
+[INFO] [1793775865.478555050] [panel_node]: DEST ITG edge
+[INFO] [1793775869.338781885] [panel_node]: alarm horn on
+[INFO] [1793775871.438974144] [panel_node]: alarm horn off
+[INFO] [1793776203.558577199] [panel_node]: CONTINUE edge
+[INFO] [1793776203.578769543] [panel_node]: alarm horn on
+[INFO] [1793776205.638483725] [panel_node]: alarm horn off
+[INFO] [1793776214.358758689] [panel_node]: alarm horn on
+[INFO] [1793776218.559512204] [panel_node]: alarm horn off
+[INFO] [1793776218.658444471] [panel_node]: alarm horn on
+[INFO] [1793776219.458942672] [panel_node]: alarm horn off
+[INFO] [1793776348.498737236] [panel_node]: CONTINUE edge
+[INFO] [1793776348.519063884] [panel_node]: alarm horn on
+[INFO] [1793776350.538408895] [panel_node]: alarm horn off
+[INFO] [1793776358.159000460] [panel_node]: alarm horn on
+[INFO] [1793776358.559087641] [panel_node]: alarm horn off
+[INFO] [1793776360.559142454] [panel_node]: alarm horn on
+[INFO] [1793776361.158837070] [panel_node]: alarm horn off
+[INFO] [1793776674.318829320] [panel_node]: CONTINUE edge
+[INFO] [1793776674.338611317] [panel_node]: alarm horn on
+[INFO] [1793776676.438544443] [panel_node]: alarm horn off
+[INFO] [1793776721.158154680] [panel_node]: DEST ITG edge
+[INFO] [1793776723.818861867] [panel_node]: DEST ITG edge
+[INFO] [1793776724.918854682] [panel_node]: alarm horn on
+[INFO] [1793776726.938945121] [panel_node]: alarm horn off
+[INFO] [1793776751.459199462] [panel_node]: alarm horn on
+[INFO] [1793776751.558874699] [panel_node]: alarm horn off
+[INFO] [1793776752.062231622] [panel_node]: alarm horn on
+[INFO] [1793776752.359113165] [panel_node]: alarm horn off
+[INFO] [1793776769.438587944] [panel_node]: DEST ITG edge
+[INFO] [1793776770.597865517] [panel_node]: CONTINUE edge
+[INFO] [1793776772.217815219] [panel_node]: selector MANUAL
+[INFO] [1793776779.158673722] [panel_node]: pendant FWD
+[INFO] [1793776779.358232716] [panel_node]: pendant released
+[INFO] [1793776779.458452190] [panel_node]: pendant FWD
+[INFO] [1793776779.558538650] [panel_node]: pendant released
+[INFO] [1793776779.758368599] [panel_node]: pendant FWD
+[INFO] [1793776780.958820423] [panel_node]: pendant released
+[INFO] [1793776786.959491813] [panel_node]: pendant FWD
+[INFO] [1793776789.878270657] [panel_node]: pendant released
+[INFO] [1793776791.837697169] [panel_node]: pendant RVS
+[INFO] [1793776793.099224884] [panel_node]: pendant released
+[INFO] [1793776793.258602208] [panel_node]: pendant RVS
+[INFO] [1793776793.498526501] [panel_node]: pendant released
+[INFO] [1793776798.799087765] [panel_node]: pendant RVS
+[INFO] [1793776799.597619780] [panel_node]: pendant released
+[INFO] [1793776897.198071694] [panel_node]: pendant RVS
+[INFO] [1793776898.558366928] [panel_node]: pendant RVS LEFT
+[INFO] [1793776898.798075557] [panel_node]: pendant RVS
+[INFO] [1793776899.357824529] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776900.358578544] [panel_node]: pendant RVS
+[INFO] [1793776900.918797101] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776901.158546485] [panel_node]: pendant RVS
+[INFO] [1793776905.758843424] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776907.218556528] [panel_node]: pendant RVS
+[INFO] [1793776907.858195612] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776908.578660746] [panel_node]: pendant RVS
+[INFO] [1793776909.038577418] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776910.138360023] [panel_node]: pendant RVS
+[INFO] [1793776910.238408109] [panel_node]: pendant released
+[INFO] [1793776912.618954013] [panel_node]: pendant RVS
+[INFO] [1793776913.218443234] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776913.618456484] [panel_node]: pendant RVS
+[INFO] [1793776913.939101491] [panel_node]: pendant released
+[INFO] [1793776915.458713866] [panel_node]: pendant RVS
+[INFO] [1793776915.798706321] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776916.098706006] [panel_node]: pendant RVS
+[INFO] [1793776917.057805487] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776917.660767411] [panel_node]: pendant RVS
+[INFO] [1793776918.257965903] [panel_node]: pendant RVS RIGHT
+[INFO] [1793776918.578216954] [panel_node]: pendant RVS
+[INFO] [1793776919.078655471] [panel_node]: pendant RVS LEFT
+[INFO] [1793776919.718489222] [panel_node]: pendant RVS
+[INFO] [1793776920.018463001] [panel_node]: pendant released
+[INFO] [1793776920.418506452] [panel_node]: pendant RIGHT
+[INFO] [1793776922.038907134] [panel_node]: pendant released
+[INFO] [1793776922.137788505] [panel_node]: pendant RVS
+[INFO] [1793776924.718625595] [panel_node]: pendant released
+[INFO] [1793776925.278321866] [panel_node]: pendant LEFT
+[INFO] [1793776926.018698345] [panel_node]: pendant released
+[INFO] [1793776926.119088944] [panel_node]: pendant LEFT
+[INFO] [1793776926.338318297] [panel_node]: pendant released
+[INFO] [1793776926.978568988] [panel_node]: pendant FWD
+[INFO] [1793776928.758607045] [panel_node]: pendant released
+[INFO] [1793776929.619348557] [panel_node]: pendant LEFT
+[INFO] [1793776930.178951153] [panel_node]: pendant released
+[INFO] [1793776931.678669986] [panel_node]: pendant RIGHT
+[INFO] [1793776931.977983840] [panel_node]: pendant released
+[INFO] [1793776962.078629951] [panel_node]: RESET edge
+[INFO] [1793776962.478683952] [panel_node]: RESET edge
+[INFO] [1793776984.458917848] [panel_node]: selector AUTO

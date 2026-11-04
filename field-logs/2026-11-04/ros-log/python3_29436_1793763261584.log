@@ -1,0 +1,9 @@
+[INFO] [1793763261.701377097] [localization_monitor]: UNLOCALIZED: waiting for /initialpose
+[INFO] [1793763261.766002688] [localization_monitor]: UNLOCALIZED: no initial pose
+[INFO] [1793763264.739983722] [localization_monitor]: map 3577x1846 loaded for scan consistency
+[INFO] [1793763279.251647909] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793763279.268174772] [localization_monitor]: CHECKING: stale: scan, tf
+[INFO] [1793763304.382628490] [localization_monitor]: initial pose received: CHECKING
+[INFO] [1793763429.978467508] [localization_monitor]: READY: operator confirmed
+[INFO] [1793763430.067752348] [localization_monitor]: READY: operator confirmed scan alignment
+[INFO] [1793763465.866924275] [localization_monitor]: LOST: localisation corrected by 0.16 m / 0.0 deg

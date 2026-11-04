@@ -1,0 +1,10 @@
+1793777172.0400345 [INFO] [launch]: All log files can be found below /home/gvipc-evo-01/.ros/log/2026-11-04-14-26-12-038577-gvipc-ce-93357
+1793777172.0402923 [INFO] [launch]: Default logging verbosity is set to INFO
+1793777172.4921954 [INFO] [map_server-1]: process started with pid [93378]
+1793777172.4924524 [INFO] [amcl-2]: process started with pid [93380]
+1793777172.4925723 [INFO] [localization_monitor_node-3]: process started with pid [93382]
+1793777172.4926951 [INFO] [controller_server-4]: process started with pid [93384]
+1793777172.4928050 [INFO] [behavior_server-5]: process started with pid [93386]
+1793777172.4928982 [INFO] [route_executor_node-6]: process started with pid [93388]
+1793777175.4944801 [INFO] [lifecycle_manager-7]: process started with pid [93503]
+1793777178.4963434 [INFO] [lifecycle_manager-8]: process started with pid [93574]

@@ -1,0 +1,52 @@
+[INFO] [1793757913.820514387] [panel_node]: panel on DIO 192.168.1.40:502: reset DI2, start DI0, continue DI13, selector DI1 (ON = MANUAL), manual arm DI9, E-stop OK DI8, UBC DI10, ITG DI11, PISTON DI12; horn disabled; pendant fwd DI3, rvs DI4, left DI5, right DI6
+[INFO] [1793757913.821835511] [panel_node]: DIO comms LOST (starting); panel image invalid; E-stop OK (DI8) LOW; pendant released
+[INFO] [1793757914.019233149] [panel_node]: DIO comms ok
+[INFO] [1793757914.079079970] [panel_node]: panel image valid; selector MANUAL
+[WARN] [1793757914.080104499] [panel_node]: emergency EMERGENCY -> EMERGENCY: DI08 LOW (E-stop)
+[INFO] [1793757914.119243826] [panel_node]: Manual Arm on
+[INFO] [1793757973.759531502] [panel_node]: E-stop OK (DI8) HIGH
+[WARN] [1793757973.761163142] [panel_node]: emergency EMERGENCY -> RESET_NEEDED: DI08 HIGH (E-stop released)
+[INFO] [1793757974.558993804] [panel_node]: RESET edge
+[WARN] [1793757974.559986712] [panel_node]: emergency RESET_NEEDED -> RESETTING: Reset pressed
+[INFO] [1793757976.159494298] [panel_node]: RESET edge
+[WARN] [1793757977.579616606] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793757977.719411322] [panel_node]: RESET edge
+[WARN] [1793757977.720890026] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793757978.619599986] [panel_node]: RESET edge
+[INFO] [1793757979.139470212] [panel_node]: RESET edge
+[WARN] [1793757980.739510514] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793757984.299451859] [panel_node]: RESET edge
+[WARN] [1793757984.300998075] [panel_node]: emergency RESET_FAILED -> RESETTING: Reset pressed
+[INFO] [1793757985.759522525] [panel_node]: RESET edge
+[WARN] [1793757987.319560755] [panel_node]: emergency RESETTING -> RESET_FAILED: drives still in STO 3 s after Reset
+[INFO] [1793757988.739322721] [panel_node]: emergency RESET_FAILED -> NORMAL: drives out of STO (late)
+[INFO] [1793757991.839548400] [panel_node]: pendant RIGHT
+[INFO] [1793757992.199658132] [panel_node]: pendant released
+[INFO] [1793757992.799475002] [panel_node]: pendant LEFT
+[INFO] [1793757993.899353836] [panel_node]: pendant released
+[INFO] [1793757998.319562060] [panel_node]: Manual Arm off
+[INFO] [1793758251.179651661] [panel_node]: pendant RVS
+[INFO] [1793758251.539523708] [panel_node]: pendant released
+[INFO] [1793758252.779617579] [panel_node]: Manual Arm on
+[INFO] [1793758255.039629582] [panel_node]: pendant RVS
+[INFO] [1793758256.799376882] [panel_node]: pendant released
+[INFO] [1793758259.259862347] [panel_node]: pendant RVS
+[INFO] [1793758260.880122634] [panel_node]: pendant released
+[INFO] [1793758264.339453950] [panel_node]: pendant RIGHT
+[INFO] [1793758264.740179349] [panel_node]: pendant released
+[INFO] [1793758270.179552075] [panel_node]: pendant RIGHT
+[INFO] [1793758271.879482247] [panel_node]: pendant released
+[INFO] [1793758272.939646375] [panel_node]: pendant LEFT
+[INFO] [1793758273.039586224] [panel_node]: pendant released
+[INFO] [1793758273.559511071] [panel_node]: pendant RVS
+[INFO] [1793758275.199323808] [panel_node]: pendant released
+[INFO] [1793758282.939443501] [panel_node]: pendant RVS
+[INFO] [1793758285.359695893] [panel_node]: pendant released
+[INFO] [1793758290.659428799] [panel_node]: pendant LEFT
+[INFO] [1793758291.859495071] [panel_node]: pendant released
+[INFO] [1793758293.919599868] [panel_node]: Manual Arm off
+[INFO] [1793758326.359390404] [panel_node]: pendant FWD
+[INFO] [1793758326.619735334] [panel_node]: pendant released
+[INFO] [1793758326.979531386] [panel_node]: Manual Arm on
+[INFO] [1793758327.819412796] [panel_node]: pendant FWD
+[INFO] [1793758330.479347311] [panel_node]: pendant released

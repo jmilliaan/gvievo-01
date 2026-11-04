@@ -1,0 +1,11 @@
+[INFO] [1793758490.885242599] [amr_supervisor]: instance eb17f002 real=True maps=/home/gvipc-evo-01/amr_maps interrupted=[]
+[WARN] [1793758490.887335797] [amr_supervisor]: Power was lost at 09:05 while IDLE. The drives lost the PC heartbeat and latched; they need to be switched off and on.
+[INFO] [1793758490.898774862] [amr_supervisor]: spawned base pgid=1464 leader=alive members=1: base.launch.py real:=true supervised:=true lidar:=true
+[INFO] [1793758494.159650985] [amr_supervisor]: mode STARTING -> IDLE ()
+[INFO] [1793758583.274908593] [amr_supervisor]: mode IDLE -> TRANSITIONING (inhibiting)
+[INFO] [1793758583.889026737] [amr_supervisor]: mode TRANSITIONING -> IDLE ()
+[INFO] [1793759113.794154638] [amr_supervisor]: signal 2: shutting down
+[INFO] [1793759114.356534625] [amr_supervisor]: stopped base: clean (base pgid=1464 leader=0 members=0)
+[INFO] [1793759114.720905275] [amr_supervisor]: stopped web: clean (web pgid=1463 leader=0 members=0)
+[INFO] [1793759114.721389172] [amr_supervisor]: teardown: groups stopped in 0.9 s
+[INFO] [1793759114.721942402] [amr_supervisor]: teardown: executor down at 0.9 s
