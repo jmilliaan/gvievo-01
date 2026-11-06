@@ -7,6 +7,7 @@ the wheels through the drive ramp, MLS window +/-100 mm, sensor 0.1 m ahead of t
 the encoder counts the job reads are the plant's own wheels."""
 import math
 
+import pytest
 from agv_core import config as vehicle  # noqa: E402
 from agv_core import kinematics  # noqa: E402
 from agv_core import mission as missions  # noqa: E402
@@ -17,6 +18,12 @@ from amr_line import job as lj  # noqa: E402
 DT = 0.02
 HALF_M = 0.100
 from line_fixtures import NO_TAPE  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def pivot_only(monkeypatch):
+    """These test the pivot itself; with the rolling corner on, it is only the fallback."""
+    monkeypatch.setattr(vehicle, "CORNER_YAW_DEG_S", 0.0)
 
 
 def kink(deg, lead=1.5, tail=2.5):

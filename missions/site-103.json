@@ -1,7 +1,7 @@
 {
   "schema": "site-4",
   "mission_name": "site-103",
-  "home": "HOME-N",
+  "home": "HOME-N2",
   "attach": "ATT",
   "trip_calls": 1,
   "stop_distance_m": 0.5,
@@ -35,6 +35,10 @@
       "shape": "Y",
       "laid": true
     },
+    "J-SMERGE": {
+      "shape": "Y",
+      "laid": true
+    },
     "J-SPLIT": {
       "shape": "Y",
       "laid": true
@@ -60,7 +64,7 @@
   "circuits": {
     "C-MRU": [
       {
-        "stop": "HOME-N"
+        "stop": "HOME-N2"
       },
       {
         "junction": "J-BMERGE",
@@ -128,16 +132,20 @@
         "steer": "left"
       },
       {
-        "junction": "J-SPLIT",
-        "order": "left"
+        "junction": "J-SMERGE",
+        "order": "merge"
       },
       {
-        "stop": "HOME-N"
+        "junction": "J-SPLIT",
+        "order": "right"
+      },
+      {
+        "stop": "HOME-N2"
       }
     ],
     "C-BTU": [
       {
-        "stop": "HOME-N"
+        "stop": "HOME-N2"
       },
       {
         "junction": "J-BMERGE",
@@ -201,11 +209,15 @@
         "order": "merge"
       },
       {
-        "junction": "J-SPLIT",
-        "order": "left"
+        "junction": "J-SMERGE",
+        "order": "merge"
       },
       {
-        "stop": "HOME-N"
+        "junction": "J-SPLIT",
+        "order": "right"
+      },
+      {
+        "stop": "HOME-N2"
       }
     ]
   },

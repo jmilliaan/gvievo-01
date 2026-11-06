@@ -346,6 +346,32 @@ def test_fork_watch_sees_which_tape_is_left():
     assert run("left", [((-60, 0, 60), 7)], 0)["verdict"] == "unjudged"
 
 
+def test_a_split_that_opens_with_three_tracks_is_still_judged():
+    """The real J-SPLIT, from the trip log of 2026-11-06."""
+    def run(single):
+        w = site_run.ForkWatch({"id": "J-SPLIT", "order": "left"}, True)
+        for nlcp, tracks in ((7, (-1, 7, 16)), (7, (-10, 9, 28)), (6, (-21, 42)), (6, (-56, 105))):
+            w.tick(nlcp, [{"pos_mm": p} for p in tracks])
+        out = None
+        for _ in range(site_run.ForkWatch.SETTLE_TICKS):
+            out = w.tick(2, [{"pos_mm": single}])
+        return out["verdict"]
+
+    assert run(100) == "ordered"
+    assert run(-68) == "other"
+
+
+def test_the_merge_before_the_real_split_is_not_the_split():
+    """Tracks closing up (-123 to -3 mm) used the order 5 m early; a merge says nothing."""
+    w = site_run.ForkWatch({"id": "J-SPLIT", "order": "left"}, True)
+    for tracks in ((-123, 36), (-65, 27), (-21, 18), (-3, 11), (2, 9)):
+        w.tick(3, [{"pos_mm": p} for p in tracks])
+    out = None
+    for _ in range(site_run.ForkWatch.SETTLE_TICKS):
+        out = w.tick(2, [{"pos_mm": 7}])
+    assert out["verdict"] == "unjudged"
+
+
 def test_fork_watch_waits_out_a_flicker():
     w = site_run.ForkWatch({"id": "J", "order": "left"}, True)
     w.tick(3, [{"pos_mm": -40}, {"pos_mm": 40}])

@@ -128,6 +128,10 @@ KINK_SETTLE_S = 0.3
 # pivot toward the side it was last seen if it is not in view, FAULT if it is not found -
 # never the silent end of the run.
 POST_UTURN_M = 1.0
+# Rolling corner: the follower's speed falls at this share of the drive's deceleration. The
+# inner wheel slews at the full rate, so the difference between the wheels (the yaw) builds
+# at the rest: at the full rate both wheels fall together and the yaw never comes.
+SHED_FRACTION = 0.5
 
 
 @dataclasses.dataclass(frozen=True)
@@ -284,6 +288,9 @@ class FollowJob:
         self.blind_m = 0.0
         self.kink = None            # the kink pivot in progress, see _kink_begin()
         self.kinks = 0              # kink pivots this run
+        from amr_line.corner import CornerTurn  # noqa: PLC0415  (profile-dependent)
+        self.corner = CornerTurn()  # the rolling corner, see _corner_shape()
+        self.corners = 0            # rolling corners this run
         self._edge_gone = 0         # ticks the tape has been gone after leaving at the edge
         self.ended_at_end = False   # DONE "track lost": the guide page may force the U-turn there
         self._post_uturn_m = None   # travel since the last U-turn, while under POST_UTURN_M
@@ -855,6 +862,13 @@ class FollowJob:
             self.tape.park_high(f"hold ({cause})")
         elif self.tape is not None and cause != "station":
             self.tape.drop_high(f"hold ({cause})")
+        if self.corner.active and self.kink is None:
+            # Stopped mid-turn, the coast may carry the tape out of view: the resume must not
+            # read that as the tape's end. It is a search from rest, toward the same side.
+            self.kink = {"direction": self.corner.direction, "at_mm": self.corner.at_mm, "turn": None,
+                         "done_deg": self.corner.deg}
+            self.kinks += 1
+        self.corner.cancel()
         if self.kink is not None and self.kink["turn"] is not None:
             # A kink pivot is a search, not a measured turn: after the hold it starts again
             # from rest, toward the same side, with what is left of kink_max_deg.
@@ -1232,7 +1246,33 @@ class FollowJob:
     @property
     def pivoting(self):
         """A kink pivot is turning the vehicle (tape localization ignores #LCP)."""
-        return self.kink is not None
+        return self.kink is not None or self.corner.active
+
+    def _corner_shape(self, i: Inputs, diag, left, right, stopping):
+        """The rolling corner (amr_line.corner): replaces the follower's wheels while it turns."""
+        from agv_core import kinematics  # noqa: PLC0415
+
+        c = self.corner
+        e_mm = diag.get("e_mm")
+        if stopping or diag.get("state") not in ("run", "coast"):
+            c.cancel()
+            return left, right
+        if not c.active:
+            nlcp = (i.sensor or {}).get("nlcp")
+            if not c.watch(e_mm, diag.get("guard"), nlcp, diag["v_base"], diag["dt"]):
+                return left, right
+            self.corners += 1
+            side = "right" if c.direction == "cw" else "left"
+            self.tape.events.append(("info", f"corner: tape at {c.at_mm:+.0f} mm and leaving - "
+                                             f"rolling {side}"))
+        elif not c.turn(e_mm, diag["dt"], i.warning_scale):
+            if c.result == "angle limit" and e_mm is None:
+                from agv_core import config as vehicle  # noqa: PLC0415
+                return self._kink_fault(f"tape not found within {vehicle.KINK_MAX_DEG:.0f} deg")
+            self.tape.events.append(("info", f"corner: {c.result} after {c.deg:.0f} deg, {c.s:.1f} s"))
+            return left, right
+        omega = c.yaw_rad_s()
+        return kinematics.body_to_wheels(kinematics.rpm_to_mps(c.speed_rpm(diag["v_base"])), omega)
 
     def _kink_begin(self, diag):
         """The tape just left at the sensor's edge: stop and arm the pivot. True if so."""
@@ -1367,14 +1407,24 @@ class FollowJob:
         self._speed_inputs(i)
         choice, high = t.steer(i.sensor, tags, self.f.followed_mm)
         stopping = t.stop is not None
+        cruise_rpm, urgent_rate = t.cruise_rpm, t.urgent_rate
+        if self.corner.active:
+            from agv_core import config as vehicle  # noqa: PLC0415
+            cruise_rpm = vehicle.CORNER_RPM if cruise_rpm is None else min(cruise_rpm, vehicle.CORNER_RPM)
+            urgent_rate = SHED_FRACTION * float(vehicle.RAMP["auto"]["decel"])
         left, right, diag = self.f.update(i.sensor, i.sensor_age_s, i.dt, not stopping, choice, high,
-                                          cruise_rpm=t.cruise_rpm, change_rate=t.change_rate(),
-                                          urgent_rate=t.urgent_rate)
+                                          cruise_rpm=cruise_rpm, change_rate=t.change_rate(),
+                                          urgent_rate=urgent_rate, rolling=self.corner.active)
         self.diag = diag
         t.speed.settled(diag["v_base"])
-        if not stopping and self._kink_begin(diag):
+        left, right = self._corner_shape(i, diag, left, right, stopping)
+        if self.state == FAULT:
             return 0.0, 0.0
-        if self._tape_end_tick(t, diag, stopping):
+        if self.corner.active:
+            self._edge_gone = self._end_gone = 0    # bounded by the turn's own angle limit
+        elif not stopping and self._kink_begin(diag):
+            return 0.0, 0.0
+        elif self._tape_end_tick(t, diag, stopping):
             return 0.0, 0.0
 
         from agv_core import kinematics  # noqa: PLC0415  (profile-dependent)

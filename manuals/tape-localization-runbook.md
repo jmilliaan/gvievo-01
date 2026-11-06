@@ -247,6 +247,13 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
    near the centre is still the tape end. No tape within `kink_max_deg` (75 deg): FAULT,
    align on the tape, Reset, Start. A protective stop mid-pivot resumes the search. The
    pivot adds nothing to the along-tape distance and no junction to a teach pass.
+   Rolling corner (`corner_yaw_deg_s`, 0 = off; agv-01 at 30): when the tape is about to leave, the
+   AGV sheds speed to `corner_rpm` and turns at that yaw rate until the tape is inside
+   `corner_exit_mm`, without stopping (Events: "corner: tape at ... mm and leaving - rolling ..."
+   then "corner: tape back after ... deg"; flight recorder `*-corner.csv`, kink column `roll-cw`).
+   A protective stop mid-turn resumes as the pivot's search. No tape within `kink_max_deg`: the
+   same FAULT. A fork reading defers the turn, and those corners may still pivot. The inner wheel
+   runs backward in the turn.
 2. Run page → mission `c-mru-guided`. Open **Guide** on the phone.
 3. **An order is one shot: the next fork or MERGE the MLS sees uses it, then it is Straight
    again.** Set it after the previous junction:
@@ -258,7 +265,8 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
    | X1, J-ML (merge onto the trunk), MRU line | Straight |
    | back down the trunk, before J-ML | **Left** (R1380; R2434 is the wrong way) |
    | J-STEM (merge) | Straight |
-   | after J-STEM, before J-SPLIT | **Left** (north bay) |
+   | J-SMERGE, about 1.5 m after J-STEM (tracks close up) | Straight: **no order here**, RIGHT would take the joining tape |
+   | after J-SMERGE, before J-SPLIT (the split about 5 m on) | **Right** (HOME-N2, the right bay; since 2026-11-06) |
 
 4. Any order still armed at the pivot is cleared. Reset clears it too.
 5. Nothing on the Guide page moves the vehicle: AUTO + the physical Start, as always. Keep the
@@ -281,7 +289,7 @@ Drawing: `documentation/layout-reference/c-mru-route.html`.
 
 ### 3.3 Teach the stations
 
-For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once row 2 is laid):
+For each station: HOME-N2, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once row 2 is laid):
 
 1. O: selector **MANUAL**, Manual Arm on. Jog the AGV to exactly where the operator wants it to
    stop, facing its travel direction:

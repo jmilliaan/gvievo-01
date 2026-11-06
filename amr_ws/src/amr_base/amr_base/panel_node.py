@@ -95,6 +95,7 @@ class PanelNode(LeanNode):
             self.get_logger().warn("panel.enabled is false in the profile: publishing valid=false forever")
         self._dio_lock = ownerlock.acquire("dio", "panel_node")  # before any Modbus I/O (plan §9.2)
         self.link.start()
+        self._dio_retried = 0
         self.create_steady_timer(1.0 / float(self.get_parameter("rate_hz").value), self._tick)
         self.get_logger().info(
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
@@ -141,6 +142,13 @@ class PanelNode(LeanNode):
 
     def _tick(self) -> None:
         snap = self.link.snapshot()
+        retried = snap.get("retried", 0)
+        if retried != self._dio_retried:
+            # No stop came of it, but a module doing this often is worth hearing about.
+            self._dio_retried = retried
+            text = f"DIO scan retried, no stop ({retried} so far): {snap.get('last_retry')}"
+            self.get_logger().warn(text)
+            self._event(Event.WARN, "PANEL", text)
         if not config.PANEL_ENABLED:
             snap = dict(snap, comms_ok=False)
         frame = self.adapter.tick(snap)

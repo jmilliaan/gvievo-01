@@ -85,7 +85,9 @@ class ForkWatch:
         """A finished report, once, else None."""
         usable = [t for t in tracks or () if t.get("pos_mm") is not None]
         if nlcp in branch.MULTI_NLCP:
-            self.crossing = self.crossing or nlcp == branch.CROSSING_NLCP
+            # The last reading decides: a split can open with three tracks for a tick or two
+            # (2026-11-06, the real J-SPLIT: [-1, 7, 16], then [-21, 42] ... [-56, 105]).
+            self.crossing = nlcp == branch.CROSSING_NLCP
             self._single = 0
             if len(usable) >= 2:
                 kept = branch.select_track(usable, self.event["order"], self.positive_is_left)["pos_mm"]

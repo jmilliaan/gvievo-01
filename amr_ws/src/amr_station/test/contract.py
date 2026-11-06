@@ -2,6 +2,7 @@
 test cannot drift from the text both repos build to."""
 
 import json
+import os
 import pathlib
 import re
 
@@ -33,7 +34,10 @@ def contract_cancel() -> dict:
 
 
 def site():
-    return mission.load_site("site-103")
+    """site-103 under the home name the contract text uses. The vehicle's home moved to HOME-N2
+    (right bay, 2026-11-06); the contract's examples, shared with the station side, still say HOME-N."""
+    with open(os.path.join(mission.MISSION_DIR, "site-103.json")) as fh:
+        return mission.parse_site(json.loads(fh.read().replace("HOME-N2", "HOME-N")))
 
 
 def strip_header(doc: dict) -> dict:

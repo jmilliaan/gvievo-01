@@ -511,8 +511,19 @@ def test_a_trip_forms_at_two_calls_of_one_group_in_circuit_order():
     assert q.call("MRU1", 4)[0]
     trip = q.take()
     assert trip.group == "MRU" and [p for p, _ in q.pending] == ["BTU10"]
-    assert trip.stops() == ["ATT", "MW-1", "MW-3", "ME-3", "ME-1", "HOME-N"]
+    assert trip.stops() == ["ATT", "MW-1", "MW-3", "ME-3", "ME-1", "HOME-N2"]
     assert trip.work("MW-1") == [("MRU1", "release")]
+
+
+def test_site_103_goes_home_by_the_right_bay_with_the_merge_before_it_named():
+    """2026-11-06: home is HOME-N2, right at the real split. The merge 5 m before it must be a node:
+    an order may never stand there, and RIGHT would take the joining tape at -122 mm."""
+    m = missions.load_site("site-103")
+    assert m["HOME"] == "HOME-N2" and m["STATIONS"]["HOME-N2"] == "J-SPLIT:right>J-BMERGE"
+    for cid, c in m["CIRCUITS"].items():
+        ids = [(it["id"], it.get("order")) for it in c["items"] if it["kind"] == "junction"]
+        k = ids.index(("J-SPLIT", "right"))
+        assert ids[k - 1] == ("J-SMERGE", "merge"), cid
 
 
 def test_facing_machines_share_one_stop():
@@ -521,7 +532,7 @@ def test_facing_machines_share_one_stop():
     q.call("BTU16", 1)
     q.call("BTU24", 2)
     trip = q.take()
-    assert trip.stops() == ["ATT", "R2-1", "HOME-N"]
+    assert trip.stops() == ["ATT", "R2-1", "HOME-N2"]
     assert sorted(trip.work("R2-1")) == [("BTU16", "swap"), ("BTU24", "swap")]
 
 

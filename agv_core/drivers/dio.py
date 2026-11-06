@@ -47,6 +47,15 @@ succeeded recently means the module, the cable or the switch has gone, whatever
 the socket believes. Keying on the socket would report a half-open connection as
 healthy for as long as the OS kept it.
 
+ONE BAD REPLY IS NOT A LOST MODULE
+----------------------------------
+A scan that fails is retried at once, on a new socket, before anything is called lost (2026-11-06:
+one Modbus exception reply cost the connection, the 0.5 s reconnect wait, an invalid panel and a
+stopped run, at S 105.9, with the module answering again straight away). A new socket because a late
+reply on the old one would answer the wrong request. This makes no image older than it may be: the
+retry publishes nothing unless it succeeds, and panel_io.source_fresh() has its own age limit on the
+image whatever this does. A second failure is a lost module, as it always was.
+
 TOPOLOGY
 --------
 The RFID reader is daisy-chained THROUGH this module's second port, so both sit
@@ -80,6 +89,8 @@ class DioLink:
         self._scans = 0
         self._errors = 0
         self._writes = 0
+        self._retried = 0                   # scans that failed once and came good at once
+        self._last_retry = ""               # why the last one failed
         # channel -> [value, expires_at]. An entry is created by the first
         # set_coil() for that channel and then kept: once this software has
         # claimed a coil it goes on asserting it, and an expired claim asserts
@@ -168,6 +179,8 @@ class DioLink:
                 "scans": self._scans,
                 "errors": self._errors,
                 "writes": self._writes,
+                "retried": self._retried,
+                "last_retry": self._last_retry,
                 # Which coils this software is driving, and to what. The page
                 # needs it to tell "off because nothing asked" apart from "off
                 # because we are holding it off" - on an output those look
@@ -232,7 +245,7 @@ class DioLink:
         while not self._stop.is_set():
             started = time.monotonic()
             try:
-                self._scan()
+                self._scan_with_retry()
             except Exception as e:          # noqa: BLE001 - thread must survive
                 with self._lock:
                     self._errors += 1
@@ -245,6 +258,21 @@ class DioLink:
             rest = config.DIO_SCAN_PERIOD_S - (time.monotonic() - started)
             if self._stop.wait(max(0.0, rest)):
                 return
+
+    def _scan_with_retry(self):
+        """A scan, and one more on a new socket if it fails. See the module docstring."""
+        try:
+            self._scan()
+            return
+        except Exception as e:              # noqa: BLE001 - whatever it was, the retry decides
+            why = f"{type(e).__name__}: {e}"
+            with self._lock:
+                self._errors += 1
+        self._close()
+        self._scan()                        # a second failure goes up to _run(): lost
+        with self._lock:
+            self._retried += 1
+            self._last_retry = why
 
     def _scan(self):
         """One PLC scan: read inputs, read the coil readback, publish."""

@@ -352,7 +352,7 @@ class LineFollower:
     # ---- the tick --------------------------------------------------------
 
     def update(self, sensor, sensor_age_s, dt, running, choice=branch.STRAIGHT,
-               high=False, cruise_rpm=None, change_rate=None, urgent_rate=None):
+               high=False, cruise_rpm=None, change_rate=None, urgent_rate=None, rolling=False):
         """One control tick.
 
         sensor       : canworker._sensor_json() dict, or None if none seen yet
@@ -368,6 +368,9 @@ class LineFollower:
                        (starting, stopping) the profile's ramp applies
         urgent_rate  : r/min/s, a late drop from HIGH to NORMAL: constant, no jerk
                        build-up (see _ramp no_jerk)
+        rolling      : the rolling corner owns this tick (amr_line.corner). A tape gap is its
+                       to bound (kink_max_deg): stay in "coast" past the distance budget. Its
+                       urgent ramp leaves no acceleration behind (see below)
 
         Returns (left_rpm, right_rpm, diag).
         """
@@ -403,8 +406,8 @@ class LineFollower:
             # the budget would never deplete.
             self._track_gap_m += kinematics.rpm_to_mps(self._v_rpm) * dt
             self._track_age_s += dt
-            within = (self._track_gap_m <= config.LINE_LOSS_GRACE_M
-                      and self._track_age_s <= config.LINE_LOSS_GRACE_MAX_S)
+            within = rolling or (self._track_gap_m <= config.LINE_LOSS_GRACE_M
+                                  and self._track_age_s <= config.LINE_LOSS_GRACE_MAX_S)
             if within and running:
                 self.state = "coast"      # bridge a gap on the last correction
                 target = cruise
@@ -458,6 +461,12 @@ class LineFollower:
         rate = self._stop_rate if not running else None
         if running and urgent_rate and target < self._v_rpm:
             v_base = self._ramp(target, dt, accel_limit=urgent_rate, no_jerk=True)
+            if rolling:
+                # A no_jerk step landing exactly on target keeps its acceleration, and the
+                # next jerk-limited tick runs past the target on it: 300 r/min below it at
+                # this rate. Cleared for the corner only: the HIGH exit has the same undershoot
+                # (smaller, at its rate) and the recorded baselines include it.
+                self._a_rpm_s = 0.0
         else:
             # The comfort rate only between the cruise speeds: from rest, the profile's.
             between = running and min(self._v_rpm, target) >= config.AUTO_RPM - 1.0

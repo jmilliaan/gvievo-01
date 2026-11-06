@@ -450,6 +450,13 @@ _SCHEMA = {
         "kink_max_deg":        ("KINK_MAX_DEG", float),
         # where the pivot stops: the tape within +/-kink_stop_mm (not centred - 2026-10-24)
         "kink_stop_mm":        ("KINK_STOP_MM", float),
+        # Rolling corner (2026-11-06, amr_line.corner): shed speed to corner_rpm and hold
+        # corner_yaw_deg_s toward the tape when it is about to leave (corner_lead_s ahead),
+        # until it is inside corner_exit_mm. The kink pivot stays as the fallback. Yaw 0 is off.
+        "corner_yaw_deg_s":    ("CORNER_YAW_DEG_S", float),
+        "corner_rpm":          ("CORNER_RPM", float),
+        "corner_exit_mm":      ("CORNER_EXIT_MM", float),
+        "corner_lead_s":       ("CORNER_LEAD_S", float),
         # Tracked speeds (2026-10-08, tracked-speed-plan-1): auto_rpm is NORMAL, the
         # default and the corner speed; HIGH = auto_rpm x auto_high_ratio, granted only
         # inside an MLS marker zone (mission high_zone, amr_line.speed_zone; RFID only
@@ -1235,6 +1242,14 @@ def _validate(ns):
           "autopilot.kink_max_deg must be 0 (off) or in [20, 120] deg")
     check(g("U_TURN_CENTER_TOL_MM") <= g("KINK_STOP_MM") < g("SENSOR_MAX_MM"),
           "autopilot.kink_stop_mm must be in [u_turn_center_tol_mm, sensor_max_mm)")
+    check(g("CORNER_YAW_DEG_S") == 0 or 10 <= g("CORNER_YAW_DEG_S") <= 60,
+          "autopilot.corner_yaw_deg_s must be 0 (off) or in [10, 60] deg/s")
+    check(0 <= g("CORNER_RPM") <= g("AUTO_RPM"),
+          "autopilot.corner_rpm must be in [0, auto_rpm]")
+    check(g("U_TURN_CENTER_TOL_MM") <= g("CORNER_EXIT_MM") < g("SENSOR_MAX_MM"),
+          "autopilot.corner_exit_mm must be in [u_turn_center_tol_mm, sensor_max_mm)")
+    check(0 < g("CORNER_LEAD_S") <= 1,
+          "autopilot.corner_lead_s must be in (0, 1] s")
 
     # -- blind run --------------------------------------------------------
     check(0 < g("BLIND_MAX_DISTANCE_M") <= 50,

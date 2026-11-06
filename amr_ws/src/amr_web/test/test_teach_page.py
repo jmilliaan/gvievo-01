@@ -33,7 +33,7 @@ def test_the_site_lists_carry_machines_points_and_roles(tmp_path):
     client, _stub = app_for({}, tmp_path)
     site = client.get("/api/line/site").get_json()
     assert site["machines"]["MRU"] == ["MRU1", "MRU2", "MRU3", "MRU4"] and site["trip_calls"] == 1
-    assert site["stations"][0] == site["home"] == "HOME-N" and site["live"] is False
+    assert site["stations"][0] == site["home"] == "HOME-N2" and site["live"] is False
     assert site["points"] == ["UT-MRU1", "UT-MRU2", "UT-MRU3"]
     page = client.get("/teach").data
     assert b'id="tc-role"' in page and b'data-act="mark_role"' in page

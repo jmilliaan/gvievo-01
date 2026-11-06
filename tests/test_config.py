@@ -139,6 +139,16 @@ def test_config_profile():
             lambda d: d["autopilot"].update(kink_max_deg=150.0), "autopilot.kink_max_deg")
     refuses("a kink stop band at or past the sensor window is refused",
             lambda d: d["autopilot"].update(kink_stop_mm=100.0), "autopilot.kink_stop_mm")
+    # Rolling corner (2026-11-06): a yaw past a brisk turn, a corner speed above cruise, an exit
+    # band outside the window, a lead that is no prediction.
+    refuses("a rolling corner yaw above 60 deg/s is refused",
+            lambda d: d["autopilot"].update(corner_yaw_deg_s=90.0), "autopilot.corner_yaw_deg_s")
+    refuses("a rolling corner speed above auto_rpm is refused",
+            lambda d: d["autopilot"].update(corner_rpm=5000.0), "autopilot.corner_rpm")
+    refuses("a rolling corner exit band at the sensor window is refused",
+            lambda d: d["autopilot"].update(corner_exit_mm=100.0), "autopilot.corner_exit_mm")
+    refuses("a rolling corner lead past 1 s is refused",
+            lambda d: d["autopilot"].update(corner_lead_s=2.0), "autopilot.corner_lead_s")
     # *** R16: nonfinite numbers. *** A positive-only check passes infinity, so
     # an infinite driver timeout would never declare a silent drive. Python's json
     # reader takes the non-standard Infinity/NaN tokens, and 1e999 reads as inf, so

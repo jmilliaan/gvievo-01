@@ -312,3 +312,46 @@ ordered right, kept -63 mm, other +118 mm, one track at -65 mm, "ordered".
   so the long MRU zone still gets little until AMCL is usable there: 3 of 133 poses past S 33 were used.
 - The trip log's `field_clear`, `auto` and `link` were empty (`job._i` is only set with calling on);
   it now has them, and `high`, `high_why` and `zone`, and the report totals the zone time by reason.
+
+### 11.3 13:56, MRU1: why J-SPLIT goes right (found, supersedes the guess in 11.1)
+
+The trip log has it. **The J-SPLIT anchor was on the wrong fork.** At the taught J-SPLIT (-10.59, -0.31)
+the two tracks close up, -123 to -3 mm: a merge. It used the order. The real split is 5.1 m on, where
+they open, [-1, 7, 16] to [-56, 105] mm, with nothing standing, so the follower kept the nearest track:
+the south bay. The teach pass shows the same fork at 206.42-206.61 m, under "not junctions", and the
+11:35 trip logged it as "fork with no taught junction near S 217.73". On the pass the engineer armed
+left by hand just before it. Steering was not the cause.
+
+`anchors.json` J-SPLIT moves to the pass's position at the fork's end, (-5.545, -0.393); the old file is
+kept as `anchors-2026-11-06.bak.json`. Graph g3: `J-STEM:merge>J-SPLIT` 6.66 m, `J-SPLIT:left>J-BMERGE`
+8.66 m, HOME-N at s 5.75 m. The merge still arms and uses the order first, which logs "a fork ... before
+J-SPLIT used the order: armed again". `ForkWatch` no longer calls a fork a crossing for opening on three
+tracks. Everything else on this run worked: every stop to about 5 cm by the locator, the mid-line U-turn,
+J-N, J-ML, J-STEM, 97 s of HIGH, and the wrong-lane check stopped it 2.4 m past the split.
+
+### 11.4 14:26, MRU1: J-SPLIT right, and a stop for one bad DIO reply
+
+The anchor fix held: left at the real split, fork watch "ordered" (tape to +98 mm of the sensor's
+range, so thin). At S 105.9 the DIO module answered one coil read with a Modbus exception: connection
+dropped, 0.5 s reconnect wait, panel invalid, HOLD, back on Start. `DioLink` now retries a failed scan
+once at once on a new socket; a second failure is lost, as before. No image gets older than it may
+be: the retry publishes only on success and `panel_io.source_fresh` has its own limit (0.2 s). Each
+retry is logged as a `PANEL` warning with its reason and counted. Why the module sent that reply is
+not known; a Wi-Fi driver register dump fell in the same second, which may be chance.
+
+### 11.5 Home moves to the right bay, HOME-N2 (operator, 2026-11-06)
+
+`site-103.json`: home HOME-N2 on `J-SPLIT:right>J-BMERGE`, J-SPLIT order right, in both circuits. The
+merge is a node, J-SMERGE (anchor at the old J-SPLIT position): an armed order is otherwise allowed
+there, and RIGHT would take the joining tape at -122 mm. The north-bay passes are in
+`<teach>/passes-north-bay` and the anchors in `anchors-north-bay.bak.json`: a pass is split by the
+mission's circuit, so an old lap would file its left-lane points under the new right-lane leg.
+
+**No lap (operator's call): g4 is drawn.** `J-SPLIT:right>J-BMERGE` is a polyline from the operator's
+sketch, checked against 48 logged AMCL poses on that lane (median +3 cm, worst 10 cm). J-STEM to J-SPLIT is
+cut from g2 and g3, so it is the 10-24 pass. The left-bay leg stays in the graph: it gives the wrong-branch
+check something to compare with. HOME-N2 at (0.04, -1.228) is beside HOME-N by position, not taught.
+**Do not press Build on this graph:** `passes/` is empty, and Build makes a graph from passes only. A
+later recorded lap from HOME-N2 replaces the drawn leg. Back to the north bay: restore those two
+and the mission, and activate g3. The station contract's examples still say HOME-N
+(`amr_station/test/contract.py` renames for them); to settle with the station side before P9.

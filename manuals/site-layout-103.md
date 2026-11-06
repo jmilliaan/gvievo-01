@@ -60,7 +60,7 @@ eastbound MRU stops face the other way and need not coincide with the westbound 
 
 | Position | Machines | Circuit | Pass | Operator action |
 |---|---|---|---|---|
-| HOME-N | – | both | north bay, end of the trip | release the trolleys; park (trip ends) |
+| HOME-N2 | – | both | right bay beside the old HOME-N (2026-11-06, operator), end of the trip | release the trolleys; park (trip ends) |
 | ATT | – | both | departure lane, after the U-turn | attach the trolleys, Start |
 | R2-1 | BTU24 / BTU16 | BTU | row 2 eastbound | swap |
 | R2-2 | BTU23 / BTU15 | BTU | | swap |
@@ -109,7 +109,8 @@ tape joins and there is no choice to make.
 | X2 | R2624 × departure lane, (2474, 522) | crossing, non-90° |
 | J-ML | merge L, (40, 0) | southbound: diverge R1380 (left, tighter) / R2434 (right). Northbound on R2434: merge |
 | J-STEM | R2624 joins the stem, (1420, 2624) | merge from the right |
-| J-SPLIT | bay split, (1040, 5175) | diverge: north bay on the left, south bay on the right |
+| J-SMERGE | a tape joins from the right, map (-10.59, -0.31); taught as J-SPLIT until 2026-11-06 | merge |
+| J-SPLIT | bay split, about 5 m after J-SMERGE, map (-5.55, -0.39) | diverge: AGV-01 goes **right** to HOME-N2 since 2026-11-06 (left was the old HOME-N) |
 | J-LV | middle line × left vertical (site plan) | T: north on the right, south on the left |
 | J-R2E | row 2 × trunk (site plan) | eastbound: T (north left, south right). On the trunk: row 2 joins from the west side |
 | U-MRU | MRU line west end | tape end: pivot U-turn, empty only |

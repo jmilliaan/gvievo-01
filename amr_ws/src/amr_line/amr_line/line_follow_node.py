@@ -273,6 +273,7 @@ class LineFollowNode(LeanNode):
         # <state_dir>/logs/line_trace on a run end, a hold, a kink pivot, a finished U-turn.
         self.flight = flight_recorder.FlightRecorder(self._state_dir)
         self._fr_kinks = 0
+        self._fr_corners = 0
         self._fr_uturn_done = None
         self._fr_forks = 0
         # The whole run (2026-11-06): every tick, pose and event, written off the control thread.
@@ -851,7 +852,8 @@ class LineFollowNode(LeanNode):
             tracks_mm=" ".join(str(t.get("pos_mm")) for t in sensor.get("tracks") or ()),
             has_track=d.get("has_track"), e_used_mm=d.get("e_used"),
             v_base_rpm=f"{d.get('v_base', 0.0):.0f}", left_rpm=f"{left:.0f}", right_rpm=f"{right:.0f}",
-            kink=(self.job.kink or {}).get("direction", ""),
+            kink=(self.job.kink or {}).get("direction", "") or (
+                f"roll-{self.job.corner.direction}" if self.job.corner.active else ""),
             uturn=(u.get("phase") or "") if u.get("active") else "",
             travel_m=f"{self.job.followed_m:.3f}", S_m=getattr(self.job.tape, "S", None),
             sigma_m=(self.job.tape.loc or {}).get("sigma") if hasattr(self.job.tape, "loc") else None,
@@ -861,6 +863,8 @@ class LineFollowNode(LeanNode):
             why = f"{lj.STATE_NAMES[state]} {self.job.reason}"
         elif self.job.kinks != self._fr_kinks:
             why = "kink"
+        elif self.job.corners != self._fr_corners:
+            why = "corner"
         elif self.job.tape.uturn_last is not self._fr_uturn_done and self.job.tape.uturn_last:
             why = "uturn done"
         forks = getattr(self.job.tape, "fork_log", ())
@@ -868,6 +872,7 @@ class LineFollowNode(LeanNode):
             why = f"fork {forks[-1]['id']} {forks[-1]['verdict']}"
         self._fr_forks = len(forks)
         self._fr_kinks = self.job.kinks
+        self._fr_corners = self.job.corners
         self._fr_uturn_done = self.job.tape.uturn_last
         if why:
             try:

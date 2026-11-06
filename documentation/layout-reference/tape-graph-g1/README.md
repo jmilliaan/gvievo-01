@@ -1,5 +1,9 @@
 # Tape graph g1 on rev-boiacca-map-01 rev1
 
+**Superseded for the HOME complex by [`tape-graph-g4`](../tape-graph-g4/README.md) (2026-11-06).** These
+images show the north bay and label the merge "J-SPLIT"; that was the wrong fork. The MRU line, marks and
+roles below still hold. Don't rerun `draw_marks.py` for these: it draws g1 with today's anchors.
+
 Rendered on the survey map `~/amr_maps/rev-boiacca-map-01/rev1/map.pgm` (0.05 m/px), in the
 map frame AMCL localises in. Map data, passes and marks live on the vehicle; these images are
 snapshots for reference. Plan: `manuals/tracked-plan-4-position-engine.md` (sections 9–10).

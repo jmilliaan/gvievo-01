@@ -27,6 +27,7 @@ class FakeClient:
         self.do = do if do is not None else [False] * 16
         self.fail_connect = False
         self.fail_read = False
+        self.fail_read_once = False
         self.short_read = False
         self.fail_write = False
         self.reads = 0
@@ -38,6 +39,9 @@ class FakeClient:
 
     def _bits(self, src, count):
         self.reads += 1
+        if self.fail_read_once:
+            self.fail_read_once = False
+            return _Reply([], error=True)
         if self.fail_read:
             return _Reply([], error=True)
         if self.short_read:
@@ -165,6 +169,38 @@ def test_dio_faults():
     except ConnectionError:
         raised = True
     check("a refused connection raises", raised)
+
+
+def test_dio_one_bad_reply_is_retried_not_lost():
+    """2026-11-06, S 105.9: one Modbus exception reply stopped a run, the module fine."""
+    print("\ndio: one bad reply")
+
+    di = [False] * 16
+    di[5] = True
+    fake = FakeClient(di=di)
+    link = _link(fake)
+    link._scan_with_retry()
+    before = link.snapshot()
+
+    fake.fail_read_once = True
+    link._scan_with_retry()
+    s = link.snapshot()
+    check("one failed scan keeps the connection: the panel stays valid", s["connected"] is True)
+    check("the retry is a real scan: a new image is published", s["scans"] == before["scans"] + 1)
+    check("the retry uses a new socket, so a late reply cannot answer it", fake.closed == 1)
+    check("it stays visible: counted, with its reason", s["retried"] == 1 and "read at" in s["last_retry"])
+    check("and counted as an error too", s["errors"] == before["errors"] + 1)
+
+    fake.fail_read = True
+    raised = False
+    try:
+        link._scan_with_retry()
+    except OSError:
+        raised = True
+    s = link.snapshot()
+    check("two failures in a row go up to _run() as lost", raised)
+    check("a failed retry publishes nothing and counts no recovery", s["retried"] == 1 and s["di"][5] is True)
+    check("a failed retry advances no scan, so its image ages out", s["scans"] == before["scans"] + 1)
 
 
 def test_dio_health():
@@ -433,6 +469,7 @@ TESTS = [
     test_dio_command_expires,
     test_dio_write_failure_is_not_silent,
     test_dio_stop_de_energises,
+    test_dio_one_bad_reply_is_retried_not_lost,
     test_dio_health,
     test_dio_events_are_edge_only,
     test_dio_profile,

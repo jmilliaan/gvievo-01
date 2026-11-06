@@ -318,7 +318,8 @@ def test_a_forced_u_turn_can_be_cancelled_and_needs_a_guided_mission():
     assert not ok and "guided" in msg
 
 
-def test_a_forced_u_turn_still_takes_a_corner_as_a_kink():
+def test_a_forced_u_turn_still_takes_a_corner_as_a_kink(monkeypatch):
+    monkeypatch.setattr(vehicle, "CORNER_YAW_DEG_S", 0.0)     # the fallback under the rolling corner
     w = started()
     w.job.force_u_turn(True)
     edge = {"tracks": [{"index": 2, "pos_mm": -95, "width": 10}], "has_track": True, "nlcp": 2,
