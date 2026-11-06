@@ -19,6 +19,34 @@ from amr_station import vda_order, vda_state
 INSTANT_KEEP = 5
 PUBLISH_PERIOD_S = 1.0
 ORDER_STATE_MAX_AGE_S = 3.0  # older: STARTUP (plan 4.5 R3)
+HOME_LINK_ALARM_S = 60.0  # at HOME with no working link for longer: STATION_LINK_HOME
+HOME_LINK_REPEAT_S = 60.0  # said again while it stands: a restarted web page learns it from this
+
+
+class HomeLinkAlarm:
+    """At HOME with no working broker link for over 60 s. It only tells people: nothing reads it to
+    decide about motion. Clock-fed. update() -> "raise" (also the repeats), "clear" or ""."""
+
+    def __init__(self) -> None:
+        self.standing = False
+        self._since = None
+        self._said_t = 0.0
+
+    def update(self, now: float, at_home: bool, ready: bool) -> str:
+        if ready or not at_home:
+            self._since = None
+            if self.standing:
+                self.standing = False
+                return "clear"
+            return ""
+        if self._since is None:
+            self._since = now
+        if now - self._since <= HOME_LINK_ALARM_S:
+            return ""
+        if not self.standing or now - self._said_t >= HOME_LINK_REPEAT_S:
+            self.standing, self._said_t = True, now
+            return "raise"
+        return ""
 
 
 class BridgeCore:

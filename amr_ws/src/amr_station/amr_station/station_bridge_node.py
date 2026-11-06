@@ -39,6 +39,8 @@ class StationBridge(LeanNode):
         self.declare_parameter("state_dir", paths.state_dir())
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._link_up = None
+        self._down_t = None  # when the link last went down, for the "back after" of the next up
+        self._home_alarm = bridge_core.HomeLinkAlarm()
         site = mission.load_site(str(vehicle_config.TAPE_LOC_SITE_MISSION))
         self.core = bridge_core.BridgeCore(
             site, vehicle_config.STATION_MANUFACTURER, vehicle_config.STATION_SERIAL_NUMBER
@@ -101,11 +103,14 @@ class StationBridge(LeanNode):
     def _drain(self) -> None:
         change = self.link.service()
         if change == "up":
+            if self._link_up:  # the drop and the reconnect both fell between two calls
+                self._event("STATION_LINK_UP", f"link reconnected after a brief drop, {self._where()}")
             self._set_link(True)
             self._state_tick(force=True)
         elif change == "down":
             self._set_link(False)
         now = time.monotonic()
+        self._home_alarm_tick(now)
         if self._link_up is None and not self.link.connected and now - self._started_t > NEVER_UP_S:
             self._set_link(False)  # a broker that never answered says nothing else
         while self.link.queue:
@@ -119,9 +124,35 @@ class StationBridge(LeanNode):
     def _set_link(self, up: bool) -> None:
         if up != self._link_up:
             self._link_up = up
-            if not up:
-                self._event("STATION_LINK_DOWN", f"no link to the broker {self.link.host}:{self.link.port}")
-            self.get_logger().info(f"station link {'up' if up else 'down'}")
+            now, where = time.monotonic(), self._where()
+            if up:
+                back = f" after {now - self._down_t:.0f} s" if self._down_t is not None else ""
+                self._down_t = None
+                self._event("STATION_LINK_UP", f"link to the broker back{back}, {where}")
+            else:
+                self._down_t = now
+                self._event(
+                    "STATION_LINK_DOWN", f"no link to the broker {self.link.host}:{self.link.port}, {where}"
+                )
+            self.get_logger().info(f"station link {'up' if up else 'down'}, {where}")
+
+    def _where(self) -> str:
+        """The trip position, so the next real trip's log shows where the link went and came back."""
+        m = self._line
+        if m is None:
+            return "line layer not reporting"
+        place = f"S {m.loc_s_m:.1f} m on {m.loc_leg}" if m.loc_leg else "no tape position"
+        return f"{place}, {'at home' if m.at_home else 'away from home'}"
+
+    def _home_alarm_tick(self, now: float) -> None:
+        at_home = self._line is not None and bool(self._line.at_home)
+        act = self._home_alarm.update(now, at_home, self.link.ready)
+        if act == "raise":
+            self._event("STATION_LINK_HOME", f"at home with no link to {self.link.host}:{self.link.port}")
+        elif act == "clear":
+            self._pub_event.publish(
+                self.build_event("station_bridge", 0, "STATION_LINK_HOME", "cleared: link back, or left home")
+            )
 
     def _ask(self, action, refuse_as: bool) -> None:
         """Hand one action to the job, with no wait. Its result comes back in OrderState."""

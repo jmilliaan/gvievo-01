@@ -13,9 +13,12 @@ import datetime
 import json
 import os
 import stat
+import time
 
 KEEPALIVE_S = 10
 RECONNECT_S = 2
+ONLINE_REPUBLISH_S = 15.0  # the retained ONLINE again: a stale will cannot stay the last word for longer
+SUBACK_WAIT_S = 5.0  # no accepted SUBACK by then: subscribe again
 QUEUE_MAX = 32
 CREDENTIALS = "station-mqtt.json"
 VERSION = "3.0.0"
@@ -67,6 +70,7 @@ class MqttLink:
         password: str,
         client=None,
         clock=utc_now,
+        monotonic=time.monotonic,
     ) -> None:
         self.host, self.port = host, int(port)
         self.manufacturer, self.serial = manufacturer, serial
@@ -75,20 +79,33 @@ class MqttLink:
         self.clock = clock
         self.connected = False
         self.queue: collections.deque = collections.deque(maxlen=QUEUE_MAX)
-        self._announced = False  # subscribed and ONLINE for this connection
+        self.monotonic = monotonic
+        self.connections = 0  # counted on paho's thread; a new number means re-announce
+        self._announced = 0  # the connection number subscribed and ONLINE was sent for
+        self._up = False  # service() has reported "up" and not yet "down"
+        self._sub_mid = self._suback_mid = None
+        self._sub_t = self._online_t = 0.0
         self._header = {"state": 0, "connection": 0}
         self.c = client if client is not None else _paho_client(f"gvi-{serial}")
         self.c.username_pw_set(username, password)
         self.c.on_connect = self._on_connect
         self.c.on_disconnect = self._on_disconnect
         self.c.on_message = self._on_message
+        self.c.on_subscribe = self._on_subscribe
 
     # -- paho's network thread: set a flag, queue bytes, nothing else --------------------------
     def _on_connect(self, _c, _u, _flags, reason_code, _props=None):
-        self.connected = not getattr(reason_code, "is_failure", bool(reason_code))
+        ok = not getattr(reason_code, "is_failure", bool(reason_code))
+        if ok:
+            self.connections += 1  # before `connected`: service() must never see the old number as new
+        self.connected = ok
 
     def _on_disconnect(self, _c, _u, *_rest):
         self.connected = False
+
+    def _on_subscribe(self, _c, _u, mid, reason_codes, _props=None):
+        if not any(getattr(rc, "is_failure", bool(rc)) for rc in reason_codes):
+            self._suback_mid = mid
 
     def _on_message(self, _c, _u, msg):
         self.queue.append((msg.topic, bytes(msg.payload), bool(msg.retain)))
@@ -119,17 +136,42 @@ class MqttLink:
         self.c.loop_start()
 
     def service(self) -> str:
-        """Run on the caller's thread: "up" on a fresh connection (subscribed, ONLINE sent: the caller
-        publishes `state` next), "down" when one just ended, "" otherwise."""
-        if self.connected and not self._announced:
-            self._announced = True
-            self.c.subscribe([(self.topics["order"], 0), (self.topics["instantActions"], 0)])
-            self.publish_connection("ONLINE")
-            return "up"
-        if not self.connected and self._announced:
-            self._announced = False
+        """Run on the caller's thread: "up" on any new connection, including one whose drop happened
+        between two calls (subscribed, ONLINE sent: the caller publishes `state` next), "down" when one
+        just ended, "" otherwise. Also keeps the connection's subscriptions and retained ONLINE current."""
+        now = self.monotonic()
+        if self.connected:
+            if self._announced != self.connections:
+                self._announced = self.connections
+                self._up = True
+                self._subscribe(now)
+                self.publish_connection("ONLINE")
+                self._online_t = now
+                return "up"
+            if not self.subscribed and now - self._sub_t >= SUBACK_WAIT_S:
+                self._subscribe(now)
+            if now - self._online_t >= ONLINE_REPUBLISH_S:
+                self.publish_connection("ONLINE")
+                self._online_t = now
+            return ""
+        if self._up:
+            self._up = False
             return "down"
         return ""
+
+    def _subscribe(self, now: float) -> None:
+        topics = [(self.topics["order"], 0), (self.topics["instantActions"], 0)]
+        self._sub_mid, self._sub_t = self.c.subscribe(topics)[1], now
+
+    @property
+    def subscribed(self) -> bool:
+        """The broker accepted the subscriptions of the latest subscribe."""
+        return self._sub_mid is not None and self._suback_mid == self._sub_mid
+
+    @property
+    def ready(self) -> bool:
+        """Orders can reach this AGV: connected, announced, and subscribed."""
+        return self.connected and self._announced == self.connections and self.subscribed
 
     def publish_connection(self, state: str) -> None:
         if self.connected:

@@ -45,6 +45,97 @@ def test_connect_order():
     assert lk.service() == ""
 
 
+def clocked():
+    t = [100.0]
+    c = FakeMqttClient()
+    lk = ml.MqttLink("h", 1883, "gvi", "agv9", "u", "p", client=c, clock=lambda: "T", monotonic=lambda: t[0])
+    lk.start()
+    return lk, c, t
+
+
+def online_count(c):
+    return sum(1 for p in c.published if p[0].endswith("/connection"))
+
+
+def test_a_drop_and_reconnect_between_two_checks_announces_again():
+    lk, c, _t = clocked()
+    c.fire_connect()
+    assert lk.service() == "up"
+    c.fire_suback()
+    # The drop and the reconnect both happen before the next service().
+    c.fire_disconnect()
+    c.fire_connect()
+    assert lk.connected and not lk.ready, "connected, but the new clean session has no subscriptions"
+    assert lk.service() == "up"
+    assert len(c.subscribed) == 2 and online_count(c) == 2
+    c.fire_suback()
+    assert lk.ready
+    assert lk.service() == ""
+
+
+def test_a_failed_reconnect_is_not_a_new_connection():
+    lk, c, _t = clocked()
+    c.fire_connect()
+    lk.service()
+    c.fire_disconnect()
+    c.fire_connect(types.SimpleNamespace(is_failure=True))
+    assert lk.service() == "down"
+    assert len(c.subscribed) == 1
+
+
+def test_not_ready_until_the_broker_accepts_the_subscriptions():
+    lk, c, t = clocked()
+    c.fire_connect()
+    lk.service()
+    assert not lk.ready
+    c.fire_suback(codes=(0, types.SimpleNamespace(is_failure=True)))
+    assert not lk.ready, "a refused topic means orders cannot arrive"
+    t[0] += ml.SUBACK_WAIT_S - 0.1
+    lk.service()
+    assert len(c.subscribed) == 1
+    t[0] += 0.1
+    lk.service()
+    assert len(c.subscribed) == 2, "subscribes again"
+    c.fire_suback()
+    assert lk.ready
+    t[0] += 60.0
+    lk.service()
+    assert len(c.subscribed) == 2, "and stops once accepted"
+
+
+def test_an_old_suback_does_not_count_for_a_new_connection():
+    lk, c, _t = clocked()
+    c.fire_connect()
+    lk.service()
+    c.fire_suback()
+    c.fire_disconnect()
+    lk.service()
+    c.fire_connect()
+    lk.service()
+    assert not lk.ready
+
+
+def test_online_is_republished_retained_every_15_s_while_connected():
+    lk, c, t = clocked()
+    c.fire_connect()
+    lk.service()
+    assert online_count(c) == 1
+    t[0] += ml.ONLINE_REPUBLISH_S - 0.1
+    lk.service()
+    assert online_count(c) == 1
+    t[0] += 0.1
+    lk.service()
+    assert online_count(c) == 2
+    topic, payload, qos, retain = c.published[-1]
+    assert json.loads(payload)["connectionState"] == "ONLINE" and (qos, retain) == (1, True)
+    c.fire_disconnect()
+    lk.service()
+    c.published.clear()
+    t[0] += 60.0
+    lk.service()
+    assert c.published == [], "nothing while disconnected"
+
+
 def test_a_failed_connect_is_not_connected():
     lk, c = link()
     c.fire_connect(types.SimpleNamespace(is_failure=True))

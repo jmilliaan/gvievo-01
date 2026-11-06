@@ -4,7 +4,7 @@
 class FakeMqttClient:
     def __init__(self):
         self.calls, self.published, self.subscribed = [], [], []
-        self.on_connect = self.on_disconnect = self.on_message = None
+        self.on_connect = self.on_disconnect = self.on_message = self.on_subscribe = None
 
     def username_pw_set(self, u, p):
         self.calls.append(("username_pw_set", u, p))
@@ -30,6 +30,7 @@ class FakeMqttClient:
     def subscribe(self, topics):
         self.subscribed.append(topics)
         self.calls.append(("subscribe",))
+        return 0, len(self.subscribed)  # (rc, mid)
 
     def publish(self, topic, payload, qos=0, retain=False):
         self.published.append((topic, payload, qos, retain))
@@ -41,3 +42,6 @@ class FakeMqttClient:
 
     def fire_disconnect(self):
         self.on_disconnect(self, None, {}, 0, None)
+
+    def fire_suback(self, codes=(0, 0)):
+        self.on_subscribe(self, None, len(self.subscribed), list(codes), None)

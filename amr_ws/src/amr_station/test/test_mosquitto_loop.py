@@ -151,6 +151,79 @@ def test_last_will_arrives_after_kill(broker):
     w.loop_stop()
 
 
+def retained_connection():
+    """What a station connecting now is told: the retained connection message, from a fresh client."""
+    w = client("watch")
+    w.subscribe(T + "connection")
+    assert until(lambda: w.got), "nothing retained"
+    w.loop_stop()
+    w.disconnect()
+    return json.loads(w.got[0][1])["connectionState"]
+
+
+def test_a_will_from_the_old_session_cannot_stay_the_last_word(broker):
+    """The Wi-Fi case: the old session is still open at the broker (its keepalive has not run out) when
+    the AGV comes back under the same client id. Frozen with SIGSTOP, so it sends no DISCONNECT."""
+    script = textwrap.dedent(f"""
+        import sys, time
+        sys.path.insert(0, {os.path.dirname(os.path.dirname(ml.__file__))!r})
+        from amr_station import mqtt_link as ml
+        lk = ml.MqttLink("127.0.0.1", {PORT}, "gvi", "agv1", "agv1", {USERS["agv1"]!r})
+        lk.start()
+        while True:
+            lk.service(); time.sleep(0.05)
+    """)
+    old = subprocess.Popen([sys.executable, "-c", script])
+    try:
+        time.sleep(1.0)
+        old.send_signal(signal.SIGSTOP)
+        lk = bridge()   # the same client id takes the session over
+        for _ in range(100):
+            lk.service()
+            time.sleep(0.02)
+        assert retained_connection() == "ONLINE"
+        # Past the frozen session's keepalive too: nothing arrives late to replace it.
+        end = time.monotonic() + 20.0
+        while time.monotonic() < end:
+            lk.service()
+            time.sleep(0.05)
+        assert lk.ready and retained_connection() == "ONLINE"
+        lk.stop()
+    finally:
+        old.kill()
+        old.wait(3)
+
+
+def test_the_retained_online_is_repaired_while_connected(broker, monkeypatch):
+    """Whatever got retained, the next republish replaces it."""
+    monkeypatch.setattr(ml, "ONLINE_REPUBLISH_S", 0.5)
+    lk = bridge()
+    assert until(lambda: lk.ready or lk.service() == "" and lk.ready), "the broker accepts the subscriptions"
+    # The contract's ACL lets agv1 write its own connection topic: put a stale will there.
+    lk.c.publish(T + "connection", json.dumps({"connectionState": "CONNECTION_BROKEN"}), qos=1, retain=True)
+    time.sleep(0.2)
+    assert retained_connection() == "CONNECTION_BROKEN"
+    end = time.monotonic() + 1.0
+    while time.monotonic() < end:
+        lk.service()
+        time.sleep(0.05)
+    assert retained_connection() == "ONLINE"
+    lk.stop()
+
+
+def test_a_broker_restart_ends_ready_again(broker):
+    lk = bridge()
+    assert until(lambda: lk.ready)
+    broker.stop()
+    assert until(lambda: not lk.connected)
+    assert lk.service() == "down" and not lk.ready
+    broker.start()
+    assert until(lambda: lk.connected, 8.0)
+    assert lk.service() == "up"
+    assert until(lambda: lk.ready), "the new clean session is subscribed"
+    lk.stop()
+
+
 def test_orderly_stop_is_offline_and_no_will(broker):
     w = client("watch")
     w.subscribe("vda5050/v3/gvi/#")

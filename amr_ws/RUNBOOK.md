@@ -166,6 +166,13 @@ Before you begin:
 - Mark a start position and heading on the floor (tape an arrow). The survey
   begins and ends there.
 
+**Station link.** A far trip can lose `agv_field`; a running trip carries on, because the job has no
+network input. `agv-wifi-reconnect` rejoins as soon as the AP is heard, repairs a dead link (`nmcli con up`,
+then a reload of `iwlwifi` if the radio is stuck) and logs every action: `journalctl -u agv-wifi-reconnect`.
+`STATION_LINK_DOWN` and `STATION_LINK_UP` in the event log give the trip position and how long it was down.
+At home with no link for over 60 s, `STATION_LINK_HOME` stands on Home and Alarms until it comes back. Machine
+calls cannot reach the AGV until then. To measure recovery, see `tools/wifi_recovery_test.sh`.
+
 **Header (top right).** The Wi-Fi readout shows the robot's link on `wlp1s0`
 (SSID and dBm; red `no link` when `agv_field` is out of range). Next to it, **NET**
 shows whether the ROBOT reaches the internet (green dot = online, red = offline,
@@ -515,6 +522,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `REAR_SCANNER_SILENT` | warn | No data from the rear scanner | Call maintenance. | trolley_node saw no /rear/scan within rear.stale_s, a malformed scan, or a repeated scan counter. The state goes UNKNOWN and needs a full debounce to leave. The stop path is the FX3, not this. |
 | `SERVICE_CRASHED` | warn | The vehicle software restarted itself | Nothing to do. Tell the engineer if it keeps happening. | A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason. |
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
+| `STATION_LINK_HOME` | warn | At home with no link to the station | Machine calls cannot reach the AGV. Check Wi-Fi and the station PC. Driving is not affected. | amr_station bridge: LineState.at_home and the link not ready (connected, subscribed) for over 60 s. Nothing reads it to decide about motion. agv-wifi-reconnect is trying to repair the link: journalctl -u agv-wifi-reconnect. |
 | `TROLLEY_UNKNOWN` | warn | Trolley state unknown | Call maintenance if it does not clear. | station.enabled: /amr/rear/trolley is stale, UNKNOWN or the rear lidar is not fitted. Every order, hand trip from HOME and Start at a trolley stop is refused. No bypass on the vehicle. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
@@ -534,7 +542,8 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `PANEL` | info | The control panel changed | Nothing to do. | Selector, Start/Reset edge or pendant change from panel_node. |
 | `PP_START` | info | A blind move started | Nothing to do. | Profile-position (blind-run) move accepted by the drive owner. |
 | `RUN_SUMMARY` | info | A mission finished | Nothing to do. | One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause. |
-| `STATION_LINK_DOWN` | info | No link to the station | Check Wi-Fi and the station PC. The vehicle keeps working. | amr_station bridge: broker unreachable, wrong or too-open credentials (<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running finishes: the job has no network input. |
+| `STATION_LINK_DOWN` | info | No link to the station | Check Wi-Fi and the station PC. The vehicle keeps working. | amr_station bridge: broker unreachable, wrong or too-open credentials (<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running finishes: the job has no network input. The text gives the trip position. |
+| `STATION_LINK_UP` | info | Link to the station is back | Nothing to do. | amr_station bridge: connected again. The text gives how long it was down and the trip position. |
 | `WAITING_FOR_PREREQ` | info | Waiting: a sensor or the panel is not ready yet | Wait a moment. If it stays, look at the Alarms page. | Hold cause 'pending': a prerequisite went stale inside the grace window. |
 
 ### Cleared by: start button

@@ -259,7 +259,15 @@ def _rows() -> tuple[Alarm, ...]:
           "Check Wi-Fi and the station PC. The vehicle keeps working.",
           "amr_station bridge: broker unreachable, wrong or too-open credentials "
           "(<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running "
-          "finishes: the job has no network input."),
+          "finishes: the job has no network input. The text gives the trip position."),
+        a("STATION_LINK_UP", INFO, "auto", "Link to the station is back",
+          "Nothing to do.",
+          "amr_station bridge: connected again. The text gives how long it was down and the trip position."),
+        a("STATION_LINK_HOME", WARN, "auto", "At home with no link to the station",
+          "Machine calls cannot reach the AGV. Check Wi-Fi and the station PC. Driving is not affected.",
+          "amr_station bridge: LineState.at_home and the link not ready (connected, subscribed) for over "
+          "60 s. Nothing reads it to decide about motion. agv-wifi-reconnect is trying to repair the link: "
+          "journalctl -u agv-wifi-reconnect."),
         a("REAR_SCANNER_SILENT", WARN, "auto", "No data from the rear scanner",
           "Call maintenance.",
           "trolley_node saw no /rear/scan within rear.stale_s, a malformed scan, or a repeated scan counter. "

@@ -168,6 +168,7 @@ def _msg_to_dict(msg) -> dict[str, Any]:
 
 # LineState is published at 1 Hz: older than this, it may describe a replaced LINE layer.
 LINE_FRESH_S = 3.0
+LINK_HOME_FRESH_S = 150.0  # the bridge repeats STATION_LINK_HOME every 60 s; a dead bridge stops saying it
 
 
 def localization_map(mode, line, line_age_s=None) -> dict | None:
@@ -286,6 +287,8 @@ class RosAdapter(LeanNode):
         self._diag: dict[str, dict] = {}
         self._io: dict | None = None
         self._io_t = 0.0
+        # STATION_LINK_HOME as the bridge last said it: (text, time). The bridge repeats it while it stands.
+        self._link_home: tuple[str, float] | None = None
         # The ring survives a restart: every event is appended to disk, and the tail is
         # read back here at start so the Alarms history is not empty after a reboot.
         state_dir = paths.state_dir()
@@ -709,6 +712,9 @@ class RosAdapter(LeanNode):
             "text": m.text,
             "seq": int(m.seq),
         }
+        if m.code == "STATION_LINK_HOME":
+            with self._lock:
+                self._link_home = None if m.text.startswith("cleared") else (m.text, self._now())
         self._ring.add(e)  # the disk append runs outside the ring's lock; errors are synced (W4)
 
     def emit(self, level: str, code: str, text: str, source: str = "amr_web") -> None:
@@ -788,6 +794,8 @@ class RosAdapter(LeanNode):
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
                 **({"order": dict(self._order, age_s=now - self._order_t) if self._order else None}
                    if station_enabled() else {}),
+                "station_link_home": (self._link_home[0] if self._link_home
+                                      and now - self._link_home[1] <= LINK_HOME_FRESH_S else None),
                 "loc_map": localization_map(self._mode, self._line, now - self._line_t),
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 "rfid": self._rfid_state(now),

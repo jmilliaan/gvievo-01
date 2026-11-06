@@ -841,3 +841,13 @@ def test_every_button_has_a_style_class():
             if "class=" not in tag and "data-k=" not in tag:
                 bare.append(f"{f.name}: {tag}")
     assert not bare, bare
+
+
+def test_at_home_with_no_station_link_stands_without_stopping_anything():
+    st = merged()
+    assert "STATION_LINK_HOME" not in {r["code"] for r in view.standing(st)}
+    st["station_link_home"] = "at home with no link to 192.168.2.5:1883"
+    rows = view.standing(st)
+    row = next(r for r in rows if r["code"] == "STATION_LINK_HOME")
+    assert row["level"] == "warn" and row["clears_by"] == "auto"
+    assert view.headline(st, rows)["state"] != view.STOPPED_NEEDS_YOU

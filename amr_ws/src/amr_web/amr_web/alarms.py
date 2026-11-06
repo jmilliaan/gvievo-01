@@ -114,6 +114,9 @@ def standing(state: dict[str, Any]) -> list[dict]:
     elif d.get("level") == "warn":
         add("DISK_LOW", f"{d.get('free_mb')} MB free on {d.get('path')}")
 
+    if state.get("station_link_home"):
+        add("STATION_LINK_HOME", state["station_link_home"])
+
     mux = state.get("mux")
     if mux and mux.get("inhibited") and mux.get("code"):
         add(mux["code"], mux.get("reason", ""))
