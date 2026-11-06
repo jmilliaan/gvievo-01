@@ -46,6 +46,14 @@ the manual lease; every autonomous start — a route, a survey move, the tape
 follower — needs the selector in AUTO *and* a fresh physical Start press. No
 web page can start the vehicle.
 
+**One exception, only with `station.enabled: true` (default false).** An order
+accepted from the station PC over MQTT leaves HOME for ATT with no Start press:
+once, in AUTO, through the same 2 s horn, with no trolley detected and the rear
+field clear. Every other stop and every hold still waits for Start. The bridge
+holds no lease and no command topic, and the link is plain MQTT with broker
+passwords and an ACL. This is a subset of VDA5050 3.0.0, not compliant. See
+`manuals/station-call-plan.md`.
+
 **A manual direction is HELD, not latched.** The jog pad re-POSTs while a
 button is down; the command mux drops a stream whose stamp is older than its
 `valid_for_s` (0.2 s). A closed tab, a dropped Wi-Fi link and a released
@@ -129,7 +137,8 @@ amr_ws/            The ROS 2 workspace (colcon, symlink install).
   src/amr_localization SLAM/AMCL glue, readiness, the localisation monitor
   src/amr_maps         map bundles and revisions
   src/amr_web          the Flask UI on 5001 and its ROS adapter
-  src/amr_sim          fake base/panel/IMU, synthetic scan and tape
+  src/amr_station      station_bridge_node: MQTT to the station PC (station.enabled only)
+  src/amr_sim          fake base/panel/IMU/trolley, synthetic scan and tape
   src/amr_interfaces   messages and services
 
 tests/             offline checks for agv_core (count: EXPECTED_CHECKS). run_all.py runs them.

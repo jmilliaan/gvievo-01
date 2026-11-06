@@ -367,12 +367,13 @@ def create_app(
         _need(tracked_ok)
         from agv_core import mission as missions  # noqa: PLC0415
 
-        live = False
+        live = calling = False
         try:
             from agv_core import config  # noqa: PLC0415
 
             name = config.TAPE_LOC_SITE_MISSION       # the one the line layer teaches and shadows
             live = bool(getattr(config, "TAPE_LOC_LIVE", False))
+            calling = bool(getattr(config, "STATION_ENABLED", False))
         except Exception:  # noqa: BLE001 - a dev box without a profile
             names = missions.list_site_missions()
             name = names[0] if names else ""
@@ -380,7 +381,7 @@ def create_app(
             m = missions.load_site(name)
         except missions.MissionError as e:
             return jsonify({"mission": name, "circuits": [], "stations": [], "points": [], "machines": {},
-                            "live": live, "error": str(e)})
+                            "live": live, "calling": calling, "error": str(e)})
         # Machines per group in circuit order (their release / swap stop), for Run's Calls part.
         machines = {}
         for g, row in m["GROUPS"].items():
@@ -391,7 +392,7 @@ def create_app(
         return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
                         "stations": [m["HOME"], *[s for s in m["STATIONS"] if s != m["HOME"]]],
                         "points": list(m["POINTS"]), "machines": machines, "trip_calls": m["TRIP_CALLS"],
-                        "home": m["HOME"], "live": live, "error": ""})
+                        "home": m["HOME"], "live": live, "calling": calling, "error": ""})
 
     @app.get("/api/line/graph")
     def api_line_graph():
@@ -475,8 +476,9 @@ def create_app(
         return _call(adapter.line_teach, str(d.get("action", "") or ""), str(d.get("arg", "") or ""))
 
     # Trips (tracked plan 4): a machine calls, a call is cancelled, the operator confirms the
-    # releases (before the U-turn) or the trolleys off at HOME. They form and record a trip;
-    # it leaves HOME only on AUTO + the physical Start. Operator and engineer.
+    # releases (before the U-turn) or the trolleys off at HOME. They form and record a trip, and
+    # none of them starts one: a trip formed here leaves HOME only on AUTO + the physical Start.
+    # Station orders never come through this API (manuals/station-call-plan.md). Operator and engineer.
     TRIP_ACTIONS = ("call", "cancel", "confirm_released", "confirm_off", "status")
 
     @app.post("/api/line/trip")

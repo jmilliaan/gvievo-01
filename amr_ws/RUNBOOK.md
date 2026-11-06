@@ -4,7 +4,8 @@
 operator web app, then enters **LINE** (tracked, the
 default) unless the profile is trackless-only, which stays in **IDLE**. It does
 not load a map, start a survey, resume a commissioning job or run a route after
-boot, and LINE moves nothing until the physical Start under AUTO. Surveys and
+boot, and LINE moves nothing until the physical Start under AUTO (with `station.enabled`: or an
+accepted station order at HOME under AUTO, see "Station calling"). Surveys and
 the AMCL position are on the **Mapping** page (2026-10-28). The web app no longer
 draws routes or enters NAVIGATION: the tape AGV is the product, and its one map
 (`rev-boiacca-map-01`) is the tape-localization map. The other maps were moved to
@@ -13,12 +14,13 @@ draws routes or enters NAVIGATION: the tape AGV is the product, and its one map
 The physical controls remain authoritative:
 
 - **MANUAL** permits bounded browser jog or a held commissioning plan.
-- **AUTO** permits a run only after a fresh physical **Start** edge.
+- **AUTO** permits a run only after a fresh physical **Start** edge. With `station.enabled` true,
+  and only then, an accepted station order also leaves HOME, once, through the 2 s horn.
 - E-stop and the FX3/STO chain remain the immediate physical stop path.
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
 The web app is `http://192.168.2.20:5001/`. Its tabs are **Home**, **Run** (tape
-jobs on top; machine calls, the trip and its confirmations under them - one scrolling column
+jobs on top; machine calls, the trip and its confirmations under them (off, and the rear lidar decides, with `station.enabled`) - one scrolling column
 that scrolls to the calls when the site mission is the job), **Manual**, **Alarms** (events), **Mapping** (survey and AMCL
 position), and for the engineer **Teach**, **Monitor**, **I/O** and **Params**. Every page has the same left
 rail: tiles for Mode, Selector, Drives, Command, Localisation, Run, Wheels and
@@ -103,7 +105,7 @@ One vehicle, two products, chosen by a single top-level key in
 | `"tracked"` | boots to | offered | refused with |
 |---|---|---|---|
 | `false` (default, the SLAM AMR) | `IDLE` | surveys and the AMCL position (no routes on the web since 2026-10-28) | LINE: "this vehicle is trackless (profile tracked=false)" |
-| `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
+| `true` (the magnetic-tape AGV) | `IDLE` → `LINE` by itself | the tape follower (physical Start under AUTO, or a station order at HOME with `station.enabled`; no software arm) | surveys, NAVIGATION: "this vehicle is a tape AGV (profile tracked=true)" |
 | `null` (both, agv-01) | `IDLE` → `LINE` by itself (since 2026-10-08) | both: the tape follower, and a survey on Mapping (started from LINE) | nothing by product |
 
 The Home header's mode shows `LINE` and `/api/state` carries `product`
@@ -128,6 +130,7 @@ emergency.
 
 | Event | Follower | To continue |
 |---|---|---|
+| `station.enabled` only: an accepted station order at HOME, under AUTO | ARMED as for a Start, once; the torque wait is `station.order_torque_wait_s` | a refused or cancelled order stores nothing: the station may send again |
 | physical Start under AUTO from IDLE or DONE (2026-10-07: no Arm button) | ARMED if every prerequisite holds: the drives power up and the alarm horn sounds for `timing.auto_start_delay_s` (2 s), then RUNNING with the movement horn; otherwise stays IDLE, "Start refused: …" in the event log | fix the cause, press Start again (a refused press is dropped, never remembered) |
 | drives not powered within `timing.premove_timeout_s` (8 s) of a Start | back where the Start came from, "Start cancelled: drives did not power up" | release the E-stop, Reset the safety relay, Start |
 | selector leaves AUTO, or the supervisor withdraws LEASE_LINE | FAULT `authority` at once, not after the 0.5 s grace | Reset, Start |
@@ -455,6 +458,37 @@ python3 -m agv_core.drivers.canbus.read_mls set-markers            # dry run; --
   unlock it with an SDO write of 2029h = 0. Don't run an offset calibration over tape
   (manual p. 44).
 
+
+## Station calling (`station.enabled`, manuals/station-call-plan.md)
+
+Machine calls from the station PC over MQTT (broker `192.168.2.5:1883`). A subset of VDA5050 3.0.0, not compliant.
+**Default off:** no bridge is launched, no order path exists, hand trips run as before.
+
+- **Turn on:** set `tape_loc.live: true` and `station.enabled: true` in the profile, `validate.sh`, restart the service. Needs paho-mqtt (`alpha-setup.md` 5.2) and `$AMR_STATE_DIR/station-mqtt.json`, mode 600. The first real departure is the named approval in the plan's P9.
+- **Turn off:** `station.enabled: false`, restart. Rear lidar hardware has its own setting (`rear.source`).
+- **With no rear lidar fitted and it on:** trolley state is unknown, so every order and every hand trip from HOME is refused. There is no bypass on the vehicle.
+- **At HOME under AUTO, treat the vehicle as about to move.** Set the selector to MANUAL before working on or around it.
+- **At home** needs the selector in MANUAL. After a restart or any wheel movement at HOME: MANUAL, At home, confirm the scans align, AUTO, 5 s. Press it looking at the vehicle: heading is not measured.
+- **Clear in FAULT** is refused: press Reset on the panel.
+- **Released and Trolleys off** are refused: the rear lidar decides.
+
+| `NOT_READY` reason | Means | Do |
+|---|---|---|
+| `NOT_AUTO` | selector not AUTO, or the panel is stale | selector to AUTO |
+| `NOT_AT_HOME` | not at HOME, or a wheel moved since At home or since arrival | MANUAL, At home, AUTO |
+| `LOCALIZATION_NOT_READY` | no fresh scan match since At home | confirm the scans align |
+| `TAPE_NOT_SEEN` | no tape under the sensor | put the AGV on the tape |
+| `FAULT` | the job is in FAULT | Reset |
+| `TORQUE_TIMEOUT` | a warning found no torque: E-stop or safety chain | release the E-stop, press Reset |
+| `TROLLEY_PRESENT`, `TROLLEY_UNKNOWN` | trolley in the zone, or no fresh rear lidar reading | move it clear, or call maintenance |
+| `REAR_FIELD_NOT_CLEAR`, `REAR_FIELD_UNKNOWN` | rear field violated, stale, or its monitoring case not proven | clear it, or call maintenance |
+| `PREREQUISITE` | front field, drives, lease or tape reading | as for a refused Start |
+| `SITE_NOT_LIVE` | the site mission is not the job | select it on Run, or set `tape_loc.live` |
+| `LOCAL_TRIP` | a call from Run → Calls is waiting or running | finish or cancel it |
+| `SETTLING`, `HOLDOFF` | 5 s after a change at the vehicle; 15 s after a cancelled warning | wait |
+
+**After an aborted call** (selector, Reset, tape loss, wrong branch): the station closes the call and does not retry. The AGV may be anywhere and may hold a trolley. MANUAL, bring it to HOME, take the trolley off, At home, AUTO. A Reset after an E-stop on a station trip aborts it too.
+
 ## 4. Fault recovery
 
 Every code below is a row in `agv_core/alarms.py`; the operator sees the title and
@@ -471,14 +505,17 @@ engineer's note. Generated from `agv_core/alarms.py`.
 
 | Code | Level | Operator sees | Operator does | Engineer's note |
 |---|---|---|---|---|
+| `DEPARTURE_CANCELLED` | warn | Automatic departure cancelled | Clear the cause. The station can send it again. | The warning of a station order ended before motion (field, trolley, torque wait, selector, Reset). HOLDOFF and SETTLING follow; a torque-wait cancel also latches TORQUE_TIMEOUT until a physical Reset edge. |
 | `FIELD_PROTECTIVE` | warn | Stopped: something is in the protective field | Clear the area in front of the vehicle; it continues by itself. | The mux zeroes every AUTO source while /output_paths says the protective field is violated - the software side of a stop the scanner's OSSD pair already makes. |
 | `GENERATION_MISMATCH` | warn | Motion is held after a mode change | Wait. If it stays, press Restart on the Home page. | A command or permit carries a superseded generation; the mux drops it by design. |
 | `NOT_LEASED` | warn | Waiting for the supervisor | Wait. If it stays, press Restart on the Home page. | Mux has no fresh ControlLease (supervisor down, starting or in a transaction). |
 | `PP_ABANDONED` | warn | A blind move was abandoned | Nothing to do. | Blind-run move dropped (authority lost or the owner disarmed). |
 | `PP_REFUSED` | warn | A blind move was refused | Nothing to do; ask the engineer if it was expected. | Blind-run move refused by the drive owner. |
 | `PP_VETOED` | warn | A blind move was stopped before it started | Nothing to do; ask the engineer if it was expected. | Blind-run move vetoed at start: authority re-read after the drive setup (audit R02) no longer allowed it; the veto's controlwords were sent. |
+| `REAR_SCANNER_SILENT` | warn | No data from the rear scanner | Call maintenance. | trolley_node saw no /rear/scan within rear.stale_s, a malformed scan, or a repeated scan counter. The state goes UNKNOWN and needs a full debounce to leave. The stop path is the FX3, not this. |
 | `SERVICE_CRASHED` | warn | The vehicle software restarted itself | Nothing to do. Tell the engineer if it keeps happening. | A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason. |
 | `SOURCE_TIMED_OUT` | warn | The command stopped arriving | Press and hold again. If a page is jogging, check the Wi-Fi link. | The selected stream went stale (cmd_timeout_s 0.2 s): closed tab, dropped Wi-Fi or a released button - indistinguishable to the vehicle, by design. |
+| `TROLLEY_UNKNOWN` | warn | Trolley state unknown | Call maintenance if it does not clear. | station.enabled: /amr/rear/trolley is stale, UNKNOWN or the rear lidar is not fitted. Every order, hand trip from HOME and Start at a trolley stop is refused. No bypass on the vehicle. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
@@ -492,9 +529,12 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `MUX_SOURCE` | info | The vehicle is taking commands from somewhere else | Nothing to do. | Command-source edge in the mux (pendant, manual, follow, line...). |
 | `NO_PERMIT` | info | Waiting for a mission step | Nothing to do; the executor drives this. | AUTO with no MotionPermit, or a permit whose source has no fresh /cmd_vel. |
 | `NO_SOURCE` | info | Nothing is asking the vehicle to move | Nothing to do. Press Start, or jog from the Manual page. | Selector position is fine but no fresh command stream is selected. |
+| `ORDER_DEPARTING` | info | Leaving HOME for a station call | Stay clear of the vehicle. | An accepted station order entered the pre-move warning (FollowJob._order_start). The only move with no physical Start, and only with station.enabled (plan section 3). |
+| `ORDER_REFUSED` | info | A station order was refused | Check the reason on the Run page. | The event text carries the contract's errorType and reason. Nothing is stored or retried by the AGV: the station resends if it may. |
 | `PANEL` | info | The control panel changed | Nothing to do. | Selector, Start/Reset edge or pendant change from panel_node. |
 | `PP_START` | info | A blind move started | Nothing to do. | Profile-position (blind-run) move accepted by the drive owner. |
 | `RUN_SUMMARY` | info | A mission finished | Nothing to do. | One line per run at DONE/ABORT/FAULT: duration, distance, holds by cause. |
+| `STATION_LINK_DOWN` | info | No link to the station | Check Wi-Fi and the station PC. The vehicle keeps working. | amr_station bridge: broker unreachable, wrong or too-open credentials (<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running finishes: the job has no network input. |
 | `WAITING_FOR_PREREQ` | info | Waiting: a sensor or the panel is not ready yet | Wait a moment. If it stays, look at the Alarms page. | Hold cause 'pending': a prerequisite went stale inside the grace window. |
 
 ### Cleared by: start button
@@ -510,12 +550,15 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `PANEL_LINK_LOST` | warn | Stopped: the control panel link dropped | Check the panel and the I/O island; once the panel answers, press Start. | Hold cause 'panel': the I/O island reported its image invalid while the vehicle was armed or moving, so selector, Start and E-stop state were unknown. Held at once, not after the grace, and never read as the protective field. |
 | `PATH_BLOCKED` | warn | Stopped: the way ahead is blocked | Clear the route, then press Start. | Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. Waits for Start since 2026-10-28: only the protective field resumes by itself (owner decision, unified plan WP-A2). |
 | `PAYLOAD_UNCONFIRMED` | warn | Stopped before the U-turn: a release is not recorded | Check the trolley is released, confirm it on Run → Calls, then press Start. | Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a release stop not served, so a trolley may still be attached. No sensor sees the trolley: the confirmation on Run → Calls is the record. Start alone does not pivot. |
-| `POSITION_UNSURE` | warn | Stopped: not sure enough where it is on the tape | Wait for localization to be READY (Teach page), then press Start. | Line layer hold cause 'position' (tracked plan 4): on a trip the tape locator's sigma was over its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held BEFORE the point. Start re-checks; it holds again while still unsure. |
+| `POSITION_UNSURE` | warn | Stopped: not sure enough where it is on the tape | Check the AGV is clear of any released trolley, then press Start to pivot. | Line layer hold cause 'position' (tracked plan 4, 2026-11-06): before a mid-line U-turn with the tape locator's sigma over sigma_junction_m, once, so the operator's Start decides; or no locator on this trip's route (At home). AMCL no longer holds stops, orders or the tape end. |
 | `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
 | `RFID_TAG_OVERDUE` | warn | Stopped: no station tag where one was expected | Check where the vehicle is on the route (a tag may have been missed), then press Start. | Line hold cause 'rfid_overdue' (unified plan WP-A7): the run drove further than the mission's max_tag_gap_m without reading a tag of its table, so a stop or the U-turn tag may have been driven past. Counted afresh from the Start. |
 | `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
 | `TRACK_LOST` | warn | Stopped: the tape is not under the sensor | Push the vehicle back onto the tape, then press Start. | Line layer hold cause 'track': MLS reports no track for longer than the loss grace. |
+| `TROLLEY_AT_PIVOT` | warn | Stopped before the U-turn: a trolley is detected or unknown | Check the trolley is off and clear, then press Start. | Line layer hold cause 'trolley' (station call plan O7, station.enabled only): a trip about to pivot with the rear lidar reading present or unknown. Start checks it again. A person in the zone reads as a trolley: this is not personnel protection. |
 | `AT_STATION` | info | Parked at a station | Press Start when the station work is done; it moves after the start delay. | Tape mission stop row (role always, or the job's destination): a measured stop over stop_distance_m after the tag, then a LineState HOLD with cause 'station'. The Home stop ends the run (DONE) instead. |
+| `START_REFUSED_NO_TROLLEY` | info | Start refused: no trolley detected | Hitch the trolley, then press Start. | station.enabled: a Start at ATT or ME-n needs the rear lidar to read a trolley. The press is dropped, not remembered. Check the zone calibration if a trolley is on (rear.* in the profile). |
+| `START_REFUSED_TROLLEY_ON` | info | Start refused: a trolley is still detected | Unhitch the trolley and move it clear, then press Start. | station.enabled: a Start at MW-n needs the rear lidar to read no trolley. Also refused while the trolley stands in the zone unhitched (plan O9). A person in the zone reads the same. |
 
 ### Cleared by: ack
 
@@ -540,6 +583,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOC_SCAN_MISMATCH` | error | The vehicle is not where it thinks it is | Set the position on the Mapping page and confirm the scans line up. | Too many beams pass THROUGH mapped obstacles (scan_long over the limit): the unambiguous wrong-pose signature. |
 | `MAP_SAVE_FAILED` | error | The map was not saved | Try Save again on the Mapping page. If it fails twice, call the engineer. | mapping_session save returned an error; the survey is still open. |
 | `LOC_NOT_SET` | warn | The vehicle does not know where it is yet | On the Mapping page (Position): set the initial pose, then confirm. | LocalizationState UNLOCALIZED: no accepted initial pose since the layer started. |
+| `ORDER_ABORTED` | warn | A station trip was aborted | Bring the vehicle to HOME by hand. | A station order ended after it left HOME (Reset, Clear, selector, tape loss, wrong branch). The station closes the call as aborted and does not retry; the AGV may be holding a trolley. |
 | `SAVE_UNKNOWN_OUTCOME` | warn | The map may or may not have been saved | Check the Mapping page for a new revision before saving again. | The save RPC passed its deadline after the request was accepted; a late answer is ignored. |
 | `SURVEY_NOT_READY` | warn | The vehicle is not ready to survey | Fix what the Alarms page lists, then start the survey again. | mapping_session refused: sensor ages or mode preconditions not met. |
 | `SURVEY_START_REFUSED` | warn | The survey would not start | Fix what the Alarms page lists, then start the survey again. | mapping_session refused the start request. |
@@ -566,7 +610,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `CAN_TX_FAILED` | error | The PC cannot send on the drive bus | Switch the drives off and on, check the CAN adapter's USB cable, then the engineer presses Recover. | The CAN adapter refused frames (ENOBUFS/EAGAIN: TX queue full) for longer than timing.driver_timeout_s. Single failures are counted (can/bus diagnostics tx_errors) and never retried; the drives' own 1016h trips if the heartbeat stops getting out (unified plan WP-B2). |
 | `DRIVE_ALARM` | error | Drive alarm | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | CANopen EMCY latched; 40C0h (alarm reset) is on the write deny-list, so only a power cycle clears it. See the code in the detail (e.g. 8130h = heartbeat lost). |
 | `DRIVE_FAULT` | error | A drive is in fault | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | CiA-402 Fault state on a node while armed. |
-| `DRIVE_LINK_FAULT` | error | Stopped: the drives' link failed | Switch the drives off and on, wait for them to boot, the engineer presses Recover, then Start. | Line hold cause 'drive_fault' (unified plan WP-A4): drive_node's link went FAULT, or let go of the drives under a running vehicle. Held at once: cached statuswords may still read 'Operation enabled'. The DRIVE_* row beside it names the node and the code. |
+| `DRIVE_LINK_FAULT` | error | Stopped: the drives' link failed | Says "standby": the drives were only powered down, press Start. Says "fault": switch the drives off and on, wait for them to boot, the engineer presses Recover, then Start. | Line hold cause 'drive_fault' (unified plan WP-A4): drive_node's link went FAULT, or let go of the drives under a running vehicle ("standby": power no longer wanted; base.log says why). Held at once: cached statuswords may still read 'Operation enabled'. A real driver fault has a DRIVE_* row beside it naming the node and the code. |
 | `DRIVE_SILENT` | error | A drive stopped answering | Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | No TPDO/heartbeat from a node for driver_timeout_s while armed. Check CAN wiring and drive logic power before blaming the PC. |
 | `DRIVE_STOP_UNCONFIRMED` | error | The vehicle cannot confirm it stopped | Stay clear. Switch the drives off and on, wait for them to boot, then the engineer presses Recover. | Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so each drive's own 1016h trips. |
 | `UNCLEAN_SHUTDOWN` | warn | The vehicle lost power last time | Switch the drives off and on, then press the safety reset on the cabinet. | A running.json marker survived from before this boot (amr_bringup/uptime.py). The drives lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from the SAME boot is a service crash instead and needs no drive action. |

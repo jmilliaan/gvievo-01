@@ -883,6 +883,7 @@ Format per candidate: verdict, mode, value/effort after verification, Humble sta
 - **Verifier:** re-plug and unclean death are plan P1-4; `RuntimeWatchdogSec`, module and `kernel.panic` are P2-5. `RebootWatchdogUSec` already defaults to 10 min. amr.service is installed but disabled for the trial, so adding a WantedBy changes when it starts.
 
 #### `vda5050-v3-northbound`: VDA 5050 3.0 vehicle-side adapter
+**Update 2026-11-06:** now built as a subset for the station PC (`manuals/station-call-plan.md`, `amr_station`): site decisions D5 and D14 changed. It is not compliant: no factsheet, no pause, `cancelOrder` refused once moving (contract section 10).
 **Downgraded** (value medium → low) · new · effort M
 - **Verifier:** spec facts verified at tag 3.0.0 (waitForTrigger with `triggerType LOCAL`; operatingMode enum; MOBILE_ROBOT_NOT_AVAILABLE; stopPause "can also restart … stopped with a hardware button (if configured)" must never be configured). But site decisions D5 (no central system) and D13 (AGV-01 only) mean no consumer; it adds a broker and network surface on a vehicle with no network auth. openTCS speaks only 1.1/2.0. Defer until a fleet manager or AGV-02 is scheduled.
 

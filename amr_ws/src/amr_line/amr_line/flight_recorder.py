@@ -1,5 +1,6 @@
 """Line flight recorder (2026-10-24): the last seconds of every control tick, written to a
-CSV when something worth explaining happens - a run ending, a hold, a kink pivot, a U-turn.
+CSV when something worth explaining happens - a run ending, a hold, a kink pivot, a U-turn,
+an order through its fork. The whole run is in amr_line.trip_log; this is the quick look.
 
 The events log says WHAT happened ("track lost"); this says why: the MLS reading, track
 level and #LCP, the follower's state and error, and the wheel commands, tick by tick. Pure
@@ -16,7 +17,8 @@ import time
 from agv_core import fsutil
 
 FIELDS = ("t", "job", "engine", "nlcp", "tracks_mm", "level", "has_track", "e_used_mm",
-          "v_base_rpm", "left_rpm", "right_rpm", "kink", "uturn", "travel_m", "note")
+          "v_base_rpm", "left_rpm", "right_rpm", "kink", "uturn", "travel_m", "S_m", "sigma_m", "intent",
+          "note")
 
 
 class FlightRecorder:

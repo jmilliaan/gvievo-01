@@ -1,0 +1,26 @@
+# sick_safetyscanners2 parameters for the REAR nanoScan3 (station call plan P4). Not fitted yet.
+# Its own node key: the key in nanoscan3.yaml would not match this renamed, namespaced node.
+#
+# PLACEHOLDERS until P8: sensor_ip, host_ip and the angle window. The second scanner needs a switch or
+# a NIC (enp3s0 has one peer), so the addresses depend on what the owner fits.
+# As for the front unit, this is the data output only; Safety Designer stays humans-only.
+/rear/sick_safetyscanners2_rear_node:
+  ros__parameters:
+    frame_id: "rear_laser_frame"
+    sensor_ip: "192.168.3.11"        # PLACEHOLDER
+    host_ip: "192.168.3.2"           # PLACEHOLDER
+    interface_ip: "0.0.0.0"
+    host_udp_port: 6061              # never the front unit's 6060
+    channel: 0
+    channel_enabled: true
+    skip: 1                          # ~17 Hz, as the front (CPU)
+    angle_start: -1.658              # PLACEHOLDER: set from the mount
+    angle_end: 1.658                 # PLACEHOLDER
+    time_offset: 0.0
+    general_system_state: true
+    derived_settings: true
+    measurement_data: true
+    intrusion_data: false
+    application_io_data: true        # /rear/output_paths: the field and the active monitoring case
+    use_persistent_config: false
+    min_intensities: 0.0

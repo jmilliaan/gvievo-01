@@ -716,7 +716,7 @@ The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATI
 3. Insert the pin or hook `[TBD: as for the hitch type]` and secure it.
 4. Release the trolley's parking brake `[confirm]`.
 5. Check: coupling engaged and secured; nobody between the trolleys; load secured.
-6. If the vehicle asks for a confirmation on the **Run** page, confirm it.
+6. If the vehicle asks for a confirmation on the **Run** page, confirm it (only with station calling off; chapter 10.10).
 7. Step out of the travel path and press **START**.
 
 **Uncoupling:**
@@ -725,7 +725,7 @@ The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATI
 2. Apply the trolley's parking brake.
 3. Remove the pin or unhook `[TBD]`.
 4. Move the trolley off the track.
-5. Confirm the release on the **Run** page if asked.
+5. Confirm the release on the **Run** page if asked (only with station calling off; chapter 10.10).
 6. Step out of the travel path and press **START**.
 
 > **WARNING — Crushing between vehicle and trolley.**
@@ -735,7 +735,7 @@ The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATI
 
 [IMG-10-01] Coupling sequence
 
-The vehicle does not pivot at the end of a track while a release has not been confirmed (`PAYLOAD_UNCONFIRMED`).
+The vehicle does not pivot at the end of a track while a release has not been confirmed (`PAYLOAD_UNCONFIRMED`). With station calling on, it does not pivot while the rear lidar reads a trolley or cannot tell (`TROLLEY_AT_PIVOT`).
 
 ### 10.5 Automatic operation
 
@@ -744,6 +744,8 @@ The vehicle does not pivot at the end of a track while a release has not been co
 3. Selector to **AUTO**.
 4. Check the path is clear and nobody is at the hitch.
 5. Press **START**. The horn sounds for 2 s, then the vehicle moves off.
+
+With station calling switched on, the vehicle can also leave HOME on a call from a machine, with no one pressing **START** (chapter 10.10).
 
 While driving the vehicle:
 
@@ -773,6 +775,8 @@ For a normal stop between stop points, use **RESET** or the selector `[confirm p
 4. Check that nobody is in the path.
 5. In **AUTO**: press **START**. The horn sounds for 2 s, then the vehicle continues.
 
+On a site trip, **RESET** ends the trip: the vehicle does not continue the trip. Bring it to HOME by hand in **MANUAL**, take off any trolley, press **At home** while looking at the vehicle, then return to **AUTO**.
+
 ### 10.8 After the tape is lost
 
 If the vehicle leaves the tape it stops (`TRACK_LOST`).
@@ -789,6 +793,31 @@ If the vehicle leaves the tape it stops (`TRACK_LOST`).
 4. Switch off the main switch.
 
 ---
+
+### 10.10 Station calls
+
+*Applies only with station calling switched on. It is off by default. This section goes out with the risk assessment of automatic departure and the rear scanner, which are not done yet.*
+
+> **WARNING — The vehicle can start from HOME with nobody at the panel.**
+> With station calling switched on, a call from a machine can send the vehicle away from HOME with no one pressing **START**. The horn sounds for 2 s, then the vehicle moves off.
+> - With the selector in **AUTO** at HOME, treat the vehicle as about to move.
+> - Before you work on or around the vehicle at HOME, set the selector to **MANUAL**.
+> - The vehicle can leave a few seconds after you move a trolley clear, step out of a scanner field or release a block from the web page, or a few seconds after it arrives home. Do not stay in front of it or behind it.
+> - At every other stop it waits for **START**.
+
+**What the operator does on a station call.** Three **START** presses:
+
+1. At the pickup stop: couple the trolley, step clear, press **START**. It is refused while no trolley is detected.
+2. At the machine: uncouple, move the trolley clear of the vehicle, press **START**. It is refused while a trolley is detected. The vehicle then turns.
+3. At the machine again, after the turn: couple the full trolley, step clear, press **START**. It is refused while no trolley is detected.
+
+The vehicle then drives to HOME. Uncouple there and move the trolley clear. The vehicle does not accept the next call until the trolley is out of the detection zone, then 5 s, then 2 s of horn.
+
+The rear lidar replaces the **Released** and **Trolleys off** confirmations. Trolley detection does not protect people: a person standing in the zone reads as a trolley.
+
+**If a call is aborted** (selector, **RESET**, tape lost): the machine must call again. The vehicle may be anywhere and may hold a trolley. Bring it to HOME in **MANUAL**, take off any trolley, press **At home**, return to **AUTO**.
+
+**Pressing At home.** With station calling on, it needs the selector in **MANUAL**. After any wheel movement at HOME, press it again while looking at the vehicle. The vehicle does not measure which way it faces.
 
 ## 11. Emergency situations [O][M]
 
@@ -903,6 +932,16 @@ Alarms from navigation features (stop-point reader, map navigation) are listed i
 | `AUTHORITY_LOST` | Stopped: the vehicle lost permission to drive | Selector back to **AUTO**, press **START** |
 | `AT_STATION` | Parked at a stop point | Do the work at the stop point, press **START** |
 | `PAYLOAD_UNCONFIRMED` | Stopped before the pivot: a release is not recorded | Check the trolley is uncoupled, confirm on **Run**, press **START** |
+| `TROLLEY_AT_PIVOT` | Stopped before the pivot: a trolley is detected or unknown | Check the trolley is off and clear, press **START** |
+| `START_REFUSED_NO_TROLLEY` | START refused: no trolley detected | Couple the trolley, press **START** |
+| `START_REFUSED_TROLLEY_ON` | START refused: a trolley is still detected | Uncouple and move the trolley clear, press **START** |
+| `TROLLEY_UNKNOWN` | Trolley state unknown | Call maintenance if it does not clear |
+| `ORDER_DEPARTING` | Leaving HOME for a station call | Stay clear of the vehicle |
+| `ORDER_REFUSED` | A station order was refused | Check the reason on the **Run** page |
+| `DEPARTURE_CANCELLED` | Automatic departure cancelled | Clear the cause. The station can send it again |
+| `ORDER_ABORTED` | A station trip was aborted | Bring the vehicle to HOME by hand |
+| `STATION_LINK_DOWN` | No link to the station | Check Wi-Fi and the station PC. The vehicle keeps working |
+| `REAR_SCANNER_SILENT` | No data from the rear scanner | Call maintenance |
 | `TRACK_LOST` | Stopped: the tape is not under the sensor | Drive back onto the tape in **MANUAL** (chapter 10.8), then **START** |
 | `MLS_SILENT` | Stopped: the tape sensor stopped reporting | Check the sensor and cable; when it reports, check the position, press **START** |
 | `MLS_FIELD_WEAK` | Weak tape signal | Nothing now. Maintenance checks the tape at this place |

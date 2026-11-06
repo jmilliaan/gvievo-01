@@ -6,27 +6,33 @@ post-U-turn search, holds and pre-move warning are the ones every run uses. What
 WHO decides: not RFID tags or marker strips, but the distance S along the trip's route
 (amr_line.trip_route) from the locator, handed in each tick (locate()).
 
-    stop       at S_stop - stop_distance_m: the measured stop over what is left (F1, F2). The
-               locator must be within sigma_station_m there, else HOLD "position" before the
-               station. At rest: HOLD "station"; the panel Start serves it (trip.serve) and
-               departs. HOME ends the run (DONE, the trip's result)
-    order      left/right for the next diverge, armed at S_fork - junction_lead_m and never
-               before the previous node is passed (F3, site D15): sigma_junction_m or HOLD
-               "position" before the fork. Still standing past the node: FAULT (the fork was
-               not seen where it is taught)
+    stop       at S_stop - stop_distance_m: the measured stop over what is left (F1, F2), at any
+               sigma: the best estimate, logged with its sigma. At rest: HOLD "station"; the
+               panel Start serves it (trip.serve) and departs. HOME ends the run (DONE, the
+               trip's result)
+    order      left/right for the next diverge. An order acts at the next fork the MLS sees, so S
+               only has to get it standing in time, and AMCL is not needed: armed at
+               S_fork - max(junction_lead_m, 3 sigma), or at once on a fork seen before that, never
+               before the previous node is passed (F3, site D15). Used up by a fork well before
+               its own: armed again, and if no other fork comes that one was it. Still standing
+               max(1 m, 3 sigma) past the node with no fork seen at all: FAULT. ForkWatch says from
+               the MLS alone whether the ordered tape was kept: the other tape left: FAULT
     U-turn     mid-line: a measured stop at the point, then trip.may_pivot() (else HOLD
                "payload"), then the pivot from the tape (UTurn: leave it, reacquire it past the
-               gyro gate). Tape end: may_pivot() and sigma_junction_m at S_end - lead_m, then
-               the usual approach to where the tape ends (F5)
+               gyro gate). Over sigma_junction_m it holds once before the point: a released
+               trolley may be close, and the operator's Start is the word to go on. Tape end:
+               may_pivot() at S_end - lead_m, then the usual approach to where the tape ends (F5)
     speed      NORMAL = the site's cruise_mps. HIGH inside a zone [S_a, S_b) - where the route
-               runs inside a high-speed area drawn on the map (trip_route.area_ranges) - only while the
-               locator is healthy (F4, no latching), under an envelope that is back at the
+               runs inside a high-speed area drawn on the map (trip_route.area_ranges) - only while
+               sigma is within sigma_junction_m (F4, no latching), under an envelope that is back at the
                cruise by every stop, U-turn, junction fork and zone end ahead (F6)
     wrong      the locator's wrong-branch latch: FAULT
 
-Every doubt is a hold BEFORE the point, never motion. Nothing here starts, resumes or
-speeds the vehicle on its own: the run is moving on AUTO + the physical Start, and every
-decision is a slowdown, a stop or a refusal. Not in the safety path (plan section 6).
+AMCL corrects S and has no veto (tape_locator): doubt widens an order's window and is logged at a
+stop; it is never motion. Nothing here starts, resumes or speeds the vehicle on its own: the run
+is moving on AUTO + the physical Start, or an accepted station order at HOME
+(manuals/station-call-plan.md section 3), and every decision is a slowdown, a stop or a refusal.
+Not in the safety path (plan section 6).
 """
 
 import math
@@ -48,10 +54,56 @@ CREEP_STOP_M = 0.05
 STOP_SNAP_M = 0.03
 # An armed order still standing this far past its node: the fork was not seen there.
 ORDER_UNUSED_M = 1.0
+# A fork seen this far past the previous node is not that node's own (more with sigma), and an order
+# used up this far before its own fork was used up by another one.
+FORK_CLEAR_M = 0.3
 # How close to the taught U-turn a tape end may come and still be it.
 TAPE_END_MARGIN_M = 0.5
 # A trip starts at HOME: the locator within this of HOME's taught S (job._site_at_home).
 HOME_START_M = 0.5
+
+
+class ForkWatch:
+    """One order through its fork, from the MLS alone (2026-11-06: J-SPLIT, ordered left, ended on
+    the right tape with the order "taken": a fork ending says nothing about which tape is left).
+
+    Each two-track tick notes the ordered side's track and the other. When one track remains and
+    stays, it is one of the two: nearer the other means the ordered tape left the sensor. Only a
+    clear separation at the end can say so: at a merge the tapes close up, and a single tape that
+    reads double is a few millimetres wide; those are "unjudged"."""
+
+    MIN_SEP_MM = 30.0
+    SETTLE_TICKS = 3
+
+    def __init__(self, event, positive_is_left):
+        self.event, self.positive_is_left = event, positive_is_left
+        self.kept = self.other = None
+        self.ticks = self._single = 0
+        self.crossing = False
+
+    def tick(self, nlcp, tracks):
+        """A finished report, once, else None."""
+        usable = [t for t in tracks or () if t.get("pos_mm") is not None]
+        if nlcp in branch.MULTI_NLCP:
+            self.crossing = self.crossing or nlcp == branch.CROSSING_NLCP
+            self._single = 0
+            if len(usable) >= 2:
+                kept = branch.select_track(usable, self.event["order"], self.positive_is_left)["pos_mm"]
+                self.kept = kept
+                self.other = max((t["pos_mm"] for t in usable), key=lambda v: abs(v - kept))
+                self.ticks += 1
+            return None
+        if nlcp != branch.SINGLE_NLCP or not self.ticks or not usable:
+            return None
+        self._single += 1
+        if self._single < self.SETTLE_TICKS:
+            return None
+        single = usable[0]["pos_mm"]
+        sep = abs(self.kept - self.other)
+        verdict = ("unjudged" if self.crossing or sep < self.MIN_SEP_MM
+                   else "other" if abs(single - self.other) < abs(single - self.kept) else "ordered")
+        return {"id": self.event["id"], "order": self.event["order"], "verdict": verdict,
+                "kept": self.kept, "other": self.other, "single": single, "ticks": self.ticks}
 
 
 class SiteRun(TapeRun):
@@ -67,13 +119,19 @@ class SiteRun(TapeRun):
         self.loc = None
         self.v_rpm = 0.0
         self.hold_req = None                        # (cause, why) for the job, once
+        self.trolley = None                         # station calling: the lidar's word; None = off
         self.phase = "out"
         self._next = 0                              # route.events cursor
         self._ceiling = self.cruise
+        self.high_why = ""                          # why not HIGH inside a zone, for the log
         self._high = False
         self._blocked = None                        # zone id HIGH was taken away in
         self._creeping = None                       # the event a creep-up is for
         self._armed = None                          # the order event standing in the ladder
+        self._pivot_held = None                     # the U-turn point already held for, once
+        self._early_fork = False                    # the standing order was used once, early
+        self._watches = []                          # ForkWatch: orders on their way through a fork
+        self.fork_log = []                          # finished ForkWatch reports, for the logs
         self._step_ok = False
         self._multi_now = False
         self.decisions = []                         # (S, sigma, text): the trip's log
@@ -204,8 +262,29 @@ class SiteRun(TapeRun):
         return []
 
     def steer(self, sensor, tags, followed_mm):
-        self._multi_now = (sensor or {}).get("nlcp") in branch.MULTI_NLCP
-        return super().steer(sensor, tags, followed_mm)
+        s = sensor or {}
+        self._multi_now = s.get("nlcp") in branch.MULTI_NLCP
+        out = super().steer(sensor, tags, followed_mm)
+        for w in list(self._watches):
+            report = w.tick(s.get("nlcp"), s.get("tracks"))
+            if report is not None:
+                self._watches.remove(w)
+                self._fork_done(report)
+        return out
+
+    def _fork_done(self, r):
+        r["S"], r["sigma"] = self.S, self._sigma()
+        self.fork_log.append(r)
+        text = (f"fork {r['id']}: ordered {r['order']}, kept {r['kept']:+.0f} mm, "
+                f"other {r['other']:+.0f} mm, then one track at {r['single']:+.0f} mm: {r['verdict']}")
+        self._decide(text, WARN if r["verdict"] == "other" else INFO)
+        if r["verdict"] == "other" and self.fault is None:
+            self.fault = (f"wrong tape at {r['id']}: ordered {r['order']}, that tape left the sensor at "
+                          f"{r['kept']:+.0f} mm and the AGV is on the other; MANUAL, jog back to the "
+                          f"junction, Reset, Start")
+
+    def _watch(self, e):
+        self._watches.append(ForkWatch(e, vehicle.BRANCH_POSITIVE_IS_LEFT))
 
     def advance(self, distance_m):
         self._step_ok = distance_m is not None
@@ -218,12 +297,14 @@ class SiteRun(TapeRun):
             return
         while self._next < len(self.route.events):
             e = self.route.events[self._next]
+            if e["kind"] == "order":
+                if not self._order_due(e, S) or not self._arm(e):
+                    return
+                self._next += 1
+                continue
             if S < self._trigger(e):
                 return
-            if e["kind"] == "order":
-                if not self._arm(e):
-                    return
-            elif e["kind"] == "stop":
+            if e["kind"] == "stop":
                 if not self._begin_stop_at(e, follower, "home" if e["role"] == "home" else "station"):
                     return
             elif e["mode"] == "midline":
@@ -237,20 +318,28 @@ class SiteRun(TapeRun):
         return trip_route.trigger_S(e, self.stop_distance_m)
 
     # -- orders ----------------------------------------------------------------------------
+    def _sigma(self):
+        return (self.loc or {}).get("sigma", 0.0)
+
+    def _order_due(self, e, S):
+        """A fork in view past the previous node is this order's, wherever S says it is. Without
+        one, the window before the fork grows with the doubt in S."""
+        sigma = self._sigma()
+        if self._multi_now:
+            return S >= e["S_prev"] + max(FORK_CLEAR_M, 3.0 * sigma)
+        return S >= min(e["S"], max(e["S_prev"], e["S_fork"] - 3.0 * sigma))
+
     def _arm(self, e):
         S = self.S
-        if S >= e["S_fork"]:
+        if self._armed is not None:
+            return False        # the order before it still stands: one order, one fork
+        if S >= e["S_node"] + 3.0 * self._sigma() and not self._multi_now:
             self.fault = (f"order {e['order']} for {e['id']} came due past its fork (S {S:.2f} m, fork at "
                           f"{e['S_fork']:.2f} m): the position jumped; check the AGV's branch, Reset")
             return False
-        why = self._loc_why(self.p.sigma_junction_m)
-        if why:
-            self._hold("position", f"before {e['id']}: {why}")
-            return False
-        if self._multi_now:
-            return False        # still on the previous node's tapes: arm once on one track
         self.branch.order(e["order"])
         self._armed = e
+        self._watch(e)
         self._decide(f"order {e['order'].upper()} armed for {e['id']}, fork in {e['S_fork'] - S:.2f} m")
         return True
 
@@ -258,19 +347,41 @@ class SiteRun(TapeRun):
         e = self._armed
         if e is None:
             return
+        S = self.S
+        sigma = self._sigma()
         if self.branch.ladder.intent() == branch.STRAIGHT:
-            self._armed = None
+            if S is not None and S < e["S_fork"] - max(FORK_CLEAR_M, 3.0 * sigma):
+                self.branch.order(e["order"])
+                self._watch(e)
+                self._early_fork = True
+                self._decide(f"a fork {e['S_fork'] - S:.2f} m before {e['id']} used the order: "
+                             f"{e['order'].upper()} armed again", WARN)
+                return
+            self._armed, self._early_fork = None, False
             self._decide(f"order {e['order']} taken at {e['id']}")
             return
-        S = self.S
-        if S is not None and S > e["S_node"] + ORDER_UNUSED_M:
+        if S is None or S <= e["S_node"] + max(ORDER_UNUSED_M, 3.0 * sigma):
+            return
+        if self._early_fork:
+            # One fork in the whole window, where S did not expect it: that one was the junction.
+            self.branch.order(branch.STRAIGHT)
+            self._armed, self._early_fork = None, False
+            self._decide(f"order {e['order']} taken at {e['id']}, at the fork seen before it: "
+                         f"S was behind the tape", WARN)
+        else:
             self.fault = (f"order {e['order']} for {e['id']} not used: no fork seen within "
-                          f"{ORDER_UNUSED_M:g} m of where {e['id']} is taught; check the AGV's branch, Reset")
+                          f"{max(ORDER_UNUSED_M, 3.0 * sigma):.1f} m of where {e['id']} is taught; "
+                          f"check the AGV's branch, Reset")
 
     # -- stops -----------------------------------------------------------------------------
     def _begin_stop_at(self, e, follower, role):
         S = self.S
-        why = self._loc_why(self.p.sigma_station_m)
+        sigma = self._sigma()
+        why = self._loc_why(math.inf)
+        if not why and role == "uturn" and sigma > self.p.sigma_junction_m and self._pivot_held != e["id"]:
+            self._pivot_held = e["id"]      # a Start after this hold is the operator's word
+            why = (f"position uncertain: sigma {sigma:.3f} m > {self.p.sigma_junction_m:g} m; check the "
+                   f"AGV is clear of the released trolley, Start pivots at this point")
         if why:
             self._hold("position", f"before {e['id']}: {why}")
             return False
@@ -287,8 +398,11 @@ class SiteRun(TapeRun):
         self.stop = {"kind": "station", "tag": e["id"], "where": e["id"], "role": role,
                      "distance_m": left, "S_stop": e["S"], "plan_role": e.get("role", role)}
         what = {"home": "end of the trip", "uturn": "U-turn point"}.get(role, e.get("role", "stop"))
+        unsure = sigma > self.p.sigma_station_m
         self._decide(f"stopping at {e['id']} ({what}) over {left:.2f} m"
-                     + (f" ({rate:.0f} r/min/s)" if rate else ""))
+                     + (f" ({rate:.0f} r/min/s)" if rate else "")
+                     + (f": best estimate, position uncertain by {100 * sigma:.0f} cm" if unsure else ""),
+                     WARN if unsure else INFO)
         return True
 
     def at_rest(self):
@@ -305,6 +419,8 @@ class SiteRun(TapeRun):
         if not ok:
             return ("payload", f"{why}: no U-turn; confirm the release on Run → Calls or go back "
                                f"to the release stop")
+        if self._trolley_blocks():
+            return ("trolley", f"a trolley is {self.trolley}: no U-turn; move it clear, then press Start")
         e = self.route.uturn
         self.stop = None
         if role == "uturn":
@@ -315,12 +431,12 @@ class SiteRun(TapeRun):
 
     # -- U-turns -----------------------------------------------------------------------------
     def _tape_end_approach(self, e, follower):
-        why = self._loc_why(self.p.sigma_junction_m)
+        why = self._loc_why(math.inf)       # the tape end is on the floor: any sigma will find it
         if why:
             self._hold("position", f"before the U-turn {e['id']}: {why}")
             return False
         ok, _why = self.trip.may_pivot()
-        if not ok:
+        if not ok or self._trolley_blocks():
             # Stop here and hold: at rest at_rest() asks again and approaches once it may.
             follower.begin_measured_stop(0.3)
             self.stop = {"kind": "station", "tag": e["id"], "where": e["id"], "role": "payload",
@@ -356,10 +472,18 @@ class SiteRun(TapeRun):
         if not ok:
             self.fault = f"the tape ended before the U-turn approach and {why}; align, Reset"
             return False
+        if self._trolley_blocks():
+            self.fault = (f"the tape ended before the U-turn approach and a trolley is "
+                          f"{self.trolley}; align, Reset")
+            return False
         k = next(k for k, ev in enumerate(self.route.events) if ev["kind"] == "uturn")
         self._next = max(self._next, k + 1)
         self._turn(e, stopping=True)
         return True
+
+    def _trolley_blocks(self):
+        """Station calling (plan O7): unknown or present means no pivot. None = calling off."""
+        return self.trolley is not None and self.trolley != "absent"
 
     def turn_here(self):
         return False
@@ -384,7 +508,12 @@ class SiteRun(TapeRun):
         if self._blocked is not None and self._zone_at(S) != self._blocked:
             self._blocked = None
         z = self._zone_at(S)
-        healthy = not self._loc_why(self.p.sigma_junction_m)
+        why = self._loc_why(self.p.sigma_junction_m)     # sigma says it; AMCL being out is no veto here
+        healthy = not why
+        self.high_why = "" if z is None else ("HIGH taken away in this zone" if z == self._blocked
+                                              else why or ("no step yet" if not self._step_ok
+                                                           else "stopping" if self.stop is not None
+                                                           or self.uturn_req is not None else ""))
         if z is not None and z != self._blocked and healthy and self._step_ok and self.stop is None \
                 and self.uturn_req is None:
             ceiling = vehicle.AUTO_HIGH_RPM

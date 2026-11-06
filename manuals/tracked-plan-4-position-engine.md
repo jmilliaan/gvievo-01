@@ -17,8 +17,8 @@ D15–D19).
 | F4 | **High-speed zones as position ranges** (no set/reset strips, no latching) | D19 |
 | F5 | **U-turns:** at the tape end (code 3, U-MRU) and **mid-line after the last release**, at that machine's U-turn mark | D16 |
 | F6 | **Automatic slow-downs** before every stop, U-turn, junction and zone exit | operator |
-| F7 | **1 or 2 MRU machines per trip** (`trip_calls`, 2 now) | D18 |
-| F8 | **Operator confirmations, not sensors:** trolley released (Start at the release stop), trolleys off at home | D10 |
+| F7 | **1 or 2 MRU machines per trip** (`trip_calls`; 1 since 2026-11-05, `manuals/station-call-plan.md`) | D18 |
+| F8 | **Operator confirmations, not sensors:** trolley released (Start at the release stop), trolleys off at home. Superseded with `station.enabled`: the rear lidar decides (`manuals/station-call-plan.md`) | D10 |
 
 Out of scope: trolley detection, BTU (row 2 not laid), the open issues (scan-stale LOST,
 weak tape at the MRU end).
@@ -59,7 +59,7 @@ re-taught leg moves the station with it.
 | `uturn_points` | `"UT-MRU1": {"direction": "cw"}` | a mid-line U-turn point: a station-like taught position on the outbound leg |
 | group machine `uturn` | `"MRU1": {"release": "MW-1", "take": "ME-1", "uturn": "UT-MRU1"}` | where the trip turns if MRU1 is its farthest release |
 | ~~`zones`~~ | retired 2026-10-25 | high-speed zones are **areas drawn on the map** (section 10), not mission data |
-| `trip_calls` | 2 (exists) | F7: 1 or 2 |
+| `trip_calls` | 1 since 2026-11-05 (exists) | F7: 1 or 2 |
 
 Loader refusals (each a test in `tests/test_mission.py`, `EXPECTED_CHECKS` updated): a machine
 `uturn` that is not a `uturn_points` id, a zone whose ends are not taught points, a zone end
@@ -193,7 +193,7 @@ Decided while building (they differ from sections 3 and 6):
   on the trip is refused.
 - **Envelope rate:** the HIGH↔NORMAL comfort rate (`high_ramp_s`), back at the cruise 0.3 m
   before every stop trigger, U-turn trigger, junction fork and zone end.
-- **`tape_loc.lost_fault_s` is still not acted on**: a `position` hold waits for Start.
+- **`tape_loc.lost_fault_s` is still not acted on.** Section 11 replaced what it was for.
 
 Floor order from here:
 
@@ -247,3 +247,68 @@ BTU1–8 belong to the other AGV).
   lap's fork episodes before any Build, not guessed.
 - For the lap: mission `c-btu-guided` (guided, 0.4 m/s, no marker run: ends with Reset at
   HOME-N). Marks off every built leg are kept at their AMCL pose and placed at Build.
+
+## 11. 2026-11-06: AMCL corrects, it has no veto
+
+First floor trip, MRU4, 10:59: AMCL 12 cm off the taught path among moved trolleys, the MLS on the
+tape throughout. Five rejected poses meant LOST, and the trip held 0.4 m short of ATT. Start could
+not clear it: re-acquiring needs poses, AMCL is silent at rest, and Start would not move while LOST.
+Owner's rule: two sensors exist so that one being wrong does not stop the vehicle, and branching
+must not fail.
+
+| Case | Before | Now |
+|---|---|---|
+| `lost_rejects` in a row, readiness leaving READY, sigma over `sigma_lost_m` | LOST, every decision holds | `amcl_out`: S goes on from wheels and tape, sigma grows. Two poses in a row that agree and pass the gates bring AMCL back, with no operator |
+| Stop | HOLD over `sigma_station_m` | Stops at the best estimate, logged with its sigma |
+| Tape-end U-turn | HOLD over `sigma_junction_m` | Goes on: the tape end is on the floor. S and sigma reset there |
+| Order | Armed `junction_lead_m` before the fork, HOLD over `sigma_junction_m` | Armed `max(lead, 3 sigma)` before the fork, or at once on a fork seen before that. Used by a fork well before its own: armed again; if no other fork comes, that one was the junction. One order at a time |
+| Order with no fork seen at all | FAULT past 1 m | FAULT past `max(1 m, 3 sigma)` |
+| Mid-line U-turn | HOLD over `sigma_station_m` | HOLD once over `sigma_junction_m`: a released trolley may be close; the operator's Start pivots |
+| HIGH | Needs sigma | Needs sigma and AMCL in |
+| LOST | Many causes | A wrong branch only (`_wrong_branch_check`, while READY): FAULT |
+
+Branching needs no AMCL: an order acts at the next fork the MLS sees, so S only has to get it
+standing in time, and each fork re-syncs S. With AMCL out on the 76 m from the tape end to J-ML, the
+model gives sigma about 0.8 m and a 2.4 m window. A stop that far along is only as good as the wheels:
+an MLS marker before the MRU stops is the fix if that accuracy is needed without AMCL.
+`max_lateral_m` is worth raising after a trip's log: a pose off sideways still knows along-track.
+
+### 11.1 The same day: the wrong lane, and how a run is seen now
+
+Trip 11:25-11:35, MRU4 and back: every stop at about the right distance, then HOME-N on the **south
+bay**, 1.26 m to the right of the taught north bay, reported "served". J-SPLIT was ordered left and the
+order stood through the whole fork. Stops are a distance, and the two bays are about the same length,
+so the distance was right on the wrong tape. Why the fork went right is **not known yet**: the flight
+recorder keeps 15 s, and its next dump came 39 s later. What caught it was the operator.
+
+| Added | What it does |
+|---|---|
+| `site_run.ForkWatch` | Each ordered fork, from the MLS alone: of the ordered side's track and the other, which one stays when one track is left. The other: FAULT at the fork. A merge closing up, a double reading or a crossing is "unjudged". `branch.unhonoured` cannot say this: it fires on correct forks too |
+| `tape_locator._wrong_lane_check` | AMCL 0.5-8 m off, one side, for 1.5 m of travel, within 12 m past an ordered fork: FAULT, READY or not, taught other leg or not. Small errors and an AMCL that is simply far away still have no say |
+| `amr_line.trip_log` | Every tick, AMCL pose with its verdict and lateral, readiness, event and fork of a run, `<state_dir>/logs/trip_log/*.jsonl.gz`, about 2 KB/s (1.3 MB a 660 s trip), newest 60. Written off the control thread; only tick-rate rows can be dropped, counted in the end row |
+| `tools/trip_report.py` | The run on a page; `--fork J-SPLIT` tick by tick |
+| Flight recorder | A dump after each ordered fork, with S, sigma and the order's intent |
+
+These stop a wrong tape; they do not make the fork right. That needs the J-SPLIT ticks of the next
+run: slower through ordered forks, or steering toward the ordered side before the split, are the likely
+fixes. The 0.5 m and 1.5 m are provisional until a trip's `AMCL by leg` table shows the real spread.
+
+The first trip log (12:12) showed at once: 177 of 320 poses refused as "waiting for a second pose",
+because two poses were compared by position, which a moving AGV changes between them. Now by the
+offset from the wheels. It also kept HIGH off, as HIGH needs AMCL in. A real fork read well: J-N,
+ordered right, kept -63 mm, other +118 mm, one track at -65 mm, "ordered".
+
+### 11.2 The next run, 12:12: a false "drive link" stop, and no HIGH
+
+- **"drive link standby" at S 52, and at 11:26 and 11:17 before it: not the drives.** `drive_node._loop`
+  samples `now`, serves requests, then compared it with the panel's receive time. A message taken
+  in between is "from the future", which `arm_policy` refuses as stale. One such tick powered the
+  drives down (about 0.45 s of disarm) under a running vehicle. The panel was fine: its real limit
+  is 1 s, and the mux, on a shorter one, never saw a gap. `_update_power` now samples `now` after
+  the read. From the code and the timing, not reproduced: a later "panel state stale" is a real gap
+  and would disprove it.
+- **No HIGH:** every running tick of the zone had `amcl_out`, the veto added in section 11. HIGH now
+  goes by sigma alone (`sigma_junction_m`). With AMCL out, sigma reaches that 15-20 m after a re-sync,
+  so the long MRU zone still gets little until AMCL is usable there: 3 of 133 poses past S 33 were used.
+- The trip log's `field_clear`, `auto` and `link` were empty (`job._i` is only set with calling on);
+  it now has them, and `high`, `high_why` and `zone`, and the report totals the zone time by reason.

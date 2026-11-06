@@ -14,8 +14,10 @@ vehicle, so the constants are asserted against the message in the node.
 
 ARMED IS THE PRE-MOVE WARNING (2026-10-08). The drives are no longer powered
 while idle. Every move that follows an operator's Start - a run from IDLE/DONE,
-a station departure, a resume from a hold that waited for Start - first enters
-ARMED: wants_power() asks drive_node for power, the panel sounds the alarm horn,
+a station departure, a resume from a hold that waited for Start - and, with station
+calling on (manuals/station-call-plan.md section 3), the one move that follows an
+accepted station order at HOME, first enters ARMED: wants_power() asks drive_node for power,
+the panel sounds the alarm horn,
 and the job goes RUNNING only once premove_s has passed AND the drives report
 torque. A prerequisite lapsing (debounced like the rest; a violated field at
 once) cancels back to where the Start came from, as does premove_timeout_s
@@ -55,11 +57,13 @@ for a physical Start once its cause is gone, then the pre-move warning.
               events, while driving: the home stop may have been driven past. Needs a
               physical Start once the stream is back (2026-10-18)
   station     parked at a stop: a physical Start, then the pre-move warning
-  position    a trip (the position engine, amr_line.site_run): the tape locator was not sure
-              enough where the AGV is before a stop, an order or the U-turn. Held BEFORE the
-              point; a physical Start re-checks (tracked plan 4, 2026-10-24)
+  position    a trip (the position engine, amr_line.site_run): no locator on this trip's route,
+              or a mid-line U-turn too uncertain to pivot without the operator's look. Held BEFORE
+              the point; a physical Start goes on (tracked plan 4, 2026-11-06)
   payload     a trip at its U-turn with a release not recorded: no pivot with a trolley
               attached. The "Released" confirmation on Run → Calls, then a physical Start
+  trolley     station calling on: a trip about to pivot with the rear lidar reading a trolley, or
+              unknown. Moved clear, then a physical Start, which checks it again
   authority   lease, generation or panel selector changed under the run.
               Never auto-resumes: something above this layer took control.
               An explicit act - the selector leaving AUTO on a valid panel,
@@ -73,11 +77,19 @@ the executor: a prerequisite must fail CONTINUOUSLY for prereq_grace_s before
 it faults, so one dropped frame never latches, but anything that means the
 vehicle is moving without proper feedback stops on the first tick. Delaying a
 stop is the wrong direction.
+
+STATION ORDERS (manuals/station-call-plan.md). With `calling` on, and only then, an accepted order
+leaves HOME with no Start: `_order_start` is the only new way into ARMED, has one call site (in
+`tick`, under IDLE/DONE, pinned by test_the_order_entry_has_one_call_site) and always passes "start".
+A request lives for one tick and a refused one stores nothing, as a refused press does. It cannot
+resume a hold, leave any other stop or pause anything. This adds a reason to move and no protection:
+protection stays with the scanner OSSD, FX3 and STO chain. With `calling` off nothing here is reached,
+and the rear lidar is never read.
 """
 import dataclasses
 
 from amr_base import hold_policy, wire
-from amr_line import marker_reader, tag_table
+from amr_line import marker_reader, order, tag_table
 
 # LineState.msg, and not free to change - see the module docstring.
 IDLE, ARMED, RUNNING, HOLD, DONE, FAULT = 0, 1, 2, 3, 4, 5
@@ -173,13 +185,18 @@ class Inputs:
     # The tape locator (tracked plan 4): TapeRuntime.loc_state(), or None. Only a trip acts on
     # it; a Start of a trip needs it at HOME and healthy.
     loc: dict | None = None
+    # Station calling (station plan P2). Read only with `calling` on; never trusted for safety.
+    trolley: str = "unknown"          # "absent" | "present" | "unknown"; the node maps stale to unknown
+    rear_clear: bool | None = None    # None = unknown, as field_clear
+    loc_ready: bool = False           # TapeRuntime.ready; read for orders only
 
 
 class FollowJob:
     """Arm, run, hold, stop. Owns the engine; the node owns the messages."""
 
     def __init__(self, follower, *, prereq_grace_s=0.5, auto_resume_clear_s=2.0,
-                 auto_resume_estop=False, premove_s=0.0, premove_timeout_s=8.0):
+                 auto_resume_estop=False, premove_s=0.0, premove_timeout_s=8.0,
+                 calling=False, settle_s=5.0, holdoff_s=15.0, order_torque_wait_s=4.0):
         self.f = follower
         self.prereq_grace_s = float(prereq_grace_s)
         self.auto_resume_clear_s = float(auto_resume_clear_s)
@@ -216,6 +233,26 @@ class FollowJob:
         self.trip_route = None
         self.trip_new = None        # a route the node must seed the locator on, once
         self.trip_note = ""         # how the last trip ended
+        # Station calling (station plan 4.2). All of it stays empty with calling False.
+        self.calling = bool(calling)
+        self.holdoff_s = float(holdoff_s)
+        self.order_torque_wait_s = max(self.premove_s, float(order_torque_wait_s))
+        self.order = None           # order.OrderRun: the current or last accepted order
+        self._order_req = None      # one request, for one tick. Read only in _order_take
+        self._cancel_req = None     # (order id, action id), for one tick
+        self._settle = order.Settle(settle_s)
+        self._holdoff_until = 0.0
+        self._torque_latched = False
+        self._home_base = None      # encoder counts at At home / at rest after arrival
+        self._home_pending = False  # arrived: the baseline is taken once the wheels are at rest
+        self._now = None
+        self._counts_now = None
+        self._i = None              # the latest Inputs, for hooks that get none
+        self._not_ready = []
+        self.refusal = {"seq": 0, "type": "", "order_id": "", "reason": ""}
+        self.start_refused = None   # (node, reason) until the next press
+        self.cancel_result = {"seq": 0, "action_id": "", "status": "", "error": ""}
+        self.station_events = []    # (code, text) for the node
         self.reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -337,12 +374,16 @@ class FollowJob:
     def trip_call(self, machine, now):
         if self.calls is None:
             return False, "no site mission is the job: calls are taken only while it is"
+        if self._order_active():
+            return False, "a station order is being served"
         return self.calls.call(machine, now)
 
     def trip_cancel(self, machine):
         if self.calls is None:
             return False, "no site mission is the job"
         if self.calls.cancel(machine):
+            if self.calling:
+                self._settle.restart(self._now)     # it can clear LOCAL_TRIP
             return True, f"{machine}'s call cancelled"
         return False, f"{machine} is not waiting" + (" (it is on the trip being driven: Clear stops it)"
                                                      if self.trip and machine in self.trip.machines else "")
@@ -350,6 +391,8 @@ class FollowJob:
     def confirm_released(self):
         """Run → Calls: every trolley of this trip is off (the HOLD payload before the U-turn).
         It records; the vehicle moves only on the physical Start."""
+        if self.calling:
+            return False, "the rear lidar decides"
         if self.trip is None:
             return False, "no trip is being driven"
         self.trip.confirm_released()
@@ -357,6 +400,8 @@ class FollowJob:
 
     def confirm_off(self):
         """Run → Calls: the trolleys are off at HOME; the next trip may leave the bay."""
+        if self.calling:
+            return False, "the rear lidar decides"
         if self.payload is None:
             return False, "no site mission is the job"
         if self.trip is not None:
@@ -374,6 +419,9 @@ class FollowJob:
         if g is not None and self.trip is None:
             nxt = f"{g} trip formed: press Start at {self.site['HOME']}"
         ok, why = self.payload.may_leave()
+        if self.calling:
+            why = self._leave_check(self._i) if self._i is not None else "rear lidar: no reading yet"
+            ok = not why
         return {"trip": self.trip.describe() if self.trip else self.trip_note,
                 "trip_next": nxt, "trip_queue": q, "trip_payload": "" if ok else why}
 
@@ -394,15 +442,22 @@ class FollowJob:
         return True, ""
 
     def _trip_check(self, i: Inputs):
-        """What a trip's Start needs: the trolleys confirmed off, a formed trip, the AGV at HOME."""
-        if self.trip is None:
+        """What a trip's Start needs: the trolleys off (confirmed by hand, or the rear lidar with
+        calling on), a formed trip, the AGV at HOME. Runs every tick of the warning too."""
+        if self.calling:
+            why = self._leave_check(i)
+            if why:
+                return why
+        elif self.trip is None:
             ok, why = self.payload.may_leave()
             if not ok:
                 return why
-            if self.calls.ready_group() is None:
-                need = self.site["TRIP_CALLS"]
-                return f"no trip formed: {need} call{'s' if need > 1 else ''} of one group needed"
+        if self.trip is None and self.calls.ready_group() is None:
+            need = self.site["TRIP_CALLS"]
+            return f"no trip formed: {need} call{'s' if need > 1 else ''} of one group needed"
         ok, why = self._site_at_home(i.loc)
+        if ok and self._order_in_warning() and self._home_moved(i):
+            return f"the AGV moved since At home at {self.site['HOME']}"
         return "" if ok else why
 
     def _trip_take(self):
@@ -423,11 +478,19 @@ class FollowJob:
         self.trip_note = f"trip {trip.describe()} ABORTED ({why}); served: {done}"
         if self.tape is not None:
             self.tape.events.append(("warn", self.trip_note + f" - bring the AGV to {self.site['HOME']}"))
+        if self._order_active():
+            self._order_abort(why)
 
     def set_mission(self, mission, destination=None):
         """Choose the job for the next run: mission and, when the mission has
         destination stops, the destination. Refused unless IDLE or DONE: a run's
         latches and destination belong to the job it started with."""
+        out = self._set_mission(mission, destination)
+        if self.calling and out[0]:
+            self._settle.restart(self._now)     # it can make the site mission the job again
+        return out
+
+    def _set_mission(self, mission, destination):
         if self.state not in (IDLE, DONE):
             return False, f"cannot change the job while {STATE_NAMES[self.state]}: clear first"
         if mission is not None and str(mission.get("SCHEMA", "")).startswith("site"):
@@ -507,7 +570,8 @@ class FollowJob:
         """The physical Start from IDLE or DONE: check, then the pre-move warning.
 
         The press itself is the operator's intent; there is no software arm in
-        front of it. A refused press is dropped, not remembered: the node hands
+        front of it. (A station order takes its own path: _order_start.) A refused press
+        is dropped, not remembered: the node hands
         each edge to exactly one tick, so a Start pressed while the field was
         blocked cannot run the vehicle later when the field clears. Torque is not
         a prerequisite: the drives are powered BY this Start (ARMED).
@@ -538,6 +602,8 @@ class FollowJob:
         self.followed_m = 0.0
         self.blind_m = 0.0
         self.accepted_t = i.now
+        if self._order_active():
+            self.order.departed = True
         self.hold_cause = ""
         self._prereq.reset()
         self._auto_since = None
@@ -572,9 +638,14 @@ class FollowJob:
         self.state, self.hold_cause = back_state, back_cause
         if kind in ("start", "uturn", "continue"):
             self._binding = None
-        if kind == "start" and self.trip is not None:
+        if kind == "start" and self._order_in_warning():
+            self.trip = self.trip_route = None  # never entered the queue: nothing to restore
+            self._order_cancelled(self._order_cause(), why)
+        elif kind == "start" and self.trip is not None:
             self.calls.restore(self.trip)       # not driven: the calls wait again
             self.trip = self.trip_route = None
+        if self.calling and kind == "station":
+            self._start_refuse(order.WARNING_CANCELLED)
         self.reason = f"Start cancelled: {why}"
         self.refused = why
         return 0.0, 0.0
@@ -596,7 +667,9 @@ class FollowJob:
                 self.tape.parked(self.step_m)
         pre = self._prerequisite(i, torque=False) or (
             self._job_check(i) if kind == "start" else self._rfid_check(i))
-        if i.field_clear is False:
+        if self.calling and kind == "station" and not pre:
+            pre = self._start_lock_text(self._start_interlock(i))
+        if i.field_clear is False or (self.calling and kind == "start" and i.rear_clear is False):
             return self._premove_cancel(pre)
         if self._prereq_held(i.now, pre):
             return self._premove_cancel(pre)
@@ -604,9 +677,15 @@ class FollowJob:
         powered = not i.torque_off and i.drives_fresh
         if not pre and hold_policy.premove_ready(waited, self.premove_s, i.drives_fresh, i.torque_off):
             return self._premove_go(i)
-        if waited >= self.premove_timeout_s:
+        # An order waits less than a physical Start: an E-stop released later must not let a stale
+        # warning move. The latch means an E-stop that stays pressed gets one horn cycle only.
+        order_wait = kind == "start" and self._order_in_warning()
+        limit = self.order_torque_wait_s if order_wait else self.premove_timeout_s
+        if waited >= limit:
+            if order_wait:
+                self._torque_latched = True
             return self._premove_cancel(hold_policy.premove_timeout_text(
-                self.premove_timeout_s, "safety chain open? release the E-stop and press Reset"))
+                limit, "safety chain open? release the E-stop and press Reset"))
         left = max(0.0, self.premove_s - waited)
         self.reason = (f"Start: warning, moving in {left:.1f} s" if powered or left > 0
                        else "Start: waiting for the drives to power up")
@@ -644,6 +723,8 @@ class FollowJob:
             where = (self.tape.stop or {}).get("where", "station")
             tag = (self.tape.stop or {}).get("tag")
             self.hold_cause = ""
+            if self._order_active():
+                self.order.left(tag)
             self.tape.depart(i.now, i.rfid, resumed_tag=tag)
             if self.tape.fault:
                 return self._tape_fault()
@@ -655,7 +736,12 @@ class FollowJob:
         return 0.0, 0.0
 
     def clear(self):
-        """Disarm. The node zeroes the command immediately on this."""
+        """Disarm. The node zeroes the command immediately on this. With calling on it is refused
+        in FAULT: going to IDLE with no Reset would release a waiting order with only the horn."""
+        if self.calling:
+            if self.state == FAULT:
+                return False
+            self._settle.restart(self._now)
         moving = self.state in (RUNNING, HOLD)
         self.state = IDLE
         self._premove = None
@@ -775,8 +861,9 @@ class FollowJob:
             self.kink["done_deg"] += max(0.0, self.kink["turn"].angle_deg)
             self.kink["turn"] = None
         # A pivot cannot be resumed part-way (gy-demo rule): its start counts and
-        # tape history describe a vehicle that has since been stopped by hand.
-        if cause != "station" and self.tape is not None and self.tape.uturn_req is not None:
+        # tape history describe a vehicle that has since been stopped by hand. "trolley" holds
+        # before the spin starts, so nothing is part-way and the U-turn stays asked for.
+        if cause not in ("station", "trolley") and self.tape is not None and self.tape.uturn_req is not None:
             self.tape.abort_u_turn()
             self.state = FAULT
             self.reason = f"U-turn interrupted ({why}); align the AGV on the tape, Reset, then Start"
@@ -791,25 +878,34 @@ class FollowJob:
         self.step_m = self._wheel_travel(i)
         if self.state in (RUNNING, HOLD) and self._blind(i):
             self.blind_m += abs(self.step_m or 0.0)
+        req = self._order_take()
+        if self.calling:
+            self._order_head(i)
         # Reset ends a run too: on the jacked-up vehicle (2026-09-21) Reset
         # did nothing while RUNNING and the wheels kept turning until the
         # follower was cleared by service. The node zeroes the command on
         # the falling edge out of RUNNING.
         # Reset wins over a Start seen in the same tick.
         if i.reset_edge and self.state != IDLE:
+            self._order_refuse(req, order.DEPARTURE_REFUSED, order.PREREQUISITE)
             self.reset()
             self.reason = "reset"
             return 0.0, 0.0
 
-        # FAULT needs Reset first; IDLE and DONE start on the physical Start.
+        # FAULT needs Reset first; IDLE and DONE start on the physical Start. A person at the panel
+        # wins over an order in the same tick: the press is handled, the station sends again.
         if self.state in (IDLE, DONE):
             if i.start_edge:
+                self._order_refuse(req, order.DEPARTURE_REFUSED, order.PREREQUISITE)
                 return self._start(i)
+            if req is not None:
+                return self._order_start(i, req)
             if self.state == IDLE:
                 # Live, not latched: what a Start pressed now would meet.
                 pre = self._prerequisite(i, torque=False) or self._job_check(i)
                 self.reason = f"not ready: {pre}" if pre else "ready: press the physical Start under AUTO"
             return 0.0, 0.0
+        self._order_refuse_in_state(req)
         if self.state == FAULT:
             if self.trip is not None:
                 self._trip_abort(self.reason)
@@ -970,8 +1066,12 @@ class FollowJob:
         """
         where = (self.tape.stop or {}).get("where", "station")
         pre = self._prerequisite(i, torque=False) or self._rfid_check(i)
-        if i.start_edge and not pre:
+        lock = self._start_interlock(i) if self.calling else ""
+        if i.start_edge and not pre and not lock:
             return self._begin_premove(i, "station")
+        if i.start_edge and self.calling:
+            self._start_refuse(lock if not pre else order.PREREQUISITE)
+        pre = pre or self._start_lock_text(lock)
         self.reason = f"at {where}: press Start to go on" + (f" ({pre})" if pre else "")
         return 0.0, 0.0
 
@@ -983,6 +1083,11 @@ class FollowJob:
             self.payload.trip_ended()
             self.trip_note = self.result
             self.trip = None
+            if self._order_active():
+                self.order.reached_home()
+            if self.calling:
+                self._settle.restart(self._now)
+                self._home_base, self._home_pending = None, True
         where = self.tape.stop["where"]
         self.state = DONE
         self.hold_cause = ""
@@ -1086,6 +1191,11 @@ class FollowJob:
                     self.diag = dict(diag, v_base=0.0)
                     return 0.0, 0.0
             elif diag["v_base"] == 0 and i.wheels_still:
+                if self.calling and i.trolley != "absent":
+                    # The last look before the pivot: lead_m ago is too old at a tape end.
+                    self._hold("trolley", f"a trolley is {i.trolley} before the U-turn; "
+                                          f"move it clear, then press Start")
+                    return 0.0, 0.0
                 why = t.begin_spin(i.counts, i.counts_per_rev)
                 if why:
                     return self._uturn_fault(why)
@@ -1219,13 +1329,15 @@ class FollowJob:
     def _run(self, i: Inputs):
         """One engine tick: mission tags, branch order, speed zone, stops, U-turn."""
         t = self.tape
+        if self.calling and hasattr(t, "trolley"):
+            t.trolley = i.trolley       # SiteRun's pivot guard
         driving = self.kink is None     # a kink pivot starts no stop and no U-turn
         t.locate(i.loc, (self.diag or {}).get("v_base", 0.0))
         tags = t.scan(i.now, i.rfid, driving, self.f)
         if t.fault:
             return self._tape_fault()
         if t.hold_req is not None:
-            # The position engine is not sure enough where it is: held BEFORE the point.
+            # The position engine asks for the operator's Start: held BEFORE the point.
             cause, why = t.hold_req
             t.hold_req = None
             self._hold(cause, f"{why}; press Start to re-check")
@@ -1290,6 +1402,8 @@ class FollowJob:
             if isinstance(act, tuple):
                 self._hold(*act)
                 return 0.0, 0.0
+            if self._order_active():
+                self.order.at_rest(t.stop["tag"])
             self._hold("station", f"at {t.stop['where']}: press Start to go on")
             return 0.0, 0.0
 
@@ -1329,6 +1443,312 @@ class FollowJob:
         if self.tape is None or self.tape.mrun is None or self.blind_m <= 0.0:
             return ""
         return f"markers may have been missed over {self.blind_m:.2f} m"
+
+    # -- station orders (manuals/station-call-plan.md section 9) ------------------------------
+    def order_request(self, order_id, machine):
+        """The bridge's `depart`. Latches one request; the result appears in order_snapshot()."""
+        if not self.calling:
+            return False, "calling is off"
+        self._order_req = order.OrderRequest(str(order_id), str(machine))
+        return True, "taken"
+
+    def order_cancel(self, order_id, action_id):
+        """The bridge's `cancel`. Latches one cancel; the result appears in order_snapshot()."""
+        if not self.calling:
+            return False, "calling is off"
+        self._cancel_req = (str(order_id), str(action_id))
+        return True, "taken"
+
+    def at_home_pressed(self):
+        """A person pressed At home, looking at the vehicle: the wheel baseline for _home_moved."""
+        self._home_base, self._home_pending = self._counts_now, False
+
+    def _order_take(self):
+        """The request of this tick, once, in every state. Refused or not, it is gone after it: the
+        rule _start documents for a press."""
+        req, self._order_req = self._order_req, None
+        return req if self.calling else None
+
+    def _order_active(self):
+        return self.order is not None and self.order.active
+
+    def _order_in_warning(self):
+        return self.order is not None and self.order.live_in_warning
+
+    def _order_head(self, i: Inputs):
+        """Every tick, before anything may act on it. calling only."""
+        self._i, self._now, self._counts_now = i, i.now, i.counts
+        self._settle.update(i.now, bool(i.panel_valid and i.panel_auto), i.reset_edge, i.trolley,
+                            i.rear_clear, i.field_clear)
+        if i.reset_edge:
+            self._torque_latched = False
+        if i.start_edge:
+            self.start_refused = None
+        self._home_track(i)
+        self._order_cancel_tick()
+        self._not_ready = [] if self._order_active() else self._order_not_ready(i)
+
+    def _home_track(self, i: Inputs):
+        from agv_core import config as vehicle  # noqa: PLC0415  (profile-dependent)
+
+        if i.counts is None or not i.counts_per_rev:
+            return
+        if self._home_pending and i.wheels_still:
+            self._home_base, self._home_pending = tuple(i.counts), False
+        if self._home_base is not None and order.wheels_moved(i.counts, self._home_base, i.counts_per_rev,
+                                                              vehicle.WHEEL_DIA_M):
+            self._home_base = None      # only At home sets it again
+
+    def _home_moved(self, i: Inputs):
+        return self._home_base is None or i.counts is None or not i.counts_per_rev
+
+    def _leave_code(self, i: Inputs):
+        """Why the rear lidar says it may not leave HOME: a NOT_READY reason, or ""."""
+        if i.trolley != "absent":
+            return order.TROLLEY_PRESENT if i.trolley == "present" else order.TROLLEY_UNKNOWN
+        if i.rear_clear is not True:
+            return order.REAR_FIELD_NOT_CLEAR if i.rear_clear is False else order.REAR_FIELD_UNKNOWN
+        return ""
+
+    def _leave_check(self, i: Inputs):
+        return {order.TROLLEY_PRESENT: "a trolley is detected: unhitch it and move it clear",
+                order.TROLLEY_UNKNOWN: "trolley state unknown (rear lidar)",
+                order.REAR_FIELD_NOT_CLEAR: "the rear safety field is violated",
+                order.REAR_FIELD_UNKNOWN: "rear safety field state unknown",
+                "": ""}[self._leave_code(i)]
+
+    def _order_not_ready(self, i: Inputs):
+        """The contract's NOT_READY reasons, in its table's order (section 8). With no site mission
+        only SITE_NOT_LIVE: every other row reads it."""
+        if self.site is None:
+            return [order.SITE_NOT_LIVE]
+        out = []
+        if not (i.panel_valid and i.panel_auto):
+            out.append(order.NOT_AUTO)
+        if not self._site_at_home(i.loc)[0] or self._home_moved(i):
+            out.append(order.NOT_AT_HOME)
+        if not i.loc_ready:
+            out.append(order.LOCALIZATION_NOT_READY)
+        if not (i.sensor or {}).get("has_track"):
+            out.append(order.TAPE_NOT_SEEN)
+        if self.state == FAULT:
+            out.append(order.FAULT)
+        if self._torque_latched:
+            out.append(order.TORQUE_TIMEOUT)
+        if i.trolley != "absent":
+            out.append(order.TROLLEY_PRESENT if i.trolley == "present" else order.TROLLEY_UNKNOWN)
+        if i.rear_clear is not True:
+            out.append(order.REAR_FIELD_NOT_CLEAR if i.rear_clear is False else order.REAR_FIELD_UNKNOWN)
+        if self._prerequisite(dataclasses.replace(i, panel_valid=True, panel_auto=True),
+                              torque=False) or self._rfid_check(i):
+            out.append(order.PREREQUISITE)
+        if self.trip is not None or self.calls.pending:
+            out.append(order.LOCAL_TRIP)
+        if self._settle.settling(i.now):
+            out.append(order.SETTLING)
+        if i.now < self._holdoff_until:
+            out.append(order.HOLDOFF)
+        return out
+
+    def _order_not_ready_first(self, i: Inputs):
+        rows = self._order_not_ready(i)
+        return (order.DEPARTURE_REFUSED, rows[0]) if rows else None
+
+    def _order_machine(self, machine):
+        """The machine's record if an order can go to it (a release stop), else None."""
+        group = self.site["MACHINES"].get(machine)
+        rec = self.site["GROUPS"][group]["machines"][machine] if group is not None else None
+        return rec if rec and "release" in rec else None
+
+    def _order_gate(self, i: Inputs, req):
+        """Contract checks 5, 6, 7, and the guards they rest on: (errorType, reason), or None."""
+        if self.site is None:
+            return order.DEPARTURE_REFUSED, order.SITE_NOT_LIVE
+        if self._order_machine(req.machine) is None:
+            return order.VALIDATION_FAILURE, order.MACHINE
+        if self._order_active():
+            return order.OTHER_ORDER_ACTIVE, self.order.order_id
+        if self.trip is not None or self.calls.pending:
+            return order.OTHER_ORDER_ACTIVE, order.LOCAL_TRIP
+        if not (i.panel_valid and i.panel_auto and (i.lease_allowed & i.lease_line)):
+            return order.MOBILE_ROBOT_NOT_AVAILABLE, order.NOT_AUTO
+        if not self._site_at_home(i.loc)[0] or self._home_moved(i):
+            return order.START_NODE_OUT_OF_RANGE, order.NOT_AT_HOME
+        return None
+
+    def _order_start(self, i: Inputs, req):
+        """The one way an order enters ARMED. Refused means nothing is stored and nothing retried."""
+        from amr_line import trip as tripmod  # noqa: PLC0415
+
+        if self.order is not None and req.order_id == self.order.order_id:
+            return 0.0, 0.0                     # the same id never starts twice (second guard)
+        why = self._order_gate(i, req)
+        trip = route = None
+        if not why:
+            trip = tripmod.Trip(self.site, self.site["MACHINES"][req.machine], [req.machine])
+            try:
+                route = self._site_cfg["compile"](trip)     # check 8
+            except ValueError:                  # tape_graph.RouteError / GraphError
+                why = (order.NO_ROUTE_TO_TARGET, order.ROUTE)
+        why = why or self._order_not_ready_first(i)         # check 9
+        if why:
+            return self._order_refuse(req, *why)
+        self.trip, self.trip_route, self.trip_new = trip, route, route
+        self.trip_note = ""
+        rec = self._order_machine(req.machine)
+        self.order = order.OrderRun(req, self.site["HOME"], self.site["ATTACH"], rec["release"], rec["take"])
+        self.start_refused = None
+        self._not_ready = []
+        self._binding = i.authority
+        self.station_events.append(("ORDER_DEPARTING", f"station order {req.order_id} for {req.machine}: "
+                                                       f"warning, leaving {self.site['HOME']}"))
+        return self._begin_premove(i, "start")
+
+    def _order_refuse(self, req, etype, reason):
+        if req is not None and not (self.order is not None and req.order_id == self.order.order_id):
+            r = self.refusal
+            self.refusal = {"seq": r["seq"] + 1, "type": etype, "order_id": req.order_id, "reason": reason}
+            self.station_events.append(("ORDER_REFUSED", f"station order {req.order_id} refused: "
+                                                         f"{etype} {reason}"))
+        return 0.0, 0.0
+
+    def _order_refuse_in_state(self, req):
+        """Any state but IDLE and DONE: never reaches _begin_premove."""
+        if req is None:
+            return
+        if self._order_active():
+            self._order_refuse(req, order.OTHER_ORDER_ACTIVE, self.order.order_id)
+        elif self.trip is not None:
+            self._order_refuse(req, order.OTHER_ORDER_ACTIVE, order.LOCAL_TRIP)
+        else:
+            self._order_refuse(req, order.DEPARTURE_REFUSED,
+                               order.FAULT if self.state == FAULT else order.SITE_NOT_LIVE)
+
+    def _order_cause(self):
+        """Which reason a warning or trip ended for, from this tick's inputs."""
+        i = self._i
+        if i is None:
+            return order.PREREQUISITE
+        if self._torque_latched:
+            return order.TORQUE_TIMEOUT
+        if not (i.panel_valid and i.panel_auto):
+            return order.NOT_AUTO
+        return self._leave_code(i) or order.PREREQUISITE
+
+    def _order_cancelled(self, reason, text):
+        """The warning stopped, the AGV never moved (contract section 8)."""
+        o = self.order
+        o.fail()
+        o.cancelled_reason, o.cancelled_text = reason, text
+        self._holdoff_until = (self._now or 0.0) + self.holdoff_s
+        self._settle.restart(self._now)
+        self.station_events.append(("DEPARTURE_CANCELLED", f"station order {o.order_id}: departure "
+                                                           f"cancelled ({reason}): {text}"))
+
+    def _order_abort(self, why):
+        """_trip_abort with an order on it. Not departed is a cancelled warning (plan 4.5 R1)."""
+        reason = {"reset": "RESET", "cleared": "CLEARED"}.get(why) or self._order_cause()
+        if self.order.live_in_warning:
+            self._order_cancelled(reason, why)
+            return
+        o = self.order
+        o.fail()
+        o.aborted_reason, o.aborted_text = reason, why
+        self.station_events.append(("ORDER_ABORTED", f"station order {o.order_id} aborted: {why}"))
+
+    def _order_cancel_tick(self):
+        """cancelOrder: only while the warning runs. It is not a stop command: stopping is physical."""
+        if self._cancel_req is None:
+            return
+        (order_id, action_id), self._cancel_req = self._cancel_req, None
+        o = self.order
+        status, error = "FAILED", order.NO_ORDER_TO_CANCEL
+        if o is not None and o.active and o.order_id == order_id:
+            if o.departed:
+                error = order.CANCEL_REFUSED
+            elif self.state == ARMED and self._premove["kind"] == "start":
+                back_state, back_cause, _ = self._premove["back"]
+                self.state, self.hold_cause = back_state, back_cause
+                self._premove = None
+                self._prereq.reset()
+                self._binding = None
+                self.trip = self.trip_route = None
+                o.fail()
+                self._settle.restart(self._now)     # no HOLDOFF (plan 4.5 R8)
+                self.reason = f"station order {order_id} cancelled by the station"
+                status, error = "FINISHED", ""
+        r = self.cancel_result
+        self.cancel_result = {"seq": r["seq"] + 1, "action_id": action_id, "status": status, "error": error}
+
+    def _start_interlock(self, i: Inputs):
+        """What the rear lidar says about a START at this stop: "" or the refused reason."""
+        from amr_line import trip as tripmod  # noqa: PLC0415
+
+        st = self.tape.stop or {}
+        role = st.get("plan_role")
+        if role == "attach":
+            need = "present"
+        elif role == "machine":
+            kinds = {kind for _mc, kind in self.trip.work(st["tag"])} if self.trip else set()
+            need = ("absent" if tripmod.RELEASE in kinds else "present" if tripmod.TAKE in kinds else None)
+        else:
+            need = None
+        if need is None or i.trolley == need:
+            return ""                   # swap stops have no interlock (plan O10)
+        if i.trolley not in ("absent", "present"):
+            return order.TROLLEY_UNKNOWN
+        return order.NO_TROLLEY if need == "present" else order.TROLLEY_STILL_ON
+
+    @staticmethod
+    def _start_lock_text(lock):
+        return {order.NO_TROLLEY: "no trolley detected",
+                order.TROLLEY_STILL_ON: "a trolley is still detected",
+                order.TROLLEY_UNKNOWN: "trolley state unknown", "": ""}[lock]
+
+    def _start_refuse(self, reason):
+        """A press refused at a stop. Dropped, not remembered; shown until the next press."""
+        where = (self.tape.stop or {}).get("tag", "")
+        self.start_refused = (where, reason)
+        code = {order.NO_TROLLEY: "START_REFUSED_NO_TROLLEY",
+                order.TROLLEY_STILL_ON: "START_REFUSED_TROLLEY_ON",
+                order.TROLLEY_UNKNOWN: "TROLLEY_UNKNOWN"}.get(reason, "LINE_MISSION")
+        self.station_events.append((code, f"Start at {where} refused: {reason}"))
+
+    def drain_station_events(self):
+        out, self.station_events = self.station_events, []
+        return out
+
+    def order_snapshot(self):
+        """OrderState's fields (minus driving, trolley and rear field: the node's)."""
+        o = self.order
+        r, c = self.refusal, self.cancel_result
+        node, why = self.start_refused or ("", "")
+        return {
+            "order_id": o.order_id if o else "",
+            "machine": o.machine if o else "",
+            "active": bool(o and o.active),
+            "departed": bool(o and o.departed),
+            "att_status": o.status["att"] if o else "",
+            "mw_status": o.status["mw"] if o else "",
+            "me_status": o.status["me"] if o else "",
+            "last_node_id": o.last_node_id if o else "",
+            "last_node_seq": o.last_node_seq if o else 0,
+            "not_ready": list(self._not_ready),
+            "refusal_seq": r["seq"],
+            "refusal_type": r["type"],
+            "refusal_order_id": r["order_id"],
+            "refusal_reason": r["reason"],
+            "cancelled_reason": o.cancelled_reason if o else "",
+            "cancelled_text": o.cancelled_text if o else "",
+            "aborted_reason": o.aborted_reason if o else "",
+            "aborted_text": o.aborted_text if o else "",
+            "start_refused_node": node,
+            "start_refused_reason": why,
+            "cancel_seq": c["seq"],
+            "cancel_action_id": c["action_id"],
+            "cancel_status": c["status"],
+            "cancel_error": c["error"],
+        }
 
     # -- reporting ---------------------------------------------------------
     def _markers_tick(self, snap):

@@ -130,10 +130,12 @@ def _rows() -> tuple[Alarm, ...]:
           "Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so "
           "each drive's own 1016h trips."),
         a("DRIVE_LINK_FAULT", ERROR, "power_cycle", "Stopped: the drives' link failed",
-          "Switch the drives off and on, wait for them to boot, the engineer presses Recover, then Start.",
+          "Says \"standby\": the drives were only powered down, press Start. Says \"fault\": switch the "
+          "drives off and on, wait for them to boot, the engineer presses Recover, then Start.",
           "Line hold cause 'drive_fault' (unified plan WP-A4): drive_node's link went FAULT, or let go "
-          "of the drives under a running vehicle. Held at once: cached statuswords may still read "
-          "'Operation enabled'. The DRIVE_* row beside it names the node and the code."),
+          "of the drives under a running vehicle (\"standby\": power no longer wanted; base.log says why). "
+          "Held at once: cached statuswords may still read 'Operation enabled'. A real driver fault has "
+          "a DRIVE_* row beside it naming the node and the code."),
         a("CAN_TX_FAILED", ERROR, "power_cycle", "The PC cannot send on the drive bus",
           "Switch the drives off and on, check the CAN adapter's USB cable, then the engineer presses Recover.",
           "The CAN adapter refused frames (ENOBUFS/EAGAIN: TX queue full) for longer than "
@@ -209,15 +211,59 @@ def _rows() -> tuple[Alarm, ...]:
           "marker stream, or marker events, while driving, so the U-turn or home marker may have been "
           "driven past. Never resumes by itself; Start is refused while the stream is down."),
         a("POSITION_UNSURE", WARN, "start_button", "Stopped: not sure enough where it is on the tape",
-          "Wait for localization to be READY (Teach page), then press Start.",
-          "Line layer hold cause 'position' (tracked plan 4): on a trip the tape locator's sigma was over "
-          "its limit, or it was LOST, just before a stop, a branch order or the U-turn - so it held "
-          "BEFORE the point. Start re-checks; it holds again while still unsure."),
+          "Check the AGV is clear of any released trolley, then press Start to pivot.",
+          "Line layer hold cause 'position' (tracked plan 4, 2026-11-06): before a mid-line U-turn with "
+          "the tape locator's sigma over sigma_junction_m, once, so the operator's Start decides; or no "
+          "locator on this trip's route (At home). AMCL no longer holds stops, orders or the tape end."),
         a("PAYLOAD_UNCONFIRMED", WARN, "start_button", "Stopped before the U-turn: a release is not recorded",
           "Check the trolley is released, confirm it on Run → Calls, then press Start.",
           "Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a "
           "release stop not served, so a trolley may still be attached. No sensor sees the trolley: the "
           "confirmation on Run → Calls is the record. Start alone does not pivot."),
+        a("TROLLEY_AT_PIVOT", WARN, "start_button",
+          "Stopped before the U-turn: a trolley is detected or unknown",
+          "Check the trolley is off and clear, then press Start.",
+          "Line layer hold cause 'trolley' (station call plan O7, station.enabled only): a trip about to "
+          "pivot with the rear lidar reading present or unknown. Start checks it again. A person in the "
+          "zone reads as a trolley: this is not personnel protection."),
+        a("START_REFUSED_NO_TROLLEY", INFO, "start_button", "Start refused: no trolley detected",
+          "Hitch the trolley, then press Start.",
+          "station.enabled: a Start at ATT or ME-n needs the rear lidar to read a trolley. The press is "
+          "dropped, not remembered. Check the zone calibration if a trolley is on (rear.* in the profile)."),
+        a("START_REFUSED_TROLLEY_ON", INFO, "start_button", "Start refused: a trolley is still detected",
+          "Unhitch the trolley and move it clear, then press Start.",
+          "station.enabled: a Start at MW-n needs the rear lidar to read no trolley. Also refused while "
+          "the trolley stands in the zone unhitched (plan O9). A person in the zone reads the same."),
+        a("TROLLEY_UNKNOWN", WARN, "auto", "Trolley state unknown",
+          "Call maintenance if it does not clear.",
+          "station.enabled: /amr/rear/trolley is stale, UNKNOWN or the rear lidar is not fitted. Every "
+          "order, hand trip from HOME and Start at a trolley stop is refused. No bypass on the vehicle."),
+        a("ORDER_DEPARTING", INFO, "auto", "Leaving HOME for a station call",
+          "Stay clear of the vehicle.",
+          "An accepted station order entered the pre-move warning (FollowJob._order_start). The only move "
+          "with no physical Start, and only with station.enabled (plan section 3)."),
+        a("ORDER_REFUSED", INFO, "auto", "A station order was refused",
+          "Check the reason on the Run page.",
+          "The event text carries the contract's errorType and reason. Nothing is stored or retried by the "
+          "AGV: the station resends if it may."),
+        a("DEPARTURE_CANCELLED", WARN, "auto", "Automatic departure cancelled",
+          "Clear the cause. The station can send it again.",
+          "The warning of a station order ended before motion (field, trolley, torque wait, selector, "
+          "Reset). HOLDOFF and SETTLING follow; a torque-wait cancel also latches TORQUE_TIMEOUT until a "
+          "physical Reset edge."),
+        a("ORDER_ABORTED", WARN, "operator", "A station trip was aborted",
+          "Bring the vehicle to HOME by hand.",
+          "A station order ended after it left HOME (Reset, Clear, selector, tape loss, wrong branch). The "
+          "station closes the call as aborted and does not retry; the AGV may be holding a trolley."),
+        a("STATION_LINK_DOWN", INFO, "auto", "No link to the station",
+          "Check Wi-Fi and the station PC. The vehicle keeps working.",
+          "amr_station bridge: broker unreachable, wrong or too-open credentials "
+          "(<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running "
+          "finishes: the job has no network input."),
+        a("REAR_SCANNER_SILENT", WARN, "auto", "No data from the rear scanner",
+          "Call maintenance.",
+          "trolley_node saw no /rear/scan within rear.stale_s, a malformed scan, or a repeated scan counter. "
+          "The state goes UNKNOWN and needs a full debounce to leave. The stop path is the FX3, not this."),
         a("AT_STATION", INFO, "start_button", "Parked at a station",
           "Press Start when the station work is done; it moves after the start delay.",
           "Tape mission stop row (role always, or the job's destination): a measured stop over "
@@ -471,6 +517,7 @@ HOLD_CODES = {
     "markers": "MARKERS_LOST",
     "position": "POSITION_UNSURE",
     "payload": "PAYLOAD_UNCONFIRMED",
+    "trolley": "TROLLEY_AT_PIVOT",
 }
 
 

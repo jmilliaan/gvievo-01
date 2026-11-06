@@ -113,7 +113,7 @@ def decision_points(stops, nodes, junction_lead_m, steers=None, turns=(), check=
                 raise tg.RouteError(f"{n['id']}: no tape to arm its order in between the previous node "
                                     f"and its fork ({n['S_fork'] - prev_S:.2f} m)")
             events.append({"kind": "order", "id": n["id"], "order": side, "S": arm,
-                           "S_fork": n["S_fork"], "S_node": n["S"]})
+                           "S_fork": n["S_fork"], "S_node": n["S"], "S_prev": prev_S})
         prev_S = n["S"]
     events += [{"kind": "uturn", **t} for t in turns]
     events.sort(key=lambda e: e["S"])

@@ -55,3 +55,29 @@ def test_link_retries_back_off_from_the_end_of_the_action():
     assert [b.next_at(100.0, False) - 100.0 for _ in range(6)] == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
     assert b.next_at(200.0, True) == 202.0 and b.failures == 0
     assert b.next_at(300.0, False) == 302.0
+
+
+def test_a_panel_message_arriving_during_the_tick_is_not_stale():
+    """2026-11-06: the loop's tick time predated the message; "from the future" read as stale, and
+    one tick of "not wanted" powered the drives down under a running vehicle. A real gap still is."""
+    import threading
+    import time
+    import types
+
+    from amr_base.drive_node import DriveNode
+
+    logged = []
+    t = time.monotonic()
+    n = types.SimpleNamespace(_lock=threading.Lock(), _asks={"line": Ask("line", t, True)},
+                              _power=(True, "AUTO, the line run asks for power"), _power_params=Params(),
+                              _log=logged.append, _power_panel=Panel(t, True, True, False))
+    DriveNode._update_power(n)
+    assert n._power[0] and not logged
+
+    n._power_panel = Panel(time.monotonic() - 1.5, True, True, False)
+    DriveNode._update_power(n)
+    assert n._power == (False, "panel state stale") and logged
+
+
+def test_a_time_from_the_future_is_still_refused_by_the_pure_policy():
+    assert want_power(10.0, Panel(10.001, True, True, False), (), Params()) == (False, "panel state stale")

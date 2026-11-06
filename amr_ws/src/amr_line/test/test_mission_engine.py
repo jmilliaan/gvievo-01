@@ -70,6 +70,8 @@ class World:
     drives the counts by hand instead (integrate=False).
     """
 
+    JOB_ARGS: dict = {}     # extra FollowJob arguments of a subclass (station calling)
+
     def __init__(self, mission=None, destination=None):
         self.t = 100.0
         self.seq = 0
@@ -86,7 +88,7 @@ class World:
         self.mk_ok = True       # /amr/line_marker: the stream, and the events on it
         self.mk_seq = 0
         self.mk_enc = []
-        self.job = lj.FollowJob(autopilot.LineFollower(), premove_s=0.6)
+        self.job = lj.FollowJob(autopilot.LineFollower(), premove_s=0.6, **self.JOB_ARGS)
         ok, why = self.job.set_mission(mission, destination)
         assert ok, why
         self.tick()  # the layer is up before anything is read, as on the vehicle

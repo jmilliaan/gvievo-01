@@ -24,6 +24,7 @@ setup(
             "drive_node = amr_base.drive_node:main",
             "panel_node = amr_base.panel_node:main",
             "rfid_node = amr_base.rfid_node:main",
+            "trolley_node = amr_base.trolley_node:main",
             "commissioning_node = amr_base.commissioning_node:main",
         ],
     },

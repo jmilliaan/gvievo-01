@@ -25,21 +25,21 @@ left = north, right = south, down = west. Projection coordinates below are mm, a
 | D1 | Two AGVs, fixed halves split along the middle line ("103 TYRE BUILDING"). No AGV serves the other's machines | operator |
 | D2 | AGV-01: BTU9–24 and MRU1–4 (20 machines). AGV-02: BTU1–8, STU1–10 (18 machines) | operator |
 | D3 | A trip serves **at most 2 machines, both from one group**. AGV-01 groups: **MRU** (MRU1–4) and **BTU** (BTU9–24). Never mixed: the track and flow are too complicated | operator |
-| D4 | The AGV waits at HOME until two machines of one group have called. Cycle time and capacity are out of scope for now | operator |
-| D5 | Calls are entered on the AGV's own display (or the web page from a laptop). No call buttons, no central system | operator |
+| D4 | ~~The AGV waits at HOME until two machines of one group have called. Cycle time and capacity are out of scope for now~~ **Replaced 2026-11-05:** one machine per trip (`trip_calls` 1). No waiting for a second call. No batching | operator |
+| D5 | ~~Calls are entered on the AGV's own display (or the web page from a laptop). No call buttons, no central system~~ **Replaced 2026-11-05, with `station.enabled` only:** MRU calls come from buttons on the machines, through the station PC. BTU calls stay on the AGV's display. Run → Calls stays | operator |
 | D6 | Facing machines share one stop point; the AGV stops in the same place for both | operator |
 | D7 | **BTU:** at a stop the AGV waits; the operator swaps the trolley; panel Start continues | operator |
 | D8 | **MRU:** westbound, the AGV stops at each called machine and the trolley is **released**. It drives on empty to the end of the MRU line, U-turns, and on the eastbound pass stops again at the same machines to **take the trolley back** | operator |
 | D9 | **The AGV cannot U-turn with a payload, at either U-turn.** The MRU-end U-turn is a pivot at the tape end (as `line-a`'s `u_turn`), so every release must be done before it. The HOME U-turn R717 is driven empty: the trolley is attached after it (D11) | operator |
-| D10 | There is no payload detection. A rear lidar may later detect the trolley; ignored for now | operator |
+| D10 | ~~There is no payload detection. A rear lidar may later detect the trolley; ignored for now~~ **Replaced 2026-11-05, as an assumption, with `station.enabled` only:** a rear lidar will detect the trolley and carry the rear safety field. Not fitted yet. Trolley detection is not personnel protection. With it off, the confirmations stand | operator |
 | D11 | AGV-01's **home position is the north bay** (left at J-SPLIT), where it parks **empty**. The **attach point** is on the departure lane after the U-turn. The operator's mark-up puts it at ≈ projection (2474, 3250–5190), from about 0.8 m to 2.8 m before J-N; the exact stop is taught on the floor. **Trolleys are released at each AGV's own home position** (AGV-01: north bay, AGV-02: south bay) | operator, 2026-10-17 mark-ups |
-| D14 | **Leaving home needs a physical Start.** A call (or a formed trip) on the display never moves the vehicle (safety invariant: no web page starts the vehicle; autonomous motion only under AUTO + a fresh panel Start). When a trip forms, the HMI shows it; the operator presses Start at the bay, and the AGV drives empty through the U-turn to the attach point | safety invariants (CLAUDE.md) |
+| D14 | **Leaving home needs a physical Start.** A call (or a formed trip) on the display never moves the vehicle (safety invariant: no web page starts the vehicle; autonomous motion only under AUTO + a fresh panel Start). When a trip forms, the HMI shows it; the operator presses Start at the bay, and the AGV drives empty through the U-turn to the attach point. **Replaced 2026-11-05 for one case:** with `station.enabled`, an accepted station order leaves HOME by itself, only from HOME, only in AUTO, once, through the 2 s horn, and with no trolley and the rear field clear. Everything else still needs a physical Start | safety invariants (CLAUDE.md); owner 2026-11-05 |
 | D12 | Tape is laid today **only as far as MRU** (the MRU circuit, `line-a`). Row 2, the left vertical and the middle line are not laid yet | operator |
-| D13 | AGV-01 only for now: no collision or priority logic | operator |
+| D13 | AGV-01 only for now: no collision or priority logic. Topics and profile are per AGV (`manuals/station-call-plan.md` section 20), so a second AGV is not closed off | operator |
 | D15 | **Positions are marked from the moving AGV** (Guide page M key, ±10 cm at 0.3–0.4 m/s) and given roles later: stop + panel Start (machines, ATT), end-of-cycle stop (HOME-N), mid-line U-turn point, high-speed area. Branch approach points are NOT marked: the order for the trip's destination is armed from the taught junction positions | operator, 2026-10-24 |
 | D16 | **MRU mid-line U-turn:** after the LAST release of the trip (the farthest called machine), the empty AGV pivots at that machine's own **U-turn mark**, a few metres past its outbound stop and clear of the released trolley, instead of driving to the tape end. The tape-end U-turn (U-MRU, code 3) stays as the fallback. Supersedes D8's "drives on to the end" | operator, 2026-10-24 |
 | D17 | **MRU stops are directional and separate:** OUTBOUND (home → machine, westbound) = trolley released; INBOUND (machine → home, eastbound, after the U-turn) = trolley attached, at a **different spot**. Both are marked | operator, 2026-10-24 |
-| D18 | **Trip size is a setting:** 1 or 2 MRU machines per trip (`trip_calls` in `missions/site-103.json`), 2 for now | operator, 2026-10-24 |
+| D18 | **Trip size is a setting:** 1 or 2 MRU machines per trip (`trip_calls` in `missions/site-103.json`), ~~2 for now~~ 1 since 2026-11-05 | operator, 2026-10-24 |
 | D19 | **High-speed zones are areas, not latched markers:** a range on the taught path (from one mark to another), checked against the AGV's position; no set/reset strips | operator, 2026-10-24 |
 
 ## 1. Tape network (AGV-01's half and HOME)
@@ -75,8 +75,10 @@ eastbound MRU stops face the other way and need not coincide with the westbound 
 
 ## 3. Trip flow (AGV-01)
 
+(With `station.enabled`, an MRU call comes from the station instead, and step 3's Start at the bay is replaced by the accepted order: `manuals/station-call-plan.md` section 3. Steps 4 to 8 are the same, with the rear lidar checking each Start.)
+
 1. The AGV is parked empty in the north bay. Operators enter calls on the display.
-2. A trip forms when **two calls of the same group** are pending. Calls of the other group keep
+2. A trip forms when **`trip_calls` calls (one since 2026-11-05) of the same group** are pending. Calls of the other group keep
    waiting. A duplicate call for a machine already pending is refused.
 3. The HMI shows the formed trip; the operator presses panel Start at the bay (D14). The AGV drives
    **empty** out of the bay, through the bay merge and the U-turn R717, and stops at the attach point.
@@ -140,7 +142,7 @@ Consequences:
   - **HOME U-turn R717:** a trip may leave the bay only if the previous trip ended with its
     trolleys detached at home.
   - Without payload detection (D10), "released" and "detached" are records of the stops having been
-    served; a rear-lidar check can replace them later.
+    served. With `station.enabled` the rear lidar replaces both, and the pivot also needs it to read no trolley.
 
 ## 5. What this needs from the code (today vs site)
 
@@ -150,8 +152,8 @@ Consequences:
 | Branch orders | `branch_default` plus RFID `branch_latch` pairs | an order at every diverge (section 4); the J-N order comes from the trip's group |
 | U-turn | triggered by RFID 0180/0190; pivot until the tape is back | triggered by position ahead of the MRU tape end; the pivot is gated on all releases done (payload guard) |
 | Missed stop | detected when the U-turn tag is read (`TagTable.note_u_turn`) | BTU: end of section at J-R2E → report. MRU release missed → HOLD before U-MRU. MRU take-back missed → report on arrival at HOME |
-| Call queue | none: the job is chosen directly | calls queue on the display; a trip forms at 2 calls of one group |
-| HOME | RFID 0010, role `home` | the north bay at the end of the stem (park, empty); a separate attach stop after the U-turn; leaving the bay needs a panel Start (D14) |
+| Call queue | none: the job is chosen directly | calls queue on the display; a trip forms at `trip_calls` (1) calls of one group; or a station order with `station.enabled` |
+| HOME | RFID 0010, role `home` | the north bay at the end of the stem (park, empty); a separate attach stop after the U-turn; leaving the bay needs a panel Start or, with `station.enabled`, an accepted station order (D14) |
 | Position source | RFID tags | 16 machine stops + home + attach + 6 junction orders + the U-turn trigger: tape-graph localization (the localization plan, after P0) |
 
 ## 6. Open items

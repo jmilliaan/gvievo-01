@@ -53,6 +53,16 @@ def test_every_code_emitted_by_a_node_has_a_catalogue_row():
     assert not missing, f"codes emitted with no catalogue row: {missing}"
 
 
+def test_station_codes_have_rows():
+    """station call plan section 17: self._event("CODE", ...) is not one of CODE_PATTERNS, so these
+    are an explicit list."""
+    for code in ("TROLLEY_AT_PIVOT", "START_REFUSED_NO_TROLLEY", "START_REFUSED_TROLLEY_ON",
+                 "TROLLEY_UNKNOWN",
+                 "ORDER_DEPARTING", "ORDER_REFUSED", "DEPARTURE_CANCELLED", "ORDER_ABORTED",
+                 "STATION_LINK_DOWN", "REAR_SCANNER_SILENT"):
+        assert code in alarms.CATALOGUE, code
+
+
 def test_the_catalogue_is_well_formed():
     for code, row in alarms.CATALOGUE.items():
         assert row.code == code

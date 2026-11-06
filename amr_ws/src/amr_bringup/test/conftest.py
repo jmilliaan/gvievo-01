@@ -15,6 +15,11 @@ SIM_TESTS = [
 ]
 
 collect_ignore = [] if os.environ.get("AMR_SIM_TESTS") == "1" else list(SIM_TESTS)
+# The station chain also needs a real broker (station call plan P7). The same escape, so the same rule.
+if os.environ.get("AMR_SIM_TESTS") == "1" and os.environ.get("AMR_MQTT_TESTS") == "1":
+    SIM_TESTS.append("test_station_call_sim.py")
+else:
+    collect_ignore.append("test_station_call_sim.py")
 
 
 def pytest_report_header(config):

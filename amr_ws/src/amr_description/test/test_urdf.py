@@ -76,3 +76,16 @@ def test_args_override():
             o = j.find("origin")
             assert o.get("xyz").split()[0] == "0.42"
             assert o.get("rpy").split()[2] == "0.1"
+
+
+def test_no_rear_frame_by_default(urdf):
+    assert "rear_laser_frame" not in {link.get("name") for link in urdf.iter("link")}
+
+
+def test_rear_lidar_arg_adds_its_frame_looking_back():
+    out = subprocess.run(["xacro", URDF, "rear_lidar:=true"], check=True, capture_output=True, text=True)
+    root = ET.fromstring(out.stdout)
+    assert _joints(root)["rear_laser_frame"] == "base_link"
+    for j in root.iter("joint"):
+        if j.find("child").get("link") == "rear_laser_frame":
+            assert float(j.find("origin").get("rpy").split()[2]) == pytest.approx(3.14159)

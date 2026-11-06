@@ -10,14 +10,20 @@
     /amr/line/at_home    Trigger            parked at HOME-N: /initialpose from its taught pose
     /amcl_pose, /amr/localization_state (in) AMCL and readiness, when the layer runs them
 
-Tape localization (tracked plan 3) runs in SHADOW only (P1): amr_line.tape_runtime logs
-where the locator would stop and branch, and records teach passes. Nothing it computes
-reaches the job or the command.
+Tape localization (tracked plan 3, 4): amr_line.tape_runtime teaches, and shadows unless
+tape_loc.live; with tape_loc.live the site mission is the job and trips drive from its position
+(amr_line.site_run).
+
+With station.enabled only (manuals/station-call-plan.md), and none of it created otherwise:
+    /amr/line/order        LineTeach    the MQTT bridge's depart / cancel; latches one request
+    /amr/line/order_state  OrderState   latched, on change + 1 Hz
+    /amr/rear/trolley      TrolleyState (in) the rear lidar; older than the field's freshness = unknown
 
 There is no software arm (2026-10-07): the physical Start from IDLE checks the
 prerequisites and runs in one step (FollowJob._start). Motor arming is drive_node's.
 
-The vehicle follows only on a fresh physical Start edge, under a valid AUTO
+The vehicle follows only on a fresh physical Start edge - or, with station.enabled, leaving
+HOME once on an accepted station order (FollowJob._order_start) - under a valid AUTO
 panel, while the supervisor's lease carries LEASE_LINE - which it grants
 EXCLUSIVELY in LINE mode, so no browser jog and no pendant can fight the tape.
 Every tick re-checks that authority; the mux and the drive owner gate the
@@ -71,7 +77,7 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import LineTeach, SelectMission
-from amr_line import autopilot, flight_recorder, rfid_intake, runtime, tape_health
+from amr_line import autopilot, flight_recorder, rfid_intake, runtime, tape_health, trip_log
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -171,6 +177,10 @@ class LineFollowNode(LeanNode):
             auto_resume_estop=bool(self.get_parameter("auto_resume_estop").value),
             premove_s=float(vehicle_config.AUTO_START_DELAY_S),
             premove_timeout_s=float(vehicle_config.PREMOVE_TIMEOUT_S),
+            calling=bool(vehicle_config.STATION_ENABLED),
+            settle_s=float(vehicle_config.STATION_SETTLE_S),
+            holdoff_s=float(vehicle_config.STATION_HOLDOFF_S),
+            order_torque_wait_s=float(vehicle_config.STATION_ORDER_TORQUE_WAIT_S),
         )
         # No job yet is plain line following, with the site's U-turn tags.
         _ok, msg = self.job.set_mission(self._plain_mission())
@@ -264,6 +274,16 @@ class LineFollowNode(LeanNode):
         self.flight = flight_recorder.FlightRecorder(self._state_dir)
         self._fr_kinks = 0
         self._fr_uturn_done = None
+        self._fr_forks = 0
+        # The whole run (2026-11-06): every tick, pose and event, written off the control thread.
+        self.triplog = trip_log.TripLog(self._state_dir)
+        self._tl_tick = 0
+        self._tl_ready = None
+        self._tl_ready_t = 0.0
+        self._tl_route = None
+        self._tl_forks = 0
+        self._tl_failed = False
+        self._tl_inputs = None
         self._pub_initialpose = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", RELIABLE_1)
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl,
                                  QoSProfile(depth=5, reliability=QoSReliabilityPolicy.RELIABLE,
@@ -272,9 +292,10 @@ class LineFollowNode(LeanNode):
         self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
         self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
         # Trips (tracked plan 4): machine calls, and the operator's two confirmations. They form
-        # and record; a trip moves only on AUTO + the physical Start at HOME (Run → Calls).
+        # and record; a trip from them moves only on AUTO + the physical Start at HOME (Run → Calls).
         self.create_service(LineTeach, "/amr/line/trip", self._srv_trip)
         self._site_live()
+        self._station_setup()
         # Guided mission (2026-10-23): the engineer's branch order for the next fork. It only
         # chooses a tape; motion still needs AUTO + the physical Start. The web gates it by PIN.
         for side in ("left", "straight", "right"):
@@ -382,6 +403,69 @@ class LineFollowNode(LeanNode):
             self._publish_state()
         return res
 
+    # -- station calling (manuals/station-call-plan.md P3): nothing below exists when it is off ---
+    def _station_setup(self):
+        self._trolley = None            # the latest TrolleyState
+        self._trolley_t: float | None = None
+        self._order_pub = None
+        self._order_published = None
+        self._order_driving = False
+        if not vehicle_config.STATION_ENABLED:
+            return
+        # Lazy, so a stale amr_interfaces build cannot hurt a switched-off vehicle.
+        from amr_interfaces.msg import OrderState, TrolleyState  # noqa: PLC0415
+
+        self._OrderState, self._TrolleyState = OrderState, TrolleyState
+        self.create_subscription(TrolleyState, "/amr/rear/trolley", self._on_trolley, RELIABLE_1)
+        self._order_pub = self.create_publisher(OrderState, "/amr/line/order_state", LATCHED)
+        self.create_service(LineTeach, "/amr/line/order", self._srv_order)
+        self.create_timer(1.0, lambda: self._publish_order(force=True))
+        self.get_logger().warning("station calling is ON: an accepted order leaves HOME with no Start")
+
+    def _on_trolley(self, m) -> None:
+        self._trolley, self._trolley_t = m, time.monotonic()
+
+    def _rear(self, now: float):
+        """(trolley, rear_clear) as Inputs want them. Stale means unknown: the same freshness as the
+        front field, so a dead trolley_node reads unknown within it."""
+        m = self._trolley
+        if m is None or self._trolley_t is None or now - self._trolley_t > self.field_fresh:
+            return "unknown", None
+        T = self._TrolleyState
+        trolley = {T.ABSENT: "absent", T.PRESENT: "present"}.get(m.state, "unknown")
+        return trolley, {T.FIELD_CLEAR: True, T.FIELD_VIOLATED: False}.get(m.rear_field)
+
+    def _srv_order(self, req, res):
+        """The bridge's one action. The reply says only "taken": the result is in OrderState."""
+        action, parts = req.action.strip(), (req.arg or "").split()
+        if action == "depart" and len(parts) == 2:
+            res.ok, res.message = self.job.order_request(parts[0], parts[1])
+        elif action == "cancel" and len(parts) == 2:
+            res.ok, res.message = self.job.order_cancel(parts[0], parts[1])
+        else:
+            res.ok, res.message = False, "order: depart <orderId> <machine> | cancel <orderId> <actionId>"
+        self.get_logger().info(f"order {action} {req.arg}: {res.message}")
+        return res
+
+    def _publish_order(self, force=False) -> None:
+        if self._order_pub is None:
+            return
+        snap = self.job.order_snapshot()
+        T = self._TrolleyState
+        trolley, rear = self._rear(time.monotonic())
+        body = {**snap, "driving": self._order_driving,
+                "trolley": {"absent": T.ABSENT, "present": T.PRESENT}.get(trolley, T.UNKNOWN),
+                "rear_field": {True: T.FIELD_CLEAR, False: T.FIELD_VIOLATED}.get(rear, T.FIELD_UNKNOWN)}
+        if not force and body == self._order_published:
+            return
+        self._order_published = body
+        m = self._OrderState()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.generation = self._generation
+        for k, v in body.items():
+            setattr(m, k, v)
+        self._order_pub.publish(m)
+
     @staticmethod
     def _bundle_sha(maps_dir, map_id, revision):
         from amr_mission import map_bundle as mb  # noqa: PLC0415
@@ -397,12 +481,14 @@ class LineFollowNode(LeanNode):
         q = m.pose.pose.orientation
         yaw = 2.0 * math.atan2(q.z, q.w)
         c = m.pose.covariance
-        self.tapeloc.amcl(self._ros_now(), m.header.stamp.sec + m.header.stamp.nanosec * 1e-9,
-                          m.pose.pose.position.x, m.pose.pose.position.y, yaw, c[0], c[1], c[7])
+        verdict = self.tapeloc.amcl(self._ros_now(), m.header.stamp.sec + m.header.stamp.nanosec * 1e-9,
+                                    m.pose.pose.position.x, m.pose.pose.position.y, yaw, c[0], c[1], c[7])
+        self._trip_log_safe(self._trip_log_amcl, m, yaw, c, verdict)
 
     def _on_readiness(self, m: LocalizationState) -> None:
         if self.tapeloc is not None and int(m.generation) == self._generation:
             self.tapeloc.readiness(self._ros_now(), int(m.state), str(m.reason))
+            self._trip_log_safe(self._trip_log_ready, m)
 
     def _travel(self, now: float):
         """Signed forward wheel travel, m (vehicle terms, as diff_drive_odom), or None."""
@@ -447,8 +533,14 @@ class LineFollowNode(LeanNode):
         if self.tapeloc is None:
             res.success, res.message = False, "tape localization unavailable"
             return res
-        ok, msg, pose = self.tapeloc.at_home()
+        if self.job.calling and not self._manual_on_fresh_panel():
+            # Automatic departure relies on this press (plan O11): a person looking at the vehicle.
+            res.success, res.message = False, "At home needs the selector in MANUAL with station calling on"
+            self._event("LINE_LOC", res.message, Event.WARN)
+            return res
+        ok, msg, pose = self.tapeloc.at_home(fresh_ready=True) if self.job.calling else self.tapeloc.at_home()
         if ok:
+            self.job.at_home_pressed()
             m = PoseWithCovarianceStamped()
             m.header.stamp = self.get_clock().now().to_msg()
             m.header.frame_id = "map"
@@ -463,6 +555,11 @@ class LineFollowNode(LeanNode):
         self._event("LINE_LOC", msg, Event.INFO if ok else Event.WARN)
         self._publish_state()
         return res
+
+    def _manual_on_fresh_panel(self) -> bool:
+        p, t = self._panel, self._panel_t
+        return p is not None and t is not None and time.monotonic() - t <= self.panel_fresh \
+            and bool(p.valid) and not bool(p.mode_auto)
 
     # -- intake ------------------------------------------------------------
     def _on_track(self, m: LineTrack) -> None:
@@ -593,6 +690,7 @@ class LineFollowNode(LeanNode):
         track_ok, track_cause = self.reader.usable(now)
         counts, per_rev, still = self._wheel_inputs(now)
         yaw, v_meas, scale = self._motion_inputs(now)
+        rear = self._rear(now) if self.job.calling else ("unknown", None)
         return lj.Inputs(
             now=now,
             dt=dt,
@@ -630,10 +728,16 @@ class LineFollowNode(LeanNode):
             v_meas=v_meas,
             warning_scale=scale,
             loc=self.tapeloc.loc_state() if getattr(self, "tapeloc", None) is not None else None,
+            trolley=rear[0],
+            rear_clear=rear[1],
+            loc_ready=bool(getattr(self, "tapeloc", None) is not None and self.tapeloc.ready),
         )
 
     # -- services ----------------------------------------------------------
     def _srv_clear(self, req, res):
+        if self.job.calling and self.job.state == lj.FAULT:
+            res.success, res.message = False, "press Reset on the panel"
+            return res
         if self.job.clear():
             # Do not leave the last nonzero command live until the mux's
             # freshness timeout: zero it now.
@@ -688,10 +792,12 @@ class LineFollowNode(LeanNode):
         dt, self._t_last = now - self._t_last, now
         before = self.job.state
 
-        left, right = self.job.tick(self._inputs(now, min(dt, 5 * self.dt)))
+        self._tl_inputs = self._inputs(now, min(dt, 5 * self.dt))
+        left, right = self.job.tick(self._tl_inputs)
         if self.job.trip_new is not None:
             # A trip's Start: the locator moves onto its route before the pre-move warning ends.
             route, self.job.trip_new = self.job.trip_new, None
+            self._tl_route = route
             ok, msg = self.tapeloc.begin_trip(route) if self.tapeloc is not None else (False, "no locator")
             if not ok:
                 self._event("LINE_LOC", f"{msg}: the trip will hold (position)", Event.WARN)
@@ -705,10 +811,16 @@ class LineFollowNode(LeanNode):
         if engine_events or marker_events:
             self._publish_state()
         self._flight_tick(now, before, left, right, engine_events + marker_events)
+        self._trip_log_tick(now, before, left, right)
         if self.job.refused:
             self._event("LINE_MISSION", f"Start refused: {self.job.refused}", Event.WARN)
             self.job.refused = None
             self._publish_state()
+        if self.job.calling:
+            for code, text in self.job.drain_station_events():
+                self._event(code, text)
+            self._order_driving = self.job.state == lj.RUNNING and (left != 0.0 or right != 0.0)
+            self._publish_order()
 
         if self.job.state == lj.RUNNING:
             v, omega = kinematics.wheels_to_body(left, right)
@@ -741,7 +853,9 @@ class LineFollowNode(LeanNode):
             v_base_rpm=f"{d.get('v_base', 0.0):.0f}", left_rpm=f"{left:.0f}", right_rpm=f"{right:.0f}",
             kink=(self.job.kink or {}).get("direction", ""),
             uturn=(u.get("phase") or "") if u.get("active") else "",
-            travel_m=f"{self.job.followed_m:.3f}", note="; ".join(x for _l, x in events)[:200])
+            travel_m=f"{self.job.followed_m:.3f}", S_m=getattr(self.job.tape, "S", None),
+            sigma_m=(self.job.tape.loc or {}).get("sigma") if hasattr(self.job.tape, "loc") else None,
+            intent=self.job.tape.branch.ladder.intent(), note="; ".join(x for _l, x in events)[:200])
         why = None
         if state != before and state in (lj.DONE, lj.FAULT, lj.HOLD) and before in (lj.RUNNING, lj.HOLD):
             why = f"{lj.STATE_NAMES[state]} {self.job.reason}"
@@ -749,6 +863,10 @@ class LineFollowNode(LeanNode):
             why = "kink"
         elif self.job.tape.uturn_last is not self._fr_uturn_done and self.job.tape.uturn_last:
             why = "uturn done"
+        forks = getattr(self.job.tape, "fork_log", ())
+        if not why and len(forks) > self._fr_forks:
+            why = f"fork {forks[-1]['id']} {forks[-1]['verdict']}"
+        self._fr_forks = len(forks)
         self._fr_kinks = self.job.kinks
         self._fr_uturn_done = self.job.tape.uturn_last
         if why:
@@ -758,6 +876,102 @@ class LineFollowNode(LeanNode):
                 self.get_logger().warn(f"line trace not written: {e}")
                 return
             self.get_logger().info(f"line trace: {path}")
+
+    def _trip_log_safe(self, fn, *args) -> None:
+        """Logging must never be what stops a vehicle: any problem is reported once, and the tick
+        or callback goes on."""
+        try:
+            fn(*args)
+        except Exception as e:  # noqa: BLE001
+            if not self._tl_failed:
+                self._tl_failed = True
+                self.get_logger().error(f"trip log: {e!r}; the run goes on without it")
+
+    def _trip_log_amcl(self, m, yaw, c, verdict) -> None:
+        if not self.triplog.active:
+            return
+        snap = self.tapeloc.loc.snapshot() if self.tapeloc.loc is not None else {}
+        self.triplog.add("amcl", t=round(time.monotonic(), 3), x=round(m.pose.pose.position.x, 3),
+                         y=round(m.pose.pose.position.y, 3), yaw=round(yaw, 4), cov_xx=c[0], cov_yy=c[7],
+                         verdict=verdict or "", S=snap.get("S"), sigma=snap.get("sigma"),
+                         leg=snap.get("leg"), lateral=snap.get("lateral"), innov=snap.get("innov"))
+
+    def _trip_log_ready(self, m) -> None:
+        now = time.monotonic()
+        key = (int(m.state), str(m.reason))
+        if self.triplog.active and (key != self._tl_ready or now - self._tl_ready_t >= 1.0):
+            self._tl_ready, self._tl_ready_t = key, now
+            self.triplog.add("ready", t=round(now, 3), state=int(m.state), reason=str(m.reason),
+                             scan_match=round(float(m.scan_match), 3),
+                             scan_long=round(float(m.scan_long), 3))
+
+    def _trip_log_tick(self, now, before, left, right) -> None:
+        self._trip_log_safe(self._trip_log_row, now, before, left, right)
+        err = self.triplog.drain_error()
+        if err:
+            self.get_logger().warn(f"trip log not written: {err}")
+
+    def _trip_log_row(self, now, before, left, right) -> None:
+        job, log, state = self.job, self.triplog, self.job.state
+        if state in (lj.ARMED, lj.RUNNING, lj.HOLD) and not log.active:
+            self._trip_log_begin()
+        if not log.active:
+            return
+        t = job.tape
+        if self._tl_route is not None:
+            r, self._tl_route = self._tl_route, None
+            log.add("route", ident=r.ident, stops=r.stops, nodes=r.nodes, events=r.events, zones=r.zones,
+                    uturn=r.uturn)
+        forks = getattr(t, "fork_log", ())
+        for f in forks[self._tl_forks:]:
+            log.add("fork", t=round(now, 3), **f)
+        self._tl_forks = len(forks)
+        # Standing still in a hold for minutes needs no 50 Hz. RUNNING always gets every tick.
+        self._tl_tick += 1
+        if state == before == lj.HOLD and left == 0.0 and right == 0.0 and self._tl_tick % 10:
+            return
+        sensor = self.reader.sensor() or {}
+        d = job.diag or {}
+        i = self._tl_inputs
+        u = t.uturn_snapshot() or {}
+        loc = self.tapeloc.loc.snapshot() if self.tapeloc is not None and self.tapeloc.loc is not None else {}
+        w = self._wheels
+        log.add("tick", t=round(now, 3), job=lj.STATE_NAMES[state], reason=job.reason, hold=job.hold_cause,
+                engine=d.get("state", ""), nlcp=sensor.get("nlcp"),
+                tracks=[x.get("pos_mm") for x in sensor.get("tracks") or ()],
+                level=sensor.get("track_level"),
+                has_track=d.get("has_track"), e_used=d.get("e_used"), followed=job.f.followed_mm,
+                v_base=d.get("v_base"), left=round(left, 1), right=round(right, 1),
+                wl=None if w is None else round(w.left_vel_rad_s, 3),
+                wr=None if w is None else round(w.right_vel_rad_s, 3),
+                kink=(job.kink or {}).get("direction", ""),
+                uturn=(u.get("phase") or "") if u.get("active") else "",
+                travel=round(job.followed_m, 3), S=loc.get("S"), sigma=loc.get("sigma"), leg=loc.get("leg"),
+                health=loc.get("health"), amcl_out=loc.get("amcl_out"), lateral=loc.get("lateral"),
+                rejected=loc.get("rejected"), last_reject=loc.get("last_reject"),
+                intent=t.branch.ladder.intent(), armed=(getattr(t, "_armed", None) or {}).get("id"),
+                unhonoured=t.branch.unhonoured, next=t.next_event() if hasattr(t, "next_event") else "",
+                high=bool(t.high), high_why=getattr(t, "high_why", ""),
+                zone=t._zone_at(t.S) if hasattr(t, "_zone_at") else None,
+                field_clear=None if i is None else i.field_clear, auto=None if i is None else i.panel_auto,
+                link=None if i is None else i.drive_link,
+                torque_off=None if i is None else i.torque_off,
+                panel_valid=None if i is None else i.panel_valid)
+        if state in (lj.DONE, lj.FAULT, lj.IDLE):
+            log.end(f"{lj.STATE_NAMES[state]} {job.reason}")
+            self._tl_forks = 0
+
+    def _trip_log_begin(self) -> None:
+        job, rt = self.job, self.tapeloc
+        trip = getattr(job, "trip", None)
+        label = trip.describe() if trip is not None else (job.mission or {}).get("MISSION_NAME", "line run")
+        p = rt.p if rt is not None else None
+        self.triplog.begin(label, graph=rt.graph_name if rt is not None else "",
+                           map=(rt.sel or {}).get("map_id", "") if rt is not None else "",
+                           profile=os.environ.get("AGV_PROFILE", ""), generation=self._generation,
+                           cruise=getattr(job.tape, "cruise", None), calling=bool(job.calling),
+                           params=vars(p).copy() if p is not None and hasattr(p, "__dict__") else {})
+        self._tl_forks, self._tl_tick, self._tl_ready = 0, 0, None
 
     def _write_tape_health(self, result: str) -> None:
         """End of a run: append its tape-health bins (M3). A disk problem is logged, never raised."""
@@ -838,9 +1052,13 @@ class LineFollowNode(LeanNode):
         level = alarms.level(code) if level is None else level
         text = f"line {lj.STATE_NAMES[self.job.state]}: {detail}"
         self._pub_event.publish(self.build_event("line_follow", level, code, text))
+        self.triplog.add("event", t=round(time.monotonic(), 3), code=code,
+                         level={Event.WARN: "warn", Event.ERROR: "error"}.get(level, "info"),
+                         text=text)
 
 
 def _stop(node) -> None:
+    node.triplog.close()
     node.job.clear()
     node._publish_cmd(0.0, 0.0)
 

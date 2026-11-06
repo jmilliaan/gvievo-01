@@ -1,7 +1,7 @@
 # Station call plan: machine calls from the station over MQTT (AGV side)
 
-Status: plan only, written 2026-11-06. Nothing here is implemented. Paths and line numbers are for
-`gvievo-01` branch `gvievo-main` at `c41afb3`. I opened the files cited with a line number. Where I
+Status: software built 2026-11-06, uncommitted, `station.enabled` false. See "As built" below. Paths and
+line numbers in the rest of this file are for `gvievo-01` branch `gvievo-main` at `c41afb3`. I opened the files cited with a line number. Where I
 rely on the earlier code map instead, the text says "second-hand" or "not opened". With the switch in
 P1 off, the job, node and web behave as the P0 baseline. P0's two settings (`trip_calls` 1 and
 `tape_loc.live` true) and any rear hardware are not covered by that promise (section 4.2).
@@ -18,6 +18,36 @@ Three rules for whoever implements this:
 - Do not call this system VDA5050 compliant. It is a subset (contract section 10).
 - Do not commit or push unless the owner asks.
 - Write the tests first, in the phase that names them, and run them failing before the code exists.
+
+## As built (2026-11-06)
+
+The owner accepted the safety aspect and the automatic departure on 2026-11-06, and with it the
+recommended defaults of section 0. That is acceptance of this design. It is not the P9 record: O1, O2 and
+the named approval in 15.2 stay open until the rear scanner exists and is verified.
+
+| Phase | State |
+|---|---|
+| P0 | Repo edits done (`trip_calls` 1, its two tests, documents). The floor proof is owed, and `tape_loc.live` stays false in the repo profile (O4). **`HOME-N` is not taught on this vehicle** (V2, 2026-11-06), so no trip compiles yet |
+| P1 to P6 | Built, tests pass |
+| P7 | Sim tests pass against a real loopback broker. Vehicle steps 1 to 11 owed |
+| P8, P9 | Owner, safety engineer, witnessed. Nothing done |
+
+Where the build differs from the text below, on purpose:
+
+| Point | Text says | Built | Why |
+|---|---|---|---|
+| Arrival baseline for `_home_moved` | `_arrive_home` saves `i.counts` | Saved on the first tick with the wheels at rest after arrival; `NOT_AT_HOME` until then | Wheels can still be slowing when the commanded speed reaches 0, which would have cleared the baseline on every trip |
+| Active monitoring case (V18) | Not verified | The driver has `OutputPaths.active_monitoring_case`. New key `rear.no_trolley_case` (-1 = not set, 0 refused: the driver reports 0 for no data). `EXPECTED_CHECKS` is 887, not 886 | The case gate can rest on data. The driver's topics are relative, so namespace `rear` works (source read; confirm on the vehicle) |
+| Frozen scans (V18) | A repeated scan counter | The bytes of `ranges` stand in for it. The real counter is only on `raw_data`, a big message at the scan rate | Reads UNKNOWN, the safe side. Confirm at P8 that an open floor does not repeat |
+| Invalid beams | Not defined | NaN or below `range_min` is invalid. `inf` or above `range_max` is a valid "nothing there" | Otherwise an open floor reads as a blind scanner. Confirm against the real unit at P8 |
+| `OrderState` | The table in 4.4 | Adds `cancelled_text` | The contract's `DEPARTURE_CANCELLED` example carries a description |
+| `amr_station` | Four modules | Adds `bridge_core.py` | The bridge's decisions stay testable with the node thin |
+| P7 sim test | "real job" under the bridge | A real `FollowJob` on the test plant, plus one test with the real `line_follow_node` on no site mission | A supervisor sim with a taught graph does not exist. A real departure through the real node is first seen at G3 |
+| D14 | Remove the citation of `CLAUDE.md` | Kept | `CLAUDE.md` is in this repo. Section 2's "stale text" note on it is wrong |
+
+The manual's parallel copies (`operation-manual-doc.md`, `.docx`) and `operation-manual-context.md` are not
+changed: the owner decides when a revision goes to TÜV SÜD. 10.10 of `operation-manual.md` is marked as not
+in force until O3.
 
 ## 0. Open decisions for the owner
 

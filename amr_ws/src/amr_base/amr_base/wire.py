@@ -1,6 +1,6 @@
 """The wire enums' names, in one place: ModeState, RunState, LineState, MuxState,
-LocalizationState, MappingState, OperationState, CommissioningState and the
-RequestSurvey operations.
+LocalizationState, MappingState, OperationState, CommissioningState, TrolleyState and
+the RequestSurvey operations.
 
 Pure: no rclpy, no amr_interfaces import, so the web server, the demo, the bag
 report and the tests use the same tables the nodes do. The values are the msg
@@ -41,3 +41,8 @@ COMMISSIONING_NAMES = {0: "IDLE", 1: "PREPARED", 2: "RUNNING", 3: "SETTLING", 4:
 COMMISSIONING_BUSY = (1, 2, 3)  # PREPARED, RUNNING, SETTLING
 
 SURVEY_OPS = {"start": 0, "returned": 1, "save": 2, "abort": 3}  # RequestSurvey.operation
+
+# TrolleyState.state, .rear_field, .rear_case: three constant groups in one msg.
+TROLLEY_NAMES = {0: "UNKNOWN", 1: "ABSENT", 2: "PRESENT"}
+REAR_FIELD_NAMES = {0: "FIELD_UNKNOWN", 1: "FIELD_CLEAR", 2: "FIELD_VIOLATED"}
+REAR_CASE_NAMES = {0: "CASE_UNKNOWN", 1: "CASE_NO_TROLLEY", 2: "CASE_OTHER"}

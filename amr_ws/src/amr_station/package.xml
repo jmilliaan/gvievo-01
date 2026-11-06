@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>amr_station</name>
+  <version>0.0.1</version>
+  <description>The MQTT bridge to the station PC: machine calls as a subset of VDA5050 3.0.0, not compliant (manuals/station-call-plan.md).</description>
+  <maintainer email="igp.indi.4.0.00@gmail.com">gvipc</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>amr_interfaces</exec_depend>
+  <exec_depend>amr_base</exec_depend>
+  <!-- paho-mqtt is a pinned pip install (alpha-setup.md section 5.2), lazily imported, and
+       deliberately not a key here: rosdep skips pip keys, and an unknown one fails it. -->
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

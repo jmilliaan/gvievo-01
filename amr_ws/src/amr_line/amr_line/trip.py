@@ -8,11 +8,15 @@
                 machines are stopped at twice: release westbound, take back eastbound.
     Payload     the guard for both U-turns (D9). No sensor sees the trolley (D10), so
                 "released" is the record of a served release stop, and "off at home" is
-                the operator's confirmation on Run → Calls.
+                the operator's confirmation on Run → Calls. With station.enabled the rear
+                lidar decides instead (FollowJob._leave_check, manuals/station-call-plan.md).
 
 Where a trip turns (site D16, tracked plan 4): after its LAST release - at the mid-line U-turn
 point of the farthest called machine (its "uturn"), or at the circuit's tape-end U-turn when
 that machine has none. Every release comes before the turn, so may_pivot() checks them all.
+
+A station order (station.enabled) builds a Trip directly, for one machine: it never enters CallQueue,
+so nothing can be restored into it and no later Start can pick it up.
 
 The trip never moves anything. It answers "stop here?", "may it pivot?", "may it leave
 the bay?"; the line layer turns a "no" into a hold.

@@ -45,6 +45,7 @@ CAUSE_DEVICE = {
     "rfid": "rfid",
     "rfid_overdue": "rfid",
     "controller": "nav2",
+    "trolley": "rear_scanner",
 }
 
 

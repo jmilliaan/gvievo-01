@@ -60,6 +60,59 @@ def stand(rt, t, travel, x, y, yaw, seconds=3.5):
     return t
 
 
+def parked_runtime(tmp_path):
+    """A graph to teach on, READY, and AMCL as on the vehicle: silent while the wheels stand."""
+    rt = runtime(tmp_path, {"map_id": "t", "map_revision": 1, "graph_revision": None})
+    rt.readiness(0.0, tr.READY)
+    t, travel = 0.0, 0.0
+    for i in range(3):
+        assert rt.teach(t, "pass_start", "C-M")[0]
+        t, travel = drive_lap(rt, t, seed=i, start_travel=travel)
+        assert rt.teach(t, "pass_stop")[0]
+    assert rt.teach(t, "build")[0]
+    return rt, t, travel
+
+
+def park(rt, t, travel, seconds=3.5):
+    for _ in range(int(seconds / 0.1)):
+        t += 0.1
+        rt.tick(t, travel, 2, True)
+        rt.readiness(t, tr.READY)
+    return t
+
+
+def test_a_parked_vehicle_teaches_from_the_last_pose_moved_on_by_the_wheels(tmp_path):
+    """2026-11-06, HOME-N at the bay: "only 0 AMCL poses". Teach here asked for poses that a READY,
+    parked vehicle never gets, so it could not pass on the vehicle."""
+    rt, t, travel = parked_runtime(tmp_path)
+    lid, s = STATIONS["HOME"]
+    x, y, h = tg.Polyline(TRUE[lid]).point(s)
+    back = 0.04
+    rt.tick(t + 0.1, travel, 2, False)
+    rt.amcl(t + 0.1, t + 0.1, x - back * math.cos(h), y - back * math.sin(h), h, 0.0004, 0.0, 0.0004)
+    travel += back
+    t = park(rt, t + 0.2, travel)
+    ok, msg = rt.teach(t, "station", "HOME")
+    assert ok, msg
+    st = rt.staged.stations["HOME"]
+    assert st.samples == 1
+    assert st.pose[:2] == pytest.approx((x, y), abs=0.002)
+
+
+def test_a_parked_vehicle_still_must_hold_still_and_have_a_recent_pose(tmp_path):
+    rt, t, travel = parked_runtime(tmp_path)
+    lid, s = STATIONS["HOME"]
+    x, y, h = tg.Polyline(TRUE[lid]).point(s)
+    rt.tick(t + 0.1, travel, 2, False)
+    rt.amcl(t + 0.1, t + 0.1, x, y, h, 0.0004, 0.0, 0.0004)
+    ok, msg = rt.teach(t + 0.2, "station", "HOME")
+    assert not ok and "still" in msg            # moving
+    travel += 0.5                               # AMCL silent over 0.5 m of wheel travel
+    t = park(rt, t + 0.2, travel)
+    ok, msg = rt.teach(t, "station", "HOME")
+    assert not ok and "has not updated" in msg and "HOME" not in rt.staged.stations
+
+
 def test_teach_then_shadow(tmp_path):
     sel = {"map_id": "t", "map_revision": 1, "graph_revision": None}
     rt = runtime(tmp_path, sel)
@@ -429,3 +482,16 @@ def test_a_mark_off_every_built_leg_is_kept_and_placed_at_build(tmp_path):
     marks = store.load_marks(str(tmp_path / "state"), "t", 1)
     assert marks["M1"]["leg"] == "" and marks["M1"]["lag_m"] == 0.5
     assert "M1 (R2-1)" in rt.teach(0.5, "marks")[1]
+
+
+def test_at_home_with_fresh_ready_clears_an_old_ready():
+    """Station plan 9.2: a READY from before the press must not start the locator for an order."""
+    from amr_line import tape_runtime as trt
+
+    rt = trt.TapeRuntime.__new__(trt.TapeRuntime)
+    rt.route = object()
+    rt.m = {"HOME": "HOME"}
+    rt.graph = type("G", (), {"stations": {"HOME": type("S", (), {"pose": (0.0, 0.0, 0.0)})()}})()
+    rt.ready, rt.ready_why, rt.pending_home, rt.loc, rt.shadow = True, "", False, None, None
+    assert rt.at_home()[0] and rt.ready is True, "off: as today"
+    assert rt.at_home(fresh_ready=True)[0] and rt.ready is False and "fresh READY" in rt.ready_why

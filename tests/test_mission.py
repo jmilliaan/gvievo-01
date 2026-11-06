@@ -230,8 +230,8 @@ def test_site_mission():
     """Schema site-4 (tracked plan 3 section 2.5, plan 4): designed data for tape-graph localization."""
     print("\nmission: missions/site-103.json, the site mission (schema site-4)")
     m = mission.load_site("site-103")
-    check("AGV-01's two groups: 4 MRU and 16 BTU machines, two calls a trip",
-          sorted(m["GROUPS"]) == ["BTU", "MRU"] and len(m["MACHINES"]) == 20 and m["TRIP_CALLS"] == 2)
+    check("AGV-01's two groups: 4 MRU and 16 BTU machines, one call a trip",
+          sorted(m["GROUPS"]) == ["BTU", "MRU"] and len(m["MACHINES"]) == 20 and m["TRIP_CALLS"] == 1)
     check("facing BTU machines share one stop", m["GROUPS"]["BTU"]["machines"]["BTU24"]["swap"]
           == m["GROUPS"]["BTU"]["machines"]["BTU16"]["swap"] == "R2-1")
     legs = [leg["id"] for leg in m["CIRCUITS"]["C-MRU"]["legs"]]

@@ -105,6 +105,22 @@ if [[ -f "$live_watch" ]] && ! cmp -s "$DEPLOY_DIR/pwrbtn-watch.sh" "$live_watch
   echo "note: logs/pwrbtn-watch.sh differs from deploy/pwrbtn-watch.sh (the cron job runs the logs/ copy)"
 fi
 
+# Station calling (manuals/station-call-plan.md P5): only when the profile turns it on. Silent otherwise.
+station_on=$(python3 - "$REPO_ROOT" <<'PY'
+import json, os, sys
+name = os.environ.get("AGV_PROFILE") or "agv-01"
+with open(os.path.join(sys.argv[1], "profiles", f"{name}.json")) as fh:
+    print("yes" if json.load(fh)["station"]["enabled"] else "no")
+PY
+)
+if [[ "$station_on" == "yes" ]]; then
+  python3 -c "import paho.mqtt.client" 2>/dev/null || {
+    echo "station.enabled: paho-mqtt is missing (alpha-setup.md section 5.2)" >&2; exit 1; }
+  creds="${AMR_STATE_DIR:-$HOME/.amr}/station-mqtt.json"
+  [[ -f "$creds" ]] || { echo "station.enabled: $creds is missing" >&2; exit 1; }
+  [[ "$(stat -c %a "$creds")" == "600" ]] || { echo "station.enabled: $creds must be mode 600" >&2; exit 1; }
+fi
+
 # Clock steps (unified plan WP-A5): chrony may step the clock only at start. A makestep with
 # a limit of -1 steps at any time, under a running vehicle.
 if [[ -d /etc/chrony ]]; then

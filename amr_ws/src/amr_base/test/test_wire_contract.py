@@ -31,6 +31,15 @@ def test_each_table_is_exactly_the_msg_constants(table, msg):
     assert table == _constants(getattr(msgs, msg))
 
 
+def test_trolley_names_are_the_msg_constants():
+    """TrolleyState has three constant groups, so it cannot use the table above."""
+    want = {**{v: k for k, v in vars(msgs.TrolleyState).items() if k in wire.TROLLEY_NAMES.values()}}
+    assert want == wire.TROLLEY_NAMES
+    for table in (wire.TROLLEY_NAMES, wire.REAR_FIELD_NAMES, wire.REAR_CASE_NAMES):
+        assert {name: getattr(msgs.TrolleyState, name) for name in table.values()} == {
+            name: value for value, name in table.items()}
+
+
 def test_mux_names_are_the_msg_constants_lowercased():
     assert {v: k.lower() for v, k in _constants(msgs.MuxState).items()} == wire.MUX_NAMES == gating.NAMES
 

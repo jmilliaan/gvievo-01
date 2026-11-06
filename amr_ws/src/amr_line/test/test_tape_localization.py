@@ -318,7 +318,7 @@ def test_without_latency_compensation_the_error_would_be_the_lag():
     assert max(abs(e) for e in errs[20:]) < 0.03
 
 
-def test_a_jump_is_rejected_and_repeated_rejections_mean_lost():
+def test_a_jump_is_rejected_and_rejections_stop_amcl_not_the_locator():
     m, g, _r = taught_graph()
     route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
     loc = started(route, g)
@@ -328,24 +328,111 @@ def test_a_jump_is_rejected_and_repeated_rejections_mean_lost():
     t, _ = drive(loc, route, 8.0, 8.12, t=t, pose_fn=jumped, noise=0.0)
     assert "innovation" in loc.last_reject and abs(loc.S - 8.12) < 0.05 and loc.S > S0
     t, _ = drive(loc, route, 8.12, 9.5, t=t, pose_fn=jumped, noise=0.0)
-    assert loc.health == tl.LOST and "rejected in a row" in loc.lost
-    assert not loc.ok_for(1.0)
-    # Still READY, AMCL still consistent with itself: not trusted until revalidated.
-    drive(loc, route, 9.5, 10.5, t=t, pose_fn=jumped, noise=0.0)
-    assert loc.health == tl.LOST and "READY again" in loc.last_reject
+    assert "rejected in a row" in loc.amcl_out and loc.health == tl.DEGRADED and not loc.lost
+    assert abs(loc.S - 9.5 * 1.0) < 0.1 and loc.ok_for(1.0), "S carries on from the wheels"
 
 
-def test_lost_on_readiness_and_reacquired_when_ready_again():
+def test_poses_that_agree_again_bring_amcl_back_by_themselves():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, 8.0)
+    off = lambda S: route.point(S + 0.8)  # noqa: E731
+    t, _ = drive(loc, route, 8.0, 9.5, t=t, pose_fn=off, noise=0.0)
+    assert loc.amcl_out
+    t, errs = drive(loc, route, 9.5, 11.0, t=t, noise=0.005)
+    assert not loc.amcl_out and loc.health == tl.HEALTHY and abs(errs[-1]) < 0.05
+
+
+def test_amcl_comes_back_while_driving_with_poses_far_apart():
+    """Two poses agree on the offset from the wheels: at 0.4 m/s they are 5-10 cm apart along the tape."""
     m, g, _r = taught_graph()
     route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
     loc = started(route, g)
     t, _ = drive(loc, route, route.S_start, 8.0)
     loc.readiness(False, "LOST")
-    assert loc.health == tl.LOST
-    t, _ = drive(loc, route, 8.0, 9.0, t=t, ready=False)
-    assert loc.health == tl.LOST
-    t, errs = drive(loc, route, 9.0, 11.0, t=t)
-    assert loc.health != tl.LOST and abs(errs[-1]) < 0.05
+    assert loc.amcl_out
+    drive(loc, route, 8.0, 9.5, t=t, ready=False, noise=0.0, pose_every=0.5)
+    assert not loc.amcl_out and loc.accepted > 0
+
+
+def test_one_stray_pose_does_not_bring_amcl_back():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, 8.0)
+    t, _ = drive(loc, route, 8.0, 9.5, t=t, pose_fn=lambda S: route.point(S + 0.8), noise=0.0)
+    assert loc.amcl_out
+    S = loc.S
+    x, y, _h = route.point(S)
+    assert "second pose" in loc.correct(t, t, x, y)
+    assert loc.amcl_out and loc.S == S
+
+
+def test_readiness_leaving_ready_is_not_lost_and_needs_no_operator_to_come_back():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, 8.0)
+    loc.readiness(False, "LOST")
+    assert loc.health == tl.DEGRADED and not loc.lost and loc.amcl_out == "localization LOST"
+    t, errs = drive(loc, route, 8.0, 10.0, t=t, ready=False, noise=0.005)
+    assert not loc.amcl_out and not loc.lost and abs(errs[-1]) < 0.05, "two poses that agree"
+
+
+def test_no_correction_at_all_grows_sigma_and_never_means_lost():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g, tl.Params(sigma_lost_m=0.1))
+    drive(loc, route, route.S_start, route.S_end, pose_fn=lambda S: (500.0, 500.0, 0.0), noise=0.0,
+          fork_nodes=False)
+    assert loc.sigma > 0.1 and loc.amcl_out and not loc.lost and loc.health == tl.DEGRADED
+    assert abs(loc.S - route.S_end) < 1.0
+
+
+def beside(route, d):
+    """AMCL d metres to the left of the route."""
+    def pose(S):
+        x, y, h = route.point(S)
+        return x - d * math.sin(h), y + d * math.cos(h), h
+    return pose
+
+
+def test_the_wrong_lane_faults_even_with_no_other_leg_taught_and_amcl_out():
+    """2026-11-06: J-SPLIT's right bay is not in the graph. The trip ended on it, 1.26 m off, "served"."""
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g)
+    jb = route.nodes[1]
+    t, _ = drive(loc, route, route.S_start, jb["S"])
+    loc.readiness(False, "LOST")
+    drive(loc, route, jb["S"], jb["S"] + 3.0, t=t, pose_fn=beside(route, 1.2), noise=0.005, ready=False)
+    assert "wrong tape after J-B" in loc.wrong_branch and loc.health == tl.LOST
+
+
+def test_small_and_short_offsets_are_not_the_wrong_lane():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    jb = route.nodes[1]
+
+    def after_fork(d, metres):
+        loc = started(route, g)
+        t, _ = drive(loc, route, route.S_start, jb["S"])
+        drive(loc, route, jb["S"], jb["S"] + metres, t=t, pose_fn=beside(route, d), noise=0.0)
+        return loc
+
+    assert not after_fork(0.14, 5.0).wrong_branch, "AMCL noise, as on the floor"
+    assert not after_fork(1.2, 1.0).wrong_branch, "under the run"
+    assert not after_fork(50.0, 5.0).wrong_branch, "AMCL just wrong: no tape is that far off"
+
+
+def test_far_off_the_path_away_from_any_ordered_fork_is_not_the_wrong_lane():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    loc = started(route, g)
+    side = lambda S: (lambda p: (p[0], p[1] + 1.2, p[2]))(route.point(S))  # noqa: E731
+    drive(loc, route, route.S_start, route.nodes[1]["S"] - 0.5, pose_fn=side, noise=0.0)
+    assert not loc.wrong_branch
 
 
 def test_lateral_gate_rejects_a_pose_off_the_path():
@@ -415,7 +502,7 @@ def test_shadow_logs_each_decision_once():
 # -- trips ---------------------------------------------------------------------------------
 
 def test_a_trip_forms_at_two_calls_of_one_group_in_circuit_order():
-    m = missions.load_site("site-103")
+    m = dict(missions.load_site("site-103"), TRIP_CALLS=2)  # site-103 itself is 1 since 2026-11-05
     q = tr.CallQueue(m)
     assert q.call("MRU3", 1)[0] and q.call("BTU10", 2)[0]
     assert q.call("MRU3", 3) == (False, "MRU3 is already waiting")
@@ -429,7 +516,7 @@ def test_a_trip_forms_at_two_calls_of_one_group_in_circuit_order():
 
 
 def test_facing_machines_share_one_stop():
-    m = missions.load_site("site-103")
+    m = dict(missions.load_site("site-103"), TRIP_CALLS=2)  # site-103 itself is 1 since 2026-11-05
     q = tr.CallQueue(m)
     q.call("BTU16", 1)
     q.call("BTU24", 2)

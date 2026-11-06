@@ -211,7 +211,36 @@
     "site_mission": "site-103",
     "shadow_circuit": "C-MRU",
     "monitor_jump_m": 0.3,
-    "live": false
+    "live": true
+  },
+  "station": {
+    "enabled": false,
+    "broker_host": "192.168.2.5",
+    "broker_port": 1883,
+    "manufacturer": "gvi",
+    "serial_number": "agv1",
+    "settle_s": 5.0,
+    "holdoff_s": 15.0,
+    "order_torque_wait_s": 4.0
+  },
+  "rear": {
+    "source": "none",
+    "field_output_index": 0,
+    "no_trolley_case": -1,
+    "case_proven": false,
+    "roi_x_min_m": 0.1,
+    "roi_x_max_m": 1.2,
+    "roi_half_width_m": 0.4,
+    "present_points": 20,
+    "absent_points": 5,
+    "present_s": 0.5,
+    "absent_s": 1.0,
+    "stale_s": 0.3,
+    "max_invalid_ratio": 0.5,
+    "laser_x_m": -0.4,
+    "laser_y_m": 0.0,
+    "laser_z_m": 0.02,
+    "laser_yaw_rad": 3.14159
   },
   "imu": {
     "enabled": true

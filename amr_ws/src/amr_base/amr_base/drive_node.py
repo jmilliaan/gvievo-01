@@ -430,7 +430,7 @@ class DriveNode(LeanNode):
                     set(link.silent_nodes(now, self.driver_timeout))
                     | set(link.missing_feedback(now, self.driver_timeout))
                 )
-            self._update_power(now)
+            self._update_power()
             d = canopen.decide(
                 link.state,
                 self.want_link,
@@ -624,9 +624,14 @@ class DriveNode(LeanNode):
             return True, ok_msg
         return False, "disarm incomplete, cleanup owed and retrying: " + "; ".join(link.cleanup_failures)
 
-    def _update_power(self, now: float) -> None:
+    def _update_power(self) -> None:
+        # `now` AFTER the read, not the loop's tick time. A panel message taken between the two has
+        # a receive time later than the tick, arm_policy reads a time from the future as stale, and
+        # one tick of "not wanted" powered the drives down under a running vehicle (2026-11-06,
+        # three times in a morning; the panel was fine).
         with self._lock:
             panel, asks = self._power_panel, tuple(self._asks.values())
+        now = time.monotonic()
         power = arm_policy.want_power(now, panel, asks, self._power_params)
         if power != self._power:
             self._log(f"drive power {'wanted' if power[0] else 'not wanted'}: {power[1]}")

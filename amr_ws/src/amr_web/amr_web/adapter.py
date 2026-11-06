@@ -30,6 +30,7 @@ from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
 from tf2_ros import Buffer
 
+from amr_base import wire
 from amr_base.gating import LEASE_COMMISSIONING, LEASE_LINE, LEASE_MANUAL
 from amr_base.lean_node import LeanNode
 from amr_base.qos import EVENT_STREAM as RFID_QOS
@@ -144,6 +145,15 @@ def _wheel_radius_m() -> float | None:
 WHEEL_RADIUS_M = _wheel_radius_m()
 
 
+def station_enabled() -> bool:
+    try:
+        from agv_core import config  # noqa: PLC0415 - needs AGV_PROFILE, absent on a dev box
+
+        return bool(config.STATION_ENABLED)
+    except Exception:  # noqa: BLE001 - a dev box without a profile
+        return False
+
+
 def _msg_to_dict(msg) -> dict[str, Any]:
     out = {}
     for name in msg.get_fields_and_field_types():
@@ -249,6 +259,14 @@ class RosAdapter(LeanNode):
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1, callback_group=g)
         # The tape product's layer: its holds and faults are standing alarms like any other.
         self.create_subscription(LineState, "/amr/line_state", self._on_line, LATCHED, callback_group=g)
+        # Station calling (manuals/station-call-plan.md): display only, and only when it is on.
+        self._order, self._order_t = None, 0.0
+        if station_enabled():
+            from amr_interfaces.msg import OrderState  # noqa: PLC0415
+
+            self.create_subscription(
+                OrderState, "/amr/line/order_state", self._on_order, LATCHED, callback_group=g
+            )
         # The raw MLS reading, in every mode (drive_node publishes it from boot): display only,
         # so the 5 Hz display copy, not the 100 Hz control topic.
         self.create_subscription(
@@ -541,6 +559,13 @@ class RosAdapter(LeanNode):
         with self._lock:
             self._line, self._line_t = d, self._now()
 
+    def _on_order(self, m) -> None:
+        d = _msg_to_dict(m)
+        d["trolley_name"] = wire.TROLLEY_NAMES.get(m.trolley, "UNKNOWN")
+        d["rear_field_name"] = wire.REAR_FIELD_NAMES.get(m.rear_field, "FIELD_UNKNOWN")
+        with self._lock:
+            self._order, self._order_t = d, self._now()
+
     def _on_track(self, m: LineTrack) -> None:
         # 5 Hz display copy; the pages poll at 2 Hz.
         d = {
@@ -761,6 +786,8 @@ class RosAdapter(LeanNode):
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
+                **({"order": dict(self._order, age_s=now - self._order_t) if self._order else None}
+                   if station_enabled() else {}),
                 "loc_map": localization_map(self._mode, self._line, now - self._line_t),
                 "line_track": dict(self._track, age_s=now - self._track_t) if self._track else None,
                 "rfid": self._rfid_state(now),
@@ -888,7 +915,8 @@ class RosAdapter(LeanNode):
 
     def line_trip(self, action: str, arg: str = "") -> tuple[bool, str]:
         """Trips (tracked plan 4): call / cancel a machine, confirm releases or trolleys off,
-        status. They form and record a trip; it leaves HOME only on AUTO + the physical Start."""
+        status. They form and record a trip; one formed here leaves HOME only on AUTO + the
+        physical Start. Station orders never come through here."""
         r = self._call("line_trip", LineTeach.Request(action=action, arg=arg), timeout=3.0)
         if r is None:
             return False, "line layer unavailable (enter Tracked mode first)"

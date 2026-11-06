@@ -647,6 +647,7 @@ libraries; apt provides the rest. Versions as of 2026-09-21:
 | `pymodbus` | 3.15.0 | pip --user | `agv_core.drivers.dio` (I/O island) |
 | `flask` | 3.1.3 (werkzeug 3.1.8) | pip --user | `amr_web` |
 | `numpy` | 2.2.6 | pip --user (overrides apt 1.21.5) | maps, routes, scan checks |
+| `paho-mqtt` | 2.1.0 | pip --user, only with `station.enabled` | `amr_station.mqtt_link`. Not apt `python3-paho-mqtt` (1.x: other callback API) |
 | `pyserial` | 3.5 | apt `python3-serial` | bench tools |
 | `PyYAML` | 5.4.1 | apt `python3-yaml` | bundles, params |
 | `rosbag2_py` | (ROS) | apt, section 4 | `tools/bag_report.py` |
@@ -660,6 +661,10 @@ them installed; they are harmless.
 ```bash
 sudo apt install -y python3-serial python3-yaml python3-pytest python3-numpy
 pip3 install --user python-can==4.6.1 pymodbus==3.15.0 flask==3.1.3 numpy==2.2.6 ruff==0.16.7
+# station calling only. With no internet on the vehicle, on a PC:
+#   pip download paho-mqtt==2.1.0 --no-deps -d wheels/   then scp wheels/ over, and on the vehicle:
+#   pip3 install --user --no-index --find-links wheels/ paho-mqtt==2.1.0
+pip3 install --user paho-mqtt==2.1.0
 ```
 
 > **Known, accepted conflict:** user-site numpy 2.x breaks the system

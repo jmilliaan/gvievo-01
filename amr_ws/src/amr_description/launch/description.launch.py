@@ -29,6 +29,11 @@ XACRO_ARGS = [
     ("imu_x", "0.092", "MLS IMU x from base_link [m]"),
     ("imu_y", "0.0", "MLS IMU y from base_link [m] (VERIFY)"),
     ("imu_z", "0.0", "MLS IMU z from base_link [m] (VERIFY)"),
+    ("rear_lidar", "false", "true = the rear nanoScan3 is fitted (station call plan P8)"),
+    ("rear_laser_x", "-0.40", "rear nanoScan3 x from base_link [m] (MEASURE)"),
+    ("rear_laser_y", "0.00", "rear nanoScan3 y from base_link [m] (MEASURE)"),
+    ("rear_laser_z", "0.02", "rear nanoScan3 z from base_link [m] (MEASURE)"),
+    ("rear_laser_yaw", "3.14159", "rear nanoScan3 yaw [rad] (MEASURE)"),
 ]
 
 

@@ -33,6 +33,7 @@ READINESS_STALE_S = 2.0
 STATION_CAPTURE_S = 3.0              # standstill AMCL poses averaged for a station
 MARK_POSE_MAX_AGE_S = 3.0            # a mark needs an AMCL pose this fresh (it updates on motion)
 STATION_MIN_POSES = 5
+STATION_MAX_AHEAD_M = 0.2            # travel since the last AMCL pose a standstill teach accepts
 START_SIGMA_M = 0.03                 # locator sigma at HOME-N after At home
 INFO, WARN = "info", "warn"
 
@@ -60,11 +61,12 @@ class TapeRuntime:
         self.ready, self.ready_t, self.ready_why = False, None, "no readiness yet"
         self.travel = None
         self._poses = collections.deque(maxlen=200)    # (t, x, y, yaw) for station capture
+        self._pose_travel = None                       # wheel travel when the last pose was taken
         self._odom = tl.OdomBuffer(span_s=5.0)         # wheel travel by time, for marks
         self._still_since = None
         self._forks = tg.ForkDetector()
         self._uturn_phase = ""
-        self._was_lost = ""
+        self._was_lost = self._was_out = ""
         self.t = None
         if selection is not None and not status:
             self._load_active()
@@ -127,7 +129,7 @@ class TapeRuntime:
             verdict, node = loc.fork(ep[1], ep[2])
             if verdict == "unexpected":
                 self.events.append((WARN, f"shadow: fork with no taught junction near S {loc.S:.2f} m "
-                                          f"(sigma {loc.sigma:.2f}): would HOLD position"))
+                                          f"(sigma {loc.sigma:.2f}): ignored"))
             elif verdict == "resync":
                 self.events.append((INFO, f"shadow: resync at {node['id']}, S {loc.S:.2f} m"))
         self._uturn(travel, uturn_phase)
@@ -139,6 +141,11 @@ class TapeRuntime:
             self.events.append((WARN, f"trip locator LOST - {loc.lost}") if loc.lost
                                else (INFO, f"trip locator re-acquired at S {loc.S:.2f} m"))
             self._was_lost = loc.lost
+        if loc is not None and loc.amcl_out != self._was_out:
+            self.events.append(
+                (WARN, f"AMCL not used, on wheels and tape from S {loc.S:.2f} m: {loc.amcl_out}")
+                if loc.amcl_out else (INFO, f"AMCL back at S {loc.S:.2f} m, sigma {loc.sigma:.3f} m"))
+            self._was_out = loc.amcl_out
 
     def _uturn(self, travel, phase):
         prev, self._uturn_phase = self._uturn_phase, phase or ""
@@ -157,14 +164,16 @@ class TapeRuntime:
 
     def amcl(self, t, stamp, x, y, yaw, cov_xx, cov_xy, cov_yy):
         self._poses.append((stamp, x, y, yaw))
+        then = self._odom.at(stamp)
+        self._pose_travel = then if then is not None else self.travel
         if self.recorder is not None:
             self.recorder.pose(stamp, x, y)
         if self.loc is None:
-            return
+            return None
         _, _, h = self.route.point(self.loc.S)
         c, s = math.cos(h), math.sin(h)
         var = cov_xx * c * c + 2 * cov_xy * c * s + cov_yy * s * s
-        self.loc.correct(t, stamp, x, y, var)
+        return self.loc.correct(t, stamp, x, y, var)
 
     def readiness(self, t, state, reason=""):
         self.ready_t = t
@@ -181,13 +190,17 @@ class TapeRuntime:
             self.loc.readiness(ready, why)
 
     # -- the locator -----------------------------------------------------------------
-    def at_home(self):
-        """(ok, message, pose or None to publish on /initialpose)."""
+    def at_home(self, fresh_ready=False):
+        """(ok, message, pose or None to publish on /initialpose). fresh_ready (station calling):
+        a READY from before this press does not count, or the locator could start on the next
+        tick, before /initialpose has moved readiness to CHECKING, and an order could follow it."""
         if self.route is None:
             return False, f"At home: no route ({self.detail})", None
         st = self.graph.stations.get(self.m["HOME"])
         self.pending_home = True
         self.loc = self.shadow = None
+        if fresh_ready:
+            self.ready, self.ready_why = False, "waiting for a fresh READY after At home"
         return (True, f"At home: initial pose {self.m['HOME']} sent; confirm the scans align",
                 st.pose)
 
@@ -216,7 +229,7 @@ class TapeRuntime:
         new = tl.TapeLocator(route, self.p, self.graph)
         new.readiness(self.ready)
         new.start(route.S_start + off, loc.sigma, self.t or 0.0, self.travel)
-        self.loc, self.shadow, self._was_lost = new, None, ""
+        self.loc, self.shadow, self._was_lost, self._was_out = new, None, "", ""
         self.events.append((INFO, f"trip locator on {route.label} at S {new.S:.2f} m (HOME {off:+.2f} m), "
                                   f"sigma {new.sigma:.3f} m"))
         return True, ""
@@ -236,7 +249,7 @@ class TapeRuntime:
             return None
         r = loc.route
         return {"route": getattr(r, "ident", f"circuit:{r.circuit}"), "started": loc.started, "S": loc.S,
-                "sigma": loc.sigma, "health": loc.health, "lost": loc.lost,
+                "sigma": loc.sigma, "health": loc.health, "lost": loc.lost, "amcl_out": loc.amcl_out,
                 "wrong_branch": loc.wrong_branch, "home_offset": self._home_offset()}
 
     def _start_locator(self, t, travel):
@@ -579,19 +592,36 @@ class TapeRuntime:
             return False, "localization is not READY"
         if self._still_since is None or t - self._still_since < STATION_CAPTURE_S:
             return False, f"hold the vehicle still for {STATION_CAPTURE_S:g} s first"
-        poses = [p[1:] for p in self._poses if p[0] >= t - STATION_CAPTURE_S]
-        if len(poses) < STATION_MIN_POSES:
-            return False, (f"only {len(poses)} AMCL poses in the last {STATION_CAPTURE_S:g} s: AMCL updates "
-                           f"only on motion; nudge the vehicle and hold again")
         graph = self.staged or self.graph
         if graph is None:
             return False, "no legs yet: record passes and build first"
-        pose = tt.mean_pose(poses)
+        poses = [p[1:] for p in self._poses if p[0] >= t - STATION_CAPTURE_S]
+        if len(poses) >= STATION_MIN_POSES:
+            pose = tt.mean_pose(poses)
+        else:
+            # AMCL updates only after update_min_d / update_min_a of motion, and READY does not ask
+            # it for in-place updates, so a parked vehicle gets no poses at all. Its last pose is
+            # from the end of the approach: carried on by the wheel travel since, as a mark is.
+            pose, why = self._last_pose_here()
+            if why:
+                return False, why
+            poses = [pose]
         st = tt.project_station(graph, self.m, arg, pose, tt.now_iso(), len(poses))
         graph.put_station(st)       # refuses a station off its leg
         store.save_station(self.state_dir, self.sel["map_id"], self.sel["map_revision"],
                            {"id": arg, "pose": list(pose), "taught": st.taught, "samples": st.samples})
         return True, f"{arg} taught on {st.leg} at s {st.s:.3f} m, {st.d * 100:+.1f} cm from the tape"
+
+    def _last_pose_here(self):
+        """(pose, "") from the last AMCL pose moved on to where the vehicle stands, or (None, why)."""
+        if not self._poses or self._pose_travel is None or self.travel is None:
+            return None, "no AMCL pose since the tape layer started: drive a little, stop and hold again"
+        ahead = self.travel - self._pose_travel
+        if abs(ahead) > STATION_MAX_AHEAD_M:
+            return None, (f"the last AMCL pose is {abs(ahead):.2f} m back and AMCL has not updated since: "
+                          f"check localization")
+        _stamp, x, y, yaw = self._poses[-1]
+        return (x + ahead * math.cos(yaw), y + ahead * math.sin(yaw), yaw), ""
 
     def _t_publish(self, _t, _arg):
         if self.staged is None:
@@ -621,7 +651,8 @@ class TapeRuntime:
         snap = loc.snapshot() if loc is not None else {}
         idle = "IDLE" if self.running else ""
         health = snap.get("health") or ("WAITING" if self.pending_home else idle)
-        detail = (snap.get("lost") or snap.get("last_reject") or "") if loc is not None else self.detail
+        detail = (snap.get("lost") or snap.get("amcl_out") or snap.get("last_reject") or "") \
+            if loc is not None else self.detail
         return {"loc_health": health, "loc_circuit": self.route.circuit if self.route else "",
                 "loc_leg": snap.get("leg", ""), "loc_s_m": float(snap.get("S", 0.0)),
                 "loc_sigma_m": float(snap.get("sigma", 0.0)), "loc_rejects": int(snap.get("rejected", 0)),

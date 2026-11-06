@@ -22,7 +22,7 @@ Roles: **E** = engineer (PIN pages, terminal), **O** = operator at the vehicle w
 
 ## 1. Rules
 
-- **Every autonomous move is AUTO + a physical Start on the panel.** Nothing here, not a call, not
+- **Every autonomous move is AUTO + a physical Start on the panel**, except, with `station.enabled` only, leaving HOME on an accepted station order (`manuals/station-call-plan.md` section 3). Nothing here, not a call, not
   a teach run, not a script, starts the vehicle. Jogging is MANUAL + Manual Arm (DI08).
 - **P0 does not stop `amr.service`.** It starts an extra localization launch beside the running
   LINE layer. That launch publishes only AMCL's pose and its `map→odom` transform, which LINE does
@@ -288,8 +288,8 @@ For each station: HOME-N, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once ro
    - MW = westbound
    - ME = eastbound
    - spin in place to turn it, empty only
-2. If AMCL has not updated since the last move (it updates only on motion), nudge the AGV a few
-   centimetres and stop again.
+2. Drive the last stretch onto the spot. AMCL updates only on motion, so a parked AGV gets no new
+   poses: Teach here uses the last pose from that approach, carried on by the wheel travel since.
 3. Hold still for **3 s**. E: Station → id → **Teach here**.
 4. The message gives the leg, `s` and the distance from the taught tape. It refuses when:
    - the AGV is more than 10 cm from the tape
@@ -348,9 +348,9 @@ High speed is where the tape runs inside an area drawn on the map, not between m
    HEALTHY.
 2. Ordinary `line-a` runs, recorded with `tools/run_log.sh`. The locator only logs. At every
    station, junction order and U-turn approach, the event log (`LINE_LOC`) says "would stop / would
-   order … : ok", or "would HOLD" with the reason. LOST, re-acquired and unexpected forks are logged
+   order … : ok", or "would HOLD" with the reason. AMCL out and back, and unexpected forks are logged
    too.
-3. Acceptance: plan 3 section 4, P1. Any "would HOLD" or LOST gets looked at before P2.
+3. Acceptance: plan 3 section 4, P1. Any "would HOLD" or AMCL out gets looked at before P2.
 4. Plan 4 E2: the log also names each taught U-turn point ("U-turn point of MRU1 UT-MRU1 …") and
    high-speed area entry and exit ("high-speed area: HIGH from …"). Five Guide-page laps: every "would order" matches the
    order given by hand, every "would stop" lies within ±10 cm of its floor mark.
@@ -369,6 +369,8 @@ it too), and the **Calls** tab runs it. The new LineState fields need `colcon bu
 3. If the AGV is **not** at HOME-N: jog it there under MANUAL first.
 
 ### 4.2 Calls and trips
+
+One call a trip since 2026-11-05 (`trip_calls` 1). With `station.enabled` a station order is a second way to leave HOME, and the rear lidar replaces the two confirmations (`manuals/station-call-plan.md`).
 
 1. **Calls.** A machine operator taps their machine on Run → Calls (touch panel or laptop). The page lists pending calls per group (MRU, BTU).
 2. **A trip forms** at two calls of one group: "Trip MRU: MRU2, MRU4: press Start at the bay". A call for the other group waits.
@@ -397,8 +399,9 @@ call again.
 
 | Code / cause | Operator sees | Operator does |
 |---|---|---|
-| HOLD `position` before a station or junction | "position uncertain before MW-2" | Check that nothing blocks the scanner's view (people, trolleys parked in the aisle). When the Locator line shows HEALTHY, press **Start**. If it does not recover within a minute: MANUAL, jog to HOME-N, **At home**, and call E |
-| HOLD `position` mid-route, localization LOST | "localization LOST (…)" | As above: it stays held, and every **Start** re-checks (`tape_loc.lost_fault_s` is not acted on yet). Not recovering: MANUAL, jog to HOME-N, **At home**, Reset. Handle the trolleys by hand |
+| HOLD `position` before a mid-line U-turn point | "position uncertain: sigma … check the AGV is clear of the released trolley" | Check it, then **Start** pivots at that point. Stops, orders and the tape end no longer hold on position (tracked plan 4, section 11) |
+| FAULT "wrong tape at …" or "wrong tape after …" | The AGV is on another tape: the ordered tape left the sensor at the fork, or AMCL has stayed 0.5 m or more to one side since it | MANUAL, jog back before the junction, Reset, Start. `tools/trip_report.py --fork <id>` shows what the MLS read |
+| "AMCL not used, on wheels and tape from S …" in the log, Locator tile DEGRADED | AMCL off the taught path, scan mismatch, or sigma over `sigma_lost_m` | Nothing to press: the trip goes on and AMCL comes back by itself ("AMCL back at S …") once two poses agree. Stops are then at the best estimate, logged with their sigma |
 | HOLD `payload` at the U-turn (point or tape end) | "release not recorded for MRU1: a trolley may still be attached" | Check the trolley. If it is attached, release it here → Run → Calls **Released** → **Start**. The AGV never pivots with a trolley; Start alone does not pivot |
 | Trip Start refused `payload` at HOME-N | "trolleys from the last trip not confirmed off" | Release them → **Trolleys off** → **Start** |
 | FAULT `wrong_branch` | "took the wrong tape after J-…" | The AGV is stopped. MANUAL: jog back to HOME-N, **At home**, Reset. Call E: the junction or its taught geometry needs checking |

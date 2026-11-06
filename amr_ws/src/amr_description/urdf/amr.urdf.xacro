@@ -16,6 +16,12 @@
   <xacro:arg name="track_width"  default="0.487"/>  <!-- measured 2026-09-15; profile track_m says 0.486 -->
   <xacro:arg name="wheel_width"  default="0.05"/>   <!-- MEASURE, visual only -->
 
+  <xacro:arg name="rear_lidar"     default="false"/>
+  <xacro:arg name="rear_laser_x"   default="-0.40"/> <!-- MEASURE -->
+  <xacro:arg name="rear_laser_y"   default="0.00"/>  <!-- MEASURE -->
+  <xacro:arg name="rear_laser_z"   default="0.02"/>  <!-- MEASURE -->
+  <xacro:arg name="rear_laser_yaw" default="3.14159"/> <!-- MEASURE -->
+
   <!-- Chassis box, centred on base_link in y; x offset lets the axle sit off-centre -->
   <xacro:arg name="chassis_length" default="1.00"/> <!-- MEASURE -->
   <xacro:arg name="chassis_width"  default="0.60"/> <!-- MEASURE -->
@@ -105,6 +111,17 @@
     <child link="laser_frame"/>
     <origin xyz="$(arg laser_x) $(arg laser_y) $(arg laser_z)" rpy="0 0 $(arg laser_yaw)"/>
   </joint>
+
+  <!-- The rear nanoScan3 (station call plan P4): only with rear_lidar:=true. Yaw pi: its x looks
+       back. All MEASURE until fitted (plan P8). Nothing but trolley_node uses this frame. -->
+  <xacro:if value="$(arg rear_lidar)">
+    <link name="rear_laser_frame"/>
+    <joint name="rear_laser_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="rear_laser_frame"/>
+      <origin xyz="$(arg rear_laser_x) $(arg rear_laser_y) $(arg rear_laser_z)" rpy="0 0 $(arg rear_laser_yaw)"/>
+    </joint>
+  </xacro:if>
 
   <!-- IMU in the MLS -->
   <link name="imu_frame"/>

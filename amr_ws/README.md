@@ -113,3 +113,16 @@ systemd entry point.
 How the stack behaves (survey, readiness, execution, permission, panel): README.md
 "How it works" and [RUNBOOK.md](RUNBOOK.md) sections 2 and 4. The decisions as they were
 made, T1-T12 and U9: `manuals/obsolete/amr_ws-decision-log.md` (historical).
+
+## amr_station (station calling)
+
+`station_bridge_node` speaks MQTT to the station PC (`manuals/station-call-plan.md`). Launched in base only with
+`station.enabled`. It holds no lease and no command topic; it calls `/amr/line/order` and nothing else.
+`trolley_node` (amr_base) reads the rear lidar, launched only with `rear.source: "scanner"`.
+
+```bash
+python3 -m pytest -q src/amr_station/test                 # offline, on a fake client
+AMR_MQTT_TESTS=1 python3 -m pytest -q src/amr_station/test/test_mosquitto_loop.py   # a real broker: mosquitto on the path
+VDA5050_SCHEMAS=~/VDA5050/json_schemas python3 -m pytest -q src/amr_station/test/test_vda_schema.py
+AMR_SIM_TESTS=1 AMR_MQTT_TESTS=1 python3 -m pytest -q src/amr_bringup/test/test_station_call_sim.py   # ~2 min
+```

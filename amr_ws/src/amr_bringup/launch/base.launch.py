@@ -38,7 +38,27 @@ def _compose(context):
     supervised = cfg("supervised").perform(context).lower() == "true"
     gate = {"require_supervisor": supervised}
 
-    actions = [include("amr_description", "description.launch.py")]
+    rear_scanner = real and config.REAR_SOURCE == "scanner"
+    description = {}
+    if rear_scanner:
+        description = {"rear_lidar": "true", "rear_laser_x": str(config.REAR_LASER_X_M),
+                       "rear_laser_y": str(config.REAR_LASER_Y_M), "rear_laser_z": str(config.REAR_LASER_Z_M),
+                       "rear_laser_yaw": str(config.REAR_LASER_YAW_RAD)}
+    actions = [include("amr_description", "description.launch.py", **description)]
+    if config.STATION_ENABLED:
+        # manuals/station-call-plan.md. Not required: a dead bridge must not end the base. An order
+        # already running finishes without it. In base, so it reports STARTUP through layer changes.
+        actions.append(
+            Node(
+                package="amr_station",
+                executable="station_bridge_node",
+                name="station_bridge",
+                output="screen",
+                respawn=True,
+                respawn_delay=5.0,
+                parameters=[{"state_dir": paths.state_dir()}],
+            )
+        )
     if real:
         actions += required(
             Node(
@@ -80,6 +100,20 @@ def _compose(context):
         )
         if cfg("lidar").perform(context).lower() == "true":
             actions.append(include("amr_bringup", "scanner.launch.py"))
+        if rear_scanner:
+            # The rear lidar (station plan P4): set at P8, not by the switch. Only trolley_node reads
+            # it: no costmap, AMCL or mux. Optional and respawning, like the RFID reader.
+            actions.append(include("amr_bringup", "rear_scanner.launch.py"))
+            actions.append(
+                Node(
+                    package="amr_base",
+                    executable="trolley_node",
+                    name="trolley_node",
+                    output="screen",
+                    respawn=True,
+                    respawn_delay=5.0,
+                )
+            )
         # RFID reader (2026-10-02): optional - a missing reader leaves plain line
         # following and SLAM untouched; respawns so a late cable recovers by itself.
         actions.append(
@@ -104,6 +138,11 @@ def _compose(context):
             "fake_base",
         )
         actions.append(Node(package="amr_sim", executable="fake_imu_node", name="fake_imu", output="screen"))
+        if config.STATION_ENABLED:
+            # The sim's rear lidar. Never on real:=true: there is no bypass on a vehicle.
+            actions.append(
+                Node(package="amr_sim", executable="fake_trolley_node", name="fake_trolley", output="screen")
+            )
         actions.append(
             Node(
                 package="amr_sim",

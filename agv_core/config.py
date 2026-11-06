@@ -307,8 +307,8 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
                           0.05 (2 sigma = the operator's +-10 cm); 0.05 since 2026-10-25, the
                           operator's choice: fewer `position` holds, the stop's own error on top
       sigma_junction_m    a junction order needs sigma at most this by S_fork - junction_lead_m
-      lost_rejects        this many corrections rejected in a row = LOST
-      sigma_lost_m        sigma above this = LOST
+      lost_rejects        this many corrections rejected in a row: AMCL not used until poses agree
+      sigma_lost_m        sigma above this: the same, logged (position goes on; no LOST)
       healthy_window_m    HEALTHY needs an accepted correction within this much travel
       lost_fault_s        reserved, not read yet: LOST while held longer than this is to become a FAULT
       amcl_params         "default" (amr_localization/config/amcl.yaml) or "lean" (fewer
@@ -321,6 +321,39 @@ tape_loc.*  (tracked plan 3, manuals/tracked-plan-3-tape-localization.md)
                           (Run → Calls): trips stop, branch, turn and speed up by position
 
     Not in the safety path (plan D6): every decision it feeds turns doubt into a hold.
+
+station.*  (manuals/station-call-plan.md)
+    Machine calls from the station PC over MQTT. enabled false: the MQTT bridge is not launched,
+    no order path exists, and the job, node and web are the hand-trip baseline. enabled true needs
+    tape_loc.live, and one move then needs no Start: leaving HOME for ATT, once, on an accepted
+    station order, through the same pre-move warning. Nothing here is in the safety path.
+      broker_host, broker_port    the station PC's Mosquitto
+      manufacturer, serial_number the MQTT topic levels. serial_number follows profile_name
+                                  (agv-01 -> agv1)
+      settle_s    a blocking event (the list is in amr_line.order.Settle) this recently refuses an
+                  order. At least the contract's 5 s
+      holdoff_s   a cancelled warning this recently refuses an order. At least the contract's 15 s
+      order_torque_wait_s  how long an order's warning waits for torque. A PLACEHOLDER until
+                  measured on the vehicle (plan P8). Above auto_start_delay_s, at most
+                  premove_timeout_s
+
+rear.*  (manuals/station-call-plan.md section 11)
+    The rear lidar: "none" until fitted, "scanner" launches its driver and amr_base.trolley_node.
+    It feeds no costmap, AMCL or mux. Every zone, count and time is a PLACEHOLDER until the
+    calibration at P8. Trolley detection is not personnel protection: a person in the zone reads
+    as a trolley. The rear safety field does that job, in hardware.
+      field_output_index  /rear/output_paths status[i] of the rear protective field
+      no_trolley_case     the scanner's monitoring case number with no trolley, as OutputPaths
+                          .active_monitoring_case reports it. -1 = not set: the case is unknown.
+                          0 is refused: the driver also reports 0 when it has no case data
+      case_proven         the safety engineer proved in hardware that no towing case can stay
+                          selected with no trolley, and recorded it. Set by hand, never by code
+      roi_*               the zone a hitched trolley sits in, scanner frame
+      present_points, absent_points  beams in the zone that read present, absent; between holds
+      present_s, absent_s how long a raw reading must hold before the state changes
+      stale_s             no scan this long = UNKNOWN. At most freshness.field_s
+      max_invalid_ratio   more than this share of the zone's beams invalid = UNKNOWN
+      laser_*             the rear scanner's pose in base_link (MEASURE at P8)
 
 imu.*
     The yaw-rate gyro inside the SICK MLS on can.sensor_node (amr_base.mls_imu):
@@ -590,6 +623,35 @@ _SCHEMA = {
         # Tracked plan 4: false = the position engine only shadows (Teach's guided-run orders drive);
         # true = the site mission is a job, and trips stop, branch and turn by position.
         "live":               ("TAPE_LOC_LIVE", bool),
+    },
+    "station": {
+        "enabled":             ("STATION_ENABLED", bool),
+        "broker_host":         ("STATION_BROKER_HOST", str),
+        "broker_port":         ("STATION_BROKER_PORT", int),
+        "manufacturer":        ("STATION_MANUFACTURER", str),
+        "serial_number":       ("STATION_SERIAL_NUMBER", str),
+        "settle_s":            ("STATION_SETTLE_S", float),
+        "holdoff_s":           ("STATION_HOLDOFF_S", float),
+        "order_torque_wait_s": ("STATION_ORDER_TORQUE_WAIT_S", float),
+    },
+    "rear": {
+        "source":             ("REAR_SOURCE", str),
+        "field_output_index": ("REAR_FIELD_OUTPUT_INDEX", int),
+        "no_trolley_case":    ("REAR_NO_TROLLEY_CASE", int),
+        "case_proven":        ("REAR_CASE_PROVEN", bool),
+        "roi_x_min_m":        ("REAR_ROI_X_MIN_M", float),
+        "roi_x_max_m":        ("REAR_ROI_X_MAX_M", float),
+        "roi_half_width_m":   ("REAR_ROI_HALF_WIDTH_M", float),
+        "present_points":     ("REAR_PRESENT_POINTS", int),
+        "absent_points":      ("REAR_ABSENT_POINTS", int),
+        "present_s":          ("REAR_PRESENT_S", float),
+        "absent_s":           ("REAR_ABSENT_S", float),
+        "stale_s":            ("REAR_STALE_S", float),
+        "max_invalid_ratio":  ("REAR_MAX_INVALID_RATIO", float),
+        "laser_x_m":          ("REAR_LASER_X_M", float),
+        "laser_y_m":          ("REAR_LASER_Y_M", float),
+        "laser_z_m":          ("REAR_LASER_Z_M", float),
+        "laser_yaw_rad":      ("REAR_LASER_YAW_RAD", float),
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
@@ -987,6 +1049,8 @@ def _validate(ns):
           "tape_loc.enabled on a trackless profile (tracked: false): there is no LINE layer to run it in")
     check(not (g("TAPE_LOC_LIVE") and not g("TAPE_LOC_ENABLED")),
           "tape_loc.live needs tape_loc.enabled: the position engine drives from the tape locator")
+    _check_station(g, check)
+    _check_rear(g, check)
 
     # -- bus and timing ---------------------------------------------------
     check(g("CAN_BITRATE") > 0, "can.bitrate must be > 0")
@@ -1267,6 +1331,48 @@ def _check_finite(ns):
             raise ConfigError(f"{name} is not finite ({value!r}) - check the "
                               "profile values it is derived from")
     return ns
+
+
+def _check_station(g, check):
+    """The station block (manuals/station-call-plan.md P1)."""
+    check(not g("STATION_ENABLED") or g("TAPE_LOC_LIVE"),
+          "station.enabled needs tape_loc.live: an order is a trip of the position engine")
+    host = g("STATION_BROKER_HOST")
+    check(bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host)) and all(int(p) <= 255 for p in host.split(".")),
+          f"station.broker_host must be a dotted IPv4 address, got {host!r}")
+    check(1 <= g("STATION_BROKER_PORT") <= 65535, "station.broker_port must be in 1..65535")
+    check(bool(re.fullmatch(r"[A-Za-z0-9_-]+", g("STATION_MANUFACTURER"))),
+          f"station.manufacturer must be one plain MQTT topic level, got {g('STATION_MANUFACTURER')!r}")
+    number = re.fullmatch(r"agv-0*(\d+)", g("PROFILE_NAME"))
+    want = f"agv{number.group(1)}" if number else None
+    check(g("STATION_SERIAL_NUMBER") == want,
+          f"station.serial_number {g('STATION_SERIAL_NUMBER')!r} must follow profile_name "
+          f"{g('PROFILE_NAME')!r} ({want!r})")
+    check(5.0 <= g("STATION_SETTLE_S") <= 60.0, "station.settle_s must be in [5, 60] s")
+    check(15.0 <= g("STATION_HOLDOFF_S") <= 300.0, "station.holdoff_s must be in [15, 300] s")
+    check(g("AUTO_START_DELAY_S") < g("STATION_ORDER_TORQUE_WAIT_S") <= g("PREMOVE_TIMEOUT_S"),
+          f"station.order_torque_wait_s ({g('STATION_ORDER_TORQUE_WAIT_S')} s) must exceed "
+          f"timing.auto_start_delay_s and be at most timing.premove_timeout_s")
+
+
+def _check_rear(g, check):
+    """The rear block (manuals/station-call-plan.md P4). Order and range only: the values are
+    placeholders until the calibration at P8."""
+    check(g("REAR_SOURCE") in ("none", "scanner"),
+          f"rear.source must be none or scanner, got {g('REAR_SOURCE')!r}")
+    check(0 <= g("REAR_FIELD_OUTPUT_INDEX") <= 7, "rear.field_output_index must be in 0..7")
+    check(g("REAR_NO_TROLLEY_CASE") == -1 or g("REAR_NO_TROLLEY_CASE") > 0,
+          "rear.no_trolley_case must be -1 (not set) or above 0: the driver reports 0 for no case data")
+    check(0 <= g("REAR_ABSENT_POINTS") < g("REAR_PRESENT_POINTS"),
+          "rear.absent_points must be at least 0 and below rear.present_points")
+    check(g("REAR_ROI_X_MIN_M") < g("REAR_ROI_X_MAX_M"), "rear.roi_x_min_m must be below rear.roi_x_max_m")
+    check(g("REAR_ROI_HALF_WIDTH_M") > 0, "rear.roi_half_width_m must be above 0")
+    for key in ("present_s", "absent_s", "stale_s"):
+        check(g(f"REAR_{key.upper()}") > 0, f"rear.{key} must be above 0")
+    # trolley_node must not keep publishing an old state as fresh.
+    check(g("REAR_STALE_S") <= g("FRESH_FIELD_S"),
+          f"rear.stale_s ({g('REAR_STALE_S')} s) must not exceed freshness.field_s ({g('FRESH_FIELD_S')} s)")
+    check(0.0 < g("REAR_MAX_INVALID_RATIO") <= 1.0, "rear.max_invalid_ratio must be in (0, 1]")
 
 
 def load(path=None):

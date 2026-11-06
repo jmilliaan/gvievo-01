@@ -18,6 +18,10 @@ from amr_line import trip_route as trr  # noqa: E402
 
 FORK = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}, {"index": 3, "pos_mm": 45, "width": 10}],
         "has_track": True, "nlcp": 6, "track_level": 5}
+# The AGV keeps a tape at 0 and the other appears beside it: on the far side from the order, as
+# on the floor at every fork (each logged "that side is not in this diverter").
+FORK_NEG = {"tracks": [{"index": 1, "pos_mm": -45, "width": 10}, {"index": 2, "pos_mm": 0, "width": 10}],
+            "has_track": True, "nlcp": 3, "track_level": 5}
 CRUISE = 0.4 * vehicle.RPM_PER_MPS
 
 
@@ -25,6 +29,10 @@ class TripWorld(World):
     def __init__(self, m, g, sigma=0.01, params=None):
         self.m, self.g = m, g
         self.sigma, self.lost, self.wrong = sigma, "", ""
+        self.bias = 0.0                 # the locator's S minus the true S: AMCL out, wheels off
+        self.amcl_out = ""
+        self.extra_fork = None          # (S_a, S_b): two tracks where no junction is taught
+        self.fork_left = FORK_NEG       # what a fork ordered left reads
         self.route = None
         self.S = 5.0                    # at HOME on the circuit, before any trip
         self._phase = "out"
@@ -39,9 +47,10 @@ class TripWorld(World):
     def loc(self):
         r = self.route
         ident = r.ident if r else "circuit:C-M"
-        home = min((self.S - r.S_start, self.S - r.S_end), key=abs) if r else self.S - 5.0
-        return {"route": ident, "started": True, "S": self.S, "sigma": self.sigma, "health": "HEALTHY",
-                "lost": self.lost, "wrong_branch": self.wrong, "home_offset": home}
+        S = self.S + self.bias
+        home = min((S - r.S_start, S - r.S_end), key=abs) if r else S - 5.0
+        return {"route": ident, "started": True, "S": S, "sigma": self.sigma, "health": "HEALTHY",
+                "lost": self.lost, "amcl_out": self.amcl_out, "wrong_branch": self.wrong, "home_offset": home}
 
     def tape(self):
         r = self.route
@@ -49,7 +58,9 @@ class TripWorld(World):
             return CENTRED
         for n in r.nodes:
             if n["fork"] and n["S_fork"] <= self.S < n["S"]:
-                return FORK
+                return self.fork_left if n["order"] == "left" else FORK
+        if self.extra_fork and self.extra_fork[0] <= self.S < self.extra_fork[1]:
+            return FORK
         u = r.uturn
         if u and u["mode"] == "tapeend" and self._phase == "out" and self.S >= u["S"]:
             return NO_TAPE
@@ -187,34 +198,236 @@ def test_high_inside_a_high_speed_area_and_back_to_the_cruise_before_it_ends():
     assert at_end and max(at_end) <= CRUISE + 15.0, "the envelope is back at the cruise by the zone end"
 
 
-def test_doubt_before_a_stop_holds_before_it_and_start_rechecks():
+def log_of(w):
+    return " | ".join(text for _S, _sig, text in w.job.tape.decisions)
+
+
+def tape_end_world():
+    m = site(uturn_points={}, trip_calls=1,
+             groups={"M": {"circuit": "C-M", "machines": {"M1": {"release": "MW-1", "take": "ME-1"},
+                                                          "M2": {"release": "MW-2", "take": "ME-2"}}}})
+    return TripWorld(m, graph(m, skip=("UT-M1", "UT-M2")))
+
+
+def drive_tape_end_trip(w, sigma, machine="M2", release="MW-2", take="ME-2"):
+    """The MRU4 shape: the farthest machine, its U-turn at the tape end. Every stop, then HOME.
+    A trip starts sure of HOME; sigma is what it has from the first metre on."""
+    assert w.job.trip_call(machine, w.t)[0]
+    w.start()
+    w.sigma = sigma
+    assert w.route.uturn["mode"] == "tapeend"
+    for sid in ("ATT", release):
+        parked_at(w, sid)
+        go_on(w)
+    assert w.until(lambda: (w.job.tape.uturn_req or {}).get("phase") == "approach", 60.0), w.job.reason
+    assert w.until(lambda: w.job.tape.uturn_req["phase"] == "stopping", 30.0), (w.job.reason, w.S)
+    w.still, w.integrate = True, False
+    spin(w)
+    parked_at(w, take)
+    go_on(w)
+    assert w.until(lambda: w.job.state == lj.DONE, 200.0), (w.job.reason, w.S)
+
+
+def test_a_whole_trip_runs_with_amcl_out_and_takes_every_branch():
+    """2026-11-06: AMCL 12 cm off the taught path among moved trolleys stopped a trip on the tape."""
+    w = tape_end_world()
+    w.amcl_out = "5 corrections rejected in a row (+0.12 m from the taught path)"
+    drive_tape_end_trip(w, 0.45)
+    log = log_of(w)
+    assert "order right taken at J-B" in log, log
+    assert "order left taken at J-C" in log, log
+    assert "HOLD" not in log and "best estimate" in log, log
+    assert "served" in w.job.reason
+
+
+def test_a_stop_goes_on_at_any_sigma_and_says_so():
     w = one_call()
     w.job.trip_call("M1", w.t)
     w.start()
-    w.sigma = 0.08                                  # over sigma_station_m (0.025)
-    assert w.until(lambda: w.job.state == lj.HOLD, 60.0)
-    assert w.job.hold_cause == "position" and "before ATT" in w.job.reason, w.job.reason
-    assert w.S < w.at("ATT"), "held before the station"
-    w.press_start()                                 # still uncertain: held again at once
-    w.until(lambda: w.job.state == lj.HOLD and w.job.hold_cause == "position", 3.0)
-    assert w.job.state == lj.HOLD and w.job.hold_cause == "position"
-    w.sigma = 0.01
-    go_on(w)
-    err = parked_at(w, "ATT", 30.0)                 # creeps up from rest, then the measured stop
+    w.sigma = 0.3
+    err = parked_at(w, "ATT")
     assert abs(err) < 0.05
+    assert "best estimate, position uncertain by 30 cm" in log_of(w)
 
 
-def test_doubt_before_a_diverge_holds_before_the_fork():
+@pytest.mark.parametrize("bias", [-0.7, 0.0, 0.7])
+def test_branches_are_right_with_s_wrong_inside_its_sigma(bias):
+    """S up to 2.3 sigma off the tape, either way: the order still stands when the fork comes."""
+    w = tape_end_world()
+    w.job.trip_call("M2", w.t)
+    w.start()
+    w.sigma = 0.3
+    parked_at(w, "ATT")
+    w.bias = bias
+    go_on(w)
+    forks = w.job.tape.branch.forks
+    assert w.until(lambda: w.job.tape.branch.forks == forks + 1, 60.0), (w.job.reason, w.S)
+    w.drive(0.2)
+    assert "order right taken at J-B" in log_of(w), log_of(w)
+    assert w.job.tape.fault is None and w.job.state == lj.RUNNING, w.job.reason
+
+
+def test_the_window_before_a_fork_grows_with_sigma():
+    def armed_before_fork(sigma):
+        w = one_call()
+        w.job.trip_call("M1", w.t)
+        w.start()
+        parked_at(w, "ATT")
+        w.sigma = sigma
+        go_on(w)
+        assert w.until(lambda: "armed for J-B" in log_of(w), 60.0), w.job.reason
+        return next(n for n in w.route.nodes if n["id"] == "J-B")["S_fork"] - w.S
+
+    assert 0.85 <= armed_before_fork(0.01) <= 1.0, "the lead"
+    assert armed_before_fork(0.6) >= 1.7, "3 sigma"
+
+
+def test_a_fork_seen_before_the_window_arms_the_order_and_counts_as_the_junction():
+    """S behind the tape by more than its sigma says: the fork itself arms the order."""
+    w = tape_end_world()
+    w.job.trip_call("M2", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    w.bias = -1.5
+    go_on(w)
+    assert w.until(lambda: "armed for J-B" in log_of(w), 60.0), w.job.reason
+    assert w.job.tape.branch.ladder.latched(), "armed while the fork is under the sensor"
+    assert w.until(lambda: "at the fork seen before it" in log_of(w), 30.0), (log_of(w), w.job.reason)
+    assert w.job.tape.fault is None and w.job.state == lj.RUNNING, w.job.reason
+    assert not w.job.tape.branch.ladder.latched()
+
+
+def test_a_fork_before_its_own_uses_the_order_and_it_is_armed_again():
+    w = tape_end_world()
+    w.job.trip_call("M2", w.t)
+    w.start()
+    w.sigma = 0.5
+    parked_at(w, "ATT")
+    S_fork = next(n for n in w.route.nodes if n["id"] == "J-B")["S_fork"]
+    w.extra_fork = (S_fork - 3.5, S_fork - 3.2)
+    go_on(w)
+    assert w.until(lambda: "order right taken at J-B" in log_of(w), 60.0), (log_of(w), w.job.reason)
+    assert "armed again" in log_of(w) and w.job.tape.branch.forks >= 2
+    assert w.job.tape.fault is None
+
+
+def test_an_order_with_no_fork_at_all_still_faults():
+    w = tape_end_world()
+    w.job.trip_call("M2", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    w.tape = lambda: CENTRED                        # no junction under the sensor
+    go_on(w)
+    assert w.until(lambda: w.job.state == lj.FAULT, 60.0), (w.job.reason, w.S)
+    assert "not used" in w.job.reason, w.job.reason
+
+
+def test_fork_watch_sees_which_tape_is_left():
+    def run(order, multi, single):
+        w = site_run.ForkWatch({"id": "J", "order": order}, True)
+        for tracks, nlcp in multi:
+            assert w.tick(nlcp, [{"pos_mm": p} for p in tracks]) is None
+        out = None
+        for _ in range(site_run.ForkWatch.SETTLE_TICKS):
+            assert out is None
+            out = w.tick(2, [{"pos_mm": single}])
+        return out
+
+    # Left ordered, the right tape leaves: the left tape is what stays.
+    assert run("left", [((-20, 5), 3), ((-90, 2), 3)], 3)["verdict"] == "ordered"
+    # 2026-11-06, J-SPLIT: the left tape runs off the sensor and the right one stays.
+    r = run("left", [((-5, 20), 3), ((-30, 90), 3)], -32)
+    assert r["verdict"] == "other" and r["kept"] == 90 and r["other"] == -30
+    assert run("right", [((-90, 5), 3)], -88)["verdict"] == "ordered"
+    assert run("right", [((-90, 5), 3)], 4)["verdict"] == "other"
+    # A merge closes up; a tape reads double a few mm wide; a crossing has no side.
+    assert run("left", [((-60, 0), 3), ((-8, 0), 3)], -4)["verdict"] == "unjudged"
+    assert run("left", [((-2, 6), 3), ((-10, -4), 3)], -8)["verdict"] == "unjudged"
+    assert run("left", [((-60, 0, 60), 7)], 0)["verdict"] == "unjudged"
+
+
+def test_fork_watch_waits_out_a_flicker():
+    w = site_run.ForkWatch({"id": "J", "order": "left"}, True)
+    w.tick(3, [{"pos_mm": -40}, {"pos_mm": 40}])
+    assert w.tick(2, [{"pos_mm": -40}]) is None and w.tick(2, [{"pos_mm": -40}]) is None
+    w.tick(3, [{"pos_mm": -60}, {"pos_mm": 20}])    # two tracks again: not over
+    for _ in range(2):
+        assert w.tick(2, [{"pos_mm": 18}]) is None
+    assert w.tick(2, [{"pos_mm": 18}])["verdict"] == "ordered"
+
+
+def test_a_lost_ordered_tape_faults_at_the_fork_and_is_logged():
+    w = tape_end_world()
+    w.job.trip_call("M2", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    go_on(w)
+    assert w.until(lambda: "armed for J-B" in log_of(w), 60.0), w.job.reason
+    node = next(n for n in w.route.nodes if n["id"] == "J-B")
+    plain = w.tape
+    wrong = {"tracks": [{"index": 2, "pos_mm": 0, "width": 10}, {"index": 3, "pos_mm": 90, "width": 10}],
+             "has_track": True, "nlcp": 6, "track_level": 5}
+    gone = {"tracks": [{"index": 2, "pos_mm": 90, "width": 10}], "has_track": True, "nlcp": 2,
+            "track_level": 5}
+    # Ordered right, the kept (right-most) tape is the one at 0; only the +90 tape stays.
+    w.tape = lambda: wrong if node["S_fork"] <= w.S < node["S"] else gone if w.S >= node["S"] else plain()
+    assert w.until(lambda: w.job.state == lj.FAULT, 30.0), (w.job.reason, w.S)
+    assert "wrong tape at J-B" in w.job.reason and w.S < node["S"] + 0.5, w.job.reason
+    assert w.job.tape.fork_log[-1]["verdict"] == "other" or "wrong tape" in w.job.reason
+
+
+def test_every_ordered_fork_of_a_good_trip_reports_the_ordered_tape():
+    w = tape_end_world()
+    drive_tape_end_trip(w, 0.01)
+    log = log_of(w)
+    assert "fork J-B: ordered right" in log and "fork J-C: ordered left" in log, log
+    assert ": other" not in log, log
+
+
+def test_two_orders_never_overwrite_each_other():
+    w = one_call()
+    w.job.trip_call("M1", w.t)
+    w.start()
+    t = w.job.tape
+    t.locate(w.loc())
+    S = t.S
+    first = {"kind": "order", "id": "A", "order": "right", "S": S, "S_fork": S + 1.0, "S_node": S + 1.4,
+             "S_prev": S - 1.0}
+    second = {"kind": "order", "id": "B", "order": "left", "S": S, "S_fork": S + 2.0, "S_node": S + 2.4,
+              "S_prev": S + 1.4}
+    assert t._arm(first) and not t._arm(second) and t._armed is first
+
+
+def test_a_mid_line_u_turn_uncertain_holds_once_and_start_is_the_word_to_pivot():
+    w = one_call()
+    w.job.trip_call("M1", w.t)
+    w.start()
+    for sid in ("ATT", "MW-1"):
+        parked_at(w, sid)
+        go_on(w)
+    w.sigma = 0.3                                   # over sigma_junction_m (0.2)
+    assert w.until(lambda: w.job.state == lj.HOLD, 60.0)
+    assert w.job.hold_cause == "position" and "before UT-M1" in w.job.reason, w.job.reason
+    assert w.S < w.route.uturn["S"]
+    w.press_start()
+    assert w.until(lambda: w.job.tape.uturn_req is not None, 40.0), w.job.reason
+    assert w.job.hold_cause != "position"
+
+
+def test_high_goes_by_sigma_and_amcl_being_out_is_no_veto():
+    """2026-11-06: all 1427 running ticks of the first zone were held at the cruise by amcl_out."""
     w = one_call()
     w.job.trip_call("M1", w.t)
     w.start()
     parked_at(w, "ATT")
     go_on(w)
-    w.sigma = 0.3                                   # over sigma_junction_m (0.2)
-    assert w.until(lambda: w.job.state == lj.HOLD, 60.0)
-    assert w.job.hold_cause == "position" and "before J-B" in w.job.reason, w.job.reason
-    fork = next(n for n in w.route.nodes if n["id"] == "J-B")["S_fork"]
-    assert w.S < fork
+    a = w.route.zones[0][0]
+    w.amcl_out = "localization LOST"
+    assert w.until(lambda: w.S >= a + 1.0, 60.0), w.job.reason
+    assert w.job.tape.high, w.job.tape.high_why
+    w.sigma = 0.3                                   # over sigma_junction_m
+    w.drive(0.1)
+    assert not w.job.tape.high and "uncertain" in w.job.tape.high_why
 
 
 def test_a_release_not_recorded_holds_payload_at_the_u_turn_point():

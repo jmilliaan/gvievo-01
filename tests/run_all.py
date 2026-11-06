@@ -151,7 +151,10 @@ MODULES = [
 # + 1 WP-B3 (2026-10-28): test_canmon - every sdo_write( in amr_base canopen.py follows a guard check.
 # + 7 WP-B5 (2026-10-28): test_lss - read_mls snapshot, poll and stream --nmt take the owner lock
 #   (refused while owned, release after) (6); stream without --nmt stays lock-free (1).
-EXPECTED_CHECKS = 869
+# + 11 (2026-11-06): station plan P1, test_config - the station block.
+# + 7 (2026-11-06): station plan P4, test_config - the rear block. One more than the plan's 6: the
+#   driver reports the active monitoring case (V18), so rear.no_trolley_case exists and has a refusal.
+EXPECTED_CHECKS = 887
 
 
 # An exception on a helper thread only prints a traceback by default - the

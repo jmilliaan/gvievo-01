@@ -256,6 +256,45 @@ def test_config_profile():
             lambda d: (d.update(tracked=False), d["tape_loc"].update(enabled=True)), "trackless")
     refuses("a profile without the tape_loc block is refused",
             lambda d: d.pop("tape_loc"), "missing top-level")
+    # Station calling (station call plan P1, 2026-11-06). Off by default: the job, node and web are
+    # then the P0 baseline. settle_s and holdoff_s can only be lengthened from the contract's values.
+    refuses("station calling without the live position engine is refused",
+            lambda d: (d["station"].update(enabled=True), d["tape_loc"].update(live=False)), "tape_loc.live")
+    refuses("a profile without the station block is refused",
+            lambda d: d.pop("station"), "missing top-level")
+    refuses("an unknown key in the station block is refused",
+            lambda d: d["station"].update(keepalive_s=10), "unknown key")
+    refuses("a settle time below the contract's 5 s is refused",
+            lambda d: d["station"].update(settle_s=4.0), "station.settle_s")
+    refuses("a hold-off below the contract's 15 s is refused",
+            lambda d: d["station"].update(holdoff_s=14.0), "station.holdoff_s")
+    refuses("a broker host that is not a dotted IPv4 address is refused",
+            lambda d: d["station"].update(broker_host="station.local"), "station.broker_host")
+    refuses("a broker port outside 1..65535 is refused",
+            lambda d: d["station"].update(broker_port=70000), "station.broker_port")
+    refuses("a manufacturer that is not one plain MQTT topic level is refused",
+            lambda d: d["station"].update(manufacturer="gvi/x"), "station.manufacturer")
+    refuses("a serial number that does not match the profile name is refused",
+            lambda d: d["station"].update(serial_number="agv2"), "station.serial_number")
+    check("the repo profile ships with station calling off", config.STATION_ENABLED is False)
+    refuses("an order torque wait not above the warning is refused",
+            lambda d: d["station"].update(order_torque_wait_s=d["timing"]["auto_start_delay_s"]),
+            "station.order_torque_wait_s")
+    # The rear lidar (station call plan P4): values are placeholders until calibration at P8.
+    refuses("an unknown rear source is refused",
+            lambda d: d["rear"].update(source="lidar"), "rear.source")
+    refuses("a no-trolley case of 0, the driver's value for no case data, is refused",
+            lambda d: d["rear"].update(no_trolley_case=0), "rear.no_trolley_case")
+    refuses("absent_points not below present_points is refused",
+            lambda d: d["rear"].update(absent_points=d["rear"]["present_points"]), "rear.absent_points")
+    refuses("a trolley zone with its x limits the wrong way round is refused",
+            lambda d: d["rear"].update(roi_x_min_m=d["rear"]["roi_x_max_m"]), "rear.roi_x_min_m")
+    refuses("a trolley debounce time of zero is refused",
+            lambda d: d["rear"].update(present_s=0.0), "rear.present_s")
+    refuses("a rear field index outside the scanner's output paths is refused",
+            lambda d: d["rear"].update(field_output_index=8), "rear.field_output_index")
+    refuses("a rear stale time above the field freshness is refused",
+            lambda d: d["rear"].update(stale_s=d["freshness"]["field_s"] + 0.1), "rear.stale_s")
     refuses("a pre-move timeout not above the warning is refused",
             lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
             "premove_timeout_s")

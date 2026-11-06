@@ -194,6 +194,55 @@ def test_real_base_composes_hardware_once(monkeypatch):
     assert "web_node" not in c["exes"]
 
 
+def test_off_base_launches_todays_nodes(monkeypatch):
+    """Station plan: the switch off and no rear lidar is the list before the plan, real and sim."""
+    from agv_core import config
+    monkeypatch.setattr(config, "STATION_ENABLED", False)
+    monkeypatch.setattr(config, "REAR_SOURCE", "none")
+    assert set(compose("base.launch.py", real="false")["exes"]) == SIM_EXES | BASE_EXES
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    c = compose("base.launch.py", real="true")
+    assert set(c["exes"]) == HW_EXES | BASE_EXES | {"fake_panel_node"}
+    assert "rear_scanner.launch.py" not in c["includes"]
+
+
+def test_on_sim_adds_the_fake_trolley(monkeypatch):
+    from agv_core import config
+    monkeypatch.setattr(config, "STATION_ENABLED", True)
+    c = compose("base.launch.py", real="false")
+    assert set(c["exes"]) == SIM_EXES | BASE_EXES | {"fake_trolley_node", "station_bridge_node"}
+
+
+def test_the_fake_trolley_is_never_launched_on_a_vehicle(monkeypatch):
+    from agv_core import config
+    monkeypatch.setattr(config, "STATION_ENABLED", True)
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    c = compose("base.launch.py", real="true")
+    assert "fake_trolley_node" not in c["exes"]
+    assert set(c["exes"]) == HW_EXES | BASE_EXES | {"fake_panel_node", "station_bridge_node"}
+
+
+def test_the_rear_source_follows_its_own_setting_not_the_switch(monkeypatch):
+    from agv_core import config
+    monkeypatch.setattr(config, "STATION_ENABLED", False)
+    monkeypatch.setattr(config, "REAR_SOURCE", "scanner")
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    c = compose("base.launch.py", real="true")
+    assert "trolley_node" in c["exes"] and "rear_scanner.launch.py" in c["includes"]
+    assert "station_bridge_node" not in c["exes"]
+    assert c["exes"].count("robot_state_publisher") == 1
+
+
+def test_the_rear_scanner_stays_off_the_front_topics():
+    ld = get_launch_description_from_any_launch_file(os.path.join(LAUNCH, "rear_scanner.launch.py"))
+    nodes = [e for e in ld.entities if isinstance(e, Node)]
+    assert len(nodes) == 1
+    with open(os.path.join(os.path.dirname(LAUNCH.rstrip("/")), "config", "nanoscan3_rear.yaml")) as fh:
+        text = fh.read()
+    assert "sick_safetyscanners2_rear_node" in text and "rear_laser_frame" in text
+    assert "host_udp_port: 6060" not in text
+
+
 def test_wrappers_compose_base_web_and_exactly_one_layer(tmp_path):
     from amr_mission.fixtures import write_world_as_bundle  # noqa: PLC0415
 

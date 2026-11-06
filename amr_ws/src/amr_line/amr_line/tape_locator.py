@@ -12,15 +12,16 @@ lateral output is only a health check (distance from the taught path).
     resync    an MLS fork episode at a known node, a completed U-turn
     health    HEALTHY  a correction accepted within healthy_window_m, sigma under the
                        station limit
-              DEGRADED running on odometry; decisions allowed while sigma is under theirs
-              LOST     readiness LOST/UNLOCALIZED/stale, lost_rejects rejected in a row,
-                       sigma over sigma_lost_m, or a wrong branch (latched until restart).
-                       Re-acquired only after readiness has left READY and come back (a
-                       revalidation): AMCL that disagreed with the wheels is not trusted
-                       just because it is still READY
+              DEGRADED running on wheel travel and forks; sigma says how far to trust S
+              LOST     a wrong branch only (latched until restart)
 
-Not in the safety path (plan D6): it says where the vehicle is along the tape. Every
-consumer turns doubt into a hold, never into motion.
+AMCL corrects S; it has no veto (2026-11-06: a trip stopped 0.4 m short of ATT, on the tape, with
+AMCL 12 cm off the taught path among moved trolleys). lost_rejects rejected in a row, readiness
+leaving READY or sigma over sigma_lost_m set amcl_out: S carries on from the wheels and the tape,
+sigma growing, and poses count again by themselves once two in a row agree and pass the gates.
+
+Not in the safety path (plan D6): it says where the vehicle is along the tape. It starts and
+speeds up nothing.
 """
 
 import collections
@@ -30,7 +31,7 @@ import math
 from amr_line import trip_route
 
 HEALTHY, DEGRADED, LOST = "HEALTHY", "DEGRADED", "LOST"
-# A LOST locator re-acquires (readiness READY again) on two poses that agree this well.
+# With amcl_out, poses count again once two in a row agree this well.
 REACQUIRE_AGREE_M = 0.05
 # The pose handed to AMCL from a tape position (HOME, or the survey start): 5 cm, ~1.7 deg.
 INITIAL_POSE_SIGMA_XY_M = 0.05
@@ -43,9 +44,6 @@ def initial_pose_cov():
     cov[0] = cov[7] = INITIAL_POSE_SIGMA_XY_M ** 2
     cov[35] = INITIAL_POSE_SIGMA_YAW_RAD ** 2
     return cov
-
-
-REACQUIRE_MIN_WINDOW_M = 1.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,6 +65,10 @@ class Params:
     wrong_branch_margin_m: float = 0.05
     wrong_branch_run_m: float = 0.5
     wrong_branch_window_m: float = 3.0
+    wrong_lane_m: float = 0.5         # AMCL this far off, after an ordered fork: another tape
+    wrong_lane_run_m: float = 1.5     # for this much travel, on one side
+    wrong_lane_window_m: float = 12.0 # looked for this far past the fork
+    wrong_lane_max_m: float = 8.0     # farther than any tape can be by then: AMCL is just wrong
 
     @classmethod
     def from_profile(cls, v):
@@ -133,10 +135,14 @@ class TapeLocator:
                     alts = [leg for leg in graph.legs_from(n["id"]) if leg.id != n["leg_out"]]
                     if alts:
                         self._alts[n["S"]] = (n, alts)
+        self._ordered = [n for n in route.nodes
+                         if n["kind"] == "junction" and n["order"] in ("left", "right", "straight")]
+        self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
         self.started = False
         self.S = self.sigma = 0.0
         self.travel = None
-        self.lost = ""                 # why LOST, "" when not
+        self.lost = ""                 # why LOST (a wrong branch), "" when not
+        self.amcl_out = ""             # why AMCL is not correcting S just now, "" when it is
         self.wrong_branch = ""         # latched: the junction and the leg it fits better
         self.rejects = 0               # in a row
         self.rejected = self.accepted = 0
@@ -144,11 +150,10 @@ class TapeLocator:
         self.last_innov = None
         self.last_lateral = None
         self._accept_travel = None
-        self._reacq = None             # last (S_meas at now) seen while LOST
+        self._reacq = None             # last innovation seen while AMCL is not trusted
         self._wb_run = 0.0
         self._wb_travel = None
         self._ready = False
-        self._revalidated = False      # readiness left READY and came back since LOST
 
     # -- lifecycle -----------------------------------------------------------------
     def start(self, S, sigma, t, travel):
@@ -157,12 +162,12 @@ class TapeLocator:
         self.travel = float(travel)
         self.odom.clear()
         self.odom.add(t, travel)
-        self.lost = self.wrong_branch = ""
-        self._revalidated = False
+        self.lost = self.wrong_branch = self.amcl_out = ""
         self.rejects = 0
         self._accept_travel = self.travel
         self._reacq = None
         self._wb_run, self._wb_travel = 0.0, None
+        self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
 
     # -- inputs ----------------------------------------------------------------------
     def predict(self, t, travel):
@@ -177,17 +182,14 @@ class TapeLocator:
             return
         self.S += d
         self.sigma += self.p.k_odo * abs(d)
-        if self.sigma > self.p.sigma_lost_m and not self.lost:
-            self.lost = f"sigma {self.sigma:.2f} m > {self.p.sigma_lost_m:g} m without a correction"
+        if self.sigma > self.p.sigma_lost_m and not self.amcl_out:
+            self.amcl_out = f"sigma {self.sigma:.2f} m > {self.p.sigma_lost_m:g} m without a correction"
 
     def readiness(self, ready, why=""):
-        """Readiness READY (fresh) or not. LOST/UNLOCALIZED/stale makes the locator LOST;
-        it re-acquires on its own once READY again (correct())."""
-        if self.lost and ready and not self._ready:
-            self._revalidated = True
+        """Readiness READY (fresh) or not. Leaving READY takes AMCL's word away, not the position."""
+        if self.started and self._ready and not ready and why and not self.amcl_out:
+            self.amcl_out = f"localization {why}"
         self._ready = bool(ready)
-        if self.started and not ready and why and not self.lost:
-            self.lost = f"localization {why}"
 
     def correct(self, now, stamp, x, y, var_along=0.0):
         """One AMCL pose. Returns "" when accepted, else why it was rejected."""
@@ -195,8 +197,6 @@ class TapeLocator:
             return "not started"
         if self.wrong_branch:
             return self._reject("wrong branch latched", count=False)
-        if not self._ready:
-            return self._reject("localization not READY", count=False)
         if now - stamp > self.p.pose_max_age_s:
             return self._reject(f"pose {now - stamp:.2f} s old", count=False)
         tp = self.odom.at(stamp)
@@ -208,14 +208,17 @@ class TapeLocator:
         w = max(4.0 * self.sigma, 0.5)
         hit = self.route.project(x, y, S_p - w, S_p + w, hint=S_p)
         if hit is not None:
-            # Before anything else: the rejections a wrong branch causes must not hide it.
+            # Any pose counts, READY or not: small errors have no say, this is not a small error.
+            self._wrong_lane_check(S_p, hit[1], tp)
+            if self.wrong_branch:
+                return self._reject(self.wrong_branch, count=False)
+        trusted = self._ready and not self.amcl_out
+        if hit is not None and self._ready:
+            # Before anything else: the rejections a wrong branch causes must not hide it, and they
+            # are what sets amcl_out. Localization not READY has no say on the branch.
             self._wrong_branch_check(S_p, x, y, abs(hit[1]), tp)
             if self.wrong_branch:
                 return self._reject(self.wrong_branch, count=False)
-        if self.lost:
-            if not self._revalidated:
-                return self._reject(f"LOST ({self.lost}): needs localization READY again", count=False)
-            return self._reacquire(S_p, back, x, y, r)
         if hit is None:
             return self._reject("pose projects off the route window")
         S_m, d = hit
@@ -228,11 +231,18 @@ class TapeLocator:
         gate = max(3.0 * math.hypot(self.sigma, r), self.p.innov_min_m)
         if abs(innov) > gate:
             return self._reject(f"innovation {innov:+.2f} m > {gate:.2f} m")
+        if not trusted:
+            # The offset from the wheels, not the position: a moving AGV's positions differ by what
+            # it drove between two poses (2026-11-06: 177 of 320 poses refused like that at 0.4 m/s).
+            prev, self._reacq = self._reacq, innov
+            if prev is None or abs(prev - innov) > REACQUIRE_AGREE_M:
+                return self._reject("AMCL out: waiting for a second pose that agrees", count=False)
         k = self.sigma ** 2 / (self.sigma ** 2 + r ** 2)
         self.S += k * innov
         self.sigma = math.sqrt((1.0 - k) * self.sigma ** 2)
         self.last_innov = innov
         self.rejects = 0
+        self.amcl_out = ""
         self.accepted += 1
         self._accept_travel = self.travel
         return ""
@@ -242,26 +252,29 @@ class TapeLocator:
         self.rejected += 1
         if count:
             self.rejects += 1
-            if self.rejects >= self.p.lost_rejects and not self.lost:
-                self.lost = f"{self.rejects} corrections rejected in a row ({why})"
+            self._reacq = None
+            if self.rejects >= self.p.lost_rejects and not self.amcl_out:
+                self.amcl_out = f"{self.rejects} corrections rejected in a row ({why})"
         return why
 
-    def _reacquire(self, S_p, back, x, y, r):
-        """LOST, READY again: two consecutive poses that agree re-seed S (not a wrong branch)."""
-        w = max(3.0 * self.sigma, REACQUIRE_MIN_WINDOW_M)
-        hit = self.route.project(x, y, S_p - w, S_p + w, hint=S_p)
-        if hit is None or abs(hit[1]) > self.p.max_lateral_m:
-            self._reacq = None
-            return self._reject("LOST: pose not on the route near the last estimate", count=False)
-        S_now = hit[0] + back
-        prev, self._reacq = self._reacq, S_now
-        if prev is None or abs(prev - S_now) > REACQUIRE_AGREE_M:
-            return self._reject("LOST: waiting for a second consistent pose", count=False)
-        self.S, self.sigma = S_now, r
-        self.lost, self.rejects, self._reacq, self._revalidated = "", 0, None, False
-        self._accept_travel = self.travel
-        self.accepted += 1
-        return ""
+    def _wrong_lane_check(self, S_p, d, travel_p):
+        """Far off the taught path just after an ordered fork, and staying there: the AGV is on
+        another tape, taught or not (2026-11-06: J-SPLIT's right bay is not in the graph, so
+        _wrong_branch_check had nothing to compare with, and a trip ended 1.26 m off, "served")."""
+        p = self.p
+        node = next((n for n in self._ordered if n["S"] <= S_p <= n["S"] + p.wrong_lane_window_m), None)
+        side = 1 if d > 0 else -1
+        if node is None or not p.wrong_lane_m <= abs(d) <= p.wrong_lane_max_m \
+                or (self._wl_side and side != self._wl_side):
+            self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
+            return
+        if self._wl_travel is not None:
+            self._wl_run += max(0.0, travel_p - self._wl_travel)
+        self._wl_travel, self._wl_side = travel_p, side
+        if self._wl_run >= p.wrong_lane_run_m:
+            self.wrong_branch = (f"wrong tape after {node['id']}: ordered {node['order']}, AMCL is "
+                                 f"{abs(d):.2f} m to the {'left' if d > 0 else 'right'} of that tape")
+            self.lost = self.wrong_branch
 
     def _wrong_branch_check(self, S_p, x, y, d_route, travel_p):
         p = self.p
@@ -338,7 +351,8 @@ class TapeLocator:
         if self.lost:
             return LOST
         since = self.travel - self._accept_travel
-        if abs(since) <= self.p.healthy_window_m and self.sigma <= self.p.sigma_station_m:
+        if abs(since) <= self.p.healthy_window_m and self.sigma <= self.p.sigma_station_m \
+                and not self.amcl_out:
             return HEALTHY
         return DEGRADED
 
@@ -354,7 +368,8 @@ class TapeLocator:
     def snapshot(self):
         leg, s = self.where() if self.started else ("", 0.0)
         return {"health": self.health, "S": self.S, "sigma": self.sigma, "leg": leg, "s": s,
-                "lost": self.lost, "rejects": self.rejects, "accepted": self.accepted,
+                "lost": self.lost, "amcl_out": self.amcl_out, "rejects": self.rejects,
+                "accepted": self.accepted,
                 "rejected": self.rejected, "last_reject": self.last_reject,
                 "lateral": self.last_lateral, "innov": self.last_innov}
 
@@ -393,12 +408,14 @@ class Shadow:
         while self._next < len(self.events) and loc.S >= self.events[self._next][0]:
             S_t, kind, ident, detail = self.events[self._next]
             self._next += 1
-            stopping = kind == "stop" or (kind == "point" and detail.startswith("U-turn"))
-            limit = self.p.sigma_station_m if stopping else self.p.sigma_junction_m
-            ok = loc.ok_for(limit)
-            verdict = "ok" if ok else f"would HOLD ({loc.health}, sigma {loc.sigma:.3f} > {limit:g})" \
+            pivot = kind == "point" and detail.startswith("U-turn")
+            # As site_run: only a mid-line pivot and HIGH ask for a sigma; stops, orders and the
+            # tape end go on at any sigma.
+            ok = (loc.ok_for(self.p.sigma_junction_m) if kind == "point"
+                  else loc.started and not loc.lost)
+            verdict = "ok" if ok else f"would HOLD ({loc.health}, sigma {loc.sigma:.3f})" \
                 if not loc.lost else f"would HOLD (LOST: {loc.lost})"
-            if kind == "point" and not stopping:
+            if kind == "point" and not pivot:
                 verdict = "ok" if ok else "NORMAL (not sure enough for HIGH)"
             what = {"stop": f"stop {ident}", "order": f"order {detail} at {ident}",
                     "uturn": f"U-turn approach {ident}", "point": f"{detail} {ident}"}[kind]

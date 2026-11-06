@@ -547,7 +547,7 @@ def load(name, vehicle=None, directory=None):
 #   schema            "site-4" (site-3 + cruise_mps, uturn_points; 2026-10-24)
 #   mission_name      the file name
 #   home, attach      station ids: the bay where the AGV parks empty, the attach stop
-#   trip_calls        calls of one group that form a trip (site D3/D4/D18: 1 or 2)
+#   trip_calls        calls of one group that form a trip (site D3/D18: 1 or 2; D4: 1 since 2026-11-05)
 #   stop_distance_m   braking distance into every station
 #   cruise_mps        a trip's speed outside the high-speed zones (at most NORMAL)
 #   junctions         {id: {"shape": "Y"|"T"|"X", "laid": bool}}. An unlaid junction is
