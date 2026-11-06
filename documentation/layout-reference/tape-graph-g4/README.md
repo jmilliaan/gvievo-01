@@ -22,6 +22,23 @@ g5 is g4 with only HOME-N2 moved. Tape spacing between the bays is 1.32 m on the
 about 1.2 m. The drawn bay stays where AMCL reads the AGV on that tape: a live scan at N2 fits the map best
 within 5 cm of it, and clearly worse 20 cm further out.
 
+## Dynamic areas: map rev2, graph g6
+
+g6 is g5 bound to map rev2. Rev2 has the same occupancy as rev1 plus five dynamic areas where the trolleys
+stand, shown in `dynamic-areas-rev2.png`. The localization monitor leaves those areas out of its scan
+comparison; AMCL still uses the whole map. A live scan near HOME-N2 scored 55 % match and 15.8 % through
+obstacles on rev1, and 94 % and 3.5 % with the mask.
+
+| Area | x, m | y, m |
+|---|---|---|
+| A | -4.80 to 4.47 | 5.60 to 9.42 |
+| B | -1.09 to 8.56 | 1.08 to 5.80 |
+| C | 4.70 to 9.81 | -4.61 to 1.32 |
+| D | -1.72 to 4.01 | -4.61 to -2.56 |
+| E | 3.45 to 9.19 | -7.63 to -3.43 |
+
+To undo: set the active pointer back to map rev1, g5, and restart `amr.service`.
+
 A recorded lap from HOME-N2 should replace the drawn leg. The hand-derived drawings (`../c-mru-route`,
 `../homepos-area-projection`) show the bay about 3.3 m long; the map says about 8 m, so trust this folder
 for distances. Not resolved: which is right about the shape between J-STEM and J-SPLIT.

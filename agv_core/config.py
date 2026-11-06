@@ -640,6 +640,9 @@ _SCHEMA = {
         "settle_s":            ("STATION_SETTLE_S", float),
         "holdoff_s":           ("STATION_HOLDOFF_S", float),
         "order_torque_wait_s": ("STATION_ORDER_TORQUE_WAIT_S", float),
+        # Runs with no trolley before the rear scanner exists (owner's decision, 2026-11-06). Optional,
+        # false when absent: FollowJob reads it, see job.py.
+        "no_trolley_run":      ("STATION_NO_TROLLEY_RUN", bool),
     },
     "rear": {
         "source":             ("REAR_SOURCE", str),
@@ -706,6 +709,8 @@ _SCHEMA = {
     },
 }
 
+# The one exception to "missing keys are fatal": a temporary run mode that is off unless a profile says so.
+_OPTIONAL_KEYS = {"station": {"no_trolley_run": False}}
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
 _NULLABLE_TOP_LEVEL = {"tracked"}
 
@@ -903,6 +908,7 @@ def _parse(doc):
         block = doc[section]
         if not isinstance(block, dict):
             raise ConfigError(f"{section}: expected an object")
+        block = {**_OPTIONAL_KEYS.get(section, {}), **block}
         allowed = set(fields)
         if section == "drivers":
             allowed.add("ramp")
@@ -1352,6 +1358,8 @@ def _check_station(g, check):
     """The station block (manuals/station-call-plan.md P1)."""
     check(not g("STATION_ENABLED") or g("TAPE_LOC_LIVE"),
           "station.enabled needs tape_loc.live: an order is a trip of the position engine")
+    check(not g("STATION_NO_TROLLEY_RUN") or g("STATION_ENABLED"),
+          "station.no_trolley_run needs station.enabled")
     host = g("STATION_BROKER_HOST")
     check(bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host)) and all(int(p) <= 255 for p in host.split(".")),
           f"station.broker_host must be a dotted IPv4 address, got {host!r}")

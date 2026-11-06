@@ -25,6 +25,8 @@ and the follower is told why - line following itself is never blocked by it.
 """
 
 
+import os
+
 from agv_core import paths
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -53,7 +55,7 @@ def _localization(generation: int) -> tuple[list, dict]:
         params["loc_status"] = "off: no map selected (Teach page: map <id> <revision>, then restart LINE)"
         return [], params
     try:
-        map_yaml, revision, _manifest = tape_loc.verified_map(maps_dir, sel["map_id"], sel["map_revision"])
+        map_yaml, revision, manifest = tape_loc.verified_map(maps_dir, sel["map_id"], sel["map_revision"])
     except Exception as e:  # noqa: BLE001 - any bundle problem is a reason, never a dead layer
         params["loc_status"] = f"off: map {sel['map_id']} rev{sel['map_revision']} refused: {e}"
         print(f"[line_layer] tape localization {params['loc_status']}")
@@ -62,10 +64,16 @@ def _localization(generation: int) -> tuple[list, dict]:
     params.update(loc_map_id=sel["map_id"], loc_map_revision=revision,
                   loc_graph_revision=-1 if g is None else int(g))
     what = f"graph g{g}" if g is not None else "teaching, no graph"
+    # The revision's dynamic areas are left out of the monitor's scan comparison. AMCL keeps the
+    # plain map, as the navigation layer does by default.
+    dynamic_yaml = ""
+    if "dynamic.yaml" in manifest.files:
+        dynamic_yaml = os.path.join(os.path.dirname(map_yaml), "dynamic.yaml")
     print(f"[line_layer] tape localization on {sel['map_id']} rev{revision} ({what}), "
-          f"AMCL {vehicle.TAPE_LOC_AMCL_PARAMS}")
+          f"AMCL {vehicle.TAPE_LOC_AMCL_PARAMS}" + (", dynamic areas" if dynamic_yaml else ""))
     return tape_loc.group(map_yaml, params_set=vehicle.TAPE_LOC_AMCL_PARAMS, generation=generation,
-                          monitor=True, jump_dist_m=vehicle.TAPE_LOC_MONITOR_JUMP_M), params
+                          monitor=True, dynamic_yaml=dynamic_yaml,
+                          jump_dist_m=vehicle.TAPE_LOC_MONITOR_JUMP_M), params
 
 
 def _compose(context):

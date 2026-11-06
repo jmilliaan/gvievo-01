@@ -332,6 +332,28 @@ def test_dynamic_mask_reaches_the_monitor_and_amcl_is_plain_by_default(tmp_path,
     assert not (tmp_path / "state" / "loc_map_gen0.yaml").exists()
 
 
+def test_the_line_layer_gives_the_monitor_its_maps_dynamic_areas(tmp_path, monkeypatch):
+    from agv_core import paths  # noqa: PLC0415
+
+    from amr_line import tape_graph_store as store  # noqa: PLC0415
+
+    path, rev = _bundle_with_dynamic(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv(paths.MAPS_ENV, str(tmp_path))
+    monkeypatch.setenv(paths.STATE_ENV, str(state))
+
+    def monitor_mask(revision):
+        store.write_active(str(state), "sim_factory", revision)
+        c = compose("line_layer.launch.py", generation=3, real="true")
+        return [_param_dict(p) for p in c["params"]["localization_monitor_node"] if isinstance(p, dict)][0][
+            "dynamic_yaml"
+        ]
+
+    assert monitor_mask(rev) == os.path.join(path, "dynamic.yaml")
+    assert monitor_mask(1) == ""  # the parent has no mask
+
+
 def test_blank_dynamic_serves_amcl_a_derived_map_on_map_loc(tmp_path, monkeypatch):
     import numpy as np  # noqa: PLC0415
 

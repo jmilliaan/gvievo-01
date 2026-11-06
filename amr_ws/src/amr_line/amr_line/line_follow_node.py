@@ -178,6 +178,7 @@ class LineFollowNode(LeanNode):
             premove_s=float(vehicle_config.AUTO_START_DELAY_S),
             premove_timeout_s=float(vehicle_config.PREMOVE_TIMEOUT_S),
             calling=bool(vehicle_config.STATION_ENABLED),
+            no_trolley_run=bool(vehicle_config.STATION_NO_TROLLEY_RUN),
             settle_s=float(vehicle_config.STATION_SETTLE_S),
             holdoff_s=float(vehicle_config.STATION_HOLDOFF_S),
             order_torque_wait_s=float(vehicle_config.STATION_ORDER_TORQUE_WAIT_S),
@@ -422,6 +423,11 @@ class LineFollowNode(LeanNode):
         self.create_service(LineTeach, "/amr/line/order", self._srv_order)
         self.create_timer(1.0, lambda: self._publish_order(force=True))
         self.get_logger().warning("station calling is ON: an accepted order leaves HOME with no Start")
+        if vehicle_config.STATION_NO_TROLLEY_RUN:
+            self.get_logger().warning(
+                "station.no_trolley_run is ON: unknown trolley and rear field states do not block a "
+                "departure or a pivot, and no stop needs a trolley. A station call leaves HOME with "
+                "no rear check. No trolleys on this vehicle.")
 
     def _on_trolley(self, m) -> None:
         self._trolley, self._trolley_t = m, time.monotonic()

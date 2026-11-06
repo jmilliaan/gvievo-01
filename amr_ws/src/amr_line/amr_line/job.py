@@ -85,6 +85,11 @@ A request lives for one tick and a refused one stores nothing, as a refused pres
 resume a hold, leave any other stop or pause anything. This adds a reason to move and no protection:
 protection stays with the scanner OSSD, FX3 and STO chain. With `calling` off nothing here is reached,
 and the rear lidar is never read.
+
+NO-TROLLEY RUN (station.no_trolley_run, owner's decision 2026-11-06, no rear scanner fitted): an unknown
+rear state no longer blocks an order, a hand trip or a pivot, and the stops need no trolley for Start. A
+sensor that does report a trolley at HOME or at a pivot, or a violated rear field, still refuses. Every
+other check is unchanged.
 """
 import dataclasses
 
@@ -200,7 +205,7 @@ class FollowJob:
 
     def __init__(self, follower, *, prereq_grace_s=0.5, auto_resume_clear_s=2.0,
                  auto_resume_estop=False, premove_s=0.0, premove_timeout_s=8.0,
-                 calling=False, settle_s=5.0, holdoff_s=15.0, order_torque_wait_s=4.0):
+                 calling=False, no_trolley_run=False, settle_s=5.0, holdoff_s=15.0, order_torque_wait_s=4.0):
         self.f = follower
         self.prereq_grace_s = float(prereq_grace_s)
         self.auto_resume_clear_s = float(auto_resume_clear_s)
@@ -239,6 +244,7 @@ class FollowJob:
         self.trip_note = ""         # how the last trip ended
         # Station calling (station plan 4.2). All of it stays empty with calling False.
         self.calling = bool(calling)
+        self.no_trolley_run = self.calling and bool(no_trolley_run)
         self.holdoff_s = float(holdoff_s)
         self.order_torque_wait_s = max(self.premove_s, float(order_torque_wait_s))
         self.order = None           # order.OrderRun: the current or last accepted order
@@ -1205,7 +1211,7 @@ class FollowJob:
                     self.diag = dict(diag, v_base=0.0)
                     return 0.0, 0.0
             elif diag["v_base"] == 0 and i.wheels_still:
-                if self.calling and i.trolley != "absent":
+                if self.calling and self._pivot_trolley(i) != "absent":
                     # The last look before the pivot: lead_m ago is too old at a tape end.
                     self._hold("trolley", f"a trolley is {i.trolley} before the U-turn; "
                                           f"move it clear, then press Start")
@@ -1370,7 +1376,7 @@ class FollowJob:
         """One engine tick: mission tags, branch order, speed zone, stops, U-turn."""
         t = self.tape
         if self.calling and hasattr(t, "trolley"):
-            t.trolley = i.trolley       # SiteRun's pivot guard
+            t.trolley = self._pivot_trolley(i)  # SiteRun's pivot guard
         driving = self.kink is None     # a kink pivot starts no stop and no U-turn
         t.locate(i.loc, (self.diag or {}).get("v_base", 0.0))
         tags = t.scan(i.now, i.rfid, driving, self.f)
@@ -1519,6 +1525,10 @@ class FollowJob:
         req, self._order_req = self._order_req, None
         return req if self.calling else None
 
+    def _pivot_trolley(self, i: Inputs):
+        """The trolley state a pivot acts on. A no-trolley run reads unknown as absent; present stands."""
+        return "absent" if self.no_trolley_run and i.trolley == "unknown" else i.trolley
+
     def _order_active(self):
         return self.order is not None and self.order.active
 
@@ -1554,11 +1564,19 @@ class FollowJob:
 
     def _leave_code(self, i: Inputs):
         """Why the rear lidar says it may not leave HOME: a NOT_READY reason, or ""."""
+        rows = self._rear_rows(i)
+        return rows[0] if rows else ""
+
+    def _rear_rows(self, i: Inputs):
+        """The rear lidar's NOT_READY reasons, trolley first. A no-trolley run drops only the unknowns."""
+        out = []
         if i.trolley != "absent":
-            return order.TROLLEY_PRESENT if i.trolley == "present" else order.TROLLEY_UNKNOWN
+            out.append(order.TROLLEY_PRESENT if i.trolley == "present" else order.TROLLEY_UNKNOWN)
         if i.rear_clear is not True:
-            return order.REAR_FIELD_NOT_CLEAR if i.rear_clear is False else order.REAR_FIELD_UNKNOWN
-        return ""
+            out.append(order.REAR_FIELD_NOT_CLEAR if i.rear_clear is False else order.REAR_FIELD_UNKNOWN)
+        if self.no_trolley_run:
+            out = [r for r in out if r not in (order.TROLLEY_UNKNOWN, order.REAR_FIELD_UNKNOWN)]
+        return out
 
     def _leave_check(self, i: Inputs):
         return {order.TROLLEY_PRESENT: "a trolley is detected: unhitch it and move it clear",
@@ -1585,10 +1603,7 @@ class FollowJob:
             out.append(order.FAULT)
         if self._torque_latched:
             out.append(order.TORQUE_TIMEOUT)
-        if i.trolley != "absent":
-            out.append(order.TROLLEY_PRESENT if i.trolley == "present" else order.TROLLEY_UNKNOWN)
-        if i.rear_clear is not True:
-            out.append(order.REAR_FIELD_NOT_CLEAR if i.rear_clear is False else order.REAR_FIELD_UNKNOWN)
+        out += self._rear_rows(i)
         if self._prerequisite(dataclasses.replace(i, panel_valid=True, panel_auto=True),
                               torque=False) or self._rfid_check(i):
             out.append(order.PREREQUISITE)
@@ -1734,6 +1749,8 @@ class FollowJob:
         """What the rear lidar says about a START at this stop: "" or the refused reason."""
         from amr_line import trip as tripmod  # noqa: PLC0415
 
+        if self.no_trolley_run:
+            return ""
         st = self.tape.stop or {}
         role = st.get("plan_role")
         if role == "attach":

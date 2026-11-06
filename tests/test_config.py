@@ -270,6 +270,10 @@ def test_config_profile():
     # then the P0 baseline. settle_s and holdoff_s can only be lengthened from the contract's values.
     refuses("station calling without the live position engine is refused",
             lambda d: (d["station"].update(enabled=True), d["tape_loc"].update(live=False)), "tape_loc.live")
+    refuses("a no-trolley run without station calling is refused",
+            lambda d: d["station"].update(enabled=False, no_trolley_run=True), "station.no_trolley_run")
+    refuses("a no-trolley run that is not a boolean is refused",
+            lambda d: d["station"].update(no_trolley_run="yes"), "no_trolley_run")
     refuses("a profile without the station block is refused",
             lambda d: d.pop("station"), "missing top-level")
     refuses("an unknown key in the station block is refused",
@@ -286,7 +290,21 @@ def test_config_profile():
             lambda d: d["station"].update(manufacturer="gvi/x"), "station.manufacturer")
     refuses("a serial number that does not match the profile name is refused",
             lambda d: d["station"].update(serial_number="agv2"), "station.serial_number")
-    check("the repo profile ships with station calling off", config.STATION_ENABLED is False)
+    check("the live profile runs station calling with no trolley (owner, 2026-11-06)",
+          config.STATION_ENABLED is True and config.STATION_NO_TROLLEY_RUN is True)
+    no_key = copy.deepcopy(base)
+    no_key["station"].pop("no_trolley_run")
+    tmp = tempfile.mkdtemp()
+    path = os.path.join(tmp, "agv-01.json")
+    with open(path, "w") as fh:
+        json.dump(no_key, fh)
+    try:
+        config.load(path)
+        check("station.no_trolley_run is false when the profile leaves it out",
+              config.STATION_NO_TROLLEY_RUN is False)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        config.load()
     refuses("an order torque wait not above the warning is refused",
             lambda d: d["station"].update(order_torque_wait_s=d["timing"]["auto_start_delay_s"]),
             "station.order_torque_wait_s")

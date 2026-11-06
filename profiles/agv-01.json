@@ -218,7 +218,8 @@
     "live": true
   },
   "station": {
-    "enabled": false,
+    "enabled": true,
+    "no_trolley_run": true,
     "broker_host": "192.168.2.5",
     "broker_port": 1883,
     "manufacturer": "gvi",
