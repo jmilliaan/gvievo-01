@@ -43,7 +43,7 @@ To undo: set the active pointer back to map rev1, g5, and restart `amr.service`.
 
 All tape is laid (owner, 2026-11-07), but g6 only holds what C-MRU drives. Row 2, the left vertical, the middle line,
 J-S, X2, J-LV, row 2's curve into J-ML and R2-1 to R2-8 have no positions until a BTU lap is recorded and merged in, as a new revision. Do
-not use Build for that: it would drop the drawn right bay and HOME-N2. The route is drawn in `../c-btu-route`.
+not use Build for that: it would drop the drawn right bay and HOME-N2. Use `amr_line.tape_merge` (`manuals/tape-localization-runbook.md` 3.2B). The route is drawn in `../c-btu-route`.
 
 A recorded lap from HOME-N2 should replace the drawn leg. The hand-derived drawings (`../c-mru-route`,
 `../homepos-area-projection`) show the bay about 3.3 m long; the map says about 8 m, so trust this folder

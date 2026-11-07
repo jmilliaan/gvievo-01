@@ -235,7 +235,7 @@ def test_site_mission():
     check("facing BTU machines share one stop", m["GROUPS"]["BTU"]["machines"]["BTU24"]["swap"]
           == m["GROUPS"]["BTU"]["machines"]["BTU16"]["swap"] == "R2-1")
     legs = [leg["id"] for leg in m["CIRCUITS"]["C-MRU"]["legs"]]
-    check("C-MRU runs through the unlaid J-R2E: one leg each way between J-ML and the tape end",
+    check("C-MRU has one leg each way between J-ML and the tape end: row 2 joins at J-ML",
           "J-ML:merge>U-MRU" in legs and "U-MRU:pivot>J-ML" in legs, str(legs))
     check("J-ML southbound is an explicit LEFT", "J-ML:left>J-STEM" in legs)
     check("a site mission is not a tag-table job, nor listed as one",

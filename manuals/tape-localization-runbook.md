@@ -303,8 +303,47 @@ For each station: HOME-N2, ATT, MW-1…MW-4, ME-4…ME-1 (and R2-1…R2-8 once r
    - the AGV is more than 10 cm from the tape
    - it faces the wrong way for the station's leg
    - localization is not READY, or there were fewer than 5 poses in the 3 s
-5. **Build** again: it says "every circuit compiles", or lists what is missing. Today C-BTU stays
-   incomplete: row 2 is not laid.
+5. **Build** again: it says "every circuit compiles", or lists what is missing. Since g5 do not press
+   Build on this site: use section 3.2B.
+
+### 3.2B Adding a circuit without Build (2026-11-07)
+
+Build makes a whole graph from the saved passes, so on g6 it would lose the drawn right bay and HOME-N2.
+`amr_line.tape_merge` adds one lap to the active graph as a new revision: only the legs the graph lacks, and the
+stops from the lap's marks. Every other leg and station stays as it is. One lap is enough. Drawing:
+`documentation/layout-reference/c-btu-route.html`.
+
+**C-BTU lap**, no trolleys, someone walking beside the AGV:
+
+1. Restart `amr.service` if the mission changed since the last start.
+2. Park at HOME-N2: **At home**, wait for READY.
+3. Run page → mission `c-btu-guided`. E: Circuit `C-BTU` → **Record pass first**; check the Teach status shows it.
+4. O: selector **AUTO** → **Start**.
+5. Orders on the Teach page (an order is one shot, section 3.2A):
+
+   | Where | Order |
+   |---|---|
+   | J-N, J-S, X2 | Straight |
+   | after X2, on the middle line | **Right** (J-LV, north to row 2) |
+   | row 2 | **Mark here** (M key) at each stop, R2-1 first, 8 marks |
+   | J-ML (row 2 joins the trunk), J-STEM, J-SMERGE | Straight |
+   | after J-SMERGE | **Right** (HOME-N2) |
+
+6. Back at HOME-N2: **Reset**, then E **Stop pass**. The pass is saved even when its forks do not match.
+
+**Add it to the graph**, from a sourced shell:
+
+```
+python3 -m amr_line.tape_merge            # report only, nothing written
+python3 -m amr_line.tape_merge --publish  # writes g<N+1>, not activated
+```
+
+The report lists each new leg, the stop positions and which mark became which stop. It refuses a pass whose forks
+do not match, a new leg that does not meet the leg next to it, the wrong number of marks, and any trip that does not
+compile. With an extra fork on the route, name the junctions by map position (`--anchor J-S=x,y`, one for each of
+J-S, X2 and J-LV) so forks are matched by position. Wrong marks: `--stops M19,M20,...` in stop order.
+
+Then E: **activate** the new revision and restart `amr.service`. To undo: activate the previous revision.
 
 ### 3.3A Stations and points from marks (tracked plan 4, E0)
 

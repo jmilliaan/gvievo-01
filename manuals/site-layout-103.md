@@ -34,7 +34,7 @@ left = north, right = south, down = west. Projection coordinates below are mm, a
 | D10 | ~~There is no payload detection. A rear lidar may later detect the trolley; ignored for now~~ **Replaced 2026-11-05, as an assumption, with `station.enabled` only:** a rear lidar will detect the trolley and carry the rear safety field. Not fitted yet. Trolley detection is not personnel protection. With it off, the confirmations stand | operator |
 | D11 | AGV-01's **home position is HOME-N2 in the south bay** (right at J-SPLIT, since 2026-11-06; it was the north bay), where it parks **empty**. The **attach point** is on the departure lane after the U-turn. The operator's mark-up puts it at ≈ projection (2474, 3250–5190), from about 0.8 m to 2.8 m before J-N; the exact stop is taught on the floor. **Trolleys are released at each AGV's own home position** (AGV-01: north bay, AGV-02: south bay) | operator, 2026-10-17 mark-ups |
 | D14 | **Leaving home needs a physical Start.** A call (or a formed trip) on the display never moves the vehicle (safety invariant: no web page starts the vehicle; autonomous motion only under AUTO + a fresh panel Start). When a trip forms, the HMI shows it; the operator presses Start at the bay, and the AGV drives empty through the U-turn to the attach point. **Replaced 2026-11-05 for one case:** with `station.enabled`, an accepted station order leaves HOME by itself, only from HOME, only in AUTO, once, through the 2 s horn, and with no trolley and the rear field clear. Everything else still needs a physical Start | safety invariants (CLAUDE.md); owner 2026-11-05 |
-| D12 | ~~Tape is laid only as far as MRU~~ **All tape is laid (2026-11-07).** Row 2, the left vertical and the middle line are down, but not yet taught: no graph has them, and the mission keeps `J-LV` and `J-R2E` at `laid: false` until they are (section 4) | operator |
+| D12 | ~~Tape is laid only as far as MRU~~ **All tape is laid (2026-11-07).** Row 2, the left vertical and the middle line are down, but not yet taught: no graph has them (section 4) | operator |
 | D13 | AGV-01 only for now: no collision or priority logic. Topics and profile are per AGV (`manuals/station-call-plan.md` section 20), so a second AGV is not closed off | operator |
 | D15 | **Positions are marked from the moving AGV** (Guide page M key, ±10 cm at 0.3–0.4 m/s) and given roles later: stop + panel Start (machines, ATT), end-of-cycle stop (HOME-N), mid-line U-turn point, high-speed area. Branch approach points are NOT marked: the order for the trip's destination is armed from the taught junction positions | operator, 2026-10-24 |
 | D16 | **MRU mid-line U-turn:** after the LAST release of the trip (the farthest called machine), the empty AGV pivots at that machine's own **U-turn mark**, a few metres past its outbound stop and clear of the released trolley, instead of driving to the tape end. The tape-end U-turn (U-MRU, code 3) stays as the fallback. Supersedes D8's "drives on to the end" | operator, 2026-10-24 |
@@ -112,7 +112,6 @@ tape joins and there is no choice to make.
 | J-SMERGE | a tape joins from the right, map (-10.59, -0.31); taught as J-SPLIT until 2026-11-06 | merge |
 | J-SPLIT | bay split, about 5 m after J-SMERGE, map (-5.55, -0.39) | diverge: AGV-01 goes **right** to HOME-N2 since 2026-11-06 (left was the old HOME-N) |
 | J-LV | middle line × left vertical (site plan) | T: north on the right, south on the left |
-| J-R2E | mission name only | no junction of its own: the row 2 join is J-ML. Remove it from the mission when the BTU lap is taught |
 | U-MRU | MRU line west end | tape end: pivot U-turn, empty only |
 
 **C-BTU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **straight** → J-S **straight** → X2 **straight** →
@@ -124,13 +123,12 @@ north → MRU line west (MW stops) → U-MRU **pivot** → MRU line east (ME sto
 → trunk south → J-ML **left** → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
 A trip to MRU1, MRU2 or MRU3 pivots at its mid-line point `UT-MRU1` to `UT-MRU3`, just past its release. Only MRU4 reaches U-MRU.
 
-All tape is laid (D12), but `J-LV` and `J-R2E` stay `laid: false` in `missions/site-103.json` until a BTU lap is
-taught and merged into the graph. The flag makes a junction a graph node, so setting it first stops C-MRU compiling
-on the current graph.
+All tape is laid (D12). C-BTU does not compile until a BTU lap is merged into the graph with `amr_line.tape_merge`,
+not Build (`manuals/tape-localization-runbook.md` section 3.2B). `J-LV` is `laid: true`; C-MRU does not pass it.
 
-**How row 2 joins (owner, 2026-11-07):** row 2 curves south and joins the trunk from the west at `J-ML`. The mission's
-`J-R2E` (`shape: T`, C-BTU `order: right`, C-MRU `straight`) is not a separate junction and should come out when the
-lap is taught. The sensor agrees on all 5 served MRU trips checked: northbound a second tape opens on the left at
+**How row 2 joins (owner, 2026-11-07):** row 2 curves south and joins the trunk from the west at `J-ML`. It has no junction
+of its own: the mission's `J-R2E` came out on 2026-11-07, and C-BTU arrives at `J-ML` on `order: merge`, with no side
+armed, so the AGV holds its own tape while the trunk tape closes in from its left. The sensor agrees on all 5 served MRU trips checked: northbound a second tape opens on the left at
 `J-ML`, from about 10 mm to 110 mm in about 0.23 m; southbound it closes in from the right. Between `J-ML` and the MRU
 line it reads one track, both ways. The taught `X1→J-ML` and `J-ML→J-STEM` legs stay within 4 cm of each other for the
 first 7.5 m south of `J-ML`, so R2434 and R1380 do not visibly split at `J-ML` as the site plan draws them. An unnamed
@@ -140,8 +138,8 @@ Consequences:
 
 - **Only one branch decision depends on the job: J-N**, and it depends on the group, not the
   machine (MRU → right, BTU → straight). Every other order is fixed for AGV-01.
-- **A single standing default cannot drive this site.** C-BTU alone needs straight, straight,
-  right, right, left, left. Every diverge needs its own order.
+- **A single standing default cannot drive this site.** C-BTU alone needs straight at J-N and J-S,
+  right at J-LV, left at J-STEM and right at J-SPLIT. Every diverge needs its own order.
 - **The stem end is a wrong-way hazard.** Taking R2434 instead of the stem southbound drives the AGV
   backwards up a departure curve. `J-STEM` is the first logged fork south of `J-ML` (other tape 121 mm to the
   right, 2026-11-07), and it must be an explicit LEFT, never "nearest track". `J-ML` keeps its LEFT order too.

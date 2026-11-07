@@ -133,7 +133,7 @@ def test_the_repo_site_mission_loads():
     m = missions.load_site("site-103")
     assert set(m["GROUPS"]) == {"MRU", "BTU"} and len(m["MACHINES"]) == 20
     mru = [leg["id"] for leg in m["CIRCUITS"]["C-MRU"]["legs"]]
-    assert "J-ML:merge>U-MRU" in mru and "J-ML:left>J-STEM" in mru   # J-R2E not laid yet
+    assert "J-ML:merge>U-MRU" in mru and "J-ML:left>J-STEM" in mru
     assert m["STATIONS"]["ATT"] == "J-BMERGE:merge>J-N"
     with pytest.raises(missions.MissionError, match="site mission"):
         missions.load("site-103")

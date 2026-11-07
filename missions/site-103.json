@@ -45,11 +45,7 @@
     },
     "J-LV": {
       "shape": "T",
-      "laid": false
-    },
-    "J-R2E": {
-      "shape": "T",
-      "laid": false
+      "laid": true
     }
   },
   "uturns": {
@@ -86,11 +82,6 @@
         "order": "merge"
       },
       {
-        "junction": "J-R2E",
-        "order": "straight",
-        "approach": "bar"
-      },
-      {
         "stop": "MW-1"
       },
       {
@@ -116,11 +107,6 @@
       },
       {
         "stop": "ME-1"
-      },
-      {
-        "junction": "J-R2E",
-        "order": "straight",
-        "approach": "bar"
       },
       {
         "junction": "J-ML",
@@ -196,17 +182,13 @@
         "stop": "R2-8"
       },
       {
-        "junction": "J-R2E",
-        "order": "right",
-        "approach": "stem"
-      },
-      {
         "junction": "J-ML",
-        "order": "left"
+        "order": "merge"
       },
       {
         "junction": "J-STEM",
-        "order": "merge"
+        "order": "merge",
+        "steer": "left"
       },
       {
         "junction": "J-SMERGE",
