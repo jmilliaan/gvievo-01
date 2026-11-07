@@ -98,6 +98,55 @@ def test_at_home_unchanged_with_calling_off(node):
     assert node.tapeloc.fresh_ready is False
 
 
+@pytest.mark.parametrize("node", [True, False], indirect=True)
+@pytest.mark.parametrize("state", [lj.ARMED, lj.RUNNING, lj.HOLD, lj.FAULT])
+def test_at_home_is_refused_while_the_job_is_busy(node, state):
+    node.tapeloc = FakeLoc()
+    _panel(node, auto=False)
+    node.job.state = state
+    res = node._srv_at_home(Trigger.Request(), Trigger.Response())
+    assert not res.success and "refused" in res.message
+    assert not hasattr(node.tapeloc, "fresh_ready"), "the locator was left alone"
+    assert not node._position.checking
+
+
+@pytest.mark.parametrize("node", [True], indirect=True)
+def test_at_home_is_refused_with_a_trip_or_moving_wheels(node):
+    node.tapeloc = FakeLoc()
+    _panel(node, auto=False)
+    node.job.trip = object()
+    assert "with a trip" in node._srv_at_home(Trigger.Request(), Trigger.Response()).message
+    node.job.trip = None
+    node._wheel_inputs = lambda now: ((1, 1), 100.0, False)
+    assert "moving" in node._srv_at_home(Trigger.Request(), Trigger.Response()).message
+    assert not hasattr(node.tapeloc, "fresh_ready")
+
+
+@pytest.mark.parametrize("node", [True], indirect=True)
+def test_at_home_arms_the_check_and_a_recovery_keeps_the_locator_and_baseline(node):
+    node.tapeloc = FakeLoc()
+    _panel(node, auto=False)
+    assert node._srv_at_home(Trigger.Request(), Trigger.Response()).success
+    assert node._position.checking
+    node._position.press(0.0, None)
+    # The node's seed path, as a recovery uses it, touches neither.
+    node.tapeloc = types.SimpleNamespace()
+    base = node.job._home_base = (1, 1)
+    node._publish_seed((0.0, 0.0, 0.0))
+    assert node.job._home_base == base and vars(node.tapeloc) == {}
+
+
+@pytest.mark.parametrize("node", [True], indirect=True)
+def test_a_pose_from_mapping_is_never_auto_confirmed(node):
+    from amr_line import position_confirm as pc
+
+    p = pc.PositionConfirm(pc.Params(at_home=True, recover=True, hold_s=1.0, timeout_s=20.0, max_offset_m=1.0,
+                                     settle_s=3.0, retry_s=60.0, wheel_dia_m=0.18))
+    f = pc.Facts(now=5.0, monitor_state=pc.CHECKING, monitor_t=5.0, can_confirm=True, job_idle=True,
+                 tape_seen=True, parked_at_home=True, wheels_still=True)
+    assert p.tick(f) == "" and not p.checking
+
+
 @pytest.mark.parametrize("node", [True], indirect=True)
 def test_clear_in_fault_replies_refused_with_calling_on(node):
     node.job.state = lj.FAULT

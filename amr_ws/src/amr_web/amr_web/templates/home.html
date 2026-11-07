@@ -34,6 +34,12 @@
     </div>
   </div>
   <div class="home-act">
+    {% if tracked_ok %}<div class="home-pos" id="home-pos" hidden>
+      <span>Position</span>
+      <b id="home-pos-status">–</b>
+      <i id="home-pos-why"></i>
+      <button id="btn-at-home" class="big run" disabled>At home</button>
+    </div>{% endif %}
     <div id="home-title" class="home-title">—</div>
     <div id="home-action" class="home-action"></div>
     <div class="bar" id="home-buttons">
@@ -190,10 +196,19 @@ function render(d) {
   const btn = $('home-primary');
   btn.hidden = !h.button;
   if (h.button) btn.textContent = h.button;
+  const pos = d.position, row = $('home-pos');
+  if (row && pos) {
+    row.hidden = !pos.show;
+    $('home-pos-status').textContent = pos.status;
+    $('home-pos-status').className = LV[pos.level] || '';
+    $('home-pos-why').textContent = pos.why;
+    $('btn-at-home').disabled = !pos.enabled;
+  }
   const rows = d.alarms || [];
   $('home-list').innerHTML = rows.length ? rows.map(a => alarmRow(a,
     `${esc(a.code)}${a.clears_by ? ` · clears by ${esc(a.clears_by)}` : ''} · ${esc(a.detail)}`)).join('')
     : '<div class="none">nothing standing</div>';
 }
 onAlarms(render);
+if ($('btn-at-home')) $('btn-at-home').onclick = () => act('/api/line/at_home');
 </script>{% endblock %}

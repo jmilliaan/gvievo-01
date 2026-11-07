@@ -438,6 +438,16 @@ class FollowJob:
         return {"trip": self.trip.describe() if self.trip else self.trip_note,
                 "trip_next": nxt, "trip_queue": q, "trip_payload": "" if ok else why}
 
+    def idle_for_position(self):
+        """Nothing is running that a position check could disturb (position_confirm)."""
+        return self.state in (IDLE, DONE) and self.trip is None and not self._order_active()
+
+    def parked_at_home(self, i: Inputs):
+        """The locator says HOME, and no wheel has moved since At home or arrival. Calling only: the job
+        keeps the wheel baseline then."""
+        return bool(self.calling and self.site is not None and self._site_at_home(i.loc)[0]
+                    and not self._home_moved(i))
+
     def _site_at_home(self, loc):
         """(at HOME, why not) from the locator, for a trip's Start."""
         from amr_line import site_run  # noqa: PLC0415

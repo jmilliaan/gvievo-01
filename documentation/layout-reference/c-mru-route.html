@@ -13,9 +13,12 @@
      the top of the site plan). The HOME complex is to scale from
      homepos-area-projection/layout-projection.svg (+-200 mm): screen = (700 + 0.08 * proj_y,
      690 + 0.08 * proj_x), i.e. 1 m = 80 px, projection up = east, left = north. The trunk and the
-     MRU line are schematic: their lengths and the machine side are not in the repo.
+     MRU line are schematic: their lengths are not in the repo. The machines are south of the MRU line
+     (owner, 2026-11-07).
      2026-11-06: home is HOME-N2 in the south bay; J-SMERGE named. The taught map has the bay about
-     8 m long, this scale 3.3 m: tape-graph-g4/ is the measured picture. */
+     8 m long, this scale 3.3 m: tape-graph-g4/ is the measured picture.
+     2026-11-07: all tape is laid (owner). Mid-line U-turn points added. An unnamed crossing the MLS logs
+     between J-N and X1 is marked "?". */
   :root {
     --paper: #e9edf2;
     --surface: #ffffff;
@@ -94,7 +97,6 @@
   .num { font: 700 15px "Archivo", Arial, sans-serif !important; fill: #fff !important; }
 
   .tape { fill: none; stroke: var(--tape); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
-  .notlaid { fill: none; stroke: var(--tape); stroke-width: 4; stroke-dasharray: 10 8; }
   .out  { fill: none; stroke: var(--out);  stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
   .back { fill: none; stroke: var(--back); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
   .chev-o { fill: none; stroke: var(--out); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
@@ -128,7 +130,7 @@
 <div class="stage" id="stage">
 <section class="slide" id="slide" aria-label="C-MRU, AGV-01's MRU circuit">
 
-  <svg class="dwg" viewBox="0 0 1920 1080" role="img" aria-label="C-MRU route. Out: from HOME-N2 in the south bay east through the bay merge, the U-turn R717 (empty), west along the departure lane to the attach point ATT, right at J-N onto R2434, straight across X1, merging onto the trunk at J-ML, north up the trunk past J-R2E (not laid), west along the MRU line releasing at MW-1 to MW-4, pivot at the tape end U-MRU. Back: east along the MRU line taking trolleys back at ME-4 to ME-1, south down the trunk, left at J-ML onto R1380, through J-STEM where R2624 joins, left at J-SPLIT into the north bay to HOME-N.">
+  <svg class="dwg" viewBox="0 0 1920 1080" role="img" aria-label="C-MRU route. Out: from HOME-N2 in the south bay east through the bay merge, the U-turn R717 (empty), west along the departure lane to the attach point ATT, right at J-N onto R2434, straight across X1, straight on at J-ML where the BTU tape leaves on the left, north up the trunk, west along the MRU line releasing at the called machine, pivot at its U-turn point UT-MRU1 to UT-MRU3, or at the tape end U-MRU for MRU4. Back: east along the MRU line taking the trolley back, south down the trunk, left at J-ML where the BTU tape joins from the right, left at J-STEM where R2624 joins, past J-SMERGE, right at J-SPLIT into the south bay to HOME-N2.">
 
     <!-- ===== title ===== -->
     <text class="head" x="60" y="78">C-MRU · AGV-01 MRU circuit</text>
@@ -146,8 +148,8 @@
     <path class="tape" d="M909.9 803.6 A209.9 209.9 0 0 0 700 1013.5"/>               <!-- R2624 -->
     <path class="tape" d="M825.6 887.9 A125.6 125.6 0 0 0 700 1013.5"/>               <!-- R1570 -->
     <path class="tape" d="M700 1013.5 V1080"/>                                         <!-- south trunk (AGV-02) -->
-    <!-- row 2, not laid -->
-    <path class="notlaid" d="M700 380 H560"/>
+    <!-- row 2 (C-BTU): joins at J-ML from the west, seen by the MLS on every trip -->
+    <path class="tape" d="M300 620 H570 C630 620 675 640 700 693.2"/>
 
     <!-- ===== route: out (orange) ===== -->
     <path class="out" d="M1222 819.2 L1292 819.2 L1376 773.2 L1404 773.2 A57.4 57.4 0 0 1 1461.4 830.6 A57.4 57.4 0 0 1 1404 887.9 L894.7 887.9 A194.7 194.7 0 0 1 700 693.2 L712 662 V290 A52 52 0 0 0 660 238 H140 A12 12 0 0 0 140 262"/>
@@ -173,28 +175,32 @@
 
     <!-- ===== MRU line: machines and stops (schematic) ===== -->
     <g>
-      <rect class="mach" x="560" y="165" width="80" height="44"/><text class="lbl" x="600" y="194" text-anchor="middle">MRU1</text>
-      <rect class="mach" x="445" y="165" width="80" height="44"/><text class="lbl" x="485" y="194" text-anchor="middle">MRU2</text>
-      <rect class="mach" x="330" y="165" width="80" height="44"/><text class="lbl" x="370" y="194" text-anchor="middle">MRU3</text>
-      <rect class="mach" x="215" y="165" width="80" height="44"/><text class="lbl" x="255" y="194" text-anchor="middle">MRU4</text>
+      <rect class="mach" x="560" y="284" width="80" height="44"/><text class="lbl" x="600" y="313" text-anchor="middle">MRU1</text>
+      <rect class="mach" x="445" y="284" width="80" height="44"/><text class="lbl" x="485" y="313" text-anchor="middle">MRU2</text>
+      <rect class="mach" x="330" y="284" width="80" height="44"/><text class="lbl" x="370" y="313" text-anchor="middle">MRU3</text>
+      <rect class="mach" x="215" y="284" width="80" height="44"/><text class="lbl" x="255" y="313" text-anchor="middle">MRU4</text>
       <!-- MW on the out pass, ME on the back pass (separate taught positions) -->
       <path class="stn" d="M600 229 l9 9 l-9 9 l-9 -9 Z"/><path class="stn" d="M600 253 l9 9 l-9 9 l-9 -9 Z"/>
       <path class="stn" d="M485 229 l9 9 l-9 9 l-9 -9 Z"/><path class="stn" d="M485 253 l9 9 l-9 9 l-9 -9 Z"/>
       <path class="stn" d="M370 229 l9 9 l-9 9 l-9 -9 Z"/><path class="stn" d="M370 253 l9 9 l-9 9 l-9 -9 Z"/>
       <path class="stn" d="M255 229 l9 9 l-9 9 l-9 -9 Z"/><path class="stn" d="M255 253 l9 9 l-9 9 l-9 -9 Z"/>
-      <text class="sm" x="600" y="298" text-anchor="middle">MW-1·ME-1</text>
-      <text class="sm" x="485" y="298" text-anchor="middle">MW-2·ME-2</text>
-      <text class="sm" x="370" y="298" text-anchor="middle">MW-3·ME-3</text>
-      <text class="sm" x="255" y="298" text-anchor="middle">MW-4·ME-4</text>
+      <text class="sm" x="600" y="216" text-anchor="middle">MW-1·ME-1</text>
+      <text class="sm" x="485" y="216" text-anchor="middle">MW-2·ME-2</text>
+      <text class="sm" x="370" y="216" text-anchor="middle">MW-3·ME-3</text>
+      <text class="sm" x="255" y="216" text-anchor="middle">MW-4·ME-4</text>
       <!-- tape end -->
       <path d="M140 236 V264" stroke="var(--ink)" stroke-width="5"/>
-      <text class="sm" x="148" y="336">U-MRU · tape end, pivot CW in place</text>
+      <text class="sm" x="148" y="352">U-MRU · tape end, MRU4 pivots CW here</text>
+      <!-- mid-line U-turn points: just west of each machine's release -->
+      <path d="M555 228 V272 M440 228 V272 M325 228 V272" stroke="var(--ink)" stroke-width="3"/>
+      <text class="sm" x="555" y="192" text-anchor="middle">UT-MRU1</text>
+      <text class="sm" x="440" y="192" text-anchor="middle">UT-MRU2</text>
+      <text class="sm" x="325" y="192" text-anchor="middle">UT-MRU3</text>
     </g>
 
-    <!-- J-R2E (row 2 not laid) -->
-    <circle class="jn" cx="700" cy="380" r="7"/>
-    <text class="sm" x="552" y="372" text-anchor="end">J-R2E</text>
-    <text class="sm" x="552" y="396" text-anchor="end">row 2 joins (not laid)</text>
+    <!-- row 2 joins at J-ML (owner, 2026-11-07) -->
+    <text class="sm" x="560" y="582" text-anchor="end">row 2 (C-BTU) curves south</text>
+    <text class="sm" x="560" y="606" text-anchor="end">and joins the trunk at J-ML</text>
 
     <!-- ===== HOME complex: junctions, stations, names ===== -->
     <circle class="jn" cx="1376" cy="773.2" r="7"/>                  <!-- J-BMERGE -->
@@ -207,6 +213,7 @@
     <circle class="jn" cx="956" cy="773.2" r="7"/>                   <!-- J-SMERGE: position along the stem indicative -->
     <circle class="jn" cx="825.6" cy="887.9" r="6"/>                 <!-- J-S (C-BTU) -->
     <circle class="jn" cx="700" cy="1013.5" r="6"/>                  <!-- merge R -->
+    <circle class="jn" cx="847.6" cy="882.1" r="5"/><text class="sm" x="852" y="868">?</text>  <!-- logged, S 28.5 -->
     <path class="stn" d="M1222 807.2 l12 12 l-12 12 l-12 -12 Z"/>      <!-- HOME-N2 -->
     <path d="M1222 717 l10 10 l-10 10 l-10 -10 Z" fill="#fff" stroke="var(--tape)" stroke-width="3"/>  <!-- old HOME-N -->
     <path class="stn" d="M1037 875.9 l12 12 l-12 12 l-12 -12 Z"/>      <!-- ATT -->
@@ -217,7 +224,7 @@
     <text class="sm" x="1037" y="944" text-anchor="middle">ATT</text>
     <text class="sm" x="894.7" y="944" text-anchor="middle">J-N</text>
     <text class="sm" x="786" y="822">X1</text>
-    <text class="sm" x="642" y="732">J-ML</text>
+    <text class="sm" x="606" y="742">J-ML</text>
     <text class="sm" x="930" y="845">J-STEM</text>
     <text class="sm" x="1100" y="808" text-anchor="end">J-SPLIT</text>
     <text class="sm" x="948" y="748" text-anchor="end">J-SMERGE</text>
@@ -236,12 +243,12 @@
       <circle class="bo" cx="924" cy="918" r="14"/><text class="num" x="924" y="923" text-anchor="middle">5</text>
       <circle class="bo" cx="806" cy="868" r="14"/><text class="num" x="806" y="873" text-anchor="middle">6</text>
       <circle class="bo" cx="738" cy="700" r="14"/><text class="num" x="738" y="705" text-anchor="middle">7</text>
-      <circle class="bb" cx="662" cy="664" r="14"/><text class="num" x="662" y="669" text-anchor="middle">13</text>
+      <circle class="bb" cx="670" cy="732" r="14"/><text class="num" x="670" y="737" text-anchor="middle">13</text>
       <circle class="bo" cx="738" cy="600" r="14"/><text class="num" x="738" y="605" text-anchor="middle">8</text>
       <circle class="bo" cx="660" cy="212" r="14"/><text class="num" x="660" y="217" text-anchor="middle">9</text>
       <circle class="bo" cx="104" cy="250" r="14"/><text class="num" x="104" y="255" text-anchor="middle">10</text>
       <circle class="bb" cx="176" cy="290" r="14"/><text class="num" x="176" y="295" text-anchor="middle">11</text>
-      <circle class="bb" cx="662" cy="600" r="14"/><text class="num" x="662" y="605" text-anchor="middle">12</text>
+      <circle class="bb" cx="662" cy="560" r="14"/><text class="num" x="662" y="565" text-anchor="middle">12</text>
       <circle class="bb" cx="893" cy="778" r="14"/><text class="num" x="893" y="783" text-anchor="middle">14</text>
       <circle class="bb" cx="1086" cy="748" r="14"/><text class="num" x="1086" y="753" text-anchor="middle">16</text>
       <circle class="bb" cx="985" cy="748" r="14"/><text class="num" x="985" y="753" text-anchor="middle">15</text>
@@ -254,12 +261,12 @@
       <path class="out" d="M816 216 H880"/><text class="rule" x="896" y="222"><tspan class="k">Out</tspan>: HOME-N2 → U-turn → trunk north → MRU west</text>
       <path class="back" d="M816 252 H880"/><text class="rule" x="896" y="258"><tspan class="k">Back</tspan>: MRU east → trunk south → HOME-N2</text>
       <path class="tape" d="M816 288 H880"/><text class="rule" x="896" y="294">Tape not on C-MRU (north bay, C-BTU, AGV-02)</text>
-      <path class="notlaid" d="M816 324 H880"/><text class="rule" x="896" y="330">Not laid yet</text>
-      <circle class="jn" cx="834" cy="360" r="7"/><path class="stn" d="M864 348 l12 12 l-12 12 l-12 -12 Z"/>
-      <text class="rule" x="896" y="366">Junction · taught stop</text>
-      <text class="rule" x="814" y="404">N = the MRU line at the top of the site plan (not true north).</text>
-      <text class="rule" x="814" y="430">Schematic: on the map the HOME bays are ~8 m, not 3.3 m (tape-graph-g4).</text>
-      <text class="rule" x="814" y="456">One tape on trunk and MRU line: the two lanes only separate the passes.</text>
+      <circle class="jn" cx="834" cy="324" r="7"/><path class="stn" d="M864 312 l12 12 l-12 12 l-12 -12 Z"/>
+      <text class="rule" x="896" y="330">Junction · taught stop · ? logged crossing, no name yet</text>
+      <text class="rule" x="814" y="366">N = the MRU line at the top of the site plan (not true north).</text>
+      <text class="rule" x="814" y="392">Schematic: on the map the HOME bays are ~8 m, not 3.3 m, 1.32 m apart.</text>
+      <text class="rule" x="814" y="418">One tape on trunk and MRU line: the two lanes only separate the passes.</text>
+      <text class="rule" x="814" y="444">Row 2 joins at J-ML: the sensor reads it on the west side, both ways.</text>
     </g>
 
     <!-- north arrow + scale -->
@@ -277,12 +284,13 @@
 
     <!-- hazards (bottom left) -->
     <g>
-      <rect class="warn" x="40" y="890" width="500" height="164"/>
-      <text class="h3" x="60" y="922">Orders that matter</text>
-      <text class="rule" x="60" y="952"><tspan class="k">J-SPLIT</tspan>: RIGHT, armed after J-SMERGE, never at it</text>
-      <text class="rule" x="60" y="978"><tspan class="k">J-N</tspan>: the only job order (MRU right, BTU straight)</text>
-      <text class="rule" x="60" y="1004"><tspan class="k">J-ML south</tspan>: LEFT (R1380), never R2434</text>
-      <text class="rule" x="60" y="1030"><tspan class="k">X1</tspan>: oblique crossing, straight through</text>
+      <rect class="warn" x="40" y="884" width="500" height="186"/>
+      <text class="h3" x="60" y="914">Orders that matter</text>
+      <text class="rule" x="60" y="942"><tspan class="k">J-SPLIT</tspan>: RIGHT, armed after J-SMERGE, never at it</text>
+      <text class="rule" x="60" y="968"><tspan class="k">J-N</tspan>: the only job order (MRU right, BTU straight)</text>
+      <text class="rule" x="60" y="994"><tspan class="k">J-ML</tspan>: BTU tape joins from the west; south: LEFT</text>
+      <text class="rule" x="60" y="1020"><tspan class="k">J-STEM</tspan>: LEFT, to stay on the stem where R2624 joins</text>
+      <text class="rule" x="60" y="1046"><tspan class="k">X1</tspan>: oblique crossing, straight through</text>
     </g>
 
     <!-- ===== sequence panel (right) ===== -->
@@ -302,20 +310,20 @@
 
   /* ---- the sequence list (site-layout-103.md section 4, C-MRU) ---- */
   const STEPS = [
-    ['o', 'HOME-N2', 'depart empty on panel Start'],
+    ['o', 'HOME-N2', 'leave on a call or panel Start'],
     ['o', 'J-BMERGE', 'bay merge'],
     ['o', 'U-turn R717', 'empty only'],
     ['o', 'ATT', 'attach trolleys, Start'],
     ['o', 'J-N', 'RIGHT onto R2434'],
     ['o', 'X1', 'straight across'],
-    ['o', 'J-ML', 'merge onto the trunk'],
-    ['o', 'Trunk north', 'J-R2E straight, once laid'],
-    ['o', 'MW-1 … MW-4', 'release at called machines'],
-    ['o', 'U-MRU', 'pivot at tape end, empty'],
-    ['b', 'ME-4 … ME-1', 'take the trolleys back'],
-    ['b', 'Trunk south', 'J-R2E straight, once laid'],
-    ['b', 'J-ML', 'LEFT onto R1380'],
-    ['b', 'J-STEM', 'R2624 joins from the right'],
+    ['o', 'J-ML', 'straight: BTU tape leaves left'],
+    ['o', 'Trunk north', 'long straight to the MRU line'],
+    ['o', 'MW-n', 'release at the called machine'],
+    ['o', 'UT-MRUn · U-MRU', 'pivot empty: MRU4 at tape end'],
+    ['b', 'ME-n', 'take the trolley back'],
+    ['b', 'Trunk south', 'long straight to J-ML'],
+    ['b', 'J-ML', 'LEFT: BTU tape joins from the right'],
+    ['b', 'J-STEM', 'LEFT: R2624 joins from the right'],
     ['b', 'J-SMERGE', 'a tape joins: no order here'],
     ['b', 'J-SPLIT', 'RIGHT into the south bay'],
     ['b', 'HOME-N2', 'release trolleys, park'],

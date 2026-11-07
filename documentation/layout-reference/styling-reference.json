@@ -1,0 +1,550 @@
+{
+  "meta": {
+    "name": "AGV layout-reference design language",
+    "purpose": "Styling reference for drawing new layout sheets that match documentation/layout-reference.",
+    "extracted_on": "2026-11-07",
+    "extracted_from": {
+      "html_sheets": [
+        "simple-reference.html",
+        "corner-tag-placement.html",
+        "mls-zone-marker-placement.html",
+        "mls-corner-marker-placement.html",
+        "mru-straight-test-layout.html",
+        "c-mru-route.html",
+        "c-btu-route.html",
+        "mls-marker-codes-standard.html",
+        "mls-marker-codes-1-3.html",
+        "mls-corner-marker-install.html"
+      ],
+      "svg": ["homepos-area-projection/layout-projection.svg"],
+      "scripts": ["tape-graph-g1/draw_marks.py", "tape-graph-g4/draw_g4.py"]
+    },
+    "how_to_read": {
+      "values": "Every value is taken from the source files. Units are px on the 1920x1080 canvas unless stated.",
+      "canonical": "Where sheets differ, 'canonical' is the value most sheets use, or the sheet family's own value; this is an editorial choice by the extractor, not a rule stated in the sources. Differences are listed in 'variants' or 'inconsistencies'.",
+      "new_sheets": "Start from the 'presentation' family and these tokens unless the sheet is an installer sheet, a CAD projection or a map overlay."
+    }
+  },
+
+  "principles": [
+    {
+      "rule": "Technical drawing, not UI",
+      "detail": "Light only (color-scheme: light), flat fills, square corners, no shadows or gradients inside the drawing. The only shadow is on the on-screen stage; the only gradient is the speed-ramp band, where it carries meaning."
+    },
+    {
+      "rule": "One restrained palette with semantic accents",
+      "detail": "Cool grey ink and navy carry the drawing. Magenta marks physical items on the floor. Amber and green carry speed or verdict state. Red is for faults and limits."
+    },
+    {
+      "rule": "Drawing-only image",
+      "detail": "The sheet is a captured image; the toolbar is never captured. simple-reference.html keeps meanings on the slide that hosts it, while other sheets carry their rules on the drawing."
+    },
+    {
+      "rule": "Say what is true about the geometry",
+      "detail": "Each sheet states its scale ('to scale 1 mm = 2 px', 'corner view not to scale', 'trunk length not to scale'), marks indicative positions as such, and uses a break symbol for a shortened dimension."
+    },
+    {
+      "rule": "Wide wash under a thin line",
+      "detail": "A route is a 56 px pale band carrying state, under a 7 px centreline carrying the path."
+    },
+    {
+      "rule": "Three type voices",
+      "detail": "Archivo for headings and numbers in badges, IBM Plex Mono for drawing labels and dimensions, IBM Plex Sans for sentences and legends."
+    }
+  ],
+
+  "sheet_families": {
+    "presentation": {
+      "use_for": "Engineering layout sheets and slide images.",
+      "sheets": [
+        "simple-reference.html",
+        "corner-tag-placement.html",
+        "mls-zone-marker-placement.html",
+        "mls-corner-marker-placement.html",
+        "mru-straight-test-layout.html"
+      ],
+      "structure": "Framed panel with the drawing inside, one-row legend strip below the frame. Most sheets also put a title and placement rules inside the frame; simple-reference has neither, because its slide carries them."
+    },
+    "dense_engineering": {
+      "use_for": "Sheets that hold a lot of information: route sequences, code matrices.",
+      "sheets": ["c-mru-route.html", "c-btu-route.html", "mls-marker-codes-standard.html"],
+      "structure": "No outer frame, title top-left at x 60, content in panels or a tile grid. Type is smaller than the presentation family."
+    },
+    "installer": {
+      "use_for": "Instructions for the helper laying tape or markers on the floor.",
+      "sheets": ["mls-marker-codes-1-3.html", "mls-corner-marker-install.html"],
+      "structure": "Same language with larger numbers and darker dimension lines. Indonesian text, millimetres only, where things go and nothing about how the vehicle uses them. Legend is a framed bottom panel.",
+      "language": "id"
+    },
+    "cad_projection": {
+      "use_for": "Dimensioned plan of the tape in floor millimetres.",
+      "sheets": ["homepos-area-projection/layout-projection.svg"],
+      "structure": "Separate token set. World units are mm, on a white ground with a 500/1000 mm grid. System fonts. See 'cad_projection_style'."
+    },
+    "map_overlay": {
+      "use_for": "Route, marks and stations drawn on the survey occupancy map.",
+      "sheets": ["tape-graph-g1/draw_marks.py", "tape-graph-g4/draw_g4.py"],
+      "structure": "Pillow raster with the map blended toward white, saturated route colours and DejaVu fonts with a white halo. See 'map_overlay_style'."
+    }
+  },
+
+  "color": {
+    "core_tokens": {
+      "description": "Declared in :root on all nine HTML sheets with identical values.",
+      "--paper": { "value": "#e9edf2", "use": "Page behind the stage; not captured" },
+      "--surface": { "value": "#ffffff", "use": "Canvas, toolbar, inset panels" },
+      "--ink": { "value": "#14171d", "use": "Headings, key text, ticks, installer dimensions" },
+      "--ink-2": { "value": "#3d4553", "use": "Secondary labels, dimensions, legend text" },
+      "--ink-3": { "value": "#636b7c", "use": "Tertiary text, extension lines, inactive symbols" },
+      "--rule": { "value": "#cbd2de", "use": "Hairline borders, tile outlines, grids" },
+      "--route": { "value": "#1f3f7a", "use": "Route centreline, primary button" },
+      "--route-dark": { "value": "#152c57", "use": "Chevrons, button border, route arrowheads" },
+      "--tag": { "value": "#c8176b", "use": "Physical floor items: RFID tags, marker strips, stops; focus outline" },
+      "--agv": { "value": "#23272f", "use": "Vehicle body, track tape on the code sheets, pressed toggle" }
+    },
+    "state_tokens": {
+      "description": "Declared only on the sheets that need them.",
+      "--route-wash": { "value": "#dde6f5", "use": "Route envelope band" },
+      "--slow": { "value": "#e09a00", "use": "Slow or marginal outline" },
+      "--slow-wash": { "value": "#fde9b8", "use": "NORMAL, slow or creep speed band" },
+      "--slow-ink": { "value": "#8a5e00", "use": "Text on or about slow zones" },
+      "--fast": { "value": "#2f8a57", "use": "Usable or OK outline" },
+      "--fast-wash": { "value": "#d3eedd", "use": "HIGH speed band" },
+      "--fast-ink": { "value": "#1e5c39", "use": "Text on or about HIGH zones and OK verdicts" },
+      "--bad": { "value": "#b3261e", "use": "Faults, backstops, sensor limits" }
+    },
+    "route_direction_tokens": {
+      "description": "c-mru-route.html only.",
+      "--out": { "value": "#c2410c", "use": "Outbound pass" },
+      "--back": { "value": "#1f3f7a", "use": "Return pass; same value as --route" },
+      "--tape": { "value": "#b7bfcc", "use": "Tape present but not on this route" }
+    },
+    "fixed_values": {
+      "description": "Literals with no token, used repeatedly or for one defined job.",
+      "frame_fill": { "value": "#f5f6f8", "use": "Framed panels, machine boxes, tiles" },
+      "frame_stroke": { "value": "#2a2f3a", "use": "Outer frame and bottom legend panel border" },
+      "tape_body": { "value": "#2b3a55", "use": "Track tape on the engineering sheets" },
+      "trolley_inner": { "value": "#cfd8e6", "use": "Trolley deck" },
+      "panel_fill_cool": { "value": "#f8fafc", "use": "Legend and sequence panels on c-mru-route" },
+      "panel_fill_warm": { "value": "#fff6ed", "use": "Warning panel on c-mru-route" },
+      "tile_fill_light": { "value": "#f8f9fb", "use": "Tile on mls-marker-codes-1-3" },
+      "tile_ok_fill": { "value": "#f1faf4", "use": "Usable tile" },
+      "tile_marginal_fill": { "value": "#fffaf0", "use": "Centred-only tile" },
+      "tile_out_fill": { "value": "#f7f3f4", "use": "Impossible tile" },
+      "head_marginal": { "value": "#b57d00", "use": "Marginal column header" },
+      "head_out": { "value": "#8b93a3", "use": "Impossible column header" },
+      "mark_lost": { "value": "#9aa3b5", "use": "Marker outside the sensor window" },
+      "hatch_blind_ground": { "value": "#f6e3e1", "use": "Sensor-blind hatch ground" },
+      "hatch_blind_line": { "value": "#d9a39e", "use": "Sensor-blind hatch line" }
+    },
+    "semantic_map": {
+      "route_path": "--route",
+      "route_direction": "--route-dark",
+      "route_envelope": "--route-wash",
+      "speed_high": "--fast-wash",
+      "speed_normal_or_slow": "--slow-wash",
+      "speed_ramp": "Linear gradient between --fast-wash and --slow-wash",
+      "physical_floor_item": "--tag",
+      "vehicle": "--agv",
+      "fault_or_limit": "--bad",
+      "ignored_or_shadow": "White fill with --ink-3 outline",
+      "not_available_area": "Hatch: --rule lines on #f5f6f8",
+      "sensor_blind_area": "Hatch: #d9a39e lines on #f6e3e1"
+    }
+  },
+
+  "typography": {
+    "families": {
+      "heading": {
+        "stack": "\"Archivo\", Arial, sans-serif",
+        "weight": 700,
+        "use": "Titles, section heads, badge and code numbers"
+      },
+      "label": {
+        "stack": "\"IBM Plex Mono\", Consolas, \"Courier New\", ui-monospace, monospace",
+        "weight": 600,
+        "use": "Default for all SVG text in the drawing; labels, dimensions, toolbar controls"
+      },
+      "body": {
+        "stack": "\"IBM Plex Sans\", Calibri, Arial, Helvetica, sans-serif",
+        "weight": 500,
+        "key_weight": 700,
+        "use": "Rule sentences, legends, panel prose"
+      }
+    },
+    "office_fallbacks": {
+      "use_for": "PowerPoint, Word or Excel, and any render where the web fonts are not available. Archivo and IBM Plex are not Office fonts.",
+      "weights": "Office fonts offer regular and bold only: use bold for 600 and 700, regular for 500.",
+      "mapping": {
+        "heading": {
+          "primary": "Archivo", "office": "Arial", "style": "Bold",
+          "note": "Check long titles for fit; this one is not chosen to be narrower."
+        },
+        "label": {
+          "primary": "IBM Plex Mono", "office": "Consolas", "style": "Bold", "second_choice": "Courier New",
+          "note": "Consolas advances 0.55 em against 0.6 em for Plex Mono, so text runs about 8% shorter and won't overflow. Courier New matches the 0.6 em but looks much lighter."
+        },
+        "body": {
+          "primary": "IBM Plex Sans", "office": "Calibri", "style": "Regular, Bold for key words", "second_choice": "Arial",
+          "note": "Calibri is narrower and looks smaller at the same size, so go up one size step if it reads small. Keeping it distinct from Arial preserves the three type voices."
+        }
+      },
+      "scope": "Existing sheets still declare their original stacks; they were not changed."
+    },
+    "font_load": {
+      "url": "https://fonts.googleapis.com/css2?family=Archivo:wght@700&family=IBM+Plex+Mono:wght@600&family=IBM+Plex+Sans:wght@500;700&display=swap",
+      "note": "This is the fuller form used by two sheets; seven sheets omit Plex Sans 700. See inconsistencies."
+    },
+    "roles": {
+      "title_installer": { "class": ".title", "font": "heading", "size": 44, "case": "uppercase" },
+      "head": {
+        "class": ".head", "font": "heading", "size": 36, "case": "uppercase",
+        "variants": { "40": ["simple-reference", "mls-marker-codes-1-3"] },
+        "note": "Also used inline at 30 px for straight names such as S1 and S2."
+      },
+      "subhead": {
+        "class": ".sub", "font": "heading", "size": 24, "case": "uppercase", "letter_spacing": "0.04em",
+        "variants": {
+          "21 Plex Sans 500, sentence case": ["c-mru-route"],
+          "21 Plex Mono 600": ["mls-marker-codes-1-3"],
+          "19 Plex Mono 600": ["mls-marker-codes-standard"]
+        }
+      },
+      "panel_head": { "class": ".h3", "font": "heading", "size": 22, "case": "uppercase", "letter_spacing": "0.05em" },
+      "label": {
+        "class": ".lbl", "font": "label", "size": 26, "letter_spacing": "0.02em",
+        "variants": { "28 at 0.03em": ["simple-reference", "corner-tag-placement"], "18 at 0": ["c-mru-route"] }
+      },
+      "label_small": {
+        "class": ".sm", "font": "label", "size": 22,
+        "variants": { "26": ["corner-tag-placement"], "16": ["c-mru-route"] }
+      },
+      "label_extra_small": { "class": ".xs", "font": "label", "size": 19 },
+      "rule_sentence": {
+        "class": ".rule", "font": "body", "size": 22,
+        "key_span": "tspan.k: weight 700, fill #14171d",
+        "variants": { "18": ["c-mru-route"] }
+      },
+      "legend_text": {
+        "class": ".legend", "font": "body", "size": 26, "color": "--ink-2",
+        "variants": { "28": ["simple-reference", "corner-tag-placement"], "24": ["mls-corner-marker-placement"] }
+      },
+      "badge_number": {
+        "classes": [".tagno", ".code", ".num"], "font": "heading", "color": "#ffffff",
+        "sizes": { "route_sequence_badge": 15, "marker_code_circle": 22, "rfid_tag": "26-28", "code_header_or_installer": "40-46" }
+      },
+      "toolbar_control": {
+        "font": "label", "size": 11, "case": "uppercase", "letter_spacing": "0.07em",
+        "note": "Status text uses 0.05em."
+      }
+    },
+    "minimum_size": {
+      "slide_images": 26,
+      "reason": "simple-reference.html is shown at about 0.47 scale, so its comment requires all text to be at least 26 px.",
+      "note": "That rule is stated for simple-reference only. Dense sheets go much lower, down to 12 px for sensor edge labels."
+    },
+    "body_default": "16px/1.45 IBM Plex Sans with -webkit-font-smoothing: antialiased"
+  },
+
+  "stroke": {
+    "route": {
+      "envelope_band": { "width": 56, "color": "--route-wash or a speed wash", "fill": "none" },
+      "creep_band": { "width": 44, "color": "--slow-wash" },
+      "centreline": { "width": 7, "color": "--route", "linejoin": "round" },
+      "pass_lane": { "width": 6, "color": "--out or --back", "linecap": "round", "linejoin": "round", "sheet": "c-mru-route" },
+      "other_tape": { "width": 5, "color": "--tape", "linecap": "round", "linejoin": "round", "sheet": "c-mru-route" },
+      "not_laid": { "width": 4, "color": "--tape", "dash": "10 8", "sheet": "none since 2026-11-07, all tape is laid; kept for future sheets" },
+      "chevron": { "width": 5, "color": "--route-dark", "linecap": "round", "linejoin": "round", "path": "M-9 -13 L9 0 L-9 13" },
+      "chevron_on_tape": { "width": "2.5-3", "color": "#ffffff" }
+    },
+    "annotation": {
+      "dimension": { "width": 2.5, "color": "--ink-2", "installer_color": "--ink" },
+      "extension": { "width": 1.5, "color": "--ink-3", "dash": "5 4" },
+      "tick": { "width": 4, "color": "--ink" },
+      "leader_to_marker": { "width": 2, "color": "--tag" },
+      "leader_installer": { "width": 1.5, "color": "--ink-2" },
+      "dimension_break": { "width": "7-8", "color": "#ffffff", "linejoin": "miter", "use": "White gap cut through a broken dimension" },
+      "hand_move": { "width": 4, "color": "--ink-3", "dash": "12 8", "use": "Vehicle moved by hand" },
+      "slow_edge": { "width": 3, "color": "--slow", "dash": "12 8" },
+      "backstop_run": { "width": 4, "color": "--bad", "dash": "8 6" },
+      "sensor_grid": { "width": 1.5, "color": "--rule", "dash": "3 5" },
+      "sensor_edge": { "width": 2, "color": "--bad", "dash": "6 4" },
+      "tape_centre": { "width": 1.5, "color": "#ffffff", "dash": "10 8" }
+    },
+    "arrowhead": {
+      "dimension": {
+        "marker_size": "16 x 14", "path": "M0,0 L16,7 L0,14 Z", "fill": "--ink-2",
+        "orient": "auto-start-reverse", "units": "userSpaceOnUse",
+        "variants": { "18 x 16": ["corner-tag-placement"], "14 x 14": ["mls-marker-codes-1-3"], "10 x 10": ["mls-marker-codes-standard"] }
+      },
+      "route": { "marker_size": "22 x 20", "path": "M0,0 L22,10 L0,20 Z", "fill": "--route-dark" }
+    },
+    "hatch": {
+      "not_available": { "cell": 16, "rotate_deg": 45, "ground": "#f5f6f8", "line": "#cbd2de", "line_width": 6 },
+      "sensor_blind": { "cell": 8, "rotate_deg": 45, "ground": "#f6e3e1", "line": "#d9a39e", "line_width": 3 }
+    }
+  },
+
+  "shape": {
+    "corner_radius": {
+      "default": 0,
+      "exceptions": { "trolley_glyph": 3, "agv_glyph": 4, "cad_destination_box_mm": 40 }
+    },
+    "shadow": {
+      "drawing": "none",
+      "stage_on_screen": "0 1px 0 var(--rule), 0 10px 30px rgba(20,30,50,.12)"
+    }
+  },
+
+  "layout": {
+    "canvas": { "width": 1920, "height": 1080, "aspect": "16:9", "background": "--surface", "overflow": "hidden" },
+    "presentation_grid": {
+      "frame": {
+        "x": 60, "y": 40, "width": 1800, "height": 890, "fill": "#f5f6f8", "stroke": "#2a2f3a", "stroke_width": 6,
+        "variants": { "height 900": ["mru-straight-test-layout"] }
+      },
+      "title": { "x": 96, "baseline_y": 98 },
+      "subtitle": { "x": 96, "baseline_y": 136 },
+      "rule_lines": { "x": 96, "first_baseline_y": 782, "line_step": 32, "last_baseline_y": 910, "note": "Values from mls-zone-marker-placement." },
+      "legend_strip": {
+        "x": 60, "y": 962, "width": 1800, "height": 76,
+        "display": "flex, align center, space-between, no wrap",
+        "item_gap": 14, "swatch": "64 x 40",
+        "variants": {
+          "gap 16": ["simple-reference", "corner-tag-placement"],
+          "gap 12, swatch 60 x 40": ["mls-corner-marker-placement"]
+        }
+      }
+    },
+    "frameless_grid": {
+      "left_margin": 60,
+      "title_baseline_y": { "c-mru-route": 78, "mls-marker-codes-standard": 60, "mls-marker-codes-1-3": 66, "mls-corner-marker-install": 82 },
+      "bottom_panel": {
+        "x": 60, "width": 1800, "fill": "#f5f6f8", "stroke": "#2a2f3a", "stroke_width": 3,
+        "examples": { "mls-corner-marker-install": { "y": 840, "height": 215 }, "mls-marker-codes-1-3": { "height": 222 } }
+      }
+    },
+    "inset_panel": { "fill": "#ffffff", "stroke": "--rule", "stroke_width": 2, "title": "Subhead at top left, stating view and scale" },
+    "screen_shell": {
+      "page": "Background --paper, padding-bottom 40",
+      "stage_wrap_padding": "20px 16px 0",
+      "fit": "Scale the canvas with a transform to min(viewport width - 32, 1920); transform-origin top left"
+    }
+  },
+
+  "components": {
+    "toolbar": {
+      "captured": false,
+      "container": "Sticky top, flex wrap, gap 10, padding 10px 16px, --surface, border-bottom 2px solid --ink",
+      "name": "Archivo 700 15 px",
+      "segmented_control": "Border 1.5px solid --ink; buttons padding 7px 12px with 1px --rule dividers; pressed state --agv with white text",
+      "primary_button": "--route fill, white text, border 1.5px solid --route-dark; disabled opacity .6",
+      "focus": "2px solid --tag, offset 2px",
+      "status": "--ink-3, pushed right with margin-left auto",
+      "controls": ["Resolution 2x or 3x", "Background white or transparent", "Download PNG"]
+    },
+    "symbols": {
+      "rfid_tag": { "shape": "52 x 52 square rotated 45 deg", "fill": "--tag", "stroke": "#ffffff 4", "text": "White Archivo 700, centred" },
+      "taught_stop": { "shape": "Diamond, 9 px centre to point", "fill": "--tag", "stroke": "#ffffff 2", "sheet": "c-mru-route" },
+      "junction": { "shape": "Circle r 7", "fill": "#ffffff", "stroke": "--ink 3", "sheet": "c-mru-route" },
+      "marker_code": { "shape": "Circle r 17", "fill": "--tag", "text": "White Archivo 700 22", "leader": "2 px --tag to the strip" },
+      "marker_strip": { "shape": "Rectangle", "fill": "--tag", "installer_and_code_sheets": "--route", "lost": "#9aa3b5" },
+      "event_acts": { "shape": "Circle r 11", "fill": "--tag", "stroke": "#ffffff 2", "sheet": "mru-straight-test-layout" },
+      "event_ignored": { "shape": "Circle r 9", "fill": "#ffffff", "stroke": "--ink-3 3", "sheet": "mru-straight-test-layout" },
+      "event_fault": { "shape": "Circle r 11", "fill": "#b3261e", "sheet": "mru-straight-test-layout" },
+      "shadow_stop": { "shape": "Triangle", "fill": "#ffffff", "stroke": "--ink-3 3", "sheet": "mru-straight-test-layout" },
+      "agv": {
+        "shape": "Block with a white triangle pointing along the heading",
+        "fill": "--agv",
+        "plan_size": "Polygon about 76 x 44 with a tapered nose, or a 64 x 48 rectangle with rx 4 in mru-straight-test-layout"
+      },
+      "trolley": { "outer": "64 x 42, rx 3, #ffffff, stroke --ink-2 3", "inner": "44 x 26, #cfd8e6, stroke --route 2.5", "drawbar": "--ink-2 5" },
+      "machine_box": { "shape": "80 x 44 rectangle", "fill": "#f5f6f8", "stroke": "--ink-3 2", "text": "Centred label", "sheet": "c-mru-route" },
+      "tape": { "track": "Solid bar, 'tape_body' fill or --agv", "centre": "1.5 px white dash 10 8", "tape_end": "Heavy tick in --ink" },
+      "north_arrow": { "fill": "--ink", "label": "N in label type", "note": "N is the site-plan north with the MRU line on top, not true north, and the sheet says so." },
+      "scale_bar": { "style": "Ticked --ink-2 line with mono labels", "note": "State what it applies to, for example 'HOME complex only'." },
+      "sequence_badge": { "shape": "Filled circle", "fill": "--out or --route", "text": "White Archivo 700 15", "sheet": "c-mru-route" }
+    },
+    "panels": {
+      "legend_panel": { "fill": "#f8fafc", "stroke": "--rule 2", "title": ".h3 uppercase" },
+      "warning_panel": { "fill": "#fff6ed", "stroke": "--out 2", "title": ".h3 uppercase", "body": "Bold key, colon, sentence" },
+      "sequence_panel": { "fill": "#f8fafc", "stroke": "--rule 2", "row": "Badge, step name (Archivo 700 19), action (Plex Sans 500 17)" }
+    },
+    "status_tile": {
+      "sheet": "mls-marker-codes-standard",
+      "header_text": "White Archivo code number, mono detail lines",
+      "states": {
+        "ok": { "header": "#2f8a57", "fill": "#f1faf4", "stroke": "--fast 4", "verdict_color": "--fast-ink", "verdict_prefix": "✓" },
+        "marginal": { "header": "#b57d00", "fill": "#fffaf0", "stroke": "--slow 4", "verdict_color": "--slow-ink", "verdict_prefix": "!" },
+        "out": { "header": "#8b93a3", "fill": "#f7f3f4", "stroke": "--bad 3, dash 10 6", "verdict_color": "--bad", "verdict_prefix": "✕" },
+        "none": { "fill": "none", "stroke": "--rule 2, dash 8 8", "text": "--ink-3" }
+      },
+      "verdict_type": "Plex Sans 700 17"
+    },
+    "legend_swatches": {
+      "route": "Line 62 long: wash 30 wide, --route 5 wide on top, optional chevron",
+      "symbols": "The same symbol at swatch size, on 64 x 40"
+    }
+  },
+
+  "content_conventions": {
+    "separator": "Middle dot with spaces: 'MRU line at MRU4 · Stage 1 · No RFID'",
+    "flow_arrow": "→ for sequence and consequence: 'tape lost → stop, pivot CW'",
+    "case": "Titles and heads uppercase through CSS text-transform; labels as written",
+    "rule_line_pattern": "Bold key, two spaces, then clauses separated by ' · '",
+    "numbers": "Use ≥ and ≤ for limits, ≈ for derived values, ~ for estimates; × in sizes such as '15 × 100'",
+    "units": {
+      "engineering": "Metres on the drawing; mm in details",
+      "installer": "mm only",
+      "cad": "mm, with ~ for an estimated dimension and * as used on the projection"
+    },
+    "language": { "engineering": "English", "installer": "Indonesian" },
+    "provenance": "The CSS comment at the top of each sheet records the sheet it follows, its scale, its sources and any dated operator decisions."
+  },
+
+  "export": {
+    "library": "html-to-image 1.11.11 from cdn.jsdelivr.net",
+    "base": "1920 x 1080",
+    "pixel_ratios": { "2x": "3840 x 2160", "3x": "5760 x 3240" },
+    "default_ratio": { "2x": "The other five sheets", "3x": ["simple-reference", "corner-tag-placement", "mls-marker-codes-standard", "mls-marker-codes-1-3"] },
+    "background": { "default": "#ffffff", "option": "transparent" },
+    "file_name": "{name}@{ratio}x[-transparent].png",
+    "before_capture": "await document.fonts.ready; render with transform none"
+  },
+
+  "cad_projection_style": {
+    "source": "homepos-area-projection/layout-projection.svg",
+    "units": "1 SVG unit = 1 mm; viewBox -2700 -9900 9300 13200",
+    "fonts": {
+      "labels": "system-ui, sans-serif",
+      "notes": "ui-monospace, Consolas, monospace",
+      "office_fallbacks": { "labels": "Arial", "notes": "Consolas" }
+    },
+    "tokens": {
+      "--bg": "#ffffff",
+      "--ink": "#1d2228",
+      "--muted": "#6b7280",
+      "--grid": "#eceee9",
+      "--gridM": "#dcdfd8",
+      "--pillar": "#c9cdd3",
+      "--tape": "#16181b",
+      "--cl": "#f2c200",
+      "--feat": "rgba(120,130,140,.10)",
+      "--featS": "#9aa1a9",
+      "--dim": "#1f5fbf",
+      "--est": "#c2410c",
+      "--accent": "#b91c1c",
+      "--card": "#ffffff",
+      "--line": "#e3e5e0"
+    },
+    "fixed_values": {
+      "traffic_arrow": "#f2a900",
+      "destination_box_fill": "#3f6fc4",
+      "destination_box_stroke": "#1d3f7a",
+      "home_fill": "#ffd200",
+      "home_label": "#7a4d00"
+    },
+    "strokes_mm": {
+      "grid_minor": 4,
+      "grid_major": 7,
+      "tape": 30,
+      "tape_centreline": { "width": 4, "dash": "60 30" },
+      "dimension": 6,
+      "extension": 4,
+      "pillar": 10,
+      "feature": { "width": 8, "dash": "40 25" },
+      "datum": { "width": 5, "dash": "30 20" },
+      "traffic_arrow": 60
+    },
+    "text_mm": { "pillar_label": 110, "home_label": 120, "destination_box": 100, "dimension_and_radius": 95, "note_heading": 90, "legend": 85, "notes": 80 },
+    "dimension_colors": { "measured": "--dim (blue)", "estimated": "--est (orange-red)", "radius_and_origin": "--accent (red)" }
+  },
+
+  "map_overlay_style": {
+    "source": ["tape-graph-g1/draw_marks.py", "tape-graph-g4/draw_g4.py"],
+    "renderer": "Pillow, DejaVu Sans fonts",
+    "base_map": { "scaling": "Nearest-neighbour integer zoom", "blend_to_white": { "g1": 0.4, "g4": 0.45 } },
+    "fonts": { "bold_px": 20, "small_px": { "g1": 15, "g4": 16 }, "halo": "Stroke 3, white, on every label over the map" },
+    "colors": {
+      "outbound": "#1e5adc",
+      "inbound": "#eb7814",
+      "drawn_leg": "#00aae6",
+      "unused_leg": "#a5aab2",
+      "junction": "#00963c",
+      "junction_label_g1": "#006e28",
+      "junction_label_g4": "#006e2d",
+      "stop_outbound": "#c8006e",
+      "stop_label_g4": "#8c0050",
+      "stop_inbound": "#8228c8",
+      "u_turn": "#dc1e1e",
+      "u_turn_label": "#be0000",
+      "reference_mark": "#787878",
+      "home": "#ffd200",
+      "home_label": "#6e4600",
+      "title_text_g4": "#141414"
+    },
+    "line_widths": { "g1_leg": 4, "g4_leg": 5, "g4_drawn_leg": 7, "legend_swatch": { "g1": 4, "g4": 6 } },
+    "symbols": {
+      "junction": "Circle, r 7 in g1, r 9 in g4, black outline",
+      "stop_g1": "Diamond, r 10, black outline",
+      "u_turn_g1": "Circle, r 10, black outline",
+      "reference_g1": "Square, half-width 8, black outline",
+      "station_g4": "Square, half-width 8; home half-width 12, black outline"
+    },
+    "legend": {
+      "g1": "White box with black outline, plus a scale bar of 1, 2, 5 or 10 m",
+      "g4": "Halo text rows bottom-left with no box; title top-left"
+    }
+  },
+
+  "inconsistencies": [
+    {
+      "issue": "Route direction colours are inverted between families",
+      "detail": "c-mru-route draws outbound in orange-red (#c2410c) and return in navy (#1f3f7a). The map overlays draw outbound in blue (#1e5adc) and inbound in orange (#eb7814). The same circuit therefore reverses meaning between sheets.",
+      "severity": "high",
+      "recommendation": "Use the c-mru-route meaning everywhere, and change OUT/BACK colours when draw_g4.py is next run."
+    },
+    {
+      "issue": "Marker strip colour varies",
+      "detail": "Magenta --tag on placement sheets, navy --route on mls-marker-codes-standard, mls-marker-codes-1-3 and mls-corner-marker-install.",
+      "severity": "medium",
+      "recommendation": "Use --tag where strips sit beside other route objects. Navy reads well against the dark track on close-up code sheets, so keep it there only."
+    },
+    {
+      "issue": "Tape has four colours",
+      "detail": "#2b3a55 on engineering sheets, #23272f on code and installer sheets, #b7bfcc on c-mru-route for tape off the route, #16181b in the projection.",
+      "severity": "medium",
+      "recommendation": "Use #2b3a55 for tape drawn to scale, and #b7bfcc only for tape that is off the route."
+    },
+    {
+      "issue": "#c2410c has two meanings",
+      "detail": "--out means outbound pass in c-mru-route; --est means estimated dimension in the projection.",
+      "severity": "low",
+      "recommendation": "Acceptable while the families stay separate; don't put dimensions in this colour on route sheets."
+    },
+    {
+      "issue": "Plex Sans 700 is used without being loaded",
+      "detail": "Seven sheets load Plex Sans at 500 only. Of those, mls-zone-marker-placement, mru-straight-test-layout and c-mru-route use weight 700 in tspan.k, and mls-marker-codes-standard uses it in .verdict, so the browser synthesises the bold. The bold keys on the exported PNGs show this.",
+      "severity": "medium",
+      "recommendation": "Use the font URL in typography.font_load on new sheets, and on these four when they are next edited."
+    },
+    {
+      "issue": "Same class name, different meaning",
+      "detail": ".sub is Archivo uppercase on some sheets, Plex Sans on c-mru-route and Plex Mono on the code sheets. .tape is a fill on some sheets and a stroke on c-mru-route. .strip and .tick also change colour between sheets.",
+      "severity": "low",
+      "recommendation": "CSS is local to each sheet, so nothing breaks, but don't copy a class between sheets without checking it."
+    },
+    {
+      "issue": "Core tokens are copied, not shared",
+      "detail": "Each sheet declares its own :root. Core values currently match on all nine, but several sheets also hard-code the same values as literals in SVG attributes, so a token change won't reach them.",
+      "severity": "low",
+      "recommendation": "No change needed for existing sheets; prefer classes and var() in new ones."
+    },
+    {
+      "issue": "Document language is wrong on one installer sheet",
+      "detail": "mls-corner-marker-install.html has Indonesian text but <html lang=\"en\">; mls-marker-codes-1-3.html correctly has lang=\"id\".",
+      "severity": "low",
+      "recommendation": "Set lang=\"id\" on installer sheets."
+    }
+  ]
+}

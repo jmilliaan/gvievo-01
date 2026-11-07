@@ -204,6 +204,11 @@ class TapeRuntime:
         return (True, f"At home: initial pose {self.m['HOME']} sent; confirm the scans align",
                 st.pose)
 
+    def home_pose(self):
+        """The taught HOME (x, y, yaw), or None with no graph or no taught HOME."""
+        st = self.graph.stations.get(self.m["HOME"]) if self.graph is not None else None
+        return tuple(st.pose) if st is not None else None
+
     # -- trips (tracked plan 4) --------------------------------------------------------
     def compile_trip(self, trip):
         """trip.Trip -> trip_route.TripRoute on the active graph (RouteError when it cannot)."""

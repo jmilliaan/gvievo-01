@@ -39,6 +39,12 @@ obstacles on rev1, and 94 % and 3.5 % with the mask.
 
 To undo: set the active pointer back to map rev1, g5, and restart `amr.service`.
 
+## What the graph does not have yet
+
+All tape is laid (owner, 2026-11-07), but g6 only holds what C-MRU drives. Row 2, the left vertical, the middle line,
+J-S, X2, J-LV, row 2's curve into J-ML and R2-1 to R2-8 have no positions until a BTU lap is recorded and merged in, as a new revision. Do
+not use Build for that: it would drop the drawn right bay and HOME-N2. The route is drawn in `../c-btu-route`.
+
 A recorded lap from HOME-N2 should replace the drawn leg. The hand-derived drawings (`../c-mru-route`,
 `../homepos-area-projection`) show the bay about 3.3 m long; the map says about 8 m, so trust this folder
 for distances. Not resolved: which is right about the shape between J-STEM and J-SPLIT.

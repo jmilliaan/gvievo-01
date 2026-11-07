@@ -613,7 +613,8 @@ def create_app(
         page has to re-derive it (and disagree)."""
         st = adapter.state()
         rows = standing.apply(alarmview.standing(st), time.time())
-        return jsonify({"alarms": rows, "headline": alarmview.headline(st, rows)})
+        return jsonify({"alarms": rows, "headline": alarmview.headline(st, rows),
+                        "position": alarmview.home_position(st)})
 
     @app.get("/api/events")
     def api_events():

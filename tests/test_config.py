@@ -270,6 +270,20 @@ def test_config_profile():
     # then the P0 baseline. settle_s and holdoff_s can only be lengthened from the contract's values.
     refuses("station calling without the live position engine is refused",
             lambda d: (d["station"].update(enabled=True), d["tape_loc"].update(live=False)), "tape_loc.live")
+    refuses("automatic recovery without automatic confirm is refused",
+            lambda d: d["tape_loc"].update(auto_confirm_home=False), "tape_loc.auto_recover_home")
+    refuses("a recover settle time outside 1..30 s is refused",
+            lambda d: d["tape_loc"].update(recover_settle_s=0.5), "tape_loc.recover_settle_s")
+    refuses("a recover retry outside 30..600 s is refused",
+            lambda d: d["tape_loc"].update(recover_retry_s=5.0), "tape_loc.recover_retry_s")
+    refuses("a confirm hold outside 0.5..5 s is refused",
+            lambda d: d["tape_loc"].update(confirm_hold_s=0.1), "tape_loc.confirm_hold_s")
+    refuses("a confirm timeout outside 5..120 s is refused",
+            lambda d: d["tape_loc"].update(confirm_timeout_s=2.0), "tape_loc.confirm_timeout_s")
+    refuses("a confirm offset outside 0.2..2 m is refused",
+            lambda d: d["tape_loc"].update(confirm_max_offset_m=5.0), "tape_loc.confirm_max_offset_m")
+    refuses("a missing automatic confirm switch is refused",
+            lambda d: d["tape_loc"].pop("auto_confirm_home"), "missing key")
     refuses("a no-trolley run without station calling is refused",
             lambda d: d["station"].update(enabled=False, no_trolley_run=True), "station.no_trolley_run")
     refuses("a no-trolley run that is not a boolean is refused",

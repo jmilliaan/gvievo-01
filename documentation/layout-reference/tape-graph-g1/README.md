@@ -29,7 +29,7 @@ J-ML (-10.56, 12.45), J-STEM (-11.69, 0.72), J-SPLIT (-10.59, -0.31).
 |---|---|---|---|
 | M1 | ATT | J-BMERGE→J-N 11.92 m | trolley attach point |
 | M2 | - | J-BMERGE→J-N 17.30 m | outbound branch J-N: right MRU, straight BTU, left STU (STU later) |
-| M5 | - | X1→J-ML 9.25 m | J-ML: BTU inbound joins; MRU out straight/right, in straight/left |
+| M5 | - | X1→J-ML 9.25 m | J-ML: BTU inbound joins; MRU out straight/right, in straight/left. Confirmed by the owner and the sensor logs, 2026-11-07 |
 | M8–M11 | MW-1…MW-4 | J-ML→U-MRU 45.51 / 55.81 / 66.35 / 72.37 m | MRU1…4 release empty (marked while driving) |
 | M12–M15 | ME-1…ME-4 | U-MRU→J-ML 32.43 / 22.13 / 11.58 / 5.57 m | MRU1…4 attach full: 2 m from the release, toward home (`mark_offset M8 2.0 M12` …) |
 | M16–M18 | UT-MRU1…3 | J-ML→U-MRU 46.91 / 57.21 / 67.75 m | MRU1…3 U-turn point: 1.4 m from the release, toward the line's end (`mark_along M8 1.4 M16` …) |

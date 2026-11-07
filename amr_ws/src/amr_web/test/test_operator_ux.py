@@ -851,3 +851,59 @@ def test_at_home_with_no_station_link_stands_without_stopping_anything():
     row = next(r for r in rows if r["code"] == "STATION_LINK_HOME")
     assert row["level"] == "warn" and row["clears_by"] == "auto"
     assert view.headline(st, rows)["state"] != view.STOPPED_NEEDS_YOU
+
+
+# ---- the position row on Home (manuals/home-auto-confirm-plan.md) --------------------
+
+
+def _pos(line=None, loc="READY", auto=False, reason="", calling=True, mode="LINE"):
+    ln = {"state_name": "IDLE", "at_home": True, "home_detail": "", "trip": "", **(line or {})}
+    st = {"mode": {"mode_name": mode}, "line": ln, "panel": {"valid": True, "mode_auto": auto},
+          "localization": {"state_name": loc, "reason": reason}}
+    if calling:
+        st["order"] = {}
+    return view.home_position(st)
+
+
+@pytest.mark.parametrize(
+    "kw, status, enabled",
+    [
+        ({"loc": "UNLOCALIZED"}, "Position not set", True),
+        ({"loc": "UNLOCALIZED", "auto": True}, "Position not set", False),
+        ({"line": {"home_detail": "Checking position: waiting for AMCL"}},
+         "Checking position: waiting for AMCL", False),
+        ({}, "Position OK", True),
+        ({"line": {"home_detail": "Position check failed: tape not seen"}, "loc": "CHECKING"},
+         "Position check failed: tape not seen", True),
+        ({"line": {"home_detail": "Position lost, rechecking at home"}, "loc": "LOST", "auto": True},
+         "Position lost, rechecking at home", False),
+        ({"loc": "LOST", "reason": "scan passes"}, "Position lost: scan passes", True),
+        ({"line": {"at_home": False}}, "Away from home", False),
+        ({"line": {"state_name": "RUNNING"}, "loc": "LOST"}, "On a trip", False),
+        ({"line": {"state_name": "HOLD"}}, "On a trip", False),
+        ({"line": {"trip": "MRU: MRU1"}}, "On a trip", False),
+        ({"line": {"state_name": "FAULT"}}, "Job in fault", False),
+        ({"loc": "CHECKING"}, "Checking position set by hand", True),
+    ],
+)
+def test_the_position_row(kw, status, enabled):
+    p = _pos(**kw)
+    assert p["show"] and p["status"] == status and p["enabled"] is enabled
+
+
+def test_at_home_needs_manual_only_with_calling_on():
+    assert _pos(auto=True)["why"] == "turn the selector to MANUAL"
+    assert _pos(auto=True, calling=False)["enabled"] is True
+
+
+def test_the_position_row_shows_only_in_line_mode():
+    assert _pos(mode="MAPPING")["show"] is False
+
+
+def test_home_has_the_at_home_button_and_no_scan_view(tmp_path):
+    client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
+    body = client.get("/home").get_data(as_text=True)
+    assert 'id="btn-at-home"' in body and "/api/line/at_home" in body
+    assert "<canvas" not in body
+    assert "position" in client.get("/api/alarms").get_json()

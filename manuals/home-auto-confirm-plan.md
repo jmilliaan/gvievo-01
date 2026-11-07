@@ -1,6 +1,6 @@
 # Position readiness: Home page At home, automatic confirm, recovery at home (2026-11-07)
 
-Coding plan, nothing built yet. AGV-01, LINE mode, graph g6 on map rev2.
+Coding plan, built 2026-11-07. The owner's vehicle checks in section 12 are still to run. AGV-01, LINE mode, graph g6 on map rev2.
 
 | Part | Today | After this |
 |---|---|---|

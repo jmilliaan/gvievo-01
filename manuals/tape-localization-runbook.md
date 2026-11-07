@@ -373,7 +373,7 @@ it too), and the **Calls** tab runs it. The new LineState fields need `colcon bu
 ### 4.1 After power-on
 
 1. The service enters LINE. The Localisation tile shows UNLOCALIZED.
-2. With the AGV parked at HOME-N: Mapping → Position (or Teach → Pass) → **At home** → confirm that the scans align → READY.
+2. Automatic since 2026-11-07 (manuals/home-auto-confirm-plan.md): **At home** on the Home page confirms by itself, and a LOST monitor rechecks when parked at HOME. To do it by hand, set `tape_loc.auto_confirm_home` false. With the AGV parked at HOME-N: Mapping → Position (or Teach → Pass) → **At home** → confirm that the scans align → READY.
 3. If the AGV is **not** at HOME-N: jog it there under MANUAL first.
 
 ### 4.2 Calls and trips

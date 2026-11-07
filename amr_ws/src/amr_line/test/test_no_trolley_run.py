@@ -129,6 +129,16 @@ def test_on_the_front_field_still_cancels_the_warning():
     assert w.job.state == lj.IDLE
 
 
+def test_on_a_call_during_a_position_check_is_refused():
+    w = on()
+    w.loc_ready = False
+    w.tick()
+    assert order.LOCALIZATION_NOT_READY in w.not_ready()
+    w.order()
+    assert w.job.state == lj.IDLE
+    assert w.refusal() == (order.DEPARTURE_REFUSED, order.LOCALIZATION_NOT_READY)
+
+
 def test_the_switch_needs_calling():
     assert lj.FollowJob(mock.MagicMock(), calling=False, no_trolley_run=True).no_trolley_run is False
 

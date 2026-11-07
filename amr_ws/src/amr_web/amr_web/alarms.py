@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from agv_core import alarms as cat
+from agv_core import position_status as pos
 
 from amr_base import drive_state
 
@@ -133,6 +134,45 @@ def standing(state: dict[str, Any]) -> list[dict]:
         seen.add(row["code"])
         unique.append(row)
     return unique
+
+
+def home_position(state: dict[str, Any]) -> dict:
+    """The Home page's position row: its status line and whether At home can be pressed now. It says what
+    the line node says (LineState.home_detail, agv_core.position_status) and only names the rest."""
+    mode, line = state.get("mode") or {}, state.get("line")
+    if mode.get("mode_name") != "LINE" or not line:
+        return {"show": False, "status": "", "level": "info", "enabled": False, "why": ""}
+    panel = state.get("panel") or {}
+    manual_ok = "order" not in state or (bool(panel.get("valid")) and not panel.get("mode_auto"))
+    why_not = "" if manual_ok else "turn the selector to MANUAL"
+
+    def row(status: str, level: str = "info", press: bool = True, why: str = "") -> dict:
+        ok = press and manual_ok
+        return {"show": True, "status": status, "level": level, "enabled": ok,
+                "why": why or ("" if ok or not press else why_not)}
+
+    loc = state.get("localization") or {}
+    name = loc.get("state_name")
+    detail = line.get("home_detail") or ""
+    if line.get("state_name") == "FAULT":
+        return row("Job in fault", "warn", False, "press Reset on the panel")
+    if line.get("state_name") in ("ARMED", "RUNNING", "HOLD") or line.get("trip"):
+        return row("On a trip", "info", False, "not while a trip is active")
+    if detail.startswith(pos.CHECKING):
+        return row(detail, "info", False, "checking now")
+    if detail.startswith(pos.FAILED):
+        return row(detail, "warn")
+    if detail.startswith(pos.RECHECKING):
+        return row(detail, "warn")
+    if name == "READY":
+        if line.get("at_home"):
+            return row("Position OK")
+        return row("Away from home", "info", False, "drive to HOME first")
+    if name == "LOST":
+        return row(f"Position lost: {loc.get('reason') or 'unknown reason'}", "warn")
+    if name == "CHECKING":
+        return row("Checking position set by hand")
+    return row("Position not set", "warn")
 
 
 def headline(state: dict[str, Any], rows: list[dict]) -> dict:

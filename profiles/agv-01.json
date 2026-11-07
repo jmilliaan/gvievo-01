@@ -215,7 +215,14 @@
     "site_mission": "site-103",
     "shadow_circuit": "C-MRU",
     "monitor_jump_m": 0.3,
-    "live": true
+    "live": true,
+    "auto_confirm_home": true,
+    "auto_recover_home": true,
+    "recover_settle_s": 3.0,
+    "recover_retry_s": 60.0,
+    "confirm_hold_s": 1.0,
+    "confirm_timeout_s": 20.0,
+    "confirm_max_offset_m": 1.0
   },
   "station": {
     "enabled": true,

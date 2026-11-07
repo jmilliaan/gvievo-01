@@ -77,7 +77,7 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import LineTeach, SelectMission
-from amr_line import autopilot, flight_recorder, rfid_intake, runtime, tape_health, trip_log
+from amr_line import autopilot, flight_recorder, position_confirm, rfid_intake, runtime, tape_health, trip_log
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -293,6 +293,10 @@ class LineFollowNode(LeanNode):
         self.create_subscription(LocalizationState, "/amr/localization_state", self._on_readiness, LATCHED)
         self.create_service(LineTeach, "/amr/line/teach", self._srv_teach)
         self.create_service(Trigger, "/amr/line/at_home", self._srv_at_home)
+        self._position = position_confirm.PositionConfirm(
+            position_confirm.Params.from_profile(vehicle_config, self.job.calling))
+        self._monitor, self._monitor_t, self._amcl_pose, self._amcl_pose_t = None, None, None, None
+        self._confirm_client = self.create_client(Trigger, "/amr/localization/confirm")
         # Trips (tracked plan 4): machine calls, and the operator's two confirmations. They form
         # and record; a trip from them moves only on AUTO + the physical Start at HOME (Run → Calls).
         self.create_service(LineTeach, "/amr/line/trip", self._srv_trip)
@@ -487,6 +491,8 @@ class LineFollowNode(LeanNode):
             return
         q = m.pose.pose.orientation
         yaw = 2.0 * math.atan2(q.z, q.w)
+        self._amcl_pose = (m.pose.pose.position.x, m.pose.pose.position.y, yaw)
+        self._amcl_pose_t = time.monotonic()
         c = m.pose.covariance
         verdict = self.tapeloc.amcl(self._ros_now(), m.header.stamp.sec + m.header.stamp.nanosec * 1e-9,
                                     m.pose.pose.position.x, m.pose.pose.position.y, yaw, c[0], c[1], c[7])
@@ -494,6 +500,7 @@ class LineFollowNode(LeanNode):
 
     def _on_readiness(self, m: LocalizationState) -> None:
         if self.tapeloc is not None and int(m.generation) == self._generation:
+            self._monitor, self._monitor_t = m, time.monotonic()
             self.tapeloc.readiness(self._ros_now(), int(m.state), str(m.reason))
             self._trip_log_safe(self._trip_log_ready, m)
 
@@ -545,23 +552,91 @@ class LineFollowNode(LeanNode):
             res.success, res.message = False, "At home needs the selector in MANUAL with station calling on"
             self._event("LINE_LOC", res.message, Event.WARN)
             return res
+        now = time.monotonic()
+        counts, _per_rev, still = self._wheel_inputs(now)
+        why = ""
+        if not self.job.idle_for_position():
+            # It would wipe the locator of a held trip.
+            why = f"At home refused: the job is {lj.STATE_NAMES[self.job.state]}" + (
+                ", with a trip" if self.job.trip is not None else "")
+        elif counts is not None and not still:
+            why = "At home refused: the wheels are moving"
+        if why:
+            res.success, res.message = False, why
+            self._event("LINE_LOC", why, Event.WARN)
+            return res
         ok, msg, pose = self.tapeloc.at_home(fresh_ready=True) if self.job.calling else self.tapeloc.at_home()
         if ok:
             self.job.at_home_pressed()
-            m = PoseWithCovarianceStamped()
-            m.header.stamp = self.get_clock().now().to_msg()
-            m.header.frame_id = "map"
-            m.pose.pose.position.x, m.pose.pose.position.y = float(pose[0]), float(pose[1])
-            m.pose.pose.orientation.z = math.sin(pose[2] / 2.0)
-            m.pose.pose.orientation.w = math.cos(pose[2] / 2.0)
-            from amr_line.tape_locator import initial_pose_cov  # noqa: PLC0415 - as the locator itself
-
-            m.pose.covariance = initial_pose_cov()
-            self._pub_initialpose.publish(m)
+            self._publish_seed(pose)
+            self._position.press(now, counts)
         res.success, res.message = ok, msg
         self._event("LINE_LOC", msg, Event.INFO if ok else Event.WARN)
         self._publish_state()
         return res
+
+    def _publish_seed(self, pose) -> None:
+        """The taught HOME on /initialpose: the monitor starts checking again."""
+        m = PoseWithCovarianceStamped()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.header.frame_id = "map"
+        m.pose.pose.position.x, m.pose.pose.position.y = float(pose[0]), float(pose[1])
+        m.pose.pose.orientation.z = math.sin(pose[2] / 2.0)
+        m.pose.pose.orientation.w = math.cos(pose[2] / 2.0)
+        from amr_line.tape_locator import initial_pose_cov  # noqa: PLC0415 - as the locator itself
+
+        m.pose.covariance = initial_pose_cov()
+        self._pub_initialpose.publish(m)
+
+    def _position_tick(self, i, now: float) -> None:
+        """Automatic confirm at HOME (amr_line.position_confirm). No motion: it can only seed AMCL and
+        call the monitor's confirm, which checks again."""
+        if self.tapeloc is None:
+            return
+        m = self._monitor
+        act = self._position.tick(position_confirm.Facts(
+            now=now,
+            monitor_state=None if m is None else int(m.state),
+            monitor_t=self._monitor_t,
+            can_confirm=bool(m is not None and m.can_confirm),
+            scan_match=-1.0 if m is None else float(m.scan_match),
+            scan_long=-1.0 if m is None else float(m.scan_long),
+            job_idle=self.job.idle_for_position(),
+            reset_edge=bool(i.reset_edge),
+            tape_seen=bool((i.sensor or {}).get("has_track")),
+            pose=self._amcl_pose,
+            pose_t=self._amcl_pose_t,
+            home=self.tapeloc.home_pose(),
+            counts=i.counts,
+            counts_per_rev=i.counts_per_rev,
+            parked_at_home=self.job.parked_at_home(i),
+            wheels_still=bool(i.wheels_still),
+        ))
+        if act == position_confirm.SEED:
+            home = self.tapeloc.home_pose()
+            if home is not None:
+                self._publish_seed(home)
+        elif act == position_confirm.CONFIRM:
+            self._call_confirm(now)
+        for level, text in self._position.events:
+            self._event("LINE_LOC", text, Event.WARN if level == "warn" else Event.INFO)
+        self._position.events.clear()
+
+    def _call_confirm(self, now: float) -> None:
+        if not self._confirm_client.service_is_ready():
+            self._position.reply(now, False, "the confirm service is not up")
+            return
+
+        def done(future):
+            t = time.monotonic()
+            try:
+                r = future.result()
+            except Exception as e:  # noqa: BLE001 - any failure of the call is a failed confirm
+                self._position.reply(t, False, str(e))
+            else:
+                self._position.reply(t, bool(r.success), str(r.message))
+
+        self._confirm_client.call_async(Trigger.Request()).add_done_callback(done)
 
     def _manual_on_fresh_panel(self) -> bool:
         p, t = self._panel, self._panel_t
@@ -809,6 +884,7 @@ class LineFollowNode(LeanNode):
             if not ok:
                 self._event("LINE_LOC", f"{msg}: the trip will hold (position)", Event.WARN)
         self._tapeloc_tick(now)
+        self._position_tick(self._tl_inputs, now)
         engine_events = self.job.tape.drain_events()
         for level, text in engine_events:
             self._event("LINE_MISSION", text, Event.WARN if level == "warn" else Event.INFO)
@@ -1029,6 +1105,8 @@ class LineFollowNode(LeanNode):
         m.message = self.job.reason
         m.code = self._code()
         extra = {"hold_device": hold_policy.hold_device(self.job.hold_cause)}
+        if self._position.detail:
+            extra["home_detail"] = self._position.detail
         for k, v in {**self.job.mission_snapshot(), **extra}.items():
             if not hasattr(m, k):
                 # Python updated by a restart, amr_interfaces not rebuilt: say so once and

@@ -348,7 +348,8 @@ map**). Home's **Set position** button opens this tab.
 1. Keep the AMCL map selected in **Map**. **Set initial pose on map** and
    **Confirm** are greyed out while another map is in view, and a pose drawn on a
    map that is no longer the AMCL map is refused.
-2. At HOME-N press **At home** (the taught pose). Elsewhere press **Set initial
+2. At HOME press **At home** (the taught pose, also on the Home page): the AGV confirms by itself in
+   about 3 to 6 s, and step 3 is only needed if it can't, in which case Home says why. Elsewhere press **Set initial
    pose on map**, press the vehicle's real position on the map, **drag towards the
    way it faces** and release; **Pose = survey mark** puts it on the map's floor
    mark. Localisation shows `CHECKING` and the red scan points should lie on the
@@ -364,7 +365,7 @@ map**). Home's **Set position** button opens this tab.
 | `UNLOCALIZED` | No initial pose yet. Set one. |
 | `CHECKING` | Pose given, converging. Confirm once `can_confirm` is true and the scans align. |
 | `READY` | Confirmed. |
-| `LOST` | A sensor went stale, uncertainty grew, or the pose jumped. Set the initial pose and confirm again. |
+| `LOST` | A sensor went stale, uncertainty grew, or the pose jumped. Parked at HOME with station calling on, it re-seeds AMCL and rechecks by itself. Otherwise set the initial pose and confirm again. |
 
 Map clean-up and dynamic areas are no longer on the web (2026-10-28); the shell
 tool still writes a derived revision:
@@ -483,7 +484,7 @@ Machine calls from the station PC over MQTT (broker `192.168.2.5:1883`). A subse
 |---|---|---|
 | `NOT_AUTO` | selector not AUTO, or the panel is stale | selector to AUTO |
 | `NOT_AT_HOME` | not at HOME, or a wheel moved since At home or since arrival | MANUAL, At home, AUTO |
-| `LOCALIZATION_NOT_READY` | no fresh scan match since At home | confirm the scans align |
+| `LOCALIZATION_NOT_READY` | no fresh scan match since At home | wait: parked at HOME it rechecks by itself. If Home shows a failure, MANUAL, At home, AUTO |
 | `TAPE_NOT_SEEN` | no tape under the sensor | put the AGV on the tape |
 | `FAULT` | the job is in FAULT | Reset |
 | `TORQUE_TIMEOUT` | a warning found no torque: E-stop or safety chain | release the E-stop, press Reset |

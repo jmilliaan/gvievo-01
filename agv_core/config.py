@@ -630,6 +630,15 @@ _SCHEMA = {
         # Tracked plan 4: false = the position engine only shadows (Teach's guided-run orders drive);
         # true = the site mission is a job, and trips stop, branch and turn by position.
         "live":               ("TAPE_LOC_LIVE", bool),
+        # Confirming the position at HOME without a second press, and recovering a LOST monitor
+        # when parked there (manuals/home-auto-confirm-plan.md). false = a person confirms, as before.
+        "auto_confirm_home":  ("TAPE_LOC_AUTO_CONFIRM_HOME", bool),
+        "auto_recover_home":  ("TAPE_LOC_AUTO_RECOVER_HOME", bool),
+        "recover_settle_s":   ("TAPE_LOC_RECOVER_SETTLE_S", float),
+        "recover_retry_s":    ("TAPE_LOC_RECOVER_RETRY_S", float),
+        "confirm_hold_s":     ("TAPE_LOC_CONFIRM_HOLD_S", float),
+        "confirm_timeout_s":  ("TAPE_LOC_CONFIRM_TIMEOUT_S", float),
+        "confirm_max_offset_m": ("TAPE_LOC_CONFIRM_MAX_OFFSET_M", float),
     },
     "station": {
         "enabled":             ("STATION_ENABLED", bool),
@@ -1356,6 +1365,14 @@ def _check_finite(ns):
 
 def _check_station(g, check):
     """The station block (manuals/station-call-plan.md P1)."""
+    check(not g("TAPE_LOC_AUTO_RECOVER_HOME") or g("TAPE_LOC_AUTO_CONFIRM_HOME"),
+          "tape_loc.auto_recover_home needs tape_loc.auto_confirm_home")
+    check(1.0 <= g("TAPE_LOC_RECOVER_SETTLE_S") <= 30.0, "tape_loc.recover_settle_s must be in [1, 30] s")
+    check(30.0 <= g("TAPE_LOC_RECOVER_RETRY_S") <= 600.0, "tape_loc.recover_retry_s must be in [30, 600] s")
+    check(0.5 <= g("TAPE_LOC_CONFIRM_HOLD_S") <= 5.0, "tape_loc.confirm_hold_s must be in [0.5, 5] s")
+    check(5.0 <= g("TAPE_LOC_CONFIRM_TIMEOUT_S") <= 120.0, "tape_loc.confirm_timeout_s must be in [5, 120] s")
+    check(0.2 <= g("TAPE_LOC_CONFIRM_MAX_OFFSET_M") <= 2.0,
+          "tape_loc.confirm_max_offset_m must be in [0.2, 2] m")
     check(not g("STATION_ENABLED") or g("TAPE_LOC_LIVE"),
           "station.enabled needs tape_loc.live: an order is a trip of the position engine")
     check(not g("STATION_NO_TROLLEY_RUN") or g("STATION_ENABLED"),
