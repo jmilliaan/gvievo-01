@@ -557,3 +557,42 @@ def test_home_shows_the_trip_predicate_in_a_site_mission():
     w.tick()
     s = snap()
     assert s["at_home"] is False and "LOST" in s["home_detail"]
+
+
+def test_high_comes_back_on_the_return_through_the_same_zone():
+    """HS-MRU, 2026-11-06: one zone covers both directions, and the U-turn took HIGH away from all of it."""
+    w = one_call()
+    w.job.trip_call("M1", w.t)
+    w.start()
+    t = w.job.tape
+    t.route.zones = [(0.0, 1e6, "Z")]
+    parked_at(w, "ATT")
+    go_on(w)
+    parked_at(w, "MW-1")
+    go_on(w)
+    assert w.until(lambda: t.uturn_req is not None, 60.0), (w.job.reason, w.S)
+    assert t._blocked == "Z" and not t.high, "the U-turn itself still drops it"
+    spin(w)
+    assert t._blocked is None
+    settle_end = t.route.uturn["S"] + site_run.UTURN_SETTLE_M
+    seen = []
+    while w.job.state == lj.RUNNING and w.S < settle_end and len(seen) < 5000:
+        w.tick()
+        seen.append(t.high)
+    assert not any(seen), "no HIGH while it straightens after the pivot"
+    assert t._blocked is None, "and so nothing for the curve guard to trip on"
+    parked_at(w, "ME-1")
+    go_on(w)
+    assert w.until(lambda: t.high, 30.0), (t.high_why, w.S)
+
+
+def test_a_block_on_the_way_out_still_lasts_for_that_pass():
+    w = one_call()
+    w.job.trip_call("M1", w.t)
+    w.start()
+    t = w.job.tape
+    t.route.zones = [(0.0, 1e6, "Z")]
+    assert w.until(lambda: t.high, 30.0), (t.high_why, w.S)
+    t.drop_high("a hold")
+    w.drive(1.0)
+    assert not t.high and "taken away" in t.high_why

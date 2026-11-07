@@ -1,7 +1,9 @@
 [Unit]
 Description=Unified AMR supervisor, hardware, web UI, mapping and navigation
 Documentation=file:///home/gvipc-evo-01/agv_can/amr_ws/RUNBOOK.md
-After=network-online.target sys-subsystem-net-devices-can0.device
+# After canable@can0: at shutdown this stops first, so drive_node can still reach the drives to clear
+# their heartbeat watchdog (1016h). The other way round a PC reboot latches both drives in FAULT (8130h).
+After=network-online.target sys-subsystem-net-devices-can0.device canable@can0.service
 Wants=network-online.target
 BindsTo=sys-subsystem-net-devices-can0.device
 StartLimitIntervalSec=60

@@ -72,7 +72,7 @@ from agv_core.drivers.canbus.cia402 import (  # noqa: E402
 )
 from agv_core.drivers.canbus.sdo import sdo_read, sdo_write, u32  # noqa: E402
 
-from amr_base import pp
+from amr_base import drive_state, pp
 from amr_base.diff_drive import RAD_S_PER_RPM, WheelScale  # noqa: F401 - re-exported
 
 # ---------------------------------------------------------------- PDO layout
@@ -370,6 +370,7 @@ class DriveLink:
     ramp: dict  # {"accel": rpm/s, "decel": rpm/s}
     log: callable = print
     state: str = DISARMED
+    preflight_statusword: dict = field(default_factory=dict)  # node -> as last read by preflight()
     fault_reason: str | None = None
     telemetry: dict[int, DriveTelemetry] = field(default_factory=dict)
     scale: WheelScale | None = None
@@ -618,9 +619,24 @@ class DriveLink:
     # -- state machine --
 
     def preflight(self) -> tuple[bool, list[str]]:
-        return preflight_report(
-            lambda n, i, sub: sdo_read(self.router, n, i, sub), lambda n, i: self.read(n, i), self.nodes
-        )
+        self.preflight_statusword = {}
+
+        def read(node, index):
+            value = self.read(node, index)
+            if index == 0x6041 and value is not None:
+                self.preflight_statusword[node] = value
+            return value
+
+        return preflight_report(lambda n, i, sub: sdo_read(self.router, n, i, sub), read, self.nodes)
+
+    def reported_state(self, node: int, fresh: bool) -> str:
+        """The state to report for a node. Never linked, so no feedback yet: what preflight read, so a
+        fault found before linking is seen. Reporting only: nothing here decides to arm."""
+        t = self.telemetry[node]
+        if t.statusword is None:
+            sw = self.preflight_statusword.get(node)
+            return t.state if sw is None else decode_state(sw)
+        return t.state if fresh else drive_state.STALE
 
     def prepare(
         self,

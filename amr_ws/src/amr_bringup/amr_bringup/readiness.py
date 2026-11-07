@@ -108,6 +108,7 @@ class Snapshots:
         self.drives_t = None
         self.drives_ok = False
         self.drive_link = ""
+        self.drive_fault = False
         self.run_power = False
         self.line_power = False
         self.wheels_t = None
@@ -143,6 +144,7 @@ class Snapshots:
                 bool(m.operational), str(m.link_state), str(m.left_state), str(m.right_state)
             )
             self.drive_link = str(m.link_state)
+            self.drive_fault = drive_state.has_fault(str(m.left_state), str(m.right_state))
 
     def on_wheels(self, m) -> None:
         with self._lock:
@@ -294,6 +296,21 @@ def base_missing(s: Snapshots, now: float, fresh_s: float = 1.0) -> str:
         if s.panel_t is None or now - s.panel_t > fresh_s:
             missing.append("panel")
     return ", ".join(missing)
+
+
+def base_actions(s: Snapshots) -> dict:
+    """What the operator does about each item of base_missing(). A drive in fault is not the safety
+    chain: only a power cycle clears it, and the cabinet's reset does nothing."""
+    with s._lock:
+        fault = s.drive_fault
+    drives = ("a drive is in fault: switch the drives off and on, Reset and a restart cannot clear it"
+              if fault else "press the safety reset on the cabinet")
+    return {
+        "drives": drives,
+        "panel": "check the control panel and its I/O island",
+        "wheel feedback": drives,
+        "mux": "call the engineer: the command mux did not start",
+    }
 
 
 def base_ready(s: Snapshots, now: float) -> bool:

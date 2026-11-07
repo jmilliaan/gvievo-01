@@ -28,6 +28,26 @@ DROPPABLE = ("tick", "amcl", "ready")
 _STOP = object()
 
 
+class ForkCursor:
+    """Which forks of the current run the trip log has yet to write. A log opens during the pre-move
+    warning, while job.tape is still the previous run's: those are skipped, and a new tape starts from
+    its first fork."""
+
+    def __init__(self):
+        self.tape, self.n = None, 0
+
+    def skip(self, tape):
+        self.tape, self.n = tape, len(getattr(tape, "fork_log", ()))
+
+    def new(self, tape):
+        if tape is not self.tape:
+            self.tape, self.n = tape, 0
+        forks = getattr(tape, "fork_log", ())
+        out = forks[self.n:]
+        self.n = len(forks)
+        return out
+
+
 class TripLog:
     def __init__(self, state_dir, keep=60, queue_size=4000):
         self.dir = os.path.join(state_dir, "logs", "trip_log")

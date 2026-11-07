@@ -828,8 +828,8 @@ class DriveNode(LeanNode):
         # drive that had gone silent (unified plan WP-A4).
         now, max_age = time.monotonic(), 2.5 * self.feedback_ms / 1000.0
         status_fresh = {n: link.feedback_fresh(n, now, max_age)[0] for n in (config.LEFT, config.RIGHT)}
-        m.left_state = tl.state if status_fresh[config.LEFT] or tl.statusword is None else drive_state.STALE
-        m.right_state = tr.state if status_fresh[config.RIGHT] or tr.statusword is None else drive_state.STALE
+        m.left_state = link.reported_state(config.LEFT, status_fresh[config.LEFT])
+        m.right_state = link.reported_state(config.RIGHT, status_fresh[config.RIGHT])
         fresh = all(all(link.feedback_fresh(n, now, max_age)) for n in (config.LEFT, config.RIGHT))
         m.operational = bool(
             link.state == canopen.ARMED and fresh and tl.operation_enabled and tr.operation_enabled

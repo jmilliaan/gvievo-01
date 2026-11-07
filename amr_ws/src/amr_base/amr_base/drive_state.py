@@ -24,6 +24,11 @@ def torque_off(operational: bool, left_state: str, right_state: str) -> bool:
     return not operational and OPERATION_ENABLED not in (left_state, right_state)
 
 
+def has_fault(*states: str) -> bool:
+    """Any drive in Fault or Fault reaction active, however the state is spelt."""
+    return any("fault" in s.lower() for s in states)
+
+
 def still(left_rad_s: float, right_rad_s: float, eps: float, inclusive: bool = True,
           valid: bool = True) -> bool:
     """Both wheels within eps rad/s of zero (and their samples valid). inclusive: |w| <= eps;

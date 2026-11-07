@@ -610,7 +610,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `LOOP_ERROR` | error | Internal error in the vehicle software | Press Recover on the Home page. If it repeats, save a report and call the engineer. | The supervisor caught an exception in its loop and failed the running operation. |
 | `MUX_ACK_TIMEOUT` | error | The mode change did not finish | Press Recover on the Home page. | The mux never acknowledged the new generation inside the barrier budget. |
 | `SURVEY_RPC_TIMEOUT` | error | The survey command got no answer | Check the Mapping page for a new revision, then press Recover. | returned/abort/save RPC passed its deadline; a late answer is ignored. |
-| `BASE_NOT_READY` | warn | Not ready: the vehicle's basics did not come up | Press the safety reset on the cabinet. The vehicle becomes ready by itself. | Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the supervisor leaves FAULT on its own once the base reports ready. |
+| `BASE_NOT_READY` | warn | Not ready: the vehicle's basics did not come up | Press the safety reset on the cabinet. If a drive is in fault, switch the drives off and on instead. | Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the supervisor leaves FAULT on its own once the base reports ready. |
 
 ### Cleared by: power cycle
 

@@ -61,6 +61,10 @@ FORK_CLEAR_M = 0.3
 TAPE_END_MARGIN_M = 0.5
 # A trip starts at HOME: the locator within this of HOME's taught S (job._site_at_home).
 HOME_START_M = 0.5
+# No HIGH for this far after a U-turn: the AGV leaves the pivot a few degrees off the tape, and accelerating
+# while it straightens reads as a tight curve to the curve guard (2026-11-07: 0.30 1/m at S +0.3 m, which
+# then took HIGH away for the rest of the zone).
+UTURN_SETTLE_M = 2.0
 
 
 class ForkWatch:
@@ -205,7 +209,7 @@ class SiteRun(TapeRun):
         return self.a_rpm_s if self.route.zones else None
 
     def drop_high(self, reason, urgent=False):
-        """A hold, the curve guard, stale inputs: no HIGH for the rest of this zone."""
+        """A hold, the curve guard, stale inputs: no HIGH for the rest of this pass through this zone."""
         z = self._zone_at(self.S)
         if z is not None and self._blocked != z:
             self._blocked = z
@@ -496,6 +500,8 @@ class SiteRun(TapeRun):
     def finish_u_turn(self):
         super().finish_u_turn()
         self.phase = "back"
+        # The return is a new pass through the zone, under the same id. A live reason says so again.
+        self._blocked = None
         self._decide("U-turn complete: inbound")
 
     # -- speed -------------------------------------------------------------------------------
@@ -512,12 +518,16 @@ class SiteRun(TapeRun):
         z = self._zone_at(S)
         why = self._loc_why(self.p.sigma_junction_m)     # sigma says it; AMCL being out is no veto here
         healthy = not why
+        u = self.route.uturn
+        settling = self.phase == "back" and u is not None and S is not None and S < u["S"] + UTURN_SETTLE_M
         self.high_why = "" if z is None else ("HIGH taken away in this zone" if z == self._blocked
                                               else why or ("no step yet" if not self._step_ok
                                                            else "stopping" if self.stop is not None
-                                                           or self.uturn_req is not None else ""))
+                                                           or self.uturn_req is not None
+                                                           else "settling after the U-turn" if settling
+                                                           else ""))
         if z is not None and z != self._blocked and healthy and self._step_ok and self.stop is None \
-                and self.uturn_req is None:
+                and self.uturn_req is None and not settling:
             ceiling = vehicle.AUTO_HIGH_RPM
             a = self.a_rpm_s * vehicle.MPS_PER_RPM
             v_c = cruise * vehicle.MPS_PER_RPM

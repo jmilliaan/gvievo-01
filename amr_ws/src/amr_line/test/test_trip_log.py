@@ -119,7 +119,8 @@ def node_over(world, log):
     n = types.SimpleNamespace(
         job=world.job, triplog=log, tapeloc=rt, reader=types.SimpleNamespace(sensor=world.tape),
         _generation=1,
-        _wheels=types.SimpleNamespace(left_vel_rad_s=0.5, right_vel_rad_s=0.5), _tl_route=None, _tl_forks=0,
+        _wheels=types.SimpleNamespace(left_vel_rad_s=0.5, right_vel_rad_s=0.5), _tl_route=None,
+        _tl_forks=tl.ForkCursor(),
         _tl_tick=0, _tl_ready=None, _tl_failed=False, get_logger=lambda: types.SimpleNamespace(
             error=lambda m: pytest.fail(m), warn=lambda m: pytest.fail(m)))
     n.running = 0
@@ -180,3 +181,15 @@ def test_a_bug_in_the_logging_is_reported_once_and_the_tick_goes_on():
     N._trip_log_tick(n, 0.0, 0, 0.0, 0.0)
     N._trip_log_tick(n, 0.0, 0, 0.0, 0.0)
     assert len(said) == 1 and "goes on" in said[0]
+
+
+def test_a_new_log_does_not_take_the_previous_runs_forks():
+    old, new = types.SimpleNamespace(fork_log=["a", "b"]), types.SimpleNamespace(fork_log=[])
+    c = tl.ForkCursor()
+    c.skip(old)                     # the log opens in the warning: job.tape is still the old run's
+    assert c.new(old) == []
+    assert c.new(new) == []
+    new.fork_log.append("c")
+    assert c.new(new) == ["c"], "a short new list is not hidden by the old one's length"
+    new.fork_log.append("d")
+    assert c.new(new) == ["d"] and c.new(new) == []

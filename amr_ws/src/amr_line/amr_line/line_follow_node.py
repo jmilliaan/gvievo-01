@@ -283,7 +283,7 @@ class LineFollowNode(LeanNode):
         self._tl_ready = None
         self._tl_ready_t = 0.0
         self._tl_route = None
-        self._tl_forks = 0
+        self._tl_forks = trip_log.ForkCursor()
         self._tl_failed = False
         self._tl_inputs = None
         self._pub_initialpose = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", RELIABLE_1)
@@ -933,10 +933,8 @@ class LineFollowNode(LeanNode):
             r, self._tl_route = self._tl_route, None
             log.add("route", ident=r.ident, stops=r.stops, nodes=r.nodes, events=r.events, zones=r.zones,
                     uturn=r.uturn)
-        forks = getattr(t, "fork_log", ())
-        for f in forks[self._tl_forks:]:
+        for f in self._tl_forks.new(t):
             log.add("fork", t=round(now, 3), **f)
-        self._tl_forks = len(forks)
         # Standing still in a hold for minutes needs no 50 Hz. RUNNING always gets every tick.
         self._tl_tick += 1
         if state == before == lj.HOLD and left == 0.0 and right == 0.0 and self._tl_tick % 10:
@@ -970,7 +968,6 @@ class LineFollowNode(LeanNode):
                 panel_valid=None if i is None else i.panel_valid)
         if state in (lj.DONE, lj.FAULT, lj.IDLE):
             log.end(f"{lj.STATE_NAMES[state]} {job.reason}")
-            self._tl_forks = 0
 
     def _trip_log_begin(self) -> None:
         job, rt = self.job, self.tapeloc
@@ -982,7 +979,8 @@ class LineFollowNode(LeanNode):
                            profile=os.environ.get("AGV_PROFILE", ""), generation=self._generation,
                            cruise=getattr(job.tape, "cruise", None), calling=bool(job.calling),
                            params=vars(p).copy() if p is not None and hasattr(p, "__dict__") else {})
-        self._tl_forks, self._tl_tick, self._tl_ready = 0, 0, None
+        self._tl_forks.skip(job.tape)
+        self._tl_tick, self._tl_ready = 0, None
 
     def _write_tape_health(self, result: str) -> None:
         """End of a run: append its tape-health bins (M3). A disk problem is logged, never raised."""

@@ -637,12 +637,7 @@ class Supervisor(LeanNode):
         if not missing:
             self._event_when_heard(Event.INFO, "BOOT_READY", f"{after}the vehicle is ready")
             return
-        actions = {
-            "drives": "press the safety reset on the cabinet",
-            "panel": "check the control panel and its I/O island",
-            "wheel feedback": "press the safety reset on the cabinet",
-            "mux": "call the engineer: the command mux did not start",
-        }
+        actions = rd.base_actions(self.snap)
         parts = [f"{item} ({actions.get(item, 'see the Alarms page')})" for item in missing.split(", ")]
         self._event_when_heard(Event.WARN, "BASE_NOT_READY", f"{after}not ready: " + "; ".join(parts))
 

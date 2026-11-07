@@ -367,7 +367,7 @@ def _rows() -> tuple[Alarm, ...]:
 
         # ---- the supervisor and the service ----
         a("BASE_NOT_READY", WARN, "recover", "Not ready: the vehicle's basics did not come up",
-          "Press the safety reset on the cabinet. The vehicle becomes ready by itself.",
+          "Press the safety reset on the cabinet. If a drive is in fault, switch the drives off and on instead.",
           "Boot budget expired with drives/panel/mux/wheel feedback missing. Since 2026-09-22 the "
           "supervisor leaves FAULT on its own once the base reports ready."),
         a("BASE_EXITED", ERROR, "restart_service", "Needs service: the vehicle software stopped",

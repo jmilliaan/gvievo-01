@@ -348,6 +348,14 @@ def test_preflight_refuses_a_fault_or_remote_clear():
     assert not ok and any("FAULT" in r for r in report) and any("Remote" in r for r in report)
 
 
+def test_a_fault_found_by_preflight_is_reported_before_any_link():
+    link = _link(FakeBus(statusword=0x0008))
+    assert link.reported_state(1, False) == "-"
+    link.preflight()
+    assert "fault" in link.reported_state(1, False).lower()
+    assert link.state == "disarmed", "reporting only"
+
+
 def test_send_target_is_rpdo_and_never_carries_fault_reset():
     bus = FakeBus()
     link = _link(bus)

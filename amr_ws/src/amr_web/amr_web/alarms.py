@@ -45,7 +45,7 @@ def _drive_code(drives: dict | None) -> str | None:
     # statuswords used to show nothing but DRIVES_NOT_READY. A silent node reads "stale".
     if drives.get("link") == drive_state.LINK_FAULT:
         return "DRIVE_SILENT" if drive_state.STALE in states else "DRIVE_FAULT"
-    if "Fault" in states:
+    if drive_state.has_fault(states):
         return "DRIVE_FAULT"
     if not drives.get("operational"):
         if drive_state.SWITCH_ON_DISABLED in states:
