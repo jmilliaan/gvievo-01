@@ -39,11 +39,44 @@ obstacles on rev1, and 94 % and 3.5 % with the mask.
 
 To undo: set the active pointer back to map rev1, g5, and restart `amr.service`.
 
-## What the graph does not have yet
+## g7: the complete graph (2026-11-07)
 
-All tape is laid (owner, 2026-11-07), but g6 only holds what C-MRU drives. Row 2, the left vertical, the middle line,
-J-S, X2, J-LV, row 2's curve into J-ML and R2-1 to R2-8 have no positions until a BTU lap is recorded and merged in, as a new revision. Do
-not use Build for that: it would drop the drawn right bay and HOME-N2. Use `amr_line.tape_merge` (`manuals/tape-localization-runbook.md` 3.2B). The route is drawn in `../c-btu-route`.
+`g7-overview.png` draws it, to scale; `draw_g7.py` redraws it (reads only). g7 is g6, every leg and station
+unchanged, plus the second C-BTU lap (pass `2026-11-07T11:41:26`), added by `amr_line.tape_merge`:
+
+| New leg | Length, m |
+|---|---|
+| `J-N:straight>J-S` | 0.49 |
+| `J-S:straight>X2` | 0.83 |
+| `X2:cross>J-LV` | 64.18 |
+| `J-LV:right>J-ML` | 83.11, with R2-1 to R2-8 |
+| `J-ML:merge>J-STEM` | 11.80 |
+
+Stops: R2-1 to R2-3 are marks M24 to M26 from the second lap, R2-4 to R2-8 marks M19 to M23 from the first. The two
+laps run within about 4 cm of each other on these legs. J-S and X2 are matched by their order after J-N. Published,
+and active only when activated. To undo: activate g6 and restart `amr.service`.
+
+## The C-BTU lap of 2026-11-07
+
+`btu-lap-1.png` draws the first recorded lap over g6, to scale; `draw_btu_lap.py` redraws it (reads only). The second
+lap read the same 11 forks in the same places.
+
+| Item | Map frame, m | Source |
+|---|---|---|
+| J-S | (-11.11, -1.47), 0.6 m past J-N | fork log, by order after J-N |
+| X2 | (-11.81, -1.36), 0.8 m past J-S | fork log, by order after J-S. Read for only 6 cm |
+| J-LV | (-75.78, 3.13), 64 m past X2 | fork log, Right order taken. A curve (owner) |
+| Row 2 corner | about (-77.3, 15) to (-70, 17.6) | AMCL on the lap |
+| J-ML | (-10.55, 12.31), 83 m past J-LV | fork log. The row 2 tape arrives with the trunk tape closing from its left |
+| R2-4 to R2-8 | marks M19 to M23, x -46.3 to -14.5, about 8 m apart | marked on the first lap |
+| R2-1 to R2-3 | on `btu-lap-1.png` only: (-70.2, 17.6), (-62.2, 17.1), (-54.3, 16.5) | **Estimates**, replaced in g7 by marks at x -68.5, -61.0, -53.2 |
+
+Two more fork readings have no junction: (-20.56, -0.82) and (-70.63, 2.74). The second reading stays within about 8 mm
+of the main track and never opens out, so they look like tape joints; not checked on the floor.
+
+## What is still drawn
+
+The right bay and HOME-N2 stay drawn in g7, not recorded. Do not use Build: it would drop them. Add a lap with `amr_line.tape_merge` (`manuals/tape-localization-runbook.md` 3.2B).
 
 A recorded lap from HOME-N2 should replace the drawn leg. The hand-derived drawings (`../c-mru-route`,
 `../homepos-area-projection`) show the bay about 3.3 m long; the map says about 8 m, so trust this folder

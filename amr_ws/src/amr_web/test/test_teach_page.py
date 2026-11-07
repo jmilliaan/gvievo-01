@@ -13,6 +13,22 @@ def test_teach_page_and_site_lists(tmp_path):
     assert config.TAPE_LOC_SHADOW_CIRCUIT in site["circuits"] and site["stations"]
 
 
+def test_the_tools_are_in_the_rail_and_the_orders_have_the_column(tmp_path):
+    client, _stub = app_for({}, tmp_path)
+    page = client.get("/teach").data.decode()
+    rail, main = page.split("<main", 1)
+    tools = ('id="teach-tools"', 'id="tc-tabs"', 'data-act="pass_start"', 'data-act="mark_role"',
+             'id="tc-msg"')
+    for needle in tools:
+        assert needle in rail and needle not in main, needle
+    orders = ('id="gd-left"', 'id="gd-straight"', 'id="gd-right"', 'id="gd-mark"', 'id="gd-uturn"',
+              'id="gd-high"')
+    for needle in orders:
+        assert needle in main and needle not in rail, needle
+    assert main.index('data-side="right"') < main.index('data-side="straight"') < main.index('data-side="left"')
+    assert main.count("teach-huge") == 2 and page.count('id="log"') == 1
+
+
 def test_teaching_needs_the_engineer_view(tmp_path):
     client, stub = app_for({}, tmp_path)
     client.post("/api/role", json={"role": "operator"})

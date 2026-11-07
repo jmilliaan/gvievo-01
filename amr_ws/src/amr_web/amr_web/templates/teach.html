@@ -1,9 +1,79 @@
 {% extends "base.html" %}
 {% block title %}AMR — teach{% endblock %}
+{% block rail %}
+{# Teach tools under the status tiles (owner, 2026-11-07): the orders and Mark here get the column. #}
+<div id="teach-tools" class="rail-extra rail-teach">
+  <h2>Teach <small id="tc-mission">site mission</small></h2>
+  <div class="tabs" id="tc-tabs">
+    <button class="tab on" type="button" data-tab="status">Status</button>
+    <button class="tab" type="button" data-tab="pass">Pass</button>
+    <button class="tab" type="button" data-tab="marks">Marks</button>
+    <button class="tab" type="button" data-tab="graph">Graph</button>
+  </div>
+  <div class="tabpane" data-tab="status">
+    <div id="gd-run" class="tel-grid rows"></div>
+    <p id="gd-why" class="note"></p>
+    <h3>Locator <small>shadow</small></h3>
+    <div id="tc-loc" class="tel-grid rows"></div>
+    <p id="tc-detail" class="note"></p>
+  </div>
+  <div class="tabpane" data-tab="pass" hidden>
+    <label class="field">Map <input id="tc-map" placeholder="map id"> rev <input id="tc-rev" size="3" inputmode="numeric"></label>
+    <div class="bar"><button data-act="map" id="btn-map" class="tool" title="Loads when the tape layer restarts (Home → More)">Select map</button><button data-act="status" class="tool" title="The teach runtime's own line: selected map, graph, recording, built">Status</button></div>
+    <label class="field">Circuit <select id="tc-circuit"></select></label>
+    <div class="bar">
+      <button data-act="pass_start" class="big">Record pass</button>
+      <button data-act="pass_stop" class="big">Stop pass</button>
+      <button data-act="pass_discard" class="danger">Discard</button>
+      <button data-act="passes" class="tool">Passes</button>
+    </div>
+    <label class="field">Station <select id="tc-station"></select></label>
+    <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
+    <div class="bar">
+      <button id="btn-at-home" class="big" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>
+      <button id="btn-confirm" class="big run" title="The live scan lies on the map's walls">Scans align</button>
+    </div>
+  </div>
+  <div class="tabpane" data-tab="marks" hidden>
+    <label class="field">Mark <input id="tc-mark" placeholder="M-id"></label>
+    <div class="bar">
+      <button data-act="marks" class="tool">Marks</button>
+      <button data-act="mark_delete" class="danger">Delete mark</button>
+    </div>
+    {# Tracked plan 4: a mark (its M-id above) becomes a station, a mid-line U-turn point or a
+       zone end; "-" takes the role off. Build puts it in the graph. #}
+    <div class="bar">
+      <label class="field">Role <select id="tc-role"></select></label>
+      <button data-act="mark_role" class="big" title="The mark named above (M-id) becomes this station or point">Set role</button>
+      <button data-act="roles" class="tool" title="What is taught, from which mark, and what is not">Roles</button>
+    </div>
+    {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
+       name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
+       the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
+    <div class="bar">
+      <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
+      <button data-act="mark_offset" class="big" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
+      <button data-act="mark_along" class="big" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
+    </div>
+    <p class="note"><a href="/tape-areas">High-speed areas →</a></p>
+  </div>
+  <div class="tabpane" data-tab="graph" hidden>
+    <div class="bar">
+      <button data-act="build" class="big">Build</button>
+      <button data-act="publish" class="big">Publish</button>
+    </div>
+    <div class="bar">
+      <label class="field">g <input id="tc-g" size="3" inputmode="numeric"></label>
+      <button data-act="activate" class="big" title="Loads when the tape layer restarts (Home → More)">Make active</button>
+    </div>
+  </div>
+  <p id="tc-msg" class="note"></p>
+</div>
+{% endblock %}
 {% block body %}
 {# Teach (tracked plan 3, P1; runbook section 3), with the Guide page merged in (2026-10-28):
    a teach pass IS a guided run, so the orders and the teach tools share one page.
-   Left, the guided run (2026-10-23): the engineer walks beside the AGV and gives each branch
+   The column, the guided run (2026-10-23): the engineer walks beside the AGV and gives each branch
    order by hand. An order is one shot: the NEXT fork or merge the MLS sees uses it, then it is
    straight again. Keyboard: Left / Up (straight) / Right arrows, M = Mark here.
      Speed toggle (2026-10-24, mission with a high_zone): High lets the marker pair (outer then
@@ -11,110 +81,52 @@
      speed by itself; NORMAL again at every mission load.
      U-turn at tape end (2026-10-24): the NEXT tape end is the U-turn, strip or not - instead of
      the run ending "track lost". One shot, only on the way out; it moves nothing by itself.
-   Right, the teach tools: record where the tape and the stations are, on the map the LINE layer
+   The rail, the teach tools: record where the tape and the stations are, on the map the LINE layer
    localises on; the locator runs in SHADOW and only logs.
    Nothing on this page moves the vehicle: a run or a pass starts and resumes only on AUTO + the
    physical Start (or is driven under MANUAL); a station is taught with the vehicle standing
    still. Engineer view (PIN): every action here needs it except At home and Scans align. #}
-<section class="manual grow">
+<section class="manual grow teach-one">
   <div class="side">
     <h2>Next fork <small id="gd-mission">guided mission</small></h2>
     <div id="gd-order" class="tel-grid rows"></div>
-    <div class="bar three">
-      <button id="gd-left" class="big" data-side="left" title="Left arrow">◀ Left</button>
-      <button id="gd-straight" class="big" data-side="straight" title="Up arrow">▲ Straight</button>
+    <div class="bar three teach-huge">
+      {# Right on the left of the row, Left on its right (owner, 2026-11-07). The order each sends is unchanged. #}
       <button id="gd-right" class="big" data-side="right" title="Right arrow">Right ▶</button>
+      <button id="gd-straight" class="big" data-side="straight" title="Up arrow">▲ Straight</button>
+      <button id="gd-left" class="big" data-side="left" title="Left arrow">◀ Left</button>
     </div>
     <p id="gd-msg" class="note"></p>
     <div class="warn-box"><b>Set an order after the previous junction.</b> A merge uses it too: a Left or Right still armed at a merge steers onto the joining tape.</div>
     <h2>Mark <small>where the AGV is now (M key), driving or standing</small></h2>
-    <div class="bar two">
+    <div class="bar teach-huge teach-mark">
       <input id="gd-mark-label" placeholder="label (optional)">
       <button id="gd-mark" class="big" title="M key">Mark here</button>
     </div>
-    <h2>U-turn <small>if the strip is missed</small></h2>
-    <div class="bar two">
-      <button id="gd-uturn" class="big" data-uturn="true" title="The next tape end is the U-turn">U-turn at tape end</button>
-      <button id="gd-uturn-cancel" class="big" data-uturn="false">Cancel</button>
-    </div>
-    <h2>Stopped off the tape <small>run ended "track lost"</small></h2>
-    <div class="bar two">
-      <button id="gd-continue" class="big" data-continue="true" title="Put the AGV back on the tape first">Continue on Start</button>
-      <button id="gd-continue-cancel" class="big" data-continue="false">Cancel</button>
-    </div>
-    <h2>Speed <small id="gd-speed-note">high zones</small></h2>
-    <div class="bar two">
-      <button id="gd-normal" class="big" data-speed="normal">Normal</button>
-      <button id="gd-high" class="big" data-speed="high">High</button>
+    <div class="teach-more">
+      <div>
+        <h2>U-turn <small>if the strip is missed</small></h2>
+        <div class="bar two">
+          <button id="gd-uturn" class="big" data-uturn="true" title="The next tape end is the U-turn">U-turn at tape end</button>
+          <button id="gd-uturn-cancel" class="big" data-uturn="false">Cancel</button>
+        </div>
+      </div>
+      <div>
+        <h2>Stopped off the tape <small>run ended "track lost"</small></h2>
+        <div class="bar two">
+          <button id="gd-continue" class="big" data-continue="true" title="Put the AGV back on the tape first">Continue on Start</button>
+          <button id="gd-continue-cancel" class="big" data-continue="false">Cancel</button>
+        </div>
+      </div>
+      <div>
+        <h2>Speed <small id="gd-speed-note">high zones</small></h2>
+        <div class="bar two">
+          <button id="gd-normal" class="big" data-speed="normal">Normal</button>
+          <button id="gd-high" class="big" data-speed="high">High</button>
+        </div>
+      </div>
     </div>
     <div class="warn-box"><b>Motion starts only from the physical panel</b> (AUTO + Start). The U-turn and the home stop are MLS code 3. A teach pass is an ordinary run from the HOME bay back to it.</div>
-  </div>
-  <div class="side">
-    <h2>Teach <small id="tc-mission">site mission</small></h2>
-    <div class="tabs" id="tc-tabs">
-      <button class="tab on" type="button" data-tab="status">Status</button>
-      <button class="tab" type="button" data-tab="pass">Pass</button>
-      <button class="tab" type="button" data-tab="marks">Marks</button>
-      <button class="tab" type="button" data-tab="graph">Graph</button>
-    </div>
-    <div class="tabpane" data-tab="status">
-      <div id="gd-run" class="tel-grid rows"></div>
-      <p id="gd-why" class="note"></p>
-      <h3>Locator <small>shadow</small></h3>
-      <div id="tc-loc" class="tel-grid rows"></div>
-      <p id="tc-detail" class="note"></p>
-    </div>
-    <div class="tabpane" data-tab="pass" hidden>
-      <label class="field">Map <input id="tc-map" placeholder="map id"> rev <input id="tc-rev" size="3" inputmode="numeric"></label>
-      <div class="bar"><button data-act="map" id="btn-map" class="tool" title="Loads when the tape layer restarts (Home → More)">Select map</button><button data-act="status" class="tool" title="The teach runtime's own line: selected map, graph, recording, built">Status</button></div>
-      <label class="field">Circuit <select id="tc-circuit"></select></label>
-      <div class="bar">
-        <button data-act="pass_start" class="big">Record pass</button>
-        <button data-act="pass_stop" class="big">Stop pass</button>
-        <button data-act="pass_discard" class="danger">Discard</button>
-        <button data-act="passes" class="tool">Passes</button>
-      </div>
-      <label class="field">Station <select id="tc-station"></select></label>
-      <div class="bar"><button data-act="station" class="big" title="Hold the vehicle still 3 s first">Teach here</button></div>
-      <div class="bar">
-        <button id="btn-at-home" class="big" title="The AGV is parked at HOME-N: give AMCL its taught pose">At home</button>
-        <button id="btn-confirm" class="big run" title="The live scan lies on the map's walls">Scans align</button>
-      </div>
-    </div>
-    <div class="tabpane" data-tab="marks" hidden>
-      <label class="field">Mark <input id="tc-mark" placeholder="M-id"></label>
-      <div class="bar">
-        <button data-act="marks" class="tool">Marks</button>
-        <button data-act="mark_delete" class="danger">Delete mark</button>
-      </div>
-      {# Tracked plan 4: a mark (its M-id above) becomes a station, a mid-line U-turn point or a
-         zone end; "-" takes the role off. Build puts it in the graph. #}
-      <div class="bar">
-        <label class="field">Role <select id="tc-role"></select></label>
-        <button data-act="mark_role" class="big" title="The mark named above (M-id) becomes this station or point">Set role</button>
-        <button data-act="roles" class="tool" title="What is taught, from which mark, and what is not">Roles</button>
-      </div>
-      {# 2026-10-25: a mark by a floor-measured offset from another: Mark field "M8" (or "M8 M12" to
-         name the new mark). Inbound = on the tape the other way (an attach-full stop), + = the way
-         the inbound AGV drives; Along = on the mark's own tape (a U-turn point), + = onward. #}
-      <div class="bar">
-        <label class="field">Offset <input id="tc-offset" size="6" inputmode="decimal" placeholder="m"></label>
-        <button data-act="mark_offset" class="big" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
-        <button data-act="mark_along" class="big" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
-      </div>
-      <p class="note"><a href="/tape-areas">High-speed areas →</a></p>
-    </div>
-    <div class="tabpane" data-tab="graph" hidden>
-      <div class="bar">
-        <button data-act="build" class="big">Build</button>
-        <button data-act="publish" class="big">Publish</button>
-      </div>
-      <div class="bar">
-        <label class="field">g <input id="tc-g" size="3" inputmode="numeric"></label>
-        <button data-act="activate" class="big" title="Loads when the tape layer restarts (Home → More)">Make active</button>
-      </div>
-    </div>
-    <p id="tc-msg" class="note"></p>
   </div>
 </section>
 {% endblock %}

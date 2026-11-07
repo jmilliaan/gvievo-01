@@ -504,6 +504,27 @@ button.pick.bad i { color:var(--stop); }
 .tools.tabbed { overflow:hidden; }
 .tools.tabbed > .tabpane { flex:1 1 auto; min-height:0; overflow:auto; }
 /* three equal buttons on one line, whatever the column width */
+/* Teach (owner, 2026-11-07): the tools sit under the status tiles, where the log was, and the rail scrolls; the
+   orders and Mark here take the whole column, the only buttons used at walking pace. Base button: 1.2rem
+   on a 3.8rem height. Here 150 %, the orders and Mark here 200 %. */
+/* One scroller, the rail: a window inside it would be filled by the tabs alone on the panel. */
+#telemetry:has(.rail-teach) { overflow-y:auto; }
+#telemetry:has(.rail-teach) > * { flex-shrink:0; }
+.rail-teach { overflow:visible; }
+.rail-teach ~ #log { display:none; }
+.rail-teach .tabs { margin-bottom:.4rem; }
+.rail-teach .tab { min-height:3rem; padding:.2rem .3rem; }
+.teach-one { grid-template-columns:minmax(0,1fr); }
+.teach-one button.big { font-size:1.8rem; min-height:5.7rem; }
+.teach-one .teach-huge button.big { font-size:2.4rem; min-height:7.6rem; }
+.teach-one .teach-huge input { font-size:1.8rem; min-height:7.6rem; min-width:0; }
+.bar.teach-mark { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr); }
+.teach-more { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+.teach-more h2 { margin-top:0; }
+.teach-more > * { min-width:0; }
+.teach-more button.big { padding:.4rem; }
+.teach-more .bar { align-items:stretch; }
+
 .bar.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .bar.two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .bar.four { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }

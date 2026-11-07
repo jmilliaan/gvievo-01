@@ -183,7 +183,8 @@
       },
       {
         "junction": "J-ML",
-        "order": "merge"
+        "order": "merge",
+        "steer": "right"
       },
       {
         "junction": "J-STEM",

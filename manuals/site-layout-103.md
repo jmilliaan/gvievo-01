@@ -111,24 +111,24 @@ tape joins and there is no choice to make.
 | J-STEM | R2624 joins the stem, (1420, 2624) | merge from the right |
 | J-SMERGE | a tape joins from the right, map (-10.59, -0.31); taught as J-SPLIT until 2026-11-06 | merge |
 | J-SPLIT | bay split, about 5 m after J-SMERGE, map (-5.55, -0.39) | diverge: AGV-01 goes **right** to HOME-N2 since 2026-11-06 (left was the old HOME-N) |
-| J-LV | middle line × left vertical (site plan) | T: north on the right, south on the left |
+| J-LV | middle line × left vertical, map (-75.78, 3.13), 64 m past X2 | a curve (owner, 2026-11-07): north on the right, south on the left. Mission shape stays `T`, approach stem: no straight on |
 | U-MRU | MRU line west end | tape end: pivot U-turn, empty only |
 
 **C-BTU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **straight** → J-S **straight** → X2 **straight** →
 middle line west → J-LV **right** → row 2 east (R2-1…R2-8) → curve south →
-J-ML (joins the trunk) → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
+J-ML **right** (joins the trunk) → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
 
 **C-MRU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **right** → X1 **straight** → J-ML (straight) → trunk
 north → MRU line west (MW stops) → U-MRU **pivot** → MRU line east (ME stops)
 → trunk south → J-ML **left** → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
 A trip to MRU1, MRU2 or MRU3 pivots at its mid-line point `UT-MRU1` to `UT-MRU3`, just past its release. Only MRU4 reaches U-MRU.
 
-All tape is laid (D12). C-BTU does not compile until a BTU lap is merged into the graph with `amr_line.tape_merge`,
+All tape is laid (D12). Two C-BTU laps ran on 2026-11-07 (194 m) and graph g7 holds the route (`documentation/layout-reference/tape-graph-g4/g7-overview.png`), added with `amr_line.tape_merge`,
 not Build (`manuals/tape-localization-runbook.md` section 3.2B). `J-LV` is `laid: true`; C-MRU does not pass it.
 
 **How row 2 joins (owner, 2026-11-07):** row 2 curves south and joins the trunk from the west at `J-ML`. It has no junction
-of its own: the mission's `J-R2E` came out on 2026-11-07, and C-BTU arrives at `J-ML` on `order: merge`, with no side
-armed, so the AGV holds its own tape while the trunk tape closes in from its left. The sensor agrees on all 5 served MRU trips checked: northbound a second tape opens on the left at
+of its own: the mission's `J-R2E` came out on 2026-11-07, and C-BTU arrives at `J-ML` on `order: merge` with `steer: right`,
+as on both laps, so the AGV holds its own tape while the trunk tape closes in from its left. The sensor agrees on all 5 served MRU trips checked: northbound a second tape opens on the left at
 `J-ML`, from about 10 mm to 110 mm in about 0.23 m; southbound it closes in from the right. Between `J-ML` and the MRU
 line it reads one track, both ways. The taught `X1→J-ML` and `J-ML→J-STEM` legs stay within 4 cm of each other for the
 first 7.5 m south of `J-ML`, so R2434 and R1380 do not visibly split at `J-ML` as the site plan draws them. An unnamed
