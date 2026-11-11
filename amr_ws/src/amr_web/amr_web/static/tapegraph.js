@@ -10,6 +10,14 @@ function graphOverlay(view) {
     const g = tapeGraph;
     if (!g || !g.available || !v.meta) return;
     if (v.meta.map_id !== g.map_id || +v.meta.revision !== +g.map_revision) return;
+    // Dynamic areas of the map revision (trolleys, racks): the localization monitor leaves their
+    // beams out. Read-only here, drawn under everything else.
+    (g.dynamic || []).forEach(a => {
+      c.setLineDash([4, 3]);
+      v.fillPolygon(a.polygon, alpha(INK.ink3, 0.10), INK.ink3);
+      c.setLineDash([]);
+    });
+    if ((g.dynamic || []).length) v.text(g.dynamic[0].polygon[0][0], g.dynamic[0].polygon[0][1], 'DYNAMIC', INK.ink3);
     // Speed areas: HIGH first, NORMAL+ over it - where they overlap the slower wins (trip_route).
     [...(g.areas || [])].sort((a, b) => (a.kind === 'plus') - (b.kind === 'plus')).forEach(a => {
       const ink = areaInk(a.kind);

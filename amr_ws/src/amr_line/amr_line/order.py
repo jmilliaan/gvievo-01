@@ -6,6 +6,11 @@ the order ended). Nothing here starts, resumes or stops anything.
 
     OrderRequest  what the MQTT bridge handed in, for exactly one tick
     OrderRun      one accepted order, kept after it ends (the station reads how it ended)
+
+A PAIR (contract v1.2 proposal, owner 2026-11-11): one order for two MRU machines, closer first, named
+"a+b" on the wire between the bridge and the job. Its waits, by node sequence id:
+ATT 2, MW-a 4, MW-b 6, ME-b 8, ME-a 10, HOME 12 (the trip goes to b before it turns, so a is met twice).
+Status keys: att, mw (MW-a), mw2 (MW-b), me2 (ME-b), me (ME-a). One machine keeps att, mw, me.
     Settle        SETTLING: 5 s after anything that may have just removed a block on a waiting call
 """
 
@@ -16,6 +21,7 @@ WAITING, RUNNING, FINISHED, FAILED = "WAITING", "RUNNING", "FINISHED", "FAILED"
 
 # Node sequence ids of contract section 2.
 SEQ_HOME, SEQ_ATT, SEQ_MW, SEQ_ME, SEQ_END = 0, 2, 4, 6, 8
+PAIR_SEP = "+"      # "MRU1+MRU3": the closer machine first. vda_order.PAIR_SEP is the same
 
 # Wheel travel that counts as "the AGV moved at HOME". A PLACEHOLDER: checked against encoder noise
 # at rest on the vehicle (plan P8). A person must press At home again after any more than this.
@@ -57,20 +63,36 @@ WARNING_CANCELLED = "WARNING_CANCELLED"
 @dataclasses.dataclass(frozen=True)
 class OrderRequest:
     order_id: str
-    machine: str
+    machine: str        # "MRU3", or a pair "MRU1+MRU3"
+
+    @property
+    def machines(self):
+        return tuple(self.machine.split(PAIR_SEP))
+
+
+def wait_plan(attach, recs):
+    """[(node, status key, sequence id)] of an order's waits, in sequence order. recs: the machine
+    records ({"release", "take"}) in the order's order, the closer first."""
+    if len(recs) == 1:
+        return [(attach, "att", SEQ_ATT), (recs[0]["release"], "mw", SEQ_MW), (recs[0]["take"], "me", SEQ_ME)]
+    a, b = recs
+    return [(attach, "att", 2), (a["release"], "mw", 4), (b["release"], "mw2", 6),
+            (b["take"], "me2", 8), (a["take"], "me", 10)]
 
 
 class OrderRun:
-    """One accepted order. HOME-node reached on acceptance; the three waits as the trip goes."""
+    """One accepted order. HOME-node reached on acceptance; the waits as the trip goes."""
 
-    def __init__(self, req, home, attach, release, take):
+    def __init__(self, req, home, attach, recs):
         self.order_id, self.machine = req.order_id, req.machine
         self.active, self.departed = True, False
         self.home = home
         self.last_node_id, self.last_node_seq = home, SEQ_HOME
-        # node -> (key into status, sequence id). Contract section 2.
-        self._nodes = {attach: ("att", SEQ_ATT), release: ("mw", SEQ_MW), take: ("me", SEQ_ME)}
-        self.status = {"att": WAITING, "mw": WAITING, "me": WAITING}
+        plan = wait_plan(attach, recs)
+        # node -> (key into status, sequence id). Contract section 2 (one machine) or the pair rows.
+        self._nodes = {node: (key, seq) for node, key, seq in plan}
+        self.status = {key: WAITING for _node, key, _seq in plan}
+        self.seq_end = plan[-1][2] + 2
         self.cancelled_reason = self.cancelled_text = ""
         self.aborted_reason = self.aborted_text = ""
 
@@ -79,7 +101,7 @@ class OrderRun:
         return self.active and not self.departed
 
     def action(self, sid):
-        """The action key of a node ("att", "mw", "me"), or "" for any other stop."""
+        """The action key of a node ("att", "mw", "me"; a pair also "mw2", "me2"), or "" elsewhere."""
         return self._nodes[sid][0] if sid in self._nodes else ""
 
     def at_rest(self, sid):
@@ -95,7 +117,7 @@ class OrderRun:
             self.status[self._nodes[sid][0]] = FINISHED
 
     def reached_home(self):
-        self.last_node_id, self.last_node_seq = self.home, SEQ_END
+        self.last_node_id, self.last_node_seq = self.home, self.seq_end
         self.active = False
 
     def fail(self):

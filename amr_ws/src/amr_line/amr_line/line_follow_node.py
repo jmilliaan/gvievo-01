@@ -484,7 +484,8 @@ class LineFollowNode(LeanNode):
         m.header.stamp = self.get_clock().now().to_msg()
         m.generation = self._generation
         for k, v in body.items():
-            setattr(m, k, v)
+            if hasattr(m, k):   # mw2/me2_status: an OrderState built before 2026-11-11 has neither
+                setattr(m, k, v)
         self._order_pub.publish(m)
 
     @staticmethod

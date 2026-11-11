@@ -3,12 +3,14 @@
 std_msgs/Header header
 uint32 generation
 string order_id        # current or last accepted order. "" in a new process
-string machine
+string machine         # "MRU3", or a pair "MRU1+MRU3" (the closer first)
 bool active
 bool departed
 string att_status      # WAITING, RUNNING, FINISHED, FAILED, or ""
 string mw_status
-string me_status
+string me_status       # one machine: ME. A pair (a+b, closer first): mw = MW-a, me = ME-a
+string mw2_status      # a pair's MW-b; "" for one machine (2026-11-11, contract v1.2 proposal)
+string me2_status      # a pair's ME-b; "" for one machine
 string last_node_id
 uint16 last_node_seq
 bool driving           # wheel command non-zero this tick, RUNNING only

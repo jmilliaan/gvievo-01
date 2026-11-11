@@ -43,7 +43,8 @@ class StationBridge(LeanNode):
         self._home_alarm = bridge_core.HomeLinkAlarm()
         site = mission.load_site(str(vehicle_config.TAPE_LOC_SITE_MISSION))
         self.core = bridge_core.BridgeCore(
-            site, vehicle_config.STATION_MANUFACTURER, vehicle_config.STATION_SERIAL_NUMBER
+            site, vehicle_config.STATION_MANUFACTURER, vehicle_config.STATION_SERIAL_NUMBER,
+            pairs="mw2_status" in ORDER_FIELDS,
         )
         self._site = site
         self._mode, self._panel, self._panel_t, self._line, self._mux = None, None, None, None, None

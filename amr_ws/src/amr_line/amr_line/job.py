@@ -1635,11 +1635,32 @@ class FollowJob:
         rec = self.site["GROUPS"][group]["machines"][machine] if group is not None else None
         return rec if rec and "release" in rec else None
 
+    def _order_recs(self, req):
+        """The machine records of an order, closer first, or None (check 5, MACHINE). A pair: two
+        different machines of one group, each with its own release and take, named in circuit order."""
+        names = req.machines
+        recs = [self._order_machine(mc) for mc in names]
+        if not 1 <= len(names) <= 2 or None in recs:
+            return None
+        if len(names) == 1:
+            return recs
+        a, b = recs
+        group = self.site["MACHINES"][names[0]]
+        if names[0] == names[1] or self.site["MACHINES"][names[1]] != group:
+            return None
+        items = self.site["CIRCUITS"][self.site["GROUPS"][group]["circuit"]]["items"]
+        pos = {it["id"]: k for k, it in enumerate(items) if it["kind"] == "stop"}
+        try:
+            closer_first = pos[a["release"]] < pos[b["release"]] < pos[b["take"]] < pos[a["take"]]
+        except KeyError:
+            return None
+        return recs if closer_first else None
+
     def _order_gate(self, i: Inputs, req):
         """Contract checks 5, 6, 7, and the guards they rest on: (errorType, reason), or None."""
         if self.site is None:
             return order.DEPARTURE_REFUSED, order.SITE_NOT_LIVE
-        if self._order_machine(req.machine) is None:
+        if self._order_recs(req) is None:
             return order.VALIDATION_FAILURE, order.MACHINE
         if self._order_active():
             return order.OTHER_ORDER_ACTIVE, self.order.order_id
@@ -1660,7 +1681,8 @@ class FollowJob:
         why = self._order_gate(i, req)
         trip = route = None
         if not why:
-            trip = tripmod.Trip(self.site, self.site["MACHINES"][req.machine], [req.machine])
+            names = list(req.machines)
+            trip = tripmod.Trip(self.site, self.site["MACHINES"][names[0]], names)
             try:
                 route = self._site_cfg["compile"](trip)     # check 8
             except ValueError:                  # tape_graph.RouteError / GraphError
@@ -1670,8 +1692,7 @@ class FollowJob:
             return self._order_refuse(req, *why)
         self.trip, self.trip_route, self.trip_new = trip, route, route
         self.trip_note = ""
-        rec = self._order_machine(req.machine)
-        self.order = order.OrderRun(req, self.site["HOME"], self.site["ATTACH"], rec["release"], rec["take"])
+        self.order = order.OrderRun(req, self.site["HOME"], self.site["ATTACH"], self._order_recs(req))
         self.start_refused = None
         self._not_ready = []
         self._binding = i.authority
@@ -1766,8 +1787,17 @@ class FollowJob:
         if role == "attach":
             need = "present"
         elif role == "machine":
-            kinds = {kind for _mc, kind in self.trip.work(st["tag"])} if self.trip else set()
-            need = ("absent" if tripmod.RELEASE in kinds else "present" if tripmod.TAKE in kinds else None)
+            work = self.trip.work(st["tag"]) if self.trip else []
+            kinds = {kind for _mc, kind in work}
+            here = {mc for mc, _kind in work}
+            # Two trolleys (a pair, or a two-call trip): a release with another release still to come
+            # leaves one trolley on, so it wants present. The lidar sees "a trolley", not how many: it
+            # cannot tell that one came off here. Only the LAST release wants absent.
+            later = [mc for mc in self.trip.releases_pending() if mc not in here] if self.trip else []
+            if tripmod.RELEASE in kinds:
+                need = "present" if later else "absent"
+            else:
+                need = "present" if tripmod.TAKE in kinds else None
         else:
             need = None
         if need is None or i.trolley == need:
@@ -1808,6 +1838,9 @@ class FollowJob:
             "att_status": o.status["att"] if o else "",
             "mw_status": o.status["mw"] if o else "",
             "me_status": o.status["me"] if o else "",
+            # a pair's farther machine (MW-b, ME-b); "" for one machine
+            "mw2_status": o.status.get("mw2", "") if o else "",
+            "me2_status": o.status.get("me2", "") if o else "",
             "last_node_id": o.last_node_id if o else "",
             "last_node_seq": o.last_node_seq if o else 0,
             "not_ready": list(self._not_ready),

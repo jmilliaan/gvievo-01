@@ -179,7 +179,8 @@ loadSite();
 function orderTiles(o) {
   if (!site.calling) return [];
   if (!o) return [['Order', '–', 'no order state: line layer down', 'bad']];
-  const stage = o.active ? (o.me_status === 'FINISHED' ? 'returning' : o.me_status === 'RUNNING' ? `at ${o.last_node_id}` : o.mw_status === 'RUNNING' ? `at ${o.last_node_id}` : o.att_status === 'RUNNING' ? `at ${o.last_node_id}` : o.departed ? 'driving' : 'warning') : 'ended';
+  const waits = [o.att_status, o.mw_status, o.mw2_status, o.me2_status, o.me_status];  // mw2/me2: a pair only
+  const stage = o.active ? (waits.includes('RUNNING') ? `at ${o.last_node_id}` : o.me_status === 'FINISHED' ? 'returning' : o.departed ? 'driving' : 'warning') : 'ended';
   const refused = o.start_refused_reason ? `Start refused: ${o.start_refused_reason}` : '';
   const why = (o.not_ready || []).join(', ');
   return [

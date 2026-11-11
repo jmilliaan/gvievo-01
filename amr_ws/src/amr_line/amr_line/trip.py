@@ -15,8 +15,9 @@ Where a trip turns (site D16, tracked plan 4): after its LAST release - at the m
 point of the farthest called machine (its "uturn"), or at the circuit's tape-end U-turn when
 that machine has none. Every release comes before the turn, so may_pivot() checks them all.
 
-A station order (station.enabled) builds a Trip directly, for one machine: it never enters CallQueue,
-so nothing can be restored into it and no later Start can pick it up.
+A station order (station.enabled) builds a Trip directly, for one machine or a pair (contract v1.2
+proposal, 2026-11-11): it never enters CallQueue, so nothing can be restored into it and no later
+Start can pick it up.
 
 The trip never moves anything. It answers "stop here?", "may it pivot?", "may it leave
 the bay?"; the line layer turns a "no" into a hold.

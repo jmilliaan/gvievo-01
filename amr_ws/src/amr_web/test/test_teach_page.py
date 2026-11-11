@@ -122,3 +122,22 @@ def test_high_speed_areas_are_drawn_by_the_engineer_on_the_teaching_map(tmp_path
     assert r.get_json()["message"] == "high-speed areas need the engineer view (PIN)"  # D132: verbatim
     # refused before the body is read: a malformed body gets the role answer, not a 400
     assert client.post("/api/line/areas", data="not json", content_type="application/json").status_code == 403
+
+
+def test_dynamic_areas_come_from_the_map_revisions_edit_chain(tmp_path):
+    """2026-11-11: rev4's dynamic areas (and rev2's A-E through rev3) drawn read-only on the map."""
+    import json
+    import os
+
+    from amr_web import tapegraph_view
+    sq = lambda x: [[x, 0], [x + 1, 0], [x + 1, 1], [x, 1]]  # noqa: E731
+    revs = {2: (1, [{"op": "dynamic", "polygon": sq(0)}, {"op": "dynamic", "polygon": sq(5)}]),
+            3: (2, [{"op": "paint", "value": "free", "polygon": sq(9)}]),
+            4: (3, [{"op": "dynamic", "polygon": sq(20)}, {"op": "undynamic", "polygon": sq(5)}])}
+    for rev, (parent, ops) in revs.items():
+        d = tmp_path / "m" / f"rev{rev}"
+        os.makedirs(d)
+        (d / "edits.json").write_text(json.dumps({"parent": {"revision": parent}, "ops": ops}))
+    got = tapegraph_view.dynamic_areas(str(tmp_path), "m", 4)
+    assert got == [{"rev": 2, "polygon": sq(0)}, {"rev": 4, "polygon": sq(20)}]
+    assert tapegraph_view.dynamic_areas(str(tmp_path), "m", 9) == [], "no edits: none"

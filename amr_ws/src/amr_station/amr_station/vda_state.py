@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from amr_station.vda_order import canonical_order
+from amr_station.vda_order import canonical_order, valid_key, waits
 
 LINE_HOLD, LINE_FAULT = 3, 5  # LineState
 # ModeState: a layer change or start under way.
@@ -19,6 +19,18 @@ TROLLEY_ABSENT, TROLLEY_PRESENT = 1, 2  # TrolleyState.state
 FIELD_CLEAR = 1  # TrolleyState.rear_field
 LOAD = {"loadType": "TROLLEY", "loadPosition": "rear"}
 ACTION_KEYS = (("att_status", "ATT"), ("mw_status", "MW"), ("me_status", "ME"))
+# A pair's waits in sequence order (ATT, MW-a, MW-b, ME-b, ME-a) -> OrderState fields
+PAIR_KEYS = ("att_status", "mw_status", "mw2_status", "me2_status", "me_status")
+
+
+def _action_rows(site, o: dict) -> list:
+    """[(OrderState field, action id suffix, nodeId)] of the order's waits, in sequence order."""
+    key = o.get("machine", "")
+    if not key or not valid_key(site, key):
+        return [(f, sfx, "") for f, sfx in ACTION_KEYS]
+    w = waits(site, key)
+    fields = [f for f, _ in ACTION_KEYS] if len(w) == 3 else list(PAIR_KEYS)
+    return [(f, sfx, nid) for f, (nid, sfx, _seq) in zip(fields, w, strict=True)]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -75,11 +87,11 @@ def _order_errors(o: dict, order_id: str) -> list:
     return out
 
 
-def _start_refused(o: dict, order_id: str, site, machine_nodes) -> list:
+def _start_refused(o: dict, order_id: str, site) -> list:
     node, reason = o.get("start_refused_node", ""), o.get("start_refused_reason", "")
     if not reason or not order_id:
         return []
-    suffix = {site["ATTACH"]: "ATT", machine_nodes[0]: "MW", machine_nodes[1]: "ME"}.get(node)
+    suffix = {nid: sfx for _f, sfx, nid in _action_rows(site, o) if nid}.get(node)
     if suffix is None:
         return []
     return [
@@ -124,8 +136,7 @@ def _errors(v: StateView, site) -> list:
             }
         )
     if o and o.get("machine"):
-        canon = canonical_order(site, o["machine"], order_id)
-        out += _start_refused(o, order_id, site, (canon["nodes"][2]["nodeId"], canon["nodes"][3]["nodeId"]))
+        out += _start_refused(o, order_id, site)
     if v.line_state == LINE_HOLD and v.hold_cause != "station":
         out.append(
             {
@@ -149,7 +160,7 @@ def build_state(v: StateView, site) -> dict:
     active = bool(o.get("active"))
     seq = int(o.get("last_node_seq", 0))
     nodes, edges = [], []
-    if active and o.get("machine"):
+    if active and valid_key(site, o.get("machine", "")):
         canon = canonical_order(site, o["machine"], order_id)
         nodes = [
             {"nodeId": n["nodeId"], "sequenceId": n["sequenceId"], "released": True}
@@ -163,7 +174,7 @@ def build_state(v: StateView, site) -> dict:
         ]
     actions = [
         {"actionId": f"{order_id}:{suffix}", "actionType": "waitForTrigger", "actionStatus": o[key]}
-        for key, suffix in ACTION_KEYS
+        for key, suffix, _node in _action_rows(site, o)
         if o.get(key)
     ]
     body = {

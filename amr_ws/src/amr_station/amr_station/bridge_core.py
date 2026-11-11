@@ -1,6 +1,6 @@
 """The MQTT bridge's decisions, without ROS or a socket. Clock-fed; the node stays thin.
 
-    on_order(payload, retained, now)    -> ("depart", order_id, machine) or None
+    on_order(payload, retained, now)    -> ("depart", order_id, machine) or None; machine "a+b" for a pair
     on_instant(payload, retained)       -> [("cancel", order_id, action_id)]
     on_order_state(fields)              the latest OrderState
     view(...)                           what vda_state.build_state needs
@@ -50,8 +50,10 @@ class HomeLinkAlarm:
 
 
 class BridgeCore:
-    def __init__(self, site, manufacturer: str, serial: str) -> None:
+    def __init__(self, site, manufacturer: str, serial: str, pairs: bool = True) -> None:
         self.site, self.manufacturer, self.serial = site, manufacturer, serial
+        # Two-machine orders (contract v1.2 proposal): only when OrderState carries mw2/me2_status
+        self.pairs = bool(pairs)
         self.ring = vda_order.StateRing()
         self.order: dict | None = None
         self.order_t: float | None = None
@@ -80,6 +82,7 @@ class BridgeCore:
             state_machine=o.get("machine", ""),
             ring=self.ring,
             now=now,
+            pairs=self.pairs,
         )
         if r.outcome == vda_order.REFUSE:
             self.refuse(r.error, r.order_id, r.reason)

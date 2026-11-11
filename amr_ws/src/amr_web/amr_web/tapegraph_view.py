@@ -114,14 +114,49 @@ def save_area(state_dir, ident, polygon, kind="high"):
     return True, msg
 
 
+# The map's own edit history: at most this many parent revisions walked for dynamic areas.
+DYNAMIC_MAX_DEPTH = 50
+
+
+def dynamic_areas(maps_dir, map_id, revision):
+    """[{"rev", "polygon"}]: the dynamic areas of a map revision, from its edits.json and its
+    parents' (amr_mission.map_bundle.derive_edit records each edit's ops and parent), oldest first.
+    For drawing only: the localization monitor reads the revision's dynamic.pgm mask itself. An area
+    later cleared by an "undynamic" op is dropped when the two polygons are identical; a partial clear
+    still shows the whole area (2026-11-11: none used so far)."""
+    chain, rev = [], revision
+    for _ in range(DYNAMIC_MAX_DEPTH):
+        doc = _read(os.path.join(maps_dir, map_id, f"rev{int(rev)}", "edits.json"))
+        if not isinstance(doc, dict):
+            break
+        chain.append((int(rev), doc.get("ops") or []))
+        parent = (doc.get("parent") or {}).get("revision")
+        if not isinstance(parent, int):
+            break
+        rev = parent
+    out = []
+    for r, ops in reversed(chain):
+        for op in ops:
+            poly = op.get("polygon") if isinstance(op, dict) else None
+            if not isinstance(poly, list):
+                continue
+            if op.get("op") == "dynamic":
+                out.append({"rev": r, "polygon": poly})
+            elif op.get("op") == "undynamic":
+                out = [a for a in out if a["polygon"] != poly]
+    return out
+
+
 def view(state_dir, maps_dir):
-    """{available, map_id, map_revision, graph_revision, legs, pass, anchors, stations, marks, areas}."""
+    """{available, map_id, map_revision, graph_revision, legs, pass, anchors, stations, marks, areas,
+    dynamic}."""
     sel = _read(os.path.join(state_dir, "line_graph.json")) or {}
     map_id, rev = sel.get("map_id"), sel.get("map_revision")
     if not isinstance(map_id, str) or not PLAIN.match(map_id) or not isinstance(rev, int):
         return {"available": False, "why": "no teaching map selected"}
     out = {"available": True, "map_id": map_id, "map_revision": rev, "graph_revision": None,
-           "legs": [], "pass": None, "anchors": [], "stations": [], "marks": [], "areas": []}
+           "legs": [], "pass": None, "anchors": [], "stations": [], "marks": [], "areas": [],
+           "dynamic": dynamic_areas(maps_dir, map_id, rev)}
     g = sel.get("graph_revision")
     if isinstance(g, int):
         doc = _read(os.path.join(maps_dir, map_id, "tapegraph", f"g{g}", "graph.json")) or {}
