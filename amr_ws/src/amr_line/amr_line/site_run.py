@@ -57,6 +57,13 @@ ORDER_UNUSED_M = 1.0
 # A fork seen this far past the previous node is not that node's own (more with sigma), and an order
 # used up this far before its own fork was used up by another one.
 FORK_CLEAR_M = 0.3
+# A chained order (trip_route.decision_points: J-N then J-S, 0.15 m of one tape between their forks) is
+# armed when the order before it is taken, and from there odometry is the ruler, not S: its fork must
+# show two tracks within CHAIN_FORK_MAX_M and take the order within CHAIN_TAKE_MAX_M, else FAULT. On the
+# 2026-11-07 lap J-S opened after 0.15 m and was through at 0.49 m; X2, whose crossing tape shows on
+# the right first, came at 1.27 m, which a RIGHT still standing would follow.
+CHAIN_FORK_MAX_M = 0.5
+CHAIN_TAKE_MAX_M = 0.8
 # How close to the taught U-turn a tape end may come and still be it.
 TAPE_END_MARGIN_M = 0.5
 # A trip starts at HOME: the locator within this of HOME's taught S (job._site_at_home).
@@ -137,6 +144,9 @@ class SiteRun(TapeRun):
         self._pivot_held = None                     # the U-turn point already held for, once
         self._early_fork = False                    # the standing order was used once, early
         self._watches = []                          # ForkWatch: orders on their way through a fork
+        self._fork_last = None                      # chain: (kept, other) mm at the armed order's fork
+        self._fork_codes = set()                    # chain: the #LCP values seen at it
+        self._chain_odo = None                      # chain: odometry when the chained order was armed
         self.fork_log = []                          # finished ForkWatch reports, for the logs
         self._step_ok = False
         self._multi_now = False
@@ -271,6 +281,9 @@ class SiteRun(TapeRun):
         s = sensor or {}
         self._multi_now = s.get("nlcp") in branch.MULTI_NLCP
         out = super().steer(sensor, tags, followed_mm)
+        e = self._armed
+        if e is not None and ("then" in e or "after" in e) and self.fault is None:
+            self._chain_tick(e, s.get("nlcp"), s.get("tracks"))
         for w in list(self._watches):
             report = w.tick(s.get("nlcp"), s.get("tracks"))
             if report is not None:
@@ -288,6 +301,58 @@ class SiteRun(TapeRun):
             self.fault = (f"wrong tape at {r['id']}: ordered {r['order']}, that tape left the sensor at "
                           f"{r['kept']:+.0f} mm and the AGV is on the other; MANUAL, jog back to the "
                           f"junction, Reset, Start")
+
+    # -- a chain of orders: armed and judged by the MLS, not by S ----------------------------
+    def _chain_tick(self, e, nlcp, tracks):
+        """One tick of an order that heads or ends a chain, after the ladder's scan. It is taken only
+        once its fork has opened (the last two-track reading at least ForkWatch.MIN_SEP_MM apart): a
+        single track before that is the two tapes still reading as one, and the order stands again.
+        Taken, the next order of the chain is armed on this tick, wherever S is."""
+        pil = vehicle.BRANCH_POSITIVE_IS_LEFT
+        usable = [t for t in tracks or () if t.get("pos_mm") is not None]
+        if nlcp in branch.MULTI_NLCP and len(usable) >= 2:
+            kept = branch.select_track(usable, e["order"], pil)["pos_mm"]
+            self._fork_last = (kept, max((t["pos_mm"] for t in usable), key=lambda v: abs(v - kept)))
+            self._fork_codes.add(nlcp)
+        if "after" in e:
+            gone = self._odo_m - self._chain_odo
+            if not self._fork_codes and gone > CHAIN_FORK_MAX_M:
+                self.fault = (f"no fork within {CHAIN_FORK_MAX_M} m after {e['after']}, where {e['id']} "
+                              f"is: check the AGV's branch, MANUAL, jog back, Reset")
+                return
+            if gone > CHAIN_TAKE_MAX_M and self.branch.ladder.intent() != branch.STRAIGHT:
+                self.fault = (f"order {e['order']} for {e['id']} still standing {gone:.2f} m after "
+                              f"{e['after']}: its fork did not open; MANUAL, jog back, Reset")
+                return
+        if self.branch.ladder.intent() != branch.STRAIGHT:
+            return
+        last = self._fork_last
+        if last is None or abs(last[0] - last[1]) < ForkWatch.MIN_SEP_MM:
+            self.branch.order(e["order"])
+            self._decide(f"{e['id']}: one track again before the fork opened"
+                         + (f" ({abs(last[0] - last[1]):.0f} mm apart)" if last else "")
+                         + f": {e['order'].upper()} stands again", WARN)
+            return
+        if e["held"]:
+            # Straight on, holding a side: the other tape leaves on the far side, which is where
+            # the MLS puts the extra track (#LCP 3 negative, 6 positive; 7 says neither).
+            far_positive = (e["order"] == "right") == pil
+            want, wrong = (6, 3) if far_positive else (3, 6)
+            if wrong in self._fork_codes and want not in self._fork_codes:
+                self.fault = (f"wrong fork at {e['id']}: its other tape should leave on the "
+                              f"{'left' if (far_positive == pil) else 'right'}, the MLS saw it on the "
+                              f"other side; MANUAL, jog back to the junction, Reset")
+                return
+        self._armed, self._early_fork = None, False
+        self._decide(f"order {e['order']} taken at {e['id']}")
+        if "then" not in e:
+            return
+        nxt = self.route.events[self._next] if self._next < len(self.route.events) else None
+        if nxt is None or nxt.get("after") != e["id"]:
+            self.fault = f"order for {e['then']} not next after {e['id']}: route events out of order"
+            return
+        if self._arm(nxt, chained=True):
+            self._next += 1
 
     def _watch(self, e):
         self._watches.append(ForkWatch(e, vehicle.BRANCH_POSITIVE_IS_LEFT))
@@ -335,24 +400,32 @@ class SiteRun(TapeRun):
             return S >= e["S_prev"] + max(FORK_CLEAR_M, 3.0 * sigma)
         return S >= min(e["S"], max(e["S_prev"], e["S_fork"] - 3.0 * sigma))
 
-    def _arm(self, e):
+    def _arm(self, e, chained=False):
         S = self.S
         if self._armed is not None:
             return False        # the order before it still stands: one order, one fork
-        if S >= e["S_node"] + 3.0 * self._sigma() and not self._multi_now:
+        if "after" in e and not chained:
+            return False        # armed by the MLS when the order before it is taken (_chain_tick)
+        if S is not None and S >= e["S_node"] + 3.0 * self._sigma() and not self._multi_now:
             self.fault = (f"order {e['order']} for {e['id']} came due past its fork (S {S:.2f} m, fork at "
                           f"{e['S_fork']:.2f} m): the position jumped; check the AGV's branch, Reset")
             return False
         self.branch.order(e["order"])
         self._armed = e
+        self._fork_last, self._fork_codes = None, set()
+        self._chain_odo = self._odo_m
         self._watch(e)
-        self._decide(f"order {e['order'].upper()} armed for {e['id']}, fork in {e['S_fork'] - S:.2f} m")
+        where = f"fork in {e['S_fork'] - S:.2f} m" if S is not None else "S unknown"
+        self._decide(f"order {e['order'].upper()} armed for {e['id']}, "
+                     + (f"{e['after']} taken, " if chained else "") + where)
         return True
 
     def _order_check(self):
         e = self._armed
-        if e is None:
-            return
+        if e is None or "after" in e:
+            return              # none, or chained: _chain_tick judges it by odometry
+        if "then" in e and self.branch.ladder.intent() == branch.STRAIGHT:
+            return              # taken: _chain_tick has it this tick (no re-arm by S in a chain)
         S = self.S
         sigma = self._sigma()
         if self.branch.ladder.intent() == branch.STRAIGHT:

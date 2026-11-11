@@ -351,8 +351,10 @@ def test_the_repo_mission_joins_row_2_at_j_ml_with_no_j_r2e():
     ]
     assert m["CIRCUITS"]["C-BTU"]["legs"][4]["stops"] == [f"R2-{n}" for n in range(1, 9)]
     # The same tape home as C-MRU, the same steer; Right at J-ML holds the row 2 tape while the trunk
-    # tape closes in from its left, as on both laps of 2026-11-07.
-    assert m["CIRCUITS"]["C-BTU"]["steers"] == {**m["CIRCUITS"]["C-MRU"]["steers"], "J-ML:merge": "right"}
+    # tape closes in from its left, as on both laps of 2026-11-07. Out, the lane is held through J-N
+    # (R2434 leaves right) and J-S (the STU tape leaves left): straight on is a coin toss at J-S.
+    assert m["CIRCUITS"]["C-BTU"]["steers"] == {**m["CIRCUITS"]["C-MRU"]["steers"], "J-ML:merge": "right",
+                                                "J-N:straight": "left", "J-S:straight": "right"}
 
 
 def test_the_repo_mission_leaves_the_mru_legs_as_they_were():

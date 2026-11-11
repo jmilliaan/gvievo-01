@@ -560,7 +560,9 @@ def load(name, vehicle=None, directory=None):
 #                     "approach": "stem" (left | right only: no straight on) or "bar" (as a Y).
 #                     A merge may add "steer": left | right - the side armed before it, like
 #                     an order; the leg keeps its "merge" name (2026-10-25: MRU inbound, always
-#                     left until HOME)
+#                     left until HOME). So may a straight on: the side held through a diverge
+#                     whose other tape leaves on the far side, the leg keeps its "straight" name
+#                     (2026-11-11: J-N and J-S, where plain straight on is a coin toss)
 #                     A circuit starts and ends with {"stop": home} and passes attach once
 #   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
 #                     {"release": stop, "take": stop[, "uturn": point]}}}}. "uturn": where a
@@ -641,9 +643,9 @@ def _site_items(cid, raw, junctions, uturns):
                 raise ConfigError(f"{where}: junction {it['junction']!r} is not in junctions")
             keys = {"junction", "order"} | ({"approach"} if j["shape"] == "T" else set())
             if "steer" in it:
-                if it.get("order") != "merge":
-                    raise ConfigError(f"{where}: steer only on a merge - a diverge says its side in "
-                                      f"its order")
+                if it.get("order") not in ("merge", "straight"):
+                    raise ConfigError(f"{where}: steer only on a merge or a straight on - a diverge "
+                                      f"says its side in its order")
                 if it["steer"] not in ("left", "right"):
                     raise ConfigError(f"{where}.steer: expected left or right, got {it['steer']!r}")
                 keys = keys | {"steer"}

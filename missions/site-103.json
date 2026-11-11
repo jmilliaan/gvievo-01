@@ -142,11 +142,13 @@
       },
       {
         "junction": "J-N",
-        "order": "straight"
+        "order": "straight",
+        "steer": "left"
       },
       {
         "junction": "J-S",
-        "order": "straight"
+        "order": "straight",
+        "steer": "right"
       },
       {
         "junction": "X2",

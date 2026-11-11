@@ -114,7 +114,7 @@ tape joins and there is no choice to make.
 | J-LV | middle line × left vertical, map (-75.78, 3.13), 64 m past X2 | a curve (owner, 2026-11-07): north on the right, south on the left. Mission shape stays `T`, approach stem: no straight on |
 | U-MRU | MRU line west end | tape end: pivot U-turn, empty only |
 
-**C-BTU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **straight** → J-S **straight** → X2 **straight** →
+**C-BTU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **straight, holding LEFT** → J-S **straight, holding RIGHT** → X2 **straight** →
 middle line west → J-LV **right** → row 2 east (R2-1…R2-8) → curve south →
 J-ML **right** (joins the trunk) → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
 
@@ -140,6 +140,25 @@ Consequences:
   machine (MRU → right, BTU → straight). Every other order is fixed for AGV-01.
 - **A single standing default cannot drive this site.** C-BTU alone needs straight at J-N and J-S,
   right at J-LV, left at J-STEM and right at J-SPLIT. Every diverge needs its own order.
+- **J-N and J-S are one chain (2026-11-11).** They are about 0.4 m apart on the floor, and only 0.15 m
+  of one tape lies between the end of J-N's fork and the start of J-S's. In that gap the STU tape lies
+  against the lane, so the MLS reads one track sliding about 16 mm to the left. When it splits, the
+  two tracks are 6 mm apart either side of where the AGV is, so plain straight on is a coin toss.
+  Under AUTO it usually went left to STU (owner). The C-BTU teach lap of 2026-11-07 (11:41) went
+  through on a LEFT then a RIGHT pressed by hand. The mission now says it: J-N `straight` +
+  `steer: left`, J-S `straight` + `steer: right`. Both legs keep their straight names, so g7 is
+  unchanged. Position cannot arm J-S's order inside 0.15 m, so the engine chains it
+  (`trip_route.decision_points`, `site_run._chain_tick`):
+  - J-S's RIGHT is armed on the tick J-N's LEFT is taken by its fork, wherever S is.
+  - An order in the chain is taken only once its fork has opened (the last two-track reading at
+    least 30 mm apart). One track before that stands the order again.
+  - From J-N, wheel travel is the ruler. J-S must show two tracks within 0.5 m and be through within
+    0.8 m, else FAULT. On the lap it opened at 0.15 m and was through at 0.49 m. X2, whose crossing
+    tape shows on the right first, came at 1.27 m.
+  - If the other tape left on the wrong side (by the MLS #LCP code), the result is FAULT.
+  - Every fault is a stop. Recovery: MANUAL, jog back to the junction, Reset, Start.
+  - The tests replay the lap's readings with S exact, 0.3 m early and 0.3 m late
+    (`amr_ws/src/amr_line/test/test_site_chain.py`, `golden/lap2_jn_js_x2.json`).
 - **The stem end is a wrong-way hazard.** Taking R2434 instead of the stem southbound drives the AGV
   backwards up a departure curve. `J-STEM` is the first logged fork south of `J-ML` (other tape 121 mm to the
   right, 2026-11-07), and it must be an explicit LEFT, never "nearest track". `J-ML` keeps its LEFT order too.

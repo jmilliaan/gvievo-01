@@ -287,6 +287,13 @@ def test_site_mission_positions():
                   "retired")
     _site_refused("a steer on a junction that is not a merge is refused",
                   lambda d: d["circuits"]["C-MRU"][3].update(steer="left"), "steer only on a merge")
+    _site_refused("a steer on a crossing is refused",
+                  lambda d: d["circuits"]["C-BTU"][5].update(steer="left"), "steer only on a merge")
+    check("C-BTU holds the lane through J-N (left) and J-S (right), both legs keep their straight name",
+          plain["CIRCUITS"]["C-BTU"]["steers"] == {"J-N:straight": "left", "J-S:straight": "right",
+                                                   "J-ML:merge": "right", "J-STEM:merge": "left"}
+          and "J-N:straight>J-S" in [leg["id"] for leg in plain["CIRCUITS"]["C-BTU"]["legs"]],
+          str(plain["CIRCUITS"]["C-BTU"]["steers"]))
     _site_refused("mission zones are refused by name (areas on the map since 2026-10-25)",
                   lambda d: d.update(zones={}), "areas drawn on the map")
     _site_refused("a cruise above NORMAL is refused", lambda d: d.update(cruise_mps=0.6), "cruise_mps")

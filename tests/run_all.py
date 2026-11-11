@@ -155,7 +155,7 @@ MODULES = [
 # + 7 (2026-11-06): station plan P4, test_config - the rear block. One more than the plan's 6: the
 #   driver reports the active monitoring case (V18), so rear.no_trolley_case exists and has a refusal.
 # + 4 (2026-11-06): the rolling corner's profile refusals (test_config).
-EXPECTED_CHECKS = 909
+EXPECTED_CHECKS = 911
 
 
 # An exception on a helper thread only prints a traceback by default - the

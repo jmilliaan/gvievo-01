@@ -102,9 +102,16 @@ def decision_points(stops, nodes, junction_lead_m, steers=None, turns=(), check=
     """What the engine (site_run) acts on, sorted by S: a stop at each stop after the first, an
     order armed at S_fork - junction_lead_m but never before the previous node is passed, and the
     U-turn(s). `check`: refuse an order with no tape to arm it in (RouteError); the Shadow logs
-    instead of refusing, so it passes False."""
+    instead of refusing, so it passes False.
+
+    A CHAIN: an order whose fork is closer than junction_lead_m to the previous node, when that node
+    has an order too. Position cannot put it between the two forks (2026-11-07, J-N then J-S: 0.15 m
+    of one tape between them), so the engine arms it when the previous order is taken by its fork:
+    the earlier event says "then": this id, the later one "after": that id. `held`: the node's order
+    is straight on, and the side only keeps the AGV off a tape leaving on the other side."""
     events = [{"kind": "stop", **s} for s in stops[1:]]
     prev_S = stops[0]["S"]
+    prev_order = None                     # the previous node's order event, if it had one
     for n in nodes:
         side = side_at(n, steers or {})
         if side:
@@ -112,8 +119,20 @@ def decision_points(stops, nodes, junction_lead_m, steers=None, turns=(), check=
             if check and arm > n["S_fork"] - MIN_ARM_M:
                 raise tg.RouteError(f"{n['id']}: no tape to arm its order in between the previous node "
                                     f"and its fork ({n['S_fork'] - prev_S:.2f} m)")
-            events.append({"kind": "order", "id": n["id"], "order": side, "S": arm,
-                           "S_fork": n["S_fork"], "S_node": n["S"], "S_prev": prev_S})
+            e = {"kind": "order", "id": n["id"], "order": side, "S": arm, "S_fork": n["S_fork"],
+                 "S_node": n["S"], "S_prev": prev_S, "held": n["order"] == "straight"}
+            if prev_order is not None and n["S_fork"] - junction_lead_m < prev_S:
+                between = [s["id"] for s in stops[1:] if prev_S - 1e-6 <= s["S"] <= n["S_fork"]]
+                between += [t["id"] for t in turns if prev_S - 1e-6 <= t["S"] <= n["S_fork"]]
+                if between:
+                    raise tg.RouteError(f"{n['id']}: chained to {prev_order['id']}, "
+                                        f"{n['S_fork'] - prev_S:.2f} m after it, with "
+                                        f"{', '.join(between)} between")
+                prev_order["then"], e["after"] = n["id"], prev_order["id"]
+            events.append(e)
+            prev_order = e
+        else:
+            prev_order = None             # a plain node between: a fork the next order is not chained to
         prev_S = n["S"]
     events += [{"kind": "uturn", **t} for t in turns]
     events.sort(key=lambda e: e["S"])
