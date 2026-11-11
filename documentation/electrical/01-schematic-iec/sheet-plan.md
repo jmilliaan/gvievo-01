@@ -47,6 +47,7 @@ Pages 30 and 31 may fit on one A3 page.
 | 42 | STO: Q1/Q2 → HWTO1/HWTO2 on both drives. EDM `-TA1` → I3, `-TA2` → I4. Removed factory jumpers noted. Q3, Q4 spare | 08, 07 | &EFS |
 | 43 | Safety controller modules `-KE1`/`-KE2`: supply, module front view | 08, 03 | &EFS |
 | 44 | Safety controller I/O table: terminal, signal, device, test pulse, safety function, page | new | table |
+| 45 | Wheel encoders `-BG5`/`-BG6` (DFS60S, sin/cos) → M12 → Y-cable `-WG13` → drive monitor `-KE5` (FX3-MOC0) encoder socket. SF6 speed limit in AUTO, SF7 standstill; field switching planned, not wired | new (2026-11-09) | &EFS |
 
 ## Drives (50–59)
 
@@ -103,3 +104,6 @@ The `../kit/jis-sheet.js` engine draws A4 portrait JIS frames. The symbols (cont
 - an ISO 7200 title block.
 
 Decided 2026-10-30: **extend the HTML kit.** Add an IEC frame module next to the JIS one, reusing the symbols. Keep one HTML file per page in this folder, as now.
+
+
+> **2026-11-09 simplification (owner):** page 3 (designation key) moved to `archive/`; standards list, document-kind codes (&AB/&EFS…), safety-function IDs (SF1–SF7) and IEC clause citations removed from the rendered set. Tags (+EB-QA1 …) kept. Locations, potentials and the IEC 81346-2 product-class key (classes in `project.js`, tags generated from the parts and cable lists) now sit on page 4 under the symbol legend.

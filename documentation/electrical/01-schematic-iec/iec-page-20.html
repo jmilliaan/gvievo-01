@@ -47,15 +47,14 @@
     /* ---- battery (+BT) ---- */
     s.locationBox(25, 150, 90, 66, '+BT', '');
     s.module(32, 105, 170, 38, [{ x: P, name: '+' }, { x: N, name: '−' }],
-      ['-GB1', 'Battery 48 V «Ah»', 'with BMS', 'BMS on CAN /51.8']);
+      ['-GB1', 'Battery 48 V 50 Ah', 'with BMS', 'BMS on CAN /51.8']);
 
     /* ---- breakers and cables (after the conductors: they cut their own gaps) ---- */
-    s.breaker([P, N], 105, '-QA1', '2P 32 A DC');
-    s.text(N + 2.5, 112, 'Supply disconnecting device', { size: 2.2 });
-    s.text(N + 2.5, 115.6, 'lockable «confirm»', { size: 2.2 });
+    s.breaker([P, N], 105, '-QA1', '2P 32 A · ABB S202-C32');
+    s.text(N + 2.5, 112, 'Main switch', { size: 2.2 });
     s.cable([P, N], 138, '-WD1', 'NYAF 2 × 4 mm², black');
-    s.breaker([130], 88, '-FC1', '1P 10 A DC');
-    s.breaker([185], 88, '-FC2', '1P 10 A DC');
+    s.breaker([130], 88, '-FC1', '1P 13 A · ABB S201-C13');
+    s.breaker([185], 88, '-FC2', '1P 13 A · ABB S201-C13');
     s.cable([TA3.p, TA3.n], 125, '-WD4', 'NYAF 2 × 1.5 mm²');
     s.cable([TA4.p, TA4.n], 125, '-WD5', 'NYAF 2 × 1.5 mm²');
 
@@ -68,14 +67,14 @@
       s.rect(x2 - 15, 153, 12, 12, 0.3); s.convMark(x2 - 15, 153, 12, 12);
     };
     conv(TA3, 222, 302, ['-TA3', 'DC/DC 48 → 24 V', '6.25 A (150 W), isolated']);
-    conv(TA4, 307, 395, ['-TA4', 'DC/DC 48 → 12 V', '8.3 A (100 W), isolated']);
+    conv(TA4, 307, 395, ['-TA4', 'DC/DC 48 → 12 V', 'SD-100C-12, 100 W, isolated']);
     s.offDown(TA3.op, 222, 'P24', '/30.0'); s.offDown(TA3.on, 222, 'N24', '/30.0');
     s.offDown(TA4.op, 222, 'P12', '/32.0'); s.offDown(TA4.on, 222, 'N12', '/32.0');
 
     s.note(130, 160, [
       'Notes',
       '1. 48 V system floating: no chassis connection.',
-      '2. 48 V wiring black (page 3).',
+      '2. 48 V wiring black.',
       '3. -TA3, -TA4 isolated: 1N48 is not',
       '   joined to 1N24 / 1N12.',
       '4. All devices in +EB unless boxed.',

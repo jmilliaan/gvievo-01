@@ -36,7 +36,8 @@
     s.module(178, 242, BOX, 30, [{ x: 190, name: '+12V' }, { x: 200, name: '0V' }],
       ['-BG4', 'RFID reader', 'navigation feature', 'Ethernet /11']);
 
-    s.breaker([P, N], 48, '-FC4', '2P 10 A DC');
+    s.breaker([P], 48, '', '');   // 1-pole: N not switched; labels right of N
+    s.text(N + 2.5, 47.4, '-FC4', { size: 3, weight: 600 }); s.text(N + 2.5, 48 + 3 * s.textScale, '1P 10 A · ABB S201-C10', { size: 2.3 });
     s.cable([100, 110], 135, '-WD11', 'IPC power cable');
     s.cable([190, 200], 135, '-WD12', 'RFID power cable');
 
@@ -44,8 +45,7 @@
       'Notes',
       '1. 1N12 is joined to 1N24 at the converter',
       '   outputs (page 20).',
-      '2. Control wiring AWG22 (0.34 mm²) blue',
-      '   (page 3).',
+      '2. Control wiring AWG22 (0.34 mm²) blue.',
       '3. All devices in +EB unless boxed.',
     ], { head: true });
   });

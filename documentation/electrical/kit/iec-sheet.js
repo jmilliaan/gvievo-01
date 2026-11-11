@@ -67,7 +67,8 @@
 
     // Manual operator for one or more contact poles (mids from contactV), drawn to the left.
     // kind: 'push' (momentary push-button), 'estop' (mushroom, latching, positive opening),
-    // 'turn' (maintained selector, latching). Returns the actuator x.
+    // 'mushroom' (mushroom, latching, not an emergency stop), 'turn' (maintained selector, latching).
+    // Returns the actuator x.
     operator(mids, kind) {
       const y = mids[0].y, xa = Math.min(...mids.map(m => m.x)) - 9;
       const xr = Math.max(...mids.map(m => m.x));
@@ -76,6 +77,8 @@
         this.path(`M${xa + 0.9} ${y - 1.8} H${xa} V${y + 1.8} H${xa + 0.9}`, 0.3);
       } else if (kind === 'turn') {
         this.path(`M${xa - 0.9} ${y - 1.6} L${xa} ${y - 1.6} L${xa} ${y + 1.6} L${xa + 0.9} ${y + 1.6}`, 0.3);
+      } else if (kind === 'mushroom') {
+        this.path(`M${xa} ${y - 2.4} A2.4 2.4 0 0 0 ${xa} ${y + 2.4} Z`, 0.3, '#fff');
       } else if (kind === 'estop') {
         this.path(`M${xa} ${y - 2.4} A2.4 2.4 0 0 0 ${xa} ${y + 2.4} Z`, 0.3, '#fff');
         // positive-opening mark (IEC 60947-5-1 Annex K): circle with an arrow along the link
@@ -84,7 +87,7 @@
         el('circle', { cx, cy: y, r: 1.15, fill: '#fff', stroke: INK, 'stroke-width': 0.22 }, this.svg);
         this.path(`M${cx - 0.7} ${y} H${cx + 0.25} M${cx + 0.75} ${y} L${cx + 0.05} ${y - 0.45} L${cx + 0.05} ${y + 0.45} Z`, 0.18, INK);
       }
-      if (kind === 'estop' || kind === 'turn') {
+      if (kind === 'estop' || kind === 'turn' || kind === 'mushroom') {
         // latching (stay-put) mark on the link
         const dx = xa + 2.6;
         this.path(`M${dx - 0.7} ${y} L${dx} ${y + 1} L${dx + 0.7} ${y}`, 0.22);
@@ -349,11 +352,12 @@
     cap(bx[3], y0 + rh * 2.5, 'Page description');
     s.text(bx[3] + 2, y0 + rh * 4 - 2.4, m.description, { size: 3.6, weight: 600, maxw: w(3) });
 
-    // block 5: function / location / document kind / language
-    [['Function (=)', m.func || ''], ['Location (+)', m.location || ''], ['Document kind', m.kind || '&EFS'], ['Language', doc.language || 'en']]
+    // block 5: location / language (two double-height rows)
+    [['Location', m.location || ''], ['Language', doc.language || 'en']]
       .forEach(([c, v], i) => {
-        if (i) s.line(bx[4], y0 + rh * i, bx[5], y0 + rh * i, 0.12);
-        cap(bx[4], y0 + rh * i, c); val(bx[4], y0 + rh * i, v, { size: 2.6, mono: true, maxw: w(4) });
+        const yy = y0 + 2 * rh * i;
+        if (i) s.line(bx[4], yy, bx[5], yy, 0.12);
+        cap(bx[4], yy, c); s.text(bx[4] + 1.2, yy + 2 * rh - 2.4, v, { size: 2.8, mono: true, maxw: w(4) });
       });
 
     // block 6: document number, revision, page, number of pages
@@ -480,7 +484,7 @@
   // and the title-block fields, then renders. File names are iec-page-NN.html.
   function page(no, draw, o = {}) {
     const pages = (window.PROJECT && PROJECT.pages) || [];
-    const pg = pages.find(p => p.no === no) || { desc: '', kind: '&EFS' };
+    const pg = pages.find(p => p.no === no) || { desc: '' };
     const drawn = pages.filter(p => p.drawn);
     const i = drawn.findIndex(p => p.no === no);
     const href = p => `iec-page-${String(p.no).padStart(2, '0')}.html`;
@@ -499,7 +503,7 @@
     document.title = `Page ${no} · ${pg.desc}`;
     render(document.getElementById('sheet'), Object.assign({
       page: no, file: `iec-page-${String(no).padStart(2, '0')}`,
-      description: pg.desc, location: pg.loc, func: pg.func, kind: pg.kind, draw,
+      description: pg.desc, location: pg.loc, draw,
     }, o));
   }
 

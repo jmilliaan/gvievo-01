@@ -27,11 +27,14 @@
     s.line(A2, 40, A2, YM); s.dot(A2, 78); s.line(A2, 78, K2A2, 78); s.line(K2A2, 78, K2A2, YM);
 
     s.module(45, 140, YM, 40, [{ x: A1, name: 'A1' }, { x: A2, name: 'A2' }],
-      ['-KE1', 'SICK Flexi Soft FX3-CPU0', 'Main module, system plug', 'Configuration checksum «CRC»']);
+      ['-KE1', 'SICK Flexi Soft FX3-CPU0', 'Main module, system plug']);
     s.module(185, 300, YM, 40, [{ x: K2A1, name: 'A1' }, { x: K2A2, name: 'A2' }],
       ['-KE2', 'SICK FX3-XTIO84002', '8 inputs, 2 test outputs, 4 outputs', 'I/O table: page 44']);
+    s.module(320, 400, YM, 40, [],
+      ['-KE5', 'SICK FX3-MOC0', 'Drive monitor, 2 encoders', 'Supply via FLEXBUS+', 'Encoders: page 45']);
     s.line(140, 130, 185, 130, 0.4, '2 1');
     s.text(162.5, 127.5, 'FLEXBUS+', { size: 2.2, anchor: 'middle' });
+    s.line(300, 130, 320, 130, 0.4, '2 1');
 
     const row = t => { const r = PROJECT.safetyIO.find(x => x[0] === t); return [r[0], r[2], r[5]]; };
     const cols = [{ w: 20, title: 'Terminal', mono: true }, { w: 78, title: 'Connected to' }, { w: 18, title: 'Page', mono: true }];
@@ -41,14 +44,12 @@
     s.text(185, 157, '-KE2 terminals: supply and outputs', { size: 2.8, weight: 600 });
     s.table(185, 160, cols, ['A1', 'A2', 'Q1', 'Q2', 'Q3', 'Q4'].map(row), O);
 
-    s.note(310, 105, [
+    s.note(320, 160, [
       'Notes',
-      '1. Configuration: Flexi Soft Designer',
-      '   project «file», report «DOC-NO».',
-      '2. After any change of configuration',
+      '1. After any change of configuration',
       '   or wiring: verify all safety',
       '   functions (operation manual 8.5).',
-      '3. All devices in +EB.',
+      '2. All devices in +EB.',
     ], { head: true });
   });
 </script>

@@ -32,7 +32,7 @@
     s.text(BUS - 2, 41, '48 V bus  1P48 / 1N48', { size: 2.6, weight: 600, anchor: 'middle' });
 
     // drive branches
-    [['-FC1', '1P 10 A', '-TA1', 'left', '-MA1', 60], ['-FC2', '1P 10 A', '-TA2', 'right', '-MA2', 100]]
+    [['-FC1', '1P 13 A', '-TA1', 'left', '-MA1', 60], ['-FC2', '1P 13 A', '-TA2', 'right', '-MA2', 100]]
       .forEach(([fc, r, ta, side, ma, y]) => {
         s.dot(BUS, y); s.arrow(BUS, y, 170, y);
         blk(170, y, 40, [fc, r]); ref(190, y, '/20');
@@ -46,10 +46,10 @@
       });
 
     // converter branches with their loads
-    [['-TA3', '48 → 24 V', '150 W', '-FC3', '2P 10 A', 165, '/30',
+    [['-TA3', '48 → 24 V', '150 W', '-FC3', '1P 6 A', 165, '/30',
       ['24 V loads (1P24 / 1N24)', '-BG1 scanner, -KE1/-KE2 safety controller,', '-PJ1 horn, -KE4 I/O module  /30',
        '-PH1 display, -BG3 line sensor, -GQ1…3 fans,', '-TA1/-TA2 network supply  /31']],
-     ['-TA4', '48 → 12 V', '100 W', '-FC4', '2P 10 A', 215, '/32',
+     ['-TA4', '48 → 12 V', '100 W', '-FC4', '1P 10 A', 215, '/32',
       ['12 V loads (1P12 / 1N12)', '-KE3 vehicle controller,', '-BG4 RFID reader  /32']]]
       .forEach(([ta, v, p, fc, r, y, pg, loads]) => {
         s.dot(BUS, y); s.arrow(BUS, y, 170, y);
@@ -68,8 +68,7 @@
       '1. 48 V system floating: no conductor is connected to the chassis.',
       '2. -TA3 and -TA4 are isolated; 1N48 is not joined to 1N24 / 1N12.',
       '   1N24 and 1N12 are joined at the converter outputs (page 20).',
-      '3. -QA1 is the supply disconnecting device (lock-out, operation',
-      '   manual 15.1).',
+      '3. -QA1 is the main switch (lock-out: operation manual 15.1).',
       '4. Overview only. Wiring and cables: detail pages.',
     ], { head: true, size: 2.3 });
   });

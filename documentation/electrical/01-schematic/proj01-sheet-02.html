@@ -52,7 +52,7 @@
     meta: META,
     file: 'PROJ01-02',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Motor power installation: 2P48, 3P48 and 1N48 from sheet 01 through terminals TB01–TB06 to two BLVD-KRD motor drivers.',
+    label: 'Motor power installation: 2P48, 3P48 and 1N48 from sheet 01 through terminals TB01–TB06 and LC03D06A cables to two BLVD-KRD motor drivers; motors BLMR6400SKM-GFV-B with CCM020B1AAF cables.',
     draw(s) {
       const TBX = 72, PEX = 86, DX = 140, DW = 36;
 
@@ -98,6 +98,19 @@
         tb(TBX, ys[1], d.tb[1]);
         tb(PEX, ys[2], d.tb[2]);
       });
+
+      /* ---- notes: motors and motor cables (2026-11-09) ---- */
+      const NX = 46, NY = s.row(10.5);
+      s.text(NX, NY, 'NOTES', { size: 2.1, weight: 600 });
+      [
+        '1. DRIVER POWER CABLE: ORIENTAL MOTOR LC03D06A. ALL MOTOR',
+        '   AND BRAKE POWER COMES IN ON THE LC03 CABLES (VIA THE DRIVER).',
+        '2. MOTORS: BLMR6400SKM-GFV-B, GEARHEAD GFS6G30FR (1:30).',
+        '   DRIVER 01 → LEFT MOTOR, DRIVER 02 → RIGHT MOTOR.',
+        '3. DRIVER → MOTOR: ORIENTAL MOTOR CABLE CCM020B1AAF (2m),',
+        '   MOTOR POWER + ENCODER.',
+        '4. 2P48 / 3P48: MCB-02 / MCB-03, ABB S201-C13, 1P 13A (SH.01).',
+      ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
     },
   });
 </script>

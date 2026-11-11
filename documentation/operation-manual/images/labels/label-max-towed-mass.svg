@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="50" viewBox="0 0 240 100">
+  <title>Rating label: maximum towed mass 1 000 kg</title>
+  <rect x="3" y="3" width="234" height="94" rx="6" fill="#fff" stroke="#000" stroke-width="5"/>
+  <text x="120" y="38" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" text-anchor="middle">MAX. TOWED MASS</text>
+  <text x="120" y="80" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="700" text-anchor="middle">1 000 kg</text>
+</svg>

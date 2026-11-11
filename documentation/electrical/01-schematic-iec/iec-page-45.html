@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 45</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Wheel encoders and drive monitor. sources: SICK DFS60S Pro operating instructions 8016866/1RQZ/2025-03-31
+  // (type code, M12 pins, wire colours), data sheet FX3-MOC Y-CABLE 2116199 (Micro D-sub 15 pins of the FX3-MOC).
+  // Owner, 2026-11-09: M12 plug fitted on each encoder cable + Y-cable, all 8 encoder wires go through the Y-cable;
+  // encoder supply from the MOC0;
+  // SF6 speed limit in AUTO and SF7 standstill configured; speed-dependent field switching not wired.
+  IEC.page(45, s => {
+    const YE = 56, YM12 = 95, YJ = 160, YK = 185;
+    // encoder terminals (M12 pin, wire colour) and the FX3-MOC socket pins they reach through -WG13
+    const SIG = [['COS+', '2 · white'], ['COS−', '1 · brown'], ['SIN+', '4 · pink'], ['SIN−', '3 · black'],
+                 ['Z¯', '5 · yellow'], ['Z', '6 · violet'], ['+US', '8 · red'], ['GND', '7 · blue']];
+    const XS = x1 => [0, 1, 2, 3, 4, 5, 6, 7].map(k => x1 + 12 + 17 * k);
+    const E = [
+      { tag: '-BG5', side: 'left', x1: 28, xs: XS(28), wg: '-WG11', head: 'B',
+        pins: [['1', 'ENC1_A+'], ['9', 'ENC1_A−'], ['2', 'ENC1_B+'], ['10', 'ENC1_B−'], ['3', 'ENC1_C+'], ['11', 'ENC1_C−'], ['4', 'ENC1_24V'], ['12', 'ENC_0V']] },
+      { tag: '-BG6', side: 'right', x1: 210, xs: XS(210), wg: '-WG12', head: 'C',
+        pins: [['8', 'ENC2_A+'], ['15', 'ENC2_A−'], ['7', 'ENC2_B+'], ['14', 'ENC2_B−'], ['6', 'ENC2_C+'], ['13', 'ENC2_C−'], ['5', 'ENC2_24V']] },
+    ];
+
+    /* ---- conductors ---- */
+    E[0].xs.forEach(x => s.line(x, YE, x, YK));
+    E[1].xs.forEach((x, k) => s.line(x, YE, x, k < 7 ? YK : YJ));
+    s.line(E[1].xs[7], YJ, E[0].xs[7], YJ); s.dot(E[0].xs[7], YJ);   // both 0 V on pin 12 (inside -WG13)
+
+    /* ---- encoders (+VH) ---- */
+    E.forEach(e => {
+      s.locationBox(e.x1 - 5, 22, 160, 40, '+VH', '');
+      s.module(e.x1, e.x1 + 145, 30, 26, e.xs.map((x, k) => ({ x, name: SIG[k][0], sub: SIG[k][1] })),
+        [e.tag, `SICK DFS60S-BAOL01024 · ${e.side} wheel shaft`], { edge: 'bottom' });
+      s.cable(e.xs, 74, e.wg, `DFS60S cable 3 m (part of ${e.tag})`);
+      // M12 plug fitted on the encoder cable, mating with head B / C of the Y-cable
+      const a = e.xs[0] - 4, b = e.xs[7] + 4;
+      s.path(`M${a} ${YM12 - 2} H${b} V${YM12 + 2} H${a} Z`, 0.3);
+      s.text(b + 1.5, YM12 + 1, `M12 8-pin · head ${e.head}`, { size: 2.1 });
+    });
+    s.cable([...E[0].xs, ...E[1].xs], 130, '-WG13', 'SICK FX3-MOC Y-CABLE 2116199');
+
+    /* ---- drive monitor ---- */
+    s.module(25, 385, YK, 26, [...E[0].pins.map((p, k) => ({ x: E[0].xs[k], name: p[0], sub: p[1] })),
+                               ...E[1].pins.map((p, k) => ({ x: E[1].xs[k], name: p[0], sub: p[1] }))],
+      ['-KE5', 'SICK Flexi Soft FX3-MOC0 drive monitor · encoder socket Micro D-sub 15-pin (head A of -WG13) · supply via FLEXBUS+ (/43)']);
+
+    s.note(30, 222, [
+      'Notes',
+      '1. Speed limit in AUTO: above 1.1 m/s, -KE1 switches Q1, Q2 off (STO, /42).',
+      '2. Standstill monitoring: -KE5 checks that both wheels stand still while torque is off.',
+      '3. Speed-dependent scanner field switching: planned, not wired in this revision.',
+      '4. ENC1 = left wheel, ENC2 = right wheel. Encoder supply 24 V from -KE5.',
+    ], { head: true });
+    s.note(222, 222, [
+      '',
+      '5. Hollow shaft Ø6 mm, feather key, stator coupling: mount per the SICK instructions.',
+      '6. All 8 wires go through -WG13. Z¯, Z → ENC_C (pins 3, 11 / 6, 13): not evaluated in sin/cos mode.',
+      '7. Screens on the M12 and D-sub housings. Signals: sin/cos, 1 Vpp differential.',
+      '8. All devices in +EB unless boxed.',
+    ]);
+  });
+</script>
+</body>
+</html>

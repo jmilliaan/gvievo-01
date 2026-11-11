@@ -51,16 +51,17 @@
     s.module(290, 342, BOX, 30, [{ x: 300, name: '+24V' }, { x: 310, name: '0V' }],
       ['-PJ1', 'Horn PATLITE', 'COM = 0V (jumper)', 'sound inputs /61']);
     s.module(352, 402, BOX, 30, [{ x: 365, name: '24V' }, { x: 375, name: '0V' }],
-      ['-KE4', 'CK-EC5163', 'PE not connected', 'I/O /60, /61']);
+      ['-KE4', 'CK-TP5162', 'PE not connected', 'I/O /60, /61']);
 
     /* ---- breaker, cables ---- */
-    s.breaker([P, N], 48, '-FC3', '2P 10 A DC');
+    s.breaker([P], 48, '', '');   // 1-pole: N not switched; labels right of N
+    s.text(N + 2.5, 47.4, '-FC3', { size: 3, weight: 600 }); s.text(N + 2.5, 48 + 3 * s.textScale, '1P 6 A · ABB S201-C6', { size: 2.3 });
     s.cable([80, 90], 135, '-WG1', 'SICK connection cable');
 
     s.note(30, 218, [
       'Notes',
-      '1. Control wiring AWG22 (0.34 mm²) blue unless marked (page 3).',
-      '2. Rear scanner (SF3) not fitted in this revision.',
+      '1. Control wiring AWG22 (0.34 mm²) blue unless marked.',
+      '2. Rear scanner not fitted in this revision.',
       '3. All devices in +EB unless boxed.',
     ], { head: true });
   });

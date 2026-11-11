@@ -43,29 +43,30 @@
       en: 'LEFT MOTOR' },
     { row: 5, cb: 'MCB-03', cbRef: '0107', net: '3P48', name: ['DRIVER 02', 'BLVD-KRD'], ref: '0207',
       en: 'RIGHT MOTOR' },
+    // motors: BLMR6400SKM-GFV-B + gearhead GFS6G30FR (1:30), see note 6
   ];
 
-  // DC/DC converters off the 48 V bus, each with its own 2-pole output breaker and sub-bus
+  // DC/DC converters off the 48 V bus, each with its own 1-pole output breaker (+ only) and sub-bus
   const BUCKS = [
-    { row: 7.5, name: ['BUCK01', '48→24V', '6.25A (150W)'], ref: '0110',
-      cb: 'MCB-04', rating: '2P 10A', cbRef: '0302', bus: ['1P24 / 1N24', '24V DC BUS'],
+    { row: 7.5, name: ['BUCK01', 'SD-150C-24', '48→24V 150W'], ref: '0110',
+      cb: 'MCB-04', rating: '1P 6A', cbRef: '0302', bus: ['1P24 / 1N24', '24V DC BUS'],
       loads: [
-        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 01', 'NANOSCAN3'], ref: '0305' },
-        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 02', 'NANOSCAN3'], ref: '0308' },
-        { name: ['SAFETY PLC', 'XTIO + CPU MODULE'], ref: '0311' },
-        { name: ['AUDIO HORN 01', 'PATLITE'], ref: '0315' },
-        { name: ['DIGITAL IO', 'CK-EC5163'], ref: '0318' },
-        { name: ['DISPLAY', 'BARREL JACK'], ref: '0402' },
-        { name: ['LINE SENSOR 01', 'SICK MLSE'], ref: '0405' },
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1'], ref: '0305' },
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 02', 'NOT FITTED'], ref: '0308', nf: true },
+        { name: ['SAFETY PLC', 'CPU0 + XTIO + MOC0'], ref: '0311' },
+        { name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K'], ref: '0315' },
+        { name: ['DIGITAL IO', 'CK-TP5162'], ref: '0318' },
+        { name: ['DISPLAY', 'JWS080-M-QD'], ref: '0402' },
+        { name: ['LINE SENSOR 01', 'MLSE-0200A2NQ0'], ref: '0405' },
         { name: ['FAN 01 – 03', 'NMB-MAT'], ref: '0408' },
         { name: ['DRIVER 01 NET-VIN', 'BLVD-KRD'], ref: '0415' },
         { name: ['DRIVER 02 NET-VIN', 'BLVD-KRD'], ref: '0418' },
       ] },
-    { row: 18.5, name: ['BUCK02', '48→12V', '8.3A (100W)'], ref: '0114',
-      cb: 'MCB-05', rating: '2P 10A', cbRef: '0502', bus: ['1P12 / 1N12', '12V DC BUS'],
+    { row: 18.5, name: ['BUCK02', 'SD-100C-12', '48→12V 100W'], ref: '0114',
+      cb: 'MCB-05', rating: '1P 10A', cbRef: '0502', bus: ['1P12 / 1N12', '12V DC BUS'],
       loads: [
-        { name: ['IPC POWER', 'BARREL JACK'], ref: '0505' },
-        { name: ['RFID READER', 'BARREL JACK'], ref: '0508' },
+        { name: ['IPC NEU-X102-N97', 'BARREL JACK'], ref: '0505' },
+        { name: ['RFID READER CF821', 'BARREL JACK'], ref: '0508' },
       ] },
   ];
 
@@ -73,7 +74,7 @@
     meta: META,
     file: 'PROJ01-00',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'DC power single-line diagram: 48 V battery through MCB-01 to the 48 V bus, two driver feeders, and BUCK01 / BUCK02 with MCB-04 / MCB-05 feeding the 24 V and 12 V loads.',
+    label: 'DC power single-line diagram: 48 V 50 Ah LiFePO4 battery through MCB-01 to the 48 V bus, two 13 A driver feeders, and BUCK01 SD-150C-24 / BUCK02 SD-100C-12 with 1-pole MCB-04 / MCB-05 feeding the 24 V and 12 V loads; SAFETY LIDAR 02 not fitted.',
     draw(s) {
       const BUS = 24, SUB = 118, BUSW = 0.5;          // 48 V bus, 24 V / 12 V sub-bus
       const BX = 52, BW = 24, DX = 106, DW = 28, LX = 144, LW = 34;
@@ -94,8 +95,9 @@
         for (let i = 0; i < n; i++) s.line(x + 1.1 * i - 0.7, y + 1.3, x + 1.1 * i + 0.7, y - 1.3, 0.22);
       };
       // device box with centred name lines (first line bold)
-      const box = (x, w, y, lines, h) => {
-        s.rect(x, y - h / 2, w, h, 0.3);
+      const box = (x, w, y, lines, h, nf) => {
+        const r = s.rect(x, y - h / 2, w, h, 0.3);
+        if (nf) { r.setAttribute('stroke-dasharray', '1.6 1'); r.setAttribute('stroke-linecap', 'butt'); }
         const top = y - 1.9 * (lines.length - 1) + 0.9;
         lines.forEach((t, i) => s.text(x + w / 2, top + 3.8 * i, t,
           { size: i === 0 ? 2.1 : 1.9, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
@@ -107,7 +109,7 @@
         s.line(BUS - w / 2, yBat + dy, BUS + w / 2, yBat + dy, w === 3 ? 0.6 : 0.3));
       s.text(BUS - 4.6, yBat + 0.9, '+', { size: 2 });
       s.text(31, 16, 'BATTERY 48V DC', { size: 2.2, weight: 600 });
-      s.text(31, 19.6, '«CAPACITY Ah»', { size: 1.9 });
+      s.text(31, 19.6, '50Ah LiFePO₄ · INCOE', { size: 1.9 });
       s.text(64, 16, 'BMS → CAN BUS', { size: 1.9 });
       ref(64, 19.4, '0618', 'start');
 
@@ -133,10 +135,10 @@
         // cable marks and breaker last, so they cut the conductor
         s.wire(31, [y], 'NYAF 2.5mm²', 'RED');
         s.mccb(56, [y], d.cb);
-        s.text(56, y + 3.9, '1P 10A', { size: 1.9, anchor: 'middle' });   // under the line: clear of the name
+        s.text(56, y + 3.9, '1P 13A', { size: 1.9, anchor: 'middle' });   // under the line: clear of the name
         ref(56, y + 6.9, d.cbRef);
         s.wire(80, [y], 'LC03D06A', 'ORIENTAL MOTOR');
-        s.wire(137, [y], 'CCM010B1AAF', '');
+        s.wire(137, [y], 'CCM020B1AAF', '2m');
       });
 
       /* ---- DC/DC converters, output breakers, 24 V / 12 V sub-buses ---- */
@@ -153,8 +155,11 @@
         ref(BX + BW / 2, y + 9.6, b.ref);
 
         b.loads.forEach((l, k) => {
-          if (k > 0) { s.line(SUB, ys[k], LX, ys[k]); if (k < ys.length - 1) s.dot(SUB, ys[k]); }
-          box(LX, LW, ys[k], l.name, 8);
+          if (k > 0) {
+            s.line(SUB, ys[k], LX, ys[k], 0.3, l.nf ? '1.6 1' : undefined);   // not fitted: dashed
+            if (k < ys.length - 1) s.dot(SUB, ys[k]);
+          }
+          box(LX, LW, ys[k], l.name, 8, l.nf);
           ref(LX + LW + 2, ys[k] + 0.6, l.ref, 'start');
           s.wire(123, [ys[k]], l.w || 'AWG22', 'BLUE');
         });
@@ -172,20 +177,22 @@
       ref(BUS + 16.5, yCb - 0.4, '0102', 'start');
 
       /* ---- notes ---- */
-      const NX = 30, NY = s.row(12);
+      const NX = 30, NY = s.row(11.6);
       s.text(NX, NY, 'NOTES', { size: 2.1, weight: 600 });
       [
-        '1. ALL CIRCUITS ARE 2-WIRE DC (+ / −), DRAWN',
-        '   SINGLE-LINE. UNMARKED LINE = 2 CONDUCTORS;',
-        '   /// = 3 CONDUCTORS (+ / − / PE).',
-        '2. MCB-02 / MCB-03 SWITCH THE + LINE ONLY;',
-        '   THE RETURN IS THE COMMON 1N48.',
-        '3. N24 AND N12 ARE COMMON (BUCK VOUT− JUMPER,',
-        '   SHEET 01).',
-        '4. 4-DIGIT NUMBER = SHEET + LINE OF THE DETAIL',
-        '   DRAWING (0305 = SHEET 03, LINE 05).',
-        '5. TERMINAL BLOCKS, DEVICE CABLES AND SIGNAL',
-        '   WIRING: SEE THE DETAIL SHEETS.',
+        '1. ALL CIRCUITS ARE 2-WIRE DC (+ / −), DRAWN SINGLE-LINE.',
+        '   UNMARKED LINE = 2 CONDUCTORS; /// = 3 (+ / − / PE).',
+        '2. MCB-02 … MCB-05 ARE 1-POLE: THEY SWITCH + ONLY;',
+        '   THE 0V RETURN RUNS THROUGH. MCB-01 IS 2-POLE.',
+        '3. N24 AND N12 ARE COMMON (BUCK VOUT− JUMPER, SHEET 01).',
+        '4. 4-DIGIT NUMBER = SHEET + LINE OF THE DETAIL DRAWING',
+        '   (0305 = SHEET 03, LINE 05).',
+        '5. TERMINAL BLOCKS, DEVICE CABLES, SIGNAL WIRING: SH.01–10.',
+        '6. MCB-01 ABB S202-C32 · MCB-02/03 S201-C13 · MCB-04 S201-C6',
+        '   · MCB-05 S201-C10.',
+        '7. MOTOR BLMR6400SKM-GFV-B + GEARHEAD GFS6G30FR (1:30).',
+        '   MOTOR AND BRAKE POWER COME FROM THE DRIVER CABLE LC03D06A.',
+        '8. SAFETY ENCODERS AND FX3-MOC0 DRIVE MONITOR: SHEET 10.',
       ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
     },
   });

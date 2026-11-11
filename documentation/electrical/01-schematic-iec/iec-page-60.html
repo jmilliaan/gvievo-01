@@ -18,8 +18,8 @@
 <script src="data/project.js"></script>
 <script>
   // I/O module inputs. source: ../01-schematic/proj01-sheet-09.html and io-mapping.md section 3.
-  // DI00–DI07: COM0 = 1P24, contacts switch the input to 1N24. DI08 (COM1 = 1N24): MANUAL ARM switch
-  // closes 1P24 onto the input.
+  // DI00–DI07: COM0 = 1P24, contacts switch the input to 1N24. DI08 (COM1 = 1N24): MANUAL ARM button
+  // on the pendant, 1 NC: released = 1P24 on the input = drives on in MANUAL (owner, 2026-11-09).
   IEC.page(60, s => {
     const R1 = 26, R2 = 33, CT = 110, MOD = 205;
     const DI = { DI00: 55, DI01: 95, DI02: 125, DI03: 165, DI04: 190, DI05: 215, DI06: 240, DI08: 290, COM0: 335, COM1: 365 };
@@ -44,22 +44,22 @@
     s.label(62, 106, '-SJ2', ['START', '1 NO']);
 
     /* ---- pendant (+PD) ---- */
-    s.locationBox(142, 75, 122, 62, '+PD', 'pendant');
+    s.locationBox(142, 75, 186, 62, '+PD', 'pendant');
     [['DI03', '-SJ6', 'FORWARD'], ['DI04', '-SJ7', 'REVERSE'], ['DI05', '-SJ8', 'LEFT'], ['DI06', '-SJ9', 'RIGHT']].forEach(([k, t, n]) => {
       s.operator([s.contactV(DI[k], CT, 'no', ['13', '14'])], 'push');
       s.text(DI[k] + 2, 122, t, { size: 2.5, weight: 600 });
       s.text(DI[k] + 2, 125.6, n, { size: 2.1 });
     });
-    s.cable([DI.DI03, DI.DI06], 145, '-WG10', 'pendant cable');
-
-    /* ---- MANUAL ARM (+FR) ---- */
-    s.locationBox(270, 92, 58, 40, '+FR', '');
-    s.contactV(DI.DI08, CT, 'no', ['13', '14']);
-    s.label(296, 106, '-SJ5', ['MANUAL ARM', '«switch type»']);
+    // MANUAL ARM: black mushroom, latching, turn to release; not an emergency stop
+    s.operator([s.contactV(DI.DI08, CT, 'nc', ['11', '12'])], 'mushroom');
+    s.text(DI.DI08 + 2, 122, '-SJ5', { size: 2.5, weight: 600 });
+    s.text(DI.DI08 + 2, 125.6, 'MANUAL ARM', { size: 2.1 });
+    s.text(DI.DI08 + 2, 129.2, 'black, latching, 1 NC', { size: 2.1 });
+    s.cable([DI.DI03, DI.DI08], 145, '-WG10', 'pendant cable');
 
     /* ---- I/O module ---- */
     s.module(35, 395, MOD, 30, Object.entries(DI).map(([name, x]) => ({ x, name })),
-      ['-KE4', 'CK-EC5163 I/O module, inputs · outputs /61 · I/O table /62',
+      ['-KE4', 'CK-TP5162 I/O module, inputs · outputs /61 · I/O table /62',
        'DI00–DI07: common COM0 = 1P24, input on when switched to 1N24 · DI08–DI0F: common COM1 = 1N24, input on when switched to 1P24']);
 
     s.note(172, 44, [
@@ -67,6 +67,7 @@
       '1. -SJ4 contact closed = MANUAL (DI02 on).',
       '2. Pendant buttons: hold to run (software).',
       '3. Wiring AWG22 blue. All in +EB unless boxed.',
+      '4. -SJ5 pressed = DI08 off = drives off (MANUAL).',
     ], { head: true });
   });
 </script>

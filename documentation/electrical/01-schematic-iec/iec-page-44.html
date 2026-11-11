@@ -25,21 +25,8 @@
       { w: 48, title: 'Signal' },
       { w: 110, title: 'Device / connection' },
       { w: 50, title: 'Test pulse' },
-      { w: 38, title: 'Safety function', mono: true },
       { w: 20, title: 'Page', mono: true },
     ], PROJECT.safetyIO, { rowH: 8 });
-
-    s.text(30, end + 12, 'Safety functions', { size: 3, weight: 600 });
-    s.table(30, end + 15, [{ w: 16, title: 'ID', mono: true }, { w: 120, title: 'Function' }, { w: 120, title: 'Devices' }],
-      PROJECT.safetyFunctions.map(r => [r[0], r[1], r[2]]), { size: 2.3, rowH: 5.8, headH: 6.4 });
-
-    s.note(300, end + 15, [
-      'Notes',
-      'Test-pulse settings come from the',
-      'Flexi Soft configuration report.',
-      'They are not shown on the hardware',
-      'and must be filled from the report.',
-    ], { head: true });
   });
 </script>
 </body>

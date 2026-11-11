@@ -39,7 +39,7 @@
     const DEV = [
       { tag: '-TA1', d: 'Motor driver left', xs: [190, 202, 214], t: [['6', 'CAN-H'], ['5', 'CAN-L'], ['7', 'GND']], x1: 182, x2: 232, wg: ['-WG3', 'Belden 9841'] },
       { tag: '-TA2', d: 'Motor driver right', xs: [245, 257, 269], t: [['6', 'CAN-H'], ['5', 'CAN-L'], ['7', 'GND']], x1: 237, x2: 287, wg: ['-WG4', 'Belden 9841'] },
-      { tag: '-BG3', d: 'Line sensor', xs: [300, 312], t: [['H', 'white'], ['L', 'black']], x1: 294, x2: 336, wg: ['-WG2', 'MLSE cable'], loc: '+VH' },
+      { tag: '-BG3', d: 'Line sensor', xs: [300, 312], t: [['H', '2 · white'], ['L', '4 · black']], x1: 294, x2: 336, wg: ['-WG2', 'SICK YF2A14'], loc: '+VH' },
       { tag: '-GB1', d: 'Battery BMS', xs: [350, 362], t: [['H', ''], ['L', '']], x1: 344, x2: 392, wg: ['-WG5', 'Belden 9841'], loc: '+BT' },
     ];
     const ys = [Y.h, Y.l, Y.g];
@@ -55,10 +55,8 @@
       '1. CAN 125 kbit/s, CANopen. Node IDs: -TA1 1, -TA2 2, -BG3 10.',
       '2. -WG3, -WG4: Belden 9841 twisted pair for',
       '   CAN H / CAN L plus one AWG22 core for GND.',
-      '3. Termination 120 Ω: built into -TF1.',
-      '   Far bus end: «confirm».',
-      '4. Cable shield connection: «confirm».',
-      '5. All devices in +EB unless boxed.',
+      '3. Termination 120 Ω: built into -TF1. -BG3 (MLSE-0200A2NQ0) has none.',
+      '4. All devices in +EB unless boxed.',
     ], { head: true });
   });
 </script>

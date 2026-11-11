@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 100 100">
+  <title>Prohibition: do not walk or stand here (ISO 7010 P024, redrawn)</title>
+  <circle cx="50" cy="50" r="42" fill="#fff" stroke="#BE1E2D" stroke-width="10"/>
+  <!-- two shoe prints -->
+  <g fill="#000">
+    <g transform="rotate(-8 38 46)">
+      <path d="M38 22 C45 22 47 30 46 38 C45 45 43 49 38 49 C33 49 31 45 30 38 C29 30 31 22 38 22 Z"/>
+      <path d="M33.5 53 L42.5 53 C43 59 42 65 38 65 C34 65 33 59 33.5 53 Z"/>
+    </g>
+    <g transform="rotate(8 62 54)">
+      <path d="M62 30 C69 30 71 38 70 46 C69 53 67 57 62 57 C57 57 55 53 54 46 C53 38 55 30 62 30 Z"/>
+      <path d="M57.5 61 L66.5 61 C67 67 66 73 62 73 C58 73 57 67 57.5 61 Z"/>
+    </g>
+  </g>
+  <line x1="20.3" y1="20.3" x2="79.7" y2="79.7" stroke="#BE1E2D" stroke-width="10"/>
+</svg>

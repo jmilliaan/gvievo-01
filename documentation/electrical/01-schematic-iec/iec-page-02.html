@@ -33,26 +33,23 @@
 
   IEC.render(document.getElementById('sheet'), {
     page: 2, file: 'iec-page-02',
-    description: PG.desc, kind: PG.kind,
+    description: PG.desc,
     draw(s) {
       const rows = PROJECT.pages.map(p => [
-        String(p.no), p.desc, p.kind, p.loc || '', p.func || '',
+        String(p.no), p.desc, p.loc || '',
         p.drawn ? `Rev ${PROJECT.doc.revision}` : 'planned',
       ]);
       const end = s.table(40, 22, [
         { w: 16, title: 'Page', align: 'right', mono: true },
-        { w: 150, title: 'Description' },
-        { w: 22, title: 'Kind', mono: true },
-        { w: 40, title: 'Location', mono: true },
-        { w: 36, title: 'Safety function', mono: true },
+        { w: 170, title: 'Description' },
+        { w: 50, title: 'Location', mono: true },
         { w: 30, title: 'Status' },
-      ], rows, { rowH: 7, grey: r => (r[5] === 'planned' ? GREY : null) });
+      ], rows, { rowH: 7, grey: r => (r[3] === 'planned' ? GREY : null) });
 
       s.note(40, end + 9, [
         'Page numbers are grouped by subject, so the gaps are intentional: 1–9 front matter, 10–19 overview,',
         '20–29 48 V power, 30–39 control supplies, 40–49 safety, 50–59 drives, 60–69 control I/O,',
-        '70–79 cables, 80–89 lists. Grey pages are planned and not part of this issue.',
-        'Kind (IEC 61355-1): &AB list of documents, &EFS circuit diagram, &MB cable diagram, &PB parts list.',
+        '70–79 cables, 80–89 lists.',
       ], { size: 2.5, lh: 4.2 });
     },
   });

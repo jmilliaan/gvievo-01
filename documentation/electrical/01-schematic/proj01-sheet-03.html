@@ -37,28 +37,30 @@
 
   // loads fed straight from 1P24 / 1N24 through a terminal pair.
   // t = terminal names inside the box; end = wire label at the device end (as in the sketch)
+  // nf = not fitted: drawn dashed (SAFETY LIDAR 02, rear, not fitted in this revision; owner 2026-10-30)
   const LOADS = [
-    { row: 5,  tb: ['TB07', 'TB08'], win: ['NYAF 0.5mm²', 'BLUE'], wout: ['SICK CONNECTION CABLE', ''],
-      end: true, name: ['SAFETY LIDAR 01', 'NANOSCAN3'] },
+    { row: 5,  tb: ['TB07', 'TB08'], win: ['NYAF 0.5mm²', 'BLUE'], wout: ['YF2A18-050UA5XLEAX', 'SICK'],
+      end: true, t: ['1', '3'], name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1'] },
     { row: 8,  tb: ['TB09', 'TB10'], win: ['NYAF 0.5mm²', 'BLUE'], wout: ['SICK CONNECTION CABLE', ''],
-      end: true, name: ['SAFETY LIDAR 02', 'NANOSCAN3'] },
+      end: true, nf: true, name: ['SAFETY LIDAR 02', 'NOT FITTED'] },
     { row: 11, tb: ['TB11', 'TB12'], win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      t: ['A1', 'A2'], name: ['SAFETY PLC', 'XTIO MODULE'] },
+      t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-XTIO84002'] },
     { row: 15.5, tb: ['TB13', 'TB14'], win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      end: true, name: ['AUDIO HORN 01', 'PATLITE'] },
+      end: true, name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K'] },
     // digital IO module: single 24V / 0V supply (VIN pair removed; TB27 / TB28 now spare), see sheet 09
     { row: 18, tb: ['TB25', 'TB26'],
       win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      t: ['24V', '0V'], name: ['DIGITAL IO', 'CK-EC5163'] },
+      t: ['24V', '0V'], name: ['DIGITAL IO', 'CK-TP5162'] },
   ];
-  // CPU module is fed in parallel with the XTIO module, after TB11 / TB12
-  const CPU = { row: 13, t: ['A1', 'A2'], name: ['SAFETY PLC', 'CPU MODULE'] };
+  // CPU module is fed in parallel with the XTIO module, after TB11 / TB12.
+  // The FX3-MOC0 drive monitor takes its supply from the CPU over FLEXBUS+ (no wiring; sheet 10).
+  const CPU = { row: 13, t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-CPU0'] };
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
     file: 'PROJ01-03',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: '24 V power distribution part 1: P24/N24 from sheet 01 through MCB-04 to the safety lidars, safety PLC modules, audio horn and digital I/O module.',
+    label: '24 V power distribution part 1: P24/N24 from sheet 01 through 1-pole MCB-04 (6 A) to SAFETY LIDAR 01, the not-fitted SAFETY LIDAR 02, the safety PLC modules, audio horn and digital I/O module.',
     draw(s) {
       const bus = [23.8, 29.8];              // P24 / N24, 1P24 / 1N24 after MCB-04
       const TBX = 72, DX = 140, DW = 36;
@@ -75,9 +77,11 @@
         s.text(x, y - 1.6, name, { size: 1.7, anchor: 'middle' });
       };
       // device box with terminals on its left edge
-      const box = (ys, t, name) => {
-        s.rect(DX, ys[0] - 5, DW, ys[ys.length - 1] - ys[0] + 10, 0.3);
-        ys.forEach((y, i) => { s.dot(DX, y); if (t) s.text(DX + 1.5, y + 0.7, t[i], { size: 1.9 }); });
+      const dashed = n => { n.setAttribute('stroke-dasharray', '1.6 1'); n.setAttribute('stroke-linecap', 'butt'); };
+      const box = (ys, t, name, nf) => {
+        const r = s.rect(DX, ys[0] - 5, DW, ys[ys.length - 1] - ys[0] + 10, 0.3);
+        if (nf) dashed(r);
+        ys.forEach((y, i) => { if (nf) s.ring(DX, y, 0.5); else s.dot(DX, y); if (t) s.text(DX + 1.5, y + 0.7, t[i], { size: 1.9 }); });
         name.forEach((n, i) => s.text(DX + DW / 2 + (t ? 4 : 0), ys[0] + 1.2 + 4.2 * i, n,
           { size: 2.2, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
       };
@@ -92,8 +96,9 @@
 
       LOADS.forEach(l => {
         const ys = cond(l), b = src(l);
-        ys.forEach((y, i) => { s.line(bus[b[i]], y, DX, y); s.dot(bus[b[i]], y); });
-        box(ys, l.t, l.name);
+        // not fitted: dashed conductors, no junction on the bus
+        ys.forEach((y, i) => { s.line(bus[b[i]], y, DX, y, 0.3, l.nf ? '1.6 1' : undefined); if (!l.nf) s.dot(bus[b[i]], y); });
+        box(ys, l.t, l.name, l.nf);
         // wire labels (cable markers): bus → TB, TB → device, device end
         ys.forEach((y, i) => {
           s.text(56, y - 0.6, NET[b[i]], { size: 1.9 });
@@ -110,13 +115,26 @@
       s.line(dropN, cpu[1], DX, cpu[1]);
       box(cpu, CPU.t, CPU.name);
 
+      // SAFETY LIDAR 01: system plug M12 8-pin; OSSD pins go to the safety PLC (sheet 08)
+      const ly = s.row(5) + 5;
+      s.text(DX, ly + 9.2, 'M12 8-PIN: 1 = +24V, 3 = 0V', { size: 1.6 });
+      s.text(DX, ly + 12, 'PLUG NANSX-AAABAEZZ1', { size: 1.6 });
+      s.text(DX, ly + 14.8, 'OSSD1.A / B PIN 2 / 4 → SH.08', { size: 1.6 });
+      // safety PLC: system plug of the CPU, drive monitor on FLEXBUS+
+      const cy2 = s.row(CPU.row) + 5;
+      s.text(DX, cy2 + 9.2, 'SYSTEM PLUG FX3-MPL000001', { size: 1.6 });
+      s.text(DX, cy2 + 12, 'FX3-MOC0: SUPPLY VIA FLEXBUS+ (SH.10)', { size: 1.6 });
+
       // horn sound select is wired from the digital IO module (sheet 09)
       const hy = s.row(15.5) + 5;
       s.text(DX, hy + 9.2, 'SOUND 1 / 2 ← DO0 / DO1 (SH.09)', { size: 1.6 });
       s.text(DX, hy + 12, 'HORN COM JUMPERED TO 1N24', { size: 1.6 });
 
       // cable marks, breaker and terminals last, so they cut the conductors
-      s.mccbV(bus, 36, 'MCB-04', '2P 10A');
+      // MCB-04 is 1-pole: + switched only, N24 runs straight through; labels right of N24
+      s.mccbV([bus[0]], 36);
+      s.text(bus[1] + 2.4, 35.6, 'MCB-04', { size: 2.2 });
+      s.text(bus[1] + 2.4, 39, '1P 6A ABB S201-C6', { size: 1.9 });
       LOADS.forEach(l => {
         const ys = cond(l);
         s.wire(46, ys, l.win[0], l.win[1]);

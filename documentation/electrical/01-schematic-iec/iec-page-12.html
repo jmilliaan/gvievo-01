@@ -24,24 +24,27 @@
     const dashed = (x, y, w, h) => s.path(`M${x} ${y} h${w} v${h} h${-w} Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1');
 
     // inputs
-    blk(30, 32, 70, 22, ['-SJ1', 'Emergency stop, 2 NC', '/40']);
-    blk(30, 72, 70, 22, ['-BG1', 'Safety laser scanner, front', '/41']);
-    blk(30, 112, 70, 22, ['-SJ4', 'Selector MANUAL / AUTO', '/40']);
-    blk(30, 152, 70, 22, ['-SJ3', 'RESET push-button', '/40']);
-    s.box(30, 192, 70, 22, ['(-BG2)', 'Rear scanner', 'not fitted in this revision'], { size1: 2.6, size: 2.1, sw: 0.01 });
-    dashed(30, 192, 70, 22);
+    blk(30, 28, 70, 22, ['-SJ1', 'Emergency stop, 2 NC', '/40']);
+    blk(30, 63, 70, 22, ['-BG1', 'Safety laser scanner, front', '/41']);
+    blk(30, 98, 70, 22, ['-SJ4', 'Selector MANUAL / AUTO', '/40']);
+    blk(30, 133, 70, 22, ['-SJ3', 'RESET push-button', '/40']);
+    blk(30, 168, 70, 22, ['-BG5, -BG6', 'Wheel encoders, sin/cos', '/45']);
+    s.box(30, 203, 70, 22, ['(-BG2)', 'Rear scanner', 'not fitted in this revision'], { size1: 2.6, size: 2.1, sw: 0.01 });
+    dashed(30, 203, 70, 22);
 
     // safety controller
-    s.rect(150, 32, 90, 182, 0.45);
-    s.text(195, 44, '-KE1 / -KE2', { size: 3.2, weight: 600, anchor: 'middle' });
-    s.text(195, 50, 'SICK Flexi Soft', { size: 2.4, anchor: 'middle' });
-    s.text(195, 55, 'FX3-CPU0 + FX3-XTIO84002', { size: 2.2, anchor: 'middle' });
-    s.text(195, 61, '/40 … /44', { size: 2.2, anchor: 'middle', mono: true });
+    s.rect(150, 28, 90, 197, 0.45);
+    s.text(195, 92, '-KE1 / -KE2 / -KE5', { size: 3.2, weight: 600, anchor: 'middle' });
+    s.text(195, 98, 'SICK Flexi Soft', { size: 2.4, anchor: 'middle' });
+    s.text(195, 103.5, 'FX3-CPU0 + FX3-XTIO84002', { size: 2.2, anchor: 'middle' });
+    s.text(195, 108.5, '+ FX3-MOC0 drive monitor', { size: 2.2, anchor: 'middle' });
+    s.text(195, 114, '/40 … /45', { size: 2.2, anchor: 'middle', mono: true });
 
-    s.arrow(100, 43, 150, 43); lab(103, 40, 'X1→I1, X2→I2 (SF1)');
-    s.arrow(100, 83, 150, 83); lab(103, 80, 'OSSD1/2 → I5/I6 (SF2)');
-    s.arrow(100, 123, 150, 123); lab(103, 120, 'I7: MANUAL (SF4)');
-    s.arrow(100, 163, 150, 163); lab(103, 160, 'I8: reset (SF5)');
+    s.arrow(100, 39, 150, 39); lab(103, 36, 'X1→I1, X2→I2');
+    s.arrow(100, 74, 150, 74); lab(103, 71, 'OSSD1/2 → I5/I6');
+    s.arrow(100, 109, 150, 109); lab(103, 106, 'I7: MANUAL');
+    s.arrow(100, 144, 150, 144); lab(103, 141, 'I8: reset');
+    s.arrow(100, 179, 150, 179); lab(103, 176, 'ENC1/2 → -KE5');
 
     // drives
     blk(300, 55, 80, 26, ['-TA1', 'Motor driver left', 'HWTO1 / HWTO2 (STO)']);
@@ -58,10 +61,8 @@
     s.box(300, 195, 80, 22, ['-KE3 vehicle controller', 'not part of any safety function', 'speed, horn, restart logic'], { size1: 2.5, size: 2.1, sw: 0.01 });
     dashed(300, 195, 80, 22);
 
-    s.note(150, 228, [
-      'SF1 emergency stop, SF2 personnel detection front, SF4 mode selection, SF5 prevention of unexpected start-up (page 3).',
-      'Stop: torque removed on both drivers (STO, driver HWTO: PL d, Cat. 3, PFHd 2.90 × 10⁻⁷ /h per driver), holding brakes apply.',
-      'Stop category: «0, to confirm in the risk assessment»',
+    s.note(30, 234, [
+      'Stop: torque removed on both drivers (STO), holding brakes apply.',
     ], { size: 2.3, lh: 4 });
   });
 </script>

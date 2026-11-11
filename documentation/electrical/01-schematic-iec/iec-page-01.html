@@ -31,7 +31,7 @@
 
   IEC.render(document.getElementById('sheet'), {
     page: 1, file: 'iec-page-01', noGrid: true,
-    description: PG.desc, kind: PG.kind,
+    description: PG.desc,
     draw(s) {
       const X = 45;
       s.text(X, 48, D.title, { size: 11, weight: 600 });
@@ -42,16 +42,13 @@
       s.rect(X, 90, 355, 13, 0.4);
       s.text(X + 4, 98.6, D.status, { size: 4, weight: 600 });
 
-      // related documents and standards
+      // related documents
       s.text(X, 120, 'Documents that belong with this circuit diagram', { size: 3.2, weight: 600 });
       s.table(X, 124, [{ w: 120, title: 'Document' }, { w: 45, title: 'Number', mono: true }], PROJECT.related);
 
-      s.text(240, 120, 'Standards applied to this document', { size: 3.2, weight: 600 });
-      s.table(240, 124, [{ w: 160, title: 'Standard' }], PROJECT.standards.map(t => [t]));
-
       // revision history
-      s.text(X, 182, 'Revision history', { size: 3.2, weight: 600 });
-      s.table(X, 186, [{ w: 14, title: 'Rev' }, { w: 151, title: 'Change' }, { w: 30, title: 'Date', mono: true }, { w: 45, title: 'Name' }],
+      s.text(X, 150, 'Revision history', { size: 3.2, weight: 600 });
+      s.table(X, 154, [{ w: 14, title: 'Rev' }, { w: 151, title: 'Change' }, { w: 30, title: 'Date', mono: true }, { w: 45, title: 'Name' }],
         D.revisions.map(r => [r.rev, r.change, r.date, r.name]));
 
       // owner
@@ -61,7 +58,7 @@
 
       s.note(240, 222, [
         'This document and its contents are the property of the legal owner.',
-        'It is issued for the TÜV SÜD preliminary review only.',
+        'It is issued for preliminary review only.',
         'Do not use for production or wiring until it is released.',
       ], { size: 2.6, lh: 4.2 });
     },

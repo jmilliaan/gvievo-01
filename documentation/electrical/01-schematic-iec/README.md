@@ -11,14 +11,13 @@ This folder is for the IEC-style version of the AGV circuit diagrams. The curren
 | `data/project.js` | **The single source of the page data:** title block, page list, locations, classes, potentials, colours and safety functions. The cover, contents and key pages are generated from it |
 | `iec-page-NN.html` | One page per file. Open it in a browser; the toolbar has **Download PNG** and **Print / PDF** (choose A3 landscape, no margins) |
 
-Status (Rev A draft, 2026-10-31): **all 24 pages are drawn.** The list is on page 2. The full set is printed to `circuit-diagrams.pdf`.
+Status (Rev A draft, 2026-11-09): **all 25 pages are drawn.** Page 45 (wheel encoders, drive monitor) was added on 2026-11-09. The list is on page 2. The full set is printed to `circuit-diagrams.pdf`.
 
 **No terminal strip (owner decision, 2026-10-31):** the old TB numbers are not used. Wires are identified by the potential or signal name on their wire markers, and each conductor end by the device terminal (`-KE2:I3`). The terminal diagrams (old pages 70–71) were removed; a separate assembly wiring diagram will follow later.
 
 - **Table pages:** 44, 62, 75 and 80 are generated from `data/project.js`.
 - **Red text:** every red item is open and must be resolved before issue. The browser console lists them. Besides the title-block placeholders and part numbers, these are:
   - the CAN termination at the far bus end, and the cable shield (pages 11, 51);
-  - the MANUAL ARM switch type (page 60);
   - the Flexi Soft test-pulse settings (pages 42–44);
   - the stop category (page 12).
 
@@ -27,7 +26,9 @@ Status (Rev A draft, 2026-10-31): **all 24 pages are drawn.** The list is on pag
 - vertical-flow symbols: `contactV`, `operator` (push / estop / turn), `terminal`, `offDown`, `rail`, `module`, `locationBox`, `label`;
 - `table` and `note`;
 - `TEXT_SCALE = 1.2`: all text is drawn 20 % larger than the sizes in the page code (owner, 2026-11-01). A page that has no room can pass `{ textScale: 1.1 }` to `IEC.page()`. Text marked `maxw` (table cells, title block) is squeezed to fit its box;
-- a layout check: open a page with `#check` and it lists any text that overlaps other text, crosses a line or box edge, or leaves the frame.
+- a layout check: open a page with `#check` and it lists any text that overlaps other text, crosses a line or box edge, or leaves the frame. `..\kit\check-set.ps1 -Dir .` runs it on every page.
+
+**Rebuild the PDF** after any change: `..\kit\print-set.ps1 -Dir . -Out circuit-diagrams.pdf` (Edge and python3.11 with pypdf).
 
 **To add a page:**
 1. Copy `iec-page-40.html` to the new page number.
@@ -263,3 +264,6 @@ IFA Report 2/2017e (DGUV) has component-level example circuits for Categories B 
 - whether the three-letter "leaf" codes are in IEC 81346-2:2019 itself;
 - the 2019 class for the E-stop, selector, scanner and motor driver;
 - the ISO 3691-4 / EN 1175 / IEC 60204-1 relationship.
+
+
+> **2026-11-09 simplification (owner):** page 3 (designation key) moved to `archive/`; standards list, document-kind codes (&AB/&EFS…), safety-function IDs (SF1–SF7) and IEC clause citations removed from the rendered set. Tags (+EB-QA1 …) kept. Locations, potentials and the IEC 81346-2 product-class key (classes in `project.js`, tags generated from the parts and cable lists) now sit on page 4 under the symbol legend.

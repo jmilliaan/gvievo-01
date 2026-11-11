@@ -36,11 +36,12 @@
   };
 
   // loads fed straight from 1P24 / 1N24 through a terminal pair
+  // end = labels at the device end (MLSE: M12 4-pin pin / core colour of the SICK cable)
   const LOADS = [
     { row: 2,  tb: ['TB15', 'TB16'], wout: ['DISPLAY SPECIAL POWER CABLE', ''],
-      name: ['DISPLAY', 'BARREL JACK'] },
-    { row: 5,  tb: ['TB17', 'TB18'], wout: ['MLSE POWER & COMM CABLE', ''],
-      name: ['LINE SENSOR 01', 'SICK MLSE'] },
+      name: ['DISPLAY 24V', 'JWS080-M-QD'] },
+    { row: 5,  tb: ['TB17', 'TB18'], wout: ['YF2A14-020UB3XLEAX', 'SICK'],
+      end: ['1/L+ BROWN', '3/GND BLUE'], name: ['LINE SENSOR 01', 'MLSE-0200A2NQ0'] },
   ];
 
   // fans share one terminal pair and are daisy-chained
@@ -57,7 +58,7 @@
     meta: META,
     file: 'PROJ01-04',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: '24 V power distribution part 2: 1P24/1N24 from sheet 03 to the display, line sensor, cooling fans and driver network supply.',
+    label: '24 V power distribution part 2: 1P24/1N24 from sheet 03 to the Jawest JWS080-M-QD display, SICK MLSE-0200A2NQ0 line sensor (M12 pins 1 / 3), cooling fans and driver network supply.',
     draw(s) {
       const bus = [23.8, 29.8];              // 1P24 / 1N24
       const TBX = 72, DX = 140, DW = 36;
@@ -94,7 +95,8 @@
         s.text(x, 19.4, '0303', { size: 1.5, anchor: 'middle' });
       });
 
-      LOADS.forEach(l => { const ys = pair(l.row); tap(ys); box(ys, null, l.name); wl(ys); });
+      LOADS.forEach(l => { const ys = pair(l.row); tap(ys); box(ys, null, l.name); wl(ys, l.end); });
+      s.text(DX, s.row(5) + 14.4, 'SAME CABLE: PIN 2 / 4 = CAN-H / CAN-L (SH.06)', { size: 1.5 });
 
       // fans: + drop at x 112 and − drop at x 118 feed each fan (crossings are not connected)
       const fy = FANS.rows.map(pair), dropP = 112, dropN = 118, last = fy.length - 1;

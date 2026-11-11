@@ -24,6 +24,8 @@
 <script src="../kit/jis-sheet.js"></script>
 <script>
   // source: input-sketch/proj01/page06.jpg (upright); title "CAN BUS Wiring" (CONFIG struck out)
+  // updated 2026-11-09 (IEC pages 11, 51): USB-CAN = CANable V2.0S with the 120 Ω termination built in;
+  // line sensor SICK MLSE-0200A2NQ0, CANopen node 10, no internal terminator: far bus end open «confirm».
   const META = {
     customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'CAN BUS WIRING',
@@ -42,12 +44,12 @@
   const AWG    = { x: 114, l1: 'AWG22', l2: 'BLUE', on: [2] };                       // CAN GND only
   const DEVICES = [
     { y0: 72,  bus: [0, 1, 2], tb: ['TB33', 'TB34', 'TB39'], term: ['6/CAN-H', '5/CAN-L', '7/CAN-GND'],
-      name: ['DRIVER 01', 'BLVD-KRD'], marks: [BELDEN, AWG] },
+      name: ['DRIVER 01', 'BLVD-KRD', 'NODE 1'], marks: [BELDEN, AWG] },
     { y0: 113, bus: [0, 1, 2], tb: ['TB35', 'TB36', 'TB40'], term: ['6/CAN-H', '5/CAN-L', '7/CAN-GND'],
-      name: ['DRIVER 02', 'BLVD-KRD'], marks: [BELDEN, AWG] },
-    { y0: 170, bus: [0, 1], tb: ['TB37', 'TB38'], end: ['WHITE/CANH', 'BLACK/CANL'],
-      name: ['LINE SENSOR 01', 'MLSE'],
-      marks: [{ x: 92, l1: 'SICK MLSE CABLE', l2: '' }] },
+      name: ['DRIVER 02', 'BLVD-KRD', 'NODE 2'], marks: [BELDEN, AWG] },
+    { y0: 170, bus: [0, 1], tb: ['TB37', 'TB38'], end: ['2 WHITE/CAN-H', '4 BLACK/CAN-L'],
+      name: ['LINE SENSOR 01', 'MLSE-0200A2NQ0', 'NODE 10'],
+      marks: [{ x: 92, l1: 'SICK YF2A14-020UB3XLEAX', l2: '' }] },
     { y0: 211, bus: [0, 1], tb: ['TB41', 'TB42'], term: ['CAN H', 'CAN L'],
       name: ['BATTERY BMS'],
       marks: [{ x: 56, l1: 'BELDEN 9841', l2: '' }, { x: 100, l1: 'BATTERY COMS CABLE', l2: '' }] },
@@ -57,7 +59,7 @@
     meta: META,
     file: 'PROJ01-06',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'CAN bus wiring: CAN-to-USB adapter to the IPC USB port; CAN H / CAN L / CAN GND buses to two drivers, the MLSE line sensor and the battery BMS through terminal blocks.',
+    label: 'CAN bus wiring: CANable V2.0S USB-CAN interface (120 ohm termination built in) on the IPC USB port; CAN H / CAN L / CAN GND buses to two drivers, the MLSE-0200A2NQ0 line sensor (node 10, no terminator) and the battery BMS through terminal blocks.',
     draw(s) {
       const bus = [24, 34, 44];              // CAN H / CAN L / CAN GND
       const BUS_Y1 = 38, BUS_Y2 = 226;
@@ -85,8 +87,9 @@
 
       // CAN to USB adapter with three outputs down to the buses
       s.rect(20, 13, 36, 15, 0.3);
-      s.text(38, 19.5, 'CAN TO USB', { size: 2.2, weight: 600, anchor: 'middle' });
-      s.text(38, 23.7, 'ADAPTER', { size: 2.2, weight: 600, anchor: 'middle' });
+      s.text(38, 18.6, 'CANABLE V2.0S', { size: 2.2, weight: 600, anchor: 'middle' });
+      s.text(38, 22.4, 'USB-CAN', { size: 1.6, anchor: 'middle' });
+      s.text(38, 25.4, '120Ω BUILT IN', { size: 1.6, anchor: 'middle' });
       bus.forEach(x => { s.line(x, 28, x, BUS_Y1 - 2.8); s.ring(x, 28, 0.6); });
 
       // USB plug on the adapter and the link into the IPC USB port
@@ -97,8 +100,8 @@
       s.path('M94.6 19.6 L94.6 21.4 L96 20.5 Z', 0.1, '#111');
       s.text(79.5, 19.4, 'USB', { size: 1.9, anchor: 'middle' });
       s.rect(96, 13, 40, 15, 0.3);
-      s.text(116, 19.5, 'USB PORT', { size: 2.2, weight: 600, anchor: 'middle' });
-      s.text(116, 23.7, 'IPC', { size: 2.2, weight: 600, anchor: 'middle' });
+      s.text(116, 19.5, 'IPC USB PORT', { size: 2.2, weight: 600, anchor: 'middle' });
+      s.text(116, 23.7, 'NEU-X102-N97', { size: 2.2, anchor: 'middle' });
 
       // buses: start bar under the label, plain bar at the end (end of bus, no continuation)
       s.bus(bus, BUS_Y1, BUS_Y2, ['CAN H', 'CAN L', 'CAN GND']);
@@ -127,6 +130,10 @@
         d.name.forEach((n, i) => s.text(cx, top + 4.2 * i, n,
           { size: 2.2, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
       });
+
+      // bus termination and nodes
+      s.text(50, 231, 'CAN 125 kbit/s, CANOPEN. TERMINATION 120Ω: BUILT INTO THE CANABLE V2.0S (NO SEPARATE RESISTOR).', { size: 1.5 });
+      s.text(50, 234.4, 'MLSE-0200A2NQ0 HAS NO INTERNAL TERMINATOR: FAR BUS END OPEN «confirm».', { size: 1.5 });
 
       // cable marks and terminals last, so they cut the conductors
       DEVICES.forEach(d => {

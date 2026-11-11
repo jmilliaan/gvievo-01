@@ -37,15 +37,15 @@
 
   // loads fed from 1P12 / 1N12 through a terminal pair; device-end labels are struck out in the sketch
   const LOADS = [
-    { row: 5, tb: ['TB29', 'TB30'], wout: ['IPC POWER CABLE', ''], name: ['IPC POWER', 'BARREL JACK'] },
-    { row: 8, tb: ['TB31', 'TB32'], wout: ['RFID POWER CABLE', ''], name: ['RFID READER', 'BARREL JACK'] },
+    { row: 5, tb: ['TB29', 'TB30'], wout: ['IPC POWER CABLE', ''], name: ['IPC NEU-X102-N97', 'BARREL JACK'] },
+    { row: 8, tb: ['TB31', 'TB32'], wout: ['RFID POWER CABLE', ''], name: ['RFID READER CF821', 'BARREL JACK'] },
   ];
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
     file: 'PROJ01-05',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: '12 V power distribution: P12/N12 from sheet 01 through MCB-05 to the IPC and RFID reader barrel jacks.',
+    label: '12 V power distribution: P12/N12 from sheet 01 through 1-pole MCB-05 (10 A) to the NEXCOM NEU-X102-N97 IPC and Chafon CF821 RFID reader barrel jacks.',
     draw(s) {
       const bus = [23.8, 29.8];              // P12 / N12, 1P12 / 1N12 after MCB-05
       const TBX = 72, DX = 140, DW = 36;
@@ -86,7 +86,10 @@
       });
 
       // cable marks, breaker and terminals last, so they cut the conductors
-      s.mccbV(bus, 36, 'MCB-05', '2P 10A');
+      // MCB-05 is 1-pole: + switched only, N12 runs straight through; labels right of N12
+      s.mccbV([bus[0]], 36);
+      s.text(bus[1] + 2.4, 35.6, 'MCB-05', { size: 2.2 });
+      s.text(bus[1] + 2.4, 39, '1P 10A ABB S201-C10', { size: 1.9 });
       LOADS.forEach(l => {
         const ys = pair(l.row);
         s.wire(46, ys, 'AWG22', 'BLUE');

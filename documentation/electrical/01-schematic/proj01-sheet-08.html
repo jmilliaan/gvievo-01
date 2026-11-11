@@ -23,7 +23,8 @@
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
 <script src="../kit/jis-sheet.js"></script>
 <script>
-  // source: input-sketch/proj01/page08.jpg (upright) + FX3-XTIO front view from the SICK manual
+  // source: input-sketch/proj01/page08.jpg (upright) + FX3-XTIO front view from the SICK manual;
+  // updated 2026-11-09 from IEC pages 40-44: Q3 spare, OSSD pins of SAFETY LIDAR 01, SICK cable types.
   const META = {
     customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'SAFETY PLC XTIO WIRING',
@@ -48,8 +49,8 @@
   const RUNS = [
     { t: 'A1', tb: 'TB11', end: '1P24 (SH.03)', endX: 104 },
     { t: 'A2', tb: 'TB12', end: '1N24 (SH.03)', endX: 104 },
-    { t: 'I5', w: 'OSSD1', end: 'SAFETY LIDAR OSSD 1' },
-    { t: 'I6', w: 'OSSD2', end: 'SAFETY LIDAR OSSD 2' },
+    { t: 'I5', w: 'OSSD1', end: 'SAFETY LIDAR 01 OSSD1.A (PIN 2)' },
+    { t: 'I6', w: 'OSSD2', end: 'SAFETY LIDAR 01 OSSD1.B (PIN 4)' },
     { t: 'I3', w: 'EDM-L', tb: 'TB45', end: '(EDM−) LEFT MOTOR / DRIVER 01' },
     { t: 'I4', w: 'EDM-R', tb: 'TB51', end: '(EDM−) RIGHT MOTOR / DRIVER 02' },
   ];
@@ -61,14 +62,13 @@
     { t: 'Q2', w: 'HWTO2', tb: ['TB46', 'TB52'],
       end: ['(HWTO2+) LEFT / DRIVER 01', '(HWTO2+) RIGHT / DRIVER 02'] },
   ];
-  // Q3: NOT to DI08 (owner, 2026-10-28: DI08 is the Manual Arm switch). Destination to confirm.
-  const Q3 = { t: 'Q3', w: '?Q3', tb: '?TB72', end: '«placeholder»' };
+  // Q3, Q4: spare (owner, 2026-10-30; DI08 is the pendant MANUAL ARM button, sheet 09)
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
     file: 'PROJ01-08',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Safety PLC FX3-XTIO wiring: 2NC E-stop on X1/X2 → I1/I2, driver EDM on I3/I4, lidar OSSD on I5/I6, 2NO MANUAL/AUTO selector on I7 and DI02, 2NO reset push-button on I8, Q1/Q2 to the driver HWTO inputs, Q3 destination to be confirmed.',
+    label: 'Safety PLC FX3-XTIO84002 wiring: red 2NC E-stop on X1/X2 → I1/I2, driver EDM on I3/I4, SAFETY LIDAR 01 OSSD1.A/B on I5/I6, 2NO MANUAL/AUTO selector on I7 and DI02, yellow 2NO reset push-button on I8, Q1/Q2 to the driver HWTO inputs, Q3/Q4 spare.',
     draw(s) {
       const SX = 36, TBX = 88, EX = 150, JX = 100;
       const Y = {};
@@ -95,9 +95,9 @@
 
       /* ---- XTIO terminal strip ---- */
       s.text(24, 20.5, 'SAFETY PLC', { size: 2.2, weight: 600 });
-      s.text(24, 24.8, 'FX3-XTIO', { size: 2.2 });
+      s.text(24, 24.8, 'FX3-XTIO84002', { size: 2.2 });
       s.rect(24, Y.X1 - 6, SX - 24, Y.I8 - Y.X1 + 12, 0.3);          // inputs
-      s.text(24, Y.Q1 - 7.6, 'FX3-XTIO', { size: 1.9 });
+      s.text(24, Y.Q1 - 7.6, 'FX3-XTIO84002', { size: 1.9 });
       s.rect(24, Y.Q1 - 6, SX - 24, Y.Q4 - Y.Q1 + 12, 0.3);          // outputs
 
       /* ---- E-stop: X1 → I1, X2 → I2 through two NC poles ---- */
@@ -105,7 +105,7 @@
       s.line(SX, Y.X1, XO.X1, Y.X1); s.line(XO.X1, Y.X1, XO.X1, Y.I1); s.line(SX, Y.I1, XO.X1, Y.I1);
       s.line(SX, Y.X2, XO.X2, Y.X2); s.line(XO.X2, Y.X2, XO.X2, Y.I2); s.line(SX, Y.I2, XO.X2, Y.I2);
       s.estop(JX, [Y.X1, Y.X2]);
-      s.text(104, 25, 'EMERGENCY STOP PB', { size: 1.7 });
+      s.text(104, 25, 'EMERGENCY STOP PB, RED', { size: 1.7 });
       s.text(104, 28.4, '(TURN RELEASE) 2NC', { size: 1.7 });
       wl(48, Y.X1, 'X1'); wl(48, Y.X2, 'X2');
       wl(131.5, Y.X1, 'I1'); wl(125.2, Y.X2, 'I2');
@@ -121,7 +121,7 @@
         s.endLabels(x2, [y], [r.end]);
       });
       s.wire(62, [Y.A1, Y.A2], 'AWG22', 'BLUE');
-      s.wire(80, [Y.I5, Y.I6], 'LIDAR CABLE', '');
+      s.wire(80, [Y.I5, Y.I6], 'YF2A18-050UA5XLEAX', 'SICK');
       s.wire(66, [Y.I3, Y.I4], ...SAFE);
       RUNS.forEach(r => { if (r.tb) tb(TBX, Y[r.t], r.tb); });
 
@@ -144,6 +144,7 @@
       arrowL(62.6, yR2);
       s.text(61.6, yR2 + 0.7, 'DI01 (SH.09)', { size: 1.9, anchor: 'end' });
       s.pushbutton(RX, [{ y: yR1, k: 'no' }, { y: yR2, k: 'no' }], 'PB RESET');
+      s.text(142.6, yR1 - 2.1, 'YELLOW', { size: 1.4 });   // after the PB RESET name
       tb(TBX, yR2, 'TB58');
       s.endLabels(EX, [yR1, yR2], ['1P24', '1N24']);
 
@@ -151,7 +152,7 @@
       // straight from Q1 / Q2; the jumpered terminal sits 5 mm under its line
       HWTO.forEach(h => { h.y1 = Y[h.t]; h.y2 = h.y1 + 5; });
       const hy = HWTO.flatMap(h => [h.y1, h.y2]);
-      s.wire(66, HWTO.map(h => h.y1).concat(Y.Q3), ...SAFE);   // XTIO → TB
+      s.wire(66, HWTO.map(h => h.y1), ...SAFE);                // XTIO → TB
       HWTO.forEach(h => {
         const { y1, y2 } = h;
         s.line(SX, y1, EX, y1); s.line(TBX, y2, EX, y2);
@@ -159,19 +160,16 @@
         wl(48, y1, h.w);
         wl(132, y1, h.w); wl(132, y2, h.w);
       });
-      // Q3 → ? (destination to be confirmed)
-      s.line(SX, Y.Q3, EX, Y.Q3);
-      wl(48, Y.Q3, Q3.w); wl(132, Y.Q3, Q3.w);
-      s.endLabels(EX, [Y.Q3], [Q3.end]);
-      s.text(48, Y.Q4 + 0.7, '?Q3: TEST PULSES OFF IN FLEXI SOFT CONFIG', { size: 1.6 });
-      s.wire(118, hy.concat(Y.Q3), ...SAFE);            // TB → drivers / Q3 destination
+      // Q3, Q4: spare
+      s.text(48, Y.Q3 + 3.3, 'Q3, Q4: SPARE (NOT CONNECTED)', { size: 1.6 });
+      s.text(48, Y.Q4 + 2.4, 'Q1 / Q2 ALSO OFF ON OVERSPEED IN AUTO (FX3-MOC0, SH.10)', { size: 1.6 });
+      s.wire(118, hy, ...SAFE);                         // TB → drivers
       HWTO.forEach(h => {
         const { y1, y2 } = h;
         tb(TBX, y1, h.tb[0]);
         tb(TBX, y2, h.tb[1], true);
         s.endLabels(EX, [y1, y2], h.end);
       });
-      tb(TBX, Y.Q3, Q3.tb);
 
       /* ---- terminals last, over the conductor ends ---- */
       TERMS.forEach(t => {

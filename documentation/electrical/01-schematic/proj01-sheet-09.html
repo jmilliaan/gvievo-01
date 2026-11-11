@@ -24,7 +24,8 @@
 <script src="../kit/jis-sheet.js"></script>
 <script>
   // source: page 09 sketch (DI / DO list), switch sketch (PB START, PB RESET, SS MAN/AUTO 2NO),
-  // photos of the CK-EC5163 front (DI / DO blocks) and top (IN / OUT ports, PE 0V 24V)
+  // IEC pages 60 / 61 (2026-11-09). Module is CKDZ-IoT CK-TP5162, 16 DI / 16 DO (owner, 2026-11-09);
+  // its terminal layout is not documented here, so the module views on the right are simplified blocks.
   const META = {
     customer: '«CUSTOMER»', designer: '«DESIGNER»',
     content: 'DIGITAL IO MODULE WIRING',
@@ -41,8 +42,8 @@
     { t: '24V', y: 27, tb: 'TB25', end: '1P24 (SH.03)' },
     { t: '0V', y: 33.5, tb: 'TB26', end: '1N24 (SH.03)' },
     { t: 'PE', y: 40 },
-    { t: 'IN', y: 46.5, end: 'IPC (ETHERNET)' },
-    { t: 'OUT', y: 53, end: 'RFID READER (ETHERNET)' },
+    { t: 'IN', y: 46.5, end: 'IPC enp2s0 (ETHERNET)' },
+    { t: 'OUT', y: 53, end: 'RFID READER CF821 (ETHERNET)' },
   ];
 
   // DI group 0–7 (COM0 → 1P24): inputs are switched to 1N24 by 1NO contacts
@@ -50,9 +51,11 @@
     DI00: 64, DI01: 72, DI02: 80, DI03: 88, DI04: 96, DI05: 104, DI06: 112, DI07: 120,
     DI08: 128, COM0: 137, COM1: 146,
   };
-  // DI08 (COM1 group, COM1 → 1N24): the MANUAL ARM switch (owner, 2026-10-28; it was drawn as
-  // safety PLC Q3). Switch, terminal and wire are still to be confirmed: '?' and '«»' render red.
-  const Q3 = { t: 'DI08', tb: '?TB72', end: 'MANUAL ARM SW «placeholder»' };
+  // DI08 (COM1 group, COM1 → 1N24): MANUAL ARM push-button on the PENDANT (owner, 2026-11-09):
+  // black mushroom, latching, turn to release, 1 NC (11-12); NOT an emergency stop.
+  // Released (11-12 closed) = 1P24 on DI08 = drives on in MANUAL; pressed = drives off.
+  // Its two cores run in the pendant cable; no TB numbers exist for them yet: «TB?».
+  const ARM = { t: 'DI08', tb: ['«TB?»', '«TB?»'], name: 'MANUAL ARM' };
   const START = { t: 'DI00', tb: ['TB56', 'TB57'], name: 'PB START' };
   const REMOTE = [                                   // contacts drawn on sheet 08
     { t: 'DI01', tb: 'TB58', end: 'PB RESET 23 (SH.08)' },
@@ -72,12 +75,12 @@
     { t: 'COM1', tb: 'TB65', end: '1N24' },
   ];
 
-  // relay outputs DO0–DO7 in pairs with a common
+  // outputs DO0–DO7 in pairs with a common (DO8–DOF not wired, not drawn here)
   const DO = ['DO0', 'DO1', 'C', 'DO2', 'DO3', 'C', 'DO4', 'DO5', 'C', 'DO6', 'DO7', 'C'];
   // horn sound select: DO0 / DO1 close to 1N24 (horn COM is jumpered to 1N24 at the horn)
   const HORN = [
-    { t: 'DO0', tb: 'TB70', end: 'AUDIO HORN 01 SOUND 1 (SH.03)' },
-    { t: 'DO1', tb: 'TB71', end: 'AUDIO HORN 01 SOUND 2 (SH.03)' },
+    { t: 'DO0', tb: 'TB70', end: 'HORN SOUND 1 · MOVEMENT (SH.03)' },
+    { t: 'DO1', tb: 'TB71', end: 'HORN SOUND 2 · ALARM (SH.03)' },
   ];
   const DO_COM = [
     { tb: 'TB66', end: '1N24' },   // C of DO0 / DO1 (horn sound select)
@@ -90,7 +93,7 @@
     meta: META,
     file: 'PROJ01-09',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Digital IO module CK-EC5163 wiring: Ethernet IN to the IPC and OUT to the RFID reader, 24 V supply, PB START, reset and selector inputs, four pendant buttons, safety PLC Q3 on DI08, horn sound 1 / 2 on DO0 / DO1, DI and relay commons through TB55–TB72.',
+    label: 'Digital IO module CK-TP5162 (16 DI / 16 DO) wiring: Ethernet IN to the IPC enp2s0 and OUT to the RFID reader, 24 V supply, PB START, reset and selector inputs, four pendant buttons and the pendant MANUAL ARM button on DI08, horn sound 1 / 2 on DO0 / DO1, DI and DO commons through TB55–TB71.',
     draw(s) {
       const SX = 38, TB1 = 60, PBX = 112, BUSX = 128, TB2 = 138, EX = 150, SHORT = 100;
       const wl = (x, y, t) => s.text(x, y - 0.6, t, { size: 1.9 });
@@ -103,8 +106,8 @@
       const term = (y, name) => { s.ring(SX, y, 0.6); s.text(25.6, y + 0.7, name, { size: 1.9, weight: 600 }); };
       const dash = (x, y, w, h) => s.path(`M${x} ${y} h${w} v${h} h${-w} Z`, 0.2).setAttribute('stroke-dasharray', '1.6 1');
 
-      s.text(24, 17, 'DIGITAL IO MODULE CK-EC5163', { size: 2.2, weight: 600 });
-      s.text(80, 17, 'ALL WIRING AWG22 BLUE EXCEPT ETHERNET AND DI08', { size: 1.6 });
+      s.text(24, 17, 'DIGITAL IO MODULE CK-TP5162', { size: 2.2, weight: 600 });
+      s.text(80, 17, 'ALL WIRING AWG22 BLUE EXCEPT ETHERNET AND PENDANT CABLE', { size: 1.6 });
       const W = ['AWG22', 'BLUE'], M1 = 46, M2 = 74;   // cable marks: terminal → TB, TB → field
 
       /* ---- module top: Ethernet + supply ---- */
@@ -127,6 +130,7 @@
       const ys = DI[START.t];
       s.line(SX, ys, EX, ys);
       s.pushbutton(PBX, [{ y: ys, k: 'no' }], START.name, { flip: true });
+      s.text(118.5, ys + 3, 'GREEN', { size: 1.4 });
       tb(TB1, ys, START.tb[0]); tb(TB2, ys, START.tb[1]);
       s.endLabels(EX, [ys], ['1N24']);
       // reset and selector contacts are on sheet 08
@@ -138,40 +142,48 @@
       });
       // pendant: each key DI → TB → 14 | 13 → common → TB64 → 1N24
       const py = PENDANT.keys.map(k => DI[k.t]), pTop = py[0], pBot = py[py.length - 1];
+      const ya = DI[ARM.t];                            // MANUAL ARM line, also in the pendant
       py.forEach(y => s.line(SX, y, BUSX, y));
       s.line(BUSX, pTop, EX, pTop);
       s.line(BUSX, pTop, BUSX, pBot);
       py.slice(0, -1).forEach(y => s.dot(BUSX, y));
-      dash(103, pTop - 6, 28, pBot - pTop + 9.5);
+      dash(103, pTop - 6, 28, ya - pTop + 14.4);
       s.text(133, (pTop + pBot) / 2 - 1, 'PENDANT', { size: 1.9, weight: 600 });
       s.text(133, (pTop + pBot) / 2 + 3, '4 × 1NO', { size: 1.9 });
+      s.text(133, (pTop + pBot) / 2 + 7, '+ 1NC', { size: 1.9 });
       PENDANT.keys.forEach((k, i) => {
         s.pushbutton(PBX, [{ y: py[i], k: 'no' }], k.name, { flip: true });
         tb(TB1, py[i], k.tb);
       });
       tb(TB2, pTop, PENDANT.common);
       s.endLabels(EX, [pTop], ['1N24']);
+      // MANUAL ARM: DI08 → TB? → 12 | 11 → TB? → 1P24 (black mushroom, latching, 1 NC; not an E-stop)
+      s.line(SX, ya, EX, ya);
+      s.estop(PBX, [ya], ARM.name, { flip: true });
+      s.text(104.2, ya + 4.2, 'BLACK, LATCHING,', { size: 1.4 });
+      s.text(104.2, ya + 6.8, 'TURN TO RELEASE', { size: 1.4 });
+      tb(TB1, ya, ARM.tb[0]); tb(TB2, ya, ARM.tb[1]);
+      s.endLabels(EX, [ya], ['1P24']);
       // commons
       COMS.forEach(c => {
         const y = DI[c.t];
-        s.line(SX, y, SHORT, y);
+        s.line(SX, y, 92, y);                         // short: clear of the pendant box
         tb(TB1, y, c.tb);
-        s.endLabels(SHORT, [y], [c.end]);
+        s.endLabels(92, [y], [c.end]);
       });
-      const dis = ['DI00', 'DI01', 'DI02', 'DI03', 'DI04', 'DI05', 'DI06'];
-      dis.forEach(t => wl(63.4, DI[t], t));
-      s.wire(M1, dis.map(t => DI[t]), ...W); s.wire(M2, dis.map(t => DI[t]), ...W);
+      const dis = ['DI00', 'DI01', 'DI02', 'DI03', 'DI04', 'DI05', 'DI06', 'DI08'];
+      const pend = ['DI03', 'DI04', 'DI05', 'DI06', 'DI08'];   // cores in the pendant cable
+      dis.forEach(t => wl(t === 'DI08' ? 64.6 : 63.4, DI[t], t));   // DI08 clear of «TB?»
+      s.wire(M1, dis.map(t => DI[t]), ...W);
+      s.wire(M2, ['DI00', 'DI01', 'DI02'].map(t => DI[t]), ...W);
+      s.wire(M2, pend.map(t => DI[t]), 'PENDANT CABLE', '8 × 0.5mm²');
       const cy = COMS.map(c => DI[c.t]);
       s.wire(M1, cy, ...W); s.wire(M2, cy, ...W);
-      // DI08 ← MANUAL ARM switch
-      const yq = DI[Q3.t];
-      s.line(SX, yq, SHORT, yq);
-      tb(TB1, yq, Q3.tb);
-      s.endLabels(SHORT, [yq], [Q3.end]);
-      wl(63.4, yq, Q3.t);
-      s.wire(M1 - 4, [yq], '?AWG22', '?ORANGE'); s.wire(M2, [yq], '?AWG22', '?ORANGE');
       Object.keys(DI).forEach(t => term(DI[t], t));
-      s.text(24, 154.6, 'DI07 AND DI09–DI0F (COM1 GROUP): NOT USED', { size: 1.6 });
+      s.text(24, 153.6, 'DI07, DI09–DI0F: NOT USED · PENDANT CABLE 8 CORES, 7 USED = COMMON 1N24 + DI03–DI06 + MANUAL ARM (1P24, DI08)',
+        { size: 1.6 });
+      s.text(24, 156.5, 'MANUAL ARM, NOT AN E-STOP: RELEASED (11-12 CLOSED) = 24V ON DI08 = DRIVES ON IN MANUAL · PRESSED = OFF',
+        { size: 1.6 });
 
       /* ---- DO (relay) ---- */
       const DY0 = 165, DP = 5.5;
@@ -196,47 +208,42 @@
       const dc = DO.map((t, i) => (t === 'C' || HORN.some(h => h.t === t) ? DY0 + DP * i : null)).filter(y => y !== null);
       s.wire(M1, dc, ...W); s.wire(M2 - 4, dc, ...W);
       DO.forEach((t, i) => term(DY0 + DP * i, t));
-      s.text(24, 234.2, 'DO0 / DO1: HORN SOUND 1 / 2 · DO2–DO7: SPARE (COMMONS WIRED) · DO8–DOB AND COMMONS: NOT USED', { size: 1.6 });
+      s.text(24, 234.2, 'DO0 / DO1: HORN SOUND 1 / 2 · DO2–DO7: SPARE (COMMONS WIRED) · DO8–DOF: NOT WIRED', { size: 1.6 });
 
-      /* ---- CK-EC5163 top view (after photo) ---- */
+      /* ---- CK-TP5162: simplified blocks (real terminal layout not documented here) ---- */
+      // ports
       s.rect(150, 16, 48, 24, 0.3);
-      [153, 166].forEach((x, i) => {
-        s.rect(x, 20, 12, 10, 0.25);
-        s.rect(x + 2, 23, 8, 6, 0.18);
-        s.rect(x + 0.8, 20.8, 1.6, 1, 0.12);
-        s.rect(x + 9.6, 20.8, 1.6, 1, 0.12);
-        s.text(x + 6, 34.4, ['IN', 'OUT'][i], { size: 1.5, anchor: 'middle' });
+      [['ETHERNET', 'IN'], ['ETHERNET', 'OUT'], ['SUPPLY', '24V 0V PE']].forEach(([a, b], i) => {
+        const x = 152 + 15.4 * i;
+        s.rect(x, 20, 13.6, 13, 0.25);
+        s.text(x + 6.8, 25.4, a, { size: 1.3, anchor: 'middle' });
+        s.text(x + 6.8, 29.4, b, { size: 1.3, weight: 600, anchor: 'middle' });
       });
-      s.rect(181, 22.5, 14, 8, 0.25);
-      [184, 188, 192].forEach((x, i) => {
-        s.ring(x, 28, 1.1);
-        s.rect(x - 0.7, 23.3, 1.4, 1.6, 0.12);
-        s.text(x, 34.4, ['PE', '0V', '24V'][i], { size: 1, anchor: 'middle' });
-      });
-      s.ring(196.2, 28, 0.5);
-      s.text(174, 44, 'CK-EC5163 (TOP)', { size: 1.7, anchor: 'middle' });
+      s.text(174, 44, 'CK-TP5162 PORTS', { size: 1.7, anchor: 'middle' });
+      s.text(174, 47.2, '(SIMPLIFIED)', { size: 1.4, anchor: 'middle' });
 
-      /* ---- CK-EC5163 front view (after photo) ---- */
-      const FX = 162, FW = 36, P4 = 4;
+      // inputs and outputs: 16 DI (two groups with COM0 / COM1), 16 DO; wired channels in bold
+      const FX = 162, FW = 36, P4 = 3.9;
+      const WIRED = ['DI00', 'DI01', 'DI02', 'DI03', 'DI04', 'DI05', 'DI06', 'DI08', 'COM0', 'COM1', 'DO0', 'DO1'];
       s.rect(FX, 58, FW, 112, 0.3);
-      s.line(FX + 6, 58, FX + 6, 170, 0.15);
-      s.text(FX + 7.5, 64, 'CK-EC5163', { size: 2, weight: 600 });
-      ['16DI+12RELAY', 'ETHERNET', 'DC 12/24V'].forEach((t, i) => s.text(FX + 7.5, 68.2 + 3.2 * i, t, { size: 1.2 }));
-      ['PWR', 'COM', 'RUN', 'ERR'].forEach((t, i) => s.text(FX + 3, 62 + 5 * i, t, { size: 0.9, anchor: 'middle' }));
-      const block = (y0, labels, head) => {
-        s.text(FX + 13, y0 - 1.6, head, { size: 1.2, weight: 600 });
-        s.rect(FX + 12, y0, 14, P4 * labels.length + 1, 0.25);
-        labels.forEach((l, i) => {
-          const y = y0 + 2.5 + P4 * i;
-          s.rect(FX + 12.6, y - 1.3, 1.2, 2.6, 0.12);
-          s.rect(FX + 24.2, y - 1.3, 1.2, 2.6, 0.12);
-          s.ring(FX + 17, y, 1.3); s.ring(FX + 21, y, 1.3);
-          s.text(FX + 27.5, y + 0.5, l, { size: 1.05 });
-        });
+      s.text(FX + 2, 63.4, 'CK-TP5162', { size: 2, weight: 600 });
+      ['CKDZ-IoT', '16 DI / 16 DO', 'ETHERNET IN / OUT'].forEach((t, i) => s.text(FX + 2, 67.4 + 3 * i, t, { size: 1.2 }));
+      const grid = (y0, head, cols) => {
+        s.text(FX + 2, y0, head, { size: 1.2, weight: 600 });
+        cols.forEach((col, c) => col.forEach((l, i) => {
+          const x = FX + 4 + 17 * c, y = y0 + 3.8 + P4 * i;
+          s.ring(x, y, 0.9);
+          s.text(x + 2, y + 0.5, l, { size: 1.15, weight: WIRED.includes(l) ? 600 : 500 });
+        }));
       };
-      block(80.5, ['0/8', '1/9', '2/A', '3/B', '4/C', '5/D', '6/E', '7/F', 'COM0/1'], 'DI');
-      block(123, ['0/6', '1/7', 'C/C', '2/8', '3/9', 'C/C', '4/A', '5/B', 'C/C', 'NC'], 'DO');
-      s.text(FX + FW / 2, 175.5, 'CK-EC5163 (FRONT)', { size: 1.7, anchor: 'middle' });
+      const hex = (p, a, n) => Array.from({ length: n }, (_, i) => p + (a + i).toString(16).toUpperCase());
+      grid(80, 'DI', [hex('DI0', 0, 8).concat('COM0'), hex('DI0', 8, 8).concat('COM1')]);
+      grid(122, 'DO', [hex('DO', 0, 8), hex('DO', 8, 8)]);
+      s.text(FX + 2, 157.6, 'DO COMMONS: C PER', { size: 1.1 });
+      s.text(FX + 2, 160.4, 'OUTPUT PAIR (LEFT)', { size: 1.1 });
+      s.text(FX + 2, 164.6, 'BOLD = WIRED', { size: 1.1, weight: 600 });
+      s.text(FX + FW / 2, 175.5, 'CK-TP5162 (SIMPLIFIED,', { size: 1.7, anchor: 'middle' });
+      s.text(FX + FW / 2, 178.7, 'NOT THE TERMINAL LAYOUT)', { size: 1.4, anchor: 'middle' });
     },
   });
 </script>

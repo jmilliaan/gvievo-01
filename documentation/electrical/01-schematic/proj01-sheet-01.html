@@ -37,21 +37,21 @@
 
   // single-pole feeders off 1P48, leaving the sheet to the right
   const FEEDERS = [
-    { row: 5, cb: 'MCB-02', rating: '1P 10A', out: '2P48' },
-    { row: 7, cb: 'MCB-03', rating: '1P 10A', out: '3P48' },
+    { row: 5, cb: 'MCB-02', rating: '1P 13A', model: 'ABB S201-C13', out: '2P48' },
+    { row: 7, cb: 'MCB-03', rating: '1P 13A', model: 'ABB S201-C13', out: '3P48' },
   ];
 
   // DC/DC converters (no kit symbol: labelled box), fed from 1P48 / 1N48
   const BUCKS = [
-    { row: 10, name: 'BUCK01', v: '48→24V', a: '6.25A (150W)', out: ['P24', 'N24'] },
-    { row: 14, name: 'BUCK02', v: '48→12V', a: '8.3A (100W)', out: ['P12', 'N12'] },
+    { row: 10, name: 'BUCK01', model: 'SD-150C-24', v: '48→24V', a: '6.25A (150W)', out: ['P24', 'N24'] },
+    { row: 14, name: 'BUCK02', model: 'SD-100C-12', v: '48→12V', a: '8.3A (100W)', out: ['P12', 'N12'] },
   ];
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
     file: 'PROJ01-01',
     textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
-    label: 'Battery power distribution: 48 V battery through MCB-01 to the 1P48/1N48 bus, two 10 A feeders and two buck converters.',
+    label: 'Battery power distribution: 48 V 50 Ah LiFePO4 battery through 2-pole MCB-01 (ABB S202-C32) to the 1P48/1N48 bus, two 13 A feeders (ABB S201-C13) and two Mean Well DC/DC converters SD-150C-24 and SD-100C-12.',
     draw(s) {
       const bus = [23.8, 29.8];              // P48 / N48, 1P48 / 1N48 after MCB-01
       const END = 150;
@@ -71,6 +71,8 @@
       // battery → P48 / N48 → MCB-01 → 1P48 / 1N48 (continues on sheet 02)
       s.text(44, 14.8, 'P48 : +48V (Batt)', { size: 2.2, weight: 600 });
       s.text(44, 18.8, 'N48 : 0V (Batt)', { size: 2.2, weight: 600 });
+      s.text(112, 14.8, 'BATTERY 48V 50Ah', { size: 2.2, weight: 600 });
+      s.text(112, 18.8, 'LiFePO₄, INCOE', { size: 2.2 });
       s.bus(bus, 23, JIS.G.gridY, ['P48', 'N48'], 'tee');
       bus.forEach(x => s.line(x - 0.9, 23, x + 0.9, 23, 0.3));
       bus.forEach((x, i) => s.text(x + 0.5, s.row(3) + 1, ['1P48', '1N48'][i], { size: 1.45 }));
@@ -99,6 +101,7 @@
           s.text(bxr - 1.3, y + 0.7, ['VOUT+', 'VOUT-', 'VOUT-'][i], { size: 1.7, anchor: 'end' });
         });
         s.text(bx + 12, by + 5, b.name, { size: 2.2, weight: 600, anchor: 'middle' });
+        s.text(bx + bw / 2, by - 1.4, 'MEAN WELL ' + b.model, { size: 1.9, anchor: 'middle' });
         s.text(bx + 12, by + 9.6, b.v, { size: 2.2, anchor: 'middle' });
         s.text(bx + 12, by + 14.2, b.a, { size: 2.2, anchor: 'middle' });
         s.endLabels(END, ys, b.out);
@@ -116,11 +119,13 @@
       // cable marks and breakers last, so they cut the conductors
       wireV(bus, 28, 'NYAF 4mm²', 'RED');
       s.mccbV(bus, 36, 'MCB-01', '2P 32A');
+      s.text(bus[1] + 3.6, 42.4, 'ABB S202-C32', { size: 1.9 });
       FEEDERS.forEach(f => {
         const y = s.row(f.row);
         s.wire(38, [y], 'NYAF 2.5mm²', 'RED');
         s.mccb(64, [y], f.cb);
         s.text(69.4, y - 1.6, f.rating, { size: 1.9 });   // clear of the thermal jog
+        s.text(64, y + 3.9, f.model, { size: 1.6, anchor: 'middle' });
         s.text(30.4, y - 0.6, '1P48', { size: 1.9 });       // wire label ahead of the breaker
         s.wire(90, [y], 'NYAF 2.5mm²', 'RED');
       });

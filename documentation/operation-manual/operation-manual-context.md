@@ -199,7 +199,7 @@ Locations: `+EB` electrical box, `+FR` front panel, `+VH` vehicle body, `+BT` ba
   Whether the main breaker can be locked off, and whether it is the "main switch" in the manual, is `[confirm]`.
 - **Control voltage:** 24 V DC.
 - **Vehicle controller:** industrial PC, model unknown. Commands the drives over CAN. The line sensor and the battery management system are on the same CAN bus.
-- **I/O module:** CK-EC5163, 16 digital inputs and 12 relay outputs, Ethernet (Modbus TCP).
+- **I/O module:** CKDZ-IoT CK-TP5162, 16 digital inputs and 16 digital outputs, Ethernet (Modbus TCP).
 
 | I/O module input | Device |
 | --- | --- |

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROJ01 Sheet 10</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/jis-sheet.css">
+</head>
+<body>
+
+<nav class="toolbar" aria-label="Export">
+  <strong>PROJ01 · Sheet 10 / «XX» · Safety encoders and drive monitor</strong>
+  <button type="button" class="primary" id="png">Download PNG</button>
+  <button type="button" id="pdf">Print / PDF</button>
+  <span class="status" id="status">A4 portrait · vector</span>
+</nav>
+
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script>
+  // source: IEC page 45 (iec-page-45.html) and owner facts 2026-11-09: two SICK DFS60S-BAOL01024
+  // safety encoders, one per wheel shaft, on the FX3-MOC0 drive monitor (supply via FLEXBUS+).
+  // Each encoder cable has an M12 8-pin plug; the SICK FX3-MOC Y-CABLE 2116199 joins both to the
+  // MOC0's Micro D-sub 15. All 8 encoder wires go through. Encoder supply 24 V from the MOC0.
+  // No terminal blocks: plug-in cables only (so no TB numbers on this sheet).
+  const META = {
+    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    content: 'SAFETY ENCODERS / DRIVE MONITOR',
+    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
+    date: '«DD/MM/YY»', scale: '',
+    title: 'ELECTRIC DIAGRAM',
+    model: '«MODEL»', dwg: '«-00-00-»', sheet: 10, of: '«XX»',
+    note: '',
+    refs: [],
+  };
+
+  // one conductor per encoder wire: [D-sub pin, D-sub signal, encoder M12 pin, encoder signal, core colour]
+  // Z¯ → C+ and Z → C−: the C input is not evaluated in sin/cos mode.
+  const ENC1 = [
+    ['1', 'A+', '2', 'COS+', 'WHITE'],
+    ['9', 'A−', '1', 'COS−', 'BROWN'],
+    ['2', 'B+', '4', 'SIN+', 'PINK'],
+    ['10', 'B−', '3', 'SIN−', 'BLACK'],
+    ['3', 'C+', '5', 'Z¯', 'YELLOW'],
+    ['11', 'C−', '6', 'Z', 'VIOLET'],
+    ['4', '24V', '8', '+US', 'RED'],
+    ['12', '0V', '7', 'GND', 'BLUE'],
+  ];
+  // ENC2: its 0 V (first row) shares D-sub pin 12 with ENC1; the join is inside the Y-cable
+  const ENC2 = [
+    ['12', '0V', '7', 'GND', 'BLUE'],
+    ['8', 'A+', '2', 'COS+', 'WHITE'],
+    ['15', 'A−', '1', 'COS−', 'BROWN'],
+    ['7', 'B+', '4', 'SIN+', 'PINK'],
+    ['14', 'B−', '3', 'SIN−', 'BLACK'],
+    ['6', 'C+', '5', 'Z¯', 'YELLOW'],
+    ['13', 'C−', '6', 'Z', 'VIOLET'],
+    ['5', '24V', '8', '+US', 'RED'],
+  ];
+  const GROUPS = [
+    { y0: 46, rows: ENC1, head: 'ENC1', plug: 'HEAD B',
+      name: ['SAFETY ENCODER 1', 'DFS60S-BAOL01024', '?LEFT WHEEL SHAFT'] },
+    { y0: 108, rows: ENC2, head: 'ENC2', plug: 'HEAD C', shared: 0,
+      name: ['SAFETY ENCODER 2', 'DFS60S-BAOL01024', '?RIGHT WHEEL SHAFT'] },
+  ];
+
+  JIS.render(document.getElementById('sheet'), {
+    meta: META,
+    file: 'PROJ01-10',
+    textScale: 1.25,          // drawing text +25% (frame and title block unchanged)
+    label: 'Safety encoders and drive monitor: two SICK DFS60S-BAOL01024 sin/cos encoders, M12 8-pin plugs, joined by the SICK FX3-MOC Y-cable 2116199 to the Micro D-sub 15 encoder socket of the FX3-MOC0 drive monitor; all 8 wires per encoder, 24 V supply from the MOC0, 0 V on D-sub pin 12 shared.',
+    draw(s) {
+      const SX = 44, YC = 58, JX = 88, PX = 100.5, EC = 112, DX = 148, DW = 46, GAP = 5;
+
+      s.text(24, 17, 'SAFETY ENCODERS → DRIVE MONITOR FX3-MOC0', { size: 2.2, weight: 600 });
+      s.text(24, 21.6, 'NO TERMINAL BLOCKS: PLUG-IN CABLES ONLY', { size: 1.6 });
+
+      GROUPS.forEach(g => { g.ys = g.rows.map((_, i) => g.y0 + GAP * i); });
+      const [G1, G2] = GROUPS;
+
+      /* ---- conductors: D-sub → Y-cable → M12 plug → encoder cable → encoder ---- */
+      GROUPS.forEach(g => g.ys.forEach((y, i) => {
+        const x1 = g.shared === i ? JX : SX;
+        s.line(x1, y, DX, y);
+      }));
+      // ENC2 0 V branches off ENC1 0 V (D-sub pin 12) inside the Y-cable
+      const y12 = G1.ys[7], y12b = G2.ys[0];
+      s.line(JX, y12, JX, y12b);
+      s.dot(JX, y12);
+
+      /* ---- FX3-MOC0 encoder socket (Micro D-sub 15 = head A of the Y-cable) ---- */
+      s.text(24, 28.6, 'SAFETY PLC FX3-MOC0', { size: 2.2, weight: 600 });
+      s.text(24, 32.8, 'MICRO D-SUB 15 (Y-CABLE HEAD A)', { size: 1.6 });
+      const top = G1.ys[0] - 7.5, bot = G2.ys[7] + 5;
+      s.rect(24, top, SX - 24, bot - top, 0.3);
+      GROUPS.forEach(g => {
+        s.text(25.6, g.ys[0] - 3.6, g.head, { size: 1.6, weight: 600 });
+        g.ys.forEach((y, i) => {
+          if (g.shared === i) return;
+          const r = g.rows[i];
+          s.ring(SX, y, 0.6);
+          s.text(25.6, y + 0.7, r[0], { size: 1.9, weight: 600 });
+          s.text(31.4, y + 0.7, r[1], { size: 1.9 });
+        });
+      });
+
+      /* ---- M12 8-pin plug-in point between encoder cable and Y-cable ---- */
+      GROUPS.forEach(g => {
+        const a = g.ys[0] - 3, b = g.ys[7] + 3;
+        s.path(`M${PX - 1.6} ${a} H${PX + 1.6} V${b} H${PX - 1.6} Z`, 0.3);
+        g.ys.forEach(y => { s.knock(PX - 1.4, y - 0.4, PX + 1.4, y + 0.4); s.ring(PX - 0.7, y, 0.42); s.ring(PX + 0.7, y, 0.42); });
+        s.text(PX, b + 3.4, 'M12 8-PIN', { size: 1.5, anchor: 'middle' });
+        s.text(PX, b + 6, g.plug, { size: 1.5, anchor: 'middle' });
+      });
+
+      /* ---- encoders: M12 pin / signal inside, core colour at the cable end ---- */
+      GROUPS.forEach(g => {
+        const ys = g.ys, last = ys[ys.length - 1];
+        s.rect(DX, ys[0] - 5, DW, last - ys[0] + 10, 0.3);
+        ys.forEach((y, i) => {
+          const r = g.rows[i];
+          s.ring(DX, y, 0.6);
+          s.text(DX + 1.5, y + 0.7, `${r[2]}/${r[3]}`, { size: 1.9 });
+          s.text(DX - 1.5, y - 0.6, r[4], { size: 1.6, anchor: 'end' });
+        });
+        const cx = DX + 12 + (DW - 12) / 2, mid = (ys[0] + last) / 2;
+        g.name.forEach((n, i) => s.text(cx, mid - 3.4 + 4.2 * i, n,
+          { size: i === 0 ? 2.1 : 1.9, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
+      });
+
+      /* ---- cable marks last, so they cut the conductors ---- */
+      s.wire(YC, G1.ys, 'Y-CABLE 2116199', 'SICK FX3-MOC');
+      s.wire(YC, G2.ys.slice(1), 'Y-CABLE 2116199', 'SICK FX3-MOC');
+      s.wire(EC, G1.ys, 'DFS60S CABLE 3m', '8 × 0.15mm²');
+      s.wire(EC, G2.ys, 'DFS60S CABLE 3m', '8 × 0.15mm²');
+
+      /* ---- notes ---- */
+      const NX = 24, NY = 162;
+      s.text(NX, NY, 'NOTES', { size: 2.1, weight: 600 });
+      [
+        '1. FX3-MOC0 DRIVE MONITOR, 2 ENCODER INPUTS. SUPPLY VIA FLEXBUS+',
+        '   FROM FX3-CPU0 (SH.03): NO WIRING.',
+        '2. ENCODER SUPPLY 24V FROM THE MOC0: D-SUB 4 (ENC1), 5 (ENC2).',
+        '   0V: D-SUB 12, SHARED; BOTH 0V JOINED INSIDE THE Y-CABLE.',
+        '3. EACH ENCODER CABLE HAS AN M12 8-PIN PLUG. SICK FX3-MOC',
+        '   Y-CABLE 2116199 JOINS BOTH TO THE MOC0. ALL 8 WIRES GO THROUGH.',
+        '4. Z¯ → C+, Z → C−: C INPUT NOT EVALUATED IN SIN/COS MODE.',
+        '5. SAFELY-LIMITED SPEED IN AUTO: OVERSPEED → XTIO Q1 / Q2 OFF',
+        '   (STO OF BOTH DRIVERS, SH.08). STANDSTILL MONITORING.',
+        '   LIMITS: FLEXI SOFT CONFIGURATION «confirm».',
+        '6. ENC1 = LEFT WHEEL, ENC2 = RIGHT WHEEL «confirm».',
+        '7. SIGNALS SIN/COS 1 Vpp DIFFERENTIAL, 1024 PERIODS PER TURN.',
+      ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
+    },
+  });
+</script>
+</body>
+</html>

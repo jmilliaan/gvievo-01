@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="42" viewBox="0 0 100 88">
+  <title>Warning: automatic start-up (ISO 7010 W018, redrawn)</title>
+  <path d="M50 6 L94 82 L6 82 Z" fill="#F9A800" stroke="#000" stroke-width="7" stroke-linejoin="round"/>
+  <!-- machine -->
+  <rect x="31" y="63" width="38" height="12" rx="1.5" fill="#000"/>
+  <!-- circular arrow: the machine starts by itself -->
+  <path d="M58.5 39 A10 10 0 1 1 50 34" fill="none" stroke="#000" stroke-width="4.5"/>
+  <path d="M49 28 L58 34 L49 40 Z" fill="#000"/>
+  <rect x="47.5" y="55" width="5" height="8" fill="#000"/>
+</svg>

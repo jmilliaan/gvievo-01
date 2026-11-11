@@ -40,7 +40,7 @@
 
   IEC.render(document.getElementById('sheet'), {
     page: 40, file: 'iec-page-40',
-    description: PG.desc, location: PG.loc, func: PG.func, kind: PG.kind,
+    description: PG.desc, location: PG.loc,
     draw(s) {
       /* ---- potential rails ---- */
       s.rail(Y.p24, 25, 400, '1P24', '/31.9', '/42');
@@ -63,14 +63,14 @@
       const e1 = s.contactV(T.X1, Y.contact, 'nc', ['11', '12']);
       const e2 = s.contactV(T.X2, Y.contact, 'nc', ['21', '22']);
       s.operator([e1, e2], 'estop');
-      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC', 'positive opening', 'turn to release', 'SF1', '«part no.»']);
+      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC', 'turn to release', 'ARE-3-R-22-R']);
 
       /* ---- -SJ4 mode selector (+FR) ---- */
       s.locationBox(150, 96, 108, 46, '+FR', 'front panel');
       const m1 = s.contactV(SEL[0], Y.contact, 'no', ['13', '14']);
       const m2 = s.contactV(SEL[1], Y.contact, 'no', ['23', '24']);
       s.operator([m1, m2], 'turn');
-      s.label(153, 107, '-SJ4', ['Selector MANUAL / AUTO', '2 NO, maintained', 'SF4']);
+      s.label(153, 107, '-SJ4', ['Selector MANUAL / AUTO', '2 NO, maintained', 'ARS-S-2-12']);
       // switch-position table: X = contact closed
       s.table(153, 122, [{ w: 15, title: 'Pos.' }, { w: 9, title: '13-14' }, { w: 9, title: '23-24' }],
         [['MANUAL', 'X', 'X'], ['AUTO', '', '']], { size: 2, rowH: 5, headH: 5.5 });
@@ -80,7 +80,7 @@
       const r1 = s.contactV(RST[0], Y.contact, 'no', ['13', '14']);
       const r2 = s.contactV(RST[1], Y.contact, 'no', ['23', '24']);
       s.operator([r1, r2], 'push');
-      s.label(273, 107, '-SJ3', ['RESET push-button, blue', '2 NO, momentary', 'SF5', '«part no.»']);
+      s.label(273, 107, '-SJ3', ['RESET push-button, yellow', '2 NO, momentary', 'ARF-F-1-20-Y']);
 
       /* ---- second contacts to the I/O module (page 60) ---- */
       s.offDown(SEL[1], Y.off, '-KE4:DI02', '/60.2');
@@ -99,10 +99,9 @@
         '1. Contacts drawn in rest position, supplies off.',
         '   -SJ4 drawn in AUTO (contacts open).',
         '2. X1, X2 are pulsed test outputs of -KE2.',
-        '   X1 → I1 and X2 → I2: odd/even pairing,',
-        '   SICK 8012478.',
+        '   X1 → I1 and X2 → I2.',
         '3. Wiring AWG22 (0.34 mm²) blue unless',
-        '   stated (page 3).',
+        '   stated.',
       ], { head: true });
     },
   });

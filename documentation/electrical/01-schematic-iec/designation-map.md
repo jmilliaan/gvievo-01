@@ -17,12 +17,12 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | --- | --- | --- | --- | --- | --- | --- |
 | `+BT-GB1` | BATTERY | Battery 48 V with BMS (BMS on CAN) | +BT | 0102, 0618 | N | Capacity unknown |
 | `+EB-QA1` | MCB-01 | Circuit breaker 2P 32 A, battery main / supply disconnecting device | +EB | 0102 | N | Decided 2026-10-30: the supply disconnecting device (QA). It is the main switch that is locked off in the operation manual 15.1. Lockable handle `[confirm]` |
-| `+EB-FC1` | MCB-02 | Circuit breaker 1P 10 A, feeder left motor driver (2P48) | +EB | 0105 | N | |
-| `+EB-FC2` | MCB-03 | Circuit breaker 1P 10 A, feeder right motor driver (3P48) | +EB | 0107 | N | |
+| `+EB-FC1` | MCB-02 | Circuit breaker 1P 13 A ABB S201-C13, feeder left motor driver (2P48) | +EB | 0105 | N | |
+| `+EB-FC2` | MCB-03 | Circuit breaker 1P 13 A ABB S201-C13, feeder right motor driver (3P48) | +EB | 0107 | N | |
 | `+EB-TA3` | BUCK01 | DC/DC converter 48 → 24 V, 6.25 A (150 W) | +EB | 0110 | N | Feeds the safety controller, so its failure behaviour matters to the risk assessment |
-| `+EB-FC3` | MCB-04 | Circuit breaker 2P 10 A, 24 V bus | +EB | 0302 | N | |
-| `+EB-TA4` | BUCK02 | DC/DC converter 48 → 12 V, 8.3 A (100 W) | +EB | 0114 | N | |
-| `+EB-FC4` | MCB-05 | Circuit breaker 2P 10 A, 12 V bus | +EB | 0502 | N | |
+| `+EB-FC3` | MCB-04 | Circuit breaker 1P 6 A ABB S201-C6, 24 V bus | +EB | 0302 | N | |
+| `+EB-TA4` | BUCK02 | DC/DC converter 48 → 12 V, Mean Well SD-100C-12, 100 W | +EB | 0114 | N | |
+| `+EB-FC4` | MCB-05 | Circuit breaker 1P 10 A ABB S201-C10, 12 V bus | +EB | 0502 | N | |
 
 ## Drives
 
@@ -42,7 +42,7 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | `+FR-SJ1` | EMERGENCY STOP PB | E-stop push-button, turn to release, 2 NC (11-12, 21-22) | +FR | 0802 | Y (SF1) | Positive-opening symbol required |
 | `+VH-BG1` | SAFETY LIDAR 01 | Safety laser scanner SICK nanoScan3, front | +VH | 0305 | Y (SF2) | OSSD to `-KE2:I5/I6` |
 | (`+VH-BG2`) | SAFETY LIDAR 02 | Safety laser scanner, rear | — | 0308 | — | **Not fitted in this revision** (owner, 2026-10-30). Tag reserved. The old sheet 03 still shows its 24 V supply |
-| `+FR-SJ3` | PB RESET | Push-button RESET, blue, 2 NO (13-14 → `-KE2:I8`; 23-24 → `-KE4:DI01`) | +FR | 0813 | Y (SF5) | |
+| `+FR-SJ3` | PB RESET | Push-button RESET, yellow, 2 NO (13-14 → `-KE2:I8`; 23-24 → `-KE4:DI01`) | +FR | 0813 | Y (SF5) | |
 | `+FR-SJ4` | SS MANUAL/AUTO | Selector switch, 2 positions, 2 NO (13-14 → `-KE2:I7`; 23-24 → `-KE4:DI02`) | +FR | 0812 | Y (SF4) | **[verify]** SJ vs SG. Polarity open: which position closes the contacts |
 
 ## Control
@@ -50,10 +50,11 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | New tag | Old name | Device | Location | Old ref | Safety | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | `+EB-KE3` | IPC | Vehicle controller, industrial PC | +EB | 0505 | N | Model unknown |
-| `+EB-KE4` | DIGITAL IO | I/O module CK-EC5163, 16 DI / 12 relay DO, Ethernet | +EB | 0318, SH.09 | N | |
+| `+EB-KE4` | DIGITAL IO | I/O module CKDZ-IoT CK-TP5162, 16 DI / 16 DO, Ethernet | +EB | 0318, SH.09 | N | |
+| `+EB-KE5` | — | Flexi Soft drive monitor FX3-MOC0, 2 encoder inputs, supply via FLEXBUS+ | +EB | — | Y (SF6, SF7) | Added 2026-11-09. Cables `-WG11`, `-WG12` (encoder cables, M12 plug fitted), `-WG13` (FX3-MOC Y-CABLE 2116199) |
 | `+EB-TF1` | CAN-USB ADAPTER | USB-to-CAN interface, on the IPC USB port | +EB | SH.06 | N | **[verify]** class (signal converter) |
 | `+FR-SJ2` | PB START | Push-button START, NO → `-KE4:DI00` | +FR | SH.09 | N | Colour `[confirm]` |
-| `+FR-SJ5` | MANUAL ARM SW | Switch MANUAL ARM → `-KE4:DI08` | +FR **[confirm]** | SH.09 | N | Switch type unknown |
+| `+PD-SJ5` | MANUAL ARM SW | Push-button MANUAL ARM on the pendant: mushroom, black, latching, turn to release, 1 NC → `-KE4:DI08` | +PD | SH.09 | N | Owner, 2026-11-09: it is the turn-to-release button on the pendant. Changed from a red emergency-stop look to black so it is not taken for an emergency stop. Pressed = DI08 off = drives off in MANUAL |
 | `+PD-SJ6` | PENDANT FORWARD | Pendant button, NO → `-KE4:DI03` | +PD | SH.09 | N | |
 | `+PD-SJ7` | PENDANT REVERSE | Pendant button, NO → `-KE4:DI04` | +PD | SH.09 | N | |
 | `+PD-SJ8` | PENDANT LEFT | Pendant button, NO → `-KE4:DI05` | +PD | SH.09 | N | |
@@ -67,6 +68,8 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | --- | --- | --- | --- | --- | --- | --- |
 | `+VH-BG3` | LINE SENSOR 01 | Magnetic line sensor SICK MLSE, on CAN | +VH | 0405, SH.06 | N | |
 | `+VH-BG4` | RFID READER | RFID reader, 12 V, Ethernet | +VH **[confirm]** | 0508 | N | **[verify]** class. Navigation feature, not safety |
+| `+VH-BG5` | — | Safety encoder, left wheel shaft, SICK DFS60S-BAOL01024 (sin/cos, 1 024 periods) → `-KE5` ENC1 | +VH | — | Y (SF6, SF7) | Added 2026-11-09 (owner: implemented). ENC1 = left **[confirm]** |
+| `+VH-BG6` | — | Safety encoder, right wheel shaft, SICK DFS60S-BAOL01024 → `-KE5` ENC2 | +VH | — | Y (SF6, SF7) | Added 2026-11-09 |
 
 ## Other
 

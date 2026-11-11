@@ -42,7 +42,7 @@
     s.locationBox(34, 126, 57, 50, '+FR', '');
     s.module(40, 88, BOX, 26, [{ x: 45, name: '+' }, { x: 55, name: '−' }], ['-PH1', 'Display']);
     s.locationBox(94, 126, 49, 50, '+VH', '');
-    s.module(96, 140, BOX, 26, [{ x: 104, name: '+24V' }, { x: 114, name: '0V' }], ['-BG3', 'Line sensor', 'CAN /51']);
+    s.module(96, 140, BOX, 26, [{ x: 104, name: '+24V' }, { x: 114, name: '0V' }], ['-BG3', 'MLSE-0200A2NQ0', 'CAN /51']);
     [['-GQ1', 145, 150, 160], ['-GQ2', 190, 195, 205], ['-GQ3', 235, 240, 250]].forEach(([t, x, a, b]) =>
       s.module(x, x + 40, BOX, 26, [{ x: a, name: '+' }, { x: b, name: '−' }], [t, 'Fan NMB-MAT']));
     s.module(290, 327, BOX, 30, [{ x: 300, name: '20', sub: 'VIN' }, { x: 316, name: '21', sub: 'GND' }], ['-TA1', 'network']);
@@ -50,11 +50,11 @@
 
     /* ---- cables ---- */
     s.cable([45, 55], 100, '-WD10', 'Display power cable');
-    s.cable([104, 114], 92, '-WG2', 'SICK MLSE cable');
+    s.cable([104, 114], 92, '-WG2', 'SICK YF2A14 M12 4-pin');
 
     s.note(30, 195, [
       'Notes',
-      '1. Control wiring AWG22 (0.34 mm²) blue unless marked (page 3).',
+      '1. Control wiring AWG22 (0.34 mm²) blue unless marked.',
       '2. -BG3 line sensor: the same cable carries CAN (page 51).',
       '3. -TA1, -TA2: network supply only. Driver power: page 21.',
       '4. All devices in +EB unless boxed.',

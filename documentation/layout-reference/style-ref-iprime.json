@@ -1,0 +1,387 @@
+{
+  "meta": {
+    "name": "iPrime layout-sheet style reference",
+    "version": "1.0",
+    "date": "2026-11-09",
+    "audience": "An agent or designer drawing a new layout sheet with no access to the original project or its files. Everything needed is in this file.",
+    "what_a_layout_sheet_is": "A single 1920 x 1080 px image, drawn as SVG inside an HTML page and exported to PNG, that shows the floor layout of an automated guided vehicle (AGV) system: the magnetic guide tape the vehicle follows, the route it drives, the physical items stuck to the floor (RFID tags, marker strips), stations, speed zones and dimensions. Sheets are used as slide images, engineering references and installer instructions.",
+    "how_to_use": [
+      "Pick a sheet family from 'sheet_families'. Use 'presentation' unless the request clearly fits another family.",
+      "Copy the tokens in 'color' into :root of the page and use them through var() and CSS classes, not as literals in SVG attributes.",
+      "Lay out the sheet on the grid in 'layout', using the type roles in 'typography' and the strokes in 'stroke'.",
+      "Draw objects with the glyphs in 'symbols'. Give every symbol that appears on the drawing a legend entry.",
+      "Write text following 'content_conventions', then check the result against 'checklist'."
+    ],
+    "units": "px on the 1920 x 1080 canvas unless stated otherwise."
+  },
+
+  "glossary": {
+    "AGV": "Automated guided vehicle. A small floor vehicle that follows a magnetic tape and may tow a trolley.",
+    "tape": "Magnetic guide tape laid on the floor. The vehicle's sensor reads it and steers along it.",
+    "route": "The path the vehicle drives on one job, a subset of the tape.",
+    "RFID tag": "A small tag fixed in the floor. The vehicle reads its number when it passes over it and acts on it (stop, slow, turn).",
+    "marker strip": "A short strip of magnetic tape laid beside the guide tape. Its position or pattern encodes a command or a code number.",
+    "station": "A place where the vehicle stops to load or unload, for example a machine or a home position.",
+    "HOME": "The vehicle's parking and start position.",
+    "trolley": "A wheeled cart the vehicle tows.",
+    "outbound / return": "The two passes of a round trip: driving away from home and driving back.",
+    "speed bands": "HIGH, NORMAL, SLOW and CREEP: the speed the vehicle is allowed to use on a section of route."
+  },
+
+  "principles": [
+    { "rule": "Technical drawing, not UI", "detail": "Light only (color-scheme: light). Flat fills, square corners, no shadows or gradients in the drawing. The one allowed gradient is a speed ramp between two speed bands, because it carries meaning." },
+    { "rule": "Restrained palette with semantic accents", "detail": "Cool grey ink and navy carry the drawing. Magenta marks physical items on the floor. Amber and green carry speed or pass/fail state. Red is only for faults and limits. Do not use a colour for decoration." },
+    { "rule": "The drawing is the image", "detail": "Only the 1920 x 1080 canvas is exported. Any on-screen toolbar sits outside it and is never captured. Put the rules and legend needed to read the drawing on the drawing itself, unless the sheet will sit on a slide that carries them." },
+    { "rule": "Say what is true about the geometry", "detail": "State the scale on the sheet ('to scale 1 mm = 2 px', 'corner view not to scale', 'trunk length not to scale'). Label approximate positions as indicative. Use a break symbol on a shortened dimension." },
+    { "rule": "Wide wash under a thin line", "detail": "Draw a route as a 56 px pale band carrying state (speed or envelope) under a 7 px dark centreline carrying the path." },
+    { "rule": "Three type voices", "detail": "Archivo for headings and numbers in badges, IBM Plex Mono for labels and dimensions on the drawing, IBM Plex Sans for sentences and legends." }
+  ],
+
+  "sheet_families": {
+    "presentation": {
+      "default": true,
+      "use_for": "Engineering layout sheets and slide images.",
+      "structure": "Framed panel holding the drawing, with a one-row legend strip below the frame. Title and placement rules go inside the frame, unless the hosting slide carries them.",
+      "language": "English",
+      "min_text_size": 26
+    },
+    "dense_engineering": {
+      "use_for": "Sheets that hold a lot of information: route step sequences, code matrices, comparison grids.",
+      "structure": "No outer frame. Title top-left at x 60. Content in panels or a tile grid. Type is smaller than the presentation family, down to 16 px for labels and 12 px for minor edge labels.",
+      "language": "English"
+    },
+    "installer": {
+      "use_for": "Instructions for the person laying tape or markers on the floor.",
+      "structure": "Same visual language with larger numbers and darker dimension lines (--ink instead of --ink-2). Millimetres only. Shows where things go and nothing about how the vehicle uses them. Legend is a framed panel at the bottom.",
+      "language": "Indonesian; set <html lang=\"id\">"
+    },
+    "cad_projection": {
+      "use_for": "A dimensioned plan of the tape in real floor millimetres.",
+      "structure": "Separate token set, see 'cad_projection_style'. SVG units are millimetres on a white ground with a 500 / 1000 mm grid."
+    },
+    "map_overlay": {
+      "use_for": "Route, marks and stations drawn over a scanned occupancy map of the site.",
+      "structure": "Raster image rendered with Python Pillow. See 'map_overlay_style'."
+    }
+  },
+
+  "color": {
+    "core_tokens": {
+      "description": "Declare all of these in :root on every HTML sheet.",
+      "--paper": { "value": "#e9edf2", "use": "Page behind the canvas; never captured" },
+      "--surface": { "value": "#ffffff", "use": "Canvas, toolbar, inset panels" },
+      "--ink": { "value": "#14171d", "use": "Headings, key text, ticks, installer dimensions" },
+      "--ink-2": { "value": "#3d4553", "use": "Secondary labels, dimensions, legend text" },
+      "--ink-3": { "value": "#636b7c", "use": "Tertiary text, extension lines, inactive symbols" },
+      "--rule": { "value": "#cbd2de", "use": "Hairline borders, tile outlines, grids" },
+      "--route": { "value": "#1f3f7a", "use": "Route centreline, primary button" },
+      "--route-dark": { "value": "#152c57", "use": "Direction chevrons, route arrowheads, button border" },
+      "--tag": { "value": "#c8176b", "use": "Physical floor items: RFID tags, marker strips, stops; focus outline" },
+      "--agv": { "value": "#23272f", "use": "Vehicle body, pressed toggle" }
+    },
+    "state_tokens": {
+      "description": "Declare only the ones the sheet uses.",
+      "--route-wash": { "value": "#dde6f5", "use": "Route envelope band" },
+      "--slow": { "value": "#e09a00", "use": "Slow or marginal outline" },
+      "--slow-wash": { "value": "#fde9b8", "use": "NORMAL, SLOW or CREEP speed band" },
+      "--slow-ink": { "value": "#8a5e00", "use": "Text on or about slow zones and marginal verdicts" },
+      "--fast": { "value": "#2f8a57", "use": "Usable or OK outline" },
+      "--fast-wash": { "value": "#d3eedd", "use": "HIGH speed band" },
+      "--fast-ink": { "value": "#1e5c39", "use": "Text on or about HIGH zones and OK verdicts" },
+      "--bad": { "value": "#b3261e", "use": "Faults, backstops, sensor limits" }
+    },
+    "direction_tokens": {
+      "description": "For sheets that show both passes of a round trip. Use this meaning on every sheet and every family, including map overlays.",
+      "--out": { "value": "#c2410c", "use": "Outbound pass" },
+      "--back": { "value": "#1f3f7a", "use": "Return pass; same value as --route" },
+      "--tape-off": { "value": "#b7bfcc", "use": "Tape that exists but is not on the route being shown" }
+    },
+    "fixed_values": {
+      "description": "Literals with one defined job. Declare them as tokens in new sheets if you use them more than once.",
+      "frame_fill": { "value": "#f5f6f8", "use": "Outer frame, framed panels, machine boxes, tiles" },
+      "frame_stroke": { "value": "#2a2f3a", "use": "Outer frame and bottom legend panel border" },
+      "tape_body": { "value": "#2b3a55", "use": "Guide tape drawn to scale" },
+      "tape_body_closeup": { "value": "#23272f", "use": "Guide tape on close-up code and installer details" },
+      "trolley_deck": { "value": "#cfd8e6", "use": "Trolley deck" },
+      "panel_fill_cool": { "value": "#f8fafc", "use": "Legend and sequence panels" },
+      "panel_fill_warm": { "value": "#fff6ed", "use": "Warning panel" },
+      "tile_fill_light": { "value": "#f8f9fb", "use": "Neutral tile" },
+      "tile_ok_fill": { "value": "#f1faf4", "use": "Usable tile" },
+      "tile_marginal_fill": { "value": "#fffaf0", "use": "Marginal tile" },
+      "tile_out_fill": { "value": "#f7f3f4", "use": "Impossible tile" },
+      "head_marginal": { "value": "#b57d00", "use": "Marginal column or tile header" },
+      "head_out": { "value": "#8b93a3", "use": "Impossible column or tile header" },
+      "mark_lost": { "value": "#9aa3b5", "use": "Marker outside the sensor's reading window" },
+      "hatch_blind_ground": { "value": "#f6e3e1", "use": "Sensor-blind hatch ground" },
+      "hatch_blind_line": { "value": "#d9a39e", "use": "Sensor-blind hatch line" }
+    },
+    "semantic_map": {
+      "route_path": "--route",
+      "route_direction": "--route-dark",
+      "route_envelope": "--route-wash",
+      "speed_high": "--fast-wash",
+      "speed_normal_slow_creep": "--slow-wash",
+      "speed_ramp": "Linear gradient from --fast-wash to --slow-wash",
+      "outbound_pass": "--out",
+      "return_pass": "--back",
+      "physical_floor_item": "--tag",
+      "marker_strip": "--tag, except on close-up code sheets where the strip sits on dark tape: there use --route",
+      "vehicle": "--agv",
+      "fault_or_limit": "--bad",
+      "ignored_or_shadow": "White fill with --ink-3 outline",
+      "not_available_area": "Hatch: --rule lines on #f5f6f8",
+      "sensor_blind_area": "Hatch: #d9a39e lines on #f6e3e1"
+    },
+    "do_not": [
+      "Do not use #c2410c for dimensions on a route sheet; it means outbound there.",
+      "Do not add colours outside this file without a stated meaning in the legend.",
+      "Do not use a dark theme."
+    ]
+  },
+
+  "typography": {
+    "families": {
+      "heading": { "stack": "\"Archivo\", Arial, sans-serif", "weight": 700, "use": "Titles, section heads, numbers in badges and codes" },
+      "label": { "stack": "\"IBM Plex Mono\", Consolas, \"Courier New\", ui-monospace, monospace", "weight": 600, "use": "Default for all SVG text in the drawing: labels, dimensions, toolbar controls" },
+      "body": { "stack": "\"IBM Plex Sans\", Calibri, Arial, Helvetica, sans-serif", "weight": 500, "key_weight": 700, "use": "Rule sentences, legends, panel prose" }
+    },
+    "font_load": {
+      "url": "https://fonts.googleapis.com/css2?family=Archivo:wght@700&family=IBM+Plex+Mono:wght@600&family=IBM+Plex+Sans:wght@500;700&display=swap",
+      "note": "Load Plex Sans at both 500 and 700. Without 700 the browser fakes the bold keys and the export shows it."
+    },
+    "office_fallbacks": {
+      "use_for": "PowerPoint, Word, Excel, or any render without web fonts.",
+      "weights": "Office fonts have regular and bold only: bold for 600 and 700, regular for 500.",
+      "heading": { "font": "Arial", "style": "Bold", "note": "Check long titles for fit." },
+      "label": { "font": "Consolas", "style": "Bold", "second_choice": "Courier New", "note": "Consolas runs about 8% shorter than Plex Mono, so text will not overflow. Courier New matches the width but looks much lighter." },
+      "body": { "font": "Calibri", "style": "Regular, Bold for key words", "second_choice": "Arial", "note": "Calibri reads smaller; go up one size step if needed. Keep it distinct from Arial so the three voices stay visible." }
+    },
+    "roles": {
+      "title": { "class": ".head", "font": "heading", "size": 36, "case": "uppercase", "note": "40 on slide-image sheets; 44 as .title on installer sheets; 30 inline for short names such as S1, S2" },
+      "subhead": { "class": ".sub", "font": "heading", "size": 24, "case": "uppercase", "letter_spacing": "0.04em", "dense_variant": "Plex Sans 500 21, sentence case" },
+      "panel_head": { "class": ".h3", "font": "heading", "size": 22, "case": "uppercase", "letter_spacing": "0.05em" },
+      "label": { "class": ".lbl", "font": "label", "size": 26, "letter_spacing": "0.02em", "slide_variant": "28 at 0.03em", "dense_variant": "18 at 0" },
+      "label_small": { "class": ".sm", "font": "label", "size": 22, "dense_variant": 16 },
+      "label_extra_small": { "class": ".xs", "font": "label", "size": 19 },
+      "rule_sentence": { "class": ".rule", "font": "body", "size": 22, "key_span": "tspan.k: weight 700, fill --ink", "dense_variant": 18 },
+      "legend_text": { "class": ".legend", "font": "body", "size": 26, "color": "--ink-2", "slide_variant": 28 },
+      "badge_number": { "font": "heading", "color": "#ffffff", "sizes": { "route_sequence_badge": 15, "marker_code_circle": 22, "rfid_tag": "26-28", "code_header_or_installer": "40-46" } },
+      "toolbar_control": { "font": "label", "size": 11, "case": "uppercase", "letter_spacing": "0.07em", "status_letter_spacing": "0.05em" }
+    },
+    "minimum_size": {
+      "slide_images": 26,
+      "reason": "A slide shows the 1920 px canvas at about 0.47 scale, so anything under 26 px becomes unreadable.",
+      "dense_sheets": "16 px for labels, 12 px only for minor edge labels"
+    },
+    "body_default": "16px/1.45 IBM Plex Sans, -webkit-font-smoothing: antialiased",
+    "case": "Uppercase titles and heads through CSS text-transform; write the source text in normal case."
+  },
+
+  "stroke": {
+    "route": {
+      "envelope_band": { "width": 56, "color": "--route-wash or a speed wash", "fill": "none" },
+      "creep_band": { "width": 44, "color": "--slow-wash" },
+      "centreline": { "width": 7, "color": "--route", "linejoin": "round" },
+      "pass_lane": { "width": 6, "color": "--out or --back", "linecap": "round", "linejoin": "round", "note": "Offset the two passes side by side when both are shown" },
+      "off_route_tape": { "width": 5, "color": "--tape-off", "linecap": "round", "linejoin": "round" },
+      "not_laid_tape": { "width": 4, "color": "--tape-off", "dash": "10 8", "use": "Planned tape not yet on the floor" },
+      "chevron": { "width": 5, "color": "--route-dark", "linecap": "round", "linejoin": "round", "path": "M-9 -13 L9 0 L-9 13", "note": "Points along the direction of travel; space evenly along the centreline" },
+      "chevron_on_tape": { "width": "2.5-3", "color": "#ffffff" }
+    },
+    "annotation": {
+      "dimension": { "width": 2.5, "color": "--ink-2", "installer_color": "--ink" },
+      "extension": { "width": 1.5, "color": "--ink-3", "dash": "5 4" },
+      "tick": { "width": 4, "color": "--ink" },
+      "leader_to_marker": { "width": 2, "color": "--tag" },
+      "leader_installer": { "width": 1.5, "color": "--ink-2" },
+      "dimension_break": { "width": "7-8", "color": "#ffffff", "linejoin": "miter", "use": "White zig-zag gap cut through a shortened dimension or tape" },
+      "hand_move": { "width": 4, "color": "--ink-3", "dash": "12 8", "use": "Vehicle moved by hand" },
+      "slow_edge": { "width": 3, "color": "--slow", "dash": "12 8" },
+      "backstop_run": { "width": 4, "color": "--bad", "dash": "8 6" },
+      "sensor_grid": { "width": 1.5, "color": "--rule", "dash": "3 5" },
+      "sensor_edge": { "width": 2, "color": "--bad", "dash": "6 4" },
+      "tape_centre": { "width": 1.5, "color": "#ffffff", "dash": "10 8" }
+    },
+    "arrowhead": {
+      "dimension": { "marker_size": "16 x 14", "path": "M0,0 L16,7 L0,14 Z", "fill": "--ink-2", "orient": "auto-start-reverse", "markerUnits": "userSpaceOnUse", "dense_variant": "10 x 10" },
+      "route": { "marker_size": "22 x 20", "path": "M0,0 L22,10 L0,20 Z", "fill": "--route-dark" }
+    },
+    "hatch": {
+      "not_available": { "pattern_cell": 16, "rotate_deg": 45, "ground": "#f5f6f8", "line": "#cbd2de", "line_width": 6 },
+      "sensor_blind": { "pattern_cell": 8, "rotate_deg": 45, "ground": "#f6e3e1", "line": "#d9a39e", "line_width": 3 }
+    }
+  },
+
+  "shape": {
+    "corner_radius": { "default": 0, "exceptions": { "trolley_glyph": 3, "agv_glyph": 4 } },
+    "shadow": { "drawing": "none", "stage_on_screen_only": "0 1px 0 var(--rule), 0 10px 30px rgba(20,30,50,.12)" }
+  },
+
+  "layout": {
+    "canvas": { "width": 1920, "height": 1080, "aspect": "16:9", "background": "--surface", "overflow": "hidden" },
+    "presentation_grid": {
+      "frame": { "x": 60, "y": 40, "width": 1800, "height": 890, "fill": "#f5f6f8", "stroke": "#2a2f3a", "stroke_width": 6 },
+      "title": { "x": 96, "baseline_y": 98 },
+      "subtitle": { "x": 96, "baseline_y": 136 },
+      "rule_lines": { "x": 96, "first_baseline_y": 782, "line_step": 32, "last_baseline_y": 910, "note": "Up to five rule sentences at the bottom of the frame" },
+      "drawing_area": "Between the subtitle (y ≈ 160) and the first rule line (y ≈ 750), x 96 to 1824",
+      "legend_strip": {
+        "x": 60, "y": 962, "width": 1800, "height": 76,
+        "display": "HTML flex row inside a foreignObject or overlaid div: align-items center, justify-content space-between, no wrap",
+        "item": "Swatch then legend text, gap 14",
+        "swatch": "64 x 40 SVG"
+      }
+    },
+    "frameless_grid": {
+      "left_margin": 60,
+      "right_margin": 60,
+      "title_baseline_y": "60-82",
+      "bottom_panel": { "x": 60, "width": 1800, "height": "215-222", "fill": "#f5f6f8", "stroke": "#2a2f3a", "stroke_width": 3, "use": "Legend on installer sheets" }
+    },
+    "inset_panel": { "fill": "#ffffff", "stroke": "--rule", "stroke_width": 2, "title": "Subhead at top left stating the view and its scale" },
+    "screen_shell": {
+      "page": "Background --paper, padding-bottom 40",
+      "stage_wrap_padding": "20px 16px 0",
+      "fit": "Scale the 1920 x 1080 stage with a CSS transform to min(viewport width - 32, 1920) / 1920; transform-origin top left. Reserve the scaled height so the page does not collapse."
+    }
+  },
+
+  "symbols": {
+    "rfid_tag": { "shape": "52 x 52 square rotated 45°", "fill": "--tag", "stroke": "#ffffff 4", "text": "Tag number, white Archivo 700 26-28, centred" },
+    "taught_stop": { "shape": "Diamond, 9 px centre to point", "fill": "--tag", "stroke": "#ffffff 2" },
+    "junction": { "shape": "Circle r 7", "fill": "#ffffff", "stroke": "--ink 3" },
+    "marker_code": { "shape": "Circle r 17", "fill": "--tag", "text": "White Archivo 700 22", "leader": "2 px --tag line to the strip" },
+    "marker_strip": { "shape": "Rectangle beside the tape", "fill": "--tag (see semantic_map.marker_strip)", "lost": "#9aa3b5" },
+    "event_acts": { "shape": "Circle r 11", "fill": "--tag", "stroke": "#ffffff 2", "meaning": "Vehicle acts on this item" },
+    "event_ignored": { "shape": "Circle r 9", "fill": "#ffffff", "stroke": "--ink-3 3", "meaning": "Vehicle passes this item without acting" },
+    "event_fault": { "shape": "Circle r 11", "fill": "--bad" },
+    "shadow_stop": { "shape": "Triangle", "fill": "#ffffff", "stroke": "--ink-3 3", "meaning": "Stop that exists but is not active in this case" },
+    "agv": { "shape": "Polygon about 76 x 44 with a tapered nose, or a 64 x 48 rectangle with rx 4, plus a white triangle pointing along the heading", "fill": "--agv" },
+    "trolley": { "outer": "64 x 42, rx 3, #ffffff, stroke --ink-2 3", "inner": "44 x 26, #cfd8e6, stroke --route 2.5", "drawbar": "--ink-2 5 line to the AGV" },
+    "machine_box": { "shape": "80 x 44 rectangle", "fill": "#f5f6f8", "stroke": "--ink-3 2", "text": "Centred label" },
+    "tape": { "track": "Solid bar in tape_body", "centre": "1.5 px white dash 10 8 along the middle", "end": "Heavy --ink tick across the end" },
+    "north_arrow": { "fill": "--ink", "label": "N in label type", "note": "If north is a site-plan convention rather than true north, say so on the sheet." },
+    "scale_bar": { "style": "Ticked --ink-2 line with mono labels", "note": "State what it applies to when only part of the sheet is to scale, e.g. 'HOME area only'." },
+    "sequence_badge": { "shape": "Filled circle", "fill": "--out or --back", "text": "Step number, white Archivo 700 15" }
+  },
+
+  "panels": {
+    "legend_panel": { "fill": "#f8fafc", "stroke": "--rule 2", "title": ".h3 uppercase" },
+    "warning_panel": { "fill": "#fff6ed", "stroke": "--out 2", "title": ".h3 uppercase", "body": "Bold key, colon, sentence" },
+    "sequence_panel": { "fill": "#f8fafc", "stroke": "--rule 2", "row": "Badge, step name (Archivo 700 19), action (Plex Sans 500 17)" },
+    "status_tile": {
+      "use": "Grid of options with a verdict each, e.g. which marker codes a sensor can read",
+      "header_text": "White Archivo code number, mono detail lines",
+      "verdict_type": "Plex Sans 700 17",
+      "states": {
+        "ok": { "header": "#2f8a57", "fill": "#f1faf4", "stroke": "--fast 4", "verdict_color": "--fast-ink", "verdict_prefix": "✓" },
+        "marginal": { "header": "#b57d00", "fill": "#fffaf0", "stroke": "--slow 4", "verdict_color": "--slow-ink", "verdict_prefix": "!" },
+        "out": { "header": "#8b93a3", "fill": "#f7f3f4", "stroke": "--bad 3, dash 10 6", "verdict_color": "--bad", "verdict_prefix": "✕" },
+        "none": { "fill": "none", "stroke": "--rule 2, dash 8 8", "text": "--ink-3" }
+      }
+    },
+    "legend_swatches": {
+      "route": "Line 62 long: wash 30 wide with a 5 wide --route line on top, optional chevron",
+      "symbols": "The same glyph as on the drawing, scaled to fit 64 x 40"
+    }
+  },
+
+  "toolbar": {
+    "captured": false,
+    "purpose": "On-screen controls for exporting the sheet. Lives outside the canvas.",
+    "container": "Sticky top, flex wrap, gap 10, padding 10px 16px, --surface, border-bottom 2px solid --ink",
+    "name": "Sheet name in Archivo 700 15 px",
+    "segmented_control": "Border 1.5px solid --ink; buttons padding 7px 12px with 1px --rule dividers; pressed state --agv fill with white text",
+    "primary_button": "--route fill, white text, border 1.5px solid --route-dark; disabled opacity .6",
+    "focus": "2px solid --tag outline, offset 2px",
+    "status": "--ink-3 text, pushed right with margin-left auto",
+    "controls": ["Resolution 2x or 3x", "Background white or transparent", "Download PNG"]
+  },
+
+  "content_conventions": {
+    "separator": "Middle dot with spaces: 'Main line at station 4 · Stage 1 · No RFID'",
+    "flow_arrow": "→ for sequence and consequence: 'tape lost → stop, pivot CW'",
+    "rule_line_pattern": "Bold key (tspan.k), two spaces, then clauses separated by ' · '",
+    "numbers": "≥ and ≤ for limits, ≈ for derived values, ~ for estimates, × in sizes such as '15 × 100'",
+    "units": { "engineering": "Metres on the drawing, mm in details", "installer": "mm only", "cad": "mm; prefix an estimated dimension with ~" },
+    "language": { "engineering": "English", "installer": "Indonesian" },
+    "provenance": "Put a CSS comment at the top of each sheet recording what it shows, its scale, its data sources and any dated decisions it depends on."
+  },
+
+  "export": {
+    "library": "html-to-image 1.11.11 from https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js",
+    "base": "1920 x 1080",
+    "pixel_ratios": { "2x": "3840 x 2160 (default)", "3x": "5760 x 3240 (default for slide images and dense code sheets)" },
+    "background": { "default": "#ffffff", "option": "transparent" },
+    "file_name": "{sheet-name}@{ratio}x[-transparent].png",
+    "before_capture": "await document.fonts.ready, then capture the stage element with transform: none so it renders at full size"
+  },
+
+  "cad_projection_style": {
+    "units": "1 SVG unit = 1 mm. Set the viewBox to the floor area plus margin.",
+    "fonts": { "labels": "system-ui, sans-serif (Office: Arial)", "notes": "ui-monospace, Consolas, monospace" },
+    "tokens": {
+      "--bg": "#ffffff", "--ink": "#1d2228", "--muted": "#6b7280",
+      "--grid": "#eceee9", "--gridM": "#dcdfd8", "--pillar": "#c9cdd3",
+      "--tape": "#16181b", "--cl": "#f2c200",
+      "--feat": "rgba(120,130,140,.10)", "--featS": "#9aa1a9",
+      "--dim": "#1f5fbf", "--est": "#c2410c", "--accent": "#b91c1c",
+      "--card": "#ffffff", "--line": "#e3e5e0"
+    },
+    "fixed_values": { "traffic_arrow": "#f2a900", "destination_box_fill": "#3f6fc4", "destination_box_stroke": "#1d3f7a", "destination_box_radius_mm": 40, "home_fill": "#ffd200", "home_label": "#7a4d00" },
+    "strokes_mm": { "grid_minor_500": 4, "grid_major_1000": 7, "tape": 30, "tape_centreline": { "width": 4, "color": "--cl", "dash": "60 30" }, "dimension": 6, "extension": 4, "pillar": 10, "feature": { "width": 8, "dash": "40 25" }, "datum": { "width": 5, "dash": "30 20" }, "traffic_arrow": 60 },
+    "text_mm": { "pillar_label": 110, "home_label": 120, "destination_box": 100, "dimension_and_radius": 95, "note_heading": 90, "legend": 85, "notes": 80 },
+    "dimension_colors": { "measured": "--dim (blue)", "estimated": "--est (orange-red)", "radius_and_origin": "--accent (red)" }
+  },
+
+  "map_overlay_style": {
+    "renderer": "Python Pillow with DejaVu Sans fonts",
+    "base_map": { "scaling": "Nearest-neighbour integer zoom", "blend_to_white": "0.40-0.45 so the overlay reads on top" },
+    "fonts": { "bold_px": 20, "small_px": "15-16", "halo": "Stroke 3 px white on every label over the map" },
+    "colors": {
+      "outbound": "#c2410c (match --out)",
+      "return": "#1f3f7a (match --back)",
+      "highlighted_leg": "#00aae6",
+      "unused_leg": "#a5aab2",
+      "junction": "#00963c", "junction_label": "#006e2d",
+      "stop": "#c8006e", "stop_label": "#8c0050",
+      "u_turn": "#dc1e1e", "u_turn_label": "#be0000",
+      "reference_mark": "#787878",
+      "home": "#ffd200", "home_label": "#6e4600",
+      "title_text": "#141414"
+    },
+    "line_widths": { "leg": "4-5", "highlighted_leg": 7, "legend_swatch": "4-6" },
+    "symbols": {
+      "junction": "Circle r 7-9, black outline",
+      "stop": "Diamond r 10, black outline",
+      "u_turn": "Circle r 10, black outline",
+      "reference_mark": "Square half-width 8, black outline",
+      "station": "Square half-width 8; HOME half-width 12, black outline"
+    },
+    "legend": "Either a white box with black outline plus a scale bar of 1, 2, 5 or 10 m, or halo text rows bottom-left with the title top-left"
+  },
+
+  "html_skeleton": {
+    "note": "Minimal structure for a presentation sheet. Fill in the SVG content.",
+    "outline": [
+      "<!doctype html><html lang=\"en\"> (lang=\"id\" for installer sheets)",
+      "<head>: charset, viewport, the font_load link, <style> with :root tokens, color-scheme: light, type classes, toolbar and shell CSS",
+      "<body>: toolbar div (not captured), then .stage-wrap > #stage (1920 x 1080, --surface)",
+      "#stage > svg viewBox=\"0 0 1920 1080\": <defs> for arrowheads and hatches, frame rect, title, subtitle, drawing groups, rule lines",
+      "#stage > legend strip at y 962 (div or foreignObject)",
+      "<script>: fit-to-viewport scaling, html-to-image export with ratio and background options"
+    ]
+  },
+
+  "checklist": [
+    "Canvas is exactly 1920 x 1080 with white background and nothing outside it captured.",
+    "Every colour on the drawing comes from this file and its meaning matches 'semantic_map'.",
+    "Every symbol and line style used on the drawing has a legend entry.",
+    "Scale is stated, approximate positions are marked indicative, shortened dimensions carry a break.",
+    "No text below 26 px on a slide image; no text below 12 px anywhere.",
+    "Labels in Plex Mono, sentences in Plex Sans, headings and badge numbers in Archivo.",
+    "Fonts are loaded with Plex Sans 500 and 700, and export waits for document.fonts.ready.",
+    "Square corners, no shadows or gradients except a speed ramp.",
+    "Installer sheets: Indonesian, mm only, lang=\"id\", darker dimensions, no vehicle behaviour."
+  ]
+}

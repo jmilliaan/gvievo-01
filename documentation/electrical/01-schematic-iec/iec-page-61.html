@@ -36,7 +36,7 @@
     /* ---- I/O module ---- */
     const lab = { C01: 'C', C23: 'C', C45: 'C', C67: 'C' };
     s.module(40, 290, MT, MB - MT, Object.entries(O).map(([k, x]) => ({ x, name: lab[k] || k })),
-      ['-KE4', 'CK-EC5163 I/O module, relay outputs: each output closes to the common C of its pair'], { edge: 'bottom' });
+      ['-KE4', 'CK-TP5162 I/O module, 16 outputs DO0…DOF: each output closes to the common C of its pair'], { edge: 'bottom' });
 
     /* ---- horn (+VH) ---- */
     s.locationBox(35, 140, 61, 56, '+VH', '');
@@ -55,7 +55,7 @@
       '3. The horn is software-driven, not a',
       '   safety function.',
       '4. DO2 … DO7 spare; commons wired.',
-      '   DO8 … DOB not wired. The software also',
+      '   DO8 … DOF not wired. The software also',
       '   switches DO8 with motion: free output',
       '   for a warning lamp.',
       '5. Wiring AWG22 blue. All in +EB',
