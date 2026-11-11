@@ -53,6 +53,26 @@ def test_edges_and_tie_down():
           [o.reset for o in out] == [False, True, False])
 
 
+def test_held_levels():
+    """Start and Reset as debounced levels (2026-11-11, the At home combination). Edges unchanged."""
+    print("\npanel: held levels")
+
+    sc = scanner()
+    out = run(sc, [image(), image(start=True), image(start=True, reset=True), image(reset=True), image()])
+    check("held levels follow the buttons, scan by scan",
+          [(o.start_held, o.reset_held) for o in out]
+          == [(False, False), (True, False), (True, True), (False, True), (False, False)],
+          str([(o.start_held, o.reset_held) for o in out]))
+    check("and the edges are exactly as before: one each",
+          [o.start for o in out] == [False, True, False, False, False]
+          and [o.reset for o in out] == [False, False, True, False, False])
+    sc = scanner(debounce=2)
+    out = run(sc, [image(), image(), image(start=True)])
+    check("an unsettled press is not yet held (the last settled image stands)", out[2].start_held is False)
+    out = run(sc, [image(start=True)], comms_ok=False)
+    check("a comms loss reports nothing held", out[0].start_held is False and out[0].valid is False)
+
+
 def test_selector():
     """The selector is a level, and only its transitions matter."""
     print("\npanel: selector")
@@ -229,6 +249,7 @@ def test_pendant():
 # cmd_mux gating, pendant).
 TESTS = [
     test_edges_and_tie_down,
+    test_held_levels,
     test_selector,
     test_debounce,
     test_comms_loss_cannot_synthesise_a_press,

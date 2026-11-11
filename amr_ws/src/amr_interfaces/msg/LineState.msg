@@ -105,3 +105,6 @@ string trip_payload         # why the next trip may not leave HOME ("" = trolley
 # The device the hold blames (amr_base.hold_policy.CAUSE_DEVICE: scanner, safety_chain, dio,
 # drives, mls, rfid, nav2), "" when no single device or not held (unified plan WP-A2).
 string hold_device
+# NORMAL+ (2026-11-11). APPEND ONLY. Which speed above the cruise a trip's zone grants: "normal"
+# (none), "plus" (NORMAL+, 0.65 m/s) or "high". high_speed above stays true for both plus and high.
+string speed_tier

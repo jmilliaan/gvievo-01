@@ -363,3 +363,18 @@ def test_holding_the_opposite_direction_does_not_count_as_a_release():
     assert not any(f.pendant)
     f = _settle(ad, _pdi(fwd=True))
     assert not any(f.pendant)
+
+
+def test_start_and_reset_levels_ride_the_frame_and_its_repeats():
+    """2026-11-11, the At home combination: the levels reach PanelState; a repeated image keeps them."""
+    ad = _adapter()
+    f = _settle(ad, _di())
+    assert not f.start_held and not f.reset_held
+    f = _settle(ad, _di(start=True, reset=True))
+    assert f.start_held and f.reset_held
+    f = ad.tick(_snap(_di(start=True, reset=True), new=False))  # same acquisition again
+    assert f.start_held and f.reset_held and not f.start_edge and not f.reset_edge
+    f = _settle(ad, _di(reset=True))
+    assert not f.start_held and f.reset_held
+    f = ad.tick(_snap(_di(reset=True), comms=False))
+    assert not f.valid and not f.reset_held, "an invalid image holds nothing"

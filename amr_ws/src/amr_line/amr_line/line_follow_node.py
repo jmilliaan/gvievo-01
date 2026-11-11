@@ -77,7 +77,16 @@ from amr_interfaces.msg import (
     WheelStates,
 )
 from amr_interfaces.srv import LineTeach, SelectMission
-from amr_line import autopilot, flight_recorder, position_confirm, rfid_intake, runtime, tape_health, trip_log
+from amr_line import (
+    autopilot,
+    flight_recorder,
+    home_combo,
+    position_confirm,
+    rfid_intake,
+    runtime,
+    tape_health,
+    trip_log,
+)
 from amr_line import job as lj
 from amr_line import track as tk
 
@@ -196,6 +205,7 @@ class LineFollowNode(LeanNode):
         self._panel_t = None
         self._start_edge_t = None
         self._reset_edge = False
+        self._home_combo = home_combo.HomeCombo()
         self._lease = None
         self._lease_t = None
         self._drives_t = None
@@ -544,14 +554,18 @@ class LineFollowNode(LeanNode):
         return res
 
     def _srv_at_home(self, req, res):
+        res.success, res.message = self._at_home("")
+        return res
+
+    def _at_home(self, how):
+        """At home, from the web (how "") or the panel (how: the combination). (ok, message)."""
         if self.tapeloc is None:
-            res.success, res.message = False, "tape localization unavailable"
-            return res
+            return False, "tape localization unavailable"
         if self.job.calling and not self._manual_on_fresh_panel():
             # Automatic departure relies on this press (plan O11): a person looking at the vehicle.
-            res.success, res.message = False, "At home needs the selector in MANUAL with station calling on"
-            self._event("LINE_LOC", res.message, Event.WARN)
-            return res
+            msg = "At home needs the selector in MANUAL with station calling on"
+            self._event("LINE_LOC", msg, Event.WARN)
+            return False, msg
         now = time.monotonic()
         counts, _per_rev, still = self._wheel_inputs(now)
         why = ""
@@ -562,18 +576,18 @@ class LineFollowNode(LeanNode):
         elif counts is not None and not still:
             why = "At home refused: the wheels are moving"
         if why:
-            res.success, res.message = False, why
+            why += f" ({how})" if how else ""
             self._event("LINE_LOC", why, Event.WARN)
-            return res
+            return False, why
         ok, msg, pose = self.tapeloc.at_home(fresh_ready=True) if self.job.calling else self.tapeloc.at_home()
         if ok:
             self.job.at_home_pressed()
             self._publish_seed(pose)
             self._position.press(now, counts)
-        res.success, res.message = ok, msg
+        msg += f" ({how})" if how else ""
         self._event("LINE_LOC", msg, Event.INFO if ok else Event.WARN)
         self._publish_state()
-        return res
+        return ok, msg
 
     def _publish_seed(self, pose) -> None:
         """The taught HOME on /initialpose: the monitor starts checking again."""
@@ -649,11 +663,18 @@ class LineFollowNode(LeanNode):
         self.tape_health.track(m.track_level, m.nlcp, m.event_flag, m.source)
 
     def _on_panel(self, m: PanelState) -> None:
-        self._panel, self._panel_t = m, time.monotonic()
+        now = time.monotonic()
+        self._panel, self._panel_t = m, now
         if m.start_edge:
-            self._start_edge_t = time.monotonic()  # consumed by exactly one tick
+            self._start_edge_t = now  # consumed by exactly one tick
         if m.reset_edge:
             self._reset_edge = True
+        # At home from the panel (amr_line.home_combo): Start + Reset held 1 s under MANUAL. Older
+        # amr_interfaces without the levels: never.
+        start_held, reset_held = bool(getattr(m, "start_held", False)), bool(getattr(m, "reset_held", False))
+        if self._home_combo.tick(now, bool(m.valid), bool(m.mode_auto), start_held, reset_held,
+                                 bool(m.start_edge), bool(m.reset_edge)):
+            self._at_home(f"panel: Start + Reset held {home_combo.HOLD_S:g} s")
 
     def _on_lease(self, m: ControlLease) -> None:
         # Replayed or reordered leases never move authority backwards.
@@ -884,6 +905,12 @@ class LineFollowNode(LeanNode):
             if not ok:
                 self._event("LINE_LOC", f"{msg}: the trip will hold (position)", Event.WARN)
         self._tapeloc_tick(now)
+        kept = getattr(self.job.tape, "forks_kept", None)
+        while kept:
+            # The MLS kept the ordered tape at this fork: AMCL may not call it the wrong one.
+            msg = self.tapeloc.confirm_fork(kept.pop(0)) if self.tapeloc is not None else ""
+            if msg:
+                self._event("LINE_LOC", msg, Event.WARN)
         self._position_tick(self._tl_inputs, now)
         engine_events = self.job.tape.drain_events()
         for level, text in engine_events:
@@ -1037,6 +1064,7 @@ class LineFollowNode(LeanNode):
                 intent=t.branch.ladder.intent(), armed=(getattr(t, "_armed", None) or {}).get("id"),
                 unhonoured=t.branch.unhonoured, next=t.next_event() if hasattr(t, "next_event") else "",
                 high=bool(t.high), high_why=getattr(t, "high_why", ""),
+                tier=getattr(t, "speed_tier", "high" if t.high else "normal"),
                 zone=t._zone_at(t.S) if hasattr(t, "_zone_at") else None,
                 field_clear=None if i is None else i.field_clear, auto=None if i is None else i.panel_auto,
                 link=None if i is None else i.drive_link,

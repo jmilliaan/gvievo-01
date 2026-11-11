@@ -427,7 +427,7 @@ def test_the_shadow_lap_logs_the_u_turn_points_and_the_high_speed_areas(tmp_path
         t, travel = t + 0.02, travel + 0.01
         rt.tick(t, travel, 2, False)
     text = " | ".join(x for _l, x in rt.drain_events())
-    assert "high-speed area: HIGH from Z-LINE at S 21.00" in text, text
+    assert "high-speed area: HIGH from Z-LINE at S 21.25" in text, text   # 1 m after the corner
     assert "high-speed area: NORMAL by Z-LINE at S 27.00" in text
     assert "U-turn point of M1 UT-M1 at S 30.50" in text
     assert "would HOLD" in text, "odometry only: sigma grows past the station limit"

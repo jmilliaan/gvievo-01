@@ -286,8 +286,8 @@ def create_app(
 
     @app.post("/api/line/areas")
     def api_line_areas():
-        """Save {"id", "polygon": [[x, y], ...]} or delete {"id", "delete": true} one area. Files
-        only: a trip reads them at its Start. Engineer."""
+        """Save {"id", "polygon": [[x, y], ...], "kind": "high"|"plus"} (kind defaults to "high") or
+        delete {"id", "delete": true} one area. Files only: a trip reads them at its Start. Engineer."""
         _need(tracked_ok)
         denied = _engineer_only("high-speed areas need")
         if denied:
@@ -298,7 +298,8 @@ def create_app(
         if d.get("delete") is True:
             ok, msg = tapegraph_view.save_area(app.config["STATE_DIR"], d.get("id"), None)
         else:
-            ok, msg = tapegraph_view.save_area(app.config["STATE_DIR"], d.get("id"), d.get("polygon"))
+            ok, msg = tapegraph_view.save_area(app.config["STATE_DIR"], d.get("id"), d.get("polygon"),
+                                               d.get("kind", "high"))
         return _result(ok, msg, 422)
 
     @app.get("/calls")

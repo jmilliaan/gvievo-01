@@ -8,7 +8,8 @@ published - the newest recorded pass; the junction anchors; the marks; the high-
 
 The areas (tracked plan 4, 2026-10-25) are the one thing written here: polygons drawn on the
 map, <teach>/areas.json, in the format amr_line.tape_graph_store.load_areas reads. A trip
-compiles them into HIGH ranges along its route at Start; nothing here moves anything.
+compiles them into HIGH or NORMAL+ (kind "plus", 2026-11-11) ranges along its route at Start;
+where areas overlap the slower wins. Nothing here moves anything.
 """
 from __future__ import annotations
 
@@ -44,6 +45,8 @@ def _thin(pts, step=STEP_M):
 AREA_MAX_POINTS = 64
 AREA_MIN_M2 = 0.5
 AREA_MAX_ABS_M = 10000.0
+# As amr_line.tape_graph_store.AREA_KINDS (this module reads files only, it imports no amr_line).
+AREA_KINDS = {"high": "HIGH", "plus": "NORMAL+"}
 
 
 def _selection(state_dir):
@@ -77,9 +80,9 @@ def check_polygon(pts):
     return out, ""
 
 
-def save_area(state_dir, ident, polygon):
-    """Write (polygon) or delete (None) one high-speed area of the selected map revision.
-    -> (ok, message)."""
+def save_area(state_dir, ident, polygon, kind="high"):
+    """Write (polygon, kind "high" | "plus") or delete (None) one speed area of the selected map
+    revision. -> (ok, message)."""
     sel = _selection(state_dir)
     if sel is None:
         return False, "no teaching map selected (Teach page: Select map)"
@@ -95,11 +98,14 @@ def save_area(state_dir, ident, polygon):
             return False, f"no area {ident} on {where}"
         msg = f"area {ident} deleted from {where}"
     else:
+        if kind not in AREA_KINDS:
+            return False, f"an area's kind is one of {', '.join(AREA_KINDS)}"
         pts, why = check_polygon(polygon)
         if pts is None:
             return False, why
-        doc[ident] = {"polygon": [[round(x, 3), round(y, 3)] for x, y in pts], "kind": "high"}
-        msg = f"area {ident} saved on {where} ({len(pts)} corners): HIGH there from the next trip on"
+        doc[ident] = {"polygon": [[round(x, 3), round(y, 3)] for x, y in pts], "kind": kind}
+        msg = (f"area {ident} saved on {where} ({len(pts)} corners): {AREA_KINDS[kind]} there from the "
+               f"next trip on")
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d, prefix=".areas.", suffix=".json")
     with os.fdopen(fd, "w") as fh:
@@ -147,6 +153,7 @@ def view(state_dir, maps_dir):
                      "label": v.get("role") or v.get("label", ""), "leg": v.get("leg"), "s": v.get("s")}
                     for k, v in marks.items() if isinstance(v, dict) and v.get("pose")]
     areas = _read(os.path.join(teach, "areas.json")) or {}
-    out["areas"] = [{"id": k, "polygon": v["polygon"]} for k, v in sorted(areas.items())
+    out["areas"] = [{"id": k, "polygon": v["polygon"], "kind": v.get("kind", "high")}
+                    for k, v in sorted(areas.items())
                     if isinstance(v, dict) and isinstance(v.get("polygon"), list)]
     return out

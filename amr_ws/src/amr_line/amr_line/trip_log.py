@@ -206,9 +206,10 @@ def report(rows):
     if zoned:
         whys = {}
         for r in zoned:
-            why = "HIGH" if r.get("high") else (r.get("high_why") or "envelope: a stop or fork is close")
+            why = ("NORMAL+" if r.get("tier") == "plus" else "HIGH") if r.get("high") else \
+                (r.get("high_why") or "envelope: a stop or fork is close")
             whys[why] = whys.get(why, 0) + 1
-        lines += ["", f"inside high-speed zones ({len(zoned) * 0.02:.0f} s running):"]
+        lines += ["", f"inside speed zones ({len(zoned) * 0.02:.0f} s running):"]
         lines += [f"  {n * 0.02:6.1f} s  {why[:90]}" for why, n in sorted(whys.items(), key=lambda x: -x[1])]
     bad = [r for r in events if r.get("level") in ("warn", "error")]
     lines += ["", f"warnings and faults ({len(bad)}):"]

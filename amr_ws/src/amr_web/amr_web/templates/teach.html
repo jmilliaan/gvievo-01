@@ -55,7 +55,7 @@
       <button data-act="mark_offset" class="big" title="A mark on the tape the other way past the mark named above, this far along it">Inbound at offset</button>
       <button data-act="mark_along" class="big" title="A mark on the same tape as the mark named above, this far onward">Along at offset</button>
     </div>
-    <p class="note"><a href="/tape-areas">High-speed areas →</a></p>
+    <p class="note"><a href="/tape-areas">Speed areas (HIGH, NORMAL+) →</a></p>
   </div>
   <div class="tabpane" data-tab="graph" hidden>
     <div class="bar">
@@ -222,7 +222,7 @@ onState(st => {
   document.querySelectorAll('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === intent));
   tiles('gd-run', [
     ['State', ln.state_name || '–', ln.hold_cause || ln.engine_state || '', ln.state_name === 'FAULT' ? 'bad' : (ln.state_name === 'HOLD' ? 'warn' : ''), 'key'],
-    ['Speed', num(ln.v_mps, 2), `m/s · ${ln.high_speed ? 'HIGH' : 'NORMAL'}`, ln.high_speed ? 'warn' : ''],
+    ['Speed', num(ln.v_mps, 2), `m/s · ${ln.speed_tier === 'plus' ? 'NORMAL+' : (ln.high_speed ? 'HIGH' : 'NORMAL')}`, ln.high_speed ? 'warn' : ''],
     ['U-turn', ln.uturn_phase || '–', 'phase'],
     ['Marker', ln.last_marker ? `code ${ln.last_marker}` : '–', 'last read'],
     ['Driven', num(ln.followed_m, 1), 'm this run'],

@@ -22,10 +22,11 @@ WHO decides: not RFID tags or marker strips, but the distance S along the trip's
                gyro gate). Over sigma_junction_m it holds once before the point: a released
                trolley may be close, and the operator's Start is the word to go on. Tape end:
                may_pivot() at S_end - lead_m, then the usual approach to where the tape ends (F5)
-    speed      NORMAL = the site's cruise_mps. HIGH inside a zone [S_a, S_b) - where the route
-               runs inside a high-speed area drawn on the map (trip_route.area_ranges) - only while
-               sigma is within sigma_junction_m (F4, no latching), under an envelope that is back at the
-               cruise by every stop, U-turn, junction fork and zone end ahead (F6)
+    speed      NORMAL = the site's cruise_mps. HIGH (or NORMAL+, 2026-11-11) inside a zone [S_a, S_b)
+               - where the route runs inside a speed area drawn on the map (trip_route.area_ranges) -
+               only while sigma is within sigma_junction_m (F4, no latching), under an envelope that
+               is back at the cruise by every stop, U-turn and junction fork ahead, and at a zone's
+               end at the speed of what follows it (the cruise, or NORMAL+ after HIGH) (F6)
     wrong      the locator's wrong-branch latch: FAULT
 
 AMCL corrects S and has no veto (tape_locator): doubt widens an order's window and is logged at a
@@ -148,14 +149,18 @@ class SiteRun(TapeRun):
         self._fork_codes = set()                    # chain: the #LCP values seen at it
         self._chain_odo = None                      # chain: odometry when the chained order was armed
         self.fork_log = []                          # finished ForkWatch reports, for the logs
+        self.forks_kept = []                        # node ids the MLS judged "ordered": for the locator
+        self._overruled = None                      # the wrong-branch text already logged as overruled
         self._step_ok = False
         self._multi_now = False
         self.decisions = []                         # (S, sigma, text): the trip's log
+        # (S, r/min): where the envelope must be down to what speed. A zone's end is a point only
+        # down to the zone that starts there, if any (HIGH -> NORMAL+ on one straight).
         self._slow = sorted(
-            [e["S"] - self.stop_distance_m for e in route.events if e["kind"] == "stop"]
-            + [self._trigger(e) for e in route.events if e["kind"] == "uturn"]
-            + [n["S_fork"] for n in route.nodes if n["kind"] == "junction"]
-            + [b for _a, b, _z in route.zones])
+            [(e["S"] - self.stop_distance_m, self.cruise) for e in route.events if e["kind"] == "stop"]
+            + [(self._trigger(e), self.cruise) for e in route.events if e["kind"] == "uturn"]
+            + [(n["S_fork"], self.cruise) for n in route.nodes if n["kind"] == "junction"]
+            + [(b, self._after_zone(b)) for _a, b, _z, _k in route.zones])
         self.events.append((INFO, f"trip {trip.describe()}: {len(route.stops) - 1} stops, "
                                   f"{sum(1 for e in route.events if e['kind'] == 'order')} orders"
                                   + (f"; {'; '.join(route.notes)}" if route.notes else "")))
@@ -209,7 +214,13 @@ class SiteRun(TapeRun):
 
     @property
     def high(self):
+        """Above the cruise in a zone: HIGH or NORMAL+ (the ceiling says which speed)."""
         return self._high
+
+    @property
+    def speed_tier(self):
+        """"normal", "plus" or "high": the zone kind while above the cruise, for LineState."""
+        return (self._zone_kind(self.S) or "normal") if self._high else "normal"
 
     @property
     def urgent_rate(self):
@@ -267,9 +278,18 @@ class SiteRun(TapeRun):
     def scan(self, now, rfid, driving, follower):
         self.sync(rfid)
         loc = self.loc or {}
-        if loc.get("wrong_branch") and self.fault is None:
-            self.fault = f"{loc['wrong_branch']}; MANUAL, jog back to the junction, Reset, Start"
-            return []
+        wb = loc.get("wrong_branch")
+        if wb and self.fault is None:
+            if loc.get("wrong_node") in {r["id"] for r in self.fork_log if r["verdict"] == "ordered"}:
+                # The MLS saw the ordered tape kept there; the node hands it to the locator, which
+                # clears the latch. Until it has, it is not a fault (2026-11-11, J-SPLIT twice).
+                if self._overruled != wb:
+                    self._overruled = wb
+                    self._decide(f"AMCL overruled: {wb}, but the MLS kept the ordered tape at "
+                                 f"{loc['wrong_node']}", WARN)
+            else:
+                self.fault = f"{wb}; MANUAL, jog back to the junction, Reset, Start"
+                return []
         self._speed()
         if driving and self.stop is None and self.uturn_req is None and self.hold_req is None:
             self._order_check()
@@ -294,6 +314,8 @@ class SiteRun(TapeRun):
     def _fork_done(self, r):
         r["S"], r["sigma"] = self.S, self._sigma()
         self.fork_log.append(r)
+        if r["verdict"] == "ordered":
+            self.forks_kept.append(r["id"])
         text = (f"fork {r['id']}: ordered {r['order']}, kept {r['kept']:+.0f} mm, "
                 f"other {r['other']:+.0f} mm, then one track at {r['single']:+.0f} mm: {r['verdict']}")
         self._decide(text, WARN if r["verdict"] == "other" else INFO)
@@ -384,6 +406,9 @@ class SiteRun(TapeRun):
             elif not self._tape_end_approach(e, follower):
                 return
             self._next += 1
+            # One stop at a time: the next event, however close, waits for this one to be left
+            # (2026-11-11: a take-back within the stop distance of a U-turn point replaced its stop).
+            return
 
     def _trigger(self, e):
         return trip_route.trigger_S(e, self.stop_distance_m)
@@ -581,7 +606,22 @@ class SiteRun(TapeRun):
     def _zone_at(self, S):
         if S is None:
             return None
-        return next((z for a, b, z in self.route.zones if a <= S < b), None)
+        return next((z for a, b, z, _k in self.route.zones if a <= S < b), None)
+
+    def _zone_kind(self, S):
+        if S is None:
+            return None
+        return next((k for a, b, _z, k in self.route.zones if a <= S < b), None)
+
+    @staticmethod
+    def _top_rpm(kind):
+        return vehicle.AUTO_PLUS_RPM if kind == "plus" else vehicle.AUTO_HIGH_RPM
+
+    def _after_zone(self, b):
+        """The speed the envelope must be down to at a zone's end b: the zone starting there, else
+        the cruise."""
+        k = next((k for a, _b, _z, k in self.route.zones if abs(a - b) < 1e-6), None)
+        return self.cruise if k is None else max(self.cruise, self._top_rpm(k))
 
     def _speed(self):
         S = self.S
@@ -601,15 +641,18 @@ class SiteRun(TapeRun):
                                                            else ""))
         if z is not None and z != self._blocked and healthy and self._step_ok and self.stop is None \
                 and self.uturn_req is None and not settling:
-            ceiling = vehicle.AUTO_HIGH_RPM
+            top = self._top_rpm(self._zone_kind(S))
+            ceiling = top
             a = self.a_rpm_s * vehicle.MPS_PER_RPM
             v_c = cruise * vehicle.MPS_PER_RPM
-            for p in self._slow:
+            for p, v_p in self._slow:
                 if p < S:
                     continue
-                v = math.sqrt(v_c * v_c + 2.0 * a * max(0.0, p - S - ENVELOPE_MARGIN_M))
-                ceiling = min(ceiling, v * vehicle.RPM_PER_MPS)
-                if v * vehicle.RPM_PER_MPS >= vehicle.AUTO_HIGH_RPM:
+                d = max(0.0, p - S - ENVELOPE_MARGIN_M)
+                v_p *= vehicle.MPS_PER_RPM
+                ceiling = min(ceiling, math.sqrt(v_p * v_p + 2.0 * a * d) * vehicle.RPM_PER_MPS)
+                # Every point further on is at least the cruise, further away: none can bind.
+                if math.sqrt(v_c * v_c + 2.0 * a * d) * vehicle.RPM_PER_MPS >= top:
                     break
         if self._creeping is not None:
             ceiling = min(ceiling, self.creep)

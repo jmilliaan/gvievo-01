@@ -98,14 +98,20 @@ def test_what_is_not_taught_is_named_and_only_the_trips_own_stations_count():
 def test_a_high_speed_area_becomes_ranges_wherever_the_trip_runs_inside_it():
     m = site(trip_calls=1)
     r = trr.compile_trip(trip(m, "M1"), m, graph(m), areas=AREAS)
-    # out along x 11..17 (S 21..27); back over the same tape after the cut at S 31 (entered at s 9)
-    assert r.zones == [(pytest.approx(21.0), pytest.approx(27.0), "Z-LINE"),
-                       (pytest.approx(35.0), pytest.approx(41.0), "Z-LINE")]
+    # out along x 11..17 (S 21..27, but from 21.25: 1 m after the corner onto the line at S 20 the AGV
+    # is still straightening, trr.CURVE_SETTLE_M); back over the same tape after the cut at S 31
+    assert r.zones == [(pytest.approx(21.25), pytest.approx(27.0), "Z-LINE", "high"),
+                       (pytest.approx(35.0), pytest.approx(41.0), "Z-LINE", "high")]
     assert trr.compile_trip(trip(m, "M1"), m, graph(m)).zones == []
     # a corner of an area clipping the tape for less than AREA_MIN_M is no zone
     nick = {"N": {"polygon": [(4.0, -0.2), (4.5, -0.2), (4.5, 0.2), (4.0, 0.2)], "kind": "high"}}
     assert trr.compile_trip(trip(m, "M1"), m, graph(m), areas=nick).zones == []
     assert trr.inside([(0, 0), (2, 0), (2, 2), (0, 2)], 1, 1)
+    # an unknown kind is no area at all (NORMAL), a missing one is HIGH
+    odd = {"Z-LINE": {**AREAS["Z-LINE"], "kind": "turbo"}}
+    assert trr.compile_trip(trip(m, "M1"), m, graph(m), areas=odd).zones == []
+    bare = {"Z-LINE": {"polygon": AREAS["Z-LINE"]["polygon"]}}
+    assert trr.compile_trip(trip(m, "M1"), m, graph(m), areas=bare).zones == r.zones
     assert not trr.inside([(0, 0), (2, 0), (1, 2)], 1.9, 1.9)
 
 
@@ -146,3 +152,58 @@ def test_a_steered_merge_is_armed_like_an_order_and_keeps_its_leg_name():
     plain = site()
     r = trr.compile_trip(trip(plain, "M1"), plain, graph(plain))
     assert [e["id"] for e in r.events if e["kind"] == "order"] == ["J-B", "J-C"], "unsteered: no order"
+
+
+# A NORMAL+ patch over x 13..15 of Z-LINE: S 23..25 on the way out, 37..39 on the way back.
+PATCH = {"P-TRAFFIC": {"polygon": [(12.98, 9.5), (15.02, 9.5), (15.02, 10.5), (12.98, 10.5)], "kind": "plus"}}
+
+
+def test_a_normal_plus_area_over_a_high_one_wins_where_they_overlap():
+    m = site(trip_calls=1)
+    r = trr.compile_trip(trip(m, "M1"), m, graph(m), areas={**AREAS, **PATCH})
+    out = [z for z in r.zones if z[0] < 30.0]
+    assert [(z[2], z[3]) for z in out] == [("Z-LINE", "high"), ("P-TRAFFIC", "plus"), ("Z-LINE", "high")]
+    assert out[0][0] == pytest.approx(21.25) and out[2][1] == pytest.approx(27.0)
+    assert out[1][0] == pytest.approx(23.0, abs=0.06) and out[1][1] == pytest.approx(25.0, abs=0.06)
+    # contiguous: the engine never sees a gap between HIGH and NORMAL+ on one straight
+    assert out[0][1] == out[1][0] and out[1][1] == out[2][0]
+    back = [(z[2], z[3]) for z in r.zones if z[0] >= 30.0]
+    assert back == [("Z-LINE", "high"), ("P-TRAFFIC", "plus"), ("Z-LINE", "high")]
+
+
+def test_a_short_normal_plus_patch_still_wins_and_alone_is_a_zone_by_the_same_rule():
+    m = site(trip_calls=1)
+    short = {"P": {"polygon": [(13.98, 9.5), (14.48, 9.5), (14.48, 10.5), (13.98, 10.5)], "kind": "plus"}}
+    r = trr.compile_trip(trip(m, "M1"), m, graph(m), areas={**AREAS, **short})
+    kinds = [(z[2], z[3]) for z in r.zones if z[0] < 30.0]
+    assert kinds == [("Z-LINE", "high"), ("P", "plus"), ("Z-LINE", "high")], "0.5 m inside HIGH: kept"
+    # alone, 0.5 m of tape is an area's corner clipping it, as for HIGH: no zone
+    assert trr.compile_trip(trip(m, "M1"), m, graph(m), areas=short).zones == []
+    only = trr.compile_trip(trip(m, "M1"), m, graph(m), areas=PATCH).zones
+    assert [(z[2], z[3]) for z in only] == [("P-TRAFFIC", "plus")] * 2
+
+
+def test_curved_tape_and_the_metre_after_it_are_no_zone_even_inside_an_area():
+    """2026-11-11: STR-TO-ATT began on the end of the bend after HOME-N2, HS-BOIAC-MRU on the BTU curve
+    into J-ML; the AGV sped up still turning and the curve guard took the whole zone away."""
+    m = site(trip_calls=1)
+    g = graph(m)
+    r = trr.compile_trip(trip(m, "M1"), m, g)
+    samples = trr._samples(r.segments, trr.AREA_STEP_M)
+    bent = trr.curved(samples, 0.25)
+    off = [S for (S, *_), b in zip(samples, bent, strict=True) if b]
+    # the corner at S 20 (J-A:merge>J-B onto J-B:right>U): from half a chord before it to the settle after
+    assert min(S for S in off if S > 15) == pytest.approx(20.0 - trr.CURVE_CHORD_M / 2, abs=0.06)
+    settled = 20.0 + trr.CURVE_CHORD_M / 2 + trr.CURVE_SETTLE_M
+    assert max(S for S in off if S < 25) == pytest.approx(settled, abs=0.06)
+    assert not any(b for (S, *_), b in zip(samples, bent, strict=True) if 22.0 < S < 30.0), "straight"
+    # the cut at the mid-line U-turn reverses the heading: a curve too
+    assert any(b for (S, *_), b in zip(samples, bent, strict=True) if abs(S - 31.0) < 0.1)
+    # an area over the corner: before it a zone, through it and the settle none, after it too short
+    # (and on the way back, straight through the same box at S 40: a zone)
+    corner = {"C": {"polygon": [(9.0, 8.0), (12.0, 8.0), (12.0, 11.0), (9.0, 11.0)], "kind": "high"}}
+    zones = trr.compile_trip(trip(m, "M1"), m, g, areas=corner).zones
+    assert [(z[2], round(z[0], 1)) for z in zones] == [("C", 18.0), ("C", 40.0)]
+    assert zones[0][1] < 20.0 - trr.CURVE_CHORD_M / 2 + 0.01
+    # a looser limit (a gentle site) keeps the old behaviour on this straight
+    assert trr.area_ranges(r.segments, AREAS, kappa_max=100.0)[0][0] == pytest.approx(21.0)

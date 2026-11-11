@@ -276,10 +276,12 @@ def test_site_mission_positions():
     _with_points(d)
     m = mission.parse_site(d)
     plain = mission.load_site("site-103")
-    check("site-103 cruises at 0.4 m/s; MRU1-3 turn at their U-turn points, MRU4 at the tape end; a "
+    # 2026-11-11: MRU4 too - the line was extended 1 m and MRU4 releases and turns at its edge.
+    check("site-103 cruises at 0.4 m/s; MRU1-4 turn at their U-turn points; a "
           "U-turn point is its machine's, on the release leg",
-          plain["CRUISE_MPS"] == 0.4 and sorted(plain["UTURN_POINTS"]) == ["UT-MRU1", "UT-MRU2", "UT-MRU3"]
-          and "uturn" not in plain["GROUPS"]["MRU"]["machines"]["MRU4"]
+          plain["CRUISE_MPS"] == 0.4
+          and sorted(plain["UTURN_POINTS"]) == ["UT-MRU1", "UT-MRU2", "UT-MRU3", "UT-MRU4"]
+          and plain["GROUPS"]["MRU"]["machines"]["MRU4"]["uturn"] == "UT-MRU4"
           and m["UTURN_POINTS"]["UT-MRU4"]["machine"] == "MRU4"
           and plain["CIRCUITS"]["C-MRU"]["steers"] == {"J-STEM:merge": "left"}
           and set(m["POINTS"].values()) == {"J-ML:merge>U-MRU"}, str(m["POINTS"]))

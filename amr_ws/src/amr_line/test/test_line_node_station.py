@@ -168,3 +168,25 @@ def test_the_order_service_only_latches(node):
 def test_order_state_publishes_with_the_jobs_fields(node):
     node._publish_order(force=True)
     assert node._order_published["not_ready"] == [] and node._order_published["driving"] is False
+
+
+def _buttons(node, auto, start, reset, start_edge=False, reset_edge=False):
+    node._on_panel(types.SimpleNamespace(valid=True, mode_auto=auto, start_edge=start_edge,
+                                         reset_edge=reset_edge, start_held=start, reset_held=reset))
+
+
+@pytest.mark.parametrize("node", [True, False], indirect=True)
+def test_start_and_reset_held_under_manual_is_at_home(node):
+    """2026-11-11: the panel's At home. Same checks as the web's: MANUAL, idle, wheels still."""
+    from amr_line import home_combo
+
+    node.tapeloc = FakeLoc()
+    node._home_combo = home_combo.HomeCombo(hold_s=0.0)
+    _buttons(node, True, True, False, start_edge=True)
+    _buttons(node, True, True, True, reset_edge=True)
+    assert not hasattr(node.tapeloc, "fresh_ready"), "never under AUTO"
+    _buttons(node, False, False, False)
+    _buttons(node, False, True, False, start_edge=True)
+    assert not hasattr(node.tapeloc, "fresh_ready"), "Start alone"
+    _buttons(node, False, True, True, reset_edge=True)
+    assert node.tapeloc.fresh_ready is node.job.calling, "At home, as the web's"

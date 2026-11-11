@@ -2,12 +2,20 @@
 // newest recorded pass), the junction anchors, the stations and the marks - drawn only on the
 // map revision they were taught on. Read-only: /api/line/graph, polled every 5 s while visible.
 let tapeGraph = null;
+// Speed area kinds (amr_line.tape_graph_store.AREA_KINDS): HIGH 0.85 m/s, NORMAL+ 0.65 m/s.
+const areaInk = kind => kind === 'plus' ? { name: 'NORMAL+', fill: INK.route, line: INK.route }
+                                        : { name: 'HIGH', fill: INK.preview, line: INK.turn };
 function graphOverlay(view) {
   view.overlays.push((c, v) => {
     const g = tapeGraph;
     if (!g || !g.available || !v.meta) return;
     if (v.meta.map_id !== g.map_id || +v.meta.revision !== +g.map_revision) return;
-    (g.areas || []).forEach(a => { v.fillPolygon(a.polygon, alpha(INK.preview, 0.18), INK.turn); v.text(a.polygon[0][0], a.polygon[0][1], `HIGH ${a.id}`, INK.turn); });
+    // Speed areas: HIGH first, NORMAL+ over it - where they overlap the slower wins (trip_route).
+    [...(g.areas || [])].sort((a, b) => (a.kind === 'plus') - (b.kind === 'plus')).forEach(a => {
+      const ink = areaInk(a.kind);
+      v.fillPolygon(a.polygon, alpha(ink.fill, 0.18), ink.line);
+      v.text(a.polygon[0][0], a.polygon[0][1], `${ink.name} ${a.id}`, ink.line);
+    });
     g.legs.forEach(l => v.polyline(l.pts, alpha(INK.route, 0.85), 3));
     if (g.pass) { c.setLineDash([6, 4]); v.polyline(g.pass.pts, alpha(INK.route, 0.85), 3); c.setLineDash([]); }
     g.anchors.forEach(a => { v.dot(a.x, a.y, INK.turn, 5); v.text(a.x, a.y, a.id, INK.turn); });

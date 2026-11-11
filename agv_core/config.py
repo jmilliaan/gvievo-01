@@ -464,6 +464,10 @@ _SCHEMA = {
         # k_ratio/kd are the NORMAL (corner) gains, high_k_ratio/high_kd the HIGH
         # (straight) gains; the follower interpolates between them on its own speed.
         "auto_high_ratio":     ("AUTO_HIGH_RATIO", float),
+        # NORMAL+ (2026-11-11): a third tracked speed between NORMAL and HIGH, auto_rpm x
+        # auto_plus_ratio (1.3 -> 0.65 m/s), only inside a "plus" area drawn on the map: short
+        # straights and straights with traffic. Trips only (amr_line.site_run); AUTO_PLUS_RPM is derived.
+        "auto_plus_ratio":     ("AUTO_PLUS_RATIO", float),
         "high_k_ratio":        ("HIGH_K_RATIO", float),
         "high_kd":             ("HIGH_KD", float),
         "high_ramp_s":         ("HIGH_RAMP_S", float),
@@ -978,6 +982,7 @@ def _derive(ns):
     ns["MAX_SPEED_MPS"] = ns["MOTOR_MAX_RPM"] * ns["MPS_PER_RPM"]  # 1.2566 m/s
     # HIGH follows NORMAL (the junction slow zone and the RFID toggle are retired).
     ns["AUTO_HIGH_RPM"] = ns["AUTO_RPM"] * ns["AUTO_HIGH_RATIO"]
+    ns["AUTO_PLUS_RPM"] = ns["AUTO_RPM"] * ns["AUTO_PLUS_RATIO"]
 
     # 6083h caps both the forward ramp and the rate at which the wheel
     # DIFFERENCE can slew, so it is also the ceiling on yaw acceleration -
@@ -1240,6 +1245,8 @@ def _validate(ns):
           "autopilot.auto_high_ratio must be in (1, 2]: HIGH is that multiple of auto_rpm")
     check(g("AUTO_RPM") * g("AUTO_HIGH_RATIO") <= g("MOTOR_MAX_RPM"),
           "autopilot: auto_rpm x auto_high_ratio must not exceed vehicle.motor_max_rpm")
+    check(1 < g("AUTO_PLUS_RATIO") < g("AUTO_HIGH_RATIO"),
+          "autopilot.auto_plus_ratio must be in (1, auto_high_ratio): NORMAL+ lies between NORMAL and HIGH")
     check(g("HIGH_K_RATIO") > 0 and g("HIGH_KD") >= 0,
           "autopilot: need high_k_ratio > 0 and high_kd >= 0")
     check(0.5 <= g("HIGH_RAMP_S") <= 10, "autopilot.high_ramp_s must be in [0.5, 10] s")
@@ -1492,6 +1499,7 @@ _DERIVED = (
     ("WHEEL_RAD_S_PER_MOTOR_RPM", "2\u03c0 / (60 \u00b7 gear_ratio)"),
     ("MAX_SPEED_MPS", "motor_max_rpm \u00b7 MPS_PER_RPM"),
     ("AUTO_HIGH_RPM", "autopilot.auto_rpm \u00b7 auto_high_ratio - the tracked HIGH speed"),
+    ("AUTO_PLUS_RPM", "autopilot.auto_rpm \u00b7 auto_plus_ratio - the tracked NORMAL+ speed"),
     ("ACCEL_RPM_S", "drivers.ramp.auto.accel"),
     ("DECEL_RPM_S", "drivers.ramp.auto.decel"),
     ("HORN_HOLD_S", "max(5 \u00b7 loop_period_s, 2 \u00b7 dio.scan_period_s) - "

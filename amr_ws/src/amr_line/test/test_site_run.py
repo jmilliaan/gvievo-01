@@ -10,6 +10,7 @@ from agv_core import config as vehicle  # noqa: E402
 from line_fixtures import counts_for_angle  # noqa: E402
 from site_fixture import AREAS, graph, site  # noqa: E402
 from test_mission_engine import CENTRED, NO_TAPE, PER_REV, World  # noqa: E402
+from test_trip_route import PATCH  # noqa: E402
 
 from amr_line import job as lj  # noqa: E402
 from amr_line import site_run  # noqa: E402
@@ -29,6 +30,7 @@ class TripWorld(World):
     def __init__(self, m, g, sigma=0.01, params=None):
         self.m, self.g = m, g
         self.sigma, self.lost, self.wrong = sigma, "", ""
+        self.wrong_node = ""
         self.bias = 0.0                 # the locator's S minus the true S: AMCL out, wheels off
         self.amcl_out = ""
         self.extra_fork = None          # (S_a, S_b): two tracks where no junction is taught
@@ -50,7 +52,8 @@ class TripWorld(World):
         S = self.S + self.bias
         home = min((S - r.S_start, S - r.S_end), key=abs) if r else S - 5.0
         return {"route": ident, "started": True, "S": S, "sigma": self.sigma, "health": "HEALTHY",
-                "lost": self.lost, "amcl_out": self.amcl_out, "wrong_branch": self.wrong, "home_offset": home}
+                "lost": self.lost, "amcl_out": self.amcl_out, "wrong_branch": self.wrong,
+                "wrong_node": self.wrong_node, "home_offset": home}
 
     def tape(self):
         r = self.route
@@ -189,7 +192,7 @@ def test_high_inside_a_high_speed_area_and_back_to_the_cruise_before_it_ends():
     while w.S < w.route.zones[0][1] + 0.5 and w.job.state == lj.RUNNING:
         w.tick()
         high.append((w.S, w.job.tape.high, w.job.diag.get("v_base", 0.0)))
-    a, b, _z = w.route.zones[0]
+    a, b, _z, _k = w.route.zones[0]
     assert any(h for S, h, _v in high if a <= S < b), "HIGH granted inside the zone"
     assert not any(h for S, h, _v in high if S < a), "never before it"
     top = max(v for _S, _h, v in high)
@@ -477,6 +480,28 @@ def test_a_release_not_recorded_holds_payload_at_the_u_turn_point():
     assert w.job.tape.phase == "back"
 
 
+def test_amcl_wrong_tape_at_a_fork_the_mls_judged_ordered_is_overruled_not_a_fault():
+    """2026-11-11, J-SPLIT twice: AMCL drifted (pillars mapped 0.2 m off), the MLS kept the ordered
+    tape, AMCL's wrong-tape latch faulted the trip. The MLS verdict outranks it now."""
+    w = one_call()
+    w.job.trip_call("M1", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    go_on(w)
+    jb = next(n for n in w.route.nodes if n["id"] == "J-B")
+    assert w.until(lambda: w.S > jb["S"] + 1.0, 60.0), w.job.reason
+    assert [(r["id"], r["verdict"]) for r in w.job.tape.fork_log] == [("J-B", "ordered")]
+    assert w.job.tape.forks_kept == ["J-B"], "handed to the locator by the node"
+    w.wrong, w.wrong_node = "wrong tape after J-B: ordered right, AMCL moved 1.10 m to the left", "J-B"
+    w.drive(1.0)
+    assert w.job.state == lj.RUNNING, w.job.reason
+    assert "AMCL overruled" in log_of(w)
+    # a latch about a fork the MLS did not judge still faults
+    w.wrong, w.wrong_node = "wrong branch at J-C: ordered left", "J-C"
+    w.tick()
+    assert w.job.state == lj.FAULT and "J-C" in w.job.reason
+
+
 def test_a_wrong_branch_faults_and_aborts_the_trip():
     w = one_call()
     w.job.trip_call("M1", w.t)
@@ -565,7 +590,7 @@ def test_high_comes_back_on_the_return_through_the_same_zone():
     w.job.trip_call("M1", w.t)
     w.start()
     t = w.job.tape
-    t.route.zones = [(0.0, 1e6, "Z")]
+    t.route.zones = [(0.0, 1e6, "Z", "high")]
     parked_at(w, "ATT")
     go_on(w)
     parked_at(w, "MW-1")
@@ -591,8 +616,88 @@ def test_a_block_on_the_way_out_still_lasts_for_that_pass():
     w.job.trip_call("M1", w.t)
     w.start()
     t = w.job.tape
-    t.route.zones = [(0.0, 1e6, "Z")]
+    t.route.zones = [(0.0, 1e6, "Z", "high")]
     assert w.until(lambda: t.high, 30.0), (t.high_why, w.S)
     t.drop_high("a hold")
     w.drive(1.0)
     assert not t.high and "taken away" in t.high_why
+
+
+def plus_world(areas):
+    w = one_call()
+    w.job.configure_site(w.params, lambda trip: trr.compile_trip(trip, w.m, w.g, areas=areas))
+    return w
+
+
+def drive_out_through_the_zones(w):
+    w.job.trip_call("M1", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    go_on(w)
+    seen = []
+    end = max(b for _a, b, _z, _k in w.route.zones if b < 30.0)
+    while w.S < end + 0.5 and w.job.state == lj.RUNNING:
+        w.tick()
+        seen.append((w.S, w.job.tape.speed_tier, w.job.diag.get("v_base", 0.0)))
+    return seen
+
+
+PLUS = vehicle.AUTO_PLUS_RPM
+
+
+def test_normal_plus_alone_holds_its_own_speed_and_is_back_at_the_cruise_by_its_end():
+    w = plus_world({"P": {**AREAS["Z-LINE"], "kind": "plus"}})
+    seen = drive_out_through_the_zones(w)
+    a, b, _z, kind = w.route.zones[0]
+    assert kind == "plus"
+    inside = [v for S, _t, v in seen if a <= S < b]
+    assert max(inside) == pytest.approx(PLUS, abs=2.0), "NORMAL+, never HIGH"
+    assert any(t == "plus" for S, t, _v in seen if a <= S < b)
+    assert not any(t == "high" for _S, t, _v in seen)
+    at_end = [v for S, _t, v in seen if S >= b - 0.05]
+    assert at_end and max(at_end) <= CRUISE + 15.0, "the envelope is back at the cruise by the zone end"
+    assert w.job.mission_snapshot()["speed_tier"] in ("normal", "plus")
+
+
+def test_high_then_normal_plus_on_one_straight_slows_to_normal_plus_not_to_the_cruise():
+    w = plus_world({**AREAS, **PATCH})
+    seen = drive_out_through_the_zones(w)
+    (_a0, b0, _z0, k0), (a1, b1, _z1, k1) = w.route.zones[0], w.route.zones[1]
+    assert (k0, k1) == ("high", "plus") and b0 == a1
+    first = [v for S, _t, v in seen if S < b0]
+    assert max(first) > PLUS + 50.0, "HIGH before the patch"
+    at_patch = [v for S, _t, v in seen if b0 - 0.05 <= S < b0 + 0.3]
+    assert at_patch and max(at_patch) <= PLUS + 15.0, "down to NORMAL+ by the patch"
+    assert min(at_patch) >= PLUS - 60.0, "and not on down to the cruise"
+    patch = [v for S, _t, v in seen if a1 + 0.3 <= S < b1]
+    assert patch and max(patch) <= PLUS + 1.0
+    assert any(t == "plus" for S, t, _v in seen if a1 <= S < b1)
+
+
+def test_a_u_turn_point_at_the_release_pivots_on_the_start_after_the_release():
+    """MRU4, 2026-11-11: release and U-turn at the line's edge, the point 0.02 m past the release (a
+    point at the release is refused). The AGV stops once, the operator releases and presses Start,
+    and it pivots where it stands: no second stop, no creep past the edge."""
+    from site_fixture import tt  # noqa: PLC0415
+    m = site(trip_calls=1)
+    g = graph(m)
+    x, y, h = g.legs["J-B:right>U"].line.point(8.02)
+    g.put_station(tt.project_station(g, m, "UT-M1", (x, y, h)))
+    x, y, h = g.legs["U:pivot>J-C"].line.point(13.8)      # the take-back 1.8 m past the pivot, as ME-4
+    g.put_station(tt.project_station(g, m, "ME-1", (x, y, h)))
+    w = TripWorld(m, g)
+    w.job.trip_call("M1", w.t)
+    w.start()
+    parked_at(w, "ATT")
+    go_on(w)
+    assert abs(parked_at(w, "MW-1")) < 0.05
+    rest = w.S
+    go_on(w)
+    assert w.until(lambda: w.job.tape.uturn_req is not None, 10.0), (w.job.reason, w.S)
+    assert w.S - rest < 0.06, f"pivots where it stood: moved {w.S - rest:.3f} m"
+    assert w.job.state == lj.RUNNING and w.job.hold_cause == "", "no second hold before the pivot"
+    spin(w)
+    assert abs(parked_at(w, "ME-1")) < 0.05
+    go_on(w)
+    assert w.until(lambda: w.job.state == lj.DONE, 200.0), (w.job.reason, w.S)
+    assert "served" in w.job.reason

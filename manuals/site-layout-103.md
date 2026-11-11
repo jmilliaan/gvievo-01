@@ -121,7 +121,7 @@ J-ML **right** (joins the trunk) → J-STEM **left** → J-SMERGE → J-SPLIT **
 **C-MRU:** bay → J-BMERGE → U-turn R717 (empty) → ATT → J-N **right** → X1 **straight** → J-ML (straight) → trunk
 north → MRU line west (MW stops) → U-MRU **pivot** → MRU line east (ME stops)
 → trunk south → J-ML **left** → J-STEM **left** → J-SMERGE → J-SPLIT **right** → HOME-N2 (south bay).
-A trip to MRU1, MRU2 or MRU3 pivots at its mid-line point `UT-MRU1` to `UT-MRU3`, just past its release. Only MRU4 reaches U-MRU.
+Every MRU trip releases and pivots at one place (2026-11-11, graph g9): the AGV stops at `MW-n`, the operator releases the trolley and presses Start, and the AGV pivots where it stands at `UT-MRUn`, 0.02 m further on (a point at its release is refused), then drives to `ME-n` to attach. MRU1-3: at the midpoint of the old release and U-turn point. MRU4: 0.3 m past the old tape end; the tape was extended 1 m west (g8), so the AGV stops 0.7 m short of the new end and never reaches it. `ME-1`..`ME-3` unchanged; `ME-4` 1 m east of the old tape end. No trip uses U-MRU any more; it stays the circuit's end.
 
 All tape is laid (D12). Two C-BTU laps ran on 2026-11-07 (194 m) and graph g7 holds the route (`documentation/layout-reference/tape-graph-g4/g7-overview.png`), added with `amr_line.tape_merge`,
 not Build (`manuals/tape-localization-runbook.md` section 3.2B). `J-LV` is `laid: true`; C-MRU does not pass it.

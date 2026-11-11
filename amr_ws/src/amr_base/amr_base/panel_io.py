@@ -47,6 +47,9 @@ class PanelFrame:
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
     manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
+    # Debounced levels of Start and Reset (2026-11-11, the At home combination). False while invalid.
+    start_held: bool = False
+    reset_held: bool = False
 
 
 def raw_hex(di) -> str:
@@ -148,6 +151,8 @@ class PanelAdapter:
                 comms_ok=True,
                 pendant=self._last_frame.pendant,
                 manual_arm=self._last_frame.manual_arm,
+                start_held=self._last_frame.start_held,
+                reset_held=self._last_frame.reset_held,
             )
         self._last_scans = scans
         self._acq += 1
@@ -212,6 +217,8 @@ class PanelAdapter:
             changed="; ".join(notes) or None,
             pendant=pend,
             manual_arm=arm,
+            start_held=bool(intent.valid and intent.start_held),
+            reset_held=bool(intent.valid and intent.reset_held),
         )
         self._last_frame = frame
         return frame

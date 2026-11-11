@@ -46,8 +46,11 @@ AUTO, MANUAL = "auto", "manual"
 # reset/start  - rising edge this scan
 # mode         - selector position, or None before the first baseline
 # mode_changed - the selector moved on this scan
+# reset_held / start_held - the debounced LEVEL (2026-11-11, the At home combination: Start and
+#                Reset held together). Information only: motion still enters on the edges alone.
 PanelIntent = namedtuple("PanelIntent",
-                         "valid reset start mode mode_changed")
+                         "valid reset start mode mode_changed reset_held start_held",
+                         defaults=(False, False))
 
 IDLE_INTENT = PanelIntent(valid=False, reset=False, start=False,
                           mode=None, mode_changed=False)
@@ -122,7 +125,8 @@ class PanelScan:
             reset=now_reset and not was_reset,      # rising edge, hazard 1
             start=now_start and not was_start,
             mode=AUTO if now_auto else MANUAL,
-            mode_changed=now_auto != was_auto)
+            mode_changed=now_auto != was_auto,
+            reset_held=now_reset, start_held=now_start)
 
     def _steady(self):
         """A trusted image with no edges, or nothing if not yet baselined."""
@@ -130,7 +134,8 @@ class PanelScan:
             return IDLE_INTENT
         return PanelIntent(valid=True, reset=False, start=False,
                            mode=AUTO if self._stable[2] else MANUAL,
-                           mode_changed=False)
+                           mode_changed=False,
+                           reset_held=self._stable[0], start_held=self._stable[1])
 
     def mode(self):
         """Selector position for display, or None before the first baseline."""

@@ -169,6 +169,8 @@ class PanelNode(LeanNode):
         m.seq = frame.seq
         m.pendant_fwd, m.pendant_rvs, m.pendant_left, m.pendant_right = frame.pendant
         m.manual_arm = frame.manual_arm
+        if hasattr(m, "start_held"):  # amr_interfaces not rebuilt yet: publish without the levels
+            m.start_held, m.reset_held = frame.start_held, frame.reset_held
         self._pub.publish(m)
         if self._ui.due(time.monotonic()):
             self._pub_ui.publish(m)

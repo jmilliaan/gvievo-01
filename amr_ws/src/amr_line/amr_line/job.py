@@ -1864,6 +1864,8 @@ class FollowJob:
             "branch_intent": t.branch.ladder.intent(),
             "slow_zone": False,   # junction slow zones retired 2026-10-09 (slow_speed); the field stays
             "high_speed": bool(t.high),
+            # NORMAL+ (2026-11-11): a trip's zones say which speed; marker runs know HIGH only
+            "speed_tier": getattr(t, "speed_tier", "high" if t.high else "normal"),
             "speed_select": t.speed_select,
             "speed_reason": t.speed.reason,
             "uturn_phase": (u.get("phase") or "") if u.get("active") else "",

@@ -100,7 +100,16 @@ def test_high_speed_areas_are_drawn_by_the_engineer_on_the_teaching_map(tmp_path
     r = client.post("/api/line/areas", json={"id": "H-1", "polygon": sq})
     assert r.status_code == 200 and "H-1 saved on m rev2" in r.get_json()["message"]
     assert json.load(open(areas)) == {"H-1": {"polygon": sq, "kind": "high"}}
-    assert tapegraph_view.view(sd, str(tmp_path))["areas"] == [{"id": "H-1", "polygon": sq}]
+    assert tapegraph_view.view(sd, str(tmp_path))["areas"] == [{"id": "H-1", "polygon": sq, "kind": "high"}]
+    # NORMAL+ (2026-11-11): a kind; the same id saved again changes it without redrawing
+    r = client.post("/api/line/areas", json={"id": "H-1", "polygon": sq, "kind": "plus"})
+    assert r.status_code == 200 and "NORMAL+ there" in r.get_json()["message"]
+    assert json.load(open(areas)) == {"H-1": {"polygon": sq, "kind": "plus"}}
+    assert tapegraph_view.view(sd, str(tmp_path))["areas"][0]["kind"] == "plus"
+    for bad_kind in ("turbo", None, 1):
+        r = client.post("/api/line/areas", json={"id": "H-1", "polygon": sq, "kind": bad_kind})
+        assert r.status_code == 422 and "kind" in r.get_json()["message"], bad_kind
+    assert json.load(open(areas))["H-1"]["kind"] == "plus", "a refused kind leaves the file as it was"
     sliver = [[0, 0], [0.1, 0], [0, 0.1]]
     for bad in ({"id": "H 2", "polygon": sq}, {"id": "H-2", "polygon": sq[:2]},
                 {"id": "H-2", "polygon": sliver}, {"id": "H-2", "polygon": [[0, "a"]] * 3}):

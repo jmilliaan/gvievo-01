@@ -25,6 +25,8 @@ from amr_line import tape_graph as tg
 GRAPH_DIR = "tapegraph"
 REV_RE = re.compile(r"^g(\d+)$")
 POINTER = "line_graph.json"
+# Speed area kinds, slowest first (trip_route.area_ranges: where areas overlap the slower wins).
+AREA_KINDS = ("plus", "high")
 
 
 class StoreError(RuntimeError):
@@ -218,8 +220,9 @@ def save_stations(state_dir, map_id, map_revision, stations):
 
 
 def load_areas(state_dir, map_id, map_revision):
-    """{area id: {"polygon": [[x, y], ...], "kind": "high"}} - high-speed areas drawn on this map
-    revision (tracked plan 4, 2026-10-25; the /tape-areas page writes them). {} when none."""
+    """{area id: {"polygon": [[x, y], ...], "kind": "high"|"plus"}} - speed areas drawn on this map
+    revision (tracked plan 4, 2026-10-25; the /tape-areas page writes them). kind "plus" is NORMAL+
+    (2026-11-11); a missing kind is "high"; an unknown kind is skipped (no area: NORMAL). {} when none."""
     try:
         with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "areas.json")) as fh:
             doc = json.load(fh)
@@ -233,8 +236,9 @@ def load_areas(state_dir, map_id, map_revision):
             poly = [(float(p[0]), float(p[1])) for p in v["polygon"]]
         except (KeyError, TypeError, ValueError, IndexError):
             continue
-        if len(poly) >= 3 and v.get("kind", "high") == "high":
-            out[str(k)] = {"polygon": poly, "kind": "high"}
+        kind = v.get("kind", "high")
+        if len(poly) >= 3 and kind in AREA_KINDS:
+            out[str(k)] = {"polygon": poly, "kind": kind}
     return out
 
 

@@ -255,7 +255,19 @@ class TapeRuntime:
         r = loc.route
         return {"route": getattr(r, "ident", f"circuit:{r.circuit}"), "started": loc.started, "S": loc.S,
                 "sigma": loc.sigma, "health": loc.health, "lost": loc.lost, "amcl_out": loc.amcl_out,
-                "wrong_branch": loc.wrong_branch, "home_offset": self._home_offset()}
+                "wrong_branch": loc.wrong_branch, "wrong_node": loc.wrong_node,
+                "home_offset": self._home_offset()}
+
+    def confirm_fork(self, node_id):
+        """The trip's MLS kept the ordered tape at node_id (TapeLocator.confirm_fork). A message when
+        it cleared a latched AMCL wrong-branch, else ""."""
+        loc = self.loc
+        if loc is None:
+            return ""
+        why = loc.wrong_branch
+        if loc.confirm_fork(node_id):
+            return f"AMCL overruled at {node_id}: the MLS kept the ordered tape ({why})"
+        return ""
 
     def _start_locator(self, t, travel):
         self.pending_home = False
@@ -278,8 +290,9 @@ class TapeRuntime:
             if hit is not None:
                 what = f"U-turn point of {self.m['UTURN_POINTS'][pid]['machine']}"
                 points.append((hit - self.m["STOP_DISTANCE_M"], pid, what))
-        for a, b, aid in trip_route.area_ranges(self.route.segments, self._areas()):
-            points += [(a, aid, "high-speed area: HIGH from"), (b, aid, "high-speed area: NORMAL by")]
+        for a, b, aid, kind in trip_route.area_ranges(self.route.segments, self._areas()):
+            what = "NORMAL+ area: NORMAL+" if kind == "plus" else "high-speed area: HIGH"
+            points += [(a, aid, f"{what} from"), (b, aid, f"{what.split(':')[0]}: NORMAL by")]
         return tl.Shadow(self.route, self.p, self.m["STOP_DISTANCE_M"], self.m["UTURNS"], points,
                          self.m["CIRCUITS"][self.route.circuit].get("steers"))
 

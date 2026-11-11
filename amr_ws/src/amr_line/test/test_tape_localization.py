@@ -410,6 +410,70 @@ def test_the_wrong_lane_faults_even_with_no_other_leg_taught_and_amcl_out():
     assert "wrong tape after J-B" in loc.wrong_branch and loc.health == tl.LOST
 
 
+def _drifting(route, d_of_S):
+    def pose(S):
+        x, y, h = route.point(S)
+        d = d_of_S(S)
+        return x - d * math.sin(h), y + d * math.cos(h), h
+    return pose
+
+
+def test_amcl_already_off_before_the_fork_is_not_the_wrong_lane():
+    """2026-11-11, MRU4 at J-SPLIT: AMCL drifted 0.6 m left in the 2 m BEFORE the fork, where there is one
+    tape, and read 0.87 m after it; the MLS had the ordered tape. FAULT "wrong tape". Now: off by what
+    AMCL moved since just before the fork."""
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    jb = route.nodes[1]
+    a = jb["S"] - 2.0
+
+    def d(S):
+        return 0.0 if S < a else min(0.6, 0.6 * (S - a) / 1.0) + max(0.0, 0.3 * (S - jb["S"]) / 3.0)
+
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, a, noise=0.0)
+    loc.readiness(False, "LOST")
+    drive(loc, route, a, jb["S"] + 6.0, t=t, pose_fn=_drifting(route, d), noise=0.005, ready=False)
+    assert not loc.wrong_branch, loc.wrong_branch
+
+
+def test_a_wrong_tape_still_shows_with_amcl_a_little_off_before_the_fork():
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    jb = route.nodes[1]
+
+    def d(S):
+        return 0.25 if S < jb["S"] else 0.25 + min(1.2, 1.2 * (S - jb["S"]) / 0.5)
+
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, jb["S"] - 3.0, noise=0.0)
+    loc.readiness(False, "LOST")
+    drive(loc, route, jb["S"] - 3.0, jb["S"] + 4.0, t=t, pose_fn=_drifting(route, d), noise=0.005,
+          ready=False)
+    assert "wrong tape after J-B" in loc.wrong_branch, loc.wrong_branch
+    assert "AMCL moved 1." in loc.wrong_branch, loc.wrong_branch
+
+
+def test_a_fork_the_mls_confirmed_is_never_the_wrong_lane_and_its_latch_clears():
+    """2026-11-11: site_run's ForkWatch said "ordered" at J-SPLIT; AMCL must not overrule it."""
+    m, g, _r = taught_graph()
+    route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)
+    jb = route.nodes[1]
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, jb["S"] + 0.1)
+    loc.confirm_fork("J-B")
+    loc.readiness(False, "LOST")
+    drive(loc, route, jb["S"] + 0.1, jb["S"] + 3.0, t=t, pose_fn=beside(route, 1.2), noise=0.005, ready=False)
+    assert not loc.wrong_branch and loc.health != tl.LOST, "confirmed first: no latch"
+    loc = started(route, g)
+    t, _ = drive(loc, route, route.S_start, jb["S"])
+    loc.readiness(False, "LOST")
+    drive(loc, route, jb["S"], jb["S"] + 3.0, t=t, pose_fn=beside(route, 1.2), noise=0.005, ready=False)
+    assert loc.wrong_node == "J-B" and loc.health == tl.LOST, "unconfirmed: it latches, as before"
+    assert loc.confirm_fork("J-B") and not loc.wrong_branch and not loc.lost and loc.health != tl.LOST
+    assert not loc.confirm_fork("X9"), "another junction clears nothing"
+
+
 def test_small_and_short_offsets_are_not_the_wrong_lane():
     m, g, _r = taught_graph()
     route = tg.compile_route("C-M", m["CIRCUITS"]["C-M"], g)

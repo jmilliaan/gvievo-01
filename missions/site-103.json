@@ -227,7 +227,8 @@
         },
         "MRU4": {
           "release": "MW-4",
-          "take": "ME-4"
+          "take": "ME-4",
+          "uturn": "UT-MRU4"
         }
       }
     },
@@ -293,6 +294,9 @@
       "direction": "cw"
     },
     "UT-MRU3": {
+      "direction": "cw"
+    },
+    "UT-MRU4": {
       "direction": "cw"
     }
   }

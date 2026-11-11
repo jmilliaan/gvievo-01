@@ -30,7 +30,7 @@ on port 5001, and one *mode layer* at a time.
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
 | Manual | pendant and web jog 0.60 m/s (2026-10-28, was 0.50), only under selector MANUAL |
-| Auto | tracked NORMAL 0.50 m/s, HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an MLS marker zone; trackless 0.60 m/s |
+| Auto | tracked NORMAL 0.50 m/s (trips: mission `cruise_mps` 0.40), HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an MLS marker zone or a HIGH area; trips also NORMAL+ 0.65 m/s (`auto_plus_ratio` 1.3) inside a NORMAL+ area (slower area wins where they overlap); trackless 0.60 m/s |
 | Tests | `tests/run_all.py` (`EXPECTED_CHECKS` guards the count) + `pytest` per ROS package, no hardware |
 
 ---

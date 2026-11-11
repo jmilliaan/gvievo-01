@@ -419,6 +419,10 @@ def test_config_profile():
             lambda d: d["autopilot"].update(auto_high_ratio=1.0), "auto_high_ratio")
     refuses("HIGH above the motor limit is refused",
             lambda d: d["autopilot"].update(auto_rpm=3000, auto_high_ratio=1.7), "motor_max_rpm")
+    refuses("NORMAL+ at or below NORMAL is refused",
+            lambda d: d["autopilot"].update(auto_plus_ratio=1.0), "auto_plus_ratio")
+    refuses("NORMAL+ at or above HIGH is refused",
+            lambda d: d["autopilot"].update(auto_plus_ratio=1.7), "auto_plus_ratio")
     refuses("a curve guard error limit beyond the sensor range is refused",
             lambda d: d["autopilot"].update(curve_guard_e_mm=150.0), "curve_guard_e_mm")
     refuses("a zero high ramp is refused",

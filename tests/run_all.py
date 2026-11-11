@@ -155,7 +155,10 @@ MODULES = [
 # + 7 (2026-11-06): station plan P4, test_config - the rear block. One more than the plan's 6: the
 #   driver reports the active monitoring case (V18), so rear.no_trolley_case exists and has a refusal.
 # + 4 (2026-11-06): the rolling corner's profile refusals (test_config).
-EXPECTED_CHECKS = 911
+# + 2 (2026-11-07): C-BTU steers - a steer on a crossing refused, J-N/J-S held (test_mission).
+# + 2 (2026-11-11): NORMAL+ - auto_plus_ratio at NORMAL and at HIGH refused (test_config).
+# + 4 (2026-11-11): panel Start/Reset held levels for the At home combination (test_panel).
+EXPECTED_CHECKS = 917
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -245,7 +245,7 @@ onState(st => {
         /MISSED|NOT/.test(ln.job_result || '') ? 'bad' : ''],
       ['Home', ln.at_home ? 'YES' : 'NO', ln.at_home ? 'start position' : (ln.home_detail || '—'),
         ln.at_home ? 'ok' : (ln.home_detail ? 'warn' : '')],
-      ['Speed', ln.high_speed ? 'HIGH' : 'NORMAL', `${num(ln.v_mps, 2)} m/s · ${ln.speed_reason || '—'}`,
+      ['Speed', ln.speed_tier === 'plus' ? 'NORMAL+' : (ln.high_speed ? 'HIGH' : 'NORMAL'), `${num(ln.v_mps, 2)} m/s · ${ln.speed_reason || '—'}`,
         ln.high_speed ? 'warn' : ''],
       ['Branch', (ln.branch_intent || 'straight').toUpperCase(), uturn || '—', uturn ? 'warn' : ''],
       ['Last tag', ln.last_tag || '–', ln.last_tag_action || '—', ''],

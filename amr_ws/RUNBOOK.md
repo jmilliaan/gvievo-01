@@ -348,7 +348,8 @@ map**). Home's **Set position** button opens this tab.
 1. Keep the AMCL map selected in **Map**. **Set initial pose on map** and
    **Confirm** are greyed out while another map is in view, and a pose drawn on a
    map that is no longer the AMCL map is refused.
-2. At HOME press **At home** (the taught pose, also on the Home page): the AGV confirms by itself in
+2. At HOME press **At home** (the taught pose, also on the Home page), or on the vehicle's panel, selector
+   MANUAL, hold **Start and Reset together for 1 s** (2026-11-11; same checks, logged as "panel"): the AGV confirms by itself in
    about 3 to 6 s, and step 3 is only needed if it can't, in which case Home says why. Elsewhere press **Set initial
    pose on map**, press the vehicle's real position on the map, **drag towards the
    way it faces** and release; **Pose = survey mark** puts it on the map's floor
@@ -476,7 +477,7 @@ Machine calls from the station PC over MQTT (broker `192.168.2.5:1883`). A subse
 - **Turn off:** `station.enabled: false`, restart. Rear lidar hardware has its own setting (`rear.source`).
 - **With no rear lidar fitted and it on:** trolley state is unknown, so every order and every hand trip from HOME is refused. There is no bypass on the vehicle.
 - **At HOME under AUTO, treat the vehicle as about to move.** Set the selector to MANUAL before working on or around it.
-- **At home** needs the selector in MANUAL. After a restart or any wheel movement at HOME: MANUAL, At home, confirm the scans align, AUTO, 5 s. Press it looking at the vehicle: heading is not measured.
+- **At home** needs the selector in MANUAL. After a restart or any wheel movement at HOME: MANUAL, At home, confirm the scans align, AUTO, 5 s. Press it looking at the vehicle: heading is not measured. On the panel: MANUAL, hold Start + Reset together 1 s (each button pressed fresh; once per hold). Never under AUTO, where Start alone is a departure.
 - **Clear in FAULT** is refused: press Reset on the panel.
 - **Released and Trolleys off** are refused: the rear lidar decides.
 

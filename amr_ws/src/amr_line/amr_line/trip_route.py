@@ -14,8 +14,9 @@ compile_trip(trip, mission, graph) -> TripRoute. The circuit's legs end to end, 
                pivot leaves the AGV on the same floor point, now on the return leg
     events     what the engine (amr_line.site_run) acts on, sorted by S: stop, order (armed at
                S_fork - junction_lead_m, never before the previous node is passed), uturn
-    zones      [(S_a, S_b, id)]: HIGH where the route runs inside a high-speed AREA drawn on
-               the map (site D19, 2026-10-25: areas, not point pairs; area_ranges())
+    zones      [(S_a, S_b, id, kind)]: HIGH or NORMAL+ where the route runs inside a speed AREA
+               drawn on the map (site D19, 2026-10-25: areas, not point pairs; area_ranges()).
+               kind "high" or "plus" (NORMAL+, 2026-11-11); where areas overlap the slower wins
 
 Positions are vehicle data, so the checks that need them are here, not in the mission loader:
 a U-turn point before its machine's release, a take-back stop before the U-turn point's return,
@@ -23,8 +24,12 @@ Each is a RouteError naming the station; the layer refuses the trip.
 """
 
 import itertools
+import math
+
+from agv_core import config as vehicle
 
 from amr_line import tape_graph as tg
+from amr_line.tape_graph_store import AREA_KINDS
 
 # A U-turn point must lie on the return leg this close (it is the same tape, the other way).
 RETURN_MAX_LATERAL_M = 0.15
@@ -34,6 +39,13 @@ MIN_ARM_M = 0.05
 # shorter than AREA_MIN_M (an area's corner clipping a curve) is no zone.
 AREA_STEP_M = 0.05
 AREA_MIN_M = 1.0
+# Curved tape is never a speed zone, drawn area or not (2026-11-11: STR-TO-ATT began on the end of
+# the bend after HOME-N2, HS-BOIAC-MRU on the BTU curve into J-ML; the AGV sped up while still
+# turning and the curve guard took the zone away for good). Curvature is the drawn tape's heading
+# change over CURVE_CHORD_M, against the curve guard's own limit (autopilot.curve_guard_kappa);
+# CURVE_SETTLE_M after a curve the AGV is still straightening, so no zone yet either.
+CURVE_CHORD_M = 0.5
+CURVE_SETTLE_M = 1.0
 
 _ids = itertools.count(1)
 
@@ -62,29 +74,84 @@ def inside(poly, x, y):
     return hit
 
 
-def area_ranges(segments, areas, step=AREA_STEP_M, min_len=AREA_MIN_M):
-    """[(S_a, S_b, area id)] where the route's segments [(S0, leg, lo, hi)] run inside the
-    high-speed areas {id: {"polygon": [[x, y], ...]}}, sorted. Contiguous across segments."""
+def _samples(segments, step):
+    """[(S, x, y, heading)] along the route every `step`, contiguous across segments."""
     out = []
-    for aid, area in sorted(areas.items()):
-        poly = area["polygon"]
-        run = None                              # [S_a, S_b] of the stretch being followed
-        for s0, leg, lo, hi in segments:
-            n = max(1, int((hi - lo) / step))
-            for k in range(n + 1):
-                s = lo + (hi - lo) * k / n
-                S = s0 + s - lo
-                x, y, _h = leg.line.point(s)
-                if inside(poly, x, y):
-                    if run is None:
-                        run = [S, S]
-                    run[1] = S
-                elif run is not None:
-                    if run[1] - run[0] >= min_len:
-                        out.append((run[0], run[1], aid))
-                    run = None
-        if run is not None and run[1] - run[0] >= min_len:
-            out.append((run[0], run[1], aid))
+    for s0, leg, lo, hi in segments:
+        n = max(1, int((hi - lo) / step))
+        for k in range(n + 1):
+            s = lo + (hi - lo) * k / n
+            x, y, h = leg.line.point(s)
+            out.append((s0 + s - lo, x, y, h))
+    return out
+
+
+def curved(samples, kappa_max, chord=CURVE_CHORD_M, settle=CURVE_SETTLE_M):
+    """Per sample: on curved tape (heading change over `chord` above kappa_max, 1/m), or within
+    `settle` after it. A mid-line U-turn's cut (the heading reverses) counts as a curve."""
+    if not samples:
+        return []
+    n = len(samples)
+    S = [p[0] for p in samples]
+    bend = [False] * n
+    lo = hi = 0
+    for i in range(n):
+        while S[i] - S[lo] > chord / 2:
+            lo += 1
+        while hi + 1 < n and S[hi + 1] - S[i] <= chord / 2:
+            hi += 1
+        span = S[hi] - S[lo]
+        if span > 0:
+            dh = abs((samples[hi][3] - samples[lo][3] + math.pi) % (2 * math.pi) - math.pi)
+            bend[i] = dh / span > kappa_max
+    out, last = [], None
+    for i in range(n):
+        if bend[i]:
+            last = S[i]
+        out.append(last is not None and S[i] - last < settle)
+    return out
+
+
+def area_ranges(segments, areas, step=AREA_STEP_M, min_len=AREA_MIN_M, kappa_max=None):
+    """[(S_a, S_b, area id, kind)] where the route's segments [(S0, leg, lo, hi)] run inside the speed
+    areas {id: {"polygon": [[x, y], ...], "kind": "high"|"plus"}} (kind defaults to "high"), sorted
+    and contiguous across segments.
+
+    Curved tape and the CURVE_SETTLE_M after it are outside every area (curved()); kappa_max
+    defaults to the profile's curve guard limit. A stretch inside ANY area shorter than min_len (an
+    area's corner clipping a curve) is no zone. Inside a stretch each sample takes the slowest kind
+    among the areas holding it (ties: the first id), and every change of (kind, id) starts a new
+    zone, whatever its length: the slower area always wins. Zones within one stretch touch end to
+    start, so the engine never sees a gap there."""
+    order = {k: n for n, k in enumerate(AREA_KINDS)}
+    shapes = sorted((order[a.get("kind", "high")], aid, a["polygon"]) for aid, a in areas.items()
+                    if a.get("kind", "high") in order)
+    if not shapes:
+        return []
+    samples = _samples(segments, step)
+    bent = curved(samples, vehicle.CURVE_GUARD_KAPPA if kappa_max is None else kappa_max)
+    stretches, run = [], None                   # run: [(S, label)] of the stretch being followed
+    for (S, x, y, _h), off in zip(samples, bent, strict=True):
+        label = None if off else next(
+            ((AREA_KINDS[rank], aid) for rank, aid, poly in shapes if inside(poly, x, y)), None)
+        if label is not None:
+            run = run if run is not None else []
+            run.append((S, label))
+        elif run is not None:
+            stretches.append(run)
+            run = None
+    if run is not None:
+        stretches.append(run)
+    out = []
+    for run in stretches:
+        if run[-1][0] - run[0][0] < min_len:
+            continue
+        start, label = run[0]
+        for S, lab in run[1:]:
+            if lab != label:
+                out.append((start, S, label[1], label[0]))
+                start, label = S, lab
+        out.append((start, run[-1][0], label[1], label[0]))
     return sorted(out)
 
 
@@ -248,7 +315,7 @@ def compile_trip(trip, mission, graph, junction_lead_m=1.0, areas=None):
     events = decision_points(stops, nodes, junction_lead_m, circuit.get("steers", {}),
                              [turn] if turn is not None else [])
 
-    # -- high-speed areas ---------------------------------------------------------------------
+    # -- speed areas (HIGH, NORMAL+) ----------------------------------------------------------
     zones = area_ranges(segments, areas or {})
     notes = []
     label = f"{trip.group}:{'+'.join(trip.machines)}"

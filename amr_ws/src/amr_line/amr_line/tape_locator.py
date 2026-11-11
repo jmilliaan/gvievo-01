@@ -69,6 +69,7 @@ class Params:
     wrong_lane_run_m: float = 1.5     # for this much travel, on one side
     wrong_lane_window_m: float = 12.0 # looked for this far past the fork
     wrong_lane_max_m: float = 8.0     # farther than any tape can be by then: AMCL is just wrong
+    wrong_lane_before_m: float = 1.0  # AMCL's lateral over this much before the fork is its baseline
 
     @classmethod
     def from_profile(cls, v):
@@ -138,12 +139,15 @@ class TapeLocator:
         self._ordered = [n for n in route.nodes
                          if n["kind"] == "junction" and n["order"] in ("left", "right", "straight")]
         self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
+        self._lat = collections.deque(maxlen=400)    # (S_p, lateral) of recent poses on the route
         self.started = False
         self.S = self.sigma = 0.0
         self.travel = None
         self.lost = ""                 # why LOST (a wrong branch), "" when not
         self.amcl_out = ""             # why AMCL is not correcting S just now, "" when it is
         self.wrong_branch = ""         # latched: the junction and the leg it fits better
+        self.wrong_node = ""           # the junction id the latch is about
+        self._confirmed = set()        # junctions the MLS saw the ordered tape kept at (confirm_fork)
         self.rejects = 0               # in a row
         self.rejected = self.accepted = 0
         self.last_reject = ""
@@ -162,12 +166,14 @@ class TapeLocator:
         self.travel = float(travel)
         self.odom.clear()
         self.odom.add(t, travel)
-        self.lost = self.wrong_branch = self.amcl_out = ""
+        self.lost = self.wrong_branch = self.amcl_out = self.wrong_node = ""
+        self._confirmed = set()
         self.rejects = 0
         self._accept_travel = self.travel
         self._reacq = None
         self._wb_run, self._wb_travel = 0.0, None
         self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
+        self._lat.clear()
 
     # -- inputs ----------------------------------------------------------------------
     def predict(self, t, travel):
@@ -260,11 +266,24 @@ class TapeLocator:
     def _wrong_lane_check(self, S_p, d, travel_p):
         """Far off the taught path just after an ordered fork, and staying there: the AGV is on
         another tape, taught or not (2026-11-06: J-SPLIT's right bay is not in the graph, so
-        _wrong_branch_check had nothing to compare with, and a trip ended 1.26 m off, "served")."""
+        _wrong_branch_check had nothing to compare with, and a trip ended 1.26 m off, "served").
+
+        Off by how much AMCL MOVED sideways since just before the fork (wrong_lane_before_m), not by
+        where it reads: before the fork there is one tape, so an offset there is AMCL's own error
+        (2026-11-11, MRU4 at J-SPLIT: 0.6 m left already a metre before the fork, 0.87 m after it, on
+        the right tape, the MLS said so; FAULT). A wrong tape still moves it by the bay spacing."""
         p = self.p
+        self._lat.append((S_p, d))
         node = next((n for n in self._ordered if n["S"] <= S_p <= n["S"] + p.wrong_lane_window_m), None)
+        if node is not None and node["id"] in self._confirmed:
+            node = None                 # the MLS saw the ordered tape kept there: AMCL has no say
+        far = abs(d) > p.wrong_lane_max_m       # farther than any tape: AMCL is just wrong
+        if node is not None:
+            before = sorted(v for S, v in self._lat if node["S"] - p.wrong_lane_before_m <= S < node["S"])
+            if before:
+                d = d - before[len(before) // 2]
         side = 1 if d > 0 else -1
-        if node is None or not p.wrong_lane_m <= abs(d) <= p.wrong_lane_max_m \
+        if node is None or far or not p.wrong_lane_m <= abs(d) <= p.wrong_lane_max_m \
                 or (self._wl_side and side != self._wl_side):
             self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
             return
@@ -272,14 +291,17 @@ class TapeLocator:
             self._wl_run += max(0.0, travel_p - self._wl_travel)
         self._wl_travel, self._wl_side = travel_p, side
         if self._wl_run >= p.wrong_lane_run_m:
-            self.wrong_branch = (f"wrong tape after {node['id']}: ordered {node['order']}, AMCL is "
-                                 f"{abs(d):.2f} m to the {'left' if d > 0 else 'right'} of that tape")
-            self.lost = self.wrong_branch
+            self.wrong_branch = (f"wrong tape after {node['id']}: ordered {node['order']}, AMCL moved "
+                                 f"{abs(d):.2f} m to the {'left' if d > 0 else 'right'} of that tape "
+                                 f"since the fork")
+            self.lost, self.wrong_node = self.wrong_branch, node["id"]
 
     def _wrong_branch_check(self, S_p, x, y, d_route, travel_p):
         p = self.p
         hit = None
         for S_node, (node, alts) in self._alts.items():
+            if node["id"] in self._confirmed:
+                continue
             if S_node <= S_p <= S_node + p.wrong_branch_window_m:
                 hit = (node, alts, S_p - S_node)
                 break
@@ -302,9 +324,23 @@ class TapeLocator:
                 if self._wb_run >= p.wrong_branch_run_m:
                     self.wrong_branch = (f"wrong branch at {node['id']}: ordered {node['order']} "
                                          f"({node['leg_out']}), the pose fits {alt.id}")
-                    self.lost = self.wrong_branch
+                    self.lost, self.wrong_node = self.wrong_branch, node["id"]
                 return
         self._wb_run, self._wb_travel = 0.0, None
+
+    def confirm_fork(self, node_id):
+        """The MLS saw the ordered tape kept at this junction (site_run.ForkWatch "ordered": two tapes
+        apart, the ordered one stayed). AMCL's wrong-branch and wrong-lane checks no longer apply to it,
+        and a latch already set for it is cleared: the tape under the sensor outranks a pose that
+        disagrees (2026-11-11: J-SPLIT twice, AMCL off before the fork, the MLS right). True if a latch
+        was cleared."""
+        self._confirmed.add(node_id)
+        if self.wrong_branch and self.wrong_node == node_id:
+            self.wrong_branch = self.lost = self.wrong_node = ""
+            self._wl_run, self._wl_travel, self._wl_side = 0.0, None, 0
+            self._wb_run, self._wb_travel = 0.0, None
+            return True
+        return False
 
     def fork(self, end_travel, crossing=False):
         """An MLS fork episode ended at wheel travel end_travel. Returns (verdict, node):
