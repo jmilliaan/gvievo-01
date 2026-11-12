@@ -1515,7 +1515,12 @@ not part of it and is left out.
 
 ## Interface contract
 
-**Contract version 1.1, 2026-11-06.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+**Contract version 1.2, 2026-11-11.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+
+**Changes from 1.1.** A pair order serves two MRU machines in one trip (sections 2, 5, 6.1, 7, 8, 10). The home node
+is named by the site (section 2). MRU4 turns mid-line. Row 11's LED is solid. A waiting call is kept through a link
+loss, and an unseen order is resent with the same orderId (sections 8 and 9). `station.no_trolley_run` is described
+(section 7). A one-machine order is unchanged.
 
 **Status.** This is a subset of VDA5050 3.0.0 over MQTT. It is not VDA5050 compliant and must not be called compliant. Section 10 lists what is missing and where it deviates. Buttons, trolley types, LEDs, the screen and the call list are outside this contract and stay on the station. The trolley type is never sent to the AGV.
 
@@ -1560,9 +1565,12 @@ The station builds an order from this table. The AGV owns its route, its junctio
 | MRU1 | `MW-1` | `ME-1` | mid-line `UT-MRU1` |
 | MRU2 | `MW-2` | `ME-2` | mid-line `UT-MRU2` |
 | MRU3 | `MW-3` | `ME-3` | mid-line `UT-MRU3` |
-| MRU4 | `MW-4` | `ME-4` | tape end `U-MRU` |
+| MRU4 | `MW-4` | `ME-4` | mid-line `UT-MRU4` (since 2026-11-11, was the tape end `U-MRU`) |
 
-Every order has exactly this shape, with `n` = 1 to 4:
+**Home node.** The examples use `HOME-N`. The live site's home node is `HOME-N2`. The station takes it from its
+config (`home_node`) and the AGV checks it against its own mission, so the name is the site's, not the contract's.
+
+A one-machine order has exactly this shape, with `n` = 1 to 4:
 
 | sequenceId | Item | Action |
 |---|---|---|
@@ -1576,11 +1584,31 @@ Every order has exactly this shape, with `n` = 1 to 4:
 | 7 | edge `ME-n:HOME-N` | none |
 | 8 | node `HOME-N` | none |
 
-**U-turn.** The U-turn lies inside edge `MW-n:ME-n`. There is no U-turn node or action. The AGV looks up how to turn in its own mission, so MRU4's tape-end turn looks the same on the wire as a mid-line turn.
+**U-turn.** The U-turn lies inside edge `MW-n:ME-n`. There is no U-turn node or action. The AGV looks up how to turn in its own mission, so every turn looks the same on the wire.
+
+**Pair order.** Two different MRU machines, `a` and `b`, where `a` is the closer one: its release comes first in circuit order (`MW-1`, `MW-2`, `MW-3`, `MW-4`), whoever called first. The AGV releases at both, turns, takes at `b`, then at `a`, and goes home. It stops at `a` twice. The shape is exactly:
+
+| sequenceId | Item | Action |
+|---|---|---|
+| 0 | node `HOME-N` | none |
+| 1 | edge `HOME-N:ATT` | none |
+| 2 | node `ATT` | `waitForTrigger`, id `<orderId>:ATT` |
+| 3 | edge `ATT:MW-a` | none |
+| 4 | node `MW-a` | `waitForTrigger`, id `<orderId>:MW-a` |
+| 5 | edge `MW-a:MW-b` | none |
+| 6 | node `MW-b` | `waitForTrigger`, id `<orderId>:MW-b` |
+| 7 | edge `MW-b:ME-b` | none |
+| 8 | node `ME-b` | `waitForTrigger`, id `<orderId>:ME-b` |
+| 9 | edge `ME-b:ME-a` | none |
+| 10 | node `ME-a` | `waitForTrigger`, id `<orderId>:ME-a` |
+| 11 | edge `ME-a:HOME-N` | none |
+| 12 | node `HOME-N` | none |
+
+In a pair the action id ends in the node id (`:MW-1`), because there are two releases and two takes. The U-turn lies inside edge `MW-b:ME-b`, at `b`'s turn point. Each machine gets one empty trolley and sends one full trolley, so at most two trolleys are towed, in a row, in any order. Which calls make a pair, and how long the station waits for a second call, is the station's business and outside this contract. The AGV never waits for or picks a second machine.
 
 **Fixed values.** All nodes and edges are `released: true`. `orderUpdateId` is always 0. `waitForTrigger` is always `blockingType: "HARD"` with `triggerType: ["LOCAL"]`, and each one is one physical START press. No `nodePosition`, `trajectory`, descriptors or other optional fields are sent.
 
-**orderId.** `MRUn-YYYYMMDDTHHMMSS`, from the station clock when the order is created. It is unique, opaque to the AGV, and only the station reads the machine out of it. A new attempt gets a new orderId.
+**orderId.** `MRUn-YYYYMMDDTHHMMSS` for one machine, `MRUa+MRUb-YYYYMMDDTHHMMSS` for a pair (closer machine first), from the station clock when the order is created. It is unique and opaque to the AGV, which reads the machines from the nodes. Only the station reads the machines out of it. A resend keeps the orderId (section 8). A new attempt, after `DEPARTURE_CANCELLED`, gets a new one.
 
 **`seenStateHeaderId` (extension, not in the spec).** The `headerId` of the newest `state` the station has received. It proves freshness without clocks (section 8).
 
@@ -1608,6 +1636,38 @@ Order for MRU3:
     {"edgeId": "ATT:MW-3", "sequenceId": 3, "released": true, "actions": []},
     {"edgeId": "MW-3:ME-3", "sequenceId": 5, "released": true, "actions": []},
     {"edgeId": "ME-3:HOME-N", "sequenceId": 7, "released": true, "actions": []}
+  ]
+}
+```
+
+Order for MRU1 and MRU3, a pair:
+
+```json
+{
+  "headerId": 12,
+  "timestamp": "2026-11-11T03:15:01.200Z",
+  "version": "3.0.0",
+  "manufacturer": "gvi",
+  "serialNumber": "agv1",
+  "orderId": "MRU1+MRU3-20261111T101500",
+  "orderUpdateId": 0,
+  "seenStateHeaderId": 1042,
+  "nodes": [
+    {"nodeId": "HOME-N", "sequenceId": 0, "released": true, "actions": []},
+    {"nodeId": "ATT", "sequenceId": 2, "released": true, "actions": [{"actionId": "MRU1+MRU3-20261111T101500:ATT", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "MW-1", "sequenceId": 4, "released": true, "actions": [{"actionId": "MRU1+MRU3-20261111T101500:MW-1", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "MW-3", "sequenceId": 6, "released": true, "actions": [{"actionId": "MRU1+MRU3-20261111T101500:MW-3", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "ME-3", "sequenceId": 8, "released": true, "actions": [{"actionId": "MRU1+MRU3-20261111T101500:ME-3", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "ME-1", "sequenceId": 10, "released": true, "actions": [{"actionId": "MRU1+MRU3-20261111T101500:ME-1", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "HOME-N", "sequenceId": 12, "released": true, "actions": []}
+  ],
+  "edges": [
+    {"edgeId": "HOME-N:ATT", "sequenceId": 1, "released": true, "actions": []},
+    {"edgeId": "ATT:MW-1", "sequenceId": 3, "released": true, "actions": []},
+    {"edgeId": "MW-1:MW-3", "sequenceId": 5, "released": true, "actions": []},
+    {"edgeId": "MW-3:ME-3", "sequenceId": 7, "released": true, "actions": []},
+    {"edgeId": "ME-3:ME-1", "sequenceId": 9, "released": true, "actions": []},
+    {"edgeId": "ME-1:HOME-N", "sequenceId": 11, "released": true, "actions": []}
   ]
 }
 ```
@@ -1681,7 +1741,7 @@ The station treats a missing retained message, after a broker restart, as not on
 | `nodeStates`, `edgeStates` | Nodes and edges not yet passed. A node and the edge leading to it go together on arrival. Both are empty when no order is active. |
 | `loads` | Section 7. |
 | `driving` | True when the commanded `v_mps` or `omega_rad_s` is not zero. This is commanded speed, not measured speed. False during the warning horn and any hold. |
-| `actionStates` | The three wait actions, kept until the next accepted order. `WAITING` until the AGV stops at the node. `RUNNING` while stopped there. `FINISHED` when the warning ends and the AGV starts to move, not at the press. `FAILED` if the order ends first. |
+| `actionStates` | The order's wait actions, three for one machine and five for a pair, kept until the next accepted order. `WAITING` until the AGV stops at the node. `RUNNING` while stopped there. `FINISHED` when the warning ends and the AGV starts to move, not at the press. `FAILED` if the order ends first. |
 | `instantActionStates` | The last 5 cancel results. Cleared on an accepted order. |
 | `powerSupply` | **`stateOfCharge: 0`, `charging: false`, fixed.** The AGV has no battery reading and no charge detection. The schema requires both fields, so these are placeholders. The station must ignore `powerSupply` and must not display it. |
 | `operatingMode` | `AUTOMATIC` when the line layer is running, the panel is valid and the selector is AUTO. `STARTUP` while the supervisor is starting, changing layer or stopping. `MANUAL` in every other case. Other enum values are not used. |
@@ -1695,22 +1755,40 @@ Not sent: `paused`, `maps`, `zoneSets`, `mobileRobotPosition`, `velocity`, `info
 
 #### 6.1 Mapping rule
 
-The station runs this table on every `state` message whose `operatingMode` is not `STARTUP`. `O` is the call's current orderId. ATT, MW and ME are the `actionStatus` of `O:ATT`, `O:MW` and `O:ME`. The first matching row wins. Each row reads one message only, so a lost QoS 0 message can delay a call state but cannot make it wrong. "Shown" is set and saved the first time `state.orderId` equals `O`.
+The station runs this table on every `state` message whose `operatingMode` is not `STARTUP`. `O` is the call's current orderId. ATT, MW and ME are the `actionStatus` of `O:ATT`, `O:MW` and `O:ME`. In a pair, each of the two calls runs the table on its own, with `O:MW-n` and `O:ME-n` of its own machine as MW and ME, and `O:ATT` shared. The first matching row wins. Each row reads one message only, so a lost QoS 0 message can delay a call state but cannot make it wrong. "Shown" is set and saved the first time `state.orderId` equals `O`.
 
 | # | Condition | Call state | What happened | LED |
 |---|---|---|---|---|
 | 1 | `orderId != O`, not shown | QUEUED | No order sent, or not yet accepted | blink |
 | 2 | `orderId != O`, shown | Aborted | AGV restarted and lost the order | off |
-| 3 | `nodeStates` empty, `lastNodeSequenceId == 8` | Closed | AGV reached home | off |
+| 3 | `nodeStates` empty, `lastNodeSequenceId == 8`, or `== 12` for a pair | Closed | AGV reached home | off |
 | 4 | `nodeStates` empty, `errors` has `DEPARTURE_CANCELLED` for `O` | QUEUED with a new orderId, same queue place | Warning at home was cancelled, AGV never moved | blink |
 | 5 | `nodeStates` empty, any other case | Aborted | Trip ended early | off |
 | 6 | ME is `FINISHED` | RETURNING | Third START passed, AGV moving | off |
 | 7 | ME is `RUNNING` | AT_ATTACH | Stopped at `ME-n`, waiting for full trolley and START | off |
-| 8 | MW is `FINISHED` | TURNING | Second START passed, moving through the U-turn | off |
+| 8 | MW is `FINISHED` | TURNING, or AWAY (row 13) for the closer machine of a pair | Second START passed, moving through the U-turn | off |
 | 9 | MW is `RUNNING` | AT_RELEASE | Stopped at `MW-n`, waiting for trolley removal and START | off |
 | 10 | ATT is `FINISHED` | TO_MACHINE | First START passed, AGV left pickup | solid |
-| 11 | ATT is `RUNNING` | AT_PICKUP | Stopped at `ATT`, waiting for trolley and START | blink |
+| 11 | ATT is `RUNNING` | AT_PICKUP | Stopped at `ATT`, waiting for trolley and START | solid |
 | 12 | any other case | TO_PICKUP | Accepted, warning horn or driving to `ATT` | blink |
+| 13 | (in row 8) the closer machine of a pair, MW is `FINISHED` | AWAY | Released here, AGV serving the other machine, back later for the full trolley | off |
+
+**A pair, call by call.** `a` is the closer machine, `b` the farther one.
+
+| AGV reports | Call for `a` | Call for `b` |
+|---|---|---|
+| ATT `WAITING`, then `RUNNING` | TO_PICKUP, AT_PICKUP | TO_PICKUP, AT_PICKUP |
+| ATT `FINISHED` | TO_MACHINE | TO_MACHINE |
+| `O:MW-a` `RUNNING` | AT_RELEASE | TO_MACHINE |
+| `O:MW-a` `FINISHED` | AWAY | TO_MACHINE |
+| `O:MW-b` `RUNNING`, then `FINISHED` | AWAY | AT_RELEASE, then TURNING |
+| `O:ME-b` `RUNNING`, then `FINISHED` | AWAY | AT_ATTACH, then RETURNING |
+| `O:ME-a` `RUNNING`, then `FINISHED` | AT_ATTACH, then RETURNING | RETURNING |
+| `nodeStates` empty, `lastNodeSequenceId == 12` | Closed | Closed |
+| `nodeStates` empty, any other sequence, 8 included | Aborted, both | Aborted, both |
+| `nodeStates` empty, `DEPARTURE_CANCELLED` for `O` | QUEUED, both, and the next send has a new orderId | |
+
+The two calls of a pair end together: one aborted trip is one abort for both.
 
 The LED going off at arrival at the machine (row 9) is an assumption. See section 11.
 
@@ -1725,6 +1803,8 @@ The LED going off at arrival at the machine (row 9) is an assumption. See sectio
 **Cancelling.** For a call the station has marked cancelling (section 9), including one saved that way across a restart, the station first looks in `instantActionStates` on each fresh `state`. If `cancel-O` has a final status, that result applies as in section 9 and the table is not run. The "Cancelled" example in 6.2 therefore deletes the call. Without the cancelling mark, the same message is row 5.
 
 **Station restart.** The table reads the same after a restart. `DEPARTURE_CANCELLED` stays until the next accepted order, so a saved call with `O` that finds it is row 4, not row 5: requeued with a new orderId, same queue place.
+
+**Examples.** The examples in 6.2 are for one machine. A pair reports the same fields, with five wait actions.
 
 #### 6.2 State at each stage
 
@@ -2253,9 +2333,14 @@ These are three different values, as the spec requires. `loadType` is always `TR
 |---|---|---|
 | Departure from home | No trolley, and rear safety field clear | `TROLLEY_PRESENT`, `TROLLEY_UNKNOWN`, `REAR_FIELD_NOT_CLEAR`, `REAR_FIELD_UNKNOWN` |
 | START at `ATT` and `ME-n` | Trolley present | `NO_TROLLEY`, `TROLLEY_UNKNOWN` |
-| START at `MW-n` | No trolley | `TROLLEY_STILL_ON`, `TROLLEY_UNKNOWN` |
+| START at `MW-n`, the last release of the order | No trolley | `TROLLEY_STILL_ON`, `TROLLEY_UNKNOWN` |
+| START at `MW-a`, the first release of a pair | Trolley present, because `b`'s trolley stays on | `NO_TROLLEY`, `TROLLEY_UNKNOWN` |
 
-Trolley detection is not personnel protection. The rear safety field does that job. Until the rear lidar is fitted, `loads` is always left out, so every order is refused. There is no bypass on the vehicle.
+`loads` is the same for a pair: one `TROLLEY` entry, present or absent, or the key left out. It never counts trolleys.
+
+Trolley detection is not personnel protection. The rear safety field does that job. Until the rear lidar is fitted, `loads` is always left out.
+
+**`station.no_trolley_run`** (AGV profile, owner's decision of 2026-11-06, on today for runs with no rear scanner): an unknown trolley and an unknown rear field no longer block departure or a START. A sensor that reports a trolley or a violated field still blocks. With it off, every check above stands, and with the lidar not fitted every order is refused.
 
 ### 8. Order acceptance
 
@@ -2266,7 +2351,7 @@ The AGV is the only authority on motion. It runs these checks once per received 
 | 0 | MQTT retain flag not set | Discard, no report |
 | 1 | Valid JSON, required fields present, `manufacturer` and `serialNumber` are this AGV's, `version` starts with `3.` | `VALIDATION_FAILURE` |
 | 2 | `orderId` differs from `state.orderId` | Same id, same `nodes` and `edges`: ignore with no error. Same id, different `nodes` or `edges`: ignore and report `SAME_ORDER_UPDATE_ID`. Neither can restart anything. |
-| 3 | Exact shape of section 2, `n` in the mission's MRU machines | Shape: `VALIDATION_FAILURE`. Action type or parameters: `INVALID_ORDER_ACTION` |
+| 3 | Exact shape of section 2: one machine (5 nodes), or a pair (7 nodes) of two different machines with the closer one first. Every machine in the mission's MRU machines | Shape: `VALIDATION_FAILURE`. Action type or parameters: `INVALID_ORDER_ACTION` |
 | 4 | `seenStateHeaderId` matches a `state` this AGV sent in the last 5 s of its own monotonic clock | `STALE_ORDER` |
 | 5 | No active order, no local trip, no local queued call | `OTHER_ORDER_ACTIVE` |
 | 6 | `operatingMode` is `AUTOMATIC` | `MOBILE_ROBOT_NOT_AVAILABLE` |
@@ -2312,7 +2397,7 @@ The AGV is the only authority on motion. It runs these checks once per received 
 5. `errors` has no `NOT_READY`.
 6. No call on this AGV is past QUEUED.
 
-**Sending and resending.** When the head call is QUEUED and the AGV is free, the station sends the order at once, then every 2 s. Each send has `headerId` +1, a new `timestamp` and the newest `seenStateHeaderId`. Sending stops as soon as `state.orderId` equals the orderId, the AGV stops being free, or the call is cancelled. It resumes with the same orderId when the AGV is free again. It also stops, until a person acts on the station screen, after a refusal other than `DEPARTURE_REFUSED` and `STALE_ORDER`, or at the requeue limit in section 11.
+**Sending and resending.** When the head call is QUEUED and the AGV is free, the station sends the order at once, then every 2 s. Each send has `headerId` +1, a new `timestamp` and the newest `seenStateHeaderId`. Sending stops as soon as `state.orderId` equals the orderId, the AGV stops being free, or the call is cancelled. It resumes with the same orderId and the newest `seenStateHeaderId` when the AGV is free again, after a link loss too. The AGV takes that resend if no earlier copy reached it, ignores it if it holds that orderId already (check 2), and can take an id it refused before, because nothing is stored on refusal. After `DEPARTURE_CANCELLED` the AGV treats the id as held, so the station always uses a new orderId then. A pair's two calls share one order and one orderId. It also stops, until a person acts on the station screen, after a refusal other than `DEPARTURE_REFUSED` and `STALE_ORDER`, or at the requeue limit in section 11.
 
 **Stale orders.** Check 4 stops an old order that was held in a TCP buffer during a Wi-Fi drop: only an order written after the station saw a recent `state` passes. Neither side compares clocks. State goes out at least once per second, so a live link always passes.
 
@@ -2323,10 +2408,10 @@ The AGV is the only authority on motion. It runs these checks once per received 
 | Event | AGV | Station | Later motion from it |
 |---|---|---|---|
 | Wi-Fi loss, order active | Finishes the released order. START, stops and scanners are all local. | After 3 s: link lost, call state frozen, no sends. Broker delivers the last will about 15 s after silence. | None |
-| Wi-Fi loss, no order | Stays put | Queue waits | None |
+| Wi-Fi loss, no order | Stays put | Queue waits. Presses are still taken and queued. An order sent but not yet shown is not resent until a fresh `state`, then resent with the same orderId (section 8) | None |
 | Wi-Fi returns | Reconnects, `ONLINE`, `state`. Buffered old orders fail check 4. | Table catches up | None |
 | AGV reboot or line layer restart | Order lost, `STARTUP`, then `orderId ""`. Not at home until someone presses At home. | Shown call goes to Aborted (row 2). Queued calls wait. | Only a new fresh order, after all checks |
-| Station restart | Notices nothing | Reloads its saved call list (orderId, machine, type, shown, press order), waits for a fresh `state`, runs the table. An active order it does not know is adopted with the machine from the orderId and type shown as unknown. | None: sends had stopped |
+| Station restart | Notices nothing | Reloads its saved call list (orderId, machine, type, shown, press order), waits for a fresh `state`, runs the table. An active order it does not know is adopted with the machine from the orderId (two calls for a pair) and type shown as unknown. Nothing is ever sent for an adopted call. | None: sends had stopped |
 | Broker restart or broker down | Same as Wi-Fi loss. Reconnects and republishes `ONLINE`. | Same as Wi-Fi loss | None |
 
 **Cancel.** Calls are cancelled from the screen only while QUEUED. If no order was ever sent, the call is deleted. If one was sent:
@@ -2342,7 +2427,9 @@ The AGV is the only authority on motion. It runs these checks once per received 
 | Already moving | `cancelOrder` `FAILED`, `CANCEL_REFUSED`. The order continues. | Restores the call at its real state, screen says "too late to cancel" |
 | No active order or a different orderId | `cancelOrder` `FAILED`, `NO_ORDER_TO_CANCEL` | Deletes the call |
 
-No other case sends `cancelOrder`. It is not a stop command: stopping is physical.
+Cancelling one call of a pair cancels the order. The other call waits again with its press time.
+
+No other case sends `cancelOrder`, a link coming back included. It is not a stop command: stopping is physical.
 
 **Two AGVs later.** Each AGV has its own topics, client, `headerId` counters and free check. Traffic control is not built, and nothing in this contract assumes there is only one AGV. Today the station sends to `agv1` only.
 
@@ -2350,7 +2437,7 @@ No other case sends `cancelOrder`. It is not a stop command: stopping is physica
 
 | Received or expected | AGV behaviour |
 |---|---|
-| Any order not exactly the shape in section 2: BTU or other nodes, several machines, `released: false`, `orderUpdateId` above 0, `nodePosition`, `trajectory`, edge actions, zones | Refused, `VALIDATION_FAILURE`. No motion. |
+| Any order not exactly a shape in section 2: BTU or other nodes, more than two machines, a pair with the farther machine first, the same machine twice, machines from two groups, takes in call order, `released: false`, `orderUpdateId` above 0, `nodePosition`, `trajectory`, edge actions, zones | Refused, `VALIDATION_FAILURE`. No motion. |
 | Any order action other than `waitForTrigger` with `["LOCAL"]`, including `FLEET_CONTROL` | Refused, `INVALID_ORDER_ACTION`. No motion. |
 | `startPause`, `stopPause`, `trigger`, `factsheetRequest`, `stateRequest`, `initPosition` and every other instant action | No effect. Reported in `instantActionStates` as `FAILED`, with `INVALID_INSTANT_ACTION`. |
 | `factsheet`, `visualization`, `zoneSet`, `responses` topics | Not published, not subscribed |
@@ -2378,7 +2465,7 @@ Each item below is a value this contract picks so that work can go on, or a deci
 
 1. **LED off point.** Off from arrival at the machine onward is an assumption.
 2. **Rear field while towing.** The trolley sits in the rear scanner's view. How that field behaves when towing is a safety hardware decision. The rear scanner also has no safe inputs reserved on the FX3 today. This contract only reports what the field says.
-3. **No lidar, no automatic departure.** Unknown trolley state refuses every order, so the MQTT flow cannot move the real AGV until the rear lidar is fitted. Hand trips with the calling switch off behave as the P0 baseline.
+3. **No lidar, no automatic departure, unless `no_trolley_run`.** With it off, unknown trolley state refuses every order, so the MQTT flow cannot move the real AGV until the rear lidar is fitted. With it on (section 7, on today), orders run with no trolley detection. Hand trips with the calling switch off behave as the P0 baseline.
 4. **Relay rating.** No rating for the DO relays was found, and the LED load wiring is not documented. Slow blink is the station's job. The blink rate must be checked against the rating before the named first-write approval.
 5. **Added by this contract, for your risk assessment:** the 5 s `SETTLING` wait and the 15 s `HOLDOFF`. Your decisions did not name them. They stop a waiting call from leaving the moment someone returns the selector to AUTO, presses Reset, unhitches a trolley, clears a block from the web, or walks out of a field, or the moment the AGV arrives home. The 2 s horn and scanners still apply.
 6. **Aborted calls** close with no retry, and the machine must press again.
@@ -2387,3 +2474,5 @@ Each item below is a value this contract picks so that work can go on, or a deci
 9. **`manufacturer` = `gvi`** is a label chosen from the repo names. Change it before first use if you want another one, because it is part of every topic.
 10. **Reset after an E-stop on a station trip.** By current code, the Reset needed after an E-stop aborts the trip, so the call ends Aborted and is recovered by hand. Item O13 of the AGV plan keeps this as the default and asks you to confirm it.
 11. **Requeue limit.** After 3 consecutive row 4 requeues of one call, the station stops sending that call and raises a banner that needs an acknowledge. The number 3 is yours to change.
+12. **Two trolleys, one sensor.** The rear lidar cannot count trolleys. At the first release of a pair it wants a trolley present, because one stays on, so the AGV cannot tell whether the release there really happened. The operator's START is the only proof.
+13. **Pair wait.** The station waits up to `pair_wait_s` (6 minutes, owner, 2026-11-11) from the first MRU press for a second one. It is 0, one machine per trip, until the AGV's pair build and a site test with no trolleys are done.

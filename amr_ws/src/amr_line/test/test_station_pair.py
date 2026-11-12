@@ -186,3 +186,22 @@ def test_cancel_in_the_warning_fails_all_five_waits():
     w.tick()
     s = snap(w)
     assert s["cancel_status"] == "FINISHED" and not s["active"] and statuses(w) == ("FAILED",) * 5
+
+
+# -- the same orderId again (the station resends until taken or refused) ------------------------------
+def test_a_refused_pair_id_is_taken_later():
+    w = settled()
+    w.job.order_request("P1", PAIR)
+    w.tick(field_clear=False)
+    assert w.job.state == lj.IDLE and w.refusal()[0] == "DEPARTURE_REFUSED" and w.job.order is None
+    w.drive(SETTLE + 0.2)       # the front field going clear restarts SETTLING
+    w.order("P1", PAIR)
+    assert w.job.state == lj.ARMED and w.job.order.order_id == "P1"
+
+
+def test_a_held_pair_id_never_starts_twice():
+    w = settled()
+    w.order("P1", PAIR)
+    seq = w.job.refusal["seq"]
+    w.order("P1", PAIR)
+    assert w.job.state == lj.ARMED and w.job.refusal["seq"] == seq, "dropped, not refused"

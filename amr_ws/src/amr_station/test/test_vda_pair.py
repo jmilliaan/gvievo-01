@@ -229,3 +229,32 @@ def test_one_machine_state_ignores_the_pair_fields():
                  last_node_seq=4)
     body = vs.build_state(view(one), SITE)
     assert _actions(body) == [("ATT", "FINISHED"), ("MW", "RUNNING"), ("ME", "WAITING")]
+
+
+# -- resend with the same orderId (station v1.2: resent every 2 s until taken or refused) --------------
+def test_a_resend_after_a_stale_refusal_is_accepted_under_the_same_id():
+    stale = check(pair_order(), the_ring=ring(SEEN, now=90.0), now=100.0)
+    assert (stale.outcome, stale.error) == (vo.REFUSE, vo.STALE_ORDER)
+    again = dict(pair_order(), seenStateHeaderId=SEEN + 7)
+    assert check(again, the_ring=ring(SEEN + 7)).outcome == vo.ACCEPT
+
+
+def test_a_delayed_copy_of_a_resend_is_still_stale():
+    """The first send held in a buffer through the outage names a state older than 5 s."""
+    r = check(pair_order(), the_ring=ring(SEEN + 7, now=100.0), now=100.0)
+    assert (r.outcome, r.error) == (vo.REFUSE, vo.STALE_ORDER)
+
+
+def test_a_resend_of_a_held_pair_is_ignored_whatever_its_seen_header():
+    again = dict(pair_order(), seenStateHeaderId=1)
+    r = check(again, state_order_id=PAIR_ID, state_machine="MRU1+MRU3")
+    assert (r.outcome, r.error) == (vo.IGNORE, "")
+
+
+def test_the_pair_in_the_contract_text_is_the_canonical_one():
+    """Contract v1.2 section 2, the station's text: the AGV builds and accepts exactly its example."""
+    doc = contract.contract_pair_order()
+    want = vo.canonical_order(SITE, "MRU1+MRU3", doc["orderId"])
+    assert doc["nodes"] == want["nodes"] and doc["edges"] == want["edges"]
+    r = check(doc)
+    assert (r.outcome, r.machine) == (vo.ACCEPT, "MRU1+MRU3")

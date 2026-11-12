@@ -28,6 +28,12 @@ def contract_order() -> dict:
     return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))
 
 
+def contract_pair_order() -> dict:
+    """The pair example of contract v1.2 section 2."""
+    part = PLAN.split("Order for MRU1 and MRU3, a pair:", 1)[1]
+    return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))
+
+
 def contract_cancel() -> dict:
     part = PLAN.split("### 4. instantActions", 1)[1]
     return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))
