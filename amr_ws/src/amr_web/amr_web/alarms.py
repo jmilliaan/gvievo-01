@@ -141,37 +141,39 @@ def home_position(state: dict[str, Any]) -> dict:
     the line node says (LineState.home_detail, agv_core.position_status) and only names the rest."""
     mode, line = state.get("mode") or {}, state.get("line")
     if mode.get("mode_name") != "LINE" or not line:
-        return {"show": False, "status": "", "level": "info", "enabled": False, "why": ""}
+        return {"show": False, "status": "", "level": "info", "enabled": False, "why": "", "loc": ""}
     panel = state.get("panel") or {}
     manual_ok = "order" not in state or (bool(panel.get("valid")) and not panel.get("mode_auto"))
     why_not = "" if manual_ok else "turn the selector to MANUAL"
 
-    def row(status: str, level: str = "info", press: bool = True, why: str = "") -> dict:
+    # loc: what home_tile() needs to know - "ok", "away", "trip", "fault", "checking" or "lost" (not
+    # localized: the operator has to localize at HOME)
+    def row(status: str, level: str = "info", press: bool = True, why: str = "", loc: str = "lost") -> dict:
         ok = press and manual_ok
         return {"show": True, "status": status, "level": level, "enabled": ok,
-                "why": why or ("" if ok or not press else why_not)}
+                "why": why or ("" if ok or not press else why_not), "loc": loc}
 
     loc = state.get("localization") or {}
     name = loc.get("state_name")
     detail = line.get("home_detail") or ""
     if line.get("state_name") == "FAULT":
-        return row("Job in fault", "warn", False, "press Reset on the panel")
+        return row("Job in fault", "warn", False, "press Reset on the panel", loc="fault")
     if line.get("state_name") in ("ARMED", "RUNNING", "HOLD") or line.get("trip"):
-        return row("On a trip", "info", False, "not while a trip is active")
+        return row("On a trip", "info", False, "not while a trip is active", loc="trip")
     if detail.startswith(pos.CHECKING):
-        return row(detail, "info", False, "checking now")
+        return row(detail, "info", False, "checking now", loc="checking")
     if detail.startswith(pos.FAILED):
         return row(detail, "warn")
     if detail.startswith(pos.RECHECKING):
         return row(detail, "warn")
     if name == "READY":
         if line.get("at_home"):
-            return row("Position OK")
-        return row("Away from home", "info", False, "drive to HOME first")
+            return row("Position OK", loc="ok")
+        return row("Away from home", "info", False, "drive to HOME first", loc="away")
     if name == "LOST":
         return row(f"Position lost: {loc.get('reason') or 'unknown reason'}", "warn")
     if name == "CHECKING":
-        return row("Checking position set by hand")
+        return row("Checking position set by hand", loc="checking")
     return row("Position not set", "warn")
 
 
@@ -217,6 +219,121 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         "button": cat.BUTTON.get(top["clears_by"], "") if top else "",
         "clears_by": top["clears_by"] if top else "",
     }
+
+
+# ---- the Home status tile (manuals/emergency-suite-plan.md Part A) ----------------------------
+# One full-width tile, one state. Colour is the meaning: green = normal, yellow = abnormal (blinking:
+# not localized), red = stopped for something only a person or a restart fixes, grey = not up yet.
+# The E-stop is not seen by the PC yet (Q3 not wired, Part B postponed): it shows through what it
+# causes - an estop hold (stopped) or SAFETY_RESET_NEEDED (attention) - and is never red or green here.
+TILE_OK, TILE_WARN, TILE_ERROR, TILE_OFF = "ok", "warn", "error", "off"
+NOT_LOCALIZED = "NOT LOCALIZED"
+CHECKING_POSITION = "CHECKING POSITION"
+ATTENTION = "ATTENTION"
+LOCALIZE_STEPS = (
+    "Turn the selector to MANUAL.",
+    "Drive the vehicle to HOME.",
+    "Hold the yellow RESET and the green START together for 1 s.",
+)
+_LINE_MOVING = ("ARMED", "RUNNING")
+
+
+def _benign(row: dict, state: dict[str, Any]) -> bool:
+    """A standing row that is not worth a yellow tile on its own. Today one: DRIVES_NOT_READY while the
+    drives sit in standby on purpose (powered only on demand, 2026-10-08), which stands at every idle."""
+    if row["level"] == "info":
+        return True
+    drives = state.get("drives") or {}
+    return row["code"] == "DRIVES_NOT_READY" and drives.get("link") == "standby"
+
+
+def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = None) -> dict:
+    """The Home page's status tile. `rows` is standing() (worst first), `position` is home_position();
+    the page draws what this returns and decides nothing. The first rule that matches wins:
+
+        fault      red     restart_service, a supervisor / run / job FAULT
+        starting   grey    STARTING, TRANSITIONING, base not ready
+        fault      red     any other ERROR row (panel stale, ...), except an operator's LOC_ row
+        running    green   run EXECUTING, tape job ARMED / RUNNING
+        stopped    yellow  run BLOCKED, tape job HOLD
+        lost       yellow, blinking   not localized (LINE: localize at HOME with the panel;
+                                      NAVIGATION: Set position)
+        checking   yellow  a position check is running
+        fault      red     an ERROR row left
+        attention  yellow  a WARN row that is not benign (e.g. SAFETY_RESET_NEEDED after an E-stop at rest)
+        ready      green
+    """
+    mode = state.get("mode") or {}
+    run = state.get("run") or {}
+    line = state.get("line") or {}
+    panel = state.get("panel") or {}
+    position = position if position is not None else home_position(state)
+    top = rows[0] if rows else None
+    worth = [r for r in rows if not _benign(r, state)]
+
+    def tile(kind, level, big, row=None, title="", action="", steps=(), blink=False) -> dict:
+        return {
+            "kind": kind, "level": level, "big": big, "blink": blink,
+            "title": row["title"] if row else title,
+            "action": row["action"] if row else action,
+            "code": row["code"] if row else "",
+            "button": cat.BUTTON.get(row["clears_by"], "") if row else "",
+            "steps": list(steps),
+        }
+
+    def stopped_big(r: dict) -> str:
+        return STOPPED_WILL_RESUME if r.get("auto_resume") else STOPPED_NEEDS_YOU
+
+    run_name, line_name = run.get("state_name"), line.get("state_name")
+    if (top and top["clears_by"] == "restart_service") or mode.get("mode_name") == "FAULT":
+        return tile("fault", TILE_ERROR, NEEDS_SERVICE if top and top["clears_by"] == "restart_service"
+                    else STOPPED_NEEDS_YOU, top, "Supervisor fault", mode.get("reason", ""))
+    if run_name == "FAULT" or line_name == "FAULT":
+        return tile("fault", TILE_ERROR, STOPPED_NEEDS_YOU, top, "Job in fault", "Press Reset on the panel.")
+    if mode.get("mode_name") in ("STARTING", "TRANSITIONING") or not mode.get("base_ready"):
+        return tile("starting", TILE_OFF, NOT_READY, top, "Starting up", mode.get("reason", ""))
+    errors = [r for r in rows if r["level"] == "error"]
+    # an operator-fixable LOC_ row is "not localized" (yellow, below); an engineer's LOC_ row stays red
+    if errors and not (errors[0]["code"].startswith("LOC_") and errors[0]["clears_by"] == "operator"):
+        return tile("fault", TILE_ERROR, STOPPED_NEEDS_YOU, errors[0])
+    if run_name == "EXECUTING" or line_name in _LINE_MOVING:
+        return tile("running", TILE_OK, RUNNING, worth[0] if worth else None, "Running the job.",
+                    "Nothing to do.")
+    # A hold says its own cause (an estop hold: "release the E-stop, Reset, Start"), not whichever row
+    # sorted first - SAFETY_RESET_NEEDED stands beside it after an E-stop and says only half of it.
+    def hold_row(code: str) -> dict | None:
+        return next((r for r in rows if r["code"] == code), top)
+
+    if run_name == "BLOCKED":
+        code = run.get("fault_code") or cat.hold_code(run.get("hold_cause", ""))
+        return tile("stopped", TILE_WARN, stopped_big(run), hold_row(code), "Stopped", run.get("reason", ""))
+    if line_name == "HOLD":
+        return tile("stopped", TILE_WARN, stopped_big(line), hold_row(line.get("code", "")), "Stopped",
+                    line.get("message", ""))
+
+    loc = position.get("loc") if position.get("show") else ""
+    if loc == "lost":
+        manual = bool(panel.get("valid")) and not panel.get("mode_auto")
+        steps = [
+            {"text": LOCALIZE_STEPS[0], "done": manual, "now": not manual},
+            {"text": LOCALIZE_STEPS[1], "done": False, "now": manual},
+            {"text": LOCALIZE_STEPS[2], "done": False, "now": False},
+        ]
+        return tile("lost", TILE_WARN, NOT_LOCALIZED, None, position["status"],
+                    "Localize at HOME with the panel buttons:", steps, blink=True)
+    if loc == "checking":
+        return tile("checking", TILE_WARN, CHECKING_POSITION, None, position["status"],
+                    "Keep the vehicle still at HOME.")
+    nav_loc = state.get("localization") or {}
+    if mode.get("mode_name") == "NAVIGATION" and nav_loc and nav_loc.get("state_name") != "READY":
+        loc_row = next((r for r in rows if r["code"].startswith("LOC_")), None)
+        return tile("lost", TILE_WARN, NOT_LOCALIZED, loc_row, "The vehicle does not know where it is",
+                    "Set the position on the Mapping page.", blink=True)
+    if errors:
+        return tile("fault", TILE_ERROR, STOPPED_NEEDS_YOU, errors[0])
+    if worth:
+        return tile("attention", TILE_WARN, ATTENTION, worth[0])
+    return tile("ready", TILE_OK, READY, None, "The vehicle is fine.", "Nothing to do.")
 
 
 class StandingTracker:

@@ -236,7 +236,12 @@ async function surveyMove(kind, value) {
   try { r = await api('/api/survey_move', { kind, value }); } catch (e) { $('sm-status').textContent = 'no response'; return; }
   if (r.status !== 200) $('sm-status').textContent = `refused: ${r.data.message || r.status}`;
 }
-const dist = () => parseFloat($('sm-dist').value);
+// distance: the selected one of the 1/2/4/8 m buttons (one is always on)
+const DIST_BUTTONS = () => [...document.querySelectorAll('#sm-dist button')];
+DIST_BUTTONS().forEach(b => {
+  b.onclick = () => { DIST_BUTTONS().forEach(o => o.classList.toggle('on', o === b)); };
+});
+const dist = () => parseFloat((document.querySelector('#sm-dist button.on') || DIST_BUTTONS()[0]).dataset.m);
 $('sm-fwd').onclick = () => surveyMove('straight', dist());
 $('sm-rev').onclick = () => surveyMove('straight', -dist());
 document.querySelectorAll('#sm-spins button, #sm-spins-cw button').forEach(b => { b.onclick = () => surveyMove('rotate', +b.dataset.deg); });

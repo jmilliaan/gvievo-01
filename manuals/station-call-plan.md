@@ -2340,7 +2340,7 @@ These are three different values, as the spec requires. `loadType` is always `TR
 
 Trolley detection is not personnel protection. The rear safety field does that job. Until the rear lidar is fitted, `loads` is always left out.
 
-**`station.no_trolley_run`** (AGV profile, owner's decision of 2026-11-06, on today for runs with no rear scanner): an unknown trolley and an unknown rear field no longer block departure or a START. A sensor that reports a trolley or a violated field still blocks. With it off, every check above stands, and with the lidar not fitted every order is refused.
+**`station.no_trolley_run`** (AGV profile, owner's decision of 2026-11-06, on today for runs with no rear scanner): an unknown trolley and an unknown rear field no longer block departure from home or a U-turn, and no START at a stop checks the trolley at all, whatever the sensor reports. A sensor that reports a trolley or a violated rear field still refuses departure from home, and a reported trolley still holds the AGV before a U-turn. With it off, every check above stands, and with the lidar not fitted every order is refused.
 
 ### 8. Order acceptance
 

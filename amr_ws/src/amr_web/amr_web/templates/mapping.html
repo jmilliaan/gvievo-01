@@ -72,7 +72,11 @@
     <div class="tabpane" data-tab="jog">
       <h3>Preset moves <small>press once · 0.30 m/s · 0.20 rad/s · while surveying</small></h3>
       <p class="note">The vehicle drives the whole move by itself. Any pendant button, the E-stop, the selector, the jog pad or <b>Stop</b> ends it; the map is checked against it after.</p>
-      <label class="field">Distance m <span class="inline"><input id="sm-dist" type="number" step="0.1" min="0.05" max="10" value="1.0" title="0.05 to 10 m"><button id="sm-fwd" class="tool">Forward</button><button id="sm-rev" class="tool">Reverse</button></span></label>
+      {# 2026-11-12 (owner): fixed distances, easier on the touch panel than a number box. Pick one, then a direction. #}
+      <div class="bar" id="sm-dist">
+        {% for m in (1, 2, 4, 8) %}<button class="tool{{ ' on' if m == 1 }}" data-m="{{ m }}">{{ m }} m</button>{% endfor %}
+      </div>
+      <div class="bar"><button id="sm-fwd" class="tool">Forward</button><button id="sm-rev" class="tool">Reverse</button></div>
       {# the spins survey_move accepts (ROTATE_STEPS_DEG), not a copy of them #}
       <div class="bar" id="sm-spins">
         {% for d in rotate_steps %}<button class="tool" data-deg="{{ '%g' % d }}">Left {{ '%g' % d }}°</button>{% endfor %}

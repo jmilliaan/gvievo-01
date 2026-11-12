@@ -267,6 +267,8 @@ button.big:hover:not(:disabled), a.big:hover, button.tool:hover:not(:disabled), 
 }
 button.big.run { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }
 button.big.run:hover:not(:disabled) { color:#fff; filter:brightness(1.12); }
+button.tool.run { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }
+button.tool.run:hover:not(:disabled) { color:#fff; filter:brightness(1.12); }
 /* An editor tool that is switched on looks like the active nav tab. */
 button.tool.on { background:var(--accent-wash); border-color:var(--accent-2); color:var(--accent-2); }
 button.big.on { background:var(--accent-wash); border-color:var(--accent-2); color:var(--accent-2); }
@@ -570,25 +572,59 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
    Sized so 1280x720 at ui=l shows everything with nothing below the fold: the
    state line and the action block are fixed, "More" is the only thing that grows. */
 .home { display:flex; flex-direction:column; gap:1rem; min-height:0; }
-.home-state { min-width:0; border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; }
-/* Job and status side by side, the job wider (2026-10-08) */
-.home-top { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:.8rem; }
-.home-job { border:2px solid var(--rule); background:var(--surface); padding:.6rem 1.4rem; display:flex; flex-direction:column; min-width:0; }
-.home-job > span { font:500 1rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
-.home-job > b { font:700 2.4rem/1.1 var(--disp); letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.home-job > i { font-style:normal; color:var(--ink-2); font-size:1.3rem; overflow-wrap:anywhere; }
-.home-job.warn { border-left:3px solid var(--hazard); background:var(--hazard-wash); }
-.home-job.warn > b { color:var(--hazard-ink); }
-.home-job.off > b { color:var(--ink-3); }
+/* The status tile (2026-11-12, emergency-suite-plan Part A): full width, its colour IS the state.
+   green normal · yellow abnormal (blinking: not localized) · red needs a person / a restart · grey not up.
+   The --t-* tokens carry the tile's ink so every line in it follows the state. */
+.home-tile {
+  --t-bg:var(--surface); --t-ink:var(--ink); --t-sub:var(--ink-2); --t-bd:var(--rule);
+  background:var(--t-bg); color:var(--t-ink); border:2px solid var(--t-bd);
+  padding:.7rem 1.6rem 1rem; display:flex; flex-direction:column; min-width:0;
+}
+/* The grid lives on an inner wrapper, not on the tile: a page rendered from an older cached
+   template (no wrapper) still lays out as one column instead of squeezing into a sliver. */
+.ht-grid { display:grid; grid-template-columns:minmax(0, 1fr) auto; column-gap:1.2rem; align-items:start; min-width:0; }
+.ht-main { display:flex; flex-direction:column; min-width:0; }
+/* Position, small, top right of the tile: a light card so it reads on every tile colour */
+.ht-pos { display:flex; flex-direction:column; align-items:stretch; gap:.25rem; width:15rem;
+  background:var(--surface); color:var(--ink); border:1px solid rgba(20,23,29,.25); padding:.5rem .8rem .7rem; }
+.ht-pos[hidden] { display:none; }
+.ht-pos > span { font:500 .95rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
+.ht-pos > b { font:600 1.3rem/1.2 var(--disp); overflow-wrap:anywhere; }
+.ht-pos > i { font-style:normal; color:var(--ink-2); font-size:1.05rem; overflow-wrap:anywhere; }
+.ht-pos > i:empty { display:none; }
+.ht-pos > button { margin-top:.3rem; }
+.home-tile.ok    { --t-bg:var(--ok);   --t-ink:#fff; --t-sub:#E6F2EB; --t-bd:var(--ok); }
+.home-tile.warn  { --t-bg:var(--hazard); --t-ink:var(--hazard-ink); --t-sub:var(--hazard-ink); --t-bd:var(--hazard); }
+.home-tile.error { --t-bg:var(--stop); --t-ink:#fff; --t-sub:#FBE9E7; --t-bd:var(--stop); }
+.home-tile.off   { --t-bg:var(--surface-2); --t-ink:var(--ink-3); --t-sub:var(--ink-3); }
+/* 1 Hz, half on half off; the ink stays dark in both phases so the steps stay readable (< 3 Hz flash) */
+.home-tile.blink { animation:tile-blink 1s steps(1, end) infinite; }
+@keyframes tile-blink { 50% { background:var(--hazard-wash); } }
+@media (prefers-reduced-motion: reduce) {
+  .home-tile.blink { animation:none; border-width:.4rem; border-color:var(--hazard-ink); }
+}
 .home-big { font:700 3rem/1.02 var(--disp); letter-spacing:-.02em; overflow-wrap:anywhere; }
-.home-detail { color:var(--ink-2); font-size:1.3rem; min-height:1.4em; margin-top:.2rem; }
-/* Home live tiles (2026-10-08): three readings, read from the floor */
-/* speed, RFID and the MLS marker side by side, the line sensor full width under them with
-   its strip beside the value (a wide strip reads better and keeps the tile short) */
-.home-live { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.8rem; }
-#live-line { grid-column:1 / -1; display:grid; grid-template-columns:minmax(16rem, auto) minmax(0, 1fr); column-gap:1.6rem; }
+.home-detail { color:var(--t-sub, var(--ink-2)); font-size:1.3rem; margin-top:.2rem; }
+.home-detail:empty { display:none; }
+.ht-job { display:flex; flex-wrap:wrap; align-items:baseline; gap:.2rem .8rem; margin-top:.3rem;
+  font:400 1.15rem var(--mono); color:var(--t-sub); }
+.ht-job > span { text-transform:uppercase; letter-spacing:.1em; }
+.ht-job > b { font-weight:700; color:var(--t-ink); }
+.ht-job > i { font-style:normal; overflow-wrap:anywhere; }
+.ht-body { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:end; column-gap:1.2rem;
+  border-top:1px solid rgba(20,23,29,.2); margin-top:.6rem; padding-top:.6rem; }
+.ht-body > .bar { margin:0; }
+.home-tile #home-primary { border-color:#fff; }
+.ht-steps { margin:.2rem 0 0; padding-left:2.4rem; font:600 1.6rem/1.4 var(--sans); }
+.ht-steps li.done { opacity:.6; text-decoration:line-through; }
+.ht-steps li.done::after { content:" ✓"; }
+.ht-steps li.now { font-weight:800; }
+/* Live readings under the tile: the mode, wider and in bigger text, then speed and the line sensor */
+.home-live { display:grid; grid-template-columns:minmax(0, 3fr) minmax(16rem, 2fr); gap:.8rem; }
+#live-line { grid-column:1 / -1; display:grid; grid-template-columns:minmax(14rem, auto) minmax(0, 1fr); column-gap:1.6rem; }
 #live-line > span, #live-line > b, #live-line > i { grid-column:1; }
 #live-line > .live-bar { grid-column:2; grid-row:1 / 4; align-self:center; height:2rem; margin-top:0; }
+.home-live.eng { grid-template-columns:minmax(0, 1fr); margin-bottom:.8rem; }
 .live { border:1px solid var(--rule); background:var(--surface); padding:.45rem 1.2rem; display:flex; flex-direction:column; min-width:0; }
 .live > span { font:500 1rem var(--mono); color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; }
 .live > b { font:700 2.7rem/1.05 var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -601,17 +637,18 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
 .live-bar { position:relative; height:1.4rem; margin-top:.5rem; background:var(--surface-2); border:1px solid var(--rule); }
 .live-bar em { position:absolute; top:50%; width:1.1rem; height:1.1rem; transform:translate(-50%,-50%); background:var(--ink-3); }
 .live-bar em[data-i="1"] { background:var(--ok); }
-.home-act { border:1px solid var(--rule); background:var(--surface); padding:1rem 1.6rem; }
-.home-pos { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; column-gap:1.2rem;
-  border-bottom:1px solid var(--rule); padding-bottom:.8rem; margin-bottom:.8rem; }
-.home-pos[hidden] { display:none; }
-.home-pos > span { color:var(--ink-2); font-size:1.3rem; grid-row:1 / span 2; }
-.home-pos > b { font:600 1.7rem/1.2 var(--disp); overflow-wrap:anywhere; }
-.home-pos > i { font-style:normal; color:var(--ink-2); font-size:1.3rem; grid-column:2; }
-.home-pos > i:empty { display:none; }
-.home-pos > button { grid-column:3; grid-row:1 / span 2; }
-.home-title { font:600 2rem/1.15 var(--disp); }
-.home-action { color:var(--ink-2); font-size:1.5rem; margin:.4rem 0 1rem; overflow-wrap:anywhere; }
+/* The selector: AUTO solid blue, MANUAL white with a dark border. Not red/yellow/green - those
+   are the status tile's - and fill vs outline tells them apart without colour. */
+/* never cut: the word wraps smaller rather than ending in "MA..." (HMI narrower than 1280, 2026-11-12) */
+.mode-tile > b { font:800 3.4rem/1.05 var(--disp); letter-spacing:.03em; overflow:visible; text-overflow:clip;
+  white-space:normal; overflow-wrap:anywhere; }
+.mode-tile.auto { background:var(--accent-2); border-color:var(--accent-2); }
+.mode-tile.auto > b, .mode-tile.auto > i, .mode-tile.auto > span { color:#fff; }
+.mode-tile.manual { background:var(--surface); border:3px solid var(--ink); }
+.mode-tile.manual > b { color:var(--ink); }
+.home-title { font:600 2rem/1.15 var(--disp); overflow-wrap:anywhere; }
+.home-action { color:var(--t-sub, var(--ink-2)); font-size:1.5rem; margin:.3rem 0 0; overflow-wrap:anywhere; }
+.home-action:empty { display:none; }
 .home-more { border:1px solid var(--rule); background:var(--surface); }
 .home-more > summary {
   cursor:pointer; padding:.8rem 1.6rem; font:600 1.4rem var(--sans); min-height:3.4rem;
@@ -662,6 +699,9 @@ button.ui-size + button.ui-size, button.role-btn + button.ui-size { margin-left:
   .home-live { grid-template-columns:minmax(0,1fr); }
   #live-line { display:flex; }
   #live-line > .live-bar { height:1.4rem; margin-top:.4rem; }
+  .ht-body { grid-template-columns:minmax(0,1fr); row-gap:.6rem; }
+  .ht-grid { grid-template-columns:minmax(0,1fr); row-gap:.6rem; }
+  .ht-pos { width:auto; }
   .live > b { font-size:2.3rem; }
 }
 

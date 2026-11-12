@@ -411,6 +411,11 @@ def test_survey_move_endpoints_forward_to_the_node_and_validate(env):
         b'data-deg="-135"', b'data-deg="20"', b'data-deg="-30"',
     ):
         assert el in page
+    # fixed distances on the touch panel (2026-11-12), 1 m selected at load
+    for m in (1, 2, 4, 8):
+        assert f'data-m="{m}"'.encode() in page
+    assert b'class="tool on" data-m="1"' in page
+    assert b'type="number"' not in page.split(b'id="sm-dist"')[1][:600]
 
 
 # ---- F12: payload shape is a 400, never a 500, and never an adapter call -------------

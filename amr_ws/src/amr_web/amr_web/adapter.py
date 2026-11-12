@@ -524,7 +524,8 @@ class RosAdapter(LeanNode):
 
     def _on_panel(self, m: PanelState) -> None:
         with self._lock:
-            self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto)}
+            self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto),
+                           "manual_arm": bool(m.manual_arm)}
             self._panel_t = self._now()
 
     def _on_drives(self, m: DriveStatus) -> None:

@@ -272,6 +272,7 @@ def test_api_alarms_serves_the_list_and_the_headline(tmp_path):
     client, _ = app_for(merged(), tmp_path)
     d = client.get("/api/alarms").get_json()
     assert d["alarms"] == [] and d["headline"]["state"] == view.READY
+    assert d["tile"]["kind"] == "ready" and d["tile"]["level"] == view.TILE_OK
 
 
 def test_events_carry_the_catalogue_title(tmp_path):
@@ -499,22 +500,29 @@ def test_rfid_tags_show_on_the_manual_and_run_pages(tmp_path):
     assert 'id="rf-last"' not in client.get("/manual").get_data(as_text=True)
 
 
-def test_home_shows_speed_rfid_and_line_tiles_and_loads_no_mission(tmp_path):
-    """2026-10-08: setting a mission is not a Home thing. Home shows three live readings."""
+def test_home_shows_mode_speed_and_line_tiles_and_loads_no_mission(tmp_path):
+    """2026-10-08: setting a mission is not a Home thing. 2026-11-12: the live row is the selector's
+    mode (big), speed and the line sensor; no RFID tile (RFID dropped) and no marker tile for the operator."""
     client, _ = app_for(merged(), tmp_path)
+    client.post("/api/role", json={"role": "operator"})
     body = client.get("/home").get_data(as_text=True)
-    for tile in ("live-speed", "live-rfid", "live-line"):
-        assert f'id="{tile}"' in body, tile
+    live = body[body.index('class="home-live"'):body.index('class="home-more"')]
+    assert [m for m in re.findall(r'id="(live-[a-z]+)"', live)] == ["live-mode", "live-speed", "live-line"]
+    assert "live-rfid" not in body and 'id="live-marker"' not in body
     assert "home-mission" not in body and "/api/mission/run" not in body
-    assert "/static/linetrack.js" in body, "the RFID 'reading now' rule is shared, not copied"
+    assert "/static/linetrack.js" in body, "the line and marker readings are shared, not copied"
+    client.post("/api/role", json={"role": "engineer", "pin": role.DEFAULT_PIN})
+    assert 'id="live-marker"' in client.get("/home").get_data(as_text=True)
 
 
-def test_home_shows_the_job_beside_the_status_and_cannot_set_it(tmp_path):
-    """2026-10-08: the job is shown on Home, wider than the status block; set on Run."""
+def test_home_shows_the_job_small_inside_the_status_tile_and_cannot_set_it(tmp_path):
+    """2026-11-12: no job tile; the job is one small line in the full-width status tile. Set on Run."""
     client, _ = app_for(merged(), tmp_path)
     body = client.get("/home").get_data(as_text=True)
-    top = body.index('class="home-top"')
-    assert top < body.index('id="home-job"') < body.index('id="home-line"')
+    tile = body.index('id="home-tile"')
+    assert tile < body.index('id="home-line"') < body.index('id="home-job"') < body.index('id="home-primary"')
+    assert body.index('id="home-primary"') < body.index('class="home-live"')
+    assert "home-top" not in body
     assert "/api/line/mission" not in body and "<select" not in body
 
 
@@ -724,12 +732,12 @@ def _home(tmp_path):
     return app.test_client().get("/home").get_data(as_text=True)
 
 
-def test_home_always_puts_the_marker_tile_right_after_rfid(tmp_path):
-    """2026-10-23: markers are always on, so the tile is not behind a profile switch."""
+def test_the_marker_reading_is_the_engineers_and_not_behind_a_profile_switch(tmp_path):
+    """2026-10-23: markers are always on. 2026-11-12: the tile moved into the engineer's More (the
+    default session is the engineer's), the operator's live row is mode, speed and line."""
     body = _home(tmp_path)
-    assert 'class="home-live three"' in body
-    rfid, marker, line = (body.index(f'id="{t}"') for t in ("live-rfid", "live-marker", "live-line"))
-    assert rfid < marker < line, "Speed · RFID · Marker on the first row, the line sensor under them"
+    more = body.index('class="home-more"')
+    assert more < body.index('id="live-marker"'), "the marker tile lives in More"
     assert "markerReading(" in body, "the marker rule is shared in linetrack.js, not copied"
 
 
@@ -900,10 +908,118 @@ def test_the_position_row_shows_only_in_line_mode():
     assert _pos(mode="MAPPING")["show"] is False
 
 
-def test_home_has_the_at_home_button_and_no_scan_view(tmp_path):
+def test_the_position_and_at_home_sit_small_in_the_status_tile_and_home_has_no_scan_view(tmp_path):
+    """2026-11-12 (owner): Position OK / At home at the right of the status tile, small, for every role.
+    The panel's Reset + Start does the same; the server keeps its refusals."""
     client, _ = app_for(merged(), tmp_path)
     client.post("/api/role", json={"role": "operator"})
     body = client.get("/home").get_data(as_text=True)
-    assert 'id="btn-at-home"' in body and "/api/line/at_home" in body
-    assert "<canvas" not in body
-    assert "position" in client.get("/api/alarms").get_json()
+    tile, pos, live = (body.index(k) for k in ('id="home-tile"', 'id="home-pos"', 'class="home-live"'))
+    assert tile < body.index('id="home-primary"') < pos < body.index('id="btn-at-home"') < live
+    assert 'id="btn-at-home" class="tool run"' in body, "small, not a big button"
+    assert "/api/line/at_home" in body and "<canvas" not in body
+    d = client.get("/api/alarms").get_json()
+    assert "position" in d and "tile" in d
+
+
+# ---- the status tile on Home (manuals/emergency-suite-plan.md Part A) -----------------
+
+STANDBY = {"operational": False, "left": "Ready to switch on", "right": "Ready to switch on",
+           "link": "standby", "age_s": 0.05}
+STO = {"operational": False, "left": "Switch on disabled", "right": "Switch on disabled", "link": "standby",
+       "age_s": 0.05}
+IDLE_MUX = {"inhibited": True, "source": "none", "reason": "drives not operational or stale",
+            "code": "DRIVES_NOT_READY", "age_s": 0.05}
+LINE_MODE = {"mode_name": "LINE", "fault_code": "", "reason": "", "base_ready": True, "generation": 1}
+
+
+def _line(loc="READY", auto=False, **line):
+    ln = {"state_name": "IDLE", "at_home": True, "home_detail": "", "trip": "", "code": "", **line}
+    return merged(mode=LINE_MODE, line=ln, panel={"valid": True, "mode_auto": auto, "age_s": 0.05},
+                  localization={"state_name": loc, "reason": ""})
+
+
+def _tile(st):
+    return view.home_tile(st, view.standing(st))
+
+
+@pytest.mark.parametrize(
+    "st, kind, level, big",
+    [
+        (merged(), "ready", "ok", view.READY),
+        # powered on demand: DRIVES_NOT_READY stands at every idle and must not turn the tile yellow
+        (merged(drives=STANDBY, mux=IDLE_MUX), "ready", "ok", view.READY),
+        (_line(), "ready", "ok", view.READY),
+        (_line(at_home=False), "ready", "ok", view.READY),
+        (_line(state_name="RUNNING", loc="LOST"), "running", "ok", view.RUNNING),
+        (merged(run={"state_name": "EXECUTING", "mission_id": "m", "step_index": 0}),
+         "running", "ok", view.RUNNING),
+        (merged(run={"state_name": "BLOCKED", "hold_cause": "field", "fault_code": "FIELD_BLOCKED",
+                     "auto_resume": True, "reason": ""}), "stopped", "warn", view.STOPPED_WILL_RESUME),
+        (_line(state_name="HOLD", auto_resume=False, code="ESTOP", message="safety stop"),
+         "stopped", "warn", view.STOPPED_NEEDS_YOU),
+        (_line(loc="UNLOCALIZED"), "lost", "warn", view.NOT_LOCALIZED),
+        (_line(loc="LOST"), "lost", "warn", view.NOT_LOCALIZED),
+        (_line(loc="CHECKING", home_detail="Position check failed: tape not seen"), "lost", "warn",
+         view.NOT_LOCALIZED),
+        (_line(loc="LOST", home_detail="Position lost, rechecking at home"),
+         "lost", "warn", view.NOT_LOCALIZED),
+        (_line(loc="UNLOCALIZED", home_detail="Checking position: waiting for AMCL"), "checking", "warn",
+         view.CHECKING_POSITION),
+        (_line(loc="CHECKING"), "checking", "warn", view.CHECKING_POSITION),
+        (merged(mode={**LINE_MODE, "mode_name": "NAVIGATION"},
+                localization={"state_name": "LOST", "code": "LOC_LOST", "reason": "x"}), "lost", "warn",
+         view.NOT_LOCALIZED),
+        (merged(panel={"valid": False, "mode_auto": False, "age_s": 0.05}),
+         "fault", "error", view.STOPPED_NEEDS_YOU),
+        (merged(run={"state_name": "FAULT", "fault_code": "EXEC_OFF_PATH", "reason": "x"}), "fault", "error",
+         view.STOPPED_NEEDS_YOU),
+        (merged(mode={"mode_name": "FAULT", "fault_code": "BASE_EXITED", "reason": "x", "base_ready": False,
+                      "generation": 1}), "fault", "error", view.NEEDS_SERVICE),
+        (merged(mode={**LINE_MODE, "mode_name": "STARTING", "base_ready": False}),
+         "starting", "off", view.NOT_READY),
+        (merged(scan_age_s=None, up_s=120.0), "attention", "warn", view.ATTENTION),
+    ],
+)
+def test_the_status_tile(st, kind, level, big):
+    t = _tile(st)
+    assert (t["kind"], t["level"], t["big"]) == (kind, level, big)
+    assert t["blink"] is (kind == "lost")
+
+
+def test_an_estop_without_the_q3_wire_is_never_green_and_never_red():
+    """Part B (the E-stop signal) is postponed: the PC sees only what the E-stop causes. At rest that is
+    SAFETY_RESET_NEEDED, in a run an estop hold - both yellow, with the catalogue's words."""
+    at_rest = _tile(merged(drives=STO, mux=IDLE_MUX))
+    assert (at_rest["kind"], at_rest["level"]) == ("attention", "warn")
+    assert at_rest["code"] == "SAFETY_RESET_NEEDED"
+    assert "Reset" in at_rest["action"]
+    hold = {"state_name": "BLOCKED", "hold_cause": "estop", "fault_code": "ESTOP", "auto_resume": False,
+            "reason": ""}
+    in_run = _tile(merged(drives=STO, mux=IDLE_MUX, run=hold))
+    assert (in_run["kind"], in_run["level"]) == ("stopped", "warn")
+    assert "E-stop" in in_run["action"] and "Start" in in_run["action"]
+
+
+def test_not_localized_walks_through_the_panel_press_ticking_the_selector():
+    auto = _tile(_line(loc="UNLOCALIZED", auto=True))
+    assert [s["text"] for s in auto["steps"]] == list(view.LOCALIZE_STEPS)
+    assert [(s["done"], s["now"]) for s in auto["steps"]] == [(False, True), (False, False), (False, False)]
+    manual = _tile(_line(loc="UNLOCALIZED", auto=False))
+    assert [(s["done"], s["now"]) for s in manual["steps"]] == [(True, False), (False, True), (False, False)]
+    assert manual["button"] == "" and manual["title"] == "Position not set"
+    assert "RESET" in view.LOCALIZE_STEPS[2] and "START" in view.LOCALIZE_STEPS[2]
+
+
+def test_navigation_not_localized_offers_set_position():
+    t = _tile(merged(mode={**LINE_MODE, "mode_name": "NAVIGATION"},
+                     localization={"state_name": "LOST", "code": "LOC_LOST", "reason": "x"}))
+    assert t["button"] == "Set position" and t["steps"] == []
+
+
+def test_the_live_vehicle_idle_is_green():
+    """The vehicle as seen on 2026-11-12: LINE, AUTO, drives in standby (power on demand), localized at
+    HOME, the mux holding DRIVES_NOT_READY. That is a normal idle, not an attention."""
+    st = _line(auto=True)
+    st.update(drives=STANDBY, mux=IDLE_MUX)
+    assert _tile(st)["kind"] == "ready"
