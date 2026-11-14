@@ -19,7 +19,7 @@ The physical controls remain authoritative:
 - E-stop and the FX3/STO chain remain the immediate physical stop path.
 - A stale panel, supervisor lease, drive state or command inhibits motion.
 
-The web app is `http://192.168.2.20:5001/`. Its tabs are **Home**, **Run** (tape
+The web app is `http://192.168.2.110:5001/`. Its tabs are **Home**, **Run** (tape
 jobs on top; machine calls, the trip and its confirmations under them (off, and the rear lidar decides, with `station.enabled`) - one scrolling column
 that scrolls to the calls when the site mission is the job), **Manual**, **Alarms** (events), **Mapping** (survey and AMCL
 position), and for the engineer **Teach**, **Monitor**, **I/O** and **Params**. Every page has the same left

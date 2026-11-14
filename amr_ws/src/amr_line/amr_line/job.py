@@ -1643,8 +1643,8 @@ class FollowJob:
     def _order_recs(self, req):
         """The machine records of an order, closer first, or None (check 5, MACHINE). A pair: two
         different machines of one group and one kind, named in circuit order. Release and take: each its
-        own release and take, a's release first and a's take last. Swap: a's stop before b's (two machines
-        at one stop are refused: the stop would be served once)."""
+        own release and take, a's release first and a's take last. Swap: a's stop before b's, or both at one
+        stop with a listed first there (facing machines, contract v1.4: one wait, one START)."""
         names = req.machines
         recs = [self._order_machine(mc) for mc in names]
         if not 1 <= len(names) <= 2 or None in recs:
@@ -1661,7 +1661,10 @@ class FollowJob:
         if any(swap) and not all(swap):
             return None
         try:
-            if all(swap):
+            if all(swap) and a["swap"] == b["swap"]:
+                listed = list(self.site["GROUPS"][group]["machines"])
+                closer_first = a["swap"] in pos and listed.index(names[0]) < listed.index(names[1])
+            elif all(swap):
                 closer_first = pos[a["swap"]] < pos[b["swap"]]
             else:
                 closer_first = pos[a["release"]] < pos[b["release"]] < pos[b["take"]] < pos[a["take"]]

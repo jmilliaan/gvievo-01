@@ -118,7 +118,7 @@ These facts shape the plan. Check them again before relying on them.
 
 - `line_follow_node.py:13-15` still says tape localization is shadow only.
 - D14 cites a `CLAUDE.md` that is not in this repo.
-- `alpha-setup.md:174,451,456` lists the Wi-Fi gateway as `192.168.2.10`, which is now DIO module 1.
+- `alpha-setup.md:174,451,456` listed the Wi-Fi gateway as `192.168.2.10`, which is now DIO module 1. Fixed 2026-11-14: `192.168.2.5` (owner).
 
 ## 3. The one exception to physical START
 
@@ -310,7 +310,7 @@ before the lidar exists, turn the switch off.
 | Switch off | As the P0 baseline, including the second-call quirk (`CallQueue.call` looks at `pending` only) |
 | Switch on, local call tapped, no order active | Accepted. Forms a trip, leaves on physical START. Lidar interlocks apply. Orders are refused with `OTHER_ORDER_ACTIVE`, reason `LOCAL_TRIP`, and `NOT_READY` shows `LOCAL_TRIP` until the local call or trip ends |
 | Switch on, local call tapped, order active | Refused: "a station order is being served" |
-| BTU | Station orders since contract v1.3 (2026-11-13): one BTU, or two closer first, no U-turn. Before that only from Run → Calls. Departure from HOME and the ATT interlock as MRU. No interlock at swap stops (O10). With `station.enabled`, Run → Calls takes no new call of any group; a call already waiting stays until served or cancelled (`job.trip_call`) |
+| BTU | Station orders since contract v1.3 (2026-11-13): one BTU, or two closer first, no U-turn. Since v1.4 (AGV side built 2026-11-14, restart owed) BTU9-16 too, named by a wait's `machines`; two facing machines are one stop, one START. Before that only from Run → Calls. Departure from HOME and the ATT interlock as MRU. No interlock at swap stops (O10). With `station.enabled`, Run → Calls takes no new call of any group; a call already waiting stays until served or cancelled (`job.trip_call`) |
 | Physical START at HOME, no local call, station idle | Refused as today: "no trip formed". A press never starts a station order |
 | Physical START in the same tick as an order arriving | The press is handled and the order is refused. The station resends. A person at the panel wins |
 | Clear on the web during an order | Allowed, except in FAULT. It stops the run and aborts the order (`TRIP_ABORTED`), as Clear does for any trip, and restarts `SETTLING` |
@@ -1418,7 +1418,7 @@ is the template. All text is a state, then one imperative.
 |---|---|
 | D3 | Unchanged. It still bounds the setting |
 | D4 | Replaced 2026-11-05: one machine per trip (`trip_calls` 1). No waiting for a second call. No batching |
-| D5 | Replaced 2026-11-05: MRU calls come from buttons on the machines, through the station PC. BTU calls stay on the AGV's display. Run → Calls stays. Applies only with `station.enabled`. **Replaced again 2026-11-13 (contract v1.3):** BTU17-24 calls also come from the station; with `station.enabled` Run → Calls takes no new calls, only cancels a waiting one |
+| D5 | Replaced 2026-11-05: MRU calls come from buttons on the machines, through the station PC. BTU calls stay on the AGV's display. Run → Calls stays. Applies only with `station.enabled`. **Replaced again 2026-11-13 (contract v1.3):** BTU17-24 calls also come from the station (BTU9-16 too from v1.4, AGV side built 2026-11-14); with `station.enabled` Run → Calls takes no new calls, only cancels a waiting one |
 | D10 | Replaced 2026-11-05, as an assumption: a rear lidar will detect the trolley and carry the rear safety field. Not fitted yet. Trolley detection is not personnel protection. Applies only with `station.enabled`; with it off, the confirmations stand |
 | D13 | AGV-01 only for now, no collision or priority logic. Topics and profile are per AGV (`manuals/station-call-plan.md` section 20) so a second AGV is not closed off |
 | D14 | Replaced 2026-11-05 for one case: with `station.enabled`, an accepted station order leaves HOME by itself, only from HOME, only in AUTO, once, through the 2 s horn, and with no trolley and the rear field clear. Everything else still needs a physical Start. Remove the citation of `CLAUDE.md`, which is not in the repo |
@@ -1475,7 +1475,7 @@ Traffic control is not built. These points keep it possible:
 |---|---|
 | Topics | Built from `station.manufacturer` and `station.serial_number`. `agv2` is a profile change |
 | Profile | `profiles/agv-02.json`. `load` requires the file name to match `profile_name` (`agv_core/config.py:1291`). Check 9 of `test_config` ties `serial_number` to it |
-| Address | 192.168.2.30 (`alpha-setup.md:174`) |
+| Address | 192.168.2.120 (`alpha-setup.md:174`) |
 | Broker | New user `agv2`, its own ACL lines (contract section 1) |
 | Bridge | One per vehicle, in that vehicle's base launch. No shared state |
 | Mission | `AGV-02` has its own site mission and home bay (D1, D2, D11). Machine lookup goes through the mission, so nothing assumes MRU1 to MRU4 |
@@ -1485,7 +1485,7 @@ Traffic control is not built. These points keep it possible:
 
 ## 21. Checks on the vehicle
 
-The repo cannot show these. Do them on the AGV (`gvipc-evo-01`, `192.168.2.20`).
+The repo cannot show these. Do them on the AGV (`gvipc-evo-01`, `192.168.2.110`).
 
 | # | Check | How | Why, and what it blocks |
 |---|---|---|---|
@@ -1497,7 +1497,7 @@ The repo cannot show these. Do them on the AGV (`gvipc-evo-01`, `192.168.2.20`).
 | V6 | E2 laps and E3 recorded | `tracked-plan-4:202-204` says pending | P0 |
 | V7 | J-R2E position, C-BTU teaching | `tracked-plan-4:244-247` (second-hand) | MRU route passes J-R2E; BTU not confirmed. P0 for MRU |
 | V8 | Broker reachable | `ip route get 192.168.2.5` uses `wlp1s0`; `nc -zv 192.168.2.5 1883` | `usb0` is the first default route, but the /24 on Wi-Fi should win. P7 |
-| V9 | Gateway address | `nmcli -g ipv4.gateway con show agv-net` | `alpha-setup.md` says 192.168.2.10, now DIO 1. The AP was noted as 192.168.2.254 on 2026-11-05. A wrong gateway should not affect the /24, but it is wrong. Owner to pick the AP or none. P7 |
+| V9 | Gateway address | `nmcli -g ipv4.gateway con show agv-net` | Expect 192.168.2.5, the station PC's ICS (owner, 2026-11-14; unit 1's agv-net already uses it). `alpha-setup.md` said 192.168.2.10, now DIO 1; corrected. P7 |
 | V10 | Clock | `timedatectl`, `chronyc tracking` | Sources are Ubuntu defaults, and the floor has no internet. Timestamps are for logs only (contract section 1), so a wrong clock must not block anything. Record the offset so logs can be lined up. Do not add a clock comparison. P7 |
 | V11 | Wi-Fi rejoin | `systemctl is-enabled agv-wifi-reconnect` | It is enabled by hand (`install.sh:53`). P7 |
 | V12 | Wi-Fi along the route | Walk it, or watch the link during P0 | A drop must not matter; confirm by P7 step 8 |
@@ -1515,7 +1515,12 @@ not part of it and is left out.
 
 ## Interface contract
 
-**Contract version 1.3, 2026-11-13.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+**Contract version 1.4, 2026-11-14.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+
+**Changes from 1.3.** BTU9 to BTU16 are served too. They face BTU17 to BTU24 and share their swap stops. Two BTUs
+facing each other are one stop, released by one START. A swap wait names its machines in a `machines` parameter
+whenever they are not just the stop's own BTU17-24 machine (sections 2, 6.1, 8, 10, 11). Every v1.3 order is
+unchanged, byte for byte.
 
 **Changes from 1.2.** BTU17 to BTU24 are served by station orders: one BTU, or two in one lap, closer first (sections
 2, 6.1, 7, 8, 10, 11). With the calling switch on, the AGV's own screen takes no new calls (section 10). MRU orders
@@ -1548,8 +1553,8 @@ AGV 2 uses the same four topics with `agv2` in place of `agv1`. No other topic e
 | Client id | Username | Address | May publish | May subscribe |
 |---|---|---|---|---|
 | `gvi-station` | `station` | 192.168.2.5 | `.../+/order`, `.../+/instantActions` | `.../+/state`, `.../+/connection` |
-| `gvi-agv1` | `agv1` | 192.168.2.20 | own `state`, `connection` | own `order`, `instantActions` |
-| `gvi-agv2` (later) | `agv2` | 192.168.2.30 | own `state`, `connection` | own `order`, `instantActions` |
+| `gvi-agv1` | `agv1` | 192.168.2.110 | own `state`, `connection` | own `order`, `instantActions` |
+| `gvi-agv2` (later) | `agv2` | 192.168.2.120 | own `state`, `connection` | own `order`, `instantActions` |
 | any test tool id, never a client id above | `watch` | the station PC (the firewall allows only the two AGV addresses from elsewhere) | nothing | `vda5050/v3/gvi/#`, read only, for test watchers and logs |
 
 **Session.** Clean session true, keepalive 10 s, reconnect every 2 s. Neither client keeps an offline queue: a publish while disconnected is dropped.
@@ -1612,19 +1617,29 @@ In a pair the action id ends in the node id (`:MW-1`), because there are two rel
 
 **Fixed values.** All nodes and edges are `released: true`. `orderUpdateId` is always 0. `waitForTrigger` is always `blockingType: "HARD"` with `triggerType: ["LOCAL"]`, and each one is one physical START press. No `nodePosition`, `trajectory`, descriptors or other optional fields are sent.
 
-**orderId.** `MRUn-YYYYMMDDTHHMMSS` or `BTUn-YYYYMMDDTHHMMSS` for one machine, `MRUa+MRUb-YYYYMMDDTHHMMSS` or `BTUa+BTUb-YYYYMMDDTHHMMSS` for a pair (closer machine first), from the station clock when the order is created. It is unique and opaque to the AGV, which reads the machines from the nodes. Only the station reads the machines out of it. A resend keeps the orderId (section 8). A new attempt, after `DEPARTURE_CANCELLED`, gets a new one.
+**orderId.** `MRUn-YYYYMMDDTHHMMSS` or `BTUn-YYYYMMDDTHHMMSS` for one machine, `MRUa+MRUb-YYYYMMDDTHHMMSS` or `BTUa+BTUb-YYYYMMDDTHHMMSS` for a pair (closer machine first; at one stop the BTU17-24 side first), from the station clock when the order is created. It is unique and opaque to the AGV, which reads the machines from the nodes and the `machines` parameters. Only the station reads the machines out of it. A resend keeps the orderId (section 8). A new attempt, after `DEPARTURE_CANCELLED`, gets a new one.
 
 **BTU order (since v1.3).** BTU17 to BTU24 sit on row 2 of circuit C-BTU. Each has one swap stop, where the operator
-swaps the trolley and presses START. `R2-k` means BTU(25 − k):
+swaps the trolley and presses START. `R2-k` means BTU(25 − k), and since v1.4 also BTU(17 − k), the machine facing
+it across the row:
 
-| Machine | BTU24 | BTU23 | BTU22 | BTU21 | BTU20 | BTU19 | BTU18 | BTU17 |
-|---|---|---|---|---|---|---|---|---|
 | Swap node | `R2-1` | `R2-2` | `R2-3` | `R2-4` | `R2-5` | `R2-6` | `R2-7` | `R2-8` |
+|---|---|---|---|---|---|---|---|---|
+| Own machine (BTU17-24 side) | BTU24 | BTU23 | BTU22 | BTU21 | BTU20 | BTU19 | BTU18 | BTU17 |
+| Facing machine (BTU9-16 side, v1.4) | BTU16 | BTU15 | BTU14 | BTU13 | BTU12 | BTU11 | BTU10 | BTU9 |
 
-The AGV reads the machine from the node. BTU9 to BTU16 share these stops, so the AGV cannot tell them apart and the
-station never puts them in an order. A BTU order serves one BTU, or two different BTUs with the closer one first: the
-first met on the lap, `R2-1` first and `R2-8` last, whoever called first. There is no U-turn. After the last swap the
-AGV drives home without stopping. One BTU, `j`, has exactly this shape:
+A BTU order serves one BTU, or two different BTUs with the closer stop first: the first met on the lap, `R2-1` first
+and `R2-8` last, whoever called first. Two BTUs facing each other share one stop, so their order has the one-stop
+shape with both named at it. There is no U-turn. After the last swap the AGV drives home without stopping.
+
+**`machines` (v1.4).** A swap wait carries a second action parameter, after `triggerType`, exactly
+`{"key": "machines", "value": [...]}`, whenever the stop serves anything other than just its own machine. The list
+holds the stop's machines in order, own machine first: `["BTU15"]`, `["BTU23", "BTU15"]`. A stop serving only its own
+machine has no `machines` parameter, so a wait without one means the own machine, exactly as in v1.3, and
+`["BTU23"]` alone is never sent. Every name must sit at that very node. One spelling only: the AGV builds the
+canonical order and compares it.
+
+One BTU stop, `j`, has exactly this shape:
 
 | sequenceId | Item | Action |
 |---|---|---|
@@ -1632,11 +1647,11 @@ AGV drives home without stopping. One BTU, `j`, has exactly this shape:
 | 1 | edge `HOME-N:ATT` | none |
 | 2 | node `ATT` | `waitForTrigger`, id `<orderId>:ATT` |
 | 3 | edge `ATT:R2-j` | none |
-| 4 | node `R2-j` | `waitForTrigger`, id `<orderId>:R2-j` |
+| 4 | node `R2-j` | `waitForTrigger`, id `<orderId>:R2-j`, with `machines` as above |
 | 5 | edge `R2-j:HOME-N` | none |
 | 6 | node `HOME-N` | none |
 
-Two BTUs, `R2-j` and `R2-k` with `j` < `k`, have exactly this shape:
+Two BTU stops, `R2-j` and `R2-k` with `j` < `k`, have exactly this shape:
 
 | sequenceId | Item | Action |
 |---|---|---|
@@ -1650,8 +1665,9 @@ Two BTUs, `R2-j` and `R2-k` with `j` < `k`, have exactly this shape:
 | 7 | edge `R2-k:HOME-N` | none |
 | 8 | node `HOME-N` | none |
 
-A BTU action id ends in the node id. An order never mixes MRU and BTU. Shapes are told apart by their node ids, not
-their node count: one BTU has 4 nodes, while two BTUs and one MRU both have 5. Which calls make a lap, and how long
+A BTU action id ends in the node id: one wait per stop, whatever machines it serves. An order serves at most two
+BTUs, so a face-to-face pair is a whole lap. An order never mixes MRU and BTU. Shapes are told apart by their node ids,
+not their node count: one BTU stop has 4 nodes, while two BTU stops and one MRU both have 5. Which calls make a lap, and how long
 the station waits for a second BTU call, is the station's business and outside this contract.
 
 **`seenStateHeaderId` (extension, not in the spec).** The `headerId` of the newest `state` the station has received. It proves freshness without clocks (section 8).
@@ -1712,6 +1728,32 @@ Order for MRU1 and MRU3, a pair:
     {"edgeId": "MW-3:ME-3", "sequenceId": 7, "released": true, "actions": []},
     {"edgeId": "ME-3:ME-1", "sequenceId": 9, "released": true, "actions": []},
     {"edgeId": "ME-1:HOME-N", "sequenceId": 11, "released": true, "actions": []}
+  ]
+}
+```
+
+Order for BTU23 and BTU15, a face-to-face pair at one stop:
+
+```json
+{
+  "headerId": 14,
+  "timestamp": "2026-11-14T03:20:00.500Z",
+  "version": "3.0.0",
+  "manufacturer": "gvi",
+  "serialNumber": "agv1",
+  "orderId": "BTU23+BTU15-20261114T102000",
+  "orderUpdateId": 0,
+  "seenStateHeaderId": 2210,
+  "nodes": [
+    {"nodeId": "HOME-N", "sequenceId": 0, "released": true, "actions": []},
+    {"nodeId": "ATT", "sequenceId": 2, "released": true, "actions": [{"actionId": "BTU23+BTU15-20261114T102000:ATT", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "R2-2", "sequenceId": 4, "released": true, "actions": [{"actionId": "BTU23+BTU15-20261114T102000:R2-2", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}, {"key": "machines", "value": ["BTU23", "BTU15"]}]}]},
+    {"nodeId": "HOME-N", "sequenceId": 6, "released": true, "actions": []}
+  ],
+  "edges": [
+    {"edgeId": "HOME-N:ATT", "sequenceId": 1, "released": true, "actions": []},
+    {"edgeId": "ATT:R2-2", "sequenceId": 3, "released": true, "actions": []},
+    {"edgeId": "R2-2:HOME-N", "sequenceId": 5, "released": true, "actions": []}
   ]
 }
 ```
@@ -1875,6 +1917,9 @@ The two calls of a pair end together: one aborted trip is one abort for both.
 | `nodeStates` empty, `lastNodeSequenceId == 8` | Closed | Closed |
 | `nodeStates` empty, any other sequence | Aborted, both | Aborted, both |
 | `nodeStates` empty, `DEPARTURE_CANCELLED` for `O` | QUEUED, both, and the next send has a new orderId | |
+
+**Two BTUs at one stop (v1.4).** Both calls read the same `O:R2-k` and move together: TO_PICKUP, AT_PICKUP,
+TO_MACHINE, AT_SWAP, RETURNING, and Closed at `lastNodeSequenceId == 6`. Any other end aborts both.
 
 The LED going off at arrival at the machine (row 9) is an assumption. See section 11.
 
@@ -2438,7 +2483,7 @@ The AGV is the only authority on motion. It runs these checks once per received 
 | 0 | MQTT retain flag not set | Discard, no report |
 | 1 | Valid JSON, required fields present, `manufacturer` and `serialNumber` are this AGV's, `version` starts with `3.` | `VALIDATION_FAILURE` |
 | 2 | `orderId` differs from `state.orderId` | Same id, same `nodes` and `edges`: ignore with no error. Same id, different `nodes` or `edges`: ignore and report `SAME_ORDER_UPDATE_ID`. Neither can restart anything. |
-| 3 | Exactly one of the shapes of section 2, told apart by node ids: one MRU, an MRU pair of two different machines with the closer one first, one BTU, or two different BTUs with the closer one first. Every machine in the mission's machines of that group | Shape: `VALIDATION_FAILURE`. Action type or parameters: `INVALID_ORDER_ACTION` |
+| 3 | Exactly one of the shapes of section 2, told apart by node ids: one MRU, an MRU pair of two different machines with the closer one first, one BTU stop, or two BTU stops with the closer one first, each wait naming its machines as in section 2. Every machine in the mission's machines of that group | Shape: `VALIDATION_FAILURE`. Action type or parameters: `INVALID_ORDER_ACTION` |
 | 4 | `seenStateHeaderId` matches a `state` this AGV sent in the last 5 s of its own monotonic clock | `STALE_ORDER` |
 | 5 | No active order, no local trip, no local queued call | `OTHER_ORDER_ACTIVE` |
 | 6 | `operatingMode` is `AUTOMATIC` | `MOBILE_ROBOT_NOT_AVAILABLE` |
@@ -2524,7 +2569,7 @@ No other case sends `cancelOrder`, a link coming back included. It is not a stop
 
 | Received or expected | AGV behaviour |
 |---|---|
-| Any order not exactly a shape in section 2: other nodes, more than two machines, a pair with the farther machine first, the same machine twice, machines from two groups, takes in call order, `released: false`, `orderUpdateId` above 0, `nodePosition`, `trajectory`, edge actions, zones | Refused, `VALIDATION_FAILURE`. No motion. |
+| Any order not exactly a shape in section 2: other nodes, more than two machines, a pair with the farther machine first, the same machine twice, machines from two groups, a `machines` parameter naming a machine not at that stop or out of order, or naming only the own machine, takes in call order, `released: false`, `orderUpdateId` above 0, `nodePosition`, `trajectory`, edge actions, zones | Refused, `VALIDATION_FAILURE`. No motion. |
 | Any order action other than `waitForTrigger` with `["LOCAL"]`, including `FLEET_CONTROL` | Refused, `INVALID_ORDER_ACTION`. No motion. |
 | `startPause`, `stopPause`, `trigger`, `factsheetRequest`, `stateRequest`, `initPosition` and every other instant action | No effect. Reported in `instantActionStates` as `FAILED`, with `INVALID_INSTANT_ACTION`. |
 | `factsheet`, `visualization`, `zoneSet`, `responses` topics | Not published, not subscribed |
@@ -2570,3 +2615,5 @@ Each item below is a value this contract picks so that work can go on, or a deci
 14. **BTU lap wait.** The station waits up to `btu_pair_wait_s` (4 minutes, owner, 2026-11-12) from the first BTU press for a second one. When MRU and BTU calls wait at once, the group able to leave goes first, and among those the one with the oldest call (owner, 2026-11-13). This is the station's business, listed here so that both sides know it.
 15. **No trolley check at a BTU swap stop** (AGV plan O10, accepted for now). The operator's START is the only proof that the swap happened.
 16. **Speed on row 2.** HIGH over all eight swap stops with trolleys on (owner, 2026-11-13).
+17. **One START at a shared stop** (owner, 2026-11-13, N2). At a face-to-face stop the operator swaps both trolleys,
+    then presses START once. A face-to-face pair counts as two BTUs, so it fills the lap (N1).

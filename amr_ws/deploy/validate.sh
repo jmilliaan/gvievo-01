@@ -105,6 +105,15 @@ if [[ -f "$live_watch" ]] && ! cmp -s "$DEPLOY_DIR/pwrbtn-watch.sh" "$live_watch
   echo "note: logs/pwrbtn-watch.sh differs from deploy/pwrbtn-watch.sh (the cron job runs the logs/ copy)"
 fi
 
+# Which vehicle (manuals/agv-02-plan.md R2, R3): the profile the service will load, from the service
+# user's vehicle.env (this runs under sudo, so not from $HOME), checked against the host name.
+state_dir=$(sed -n 's/^AMR_STATE_DIR=//p' "$DEPLOY_DIR/amr.env" | tail -n 1)
+AGV_PROFILE=$(unset AGV_PROFILE; AMR_STATE_DIR="$state_dir"; source "$WORKSPACE/env/vehicle.sh" >/dev/null
+              echo "${AGV_PROFILE:-}")
+export AGV_PROFILE
+[[ -n "$AGV_PROFILE" ]] || unset AGV_PROFILE
+PYTHONPATH="$REPO_ROOT" python3 -m agv_core.identity || exit 1
+
 # Station calling (manuals/station-call-plan.md P5): only when the profile turns it on. Silent otherwise.
 station_on=$(python3 - "$REPO_ROOT" <<'PY'
 import json, os, sys

@@ -1,7 +1,7 @@
 """BTU laps from station orders (contract v1.3, owner 2026-11-13). The bridge's side: the order shape and its
 checks, the `state` rows. One BTU: HOME 0, ATT 2, R2-k 4, HOME 6. Two BTUs, the closer first: HOME 0, ATT 2,
-R2-j 4, R2-k 6, HOME 8. Action ids end in the node id. R2-k names BTU(25-k): the BTU9-16 that share the stops
-cannot be named by nodes, refusing them is the station's rule."""
+R2-j 4, R2-k 6, HOME 8. Action ids end in the node id. R2-k names BTU(25-k) when its wait has no `machines`.
+The BTU9-16 that share the stops (contract v1.4) are in test_vda_facing.py."""
 
 import copy
 import itertools
@@ -93,9 +93,10 @@ def test_every_two_btus_closer_first_are_accepted(j, k):
 
 
 def test_the_mission_order_decides_which_machine_a_shared_stop_names():
-    """BTU16..BTU9 share R2-1..R2-8 and come after BTU24..BTU17 in site-103: never named by an order."""
+    """BTU16..BTU9 share R2-1..R2-8 and come after BTU24..BTU17 in site-103: a wait with no `machines` names
+    the own machine, the first listed (v1.4 names the facing one by `machines`)."""
     assert vo.swaps(SITE) == {btu(k): f"R2-{k}" for k in range(1, 9)}
-    assert all(not vo.valid_key(SITE, f"BTU{n}") for n in range(9, 17))
+    assert vo.stop_machines(SITE) == {f"R2-{k}": [btu(k), f"BTU{17 - k}"] for k in range(1, 9)}
 
 
 def mru3_order():
@@ -205,12 +206,13 @@ def test_the_same_btu_order_again_is_ignored_and_other_content_is_not():
 
 
 @pytest.mark.parametrize(
-    "key", ["BTU19+BTU24", "BTU24+BTU24", "BTU24+BTU16", "BTU16", "BTU24+MRU1", "MRU1+BTU24",
-            "BTU24+BTU19+BTU17", "BTU24+"],
+    "key", ["BTU19+BTU24", "BTU24+BTU24", "BTU16+BTU24", "BTU16+BTU24+BTU15", "BTU24+MRU1", "MRU1+BTU24",
+            "BTU24+BTU19+BTU17", "BTU24+", "BTU24+BTU15+BTU23"],
 )
 def test_valid_key_for_btu(key):
     assert not vo.valid_key(SITE, key)
     assert vo.valid_key(SITE, "BTU24") and vo.valid_key(SITE, "BTU24+BTU17") and vo.valid_key(SITE, "BTU17")
+    assert all(vo.valid_key(SITE, k) for k in ("BTU16", "BTU24+BTU16", "BTU16+BTU15"))
 
 
 def test_the_mru_orders_are_unchanged():
@@ -281,9 +283,17 @@ def test_the_btu_pair_in_the_contract_text_is_the_canonical_one():
     assert (r.outcome, r.machine) == (vo.ACCEPT, "BTU24+BTU19")
 
 
+def _contract_row(label):
+    row = contract.PLAN.split(f"| {label} |", 1)[1].split("\n", 1)[0]
+    return [c.strip(" `") for c in row.split("|") if c.strip()]
+
+
 def test_the_contract_text_maps_r2_k_to_btu_25_minus_k():
-    row = contract.PLAN.split("| Swap node |", 1)[1].split("\n", 1)[0]
-    nodes = [c.strip(" `") for c in row.split("|") if c.strip()]
-    head = contract.PLAN.split("| Machine | BTU24", 1)[1].split("\n", 1)[0]
-    machines = ["BTU24"] + [c.strip() for c in head.split("|") if c.strip()]
-    assert dict(zip(machines, nodes, strict=True)) == vo.swaps(SITE)
+    """Contract section 2 table (v1.4 layout): the own machine of R2-k is what the AGV names today; the
+    facing one, BTU(17-k), is the mission's second machine at that stop (served from v1.4 on)."""
+    nodes = _contract_row("Swap node")
+    own = _contract_row("Own machine (BTU17-24 side)")
+    facing = _contract_row("Facing machine (BTU9-16 side, v1.4)")
+    assert dict(zip(own, nodes, strict=True)) == vo.swaps(SITE)
+    at = {n: [m for m, r in SITE["GROUPS"]["BTU"]["machines"].items() if r["swap"] == n] for n in nodes}
+    assert [at[n] for n in nodes] == [[o, f] for o, f in zip(own, facing, strict=True)]

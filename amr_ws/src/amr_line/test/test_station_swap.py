@@ -1,8 +1,9 @@
 """A station order for a BTU lap (contract v1.3, owner 2026-11-13). Pure, Inputs only.
 
 The swap fixture's S2 (R-1) is the closer machine, S1 (R-2) the farther, S9 shares R-1 (as BTU16 shares
-R2-1 with BTU24). A lap runs HOME, ATT, the swap stops in circuit order, HOME: no U-turn. The swaps reuse
-OrderState's mw_status (first) and mw2_status (second); me and me2 stay ""."""
+R2-1 with BTU24) and faces it: S2+S9 is a face-to-face pair at one stop (contract v1.4). A lap runs HOME, ATT,
+the swap stops in circuit order, HOME: no U-turn. The swaps reuse OrderState's mw_status (first stop) and
+mw2_status (second); me and me2 stay ""."""
 
 import pytest
 from calling_world import SETTLE, CallingWorld, go_on, parked_at
@@ -107,9 +108,10 @@ def test_a_swap_wait_finishes_when_the_agv_moves_off_not_at_the_press():
     assert snap(w)["mw_status"] == "FINISHED"
 
 
-@pytest.mark.parametrize("machine", ["S1+S2", "S2+S9", "S2+S2", "S2+M1", "M1+S2", "S2+S1+S9", "S7"])
+@pytest.mark.parametrize("machine", ["S1+S2", "S9+S2", "S2+S2", "S2+M1", "M1+S2", "S2+S1+S9", "S7"])
 def test_a_wrong_btu_order_is_refused_by_the_job_too(machine):
-    """Check 5, MACHINE: farther first, two machines at one stop, the same twice, mixed kinds, three."""
+    """Check 5, MACHINE: farther first, a stop's facing machine before its own, the same twice, mixed kinds,
+    three."""
     w = world()
     w.order("B1", machine)
     assert w.refusal() == ("VALIDATION_FAILURE", "MACHINE") and w.job.state == lj.IDLE
@@ -157,3 +159,40 @@ def test_one_mru_order_is_unchanged_on_the_swap_site():
     w.order("O1", "M1")
     assert w.job.trip.stops() == ["ATT", "MW-1", "ME-1", "HOME"]
     assert statuses(w) == ("WAITING", "WAITING", "", "", "WAITING")
+
+
+# -- facing machines at one stop (contract v1.4, owner 2026-11-14) ---------------------------------
+def test_a_facing_machine_alone_is_one_stop():
+    w = world()
+    w.order("B1", "S9")
+    assert w.job.state == lj.ARMED, w.job.reason
+    assert w.job.trip.stops() == ["ATT", "R-1", "HOME"] and w.job.trip.work("R-1") == [("S9", "swap")]
+
+
+def test_a_face_to_face_pair_is_one_wait_and_one_start():
+    """Both machines are swapped at one stop, released by one START (contract section 11, item 17)."""
+    w = world()
+    w.order("B2", "S2+S9")
+    assert w.job.state == lj.ARMED, w.job.reason
+    assert w.job.trip.stops() == ["ATT", "R-1", "HOME"] and w.job.trip.uturn() is None
+    assert w.job.trip.work("R-1") == [("S2", "swap"), ("S9", "swap")]
+    assert statuses(w) == ("WAITING", "WAITING", "", "", "")
+    seen = []
+
+    def at(sid):
+        s = snap(w)
+        seen.append((sid, s["last_node_seq"], statuses(w)[:3]))
+
+    walk(w, ["ATT", "R-1"], on_stop=at)
+    assert seen == [("ATT", 2, ("RUNNING", "WAITING", "")), ("R-1", 4, ("FINISHED", "RUNNING", ""))]
+    s = snap(w)
+    assert (s["last_node_seq"], s["active"], s["machine"]) == (6, False, "S2+S9")
+    assert statuses(w) == ("FINISHED", "FINISHED", "", "", "")
+    assert "served" in w.job.result and "MISSED" not in w.job.result
+
+
+def test_with_the_rear_lidar_a_face_to_face_stop_has_no_interlock():
+    w = world(CallingWorld)
+    w.order("B2", "S2+S9")
+    walk(w, ["ATT", "R-1"], trolley={"ATT": "present", "R-1": "unknown"})
+    assert snap(w)["start_refused_reason"] == "" and "served" in w.job.result

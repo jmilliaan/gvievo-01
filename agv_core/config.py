@@ -11,9 +11,11 @@ The profile is chosen by the AGV_PROFILE environment variable, falling back to
 DEFAULT_PROFILE:
 
     (unset)                 # profiles/agv-01.json
-    AGV_PROFILE=agv-02      # profiles/agv-02.json (amr.env for the service, or the shell)
+    AGV_PROFILE=agv-02      # profiles/agv-02.json
 
-and in the systemd unit, Environment=AGV_PROFILE=agv-01. There is no CLI flag
+On a vehicle the value comes from one local line in $AMR_STATE_DIR/vehicle.env, read by
+amr_ws/env/vehicle.sh for the service and every shell; unit 1 has no such file (manuals/agv-02-plan.md).
+agv_core.identity checks it against the host name before the service starts. There is no CLI flag
 and no fallback to a profile that does not exist - a missing file is fatal and
 lists the names that ARE present.
 

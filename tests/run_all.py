@@ -13,10 +13,14 @@ Raise EXPECTED_CHECKS deliberately when checks are added; never lower it to make
 a run go green.
 """
 import importlib
+import os
 import pathlib
 import sys
 import threading
 
+# The reference profile, whatever this PC is (manuals/agv-02-plan.md R4): on unit 2 vehicle.sh exports
+# AGV_PROFILE=agv-02, and the checks here are written against agv-01's values. Before any agv_core import.
+os.environ["AGV_PROFILE"] = "agv-01"
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import helpers  # noqa: E402
@@ -41,6 +45,7 @@ MODULES = [
     "test_paths",
     "test_fsio",
     "test_fsutil",
+    "test_vehicles",
 ]
 
 # 869 + 24 (2026-09-19): test_mls added with the restored read_mls.py decoders
@@ -158,7 +163,9 @@ MODULES = [
 # + 2 (2026-11-07): C-BTU steers - a steer on a crossing refused, J-N/J-S held (test_mission).
 # + 2 (2026-11-11): NORMAL+ - auto_plus_ratio at NORMAL and at HIGH refused (test_config).
 # + 4 (2026-11-11): panel Start/Reset held levels for the At home combination (test_panel).
-EXPECTED_CHECKS = 921  # +4: dio.call_alarm refusals (stop call, 2026-11-13)
+# + 4 (2026-11-13): dio.call_alarm refusals (stop call).
+# + 17 (2026-11-14): test_vehicles - every profile, vehicle.env, identity, the agv-01 pin.
+EXPECTED_CHECKS = 938
 
 
 # An exception on a helper thread only prints a traceback by default - the

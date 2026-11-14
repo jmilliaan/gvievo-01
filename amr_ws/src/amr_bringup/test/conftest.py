@@ -8,6 +8,10 @@ collecting, and that Skipped escapes its hook and ends the WHOLE session as
 
 import os
 
+# The reference profile on either PC (manuals/agv-02-plan.md R4): before any agv_core import, as
+# vehicle.sh exports AGV_PROFILE=agv-02 on unit 2 and these tests pin agv-01's values.
+os.environ["AGV_PROFILE"] = "agv-01"
+
 SIM_TESTS = [
     "test_unified_sim.py",
     "test_sim_tf.py",

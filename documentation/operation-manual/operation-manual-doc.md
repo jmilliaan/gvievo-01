@@ -397,7 +397,7 @@ The pendant is wired to the vehicle. It has four direction buttons, **FORWARD**,
 
 ### 4.5 Web interface
 
-The vehicle shows its state and alarms on web pages, opened on a tablet or a PC connected to the vehicle's network. Address: `192.168.2.20:5001/`.
+The vehicle shows its state and alarms on web pages, opened on a tablet or a PC connected to the vehicle's network. Address: `192.168.2.110:5001/`.
 
 | Page             | Operator use                                                                                                         |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------- |

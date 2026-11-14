@@ -15,10 +15,12 @@ between units are in the table below; everything else is the same on every unit.
 |---|---|---|
 | Hostname | `gvipc-evo-01` | `gvipc-evo-02` |
 | Login user | `gvipc-evo-01` | **`gvipc-evo-01`** (deliberately the same, see below) |
-| Wi-Fi address on `agv_field` | `192.168.2.20/24` | `192.168.2.30/24` |
-| Web UI from the tablet | `http://192.168.2.20:5001` | `http://192.168.2.30:5001` |
+| Wi-Fi address on `agv_field` | `192.168.2.110/24` | `192.168.2.120/24` |
+| Web UI from the tablet | `http://192.168.2.110:5001` | `http://192.168.2.120:5001` |
 | CANable serial (udev rule, section 3) | `2087327F5548` | **TBD**: read it at section 3 |
-| Profile | `profiles/agv-01.json` | the same file (identical hardware, same `line-a` mission; `AGV_PROFILE` unset) |
+| Profile | `profiles/agv-01.json` (no `vehicle.env`: the default) | `profiles/agv-02.json`, selected by `~/.amr/vehicle.env` (section 5.3) |
+| Station identity (MQTT) | `agv1` | `agv2` (follows the profile name) |
+| Site mission, home | `site-103`, HOME-N2 | its own, HOME-N (owner 2026-11-14; not written yet: its route is not taught) |
 | Mission | `missions/line-a.json` | the same |
 | Wired addresses (LAN1, LAN2, `can0` nodes) | section 0 | the same: each unit's wired peers are on its own private links |
 | ROS domain | 10 | 10: DDS is bound to `lo` only (`cyclonedds-local.xml`), so two units on `agv_field` never see each other's topics |
@@ -29,9 +31,11 @@ between units are in the table below; everything else is the same on every unit.
 unit's `ExecStart` path does not exist. A different user name means changing the
 deploy files first (decided 2026-10-12: not done; units differ by hostname only).
 
-If unit 2 ever needs its own values (a recalibration, another mission), copy the
-profile to `profiles/agv-02.json` with `"profile_name": "agv-02"` and add
-`AGV_PROFILE=agv-02` to a local env override. Do not edit `agv-01.json` for one unit.
+**Each unit has its own profile in the repo** (2026-11-14, `manuals/agv-02-plan.md`): `profiles/agv-02.json`
+is committed like `agv-01.json`. The only per-unit file outside the repo that picks it is
+`~/.amr/vehicle.env`, one line `AGV_PROFILE=agv-02` (section 5.3). At every start `amr.service` checks the host
+name against the profile (`agv_core.identity`: `gvipc-evo-02` must run `agv-02`) and refuses to start on a
+mismatch. Never edit one unit's profile for the other.
 
 Written from the running vehicle and the repo. Everything the repo does *not*
 carry (kiosk layer, netplan, udev, CAN unit, lightdm, logind, bashrc) is
@@ -81,7 +85,7 @@ you plug cables, and you stop when the checklist says **STOP**.
 Paste this as your first message:
 
 > Read alpha-setup.md, starting at "Start here". We are setting up unit 2
-> (hostname gvipc-evo-02, Wi-Fi 192.168.2.30). Run the "Done when" checks of the
+> (hostname gvipc-evo-02, Wi-Fi 192.168.2.120). Run the "Done when" checks of the
 > checklist that need no sudo, tell me which steps are already done, and then
 > walk me through the first step that is not, one command block at a time.
 > Give me every sudo command to paste into my other terminal and wait for my
@@ -128,15 +132,15 @@ tether come **before** the wired ports, so the PC never loses its internet).
 | 3 | Hostname, timezone, locale, base tools | 1 | `hostname` = `gvipc-evo-02`; `timedatectl show -p Timezone --value` = `Asia/Jakarta`; `command -v slcand chronyc ethtool` prints 3 paths |
 | 4 | Never sleep, power key ignored | 1 | `systemctl is-enabled sleep.target` = `masked`; `ls /etc/systemd/logind.conf.d/` lists both files |
 | 5 | NetworkManager, no 2-min boot wait | 2.1 | `systemctl is-enabled systemd-networkd-wait-online` = `masked`; `systemctl is-active NetworkManager` = `active` |
-| 6 | Second uplink: Wi-Fi, then phone tether | 2.3, 2.2 (tether file only) | `nmcli -g IP4.ADDRESS dev show wlp1s0` = `192.168.2.30/24`; with the phone plugged in, `ip -br addr show usb0` has an address |
+| 6 | Second uplink: Wi-Fi, then phone tether | 2.3, 2.2 (tether file only) | `nmcli -g IP4.ADDRESS dev show wlp1s0` = `192.168.2.120/24`; with the phone plugged in, `ip -br addr show usb0` has an address |
 | 7 | Wired ports + installer file cleaned | 2.2 | `ip -br addr` shows `enp2s0 … 192.168.1.10/24`, `enp3s0 … 192.168.3.2/24`; `ip route \| grep default` has no `enp`; `ls /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` exists |
 | 8 | CANable → `can0` | 3 | `ls -l /dev/canable0` is a link; `ip -br link show can0` says `UP`; serial written into the top table (tell the engineer) |
 | 9 | ROS 2 Humble | 4 | `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
 | 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, numpy; print(numpy.__version__)"` prints `2.2.6` |
-| 11 | Shell environment | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION'` = `10 rmw_cyclonedds_cpp` |
+| 11 | Shell environment, which vehicle | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION $AGV_PROFILE'` = `10 rmw_cyclonedds_cpp agv-02`; `bash -ic 'python3 -m agv_core.identity'` names host `gvipc-evo-02`, profile `agv-02`, serial `agv2` |
 | 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (706 at the time of writing) |
 | 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal` |
-| 14 | Operator display (kiosk). **Do it over SSH** (`ssh gvipc-evo-01@192.168.2.30`): when lightdm restarts, the local screen becomes the kiosk and there is no text console behind it any more (by design) | 7 (not 7.8) | `systemctl is-active nginx lightdm` = `active active`; `curl -s http://127.0.0.1/ \| grep -c 'AMR system starting'` = `1`; the panel shows the orange "AMR system starting" page |
+| 14 | Operator display (kiosk). **Do it over SSH** (`ssh gvipc-evo-01@192.168.2.120`): when lightdm restarts, the local screen becomes the kiosk and there is no text console behind it any more (by design) | 7 (not 7.8) | `systemctl is-active nginx lightdm` = `active active`; `curl -s http://127.0.0.1/ \| grep -c 'AMR system starting'` = `1`; the panel shows the orange "AMR system starting" page |
 | 15 | **STOP: engineer.** Device read-back, then first start | 9.1, 6 (cutover) | every row of 9.1 matches; `systemctl is-active amr` = `active`; the panel shows the UI in IDLE |
 | 16 | **STOP: engineer.** Acceptance | 9.2 | all 14 items pass |
 
@@ -171,7 +175,7 @@ under another username means editing `amr.service` (`User=`, `Group=`,
 |---|---|---|---|---|
 | `enp2s0` (LAN1) | `igc` (Intel i226, `8086:125c`) | netplan → networkd | `192.168.1.10/24`, no gateway, no DNS | DIO island `192.168.1.30:502` (Modbus TCP), RFID reader `192.168.1.200:2022` |
 | `enp3s0` (LAN2) | `igc` | netplan → networkd | `192.168.3.2/24`, no gateway, no DNS | nanoScan3 `192.168.3.10` (CoLa2 TCP 2122, UDP data → host `:6060`) |
-| `wlp1s0` | `iwlwifi` (Intel 7260) | NetworkManager | per unit (`192.168.2.20/24` unit 1, `192.168.2.30/24` unit 2), gw `192.168.2.10`, DNS 1.1.1.1/8.8.8.8, metric 700 | SSID `agv_field` — the operator tablet reaches `http://<unit address>:5001` here |
+| `wlp1s0` | `iwlwifi` (Intel 7260) | NetworkManager | per unit (`192.168.2.110/24` unit 1, `192.168.2.120/24` unit 2), gw `192.168.2.5` (station PC, ICS), DNS 1.1.1.1/8.8.8.8, metric 700 | SSID `agv_field` — the operator tablet reaches `http://<unit address>:5001` here |
 | `usb0` | `cdc_ether`/`rndis` | netplan → networkd | DHCP, metric 100 | phone tether: maintenance uplink and remote SSH |
 | `can0` | `slcan` (CANable 2.0, USB `16d0:117e`) | `canable@can0.service` | 125 kbps, txqueuelen 1000 | BLV-R node 1 (left), node 2 (right), SICK MLS node 10 |
 | `lo` | | | | **all ROS 2 DDS traffic** (loopback-only CycloneDDS) |
@@ -436,7 +440,7 @@ time and watch `ip -br link` for which port gets carrier, then
 
 ### 2.3 Wi-Fi — `agv_field`
 
-The address is **per unit** (unit 1 `.20`, unit 2 `.30`). Two units on the same
+The address is **per unit** (unit 1 `.110`, unit 2 `.120`). Two units on the same
 address knock each other off `agv_field`; check before adding a third
 (`ping -c2 192.168.2.<n>` must fail first).
 
@@ -445,15 +449,15 @@ Type this one into terminal B **yourself**, with the real password in place of
 log). The PC must be within range of `agv_field`.
 
 ```bash
-WIFI_IP=192.168.2.30          # per unit: unit 1 192.168.2.20, unit 2 192.168.2.30
+WIFI_IP=192.168.2.120          # per unit: unit 1 192.168.2.110, unit 2 192.168.2.120
 sudo nmcli con add type wifi con-name agv-net ifname wlp1s0 ssid agv_field \
   wifi-sec.key-mgmt wpa-psk wifi-sec.psk '<PSK>' \
-  ipv4.method manual ipv4.addresses "$WIFI_IP/24" ipv4.gateway 192.168.2.10 \
+  ipv4.method manual ipv4.addresses "$WIFI_IP/24" ipv4.gateway 192.168.2.5 \
   ipv4.dns 1.1.1.1,8.8.8.8 ipv4.route-metric 700 \
   connection.autoconnect yes connection.autoconnect-priority 10 connection.autoconnect-retries 0
 sudo nmcli con up agv-net
-nmcli -g IP4.ADDRESS dev show wlp1s0      # 192.168.2.30/24
-ping -c2 -I wlp1s0 192.168.2.10           # the Wi-Fi gateway answers
+nmcli -g IP4.ADDRESS dev show wlp1s0      # 192.168.2.120/24
+ping -c2 -I wlp1s0 192.168.2.5            # the Wi-Fi gateway (station PC) answers
 ```
 
 If `con add` says the address is in use or the gateway does not answer, STOP:
@@ -695,7 +699,18 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 `env/vehicle.sh` (in the repo) sets `ROS_DOMAIN_ID=10`, `RMW_IMPLEMENTATION`,
 `CYCLONEDDS_URI=file://$HOME/agv_can/amr_ws/src/amr_bringup/config/cyclonedds-local.xml`
 and puts `$HOME/agv_can` on `PYTHONPATH` so `agv_core` imports from the colcon
-install space. `AGV_PROFILE` is unset → `profiles/agv-01.json`.
+install space. It also reads **which vehicle this PC is** from `~/.amr/vehicle.env` (`$AMR_STATE_DIR`): one
+line, never in the repo. Unit 1 needs no file (the default is `agv-01`). On unit 2:
+
+```bash
+mkdir -p ~/.amr && echo 'AGV_PROFILE=agv-02' > ~/.amr/vehicle.env
+source ~/.bashrc && echo $AGV_PROFILE                     # agv-02
+python3 -m agv_core.identity                              # identity: host gvipc-evo-02, profile agv-02, station serial agv2
+```
+
+Only a plain `AGV_PROFILE=<name>` line is read; anything else is ignored with a warning and the default applies,
+which the identity check then refuses on unit 2. The offline tests always run against `agv-01`
+(`tests/run_all.py` and every `amr_ws/src/*/test/conftest.py` pin it), so they pass on either unit.
 
 ### 5.4 Build and test
 
@@ -1253,7 +1268,7 @@ Run all of these once, in order, before the vehicle leaves the bench.
 10. **Unplug the CANable** → `amr.service` stops (`BindsTo`); replug → both come back; drives may show `8130h` and need a power cycle (expected, RUNBOOK §4).
 11. **20 min idle** → no screen blanking, no sleep.
 12. **Tests**: `python3 tests/run_all.py` = 706 / 706 at `9243ff6` (the pinned `EXPECTED_CHECKS`; a later commit may change it); per-package pytest green.
-13. **Two units on `agv_field`** (unit 2 onwards): with both vehicles powered, the tablet opens `http://192.168.2.20:5001` and `http://192.168.2.30:5001`; `sudo systemctl stop amr` on unit 2 drops only the `.30` page (proves the two addresses are not crossed), then start it again.
+13. **Two units on `agv_field`** (unit 2 onwards): with both vehicles powered, the tablet opens `http://192.168.2.110:5001` and `http://192.168.2.120:5001`; `sudo systemctl stop amr` on unit 2 drops only the `.120` page (proves the two addresses are not crossed), then start it again.
 14. **Recorder**: `tools/run_log.sh` with the service up, Ctrl-C once after ~10 s; `~/.amr/runs/<stamp>/bag/` exists and the report it runs at the end prints (proves the MCAP plugin from section 4).
 
 ---
@@ -1282,6 +1297,7 @@ is reproduced above; if any of them changes on the vehicle, update this document
 | `~/.bashrc` block, `~/.ssh/authorized_keys` + deploy key | 5.3, 5.1 |
 | `~/xfce-kiosk-staging/` (source of the kiosk files, with `README-kiosk.md`, `README-seamless.md`) | 7 |
 | `~/amr_maps/` (map bundles = **vehicle data**, back up before a reinstall), `~/.amr/` (logs, evidence, `operations.jsonl`) | 5.1 |
+| `~/.amr/vehicle.env` (which profile: unit 2 only), `~/.amr/station-mqtt.json` (MQTT user and password, mode 600), `~/.amr/web.json` (PIN, created on first run): **per unit** | 5.3 |
 | user-site pip packages (`~/.local/lib/python3.10/site-packages`) | 5.2 |
 
 Recommended next step: move `~/xfce-kiosk-staging/kiosk/` into the repo (for
@@ -1304,9 +1320,8 @@ Added 2026-10-12 (second unit; unit 1 was not reachable to check):
   (section 10) the next time unit 1 is reachable.
 - **`manuals/obsolete/rfid-setup/rfid-test.sh`** is lost from the repo (old-path
   `.gitignore` negation); recover it from unit 1 if it is still there.
-- **`agv_core/config.py`'s docstring** says the systemd unit sets
-  `AGV_PROFILE=agv-01`; it does not, the default does. Harmless while both units
-  share `agv-01.json`.
+- ~~`agv_core/config.py`'s docstring says the systemd unit sets `AGV_PROFILE=agv-01`~~ Fixed 2026-11-14: the
+  selector is `~/.amr/vehicle.env`.
 - **A different login user per unit** needs `amr.service`, `amr.env`,
   `amr-web.sudoers` and `install.sh`/`validate.sh` made user-aware first.
 

@@ -4,6 +4,10 @@ against from source (amr_base, amr_line, amr_sim, and amr_line's test helpers)."
 import os
 import sys
 
+# The reference profile on either PC (manuals/agv-02-plan.md R4): before any agv_core import, as
+# vehicle.sh exports AGV_PROFILE=agv-02 on unit 2 and these tests pin agv-01's values.
+os.environ["AGV_PROFILE"] = "agv-01"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 SRC = os.path.join(ROOT, "amr_ws", "src")

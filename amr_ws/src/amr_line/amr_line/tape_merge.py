@@ -5,8 +5,11 @@ that no pass has: since 2026-11-06 the drawn right bay and HOME-N2. This takes o
 the legs the graph lacks, plus that circuit's stops from the lap's marks. Every leg and station of the
 base graph is kept as it is.
 
-    python3 -m amr_line.tape_merge                     report only, nothing written
-    python3 -m amr_line.tape_merge --publish           write g<N+1>; activate it on the Teach page
+    python3 -m amr_line.tape_merge --circuit C-BTU             report only, nothing written
+    python3 -m amr_line.tape_merge --circuit C-BTU --publish   write g<N+1>; activate it on the Teach page
+
+The mission is this vehicle's own (the profile's tape_loc.site_mission) unless --mission names another, and
+the circuit is always named: no default that belongs to one vehicle (manuals/agv-02-plan.md R8).
 
 Failure modes, all refused before anything is written:
 - the pass does not match the circuit's forks (tape_teach.split_pass)
@@ -32,7 +35,6 @@ from amr_line import trip as tripmod
 from amr_line import trip_route
 
 MAX_JOIN_GAP_M = tt.ANCHOR_R_M
-DEFAULT_CIRCUIT = "C-BTU"
 
 
 class MergeError(ValueError):
@@ -237,8 +239,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Add one recorded lap of a circuit to a tape graph, as a new revision."
     )
-    ap.add_argument("--circuit", default=DEFAULT_CIRCUIT)
-    ap.add_argument("--mission", default="site-103")
+    from agv_core import config  # noqa: PLC0415 - the vehicle's own mission, only when run as a tool
+
+    ap.add_argument("--circuit", required=True, help="the circuit the lap drove, e.g. C-BTU")
+    ap.add_argument("--mission", default=config.TAPE_LOC_SITE_MISSION,
+                    help=f"site mission (default: this vehicle's, {config.TAPE_LOC_SITE_MISSION})")
     ap.add_argument("--map", default="", help="map id (default: the active graph's)")
     ap.add_argument("--map-revision", type=int, default=None)
     ap.add_argument(

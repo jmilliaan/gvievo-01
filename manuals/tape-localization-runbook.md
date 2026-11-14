@@ -334,8 +334,8 @@ stops from the lap's marks. Every other leg and station stays as it is. One lap 
 **Add it to the graph**, from a sourced shell:
 
 ```
-python3 -m amr_line.tape_merge            # report only, nothing written
-python3 -m amr_line.tape_merge --publish  # writes g<N+1>, not activated
+python3 -m amr_line.tape_merge --circuit C-BTU            # report only, nothing written
+python3 -m amr_line.tape_merge --circuit C-BTU --publish  # writes g<N+1>, not activated
 ```
 
 The report lists each new leg, the stop positions and which mark became which stop. It refuses a pass whose forks

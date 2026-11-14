@@ -157,7 +157,7 @@ svg{--bg:#ffffff;--ink:#1d2228;--muted:#6b7280;--grid:#eceee9;--gridM:#dcdfd8;
 <text class="dtxt" x="-1100.0" y="825" text-anchor="middle">TO and FROM MRU 1-4</text><text class="dtxt" x="-1100.0" y="950" text-anchor="middle">FROM BTU 9-24</text><text class="dtxt" x="-1100.0" y="1075" text-anchor="middle">(AGV 1 only)</text>
 <line class="darrow" x1="5650" y1="0" x2="6400" y2="0" marker-end="url(#darr)" marker-start="url(#darr)"/>
 <rect class="dbox" x="3800" y="1050" width="2750" height="525" rx="40"/>
-<text class="dtxt" x="5175.0" y="1225" text-anchor="middle">TO STU 1-4</text><text class="dtxt" x="5175.0" y="1350" text-anchor="middle">FROM BTU 1-8 &amp; STU 1-4</text><text class="dtxt" x="5175.0" y="1475" text-anchor="middle">(AGV 2 only)</text>
+<text class="dtxt" x="5175.0" y="1225" text-anchor="middle">TO STU 7-10</text><text class="dtxt" x="5175.0" y="1350" text-anchor="middle">FROM BTU 1-8 / STU 1-6</text><text class="dtxt" x="5175.0" y="1475" text-anchor="middle">and STU 7-10 (AGV 2 only)</text>
 <line class="darrow" x1="2474.0" y1="1700" x2="2474.0" y2="2250" marker-end="url(#darr)"/>
 <rect class="dbox" x="724.0" y="2400" width="3500" height="400" rx="40"/>
 <text class="dtxt" x="2474.0" y="2575" text-anchor="middle">TO BTU 9-24 (AGV 1) and</text><text class="dtxt" x="2474.0" y="2700" text-anchor="middle">BTU 1-8 &amp; STU 1-6 (AGV 2)</text>

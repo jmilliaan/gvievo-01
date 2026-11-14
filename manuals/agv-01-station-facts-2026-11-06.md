@@ -25,7 +25,7 @@ Checked on the vehicle on 2026-11-06, 14:46 to 15:02 WIB. Contract: end of `manu
 | `station-call-plan.md:30, :62` | `tape_loc.live` stays false until P0 passes | True in `profiles/agv-01.json` since `9e40330` |
 | `amr_web/test/test_teach_page.py:36, :65` | Pin `live` false | **Both tests fail** because of that profile change |
 | Contract section 5, against `amr_station/vda_state.py:44` | `STARTUP` only while starting, changing layer or stopping; otherwise `MANUAL` | With no OrderState the code reports `STARTUP`. In today's state that lasts indefinitely, with no error giving a reason (from reading the code, not run) |
-| `alpha-setup.md:174, :451, :456` | Gateway 192.168.2.10 | Gateway is 192.168.2.5 |
+| `alpha-setup.md:174, :451, :456` | Gateway 192.168.2.10 | Gateway is 192.168.2.5 (doc corrected 2026-11-14) |
 | `station-call-plan.md` V8 | `usb0` is the first default route | No `usb0` on this boot |
 | `amr_station/test/conftest.py:26` with `test_mosquitto_loop.py:16` | Broker test skips | With `AMR_MQTT_TESTS=1` and no `mosquitto`, the **whole package reports "1 skipped" and exits without running anything** |
 | `station-call-plan.md:32` | P7 passes against a real broker | `mosquitto` isn't on this vehicle. It passes with a temporary copy (test table below) |
@@ -104,7 +104,7 @@ Failures, both caused by `live` being true:
 
 | Item | Value | How checked |
 |---|---|---|
-| `wlp1s0` | 192.168.2.20/24, metric 700, SSID `agv_field`, channel 1 | `ip`, `nmcli` |
+| `wlp1s0` | 192.168.2.110/24 (address updated 2026-11-14), metric 700, SSID `agv_field`, channel 1 | `ip`, `nmcli` |
 | Default gateway | **192.168.2.5** (the station PC), not .10 | `ip route`, `nmcli` |
 | What answers at .10 | A device with MAC `08:2c:14:ac:00:00`, a DIO module per `alpha-setup.md`; ping only | `ping`, `ip neigh` |
 | AP | 192.168.2.254, whose MAC matches the BSSID `8c:90:2d:9d:91:70` | `ip neigh`, `nmcli` |
@@ -185,7 +185,7 @@ Failures, both caused by `live` being true:
 | Settle and holdoff | 5 s and 15 s configured; **never exercised on the vehicle** | Profile |
 | E-stop | **Inferred, not read.** It's wired to the FX3, and no DIO input carries it. Torque loss without a field violation is labelled `estop` | `job.py:814-818`, profile, `io-mapping.md` |
 | Battery or charging | No charge or charging reading. Only a drive bus voltage monitor | Config |
-| Second AGV | Addressing is reserved, but `.30` doesn't answer and there's no `agv-02` profile. Whether it's planned: ask a person | Ping, `profiles/` |
+| Second AGV | Address 192.168.2.120 (owner, 2026-11-14), allowed at the broker firewall. No `agv-02` profile in this repo yet | Owner, `profiles/` |
 
 **What a person can press during a trip** (from the contract and code; the selector row was also seen in the 14:33 log):
 

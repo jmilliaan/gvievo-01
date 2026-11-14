@@ -23,7 +23,7 @@ left = north, right = south, down = west. Projection coordinates below are mm, a
 | # | Decision | Source |
 |---|---|---|
 | D1 | Two AGVs, fixed halves split along the middle line ("103 TYRE BUILDING"). No AGV serves the other's machines | operator |
-| D2 | AGV-01: BTU9–24 and MRU1–4 (20 machines). AGV-02: BTU1–8, STU1–10 (18 machines) | operator |
+| D2 | AGV-01: BTU9–24 and MRU1–4 (20 machines), the north side. AGV-02: BTU1–8, STU1–10 (18 machines). Confirmed by the owner 2026-11-14. Row 3: BTU1–6 face STU1–6 (same numbering), BTU7 and BTU8 face nothing; STU7–10 are served like MRU (release, take back, pairs allowed) | operator; owner 2026-11-14 |
 | D3 | A trip serves **at most 2 machines, both from one group**. AGV-01 groups: **MRU** (MRU1–4) and **BTU** (BTU9–24). Never mixed: the track and flow are too complicated | operator |
 | D4 | ~~The AGV waits at HOME until two machines of one group have called. Cycle time and capacity are out of scope for now~~ **Replaced 2026-11-05:** one machine per trip (`trip_calls` 1). No waiting for a second call. No batching | operator |
 | D5 | ~~Calls are entered on the AGV's own display (or the web page from a laptop). No call buttons, no central system~~ **Replaced 2026-11-05, with `station.enabled` only:** MRU calls come from buttons on the machines, through the station PC. BTU calls stay on the AGV's display. Run → Calls stays | operator |
@@ -32,7 +32,7 @@ left = north, right = south, down = west. Projection coordinates below are mm, a
 | D8 | **MRU:** westbound, the AGV stops at each called machine and the trolley is **released**. It drives on empty to the end of the MRU line, U-turns, and on the eastbound pass stops again at the same machines to **take the trolley back** | operator |
 | D9 | **The AGV cannot U-turn with a payload, at either U-turn.** The MRU-end U-turn is a pivot at the tape end (as `line-a`'s `u_turn`), so every release must be done before it. The HOME U-turn R717 is driven empty: the trolley is attached after it (D11) | operator |
 | D10 | ~~There is no payload detection. A rear lidar may later detect the trolley; ignored for now~~ **Replaced 2026-11-05, as an assumption, with `station.enabled` only:** a rear lidar will detect the trolley and carry the rear safety field. Not fitted yet. Trolley detection is not personnel protection. With it off, the confirmations stand | operator |
-| D11 | AGV-01's **home position is HOME-N2 in the south bay** (right at J-SPLIT, since 2026-11-06; it was the north bay), where it parks **empty**. The **attach point** is on the departure lane after the U-turn. The operator's mark-up puts it at ≈ projection (2474, 3250–5190), from about 0.8 m to 2.8 m before J-N; the exact stop is taught on the floor. **Trolleys are released at each AGV's own home position** (AGV-01: north bay, AGV-02: south bay) | operator, 2026-10-17 mark-ups |
+| D11 | AGV-01's **home position is HOME-N2 in the south bay** (right at J-SPLIT, since 2026-11-06; it was the north bay), where it parks **empty**. The **attach point** is on the departure lane after the U-turn. The operator's mark-up puts it at ≈ projection (2474, 3250–5190), from about 0.8 m to 2.8 m before J-N; the exact stop is taught on the floor. **Trolleys are released at each AGV's own home position.** Owner 2026-11-14: AGV-01 stays at HOME-N2 (right bay), AGV-02 parks at HOME-N (left bay) | operator, 2026-10-17 mark-ups |
 | D14 | **Leaving home needs a physical Start.** A call (or a formed trip) on the display never moves the vehicle (safety invariant: no web page starts the vehicle; autonomous motion only under AUTO + a fresh panel Start). When a trip forms, the HMI shows it; the operator presses Start at the bay, and the AGV drives empty through the U-turn to the attach point. **Replaced 2026-11-05 for one case:** with `station.enabled`, an accepted station order leaves HOME by itself, only from HOME, only in AUTO, once, through the 2 s horn, and with no trolley and the rear field clear. Everything else still needs a physical Start | safety invariants (CLAUDE.md); owner 2026-11-05 |
 | D12 | ~~Tape is laid only as far as MRU~~ **All tape is laid (2026-11-07).** Row 2, the left vertical and the middle line are down, but not yet taught: no graph has them (section 4) | operator |
 | D13 | AGV-01 only for now: no collision or priority logic. Topics and profile are per AGV (`manuals/station-call-plan.md` section 20), so a second AGV is not closed off | operator |
@@ -188,5 +188,6 @@ Consequences:
 
 ## 6. Open items
 
-1. **AGV-02 (deferred):** the operator gives the row 3 group as BTU1–8 + STU1–4, but the site plan
-   shows STU1–6 on row 3. Reconcile when AGV-02 starts.
+1. ~~**AGV-02 (deferred):** the operator gives the row 3 group as BTU1–8 + STU1–4, but the site plan
+   shows STU1–6 on row 3.~~ **Settled 2026-11-14 (owner):** row 3 is BTU1–8 against STU1–6; STU7–10 are a separate line, the
+   projection's former "STU 1-4" exit (label corrected).

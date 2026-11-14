@@ -11,10 +11,14 @@ HOME 0, ATT 2, MW-a 4, MW-b 6, ME-b 8, ME-a 10, HOME 12; action ids end in the n
 handed to the job as the machine key "a+b". One machine keeps contract section 2 exactly.
 
 BTU laps (contract v1.3, owner 2026-11-13): one or two swap machines, the closer first, no U-turn:
-HOME 0, ATT 2, R2-j 4[, R2-k 6], HOME 6 or 8; action ids end in the node id (`:ATT`, `:R2-1`). A swap node
-names the FIRST machine the mission lists at it (R2-k is BTU(25-k)); the machines that share the stops
-(BTU9-16) can't be named by nodes, and refusing them is the station's rule. Which shape an order is comes
-from its node ids, never its node count alone: two BTUs and one MRU both have 5 nodes.
+HOME 0, ATT 2, R2-j 4[, R2-k 6], HOME 6 or 8; action ids end in the node id (`:ATT`, `:R2-1`). Which shape an
+order is comes from its node ids, never its node count alone: two BTUs and one MRU both have 5 nodes.
+
+Facing machines (contract v1.4, 2026-11-14): a swap stop's OWN machine is the first the mission lists at it
+(R2-k is BTU(25-k)); the others listed there face it (BTU(17-k)). A wait names its stop's machines in a
+`machines` action parameter, own first, whenever they are not just the own machine: ["BTU15"],
+["BTU23", "BTU15"]. A wait without one is the own machine, as in v1.3, and ["BTU23"] alone is refused. Two
+machines at one stop are one wait, one START: the one-stop shape. An order still serves at most two machines.
 """
 
 from __future__ import annotations
@@ -72,33 +76,54 @@ def machines(site) -> dict[str, tuple[str, str]]:
 
 
 def swaps(site) -> dict[str, str]:
-    """The swap machines an order can name: {machine: swap node}, one per node, the first the mission lists
-    there (contract v1.3: R2-k is BTU(25-k))."""
-    out, taken = {}, set()
-    for row in site["GROUPS"].values():
-        for mc, rec in row["machines"].items():
-            node = rec.get("swap")
-            if node is not None and node not in taken:
-                out[mc] = node
-                taken.add(node)
+    """Each swap stop's OWN machine: {machine: swap node}, the first the mission lists at the node (contract
+    v1.3: R2-k is BTU(25-k)). A wait without a `machines` parameter names this one."""
+    return {at[0]: node for node, at in stop_machines(site).items()}
+
+
+def swap_machines(site) -> dict[str, str]:
+    """Every swap machine an order can name: {machine: swap node}, the facing ones too (contract v1.4)."""
+    return {mc: rec["swap"] for row in site["GROUPS"].values() for mc, rec in row["machines"].items()
+            if rec.get("swap") is not None}
+
+
+def stop_machines(site) -> dict[str, list[str]]:
+    """{swap node: its machines in mission order}, the own machine first."""
+    out: dict[str, list[str]] = {}
+    for mc, node in swap_machines(site).items():
+        out.setdefault(node, []).append(mc)
     return out
 
 
 def is_swap(site, key: str) -> bool:
     """A valid_key() of swap machines (a BTU lap), not release and take."""
-    return isinstance(key, str) and all(n in swaps(site) for n in key.split(PAIR_SEP))
+    return isinstance(key, str) and all(n in swap_machines(site) for n in key.split(PAIR_SEP))
+
+
+def swap_stops(site, key: str) -> list[tuple[str, list[str]]]:
+    """[(swap node, the key's machines there)] of a swap key, in key order: one entry per stop."""
+    sw, out = swap_machines(site), []
+    for mc in key.split(PAIR_SEP):
+        if out and out[-1][0] == sw[mc]:
+            out[-1][1].append(mc)
+        else:
+            out.append((sw[mc], [mc]))
+    return out
 
 
 def _group_of(site, machine: str):
     return next((name for name, g in site["GROUPS"].items() if machine in g["machines"]), None)
 
 
-def _wait(order_id: str, suffix: str) -> dict:
+def _wait(order_id: str, suffix: str, names=None) -> dict:
+    params = [{"key": "triggerType", "value": ["LOCAL"]}]
+    if names is not None:
+        params.append({"key": "machines", "value": list(names)})
     return {
         "actionId": f"{order_id}:{suffix}",
         "actionType": "waitForTrigger",
         "blockingType": "HARD",
-        "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}],
+        "actionParameters": params,
     }
 
 
@@ -109,11 +134,11 @@ def _circuit_pos(site, machine: str) -> dict:
 
 
 def valid_key(site, key: str) -> bool:
-    """A machine key an order can carry: one machine of machines() or swaps(), or a pair "a+b" of two
+    """A machine key an order can carry: one machine of machines() or swap_machines(), or a pair "a+b" of two
     different machines of one group and one kind. Release and take: a's release before b's and b's take
-    before a's in circuit order. Swap: a's stop before b's."""
+    before a's in circuit order. Swap: a's stop before b's, or one stop, a listed before b there (v1.4)."""
     names = key.split(PAIR_SEP) if isinstance(key, str) else []
-    known, sw = machines(site), swaps(site)
+    known, sw = machines(site), swap_machines(site)
     if len(names) == 1:
         return names[0] in known or names[0] in sw
     if len(names) != 2 or names[0] == names[1]:
@@ -123,6 +148,9 @@ def valid_key(site, key: str) -> bool:
             return False
         pos = _circuit_pos(site, names[0])
         a, b = sw[names[0]], sw[names[1]]
+        if a == b:
+            at = stop_machines(site)[a]
+            return a in pos and at.index(names[0]) < at.index(names[1])
         return a in pos and b in pos and pos[a] < pos[b]
     if not all(n in known for n in names):
         return False
@@ -139,12 +167,11 @@ def valid_key(site, key: str) -> bool:
 def waits(site, key: str) -> list[tuple[str, str, int]]:
     """[(nodeId, action id suffix, sequenceId)] of the waits of a valid key, in sequence order.
     One machine: ATT, MW, ME (section 2). A pair: ATT, then the node id itself. Swap machines (v1.3): ATT,
-    then each swap node by its id."""
+    then each swap stop by its node id, once however many machines it serves (v1.4)."""
     att = site["ATTACH"]
     names = key.split(PAIR_SEP)
     if is_swap(site, key):
-        sw = swaps(site)
-        return [(att, "ATT", 2)] + [(sw[n], sw[n], 4 + 2 * i) for i, n in enumerate(names)]
+        return [(att, "ATT", 2)] + [(nd, nd, 4 + 2 * i) for i, (nd, _at) in enumerate(swap_stops(site, key))]
     known = machines(site)
     if len(names) == 1:
         release, take = known[key]
@@ -154,14 +181,19 @@ def waits(site, key: str) -> list[tuple[str, str, int]]:
 
 
 def canonical_order(site, machine: str, order_id: str) -> dict:
-    """The exact nodes and edges of contract section 2 (one machine) or of the pair proposal, from the
-    mission's home and attach. `machine` is a valid_key()."""
+    """The exact nodes and edges of contract section 2 from the mission's home and attach. `machine` is a
+    valid_key(). A swap wait carries `machines` unless it serves just its stop's own machine (v1.4)."""
     home = site["HOME"]
     node = lambda nid, seq, actions: {"nodeId": nid, "sequenceId": seq, "released": True, "actions": actions}  # noqa: E731
     edge = lambda a, b, seq: {"edgeId": f"{a}:{b}", "sequenceId": seq, "released": True, "actions": []}  # noqa: E731
     w = waits(site, machine)
+    named = {}
+    if is_swap(site, machine):
+        at_stop = stop_machines(site)
+        named = {nd: at for nd, at in swap_stops(site, machine) if at != at_stop[nd][:1]}
     end = w[-1][2] + 2
-    nodes = [node(home, 0, [])] + [node(nid, seq, [_wait(order_id, sfx)]) for nid, sfx, seq in w]
+    nodes = [node(home, 0, [])]
+    nodes += [node(nid, seq, [_wait(order_id, sfx, named.get(nid))]) for nid, sfx, seq in w]
     nodes.append(node(home, end, []))
     pairs = zip(nodes, nodes[1:], strict=False)
     edges = [edge(a["nodeId"], b["nodeId"], a["sequenceId"] + 1) for a, b in pairs]
@@ -199,26 +231,57 @@ def _structure_only(items: list) -> list:
     return [{k: v for k, v in it.items() if k != "actions"} if isinstance(it, dict) else it for it in items]
 
 
+def _named(node: dict):
+    """The `machines` value of a node's first action: a list of names, None when there is no such parameter,
+    or False when it is there but not a list of strings (the action check then refuses it)."""
+    acts = node.get("actions")
+    act = acts[0] if isinstance(acts, list) and acts and isinstance(acts[0], dict) else {}
+    params = act.get("actionParameters")
+    params = params if isinstance(params, list) else []
+    found = [p for p in params if isinstance(p, dict) and p.get("key") == "machines"]
+    if not found:
+        return None
+    value = found[0].get("value")
+    ok = isinstance(value, list) and value and all(isinstance(v, str) for v in value)
+    return list(value) if ok else False
+
+
+def _swap_names(site, node: dict) -> list[str] | None:
+    """The machines a swap wait names: its `machines` if readable, else the stop's own machine. None if the
+    node is no swap stop, or `machines` names one not at it, or names only the own machine (contract
+    section 10: VALIDATION_FAILURE)."""
+    nid = node.get("nodeId")
+    at = stop_machines(site).get(nid) if isinstance(nid, str) else None
+    if not at:
+        return None
+    names = _named(node)
+    if not names:  # absent, or unreadable: the own machine, and the action compare decides
+        return [at[0]]
+    if names == [at[0]] or not all(n in at for n in names):
+        return None
+    return names
+
+
 def _find_machine(site, nodes, pairs: bool = True) -> str | None:
-    """The machine key the nodes name, by their ids: one MRU 5 nodes, an MRU pair 7, one BTU 4, two BTUs 5.
-    Pairs of either kind only with `pairs` (their second wait is mw2_status). The caller then compares
-    every node and edge against canonical_order of it."""
+    """The machine key the nodes name, by their ids and the swap waits' `machines`: one MRU 5 nodes, an MRU
+    pair 7, one BTU stop 4 (one machine, or two facing at it), two BTU stops 5. Two waits after ATT only with
+    `pairs` (the second is mw2_status). The caller then compares every node and edge against canonical_order
+    of it."""
     if not isinstance(nodes, list) or not all(isinstance(n, dict) for n in nodes):
         return None
     ids = [n.get("nodeId") for n in nodes]
     known = machines(site)
     find = lambda rel, take: next((mc for mc, nodes_of in known.items() if nodes_of == (rel, take)), None)  # noqa: E731
-    by_swap = {node: mc for mc, node in swaps(site).items()}
-    swap_at = lambda nid: by_swap.get(nid) if isinstance(nid, str) else None  # noqa: E731
+    keyed = lambda names: PAIR_SEP.join(names) if valid_key(site, PAIR_SEP.join(names)) else None  # noqa: E731
     if len(nodes) == 4:
-        return swap_at(ids[2])
+        names = _swap_names(site, nodes[2])
+        return keyed(names) if names else None
     if len(nodes) == 5:
         one = find(ids[2], ids[3])
         if one or not pairs:
             return one
-        a, b = swap_at(ids[2]), swap_at(ids[3])
-        key = f"{a}{PAIR_SEP}{b}" if a and b else None
-        return key if key and valid_key(site, key) else None
+        a, b = _swap_names(site, nodes[2]), _swap_names(site, nodes[3])
+        return keyed(a + b) if a and b and len(a) == len(b) == 1 else None
     if len(nodes) == 7 and pairs:
         a, b = find(ids[2], ids[5]), find(ids[3], ids[4])
         key = f"{a}{PAIR_SEP}{b}" if a and b else None

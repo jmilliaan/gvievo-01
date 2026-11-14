@@ -15,6 +15,7 @@ Status keys: att, mw (MW-a), mw2 (MW-b), me2 (ME-b), me (ME-a). One machine keep
 A BTU LAP (contract v1.3, owner 2026-11-13): one or two swap machines, the closer first, no U-turn. Its waits:
 ATT 2, swap-a 4[, swap-b 6], HOME 6 or 8. Status keys att, mw (swap-a), mw2 (swap-b): OrderState has no swap
 fields, so the swaps reuse the release fields (no amr_interfaces change); me and me2 are not in the plan.
+Two facing machines at one stop (contract v1.4) are ONE wait: ATT 2, swap 4, HOME 6, keys att and mw.
     Settle        SETTLING: 5 s after anything that may have just removed a block on a waiting call
 """
 
@@ -78,8 +79,9 @@ def wait_plan(attach, recs):
     """[(node, status key, sequence id)] of an order's waits, in sequence order. recs: the machine
     records ({"release", "take"}, or {"swap"} for a BTU lap) in the order's order, the closer first."""
     if all("swap" in r for r in recs):
-        keys = ("mw", "mw2")[: len(recs)]
-        swaps = [(r["swap"], key, SEQ_MW + 2 * k) for k, (r, key) in enumerate(zip(recs, keys, strict=True))]
+        stops = list(dict.fromkeys(r["swap"] for r in recs))   # one wait per stop, however many it serves
+        keys = ("mw", "mw2")[: len(stops)]
+        swaps = [(sid, key, SEQ_MW + 2 * k) for k, (sid, key) in enumerate(zip(stops, keys, strict=True))]
         return [(attach, "att", SEQ_ATT)] + swaps
     if len(recs) == 1:
         return [(attach, "att", SEQ_ATT), (recs[0]["release"], "mw", SEQ_MW), (recs[0]["take"], "me", SEQ_ME)]

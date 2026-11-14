@@ -178,8 +178,8 @@ The same steps are used after every aborted trip. They are called **Recover** be
 
 | Tool | How |
 |---|---|
-| AGV pages on a tablet | `http://192.168.2.20:5001`: Home, Run, Teach, Alarms |
-| AGV terminal | `ssh gvipc-evo-01@192.168.2.20` |
+| AGV pages on a tablet | `http://192.168.2.110:5001`: Home, Run, Teach, Alarms |
+| AGV terminal | `ssh gvipc-evo-01@192.168.2.110` |
 | Watch all MQTT messages | On the station PC, as the read-only user `watch`: `mosquitto_sub -h 192.168.2.5 -u watch -P <password> -i gvi-watch -v -t "vda5050/v3/gvi/#"`. It sees `order` and `instantActions` too, which user `station` cannot read. D2 proves this first |
 | Test sender | `tools/test_sender.py --real` on the station PC. User `station`, its own client id. Reads the newest `state`, then publishes a chosen order, `cancelOrder` or a raw body. For refusal checks and `cancelOrder` only, never to start the AGV moving |
 | LED test | `tools/led_test.py` on the station PC, app stopped. Goes through `CoilWriter`'s allow-list and the approval file. Covered by `DIO-WRITE-2` (C4) |
@@ -225,14 +225,14 @@ Result: ________ Date: ________ Initials: ________
 
 ### A3. Network addresses and gateway `[NO MOTION]`
 
-- **Purpose:** `alpha-setup.md` lists the Wi-Fi gateway as 192.168.2.10. That address is now DIO module 1. Traffic must not be sent to a DIO module.
+- **Purpose:** the Wi-Fi gateway must be 192.168.2.5, the station PC's ICS (owner, 2026-11-14). 192.168.2.10 is DIO module 1, and traffic must not be sent to a DIO module.
 - **Before you start:** AGV on Wi-Fi. Station PC on the wired network.
 - **Steps:**
   1. On the AGV: `ip -4 addr show wlp1s0`, `ip route`, `nmcli -g ipv4.gateway con show agv-net`.
   2. On the AGV, ping once each: `ping -c 1 192.168.2.5` and `ping -c 1 192.168.2.254`.
   3. On the station PC: `ipconfig`. Find the wired adapter.
-- **Expected:** AGV at 192.168.2.20. AGV gateway is **not** 192.168.2.10. The access point is 192.168.2.254. The station PC has 192.168.2.5 on its wired adapter. It was "Media disconnected" when last looked at, so check the cable. Both pings answer.
-- **Confirm by:** the outputs, written on the sheet. If the gateway is still .10, the Lead corrects it and records the change. `alpha-setup.md` then needs correcting too (see L).
+- **Expected:** AGV at 192.168.2.110. AGV gateway is 192.168.2.5, **not** 192.168.2.10. The access point is 192.168.2.254. The station PC has 192.168.2.5 on its wired adapter. It was "Media disconnected" when last looked at, so check the cable. Both pings answer.
+- **Confirm by:** the outputs, written on the sheet. If the gateway is still .10, the Lead corrects it and records the change. `alpha-setup.md` already says .5 (corrected 2026-11-14).
 
 AGV gateway found: ________
 

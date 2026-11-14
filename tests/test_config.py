@@ -392,10 +392,11 @@ def test_config_profile():
     check("the default profile resolves into profiles/",
           config.profile_path().endswith(os.path.join("profiles", "agv-01.json")),
           config.profile_path())
-    os.environ[config.PROFILE_ENV_VAR] = "agv-02"
+    before = os.environ.get(config.PROFILE_ENV_VAR)
+    os.environ[config.PROFILE_ENV_VAR] = "agv-99"      # agv-02 exists since 2026-11-14: a name that doesn't
     try:
         check("AGV_PROFILE selects the profile",
-              config.profile_path().endswith("agv-02.json"),
+              config.profile_path().endswith("agv-99.json"),
               config.profile_path())
         check("an explicit path still wins over the env var",
               config.profile_path("agv-03").endswith("agv-03.json"))
@@ -407,7 +408,10 @@ def test_config_profile():
                   config.PROFILE_ENV_VAR in str(e) and "agv-01" in str(e),
                   str(e)[:80])
     finally:
-        del os.environ[config.PROFILE_ENV_VAR]
+        if before is None:
+            del os.environ[config.PROFILE_ENV_VAR]
+        else:
+            os.environ[config.PROFILE_ENV_VAR] = before
         config.load()
 
     # 2026-10-08: tag meanings moved to the mission's tag table (agv_core.mission v2).
