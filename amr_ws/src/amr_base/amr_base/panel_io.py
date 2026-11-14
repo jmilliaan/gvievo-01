@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from agv_core import config
 from agv_core import panel as panel_core  # repo module: core/panel.py
 
+from amr_base.hold_policy import CALL_CAUSES
+
 
 @dataclass(frozen=True)
 class PanelFrame:
@@ -277,6 +279,7 @@ class PanelAdapter:
 LINE_ACTIVE = (2, 3)
 RUN_ACTIVE = (2, 4)
 LINE_PREMOVE = 1  # LineState.ARMED: the pre-move warning after a Start
+LINE_HOLD = 3  # LineState.HOLD
 
 
 def alarm_wanted(
@@ -294,6 +297,23 @@ def alarm_wanted(
         return True
     running = mode_auto and (line_state in LINE_ACTIVE or run_state in RUN_ACTIVE)
     return running and field_fresh and (not protective_clear or warning_active)
+
+
+def call_wanted(mode_auto: bool, line_state: int | None, hold_cause: str, line_fresh: bool) -> bool:
+    """The stop call (manuals/stop-call-alarm-plan.md, owner 2026-11-13): the line job is parked in
+    a hold that waits for a person to attach or release, then a physical Start. AUTO only, and only
+    on a fresh LineState: a line layer that died while parked must not leave the vehicle calling."""
+    return bool(mode_auto and line_fresh and line_state == LINE_HOLD and hold_cause in CALL_CAUSES)
+
+
+def call_phase(now: float, since: float, on_s: float, off_s: float) -> bool:
+    """The call's pulse, phase 0 at `since`: on for on_s, off for off_s, repeating. off_s 0 is
+    continuous; on_s 0 is no call at all."""
+    if on_s <= 0.0:
+        return False
+    if off_s <= 0.0:
+        return True
+    return (now - since) % (on_s + off_s) < on_s
 
 
 def motion_outputs(turning: bool, alarm: bool, channels, movement_horn) -> dict[int, bool]:

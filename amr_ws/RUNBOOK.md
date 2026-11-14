@@ -201,6 +201,13 @@ reason "Manual Arm (DI08) off"). Under **AUTO** they are powered by a run: every
 move after a Start first sounds the alarm horn for 2 s (tape and trackless alike),
 holds that wait for Start drop to standby, holds that clear by themselves keep power.
 
+**Stop call (2026-11-13, manuals/stop-call-alarm-plan.md).** Parked at a stop for attach /
+release (line hold `station`, `payload` or `trolley`) under AUTO, panel_node pulses the
+alarm horn (DO01) 1 s on / 2 s off until Start; the Start's 2 s warning follows continuous.
+MANUAL, Reset or a LineState older than 3 s silences it. Event `CALL_ALARM` logs each
+on/off. Tune or switch off with `dio.call_alarm_on_s` (0 = off) / `call_alarm_off_s`
+(0 = continuous) in the profile; a service restart applies it.
+
 **Phantom panel images (2026-09-17, 2026-10-24).** The DIO island has delivered input
 images in which several bits change at once for ~1 s with nobody at the box (Manual Arm
 reads off, plus Start, Reset, the selector or a pendant button). Two guards discard them:
@@ -528,6 +535,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `TROLLEY_UNKNOWN` | warn | Trolley state unknown | Call maintenance if it does not clear. | station.enabled: /amr/rear/trolley is stale, UNKNOWN or the rear lidar is not fitted. Every order, hand trip from HOME and Start at a trolley stop is refused. No bypass on the vehicle. |
 | `WEB_BUG` | warn | A page did not work | Reload the page. Save a report if it keeps happening. | Unhandled exception in the Flask app or the page script; the reference id is in the web log. |
 | `BOOT_READY` | info | The vehicle is ready | Nothing to do. | End-of-boot report from the supervisor; the text lists anything missing. |
+| `CALL_ALARM` | info | The vehicle is calling at a stop | Attach or release the trolleys, then press Start. | panel_node pulses the alarm horn (dio.alarm_on) while the line job holds for attach / release (hold_policy.CALL_CAUSES) under AUTO; on/off pair per stop, dio.call_alarm_on_s/off_s. |
 | `FIELD_BLOCKED` | info | Stopped: something is in the safety field | Clear the area. The vehicle starts again by itself. | Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window. |
 | `FIELD_WARNING` | info | Slowed or stopped: something is in a warning field | Clear the area ahead; auto speed returns by itself when the warning fields clear. | cmd_mux scales every AUTO source while a warning field is occupied: warning 1 (outer, 1.77 m ahead) x0.5, warning 2 (inner, 0.97 m) a deceleration stop within 0.40 m, the stricter winning; the slowdown and the recovery ramp over 1 s. Paths and factors: amr_bringup/config/scanner_fields.yaml. |
 | `INHIBITED` | info | Motion is held by the supervisor | Wait for the mode change to finish. | Lease allowed = 0: a transaction, a save, STARTING, FAULT or STOPPING. |
@@ -564,7 +572,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `POSITION_UNSURE` | warn | Stopped: not sure enough where it is on the tape | Check the AGV is clear of any released trolley, then press Start to pivot. | Line layer hold cause 'position' (tracked plan 4, 2026-11-06): before a mid-line U-turn with the tape locator's sigma over sigma_junction_m, once, so the operator's Start decides; or no locator on this trip's route (At home). AMCL no longer holds stops, orders or the tape end. |
 | `RFID_LINK_LOST` | warn | Stopped: the RFID tag reader is not reporting | Check the reader and its cable; once it is back, check where the vehicle is, then press Start. | Line layer hold cause 'rfid': on a mission with tags the RFID stream broke while driving (link down, reconnect, encounter buffer overrun), so a stop or the U-turn may have been driven past. Never resumes by itself; Start is refused while the link is down. |
 | `RFID_TAG_OVERDUE` | warn | Stopped: no station tag where one was expected | Check where the vehicle is on the route (a tag may have been missed), then press Start. | Line hold cause 'rfid_overdue' (unified plan WP-A7): the run drove further than the mission's max_tag_gap_m without reading a tag of its table, so a stop or the U-turn tag may have been driven past. Counted afresh from the Start. |
-| `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the blue Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
+| `SAFETY_RESET_NEEDED` | warn | Motors are off: the safety circuit needs a reset | Press the yellow Reset button on the cabinet. | Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries every 2 s and succeeds the moment the chain closes. |
 | `TRACK_LOST` | warn | Stopped: the tape is not under the sensor | Push the vehicle back onto the tape, then press Start. | Line layer hold cause 'track': MLS reports no track for longer than the loss grace. |
 | `TROLLEY_AT_PIVOT` | warn | Stopped before the U-turn: a trolley is detected or unknown | Check the trolley is off and clear, then press Start. | Line layer hold cause 'trolley' (station call plan O7, station.enabled only): a trip about to pivot with the rear lidar reading present or unknown. Start checks it again. A person in the zone reads as a trolley: this is not personnel protection. |
 | `AT_STATION` | info | Parked at a station | Press Start when the station work is done; it moves after the start delay. | Tape mission stop row (role always, or the job's destination): a measured stop over stop_distance_m after the tag, then a LineState HOLD with cause 'station'. The Home stop ends the run (DONE) instead. |

@@ -385,10 +385,14 @@ class FollowJob:
             self.payload = tripmod.Payload()
 
     def trip_call(self, machine, now):
+        """A call from Run → Calls. With station calling on, every call comes from the station buttons
+        (one queue, owner 2026-11-13): no new call is taken here, MRU or BTU. A call already waiting is
+        never removed by that: it stays until served or cancelled by a person, and station orders keep
+        refusing with LOCAL_TRIP while it waits."""
         if self.calls is None:
             return False, "no site mission is the job: calls are taken only while it is"
-        if self._order_active():
-            return False, "a station order is being served"
+        if self.calling:
+            return False, "station calling is on: calls come from the station buttons"
         return self.calls.call(machine, now)
 
     def trip_cancel(self, machine):
@@ -1630,14 +1634,17 @@ class FollowJob:
         return (order.DEPARTURE_REFUSED, rows[0]) if rows else None
 
     def _order_machine(self, machine):
-        """The machine's record if an order can go to it (a release stop), else None."""
+        """The machine's record if an order can go to it (a release stop, or a swap stop: a BTU lap,
+        contract v1.3), else None."""
         group = self.site["MACHINES"].get(machine)
         rec = self.site["GROUPS"][group]["machines"][machine] if group is not None else None
-        return rec if rec and "release" in rec else None
+        return rec if rec and ("release" in rec or "swap" in rec) else None
 
     def _order_recs(self, req):
         """The machine records of an order, closer first, or None (check 5, MACHINE). A pair: two
-        different machines of one group, each with its own release and take, named in circuit order."""
+        different machines of one group and one kind, named in circuit order. Release and take: each its
+        own release and take, a's release first and a's take last. Swap: a's stop before b's (two machines
+        at one stop are refused: the stop would be served once)."""
         names = req.machines
         recs = [self._order_machine(mc) for mc in names]
         if not 1 <= len(names) <= 2 or None in recs:
@@ -1650,8 +1657,14 @@ class FollowJob:
             return None
         items = self.site["CIRCUITS"][self.site["GROUPS"][group]["circuit"]]["items"]
         pos = {it["id"]: k for k, it in enumerate(items) if it["kind"] == "stop"}
+        swap = ["swap" in r for r in recs]
+        if any(swap) and not all(swap):
+            return None
         try:
-            closer_first = pos[a["release"]] < pos[b["release"]] < pos[b["take"]] < pos[a["take"]]
+            if all(swap):
+                closer_first = pos[a["swap"]] < pos[b["swap"]]
+            else:
+                closer_first = pos[a["release"]] < pos[b["release"]] < pos[b["take"]] < pos[a["take"]]
         except KeyError:
             return None
         return recs if closer_first else None
@@ -1837,7 +1850,7 @@ class FollowJob:
             "departed": bool(o and o.departed),
             "att_status": o.status["att"] if o else "",
             "mw_status": o.status["mw"] if o else "",
-            "me_status": o.status["me"] if o else "",
+            "me_status": o.status.get("me", "") if o else "",      # "" on a BTU lap (no take)
             # a pair's farther machine (MW-b, ME-b); "" for one machine
             "mw2_status": o.status.get("mw2", "") if o else "",
             "me2_status": o.status.get("me2", "") if o else "",

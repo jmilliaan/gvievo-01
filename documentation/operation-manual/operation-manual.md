@@ -403,13 +403,13 @@ The vehicle controller can only drive the motors while the safety controller all
 
 ### 4.3 Control panel
 
-[IMG-04-02] Control panel with callouts
+![Control panel, top view: RESET and START on the left, E-STOP and MANUAL / AUTO selector on the right](images/IMG-04-02.svg)
 
 | Control | Type | Function |
 | --- | --- | --- |
 | **E-STOP** `[tag]` | Red mushroom push-button, latching, turn to release | Stops the vehicle at once in every mode |
-| **RESET** `[tag]` | Blue push-button | Resets the safety circuit after **E-STOP**; ends a stopped run |
-| **START** `[tag]` | Push-button `[VALUE: colour]` | Starts or continues automatic operation (**AUTO** only) |
+| **RESET** `[tag]` | Yellow push-button | Resets the safety circuit after **E-STOP**; ends a stopped run |
+| **START** `[tag]` | Green push-button | Starts or continues automatic operation (**AUTO** only) |
 | **MANUAL / AUTO** `[tag]` | Selector switch, 2 positions | Selects the operating mode (chapter 9) |
 | **MANUAL ARM** `[tag]` | Switch `[confirm type]` | In **MANUAL**: switches the motors on for manual driving. Off = the vehicle cannot be driven by hand |
 | Main switch `[tag]` | `[confirm: battery main circuit breaker]` | Switches the vehicle on and off; lockable `[confirm]` (chapter 15.1) |
@@ -771,7 +771,7 @@ For a normal stop between stop points, use **RESET** or the selector `[confirm p
 
 1. Remove the cause of the emergency.
 2. Turn the **E-STOP** button to release it.
-3. Press **RESET** (blue). The safety circuit closes.
+3. Press **RESET** (yellow). The safety circuit closes.
 4. Check that nobody is in the path.
 5. In **AUTO**: press **START**. The horn sounds for 2 s, then the vehicle continues.
 
@@ -927,7 +927,7 @@ Alarms from navigation features (stop-point reader, map navigation) are listed i
 | `FIELD_PROTECTIVE`, `FIELD_BLOCKED` | Stopped: something is in the protective field | Clear the area in front of the vehicle. It continues by itself |
 | `FIELD_WARNING` | Slowed or stopped: something is in a warning field | Clear the area. Speed returns by itself |
 | `ESTOP` | Stopped: emergency stop or safety chain | Release **E-STOP**, press **RESET**, then **START** |
-| `SAFETY_RESET_NEEDED` | Motors are off: the safety circuit needs a reset | Press **RESET** (blue) |
+| `SAFETY_RESET_NEEDED` | Motors are off: the safety circuit needs a reset | Press **RESET** (yellow) |
 | `DRIVES_NOT_READY` | Stopped: the motors are not powered | **MANUAL**: switch **MANUAL ARM** on. **AUTO**: press **START** (after **RESET** if **E-STOP** was used) |
 | `AUTHORITY_LOST` | Stopped: the vehicle lost permission to drive | Selector back to **AUTO**, press **START** |
 | `AT_STATION` | Parked at a stop point | Do the work at the stop point, press **START** |

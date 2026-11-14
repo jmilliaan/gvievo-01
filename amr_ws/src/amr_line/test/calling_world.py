@@ -6,7 +6,8 @@ from test_site_run import TripWorld, go_on, parked_at, spin
 
 from amr_line import job as lj
 
-__all__ = ["CallingWorld", "calling", "go_on", "parked_at", "settled", "spin", "to_stop", "SETTLE", "HOLDOFF"]
+__all__ = ["CallingWorld", "calling", "go_on", "parked_at", "settled", "spin", "to_stop", "waiting_call",
+           "SETTLE", "HOLDOFF"]
 
 SETTLE, HOLDOFF = 5.0, 15.0
 
@@ -51,6 +52,13 @@ def settled(**over):
     w.drive(SETTLE + 0.1)
     assert w.not_ready() == [], w.not_ready()
     return w
+
+
+def waiting_call(w, machine="M1"):
+    """A call already waiting on Run → Calls. With calling on, trip_call takes no new call (one queue, owner
+    2026-11-13), but a call that was waiting is never removed: it is put straight into the queue here."""
+    ok, msg = w.job.calls.call(machine, w.t)
+    assert ok, msg
 
 
 def to_stop(w, sid):

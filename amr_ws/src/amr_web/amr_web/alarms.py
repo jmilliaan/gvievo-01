@@ -17,7 +17,7 @@ from typing import Any
 from agv_core import alarms as cat
 from agv_core import position_status as pos
 
-from amr_base import drive_state
+from amr_base import drive_state, hold_policy
 
 FRESH_S = 0.5  # panel / drives / mux samples older than this are not current
 # The scanner runs at 34 Hz. A gap this long is a dead link, not a late frame; the grace
@@ -235,6 +235,9 @@ LOCALIZE_STEPS = (
     "Drive the vehicle to HOME.",
     "Hold the yellow RESET and the green START together for 1 s.",
 )
+# The front panel's buttons by place (documentation/operation-manual/images/IMG-04-02.svg): left recess
+# RESET over START, right recess E-STOP over the MANUAL/AUTO selector. The Home page draws them.
+PANEL_BUTTONS = ("reset", "start", "estop", "selector")
 _LINE_MOVING = ("ARMED", "RUNNING")
 
 
@@ -271,7 +274,8 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
     top = rows[0] if rows else None
     worth = [r for r in rows if not _benign(r, state)]
 
-    def tile(kind, level, big, row=None, title="", action="", steps=(), blink=False) -> dict:
+    def tile(kind, level, big, row=None, title="", action="", steps=(), blink=False, press=(),
+             press_text="") -> dict:
         return {
             "kind": kind, "level": level, "big": big, "blink": blink,
             "title": row["title"] if row else title,
@@ -279,6 +283,9 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
             "code": row["code"] if row else "",
             "button": cat.BUTTON.get(row["clears_by"], "") if row else "",
             "steps": list(steps),
+            # panel buttons the page rings on its panel drawing (PANEL_BUTTONS); empty: no drawing
+            "press": list(press),
+            "press_text": press_text,  # the drawing's caption
         }
 
     def stopped_big(r: dict) -> str:
@@ -308,8 +315,12 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
         code = run.get("fault_code") or cat.hold_code(run.get("hold_cause", ""))
         return tile("stopped", TILE_WARN, stopped_big(run), hold_row(code), "Stopped", run.get("reason", ""))
     if line_name == "HOLD":
+        # A stop waiting for attach / release: the panel calls (pulsed alarm) until Start, and the
+        # drawing rings the button that ends it (manuals/stop-call-alarm-plan.md C4).
+        calling = line.get("hold_cause") in hold_policy.CALL_CAUSES
         return tile("stopped", TILE_WARN, stopped_big(line), hold_row(line.get("code", "")), "Stopped",
-                    line.get("message", ""))
+                    line.get("message", ""), press=("start",) if calling else (),
+                    press_text="Press to go on" if calling else "")
 
     loc = position.get("loc") if position.get("show") else ""
     if loc == "lost":
@@ -320,7 +331,8 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
             {"text": LOCALIZE_STEPS[2], "done": False, "now": False},
         ]
         return tile("lost", TILE_WARN, NOT_LOCALIZED, None, position["status"],
-                    "Localize at HOME with the panel buttons:", steps, blink=True)
+                    "Localize at HOME with the panel buttons:", steps, blink=True, press=("reset", "start"),
+                    press_text="Press together, 1 s")
     if loc == "checking":
         return tile("checking", TILE_WARN, CHECKING_POSITION, None, position["status"],
                     "Keep the vehicle still at HOME.")

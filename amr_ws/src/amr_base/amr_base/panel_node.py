@@ -44,6 +44,7 @@ from amr_interfaces.msg import (
 
 WHEELS_FRESH_S = 0.3
 MUX_FRESH_S = 0.5  # /amr/mux_state is 10 Hz
+LINE_FRESH_S = 3.0  # /amr/line_state: on change and at 1 Hz; older = no stop call
 TURNING_RAD_S = 0.01  # wheel speed above which a motor counts as turning (feedback noise floor)
 
 
@@ -80,6 +81,10 @@ class PanelNode(LeanNode):
         self._mux: MuxState | None = None
         self._mux_t: float | None = None
         self._line_state: int | None = None
+        self._line_cause = ""
+        self._line_where = ""
+        self._line_t: float | None = None
+        self._call_since: float | None = None  # the stop call's phase origin; None = not calling
         self._run_state: int | None = None
         self._run_premove = False
         self._alarm = False
@@ -123,6 +128,9 @@ class PanelNode(LeanNode):
 
     def _on_line(self, m: LineState) -> None:
         self._line_state = int(m.state)
+        self._line_cause = m.hold_cause
+        self._line_where = m.stop_where or m.station
+        self._line_t = time.monotonic()
 
     def _on_run(self, m: RunState) -> None:
         self._run_state = int(m.state)
@@ -183,22 +191,36 @@ class PanelNode(LeanNode):
         # pre-move warning after a Start.
         mux = self._mux
         mux_fresh = mux is not None and time.monotonic() - self._mux_t <= MUX_FRESH_S
-        alarm = panel_io.alarm_wanted(
+        hazard = panel_io.alarm_wanted(
             frame.valid and frame.mode_auto, self._line_state, self._run_state,
             mux_fresh and mux.field_fresh,
             bool(mux.protective_clear) if mux_fresh else True,
             bool(mux.warning_active) if mux_fresh else False,
             run_premove=self._run_premove,
         )
+        # The stop call (manuals/stop-call-alarm-plan.md): parked waiting for attach / release and a
+        # physical Start, the same coil pulses. A hazard above keeps it continuous.
+        now = time.monotonic()
+        line_fresh = self._line_t is not None and now - self._line_t <= LINE_FRESH_S
+        call = config.DIO_CALL_ALARM_ON_S > 0.0 and panel_io.call_wanted(
+            frame.valid and frame.mode_auto, self._line_state, self._line_cause, line_fresh)
+        if call != (self._call_since is not None):
+            self._call_since = now if call else None
+            text = (f"stop call alarm on: {self._line_cause} at {self._line_where or '?'}" if call
+                    else "stop call alarm off")
+            self.get_logger().info(text)
+            self._event(Event.INFO, "CALL_ALARM", text)
+        alarm = hazard or (call and panel_io.call_phase(
+            now, self._call_since, config.DIO_CALL_ALARM_ON_S, config.DIO_CALL_ALARM_OFF_S))
         for ch in config.DIO_ALARM_ON:
             self.link.set_coil(ch, alarm, config.HORN_HOLD_S)
         # the movement horn (dio.movement_horn, DO00) gives way to the alarm horn
         outs = panel_io.motion_outputs(self._turning and fresh, alarm, config.DIO_MOTION_ON, config.DIO_MOVEMENT_HORN)
         for ch, on in outs.items():
             self.link.set_coil(ch, on, config.HORN_HOLD_S)
-        if alarm != self._alarm:
-            self._alarm = alarm
-            self.get_logger().info(f"alarm horn {'on' if alarm else 'off'}")
+        if hazard != self._alarm:  # the pulse logs its own on/off above, not every beat
+            self._alarm = hazard
+            self.get_logger().info(f"alarm horn {'on' if hazard else 'off'}")
 
         if config.HORN_ENABLED:
             now = time.monotonic()

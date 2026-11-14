@@ -11,6 +11,10 @@ A PAIR (contract v1.2 proposal, owner 2026-11-11): one order for two MRU machine
 "a+b" on the wire between the bridge and the job. Its waits, by node sequence id:
 ATT 2, MW-a 4, MW-b 6, ME-b 8, ME-a 10, HOME 12 (the trip goes to b before it turns, so a is met twice).
 Status keys: att, mw (MW-a), mw2 (MW-b), me2 (ME-b), me (ME-a). One machine keeps att, mw, me.
+
+A BTU LAP (contract v1.3, owner 2026-11-13): one or two swap machines, the closer first, no U-turn. Its waits:
+ATT 2, swap-a 4[, swap-b 6], HOME 6 or 8. Status keys att, mw (swap-a), mw2 (swap-b): OrderState has no swap
+fields, so the swaps reuse the release fields (no amr_interfaces change); me and me2 are not in the plan.
     Settle        SETTLING: 5 s after anything that may have just removed a block on a waiting call
 """
 
@@ -72,7 +76,11 @@ class OrderRequest:
 
 def wait_plan(attach, recs):
     """[(node, status key, sequence id)] of an order's waits, in sequence order. recs: the machine
-    records ({"release", "take"}) in the order's order, the closer first."""
+    records ({"release", "take"}, or {"swap"} for a BTU lap) in the order's order, the closer first."""
+    if all("swap" in r for r in recs):
+        keys = ("mw", "mw2")[: len(recs)]
+        swaps = [(r["swap"], key, SEQ_MW + 2 * k) for k, (r, key) in enumerate(zip(recs, keys, strict=True))]
+        return [(attach, "att", SEQ_ATT)] + swaps
     if len(recs) == 1:
         return [(attach, "att", SEQ_ATT), (recs[0]["release"], "mw", SEQ_MW), (recs[0]["take"], "me", SEQ_ME)]
     a, b = recs

@@ -31,12 +31,52 @@
     {# Position, small, at the tile's right (2026-11-12, owner): the line node's status and the web
        At home, LINE only. The panel's Reset + Start does the same; the server refuses either while a
        trip runs, the wheels turn or (calling on) the selector is at AUTO. #}
+    <div class="ht-side">
     {% if tracked_ok %}<div class="ht-pos" id="home-pos" hidden>
       <span>Position</span>
       <b id="home-pos-status">–</b>
       <i id="home-pos-why"></i>
       <button id="btn-at-home" class="tool run" disabled>At home</button>
     </div>{% endif %}
+    {# Which panel buttons to press (2026-11-13, owner): the front panel as the operator sees it, the
+       tile's `press` buttons ringed, the others dimmed. Placement as IMG-04-02 in the operation manual:
+       left recess RESET over START, right recess E-STOP over the selector. Hidden when `press` is empty. #}
+    <figure class="ht-press" id="home-press" hidden>
+      <figcaption id="home-press-text"></figcaption>
+      <svg viewBox="0 0 300 200" role="img" aria-label="Control panel: the buttons to press are ringed">
+        <rect x="2" y="2" width="296" height="196" rx="10" fill="#e4e4e4" stroke="#14171d" stroke-width="3"/>
+        <rect x="12" y="20" width="68" height="160" fill="#7c7c7c" stroke="#14171d" stroke-width="2"/>
+        <rect x="22" y="30" width="48" height="140" fill="#d4d4d4" stroke="#14171d" stroke-width="1.5"/>
+        <rect x="220" y="20" width="68" height="160" fill="#7c7c7c" stroke="#14171d" stroke-width="2"/>
+        <rect x="230" y="30" width="48" height="140" fill="#d4d4d4" stroke="#14171d" stroke-width="1.5"/>
+        <rect x="92" y="24" width="116" height="152" rx="8" fill="#3a3a3a" stroke="#14171d" stroke-width="2"/>
+        <rect x="100" y="32" width="100" height="136" rx="4" fill="#d9dcdf"/>
+        <g class="pb" data-b="reset">
+          <circle class="ring" cx="46" cy="66" r="29"/>
+          <circle cx="46" cy="66" r="20" fill="#9a9a9a" stroke="#14171d" stroke-width="2"/>
+          <circle cx="46" cy="66" r="15" fill="#f2c200" stroke="#14171d" stroke-width="1.5"/>
+          <text x="106" y="74" class="pb-tag" font-size="22">◀ RESET</text>
+        </g>
+        <g class="pb" data-b="start">
+          <circle class="ring" cx="46" cy="134" r="29"/>
+          <circle cx="46" cy="134" r="20" fill="#9a9a9a" stroke="#14171d" stroke-width="2"/>
+          <circle cx="46" cy="134" r="15" fill="#1a8a1a" stroke="#14171d" stroke-width="1.5"/>
+          <text x="106" y="142" class="pb-tag" font-size="22">◀ START</text>
+        </g>
+        <g class="pb" data-b="estop">
+          <circle class="ring" cx="254" cy="66" r="29"/>
+          <circle cx="254" cy="66" r="24" fill="#c00" stroke="#14171d" stroke-width="2"/>
+        </g>
+        <g class="pb" data-b="selector">
+          <circle class="ring" cx="254" cy="134" r="29"/>
+          <circle cx="254" cy="134" r="20" fill="#9a9a9a" stroke="#14171d" stroke-width="2"/>
+          <circle cx="254" cy="134" r="16" fill="#f2f2f2" stroke="#14171d" stroke-width="1.5"/>
+          <rect x="250" y="118" width="8" height="32" rx="2" fill="#fff" stroke="#14171d" stroke-width="2"
+                transform="rotate(40 254 134)"/>
+        </g>
+      </svg>
+    </figure>
+    </div>
   </div></div>
   {# Live readings, big enough to read from the floor. The selector's mode in big text (2026-11-12):
      AUTO solid blue, MANUAL white with a dark border - red/yellow/green belong to the status tile.
@@ -207,6 +247,14 @@ function render(d) {
   steps.hidden = !t.steps.length;
   steps.innerHTML = t.steps.map(s =>
     `<li class="${s.done ? 'done' : ''}${s.now ? ' now' : ''}">${esc(s.text)}</li>`).join('');
+  const press = t.press || [];
+  $('home-press').hidden = !press.length;
+  $('home-press-text').textContent = t.press_text || '';
+  document.querySelectorAll('#home-press .pb').forEach(g => {
+    const on = press.includes(g.dataset.b);
+    g.classList.toggle('on', on);
+    g.classList.toggle('off', !on);
+  });
   const btn = $('home-primary');
   btn.hidden = !t.button;
   if (t.button) btn.textContent = t.button;

@@ -35,3 +35,20 @@ def test_run_page_text_follows_the_switch(tmp_path, monkeypatch, on):
     page = client.get("/run").data
     assert b'id="lt-warn"' in page and b"Motion starts only" in page, "the markup stays either way"
     assert b"Station calling is ON" in page and b"if (site.calling)" in page, "the swap is on site.calling"
+
+
+def test_run_calls_with_calling_on_only_cancel_a_waiting_call(tmp_path):
+    """One queue (owner 2026-11-13): with calling on, a machine button not waiting is greyed; the job's
+    trip_call refuses a new call anyway (amr_line test_on_run_calls_takes_no_new_call_of_any_group)."""
+    client, _stub = app_for({}, tmp_path)
+    page = client.get("/run").data
+    assert b"if (!waiting.has(b.dataset.machine)) b.disabled = true;" in page
+    assert b"calls come from the station buttons" in page
+
+
+def test_the_order_tile_returns_after_the_last_wait_in_use(tmp_path):
+    """A BTU lap leaves me_status "": 'returning' keys on the last wait in use, me for MRU."""
+    client, _stub = app_for({}, tmp_path)
+    page = client.get("/run").data
+    assert b"const last = o.me_status || used[used.length - 1];" in page
+    assert b"last === 'FINISHED' ? 'returning'" in page

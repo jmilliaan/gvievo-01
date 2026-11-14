@@ -100,6 +100,8 @@
     "num_di": 16,
     "num_do": 16,
     "di_flipped": false,
+    "call_alarm_on_s": 1.0,
+    "call_alarm_off_s": 2.0,
     "di_names": [
       "PB Start",
       "PB Reset",

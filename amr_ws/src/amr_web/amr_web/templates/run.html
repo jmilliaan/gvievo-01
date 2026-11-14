@@ -24,7 +24,10 @@
    Nothing on this page moves the vehicle: the PHYSICAL Start under AUTO does - no software arm
    since 2026-10-07 (motor arming is drive_node's, in every mode). With station.enabled a station
    order can also leave HOME, never through this page: the warn box says so, and Clear, a call cancel
-   or a mission selection restart SETTLING because they can remove a block on a waiting order. #}
+   or a mission selection restart SETTLING because they can remove a block on a waiting order.
+   One queue (owner 2026-11-13): with station.enabled every call comes from the station buttons, MRU or
+   BTU. A machine button here only cancels a call already waiting (never removed by the change); a new
+   call is refused by the job (trip_call), the button is only greyed. #}
 <section id="line-job" class="line-job grow">
   <div class="job-pick">
     {# Two parts: Set job / Clear stays on top only while the job part is in view. #}
@@ -166,7 +169,9 @@ async function loadSite() {
     document.querySelectorAll('[data-confirm]').forEach(b => { b.title = 'The rear lidar decides while station calling is on'; });
   }
   $('cl-site').textContent = site.error ? `refused: ${site.error}` : `${site.mission}${site.live ? '' : ' · shadow only (tape_loc.live false)'}`;
-  $('cl-rule').textContent = site.trip_calls ? `${site.trip_calls} call${site.trip_calls > 1 ? 's' : ''} of one group form a trip; it starts at ${site.home}.` : '';
+  $('cl-rule').textContent = site.calling
+    ? 'Station calling is ON: calls come from the station buttons. Here a waiting call can only be cancelled.'
+    : (site.trip_calls ? `${site.trip_calls} call${site.trip_calls > 1 ? 's' : ''} of one group form a trip; it starts at ${site.home}.` : '');
   $('cl-groups').innerHTML = Object.entries(site.machines || {}).map(([g, ms]) =>
     `<h3>${esc(g)}</h3><div class="bar four">${ms.map(m => `<button class="big" data-machine="${esc(m)}">${esc(m)}</button>`).join('')}</div>`).join('');
   document.querySelectorAll('[data-machine]').forEach(b => {
@@ -179,8 +184,12 @@ loadSite();
 function orderTiles(o) {
   if (!site.calling) return [];
   if (!o) return [['Order', '–', 'no order state: line layer down', 'bad']];
-  const waits = [o.att_status, o.mw_status, o.mw2_status, o.me2_status, o.me_status];  // mw2/me2: a pair only
-  const stage = o.active ? (waits.includes('RUNNING') ? `at ${o.last_node_id}` : o.me_status === 'FINISHED' ? 'returning' : o.departed ? 'driving' : 'warning') : 'ended';
+  // mw2/me2: a pair only. A BTU lap (v1.3) uses att, mw, mw2 for its swaps and leaves me "": its last
+  // wait is the last one in use, so "returning" keys on that, not on me.
+  const waits = [o.att_status, o.mw_status, o.mw2_status, o.me2_status, o.me_status];
+  const used = waits.filter(Boolean);
+  const last = o.me_status || used[used.length - 1];
+  const stage = o.active ? (waits.includes('RUNNING') ? `at ${o.last_node_id}` : last === 'FINISHED' ? 'returning' : o.departed ? 'driving' : 'warning') : 'ended';
   const refused = o.start_refused_reason ? `Start refused: ${o.start_refused_reason}` : '';
   const why = (o.not_ready || []).join(', ');
   return [
@@ -206,7 +215,11 @@ function calls(ln) {
   waiting = new Set((ln.trip_queue || '').split(/\s+/).filter(Boolean));
   document.querySelectorAll('[data-machine], [data-confirm]').forEach(b => { b.disabled = !live; });
   document.querySelectorAll('[data-machine]').forEach(b => b.classList.toggle('on', waiting.has(b.dataset.machine)));
-  if (site.calling) document.querySelectorAll('[data-confirm]').forEach(b => { b.disabled = true; });
+  if (site.calling) {
+    document.querySelectorAll('[data-confirm]').forEach(b => { b.disabled = true; });
+    // one queue: no new call here, a waiting one may still be cancelled
+    document.querySelectorAll('[data-machine]').forEach(b => { if (!waiting.has(b.dataset.machine)) b.disabled = true; });
+  }
   const hold = ln.state_name === 'HOLD' ? ln.hold_cause : '';
   tiles('cl-trip', [
     ['Trip', ln.trip || '–', ln.state_name || '', ln.state_name === 'FAULT' ? 'bad' : (hold ? 'warn' : ''), 'key'],

@@ -2,8 +2,8 @@
 
 import pytest
 from agv_core import alarms
-from calling_world import CallingWorld, calling, go_on, parked_at, settled, spin, to_stop
-from site_fixture import graph, site
+from calling_world import CallingWorld, calling, go_on, parked_at, settled, spin, to_stop, waiting_call
+from site_fixture import graph, site, swap_graph, swap_site
 from test_site_run import one_call
 
 from amr_base import hold_policy
@@ -54,7 +54,7 @@ def test_on_a_local_trip_leaves_only_with_no_trolley_and_rear_clear(attr, value,
     w = calling()
     setattr(w, attr, value)
     w.tick()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.press_start()
     assert w.job.state == lj.IDLE and needle in w.job.reason, w.job.reason
     assert [m for m, _t in w.job.calls.pending] == ["M1"], "the call waits"
@@ -66,7 +66,7 @@ def test_on_a_local_trip_leaves_only_with_no_trolley_and_rear_clear(attr, value,
 
 def test_on_a_local_trip_needs_no_settling():
     w = calling()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.press_start()
     assert w.job.state == lj.ARMED, "a person is at the panel"
 
@@ -74,7 +74,7 @@ def test_on_a_local_trip_needs_no_settling():
 def test_on_the_confirmations_are_refused():
     w = calling()
     assert w.job.confirm_off() == (False, "the rear lidar decides")
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.start()
     assert w.job.confirm_released() == (False, "the rear lidar decides")
 
@@ -83,7 +83,35 @@ def test_on_a_local_call_is_refused_while_an_order_is_served():
     w = settled()
     w.order()
     ok, msg = w.job.trip_call("M2", w.t)
-    assert not ok and "station order" in msg
+    assert not ok and "station buttons" in msg
+
+
+@pytest.mark.parametrize("machine", ["M1", "M2", "S1", "S2"])
+def test_on_run_calls_takes_no_new_call_of_any_group(machine):
+    """One queue (owner 2026-11-13): with calling on every call comes from the station buttons, MRU or BTU.
+    trip_call is the authority, not the page."""
+    m = swap_site(trip_calls=1)
+    w = CallingWorld(m, swap_graph(m))
+    refused = (False, "station calling is on: calls come from the station buttons")
+    assert w.job.trip_call(machine, w.t) == refused
+    assert w.job.calls.pending == []
+
+
+def test_on_a_call_already_waiting_stays_until_served_or_cancelled():
+    """"If it's not yet served by the AGV, don't remove it" (owner): the change refuses only new calls."""
+    w = settled()
+    waiting_call(w, "M1")
+    w.drive(1.0)
+    assert [m for m, _t in w.job.calls.pending] == ["M1"], "never removed"
+    w.order("O1", "M2")
+    assert w.refusal() == ("OTHER_ORDER_ACTIVE", "LOCAL_TRIP"), "orders still wait for it"
+    assert w.job.trip_cancel("M1")[0], "a person may still cancel it"
+    assert w.job.calls.pending == []
+
+
+def test_off_run_calls_takes_calls_as_before():
+    w = one_call()
+    assert w.job.trip_call("M1", w.t) == (True, "M1 called (M: 1 of 1)")
 
 
 def _at(w, sid):
@@ -173,7 +201,7 @@ def test_trolley_lost_in_the_station_warning_cancels_it():
 
 def test_a_swap_stop_has_no_interlock():
     w = calling()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.start()
     parked_at(w, "ATT")
     w.trolley = "present"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from amr_station.vda_order import canonical_order, valid_key, waits
+from amr_station.vda_order import canonical_order, is_swap, valid_key, waits
 
 LINE_HOLD, LINE_FAULT = 3, 5  # LineState
 # ModeState: a layer change or start under way.
@@ -21,6 +21,9 @@ LOAD = {"loadType": "TROLLEY", "loadPosition": "rear"}
 ACTION_KEYS = (("att_status", "ATT"), ("mw_status", "MW"), ("me_status", "ME"))
 # A pair's waits in sequence order (ATT, MW-a, MW-b, ME-b, ME-a) -> OrderState fields
 PAIR_KEYS = ("att_status", "mw_status", "mw2_status", "me2_status", "me_status")
+# A BTU lap's waits (contract v1.3): ATT, then the swaps, closer first. OrderState has no swap fields: the
+# job reuses mw_status and mw2_status for them (2026-11-13, no amr_interfaces change), me/me2 stay "".
+SWAP_KEYS = ("att_status", "mw_status", "mw2_status")
 
 
 def _action_rows(site, o: dict) -> list:
@@ -29,7 +32,10 @@ def _action_rows(site, o: dict) -> list:
     if not key or not valid_key(site, key):
         return [(f, sfx, "") for f, sfx in ACTION_KEYS]
     w = waits(site, key)
-    fields = [f for f, _ in ACTION_KEYS] if len(w) == 3 else list(PAIR_KEYS)
+    if is_swap(site, key):
+        fields = list(SWAP_KEYS[: len(w)])
+    else:
+        fields = [f for f, _ in ACTION_KEYS] if len(w) == 3 else list(PAIR_KEYS)
     return [(f, sfx, nid) for f, (nid, sfx, _seq) in zip(fields, w, strict=True)]
 
 

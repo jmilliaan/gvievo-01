@@ -278,8 +278,8 @@ The horn is a PATLITE audio horn.
 
 - **Control panel:**
   - **E-STOP:** red mushroom, latching, turn to release.
-  - **RESET:** blue.
-  - **START:** colour `[VALUE]`.
+  - **RESET:** yellow.
+  - **START:** green.
   - **MANUAL / AUTO:** 2-position selector.
   - **MANUAL ARM:** switch that powers the drives for manual driving.
   - Main switch: `[confirm]`.
@@ -319,7 +319,7 @@ The horn is a PATLITE audio horn.
 
 | Sound | When it plays |
 | --- | --- |
-| Sound 2, alarm sound (DO1) | (a) the 2 s after **START** before the vehicle moves; (b) during an AUTO run while the protective field is violated or warning field 1 or 2 is occupied |
+| Sound 2, alarm sound (DO1) | (a) the 2 s after **START** before the vehicle moves; (b) during an AUTO run while the protective field is violated or warning field 1 or 2 is occupied; (c) pulsed, 1 s on and 2 s off, while parked at a stop waiting for coupling or uncoupling, until **START** (`dio.call_alarm_on_s` / `off_s`, 2026-11-13) |
 | Sound 1, movement sound (DO0) | Whenever the wheels turn, **in any mode including MANUAL**. It is silenced while the alarm sound plays, so the sound changes when a field is occupied |
 
 The horn is driven by software, so it is not safety-rated. There is no visual warning device ([REVIEW] 5).

@@ -593,6 +593,19 @@ canvas { width:100%; height:100%; display:block; cursor:crosshair; touch-action:
 .ht-pos > i { font-style:normal; color:var(--ink-2); font-size:1.05rem; overflow-wrap:anywhere; }
 .ht-pos > i:empty { display:none; }
 .ht-pos > button { margin-top:.3rem; }
+/* The tile's right column: Position, then the panel drawing with the buttons to press ringed */
+.ht-side { display:flex; flex-direction:column; gap:.6rem; }
+.ht-press { width:15rem; margin:0; background:var(--surface); color:var(--ink); border:1px solid rgba(20,23,29,.25);
+  padding:.5rem .8rem .6rem; }
+.ht-press[hidden] { display:none; }
+.ht-press > figcaption { font:500 .95rem var(--mono); color:var(--ink-3); text-transform:uppercase;
+  letter-spacing:.1em; margin-bottom:.3rem; }
+.ht-press > svg { display:block; width:100%; height:auto; }
+.ht-press .pb .ring { fill:none; stroke:none; }
+.ht-press .pb.on .ring { stroke:#14171d; stroke-width:6; }
+.ht-press .pb.off { opacity:.3; }
+.ht-press .pb.off .pb-tag { display:none; }
+.ht-press .pb-tag { font-family:var(--sans); font-weight:800; fill:#14171d; }
 .home-tile.ok    { --t-bg:var(--ok);   --t-ink:#fff; --t-sub:#E6F2EB; --t-bd:var(--ok); }
 .home-tile.warn  { --t-bg:var(--hazard); --t-ink:var(--hazard-ink); --t-sub:var(--hazard-ink); --t-bd:var(--hazard); }
 .home-tile.error { --t-bg:var(--stop); --t-ink:#fff; --t-sub:#FBE9E7; --t-bd:var(--stop); }
@@ -701,7 +714,7 @@ button.ui-size + button.ui-size, button.role-btn + button.ui-size { margin-left:
   #live-line > .live-bar { height:1.4rem; margin-top:.4rem; }
   .ht-body { grid-template-columns:minmax(0,1fr); row-gap:.6rem; }
   .ht-grid { grid-template-columns:minmax(0,1fr); row-gap:.6rem; }
-  .ht-pos { width:auto; }
+  .ht-pos, .ht-press { width:auto; }
   .live > b { font-size:2.3rem; }
 }
 

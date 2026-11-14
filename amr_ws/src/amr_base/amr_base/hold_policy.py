@@ -31,6 +31,11 @@ AUTO_CAUSES = ("field",)
 # re-classify it. "panel": the I/O island reported its image invalid just before the torque
 # went - the safety chain's state is then unknown, so it is never read as the field.
 SAFETY_CAUSES = ("field", "estop", "panel")
+# Holds that wait for a person to attach or release trolleys, then a physical Start: the
+# panel's call alarm pulses through them (manuals/stop-call-alarm-plan.md, owner 2026-11-13).
+# station: parked at a stop · payload: at a U-turn, release not recorded · trolley: a trolley
+# reads in the way of a pivot. Fault-type holds that also wait for Start do not call.
+CALL_CAUSES = ("station", "payload", "trolley")
 # The device each cause blames (LineState/RunState.hold_device). "" = no single device.
 CAUSE_DEVICE = {
     "field": "scanner",

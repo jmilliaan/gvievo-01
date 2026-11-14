@@ -326,7 +326,7 @@ The labels use standard safety signs (ISO 7010). Keep all labels clean and reada
 | Device                         | Signal | When                                                                                                                                                   |
 | ------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Horn, sound 1 (movement sound) | tone 1 | Whenever the wheels turn, in any mode including **MANUAL**. Silenced while the alarm sound plays                                                 |
-| Horn, sound 2 (alarm sound)    | tone 2 | For 2 s after **START**, before the vehicle moves. In **AUTO**, while the protective field is violated or warning field 1 or 2 is occupied |
+| Horn, sound 2 (alarm sound)    | tone 2 | For 2 s after **START**, before the vehicle moves. In **AUTO**, while the protective field is violated or warning field 1 or 2 is occupied. Pulsing (1 s on, 2 s off) while the vehicle waits at a stop point for coupling or uncoupling, until **START** |
 
 ---
 
@@ -365,7 +365,7 @@ The vehicle controller can only drive the motors while the safety controller all
 
 ### 4.3 Control panel
 
-[IMG-04-02] Control panel with callouts
+![Control panel, top view: RESET and START on the left, E-STOP and MANUAL / AUTO selector on the right](images/IMG-04-02.svg)
 
 | Control                 | Type                                                | Function                                                             |
 | ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
@@ -659,7 +659,7 @@ On the **Manual** page, the vehicle also stops if you switch browser tab, press 
 
 ### 10.4 Coupling and uncoupling trolleys
 
-The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATION`) until the operator presses **START**. The drives are not switched off at a stop point; stay out of the path in front of the vehicle.
+The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATION`) until the operator presses **START**, and the alarm sound pulses until then to call the operator. The drives are not switched off at a stop point; stay out of the path in front of the vehicle.
 
 **Coupling:**
 

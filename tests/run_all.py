@@ -158,7 +158,7 @@ MODULES = [
 # + 2 (2026-11-07): C-BTU steers - a steer on a crossing refused, J-N/J-S held (test_mission).
 # + 2 (2026-11-11): NORMAL+ - auto_plus_ratio at NORMAL and at HIGH refused (test_config).
 # + 4 (2026-11-11): panel Start/Reset held levels for the At home combination (test_panel).
-EXPECTED_CHECKS = 917
+EXPECTED_CHECKS = 921  # +4: dio.call_alarm refusals (stop call, 2026-11-13)
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -34,6 +34,12 @@ def contract_pair_order() -> dict:
     return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))
 
 
+def contract_btu_pair_order() -> dict:
+    """The BTU pair example of contract v1.3 section 2."""
+    part = PLAN.split("Order for BTU24 and BTU19, a BTU pair:", 1)[1]
+    return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))
+
+
 def contract_cancel() -> dict:
     part = PLAN.split("### 4. instantActions", 1)[1]
     return json.loads(re.search(r"```json\n(.*?)```", part, re.S).group(1))

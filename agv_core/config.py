@@ -247,6 +247,16 @@ pp.*
       quick_stop_decel        6085h  r/min/s
     max_speed_mps is the pp cap, at most blind_run.max_speed_mps.
 
+dio.call_alarm_on_s / call_alarm_off_s
+    The stop call (owner, 2026-11-13; manuals/stop-call-alarm-plan.md). While the line job
+    is parked in a hold that waits for a person to attach or release trolleys and then a
+    physical Start (amr_base.hold_policy.CALL_CAUSES: station, payload, trolley) under AUTO,
+    panel_node pulses the dio.alarm_on outputs: on for on_s, off for off_s, from the moment
+    the hold starts, with no time limit. The Start's pre-move warning follows without a gap
+    and is continuous, so the operator hears the press taken. A field occupied keeps the
+    alarm continuous over the pulse. MANUAL, a Reset or a LineState older than 3 s ends it.
+    on_s 0 switches the call off; off_s 0 makes it continuous. Not a safety function.
+
 timing.auto_start_delay_s
     The pre-move warning (2026-10-08): every move that follows an operator's
     Start under AUTO - a run from Home, a station departure, a resume after an
@@ -538,6 +548,10 @@ _SCHEMA = {
         "num_di":             ("DIO_NUM_DI", int),
         "num_do":             ("DIO_NUM_DO", int),
         "di_flipped":         ("DIO_DI_FLIPPED", bool),
+        # The stop call (manuals/stop-call-alarm-plan.md): dio.alarm_on pulses on/off while the line
+        # job waits at a stop for attach / release and a Start. on 0 = off, off 0 = continuous.
+        "call_alarm_on_s":    ("DIO_CALL_ALARM_ON_S", float),
+        "call_alarm_off_s":   ("DIO_CALL_ALARM_OFF_S", float),
         # "di_names"/"do_names" are lists sized against num_di/num_do;
         # handled separately in _read_io_names().
     },
@@ -1207,6 +1221,12 @@ def _validate(ns):
           "dio.movement_horn must be among dio.motion_on (it is a motion output that yields to the alarm)")
     check(not set(g("DIO_MOTION_ON")) & set(g("DIO_ALARM_ON")),
           "dio.motion_on and dio.alarm_on share a channel: one coil, two owners")
+    check(0.0 <= g("DIO_CALL_ALARM_ON_S") <= 10.0,
+          "dio.call_alarm_on_s must be in 0..10 s (0 = no stop call)")
+    check(0.0 <= g("DIO_CALL_ALARM_OFF_S") <= 10.0,
+          "dio.call_alarm_off_s must be in 0..10 s (0 = continuous)")
+    check(g("DIO_CALL_ALARM_ON_S") == 0.0 or g("DIO_ALARM_ON"),
+          "dio.call_alarm_on_s is set while dio.alarm_on is empty: the stop call has no output to sound")
 
     # -- horn -------------------------------------------------------------
     check(0 <= g("HORN_DO_CHANNEL") < g("DIO_NUM_DO"),

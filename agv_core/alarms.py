@@ -114,7 +114,7 @@ def _rows() -> tuple[Alarm, ...]:
 
         # ---- the drives ----
         a("SAFETY_RESET_NEEDED", WARN, "start_button", "Motors are off: the safety circuit needs a reset",
-          "Press the blue Reset button on the cabinet.",
+          "Press the yellow Reset button on the cabinet.",
           "Both drives in 'Switch on disabled' (statusword 0x1270): STO held by the FX3, arming retries "
           "every 2 s and succeeds the moment the chain closes."),
         a("DRIVE_ALARM", ERROR, "power_cycle", "Drive alarm",
@@ -442,6 +442,10 @@ def _rows() -> tuple[Alarm, ...]:
           "Nothing to do.", "Command-source edge in the mux (pendant, manual, follow, line...)."),
         a("PANEL", INFO, "auto", "The control panel changed",
           "Nothing to do.", "Selector, Start/Reset edge or pendant change from panel_node."),
+        a("CALL_ALARM", INFO, "auto", "The vehicle is calling at a stop",
+          "Attach or release the trolleys, then press Start.",
+          "panel_node pulses the alarm horn (dio.alarm_on) while the line job holds for attach / "
+          "release (hold_policy.CALL_CAUSES) under AUTO; on/off pair per stop, dio.call_alarm_on_s/off_s."),
         a("BOOT_READY", INFO, "auto", "The vehicle is ready",
           "Nothing to do.", "End-of-boot report from the supervisor; the text lists anything missing."),
         a("RUN_SUMMARY", INFO, "auto", "A mission finished",

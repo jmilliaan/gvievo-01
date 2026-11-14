@@ -4,7 +4,7 @@ import ast
 import pathlib
 
 import pytest
-from calling_world import HOLDOFF, SETTLE, calling, go_on, parked_at, settled, spin, to_stop
+from calling_world import HOLDOFF, SETTLE, calling, go_on, parked_at, settled, spin, to_stop, waiting_call
 from site_fixture import graph, site
 from test_mission_engine import PER_REV
 from test_site_run import TripWorld, one_call
@@ -111,7 +111,7 @@ def test_the_same_order_id_never_starts_twice(after):
 def _check_cases():
     return [
         ("other_order", lambda w: w.order("O0"), {}, "OTHER_ORDER_ACTIVE", "O0"),
-        ("local_trip", lambda w: w.job.trip_call("M1", w.t), {}, "OTHER_ORDER_ACTIVE", "LOCAL_TRIP"),
+        ("local_trip", lambda w: waiting_call(w, "M1"), {}, "OTHER_ORDER_ACTIVE", "LOCAL_TRIP"),
         ("not_auto", lambda w: None, {"panel_auto": False}, "MOBILE_ROBOT_NOT_AVAILABLE", "NOT_AUTO"),
         ("stale_panel", lambda w: None, {"panel_valid": False}, "MOBILE_ROBOT_NOT_AVAILABLE", "NOT_AUTO"),
         ("no_lease", lambda w: None, {"lease_allowed": 0}, "MOBILE_ROBOT_NOT_AVAILABLE", "NOT_AUTO"),
@@ -179,19 +179,19 @@ def test_settling_and_holdoff_refuse_as_check_9():
 
 def _to_state(w, name):
     if name == "ARMED":
-        w.job.trip_call("M1", w.t)
+        waiting_call(w, "M1")
         w.press_start()
     elif name == "RUNNING":
-        w.job.trip_call("M1", w.t)
+        waiting_call(w, "M1")
         w.start()
     elif name == "FAULT":
-        w.job.trip_call("M1", w.t)
+        waiting_call(w, "M1")
         w.start()
         w.wrong = "wrong branch"
         w.tick()
         w.wrong = ""
     else:
-        w.job.trip_call("M1", w.t)
+        waiting_call(w, "M1")
         w.start()
         w.drive(0.5)
         cause = name.split(":")[1]
@@ -245,7 +245,7 @@ def test_an_order_cannot_resume_a_hold_or_leave_a_stop(cause, over):
 
 def test_a_start_in_the_same_tick_refuses_the_order():
     w = settled()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.job.order_request("O1", "M1")
     w.press_start()
     assert w.job.state == lj.ARMED and w.job.order is None, "the press is handled"
@@ -255,7 +255,7 @@ def test_a_start_in_the_same_tick_refuses_the_order():
 
 def test_a_reset_in_the_same_tick_refuses_the_order():
     w = settled()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.start()
     w.job.order_request("O1", "M1")
     w.tick(reset_edge=True)
@@ -313,7 +313,7 @@ def _restart_cases():
         ("selector", lambda w: (w.drive(0.1, panel_auto=False), w.tick())),
         ("reset", lambda w: w.tick(reset_edge=True)),
         ("clear", lambda w: w.job.clear()),
-        ("call_cancel", lambda w: (w.job.trip_call("M1", w.t), w.job.trip_cancel("M1"))),
+        ("call_cancel", lambda w: (waiting_call(w, "M1"), w.job.trip_cancel("M1"))),
         ("mission", lambda w: w.job.set_mission(w.m)),
         (
             "trolley",
@@ -425,7 +425,7 @@ def test_an_order_cancels_at_its_own_torque_wait():
 
 def test_a_physical_start_keeps_the_premove_timeout():
     w = settled()
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.press_start()
     assert not w.until(lambda: w.job.state != lj.ARMED, 3.0, torque_off=True), "the 8 s default"
     assert w.job.state == lj.ARMED
@@ -472,7 +472,7 @@ def test_no_sensor_sample_yet_is_no_tape_and_no_crash():
 def test_no_tape_or_readiness_check_on_a_physical_start():
     w = settled()
     w.loc_ready = False
-    w.job.trip_call("M1", w.t)
+    waiting_call(w, "M1")
     w.press_start()
     assert w.job.state == lj.ARMED, w.job.reason
 
@@ -662,33 +662,11 @@ def test_an_order_to_the_tape_end_machine():
     assert w.job.state == lj.ARMED and w.job.trip.uturn()["mode"] == "tapeend"
 
 
-@pytest.mark.parametrize("machine", ["unknown", "swap"])
-def test_a_machine_with_no_release_is_refused(machine):
-    if machine == "unknown":
-        w = settled()
-        name = "NOPE"
-    else:
-        w = settled(
-            groups={
-                "M": {
-                    "circuit": "C-M",
-                    "machines": {
-                        "M1": {"release": "MW-1", "take": "ME-1", "uturn": "UT-M1"},
-                        "M2": {"release": "MW-2", "take": "ME-2", "uturn": "UT-M2"},
-                    },
-                },
-            }
-        )
-        w.job.site = dict(w.job.site)
-        w.job.site["GROUPS"] = {
-            "M": {
-                **w.job.site["GROUPS"]["M"],
-                "machines": {**w.job.site["GROUPS"]["M"]["machines"], "S1": {"swap": "MW-1"}},
-            }
-        }
-        w.job.site["MACHINES"] = {**w.job.site["MACHINES"], "S1": "M"}
-        name = "S1"
-    w.job.order_request("O1", name)
+def test_an_unknown_machine_is_refused():
+    """A swap machine (BTU) was refused here until contract v1.3 (2026-11-13): BTU laps are orders now,
+    test_station_swap.py. A machine the mission does not name still is."""
+    w = settled()
+    w.job.order_request("O1", "NOPE")
     w.tick()
     assert w.refusal() == ("VALIDATION_FAILURE", "MACHINE")
 

@@ -297,6 +297,9 @@ def test_the_home_page_is_the_operators_landing_page(tmp_path):
     assert client.get("/").headers["Location"].endswith("/home")
     body = client.get("/home").get_data(as_text=True)
     assert 'id="home-primary"' in body
+    # the panel drawing carries every button the tile may ask for
+    assert 'id="home-press"' in body
+    assert all(f'data-b="{b}"' in body for b in view.PANEL_BUTTONS)
     # the operator's nav: no Params, no Monitor, no Commission
     assert "/params" not in body and "/monitor" not in body
     assert "/run" in body and "/alarms" in body
@@ -985,6 +988,7 @@ def test_the_status_tile(st, kind, level, big):
     t = _tile(st)
     assert (t["kind"], t["level"], t["big"]) == (kind, level, big)
     assert t["blink"] is (kind == "lost")
+    assert bool(t["press"]) is (kind == "lost" and bool(t["steps"]))
 
 
 def test_an_estop_without_the_q3_wire_is_never_green_and_never_red():
@@ -1009,12 +1013,28 @@ def test_not_localized_walks_through_the_panel_press_ticking_the_selector():
     assert [(s["done"], s["now"]) for s in manual["steps"]] == [(True, False), (False, True), (False, False)]
     assert manual["button"] == "" and manual["title"] == "Position not set"
     assert "RESET" in view.LOCALIZE_STEPS[2] and "START" in view.LOCALIZE_STEPS[2]
+    # the page rings these two on its panel drawing, whatever the selector says
+    assert auto["press"] == manual["press"] == ["reset", "start"]
+    assert manual["press_text"] == "Press together, 1 s"
+    assert set(manual["press"]) <= set(view.PANEL_BUTTONS)
+
+
+def test_a_stop_waiting_for_attach_or_release_rings_start():
+    """The stop call (manuals/stop-call-alarm-plan.md C4): the panel pulses the alarm until Start, and
+    the Home drawing rings START. A fault-type hold that also waits for Start does not."""
+    for cause in ("station", "payload", "trolley"):
+        t = _tile(_line(state_name="HOLD", hold_cause=cause, auto_resume=False, code="",
+                        message="at MW-1: press Start to go on", auto=True))
+        assert (t["kind"], t["press"], t["press_text"]) == ("stopped", ["start"], "Press to go on"), cause
+    estop = _tile(_line(state_name="HOLD", hold_cause="estop", auto_resume=False, code="ESTOP",
+                        message="safety stop", auto=True))
+    assert estop["press"] == [] and estop["press_text"] == ""
 
 
 def test_navigation_not_localized_offers_set_position():
     t = _tile(merged(mode={**LINE_MODE, "mode_name": "NAVIGATION"},
                      localization={"state_name": "LOST", "code": "LOC_LOST", "reason": "x"}))
-    assert t["button"] == "Set position" and t["steps"] == []
+    assert t["button"] == "Set position" and t["steps"] == [] and t["press"] == []
 
 
 def test_the_live_vehicle_idle_is_green():

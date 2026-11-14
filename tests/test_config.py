@@ -344,6 +344,15 @@ def test_config_profile():
             lambda d: d["dio"].update(movement_horn=[2]), "among dio.motion_on")
     refuses("one channel as both a motion and an alarm output is refused",
             lambda d: d["dio"].update(motion_on=[0, 1], alarm_on=[1]), "share a channel")
+    # The stop call (manuals/stop-call-alarm-plan.md, 2026-11-13).
+    refuses("a negative stop call on time is refused",
+            lambda d: d["dio"].update(call_alarm_on_s=-1.0), "dio.call_alarm_on_s")
+    refuses("a stop call off time above 10 s is refused",
+            lambda d: d["dio"].update(call_alarm_off_s=11.0), "dio.call_alarm_off_s")
+    refuses("a stop call with no alarm output to sound is refused",
+            lambda d: d["dio"].update(alarm_on=[]), "no output to sound")
+    refuses("a profile without the stop call keys is refused",
+            lambda d: d["dio"].pop("call_alarm_on_s"), "call_alarm_on_s")
     refuses("a motion channel past the end of the module is refused",
             lambda d: d["dio"].update(motion_on=[0, d["dio"]["num_do"]]), "dio.motion_on")
     refuses("a motion channel listed twice is refused",

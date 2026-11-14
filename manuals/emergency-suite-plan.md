@@ -72,7 +72,7 @@ shows that with the catalogue's existing words. It never shows a red EMERGENCY t
 | Situation | What the PC sees today | Tile |
 |---|---|---|
 | E-stop during a run (LINE or NAVIGATION) | torque lost, field clear → hold `estop` | `stopped`, yellow: "Stopped: emergency stop or safety chain. Release the E-stop, then press Reset and Start." |
-| E-stop while idle | drives in Switch on disabled → `SAFETY_RESET_NEEDED` / `DRIVES_NOT_READY` (WARN) | `attention`, yellow: "Motors are off: the safety circuit needs a reset. Press the blue Reset button." |
+| E-stop while idle | drives in Switch on disabled → `SAFETY_RESET_NEEDED` / `DRIVES_NOT_READY` (WARN) | `attention`, yellow: "Motors are off: the safety circuit needs a reset. Press the yellow Reset button." |
 | Panel / DIO not answering | `PANEL_STALE` (ERROR) | `fault`, red |
 
 The `attention` row closes a hole: today's `headline()` falls through to READY when the top row is only a

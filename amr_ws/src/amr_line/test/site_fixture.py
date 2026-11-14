@@ -48,21 +48,46 @@ TAUGHT = {"HOME": ("J-C:left>J-A", 5.0), "ATT": ("J-A:merge>J-B", 3.0), "MW-1": 
           "UT-M1": ("J-B:right>U", 11.0), "UT-M2": ("J-B:right>U", 17.0)}
 
 
+# Swap machines, a BTU lap in small (contract v1.3, 2026-11-13): circuit C-S leaves J-B LEFT onto a loop
+# with no U-turn and comes home through J-C. S2 swaps at R-1 (the closer, as BTU24 at R2-1), S1 at R-2;
+# S9 shares R-1 and is listed after S2, as BTU16 shares R2-1 with BTU24.
+#     J-B:left>J-C   (10,10)->(10,20)->(0,20)->(0,0)   R-1 at 12 (x 8), R-2 at 18 (x 2)
+SWAP_TRUE = {"J-B:left>J-C": [(10, 10), (10, 20), (0, 20), (0, 0)]}
+SWAP_TAUGHT = {"R-1": ("J-B:left>J-C", 12.0), "R-2": ("J-B:left>J-C", 18.0)}
+
+
 def site(**over):
     d = copy.deepcopy(DOC)
     d.update(over)
     return missions.parse_site(d)
 
 
-def graph(m, skip=()):
+def swap_site(**over):
+    """DOC plus circuit C-S and group S (swap machines S2, S1, S9)."""
+    d = copy.deepcopy(DOC)
+    d["circuits"]["C-S"] = [{"stop": "HOME"}, {"junction": "J-A", "order": "merge"}, {"stop": "ATT"},
+                            {"junction": "J-B", "order": "left"}, {"stop": "R-1"}, {"stop": "R-2"},
+                            {"junction": "J-C", "order": "left"}, {"stop": "HOME"}]
+    d["groups"]["S"] = {"circuit": "C-S", "machines": {"S2": {"swap": "R-1"}, "S1": {"swap": "R-2"},
+                                                      "S9": {"swap": "R-1"}}}
+    d.update(over)
+    return missions.parse_site(d)
+
+
+def swap_graph(m):
+    return graph(m, true={**TRUE, **SWAP_TRUE}, taught={**TAUGHT, **SWAP_TAUGHT})
+
+
+def graph(m, skip=(), true=None, taught=None):
     legs = []
-    for lid, pts in TRUE.items():
+    for lid, pts in (true or TRUE).items():
         frm, rest = lid.split(":")
         order, to = rest.split(">")
-        legs.append(tg.Leg(lid, frm, order, to, tg.resample(pts), end_kind=END[lid],
-                           fork_back_m=FORK_BACK_M if END[lid] == "fork" else 0.0))
+        end = END.get(lid, "fork")
+        legs.append(tg.Leg(lid, frm, order, to, tg.resample(pts), end_kind=end,
+                           fork_back_m=FORK_BACK_M if end == "fork" else 0.0))
     g = tg.Graph(BINDING, legs)
-    for sid, (lid, s) in TAUGHT.items():
+    for sid, (lid, s) in (taught or TAUGHT).items():
         if sid in skip:
             continue
         x, y, h = g.legs[lid].line.point(s)
