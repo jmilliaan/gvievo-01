@@ -41,6 +41,10 @@ install_dropin chrony-amr.conf /etc/chrony/conf.d/amr.conf
 # Wi-Fi rejoin (alpha-setup 2.3). It runs as root, so it runs from a root-owned copy.
 install -m 0755 "$DEPLOY_DIR/agv-wifi-reconnect.sh" /usr/local/sbin/agv-wifi-reconnect
 install_dropin agv-wifi-reconnect.service /etc/systemd/system/agv-wifi-reconnect.service
+# Thermal caps for the fanless N97 (2026-10-02: 100 C, 86 throttles in 2 h at stock
+# 3.6 GHz / PL2 25 W). Installed here, enabled by hand like every other unit.
+install_dropin cpu-freq-cap.service /etc/systemd/system/cpu-freq-cap.service
+install_dropin cpu-power-limit.service /etc/systemd/system/cpu-power-limit.service
 sysctl --quiet --system || echo "warning: sysctl --system failed; reboot applies it anyway" >&2
 
 systemctl list-unit-files 'amr*.service' --no-legend \
@@ -51,5 +55,6 @@ echo "Installed unit files without changing enabled or running services."
 echo "The journal cap needs: systemctl restart systemd-journald"
 echo "The chrony drop-in needs: systemctl restart chrony (off-shift)"
 echo "Wi-Fi rejoin, once per unit: systemctl enable --now agv-wifi-reconnect (safe while running)"
+echo "CPU caps, once per unit: systemctl enable --now cpu-power-limit cpu-freq-cap (safe while running)"
 echo "Backup: $BACKUP_DIR"
 echo "Follow the witnessed cutover or rollback procedure in $DEPLOY_DIR/../RUNBOOK.md."

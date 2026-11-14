@@ -138,8 +138,8 @@ tether come **before** the wired ports, so the PC never loses its internet).
 | 9 | ROS 2 Humble | 4 | `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
 | 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, numpy; print(numpy.__version__)"` prints `2.2.6` |
 | 11 | Shell environment, which vehicle | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION $AGV_PROFILE'` = `10 rmw_cyclonedds_cpp agv-02`; `bash -ic 'python3 -m agv_core.identity'` names host `gvipc-evo-02`, profile `agv-02`, serial `agv2` |
-| 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (706 at the time of writing) |
-| 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal` |
+| 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (938 at `7d68647`; the pinned `EXPECTED_CHECKS`) |
+| 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal`; `systemctl is-active cpu-power-limit cpu-freq-cap` = `active active` |
 | 14 | Operator display (kiosk). **Do it over SSH** (`ssh gvipc-evo-01@192.168.2.120`): when lightdm restarts, the local screen becomes the kiosk and there is no text console behind it any more (by design) | 7 (not 7.8) | `systemctl is-active nginx lightdm` = `active active`; `curl -s http://127.0.0.1/ \| grep -c 'AMR system starting'` = `1`; the panel shows the orange "AMR system starting" page |
 | 15 | **STOP: engineer.** Device read-back, then first start | 9.1, 6 (cutover) | every row of 9.1 matches; `systemctl is-active amr` = `active`; the panel shows the UI in IDLE |
 | 16 | **STOP: engineer.** Acceptance | 9.2 | all 14 items pass |
@@ -286,8 +286,14 @@ sudo systemctl mask systemd-networkd-wait-online.service
 sudo systemctl enable NetworkManager-wait-online.service
 ```
 
-Wi-Fi power save is left at the Ubuntu default (`wifi.powersave = 3` in
-`/etc/NetworkManager/conf.d/default-wifi-powersave-on.conf`).
+Wi-Fi power save is **off on the `agv-net` connection** (`802-11-wireless.powersave 2`,
+set in section 2.3). The global Ubuntu default (`wifi.powersave = 3` in
+`/etc/NetworkManager/conf.d/default-wifi-powersave-on.conf`) stays, but the
+connection setting overrides it. Unit 1 runs this way; unit 2 was found on the
+default and fixed 2026-11-14. On a unit whose `agv-net` already exists:
+`sudo nmcli con modify agv-net 802-11-wireless.powersave 2` (applies at the next
+reconnect; do it at the console or before a reboot, never over the Wi-Fi link).
+Check: `nmcli -g 802-11-wireless.powersave con show agv-net` = `disable`.
 
 ### 2.2 netplan — the wired ports and the tether
 
@@ -453,7 +459,7 @@ WIFI_IP=192.168.2.120          # per unit: unit 1 192.168.2.110, unit 2 192.168.
 sudo nmcli con add type wifi con-name agv-net ifname wlp1s0 ssid agv_field \
   wifi-sec.key-mgmt wpa-psk wifi-sec.psk '<PSK>' \
   ipv4.method manual ipv4.addresses "$WIFI_IP/24" ipv4.gateway 192.168.2.5 \
-  ipv4.dns 1.1.1.1,8.8.8.8 ipv4.route-metric 700 \
+  ipv4.dns 1.1.1.1,8.8.8.8 ipv4.route-metric 700 802-11-wireless.powersave 2 \
   connection.autoconnect yes connection.autoconnect-priority 10 connection.autoconnect-retries 0
 sudo nmcli con up agv-net
 nmcli -g IP4.ADDRESS dev show wlp1s0      # 192.168.2.120/24
@@ -722,7 +728,7 @@ colcon build --symlink-install
 source install/setup.bash
 
 # Offline checks — no hardware, ~1 min
-cd ~/agv_can && python3 tests/run_all.py                            # 706 checks at 9243ff6; pinned in EXPECTED_CHECKS
+cd ~/agv_can && python3 tests/run_all.py                            # 938 checks at 7d68647; pinned in EXPECTED_CHECKS
 cd ~/agv_can/amr_ws && env AMR_SIM_TESTS=0 ROS_DOMAIN_ID=89 python3 -m pytest -q src/*/test
 ruff check ~/agv_can/agv_core ~/agv_can/tests && (cd ~/agv_can/amr_ws && ruff check src)
 ```
@@ -742,6 +748,20 @@ them with RUNBOOK section 5, in this order (from `cd ~/agv_can/amr_ws`):
    there (journald restart, `swapoff`).
 3. **"Two sudo rules the operator pages need"**: without them the vehicle runs, but Restart answers
    "not permitted" and reports carry a note instead of the journal.
+4. **CPU thermal caps** (fanless N97, 24 h duty): `install.sh` installs `cpu-freq-cap.service`
+   (turbo on, ceiling 2.2 GHz) and `cpu-power-limit.service` (PL2 25 W → 15 W; PL1 stays 12 W).
+   At stock (3.6 GHz, PL2 25 W) unit 1 reached 100 °C and throttled 86 times in 2 h
+   (2026-10-02). Enable both once; they are safe while the vehicle runs:
+
+   ```bash
+   sudo systemctl enable --now cpu-power-limit cpu-freq-cap
+   cat /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq           # 2200000 on all 4
+   cat /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw      # 15000000
+   cat /sys/devices/system/cpu/intel_pstate/no_turbo                     # 0
+   ```
+
+   `cpu-no-turbo.service` (unit 1 only, disabled) is superseded: `cpu-freq-cap` declares
+   `Conflicts=` with it. Do not install it on a new unit.
 
 ### 6.1 Operator sudo rules
 
@@ -1267,7 +1287,7 @@ Run all of these once, in order, before the vehicle leaves the bench.
 9. **Kiosk escape table** (7.7) passes; `sudo pkill -9 Xorg` does not touch `amr.service` (`journalctl -u amr -u canable@can0 --since -2min` shows nothing new).
 10. **Unplug the CANable** → `amr.service` stops (`BindsTo`); replug → both come back; drives may show `8130h` and need a power cycle (expected, RUNBOOK §4).
 11. **20 min idle** → no screen blanking, no sleep.
-12. **Tests**: `python3 tests/run_all.py` = 706 / 706 at `9243ff6` (the pinned `EXPECTED_CHECKS`; a later commit may change it); per-package pytest green.
+12. **Tests**: `python3 tests/run_all.py` = 938 / 938 at `7d68647` (the pinned `EXPECTED_CHECKS`; a later commit may change it); per-package pytest green.
 13. **Two units on `agv_field`** (unit 2 onwards): with both vehicles powered, the tablet opens `http://192.168.2.110:5001` and `http://192.168.2.120:5001`; `sudo systemctl stop amr` on unit 2 drops only the `.120` page (proves the two addresses are not crossed), then start it again.
 14. **Recorder**: `tools/run_log.sh` with the service up, Ctrl-C once after ~10 s; `~/.amr/runs/<stamp>/bag/` exists and the report it runs at the end prints (proves the MCAP plugin from section 4).
 
@@ -1284,7 +1304,10 @@ is reproduced above; if any of them changes on the vehicle, update this document
 | `/etc/NetworkManager/system-connections/agv-net.nmconnection` | 2.3 |
 | `/etc/udev/rules.d/70-canable.rules`, `/etc/systemd/system/canable@.service` | 3 |
 | `/etc/systemd/system/amr.service` (installed copy of `amr_ws/deploy/amr.service`) | 6 |
-| `/etc/sysctl.d/60-amr.conf`, `/etc/systemd/journald.conf.d/amr.conf` (installed by `install.sh`); swap removed | 6 |
+| `/etc/sysctl.d/60-amr.conf`, `/etc/systemd/journald.conf.d/amr.conf`, `/etc/chrony/conf.d/amr.conf`, `/etc/logrotate.d/amr`, `/etc/systemd/system/{agv-wifi-reconnect,cpu-freq-cap,cpu-power-limit}.service`, `/usr/local/sbin/agv-wifi-reconnect` (installed by `install.sh`; the three units enabled by hand); swap removed | 6, 2.3 |
+| `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` | 2.2 |
+| `agv-net` power save off (`802-11-wireless.powersave 2`) | 2.1 |
+| crontab `@reboot /home/gvipc-evo-01/agv_can/logs/pwrbtn-watch.sh` (a copy of `deploy/pwrbtn-watch.sh`; `logs/` is untracked) | 1 |
 | `/etc/sudoers.d/amr-web` | 6.1 |
 | `/data/amr` LV + `/etc/fstab` line, `/etc/systemd/system/amr.service.d/data-volume.conf`, `~/.amr` and `~/amr_maps` symlinks | 6.2 |
 | hostname, `/etc/hosts`, Wi-Fi address, CANable serial: **per unit** | top table |
@@ -1309,12 +1332,20 @@ the authority.
 
 Added 2026-10-12 (second unit; unit 1 was not reachable to check):
 
-- **Unit 2 CANable serial: TBD.** Read it at section 3 and fill the top table.
-- **Unit 1's optional host state is unconfirmed.** The decision is "unit 2 = unit 1",
-  but whether unit 1 has `/etc/sudoers.d/amr-web`, the swap removed and `/data/amr`
-  mounted was not checked. This guide installs all three on unit 2. On unit 1, next
-  time it is reachable: `ls /etc/sudoers.d/; swapon --show; findmnt /data/amr`, and
-  bring it level (or note here why not).
+- **Unit 2 CANable serial: TBD.** Unit 2's `70-canable.rules` already names
+  `2056336F3743` (not unit 1's). Confirm it against the adapter with it plugged in
+  (`udevadm info -a /dev/ttyACM0 | grep serial`), then fill the top table and
+  `can.adapter_serial` in `profiles/agv-02.json`.
+- **Unit 1's optional host state, checked 2026-11-14:** `/etc/sudoers.d/amr-web` present,
+  swap removed. **Not level with unit 2:** `/data/amr` is not mounted (`~/.amr` is still on
+  root) and `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` is missing (cloud-init
+  rewrote `50-cloud-init.yaml` at boot). `logind.conf.d/50-amr.conf` is also only on unit 2.
+- **Unit 2 drift fixed 2026-11-14** (survey from unit 1): old `amr.service` without
+  `After=canable@can0.service`, no CPU caps, no Wi-Fi rejoin, chrony/logrotate drop-ins
+  missing, apt periodic on, no `99-disable-network-config.cfg`, no `pwrbtn-watch` cron,
+  Wi-Fi power save on. `amr` was enabled early and is now disabled until step 15. Its
+  `amr.service.d/unit2-profile.conf` (`AGV_PROFILE=agv-02`) duplicates `vehicle.env`, and its
+  "TEMPORARY auto_when_on" comment is stale: nothing applies it, the profile's `false` is in effect.
 - **The kiosk files are still only on unit 1** (`~/xfce-kiosk-staging/`). This file
   reproduces them in full, so unit 2 does not need them; copy them into the repo
   (section 10) the next time unit 1 is reachable.

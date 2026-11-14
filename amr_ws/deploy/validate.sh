@@ -16,7 +16,7 @@ done
 
 bash -n "$DEPLOY_DIR/amr-supervisor.sh" "$DEPLOY_DIR/install.sh" "$DEPLOY_DIR/trim-services.sh"
 bash -n "$DEPLOY_DIR/agv-wifi-reconnect.sh"
-for unit in "${UNITS[@]}"; do
+for unit in "${UNITS[@]}" cpu-freq-cap.service cpu-power-limit.service; do
   systemd-analyze verify "$DEPLOY_DIR/$unit"
 done
 
