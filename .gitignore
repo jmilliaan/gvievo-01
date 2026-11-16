@@ -40,3 +40,9 @@ CLAUDE.md
 
 # VDA5050 spec is an upstream clone kept locally for reference, not source.
 documentation/VDA5050/
+
+# Exceptions to the broad rules above (they must come after them).
+# The manual's PDF build (pandoc filter, CSS, script) is source, not colcon output.
+!documentation/operation-manual/build/
+# Platform scripts sit one level below deploy/, out of reach of !amr_ws/deploy/*.sh.
+!amr_ws/deploy/platform/*.sh
