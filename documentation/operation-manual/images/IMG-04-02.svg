@@ -81,20 +81,15 @@
   <!-- legend -->
   <circle cx="20" cy="760" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="20" y="770.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">1</text>
   <text x="50" y="770" font-size="31"><tspan font-weight="700">E-STOP</tspan><tspan font-weight="400">, red, latching, turn to release</tspan></text>
-  <text x="830" y="770" font-size="26" text-anchor="end">-SJ1</text>
   <circle cx="20" cy="810" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="20" y="820.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">2</text>
   <text x="50" y="820" font-size="31"><tspan font-weight="700">MANUAL / AUTO</tspan><tspan font-weight="400"> selector, 2 positions</tspan></text>
-  <text x="830" y="820" font-size="26" text-anchor="end">-SJ4</text>
   <circle cx="20" cy="860" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="20" y="870.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">3</text>
   <text x="50" y="870" font-size="31"><tspan font-weight="700">RESET</tspan><tspan font-weight="400">, yellow push-button</tspan></text>
-  <text x="830" y="870" font-size="26" text-anchor="end">-SJ3</text>
 
   <circle cx="900" cy="760" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="900" y="770.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">4</text>
   <text x="930" y="770" font-size="31"><tspan font-weight="700">START</tspan><tspan font-weight="400">, green push-button (AUTO only)</tspan></text>
-  <text x="1680" y="770" font-size="26" text-anchor="end">-SJ2</text>
   <circle cx="900" cy="810" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="900" y="820.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">5</text>
   <text x="930" y="820" font-size="31"><tspan font-weight="400">Display, web interface</tspan></text>
-  <text x="1680" y="820" font-size="26" text-anchor="end">-PH1</text>
   <circle cx="900" cy="860" r="18" fill="#000" stroke="#fff" stroke-width="5"/><text x="900" y="870.1" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">6</text>
   <text x="930" y="870" font-size="31"><tspan font-weight="400">Antennas</tspan></text>
 </svg>

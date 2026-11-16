@@ -25,8 +25,10 @@
     /* ---- source and breaker ---- */
     s.fromTop(P, 30, 'P24', '/20.6'); s.fromTop(N, 30, 'N24', '/20.6');
     s.line(P, 30, P, R1); s.line(N, 30, N, R2);
-    s.rail(R1, P, 400, '1P24', '', '/31');
-    s.rail(R2, N, 400, '1N24', '', '/31');
+    s.rail(R1, P, 400, '1P24', '', '/31.0');
+    s.rail(R2, N, 400, '1N24', '', '/31.0');
+    s.pathText(0, 0, '24 V breaker'); s.pathText(1, 2, 'Front scanner supply'); s.pathText(4, 6, 'Safety controller supply');
+    s.pathText(7, 7, 'Horn supply'); s.pathText(8, 9, 'I/O module supply');
 
     // load pairs: + from 1P24, − from 1N24
     const pair = (xp, xn, yEnd) => {
@@ -45,25 +47,20 @@
     s.locationBox(62, 150, 64, 52, '+VH', '');
     s.module(68, 120, BOX, 30, [{ x: 80, name: '+24V' }, { x: 90, name: '0V' }],
       ['-BG1', 'Safety scanner, front', 'OSSD /41.3']);
-    s.module(170, 220, BOX, 30, [{ x: 185, name: 'A1' }, { x: 195, name: 'A2' }], ['-KE1', 'FX3-CPU0', '/43']);
-    s.module(228, 278, BOX, 30, [{ x: 240, name: 'A1' }, { x: 250, name: 'A2' }], ['-KE2', 'FX3-XTIO84002', '/43']);
+    s.module(170, 220, BOX, 30, [{ x: 185, name: 'A1' }, { x: 195, name: 'A2' }], ['-KE1', 'Safety controller', 'main module FX3-CPU0', '/43.1']);
+    s.module(228, 278, BOX, 30, [{ x: 240, name: 'A1' }, { x: 250, name: 'A2' }], ['-KE2', 'Safety controller', 'I/O module FX3-XTIO84002', '/43.4']);
     s.locationBox(285, 150, 62, 52, '+VH', '');
     s.module(290, 342, BOX, 30, [{ x: 300, name: '+24V' }, { x: 310, name: '0V' }],
-      ['-PJ1', 'Horn PATLITE', 'COM = 0V (jumper)', 'sound inputs /61']);
+      ['-PJ1', 'Horn PATLITE', 'COM = 0V (jumper)', 'sound inputs /61.1']);
     s.module(352, 402, BOX, 30, [{ x: 365, name: '24V' }, { x: 375, name: '0V' }],
-      ['-KE4', 'CK-TP5162', 'PE not connected', 'I/O /60, /61']);
+      ['-KE4', 'I/O module CK-TP5162', 'PE not connected', s.alsoOn('-KE4')]);
 
     /* ---- breaker, cables ---- */
     s.breaker([P], 48, '', '');   // 1-pole: N not switched; labels right of N
     s.text(N + 2.5, 47.4, '-FC3', { size: 3, weight: 600 }); s.text(N + 2.5, 48 + 3 * s.textScale, '1P 6 A · ABB S201-C6', { size: 2.3 });
     s.cable([80, 90], 135, '-WG1', 'SICK connection cable');
 
-    s.note(30, 218, [
-      'Notes',
-      '1. Control wiring AWG22 (0.34 mm²) blue unless marked.',
-      '2. Rear scanner not fitted in this revision.',
-      '3. All devices in +EB unless boxed.',
-    ], { head: true });
+    s.notes(30, 218, ['Rear scanner (-BG2) not fitted in this revision: no supply drawn.']);
   });
 </script>
 </body>

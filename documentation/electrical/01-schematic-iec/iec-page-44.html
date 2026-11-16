@@ -21,12 +21,20 @@
   IEC.page(44, s => {
     s.text(30, 24, '-KE2  SICK FX3-XTIO84002 — safety controller I/O module (main module -KE1 FX3-CPU0)', { size: 3, weight: 600 });
     const end = s.table(30, 30, [
-      { w: 22, title: 'Terminal', mono: true },
-      { w: 48, title: 'Signal' },
-      { w: 110, title: 'Device / connection' },
-      { w: 50, title: 'Test pulse' },
-      { w: 20, title: 'Page', mono: true },
-    ], PROJECT.safetyIO, { rowH: 8 });
+      { w: 18, title: 'Terminal', mono: true },
+      { w: 32, title: 'Signal' },
+      { w: 62, title: 'Device / connection' },
+      { w: 26, title: 'Test pulse' },
+      { w: 20, title: 'Safety fn.', mono: true },
+      { w: 22, title: 'Wire marker', mono: true },
+      { w: 116, title: 'Off (0) means' },
+      { w: 14, title: 'Page', mono: true },
+    ], PROJECT.safetyIO, { rowH: 8, size: 2.3 });
+    s.note(30, end + 8, [
+      'Off (0) means: what the controller sees when the terminal carries no 24 V.',
+      'Every safety input is safe when it is off: a broken wire stops the vehicle (I1, I2, I5, I6) or keeps the protective field active (I7).',
+      'Safety functions SF1 … SF8: page 5. Wire markers: page 76.',
+    ], { size: 2.3, lh: 3.8 });
   });
 </script>
 </body>

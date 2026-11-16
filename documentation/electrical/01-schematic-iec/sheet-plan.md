@@ -44,7 +44,7 @@ Pages 30 and 31 may fit on one A3 page.
 | --- | --- | --- | --- |
 | 40 | E-stop `-SJ1`: both channels X1→I1 and X2→I2. Mode selector `-SJ4` → I7. RESET `-SJ3` → I8 | 08 | &EFS |
 | 41 | Front scanner `-BG1`: supply and OSSD1/OSSD2 → `-KE2:I5/I6`. The rear scanner is not fitted in this revision | 08, 03 | &EFS |
-| 42 | STO: Q1/Q2 → HWTO1/HWTO2 on both drives. EDM `-TA1` → I3, `-TA2` → I4. Removed factory jumpers noted. Q3, Q4 spare | 08, 07 | &EFS |
+| 42 | STO: Q1/Q2 → HWTO1/HWTO2 on both drives. EDM `-TA1` → I3, `-TA2` → I4. Removed factory jumpers noted. Q3 → `-KE4:DI09` E-stop status (2026-11-15), Q4 → QSTOP on IN2 (pin 18) of both drives, controlled stop SS1 (2026-11-15) | 08, 07 | &EFS |
 | 43 | Safety controller modules `-KE1`/`-KE2`: supply, module front view | 08, 03 | &EFS |
 | 44 | Safety controller I/O table: terminal, signal, device, test pulse, safety function, page | new | table |
 | 45 | Wheel encoders `-BG5`/`-BG6` (DFS60S, sin/cos) → M12 → Y-cable `-WG13` → drive monitor `-KE5` (FX3-MOC0) encoder socket. SF6 speed limit in AUTO, SF7 standstill; field switching planned, not wired | new (2026-11-09) | &EFS |
@@ -88,13 +88,14 @@ If time is short, draw these first: 1, 2, 3, 10, 12, 20, 21, 30, 32, 40, 41, 42,
 These are visible on the current sheets. The IEC pages must show them; they must not hide them.
 
 1. ~~Rear scanner OSSDs~~ Decided 2026-10-30: the rear scanner is not fitted in this revision. I5/I6 belong to the front scanner `-BG1`.
-2. ~~Q3~~ Decided 2026-10-30: Q3 is spare, like Q4. The "test pulses off" note is dropped. Check that the Flexi Soft configuration matches.
+2. ~~Q3~~ Decided 2026-10-30: Q3 is spare, like Q4. **Changed 2026-11-15 (owner):** Q3 → `-KE4:DI09`, E-stop status for the software (E-stop only, unlatched, test pulses off; `manuals/emergency-suite-plan.md` Part B §3). The Flexi Soft project must be changed to match, and the safety functions re-verified after the download.
 3. ~~Selector polarity~~ Settled: both contacts of `-SJ4` close in MANUAL. Source: the software reads DI02 = ON as MANUAL (`profile panel.auto_when_on = false`), and the I7 line is labelled MANUAL.
 4. **Wire colours:** decided to rewire to IEC 60204-1 13.2.4: black 48 V power, blue control and safety wiring, no orange (`conventions.md` section 6). The rewiring is a production task, to be done before the IEC set is issued.
 5. **PE / chassis earth:** not drawn on any sheet. It must appear on page 20 or 30, including the scanner and driver earths.
 6. ~~Common returns~~ Decided 2026-10-30: the converters are isolated. 1N48 is not joined to 1N24 / 1N12. The 48 V system is floating (not connected to the chassis).
 7. **Title-block data:** manufacturer, document number, names and dates are all placeholders.
 8. **Physical relabelling:** the vehicle must carry the new tags before the IEC set is released (IEC 60204-1 16.5).
+9. **Controlled stop (owner, 2026-11-15):** `-KE2:Q4` → QSTOP on IN2 of both drives; SF1, SF2, SF6 become SS1 (quick stop, then STO at `-KE5` standstill). Drawn on pages 5, 12, 40, 42–45, 50, 76. Open: IN-COM polarity (red, pages 42, 50), «t max», the Flexi Soft project change and revalidation, the MEXE02 settings, and the wiring on the vehicle. The JIS sheets 07/08 and `io-mapping.md` change only when Q4 is wired. Plan: `q4-controlled-stop-plan.md`.
 
 ## Drawing tool
 
@@ -107,3 +108,5 @@ Decided 2026-10-30: **extend the HTML kit.** Add an IEC frame module next to the
 
 
 > **2026-11-09 simplification (owner):** page 3 (designation key) moved to `archive/`; standards list, document-kind codes (&AB/&EFS…), safety-function IDs (SF1–SF7) and IEC clause citations removed from the rendered set. Tags (+EB-QA1 …) kept. Locations, potentials and the IEC 81346-2 product-class key (classes in `project.js`, tags generated from the parts and cable lists) now sit on page 4 under the symbol legend.
+
+> **2026-11-15 readability round (owner):** the designation key is back as **page 5** (locations, potentials, wire colours, product classes, safety functions), without the standards list, document-kind codes or clause citations. **Safety-function IDs SF1–SF8 are back on the sheets** (pages 5, 12, 40–45, the I/O table page 44 and the parts list page 80). New **page 76: wire markers**; the markers on the vehicle are reprinted to it. Every circuit page has function text under the column strip, `/page.column` references only, plain-language device lines with "Also on page …", signal names at interruption points and standard notes. Page 2 carries "How to read this circuit diagram". Plan and reasons: `readability-plan.md`.

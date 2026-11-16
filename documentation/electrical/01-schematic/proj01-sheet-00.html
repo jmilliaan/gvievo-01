@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 0 / «XX» · DC power single-line diagram</strong>
+  <strong>PROJ01 · Sheet 0 / 11 · DC power single-line diagram</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -27,46 +27,46 @@
   // terminal blocks, device cables and signal wiring stay on the detail sheets.
   // Every 4-digit ref = sheet + line where the circuit is drawn in detail.
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: 'DC POWER SINGLE-LINE DIAGRAM',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 0, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 0, of: '11',
     note: '',
     refs: [],
   };
 
   // 48 V feeders to the motor drivers (sheets 01, 02)
   const DRIVES = [
-    { row: 3, cb: 'MCB-02', cbRef: '0105', net: '2P48', name: ['DRIVER 01', 'BLVD-KRD'], ref: '0202',
-      en: 'LEFT MOTOR' },
-    { row: 5, cb: 'MCB-03', cbRef: '0107', net: '3P48', name: ['DRIVER 02', 'BLVD-KRD'], ref: '0207',
-      en: 'RIGHT MOTOR' },
+    { row: 3, cb: 'MCB-02', cbTag: '-FC1', cbRef: '0105', net: '2P48', name: ['DRIVER 01 (-TA1)', 'BLVD-KRD'], ref: '0202',
+      en: 'LEFT MOTOR', mtag: '-MA1' },
+    { row: 5, cb: 'MCB-03', cbTag: '-FC2', cbRef: '0107', net: '3P48', name: ['DRIVER 02 (-TA2)', 'BLVD-KRD'], ref: '0207',
+      en: 'RIGHT MOTOR', mtag: '-MA2' },
     // motors: BLMR6400SKM-GFV-B + gearhead GFS6G30FR (1:30), see note 6
   ];
 
   // DC/DC converters off the 48 V bus, each with its own 1-pole output breaker (+ only) and sub-bus
   const BUCKS = [
-    { row: 7.5, name: ['BUCK01', 'SD-150C-24', '48→24V 150W'], ref: '0110',
-      cb: 'MCB-04', rating: '1P 6A', cbRef: '0302', bus: ['1P24 / 1N24', '24V DC BUS'],
+    { row: 7.5, name: ['BUCK01 (-TA3)', 'SD-150C-24', '48→24V 150W'], ref: '0110',
+      cb: 'MCB-04', cbTag: '-FC3', rating: '1P 6A', cbRef: '0302', bus: ['1P24 / 1N24', '24V DC BUS'],
       loads: [
-        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1'], ref: '0305' },
-        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 02', 'NOT FITTED'], ref: '0308', nf: true },
-        { name: ['SAFETY PLC', 'CPU0 + XTIO + MOC0'], ref: '0311' },
-        { name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K'], ref: '0315' },
-        { name: ['DIGITAL IO', 'CK-TP5162'], ref: '0318' },
-        { name: ['DISPLAY', 'JWS080-M-QD'], ref: '0402' },
-        { name: ['LINE SENSOR 01', 'MLSE-0200A2NQ0'], ref: '0405' },
-        { name: ['FAN 01 – 03', 'NMB-MAT'], ref: '0408' },
-        { name: ['DRIVER 01 NET-VIN', 'BLVD-KRD'], ref: '0415' },
-        { name: ['DRIVER 02 NET-VIN', 'BLVD-KRD'], ref: '0418' },
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1'], ref: '0305', tag: '-BG1' },
+        { w: 'NYAF 0.5mm²', name: ['SAFETY LIDAR 02', 'NOT FITTED'], ref: '0308', nf: true, tag: '(-BG2)' },
+        { name: ['SAFETY PLC', 'CPU0 + XTIO + MOC0'], ref: '0311', tag: '-KE1/2/5' },
+        { name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K'], ref: '0315', tag: '-PJ1' },
+        { name: ['DIGITAL IO', 'CK-TP5162'], ref: '0318', tag: '-KE4' },
+        { name: ['DISPLAY', 'JWS080-M-QD'], ref: '0402', tag: '-PH1' },
+        { name: ['LINE SENSOR 01', 'MLSE-0200A2NQ0'], ref: '0405', tag: '-BG3' },
+        { name: ['FAN 01 – 03', 'NMB-MAT'], ref: '0408', tag: '-GQ1…3' },
+        { name: ['DRIVER 01 NET-VIN', 'BLVD-KRD'], ref: '0415', tag: '-TA1' },
+        { name: ['DRIVER 02 NET-VIN', 'BLVD-KRD'], ref: '0418', tag: '-TA2' },
       ] },
-    { row: 18.5, name: ['BUCK02', 'SD-100C-12', '48→12V 100W'], ref: '0114',
-      cb: 'MCB-05', rating: '1P 10A', cbRef: '0502', bus: ['1P12 / 1N12', '12V DC BUS'],
+    { row: 18.5, name: ['BUCK02 (-TA4)', 'SD-100C-12', '48→12V 100W'], ref: '0114',
+      cb: 'MCB-05', cbTag: '-FC4', rating: '1P 10A', cbRef: '0502', bus: ['1P12 / 1N12', '12V DC BUS'],
       loads: [
-        { name: ['IPC NEU-X102-N97', 'BARREL JACK'], ref: '0505' },
-        { name: ['RFID READER CF821', 'BARREL JACK'], ref: '0508' },
+        { name: ['IPC NEU-X102-N97', 'BARREL JACK'], ref: '0505', tag: '-KE3' },
+        { name: ['RFID READER CF821', 'BARREL JACK'], ref: '0508', tag: '-BG4' },
       ] },
   ];
 
@@ -108,10 +108,10 @@
       [[0, 6], [1.6, 3], [3.2, 6], [4.8, 3]].forEach(([dy, w]) =>
         s.line(BUS - w / 2, yBat + dy, BUS + w / 2, yBat + dy, w === 3 ? 0.6 : 0.3));
       s.text(BUS - 4.6, yBat + 0.9, '+', { size: 2 });
-      s.text(31, 16, 'BATTERY 48V DC', { size: 2.2, weight: 600 });
+      s.text(31, 16, 'BATTERY 48V DC (-GB1)', { size: 2.2, weight: 600 });
       s.text(31, 19.6, '50Ah LiFePO₄ · INCOE', { size: 1.9 });
-      s.text(64, 16, 'BMS → CAN BUS', { size: 1.9 });
-      ref(64, 19.4, '0618', 'start');
+      s.text(72, 16, 'BMS → CAN BUS', { size: 1.9 });
+      ref(72, 19.4, '0618', 'start');
 
       const yCb = 33, yBus0 = yCb + 4.7, yEnd = s.row(BUCKS[1].row);
       s.line(BUS, yBat + 4.8, BUS, yCb);
@@ -131,10 +131,11 @@
         // motor
         s.path(`M${MX + MR} ${y} A${MR} ${MR} 0 1 1 ${MX - MR} ${y} A${MR} ${MR} 0 1 1 ${MX + MR} ${y}`, 0.3, '#fff');
         s.text(MX, y + 1, 'M', { size: 2.4, weight: 600, anchor: 'middle' });
-        s.desc(170, y + 0.8, d.en);
+        s.desc(170, y - 1.2, d.en, d.mtag);              // motor name, IEC tag under it
         // cable marks and breaker last, so they cut the conductor
         s.wire(31, [y], 'NYAF 2.5mm²', 'RED');
         s.mccb(56, [y], d.cb);
+        s.text(62, y - 3.3, '(' + d.cbTag + ')', { size: 1.7 });           // IEC tag after the name
         s.text(56, y + 3.9, '1P 13A', { size: 1.9, anchor: 'middle' });   // under the line: clear of the name
         ref(56, y + 6.9, d.cbRef);
         s.wire(80, [y], 'LC03D06A', 'ORIENTAL MOTOR');
@@ -160,21 +161,23 @@
             if (k < ys.length - 1) s.dot(SUB, ys[k]);
           }
           box(LX, LW, ys[k], l.name, 8, l.nf);
-          ref(LX + LW + 2, ys[k] + 0.6, l.ref, 'start');
+          s.text(LX + LW + 2, ys[k] - 0.9, l.tag, { size: 1.6, weight: 600 });   // IEC tag, sheet + line under it
+          ref(LX + LW + 2, ys[k] + 2.5, l.ref, 'start');
           s.wire(123, [ys[k]], l.w || 'AWG22', 'BLUE');
         });
 
         s.wire(31, [y], 'NYAF 1.5mm²', 'RED');
         s.wire(78, [y], 'NYAF 1.5mm²', 'RED');
         s.mccb(103, [y], b.cb);
+        s.text(109, y - 3.3, '(' + b.cbTag + ')', { size: 1.7 });
         s.text(103, y + 3.9, b.rating, { size: 1.9, anchor: 'middle' });
         ref(103, y + 6.9, b.cbRef);
       });
 
       // breaker and cable mark on the incoming line last, so they cut the conductor
       wireV(BUS, 25.5, 'NYAF 4mm²', 'RED');
-      s.mccbV([BUS], yCb, 'MCB-01', '2P 32A');
-      ref(BUS + 16.5, yCb - 0.4, '0102', 'start');
+      s.mccbV([BUS], yCb, 'MCB-01 (-QA1)', '2P 32A');
+      ref(BUS + 27, yCb - 0.4, '0102', 'start');
 
       /* ---- notes ---- */
       const NX = 30, NY = s.row(11.6);
@@ -193,6 +196,7 @@
         '7. MOTOR BLMR6400SKM-GFV-B + GEARHEAD GFS6G30FR (1:30).',
         '   MOTOR AND BRAKE POWER COME FROM THE DRIVER CABLE LC03D06A.',
         '8. SAFETY ENCODERS AND FX3-MOC0 DRIVE MONITOR: SHEET 10.',
+        '9. (-XXn) = TAG OF THE DEVICE IN CIRCUIT DIAGRAM IGP-IPR-CD-001.',
       ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
     },
   });

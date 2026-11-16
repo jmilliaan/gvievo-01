@@ -19,7 +19,7 @@
 <script>
   // Symbol legend: only the symbols used in this set, drawn with the same engine calls as the pages.
   IEC.page(4, s => {
-    const COLS = [30, 160, 290], ROW0 = 24, DY = 23.5;
+    const COLS = [30, 160, 290], ROW0 = 22, DY = 22.5;
     const cell = (i, title, lines, draw) => {
       const x = COLS[i % 3], y = ROW0 + DY * Math.floor(i / 3);
       draw(x + 14, y + 14);
@@ -50,7 +50,7 @@
     cell(8, 'Interruption point', ['Continues at the target shown.', '/41.3 = page 41, column 3'],
       (x, y) => { s.line(x, y - 9, x, y + 1); s.offDown(x, y + 1, '-KE4:DI02', '/60.2'); });
     cell(9, 'Potential rail', ['Name and source left, continuation', 'arrow and target right'],
-      (x, y) => s.rail(y, x - 12, x + 14, '1P24', '', '/31'));
+      (x, y) => s.rail(y, x - 12, x + 14, '1P24', '', '/31.0'));
     cell(10, 'Module or device', ['Box with the terminals in use on its edge;', 'tag and type inside'],
       (x, y) => s.module(x - 12, x + 14, y - 6, 15, [{ x: x - 6, name: 'I1' }, { x: x + 6, name: 'I2' }], []));
     cell(11, 'Location box (dash-dot)', ['Devices inside are in the location', 'written at its top-left corner'],
@@ -59,41 +59,36 @@
       (x, y) => { [x - 8, x - 3].forEach(xx => vline(xx, y)); s.cable([x - 8, x - 3], y, '-WG1', ''); });
     cell(13, 'Battery', ['+ at the long plate'],
       (x, y) => { s.line(x, y - 9, x, y - 4, 0.3); s.line(x, y + 4, x, y + 9, 0.3); s.cells(x, y); });
-    cell(14, 'DC/DC converter, motor driver', ['Box with diagonal: input left, output right', '(= direct current, ~ alternating current)'],
+    cell(14, 'DC/DC converter', ['Box with diagonal: input left, output right.', '= direct current'],
       (x, y) => { s.rect(x - 9, y - 8, 18, 16, 0.35); s.convMark(x - 9, y - 8, 18, 16, '=', '='); });
     cell(15, 'Motor', ['Three-phase motor (brushless DC drive)'],
       (x, y) => { s.line(x, y - 9, x, y - 6); s.motor(x, y + 1, 6); });
     cell(16, 'Protective earth', ['Chassis bonding point'],
       (x, y) => { s.line(x, y - 9, x, y - 1); s.pe(x, y - 1); });
 
-    cell(17, 'Push-button, latching', ['Mushroom head, turn to release.', 'Not an emergency stop (black)'],
-      (x, y) => { vline(x + 6, y); s.operator([s.contactV(x + 6, y, 'nc')], 'mushroom'); });
-    /* ---- left: locations and potentials; right: product classes ---- */
-    const O = { size: 2.3, rowH: 4.8, headH: 6 }, Y = ROW0 + DY * 6 + 4;
-    s.text(30, Y, 'Locations (+)', { size: 3, weight: 600 });
-    let y = s.table(30, Y + 3, [{ w: 18, title: 'Code', mono: true }, { w: 165, title: 'Location' }], PROJECT.locations, O);
-    s.text(30, y + 7, 'Potentials', { size: 3, weight: 600 });
-    s.table(30, y + 10, [{ w: 28, title: 'Name', mono: true }, { w: 155, title: 'Meaning' }], PROJECT.potentials.map(r => [r[0], r[1]]), O);
-
-    // Tags per class, taken from the parts list and cable list so the legend cannot drift from them.
-    const tags = {};
-    [...PROJECT.devices, ...PROJECT.cables].forEach(r => {
-      const m = String(r[0]).match(/^-([A-Z]+)(\d+)$/);
-      if (m) (tags[m[1]] = tags[m[1]] || []).push(+m[2]);
-    });
-    const runs = cls => {
-      const n = [...new Set(tags[cls] || [])].sort((a, b) => a - b), out = [];
-      for (let i = 0; i < n.length; ) {
-        let j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++;
-        out.push(j - i >= 2 ? `-${cls}${n[i]} … -${cls}${n[j]}` : n.slice(i, j + 1).map(k => `-${cls}${k}`).join(', '));
-        i = j + 1;
-      }
-      return out.join(', ');
-    };
-    const classRows = PROJECT.classes.map(([code, meaning]) =>
-      [code, meaning, code.split(' / ').map(c => runs(c) || `-${c}…`).join('; ')]);
-    s.text(222, Y, 'Product classes (-), IEC 81346-2', { size: 3, weight: 600 });
-    s.table(222, Y + 3, [{ w: 18, title: 'Class', mono: true }, { w: 112, title: 'Meaning' }, { w: 50, title: 'Tags in this set', mono: true }], classRows, O);
+    cell(17, 'Interruption point, incoming', ['Comes from the source shown above the', 'arrow: here page 40, column 8'],
+      (x, y) => { s.fromTop(x, y - 2, '-SJ3:24', '/40.8'); s.line(x, y - 2, x, y + 9); });
+    cell(18, 'Signal name at an arrow', ['Bold line at an interruption point:', 'the signal on that wire'],
+      (x, y) => { s.line(x, y - 11, x, y - 4); s.offDown(x, y - 4, '-KE4:DI02', '/60.2', 'MANUAL'); });
+    cell(19, 'Function text', ['Bold line under the column numbers:', 'what the circuit below it does'],
+      (x, y) => {
+        s.line(x - 12, y - 5, x - 12, y - 3, 0.2); s.line(x + 12, y - 5, x + 12, y - 3, 0.2);
+        s.text(x, y - 0.7, 'Reset', { size: 2.3, weight: 600, anchor: 'middle' });
+      });
+    cell(20, 'Safety function', ['ID of the safety function the device', 'belongs to. List: page 5'],
+      (x, y) => s.sf(x - 6, y + 1, 'SF1'));
+    cell(21, 'Not fitted', ['Dashed box: device or reserve not', 'fitted in this revision'],
+      (x, y) => s.path(`M${x - 12} ${y - 7} h24 v14 h-24 Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1'));
+    cell(22, 'Plug connection', ['Bar across the conductors: plug and', 'socket of one connector (M12 …)'],
+      (x, y) => { [x - 8, x - 3, x + 2].forEach(xx => vline(xx, y)); s.path(`M${x - 11} ${y - 2} H${x + 5} V${y + 2} H${x - 11} Z`, 0.3); });
+    cell(23, 'Module bus link', ['Dashed line: modules joined by their', 'own bus connector (FLEXBUS+)'],
+      (x, y) => { s.rect(x - 14, y - 5, 9, 10, 0.35); s.rect(x + 5, y - 5, 9, 10, 0.35); s.line(x - 5, y, x + 5, y, 0.4, '2 1'); });
+    cell(24, 'Motor driver', ['Box with diagonal, = in, ~ out:', 'DC supply in, motor current out'],
+      (x, y) => { s.rect(x - 9, y - 8, 18, 16, 0.35); s.convMark(x - 9, y - 8, 18, 16, '=', '~'); });
+    s.note(30, 237, [
+      'Locations, potentials, wire colours, product classes and safety functions: page 5.',
+      'How to read the references and tags: page 2.',
+    ], { size: 2.3, lh: 3.8 });
   });
 </script>
 </body>

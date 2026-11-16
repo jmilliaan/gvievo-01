@@ -207,7 +207,7 @@ Locations: `+EB` electrical box, `+FR` front panel, `+VH` vehicle body, `+BT` ba
 | DI01 | **RESET** push-button (second contact; the first goes to the safety controller) |
 | DI02 | **MANUAL / AUTO** selector (second contact; the first goes to the safety controller) |
 | DI03–DI06 | Pendant **FORWARD**, **REVERSE**, **LEFT**, **RIGHT** |
-| DI08 | **MANUAL ARM** switch (switch type not yet specified) |
+| DI08 | **MANUAL ARM** selector on the pendant (black, OFF / ON, 1 NC) |
 
 | I/O module output | Function |
 | --- | --- |

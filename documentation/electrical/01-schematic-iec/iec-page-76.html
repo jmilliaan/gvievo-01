@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 76</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Wire markers. Generated from PROJECT.markers in data/project.js (owner 2026-11-15: the markers
+  // on the vehicle are reprinted to this list).
+  IEC.page(76, s => {
+    s.text(30, 24, 'Wire markers: signal conductors', { size: 3, weight: 600 });
+    s.table(30, 30, [
+      { w: 26, title: 'Marker', mono: true },
+      { w: 66, title: 'From', mono: true },
+      { w: 92, title: 'To', mono: true },
+      { w: 20, title: 'Pages', mono: true },
+    ], PROJECT.markers, { size: 2.3, rowH: 6.2, headH: 6.6 });
+    // potential names, wrapped at about 38 characters
+    const names = PROJECT.potentials.map(p => p[0]).join(', ').replace(/ \/ /g, ', ').split(', ');
+    const pl = []; let cur = 'potential name (page 5):';
+    names.forEach((n, i) => { const w = n + (i < names.length - 1 ? ',' : '.'); if ((cur + ' ' + w).length > 38) { pl.push(cur); cur = w; } else cur += ' ' + w; });
+    pl.push(cur);
+    s.notes(250, 34, [
+      ['The marker text is printed at both ends', 'of the conductor and written along the', 'conductor on the circuit pages.'],
+      ['Conductors on a potential carry the', ...pl],
+      ['Supplier cables (-WG1, -WG2, -WG11 …):', 'cores keep their own colours; the', 'marker goes on the core end at the', 'device terminal.'],
+      ['CAN cores: marker CAN H / CAN L /', 'CAN GND at each end.'],
+    ], { wiring: false, loc: false });
+    s.text(250, 140, '?Open: reprint the wire markers on the vehicle', { size: 2.5, weight: 600 });
+    s.text(250, 145, '?to this list before issue (old markers L.HWTO1+,', { size: 2.3 });
+    s.text(250, 149.5, '?F.OSSD1, P.EMG, SS.MAN, DI.00 … are replaced).', { size: 2.3 });
+  });
+</script>
+</body>
+</html>

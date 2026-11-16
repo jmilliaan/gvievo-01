@@ -190,7 +190,7 @@
     "driver_temp_trip_c": 85.0,
     "motor_temp_warn_c": 80.0,
     "motor_temp_trip_c": 95.0,
-    "bus_v_warn_low": 42.0,
+    "bus_v_warn_low": 48.0,
     "bus_v_warn_high": 56.0
   },
   "mls": {

@@ -24,21 +24,25 @@
     const dashed = (x, y, w, h) => s.path(`M${x} ${y} h${w} v${h} h${-w} Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1');
 
     // inputs
-    blk(30, 28, 70, 22, ['-SJ1', 'Emergency stop, 2 NC', '/40']);
-    blk(30, 63, 70, 22, ['-BG1', 'Safety laser scanner, front', '/41']);
-    blk(30, 98, 70, 22, ['-SJ4', 'Selector MANUAL / AUTO', '/40']);
-    blk(30, 133, 70, 22, ['-SJ3', 'RESET push-button', '/40']);
-    blk(30, 168, 70, 22, ['-BG5, -BG6', 'Wheel encoders, sin/cos', '/45']);
+    blk(30, 28, 70, 22, ['-SJ1', 'Emergency stop, 2 NC', '/40.1']);
+    blk(30, 63, 70, 22, ['-BG1', 'Safety laser scanner, front', '/41.3']);
+    blk(30, 98, 70, 22, ['-SJ4', 'Selector MANUAL / AUTO', '/40.4']);
+    blk(30, 133, 70, 22, ['-SJ3', 'RESET push-button', '/40.7']);
+    blk(30, 168, 70, 22, ['-BG5, -BG6', 'Wheel encoders, sin/cos', '/45.0, /45.5']);
+    // safety-function IDs (page 5), top-right inside each box
+    [[28, 'SF1'], [63, 'SF2'], [98, 'SF4'], [133, 'SF5'], [168, 'SF6, 7']].forEach(([y, id]) =>
+      s.sf(100 - 2 - (id.length * 1.45 + 2.2) * s.textScale, y + 5.5, id));
     s.box(30, 203, 70, 22, ['(-BG2)', 'Rear scanner', 'not fitted in this revision'], { size1: 2.6, size: 2.1, sw: 0.01 });
     dashed(30, 203, 70, 22);
-
+    s.sf(100 - 2 - (3 * 1.45 + 2.2) * s.textScale, 208.5, 'SF3');
     // safety controller
     s.rect(150, 28, 90, 197, 0.45);
     s.text(195, 92, '-KE1 / -KE2 / -KE5', { size: 3.2, weight: 600, anchor: 'middle' });
     s.text(195, 98, 'SICK Flexi Soft', { size: 2.4, anchor: 'middle' });
     s.text(195, 103.5, 'FX3-CPU0 + FX3-XTIO84002', { size: 2.2, anchor: 'middle' });
     s.text(195, 108.5, '+ FX3-MOC0 drive monitor', { size: 2.2, anchor: 'middle' });
-    s.text(195, 114, '/40 … /45', { size: 2.2, anchor: 'middle', mono: true });
+    s.text(195, 114, 'pages 40–45', { size: 2.2, anchor: 'middle' });
+    s.text(195, 122, 'all safety functions', { size: 2.2, anchor: 'middle' });
 
     s.arrow(100, 39, 150, 39); lab(103, 36, 'X1→I1, X2→I2');
     s.arrow(100, 74, 150, 74); lab(103, 71, 'OSSD1/2 → I5/I6');
@@ -47,13 +51,14 @@
     s.arrow(100, 179, 150, 179); lab(103, 176, 'ENC1/2 → -KE5');
 
     // drives
-    blk(300, 55, 80, 26, ['-TA1', 'Motor driver left', 'HWTO1 / HWTO2 (STO)']);
-    blk(300, 135, 80, 26, ['-TA2', 'Motor driver right', 'HWTO1 / HWTO2 (STO)']);
+    blk(300, 55, 80, 26, ['-TA1', 'Motor driver left', 'HWTO1 / HWTO2 (STO), IN2 (QSTOP)', '/42.0']);
+    blk(300, 135, 80, 26, ['-TA2', 'Motor driver right', 'HWTO1 / HWTO2 (STO), IN2 (QSTOP)', '/42.5']);
+    [55, 135].forEach(y => s.sf(380 - 2 - (11 * 1.45 + 2.2) * s.textScale, y + 5.5, 'SF1, 2, 6–8'));
     s.arrow(240, 62, 300, 62); s.arrow(240, 142, 300, 142);
-    lab(244, 59, 'Q1, Q2 → STO (2 ch)');
-    lab(244, 139, 'Q1, Q2 → STO (2 ch)');
-    s.arrow(300, 76, 240, 76); lab(244, 73, 'EDM → I3');
-    s.arrow(300, 156, 240, 156); lab(244, 153, 'EDM → I4');
+    lab(244, 59, 'Q4 → QSTOP, then Q1, Q2 → STO');
+    lab(244, 139, 'Q4 → QSTOP, then Q1, Q2 → STO');
+    s.arrow(300, 76, 240, 76); lab(244, 73, 'EDM → I3 (SF8)');
+    s.arrow(300, 156, 240, 156); lab(244, 153, 'EDM → I4 (SF8)');
     s.text(340, 92, '-MA1 holding brake applies', { size: 2.2, anchor: 'middle' });
     s.text(340, 172, '-MA2 holding brake applies', { size: 2.2, anchor: 'middle' });
 
@@ -62,7 +67,8 @@
     dashed(300, 195, 80, 22);
 
     s.note(30, 234, [
-      'Stop: torque removed on both drivers (STO), holding brakes apply.',
+      'Stop (SF1, SF2, SF6), controlled stop then torque off (SS1): Q4 off → both drivers brake at the quick-stop rate (QSTOP).',
+      'At standstill (-KE5, SF7), at the latest after «t max» s: Q1, Q2 off → torque removed on both drivers (STO), holding brakes apply.',
     ], { size: 2.3, lh: 4 });
   });
 </script>

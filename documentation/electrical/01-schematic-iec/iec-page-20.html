@@ -28,7 +28,9 @@
     s.line(P, 170, P, R1); s.line(N, 170, N, R2);
     s.line(P, R1, TA4.p, R1, 0.35);
     s.text(P + 2, R1 - 1.2, '1P48', { size: 2.5, weight: 600 });
-    s.rail(R2, N, 400, '1N48', '', '/21');
+    s.rail(R2, N, 400, '1N48', '', '/21.0');
+    s.pathText(0, 1, 'Battery and main switch'); s.pathText(2, 2, 'Feeder, left driver');
+    s.pathText(4, 4, 'Feeder, right driver'); s.pathText(5, 6, 'Converter 48 → 24 V'); s.pathText(7, 9, 'Converter 48 → 12 V');
     // feeders
     [[130, '-FC1', '2P48', '/21.1'], [185, '-FC2', '3P48', '/21.6']].forEach(([x, , net, ref]) => {
       s.line(x, R1, x, 125); s.dot(x, R1);
@@ -66,19 +68,16 @@
       });
       s.rect(x2 - 15, 153, 12, 12, 0.3); s.convMark(x2 - 15, 153, 12, 12);
     };
-    conv(TA3, 222, 302, ['-TA3', 'DC/DC 48 → 24 V', '6.25 A (150 W), isolated']);
+    conv(TA3, 222, 302, ['-TA3', 'DC/DC 48 → 24 V', 'SD-150C-24, 150 W, isolated']);
     conv(TA4, 307, 395, ['-TA4', 'DC/DC 48 → 12 V', 'SD-100C-12, 100 W, isolated']);
     s.offDown(TA3.op, 222, 'P24', '/30.0'); s.offDown(TA3.on, 222, 'N24', '/30.0');
     s.offDown(TA4.op, 222, 'P12', '/32.0'); s.offDown(TA4.on, 222, 'N12', '/32.0');
 
-    s.note(130, 160, [
-      'Notes',
-      '1. 48 V system floating: no chassis connection.',
-      '2. 48 V wiring black.',
-      '3. -TA3, -TA4 isolated: 1N48 is not',
-      '   joined to 1N24 / 1N12.',
-      '4. All devices in +EB unless boxed.',
-    ], { head: true });
+    s.notes(130, 160, [
+      '48 V system floating: no chassis connection.',
+      ['-TA3, -TA4 isolated: 1N48 is not', 'joined to 1N24 / 1N12.'],
+      ['1P48 has no continuation: on this page it', 'feeds -FC1, -FC2 and both converters.'],
+    ], { wiring: '48' });
   });
 </script>
 </body>

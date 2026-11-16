@@ -43,8 +43,10 @@
     description: PG.desc, location: PG.loc,
     draw(s) {
       /* ---- potential rails ---- */
-      s.rail(Y.p24, 25, 400, '1P24', '/31.9', '/42');
-      s.rail(Y.n24, 25, 400, '1N24', '/31.9', '/42');
+      s.rail(Y.p24, 25, 400, '1P24', '/31.9', '/42.0');
+      s.rail(Y.n24, 25, 400, '1N24', '/31.9', '/42.0');
+      s.pathText(0, 2, 'Emergency stop, 2 channels'); s.pathText(3, 5, 'Mode selector MANUAL / AUTO');
+      s.pathText(6, 9, 'Reset');
 
       /* ---- conductors (symbols are drawn afterwards and cut their own gaps) ---- */
       // E-stop: test output X1 → contact 11-12 → I1; X2 → 21-22 → I2
@@ -63,14 +65,14 @@
       const e1 = s.contactV(T.X1, Y.contact, 'nc', ['11', '12']);
       const e2 = s.contactV(T.X2, Y.contact, 'nc', ['21', '22']);
       s.operator([e1, e2], 'estop');
-      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC', 'turn to release', 'ARE-3-R-22-R']);
+      s.label(33, 107, '-SJ1', ['Emergency stop', '2 NC', 'turn to release', 'ARE-3-R-22-R']); s.sf(46, 107, 'SF1');
 
       /* ---- -SJ4 mode selector (+FR) ---- */
       s.locationBox(150, 96, 108, 46, '+FR', 'front panel');
       const m1 = s.contactV(SEL[0], Y.contact, 'no', ['13', '14']);
       const m2 = s.contactV(SEL[1], Y.contact, 'no', ['23', '24']);
       s.operator([m1, m2], 'turn');
-      s.label(153, 107, '-SJ4', ['Selector MANUAL / AUTO', '2 NO, maintained', 'ARS-S-2-12']);
+      s.label(153, 107, '-SJ4', ['Selector MANUAL / AUTO', '2 NO, maintained', 'ARS-S-2-12']); s.sf(166, 107, 'SF4');
       // switch-position table: X = contact closed
       s.table(153, 122, [{ w: 15, title: 'Pos.' }, { w: 9, title: '13-14' }, { w: 9, title: '23-24' }],
         [['MANUAL', 'X', 'X'], ['AUTO', '', '']], { size: 2, rowH: 5, headH: 5.5 });
@@ -80,29 +82,28 @@
       const r1 = s.contactV(RST[0], Y.contact, 'no', ['13', '14']);
       const r2 = s.contactV(RST[1], Y.contact, 'no', ['23', '24']);
       s.operator([r1, r2], 'push');
-      s.label(273, 107, '-SJ3', ['RESET push-button, yellow', '2 NO, momentary', 'ARF-F-1-20-Y']);
+      s.label(273, 107, '-SJ3', ['RESET push-button, yellow', '2 NO, momentary', 'ARF-F-1-20-Y']); s.sf(286, 107, 'SF5');
 
       /* ---- second contacts to the I/O module (page 60) ---- */
-      s.offDown(SEL[1], Y.off, '-KE4:DI02', '/60.2');
-      s.offDown(RST[1], Y.off, '-KE4:DI01', '/60.1');
+      s.offDown(SEL[1], Y.off, '-KE4:DI02', '/60.2', 'MANUAL');
+      s.offDown(RST[1], Y.off, '-KE4:DI01', '/60.1', 'RESET');
+      /* ---- wire markers (page 76) ---- */
+      [[T.X1, 'X1'], [T.I1, 'ESTOP1'], [T.X2, 'X2'], [T.I2, 'ESTOP2'], [SEL[0], 'MANUAL'], [RST[0], 'RESET']]
+        .forEach(([x, t]) => s.wl(x, 180, t));
+      s.wl(SEL[1], 166, 'DI02'); s.wl(RST[1], 166, 'DI01');
 
       /* ---- -KE2 safety controller I/O module (+EB) ---- */
       s.locationBox(30, 196, 315, 40, '+EB', 'electrical box');
       s.module(60, 335, Y.mod, 24,
         Object.entries(T).map(([name, x]) => ({ x, name })),
         ['-KE2', 'SICK Flexi Soft FX3-XTIO84002 · safety controller I/O module (main module -KE1)',
-         'Other terminals: A1, A2 /43 · I3, I4 /42 · I5, I6 /41 · Q1, Q2 /42 · Q3, Q4 spare']);
+         'Other terminals: A1, A2 /43.4 · I3, I4 /42.1 · I5, I6 /41.3 · Q1, Q2 /42.0 · Q3, Q4 /42.2 · I/O table: page 44']);
 
       /* ---- notes ---- */
-      s.note(136, 46, [
-        'Notes',
-        '1. Contacts drawn in rest position, supplies off.',
-        '   -SJ4 drawn in AUTO (contacts open).',
-        '2. X1, X2 are pulsed test outputs of -KE2.',
-        '   X1 → I1 and X2 → I2.',
-        '3. Wiring AWG22 (0.34 mm²) blue unless',
-        '   stated.',
-      ], { head: true });
+      s.notes(136, 46, [
+        ['Contacts drawn in rest position, supplies off.', '-SJ4 drawn in AUTO (contacts open).'],
+        ['X1, X2 are pulsed test outputs of -KE2.', 'X1 → I1 and X2 → I2.'],
+      ], { loc: false });
     },
   });
 </script>

@@ -39,18 +39,34 @@
         String(p.no), p.desc, p.loc || '',
         p.drawn ? `Rev ${PROJECT.doc.revision}` : 'planned',
       ]);
-      const end = s.table(40, 22, [
-        { w: 16, title: 'Page', align: 'right', mono: true },
-        { w: 170, title: 'Description' },
-        { w: 50, title: 'Location', mono: true },
-        { w: 30, title: 'Status' },
-      ], rows, { rowH: 7, grey: r => (r[3] === 'planned' ? GREY : null) });
+      const end = s.table(30, 22, [
+        { w: 14, title: 'Page', align: 'right', mono: true },
+        { w: 108, title: 'Description' },
+        { w: 34, title: 'Location', mono: true },
+        { w: 18, title: 'Status' },
+      ], rows, { rowH: 7, size: 2.3, grey: r => (r[3] === 'planned' ? GREY : null) });
+      s.note(30, end + 7, [
+        'Page numbers are grouped by subject, so the gaps are intentional: 1–9 front matter,',
+        '10–19 overview, 20–29 48 V power, 30–39 control supplies, 40–49 safety,',
+        '50–59 drives, 60–69 control I/O, 70–79 cables and wires, 80–89 lists.',
+      ], { size: 2.3, lh: 3.8 });
 
-      s.note(40, end + 9, [
-        'Page numbers are grouped by subject, so the gaps are intentional: 1–9 front matter, 10–19 overview,',
-        '20–29 48 V power, 30–39 control supplies, 40–49 safety, 50–59 drives, 60–69 control I/O,',
-        '70–79 cables, 80–89 lists.',
-      ], { size: 2.5, lh: 4.2 });
+      /* ---- how to read this circuit diagram (PROJECT.readingGuide) ---- */
+      const X = 222, W = 150, k = s.textScale;
+      // wrap by character count (IBM Plex Sans 2.3 mm x textScale: about 1.33 mm per character)
+      const wrap = (t, mm) => {
+        const n = Math.floor(mm / (1.11 * k)), out = []; let line = '';
+        t.split(' ').forEach(w => { if ((line + ' ' + w).trim().length > n) { out.push(line); line = w; } else line = (line + ' ' + w).trim(); });
+        return out.concat(line);
+      };
+      s.text(X, 26, 'How to read this circuit diagram', { size: 3.2, weight: 600 });
+      let y = 35;
+      PROJECT.readingGuide.forEach(([item, t]) => {
+        const lines = wrap(t, W - 34);
+        s.text(X, y, item, { size: 2.3, weight: 600 });
+        lines.forEach((l, i) => s.text(X + 34, y + 3.8 * k * i, l, { size: 2.3 }));
+        y += 3.8 * k * lines.length + 2.6;
+      });
     },
   });
 </script>

@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 5 / «XX» · 12V power distribution</strong>
+  <strong>PROJ01 · Sheet 5 / 11 · 12V power distribution</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -25,20 +25,20 @@
 <script>
   // source: input-sketch/proj01/page05.jpg (upright)
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: '12V POWER DISTRIBUTION',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 5, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 5, of: '11',
     note: '',
     refs: [],
   };
 
   // loads fed from 1P12 / 1N12 through a terminal pair; device-end labels are struck out in the sketch
   const LOADS = [
-    { row: 5, tb: ['TB29', 'TB30'], wout: ['IPC POWER CABLE', ''], name: ['IPC NEU-X102-N97', 'BARREL JACK'] },
-    { row: 8, tb: ['TB31', 'TB32'], wout: ['RFID POWER CABLE', ''], name: ['RFID READER CF821', 'BARREL JACK'] },
+    { row: 5, tb: ['TB29', 'TB30'], wout: ['IPC POWER CABLE', ''], name: ['IPC NEU-X102-N97', 'BARREL JACK', '-KE3'] },
+    { row: 8, tb: ['TB31', 'TB32'], wout: ['RFID POWER CABLE', ''], name: ['RFID READER CF821', 'BARREL JACK', '-BG4'] },
   ];
 
   JIS.render(document.getElementById('sheet'), {
@@ -62,7 +62,7 @@
       const box = (ys, name) => {
         s.rect(DX, ys[0] - 5, DW, ys[1] - ys[0] + 10, 0.3);
         ys.forEach(y => s.dot(DX, y));
-        name.forEach((n, i) => s.text(DX + DW / 2, ys[0] + 1.2 + 4.2 * i, n,
+        name.forEach((n, i) => s.text(DX + DW / 2, ys[0] + (name.length > 2 ? 4 * i - 0.8 : 1.2 + 4.2 * i), n,
           { size: 2.2, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
       };
 
@@ -88,7 +88,7 @@
       // cable marks, breaker and terminals last, so they cut the conductors
       // MCB-05 is 1-pole: + switched only, N12 runs straight through; labels right of N12
       s.mccbV([bus[0]], 36);
-      s.text(bus[1] + 2.4, 35.6, 'MCB-05', { size: 2.2 });
+      s.text(bus[1] + 2.4, 35.6, 'MCB-05 (-FC4)', { size: 2.2 });
       s.text(bus[1] + 2.4, 39, '1P 10A ABB S201-C10', { size: 1.9 });
       LOADS.forEach(l => {
         const ys = pair(l.row);

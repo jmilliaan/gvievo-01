@@ -23,9 +23,9 @@
     const Y = { p2: 28, p3: 36, n: 44, pe: 52, box: 135 };
     const D = [
       { pe: 50, p: 70, n: 90, m: 100, x1: 38, x2: 165, rail: 'p2', tag: '-TA1', side: 'left',
-        ma: '-MA1', wd: ['-WD2', '-WD6', '-WD8'] },
+        ma: '-MA1', wd: ['-WD2', '-WD6', '-WD8'], refs: 'STO /42.0 · CAN /51.4 · network supply /31.7' },
       { pe: 240, p: 260, n: 280, m: 290, x1: 228, x2: 355, rail: 'p3', tag: '-TA2', side: 'right',
-        ma: '-MA2', wd: ['-WD3', '-WD7', '-WD9'] },
+        ma: '-MA2', wd: ['-WD3', '-WD7', '-WD9'], refs: 'STO /42.5 · CAN /51.5 · network supply /31.8' },
     ];
 
     /* ---- rails from page 20 ---- */
@@ -33,6 +33,7 @@
     s.rail(Y.p3, 25, D[1].p, '3P48', '/20.4', false);
     s.rail(Y.n, 25, D[1].n, '1N48', '/20.9', false);
     s.rail(Y.pe, 32, D[1].pe, 'PE', '', false);
+    s.pathText(0, 4, 'Left drive: driver -TA1, motor -MA1'); s.pathText(5, 8, 'Right drive: driver -TA2, motor -MA2');
     s.line(32, Y.pe, 32, 58); s.pe(32, 58);
     s.text(22, 66, '-XE1', { size: 2.6, weight: 600 });
     s.text(22, 69.6, 'chassis earth', { size: 2.2 });
@@ -46,7 +47,7 @@
 
       /* driver */
       s.module(d.x1, d.x2, Y.box, 32, [{ x: d.pe, name: 'PE' }, { x: d.p, name: '+' }, { x: d.n, name: '−' }],
-        [d.tag, `Motor driver BLVD-KRD, ${d.side}`, 'Control /50 · CAN /51 · STO /42']);
+        [d.tag, `Motor driver BLVD-KRD, ${d.side}`, d.refs, 'Control connector: page 50']);
       s.dot(d.m, Y.box + 32, 0.5);
       s.rect(d.x2 - 15, Y.box + 3, 12, 12, 0.3); s.convMark(d.x2 - 15, Y.box + 3, 12, 12, '=', '~');
 
@@ -58,7 +59,7 @@
       /* cables last */
       s.cable([d.p, d.n], 75, d.wd[0], 'NYAF 2 × 2.5 mm², black');
       s.cable([d.pe, d.p, d.n], 118, d.wd[1], 'Oriental Motor LC03D06A');
-      s.cable([d.m], 188, d.wd[2], 'Oriental Motor CCM010B1AAF (U, V, W, encoder)');
+      s.cable([d.m], 188, d.wd[2], `${PROJECT.cables.find(c => c[0] === d.wd[2])[1]} (U, V, W, encoder)`);
     });
 
     s.note(365, 140, [

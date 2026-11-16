@@ -22,8 +22,10 @@
   IEC.page(51, s => {
     const Y = { h: 60, l: 68, g: 76 }, END = 372, BOX = 160;
 
+    s.pathText(0, 3, 'Vehicle controller and USB-to-CAN interface'); s.pathText(4, 4, 'Left driver');
+    s.pathText(5, 6, 'Right driver'); s.pathText(7, 7, 'Line sensor'); s.pathText(8, 9, 'Battery BMS');
     /* ---- vehicle controller and USB-to-CAN interface ---- */
-    s.box(30, 22, 58, 22, ['-KE3', 'Vehicle controller'], { size1: 2.8, size: 2.3 });
+    s.box(30, 22, 58, 22, ['-KE3', 'Vehicle controller', s.alsoOn('-KE3')], { size1: 2.8, size: 2.3 });
     s.arrow(88, 33, 110, 33);
     s.text(99, 30.5, 'USB', { size: 2.2, anchor: 'middle' });
     s.text(99, 38.5, '-WG6', { size: 2.2, anchor: 'middle' });
@@ -46,18 +48,15 @@
     DEV.forEach(d => {
       d.xs.forEach((x, k) => { s.line(x, ys[k], x, BOX); s.dot(x, ys[k]); });
       if (d.loc) s.locationBox(d.x1 - 4, 148, d.x2 - d.x1 + 8, 46, d.loc, '');
-      s.module(d.x1, d.x2, BOX, 30, d.xs.map((x, k) => ({ x, name: d.t[k][0], sub: d.t[k][1] })), [d.tag, d.d]);
+      s.module(d.x1, d.x2, BOX, 30, d.xs.map((x, k) => ({ x, name: d.t[k][0], sub: d.t[k][1] })), [d.tag, d.d, s.alsoOn(d.tag)]);
       s.cable(d.xs, 133, d.wg[0], d.wg[1]);
     });
 
-    s.note(30, 92, [
-      'Notes',
-      '1. CAN 125 kbit/s, CANopen. Node IDs: -TA1 1, -TA2 2, -BG3 10.',
-      '2. -WG3, -WG4: Belden 9841 twisted pair for',
-      '   CAN H / CAN L plus one AWG22 core for GND.',
-      '3. Termination 120 Ω: built into -TF1. -BG3 (MLSE-0200A2NQ0) has none.',
-      '4. All devices in +EB unless boxed.',
-    ], { head: true });
+    s.notes(30, 92, [
+      'CAN 125 kbit/s, CANopen. Node IDs: -TA1 1, -TA2 2, -BG3 10.',
+      ['-WG3, -WG4: Belden 9841 twisted pair for', 'CAN H / CAN L plus one AWG22 core for GND.'],
+      'Termination 120 Ω: built into -TF1. -BG3 (MLSE-0200A2NQ0) has none.',
+    ], { wiring: false });
   });
 </script>
 </body>

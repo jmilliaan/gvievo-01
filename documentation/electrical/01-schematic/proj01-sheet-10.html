@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 10 / «XX» · Safety encoders and drive monitor</strong>
+  <strong>PROJ01 · Sheet 10 / 11 · Safety encoders and drive monitor</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -29,12 +29,12 @@
   // MOC0's Micro D-sub 15. All 8 encoder wires go through. Encoder supply 24 V from the MOC0.
   // No terminal blocks: plug-in cables only (so no TB numbers on this sheet).
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: 'SAFETY ENCODERS / DRIVE MONITOR',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 10, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 10, of: '11',
     note: '',
     refs: [],
   };
@@ -64,9 +64,9 @@
   ];
   const GROUPS = [
     { y0: 46, rows: ENC1, head: 'ENC1', plug: 'HEAD B',
-      name: ['SAFETY ENCODER 1', 'DFS60S-BAOL01024', '?LEFT WHEEL SHAFT'] },
+      name: ['SAFETY ENCODER 1', 'DFS60S-BAOL01024', '?LEFT WHEEL SHAFT', '-BG5'] },
     { y0: 108, rows: ENC2, head: 'ENC2', plug: 'HEAD C', shared: 0,
-      name: ['SAFETY ENCODER 2', 'DFS60S-BAOL01024', '?RIGHT WHEEL SHAFT'] },
+      name: ['SAFETY ENCODER 2', 'DFS60S-BAOL01024', '?RIGHT WHEEL SHAFT', '-BG6'] },
   ];
 
   JIS.render(document.getElementById('sheet'), {
@@ -94,7 +94,7 @@
       s.dot(JX, y12);
 
       /* ---- FX3-MOC0 encoder socket (Micro D-sub 15 = head A of the Y-cable) ---- */
-      s.text(24, 28.6, 'SAFETY PLC FX3-MOC0', { size: 2.2, weight: 600 });
+      s.text(24, 28.6, 'SAFETY PLC FX3-MOC0 (-KE5)', { size: 2.2, weight: 600 });
       s.text(24, 32.8, 'MICRO D-SUB 15 (Y-CABLE HEAD A)', { size: 1.6 });
       const top = G1.ys[0] - 7.5, bot = G2.ys[7] + 5;
       s.rect(24, top, SX - 24, bot - top, 0.3);
@@ -152,7 +152,7 @@
         '4. Z¯ → C+, Z → C−: C INPUT NOT EVALUATED IN SIN/COS MODE.',
         '5. SAFELY-LIMITED SPEED IN AUTO: OVERSPEED → XTIO Q1 / Q2 OFF',
         '   (STO OF BOTH DRIVERS, SH.08). STANDSTILL MONITORING.',
-        '   LIMITS: FLEXI SOFT CONFIGURATION «confirm».',
+        '   LIMITS: 1.1 m/s (OVERSPEED), 20 mm/s (STANDSTILL).',
         '6. ENC1 = LEFT WHEEL, ENC2 = RIGHT WHEEL «confirm».',
         '7. SIGNALS SIN/COS 1 Vpp DIFFERENTIAL, 1024 PERIODS PER TURN.',
       ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));

@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 3 / «XX» · 24V power distribution (part 1)</strong>
+  <strong>PROJ01 · Sheet 3 / 11 · 24V power distribution (part 1)</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -25,12 +25,12 @@
 <script>
   // source: input-sketch/proj01/page03.jpg (upright)
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: '24V POWER DISTRIBUTION (PART 1)',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 3, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 3, of: '11',
     note: '',
     refs: [],
   };
@@ -40,21 +40,21 @@
   // nf = not fitted: drawn dashed (SAFETY LIDAR 02, rear, not fitted in this revision; owner 2026-10-30)
   const LOADS = [
     { row: 5,  tb: ['TB07', 'TB08'], win: ['NYAF 0.5mm²', 'BLUE'], wout: ['YF2A18-050UA5XLEAX', 'SICK'],
-      end: true, t: ['1', '3'], name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1'] },
+      end: true, t: ['1', '3'], name: ['SAFETY LIDAR 01', 'NANS3-AAAZ30AN1', '-BG1'] },
     { row: 8,  tb: ['TB09', 'TB10'], win: ['NYAF 0.5mm²', 'BLUE'], wout: ['SICK CONNECTION CABLE', ''],
-      end: true, nf: true, name: ['SAFETY LIDAR 02', 'NOT FITTED'] },
+      end: true, nf: true, name: ['SAFETY LIDAR 02', 'NOT FITTED', '(-BG2)'] },
     { row: 11, tb: ['TB11', 'TB12'], win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-XTIO84002'] },
+      t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-XTIO84002', '-KE2'] },
     { row: 15.5, tb: ['TB13', 'TB14'], win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      end: true, name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K'] },
+      end: true, name: ['AUDIO HORN 01', 'PATLITE BK-24AE-K', '-PJ1'] },
     // digital IO module: single 24V / 0V supply (VIN pair removed; TB27 / TB28 now spare), see sheet 09
     { row: 18, tb: ['TB25', 'TB26'],
       win: ['AWG22', 'BLUE'], wout: ['AWG22', 'BLUE'],
-      t: ['24V', '0V'], name: ['DIGITAL IO', 'CK-TP5162'] },
+      t: ['24V', '0V'], name: ['DIGITAL IO', 'CK-TP5162', '-KE4'] },
   ];
   // CPU module is fed in parallel with the XTIO module, after TB11 / TB12.
   // The FX3-MOC0 drive monitor takes its supply from the CPU over FLEXBUS+ (no wiring; sheet 10).
-  const CPU = { row: 13, t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-CPU0'] };
+  const CPU = { row: 13, t: ['A1', 'A2'], name: ['SAFETY PLC', 'FX3-CPU0', '-KE1'] };
 
   JIS.render(document.getElementById('sheet'), {
     meta: META,
@@ -82,7 +82,7 @@
         const r = s.rect(DX, ys[0] - 5, DW, ys[ys.length - 1] - ys[0] + 10, 0.3);
         if (nf) dashed(r);
         ys.forEach((y, i) => { if (nf) s.ring(DX, y, 0.5); else s.dot(DX, y); if (t) s.text(DX + 1.5, y + 0.7, t[i], { size: 1.9 }); });
-        name.forEach((n, i) => s.text(DX + DW / 2 + (t ? 4 : 0), ys[0] + 1.2 + 4.2 * i, n,
+        name.forEach((n, i) => s.text(DX + DW / 2 + (t ? 4 : 0), ys[0] + (name.length > 2 ? 4 * i - 0.8 : 1.2 + 4.2 * i), n,
           { size: 2.2, weight: i === 0 ? 600 : 500, anchor: 'middle' }));
       };
 
@@ -123,7 +123,7 @@
       // safety PLC: system plug of the CPU, drive monitor on FLEXBUS+
       const cy2 = s.row(CPU.row) + 5;
       s.text(DX, cy2 + 9.2, 'SYSTEM PLUG FX3-MPL000001', { size: 1.6 });
-      s.text(DX, cy2 + 12, 'FX3-MOC0: SUPPLY VIA FLEXBUS+ (SH.10)', { size: 1.6 });
+      s.text(DX, cy2 + 12, 'FX3-MOC0 (-KE5): SUPPLY VIA FLEXBUS+ (SH.10)', { size: 1.6 });
 
       // horn sound select is wired from the digital IO module (sheet 09)
       const hy = s.row(15.5) + 5;
@@ -133,7 +133,7 @@
       // cable marks, breaker and terminals last, so they cut the conductors
       // MCB-04 is 1-pole: + switched only, N24 runs straight through; labels right of N24
       s.mccbV([bus[0]], 36);
-      s.text(bus[1] + 2.4, 35.6, 'MCB-04', { size: 2.2 });
+      s.text(bus[1] + 2.4, 35.6, 'MCB-04 (-FC3)', { size: 2.2 });
       s.text(bus[1] + 2.4, 39, '1P 6A ABB S201-C6', { size: 1.9 });
       LOADS.forEach(l => {
         const ys = cond(l);

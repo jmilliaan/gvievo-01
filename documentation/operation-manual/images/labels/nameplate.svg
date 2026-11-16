@@ -13,7 +13,7 @@
     <text x="28" y="96">Type</text>                    <text x="160" y="96">Driverless tow tractor</text>
     <text x="28" y="116">Serial number</text>          <line x1="160" y1="118" x2="320" y2="118" stroke="#000" stroke-width="0.8"/>
     <text x="28" y="136">Year of construction</text>   <text x="160" y="136">2026</text>
-    <text x="28" y="156">Unladen mass</text>           <line x1="160" y1="158" x2="226" y2="158" stroke="#000" stroke-width="0.8"/><text x="230" y="156">kg</text>
+    <text x="28" y="156">Unladen mass</text>           <text x="160" y="156">150 kg</text>
     <text x="28" y="176">Maximum towed mass</text>     <text x="160" y="176">1 000 kg</text>
     <text x="28" y="196">Battery voltage</text>        <text x="160" y="196">48 V DC</text>
   </g>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page 5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../kit/iec-sheet.css">
+</head>
+<body>
+<nav class="toolbar" id="toolbar" aria-label="Page"></nav>
+<main class="wrap"><div class="sheet" id="sheet"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="../kit/jis-sheet.js"></script>
+<script src="../kit/iec-sheet.js"></script>
+<script src="data/project.js"></script>
+<script>
+  // Designation key and safety functions. Generated from data/project.js (locations, potentials,
+  // colours, classes, devices/cables for the tags, safetyFunctions). Restored 2026-11-15 (owner):
+  // the key without standards text; safety-function IDs back on the sheets.
+  IEC.page(5, s => {
+    const O = { size: 2.3, rowH: 5, headH: 6.2 }, H = (x, y, t) => s.text(x, y, t, { size: 3, weight: 600 });
+
+    /* ---- left: locations, potentials ---- */
+    H(30, 24, 'Locations (+)');
+    let y = s.table(30, 27, [{ w: 18, title: 'Code', mono: true }, { w: 165, title: 'Location' }], PROJECT.locations, O);
+    H(30, y + 8, 'Potentials');
+    y = s.table(30, y + 11, [{ w: 28, title: 'Name', mono: true }, { w: 133, title: 'Meaning' }, { w: 22, title: 'IEC 60445', mono: true }],
+      PROJECT.potentials, O);
+    PROJECT.potentialNotes.forEach((t, i) => s.text(30, y + 4.5 + 3.6 * s.textScale * i, t, { size: 2.2 }));
+    /* ---- right: product classes, tags taken from the parts and cable lists ---- */
+    const tags = {};
+    [...PROJECT.devices, ...PROJECT.cables].forEach(r => {
+      const m = String(r[0]).match(/^-([A-Z]+)(\d+)$/);
+      if (m) (tags[m[1]] = tags[m[1]] || []).push(+m[2]);
+    });
+    const runs = cls => {
+      const n = [...new Set(tags[cls] || [])].sort((a, b) => a - b), out = [];
+      for (let i = 0; i < n.length; ) {
+        let j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++;
+        out.push(j - i >= 2 ? `-${cls}${n[i]} … -${cls}${n[j]}` : n.slice(i, j + 1).map(k => `-${cls}${k}`).join(', '));
+        i = j + 1;
+      }
+      return out.join(', ');
+    };
+    const classRows = PROJECT.classes.map(([code, meaning]) =>
+      [code, meaning, code.split(' / ').map(c => runs(c) || `-${c}…`).join('; ')]);
+    H(222, 24, 'Product classes (-), IEC 81346-2');
+    const yc = s.table(222, 27, [{ w: 18, title: 'Class', mono: true }, { w: 112, title: 'Meaning' }, { w: 55, title: 'Tags in this set', mono: true }], classRows, O);
+    H(222, yc + 8, 'Wire colours');
+    s.table(222, yc + 11, [{ w: 90, title: 'Circuit' }, { w: 30, title: 'Colour' }, { w: 65, title: 'Conductor' }], PROJECT.colours, O);
+
+    /* ---- bottom: safety functions ---- */
+    const Y = 158;
+    H(30, Y, 'Safety functions');
+    const end = s.table(30, Y + 3, [
+      { w: 14, title: 'ID', mono: true }, { w: 62, title: 'Function' }, { w: 128, title: 'Devices and path' },
+      { w: 150, title: 'Result' }, { w: 22, title: 'Pages', mono: true },
+    ], PROJECT.safetyFunctions, { size: 2.3, rowH: 5.6, headH: 6.4, grey: r => r[0] === 'SF3' ? '#8a8f98' : null });
+    s.note(30, end + 6, [
+      'The IDs are written beside the devices on pages 12 and 40–45, in the I/O table (page 44) and in the parts list (page 80).',
+      'Same functions as the hardware rows of the operation manual, chapter 3.3. STO = safe torque off of both motor drivers -TA1, -TA2.',
+      'SS1 = controlled stop, then torque off: -KE2:Q4 starts a quick stop on both drivers (QSTOP), Q1, Q2 remove torque (STO) at standstill (/42.0).',
+      'The vehicle controller -KE3 is not part of any safety function.',
+    ], { size: 2.3, lh: 3.8 });
+  });
+</script>
+</body>
+</html>

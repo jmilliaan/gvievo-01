@@ -20,8 +20,10 @@
   // 24 V control supply, part 2. source: ../01-schematic/proj01-sheet-04.html.
   IEC.page(31, s => {
     const R1 = 28, R2 = 36, BOX = 140;
-    s.rail(R1, 25, 400, '1P24', '/30.9', '/40');
-    s.rail(R2, 25, 400, '1N24', '/30.9', '/40');
+    s.rail(R1, 25, 400, '1P24', '/30.9', '/40.0');
+    s.rail(R2, 25, 400, '1N24', '/30.9', '/40.0');
+    s.pathText(0, 1, 'Display'); s.pathText(2, 2, 'Line sensor'); s.pathText(3, 6, 'Cabinet fans');
+    s.pathText(7, 9, 'Motor driver network supply');
 
     const pair = (xp, xn, yEnd) => {
       s.line(xp, R1, xp, yEnd); s.dot(xp, R1);
@@ -41,24 +43,21 @@
     /* ---- devices ---- */
     s.locationBox(34, 126, 57, 50, '+FR', '');
     s.module(40, 88, BOX, 26, [{ x: 45, name: '+' }, { x: 55, name: '−' }], ['-PH1', 'Display']);
-    s.locationBox(94, 126, 49, 50, '+VH', '');
-    s.module(96, 140, BOX, 26, [{ x: 104, name: '+24V' }, { x: 114, name: '0V' }], ['-BG3', 'MLSE-0200A2NQ0', 'CAN /51']);
+    s.locationBox(94, 126, 49, 56, '+VH', '');
+    s.module(96, 140, BOX, 34, [{ x: 104, name: '+24V' }, { x: 114, name: '0V' }], ['-BG3', 'Line sensor', 'MLSE-0200A2NQ0', 'CAN /51.7']);
     [['-GQ1', 145, 150, 160], ['-GQ2', 190, 195, 205], ['-GQ3', 235, 240, 250]].forEach(([t, x, a, b]) =>
       s.module(x, x + 40, BOX, 26, [{ x: a, name: '+' }, { x: b, name: '−' }], [t, 'Fan NMB-MAT']));
-    s.module(290, 327, BOX, 30, [{ x: 300, name: '20', sub: 'VIN' }, { x: 316, name: '21', sub: 'GND' }], ['-TA1', 'network']);
-    s.module(340, 377, BOX, 30, [{ x: 350, name: '20', sub: 'VIN' }, { x: 366, name: '21', sub: 'GND' }], ['-TA2', 'network']);
+    s.module(289, 337, BOX, 34, [{ x: 300, name: '20', sub: 'VIN' }, { x: 316, name: '21', sub: 'GND' }], ['-TA1', 'Motor driver left', 'network supply only', s.alsoOn('-TA1')]);
+    s.module(341, 389, BOX, 34, [{ x: 350, name: '20', sub: 'VIN' }, { x: 366, name: '21', sub: 'GND' }], ['-TA2', 'Motor driver right', 'network supply only', s.alsoOn('-TA2')]);
 
     /* ---- cables ---- */
     s.cable([45, 55], 100, '-WD10', 'Display power cable');
     s.cable([104, 114], 92, '-WG2', 'SICK YF2A14 M12 4-pin');
 
-    s.note(30, 195, [
-      'Notes',
-      '1. Control wiring AWG22 (0.34 mm²) blue unless marked.',
-      '2. -BG3 line sensor: the same cable carries CAN (page 51).',
-      '3. -TA1, -TA2: network supply only. Driver power: page 21.',
-      '4. All devices in +EB unless boxed.',
-    ], { head: true });
+    s.notes(30, 195, [
+      '-BG3 line sensor: the same cable carries CAN (/51.7).',
+      '-TA1, -TA2: network supply only. Driver power: /21.1, /21.6.',
+    ]);
   });
 </script>
 </body>

@@ -20,23 +20,28 @@
   // I/O module outputs. source: ../01-schematic/proj01-sheet-09.html (DO0/DO1 → horn, commons TB66–TB69)
   // and agv_core/config.py (DO0 movement sound, DO1 alarm sound, DO8 switched with motion).
   IEC.page(61, s => {
-    const MT = 40, MB = 70, R1 = 215, R2 = 222;
+    const MT = 60, MB = 90, R1 = 26, R2 = 33;
     const O = { DO0: 60, DO1: 80, C01: 100, DO2: 130, DO3: 145, C23: 160, DO4: 185, DO5: 200, C45: 215, DO6: 240, DO7: 255, C67: 270 };
 
-    s.rail(R1, 25, 300, '1P24', '/60', false);
-    s.rail(R2, 25, 300, '1N24', '/60', false);
+    s.rail(R1, 25, 290, '1P24', '/60.9', false);
+    s.rail(R2, 25, 290, '1N24', '/60.9', false);
+    s.pathText(0, 1, 'Horn sounds'); s.pathText(2, 6, 'Spare outputs, commons wired');
 
     /* ---- conductors ---- */
     s.line(O.DO0, MB, O.DO0, 150); s.line(O.DO1, MB, O.DO1, 150);
-    s.line(O.C01, MB, O.C01, R2); s.dot(O.C01, R2);
-    s.line(O.C23, MB, O.C23, R1); s.dot(O.C23, R1);
-    s.line(O.C45, MB, O.C45, R2); s.dot(O.C45, R2);
-    s.line(O.C67, MB, O.C67, R2); s.dot(O.C67, R2);
+    s.line(O.C01, R2, O.C01, MT); s.dot(O.C01, R2);
+    s.line(O.C23, R1, O.C23, MT); s.dot(O.C23, R1);
+    s.line(O.C45, R2, O.C45, MT); s.dot(O.C45, R2);
+    s.line(O.C67, R2, O.C67, MT); s.dot(O.C67, R2);
+    s.wl(O.DO0, 128, 'DO0'); s.wl(O.DO1, 128, 'DO1');
 
     /* ---- I/O module ---- */
-    const lab = { C01: 'C', C23: 'C', C45: 'C', C67: 'C' };
-    s.module(40, 290, MT, MB - MT, Object.entries(O).map(([k, x]) => ({ x, name: lab[k] || k })),
-      ['-KE4', 'CK-TP5162 I/O module, 16 outputs DO0…DOF: each output closes to the common C of its pair'], { edge: 'bottom' });
+    // commons C on the top edge (from the rails), outputs DO on the bottom edge (to the loads)
+    const C = Object.entries(O).filter(([k]) => k[0] === 'C'), D = Object.entries(O).filter(([k]) => k[0] === 'D');
+    s.module(40, 290, MT, MB - MT, C.map(([, x]) => ({ x, name: 'C' })),
+      ['-KE4', 'I/O module CK-TP5162, 16 outputs DO0…DOF: each output closes to the common C of its pair',
+       'Inputs /60.0 · supply /30.8 · I/O table: page 62']);
+    D.forEach(([k, x]) => { s.dot(x, MB, 0.5); s.text(x, MB - 2.2, k, { size: 2.4, mono: true, anchor: 'middle', weight: 600 }); });
 
     /* ---- horn (+VH) ---- */
     s.locationBox(35, 140, 61, 56, '+VH', '');
@@ -44,23 +49,14 @@
       ['-PJ1', 'Horn PATLITE', 'S1 movement, S2 alarm', 'supply /30.7, COM = 0V']);
 
 
-    s.note(300, 44, [
-      'Notes',
-      '1. DO0, sound 1 (movement): on while',
-      '   the wheels turn, in every mode.',
-      '2. DO1, sound 2 (alarm): 2 s after START',
-      '   before moving, and while a scanner',
-      '   field is occupied in AUTO. Sound 1 is',
-      '   off while sound 2 plays.',
-      '3. The horn is software-driven, not a',
-      '   safety function.',
-      '4. DO2 … DO7 spare; commons wired.',
-      '   DO8 … DOF not wired. The software also',
-      '   switches DO8 with motion: free output',
-      '   for a warning lamp.',
-      '5. Wiring AWG22 blue. All in +EB',
-      '   unless boxed.',
-    ], { head: true });
+    s.notes(300, 44, [
+      ['DO0, sound 1 (movement): on while', 'the wheels turn, in every mode.'],
+      ['DO1, sound 2 (alarm): 2 s after START', 'before moving; while a scanner field', 'is occupied in AUTO; pulsing (1 s on,', '2 s off) while waiting at a stop point.', 'Sound 1 is off while sound 2 plays.'],
+      ['The horn is software-driven, not a', 'safety function.'],
+      ['DO2 … DO7 spare; commons wired.', 'DO8 … DOF not wired. The software also', 'switches DO8 with motion: free output', 'for a warning lamp.'],
+      ['Common C of DO2 / DO3 is on 1P24, the', 'other commons on 1N24 (as built).', 'Spare outputs only.'],
+      ['Horn sound inputs S1, S2 are switched', 'to 0 V (horn COM jumpered to 0 V).'],
+    ]);
   });
 </script>
 </body>

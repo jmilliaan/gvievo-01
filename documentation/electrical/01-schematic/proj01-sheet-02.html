@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 2 / «XX» · Motor power installation</strong>
+  <strong>PROJ01 · Sheet 2 / 11 · Motor power installation</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -25,12 +25,12 @@
 <script>
   // source: input-sketch/proj01/page02.jpg (photographed rotated 90° CCW)
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: 'MOTOR POWER INSTALLATION',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 2, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 2, of: '11',
     note: '',
     refs: [],
   };
@@ -44,8 +44,8 @@
 
   // motor drivers: + from bus p, - from 1N48; PE ends on its own terminal
   const DRIVERS = [
-    { row: 2, name: 'DRIVER 01', model: 'BLVD-KRD', p: 0, tb: ['TB01', 'TB02', 'TB05'] },
-    { row: 7, name: 'DRIVER 02', model: 'BLVD-KRD', p: 1, tb: ['TB03', 'TB04', 'TB06'] },
+    { row: 2, name: 'DRIVER 01 (-TA1)', model: 'BLVD-KRD', p: 0, tb: ['TB01', 'TB02', 'TB05'] },
+    { row: 7, name: 'DRIVER 02 (-TA2)', model: 'BLVD-KRD', p: 1, tb: ['TB03', 'TB04', 'TB06'] },
   ];
 
   JIS.render(document.getElementById('sheet'), {
@@ -106,10 +106,10 @@
         '1. DRIVER POWER CABLE: ORIENTAL MOTOR LC03D06A. ALL MOTOR',
         '   AND BRAKE POWER COMES IN ON THE LC03 CABLES (VIA THE DRIVER).',
         '2. MOTORS: BLMR6400SKM-GFV-B, GEARHEAD GFS6G30FR (1:30).',
-        '   DRIVER 01 → LEFT MOTOR, DRIVER 02 → RIGHT MOTOR.',
+        '   DRIVER 01 → LEFT MOTOR (-MA1), DRIVER 02 → RIGHT MOTOR (-MA2).',
         '3. DRIVER → MOTOR: ORIENTAL MOTOR CABLE CCM020B1AAF (2m),',
         '   MOTOR POWER + ENCODER.',
-        '4. 2P48 / 3P48: MCB-02 / MCB-03, ABB S201-C13, 1P 13A (SH.01).',
+        '4. 2P48 / 3P48: MCB-02 (-FC1) / MCB-03 (-FC2), ABB S201-C13, 1P 13A (SH.01).',
       ].forEach((t, i) => s.text(t.startsWith(' ') ? NX + 3.3 : NX, NY + 4.6 + 3.9 * i, t.trim(), { size: 1.75 }));
     },
   });

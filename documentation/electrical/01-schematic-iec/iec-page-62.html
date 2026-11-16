@@ -22,17 +22,19 @@
     const d = PROJECT.devices.find(r => r[0] === '-KE4') || [];
     s.text(30, 24, `-KE4  ${d[3] || ''} — ${d[1] || 'I/O module'} (+EB)`, { size: 3, weight: 600 });
     const end = s.table(30, 30, [
-      { w: 24, title: 'Channel', mono: true },
-      { w: 30, title: 'Signal', mono: true },
-      { w: 32, title: 'Device' },
-      { w: 112, title: 'Function' },
-      { w: 16, title: 'Page', mono: true },
+      { w: 22, title: 'Channel', mono: true },
+      { w: 28, title: 'Signal', mono: true },
+      { w: 28, title: 'Device' },
+      { w: 104, title: 'Function' },
+      { w: 74, title: 'Off (0) means' },
+      { w: 14, title: 'Page', mono: true },
     ], PROJECT.io, { size: 2.3, rowH: 6.2, headH: 6.6, grey: r => /^spare/.test(r[3]) ? '#777' : null });
 
     s.note(30, end + 10, [
       'Input commons',
       'DI00 … DI07: common COM0 = 1P24. An input is active when it is switched to 1N24.',
       'DI08 … DI0F: common COM1 = 1N24. An input is active when it is switched to 1P24.',
+      'Wire marker of each connected channel = the channel name (DI00, DO0 …), page 76.',
     ], { head: true, lh: 4 });
   });
 </script>

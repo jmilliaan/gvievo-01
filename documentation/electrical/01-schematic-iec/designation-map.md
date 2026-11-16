@@ -19,7 +19,7 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | `+EB-QA1` | MCB-01 | Circuit breaker 2P 32 A, battery main / supply disconnecting device | +EB | 0102 | N | Decided 2026-10-30: the supply disconnecting device (QA). It is the main switch that is locked off in the operation manual 15.1. Lockable handle `[confirm]` |
 | `+EB-FC1` | MCB-02 | Circuit breaker 1P 13 A ABB S201-C13, feeder left motor driver (2P48) | +EB | 0105 | N | |
 | `+EB-FC2` | MCB-03 | Circuit breaker 1P 13 A ABB S201-C13, feeder right motor driver (3P48) | +EB | 0107 | N | |
-| `+EB-TA3` | BUCK01 | DC/DC converter 48 → 24 V, 6.25 A (150 W) | +EB | 0110 | N | Feeds the safety controller, so its failure behaviour matters to the risk assessment |
+| `+EB-TA3` | BUCK01 | DC/DC converter 48 → 24 V, 6.3 A (150 W) | +EB | 0110 | N | Feeds the safety controller, so its failure behaviour matters to the risk assessment |
 | `+EB-FC3` | MCB-04 | Circuit breaker 1P 6 A ABB S201-C6, 24 V bus | +EB | 0302 | N | |
 | `+EB-TA4` | BUCK02 | DC/DC converter 48 → 12 V, Mean Well SD-100C-12, 100 W | +EB | 0114 | N | |
 | `+EB-FC4` | MCB-05 | Circuit breaker 1P 10 A ABB S201-C10, 12 V bus | +EB | 0502 | N | |
@@ -28,8 +28,8 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 
 | New tag | Old name | Device | Location | Old ref | Safety | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `+EB-TA1` | DRIVER 01 | Motor driver BLVD-KRD, left | +EB | 0202, SH.07 | Y (STO: SF1, SF2) | **[verify]** TA (converter) vs TB (inverter) |
-| `+EB-TA2` | DRIVER 02 | Motor driver BLVD-KRD, right | +EB | 0207, SH.07 | Y (STO: SF1, SF2) | as above |
+| `+EB-TA1` | DRIVER 01 | Motor driver BLVD-KRD, left | +EB | 0202, SH.07 | Y (STO and quick stop: SF1, SF2, SF6; EDM: SF8) | **[verify]** TA (converter) vs TB (inverter) |
+| `+EB-TA2` | DRIVER 02 | Motor driver BLVD-KRD, right | +EB | 0207, SH.07 | Y (STO and quick stop: SF1, SF2, SF6; EDM: SF8) | as above |
 | `+VH-MA1` | LEFT MOTOR | Motor BLMR6400SKM-GFV-B, 400 W, gearhead 1:30, holding brake | +VH | SH.02 | **[decide]** | The brake holds the vehicle after STO. Whether it counts in the stop function is a risk-assessment decision |
 | `+VH-MA2` | RIGHT MOTOR | as above, right | +VH | SH.02 | **[decide]** | |
 
@@ -54,7 +54,7 @@ One row per component, taken from the current sheets `../01-schematic/proj01-she
 | `+EB-KE5` | — | Flexi Soft drive monitor FX3-MOC0, 2 encoder inputs, supply via FLEXBUS+ | +EB | — | Y (SF6, SF7) | Added 2026-11-09. Cables `-WG11`, `-WG12` (encoder cables, M12 plug fitted), `-WG13` (FX3-MOC Y-CABLE 2116199) |
 | `+EB-TF1` | CAN-USB ADAPTER | USB-to-CAN interface, on the IPC USB port | +EB | SH.06 | N | **[verify]** class (signal converter) |
 | `+FR-SJ2` | PB START | Push-button START, NO → `-KE4:DI00` | +FR | SH.09 | N | Colour `[confirm]` |
-| `+PD-SJ5` | MANUAL ARM SW | Push-button MANUAL ARM on the pendant: mushroom, black, latching, turn to release, 1 NC → `-KE4:DI08` | +PD | SH.09 | N | Owner, 2026-11-09: it is the turn-to-release button on the pendant. Changed from a red emergency-stop look to black so it is not taken for an emergency stop. Pressed = DI08 off = drives off in MANUAL |
+| `+PD-SJ5` | MANUAL ARM SW | Selector switch MANUAL ARM on the pendant: black, 2 positions OFF / ON, 1 NC (owner 2026-11-15, was a mushroom push-button) → `-KE4:DI08` | +PD | SH.09 | N | Owner, 2026-11-09: it is the turn-to-release button on the pendant. Changed from a red emergency-stop look to black so it is not taken for an emergency stop. Pressed = DI08 off = drives off in MANUAL |
 | `+PD-SJ6` | PENDANT FORWARD | Pendant button, NO → `-KE4:DI03` | +PD | SH.09 | N | |
 | `+PD-SJ7` | PENDANT REVERSE | Pendant button, NO → `-KE4:DI04` | +PD | SH.09 | N | |
 | `+PD-SJ8` | PENDANT LEFT | Pendant button, NO → `-KE4:DI05` | +PD | SH.09 | N | |

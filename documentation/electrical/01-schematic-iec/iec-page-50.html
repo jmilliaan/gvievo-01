@@ -18,7 +18,8 @@
 <script src="data/project.js"></script>
 <script>
   // Motor driver control connector. source: ../01-schematic/proj01-sheet-07.html (BLVD-KRD 28-pin
-  // pinout, jumpers 11–25 / 12–26 / 13–27 removed).
+  // pinout, jumpers 11–25 / 12–26 / 13–27 removed). IN2 = QSTOP from -KE2:Q4 (2026-11-15,
+  // q4-controlled-stop-plan.md); IN-COM polarity not yet confirmed.
   // [pin, signal, connected to, wire marker, page]; no connection = only pin and signal
   const PINS = [
     [1, 'OUT0+'], [2, 'OUT0−'], [3, 'OUT1+'], [4, 'OUT1−'],
@@ -30,7 +31,10 @@
     [12, 'HWTO1−', '1N24', '1N24', '42'],
     [13, '0V'],
     [14, 'EDM−', '-KE2:I3 (left) / I4 (right)', 'EDM-L / EDM-R', '42'],
-    [15, 'IN-COM'], [16, 'IN0'], [17, 'IN1'], [18, 'IN2'], [19, 'IN3'],
+    [15, 'IN-COM', '1N24 «to be verified»', '1N24', '42'],
+    [16, 'IN0'], [17, 'IN1'],
+    [18, 'IN2', '-KE2:Q4 (quick stop, QSTOP)', 'QSTOP', '42'],
+    [19, 'IN3'],
     [20, 'NET-VIN', '1P24', '1P24', '31'],
     [21, 'NET-GND', '1N24', '1N24', '31'],
     [22, '485GND'], [23, 'TR+'], [24, 'TR−'], [25, '+V'],
@@ -67,8 +71,9 @@
     s.note(30, 175, [
       'Notes',
       '1. Factory jumpers 11–25, 12–26 and 13–27 are removed on both drivers: the hardwired torque-off (HWTO) inputs are driven by the safety controller (page 42).',
-      '2. Grey pins are not connected. The drivers take no commands on their digital inputs; motion is commanded over CAN only (page 51).',
+      '2. Grey pins are not connected. Motion is commanded over CAN only (page 51). The only digital input used is IN2: quick stop from the safety controller (page 42).',
       '3. Driver power: Oriental Motor cable LC03D06A (page 21). Motor and encoder: Oriental Motor cable CCM020B1AAF, 2 m (page 21).',
+      '4. MEXE02, both drivers, read back after writing: DIN2 function = QSTOP (4), DIN2 inverting = 1 (off = stop), QSTOP input action = 2 (decelerate, then current off), quick-stop rate 6085h = 1600.',
     ], { head: true, lh: 4.2 });
   });
 </script>

@@ -18,23 +18,27 @@
 <script src="data/project.js"></script>
 <script>
   // I/O module inputs. source: ../01-schematic/proj01-sheet-09.html and io-mapping.md section 3.
-  // DI00–DI07: COM0 = 1P24, contacts switch the input to 1N24. DI08 (COM1 = 1N24): MANUAL ARM button
+  // DI00–DI07: COM0 = 1P24, contacts switch the input to 1N24. DI08 (COM1 = 1N24): MANUAL ARM selector
   // on the pendant, 1 NC: released = 1P24 on the input = drives on in MANUAL (owner, 2026-11-09).
+  // DI09 (COM1): -KE2:Q3, E-stop status, on = E-stop not pressed (owner, 2026-11-15).
   IEC.page(60, s => {
     const R1 = 26, R2 = 33, CT = 110, MOD = 205;
-    const DI = { DI00: 55, DI01: 95, DI02: 125, DI03: 165, DI04: 190, DI05: 215, DI06: 240, DI08: 290, COM0: 335, COM1: 365 };
-    s.rail(R1, 25, 400, '1P24', '/42', '/61');
-    s.rail(R2, 25, 400, '1N24', '/42', '/61');
+    const DI = { DI00: 55, DI01: 95, DI02: 125, DI03: 165, DI04: 190, DI05: 215, DI06: 240, DI08: 270, DI09: 315, COM0: 345, COM1: 375 };
+    s.rail(R1, 25, 400, '1P24', '/42.9', '/61.0');
+    s.rail(R2, 25, 400, '1N24', '/42.9', '/61.0');
+    s.pathText(0, 0, 'Start'); s.pathText(1, 1, 'Reset, 2nd contact'); s.pathText(2, 2, 'Mode, 2nd contact');
+    s.pathText(3, 5, 'Pendant buttons, hold to run'); s.pathText(6, 6, 'Manual arm'); s.pathText(7, 7, 'E-stop status'); s.pathText(8, 9, 'Input commons');
 
     /* ---- conductors ---- */
     s.line(DI.DI00, R2, DI.DI00, MOD); s.dot(DI.DI00, R2);
-    s.fromTop(DI.DI01, 70, '-SJ3:24', '/40.8'); s.line(DI.DI01, 70, DI.DI01, MOD);
-    s.fromTop(DI.DI02, 70, '-SJ4:24', '/40.5'); s.line(DI.DI02, 70, DI.DI02, MOD);
+    s.fromTop(DI.DI01, 70, '-SJ3:24', '/40.8', 'RESET'); s.line(DI.DI01, 70, DI.DI01, MOD);
+    s.fromTop(DI.DI02, 70, '-SJ4:24', '/40.5', 'MANUAL'); s.line(DI.DI02, 70, DI.DI02, MOD);
     // pendant: common from 1N24, one NO button per direction
     s.line(150, R2, 150, 85); s.dot(150, R2);
     s.line(150, 85, 240, 85);
     ['DI03', 'DI04', 'DI05', 'DI06'].forEach((k, i) => { s.line(DI[k], 85, DI[k], MOD); if (i < 3) s.dot(DI[k], 85); });
     s.line(DI.DI08, R1, DI.DI08, MOD); s.dot(DI.DI08, R1);
+    s.fromTop(DI.DI09, 70, '-KE2:Q3', '/42.2', 'ESTOP OK'); s.line(DI.DI09, 70, DI.DI09, MOD);
     s.line(DI.COM0, R1, DI.COM0, MOD); s.dot(DI.COM0, R1);
     s.line(DI.COM1, R2, DI.COM1, MOD); s.dot(DI.COM1, R2);
 
@@ -44,31 +48,32 @@
     s.label(62, 106, '-SJ2', ['START', '1 NO']);
 
     /* ---- pendant (+PD) ---- */
-    s.locationBox(142, 75, 186, 62, '+PD', 'pendant');
+    s.locationBox(142, 75, 163, 62, '+PD', 'pendant');
     [['DI03', '-SJ6', 'FORWARD'], ['DI04', '-SJ7', 'REVERSE'], ['DI05', '-SJ8', 'LEFT'], ['DI06', '-SJ9', 'RIGHT']].forEach(([k, t, n]) => {
       s.operator([s.contactV(DI[k], CT, 'no', ['13', '14'])], 'push');
       s.text(DI[k] + 2, 122, t, { size: 2.5, weight: 600 });
       s.text(DI[k] + 2, 125.6, n, { size: 2.1 });
     });
-    // MANUAL ARM: black mushroom, latching, turn to release; not an emergency stop
-    s.operator([s.contactV(DI.DI08, CT, 'nc', ['11', '12'])], 'mushroom');
+    // MANUAL ARM: black selector switch, OFF / ON (owner 2026-11-15); not an emergency stop
+    s.operator([s.contactV(DI.DI08, CT, 'nc', ['11', '12'])], 'turn');
     s.text(DI.DI08 + 2, 122, '-SJ5', { size: 2.5, weight: 600 });
     s.text(DI.DI08 + 2, 125.6, 'MANUAL ARM', { size: 2.1 });
-    s.text(DI.DI08 + 2, 129.2, 'black, latching, 1 NC', { size: 2.1 });
+    s.text(DI.DI08 + 2, 129.2, 'selector OFF / ON, 1 NC', { size: 2.1 });
     s.cable([DI.DI03, DI.DI08], 145, '-WG10', 'pendant cable');
+    /* ---- wire markers (page 76) ---- */
+    ['DI00', 'DI01', 'DI02', 'DI03', 'DI04', 'DI05', 'DI06', 'DI08', 'DI09'].forEach(k => s.wl(DI[k], 196, k));
 
     /* ---- I/O module ---- */
     s.module(35, 395, MOD, 30, Object.entries(DI).map(([name, x]) => ({ x, name })),
-      ['-KE4', 'CK-TP5162 I/O module, inputs · outputs /61 · I/O table /62',
+      ['-KE4', 'I/O module CK-TP5162, inputs · outputs /61.1 · supply /30.8 · I/O table: page 62',
        'DI00–DI07: common COM0 = 1P24, input on when switched to 1N24 · DI08–DI0F: common COM1 = 1N24, input on when switched to 1P24']);
 
-    s.note(172, 44, [
-      'Notes',
-      '1. -SJ4 contact closed = MANUAL (DI02 on).',
-      '2. Pendant buttons: hold to run (software).',
-      '3. Wiring AWG22 blue. All in +EB unless boxed.',
-      '4. -SJ5 pressed = DI08 off = drives off (MANUAL).',
-    ], { head: true });
+    s.notes(172, 44, [
+      '-SJ4 contact closed = MANUAL (DI02 on).',
+      'Pendant buttons: hold to run (software).',
+      '-SJ5 at OFF = DI08 off = drives off (MANUAL).',
+      'DI09 on = E-stop not pressed (-KE2:Q3). Status only.',
+    ]);
   });
 </script>
 </body>

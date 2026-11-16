@@ -18,48 +18,67 @@
 <script src="data/project.js"></script>
 <script>
   // Safe torque off and feedback. source: ../01-schematic/proj01-sheet-07.html (pins,
-  // jumpers removed) and sheet 08 (Q1/Q2, I3/I4). Q3 spare (owner, 2026-10-30).
+  // jumpers removed) and sheet 08 (Q1/Q2, I3/I4). Q3 → -KE4:DI09, E-stop status for the software (owner, 2026-11-15;
+  // manuals/emergency-suite-plan.md Part B section 3: E-stop only, unlatched, test pulses off).
+  // Q4 → QSTOP on IN2 (pin 18) of both drivers, SS1 with -KE5 (owner, 2026-11-15; q4-controlled-stop-plan.md).
+  // IN-COM (pin 15) → 1N24 is not yet confirmed: input polarity not in the available manuals.
   IEC.page(42, s => {
     const R1 = 26, R2 = 33, DB = 195;
     const D = [
-      { tag: '-TA1', side: 'left', x1: 40, x2: 195, pins: [50, 72, 94, 140, 160, 180] },
-      { tag: '-TA2', side: 'right', x1: 220, x2: 375, pins: [230, 252, 274, 320, 340, 360] },
+      { tag: '-TA1', side: 'left', x1: 40, x2: 195, pins: [50, 72, 94, 106, 124, 140, 160, 180] },
+      { tag: '-TA2', side: 'right', x1: 220, x2: 375, pins: [230, 252, 274, 286, 304, 320, 340, 360] },
     ];
-    const PIN = [['11', 'HWTO1+'], ['26', 'HWTO2+'], ['14', 'EDM−'], ['12', 'HWTO1−'], ['27', 'HWTO2−'], ['28', 'EDM+']];
+    const PIN = [['11', 'HWTO1+'], ['26', 'HWTO2+'], ['14', 'EDM−'], ['18', 'IN2'], ['15', 'IN-COM'], ['12', 'HWTO1−'], ['27', 'HWTO2−'], ['28', 'EDM+']];
 
-    s.rail(R1, 25, 400, '1P24', '/40', '/60');
-    s.rail(R2, 25, 400, '1N24', '/40', '/60');
+    s.rail(R1, 25, 400, '1P24', '/40.9', '/60.0');
+    s.rail(R2, 25, 400, '1N24', '/40.9', '/60.0');
+    s.pathText(0, 4, 'Safe torque off, quick stop and EDM, left driver -TA1'); s.pathText(5, 9, 'Safe torque off, quick stop and EDM, right driver -TA2');
 
     /* ---- conductors ---- */
-    const [q1, q2, i3, i4] = [50, 72, 94, 118];
-    s.line(q1, 64, q1, DB); s.dot(q1, 100); s.line(q1, 100, 230, 100); s.line(230, 100, 230, DB);
-    s.line(q2, 64, q2, DB); s.dot(q2, 108); s.line(q2, 108, 252, 108); s.line(252, 108, 252, DB);
+    const [q1, q2, i3, i4, q3, q4] = [50, 72, 94, 128, 118, 106];
+    s.line(q1, 64, q1, DB); s.dot(q1, 140); s.line(q1, 140, 230, 140); s.line(230, 140, 230, DB);
+    s.line(q2, 64, q2, DB); s.dot(q2, 148); s.line(q2, 148, 252, 148); s.line(252, 148, 252, DB);
     s.line(i3, 64, i3, DB);
-    s.line(i4, 64, i4, 116); s.line(i4, 116, 274, 116); s.line(274, 116, 274, DB);
+    s.line(i4, 64, i4, 156); s.line(i4, 156, 274, 156); s.line(274, 156, 274, DB);
+    // Q4: controlled stop (QSTOP) to IN2 of both drivers
+    s.line(q4, 64, q4, DB); s.dot(q4, 164); s.line(q4, 164, 286, 164); s.line(286, 164, 286, DB);
+    // Q3: E-stop status to the I/O module (not a safety function)
+    s.line(q3, 64, q3, 84); s.offDown(q3, 84, '-KE4:DI09', '/60.7', 'ESTOP OK');
+    s.text(q3, 84 + 3.4 * s.textScale + 3 * 3.2 * s.textScale, 'test pulses off', { size: 2.1, anchor: 'middle' });
     D.forEach(d => {
-      [3, 4].forEach(k => { s.line(d.pins[k], R2, d.pins[k], DB); s.dot(d.pins[k], R2); });
-      s.line(d.pins[5], R1, d.pins[5], DB); s.dot(d.pins[5], R1);
+      [5, 6].forEach(k => { s.line(d.pins[k], R2, d.pins[k], DB); s.dot(d.pins[k], R2); });
+      s.line(d.pins[7], R1, d.pins[7], DB); s.dot(d.pins[7], R1);
+      // IN-COM to 1N24 via the HWTO− conductor (open: polarity to be verified)
+      s.line(d.pins[4], 176, d.pins[4], DB); s.line(d.pins[4], 176, d.pins[5], 176); s.dot(d.pins[5], 176);
+      s.text((d.pins[4] + d.pins[5]) / 2, 174.6, '??', { size: 2.6, anchor: 'middle', weight: 600 });
     });
-    s.wl(q1, 92, 'HWTO1'); s.wl(q2, 92, 'HWTO2'); s.wl(i3, 92, 'EDM-L'); s.wl(i4, 92, 'EDM-R');
+    s.wl(q1, 130, 'HWTO1'); s.wl(q2, 130, 'HWTO2'); s.wl(i3, 130, 'EDM-L'); s.wl(i4, 130, 'EDM-R'); s.wl(q3, 80, 'DI09'); s.wl(q4, 130, 'QSTOP');
 
     /* ---- safety controller ---- */
-    s.module(35, 130, 42, 22, [{ x: q1, name: 'Q1' }, { x: q2, name: 'Q2' }, { x: i3, name: 'I3' }, { x: i4, name: 'I4' }],
-      ['-KE2', 'FX3-XTIO84002'], { edge: 'bottom' });
+    s.module(35, 136, 36, 28, [{ x: q1, name: 'Q1' }, { x: q2, name: 'Q2' }, { x: i3, name: 'I3' }, { x: q4, name: 'Q4' }, { x: q3, name: 'Q3' }, { x: i4, name: 'I4' }],
+      ['-KE2', 'Safety controller I/O module FX3-XTIO84002', s.alsoOn('-KE2')], { edge: 'bottom' });
 
     /* ---- drivers ---- */
     D.forEach(d => {
       s.module(d.x1, d.x2, DB, 34, d.pins.map((x, k) => ({ x, name: PIN[k][0], sub: PIN[k][1] })),
-        [d.tag, `Motor driver BLVD-KRD, ${d.side} · control connector (page 50)`, 'Factory jumpers 11–25, 12–26, 13–27 removed']);
+        [d.tag, `Motor driver BLVD-KRD, ${d.side} · control connector (page 50)`, 'Factory jumpers 11–25, 12–26, 13–27 removed', s.alsoOn(d.tag)]);
+      s.sf(d.x1 + 16, DB + 13.5 * s.textScale, 'SF1, 2, 6–8');
     });
 
-    s.note(192, 44, [
-      'Notes',
-      '1. Q1 and Q2 switch off → torque removed on both drivers (STO).',
-      '2. EDM: -KE2 checks that torque is really off (I3 left, I4 right).',
-      '3. HWTO1 and HWTO2 are looped from -TA1 to -TA2 (junctions).',
-      '4. Q3, Q4 spare.',
-      '5. Wiring AWG22 (0.34 mm²) blue. All devices in +EB.',
-    ], { head: true, size: 2.3, lh: 3.9 });
+    s.notes(192, 44, [
+      'Stop (SF1, SF2, SF6): Q4 switches off first → both drivers brake at the quick-stop rate (QSTOP).',
+      ['Q1 and Q2 switch off when -KE5 reports standstill (SF7), at the latest after «t max» s',
+       '→ torque removed on both drivers (STO), holding brakes apply. Controlled stop, then STO (SS1).'],
+      'EDM (SF8): -KE2 checks that torque is really off (I3 left, I4 right).',
+      'HWTO1, HWTO2 and QSTOP are looped from -TA1 to -TA2 (junctions).',
+      ['Q3 → -KE4:DI09 (ESTOP OK): on = E-stop not pressed. Follows the E-stop only (not the',
+       'scanner), not latched. Test pulses off: Q3 feeds a standard input. Status for the software',
+       'only, not a safety function.'],
+      ['Q4: test pulses off, so a test pulse cannot start a quick stop. Driver input IN2 set to QSTOP,',
+       'inverted (off = stop), set in MEXE02 (page 50).'],
+      ['IN-COM → 1N24 «to be verified»: assumes the driver inputs sink current (24 V on IN2 = on).',
+       'Not in the available manuals: check the BLV-R hardware manual or on the bench before wiring.'],
+    ], { loc: 'all', style: { lh: 3.9 } });
   });
 </script>
 </body>

@@ -56,9 +56,15 @@
       s.text(X, 231, D.owner, { size: 4.5, weight: 600 });
       (D.ownerLines || []).forEach((t, i) => s.text(X, 238 + 4.5 * i, t, { size: 3 }));
 
-      s.note(240, 222, [
-        'This document and its contents are the property of the legal owner.',
-        'It is issued for preliminary review only.',
+      // confidentiality notice (owner 2026-11-15)
+      s.text(220, 196, 'CONFIDENTIAL — RESTRICTED DISTRIBUTION', { size: 3.2, weight: 600 });
+      s.note(220, 202, [
+        '© 2026 PT INTI GANDA PERDANA. All rights reserved.',
+        'This document contains confidential information of PT Inti Ganda Perdana. It is issued only',
+        'for the preliminary review of the AGV I-PRIME and may be used only for that purpose. Do not',
+        'copy, distribute or disclose it, in whole or in part, to anyone outside the named recipients',
+        'without written permission from PT Inti Ganda Perdana.',
+        'Distribution: PT Inti Ganda Perdana (internal); the reviewing body for the preliminary review.',
         'Do not use for production or wiring until it is released.',
       ], { size: 2.6, lh: 4.2 });
     },

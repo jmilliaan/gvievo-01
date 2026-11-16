@@ -2,7 +2,15 @@
 
 > **DRAFT — Revision A, for preliminary review. Not for release.**
 
-Yellow highlights mark values still to be filled in or confirmed; `[IMG-…]` marks a picture still to be added. Grey boxes marked **[REVIEW]** are open points for the preliminary review.
+> **CONFIDENTIAL — RESTRICTED DISTRIBUTION**
+>
+> © 2026 PT INTI GANDA PERDANA. All rights reserved.
+>
+> This document contains confidential information of PT Inti Ganda Perdana. It is issued only for the preliminary review of the AGV I-PRIME and may be used only for that purpose. Do not copy, distribute or disclose it, in whole or in part, to anyone outside the named recipients without written permission from PT Inti Ganda Perdana.
+>
+> Distribution: PT Inti Ganda Perdana (internal); the reviewing body for the preliminary review.
+
+Grey boxes marked **[REVIEW]** are open points for the preliminary review.
 
 ---
 
@@ -20,7 +28,7 @@ Yellow highlights mark values still to be filled in or confirmed; `[IMG-…]` ma
 | Created by      | JOY M.                                                                    |
 | Checked by      | JOKI I.                                                                   |
 | Approved by     | ROBERTA A.                                                                |
-| Applies to      | Model AGV I-PRIME, serial numbers GVI-1T0, vehicle software V1.0.0-V2.0.0 |
+| Applies to      | Model AGV I-PRIME, type GVI-1T0, all serial numbers, vehicle software V1.0.0 to V2.0.0 |
 
 ### Revision history
 
@@ -107,9 +115,9 @@ Safety messages start with a signal word: **DANGER** (will cause death or seriou
 These rules apply at all times. Each chapter adds the rules for its task.
 
 - Do not ride on the vehicle or on the trolleys.
-- Do not step in front of a moving vehicle or train, and do not throw objects in front of it. The safety scanner stops the vehicle, but not instantly (chapter 16.3).
+- Do not step in front of a moving vehicle or train, and do not throw objects in front of it. The safety scanner stops the vehicle, but not instantly (chapter 3.4).
 - Do not stand between the vehicle and a trolley, or between trolleys, while the vehicle is in **AUTO**.
-- Couple and uncouple trolleys only when the vehicle is stopped at a stop point or in **MANUAL** with **MANUAL ARM** pressed in.
+- Couple and uncouple trolleys only when the vehicle is stopped at a stop point or in **MANUAL** with **MANUAL ARM** at **OFF**.
 - Do not exceed the towing limits in chapter 2.2 and chapter 5.
 - Use the vehicle only on the level floor and in the operating zone prepared as in chapter 6.
 - Never cover, bridge, mute or change a protective device. Never change the configuration of the safety scanner or the safety controller. Only the commissioning engineer may change them, and only with re-verification (chapter 8.5).
@@ -141,7 +149,7 @@ These notes protect the vehicle and its performance. They are not safety rules.
 
 PT INTI GANDA PERDANA, Jl Pegangsaan Dua Km 1.6, Jakarta Utara, Indonesia
 
-Sales: sales@igp-astra.co.id · Service: iprime-service@igp-astra.co.id
+Sales and service: sales@igp-astra.co.id
 
 ### 1.2 Product
 
@@ -213,7 +221,7 @@ The following is not allowed:
 - transporting hazardous goods;
 - operation with a protective device bridged, muted, covered, damaged or with a changed configuration;
 - operation in **AUTO** away from the tape, or on a tape route not prepared as in chapter 6;
-- driving in **MANUAL** without seeing the vehicle and its path;
+- driving in **MANUAL** without seeing the vehicle, the trolleys and the path;
 - operation by persons who are not instructed;
 - modifying the vehicle, its software or its parameters without the manufacturer's approval;
 - using the vehicle as a tool to pull, push or lift anything other than approved trolleys.
@@ -229,7 +237,7 @@ The vehicle moves automatically and can start without anyone at the controls whe
 - a 2-second warning sound comes before every automatic start;
 - the vehicle and its trolleys follow the floor tape;
 - the vehicle stops for an obstacle directly in front of it, but **not** for a person beside the tape route or beside the trolleys;
-- the **E-STOP** button stops the vehicle at once in every mode.
+- the **E-STOP** button stops the vehicle in every mode: both drives brake it to a standstill, then motor power is cut.
 
 ### 3.2 Personnel and qualifications
 
@@ -241,18 +249,18 @@ The vehicle moves automatically and can start without anyone at the controls whe
 
 ### 3.3 Safety functions
 
-The safety functions are hard-wired: the emergency stop, the front safety laser scanner and two safety encoders on the wheel shafts are connected to a safety controller, which cuts motor power through both motor drivers. The vehicle controller and its software are **not** part of any safety function. The last three rows of the table are software functions. The safety functions have not yet been validated (review notes at the end of the manual).
+The safety functions are hard-wired: the emergency stop, the front safety laser scanner and two safety encoders on the wheel shafts are connected to a safety controller, which cuts motor power through both motor drivers. The vehicle controller and its software are **not** part of any safety function. The last three rows of the table are software functions. The safety functions have not yet been validated.
 
 ![Safety chain: E-STOP, front scanner and wheel encoders → safety controller → both motor drivers](images/IMG-03-01.svg)
 
 | Function                                                        | Device(s)                                                                                                         | Effect                                                                                                                                                                                                      | To continue                                                            |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Emergency stop                                                  | **E-STOP** push-button on the control panel → safety controller → both motor drivers                      | Motor power cut at once, holding brakes applied                                                                                                                                                             | Release **E-STOP**, press **RESET**, press **START** |
-| Personnel detection, front                                      | Front safety laser scanner, protective field → safety controller → both motor drivers                           | Motor power cut at once                                                                                                                                                                                     | Automatic, 2 s after the field is clear                                |
+| Emergency stop                                                  | **E-STOP** push-button on the control panel → safety controller → both motor drivers                      | Both drives brake to a standstill, then motor power cut and holding brakes applied                                                                                                                                                             | Release **E-STOP**, press **RESET**, press **START** |
+| Personnel detection, front                                      | Front safety laser scanner, protective field → safety controller → both motor drivers                           | Both drives brake to a standstill, then motor power cut                                                                                                                                                                                     | Automatic, 2 s after the field is clear                                |
 | Mode selection (protective field active only in **AUTO**) | **MANUAL / AUTO** selector → safety controller                                                             | —                                                                                                                                                                                                          | —                                                                     |
 | Motor power-off check                                           | Feedback from both motor drivers → safety controller                                                             | Prevents a restart if a driver did not switch off                                                                                                                                                           | —                                                                     |
-| Speed limit in **AUTO**                                   | Safety encoders on both wheel shafts → safety controller                                                         | Motor power cut if the speed exceeds 1.1 m/s                                                                                                                                                                | **RESET**, then **START**                                  |
-| Standstill monitoring                                           | Safety encoders → safety controller checks that both wheels are stationary (speed below `[VALUE: limit]` mm/s) | Motor power stays off after a safety stop. If a wheel turns while the power is off (for example the trolley train pushes the vehicle, or a holding brake slips), the safety controller treats it as a fault | **RESET** is accepted only when both wheels are stationary       |
+| Speed limit in **AUTO**                                   | Safety encoders on both wheel shafts → safety controller                                                         | Above 1.1 m/s: both drives brake to a standstill, then motor power cut                                                                                                                                                                | **RESET**, then **START**                                  |
+| Standstill monitoring                                           | Safety encoders → safety controller checks that both wheels are stationary (speed below 20 mm/s) | Ends the braking of a safety stop: motor power is cut when both wheels are stationary. Motor power stays off after a safety stop. If a wheel turns while the power is off (for example the trolley train pushes the vehicle, or a holding brake slips), the safety controller treats it as a fault | **RESET** is accepted only when both wheels are stationary       |
 | Prevention of unexpected start-up                               | Restart only after **RESET** and a fresh **START**                                                    | —                                                                                                                                                                                                          | —                                                                     |
 | Warning before automatic start                                  | Alarm sound for 2 s after **START**, before the vehicle moves                                               | —                                                                                                                                                                                                          | —                                                                     |
 | Speed reduction near obstacles                                  | Scanner warning fields → vehicle software: half speed, then a controlled stop                                    | Controlled stop                                                                                                                                                                                             | Automatic                                                              |
@@ -262,17 +270,21 @@ The safety functions are hard-wired: the emergency stop, the front safety laser 
 
 The front scanner monitors a protective field (safety-related) and two warning fields (not safety-related). Values as configured for the front scanner:
 
-| Field                   | Size in front of the scanner | Width  | What happens                               |
-| ----------------------- | ---------------------------- | ------ | ------------------------------------------ |
-| Warning field 1 (outer) | 1.77 m                       | 1.50 m | Automatic speed halved                     |
-| Warning field 2 (inner) | 0.97 m                       | 1.20 m | Controlled stop within 0.40 m              |
-| Protective field        | 0.50 m                       | 0.80 m | Safety stop: motor power cut (chapter 3.3) |
+| Field                   | Length from the scanner        | Width  | Shape                            | What happens                               |
+| ----------------------- | ------------------------------ | ------ | -------------------------------- | ------------------------------------------ |
+| Warning field 1 (outer) | 1.20 m                         | 1.30 m | Front corners chamfered 300 mm   | Automatic speed halved                     |
+| Warning field 2 (inner) | 0.80 m                         | 1.10 m | Front corners chamfered 200 mm   | Controlled stop                            |
+| Protective field        | 0.40 m                         | 0.80 m | Semicircle, radius 400 mm        | Safety stop: braking, then motor power cut (chapter 3.3) |
+
+The scanner sits 70 mm behind the front of the vehicle, so each field reaches 70 mm less in front of the vehicle: 1.13 m, 0.73 m and 0.33 m.
+
+> **[REVIEW]** The protective field reaches 0.33 m in front of the vehicle. At 0.85 m/s the vehicle travels 0.11 m during the scanner response time (130 ms) alone, and a controlled stop at 1.0 m/s² needs a further 0.36 m. The stopping distance of the safety stop (both drives brake at their quick-stop rate, then motor power is cut) with the maximum towed mass has not been measured yet. The time limit after which motor power is cut even if the vehicle has not come to a standstill is not set yet. The protective field length, or the speeds, will be set from that measurement (chapter 13).
 
 The scanner detects objects of 50 mm and larger in a plane about 150 mm above the floor. It does **not** detect: objects above or below the scanning plane, glass and mirrors reliably, objects beside the vehicle outside the fields, anything behind the vehicle (there is no rear scanner), and anything beside or behind the trolleys.
 
 In this revision the protective field has one fixed size at every speed. Switching the protective field by speed, using the wheel encoders, is planned but not wired.
 
-[IMG-03-02] Top view: protective and warning fields of the front scanner, with a coupled trolley train
+![Top view: protective and warning fields of the front scanner](images/IMG-03-02.svg)
 
 ### 3.5 Residual risks
 
@@ -282,9 +294,9 @@ Hazards that remain despite the protective measures. Operators and users must kn
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | Crushing between trolley and fixed objects | Trolleys follow a tighter curve than the vehicle; they are not monitored by any sensor     | Clearances (chapter 6.5), floor marking, instruction                           |
 | Being struck from the side                 | The scanner does not see a person stepping in from the side or between vehicle and trolley | Instruction, marking of the travel path, warning sound                         |
-| Run-over by the vehicle or trolleys        | A person falling in front of the vehicle closer than the stopping distance                 | Protective field sized for the stopping distance; speed limits                 |
+| Run-over by the vehicle or trolleys        | A person falling in front of the vehicle closer than the stopping distance                 | Protective field, to be checked against the measured stopping distance (3.4); speed limits |
 | Uncontrolled trolley                       | Trolley uncouples during travel; trolley left on the tape route without brake              | Coupling check (chapter 10.4), trolley parking brake                           |
-| Trolley jack-knife or overrun              | Emergency stop with full load: the train pushes into the vehicle                           | Towing limits, braked trolleys                                                 |
+| Trolley jack-knife or overrun              | Emergency stop with full load: the train pushes into the vehicle                           | Towing limits |
 | Unmonitored manual driving                 | In **MANUAL** the scanner does not stop the vehicle                                  | Hold-to-run, 0.60 m/s, movement sound, operator keeps vehicle in view          |
 | Trapping by a stopped vehicle              | The holding brakes are applied when stopped; the vehicle cannot be pushed                  | Procedure in chapter 11.3                                                      |
 | Tripping                                   | Floor tape, trolley drawbars                                                               | Flush tape, protective covering, marking                                       |
@@ -300,7 +312,7 @@ Hazards that remain despite the protective measures. Operators and users must kn
 | Pivot zone    | Circle of 2500 mm diameter at each pivot point at the end of a tape route                                                                                                   | Keep free while the vehicle is there                  |
 | Coupling zone | Between vehicle and trolley, between trolleys                                                                                                                                | Enter only when the vehicle is stopped (chapter 10.4) |
 
-[IMG-03-03] Top view: hazard zones along the tape route, in curves and at a pivot point
+![Hazard zones along the tape route, in a curve and at a pivot point](images/IMG-03-03.svg)
 
 ### 3.7 Safety and warning labels on the vehicle
 
@@ -319,7 +331,6 @@ The labels use standard safety signs (ISO 7010). Keep all labels clean and reada
 | Nameplate                    | —                                                                                                                                    | Identifies the vehicle (chapter 1.3)                                                                                                       | Side of the chassis                                            |
 | Tag labels                   | —                                                                                                                                    | Component tag, as in the circuit diagram                                                                                                   | On each component                                              |
 
-[IMG-03-04] Label positions
 
 ### 3.8 Warning devices
 
@@ -334,7 +345,7 @@ The labels use standard safety signs (ISO 7010). Keep all labels clean and reada
 
 ### 4.1 Overview
 
-[IMG-04-01] Vehicle overview, side and top view, with callouts
+![Vehicle overview, top view and left side, with callouts 1–8](images/IMG-04-01.svg)
 
 | #  | Assembly                                                                                |
 | -- | --------------------------------------------------------------------------------------- |
@@ -344,19 +355,22 @@ The labels use standard safety signs (ISO 7010). Keep all labels clean and reada
 | 4  | Electrical box with vehicle controller, safety controller, I/O module, circuit breakers |
 | 5  | Control panel                                                                           |
 | 6  | Safety laser scanner, front                                                             |
-| 7  | Magnetic line sensor (under the vehicle, front)                                         |
+| 7  | Magnetic line sensor (under the vehicle, 95 mm in front of the drive axle)              |
 | 8  | Towing hitch                                                                            |
 | 9  | Horn                                                                                    |
 | 10 | Pendant                                                                                 |
 | 11 | Safety encoders, one on each wheel shaft                                                |
 
+Items 9–11 are not visible in the figure: the horn and the safety encoders are inside the vehicle, and the pendant is not drawn.
+
 ### 4.2 How the vehicle is controlled
 
 | Part                                                   | What it does                                                                                           | Safety-related        |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------- |
-| **Safety controller** (SICK Flexi Soft)          | Evaluates **E-STOP**, front scanner and mode selector; cuts motor power                          | Yes                   |
+| **Safety controller** (SICK Flexi Soft)          | Evaluates **E-STOP**, **RESET**, the front scanner, the mode selector, the wheel encoders and the feedback from the motor drivers; cuts motor power                          | Yes                   |
 | **Safety laser scanner, front** (SICK nanoScan3) | Protective field → stop; warning fields → slow down                                                  | Protective field: yes |
-| **Motor drivers** (2 × Oriental Motor BLVD-KRD) | Drive the motors on command from the controller; motor power cut on command from the safety controller | Power cut-off: yes    |
+| **Safety encoders** (2 × SICK DFS60S) | Measure the speed of each wheel for the speed limit and the standstill monitoring | Yes |
+| **Motor drivers** (2 × Oriental Motor BLVD-KRD) | Drive the motors on command from the controller; on command from the safety controller, brake to a standstill, then cut motor power | Power cut-off: yes    |
 | **Vehicle controller** (industrial PC)           | Follows the tape, controls speed, reads the control panel, shows the web interface, records events     | No                    |
 | **I/O module**                                   | Reads the panel buttons and pendant, switches the horn                                                 | No                    |
 | **Magnetic line sensor** (SICK MLS)              | Measures the position of the tape under the vehicle; reads markers beside the tape                     | No                    |
@@ -369,8 +383,8 @@ The vehicle controller can only drive the motors while the safety controller all
 
 | Control                 | Type                                                | Function                                                             |
 | ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
-| **E-STOP**        | Red mushroom push-button, latching, turn to release | Stops the vehicle at once in every mode                              |
-| **RESET**         | Yellow push-button                                  | Resets the safety circuit after **E-STOP**; ends a stopped run |
+| **E-STOP**        | Red mushroom push-button, latching, turn to release | Stops the vehicle in every mode: braking, then motor power cut                              |
+| **RESET**         | Yellow push-button                                  | Resets the safety circuit after **E-STOP**; stops the vehicle and ends the run (chapter 10.6) |
 | **START**         | Green push-button                                   | Starts or continues automatic operation (**AUTO** only)        |
 | **MANUAL / AUTO** | Selector switch, 2 positions                        | Selects the operating mode (chapter 9)                               |
 | Main switch             | Main circuit breaker, 2-pole, 32 A DC               | Switches the vehicle on and off; (chapter 15.1)                      |
@@ -379,16 +393,16 @@ The vehicle controller can only drive the motors while the safety controller all
 
 ### 4.4 Pendant
 
-[IMG-04-03] Pendant
+![Pendant: cable, MANUAL ARM selector, four direction buttons](images/IMG-04-03.svg)
 
-The pendant is wired to the vehicle. It has four direction buttons, **FORWARD**, **REVERSE**, **LEFT** and **RIGHT**, and the **MANUAL ARM** button.
+The pendant is wired to the vehicle. It has four direction buttons, **FORWARD**, **REVERSE**, **LEFT** and **RIGHT**, and the **MANUAL ARM** selector.
 
-**MANUAL ARM** is a black mushroom push-button. It latches when pressed and is released by turning it. It is not an emergency stop; in an emergency use **E-STOP** on the control panel.
+**MANUAL ARM** is a black selector switch with two positions, **OFF** and **ON**. It is not an emergency stop; in an emergency use **E-STOP** on the control panel.
 
-- Pressed in: the motors are off. The vehicle cannot be driven by hand.
-- Released, with the selector in **MANUAL**: the motors are on. The vehicle moves only while a direction button is held.
-- If **MANUAL ARM** is released when the vehicle is switched on in **MANUAL**, the motors switch on as soon as the controller is ready.
-- It works only in **MANUAL** with **MANUAL ARM** released.
+- **OFF**: the motors are off. The vehicle cannot be driven by hand.
+- **ON**, with the **MANUAL / AUTO** selector in **MANUAL**: the motors are on. The vehicle moves only while a direction button is held.
+- If **MANUAL ARM** is at **ON** when the vehicle is switched on in **MANUAL**, the motors switch on as soon as the controller is ready.
+- The direction buttons work only in **MANUAL** with **MANUAL ARM** at **ON**.
 - Hold a button to drive; release it to stop (hold-to-run).
 - **FORWARD** or **REVERSE** with **LEFT** or **RIGHT** drives a curve; **LEFT** or **RIGHT** alone turns on the spot.
 - Pressing two opposite buttons together cancels both.
@@ -401,9 +415,9 @@ The vehicle shows its state and alarms on web pages, opened on a tablet or a PC 
 
 | Page             | Operator use                                                                                                         |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Home**   | State in one line, what to do next, one button for the action (for example **Acknowledge**, **Restart**) |
+| **Home**   | State in one line on a coloured tile (green: normal; yellow: needs attention; red: stopped, needs a person or a restart; grey: starting up), what to do next, one button for the action (for example **Acknowledge**, **Recover**, **Restart**). The selector position (**AUTO** / **MANUAL**) in large text |
 | **Run**    | Current run and stop points; confirmations the vehicle asks for                                                      |
-| **Manual** | Jog pad for driving by hand (**MANUAL**, **MANUAL ARM** released). Hold to drive, release to stop        |
+| **Manual** | Jog pad for driving by hand (**MANUAL**, **MANUAL ARM** at **ON**). Hold to drive, release to stop        |
 | **Alarms** | Event log; **Save report** for service                                                                         |
 
 Every page has a status bar on the left (mode, selector, drives, command, run). A yellow bar needs attention; a red bar is a fault or stale data. If the status bar is grey and shows `DISCONNECTED` at its top, the values are the last known, not live.
@@ -415,22 +429,24 @@ The web interface cannot start the vehicle in **AUTO**. Automatic driving always
 ![Home page of the web interface; inset: the status bar when the connection is lost](images/IMG-04-04.svg)
 
 > **⚠ WARNING — Unauthorised control over the network.**
-> The web interface has no user login. Anyone on the network can drive the vehicle by hand while it is in **MANUAL** with **MANUAL ARM** released.
+> The web interface has no user login. Anyone on the network can drive the vehicle by hand while it is in **MANUAL** with **MANUAL ARM** at **ON**.
 >
 > - Connect the vehicle only to a closed network for this purpose.
-> - Press **MANUAL ARM** in when you leave the vehicle.
+> - Turn **MANUAL ARM** to **OFF** when you leave the vehicle.
 
 ### 4.6 Towing hitch
 
-Towing hook, coupled and uncoupled by hand. Coupling height 250 mm.
+Towing hook on a hitch arm, coupled and uncoupled by hand. Coupling height 285 mm above the floor.
 
-[IMG-04-05] Towing hitch, coupled and uncoupled
+Lift the lever to raise the hook, put the hook into the hole of the trolley drawbar, and lower the lever. A spring keeps the hitch arm straight.
+
+![Towing hitch, uncoupled and coupled; dashed: lever lifted](images/IMG-04-05.svg)
 
 There is no sensor that detects whether a trolley is coupled. The vehicle relies on the operator's confirmation (chapter 10.4).
 
 ### 4.7 Guidance
 
-The vehicle follows a magnetic tape on the floor. The line sensor under the front of the vehicle measures the tape position 50 times per second; the controller steers to keep the tape centred. Markers beside the tape can set speed sections and pivot points. Stop points are programmed by the commissioning engineer (software documentation). If the tape is lost for more than 75 mm of travel, the vehicle stops (`TRACK_LOST`).
+The vehicle follows a magnetic tape on the floor. The line sensor under the vehicle, 95 mm in front of the drive axle, measures the tape position 50 times per second; the controller steers to keep the tape centred. Markers beside the tape can set speed sections and pivot points. Stop points are programmed by the commissioning engineer (software documentation). If the tape is lost for more than 75 mm of travel, the vehicle stops (`TRACK_LOST`).
 
 ---
 
@@ -444,9 +460,9 @@ The vehicle follows a magnetic tape on the floor. The line sensor under the fron
 | Maximum number of trolleys               | 2                |
 | Maximum train length                     | 4000 mm          |
 | Maximum drawbar force                    | 1200 N           |
-| Floor                                    | Level only (2 %) |
+| Floor                                    | Level only (0 %) |
 
-The stopping distance increases with the towed mass (chapter 16.3).
+The stopping distance increases with the towed mass (chapter 3.4).
 
 ### 5.2 Trolley requirements
 
@@ -463,14 +479,14 @@ Trolleys used with the vehicle must:
 - Check every coupling before you press **START** (chapter 10.4).
 - Never pivot or make a U-turn with trolleys coupled. Uncouple first.
 - Do not drive backwards with trolleys coupled, except to free a person (chapter 11).
-- Do not drive in **MANUAL** with trolleys coupled `[confirm]`.
-- Uncoupled trolleys must stand clear of the travel path with their brake applied.
+- You may drive in **MANUAL** with trolleys coupled. Keep the vehicle and all trolleys in full view the whole time.
+- Uncoupled trolleys must stand clear of the travel path, with their brake applied if available.
 
 > **⚠ WARNING — Trolley run-away.**
 > A trolley that is not coupled correctly can separate and keep rolling.
 >
-> - Check the drawbar sits fully on the hook and the hook is secured (chapter 4.6).
-> - Apply the parking brake of every trolley you uncouple.
+> - Check the hook is fully in the drawbar hole and the lever is down (chapter 4.6).
+> - Apply the parking brake of every trolley you uncouple (if available).
 
 ---
 
@@ -482,7 +498,7 @@ The user prepares and maintains the operating zone. The commissioning engineer c
 
 - Level, 0 % gradient along and across the travel path.
 - Firm, dry, clean, free of oil, grease and loose material.
-- Flatness +/- 5mm over 2m; no steps over 5 mm, no gaps over 15 mm.
+- Flatness +/- 5mm over 2m; no steps over 5 mm, no gaps over 10 mm.
 - Load capacity for the vehicle plus the loaded train.
 
 ### 6.2 Magnetic tape
@@ -506,12 +522,14 @@ Place stop points where the operator can couple and uncouple safely: level floor
 
 | Location                                              | Minimum clearance                                               |
 | ----------------------------------------------------- | --------------------------------------------------------------- |
-| Beside the vehicle and trolleys, along the tape route | 400 mm each side of the swept path, 2100 mm high                |
+| Beside the vehicle and trolleys, along the tape route | 500 mm each side of the swept path, 2100 mm high                |
 | In curves                                             | Swept path of the widest trolley train + 500 mm                 |
 | Where clearance cannot be kept                        | Mark as hazard zone (yellow-black), warning signs, limit access |
 | Pedestrian crossings                                  | Marked, good visibility.                                        |
 
-[IMG-06-02] Clearance cross-section and swept path in a curve
+The figure shows the vehicle with two trolleys in a curve of the smallest radius, 1000 mm. More or larger trolleys cut further inside the curve.
+
+![Clearance: cross-section and swept path of the vehicle with two trolleys in a 1000 mm radius curve](images/IMG-06-02.svg)
 
 ### 6.6 Marking and signs
 
@@ -522,7 +540,7 @@ Place stop points where the operator can couple and uncouple safely: level floor
 ### 6.7 Charging area
 
 - Level floor, out of the travel path and pedestrian walkways.
-- Ventilated; no combustible material nearby; fire extinguisher `[VALUE: type]` within reach.
+- Ventilated; no combustible material nearby; lithium fire extinguisher within reach.
 - Power supply for the charger 220–230 V AC, 50 Hz, single phase.
 
 ---
@@ -538,8 +556,10 @@ Place stop points where the operator can couple and uncouple safely: level floor
 
 1. Check the packaging and the vehicle for transport damage. Report damage before use.
 2. Check the scope of delivery: vehicle, pendant, charger, this manual.
-3. Connect the battery
+3. Connect the battery.
 4. Continue with commissioning (chapter 8).
+
+> **[REVIEW]** Step 3: the battery connection (the connector and where it is) is not described in this revision.
 
 ---
 
@@ -555,7 +575,7 @@ Commissioning is done by the commissioning engineer. The vehicle must not be han
 
 ### 8.2 First switch-on
 
-1. Selector to **MANUAL**, **MANUAL ARM** pressed in, **E-STOP** released.
+1. Selector to **MANUAL**, **MANUAL ARM** at **OFF**, **E-STOP** released.
 2. Switch on the main switch.
 3. Wait until the controller has started, about 60 s.
 4. Press **RESET** to close the safety circuit.
@@ -573,11 +593,11 @@ Commissioning is done by the commissioning engineer. The vehicle must not be han
 Carry out every check in chapter 13 and record the results in Annex C. In addition:
 
 - verify the scanner fields with a test object (chapter 13) at the front;
-- measure the stopping distance at the highest speed used with the maximum towed mass; it must be shorter than the protective field allows (chapter 16.3);
+- measure the stopping distance at the highest speed used with the maximum towed mass; the vehicle must stop before it reaches an object at the edge of the protective field, 0.33 m in front of the vehicle (chapter 3.4).
 
 ### 8.5 Changes after commissioning
 
-After any change of the scanner configuration, the safety controller configuration, the speeds, or a motor driver, repeat 8.4 and record it.
+After any change of the scanner configuration, the safety controller configuration, the speeds, a motor driver or a motor driver setting, repeat 8.4 and record it.
 
 ### 8.6 Handover
 
@@ -593,12 +613,12 @@ After any change of the scanner configuration, the safety controller configurati
 |                       | **AUTO**                                                                 | **MANUAL**                                                               |
 | --------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | Selected by           | Selector in **AUTO**                                                     | Selector in **MANUAL**                                                   |
-| Motion starts         | Only with a physical **START** press, after a 2 s alarm sound            | Only while a pendant or jog button is held, with **MANUAL ARM** released |
+| Motion starts         | Only with a physical **START** press, after a 2 s alarm sound            | Only while a pendant or jog button is held, with **MANUAL ARM** at **ON** |
 | Who steers            | The vehicle, along the tape                                                    | The operator                                                                   |
 | Speed                 | 0.50 m/s; 0.85 m/s in marked sections; halved or stopped by the warning fields | max. 0.60 m/s; 0.39 rad/s on the spot                                          |
 | Protective field stop | **Active**                                                               | **Muted**                                                                |
 | **E-STOP**      | Active                                                                         | Active                                                                         |
-| Trolleys              | Yes                                                                            | No `[confirm]`                                                               |
+| Trolleys              | Yes                                                                            | Yes, with the vehicle and all trolleys in full view (chapter 5.3)            |
 | Warning sound         | Alarm sound before start and at field events; movement sound while driving     | Movement sound while driving                                                   |
 
 ### 9.2 Changing mode
@@ -615,7 +635,7 @@ After any change of the scanner configuration, the safety controller configurati
 > - Keep the vehicle and its path in view at all times.
 > - Make sure nobody is in the path before you drive.
 > - Drive slowly near people and objects.
-> - Press **MANUAL ARM** in when you stop driving.
+> - Turn **MANUAL ARM** to **OFF** when you stop driving.
 
 ---
 
@@ -631,16 +651,18 @@ Do these checks at the start of every shift. Do not use the vehicle if a check f
 | 2 | Scanner window (front)             | Clean, no scratches or cracks                                                                           |
 | 3 | Line sensor and tape               | Nothing hanging under the vehicle; tape not lifted or torn                                              |
 | 4 | Labels                             | Present and readable                                                                                    |
-| 5 | Battery charge                     | 30 % or more on                                                                                         |
+| 5 | Battery charge                     | 30 % or more on the **Home** page |
 | 6 | **E-STOP**                   | Press: the **Home** page shows `ESTOP`; the vehicle cannot be started. Release, **RESET** |
 | 7 | Horn                               | Alarm sound for 2 s after **START**; movement sound while driving                                 |
 | 8 | Protective field                   | Chapter 13, daily test                                                                                  |
 | 9 | Trolleys                           | Couplings, castors and brakes in order                                                                  |
 
+> **[REVIEW]** Check 5: the battery charge display on the **Home** page is planned. It is not in the vehicle software yet.
+
 ### 10.2 Switching on
 
 1. Check that nobody is in the travel path.
-2. Selector to **MANUAL**, **MANUAL ARM** pressed in.
+2. Selector to **MANUAL**, **MANUAL ARM** at **OFF**.
 3. Switch on the main switch.
 4. Wait until the **Home** page shows `READY` (about 60 s).
 5. If the **Home** page shows `SAFETY_RESET_NEEDED` or `BASE_NOT_READY`: press **RESET**.
@@ -649,9 +671,9 @@ Do these checks at the start of every shift. Do not use the vehicle if a check f
 
 1. Selector to **MANUAL**.
 2. Check the path is clear.
-3. Turn **MANUAL ARM** to release it. The drives switch on.
+3. Turn **MANUAL ARM** to **ON**. The drives switch on.
 4. Hold a pendant button (or a jog button on the **Manual** page) to drive. Release it to stop.
-5. When you have finished, press **MANUAL ARM** in.
+5. When you have finished, turn **MANUAL ARM** to **OFF**.
 
 The vehicle accelerates gently (about 2.3 s to full manual speed) and stops within about 0.2 m from 0.60 m/s when you release the button.
 
@@ -665,17 +687,17 @@ The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATI
 
 1. Wait until the vehicle has stopped at the stop point and the **Home** page shows `AT_STATION`.
 2. Bring the trolley to the hitch. Check the trolley meets chapter 5.2 and the train stays within 1 000 kg.
-3. Insert the hook and secure it.
-4. Release the trolley's parking brake `[confirm]`.
-5. Check: coupling engaged and secured; nobody between the trolleys; load secured.
+3. Lift the lever, put the hook into the hole of the trolley drawbar, and lower the lever.
+4. Release the trolley's parking brake (if available).
+5. Check: hook fully in the drawbar hole, lever down; nobody between the trolleys; load secured.
 6. If the vehicle asks for a confirmation on the **Run** page, confirm it.
 7. Step out of the travel path and press **START**.
 
 **Uncoupling:**
 
 1. Wait until the vehicle has stopped at the stop point.
-2. Apply the trolley's parking brake.
-3. Open the securing device and lift the drawbar off the hook.
+2. Apply the trolley's parking brake (if available).
+3. Lift the lever so the hook comes out of the drawbar hole, move the drawbar away, and lower the lever.
 4. Move the trolley clear of the travel path.
 5. Confirm the release on the **Run** page if asked.
 6. Step out of the travel path and press **START**.
@@ -686,14 +708,13 @@ The vehicle stops at programmed stop points. At a stop point it waits (`AT_STATI
 > - Agree who presses **START** before you couple.
 > - Stand beside the hitch, not between vehicle and trolley.
 
-[IMG-10-01] Coupling sequence
 
 The vehicle does not pivot at the end of a tape route while a release has not been confirmed (`PAYLOAD_UNCONFIRMED`).
 
 ### 10.5 Automatic operation
 
 1. Place the vehicle on the tape in **MANUAL** (10.3), with the line sensor over the tape, facing the direction of travel.
-2. Press **MANUAL ARM** in.
+2. Turn **MANUAL ARM** to **OFF**.
 3. Selector to **AUTO**.
 4. Check the path is clear and nobody is at the hitch.
 5. Press **START**. The alarm sound plays for 2 s, then the vehicle moves off.
@@ -714,7 +735,7 @@ If **START** is refused, the reason is shown in the event log and on the **Home*
 | Something in the protective field     | Safety stop                                  | Automatic, 2 s after the field is clear     |
 | **RESET** while a run is active | Run ends; vehicle stops                      | **START**                             |
 | Selector out of **AUTO**        | Vehicle stops at once; run ends              | Selector to **AUTO**, **START** |
-| **E-STOP**                      | Safety stop, motor power cut, brakes applied | Chapter 10.7                                |
+| **E-STOP**                      | Safety stop: braking, then motor power cut, brakes applied | Chapter 10.7                                |
 
 For a normal stop between stop points, use **RESET** or the selector. Use **E-STOP** in an emergency.
 
@@ -730,14 +751,14 @@ For a normal stop between stop points, use **RESET** or the selector. Use **E-ST
 
 If the vehicle leaves the tape it stops (`TRACK_LOST`).
 
-1. Selector to **MANUAL**, **MANUAL ARM** released.
+1. Selector to **MANUAL**, **MANUAL ARM** at **ON**.
 2. Uncouple the trolleys first. Then drive the vehicle back so the line sensor is over the tape.
-3. Press **MANUAL ARM** in, selector to **AUTO**, press **START**.
+3. Turn **MANUAL ARM** to **OFF**, selector to **AUTO**, press **START**.
 
 ### 10.9 Switching off
 
 1. Stop the vehicle at a stop point or in the parking position, uncoupled from trolleys.
-2. Selector to **MANUAL**, **MANUAL ARM** pressed in.
+2. Selector to **MANUAL**, **MANUAL ARM** at **OFF**.
 3. Switch off the main switch.
 
 ---
@@ -746,7 +767,7 @@ If the vehicle leaves the tape it stops (`TRACK_LOST`).
 
 ### 11.1 Emergency stop
 
-Press **E-STOP**. Motor power is cut and the holding brakes in both motors apply.
+Press **E-STOP**. Both drives brake the vehicle to a standstill, then motor power is cut and the holding brakes in both motors apply.
 
 ### 11.2 Fire
 
@@ -763,9 +784,9 @@ To move the vehicle away from a person:
 1. Keep **E-STOP** pressed until you are ready.
 2. Uncouple the trolley if it is part of the trap; move the trolley by hand (its brake released).
 3. Release **E-STOP**, press **RESET**.
-4. Selector to **MANUAL**, **MANUAL ARM** released.
+4. Selector to **MANUAL**, **MANUAL ARM** at **ON**.
 5. Drive the vehicle away from the person with the pendant (**REVERSE** or **FORWARD**), slowly.
-6. Press **MANUAL ARM** in, press **E-STOP**. Give first aid; call help.
+6. Turn **MANUAL ARM** to **OFF**, press **E-STOP**. Give first aid; call help.
 
 ### 11.4 Vehicle out of control
 
@@ -807,7 +828,11 @@ Record each check in Annex C. If a check fails, take the vehicle out of service.
 | Hold-to-run                  | In **MANUAL**, drive with the pendant, release                                      | Vehicle stops at once                                                                             | Daily                               | O  |
 | Mode selector                | During an automatic run, turn the selector to **MANUAL**                            | Vehicle stops                                                                                     | Weekly                              | O  |
 | Scanner fields, full         | Test object at the field edges of the front scanner; compare with the verification report | Stops at the configured edges                                                                     | Every 3 months and after any change | M  |
-| Stopping distance and brakes | At 0.85 m/s with maximum towed mass, trigger the protective field; measure                | Within 1000 mm                                                                                   | Every 3 months                      | M  |
+| Stopping distance and brakes | At 0.85 m/s with maximum towed mass, move a test object from the side into the edge of the protective field (from straight ahead, the warning fields would slow the vehicle first); measure where the vehicle stops | Stops before it reaches the test object: stopping distance shorter than 0.33 m | Every 3 months                      | M  |
+
+O = operator, M = maintenance personnel.
+
+> **[REVIEW]** Checks still to be defined in this chapter: the daily protective-field test (chapter 10.1), the motor power cut-off check (chapter 15.2), the controlled-stop check (the vehicle brakes to a standstill before motor power is cut, and motor power is cut at the latest after the time limit), and the speed-limit and motor power cut-off checks after a part is replaced (chapter 15.4).
 
 ---
 
@@ -829,7 +854,7 @@ Alarms from navigation features (stop-point reader, map navigation) are listed i
 | `FIELD_WARNING`                                                                           | Slowed or stopped: something is in a warning field  | Clear the area. Speed returns by itself                                                                                                               |
 | `ESTOP`                                                                                   | Stopped: emergency stop or safety chain             | Release **E-STOP**, press **RESET**, then **START**                                                                                 |
 | `SAFETY_RESET_NEEDED`                                                                     | Motors are off: the safety circuit needs a reset    | Press **RESET** (yellow)                                                                                                                        |
-| `DRIVES_NOT_READY`                                                                        | Stopped: the motors are not powered                 | **MANUAL**: turn **MANUAL ARM** to release it. **AUTO**: press **START** (after **RESET** if **E-STOP** was used) |
+| `DRIVES_NOT_READY`                                                                        | Stopped: the motors are not powered                 | **MANUAL**: turn **MANUAL ARM** to **ON**. **AUTO**: press **START** (after **RESET** if **E-STOP** was used) |
 | `AUTHORITY_LOST`                                                                          | Stopped: the vehicle lost permission to drive       | Selector back to **AUTO**, press **START**                                                                                                |
 | `AT_STATION`                                                                              | Parked at a stop point                              | Do the work at the stop point, press **START**                                                                                                  |
 | `PAYLOAD_UNCONFIRMED`                                                                     | Stopped before the pivot: a release is not recorded | Check the trolley is uncoupled, confirm on **Run**, press **START**                                                                       |
@@ -843,9 +868,9 @@ Alarms from navigation features (stop-point reader, map navigation) are listed i
 | `LINE_PREREQ_LOST`                                                                        | Stopped: a condition for driving lapsed             | Read the reason; fix it; press **START**                                                                                                        |
 | `WAITING_FOR_PREREQ`                                                                      | Waiting for a sensor or the panel                   | Wait. If it stays, look at **Alarms**                                                                                                           |
 | `SOURCE_TIMED_OUT`                                                                        | The command stopped arriving (manual driving)       | Press and hold again; check the network                                                                                                               |
-| `DRIVE_ALARM`, `DRIVE_FAULT`, `DRIVE_SILENT`, `DRIVE_LINK_FAULT`, `CAN_TX_FAILED` | Drive fault                                         | Switch the drives off and on `[confirm: how]`, wait, then maintenance presses **Recover**                                                     |
-| `DRIVE_STOP_UNCONFIRMED`                                                                  | The vehicle cannot confirm it stopped               | Stay clear. Power-cycle the drives; maintenance presses **Recover**                                                                             |
-| `UNCLEAN_SHUTDOWN`                                                                        | The vehicle lost power last time                    | Power-cycle the drives, press **RESET**                                                                                                         |
+| `DRIVE_ALARM`, `DRIVE_FAULT`, `DRIVE_SILENT`, `DRIVE_LINK_FAULT`, `CAN_TX_FAILED` | Drive fault                                         | Maintenance switches the two motor-driver circuit breakers off and on, then presses **Recover**                                                     |
+| `DRIVE_STOP_UNCONFIRMED`                                                                  | The vehicle cannot confirm it stopped               | Stay clear. Maintenance switches the motor-driver circuit breakers off and on, then presses **Recover**                                                                             |
+| `UNCLEAN_SHUTDOWN`                                                                        | The vehicle lost power last time                    | Switch the motor-driver circuit breakers off and on, press **RESET**                                                                                                         |
 | `BASE_NOT_READY`                                                                          | The vehicle's basics did not come up                | Press **RESET**                                                                                                                                 |
 | `SERVICE_CRASHED`                                                                         | The software restarted itself                       | Nothing. Tell maintenance if it repeats                                                                                                               |
 | `SUPERVISOR_DOWN`, `BASE_EXITED`, `WEB_DOWN`, `BOOT_ERROR`                          | Needs service: software stopped                     | Press **Restart** on **Home**; if it repeats, call maintenance                                                                            |
@@ -857,8 +882,8 @@ Alarms from navigation features (stop-point reader, map navigation) are listed i
 | Symptom                                    | Possible cause                                                                    | Action                                                                                   |
 | ------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Nothing lights or starts at main switch on | Battery empty; main breaker tripped; battery switched off                         | Charge; check the circuit breakers (maintenance)                                         |
-| Web page does not open                     | Tablet not on the vehicle's network                                               | Connect the tablet to network `[VALUE]`                                                |
-| Vehicle does not move in **MANUAL**  | **MANUAL ARM** pressed in; direction button held since power-on             | Turn **MANUAL ARM** to release it; release the direction button and press it again |
+| Web page does not open                     | Tablet not on the vehicle's network                                               | Connect the tablet to the vehicle's Wi-Fi network (default `agv_field`; set per site)                                                |
+| Vehicle does not move in **MANUAL**  | **MANUAL ARM** at **OFF**; direction button held since power-on             | Turn **MANUAL ARM** to **ON**; release the direction button and press it again |
 | **START** does nothing               | Selector not in **AUTO**; **E-STOP** pressed; button held at power-on | Check selector, **E-STOP**; release and press again                                |
 | Frequent stops without obstacle            | Dirty scanner window; strong light; reflective objects                            | Clean; check the area                                                                    |
 
@@ -875,7 +900,7 @@ PT INTI GANDA PERDANA service: sales@igp-astra.co.id
 Before any work inside the vehicle, on the wheels, or on the electrical equipment:
 
 1. Stop the vehicle off the travel path; uncouple all trolleys.
-2. Selector to **MANUAL**, **MANUAL ARM** pressed in, press **E-STOP**.
+2. Selector to **MANUAL**, **MANUAL ARM** at **OFF**, press **E-STOP**.
 3. Switch off the main switch.
 4. Lock it in the off position with a personal padlock. Attach a tag with your name.
 5. Check the vehicle is dead: try **RESET** and the pendant; nothing must happen.
@@ -898,12 +923,14 @@ Work on the electrical box only by an electrically skilled person. The battery s
 | Holding brakes                | Stopping-distance check (chapter 13)                                                                                                                                                                        | Every 3 months                                   | M  |
 | Motor power cut-off           | Check (chapter 13)                                                                                                                                                                                          | Every 3 months                                   | M  |
 | Wheel encoders                | Check mounting (no play between encoder and shaft, screws secured), cable and M12 connector; replace at end of mission time (20 years from the date code yyww on the label, or earlier at the bearing life) | Every 3 months                                   | M  |
-| Hitch                         | Check wear of the hook and the securing device                                                                                                                                                              | Monthly                                          | M  |
+| Hitch                         | Check wear of the hook, the lever and the spring                                                                                                                                                              | Monthly                                          | M  |
 | Line sensor                   | Check height above floor 20–40 mm; clean                                                                                                                                                                   | Every 3 months                                   | M  |
 | Cables and connectors         | Check for damage, strain relief                                                                                                                                                                             | Every 3 months                                   | M  |
 | Labels                        | Readable; replace if needed                                                                                                                                                                                 | Every 3 months                                   | M  |
 | Magnetic tape                 | Check for wear, lifting; repair                                                                                                                                                                             | Monthly; at `MLS_FIELD_WEAK`                   | M  |
 | Motor and driver temperature  | Check the **Alarms** log for temperature warnings (driver 70 °C, motor 80 °C)                                                                                                                       | Monthly                                          | M  |
+
+O = operator, M = maintenance personnel.
 
 ### 15.3 Cleaning
 
@@ -925,6 +952,8 @@ Use only spare parts from the component list.
 | Wheel encoders                              | Commissioning engineer      | Mount per SICK instructions (feather key, screw torques, thread locker); safe speed check (chapter 13) |
 | **E-STOP**, **RESET**, selector | Electrically skilled person | Chapter 13 checks                                                                                      |
 
+M = maintenance personnel.
+
 ---
 
 ## 16. Technical data
@@ -933,8 +962,8 @@ Use only spare parts from the component list.
 
 | Item                           | Value                                                                                                                     |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Dimensions (L × W × H)       | 1400 x 540 x 410 mm                                                                                                      |
-| Unladen mass                   | 160 kg                                                                                                                    |
+| Dimensions (L × W × H)       | 1400 × 574 × 367 mm (body); 1604 × 596 × 591 mm with the towing hitch                                                                                                      |
+| Unladen mass                   | 150 kg                                                                                                                    |
 | Towed mass                     | max. 1 000 kg                                                                                                             |
 | Track width (wheel centres)    | 487 mm                                                                                                                    |
 | Drive wheel diameter           | 180 mm                                                                                                                    |
@@ -959,6 +988,12 @@ Use only spare parts from the component list.
 | Item             | Value           |
 | ---------------- | --------------- |
 | Horn sound level | 85 dB(A) at 1 m |
+
+---
+
+## 17. Decommissioning and disposal
+
+> **[REVIEW]** This chapter is not written in this revision. It will cover taking the vehicle out of service and the disposal of the battery and the electronic parts.
 
 ---
 
@@ -987,29 +1022,13 @@ See document IGP-IPR-CD-001. Not reproduced here.
 | E-STOP           | Emergency stop push-button                                                                                                                                                       |
 | Holding brake    | Spring-applied brake in each motor; closed whenever the motor is not powered                                                                                                     |
 | MANUAL           | Operating mode in which the operator drives the vehicle with hold-to-run controls                                                                                                |
-| MANUAL ARM       | Black mushroom push-button on the pendant, latching, turn to release. Released: the motors are powered for manual driving. Pressed in: the motors are off. Not an emergency stop |
+| MANUAL ARM       | Black selector switch on the pendant, positions **OFF** and **ON**. **ON**: the motors are powered for manual driving. **OFF**: the motors are off. Not an emergency stop |
 | Protective field | Area monitored by the safety scanner; an object in it stops the vehicle                                                                                                          |
 | STO              | Safe torque off: removal of motor torque by the safety function                                                                                                                  |
 | Stop point       | Position on the tape route where the vehicle stops and waits for **START**                                                                                                 |
 | Trolley train    | All trolleys coupled behind the vehicle                                                                                                                                          |
 | Warning field    | Area monitored by the scanner that slows the vehicle (not safety-related)                                                                                                        |
 
+### Annex E — Alarm list
 
-## Editorial: image register (remove before release)
-
-| ID        | Chapter  | Shows                                                                                   | Purpose                                                                     | Needed? |
-| --------- | -------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------- |
-| IMG-01-01 | 1.3      | Position of the nameplate                                                               | Identification                                                              | ☐      |
-| Labels    | 1.3, 3.7 | Nameplate and safety signs, drawn as SVG in `images/labels/` (ISO 7010 signs redrawn) | Replace with the artwork of the labels fitted on the vehicle before release | ☑      |
-| IMG-03-01 | 3.3      | Safety chain block diagram                                                              | Explains the safety functions                                               | ☐      |
-| IMG-03-02 | 3.4      | Scanner fields, top view, with trolley train                                            | Safety — hard to describe in words                                         | ☐      |
-| IMG-03-03 | 3.6      | Hazard zones along the tape route and at a pivot                                        | Safety                                                                      | ☐      |
-| IMG-03-04 | 3.7      | Label positions                                                                         | Labels                                                                      | ☐      |
-| IMG-04-01 | 4.1      | Vehicle overview with callouts                                                          | Orientation, tag lookup                                                     | ☐      |
-| IMG-04-02 | 4.3      | Control panel with callouts                                                             | Operation                                                                   | ☐      |
-| IMG-04-03 | 4.4      | Pendant                                                                                 | Operation                                                                   | ☐      |
-| IMG-04-04 | 4.5      | **Home** page                                                                     | Operation                                                                   | ☐      |
-| IMG-04-05 | 4.6      | Towing hitch, coupled and uncoupled                                                     | Coupling                                                                    | ☐      |
-| IMG-06-01 | 6.2      | Tape layout rules                                                                       | Site preparation                                                            | ☐      |
-| IMG-06-02 | 6.5      | Clearance and swept path in a curve                                                     | Site preparation                                                            | ☐      |
-| IMG-10-01 | 10.4     | Coupling sequence                                                                       | Operation                                                                   | ☐      |
+> **[REVIEW]** The complete alarm list is generated from the vehicle software. It is not reproduced in this revision. The operator alarms are in chapter 14.2.

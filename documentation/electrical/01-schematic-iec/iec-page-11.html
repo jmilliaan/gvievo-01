@@ -23,7 +23,7 @@
     const blk = (x, y, w, h, lines) => s.box(x, y, w, h, lines, { size1: 2.8, size: 2.2 });
 
     /* ---- vehicle controller ---- */
-    blk(30, 95, 70, 40, ['-KE3', 'Vehicle controller', 'industrial PC', '12 V supply /32']);
+    blk(30, 95, 70, 40, ['-KE3', 'Vehicle controller', 'industrial PC', '12 V supply /32.2']);
 
     /* ---- CAN ---- */
     s.text(150, 28, 'CAN bus, 125 kbit/s, CANopen', { size: 3, weight: 600 });
@@ -32,7 +32,7 @@
     s.text(103, 101, 'USB  -WG6', { size: 2.2 });
     s.line(173, 60, 173, 80, 0.6);
     s.line(173, 80, 392, 80, 0.9);
-    s.text(392, 76, 'CAN H / CAN L / CAN GND  /51', { size: 2.3, anchor: 'end', mono: true });
+    s.text(392, 76, 'CAN H / CAN L / CAN GND  /51.3', { size: 2.3, anchor: 'end', mono: true });
     [['-TA1', 'Motor driver left', 'node 1', 215], ['-TA2', 'Motor driver right', 'node 2', 265],
      ['-BG3', 'Line sensor MLSE', 'node 10', 315], ['-GB1', 'Battery BMS', '+BT', 365]].forEach(([t, d, n, x]) => {
       s.dot(x, 80); s.line(x, 80, x, 92, 0.6);
@@ -60,7 +60,7 @@
     s.note(306, 214, [
       'The safety stop of -BG1 does not use',
       'this network: its OSSDs are wired to',
-      'the safety controller (page 41).',
+      'the safety controller (/41.3).',
     ], { size: 2.2 });
   });
 </script>

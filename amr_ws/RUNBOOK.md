@@ -438,6 +438,26 @@ on blocks:
 5. Stopping the commissioning node mid-move halts within 0.2 s.
 6. `kill -9` of drive_node trips 1016h.
 
+### Controlled stop input QSTOP (planned, set only once Q4 is wired)
+
+The safety controller output `-KE2:Q4` will drive IN2 (pin 18) of both drives
+as QSTOP: on a safety stop the drives brake at the quick stop rate, then the
+safety controller removes torque (STO) at standstill (circuit diagram pages 42
+and 50; `documentation/electrical/01-schematic-iec/q4-controlled-stop-plan.md`).
+Set in both drives with MEXE02, then save, power-cycle and read back:
+
+| MEXE02 parameter | Value |
+|---|---|
+| DIN2 input function | 4: QSTOP |
+| DIN2 inverting mode | 1: invert (0 V = stop) |
+| QSTOP input action | 2: deceleration stop, current cut off after stopping (default) |
+| DIN2 ON signal dead-time | 0 (default) |
+| Quick stop rate (p7), 6085h | 1600, as in the PP table above |
+
+**Do not set DIN2 before Q4 and IN-COM are wired.** With inverting on, an
+open IN2 is a held quick stop: the drives sit in Switch on disabled and will
+not enable. While QSTOP is held the drive state looks the same as STO held.
+
 ### MLS marker codes (bench, 2026-10-09)
 
 Markers are short 15 mm strips of south-up tape beside the north-up track. The MLS

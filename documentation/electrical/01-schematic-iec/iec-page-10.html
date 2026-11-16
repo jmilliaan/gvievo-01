@@ -24,36 +24,37 @@
     const ref = (x, y, t) => s.text(x, y + H / 2 + 3.6, t, { size: 2.2, mono: true, anchor: 'middle' });
 
     // battery → main breaker → 48 V bus
-    blk(30, 125, 46, ['-GB1', 'Battery 48 V', 'with BMS']); ref(53, 125, '/20');
+    blk(30, 125, 46, ['-GB1', 'Battery 48 V', 'with BMS']); ref(53, 125, '/20.0');
     s.arrow(76, 125, 92, 125);
-    blk(92, 125, 40, ['-QA1', 'Main breaker', '2P 32 A']); ref(112, 125, '/20');
+    blk(92, 125, 40, ['-QA1', 'Main breaker', '2P 32 A']); ref(112, 125, '/20.1');
     s.arrow(132, 125, BUS, 125);
     s.line(BUS, 45, BUS, 220, 0.9);
     s.text(BUS - 2, 41, '48 V bus  1P48 / 1N48', { size: 2.6, weight: 600, anchor: 'middle' });
 
     // drive branches
-    [['-FC1', '1P 13 A', '-TA1', 'left', '-MA1', 60], ['-FC2', '1P 13 A', '-TA2', 'right', '-MA2', 100]]
-      .forEach(([fc, r, ta, side, ma, y]) => {
+    [['-FC1', '1P 13 A', '-TA1', 'left', '-MA1', 60, '/20.2', '/21.1, /42.0', '/21.2'],
+     ['-FC2', '1P 13 A', '-TA2', 'right', '-MA2', 100, '/20.4', '/21.6, /42.5', '/21.6']]
+      .forEach(([fc, r, ta, side, ma, y, rf, rt, rm]) => {
         s.dot(BUS, y); s.arrow(BUS, y, 170, y);
-        blk(170, y, 40, [fc, r]); ref(190, y, '/20');
+        blk(170, y, 40, [fc, r]); ref(190, y, rf);
         s.arrow(210, y, 228, y);
-        blk(228, y, 56, [ta, `Motor driver, ${side}`, 'BLVD-KRD']); ref(256, y, '/21, /42');
+        blk(228, y, 56, [ta, `Motor driver, ${side}`, 'BLVD-KRD']); ref(256, y, rt);
         s.arrow(284, y, 303, y);
         s.motor(310, y, 7);
         s.text(320, y - 2, ma, { size: 2.8, weight: 600 });
         s.text(320, y + 2, '400 W, brake', { size: 2.2 });
-        ref(310, y + 1, '/21');
+        ref(310, y + 1, rm);
       });
 
     // converter branches with their loads
-    [['-TA3', '48 → 24 V', '150 W', '-FC3', '1P 6 A', 165, '/30',
-      ['24 V loads (1P24 / 1N24)', '-BG1 scanner, -KE1/-KE2 safety controller,', '-PJ1 horn, -KE4 I/O module  /30',
-       '-PH1 display, -BG3 line sensor, -GQ1…3 fans,', '-TA1/-TA2 network supply  /31']],
-     ['-TA4', '48 → 12 V', '100 W', '-FC4', '1P 10 A', 215, '/32',
-      ['12 V loads (1P12 / 1N12)', '-KE3 vehicle controller,', '-BG4 RFID reader  /32']]]
-      .forEach(([ta, v, p, fc, r, y, pg, loads]) => {
+    [['-TA3', '48 → 24 V', '150 W', '-FC3', '1P 6 A', 165, '/30.0', '/20.5',
+      ['24 V loads (1P24 / 1N24)', '-BG1 scanner, -KE1/-KE2 safety controller,', '-PJ1 horn, -KE4 I/O module  /30.1',
+       '-PH1 display, -BG3 line sensor, -GQ1…3 fans,', '-TA1/-TA2 network supply  /31.0']],
+     ['-TA4', '48 → 12 V', '100 W', '-FC4', '1P 10 A', 215, '/32.0', '/20.7',
+      ['12 V loads (1P12 / 1N12)', '-KE3 vehicle controller,', '-BG4 RFID reader  /32.2']]]
+      .forEach(([ta, v, p, fc, r, y, pg, rc, loads]) => {
         s.dot(BUS, y); s.arrow(BUS, y, 170, y);
-        blk(170, y, 46, [ta, `DC/DC ${v}`, `${p}, isolated`]); ref(193, y, '/20');
+        blk(170, y, 46, [ta, `DC/DC ${v}`, `${p}, isolated`]); ref(193, y, rc);
         s.arrow(216, y, 234, y);
         blk(234, y, 40, [fc, r]); ref(254, y, pg);
         s.arrow(274, y, 292, y);

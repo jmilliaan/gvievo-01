@@ -72,6 +72,7 @@ Pages are numbered in groups, so pages can be inserted without renumbering every
 - **Numbering:** sequential within each class across the whole vehicle: `-SJ1`, `-SJ2`, … Do not restart per location.
 - **Terminals:** IEC 61666, `tag:terminal`:
   - `-KE2:I5` is terminal I5 of the safety controller I/O module.
+- **Wire markers (decided 2026-11-15):** the markers on the vehicle are reprinted to page 76. Potential conductors: potential name (1P24 …). Safety controller wires: signal name (X1, ESTOP1, MANUAL, RESET, OSSD1, HWTO1, EDM-L …). I/O module wires: channel name (DI00 …, DO0 …). The old markers (L.HWTO1+, F.OSSD1, P.EMG, SS.MAN, DI.00 …) are replaced.
 - **No terminal strip (decided 2026-10-31):** the old TB numbers are not drawn. The vehicle carries no matching terminal numbers, so drawing them would confuse an assessor comparing drawing and vehicle. Wires are identified by the potential or signal name on their wire markers (1P24, HWTO1, DI03). A separate assembly wiring diagram will follow.
 - **Full tag on the sheet:** written next to the symbol, with its type and rating underneath. For example:
 
@@ -131,18 +132,36 @@ Interruption points carry the potential name and the target, for example `1P24 /
 ## 8. Safety circuit
 
 - **Pages:** all safety wiring sits in pages 40–49. Other pages refer to it; they never repeat it.
-- **Safety-function IDs:** written beside each device on the safety pages and in the I/O table. **[decide]** They are aligned with the operation manual, chapter 3.3:
+- **Safety-function IDs (decided 2026-11-15, back on the sheets):** a boxed badge (`s.sf()`) beside each safety device on pages 12 and 40–45, a column in the I/O table (page 44) and in the parts list (page 80), and the list on page 5. One ID per hardware row of the operation manual, chapter 3.3. The source is `PROJECT.safetyFunctions`:
 
 | ID | Safety function | Devices |
 | --- | --- | --- |
-| SF1 | Emergency stop | `-SJ1`, `-KE1`/`-KE2`, STO of `-TA1`/`-TA2` |
-| SF2 | Personnel detection, front | `-BG1`, `-KE1`/`-KE2`, STO |
+| SF1 | Emergency stop | `-SJ1`, `-KE1`/`-KE2`, quick stop then STO of `-TA1`/`-TA2` (SS1) |
+| SF2 | Personnel detection, front | `-BG1`, `-KE1`/`-KE2`, quick stop then STO (SS1) |
 | SF3 | Personnel detection, rear | Not fitted in this revision. ID reserved |
 | SF4 | Mode selection (protective field active only in AUTO) | `-SJ4`, `-KE2` |
 | SF5 | Prevention of unexpected start-up (reset) | `-SJ3`, `-KE2` |
+| SF6 | Speed limit in AUTO (1.1 m/s) | `-BG5`, `-BG6`, `-KE5`, quick stop then STO (SS1) |
+| SF7 | Standstill monitoring (also ends the quick stop) | `-BG5`, `-BG6`, `-KE5` |
+| SF8 | Motor power-off check (EDM) | EDM of `-TA1`/`-TA2` → `-KE2:I3`/`I4` |
+
+  SF8 is new (2026-11-15). The manual lists "Motor power-off check" as its own row, so it gets its own ID. The operation manual does not print the IDs yet.
 
 - **Channels:** each channel is a separate conductor to a separate terminal. Test outputs X1 / X2 are drawn as the source of each E-stop channel.
 - **STO:** both channels to both drives, with the EDM feedback to I3 / I4 drawn.
-- **Test pulses:** any output with test pulses switched off is marked "TEST PULSES OFF", with the reason in a note. Q3 and Q4 are spare in this revision.
+- **Controlled stop (decided 2026-11-15):** SF1, SF2 and SF6 stop with SS1. `-KE2:Q4` switches off first: QSTOP on IN2 (pin 18) of both drivers, looped like HWTO1/HWTO2, so both brake at the quick-stop rate (6085h = 1600). Q1/Q2 (STO) follow when `-KE5` reports standstill (SF7) or at the latest after «t max». Driver parameters are set in MEXE02 and listed on page 50. Plan: `q4-controlled-stop-plan.md`.
+- **Test pulses:** any output with test pulses switched off is marked "TEST PULSES OFF", with the reason in a note. Q3 (E-stop status to `-KE4:DI09`, 2026-11-15) has test pulses off because it feeds a standard input: a test pulse would read as a pressed E-stop. Q4 (QSTOP, 2026-11-15) has test pulses off too: a test pulse could start a quick stop.
 - **Unresolved safety wiring is drawn in red with a note.** Do not leave it out.
-- **Page 44:** one I/O table for the safety controller, with columns for terminal, signal, device tag, test pulse, safety function and page reference.
+- **Page 44:** one I/O table for the safety controller, with columns for terminal, signal, device tag, test pulse, safety function, wire marker, "off (0) means" and page reference.
+
+## 9. Reading aids (decided 2026-11-15)
+
+Informative only: they never change wiring, tags or symbols. Plan and reasons: `readability-plan.md`.
+
+- **Function text:** `s.pathText(c1, c2, text)` under the top column strip on every circuit page. It says in plain words what the circuit below does. It is not a designation: no `=`, no SF ID.
+- **References:** always `/page.column` in the drawing area. `check-set.ps1` reports any `/NN` without a column. Table "Page" columns and the words "page 50" (for table pages) are exempt.
+- **Device box lines:** tag; what it is in words; maker and type; `s.alsoOn(tag)` = "Also on page(s) …" from the parts list.
+- **Interruption points:** `offDown()` / `fromTop()` take a signal name (bold) as a fifth argument, e.g. MANUAL → `-KE4:DI02 /60.2`.
+- **Wire markers:** written along every signal conductor that leaves a contact or a module terminal, in the words of page 76 (`PROJECT.markers`). Conductors on a potential carry the potential name and are not marked on the drawing.
+- **Notes:** `s.notes(x, y, items, o)` numbers the page-specific items, then adds the standing lines in the same words everywhere ("Control wiring: AWG22 blue unless marked.", "All devices in +EB unless boxed.").
+- **Page 2** carries "How to read this circuit diagram" (`PROJECT.readingGuide`). **Pages 44 and 62** have an "Off (0) means" column.

@@ -12,7 +12,7 @@
 <body>
 
 <nav class="toolbar" aria-label="Export">
-  <strong>PROJ01 · Sheet 7 / «XX» · Motor driver wiring</strong>
+  <strong>PROJ01 · Sheet 7 / 11 · Motor driver wiring</strong>
   <button type="button" class="primary" id="png">Download PNG</button>
   <button type="button" id="pdf">Print / PDF</button>
   <span class="status" id="status">A4 portrait · vector</span>
@@ -26,12 +26,12 @@
   // source: input-sketch/proj01/page07.jpg (upright) + BLVD-KRD pinout table from the user
   // layout loosely follows the manufacturer pinout: connector face, two pin tables, notes
   const META = {
-    customer: '«CUSTOMER»', designer: '«DESIGNER»',
+    customer: '«CUSTOMER»', designer: 'PT INTI GANDA PERDANA',
     content: 'MOTOR DRIVER WIRING',
-    approval: '«NAME»', checked: '«NAME»', designed: '«NAME»', drawn: '«NAME»',
-    date: '«DD/MM/YY»', scale: '',
+    approval: 'ROBERTA A.', checked: 'JOKI I.', designed: 'JOY M.', drawn: 'JOY M.',
+    date: '01/11/26', scale: '',
     title: 'ELECTRIC DIAGRAM',
-    model: '«MODEL»', dwg: '«-00-00-»', sheet: 7, of: '«XX»',
+    model: 'AGV I-PRIME', dwg: '«-00-00-»', sheet: 7, of: '11',
     note: '',
     refs: [],
   };
@@ -61,8 +61,8 @@
   // new wiring through terminal blocks, one group per driver
   const NEW = [11, 12, 14, 26, 27, 28];
   const DRIVERS = [
-    { y0: 171, col: 3, name: ['DRIVER 01', 'BLVD-KRD', '(LEFT)'], plcIn: 'I3' },
-    { y0: 207, col: 4, name: ['DRIVER 02', 'BLVD-KRD', '(RIGHT)'], plcIn: 'I4' },
+    { y0: 171, col: 3, name: ['DRIVER 01', 'BLVD-KRD', '(LEFT)', '-TA1'], plcIn: 'I3' },
+    { y0: 207, col: 4, name: ['DRIVER 02', 'BLVD-KRD', '(RIGHT)', '-TA2'], plcIn: 'I4' },
   ];
 
   JIS.render(document.getElementById('sheet'), {
@@ -103,7 +103,7 @@
       const NX = 114;
       s.text(NX, 17, 'NOTES', { size: 2.2, weight: 600 });
       [
-        '1. APPLIES TO DRIVER 01 (LEFT) AND DRIVER 02 (RIGHT).',
+        '1. APPLIES TO DRIVER 01 (-TA1, LEFT) AND 02 (-TA2, RIGHT).',
         '2. OUT OF THE BOX CONFIG: JUMPERS 11–25, 12–26,',
         '   13–27 FITTED. DISCONNECT ALL.',
         '3. POWER CONNECTOR: LC03D06A CABLE FROM ORIENTAL',
@@ -143,7 +143,7 @@
       };
       table(21, 1);
       table(112, 15);
-      s.text(21, 160.5, 'SAFETY PLC I3 = DRIVER 01 (LEFT) · SAFETY PLC I4 = DRIVER 02 (RIGHT) · — = NOT CONNECTED',
+      s.text(21, 160.5, 'SAFETY PLC = -KE2 · I3 = DRIVER 01 (-TA1, LEFT) · I4 = DRIVER 02 (-TA2, RIGHT) · — = NOT CONNECTED',
         { size: 1.7 });
 
       /* ---- terminal block wiring TB43–TB54 ---- */

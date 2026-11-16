@@ -22,19 +22,20 @@
     s.text(30, 24, 'Parts list: all devices shown in this circuit diagram', { size: 3, weight: 600 });
     s.table(30, 29, [
       { w: 16, title: 'Tag', mono: true },
-      { w: 86, title: 'Description' },
+      { w: 80, title: 'Description' },
       { w: 28, title: 'Maker' },
       { w: 38, title: 'Part number', mono: true },
       { w: 34, title: 'Rating' },
       { w: 20, title: 'Location', mono: true },
       { w: 26, title: 'Pages', mono: true },
-      { w: 16, title: 'Safety' },
+      { w: 22, title: 'Safety fn.' },
     ], PROJECT.devices, { size: 2.3, rowH: 5.5, headH: 6.4 });
 
     s.note(304, 33, [
       'Notes',
-      'Safety = Y: the part is in the',
-      'safety chain (page 12).',
+      'Safety fn.: the safety functions the',
+      'part belongs to (SF1 … SF8, page 5).',
+      'all = every safety function.',
     ], { head: true });
   });
 </script>

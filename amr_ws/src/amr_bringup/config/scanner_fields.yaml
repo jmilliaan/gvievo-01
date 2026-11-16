@@ -1,3 +1,11 @@
+# STALE (owner, 2026-11-15): the scanner now holds the field set of operation manual 3.4 -
+# protective semicircle R 0.40 m, warning 2 0.80 x 1.10 m (corners chamfered 0.20), warning 1
+# 1.20 x 1.30 m (corners chamfered 0.30). The rect values below are still the 2026-10-02 set
+# and were NOT changed: this schema takes rectangles only, and the new gap warning 2 -
+# protective is 0.80 - 0.40 = 0.40 m = stop_m, so the 0.07 m latency margin below is gone.
+# Read the set out of Safety Designer, then decide the shape schema and stop_m.
+# (documentation/submission/improvement-plan-001.md, D1)
+#
 # nanoScan3 field set on agv-01 (Safety Designer, monitoring case 1), as configured
 # 2026-10-02. This file is a COPY for the software: the scanner's verified configuration
 # is the authority, and Safety Designer stays humans-only. Change both together.

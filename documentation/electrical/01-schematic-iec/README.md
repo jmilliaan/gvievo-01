@@ -11,7 +11,7 @@ This folder is for the IEC-style version of the AGV circuit diagrams. The curren
 | `data/project.js` | **The single source of the page data:** title block, page list, locations, classes, potentials, colours and safety functions. The cover, contents and key pages are generated from it |
 | `iec-page-NN.html` | One page per file. Open it in a browser; the toolbar has **Download PNG** and **Print / PDF** (choose A3 landscape, no margins) |
 
-Status (Rev A draft, 2026-11-09): **all 25 pages are drawn.** Page 45 (wheel encoders, drive monitor) was added on 2026-11-09. The list is on page 2. The full set is printed to `circuit-diagrams.pdf`.
+Status (Rev A draft, 2026-11-15): **all 26 pages are drawn.** Page 45 (wheel encoders, drive monitor) was added on 2026-11-09; pages 5 (designation key and safety functions) and 76 (wire markers) on 2026-11-15. Also on 2026-11-15: **controlled stop** -KE2:Q4 → QSTOP on IN2 of both drivers, stop category SS1 with -KE5 standstill (pages 5, 12, 40, 42–45, 50, 76; plan and open items: `q4-controlled-stop-plan.md`). Not yet wired on the vehicle. The list is on page 2. The full set is printed to `circuit-diagrams.pdf`.
 
 **No terminal strip (owner decision, 2026-10-31):** the old TB numbers are not used. Wires are identified by the potential or signal name on their wire markers, and each conductor end by the device terminal (`-KE2:I3`). The terminal diagrams (old pages 70–71) were removed; a separate assembly wiring diagram will follow later.
 
@@ -19,7 +19,8 @@ Status (Rev A draft, 2026-11-09): **all 25 pages are drawn.** Page 45 (wheel enc
 - **Red text:** every red item is open and must be resolved before issue. The browser console lists them. Besides the title-block placeholders and part numbers, these are:
   - the CAN termination at the far bus end, and the cable shield (pages 11, 51);
   - the Flexi Soft test-pulse settings (pages 42–44);
-  - the stop category (page 12).
+  - the time limit «t max» of the controlled stop: Q1, Q2 go off at standstill or at the latest after this time (pages 12, 42);
+  - the IN-COM connection of the driver inputs to 1N24: polarity not in the available manuals (pages 42, 50).
 
 **Engine:** `../kit/iec-sheet.js` with `../kit/iec-sheet.css`. It loads after `../kit/jis-sheet.js` and reuses its primitives. It adds:
 - the A3 landscape frame, the 0–9 column grid and the ISO 7200 title block;
@@ -137,7 +138,7 @@ Sources:
 5. Overview diagrams: power block diagram, network / fieldbus topology
 6. 48 V power distribution
 7. 24 V and 12 V control supply with branch protection
-8. **Safety: safety controller supply, E-stop, scanners, mode selector, reset, STO, feedback (EDM)**
+8. **Safety: safety controller supply, E-stop, scanners, mode selector, reset, STO, controlled stop (QSTOP), feedback (EDM)**
 9. Drives and motors
 10. Vehicle controller and I/O module, with I/O overview pages
 11. Sensors, operator controls, horn
@@ -267,3 +268,5 @@ IFA Report 2/2017e (DGUV) has component-level example circuits for Categories B 
 
 
 > **2026-11-09 simplification (owner):** page 3 (designation key) moved to `archive/`; standards list, document-kind codes (&AB/&EFS…), safety-function IDs (SF1–SF7) and IEC clause citations removed from the rendered set. Tags (+EB-QA1 …) kept. Locations, potentials and the IEC 81346-2 product-class key (classes in `project.js`, tags generated from the parts and cable lists) now sit on page 4 under the symbol legend.
+
+> **2026-11-15 readability round (owner):** the designation key is back as **page 5** (locations, potentials, wire colours, product classes, safety functions), without the standards list, document-kind codes or clause citations. **Safety-function IDs SF1–SF8 are back on the sheets** (pages 5, 12, 40–45, the I/O table page 44 and the parts list page 80). New **page 76: wire markers**; the markers on the vehicle are reprinted to it. Every circuit page has function text under the column strip, `/page.column` references only, plain-language device lines with "Also on page …", signal names at interruption points and standard notes. Page 2 carries "How to read this circuit diagram". Plan and reasons: `readability-plan.md`.

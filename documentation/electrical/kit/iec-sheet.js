@@ -115,12 +115,44 @@
       this.text(xs[0][0] - 1.8, y + 0.85, strip, { size: 2.2, anchor: 'end' });
     },
 
-    // Interruption point at the lower end of a vertical conductor: arrow, target and reference
-    offDown(x, y, target, ref) {
+    // Interruption point at the lower end of a vertical conductor: arrow, then (below it) the
+    // signal name if given (bold), the target and the reference /page.column
+    offDown(x, y, target, ref, sig) {
       this.path(`M${x - 0.9} ${y - 1.8} L${x + 0.9} ${y - 1.8} L${x} ${y} Z`, 0.1, INK);
       const k = this.textScale;
-      this.text(x, y + 3.4 * k, target, { size: 2.3, anchor: 'middle' });
-      if (ref) this.text(x, y + 6.6 * k, ref, { size: 2.3, anchor: 'middle', mono: true });
+      let yy = y + 3.4 * k;
+      if (sig) { this.text(x, yy, sig, { size: 2.3, anchor: 'middle', weight: 600 }); yy += 3.2 * k; }
+      this.text(x, yy, target, { size: 2.3, anchor: 'middle' });
+      if (ref) this.text(x, yy + 3.2 * k, ref, { size: 2.3, anchor: 'middle', mono: true });
+    },
+
+    // Function text: plain-language caption of the circuit in columns c1..c2, written just
+    // below the top column strip, with short ticks at the span ends. Not a designation (no '=').
+    pathText(c1, c2, t) {
+      const x1 = G.fx + G.colW * c1, x2 = G.fx + G.colW * (c2 + 1), y = G.areaY1;
+      this.line(x1 + 1.5, y, x1 + 1.5, y + 2.2, 0.2);
+      this.line(x2 - 1.5, y, x2 - 1.5, y + 2.2, 0.2);
+      this.text((x1 + x2) / 2, y + 4.3, t, { size: 2.3, weight: 600, anchor: 'middle', maxw: x2 - x1 - 6 });
+    },
+
+    // Safety-function badge: the ID(s) in a thin box, e.g. sf(x, y, 'SF1') or sf(x, y, 'SF1 SF2').
+    // (x, y) = left end of the baseline.
+    sf(x, y, ids) {
+      const k = this.textScale, w = (ids.length * 1.45 + 2.2) * k;
+      this.rect(x, y - 2.9 * k, w, 3.8 * k, 0.25);
+      this.text(x + w / 2, y, ids, { size: 2.2, weight: 600, anchor: 'middle', mono: true });
+      return x + w;
+    },
+
+    // "Also on pages …" for a device, from the parts list (PROJECT.devices), without this page
+    alsoOn(tag) {
+      const d = ((window.PROJECT || {}).devices || []).find(r => r[0] === tag);
+      if (!d) return '';
+      const pages = String(d[6]).split(/,\s*/).flatMap(p => {
+        const m = p.match(/^(\d+)[–-](\d+)$/);
+        return m ? Array.from({ length: +m[2] - +m[1] + 1 }, (_, i) => String(+m[1] + i)) : [p];
+      }).filter(p => p && p !== String(this.pageNo));
+      return pages.length ? `Also on page${pages.length > 1 ? 's' : ''} ${pages.join(', ')}` : '';
     },
 
     // Horizontal potential rail: name and source left, continuation arrow and target right.
@@ -216,11 +248,14 @@
     },
 
     // Interruption point at the upper start of a vertical conductor: source and reference above
-    fromTop(x, y, source, ref) {
+    // (signal name, if given, bold on top)
+    fromTop(x, y, source, ref, sig) {
       this.path(`M${x - 0.9} ${y - 1.8} L${x + 0.9} ${y - 1.8} L${x} ${y} Z`, 0.1, INK);
       const k = this.textScale;
-      this.text(x, y - 3.2 - (ref ? 3.2 * k : 0), source, { size: 2.3, anchor: 'middle' });
+      const ys = y - 3.2 - (ref ? 3.2 * k : 0);
+      this.text(x, ys, source, { size: 2.3, anchor: 'middle' });
       if (ref) this.text(x, y - 3.2, ref, { size: 2.3, anchor: 'middle', mono: true });
+      if (sig) this.text(x, ys - 3.2 * k, sig, { size: 2.3, anchor: 'middle', weight: 600 });
     },
 
     // Line with an arrowhead at its end (overview diagrams)
@@ -284,6 +319,26 @@
     // Free note block, one string per line
     note(x, y, lines, o = {}) {
       lines.forEach((t, i) => this.text(x, y + (o.lh || 3.6) * this.textScale * i, t, { size: o.size || 2.3, weight: i === 0 && o.head ? 600 : 500 }));
+    },
+
+    // Standard "Notes" block: page-specific items first (a string, or an array of wrapped lines),
+    // then the standing lines in the same words on every page. Numbered automatically.
+    // o.wiring: 'control' (default), '48', 'both' or false; o.loc: 'boxed' (default), 'all' or false.
+    notes(x, y, items, o = {}) {
+      const std = [];
+      const w = o.wiring === undefined ? 'control' : o.wiring;
+      if (w === 'control' || w === 'both') std.push('Control wiring: AWG22 blue unless marked.');
+      if (w === '48' || w === 'both') std.push('48 V wiring: NYAF black, size as marked.');
+      const loc = o.loc === undefined ? 'boxed' : o.loc;
+      if (loc === 'boxed') std.push('All devices in +EB unless boxed.');
+      if (loc === 'all') std.push('All devices in +EB.');
+      const lines = ['Notes'];
+      [...items, ...std].forEach((it, i) => {
+        const parts = Array.isArray(it) ? it : [it];
+        parts.forEach((t, k) => lines.push(k ? `   ${t}` : `${i + 1}. ${t}`));
+      });
+      this.note(x, y, lines, Object.assign({ head: true }, o.style || {}));
+      return y + (o.style && o.style.lh || 3.6) * this.textScale * lines.length;
     },
   };
 
@@ -370,7 +425,9 @@
       });
 
     // draft stamp in the margin
-    if (doc.status) s.text(14, G.fy2 - 2, doc.status, { size: 2.6, weight: 600, rotate: -90, fill: '#555' });
+    // plus the confidentiality line (doc.notice), owner 2026-11-15
+    const stamp = [doc.status, doc.notice].filter(Boolean).join('  ·  ');
+    if (stamp) s.text(14, G.fy2 - 2, stamp, { size: 2.6, weight: 600, rotate: -90, fill: '#555' });
   }
 
   // All text is drawn this much larger than the sizes written in the code (owner, 2026-11-01:
@@ -416,7 +473,8 @@
       }
       return false;
     };
-    const status = ((window.PROJECT || {}).doc || {}).status;
+    const D0 = (window.PROJECT || {}).doc || {};
+    const status = [D0.status, D0.notice].filter(Boolean).join('  ·  ');
     const out = [];
     texts.forEach((a, i) => {
       const b = a.b, at = `"${a.s}" @${b.x1.toFixed(0)},${b.y2.toFixed(0)}`;
@@ -426,6 +484,13 @@
         if (b.x1 < o.x2 && o.x1 < b.x2 && b.y1 < o.y2 && o.y1 < b.y2) out.push(`text   ${at}  x  "${c.s}"`);
       });
       if (segs.some(sg => hit(b, sg))) out.push(`line   ${at}`);
+    });
+    // cross-references in the drawing must be /page.column (conventions §1); table cells
+    // (texts with data-maxw) and the title block are exempt
+    [...svg.querySelectorAll('text')].forEach(t => {
+      if (t.dataset.maxw) return;
+      const m = t.textContent.match(/(^|[\s(,])\/(\d{1,2})(?![.\d])/);
+      if (m) out.push(`ref    "${t.textContent}"  /${m[2]} has no column`);
     });
     const pre = document.createElement('pre');
     pre.id = 'check';
@@ -441,6 +506,7 @@
     const s = new JIS.Sheet(svg);
     Object.assign(s, SYM);
     s.textScale = TEXT_SCALE;
+    s.pageNo = spec.page;
     frame(s, spec, spec.page);
     s.textScale = spec.textScale || TEXT_SCALE;
     spec.draw(s, { G, col });

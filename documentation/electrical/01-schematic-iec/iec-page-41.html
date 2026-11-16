@@ -19,10 +19,11 @@
 <script>
   // Front safety laser scanner. source: ../01-schematic/proj01-sheet-08.html (I5/I6 = OSSD1/OSSD2),
   // sheet 03 (supply TB07/TB08). Rear scanner not fitted (owner, 2026-10-30).
-  // Field sizes: amr_ws/src/amr_bringup/config/scanner_fields.yaml (front).
+  // Field sizes: operation manual 3.4 (owner, 2026-11-15). scanner_fields.yaml still holds the 2026-10-02 rectangles.
   IEC.page(41, s => {
     const T = { p: 70, n: 85, o1: 150, o2: 175, eth: 260 }, YM = 190;
 
+    s.pathText(1, 1, 'Scanner supply'); s.pathText(3, 4, 'Personnel detection, OSSD pair'); s.pathText(6, 6, 'Scanner data');
     /* ---- conductors ---- */
     s.line(T.p, 63, T.p, 108); s.line(T.n, 63, T.n, 108);
     s.line(T.o1, 63, T.o1, YM); s.line(T.o2, 63, T.o2, YM);
@@ -34,36 +35,37 @@
       { x: T.p, name: '+24V', sub: 'pin 1' }, { x: T.n, name: '0V', sub: 'pin 3' }, { x: T.o1, name: 'OSSD1', sub: 'pin 2' }, { x: T.o2, name: 'OSSD2', sub: 'pin 4' },
       { x: T.eth, name: 'ETH', sub: 'M12 D' },
     ], ['-BG1', 'SICK nanoScan3 Core I/O NANS3-AAAZ30AN1 · safety laser scanner, front', 'System plug NANSX-AAABAEZZ1: M12 8-pin (power, OSSD) + M12 4-pin D (Ethernet)'], { edge: 'bottom' });
-    s.text(200, 40, 'Protective field 0.50 × 0.80 m', { size: 2.3 });
-    s.text(200, 43.6, 'Warning fields 0.97 m, 1.77 m (not safety)', { size: 2.3 });
+    s.sf(72, 41, 'SF2');
+    s.text(200, 40, 'Protective field: semicircle R 0.40 m (0.80 m wide)', { size: 2.3 });
+    s.text(200, 43.6, 'Warning fields 0.80 × 1.10 m, 1.20 × 1.30 m (not safety)', { size: 2.3 });
 
     s.offDown(T.p, 108, '1P24', '/30.1');
     s.offDown(T.n, 108, '1N24', '/30.1');
-    s.offDown(T.eth, 108, '-KE3 enp1s0 (-WG9)', '/11');
+    s.offDown(T.eth, 108, '-KE3 enp1s0 (-WG9)', '/11.1');
     s.wl(T.o1, 150, 'OSSD1'); s.wl(T.o2, 150, 'OSSD2');
     s.text(T.o2 + 5, 130, 'Personnel detection, front', { size: 2.5, weight: 600 });
     s.text(T.o2 + 5, 134, 'OSSD pair, tested by the scanner', { size: 2.3 });
 
     /* ---- safety controller (+EB) ---- */
     s.module(120, 262, YM, 26, [{ x: T.o1, name: 'I5' }, { x: T.o2, name: 'I6' }],
-      ['-KE2', 'FX3-XTIO84002 · safety controller I/O module', 'Other terminals: /40, /42, /43']);
+      ['-KE2', 'Safety controller I/O module FX3-XTIO84002', s.alsoOn('-KE2')]);
 
     s.cable([T.p, T.n, T.o1, T.o2], 85, '-WG1', 'SICK YF2A18 M12 8-pin, open end');
 
     /* ---- rear scanner: not fitted ---- */
     const bx = 300, by = 140;
     s.path(`M${bx} ${by} h100 v34 h-100 Z`, 0.3).setAttribute('stroke-dasharray', '1.5 1');
+    s.sf(bx + 100 - 2 - (3 * 1.45 + 2.2) * s.textScale, by + 6, 'SF3');
     s.note(bx + 3, by + 6, [
       'Rear scanner (-BG2)',
       'Not fitted in this revision.',
       'No OSSD inputs reserved on -KE2.',
     ], { head: true, size: 2.3, lh: 4 });
 
-    s.note(30, 225, [
-      'Notes',
-      '1. -KE2 inputs I5 / I6: one OSSD input pair.',
-      '2. The Ethernet link carries field and status data for the vehicle controller only (page 11).',
-    ], { head: true });
+    s.notes(30, 225, [
+      '-KE2 inputs I5 / I6: one OSSD input pair.',
+      'The Ethernet link carries field and status data for the vehicle controller only (/11.1).',
+    ], { loc: false });
   });
 </script>
 </body>
