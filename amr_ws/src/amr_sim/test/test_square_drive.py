@@ -1,6 +1,6 @@
 """T2 integration (spec §8 test 1 precursor, and test 6 at the mux level).
 
-fake_base + cmd_mux + diff_drive_odom, driven round a 4 x 5 m square by
+fake_base + fake_panel (MANUAL) + cmd_mux + diff_drive_odom, driven round a 4 x 5 m square by
 square_drive. Raw wheel odometry must match ground truth to < 1 % of the
 distance travelled with slip off, and the wheels must be zero shortly after
 the command stream stops.
@@ -56,6 +56,14 @@ def generate_test_description():
                     executable="fake_base_node",
                     name="fake_base",
                     parameters=[{"slip_noise_std": 0.0}],
+                ),
+                # The mux selects nothing without a fresh, valid panel image (PANEL_STALE):
+                # a MANUAL panel is what lets /cmd_vel_teleop through (2026-11-16, WP-T3).
+                Node(
+                    package="amr_sim",
+                    executable="fake_panel_node",
+                    name="fake_panel",
+                    parameters=[{"auto": False}],
                 ),
                 Node(
                     package="amr_base",
@@ -145,7 +153,7 @@ class TestSquareDrive(unittest.TestCase):
 
     def test_2_wheels_zero_after_command_stream_stops(self, proc_output, square):
         proc_output.assertWaitFor("square done", process=square, timeout=120)
-        # cmd_mux zeroes at 200 ms without input; fake_base at 250 ms without mux.
+        # cmd_mux zeroes at 200 ms without input; fake_base at 200 ms without mux (WP-T2).
         time.sleep(0.5)
         with self.lock:
             w = self.wheels

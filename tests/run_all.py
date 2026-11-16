@@ -165,7 +165,19 @@ MODULES = [
 # + 4 (2026-11-11): panel Start/Reset held levels for the At home combination (test_panel).
 # + 4 (2026-11-13): dio.call_alarm refusals (stop call).
 # + 17 (2026-11-14): test_vehicles - every profile, vehicle.env, identity, the agv-01 pin.
-EXPECTED_CHECKS = 938
+# + 11 (2026-11-16): test_dio_transport (unified plan WP-E6: retries=0, drops/retries_10min,
+#   FC03 image switch).
+# + 24 (2026-11-16, WP-Y2/P10/P7): test_vehicles test_wiring + 8 (io-mapping.md vs both profiles,
+#   KNOWN_OPEN DO8 and «TB?»); test_config + 16 (rear.sensor_ip/host_ip/port and lidar IP
+#   refusals ×7, bus_v_trip_low ×4, scanner_driver_params ×5).
+# + 1 (2026-11-16): test_canmon - the supply edge's detail is stable within a state (WP-P7).
+# + 10 (2026-11-16): emergency suite Part B E1 (test_config +13: DI09 E-stop OK, refused on
+#   reset/start/auto/arm, a pendant channel, DI07 COM0, off the module, missing; estop_confirm_scans
+#   0 / >0.2 s; reset timeout <0.5 / >30 s) and horn section retired (-4 horn refusals, +1
+#   retired-section refusal, lean D16).
+# + 2 (2026-11-16, owner: DI09 HIGH = E-stop pressed, informational): test_config refuses a profile
+#   without panel.estop_active_high and the retired panel.di_estop_ok key.
+EXPECTED_CHECKS = 986
 
 
 # An exception on a helper thread only prints a traceback by default - the

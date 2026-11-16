@@ -109,4 +109,108 @@ def test_suite_pins_the_reference_profile():
           not two["station"]["enabled"] and not two["tape_loc"]["live"])
 
 
-TESTS = [test_every_profile, test_identity, test_selector, test_suite_pins_the_reference_profile]
+# The wiring source of truth (documentation/electrical/01-schematic/io-mapping.md, read only:
+# the electrical docs change through their own SKILL workflow, never from here).
+IO_MAPPING = os.path.join(ROOT, "documentation", "electrical", "01-schematic", "io-mapping.md")
+# Known gaps between the sheet and the profiles, as exact sets (unified plan WP-Y2, 2026-11-16).
+# A test fails when one closes too, so the entry is removed deliberately.
+KNOWN_OPEN_DO = {("motion_on", 8)}      # decision 15: DO8 is switched with motion, nothing on it
+KNOWN_PLACEHOLDER_ROWS = {"DI08"}       # the Manual Arm terminal blocks, «TB?» (HT-2)
+
+
+def _io_table(text, heading):
+    """{channel: description} of the pipe table under `heading` in io-mapping.md section 4,
+    ranges (DO2–DO7, DI0A–DI0F) expanded to one entry per channel. None: no such table."""
+    import re
+    sec = text.split("\n## 4.", 1)
+    if len(sec) < 2:
+        return None
+    body = sec[1].split("\n## ", 1)[0]
+    part = body.split(f"\n### {heading}\n", 1)
+    if len(part) < 2:
+        return None
+    rows = {}
+    for line in part[1].split("\n### ", 1)[0].splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not line.startswith("|") or len(cells) < 2:
+            continue
+        m = re.fullmatch(r"(DI|DO)([0-9A-F]{1,2})(?:\s*[–-]\s*(?:DI|DO)([0-9A-F]{1,2}))?", cells[0])
+        if not m:
+            continue
+        lo = int(m.group(2), 16)
+        hi = int(m.group(3), 16) if m.group(3) else lo
+        for ch in range(lo, hi + 1):
+            rows[ch] = " | ".join(cells[1:])
+    return rows or None
+
+
+def _unwired(desc):
+    d = desc.lower()
+    return "not used" in d or "not wired" in d or "spare" in d or "not connected" in d
+
+
+def test_wiring():
+    """Profile DI/DO map against io-mapping.md (S-io-mapping-parsed-profile-test, unified plan
+    WP-Y2): drift between the sheet and either profile, not between the sheet and the copper."""
+    import re
+    print("\nthe profiles' I/O map against io-mapping.md")
+    text = open(IO_MAPPING, encoding="utf-8").read()
+    di, do = _io_table(text, "Digital inputs"), _io_table(text, "Digital outputs")
+    check("io-mapping.md section 4 has the digital input and output tables", di and do,
+          "" if di and do else "table not found: io-mapping.md section 4 was reworded; update this test")
+    di, do = di or {}, do or {}
+    head = re.search(r"\n## 4\.[^\n]*?(\d+) DI / (\d+) DO", text)
+    n_di, n_do = (int(head.group(1)), int(head.group(2))) if head else (0, 0)
+    profiles = {}
+    for path in sorted(glob.glob(os.path.join(config.PROFILE_DIR, "*.json"))):
+        with open(path) as fh:
+            profiles[os.path.splitext(os.path.basename(path))[0]] = json.load(fh)
+
+    # Panel and pendant channels land on the rows that name their device.
+    want = {("panel", "di_start"): "START", ("panel", "di_reset"): "RESET",
+            ("panel", "di_auto"): "MANUAL/AUTO", ("panel", "di_manual_arm"): "MANUAL ARM",
+            ("pendant", "di_fwd"): "FORWARD", ("pendant", "di_rvs"): "REVERSE",
+            ("pendant", "di_left"): "LEFT", ("pendant", "di_right"): "RIGHT",
+            ("panel", "di_estop"): "ESTOP"}   # emergency-suite Part B E1 (the sheet's row name)
+    bad = [f"{n}: {s}.{k}={p[s][k]} -> {di.get(p[s][k])!r}" for n, p in profiles.items()
+           for (s, k), word in want.items() if k in p[s] and word not in (di.get(p[s][k]) or "")]
+    check("every panel and pendant channel is the DI the sheet names for it", not bad, bad)
+    com1 = [f"{n}: {k}={p['panel'][k]}" for n, p in profiles.items() for k in ("di_manual_arm", "di_estop")
+            if k in p["panel"] and not (8 <= p["panel"][k] <= 15 and "COM1" in di.get(p["panel"][k], ""))]
+    check("Manual Arm and the E-stop signal read in the COM1 group DI08-DI0F", not com1, com1)
+
+    # Names: a wired channel is named, an unwired one is not.
+    names = []
+    for n, p in profiles.items():
+        for kind, rows, key in (("DI", di, "di_names"), ("DO", do, "do_names")):
+            for ch, desc in sorted(rows.items()):
+                name = p["dio"][key][ch] if ch < len(p["dio"][key]) else None
+                if _unwired(desc) == (name not in ("[SPARE]", "n/c")):
+                    names.append(f"{n}: {kind}{ch:X} {name!r} vs {desc[:30]!r}")
+    check("a wired channel has a name, an unused one is [SPARE] or n/c (DI09 ESTOP, DO0/DO1 horn)",
+          not names, names)
+    horn = [f"{n}: {p['dio']['do_names'][:2]}" for n, p in profiles.items()
+            if not all("Horn" in x for x in p["dio"]["do_names"][:2])]
+    check("DO0 and DO1 are named as the horn's two sounds", not horn and "horn" in do.get(0, "").lower()
+          and "horn" in do.get(1, "").lower(), horn)
+
+    # Outputs the software switches are wired, except the known DO8.
+    switched = set()
+    for p in profiles.values():
+        d = p["dio"]
+        switched |= {(k, ch) for k in ("motion_on", "alarm_on", "movement_horn") for ch in d[k]}
+        # (horn.do_channel went with the horn section, lean plan D16, 2026-11-16)
+    open_do = {(k, ch) for k, ch in switched if _unwired(do.get(ch, "not wired"))}
+    check("every switched DO is a wired one, apart from KNOWN_OPEN (DO8 in motion_on, decision 15)",
+          open_do == KNOWN_OPEN_DO, sorted(open_do))
+    counts = [f"{n}: {p['dio']['num_di']}/{p['dio']['num_do']}" for n, p in profiles.items()
+              if not (p["dio"]["num_di"] <= n_di and p["dio"]["num_do"] <= n_do)]
+    check("num_di / num_do fit the module the sheet names (CK-TP5162, 16 DI / 16 DO)",
+          n_di and not counts, counts or f"header {n_di}/{n_do}")
+    held = {f"DI{ch:02X}" for ch, desc in di.items() if "«" in desc} | \
+           {f"DO{ch}" for ch, desc in do.items() if "«" in desc}
+    check("the sheet's open placeholders are exactly KNOWN_OPEN (Manual Arm «TB?»)",
+          held == KNOWN_PLACEHOLDER_ROWS, sorted(held))
+
+
+TESTS = [test_every_profile, test_identity, test_selector, test_suite_pins_the_reference_profile, test_wiring]

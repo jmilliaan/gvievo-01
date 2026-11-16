@@ -62,7 +62,7 @@ def make_node(steps, passes=1):
     n._panel, n._panel_t = panel, n.clock[0]
     n._panel_invalid_t = None
     # the scanner: a clear field, sampled now (WP-A8 ages it like every other input)
-    n.field_source, n.field_fresh = "scanner", 0.5
+    n.field_source, n.field_fresh, n.field_active = "scanner", 0.5, False
     n._scan = object()
     n._pose = lambda: (0.0, 0.0, 0.0)
     n.auto_resume_enabled, n.auto_clear_s, n.auto_resume_estop = True, 2.0, False

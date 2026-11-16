@@ -1,4 +1,4 @@
-"""The real panel adapter (T12): edges, validity, and the horn rule, without ROS."""
+"""The real panel adapter (T12): edges, validity, without ROS."""
 
 import pytest
 from agv_core import config
@@ -99,14 +99,8 @@ def test_malformed_image_is_not_a_press():
     assert not f.valid and not f.start_edge
 
 
-def test_horn_follows_commanded_motion_while_armed_on_a_fresh_command():
-    h = panel_io.horn_wanted
-    assert h(True, 1.0, 1.0, 0.0, 0.2)
-    assert h(True, 0.0, -0.5, 0.1, 0.2)  # rotate in place counts as motion
-    assert not h(True, 0.0, 0.0, 0.0, 0.2)  # armed, holding zero: no horn
-    assert not h(False, 1.0, 1.0, 0.0, 0.2)  # not armed: cannot be moving
-    assert not h(True, 1.0, 1.0, None, 0.2)  # never received a command
-    assert not h(True, 1.0, 1.0, 0.3, 0.2)  # stale command is zero
+# (the setpoint-following horn_wanted and its test are retired: lean plan D16, WP-C7, 2026-11-16;
+# test_panel_publish pins that panel_node has no horn engine left)
 
 
 # ---- pendant -----------------------------------------------------------------

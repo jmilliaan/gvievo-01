@@ -116,6 +116,7 @@ class Snapshots:
         self.panel_t = None
         self.panel_valid = False
         self.panel_manual = False
+        self.panel_emergency = 0  # PanelState.emergency (amr_base/emergency.py), 0 = NORMAL
         self.mapping_gen = None
         self.mapping_state = None
         self.mapping_map_id = ""
@@ -164,6 +165,18 @@ class Snapshots:
             self.panel_t = time.monotonic()
             self.panel_valid = bool(m.valid)
             self.panel_manual = not bool(m.mode_auto)
+            # 0 on a PanelState built before the field (emergency-suite plan Part B)
+            self.panel_emergency = int(getattr(m, "emergency", 0))
+
+    def emergency(self, now: float, fresh_s: float = 1.0) -> int:
+        """The panel's emergency state, or 0 (NORMAL) when there is no fresh panel image: a stale
+        panel is PANEL_STALE's to report, and the mux has no authority without one (kyb contract).
+        A future stamp is not fresh."""
+        with self._lock:
+            return self.panel_emergency if self._panel_fresh_locked(now, fresh_s) else 0
+
+    def _panel_fresh_locked(self, now: float, fresh_s: float) -> bool:
+        return self.panel_t is not None and 0.0 <= now - self.panel_t <= fresh_s
 
     def on_mapping(self, m) -> None:
         with self._lock:
@@ -262,6 +275,7 @@ class Snapshots:
                 commissioning_active=self._commissioning_active_locked(now),  # lock already held
                 line_active=self._line_active_locked(generation),
                 drives_ok=bool(self.drives_t is not None and now - self.drives_t <= 1.0 and self.drives_ok),
+                emergency=self.panel_emergency if self._panel_fresh_locked(now, 1.0) else 0,
             )
 
 
@@ -284,16 +298,25 @@ def drive_ack_refusal(s: Snapshots, now: float, generation: int, fresh_s: float 
         return ""
 
 
-def base_missing(s: Snapshots, now: float, fresh_s: float = 1.0) -> str:
+def base_missing(s: Snapshots, now: float, fresh_s: float = 1.0, health: bool = True) -> str:
+    """What the base lacks, as the operator's item names ("mux, panel"), or "".
+
+    A topic that is not arriving is missing. With `health` (the default; unified plan
+    WP-H2, H-P1-2 A1) a topic that arrives but says the device is not usable counts too:
+    a panel image that is not valid (the DIO island is down: panel_node publishes
+    valid=false) and drives without torque (Switch on disabled under the safety chain, a
+    fault, an unlinked bus: drives_ok()). Boot then waits for them instead of reporting
+    ready over a dead DIO island. The items keep their names, so base_actions() still
+    says what to do about each."""
     with s._lock:
         missing = []
         if s.mux_t is None or now - s.mux_t > fresh_s:
             missing.append("mux")
-        if s.drives_t is None or now - s.drives_t > fresh_s:
+        if s.drives_t is None or now - s.drives_t > fresh_s or (health and not s.drives_ok):
             missing.append("drives")
         if s.wheels_t is None or now - s.wheels_t > fresh_s:
             missing.append("wheel feedback")
-        if s.panel_t is None or now - s.panel_t > fresh_s:
+        if s.panel_t is None or now - s.panel_t > fresh_s or (health and not s.panel_valid):
             missing.append("panel")
     return ", ".join(missing)
 
@@ -313,5 +336,19 @@ def base_actions(s: Snapshots) -> dict:
     }
 
 
-def base_ready(s: Snapshots, now: float) -> bool:
-    return base_missing(s, now) == ""
+def base_ready(s: Snapshots, now: float, health: bool = True) -> bool:
+    """No item missing. The boot (STARTING -> IDLE) and the late BASE_NOT_READY exit use the
+    default, health included. ModeState.base_ready keeps topic receipt only (health=False):
+    the web reads base_ready false as "Starting up", and an E-stop pressed in LINE is a hold
+    on the Home page, not a vehicle starting up. ModeState.base_missing names both."""
+    return base_missing(s, now, health=health) == ""
+
+
+# The supervisor's executor (services, subscriptions, the ModeState timer) must keep turning
+# for the lease to mean anything: a stamp older than this withholds WATCHDOG=1 and the lease
+# (unified plan WP-H4, H-P1-5). The beat timer runs every 0.5 s.
+EXECUTOR_STALE_S = 2.0
+
+
+def executor_stale(now: float, last_beat: float, limit_s: float = EXECUTOR_STALE_S) -> bool:
+    return now - last_beat > limit_s

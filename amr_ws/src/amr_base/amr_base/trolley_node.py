@@ -17,6 +17,7 @@ from agv_core import alarms
 from agv_core import config as vehicle_config
 from sensor_msgs.msg import LaserScan
 
+from amr_base import health_pub
 from amr_base import trolley_detect as td
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import RELIABLE_1, SENSOR_DATA
@@ -30,7 +31,7 @@ except ImportError:  # pragma: no cover - present on the vehicle
 
 class TrolleyNode(LeanNode):
     def __init__(self) -> None:
-        super().__init__("trolley_node")
+        super().__init__("trolley_node", start_parameter_services=False)  # WP-C11: nobody sets params live
         self.detect = td.TrolleyDetect(td.Params.from_profile(vehicle_config))
         self.field = td.RearField(
             vehicle_config.FRESH_FIELD_S,
@@ -49,6 +50,9 @@ class TrolleyNode(LeanNode):
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._silent = False
         self._last = None
+        # rear_scanner row on /amr/device_health (WP-H1, 2026-11-16).
+        self._health = health_pub.Outbox(self)
+        self._health_t0 = time.monotonic()
         self.create_timer(0.1, self._tick)
 
     def _on_scan(self, m: LaserScan) -> None:
@@ -65,7 +69,10 @@ class TrolleyNode(LeanNode):
 
     def _on_paths(self, m) -> None:
         self.field.update(
-            time.monotonic(), getattr(m, "status", None), getattr(m, "active_monitoring_case", None)
+            time.monotonic(),
+            getattr(m, "status", None),
+            getattr(m, "active_monitoring_case", None),
+            tuple(getattr(m, "is_valid", ())),  # WP-E2: missing reads invalid
         )
 
     def _tick(self) -> None:
@@ -89,6 +96,8 @@ class TrolleyNode(LeanNode):
         if (state, rear_field) != self._last:
             self._last = (state, rear_field)
             self.get_logger().info(f"trolley {state} rear field {rear_field} case {rear_case}: {m.detail}")
+        self._health.publish(now, lambda: [health_pub.rear_row(
+            now, now - self._health_t0, self.detect, vehicle_config.REAR_SOURCE == "scanner")])
 
 
 def main() -> None:

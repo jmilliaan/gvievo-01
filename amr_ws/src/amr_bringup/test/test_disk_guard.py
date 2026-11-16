@@ -13,7 +13,8 @@ from amr_bringup.supervisor_node import Supervisor
 
 def fake_usage(mapping):
     def usage(path):
-        return types.SimpleNamespace(free=mapping[path] * 1024 * 1024, total=0, used=0)
+        # "/" is watched too since WP-P4; roomy unless a test says otherwise
+        return types.SimpleNamespace(free=mapping.get(path, 50000) * 1024 * 1024, total=0, used=0)
 
     return usage
 
@@ -72,9 +73,29 @@ def test_the_supervisor_reports_each_edge_once(monkeypatch):
     assert "no longer low" in s.events[-1][1]
 
 
-def survey_sv(level):
+def test_a_read_only_mount_is_its_own_edge_once(monkeypatch):
+    """WP-P4 (H-P2-7): ext4 remounts read-only after an I/O error; saves then fail silently."""
+    s = sv()
+    monkeypatch.setattr(disk.shutil, "disk_usage", fake_usage({"/state": 5000, "/maps": 5000}))
+    flags = {"/": 0}
+    monkeypatch.setattr(disk.os, "statvfs",
+                        lambda p: types.SimpleNamespace(f_flag=flags.get(p, 0)), raising=False)
+    monkeypatch.setattr(disk.os, "ST_RDONLY", 1, raising=False)
+    s._check_disk()
+    assert s.events == []
+    flags["/"] = 1
+    s._check_disk()
+    s._check_disk()
+    assert [c for c, _ in s.events] == ["DISK_READONLY"] and "/" in s.events[0][1]
+    assert s.disk.blocks_new_work
+    flags["/"] = 0
+    s._check_disk()
+    assert s.events[-1][0] == "DISK_READONLY" and "writable again" in s.events[-1][1]
+
+
+def survey_sv(level, readonly=""):
     s = types.SimpleNamespace()
-    s.disk = disk.DiskStatus(120, level, "/maps")
+    s.disk = disk.DiskStatus(120, level, "/maps", readonly)
     s.mode = fsm.IDLE
     s.admit_params = None
     s._lock = __import__("threading").RLock()
@@ -100,6 +121,19 @@ def test_a_full_disk_refuses_a_new_survey_with_the_number_in_the_message(monkeyp
     )
     res = s._srv_survey(req, RequestSurvey.Response())
     assert not res.accepted and "disk full: 120 MB free" in res.message
+
+
+def test_a_read_only_disk_refuses_a_new_survey_and_says_why(monkeypatch):
+    from amr_interfaces.srv import RequestSurvey  # noqa: PLC0415
+
+    monkeypatch.setattr(fsm, "admit", lambda *a, **k: types.SimpleNamespace(ok=True, reason=""))
+    s = survey_sv(disk.OK, readonly="/")
+    req = RequestSurvey.Request(
+        request_id="r1", expected_instance="", expected_generation=0,
+        operation=RequestSurvey.Request.START, map_id="hall",
+    )
+    res = s._srv_survey(req, RequestSurvey.Response())
+    assert not res.accepted and "read-only" in res.message
 
 
 def test_a_low_disk_still_lets_a_survey_start(monkeypatch):

@@ -1,4 +1,4 @@
-# Two commands the operator pages need, and nothing else.
+# Four commands the operator pages need, and nothing else.
 #
 #   install -o root -g root -m 0440 amr-web.sudoers /etc/sudoers.d/amr-web
 #   visudo -c        # always check before trusting it
@@ -8,7 +8,17 @@
 #                       it while the wheels turn or a run is live; sudo does not care,
 #                       so keep the command list exactly this narrow.
 # journalctl          : the "Save report" button packages the last two hours.
+# reset-failed canable@can0.service : clears the CAN bridge after its restart limit
+#                       (unified plan WP-P3), so a re-plug starts it at once. Exactly
+#                       that one unit: sudo matches the whole command line, so
+#                       `systemctl reset-failed amr.service` (or a bare reset-failed,
+#                       which clears every unit) is NOT permitted. An amr.service left
+#                       failed by agv_core.identity (wrong vehicle.env) must stay failed
+#                       until the engineer at the PC has fixed vehicle.env.
 #
 # NOPASSWD is required: there is no terminal behind a button press.
 gvipc-evo-01 ALL=(root) NOPASSWD: /usr/bin/systemctl restart amr.service
 gvipc-evo-01 ALL=(root) NOPASSWD: /usr/bin/journalctl -u amr.service --since -2h --no-pager
+# journal-wifi.txt in the report zip (WP-H3, 2026-11-16): the Wi-Fi reconnect watchdog logs only here.
+gvipc-evo-01 ALL=(root) NOPASSWD: /usr/bin/journalctl -u agv-wifi-reconnect.service --since -2h --no-pager
+gvipc-evo-01 ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed canable@can0.service

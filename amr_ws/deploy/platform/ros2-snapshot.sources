@@ -1,0 +1,15 @@
+# ROS 2 Humble from a fixed snapshot, never from the live repo (unified plan WP-P1,
+# decision 7; S-ros-snapshot-apt-source). installed as /etc/apt/sources.list.d/ros2-snapshot.sources
+# by freeze.sh --go (and kept in step by install.sh once the snapshot key is there).
+#
+# Moving the platform is one reviewable edit of the date below, in a maintenance window
+# (RUNBOOK section 7, "Platform"); rolling back is the same edit back plus
+# `apt-get install --allow-downgrades`. The live packages.ros.org is pinned to -1 by
+# apt-preferences-amr, so no apt install can pull a partial Humble sync any more.
+# http, as packages.ros.org: integrity rests on the signed InRelease (https fails TLS here).
+Types: deb
+URIs: http://snapshots.ros.org/humble/2026-09-14/ubuntu
+Suites: jammy
+Components: main
+Architectures: amd64
+Signed-By: /usr/share/keyrings/ros-snapshots-archive-keyring.gpg

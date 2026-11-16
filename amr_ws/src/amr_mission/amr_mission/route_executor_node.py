@@ -53,6 +53,19 @@ passed AND the drives report torque. Without torque within premove_timeout_s the
 (estop: Start again once the safety chain is reset). Auto-resumed holds keep their power and
 skip the warning: nobody pressed anything.
 
+Emergency (emergency-suite plan Part B E5, owner O-3 2026-11-16; kyb c36c8d2). The E-stop is KNOWN
+from the panel: PanelState.emergency (DI09 = Flexi Soft Q3, amr_base/emergency.py) on a fresh, valid
+image. It never ends the run: a moving run (the pre-move warning included) holds as `estop`, any
+other hold is relabelled `estop` (nothing resumes by itself), READY and PAUSED keep their state.
+After release + Reset the operator presses Start: the warning runs and the route continues where it
+stopped. Load and Start are refused at once while it is not NORMAL. With the panel known NORMAL a
+torque loss with the field clear is NOT an E-stop: it is the `chain` hold (a rear OSSD or another
+safety-chain input; waits for Start, station-call O8), which becomes `field` when the protective
+field shows violated within FIELD_RACE_S (the field reported late: then it resumes by itself) and
+`estop` if DI09 drops. The torque inference above (`estop` from torque alone) is only the fallback
+while the panel is stale or invalid. auto_resume_estop must stay false: a node started with it
+true refuses to start (emergency plan §4).
+
 Prerequisites are debounced (operator decision 2026-09-20): a prerequisite must FAIL
 CONTINUOUSLY for prereq_grace_s before it faults a run or unreadies a loaded mission, so one
 dropped frame is not a fault. This does not extend motion authority - the mux enforces panel,
@@ -131,6 +144,23 @@ def mission_matches_active_map(mission: dict, active: tuple[str, int, str]) -> s
     return None
 
 
+# The protective field reported up to this long after the torque loss still makes a `chain`
+# hold the field's (amr_line.job.FIELD_RACE_S, the same race).
+FIELD_RACE_S = 0.5
+# Holds on the safety chain's terms (hold_policy.SAFETY_CAUSES) plus `chain` (E5, 2026-11-16).
+SAFETY_CAUSES = (*hold_policy.SAFETY_CAUSES, "chain")
+_HOLD_TEXT = {"chain": "safety stop (safety circuit, not the E-stop): {why}"}
+
+
+def auto_resume_estop_refusal(value: bool) -> str:
+    """Why the node refuses to start with this auto_resume_estop, or "". With the DI09 signal an
+    E-stop never resumes by itself (emergency plan §4, owner 2026-10-30): a Start is needed."""
+    if value:
+        return ("auto_resume_estop:=true is refused (emergency-suite plan §4): an E-stop hold "
+                "resumes only on a physical Start; set it false")
+    return ""
+
+
 class RouteExecutor(LeanNode):
     def __init__(self) -> None:
         super().__init__("route_executor")
@@ -202,6 +232,8 @@ class RouteExecutor(LeanNode):
         self.declare_parameter("safety_window_s", 1.0)
         self.declare_parameter("drives_age_limit_s", vehicle_config.FRESH_EXEC_DRIVES_S)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]: protective field
+        # status[i] while the protective field is occupied (WP-E3), as line_follow
+        self.declare_parameter("field_active_level", False)
         # WP-A8, as line_follow_node: the field state ages like every other input, and only a
         # sim (no scanner) may assume it clear. The launch passes assume_clear for real:=false.
         self.declare_parameter("field_source", "scanner")
@@ -243,12 +275,16 @@ class RouteExecutor(LeanNode):
         self.auto_resume_enabled = bool(p("auto_resume_enabled").value)
         self.auto_clear_s = float(p("auto_resume_clear_s").value)
         self.auto_resume_estop = bool(p("auto_resume_estop").value)
+        why = auto_resume_estop_refusal(self.auto_resume_estop)
+        if why:
+            raise RuntimeError(why)
         self.safety_window = float(p("safety_window_s").value)
         self.drives_age = float(p("drives_age_limit_s").value)
         self.premove_s = max(0.0, float(p("premove_s").value))
         self.premove_timeout_s = max(self.premove_s, float(p("premove_timeout_s").value))
         self._premove_since: float | None = None
         self.field_index = int(p("field_output_index").value)
+        self.field_active = bool(p("field_active_level").value)
         self.field_source = str(p("field_source").value)
         if self.field_source not in ("scanner", "assume_clear"):
             raise ValueError(f"field_source {self.field_source!r}: scanner or assume_clear")
@@ -362,12 +398,34 @@ class RouteExecutor(LeanNode):
         self._panel, self._panel_t = m, self._now()
         if not m.valid:
             self._panel_invalid_t = self._panel_t
+        if self._emergency(self._panel_t):
+            with self._lock:
+                self._emergency_hold()
         if m.start_edge:
             with self._lock:
                 self._start_edge()
         if m.reset_edge:
             with self._lock:
                 self._reset_edge()
+
+    def _panel_emergency(self, now: float) -> int | None:
+        """PanelState.emergency of a fresh, valid image; None when the panel cannot say (stale,
+        invalid: a blind panel is PANEL_STALE's, not an E-stop, as in gating.select)."""
+        m = self._panel
+        if m is None or not 0.0 <= now - self._panel_t <= self.panel_age or not m.valid:
+            return None
+        return int(getattr(m, "emergency", 0))
+
+    def _emergency(self, now: float) -> bool:
+        return bool(self._panel_emergency(now))
+
+    def _emergency_hold(self) -> None:
+        """A physical stop, never the end of the run (owner O-3, 2026-11-16): a moving run holds as
+        `estop` (Start once NORMAL), any other hold becomes `estop` so it cannot resume by itself,
+        READY and PAUSED keep their state."""
+        state = self.fsm.state
+        if state == fsm.EXECUTING or (state == fsm.BLOCKED and self.hold_cause != "estop"):
+            self._hold("estop", "emergency stop")
 
     def _reset_edge(self) -> None:
         """Physical Reset (review Q19): acknowledges THIS executor's FAULT, exactly like the
@@ -403,6 +461,7 @@ class RouteExecutor(LeanNode):
         self._field_clear: bool | None = None
         self._field_t: float | None = None  # receipt of that /output_paths sample
         self._field_trip_t: float | None = None  # last time the protective field was violated
+        self._hold_t: float | None = None  # when the current hold began (the chain -> field race)
 
     def _on_drives(self, m: DriveStatus) -> None:
         t = self._now()
@@ -412,11 +471,13 @@ class RouteExecutor(LeanNode):
             self._last_off_t = t
 
     def _on_output_paths(self, m) -> None:
-        clear = drive_state.field_clear(m.status, self.field_index)
+        clear = drive_state.field_clear(m.status, self.field_index, self.field_active)
         if clear is None:
             return
+        if not drive_state.field_valid(getattr(m, "is_valid", ()), self.field_index):
+            clear = None  # WP-E2: an invalid path is UNKNOWN now, and never a trip
         self._field_clear, self._field_t = clear, self._now()
-        if not self._field_clear:
+        if self._field_clear is False:
             self._field_trip_t = self._field_t
 
     def _field_state(self, now: float) -> bool | None:
@@ -438,27 +499,32 @@ class RouteExecutor(LeanNode):
         return self._field_trip_t is not None and now - self._field_trip_t <= self.safety_window
 
     def _safety_cause(self, now: float) -> str:
-        """Which story a torque loss belongs to. The field when it is proven; the panel when
-        the I/O island said its image was invalid within safety_window_s (selector, Start
-        and E-stop state were unknown, so it is neither the field nor a known E-stop -
-        WP-A2); else an E-stop."""
+        """Which story a torque loss belongs to. The E-stop when the panel says so (DI09, E5);
+        the field when it is proven; the panel when the I/O island said its image was invalid
+        within safety_window_s (selector, Start and E-stop state were unknown, so it is neither
+        the field nor a known E-stop - WP-A2); `chain` when the panel says NORMAL (not the
+        E-stop: a rear OSSD or another safety input); else, the panel unable to say, an E-stop."""
+        emg = self._panel_emergency(now)
+        if emg:
+            return "estop"
         if self._field_tripped(now):
             return "field"
         if self._panel_invalid_t is not None and now - self._panel_invalid_t <= self.safety_window:
             return "panel"
-        return "estop"
+        return "chain" if emg is not None else "estop"
 
     def _auto_causes(self) -> tuple[str, ...]:
         return hold_policy.auto_causes(self.auto_resume_estop)
 
     def _hold(self, cause: str, why: str) -> None:
         """Stop and hold: BLOCKED with a cause (see the module docstring)."""
-        text = hold_policy.hold_text(cause, why)
+        text = hold_policy.hold_text(cause, why, _HOLD_TEXT)
         if self.fsm.state == fsm.EXECUTING:
             self.fsm.block(text)
         else:
             self.fsm.reason = text
         self.hold_cause, self._auto_since = cause, None
+        self._hold_t = self._now()
         self._pending_since = self._now() if cause == "pending" else None
         self._interrupt(text)
 
@@ -497,6 +563,9 @@ class RouteExecutor(LeanNode):
 
     def _srv_run(self, req: RunMission.Request, res: RunMission.Response):
         with self._lock:
+            if self._emergency(self._now()):
+                res.accepted, res.message = False, "refused: E-stop active - release it and press Reset first"
+                return res
             try:
                 mission = store.load_mission(self.maps_dir, req.mission_id)
                 why = mission_matches_active_map(mission, self.active_map)
@@ -639,6 +708,11 @@ class RouteExecutor(LeanNode):
         return True, ""
 
     def _start_edge(self) -> None:
+        if self._emergency(self._now()):
+            # at once: no pre-move lamp/horn, no wait (emergency plan §4); the state is unchanged
+            self.fsm.reason = "Start refused: E-stop active - release it and press Reset first"
+            self._log_state()
+            return
         if self.fsm.state == fsm.READY:
             gate_ok, why = self._start_gate()
             pre = self._prereqs()
@@ -687,8 +761,9 @@ class RouteExecutor(LeanNode):
             return
         if waited >= self.premove_timeout_s:
             self._premove_since = None
+            # the panel known NORMAL: not the E-stop (E5), the safety circuit's
             self._hold(
-                "estop",
+                "chain" if self._panel_emergency(now) == 0 else "estop",
                 hold_policy.premove_timeout_text(
                     self.premove_timeout_s, "safety chain open? release the E-stop, Reset, then Start"
                 ),
@@ -978,6 +1053,13 @@ class RouteExecutor(LeanNode):
             now = self._now()
             if state != fsm.BLOCKED:
                 self.hold_cause, self._pending_since = "", None  # a hold ends with its BLOCKED
+            if self._emergency(now):
+                self._emergency_hold()
+                state = self.fsm.state
+            elif (state == fsm.BLOCKED and self.hold_cause == "chain" and self._field_state(now) is False
+                  and self._hold_t is not None and now - self._hold_t <= FIELD_RACE_S):
+                # the protective field, reported after the drive report: a field hold after all
+                self._hold("field", "drives lost torque (protective field, reported late)")
             if state in fsm.ACTIVE or state == fsm.READY:
                 pre = self._prereqs()
                 held = self._prereq_held(now, pre)
@@ -989,12 +1071,12 @@ class RouteExecutor(LeanNode):
                     and not self._panel.mode_auto
                     and now - self._panel_t <= self.panel_age
                 )
-                if manual and (self.hold_cause in ("pending", *hold_policy.SAFETY_CAUSES) or pre is None):
+                if manual and (self.hold_cause in ("pending", *SAFETY_CAUSES) or pre is None):
                     self.fsm.abort("manual takeover: selector left AUTO")
                     self._interrupt("manual takeover")
                 elif self._torque_off(now) and (
                     (state == fsm.EXECUTING and self.phase != PHASE_PREMOVE)
-                    or (state == fsm.BLOCKED and self.hold_cause not in hold_policy.SAFETY_CAUSES)
+                    or (state == fsm.BLOCKED and self.hold_cause not in SAFETY_CAUSES)
                 ):
                     # the safety chain took the torque: hold, don't fault (auto-resume plan);
                     # a hold that was already on (a controller abort, then someone stepping
@@ -1049,7 +1131,7 @@ class RouteExecutor(LeanNode):
         """Wheel feedback may be missing during a safety hold: while the drives report no
         torque, and for safety_window_s after they got it back (re-arming)."""
         paused = self.fsm.state == fsm.PAUSED  # an operator Pause, then the E-stop: still paused
-        if not paused and (self.fsm.state != fsm.BLOCKED or self.hold_cause not in hold_policy.SAFETY_CAUSES):
+        if not paused and (self.fsm.state != fsm.BLOCKED or self.hold_cause not in SAFETY_CAUSES):
             return False
         if self._torque_off(now):
             return True

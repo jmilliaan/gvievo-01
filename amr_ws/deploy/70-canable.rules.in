@@ -1,0 +1,17 @@
+# MKS / Openlight Labs CANable 2.0 (slcan firmware) -> stable /dev/canable0.
+# TEMPLATE (unified plan WP-P3): install.sh renders @ADAPTER_SERIAL@ from the profile's
+# can.adapter_serial and installs the result as /etc/udev/rules.d/70-canable.rules. It
+# refuses an empty serial. Per unit: never copy one unit's rendered rule to another.
+#
+# Matched by USB serial, so the symlink follows the adapter across USB ports
+# and regardless of which ttyACM index it lands on.
+# ACTION!="remove" (not =="add"): snapd and `udevadm trigger` re-send
+# "change" events for every device; an add-only rule then loses the symlink,
+# which cascades into stopping canable@can0 and amr.service (seen 2026-09-17).
+SUBSYSTEM=="tty", ACTION!="remove", \
+  ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="117e", ATTRS{serial}=="@ADAPTER_SERIAL@", \
+  SYMLINK+="canable0", MODE="0660", GROUP="dialout", ENV{ID_MM_DEVICE_IGNORE}="1", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}="canable@can0.service"
+# Never autosuspend the adapter (H-P2-5): a suspended CDC-ACM device drops frames on resume.
+SUBSYSTEM=="usb", ACTION!="remove", ATTR{idVendor}=="16d0", ATTR{idProduct}=="117e", \
+  ATTR{serial}=="@ADAPTER_SERIAL@", TEST=="power/control", ATTR{power/control}="on"

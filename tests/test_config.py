@@ -203,10 +203,6 @@ def test_config_profile():
     refuses("an empty can.channel is refused",
             lambda d: d["can"].update(channel=""), "can.channel")
 
-    # The horn is the only output this software energises, and both ways of
-    # mis-wiring it in the profile are refused: a channel the module does not
-    # have would write nothing, and a horn enabled without the DIO scan has
-    # nobody to write it.
     # dio.motion_on (2026-10-02): DO00 and DO08 on while the motors turn.
     check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
     check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
@@ -219,6 +215,34 @@ def test_config_profile():
             lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
+    # Emergency suite Part B E1 (2026-11-16): DI09 is the Flexi Soft's Q3, the E-stop signal, HIGH =
+    # pressed (owner 2026-11-16, informational). COM1 only (DI09-DI0F): DI07 is COM0, DI08 Manual Arm.
+    check("DI09 is the E-stop input, active HIGH",
+          config.PANEL_DI_ESTOP == 9 and config.PANEL_ESTOP_ACTIVE_HIGH,
+          f"{config.PANEL_DI_ESTOP} {config.PANEL_ESTOP_ACTIVE_HIGH}")
+    for other in ("di_reset", "di_start", "di_auto", "di_manual_arm"):
+        refuses(f"an E-stop input on panel.{other} is refused",
+                lambda d, o=other: d["panel"].update(di_estop=d["panel"][o]), "distinct")
+    refuses("an E-stop input on a pendant channel is refused",
+            lambda d: d["panel"].update(di_estop=d["pendant"]["di_rvs"]), "pendant channel")
+    refuses("an E-stop input on DI07 (COM0) is refused",
+            lambda d: d["panel"].update(di_estop=7), "COM1")
+    refuses("an E-stop input the module does not have is refused",
+            lambda d: d["panel"].update(di_estop=99), "di_estop")
+    refuses("a profile without panel.di_estop is refused",
+            lambda d: d["panel"].pop("di_estop"), "missing key")
+    refuses("a profile without panel.estop_active_high is refused",
+            lambda d: d["panel"].pop("estop_active_high"), "missing key")
+    refuses("the retired panel.di_estop_ok is refused",
+            lambda d: d["panel"].update(di_estop_ok=9), "unknown key")
+    refuses("an E-stop confirm filter of 0 scans is refused",
+            lambda d: d["panel"].update(estop_confirm_scans=0), "estop_confirm_scans")
+    refuses("an E-stop confirm filter over 0.2 s of scans is refused",
+            lambda d: d["panel"].update(estop_confirm_scans=5), "estop_confirm_scans")
+    refuses("a reset timeout under 0.5 s is refused",
+            lambda d: d["panel"].update(estop_reset_timeout_s=0.2), "estop_reset_timeout_s")
+    refuses("a reset timeout over 30 s is refused",
+            lambda d: d["panel"].update(estop_reset_timeout_s=31.0), "estop_reset_timeout_s")
     # Line sensor (mls-marker-plan, 2026-10-09): markers off until the bench passes.
     # 2026-10-23: markers are always on; no profile switch, so no MLS_MARKERS name either.
     check("the MLS is expected on variant 3 with codes 1-3, markers always on",
@@ -337,6 +361,30 @@ def test_config_profile():
             lambda d: d["rear"].update(field_output_index=8), "rear.field_output_index")
     refuses("a rear stale time above the field freshness is refused",
             lambda d: d["rear"].update(stale_s=d["freshness"]["field_s"] + 0.1), "rear.stale_s")
+    # The rear driver's addresses (unified plan WP-P10, 2026-11-16): placeholders, still checked.
+    refuses("a rear host UDP port equal to the front's lidar.port is refused",
+            lambda d: d["rear"].update(port=d["lidar"]["port"]), "rear.port")
+    refuses("a rear port outside 1..65535 is refused",
+            lambda d: d["rear"].update(port=0), "rear.port")
+    refuses("a rear sensor_ip that is not a dotted IPv4 address is refused",
+            lambda d: d["rear"].update(sensor_ip="192.168.3.256"), "rear.sensor_ip")
+    refuses("a rear host_ip that is not a dotted IPv4 address is refused",
+            lambda d: d["rear"].update(host_ip="enp3s0"), "rear.host_ip")
+    refuses("a rear scanner on the front scanner's address is refused",
+            lambda d: d["rear"].update(sensor_ip=d["lidar"]["sensor_ip"]), "rear.sensor_ip")
+    refuses("a front sensor_ip that is not a dotted IPv4 address is refused",
+            lambda d: d["lidar"].update(sensor_ip="192.168.3"), "lidar.sensor_ip")
+    refuses("a missing rear.port is refused", lambda d: d["rear"].pop("port"), "missing key")
+    # Supply/brownout (unified plan WP-P7, 2026-11-16).
+    refuses("a supply trip at or above the supply warning is refused",
+            lambda d: d["monitor"].update(bus_v_trip_low=d["monitor"]["bus_v_warn_low"]), "bus_v_trip_low")
+    refuses("a supply trip of 0 V is refused",
+            lambda d: d["monitor"].update(bus_v_trip_low=0.0), "bus_v_trip_low")
+    refuses("a missing monitor.bus_v_trip_low is refused",
+            lambda d: d["monitor"].pop("bus_v_trip_low"), "missing key")
+    check("the supply trip reaches the monitor thresholds",
+          config.MONITOR_THRESHOLDS["bus_v"]["trip_low"] == config.MON_BUS_V_TRIP_LOW
+          < config.MONITOR_THRESHOLDS["bus_v"]["warn_low"], config.MONITOR_THRESHOLDS["bus_v"])
     refuses("a pre-move timeout not above the warning is refused",
             lambda d: d["timing"].update(premove_timeout_s=d["timing"]["auto_start_delay_s"]),
             "premove_timeout_s")
@@ -357,20 +405,9 @@ def test_config_profile():
             lambda d: d["dio"].update(motion_on=[0, d["dio"]["num_do"]]), "dio.motion_on")
     refuses("a motion channel listed twice is refused",
             lambda d: d["dio"].update(motion_on=[8, 8]), "listed twice")
-    refuses("the horn's channel is refused as a motion channel while the horn is enabled",
-            lambda d: (d["horn"].update(enabled=True, do_channel=0), d["dio"].update(motion_on=[0])),
-            "horn's channel")
-    refuses("a horn channel past the end of the module is refused",
-            lambda d: d["horn"].update(do_channel=d["dio"]["num_do"]),
-            "horn.do_channel")
-    refuses("a negative horn channel is refused",
-            lambda d: d["horn"].update(do_channel=-1), "horn.do_channel")
-    refuses("a horn without the DIO scan that writes it is refused",
-            lambda d: (d["dio"].update(enabled=False),
-                       d["panel"].update(enabled=False),
-                       d["pendant"].update(enabled=False),
-                       d["horn"].update(enabled=True, do_channel=2)),
-            "horn.enabled")
+    # Lean plan D16 (2026-11-16): the horn.* engine is gone, and so is its section.
+    refuses("the retired horn section is refused",
+            lambda d: d.update(horn={"enabled": False, "do_channel": 0}), "horn: section retired")
     check("HORN_HOLD_S outlasts both the tick and the DIO scan",
           config.HORN_HOLD_S >= 5 * config.LOOP_PERIOD_S
           and config.HORN_HOLD_S >= 2 * config.DIO_SCAN_PERIOD_S,
@@ -619,8 +656,44 @@ def test_tuning_notes_are_parsed_not_restated():
     check("...and the notes come back", len(config.tuning_notes()) > 12)
 
 
+def _yaml_scalars(path):
+    """`key: value` lines of a driver yaml (no yaml import in the library suite); quotes and
+    trailing comments dropped."""
+    import re
+    out = {}
+    for line in open(path):
+        m = re.match(r'\s+(\w+):\s*"?([^"#\s]+)"?\s*(#.*)?$', line)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def test_scanner_driver_params():
+    """unified plan WP-P10 (2026-11-16): both nanoScan3 driver addresses come from the profile.
+    Today the yaml files carry the same values, so the generator changes nothing on agv-01."""
+    from agv_core import scanner_config as sc
+    print("\nscanner driver addresses from the profile")
+    cfg_dir = os.path.join(os.path.dirname(config.PROFILE_DIR), "amr_ws", "src", "amr_bringup", "config")
+    for which, yaml_name in ((sc.FRONT, "nanoscan3.yaml"), (sc.REAR, "nanoscan3_rear.yaml")):
+        got = sc.driver_params(config, which)
+        y = _yaml_scalars(os.path.join(cfg_dir, yaml_name))
+        want = {"sensor_ip": y.get("sensor_ip"), "host_ip": y.get("host_ip"),
+                "host_udp_port": int(y.get("host_udp_port", -1))}
+        check(f"the {which} driver addresses match today's {yaml_name}", got == want, (got, want))
+    check("the generator reads a raw profile block the same way",
+          sc.scanner_driver_params({"sensor_ip": "10.0.0.2", "host_ip": "10.0.0.1", "port": "6062"})
+          == {"sensor_ip": "10.0.0.2", "host_ip": "10.0.0.1", "host_udp_port": 6062})
+    ns = config.load()
+    check("a load() namespace gives what the module gives",
+          sc.driver_params(ns, sc.REAR) == sc.driver_params(config, sc.REAR))
+    check("front and rear never share a host UDP port",
+          sc.driver_params(config, sc.FRONT)["host_udp_port"]
+          != sc.driver_params(config, sc.REAR)["host_udp_port"])
+
+
 TESTS = [
     test_config_profile,
+    test_scanner_driver_params,
     test_derived_constants,
     test_params_view,
     test_tuning_notes_are_parsed_not_restated,

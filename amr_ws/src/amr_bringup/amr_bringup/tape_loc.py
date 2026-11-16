@@ -66,9 +66,16 @@ def initial_pose_cmd(start: dict, delay_s: float) -> TimerAction:
 
 
 def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, monitor: bool = True,
-          dynamic_yaml: str = "", require: bool = True, jump_dist_m: float | None = None) -> list:
-    """The launch actions. require=True: AMCL or map_server exiting ends the launch (in the
-    LINE layer the supervisor then reports LAYER_EXITED)."""
+          dynamic_yaml: str = "", require: bool = True, jump_dist_m: float | None = None,
+          autostart: bool = True, map_loc_yaml: str | None = None) -> list:
+    """The launch actions, for both layers (L D53: the LINE layer's tape localization and the
+    navigation layer build the group here, once). require=True: map_server, AMCL, the lifecycle
+    manager or the monitor exiting ends the launch (the supervisor then reports LAYER_EXITED).
+    The manager runs with bond_timeout 0 (amcl.yaml, WP-C15): required() is what catches a dead node.
+
+    autostart: false when the supervisor drives the manager itself (navigation layer).
+    map_loc_yaml: AMCL localises on this derived map, served by a second map_server on /map_loc
+    (navigation_layer blank_dynamic); /map stays the reviewed map."""
     if params_set not in PARAM_SETS:
         raise ValueError(f"params {params_set!r}: expected one of {sorted(PARAM_SETS)}")
     params = os.path.join(get_package_share_directory("amr_localization"), "config", "amcl.yaml")
@@ -81,16 +88,30 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
              parameters=[params, {"yaml_filename": map_yaml}]),
         "map_server",
     )
+    lifecycle = {"autostart": autostart}
+    amcl_remap = []
+    if map_loc_yaml:
+        actions += node(
+            Node(package="nav2_map_server", executable="map_server", name="map_server_loc", output="screen",
+                 parameters=[params, {"yaml_filename": map_loc_yaml, "topic_name": "map_loc",
+                                      "frame_id": "map"}]),
+            "map_server_loc",
+        )
+        amcl_remap = [("map", "map_loc")]
+        lifecycle["node_names"] = ["map_server", "map_server_loc", "amcl"]
     actions += node(
         Node(package="nav2_amcl", executable="amcl", name="amcl", output="screen",
-             parameters=[params, PARAM_SETS[params_set]]),
+             parameters=[params, PARAM_SETS[params_set]], remappings=amcl_remap),
         "amcl",
     )
+    # REQUIRED like the nodes it manages (WP-H4): with no bond, a dead manager would go unseen.
     actions.append(
-        TimerAction(period=3.0, actions=[
+        TimerAction(period=3.0, actions=node(
             Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
                  name="lifecycle_manager_localization", output="screen",
-                 parameters=[params, {"autostart": True}])])
+                 parameters=[params, lifecycle]),
+            "lifecycle_manager_localization",
+        ))
     )
     if monitor:
         actions += node(

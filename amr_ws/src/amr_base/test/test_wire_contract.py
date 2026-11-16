@@ -40,6 +40,17 @@ def test_trolley_names_are_the_msg_constants():
             name: value for value, name in table.items()}
 
 
+def test_device_health_names_are_the_msg_constants():
+    """DeviceHealth has two constant groups: DEVICE_<NAME> for the device, bare names for the state."""
+    d = msgs.DeviceHealth
+    assert {name: getattr(d, f"DEVICE_{name.upper()}") for name in wire.HEALTH_DEVICE_NAMES.values()} == {
+        name: value for value, name in wire.HEALTH_DEVICE_NAMES.items()}
+    assert {name: getattr(d, name) for name in wire.HEALTH_STATE_NAMES.values()} == {
+        name: value for value, name in wire.HEALTH_STATE_NAMES.items()}
+    every = {k for k, v in vars(d).items() if k.isupper() and isinstance(v, int) and not k.startswith("_")}
+    assert len(every) == len(wire.HEALTH_DEVICE_NAMES) + len(wire.HEALTH_STATE_NAMES)
+
+
 def test_mux_names_are_the_msg_constants_lowercased():
     assert {v: k.lower() for v, k in _constants(msgs.MuxState).items()} == wire.MUX_NAMES == gating.NAMES
 

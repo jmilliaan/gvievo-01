@@ -141,3 +141,113 @@ def test_a_boot_event_is_given_up_on_rather_than_held_for_ever():
     sv._flush_deferred()
     assert sv.published == [] and sv._deferred == []
     assert "BOOT_READY not delivered" in sv.logged[0]  # it still reaches the log
+
+
+# ---- boot id and $SERVICE_RESULT (S-uptime-boot-id-and-service-result, WP-H5, 2026-11-16)
+
+def _marker(at=1000.0, boot="boot-A", **kw):
+    return {"written_at": at, "boot_id": boot, "mode": "LINE", **kw}
+
+
+def test_classify_a_different_boot_id_is_a_power_loss_whatever_the_clock_says():
+    # boot_wall says "this boot" (an RTC error or NTP step): the boot id wins
+    assert uptime.classify(_marker(), "boot-B", boot_wall=0.0) == (uptime.POWER_LOSS, "")
+
+
+def test_classify_the_same_boot_id_is_a_crash_whatever_the_clock_says():
+    kind, cause = uptime.classify(_marker(), "boot-A", boot_wall=5000.0)  # clock says older
+    assert kind == uptime.SERVICE_CRASH and cause == ""
+
+
+def test_classify_without_boot_ids_falls_back_to_the_boot_time():
+    old = {"written_at": 1000.0}  # a marker written before boot_id existed
+    assert uptime.classify(old, "boot-A", boot_wall=2000.0)[0] == uptime.POWER_LOSS
+    assert uptime.classify(old, "boot-A", boot_wall=500.0)[0] == uptime.SERVICE_CRASH
+    assert uptime.classify(_marker(), None, boot_wall=500.0)[0] == uptime.SERVICE_CRASH
+    # no boot id and no boot time: the heavier action
+    assert uptime.classify(old, None, boot_wall=None)[0] == uptime.POWER_LOSS
+
+
+def test_classify_names_the_service_result_of_this_runs_stop():
+    stop = {"at": 1001.0, "boot_id": "boot-A", "service_result": "watchdog"}
+    want = (uptime.SERVICE_CRASH, uptime.RESULT_TEXT["watchdog"])
+    assert uptime.classify(_marker(), "boot-A", None, stop) == want
+    sig = {"at": 1001.0, "boot_id": "boot-A", "service_result": "signal", "exit_status": "KILL"}
+    assert uptime.classify(_marker(), "boot-A", None, sig)[1].endswith("(KILL)")
+    oom = {"at": 1001.0, "boot_id": "boot-A", "service_result": "oom-kill"}
+    assert "memory" in uptime.classify(_marker(), "boot-A", None, oom)[1]
+
+
+def test_classify_ignores_a_stop_record_that_is_not_this_runs():
+    older = {"at": 999.0, "boot_id": "boot-A", "service_result": "watchdog"}  # before the marker
+    other_boot = {"at": 1001.0, "boot_id": "boot-Z", "service_result": "watchdog"}
+    unknown = {"at": 1001.0, "boot_id": "boot-A", "service_result": "success"}
+    for stop in (older, other_boot, unknown, {"at": "x"}, None):
+        assert uptime.classify(_marker(), "boot-A", None, stop) == (uptime.SERVICE_CRASH, ""), stop
+    # a power cut runs no ExecStopPost: whatever record is there names nothing
+    stale = {"at": 1001.0, "boot_id": "boot-A", "service_result": "watchdog"}
+    assert uptime.classify(_marker(), "boot-B", None, stale) == (uptime.POWER_LOSS, "")
+
+
+def test_the_marker_carries_the_boot_id_and_the_verdict_uses_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(uptime, "boot_id", lambda source=uptime.BOOT_ID_PATH: "boot-A")
+    uptime.write(str(tmp_path), "i", "LINE")
+    body = json.loads(pathlib.Path(uptime.path(str(tmp_path))).read_text())
+    assert body["boot_id"] == "boot-A"
+    v = uptime.verdict(str(tmp_path), this_boot_id="boot-B")
+    assert v.kind == uptime.POWER_LOSS
+    v = uptime.verdict(str(tmp_path), this_boot_id="boot-A")
+    assert v.kind == uptime.SERVICE_CRASH and v.cause == ""
+
+
+def test_stop_post_records_the_result_and_the_crash_sentence_says_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(uptime, "boot_id", lambda source=uptime.BOOT_ID_PATH: "boot-A")
+    uptime.write(str(tmp_path), "i", "LINE")
+    time.sleep(0.01)
+    env = {"SERVICE_RESULT": "watchdog", "EXIT_CODE": "killed", "EXIT_STATUS": "INT"}
+    uptime.stop_post(str(tmp_path), env)
+    stop = json.loads((tmp_path / uptime.LAST_STOP).read_text())
+    assert stop["service_result"] == "watchdog" and stop["boot_id"] == "boot-A"
+    v = uptime.verdict(str(tmp_path), this_boot_id="boot-A")
+    s = v.sentence()
+    assert v.kind == uptime.SERVICE_CRASH and "watchdog" in s and "restarted itself" in s
+    assert "switch them off and on" in s  # 8130h is possible after a crash (WP-H5)
+
+
+def test_stop_post_never_raises_and_the_cli_always_exits_0(tmp_path, monkeypatch):
+    bad = tmp_path / "file"
+    bad.write_text("x")
+    uptime.stop_post(str(bad / "under"), {})  # must not raise
+    monkeypatch.setenv("AMR_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("SERVICE_RESULT", "exit-code")
+    assert uptime.main(["stop-post"]) == 0
+    assert json.loads((tmp_path / uptime.LAST_STOP).read_text())["service_result"] == "exit-code"
+    assert uptime.main([]) == 0
+
+
+def test_boot_id_is_none_when_unreadable(tmp_path):
+    assert uptime.boot_id(str(tmp_path / "missing")) is None
+    (tmp_path / "id").write_text("  0f1e\n")
+    assert uptime.boot_id(str(tmp_path / "id")) == "0f1e"
+
+
+def test_groups_file_is_role_to_pgid_and_a_clean_stop_removes_it(tmp_path):
+    uptime.note_group(str(tmp_path), "web", 111)
+    uptime.note_group(str(tmp_path), "base", 222)
+    uptime.note_group(str(tmp_path), "web", 333)  # respawned
+    body = json.loads((tmp_path / uptime.GROUPS).read_text())
+    assert body["groups"] == {"web": 333, "base": 222}
+    (tmp_path / uptime.GROUPS).write_text("{corrupt")
+    uptime.note_group(str(tmp_path), "layer", 444)  # a corrupt file is replaced, not fatal
+    assert json.loads((tmp_path / uptime.GROUPS).read_text())["groups"] == {"layer": 444}
+    uptime.write(str(tmp_path), "i", "IDLE")
+    uptime.clear(str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_amr_service_runs_stop_post_and_the_wrapper_calls_this_module():
+    deploy = pathlib.Path(__file__).resolve().parents[3] / "deploy"
+    unit = (deploy / "amr.service").read_text()
+    assert "ExecStopPost=-/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-stop-post.sh" in unit
+    wrapper = (deploy / "amr-stop-post.sh").read_text()
+    assert "amr_bringup.uptime stop-post" in wrapper

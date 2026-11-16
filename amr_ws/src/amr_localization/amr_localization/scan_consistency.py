@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 from amr_maps.grid import Grid
-from amr_maps.raycast import ScanGeometry, cast
+from amr_maps.raycast import ScanGeometry, beam_trig, cast
 
 from amr_maps import grid as gridio
 
@@ -50,13 +50,13 @@ def compare(
     measured = np.where(np.isfinite(ranges), ranges, np.inf)
 
     valid = np.isfinite(ranges) & (ranges >= geom.range_min) & (ranges < geom.range_max)
-    a = geom.angles + yaw
+    cos_a, sin_a = beam_trig(geom, float(yaw))  # the ones cast() just used (CPU, 2026-11-16)
     m = grid.meta
 
     def cells(r: np.ndarray, ok: np.ndarray):
         d = np.where(ok, r, 0.0)  # inf * cos would raise; masked beams are dropped below
-        cols = np.floor((lx + d * np.cos(a) - m.origin_x) / m.resolution)
-        rows = np.floor((ly + d * np.sin(a) - m.origin_y) / m.resolution)
+        cols = np.floor((lx + d * cos_a - m.origin_x) / m.resolution)
+        rows = np.floor((ly + d * sin_a - m.origin_y) / m.resolution)
         inside = ok & (cols >= 0) & (cols < grid.width) & (rows >= 0) & (rows < grid.height)
         return inside, rows[inside].astype(int), cols[inside].astype(int)
 

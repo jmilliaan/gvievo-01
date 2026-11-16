@@ -29,7 +29,7 @@ from amr_interfaces.msg import StationDetection
 
 class RfidNode(LeanNode):
     def __init__(self) -> None:
-        super().__init__("rfid_node")
+        super().__init__("rfid_node", start_parameter_services=False)  # WP-C11: nobody sets params live
         self.declare_parameter("poll_hz", 50.0)
         self.declare_parameter("heartbeat_hz", 2.0)
         self.link = rfid.RfidLink()

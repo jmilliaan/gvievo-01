@@ -62,7 +62,7 @@ def tick(n, dt=0.1, wheels=True, torque=None, field=None):
     # The scanner publishes every scan: the last field state again unless the test changes it.
     last = field if field is not None else n._field_clear
     if last is not None:
-        n._on_output_paths(SimpleNamespace(status=[last]))
+        n._on_output_paths(SimpleNamespace(status=[last], is_valid=[True]))
     n._tick()
 
 
@@ -107,21 +107,21 @@ def test_resume_waits_while_the_field_is_violated_or_the_vehicle_is_off_the_segm
 def test_e_stop_button_waits_for_start_without_a_resume_click():
     n = node()
     tick(n, torque=True, field=True)
+    n._panel.emergency = 1  # E5: the button is known from DI09 (PanelState.emergency)
     tick(n, torque=False, wheels=False)  # torque gone, field clear: the button
     assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop"
+    n._panel.emergency = 0  # released + Reset
     run_for(n, 5.0, torque=True, field=True)
     assert n.fsm.state == fsm.BLOCKED  # never by itself (auto_resume_estop false)
     n._start_edge()
     assert n.fsm.state == fsm.EXECUTING and n.hold_cause == ""
 
 
-def test_e_stop_resumes_by_itself_only_when_configured():
-    n = node()
-    n.auto_resume_estop = True
-    tick(n, torque=False, wheels=False, field=True)
-    assert n.hold_cause == "estop"
-    run_for(n, 2.5, torque=True, field=True)
-    assert n.fsm.state == fsm.EXECUTING
+def test_auto_resume_estop_true_is_refused_at_startup():
+    """Emergency plan §4 (E5, 2026-11-16): with the DI09 signal an E-stop hold never resumes by
+    itself; the node refuses to start with auto_resume_estop:=true (it used to allow it)."""
+    assert ren.auto_resume_estop_refusal(True) and "refused" in ren.auto_resume_estop_refusal(True)
+    assert ren.auto_resume_estop_refusal(False) == ""
 
 
 def test_wheel_loss_first_is_held_then_classified_by_the_drive_report():
@@ -205,10 +205,10 @@ def test_run_state_carries_the_hold_cause():
     n._publish_state()
     m: RunState = published[-1]
     assert m.state == RunState.BLOCKED and m.hold_cause == "field" and m.auto_resume
-    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="x"))
+    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="stale"))
     assert n._torque_off(n.clock[0])
     # a feedback-only loss with a drive still enabled is not "torque off"
-    n._on_drives(DriveStatus(operational=False, left_state="Operation enabled", right_state="x"))
+    n._on_drives(DriveStatus(operational=False, left_state="Operation enabled", right_state="stale"))
     assert not n._torque_off(n.clock[0])
     assert pytest.approx(n.safety_window) == 1.0
 
@@ -362,7 +362,8 @@ def test_a_start_warns_then_moves_once_the_drives_have_torque():
 def test_no_torque_within_the_timeout_holds_for_a_human():
     n = started()
     run_for(n, 8.2, torque=False, field=True)
-    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop" and "did not power up" in n.fsm.reason
+    # E5: the panel says NORMAL, so it is the safety circuit's (chain), not the E-stop; waits alike
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "chain" and "did not power up" in n.fsm.reason
     assert not n.drive_power() and n.sent == []
 
 
@@ -370,8 +371,10 @@ def test_holds_that_wait_for_start_drop_power_and_resume_through_the_warning():
     n = node()
     n.premove_s = 2.0
     tick(n, torque=True, field=True)
-    tick(n, torque=False, wheels=False, field=True)          # the E-stop button
+    n._panel.emergency = 1                                    # the E-stop button (DI09)
+    tick(n, torque=False, wheels=False, field=True)
     assert n.hold_cause == "estop" and not n.drive_power()
+    n._panel.emergency = 0                                    # released + Reset
     run_for(n, 1.0, torque=False, field=True)                # standby: torque off on purpose
     n._start_edge()                                           # no "drives have no torque" refusal
     assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE and n.drive_power()
@@ -417,9 +420,10 @@ def test_a_stale_clear_field_is_unknown_not_clear():
         n.clock[0] += 0.1
         n._panel_t = n._loc_t = n.clock[0]
     assert n._field_state(n.clock[0]) is None
-    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="x"))
+    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="stale"))
     n._tick()
-    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop", "unknown is never the field"
+    # the panel says NORMAL (E5): the safety circuit's `chain` hold, never the field
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "chain", "unknown is never the field"
 
 
 def test_a_field_hold_does_not_resume_while_the_field_is_unknown():
@@ -437,6 +441,39 @@ def test_a_field_hold_does_not_resume_while_the_field_is_unknown():
                                  right_state="Operation enabled"))
         n._tick()
     assert n.fsm.state != fsm.EXECUTING, "resumed on an unknown field"
+
+
+def test_an_invalid_protective_path_is_unknown_never_a_trip_and_never_resumes():
+    """WP-E2: is_valid[i] False is UNKNOWN at once - not clear, and not a violation that would
+    make a torque loss the field's (a field hold resumes by itself). A message without is_valid
+    reads invalid too. The next valid sample restores the reading."""
+    n = node()
+    tick(n, torque=True, field=True)
+    n._on_output_paths(SimpleNamespace(status=[False], is_valid=[False]))
+    assert n._field_state(n.clock[0]) is None and n._field_trip_t is None
+    n._on_output_paths(SimpleNamespace(status=[True]))  # no is_valid at all
+    assert n._field_state(n.clock[0]) is None
+    n._on_drives(DriveStatus(operational=False, left_state="Switch on disabled", right_state="stale"))
+    n._tick()
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "chain", "an invalid path is never the field"
+
+    n = node()
+    tick(n, field=False)
+    tick(n, torque=False, wheels=False)
+    assert n.hold_cause == "field"
+    # Drives back, the path reads clear but is not valid. Shorter than prereq_grace_s: an
+    # unknown field that lasts longer faults the run (WP-A8), and Acknowledge is the way out.
+    for _ in range(3):
+        n.clock[0] += 0.1
+        n._panel_t = n._loc_t = n.clock[0]
+        n.wheels(0.0, valid=True)
+        n._on_drives(DriveStatus(operational=True, left_state="Operation enabled",
+                                 right_state="Operation enabled"))
+        n._on_output_paths(SimpleNamespace(status=[True], is_valid=[False]))
+        n._tick()
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "field"
+    run_for(n, 3.0, torque=True, field=True)
+    assert n.fsm.state == fsm.EXECUTING, "a valid clear field restores the resume"
 
 
 def test_executing_with_the_field_unknown_faults_after_the_grace():

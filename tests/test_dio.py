@@ -9,10 +9,11 @@ from agv_core import config
 
 
 class _Reply:
-    def __init__(self, bits, error=False):
+    def __init__(self, bits, error=False, registers=()):
         # pymodbus pads to a byte boundary, so a 16-bit ask can come back with
         # more; the driver must slice rather than trust the length.
         self.bits = list(bits)
+        self.registers = list(registers)
         self._error = error
 
     def isError(self):
@@ -53,6 +54,16 @@ class FakeClient:
 
     def read_coils(self, address, count=1, device_id=1):
         return self._bits(self.do, count)
+
+    def read_holding_registers(self, address, count=1, device_id=1):
+        # The CK-TP5163 image as the survey quotes it: DO word at 0x20, DI word
+        # at 0x22, bit n = channel n (2026-11-16, not confirmed on this module).
+        self.reads += 1
+        if self.fail_read:
+            return _Reply([], error=True)
+        word = {0x20: sum(1 << i for i, b in enumerate(self.do) if b),
+                0x22: sum(1 << i for i, b in enumerate(self.di) if b)}
+        return _Reply([], registers=[word.get(a, 0) for a in range(address, address + count)])
 
     def write_coil(self, address, value, device_id=1):
         self.writes.append((address, bool(value)))
@@ -232,28 +243,25 @@ def test_dio_health():
 
 
 def test_dio_events_are_edge_only():
-    """The scan runs 20x a second; the event ring holds 200 entries."""
-    from agv_core import events
+    """The scan runs 20x a second: on_event fires on the edges only (lean plan D08)."""
+    from agv_core.drivers import dio
     print("\ndio: event discipline")
 
     fake = FakeClient()
-    link = _link(fake)
+    seen = []
+    link = dio.DioLink(client_factory=lambda: fake, on_event=lambda level, text: seen.append((level, text)))
 
-    events.clear()
     link._scan()
-    check("connecting emits once", len(events.since(0)[1]) == 1)
+    check("connecting emits once", len(seen) == 1 and seen[0][0] == "info")
     for _ in range(200):                    # 10 s of scans
         link._scan()
-    check("a healthy scan does not emit",
-          len(events.since(0)[1]) == 1, f"{len(events.since(0)[1])} events")
+    check("a healthy scan does not emit", len(seen) == 1, f"{len(seen)} events")
 
     link._drop("cable")
-    check("losing it emits once", len(events.since(0)[1]) == 2)
+    check("losing it emits once", len(seen) == 2 and seen[1][0] == "warn")
     for _ in range(50):
         link._drop("cable")
-    check("and staying lost stays quiet",
-          len(events.since(0)[1]) == 2, f"{len(events.since(0)[1])} events")
-    events.clear()
+    check("and staying lost stays quiet", len(seen) == 2, f"{len(seen)} events")
 
 
 def test_dio_profile():
@@ -459,6 +467,86 @@ def test_dio_stop_de_energises():
     check("the socket is closed afterwards", fake.closed >= 1)
 
 
+def test_dio_transport():
+    """WP-E6 (2026-11-16): retries=0, the 10-minute counters, the FC03 image switch."""
+    import sys
+    import types
+
+    from agv_core.drivers import dio
+    print("\ndio: transport")
+
+    made = []
+    fake_mod = types.ModuleType("pymodbus.client")
+    fake_mod.ModbusTcpClient = lambda host, **kw: made.append((host, kw)) or FakeClient()
+    saved = sys.modules.get("pymodbus.client")
+    sys.modules["pymodbus.client"] = fake_mod
+    try:
+        dio.DioLink._default_client()
+    finally:
+        if saved is None:
+            sys.modules.pop("pymodbus.client", None)
+        else:
+            sys.modules["pymodbus.client"] = saved
+    check("the client is built with retries=0: one timeout is one failed scan",
+          made and made[0][1].get("retries") == 0
+          and made[0][1].get("timeout") == config.DIO_TIMEOUT_S, str(made))
+
+    fake = FakeClient()
+    link = _link(fake)
+    link._scan_with_retry()
+    s = link.snapshot()
+    check("a healthy link counts no drops and no retries",
+          (s["drops_10min"], s["retries_10min"]) == (0, 0))
+    fake.fail_read_once = True
+    link._scan_with_retry()
+    check("a scan saved by the retry counts in retries_10min, not as a drop",
+          (link.snapshot()["drops_10min"], link.snapshot()["retries_10min"]) == (0, 1))
+    link._drop("cable")
+    link._drop("cable")
+    check("a lost link counts one drop, however long it stays lost",
+          link.snapshot()["drops_10min"] == 1)
+    link._scan()
+    link._drop("cable")
+    check("each connected -> lost edge counts", link.snapshot()["drops_10min"] == 2)
+    with link._lock:
+        old = time.monotonic() - dio.COUNT_WINDOW_S - 1.0
+        link._drop_times[0] = old
+        link._retry_times[0] = old
+    s = link.snapshot()
+    check("events older than 10 minutes fall out of the counters",
+          (s["drops_10min"], s["retries_10min"]) == (1, 0), f"{s['drops_10min']} {s['retries_10min']}")
+
+    check("the FC03 image is off until a bench check: DI and DO are two bit reads",
+          dio.COMBINED_IMAGE is False)
+    di = [False] * 16
+    di[3] = di[15] = True
+    do = [False] * 16
+    do[0] = do[9] = True
+    fake = FakeClient(di=di, do=do)
+    link = _link(fake)
+    link._scan()
+    two = link.snapshot()
+    check("the default scan makes two reads", fake.reads == 2, str(fake.reads))
+    was = dio.COMBINED_IMAGE
+    try:
+        dio.COMBINED_IMAGE = True
+        fake.reads = 0
+        link._scan()
+        one = link.snapshot()
+        check("the image switch makes ONE read", fake.reads == 1, str(fake.reads))
+        check("and the image equals the two bit reads",
+              one["di"] == two["di"] and one["do"] == two["do"], f"{one['di']} {one['do']}")
+        fake.fail_read = True
+        raised = False
+        try:
+            link._scan()
+        except OSError:
+            raised = True
+        check("a failed image read raises like a failed bit read", raised)
+    finally:
+        dio.COMBINED_IMAGE = was
+
+
 # test_dio_health_source went with agv_core.health (legacy monitor) at U11,
 # 2026-09-21; the ROS side judges DIO freshness in panel_node/readiness.
 TESTS = [
@@ -473,4 +561,5 @@ TESTS = [
     test_dio_health,
     test_dio_events_are_edge_only,
     test_dio_profile,
+    test_dio_transport,
 ]

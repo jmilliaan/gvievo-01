@@ -4,7 +4,10 @@ One nav.launch.py sim, a short route, several scenarios in sequence. Each checks
 a mechanism, not a tolerance:
   1. permission: no Start -> no motion; Start in MANUAL ignored; AUTO + Start runs
   2. pause mid-straight -> wheels zero fast, permit NONE; prepare-resume + Start -> continues
-  3. obstacle on the line -> BLOCKED; removal alone does not resume; prepare + Start does
+  3. obstacle on the line -> the controller aborts (RPP collision ahead) -> BLOCKED `controller`;
+     removal alone does not resume (only `field` resumes by itself, decision 1); Start does.
+     The executor's own scan-vs-envelope check was removed 2026-09-20 (obstacles are the
+     safety chain's job), so Resume is no longer refused for the obstacle (WP-T3, 2026-11-16)
   4. pause mid-turn -> resumes the REMAINING angle; total travel is the drawn magnitude
   5. selector to MANUAL mid-run -> abort (IDLE)
   6. panel lost mid-run -> FAULT; acknowledge -> IDLE; a mission with a wrong hash is refused
@@ -285,21 +288,22 @@ class TestRunControl(unittest.TestCase):
         self._wait_state(RunState.EXECUTING, 10)
         print("2. resumed")
 
-        # 3. obstacle on the line ahead -> BLOCKED; removal alone does not resume
+        # 3. obstacle on the line ahead -> the controller's collision check aborts FollowPath ->
+        # BLOCKED `controller` (the sim's field is assume_clear and fake_base keeps its torque, so
+        # no safety cause can be taken here); removal alone does not resume
         x = self._truth()[0]
         self._call("add", AddObstacle.Request(x_m=min(7.0, x + 1.2), y_m=0.0, size_m=0.6))
         self._wait_state(RunState.BLOCKED, 10)
         self._wait(lambda: not self._wheels_moving(), 3, "wheels zero when blocked")
-        r = self._call("resume")
-        self.assertFalse(r.success, "resume must be refused while the obstacle is there")
+        with self.lock:
+            cause = self.run_state.hold_cause
+        self.assertEqual(cause, "controller", f"hold cause {cause!r}")
         self._call("clear")
-        time.sleep(2.5)  # clearance must be stable 1 s; still BLOCKED without Start
+        time.sleep(2.5)  # a controller hold never resumes by itself: still BLOCKED without Start
         self.assertEqual(self._state(), RunState.BLOCKED)
-        r = self._call("resume")
-        self.assertTrue(r.success, r.message)
-        self._call("start")
+        self._call("start")  # AUTO + every resume check holding: Start alone continues the hold
         self._wait_state(RunState.EXECUTING, 10)
-        print("3. obstruction ok")
+        print("3. controller hold ok")
 
         # 4. pause mid-turn -> resume the remaining angle
         self._wait(

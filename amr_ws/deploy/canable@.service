@@ -1,0 +1,30 @@
+# CANable 2.0 (slcan firmware) -> SocketCAN can0 at 125 kbps. Versioned copy of the unit
+# alpha-setup.md section 3 used to reproduce by hand (unified plan WP-P3, 2026-11-16).
+# install.sh installs it to /etc/systemd/system/canable@.service.
+#
+# Never enabled: udev starts canable@can0 when /dev/canable0 appears (70-canable.rules,
+# SYSTEMD_WANTS), BindsTo= stops it when the adapter goes away, and amr.service is
+# WantedBy= canable@can0, so a re-plug brings the whole vehicle stack back.
+[Unit]
+Description=CANable slcan bridge -> SocketCAN %i (125 kbps)
+BindsTo=dev-canable0.device
+After=dev-canable0.device
+# Restart=on-failure below: ten tries in a minute, then failed. A re-plug after the minute
+# starts it again; `sudo systemctl reset-failed canable@can0.service` clears it sooner.
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+# -s4 = 125 kbps. -F keeps slcand in the foreground so systemd can supervise it.
+ExecStart=/usr/bin/slcand -o -c -f -s4 -F /dev/canable0 %i
+# slcand creates the netdev asynchronously; wait for it, then configure.
+ExecStartPost=/bin/sh -c 'for i in $(seq 50); do ip link show %i >/dev/null 2>&1 && break; sleep 0.1; done; ip link set dev %i txqueuelen 1000 up'
+ExecStopPost=-/sbin/ip link set dev %i down
+# Was Restart=no: an slcand that dies with the adapter still plugged in left can0 gone
+# until someone re-plugged it (H-P1-4, decision 9: recovery is systemd's, not in-process).
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

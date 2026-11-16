@@ -12,6 +12,7 @@ lever.
 
     auto            clears itself once the cause goes away; no button
     start_button    the physical Start button on the panel, after AUTO
+    reset_button    the physical Reset button on the cabinet; never a web button (emergency plan §4)
     ack             Acknowledge on the Home page (an executor/line FAULT)
     recover         Recover on the Home page (a supervisor FAULT)
     operator        an operator act on a page (set the pose, pick a map)
@@ -35,7 +36,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 INFO, WARN, ERROR = "info", "warn", "error"
-CLEARS = ("auto", "start_button", "ack", "operator", "recover", "power_cycle", "restart_service", "engineer")
+CLEARS = ("auto", "start_button", "reset_button", "ack", "operator", "recover", "power_cycle",
+          "restart_service", "engineer")
 # Worst first: the operator surface sorts standing alarms by this, so the one
 # sentence on the Home page is the one that actually holds the vehicle.
 SEVERITY_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
@@ -60,9 +62,31 @@ def _rows() -> tuple[Alarm, ...]:
         a("FIELD_BLOCKED", INFO, "auto", "Stopped: something is in the safety field",
           "Clear the area. The vehicle starts again by itself.",
           "Scanner OSSD -> FX3 -> STO. Executor/line hold cause 'field'; auto-resume after the hold window."),
-        a("ESTOP", WARN, "start_button", "Stopped: emergency stop or safety chain",
-          "Release the E-stop, then press Reset and Start on the panel.",
-          "Hold cause 'estop'. Auto-resume only if auto_resume_estop is set in the profile."),
+        a("ESTOP", ERROR, "reset_button", "EMERGENCY STOP",
+          "Make the area safe. Release (twist) the E-stop button, then press the yellow Reset button "
+          "on the cabinet.",
+          "DI09 (panel.di_estop, Flexi Soft Q3) active - HIGH, owner 2026-11-16 - on a valid panel image "
+          "(emergency plan Part B). A DIO gap is never this (PANEL_STALE). STO is the Flexi Soft's; "
+          "the PC withholds power and the lease, inhibits the mux and holds any run as 'estop' (ESTOP_HOLD; an emergency never ends a run, owner O-3 2026-11-16)."),
+        # Emergency suite Part B (2026-11-16, kyb contract): PanelState.emergency from DI09 (Q3).
+        a("ESTOP_RESET_NEEDED", WARN, "reset_button", "E-stop released: press Reset",
+          "Press the yellow Reset button on the cabinet.",
+          "DI09 (panel.di_estop, Flexi Soft Q3) is clear again but no Reset edge has been seen "
+          "since the emergency (amr_base/emergency.py RESET_NEEDED)."),
+        a("ESTOP_RESET_FAILED", ERROR, "engineer", "Reset did not take",
+          "Check the E-stop is released and press Reset again. If it repeats, call the engineer.",
+          "Reset edge with DI09 clear, but the drives stayed in 'Switch on disabled' (STO held) "
+          "for panel.estop_reset_timeout_s. DI09 active again is a new emergency, not this."),
+        a("ESTOP_HOLD", WARN, "start_button", "Stopped by the E-stop: press Start to continue",
+          "Make sure the area is clear, then press Start. The run continues where it stopped.",
+          "The run's 'estop' hold (owner policy, emergency plan §4: an emergency never ends a run). "
+          "Shown once the emergency is NORMAL again; never resumes by itself."),
+        a("SAFETY_CHAIN_STOP", WARN, "start_button", "Stopped: the safety circuit removed the drive power",
+          "Check around the vehicle (rear scanner, safety relay). Once it is clear, press Start.",
+          "Hold cause 'chain' (2026-11-16): the drives lost torque with the E-stop NOT pressed (DI09 clear "
+          "on a fresh panel) and the front protective field clear - a rear OSSD or another Flexi Soft "
+          "input. Never resumes by itself (station-call O8); becomes 'field' if the front field shows "
+          "violated within 0.5 s (reported late), 'estop' if DI09 goes active."),
         a("PATH_BLOCKED", WARN, "start_button", "Stopped: the way ahead is blocked",
           "Clear the route, then press Start.",
           "Nav2 controller aborted the step (hold cause 'controller'); bounded retries, then FAULT. "
@@ -129,6 +153,14 @@ def _rows() -> tuple[Alarm, ...]:
           "Stay clear. Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "Fault stop without positive standstill evidence: the PC heartbeat is withheld on purpose so "
           "each drive's own 1016h trips."),
+        a("DRIVE_FEEDBACK_IMPLAUSIBLE", WARN, "auto", "A wheel's speed reading does not match its position",
+          "Nothing to do now. If it stays or comes back, call the engineer.",
+          "drive_node (H-P2-2, unified plan WP-P8): while armed, a wheel's 6064h count travel and its "
+          "606Ch velocity disagreed over two 0.5 s windows in a row (wheel_odom.FeedbackCheck; tolerance "
+          "5 % of the rated wheel speed + 30 %). That wheel is reported invalid in /wheel_states, so "
+          "odometry and the gyro reference stop using it; the drive link is not faulted. Clears after two "
+          "agreeing windows or when the drives power down. Suspect a slipping encoder coupling or a "
+          "frozen TPDO2. drive_node feedback_check:=false turns it off."),
         a("DRIVE_LINK_FAULT", ERROR, "power_cycle", "Stopped: the drives' link failed",
           "Says \"standby\": the drives were only powered down, press Start. Says \"fault\": switch the "
           "drives off and on, wait for them to boot, the engineer presses Recover, then Start.",
@@ -145,6 +177,27 @@ def _rows() -> tuple[Alarm, ...]:
         a("DRIVE_FAULT", ERROR, "power_cycle", "A drive is in fault",
           "Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
           "CiA-402 Fault state on a node while armed."),
+        a("DRIVE_REBOOTED", ERROR, "power_cycle", "A drive restarted by itself",
+          "Switch the drives off and on, wait for them to boot, then the engineer presses Recover.",
+          "A boot-up frame (NMT 0x00) from a drive after link-up (canopen.decide, WP-B4): the drive "
+          "lost everything prepare() wrote, including its 1016h heartbeat guard, until the next "
+          "link-up. Look for a supply dip or a loose drive connector."),
+        # Supply/brownout (unified plan WP-P7, 2026-11-16): drive_node edges from canmon.supply_event.
+        a("SUPPLY_LOW", WARN, "auto", "The battery is getting low",
+          "Finish the trip, then charge the battery.",
+          "Drive main supply (40A4h) at or below monitor.bus_v_warn_low on a drive. Report only. "
+          "Detection is slow: 40A4h is one object of the monitor round-robin, so a reading is up to "
+          "22 slots old (about 6 s still, 22 s moving at the monitor_period_* defaults) plus the 1 s "
+          "diagnostics period. A short sag under load can pass unseen."),
+        a("SUPPLY_TOO_LOW", ERROR, "auto", "The battery is too low to start a run",
+          "Charge the battery. A new run starts once the voltage is back above the limit.",
+          "Drive main supply at or below monitor.bus_v_trip_low (a placeholder until set from the "
+          "BMS cut-off): a NEW run is refused. A run already going is not stopped by it; the drives' "
+          "own undervoltage alarm is the backstop. Same detection latency as SUPPLY_LOW."),
+        a("SUPPLY_HIGH", WARN, "auto", "The drive supply voltage is high",
+          "Nothing to do now. If it stays, call the engineer.",
+          "Drive main supply at or above monitor.bus_v_warn_high: regeneration the battery is not "
+          "taking, or a charger left connected. The drives trip on overvoltage at 63 V."),
 
         # ---- the laser scanner ----
         a("SCANNER_SILENT", WARN, "engineer", "The safety scanner is not sending data",
@@ -158,6 +211,41 @@ def _rows() -> tuple[Alarm, ...]:
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "/scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. "
           "Expected rate is 34 Hz."),
+        # The scanner's own diagnosis (unified plan WP-E4, 2026-11-16): amr_base.scanner_health
+        # maps the driver's "<node>: State" /diagnostics and status_overview to these rows, keyed
+        # per scanner (front; rear only with rear.source "scanner"). ERROR so they sort above
+        # FIELD_PROTECTIVE / FIELD_BLOCKED: they say why the field reads violated.
+        a("SCANNER_CONTAMINATED", ERROR, "auto", "Stopped: the safety scanner's window is dirty",
+          "Clean the scanner's front cover with a soft clean cloth, then press Reset if asked.",
+          "The nanoScan3 reports a contamination ERROR ('Contamination error' True in the driver's State "
+          "diagnostics): it has switched its OSSD pair off, so the protective field reads violated and the "
+          "FX3 takes the torque. The detail names the scanner and its IP. If cleaning does not clear it, "
+          "the optics cover may be scratched or the scanner needs its cover calibration: engineer."),
+        a("SCANNER_DIRTY", WARN, "auto", "The safety scanner's window is getting dirty",
+          "Clean the scanner's front cover at the next stop, before it stops the vehicle.",
+          "Contamination WARNING in the driver's State diagnostics: the scanner still runs. Left alone it "
+          "becomes SCANNER_CONTAMINATED, which stops the vehicle."),
+        a("SCANNER_ERROR", ERROR, "engineer", "The safety scanner reports a fault",
+          "Do not run missions. Call the engineer.",
+          "'Device error' or 'Application error' True in the driver's State diagnostics, or the State at "
+          "ERROR (invalid header or system state). A device error switches the OSSDs off. The detail adds "
+          "StatusOverview error_info_code when it was read: its class gives the recovery (TI 8022708). "
+          "Read it with ros2 service call /sick_safetyscanners2_node/status_overview."),
+        a("SCANNER_CONFIG_UNVERIFIED", ERROR, "engineer",
+          "The safety scanner's configuration is not verified",
+          "Do not run missions. Call the engineer.",
+          "StatusOverview config_state is not 5 (Verified); 3 = Not verified. A configuration was "
+          "transferred without the verify step, or the scanner was replaced. Verify it in Safety Designer "
+          "(safety-responsible person only), then restart the driver."),
+        a("SURVEY_SCAN_GAP", WARN, "auto", "The map has a gap: no scan while surveying",
+          "Drive back over that stretch once the scanner is sending again.",
+          "scanner_health.ScanGap: the front /scan was older than 1.0 s during a survey, so slam_toolbox "
+          "had nothing to add there. Reported once per gap; the text gives how long. Front scanner only."),
+        a("SURVEY_IMU_GAP", WARN, "auto", "The IMU dropped out during the survey",
+          "Check the map for bent walls before saving; if it looks wrong, survey again.",
+          "amr_mission.survey_trace.ImuGaps (unified plan WP-E9): /imu/data gaps longer than "
+          "imu_age_limit_s while SLAM took scans. One event per survey; MappingState.message carries "
+          "the running total and the saved review's trace.imu_gap_s records it. Advisory only."),
 
         # ---- the line sensor (manuals/mls-diagnostics-plan.md) ----
         a("MLS_FIELD_WEAK", INFO, "auto", "Weak tape signal under the line sensor",
@@ -172,11 +260,61 @@ def _rows() -> tuple[Alarm, ...]:
           "2070h:01 outside the sensor's own thresholds 2070h:07..2070h:06 (manual 8.7), read every "
           "60 s and at once after a temperature event. Clears itself when back inside."),
 
+        # ---- device health (unified plan WP-H1, WP-H3): DeviceHealth rows and the correlator ----
+        # Reporting only: nothing reads these to decide about motion. agv_core/health.py.
+        a("CAN_BUS_LOST", ERROR, "auto", "No frames on the drive bus",
+          "Check the CAN cable and the drives' power. It clears when the bus answers again.",
+          "DeviceHealth can_bus LOST, or the correlator: both drives and the MLS track lost within 1 s "
+          "(agv_core.health.classify), so the shared cause is the bus, its adapter or the 24 V to the "
+          "drives, not three devices. The drive link itself faults on its own rules (DRIVE_SILENT)."),
+        a("MLS_NO_STREAM", WARN, "auto", "The tape sensor answers but does not stream",
+          "Nothing to do now. If it stays, call the engineer.",
+          "DeviceHealth mls_track DEGRADED: the MLS answers SDO but sends no TPDO1, so the track is "
+          "polled (slower). NMT state or 1800h on the sensor; drive_node keeps sending NMT Start."),
+        a("MLS_OFFLINE", ERROR, "auto", "The tape sensor is offline",
+          "Check the tape sensor's cable and power. It clears when the sensor answers again.",
+          "Correlator: the MLS track and the MLS gyro lost within 1 s, so it is the sensor (node 10), "
+          "its cable or its supply, not the two readings. drive_node probes it every 5 s."),
+        a("IMU_STALE", WARN, "auto", "No yaw rate from the tape sensor",
+          "Nothing to do now. If it stays, call the engineer.",
+          "DeviceHealth mls_gyro STALE/LOST: no 2034h:03 sample (TPDO or SDO poll) within its limit "
+          "while the track may still be alive. Odometry falls back to the wheels."),
+        a("IO_ISLAND_LOST", ERROR, "auto", "No link to the I/O island",
+          "Check the I/O island's power and its network cable to the PC. It clears when it answers.",
+          "DeviceHealth dio LOST/STALE: no successful Modbus scan of the DIO module (dio.ip) within "
+          "the panel's source age. DIO only since decision 23 (no RFID on the cable). The panel "
+          "image is invalid meanwhile: no motion authority (PANEL_STALE, PANEL_LINK_LOST)."),
+        a("DIO_SCAN_RETRIED", INFO, "auto", "The I/O island link is flaky",
+          "Nothing to do now. If it keeps showing, have the I/O island cable checked.",
+          "DeviceHealth dio DEGRADED: a scan failed and the immediate retry on a new socket saved it, or "
+          "the link dropped, within the last 10 minutes (dio retries_10min / drops_10min). No stop came "
+          "of it; a rising count is a connector going bad."),
+        # panel_node's DIO link edges under their own codes (unified plan WP-H2, 2026-11-16): they were
+        # PANEL events matched by substring. Events, not standing rows: IO_ISLAND_LOST stands.
+        a("DIO_LINK_LOST", WARN, "auto", "The control panel link dropped",
+          "Check the I/O island's power and its network cable to the PC. It clears when it answers.",
+          "panel_node: the DIO image stopped being current input (no successful Modbus scan of dio.ip "
+          "within panel.source_max_age_s, or the socket closed); the text has the driver's reason and "
+          "the address. The panel image is invalid from this edge: no motion authority."),
+        a("DIO_LINK_OK", INFO, "auto", "The control panel link is up",
+          "Nothing to do.",
+          "panel_node: DIO scans are current again; the panel re-baselines (no edge from a held "
+          "button) before the image is valid."),
+        a("EVENTLOG_WRITE_FAILED", WARN, "engineer", "The event record is not being saved",
+          "Call the engineer: the vehicle's storage may be full.",
+          "event_recorder could not append to <state_dir>/logs/recorded_events.jsonl (disk full, "
+          "permissions). Raised once on the failing edge, cleared once on the next good write. "
+          "Driving is not affected; the evidence for the next stop is."),
+        a("DEVICE_HEALTH", INFO, "auto", "A device link changed",
+          "Nothing to do.",
+          "event_recorder: a DeviceHealth row reached OK or ABSENT with no code standing before it "
+          "(the first row of each device at start)."),
+
         # ---- the panel and the command mux ----
         a("PANEL_STALE", ERROR, "engineer", "The control panel is not answering",
           "Call the engineer: the panel wiring or the I/O island is down.",
-          "No fresh, valid PanelState: Modbus DIO at 192.168.1.30 lost, or panel_node down. No motion "
-          "authority at all without it."),
+          "No fresh, valid PanelState: Modbus DIO at dio.ip lost (the row's detail names the address), "
+          "or panel_node down. No motion authority at all without it."),
         a("NOT_LEASED", WARN, "auto", "Waiting for the supervisor",
           "Wait. If it stays, press Restart on the Home page.",
           "Mux has no fresh ControlLease (supervisor down, starting or in a transaction)."),
@@ -364,6 +502,12 @@ def _rows() -> tuple[Alarm, ...]:
           "Call the engineer: the disk is full. A route already running is not affected.",
           "Under 200 MB free. Survey start and map save are refused; navigation and LINE are "
           "deliberately NOT gated - a full disk must not stop a vehicle that is already moving."),
+        a("DISK_READONLY", ERROR, "engineer", "Storage is read-only: nothing can be saved",
+          "Call the engineer. A route already running is not affected.",
+          "A watched filesystem (state, maps or /) reports ST_RDONLY (agv_core/disk.py, unified plan "
+          "WP-P4): the kernel remounted it read-only after an I/O error, or the disk is failing. "
+          "Survey start and map save are refused; events, logs and the unclean-shutdown marker are "
+          "not written until it is fixed. dmesg | grep -i 'EXT4-fs error\\|remount'; fsck off-shift."),
 
         # ---- the supervisor and the service ----
         a("BASE_NOT_READY", WARN, "recover", "Not ready: the vehicle's basics did not come up",
@@ -424,10 +568,12 @@ def _rows() -> tuple[Alarm, ...]:
           "lost the PC heartbeat, so 8130h is latched and only a power cycle clears it. A marker from "
           "the SAME boot is a service crash instead and needs no drive action."),
         a("SERVICE_CRASHED", WARN, "auto", "The vehicle software restarted itself",
-          "Nothing to do. Tell the engineer if it keeps happening.",
-          "A marker from THIS boot survived: the supervisor died and systemd's Restart=on-failure "
-          "or the 30 s watchdog brought it back. The drives were disarmed by the teardown or by "
-          "their own 1016h, so no power cycle is needed. journalctl -u amr.service has the reason."),
+          "If the drives do not arm, switch them off and on. Tell the engineer if it keeps happening.",
+          "A marker from THIS boot survived (same kernel boot_id): the supervisor died and systemd's "
+          "Restart=on-failure or the 30 s watchdog (SIGINT, ordered teardown) brought it back; the text "
+          "names systemd's $SERVICE_RESULT from last_stop.json. 8130h is possible: a base killed without "
+          "its teardown (SIGKILL, OOM, a stop past the 12 s orphan budget) leaves the drives' 1016h to time "
+          "out, and that latch needs a power cycle. journalctl -u amr.service -b has the reason."),
         a("SUPERVISOR_DOWN", ERROR, "restart_service", "Needs service: the vehicle software is not running",
           "Press Restart on the Home page. If it repeats, call the engineer.",
           "No ModeState/lease reaching the web. systemd restarts on failure and on a watchdog timeout."),
@@ -513,7 +659,8 @@ def describe(code: str, detail: str = "", since: float | None = None) -> dict:
 HOLD_CODES = {
     "station": "AT_STATION",
     "field": "FIELD_BLOCKED",
-    "estop": "ESTOP",
+    "estop": "ESTOP_HOLD",  # the run's hold; the emergency itself is ESTOP (2026-11-16, kyb)
+    "chain": "SAFETY_CHAIN_STOP",
     "controller": "PATH_BLOCKED",
     "pending": "WAITING_FOR_PREREQ",
     "prereq": "LINE_PREREQ_LOST",
@@ -541,6 +688,7 @@ def hold_code(cause: str) -> str:
 BUTTON = {
     "auto": "",
     "start_button": "",
+    "reset_button": "",  # physical Reset only, never a web button (emergency plan §4)
     "ack": "Acknowledge",
     "operator": "Set position",
     "recover": "Recover",

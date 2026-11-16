@@ -15,9 +15,10 @@ from __future__ import annotations
 from typing import Any
 
 from agv_core import alarms as cat
+from agv_core import health
 from agv_core import position_status as pos
 
-from amr_base import drive_state, hold_policy
+from amr_base import drive_state, hold_policy, scanner_health
 
 FRESH_S = 0.5  # panel / drives / mux samples older than this are not current
 # The scanner runs at 34 Hz. A gap this long is a dead link, not a late frame; the grace
@@ -26,6 +27,7 @@ SCAN_STALE_S = 5.0
 SCAN_GRACE_S = 20.0
 
 # The headline the operator reads first. Worst wins; the order here IS the priority.
+EMERGENCY_STOP = "EMERGENCY STOP"
 NEEDS_SERVICE = "NEEDS SERVICE"
 NOT_READY = "NOT READY"
 STOPPED_NEEDS_YOU = "STOPPED (needs you)"
@@ -34,6 +36,118 @@ RUNNING = "RUNNING"
 READY = "READY"
 # A run that holds the vehicle: a restart or a mode swap waits for it (headline + restart).
 RUN_ACTIVE = ("READY", "EXECUTING", "PAUSED", "BLOCKED")
+# A drive row that names the fault says everything DRIVES_NOT_READY would, and more.
+DRIVE_FAULT_CODES = ("DRIVE_FAULT", "DRIVE_SILENT", "DRIVE_REBOOTED")
+# What explains each base_missing item (ModeState.base_missing, readiness.base_missing()) when it
+# stands already: the BASE_NOT_READY row names only the items nothing else explains.
+_MISSING_EXPLAINED = {
+    "panel": ("PANEL_STALE", "IO_ISLAND_LOST"),
+    "drives": DRIVE_FAULT_CODES + ("SAFETY_RESET_NEEDED", "CAN_BUS_LOST", "CAN_TX_FAILED",
+                                   "DRIVE_LINK_FAULT"),
+    "wheel feedback": DRIVE_FAULT_CODES + ("CAN_BUS_LOST", "SAFETY_RESET_NEEDED"),
+}
+STATUS_FRESH_S = 5.0  # a /diagnostics status (1 Hz) older than this is a dead publisher, not a reading
+EVENTLOG_STATUS = "eventlog/recorder"  # event_recorder_node's /diagnostics status
+
+
+# PanelState.emergency (amr_interfaces/msg/PanelState.msg, emergency-suite plan Part B, kyb
+# contract). The PC's picture only: the stop itself is the Flexi Soft's STO, in hardware.
+EMG_NORMAL, EMG_ACTIVE, EMG_RESET_NEEDED, EMG_RESETTING, EMG_RESET_FAILED = range(5)
+EMG_NAMES = {
+    EMG_NORMAL: "NORMAL",
+    EMG_ACTIVE: "ACTIVE",
+    EMG_RESET_NEEDED: "RESET_NEEDED",
+    EMG_RESETTING: "RESETTING",
+    EMG_RESET_FAILED: "RESET_FAILED",
+}
+_EMG_CODE = {
+    EMG_ACTIVE: "ESTOP",
+    EMG_RESET_NEEDED: "ESTOP_RESET_NEEDED",
+    EMG_RESETTING: "ESTOP_RESET_NEEDED",
+    EMG_RESET_FAILED: "ESTOP_RESET_FAILED",
+}
+# Said twice while an emergency row stands: the drives sit in 'Switch on disabled' (or standby)
+# because of the E-stop, and the mux (code ESTOP) and a run's hold (ESTOP_HOLD, or a 'chain' hold
+# before DI09 caught up) report the same stop.
+_EMG_SAME_CAUSE = {"SAFETY_RESET_NEEDED", "DRIVES_NOT_READY", "ESTOP_HOLD", "SAFETY_CHAIN_STOP",
+                   *_EMG_CODE.values()}
+# Why the web refuses a jog or a survey move (409). Always starts "E-stop active".
+_EMG_REFUSAL = {
+    EMG_ACTIVE: "E-stop active: release it and press Reset first",
+    EMG_RESET_NEEDED: "E-stop active: press Reset on the cabinet first",
+    EMG_RESETTING: "E-stop active: resetting, wait for it to finish",
+    EMG_RESET_FAILED: "E-stop active: the Reset did not take",
+}
+RESETTING_DETAIL = "resetting…"
+# The banner's steps (emergency plan §1: release, Reset, Start). Owner O-3 (2026-11-16): an E-stop
+# never ends a run, so Start continues a held one.
+EMG_STEPS = (
+    "Make the area safe, then release (twist) the E-stop button.",
+    "Press the yellow RESET button on the cabinet.",
+    "Press START: a stopped run continues.",
+)
+
+
+def _panel_fresh(panel: dict | None) -> bool:
+    return bool(panel) and (panel.get("age_s") or 0) <= FRESH_S and bool(panel.get("valid"))
+
+
+def emergency(state: dict[str, Any]) -> dict | None:
+    """The emergency picture when it is NOT normal and can be trusted, else None.
+
+    Only a fresh, valid panel image counts. A stale or invalid one is PANEL_STALE, which
+    already says "no motion" - showing it as an emergency would send the operator to an
+    E-stop nobody pressed (the controller does treat it as one, fail-safe)."""
+    e = state.get("emergency")
+    if not e or not _panel_fresh(state.get("panel")):
+        return None
+    if int(e.get("state") or 0) not in _EMG_CODE:
+        return None
+    return e
+
+
+def emergency_refusal(state: dict[str, Any]) -> str:
+    """'' when a jog / survey move may be asked for, else the reason it is refused."""
+    e = emergency(state)
+    return _EMG_REFUSAL[int(e["state"])] if e else ""
+
+
+def _emergency_row(e: dict) -> dict:
+    s = int(e["state"])
+    active = "E-stop signal active" if not e.get("estop_ok", True) else ""
+    detail = {EMG_ACTIVE: active, EMG_RESETTING: RESETTING_DETAIL}
+    return cat.describe(_EMG_CODE[s], detail.get(s, ""))
+
+
+def banner(state: dict[str, Any]) -> dict | None:
+    """The red banner every page shows while not NORMAL (base.html renders it, amr.js
+    keeps it current from /api/state). None when there is nothing to show."""
+    e = emergency(state)
+    if not e:
+        return None
+    s = int(e["state"])
+    released = s in (EMG_RESET_NEEDED, EMG_RESETTING) or (s == EMG_RESET_FAILED and bool(e.get("estop_ok")))
+    note = {EMG_RESET_NEEDED: "released: press Reset", EMG_RESETTING: RESETTING_DETAIL}.get(s, "")
+    # the RESET_FAILED words are the catalogue row's, so banner and Alarms say the same
+    failed = cat.describe("ESTOP_RESET_FAILED") if s == EMG_RESET_FAILED else None
+    since = e.get("active_s")
+    if since is None:
+        since = e.get("since_s")
+    return {
+        "state": s,
+        "state_name": EMG_NAMES[s],
+        "title": EMERGENCY_STOP,
+        "note": note,
+        "failed": bool(failed),
+        "failed_text": f"{failed['title']}. {failed['action']}" if failed else "",
+        "since_s": since,
+        "reason": _EMG_REFUSAL[s],
+        "steps": [
+            {"text": EMG_STEPS[0], "done": released, "now": not released},
+            {"text": EMG_STEPS[1], "done": False, "now": released},
+            {"text": EMG_STEPS[2], "done": False, "now": False},
+        ],
+    }
 
 
 def _drive_code(drives: dict | None) -> str | None:
@@ -41,6 +155,11 @@ def _drive_code(drives: dict | None) -> str | None:
     'Switch on disabled' on both drives is the safety chain, not a broken drive."""
     if drives is None:
         return None
+    # drive_node's own verdict first (DriveStatus.fault_code, WP-B4): DRIVE_SILENT, DRIVE_FAULT,
+    # DRIVE_REBOOTED or CAN_TX_FAILED, chosen by canopen.decide() with the bus in hand.
+    code = drives.get("fault_code") or ""
+    if code in cat.CATALOGUE:
+        return code
     states = f"{drives.get('left', '')} {drives.get('right', '')}"
     # The LINK's verdict first (WP-B4): a link in FAULT with cached "Operation enabled"
     # statuswords used to show nothing but DRIVES_NOT_READY. A silent node reads "stale".
@@ -58,6 +177,10 @@ def _drive_code(drives: dict | None) -> str | None:
 def standing(state: dict[str, Any]) -> list[dict]:
     """Everything holding the vehicle right now, worst first, as catalogue rows."""
     out: list[dict] = []
+    # The emergency row goes FIRST, whatever the severity sort says (a WARN "press Reset"
+    # still outranks everything: nothing else can be fixed until the E-stop is reset).
+    e = emergency(state)
+    first = [_emergency_row(e)] if e else []
 
     def add(code: str, detail: str = "") -> None:
         out.append(cat.describe(code, detail))
@@ -65,18 +188,19 @@ def standing(state: dict[str, Any]) -> list[dict]:
     mode = state.get("mode")
     if not mode or (state.get("mode_age_s") or 0) > 5.0:
         add("SUPERVISOR_DOWN", "no ModeState from the supervisor")
-        return out  # nothing else can be trusted without it
+        return first + out  # nothing else can be trusted without it
     if mode.get("fault_code"):
         add(mode["fault_code"], mode.get("reason", ""))
 
     panel, panel_age = state.get("panel"), (state.get("panel") or {}).get("age_s")
     if panel is None or (panel_age or 0) > FRESH_S or not panel.get("valid"):
-        add("PANEL_STALE", "no fresh, valid panel image" if panel else "no panel image at all")
+        where = f" (I/O island {state['dio_ip']})" if state.get("dio_ip") else ""
+        add("PANEL_STALE", ("no fresh, valid panel image" if panel else "no panel image at all") + where)
 
     drive_code = _drive_code(state.get("drives"))
     if drive_code:
         d = state["drives"]
-        add(drive_code, f"{d.get('left', '?')} / {d.get('right', '?')}")
+        add(drive_code, d.get("fault_detail") or f"{d.get('left', '?')} / {d.get('right', '?')}")
 
     run = state.get("run")
     if run:
@@ -100,6 +224,20 @@ def standing(state: dict[str, Any]) -> list[dict]:
             add("SCANNER_SILENT", "no scan since this page's server started")
         elif scan_age > SCAN_STALE_S:
             add("SCANNER_STALE", f"last scan {scan_age:.0f} s ago")
+    # The scanners' own diagnosis (WP-E4): why a field reads violated. Only on a fresh scan: after
+    # a data loss the driver's State keeps its last values (scanner_health).
+    rear_on = state.get("rear_source") == "scanner"
+    trolley = state.get("trolley") or {}
+    fresh = {"front": scan_age is not None and scan_age <= SCAN_STALE_S,
+             "rear": bool(trolley) and trolley.get("state_name", "UNKNOWN") != "UNKNOWN"}
+    for code, detail in scanner_health.rows(state.get("diagnostics") or {}, rear_scanner=rear_on,
+                                            scan_fresh=fresh, overview=state.get("scanner_overview")):
+        add(code, detail)
+
+    # Device health (WP-H1): one row per lost or degraded link, a shared cable as one row
+    # (agv_core.health.standing). None: nothing publishes DeviceHealth (not rebuilt, a sim).
+    for f in device_findings(state.get("device_health")):
+        add(f.code, f.detail)
 
     loc = state.get("localization")
     # Localisation only matters where the vehicle navigates by it: in IDLE (no layer)
@@ -110,6 +248,8 @@ def standing(state: dict[str, Any]) -> list[dict]:
     # Storage (power-loss plan W3). Warned a gigabyte early, because the cure - deleting
     # old maps and reports - is an engineer's job and takes a visit.
     d = state.get("disk") or {}
+    if d.get("readonly"):
+        add("DISK_READONLY", f"read-only: {d['readonly']}")
     if d.get("level") == "stop":
         add("DISK_FULL", f"{d.get('free_mb')} MB free on {d.get('path')}")
     elif d.get("level") == "warn":
@@ -118,22 +258,47 @@ def standing(state: dict[str, Any]) -> list[dict]:
     if state.get("station_link_home"):
         add("STATION_LINK_HOME", state["station_link_home"])
 
+    rec = (state.get("diagnostics") or {}).get(EVENTLOG_STATUS)
+    if rec and int(rec.get("level", 0)) >= 2 and (rec.get("age_s") or 0.0) <= STATUS_FRESH_S:
+        add("EVENTLOG_WRITE_FAILED", f"{rec.get('message', '')}: {rec.get('hardware_id', '')}".strip(": "))
+
     mux = state.get("mux")
     if mux and mux.get("inhibited") and mux.get("code"):
         add(mux["code"], mux.get("reason", ""))
 
+    # What the base lacks (ModeState.base_missing, WP-H2): named, so NOT READY never stands
+    # beside "The vehicle is fine". Not while starting (the boot is still waiting for them), and
+    # only the items no other row explains already.
+    codes = {r["code"] for r in out}
+    missing = [i.strip() for i in (mode.get("base_missing") or "").split(",") if i.strip()]
+    if missing and mode.get("mode_name") not in ("STARTING", "TRANSITIONING"):
+        unexplained = [i for i in missing if not codes & set(_MISSING_EXPLAINED.get(i, ()))]
+        if unexplained:
+            add("BASE_NOT_READY", "missing: " + ", ".join(unexplained))
+
     # Worst first, and never the same code twice (a mux inhibit during a supervisor
     # FAULT is the same stop said twice).
-    # A drive row that names the fault says everything DRIVES_NOT_READY would, and more.
-    if any(r["code"] in ("DRIVE_FAULT", "DRIVE_SILENT") for r in out):
+    codes = {r["code"] for r in out}
+    if codes & set(DRIVE_FAULT_CODES):
         out = [r for r in out if r["code"] != "DRIVES_NOT_READY"]
-    seen, unique = set(), []
+    # The I/O island row says why the panel is stale, and what to check (WP-H2).
+    if "IO_ISLAND_LOST" in codes:
+        out = [r for r in out if r["code"] != "PANEL_STALE"]
+    seen, unique = (set(_EMG_SAME_CAUSE) if first else set()), list(first)
     for row in sorted(out, key=lambda r: cat.SEVERITY_ORDER[r["level"]]):
         if row["code"] in seen:
             continue
         seen.add(row["code"])
         unique.append(row)
     return unique
+
+
+def device_findings(rows: dict | None) -> list:
+    """agv_core.health.standing() over the adapter's view (device -> Row fields as a dict)."""
+    if not rows:
+        return []
+    view = {d: health.Row(**r) for d, r in rows.items() if d in health.DEVICES}
+    return [f for f in health.standing(view) if f.code in cat.CATALOGUE]
 
 
 def home_position(state: dict[str, Any]) -> dict:
@@ -186,17 +351,26 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
     """
     mode = state.get("mode") or {}
     run = state.get("run") or {}
+    job = state.get("line") or {}
     top = rows[0] if rows else None
     detail = ""
+    starting = mode.get("mode_name") in ("STARTING", "TRANSITIONING") or not mode.get("base_ready")
 
-    if top and top["clears_by"] == "restart_service":
+    # The tape job's branches follow home_tile() (WP-H2): the same words for the same state.
+    if emergency(state):
+        line = EMERGENCY_STOP
+    elif top and top["clears_by"] == "restart_service":
         line = NEEDS_SERVICE
-    elif mode.get("mode_name") in ("STARTING", "TRANSITIONING") or not mode.get("base_ready"):
+    elif "FAULT" in (mode.get("mode_name"), run.get("state_name"), job.get("state_name")):
+        line = STOPPED_NEEDS_YOU
+    elif starting:
         line = NOT_READY
-    elif run.get("state_name") == "EXECUTING":
+    elif run.get("state_name") == "EXECUTING" or job.get("state_name") in _LINE_MOVING:
         line = RUNNING
     elif run.get("state_name") == "BLOCKED":
         line = STOPPED_WILL_RESUME if run.get("auto_resume") else STOPPED_NEEDS_YOU
+    elif job.get("state_name") == "HOLD":
+        line = STOPPED_WILL_RESUME if job.get("auto_resume") else STOPPED_NEEDS_YOU
     elif top and top["level"] == "error":
         line = STOPPED_NEEDS_YOU
     elif run.get("state_name") in ("READY", "PAUSED", "DONE"):
@@ -208,14 +382,22 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
         total = int(run.get("step_index", -1)) + 1
         step = f" · {run.get('step_id')}" if run.get("step_id") else ""
         detail = f"{run['mission_id']} · step {total}{step}"
+    elif job.get("state_name") in ("ARMED", "RUNNING", "HOLD") and job.get("message"):
+        detail = job["message"]
+    elif starting and mode.get("base_missing"):
+        detail = f"waiting for: {mode['base_missing']}"
 
+    # Never "The vehicle is fine" under NOT READY or a stop (H-P1-2).
+    idle_title = "Starting up" if line == NOT_READY else (
+        "Stopped" if line.startswith("STOPPED") else "The vehicle is fine.")
+    idle_action = (mode.get("reason") or "Wait.") if line == NOT_READY else "Nothing to do."
     return {
         "state": line,
         "detail": detail,
-        "action": top["action"] if top else "Nothing to do.",
-        "title": top["title"] if top else "The vehicle is fine.",
+        "action": top["action"] if top else idle_action,
+        "title": top["title"] if top else idle_title,
         "code": top["code"] if top else "",
-        "level": top["level"] if top else "info",
+        "level": "error" if line == EMERGENCY_STOP else (top["level"] if top else "info"),
         "button": cat.BUTTON.get(top["clears_by"], "") if top else "",
         "clears_by": top["clears_by"] if top else "",
     }
@@ -224,8 +406,9 @@ def headline(state: dict[str, Any], rows: list[dict]) -> dict:
 # ---- the Home status tile (manuals/emergency-suite-plan.md Part A) ----------------------------
 # One full-width tile, one state. Colour is the meaning: green = normal, yellow = abnormal (blinking:
 # not localized), red = stopped for something only a person or a restart fixes, grey = not up yet.
-# The E-stop is not seen by the PC yet (Q3 not wired, Part B postponed): it shows through what it
-# causes - an estop hold (stopped) or SAFETY_RESET_NEEDED (attention) - and is never red or green here.
+# The E-stop (Part B, 2026-11-16: DI09 = Flexi Soft Q3, PanelState.emergency) is the one row above
+# `fault`: red, the banner's content (base.html hides its own banner on Home). Without a fresh, valid
+# panel it shows through what it causes - an estop hold (stopped) or SAFETY_RESET_NEEDED (attention).
 TILE_OK, TILE_WARN, TILE_ERROR, TILE_OFF = "ok", "warn", "error", "off"
 NOT_LOCALIZED = "NOT LOCALIZED"
 CHECKING_POSITION = "CHECKING POSITION"
@@ -254,6 +437,8 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
     """The Home page's status tile. `rows` is standing() (worst first), `position` is home_position();
     the page draws what this returns and decides nothing. The first rule that matches wins:
 
+        emergency  red     PanelState.emergency not NORMAL on a fresh, valid panel (the banner's
+                           steps, since, RESET_FAILED text; emergency plan A5)
         fault      red     restart_service, a supervisor / run / job FAULT
         starting   grey    STARTING, TRANSITIONING, base not ready
         fault      red     any other ERROR row (panel stale, ...), except an operator's LOC_ row
@@ -292,6 +477,19 @@ def home_tile(state: dict[str, Any], rows: list[dict], position: dict | None = N
         return STOPPED_WILL_RESUME if r.get("auto_resume") else STOPPED_NEEDS_YOU
 
     run_name, line_name = run.get("state_name"), line.get("state_name")
+    b = banner(state)
+    if b:
+        # Ring the button the operator needs now: the E-stop to twist out, then Reset.
+        # The big text already says EMERGENCY STOP: the title names the step, the steps the rest.
+        released = b["steps"][0]["done"]
+        row = _emergency_row(emergency(state))
+        title = "Emergency stop active" if row["code"] == "ESTOP" else row["title"]
+        t = tile("emergency", TILE_ERROR, EMERGENCY_STOP, None, title, "Follow the steps:", b["steps"],
+                 press=("reset",) if released else ("estop",),
+                 press_text="Press Reset" if released else "Release (twist)")
+        t.update(code=row["code"], since_s=b["since_s"], note=b["note"], failed=b["failed"],
+                 failed_text=b["failed_text"])
+        return t
     if (top and top["clears_by"] == "restart_service") or mode.get("mode_name") == "FAULT":
         return tile("fault", TILE_ERROR, NEEDS_SERVICE if top and top["clears_by"] == "restart_service"
                     else STOPPED_NEEDS_YOU, top, "Supervisor fault", mode.get("reason", ""))

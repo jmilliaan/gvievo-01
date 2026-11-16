@@ -81,3 +81,19 @@ def test_a_panel_message_arriving_during_the_tick_is_not_stale():
 
 def test_a_time_from_the_future_is_still_refused_by_the_pure_policy():
     assert want_power(10.0, Panel(10.001, True, True, False), (), Params()) == (False, "panel state stale")
+
+
+def test_no_power_while_the_emergency_is_not_normal_whatever_else_says_yes():
+    """Emergency-suite plan Part B E4: checked before the arm and mode rules, so the PC never
+    fights STO (the 2 s re-engage loop) and a released E-stop powers nothing before NORMAL."""
+    asks = [Ask("run", NOW, True), Ask("line", NOW, True)]
+    for auto in (False, True):
+        for emg, why in ((1, "E-stop (DI09)"), (2, "E-stop: waiting for Reset"),
+                         (3, "E-stop: waiting for Reset"), (4, "E-stop: waiting for Reset")):
+            p = Panel(t_recv=NOW, valid=True, mode_auto=auto, manual_arm=True, emergency=emg)
+            assert want_power(NOW, p, asks, P) == (False, why), (auto, emg)
+    # NORMAL again: power exactly as after boot (a zero target; motion is still the mux's)
+    assert want_power(NOW, Panel(NOW, True, True, True, emergency=0), asks, P)[0] is True
+    assert want_power(NOW, Panel(NOW, True, False, True, emergency=0), [], P)[0] is True
+    # the default is NORMAL: a PanelState built before the field changes nothing
+    assert Panel(NOW, True, False, True).emergency == 0

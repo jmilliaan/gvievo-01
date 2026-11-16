@@ -22,3 +22,4 @@ bool markers_ok          # profile on AND sensor configured as the profile expec
 string status            # "ok" | "off" | "misconfigured: ..." | "no stream (sdo)" | "checking"
 uint32 rejects           # codes outside mls.marker_codes since start
 uint32 aborts            # "reading code" episodes that ended with no code
+uint32 gaps              # TPDO1 holes (> 3 x the event timer) since the bus owner started (WP-E8, 2026-11-16)

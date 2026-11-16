@@ -1,4 +1,4 @@
-"""sd_notify in ten lines: READY=1 and WATCHDOG=1 over the systemd socket.
+"""sd_notify in ten lines: READY=1, WATCHDOG=1, STATUS= and EXTEND_TIMEOUT_USEC= over the systemd socket.
 
 A supervisor whose loop is wedged is still an "alive process" to systemd, and
 `Restart=on-failure` never fires. With `Type=notify` + `WatchdogSec` the loop
@@ -9,6 +9,11 @@ inhibited throughout.
 No python-systemd dependency: the protocol is one datagram to the socket named
 in NOTIFY_SOCKET. Outside systemd the socket is absent and every call is a no-op,
 so sim runs, tests and bench launches are unaffected.
+
+STATUS= (unified plan WP-H4) is what `systemctl status amr` prints under the unit:
+the mode, the generation and the last fault, so a look at the PC says what the
+supervisor thinks without the web. EXTEND_TIMEOUT_USEC= during the bounded stop
+asks for at least that long again; systemd never shortens TimeoutStopSec for it.
 """
 
 from __future__ import annotations
@@ -53,3 +58,22 @@ class Notifier:
 
     def stopping(self) -> None:
         self._send("STOPPING=1")
+
+    def extend_timeout(self, seconds: float) -> None:
+        """EXTEND_TIMEOUT_USEC: the current (stop) step needs up to `seconds` more."""
+        self._send(f"EXTEND_TIMEOUT_USEC={max(0, int(seconds * 1_000_000))}")
+
+
+def status_line(mode: str, generation: int, phase: str = "", fault: str = "", last_fault: str = "",
+                note: str = "") -> str:
+    """The STATUS= text, e.g. "LINE gen 7; last fault LAYER_EXITED at 14:02". Pure."""
+    parts = [f"{mode} gen {generation}"]
+    if phase:
+        parts.append(phase)
+    if fault:
+        parts.append(f"fault {fault}")
+    elif last_fault:
+        parts.append(f"last fault {last_fault}")
+    if note:
+        parts.append(note)
+    return "; ".join(parts)

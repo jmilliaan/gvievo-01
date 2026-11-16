@@ -1,0 +1,16 @@
+// Installed as /etc/apt/apt.conf.d/52amr-unattended (unified plan WP-P1,
+// S-unattended-upgrades-amr-policy). Nothing upgrades by itself on the vehicle; the
+// monthly maintenance window runs `sudo unattended-upgrade -v` by hand (RUNBOOK section 7).
+// Sorts after 20auto-upgrades (trim-services.sh) and 50unattended-upgrades, so it wins.
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+// Even by hand: never the kernel, ROS or nodejs (a second layer behind freeze.sh's holds
+// and the snapshot pin).
+Unattended-Upgrade::Package-Blacklist {
+    "linux-";
+    "ros-humble-";
+    "nodejs";
+};
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::InstallOnShutdown "false";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "false";

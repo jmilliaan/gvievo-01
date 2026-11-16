@@ -427,6 +427,11 @@ class ForkDetector:
         self._end = None     # travel at the first single after the last multi
         self.multi = False
 
+    @property
+    def open(self):
+        """An episode has begun and is not reported yet."""
+        return self._start is not None
+
     def update(self, travel, nlcp):
         """One reading. Returns (start, end, crossing) when an episode is confirmed."""
         if nlcp in MULTI_NLCP:

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from amr_maps.generate_sim_factory import build
 from amr_mission.mapping_session_node import MappingSession
+from amr_mission.survey_trace import ImuGaps
 from mission_fakes import Log
 from sensor_msgs.msg import LaserScan
 from slam_toolbox.srv import DeserializePoseGraph
@@ -63,7 +64,7 @@ def session(maps_dir: str, settled: str = "", ready=()):
         maps_dir=maps_dir, _state=MappingState.IDLE, _lock=threading.Lock(), match_params=rl.MatchParams(),
         load_timeout=120.0, _last_scan_msg=scan_at(TRUE), _deserialize="deserialize", calls=[], events=[],
         _map_id="", _description="", _start=None, _review=None, _saved_path="", _revision=0, _continued=None,
-        _message="",
+        _message="", _imu_gaps=ImuGaps(),
     )
     sv.get_logger = Log
     sv._readiness = lambda: list(ready)
@@ -189,6 +190,7 @@ def test_the_saved_revision_records_what_it_continued(tmp_path, monkeypatch):
     lineage = mb.load_manifest(dest, "hall", 2).review["continued_from"]
     assert lineage["revision"] == 1 and lineage["match"]["score"] > 0.8
     assert manifest.review["note"] == "joined" and manifest.review["dx_m"] == 0.01
+    assert manifest.review["trace"]["imu_gap_s"] == 0.0, "WP-E9: the IMU-gap trace is in the review"
     assert np.array_equal(mb.load(str(tmp_path), "hall", 2)[1].data, build().data)
 
 

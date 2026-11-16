@@ -9,7 +9,7 @@ const els = {};
 const stubEl = () => ({ hidden: false, className: '', innerHTML: '', textContent: '', title: '', dataset: {},
   classList: (() => { const c = new Set(); return { toggle(k, on) { (on ?? !c.has(k)) ? c.add(k) : c.delete(k); },
     add(k) { c.add(k); }, remove(k) { c.delete(k); }, contains: k => c.has(k) }; })(), querySelectorAll: () => [], addEventListener() {},
-  setAttribute() {}, appendChild() {} });
+  setAttribute() {}, appendChild() {}, style: { setProperty() {} } });
 const document = {
   hidden: false, documentElement: stubEl(), body: stubEl(),
   getElementById: id => (id in els ? els[id] : null), querySelector: () => null, querySelectorAll: () => [],
@@ -32,6 +32,33 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'amr_web', 'static', 
 const settle = () => new Promise(r => setImmediate(r));
 const reply = (status, data) => () => Promise.resolve({ status, ok: status === 200, statusText: 'x', json: async () => data });
 const cases = {
+  ipcChip() {
+    // WP-P11: the temperature chip counts throttling, report only (it never colours the chip)
+    els['ipc-temp'] = stubEl();
+    const chip = st => { ctx.headerChips(st); const e = els['ipc-temp']; return { text: e.textContent, title: e.title, cls: e.className }; };
+    const t = { package_c: 65.2, core_max_c: 68.0 };
+    return {
+      none: chip({ ipc_temp: t }),
+      first: chip({ ipc_temp: t, ipc_throttle: { count: 4200, total_ms: 13400, clamp: 0, per_min: null } }),
+      quiet: chip({ ipc_temp: t, ipc_throttle: { count: 4200, total_ms: 13400, clamp: 0, per_min: 0 } }),
+      busy: chip({ ipc_temp: t, ipc_throttle: { count: 4300, total_ms: 13500, clamp: 25, per_min: 23.4 } }),
+      noTemp: chip({ ipc_temp: null, ipc_throttle: { count: 1, total_ms: null, clamp: null, per_min: 12 } }),
+    };
+  },
+  supplyChip() {
+    // WP-P7: the supply chip is bad at or below trip_low, warn at warn_low / warn_high
+    els.supply = stubEl();
+    const chip = s => { ctx.headerChips({ drive_supply: s }); return { text: els.supply.textContent, cls: els.supply.className, title: els.supply.title }; };
+    const lim = { warn_low: 48.0, trip_low: 46.0, warn_high: 56.0, age_s: 1 };
+    return {
+      ok: chip({ left: 52.1, right: 52.3, ...lim }),
+      low: chip({ left: 47.9, right: 52.0, ...lim }),
+      tooLow: chip({ left: 46.0, right: 47.0, ...lim }),
+      high: chip({ left: 52.0, right: 56.2, ...lim }),
+      noLimits: chip({ left: 40.0, right: 40.0, age_s: 1 }),
+      stale: chip({ left: 40.0, right: 40.0, ...lim, age_s: 30 }),
+    };
+  },
   panelVerdict() {
     const v = p => ctx.panelVerdict(p);
     return { fresh: v({ age_s: 0.4, valid: true, mode_auto: true }), stale: v({ age_s: 0.6, valid: true, mode_auto: false }),

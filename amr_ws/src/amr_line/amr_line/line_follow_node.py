@@ -52,13 +52,15 @@ import time
 
 from agv_core import alarms, kinematics, paths
 from agv_core import config as vehicle_config
+from agv_core import gyro as gyro_check
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
-from nav_msgs.msg import Odometry
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import drive_state, gating, hold_policy
+from amr_base.diff_drive import forward as wheels_forward
+from amr_base.diff_drive import profile_geometry
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import EVENT_STREAM, LATCHED, RELIABLE_1
 from amr_base.qos import SENSOR_DATA as SENSOR
@@ -85,6 +87,7 @@ from amr_line import (
     rfid_intake,
     runtime,
     tape_health,
+    tick_rate,
     trip_log,
 )
 from amr_line import job as lj
@@ -112,7 +115,8 @@ _WIRE = (
 
 class LineFollowNode(LeanNode):
     def __init__(self) -> None:
-        super().__init__("line_follow_node")
+        # WP-C11: nobody sets params live
+        super().__init__("line_follow_node", start_parameter_services=False)
         for mine, wire in _WIRE:
             if mine != wire:
                 raise RuntimeError(
@@ -133,6 +137,9 @@ class LineFollowNode(LeanNode):
         self.declare_parameter("lease_fresh_s", vehicle_config.FRESH_LINE_LEASE_S)
         self.declare_parameter("drives_fresh_s", vehicle_config.FRESH_LINE_DRIVES_S)
         self.declare_parameter("field_output_index", 0)  # /output_paths status[i]
+        # status[i] while the protective field is OCCUPIED (WP-E3): scanner_fields.yaml
+        # protective.active. False = True reads clear, which is agv-01's set.
+        self.declare_parameter("field_active_level", False)
         # "scanner": the protective field is what a FRESH /output_paths says,
         # and unknown otherwise (a Start is refused and a torque loss is
         # an E-stop). "assume_clear": the sim, which has no scanner. The launch
@@ -144,9 +151,9 @@ class LineFollowNode(LeanNode):
         self.declare_parameter("wheels_fresh_s", 0.1)
         self.declare_parameter("still_wheel_rad_s", 0.02)
         # Speed engine inputs (tracked-speed-plan-1, 2026-10-08): the curve guard's yaw
-        # rate and speed, and the mux's warning-field factor for the U-turn budget.
+        # rate and speed, and the mux's warning-field factor for the U-turn budget. Speed and the
+        # fallback yaw rate come from /wheel_states (wheels_fresh_s), not /odom_raw (WP-C6).
         self.declare_parameter("imu_fresh_s", 0.1)
-        self.declare_parameter("odom_fresh_s", 0.1)
         self.declare_parameter("mux_fresh_s", 0.3)  # /amr/mux_state is 10 Hz
         # Tape localization (tracked plan 3): set by line_layer.launch.py from the profile's
         # tape_loc block and the active pointer ($AMR_STATE_DIR/line_graph.json).
@@ -165,6 +172,7 @@ class LineFollowNode(LeanNode):
         self.field_index = int(self.get_parameter("field_output_index").value)
         if self.field_index < 0:
             raise ValueError(f"field_output_index {self.field_index} < 0")
+        self.field_active = bool(self.get_parameter("field_active_level").value)
         self.field_source = str(self.get_parameter("field_source").value)
         if self.field_source not in ("scanner", "assume_clear"):
             raise ValueError(f"field_source {self.field_source!r}: scanner or assume_clear")
@@ -177,6 +185,9 @@ class LineFollowNode(LeanNode):
         # whatever the profile said (review finding 2026-09-21, F06).
         runtime.load_from_profile()
         auto_clear = float(self.get_parameter("auto_resume_clear_s").value)
+        why = lj.auto_resume_estop_refusal(bool(self.get_parameter("auto_resume_estop").value))
+        if why:
+            raise RuntimeError(why)  # emergency-suite plan §4 (E5, 2026-11-16)
         if auto_clear < 0:
             auto_clear = float(vehicle_config.AUTO_RESUME_HOLD_S)
         self.job = lj.FollowJob(
@@ -211,6 +222,7 @@ class LineFollowNode(LeanNode):
         self._drives_t = None
         self._torque_off_msg = False
         self._drive_link, self._drives_operational = "", False
+        self._supply_v = ()  # (left, right) bus voltage, None = not read (WP-P7)
         self._field_clear: bool | None = None  # last /output_paths verdict
         self._field_t: float | None = None     # ...and when it arrived (monotonic)
         self._t_last = time.monotonic()
@@ -228,12 +240,11 @@ class LineFollowNode(LeanNode):
         self._wheels: WheelStates | None = None
         self._wheels_t: float | None = None
         self.imu_fresh = float(self.get_parameter("imu_fresh_s").value)
-        self.odom_fresh = float(self.get_parameter("odom_fresh_s").value)
         self.mux_fresh = float(self.get_parameter("mux_fresh_s").value)
+        self._geom = profile_geometry()  # (v, wz) from the wheel velocities, as diff_drive_odom
         self._imu_wz: float | None = None
         self._imu_t: float | None = None
-        self._odom: tuple[float, float] | None = None  # (v, wz)
-        self._odom_t: float | None = None
+        self._imu_sub = None  # only while the job may drive (tick_rate.imu_wanted)
         self._mux_scale = 1.0
         self._mux_t: float | None = None
 
@@ -246,8 +257,7 @@ class LineFollowNode(LeanNode):
         self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, EVENT_STREAM)
         self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, EVENT_STREAM)
         self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR)
-        self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
-        self.create_subscription(Odometry, "/odom_raw", self._on_odom, SENSOR)
+        # /imu/data is subscribed in _rate_tick, outside IDLE/DONE/FAULT only (WP-C6).
         self.create_subscription(MuxState, "/amr/mux_state", self._on_mux, RELIABLE_1)
         if self.field_source == "assume_clear":
             self.get_logger().warning(
@@ -338,7 +348,11 @@ class LineFollowNode(LeanNode):
                                 lambda req, res, act=act: self._trigger(
                                     f"continue {act}", lambda: self.job.continue_on_start(act == "arm"), res))
 
-        self.create_steady_timer(self.dt, self._tick)
+        # Two tick timers, one running (WP-C6, amr_line.tick_rate): 50 Hz, or 10 Hz while the job is
+        # idle with the wheels still. An edge (_wake) switches back and resets the fast one.
+        self._ticks = tick_rate.TickRate(self.dt, max(tick_rate.IDLE_DT, self.dt))
+        self._ticks.bind(self.create_steady_timer(self.dt, self._tick),
+                        self.create_steady_timer(self._ticks.idle_dt, self._tick))
         self.create_timer(1.0, self._publish_state)
         self._publish_state()
         self.get_logger().info(
@@ -465,6 +479,8 @@ class LineFollowNode(LeanNode):
             res.ok, res.message = self.job.order_cancel(parts[0], parts[1])
         else:
             res.ok, res.message = False, "order: depart <orderId> <machine> | cancel <orderId> <actionId>"
+        if res.ok:
+            self._wake()  # the job acts on it in the next tick: <= one fast period away (WP-C6)
         self.get_logger().info(f"order {action} {req.arg}: {res.message}")
         return res
 
@@ -535,7 +551,10 @@ class LineFollowNode(LeanNode):
         # fork detectors as they were (no phantom junction in a teach pass or the shadow
         # locator), and the recorder notes the pivot to drop the corner's own fork episode.
         pivot = self.job.pivoting or phase in ("stopping", "spin", "center", "settle")
-        nlcp = 0 if pivot else (self.reader.sensor() or {}).get("nlcp")
+        # A stale reading is no reading (H-P2-3): None, which aborts an open fork episode.
+        age = self.reader.age_s(now)
+        stale = age is None or age > self.reader.timeout_s
+        nlcp = 0 if pivot else None if stale else (self.reader.sensor() or {}).get("nlcp")
         rt.tick(self._ros_now(), self._travel(now), nlcp, still, phase, pivot)
         self.tape_health.where(rt.snapshot() if rt.loc is not None else None)
         events = rt.drain_events()
@@ -670,6 +689,8 @@ class LineFollowNode(LeanNode):
             self._start_edge_t = now  # consumed by exactly one tick
         if m.reset_edge:
             self._reset_edge = True
+        if m.start_edge or m.reset_edge:
+            self._wake()
         # At home from the panel (amr_line.home_combo): Start + Reset held 1 s under MANUAL. Older
         # amr_interfaces without the levels: never.
         start_held, reset_held = bool(getattr(m, "start_held", False)), bool(getattr(m, "reset_held", False))
@@ -701,6 +722,8 @@ class LineFollowNode(LeanNode):
             self._marker_events.append((int(m.seq), int(m.code), int(m.direction), int(m.lcp2_mm),
                                         bool(m.line_good)))
         st["ok"], st["status"] = bool(m.markers_ok), str(m.status)
+        # TPDO1 holes since drive_node started (WP-E8); an older amr_interfaces has none: 0.
+        st["gaps"] = int(getattr(m, "gaps", 0))
         self._marker_t = time.monotonic()
 
     def _markers(self, now: float) -> dict:
@@ -722,23 +745,32 @@ class LineFollowNode(LeanNode):
     def _on_imu(self, m: Imu) -> None:
         self._imu_wz, self._imu_t = float(m.angular_velocity.z), time.monotonic()
 
-    def _on_odom(self, m: Odometry) -> None:
-        self._odom = (float(m.twist.twist.linear.x), float(m.twist.twist.angular.z))
-        self._odom_t = time.monotonic()
-
     def _on_mux(self, m: MuxState) -> None:
         self._mux_scale, self._mux_t = float(m.speed_scale), time.monotonic()
 
+    def _wheel_twist(self, now: float):
+        """(v, wz) of a FRESH, valid /wheel_states from the drives' own velocities (606Ch), or
+        None. It replaced /odom_raw here (WP-C6): the same wheels, one subscription fewer."""
+        w = self._wheels
+        if w is None or self._wheels_t is None or now - self._wheels_t > self.wheels_fresh:
+            return None
+        if not (w.left_valid and w.right_valid):
+            return None
+        return wheels_forward(self._geom, float(w.left_vel_rad_s), float(w.right_vel_rad_s))
+
     def _motion_inputs(self, now: float):
-        """(yaw_rate, v_meas, warning_scale). Gyro first, odometry as the fallback;
-        None when neither is fresh, which takes HIGH away. A stale mux reads as no
-        warning: the U-turn budget then runs, which faults rather than waits."""
-        odom_ok = self._odom_t is not None and now - self._odom_t <= self.odom_fresh
+        """(yaw_rate, curve_yaw_rate, v_meas, warning_scale). yaw_rate: gyro first, the wheels as
+        the fallback; None when neither is fresh, which takes HIGH away. curve_yaw_rate: the larger
+        of the two (H-P1-7, agv_core.gyro), for the curve guard only. A stale mux reads
+        as no warning: the U-turn budget then runs, which faults rather than waits."""
+        wheels = self._wheel_twist(now)
         imu_ok = self._imu_t is not None and now - self._imu_t <= self.imu_fresh
-        v = self._odom[0] if odom_ok else None
-        yaw = self._imu_wz if imu_ok else (self._odom[1] if odom_ok else None)
+        v = wheels[0] if wheels is not None else None
+        wheel_wz = wheels[1] if wheels is not None else None
+        yaw = self._imu_wz if imu_ok else wheel_wz
+        curve = gyro_check.curve_yaw_rate(self._imu_wz if imu_ok else None, wheel_wz)
         mux_ok = self._mux_t is not None and now - self._mux_t <= self.mux_fresh
-        return yaw, v, (self._mux_scale if mux_ok else 1.0)
+        return yaw, curve, v, (self._mux_scale if mux_ok else 1.0)
 
     def _wheel_inputs(self, now: float):
         """(counts, counts_per_rev, still) from a FRESH /wheel_states, else nothing."""
@@ -759,12 +791,17 @@ class LineFollowNode(LeanNode):
     def _on_drives(self, m: DriveStatus) -> None:
         self._torque_off_msg = drive_state.torque_off(m.operational, m.left_state, m.right_state)
         self._drive_link, self._drives_operational = str(m.link_state), bool(m.operational)
+        # WP-P7: the bus voltage (DriveStatus.left/right_bus_v, appended 2026-11-16). NaN = not read;
+        # 0 = a publisher that does not set it (an older drive_node, the sim): no reading either.
+        self._supply_v = tuple(lj.bus_volts(getattr(m, k, None)) for k in ("left_bus_v", "right_bus_v"))
         self._drives_t = time.monotonic()
 
     def _on_output_paths(self, m) -> None:
-        clear = drive_state.field_clear(getattr(m, "status", None), self.field_index)
+        clear = drive_state.field_clear(getattr(m, "status", None), self.field_index, self.field_active)
         if clear is None:
             return  # a malformed array is no evidence at all: the old one ages out
+        if not drive_state.field_valid(getattr(m, "is_valid", ()), self.field_index):
+            clear = None  # WP-E2: an invalid path is UNKNOWN now - no auto-resume, no field hold
         self._field_clear = clear
         self._field_t = time.monotonic()
 
@@ -793,7 +830,7 @@ class LineFollowNode(LeanNode):
         reset_edge, self._reset_edge = self._reset_edge, False
         track_ok, track_cause = self.reader.usable(now)
         counts, per_rev, still = self._wheel_inputs(now)
-        yaw, v_meas, scale = self._motion_inputs(now)
+        yaw, curve_yaw, v_meas, scale = self._motion_inputs(now)
         rear = self._rear(now) if self.job.calling else ("unknown", None)
         return lj.Inputs(
             now=now,
@@ -829,12 +866,17 @@ class LineFollowNode(LeanNode):
             counts_per_rev=per_rev,
             wheels_still=still,
             yaw_rate=yaw,
+            curve_yaw_rate=curve_yaw,
             v_meas=v_meas,
             warning_scale=scale,
             loc=self.tapeloc.loc_state() if getattr(self, "tapeloc", None) is not None else None,
             trolley=rear[0],
             rear_clear=rear[1],
             loc_ready=bool(getattr(self, "tapeloc", None) is not None and self.tapeloc.ready),
+            # E5: the panel's emergency on a fresh, valid image; None = it cannot say (the torque
+            # guess stands), also for a PanelState built before the field.
+            emergency=(getattr(self._panel, "emergency", None) if panel_ok and self._panel.valid else None),
+            supply_v=getattr(self, "_supply_v", ()) if self._drives_fresh(now) else (),
         )
 
     # -- services ----------------------------------------------------------
@@ -950,6 +992,25 @@ class LineFollowNode(LeanNode):
             self._publish_state()
         elif self.job.wants_power() != self._power_published:
             self._publish_state()  # a hold changing cause can change drive_power: say so now
+        self._rate_tick(now)
+
+    # -- wakeups (WP-C6, amr_line.tick_rate) ----------------------------------
+    def _wake(self) -> None:
+        """An edge the next tick acts on: at the idle rate, the fast timer, reset, so that tick
+        comes one fast period from now."""
+        self._ticks.edge()
+
+    def _rate_tick(self, now: float) -> None:
+        """End of every tick: the timer for the next one, and /imu/data only where it is read."""
+        _counts, _per_rev, still = self._wheel_inputs(now)
+        teaching = self.tapeloc is not None and self.tapeloc.recorder is not None
+        self._ticks.after_tick(now, tick_rate.quiet(self.job.state, still, teaching))
+        want = tick_rate.imu_wanted(self.job.state)
+        if want and self._imu_sub is None:
+            self._imu_sub = self.create_subscription(Imu, "/imu/data", self._on_imu, SENSOR)
+        elif not want and self._imu_sub is not None:
+            self.destroy_subscription(self._imu_sub)
+            self._imu_sub, self._imu_wz, self._imu_t = None, None, None
 
     def _flight_tick(self, now, before, left, right, events) -> None:
         sensor = self.reader.sensor() or {}

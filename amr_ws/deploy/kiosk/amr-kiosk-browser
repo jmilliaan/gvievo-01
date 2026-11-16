@@ -4,18 +4,34 @@
 #  - navigated off 127.0.0.1, or extra tabs/windows      -> killed, respawned
 #  - screen geometry changed (monitor hot-plugged)       -> killed, respawned so
 #    the window re-fits the new panel size
+#  - amr.service failed / recovered                      -> respawned on the
+#    "call engineer" page / back on the UI (unified plan WP-H5, 2026-11-16)
 # Versioned in amr_ws/deploy/kiosk/; installed to /usr/local/bin by the owner
 # (validate.sh says when the two differ).
 URL=http://127.0.0.1/
+# Written by amr-failed.service (OnFailure= of amr.service). /run is tmpfs, so the page never
+# outlives a boot, and it is world-readable, which the amrkiosk user needs: it cannot read the
+# service user's home, where AMR_STATE_DIR lives.
+FALLBACK=/run/amr/failed.html
 DBG=9222
 export DISPLAY=${DISPLAY:-:0}
+
+# The page the kiosk should be on: the fallback only while amr.service is failed and the page
+# exists, the UI otherwise. One systemctl call per watchdog round (20 s).
+wanted_url() {
+  if [ -r "$FALLBACK" ] && systemctl is-failed --quiet amr.service; then
+    echo "file://$FALLBACK"
+  else
+    echo "$URL"
+  fi
+}
 
 # --current reads the X server's cached screen size and probes no connector:
 # amr-display-hotplug.sh already re-probes (xrandr -q) every 5 s, and an EDID
 # read per probe is what made the second one expensive (cpu-load-plan Tier 1 #4).
 geometry() { xrandr --current 2>/dev/null | awk '/current/{print $8 $9 $10}'; }
 
-watchdog() {   # $1 = chromium pid
+watchdog() {   # $1 = chromium pid, $2 = the URL it was started on
   sleep 15                             # first start can be slow (snap)
   local g0; g0=$(geometry)
   while kill -0 "$1" 2>/dev/null; do
@@ -24,14 +40,21 @@ watchdog() {   # $1 = chromium pid
       logger -t amr-kiosk "screen geometry changed -> restarting browser"
       kill "$1"; return
     fi
+    if [ "$(wanted_url)" != "$2" ]; then
+      logger -t amr-kiosk "amr.service state changed -> restarting browser"
+      kill "$1"; return
+    fi
     # Ask Chromium what it is showing. Only real tabs (type "page") count;
     # the endpoint also lists internal helpers (chrome://omnibox-popup...)
-    # that are not windows. Exactly one tab, on our origin, or it dies.
-    read -r pages bad < <(curl -s --max-time 2 "http://127.0.0.1:$DBG/json" | python3 -c '
-import json,sys
+    # that are not windows. Exactly one tab, on the page it was started on
+    # (our origin, or exactly the fallback file), or it dies.
+    read -r pages bad < <(curl -s --max-time 2 "http://127.0.0.1:$DBG/json" | ALLOW="$2" python3 -c '
+import json,os,sys
+allow=os.environ["ALLOW"]
+ok=(lambda u: u==allow) if allow.startswith("file://") else (lambda u: u.startswith("http://127.0.0.1"))
 try: t=[x for x in json.load(sys.stdin) if x.get("type")=="page"]
 except Exception: print("? ?"); sys.exit()
-print(len(t), sum(1 for x in t if not x.get("url","").startswith("http://127.0.0.1")))')
+print(len(t), sum(1 for x in t if not ok(x.get("url",""))))')
     if [ "$pages" = "?" ]; then continue; fi        # endpoint not answering: judge next round
     if [ "${pages:-0}" != "1" ] || [ "${bad:-0}" != "0" ]; then
       logger -t amr-kiosk "browser state wrong (pages=$pages off-origin=$bad) -> restarting"
@@ -41,6 +64,7 @@ print(len(t), sum(1 for x in t if not x.get("url","").startswith("http://127.0.0
 }
 
 while :; do
+  url=$(wanted_url)
   chromium \
     --kiosk --incognito --noerrdialogs --no-first-run --disable-infobars \
     --disable-session-crashed-bubble --disable-translate --disable-pinch \
@@ -51,9 +75,9 @@ while :; do
     --autoplay-policy=no-user-gesture-required \
     --remote-debugging-port=$DBG --remote-allow-origins=* \
     --window-position=0,0 --start-fullscreen \
-    "$URL" >/dev/null 2>&1 &
+    "$url" >/dev/null 2>&1 &
   pid=$!
-  watchdog "$pid" &
+  watchdog "$pid" "$url" &
   wait "$pid"
   logger -t amr-kiosk "chromium exited ($?) -> respawn"
   sleep 1

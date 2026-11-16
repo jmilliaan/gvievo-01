@@ -10,7 +10,7 @@ def test_a_drive_fault_is_acknowledged_only_when_no_run_holds_the_drives():
     from amr_bringup import readiness as rd
 
     def drives(link):
-        return NS(operational=False, link_state=link, left_state="Fault", right_state="Fault")
+        return NS(operational=False, link_state=link, left_state="FAULT", right_state="FAULT")
 
     s = rd.Snapshots()
     now = time.monotonic()

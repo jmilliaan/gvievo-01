@@ -11,6 +11,7 @@ import pytest
 
 pytest.importorskip("rclpy")
 from amr_localization.scan_gate import ScanGate  # noqa: E402
+from rclpy.serialization import serialize_message  # noqa: E402
 from sensor_msgs.msg import LaserScan  # noqa: E402
 
 from amr_localization import scan_gate_node as sgn  # noqa: E402
@@ -45,16 +46,18 @@ def node():
     n._poll_timer = FakeTimer()
     n.published = []
     n._pub = type("P", (), {"publish": staticmethod(n.published.append)})()
+    n._bad = 0
     n.clock_s = 100.0
     n._now = lambda: n.clock_s
     return n
 
 
-def scan(t: float) -> LaserScan:
+def scan(t: float) -> bytes:
+    """/scan as the node takes it since 2026-11-16: raw CDR bytes."""
     m = LaserScan()
     m.header.frame_id = "laser"
     m.header.stamp.sec, m.header.stamp.nanosec = int(t), int(round((t % 1) * 1e9))
-    return m
+    return serialize_message(m)
 
 
 def test_a_queued_scan_arms_the_poll_and_a_release_disarms_it():
@@ -66,6 +69,7 @@ def test_a_queued_scan_arms_the_poll_and_a_release_disarms_it():
     n.tf_buffer.ok = True
     n._poll()
     assert len(n.published) == 1 and n._poll_timer.canceled, "nothing pending: no more wakeups"
+    assert n.published[0] == scan(100.0), "bytes in == bytes out (§4a d)"
 
 
 def test_a_second_scan_while_armed_does_not_restart_the_schedule():

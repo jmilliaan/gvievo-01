@@ -57,6 +57,10 @@ def generate_launch_description() -> LaunchDescription:
                 executable="robot_state_publisher",
                 name="robot_state_publisher",
                 output="screen",
+                # A dead rsp freezes the static TF tree (base_link -> laser, mls): back in 2 s
+                # rather than staying down (H-P1-5, unified plan WP-H4, 2026-11-16).
+                respawn=True,
+                respawn_delay=2.0,
                 parameters=[
                     {
                         "robot_description": ParameterValue(Command(cmd), value_type=str),

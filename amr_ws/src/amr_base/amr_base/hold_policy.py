@@ -11,6 +11,9 @@ from __future__ import annotations
 HOLD_TEXT = {
     "field": "safety stop (protective field): {why}",
     "estop": "safety stop (E-stop / safety chain): {why}",
+    # Torque lost while the panel says the E-stop is NORMAL and the field is clear (emergency
+    # suite E5, 2026-11-16): the safety chain stopped the drives, but not the E-stop button.
+    "chain": "safety stop (safety circuit, not the E-stop): {why}",
 }
 
 
@@ -30,7 +33,8 @@ AUTO_CAUSES = ("field",)
 # software. Wheel feedback may be missing while one stands, and a later torque loss does not
 # re-classify it. "panel": the I/O island reported its image invalid just before the torque
 # went - the safety chain's state is then unknown, so it is never read as the field.
-SAFETY_CAUSES = ("field", "estop", "panel")
+# "chain" (2026-11-16): torque lost with the panel's E-stop NORMAL and the field clear.
+SAFETY_CAUSES = ("field", "estop", "panel", "chain")
 # Holds that wait for a person to attach or release trolleys, then a physical Start: the
 # panel's call alarm pulses through them (manuals/stop-call-alarm-plan.md, owner 2026-11-13).
 # station: parked at a stop · payload: at a U-turn, release not recorded · trolley: a trolley
@@ -40,6 +44,7 @@ CALL_CAUSES = ("station", "payload", "trolley")
 CAUSE_DEVICE = {
     "field": "scanner",
     "estop": "safety_chain",
+    "chain": "safety_chain",
     "panel": "dio",
     "drives": "drives",
     "drive_fault": "drives",

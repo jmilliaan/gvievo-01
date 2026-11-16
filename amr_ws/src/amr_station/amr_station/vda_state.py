@@ -56,6 +56,7 @@ class StateView:
     refusal: dict | None = None  # the bridge's one slot: {type, order_id, reason}
     instant_states: tuple = ()  # [{actionId, actionType, actionStatus}]
     instant_errors: tuple = ()  # [{errorType, actionId, orderId}]
+    emergency: int | None = None  # PanelState.emergency of a fresh, valid panel image; None = unknown
 
 
 def operating_mode(v: StateView) -> str:
@@ -206,8 +207,11 @@ def build_state(v: StateView, site) -> dict:
             "operatingMode": operating_mode(v),
             "errors": _errors(v, site),
             "safetyState": {
-                # Inferred from torque gone with the field clear, not read from the chain. Display only.
-                "activeEmergencyStop": "MANUAL" if v.hold_cause == "estop" else "NONE",
+                # The E-stop as the panel reads it (DI09, emergency plan Part B), or a run still held
+                # on its terms ("estop": until the Start after the Reset). Display only (E7): the
+                # bridge's behaviour does not change, and the order is not cancelled by it.
+                # The contract's examples (section 6.2) pin the body, so no new key: the existing field.
+                "activeEmergencyStop": "MANUAL" if v.emergency or v.hold_cause == "estop" else "NONE",
                 "fieldViolation": not (v.field_fresh and v.protective_clear)
                 or o.get("rear_field") != FIELD_CLEAR,
             },

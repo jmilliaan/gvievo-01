@@ -31,3 +31,7 @@ string fault_code
 string reason
 string last_survey_map_id   # last SAVED survey in this service lifetime
 uint32 last_survey_revision
+# What the base lacks, "" when nothing (unified plan WP-H2, 2026-11-16): readiness.base_missing()'s
+# item names ("mux, drives, wheel feedback, panel"). Unlike base_ready (topic receipt only) it also
+# names a panel whose image is not valid and drives without torque. Published on change and at 2 Hz.
+string base_missing

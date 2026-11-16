@@ -1,9 +1,14 @@
 """The ROS side of the web app: one rclpy node, explicit typed calls, no wheels.
 
-Services are called with a bounded wait from Flask's request threads while a
+Services are called with a bounded wait from the HTTP server's worker threads while a
 SingleThreadedExecutor spins the node in the background. A service that is not
 running (e.g. the executor before nav.launch) answers (False, "... unavailable")
 instead of hanging.
+
+The service clients live on a second node with its own executor thread (WP-C12,
+2026-11-16): the subscription executor wakes ~100 times a second and rebuilds its wait
+set from every entity on each wake, while the clients wait for an answer only when a
+page calls one.
 """
 
 from __future__ import annotations
@@ -18,19 +23,19 @@ import traceback
 from typing import Any
 
 import rclpy
-from agv_core import disk, paths, se2
+from agv_core import disk, health, paths, se2
 from diagnostic_msgs.msg import DiagnosticArray
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, PointCloud2
 from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
 from tf2_ros import Buffer
 
-from amr_base import wire
+from amr_base import scanner_health, wire
 from amr_base.gating import LEASE_COMMISSIONING, LEASE_LINE, LEASE_MANUAL
 from amr_base.lean_node import LeanNode
 from amr_base.qos import EVENT_STREAM as RFID_QOS
@@ -62,8 +67,10 @@ from amr_interfaces.srv import (
     SelectMission,
     SurveyMove,
 )
-from amr_web import live
+from amr_web import health_view, ipc, live
+from amr_web.alarms import EMG_NAMES, EMG_NORMAL
 from amr_web.eventlog import EventLog, EventRing
+from amr_web.ipc import read_ipc_temp  # noqa: F401 - re-exported: its home was here
 
 SCAN_PERIOD_S = 0.1  # live-view scan projection rate cap (the page redraws at 5 Hz)
 MAP_ODOM_FRESH_S = 2.0  # newest map->odom stamp older than this: no layer is localising
@@ -74,52 +81,19 @@ RFID_RECENT = 8  # tag passes the pages show
 IPC_TEMP_PERIOD_S = 5.0  # sysfs is cheap, but a CPU temperature moves over tens of seconds
 
 
-def read_ipc_temp(root: str = "/sys/class") -> dict | None:
-    """The IPC's CPU temperature from the coretemp hwmon (package, hottest core), deg C.
-
-    Falls back to the x86_pkg_temp thermal zone. None when neither exists (a VM).
-    """
-    try:
-        for h in sorted(os.listdir(os.path.join(root, "hwmon"))):
-            d = os.path.join(root, "hwmon", h)
-            try:
-                with open(os.path.join(d, "name")) as f:
-                    if f.read().strip() != "coretemp":
-                        continue
-            except OSError:
-                continue
-            package, cores = None, []
-            for name in os.listdir(d):
-                if not (name.startswith("temp") and name.endswith("_input")):
-                    continue
-                with open(os.path.join(d, name)) as f:
-                    c = int(f.read().strip()) / 1000.0
-                try:
-                    with open(os.path.join(d, name.replace("_input", "_label"))) as f:
-                        label = f.read().strip()
-                except OSError:
-                    label = ""
-                if label.startswith("Package"):
-                    package = c
-                else:
-                    cores.append(c)
-            if package is not None or cores:
-                return {"package_c": package if package is not None else max(cores),
-                        "core_max_c": max(cores) if cores else package}
-        for z in sorted(os.listdir(os.path.join(root, "thermal"))):
-            d = os.path.join(root, "thermal", z)
-            try:
-                with open(os.path.join(d, "type")) as f:
-                    if f.read().strip() != "x86_pkg_temp":
-                        continue
-                with open(os.path.join(d, "temp")) as f:
-                    c = int(f.read().strip()) / 1000.0
-                return {"package_c": c, "core_max_c": c}
-            except OSError:
-                continue
-    except OSError:
-        pass
-    return None
+# Service-call timeouts (WP-E5, 2026-11-16). The browser gives up on a request after 8 s
+# (amr.js REQUEST_TIMEOUT_MS), so waiting longer than that only pins a server worker for an
+# answer nobody reads. Each bound covers the discovery wait too (_call).
+CALL_TIMEOUT_S = 6.0  # the ceiling: 2 s under the browser's 8 s, so the server's words arrive
+QUICK_TIMEOUT_S = 3.0  # an in-memory state change, answered at the node's next executor turn
+# /amr/supervisor/recover waits on drive_node's /drives/ack_fault (the bus thread) when the
+# drive link is in FAULT: the slowest call the pages make.
+RECOVER_TIMEOUT_S = CALL_TIMEOUT_S
+# /amr/line/mission loads and checks one mission file: quick, like the other line calls.
+LINE_MISSION_TIMEOUT_S = QUICK_TIMEOUT_S
+# /amr/line/teach pass_stop re-matches every saved pass of the map (CPU-bound on the N97):
+# the ceiling. A pass that takes longer is still saved; the page says to look again.
+LINE_TEACH_TIMEOUT_S = CALL_TIMEOUT_S
 
 
 def _sensor_max_mm() -> float:
@@ -130,6 +104,9 @@ def _sensor_max_mm() -> float:
         return float(config.SENSOR_MAX_MM)
     except Exception:  # noqa: BLE001 - display scale only
         return 100.0
+
+
+SUPPLY_LIMITS = health_view.supply_limits()  # the supply chip colour (WP-P7)
 
 
 def _wheel_radius_m() -> float | None:
@@ -143,6 +120,27 @@ def _wheel_radius_m() -> float | None:
 
 
 WHEEL_RADIUS_M = _wheel_radius_m()
+
+
+def rfid_enabled() -> bool:
+    """The profile's rfid.enabled (owner 2026-11-16: false on both units). A dev box without
+    a profile keeps the RFID strip, as before."""
+    try:
+        from agv_core import config  # noqa: PLC0415 - needs AGV_PROFILE, absent on a dev box
+
+        return bool(config.RFID_ENABLED)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _cfg(name: str, default):
+    """One profile value for the HMI's words (WP-H2), or `default` on a dev box without a profile."""
+    try:
+        from agv_core import config  # noqa: PLC0415 - needs AGV_PROFILE, absent on a dev box
+
+        return getattr(config, name, default)
+    except Exception:  # noqa: BLE001
+        return default
 
 
 def station_enabled() -> bool:
@@ -227,6 +225,11 @@ class RosAdapter(LeanNode):
         self._lease_t = 0.0
         self._panel: dict | None = None
         self._panel_t = 0.0
+        # Emergency picture from PanelState (emergency-suite plan Part B, kyb): when the state last
+        # changed, and when it left NORMAL (the banner's "since", across the reset steps).
+        self._emg: dict | None = None
+        self._emg_t = 0.0
+        self._emg_active_t: float | None = None
         self._drives: dict | None = None
         self._drives_t = 0.0
         self._mux: dict | None = None
@@ -249,6 +252,10 @@ class RosAdapter(LeanNode):
         self._sensor_max_mm = _sensor_max_mm()
         self._ipc_temp: dict | None = None
         self._ipc_temp_t = -1e9
+        self._ipc_throttle: dict | None = None
+        self._throttle_rate = ipc.ThrottleRate()
+        # The service clients' node (WP-C12): spun by its own executor (Spinner), not this one.
+        self.calls = LeanNode("amr_web_calls", start_parameter_services=False)
         g = ReentrantCallbackGroup()
         self.create_subscription(ModeState, "/amr/mode_state", self._on_mode, LATCHED, callback_group=g)
         self.create_subscription(
@@ -279,7 +286,9 @@ class RosAdapter(LeanNode):
             WheelStates, "/wheel_states_ui", self._on_wheels, qos_profile_sensor_data, callback_group=g
         )
         # RFID tag passes and the reader link, in every mode (rfid_node, base layer): display only.
-        self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, RFID_QOS, callback_group=g)
+        # Not at all when the profile has the reader off (2026-11-16): the pages hide the strip.
+        if rfid_enabled():
+            self.create_subscription(StationDetection, "/amr/rfid", self._on_rfid, RFID_QOS, callback_group=g)
         # MLS marker codes (drive_node, mls-marker-plan): every marker is a message, like RFID.
         self.create_subscription(MarkerEvent, "/amr/line_marker", self._on_marker, RFID_QOS, callback_group=g)
         self._manual = self.create_publisher(ManualCommand, "/amr/manual_command", RELIABLE_1)
@@ -299,6 +308,39 @@ class RosAdapter(LeanNode):
         self._ring = EventRing(300, EventLog(os.path.join(state_dir, "logs", "events.jsonl")))
         self._ring.restore()
         self.create_subscription(DiagnosticArray, "/diagnostics", self._on_diag, 5, callback_group=g)
+        # Device health (WP-H1/H2): device -> (Row, receive time). Guarded: a DeviceHealth that is
+        # not built yet leaves the HMI as it was.
+        self._health_rows: dict[str, tuple] = {}
+        self._fitted = health.configured(_ConfigView())
+        try:
+            from amr_interfaces.msg import DeviceHealth  # noqa: PLC0415
+
+            self.create_subscription(DeviceHealth, "/amr/device_health", self._on_health, RFID_QOS,
+                                     callback_group=g)
+        except ImportError:
+            self.get_logger().warn("no DeviceHealth (amr_interfaces not rebuilt): no device health rows")
+        # The rear scanner's trolley verdict (rear.source "scanner" only): is its scan usable.
+        self._rear_source = str(_cfg("REAR_SOURCE", "none"))
+        self._trolley, self._trolley_t = None, 0.0
+        if self._rear_source == "scanner":
+            from amr_interfaces.msg import TrolleyState  # noqa: PLC0415
+
+            self.create_subscription(TrolleyState, "/amr/rear/trolley", self._on_trolley, LATCHED,
+                                     callback_group=g)
+        # The front scanner's status_overview (WP-E4): config_state / error_info_code, read when its
+        # State appears and on each level change. Guarded: the service type or the driver may be absent.
+        self._overview: dict = {}
+        self._overview_poll = health_view.OverviewPoll()
+        cli = req = None
+        try:
+            from sick_safetyscanners2_interfaces.srv import StatusOverview  # noqa: PLC0415
+
+            cli = self.calls.create_client(
+                StatusOverview, f"/{scanner_health.NODES[scanner_health.FRONT]}/status_overview")
+            req = StatusOverview.Request
+        except Exception:  # noqa: BLE001 - not installed (dev box, sim)
+            cli = None
+        self._overview_cli, self._overview_req = cli, req
         self.create_subscription(IoImage, "/amr/io", self._on_io, 5, callback_group=g)
         self.create_subscription(Event, "/amr/events", self._on_event, 50, callback_group=g)
         # live view (unified plan §6.4): grid, scan, TF; generation-tagged, dropped on a switch
@@ -321,11 +363,20 @@ class RosAdapter(LeanNode):
             QoSProfile(depth=100, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
             callback_group=g,
         )
-        self._live_subs: tuple | None = None
+        self._live_subs: tuple | None = None  # raw (/tf, /scan)
+        # WP-C16: the 5 Hz display topics, while a node publishes them (live.live_sources)
+        self._display_subs: tuple | None = None
+        self._display_since = 0.0
+        self._display_t: float | None = None  # last display sample, monotonic
         self._live_group = g
         self.live.on_want = self.create_guard_condition(self._live_reconcile, callback_group=g).trigger
-        self.create_timer(1.0, self._live_reconcile, callback_group=g)
-        self.create_timer(0.2, self._live_pose, callback_group=g)
+        # Both run only while a page wants the live view (WP-C12): the guard condition above
+        # starts them, _live_reconcile stops them when the demand lapses. The generation is
+        # followed in _on_mode, not here.
+        self._live_tick = self.create_timer(1.0, self._live_reconcile, callback_group=g)
+        self._live_pose_tick = self.create_timer(0.2, self._live_pose, callback_group=g)
+        self._live_tick.cancel()
+        self._live_pose_tick.cancel()
         self.create_subscription(
             MappingState, "/amr/mapping_state", self._on_mapping, LATCHED, callback_group=g
         )
@@ -342,31 +393,32 @@ class RosAdapter(LeanNode):
         except ImportError:
             pass
         self._initialpose = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 1)
+        cli = self.calls.create_client  # the second node (WP-C12)
         self._srv = {
-            "survey_move": self.create_client(SurveyMove, "/amr/survey/move", callback_group=g),
-            "survey_move_stop": self.create_client(Trigger, "/amr/survey/move_stop", callback_group=g),
-            "loc_confirm": self.create_client(Trigger, "/amr/localization/confirm", callback_group=g),
-            "loc_reset": self.create_client(Trigger, "/amr/localization/reset", callback_group=g),
-            "ack": self.create_client(Trigger, "/amr/ack_fault", callback_group=g),
+            "survey_move": cli(SurveyMove, "/amr/survey/move"),
+            "survey_move_stop": cli(Trigger, "/amr/survey/move_stop"),
+            "loc_confirm": cli(Trigger, "/amr/localization/confirm"),
+            "loc_reset": cli(Trigger, "/amr/localization/reset"),
+            "ack": cli(Trigger, "/amr/ack_fault"),
             # supervisor (unified plan §4.2)
-            "mode": self.create_client(RequestMode, "/amr/mode/request", callback_group=g),
-            "survey": self.create_client(RequestSurvey, "/amr/supervisor/survey", callback_group=g),
-            "operation": self.create_client(GetOperation, "/amr/operations/get", callback_group=g),
-            "recover": self.create_client(Trigger, "/amr/supervisor/recover", callback_group=g),
-            "line_clear": self.create_client(Trigger, "/amr/line/clear", callback_group=g),
-            "line_mission": self.create_client(SelectMission, "/amr/line/mission", callback_group=g),
-            "line_teach": self.create_client(LineTeach, "/amr/line/teach", callback_group=g),
-            "line_trip": self.create_client(LineTeach, "/amr/line/trip", callback_group=g),
-            "branch_left": self.create_client(Trigger, "/amr/line/branch/left", callback_group=g),
-            "branch_straight": self.create_client(Trigger, "/amr/line/branch/straight", callback_group=g),
-            "branch_right": self.create_client(Trigger, "/amr/line/branch/right", callback_group=g),
-            "speed_normal": self.create_client(Trigger, "/amr/line/speed/normal", callback_group=g),
-            "speed_high": self.create_client(Trigger, "/amr/line/speed/high", callback_group=g),
-            "uturn_force": self.create_client(Trigger, "/amr/line/uturn/force", callback_group=g),
-            "uturn_cancel": self.create_client(Trigger, "/amr/line/uturn/cancel", callback_group=g),
-            "continue_arm": self.create_client(Trigger, "/amr/line/continue/arm", callback_group=g),
-            "continue_cancel": self.create_client(Trigger, "/amr/line/continue/cancel", callback_group=g),
-            "line_at_home": self.create_client(Trigger, "/amr/line/at_home", callback_group=g),
+            "mode": cli(RequestMode, "/amr/mode/request"),
+            "survey": cli(RequestSurvey, "/amr/supervisor/survey"),
+            "operation": cli(GetOperation, "/amr/operations/get"),
+            "recover": cli(Trigger, "/amr/supervisor/recover"),
+            "line_clear": cli(Trigger, "/amr/line/clear"),
+            "line_mission": cli(SelectMission, "/amr/line/mission"),
+            "line_teach": cli(LineTeach, "/amr/line/teach"),
+            "line_trip": cli(LineTeach, "/amr/line/trip"),
+            "branch_left": cli(Trigger, "/amr/line/branch/left"),
+            "branch_straight": cli(Trigger, "/amr/line/branch/straight"),
+            "branch_right": cli(Trigger, "/amr/line/branch/right"),
+            "speed_normal": cli(Trigger, "/amr/line/speed/normal"),
+            "speed_high": cli(Trigger, "/amr/line/speed/high"),
+            "uturn_force": cli(Trigger, "/amr/line/uturn/force"),
+            "uturn_cancel": cli(Trigger, "/amr/line/uturn/cancel"),
+            "continue_arm": cli(Trigger, "/amr/line/continue/arm"),
+            "continue_cancel": cli(Trigger, "/amr/line/continue/cancel"),
+            "line_at_home": cli(Trigger, "/amr/line/at_home"),
         }
 
     # ---- subscriptions --------------------------------------------------------------
@@ -378,10 +430,12 @@ class RosAdapter(LeanNode):
         """Free space on the state and maps filesystems (power-loss plan W3). Cached for
         30 s: this is polled twice a second by every open page and statvfs is a syscall
         per call. Computed here rather than carried in a message - the web runs on the
-        same machine as the disks it reports."""
+        same machine as the disks it reports. The same filesystems the supervisor watches,
+        and a read-only one by path (WP-P4, WP-H2)."""
         if now - self._disk_t > 30.0 or self._disk_cache is None:
-            st = disk.status([self._state_dir, self._maps_dir])
-            self._disk_cache = {"free_mb": st.free_mb, "level": st.level, "path": st.path}
+            st = disk.status(disk.watched(self._state_dir, self._maps_dir))
+            self._disk_cache = {"free_mb": st.free_mb, "level": st.level, "path": st.path,
+                                "readonly": st.readonly}
             self._disk_t = now
         return self._disk_cache
 
@@ -429,8 +483,42 @@ class RosAdapter(LeanNode):
         return "odom"
 
     def _live_reconcile(self) -> None:
-        """Subscribe /tf and /scan while a page wants the live view; drop them when it lapses."""
+        """While a page wants the live view: the 5 Hz display topics when a node publishes
+        them, else (or while they are stale) raw /tf and /scan (live.live_sources). Everything
+        is dropped, and both live timers stopped, when the demand lapses (WP-C12, C16)."""
         wanted = self.live.wanted()
+        now = time.monotonic()
+        pubs = self.count_publishers(live.DISPLAY_POSE_TOPIC) if wanted else 0
+        on = self._display_subs is not None  # not subscribed yet: no sample, no time waited
+        age = None if not on or self._display_t is None else now - self._display_t
+        since = now - self._display_since if on else 0.0
+        want_display, want_raw = live.live_sources(wanted, pubs, age, since)
+        if want_display and self._display_subs is None:
+            qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT)
+            self._display_subs = (
+                self.create_subscription(PoseStamped, live.DISPLAY_POSE_TOPIC, self._on_display_pose, qos,
+                                         callback_group=self._live_group),
+                self.create_subscription(PointCloud2, live.DISPLAY_SCAN_TOPIC, self._on_display_scan, qos,
+                                         callback_group=self._live_group),
+            )
+            self._display_since, self._display_t = now, None
+            self.get_logger().info("live view requested: display topics subscribed")
+        elif not want_display and self._display_subs is not None:
+            for sub in self._display_subs:
+                self.destroy_subscription(sub)
+            self._display_subs = None
+            self.get_logger().info("live view: display topics dropped")
+        self._live_raw(want_raw)
+        if not wanted:
+            self.live.clear_live()
+        if wanted == self._live_tick.is_canceled():
+            self._live_tick.reset() if wanted else self._live_tick.cancel()
+        raw = self._live_subs is not None  # the pose tick reads the TF buffer: raw path only
+        if raw == self._live_pose_tick.is_canceled():
+            self._live_pose_tick.reset() if raw else self._live_pose_tick.cancel()
+
+    def _live_raw(self, wanted: bool) -> None:
+        """Subscribe or drop /tf and /scan, on this executor thread only."""
         if wanted and self._live_subs is None:
             tf = self.create_subscription(TFMessage, "/tf", self._on_tf, 100, callback_group=self._live_group)
             scan = self.create_subscription(
@@ -446,8 +534,18 @@ class RosAdapter(LeanNode):
             for sub in self._live_subs:
                 self.destroy_subscription(sub)
             self._live_subs = None
-            self.live.clear_live()
-            self.get_logger().info(f"live view idle {live.LIVE_IDLE_S:g} s: /tf and /scan dropped")
+            self.get_logger().info("live view: /tf and /scan dropped")
+
+    def _on_display_pose(self, m: PoseStamped) -> None:
+        self._display_t = time.monotonic()
+        p, q = m.pose.position, m.pose.orientation
+        self.live.set_pose(float(p.x), float(p.y), live.yaw_of(q), m.header.frame_id,
+                           self._stamp_age(m.header.stamp))
+
+    def _on_display_scan(self, m: PointCloud2) -> None:
+        pts = live.cloud_xy([(f.name, f.offset, f.datatype) for f in m.fields], m.point_step, m.data,
+                            m.is_bigendian)
+        self.live.set_scan(pts, m.header.frame_id, self._stamp_age(m.header.stamp))
 
     def _on_tf(self, m: TFMessage) -> None:
         for t in m.transforms:
@@ -491,9 +589,6 @@ class RosAdapter(LeanNode):
     # live-view demand, on the executor thread (_live_reconcile).
 
     def _live_pose(self) -> None:
-        with self._lock:
-            gen = self._mode["generation"] if self._mode else 0
-        self.live.set_generation(gen)
         if self._live_subs is None:
             return  # no /tf: the buffer holds only what was cached before the drop
         frame = self._world_frame()
@@ -516,6 +611,8 @@ class RosAdapter(LeanNode):
         d["requested_name"] = MODE_NAMES.get(m.requested_mode, str(m.requested_mode))
         with self._lock:
             self._mode, self._mode_t = d, self._now()
+        # here, not in the live pose tick, which stops while nothing watches (WP-C12)
+        self.live.set_generation(int(m.generation))
 
     def _on_lease(self, m: ControlLease) -> None:
         with self._lock:
@@ -524,15 +621,32 @@ class RosAdapter(LeanNode):
 
     def _on_panel(self, m: PanelState) -> None:
         with self._lock:
+            now = self._now()
             self._panel = {"valid": bool(m.valid), "mode_auto": bool(m.mode_auto),
                            "manual_arm": bool(m.manual_arm)}
-            self._panel_t = self._now()
+            self._panel_t = now
+            # getattr: a PanelState built before the emergency fields reads NORMAL
+            emg = int(getattr(m, "emergency", EMG_NORMAL))
+            if self._emg is None or emg != self._emg["state"]:
+                if emg == EMG_NORMAL:
+                    self._emg_active_t = None
+                elif self._emg_active_t is None:
+                    self._emg_active_t = now
+                self._emg_t = now
+            self._emg = {
+                "state": emg,
+                "state_name": EMG_NAMES.get(emg, str(emg)),
+                "estop_ok": bool(getattr(m, "estop_ok", True)),
+            }
 
     def _on_drives(self, m: DriveStatus) -> None:
         with self._lock:
             self._drives = {
                 "operational": bool(m.operational), "left": m.left_state, "right": m.right_state,
                 "link": m.link_state, "power_reason": m.power_reason,
+                # WP-B4 (2026-11-16): getattr, so a DriveStatus built before the fields still works
+                "fault_code": str(getattr(m, "fault_code", "")),
+                "fault_detail": str(getattr(m, "fault_detail", "")),
             }
             self._drives_t = self._now()
 
@@ -655,9 +769,11 @@ class RosAdapter(LeanNode):
         return {"link": link, "tags": tags}
 
     def _ipc(self, now: float) -> dict | None:
-        """CPU temperature, re-read at most every IPC_TEMP_PERIOD_S. Caller holds the lock."""
+        """CPU temperature and throttle counters (WP-P11), re-read at most every
+        IPC_TEMP_PERIOD_S. Caller holds the lock."""
         if now - self._ipc_temp_t >= IPC_TEMP_PERIOD_S:
-            self._ipc_temp, self._ipc_temp_t = read_ipc_temp(), now
+            self._ipc_temp, self._ipc_temp_t = ipc.read_ipc_temp(), now
+            self._ipc_throttle = self._throttle_rate.update(now, ipc.read_throttle())
         return self._ipc_temp
 
     def _drive_supply(self, now: float) -> dict | None:
@@ -676,7 +792,7 @@ class RosAdapter(LeanNode):
             newest = d["t"] if newest is None else max(newest, d["t"])
         if not out:
             return None
-        return dict(out, age_s=now - newest)
+        return dict(out, age_s=now - newest, **SUPPLY_LIMITS)
 
     def _on_diag(self, m: DiagnosticArray) -> None:
         now = self._now()
@@ -698,6 +814,41 @@ class RosAdapter(LeanNode):
                     "values": {kv.key: kv.value for kv in st.values},
                     "t": now,
                 }
+                if scanner_health.scanner_of(st.name) == scanner_health.FRONT \
+                        and st.name.split(":", 1)[-1].strip() == scanner_health.STATE_TASK:
+                    self._overview_poll.level(self._diag[st.name]["level"])
+        self._ask_overview(now)
+
+    def _on_health(self, m) -> None:
+        row = health_view.row_from_msg(m)
+        if row is not None:
+            with self._lock:
+                self._health_rows[row.device] = (row, self._now())
+
+    def _on_trolley(self, m) -> None:
+        with self._lock:
+            self._trolley = {"state_name": wire.TROLLEY_NAMES.get(m.state, "UNKNOWN"), "detail": m.detail}
+            self._trolley_t = self._now()
+
+    def _ask_overview(self, now: float) -> None:
+        """status_overview, asynchronously on the calls node: never waits on this thread."""
+        cli = self._overview_cli
+        if cli is None or not self._overview_poll.want(now) or not cli.service_is_ready():
+            return
+        fut = cli.call_async(self._overview_req())
+
+        def done(f) -> None:
+            try:
+                r = f.result()
+            except Exception:  # noqa: BLE001 - an aborted read: asked again on the next change
+                return
+            if r is None:
+                return
+            with self._lock:
+                self._overview = {scanner_health.FRONT: health_view.overview_of(r)}
+            self._overview_poll.answered()
+
+        fut.add_done_callback(done)
 
     def _on_io(self, m: IoImage) -> None:
         with self._lock:
@@ -790,6 +941,17 @@ class RosAdapter(LeanNode):
                 "mode_age_s": (now - self._mode_t) if self._mode else None,
                 "lease": self._lease if self._lease and now - self._lease_t <= 1.0 else None,
                 "panel": dict(self._panel, age_s=now - self._panel_t) if self._panel else None,
+                # trusted only with a fresh, valid panel (alarms.emergency); since_s = in this
+                # state, active_s = since it left NORMAL (None while NORMAL)
+                "emergency": (
+                    dict(
+                        self._emg,
+                        since_s=now - self._emg_t,
+                        active_s=None if self._emg_active_t is None else now - self._emg_active_t,
+                    )
+                    if self._emg
+                    else None
+                ),
                 "drives": dict(self._drives, age_s=now - self._drives_t) if self._drives else None,
                 "mux": dict(self._mux, age_s=now - self._mux_t) if self._mux else None,
                 "line": dict(self._line, age_s=now - self._line_t) if self._line else None,
@@ -803,12 +965,27 @@ class RosAdapter(LeanNode):
                 "markers": self._marker_state(now),
                 "wheels": dict(self._wheels, age_s=now - self._wheels_t) if self._wheels else None,
                 "ipc_temp": self._ipc(now),
+                "ipc_throttle": self._ipc_throttle,  # read with the temperature, just above
                 "drive_supply": self._drive_supply(now),
                 # None = no scan has EVER arrived (an unplugged scanner says nothing at all,
                 # so only the absence can be reported). Seconds otherwise.
                 "scan_age_s": None if self._scan_recv_t is None else now - self._scan_recv_t,
                 "up_s": now - self._started_t,
                 "disk": self._disk(now),
+                # WP-H2: what alarms.standing() needs beyond the topics above
+                "dio_ip": _cfg("DIO_IP", ""),
+                "rear_source": self._rear_source,
+                "trolley": (dict(self._trolley, age_s=now - self._trolley_t)
+                            if self._trolley and now - self._trolley_t <= 2.0 else None),
+                # only the statuses standing() reads (scanner drivers, event recorder), not all
+                # of /diagnostics
+                "diagnostics": health_view.statuses(
+                    {k: dict(v, age_s=now - v["t"]) for k, v in self._diag.items()}),
+                "scanner_overview": dict(self._overview),
+                "scanner_case": scanner_health.front_case(
+                    {k: v for k, v in self._diag.items() if now - v["t"] <= 5.0}),
+                "device_health": health_view.view(dict(self._health_rows), now, self._fitted,
+                                                  now - self._started_t),
                 "mapping": mapping,
                 "mapping_age_s": mapping_age,
                 "mapping_stale": mapping_stale,
@@ -872,13 +1049,14 @@ class RosAdapter(LeanNode):
         return d
 
     def recover(self) -> tuple[bool, str]:
-        return self._trigger("recover")
+        return self._trigger("recover", timeout=RECOVER_TIMEOUT_S)
 
     def line_clear(self) -> tuple[bool, str]:
         return self._trigger("line_clear")
 
     def line_mission(self, name: str, destination: str = "") -> tuple[bool, str]:
-        r = self._call("line_mission", SelectMission.Request(name=name, destination=destination))
+        r = self._call("line_mission", SelectMission.Request(name=name, destination=destination),
+                       timeout=LINE_MISSION_TIMEOUT_S)
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
         return bool(r.ok), r.message
@@ -917,7 +1095,11 @@ class RosAdapter(LeanNode):
 
     def line_teach(self, action: str, arg: str = "") -> tuple[bool, str]:
         """Tape-graph teaching (tracked plan 3, P1). Records and publishes; moves nothing."""
-        r = self._call("line_teach", LineTeach.Request(action=action, arg=arg))
+        r, why = self._call_why("line_teach", LineTeach.Request(action=action, arg=arg),
+                                timeout=LINE_TEACH_TIMEOUT_S)
+        if why == "timeout":
+            return False, (f"no answer within {LINE_TEACH_TIMEOUT_S:g} s: the line layer may still be "
+                           f"working on {action}; look again before repeating it")
         if r is None:
             return False, "line layer unavailable (enter LINE mode first)"
         return bool(r.ok), r.message
@@ -945,24 +1127,32 @@ class RosAdapter(LeanNode):
 
     # ---- services ------------------------------------------------------------------
 
-    def _call(self, key: str, req, timeout: float = 30.0):
+    def _call(self, key: str, req, timeout: float = CALL_TIMEOUT_S):
+        return self._call_why(key, req, timeout)[0]
+
+    def _call_why(self, key: str, req, timeout: float = CALL_TIMEOUT_S):
+        """(response, "") or (None, "unavailable" | "timeout"). `timeout` bounds the whole call,
+        the discovery wait included, and is capped at CALL_TIMEOUT_S (WP-E5)."""
+        timeout = min(float(timeout), CALL_TIMEOUT_S)
+        deadline = time.monotonic() + timeout
         client = self._srv[key]
         # A latched state topic can arrive before DDS has discovered the
         # corresponding service during unified-stack startup. Keep the wait
         # bounded, but allow the first operator action after IDLE to survive
         # that short discovery race.
         if not client.wait_for_service(timeout_sec=min(timeout, 2.0)):
-            return None
-        fut = client.call_async(req)
-        deadline = time.monotonic() + timeout
+            return None, "unavailable"
+        fut = client.call_async(req)  # completed by the calls node's executor (Spinner)
         while not fut.done():
             if time.monotonic() > deadline:
-                return None
+                return None, "timeout"
             time.sleep(0.02)
-        return fut.result()
+        return fut.result(), ""
 
-    def _trigger(self, key: str) -> tuple[bool, str]:
-        r = self._call(key, Trigger.Request())
+    def _trigger(self, key: str, timeout: float = QUICK_TIMEOUT_S) -> tuple[bool, str]:
+        r, why = self._call_why(key, Trigger.Request(), timeout)
+        if why == "timeout":
+            return False, f"{self._srv[key].srv_name}: no answer within {min(timeout, CALL_TIMEOUT_S):g} s"
         if r is None:
             return False, f"{self._srv[key].srv_name} unavailable"
         return bool(r.success), r.message
@@ -1029,6 +1219,14 @@ class RosAdapter(LeanNode):
         return self._trigger("ack")
 
 
+class _ConfigView:
+    """health.configured() reads these from the profile; a dev box without one fits the defaults."""
+
+    def __getattr__(self, name):
+        return _cfg(name, {"IMU_ENABLED": True, "DIO_ENABLED": True, "REAR_SOURCE": "none",
+                           "STATION_ENABLED": False}.get(name))
+
+
 class Spinner:
     """The adapter's executor on its own thread, with an explicit stop/join
     (unified plan §6.2): the service stop must not depend on a daemon thread
@@ -1042,9 +1240,14 @@ class Spinner:
         # from Flask's threads, not from callbacks.
         self.executor = rclpy.executors.SingleThreadedExecutor()
         self.executor.add_node(adapter)
+        # The service clients' node (WP-C12): its own executor, which sleeps until an answer
+        # arrives, so the subscription executor above never rebuilds 23 clients into its wait set.
+        self.calls_executor = rclpy.executors.SingleThreadedExecutor()
+        self.calls_executor.add_node(adapter.calls)
         self._log = adapter.get_logger()
         self._stop = threading.Event()
         self.thread = threading.Thread(target=self._run, name="ros", daemon=True)
+        self.calls_thread = threading.Thread(target=self._run_calls, name="ros-calls", daemon=True)
 
     def _run(self) -> None:
         # One bad callback must not take the whole adapter down: with this thread dead
@@ -1062,17 +1265,29 @@ class Spinner:
             print("amr_web: ROS context shut down; exiting", file=sys.stderr, flush=True)
             os._exit(0)
 
+    def _run_calls(self) -> None:
+        # No exit from here: the subscription thread above decides when the context is gone.
+        while not self._stop.is_set() and rclpy.ok():
+            try:
+                self.calls_executor.spin_once(timeout_sec=0.5)
+            except Exception:  # noqa: BLE001
+                self._log.error(f"service-call executor raised; continuing: {traceback.format_exc()}")
+                time.sleep(0.05)
+
     def start(self) -> Spinner:
         self.thread.start()
+        self.calls_thread.start()
         return self
 
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
         self.thread.join(timeout)
-        try:
-            self.executor.shutdown(timeout_sec=1.0)
-        except Exception:  # noqa: BLE001
-            pass
+        self.calls_thread.join(timeout)
+        for ex in (self.executor, self.calls_executor):
+            try:
+                ex.shutdown(timeout_sec=1.0)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def start_spinning(adapter: RosAdapter) -> Spinner:

@@ -355,10 +355,20 @@ def test_reset_ends_a_run_at_once():
 
 def test_reset_clears_a_hold_to_idle():
     job = run(make())
-    job.tick(inputs(now=102.0, torque_off=True))
-    assert job.state == lj.HOLD
+    job.tick(inputs(now=102.0, drives_fresh=False))
+    assert job.state == lj.HOLD and job.hold_cause == "drives"
     job.tick(inputs(now=103.0, reset_edge=True))
     assert job.state == lj.IDLE
+
+
+def test_reset_keeps_an_estop_hold():
+    """Owner O-3 (2026-11-16): release, Reset, Start - the Reset does not end a run held as `estop`
+    (test_line_emergency has the rest)."""
+    job = run(make())
+    job.tick(inputs(now=102.0, torque_off=True))
+    assert job.state == lj.HOLD and job.hold_cause == "estop"
+    job.tick(inputs(now=103.0, reset_edge=True))
+    assert job.state == lj.HOLD and job.hold_cause == "estop"
 
 
 # ---------------------------------------------------------------------------

@@ -214,6 +214,9 @@ def test_rfid():
           and rfid.channel_mhz(None, 4) is None)
 
     # -- link state from captured frames (no socket) ---------------------------
+    # The driver's mechanics, whatever the profile says: both profiles ship
+    # rfid.enabled false since 2026-11-16 (RFID not used). refuses() reloads it.
+    was_enabled, config.RFID_ENABLED = config.RFID_ENABLED, True
     link = rfid.RfidLink()
     snap = link.snapshot()
     check("carrier is read from the real NIC, or None if absent",
@@ -244,6 +247,7 @@ def test_rfid():
     link.heartbeat.reset(0.0)
     link._absorb(rfid.CfDecoder().decode(resp(rfid.CMD_ONLINE, 0, b""))[0])
     check("a 0x0050 reply arms the link heartbeat", link.heartbeat.state() == "ok")
+    config.RFID_ENABLED = was_enabled
 
     # -- profile refusals --------------------------------------------------------
     base = json.load(open(config.profile_path()))
@@ -426,9 +430,10 @@ def test_rfid_link_session():
 
     th = threading.Thread(target=reader, daemon=True)
     th.start()
-    saved = config.RFID_IP, config.RFID_PORT, config.RFID_INTERFACE
+    saved = config.RFID_IP, config.RFID_PORT, config.RFID_INTERFACE, config.RFID_ENABLED
     config.RFID_IP, config.RFID_PORT = "127.0.0.1", srv.getsockname()[1]
     config.RFID_INTERFACE = "lo"
+    config.RFID_ENABLED = True          # profiles ship it off since 2026-11-16
     link = rfid.RfidLink()
     try:
         link.start()
@@ -438,7 +443,7 @@ def test_rfid_link_session():
         snap = link.snapshot(encounters=True)
     finally:
         link.stop()
-        config.RFID_IP, config.RFID_PORT, config.RFID_INTERFACE = saved
+        config.RFID_IP, config.RFID_PORT, config.RFID_INTERFACE, config.RFID_ENABLED = saved
         done.wait(3.0)
         srv.close()
     check("the first segment is the device-info query alone",

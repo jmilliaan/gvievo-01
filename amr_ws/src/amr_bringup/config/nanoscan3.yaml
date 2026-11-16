@@ -1,7 +1,9 @@
 # sick_safetyscanners2 parameters for the nanoScan3 on enp3s0.
 #
-# Addresses come from the existing controller's config (LIDAR_SENSOR_IP,
-# LIDAR_HOST_IP, LIDAR_PORT) and manuals/obsolete/rfid-setup + /etc/netplan/70-nanoscan3.yaml.
+# Addresses: sensor_ip, host_ip and host_udp_port come from the profile (lidar.sensor_ip,
+# lidar.host_ip, lidar.port; WP-P10, 2026-11-16): scanner.launch.py passes them after this file,
+# so the values below are only defaults for a standalone run. /etc/netplan/70-nanoscan3.yaml
+# must match the profile.
 #
 # On start the driver opens a CoLa2 session (TCP 2122) and writes the UDP
 # output settings of `channel` on the scanner: host_ip, host_udp_port and the

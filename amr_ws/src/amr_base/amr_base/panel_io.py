@@ -5,8 +5,10 @@ debounced Reset/Start edges and the AUTO/MANUAL level (anti-tie-down at
 power-on, re-baseline after a comms gap - see its docstring), and
 drivers/dio.DioLink for the Modbus scan thread and the expiring coil claim.
 
-    PanelAdapter.tick(now, snapshot)  -> PanelFrame  (what to publish)
-    horn_wanted(...)                  -> bool        (what the coil should be)
+    PanelAdapter.tick(snapshot)       -> PanelFrame  (what to publish)
+    PublishGate.due(now, frame)       -> bool        (publish it now: once per acquisition + fallback)
+    alarm_wanted / call_wanted / motion_outputs      (what the dio coils should be)
+    coil_image(normal, ...)                          (all of them; every one LOW while not NORMAL)
 
 The jog pendant rides in the same frame: core/panel.DebouncedLevels over the
 four PENDANT_DI_* channels, resolved by core/panel.pendant_intent (an opposing
@@ -17,14 +19,15 @@ Policy that lives here, and nowhere else on the ROS side:
   * The panel image is VALID only while DIO comms are good AND PanelScan has a
     debounced baseline. Anything else publishes valid=false, which the mux and
     the executor treat as no authority at all (gating.Panel).
-  * The horn follows the COMMANDED wheel setpoint while the drives are armed -
-    the same rule canworker used: high whenever the vehicle is energised and
-    asked to move, manual or auto alike, low otherwise. It is a claim renewed
-    every tick with config.HORN_HOLD_S, so a dead node drops the coil on the
-    next DIO scan. Nothing gates on the horn; a horn that failed cannot stop a
-    move (README, safety model).
-  * A stale wheel command (older than cmd_timeout_s) counts as zero, so the
-    horn cannot outlive the command stream that asked for it.
+  * Every coil (dio.motion_on / alarm_on) is a claim renewed every tick with
+    config.HORN_HOLD_S, so a dead node drops it on the next DIO scan. Nothing gates
+    on them; a horn that failed cannot stop a move (README, safety model). The
+    legacy setpoint-following horn.* engine is retired (lean plan D16, 2026-11-16).
+  * E-stop signal (panel.di_estop, DI09 = Flexi Soft Q3, emergency-suite plan Part B). Owner
+    2026-11-16: active = HIGH (panel.estop_active_high), LOW / no signal = normal; informational,
+    not safety. Filtered both ways (active over estop_confirm_scans, clear over debounce_scans)
+    on valid images only. An invalid or stale image HOLDS the last belief: a DIO gap is never an
+    E-stop. panel_node feeds it to amr_base.emergency.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from dataclasses import dataclass
 from agv_core import config
 from agv_core import panel as panel_core  # repo module: core/panel.py
 
+from amr_base import emergency
 from amr_base.hold_policy import CALL_CAUSES
 
 
@@ -52,6 +56,22 @@ class PanelFrame:
     # Debounced levels of Start and Reset (2026-11-11, the At home combination). False while invalid.
     start_held: bool = False
     reset_held: bool = False
+    # A new DIO acquisition was evaluated (not a republish of the last one): publish it (WP-C3).
+    acquired: bool = False
+    # The DIO link edge as a catalogue code (WP-H2): DIO_LINK_LOST / DIO_LINK_OK, None = no edge.
+    link: str | None = None
+    link_text: str | None = None
+    # `changed` without the link note: the PANEL event's text, and whether it is a warning.
+    other: str | None = None
+    warn: bool = False
+    # The E-stop signal NOT active (panel.di_estop, DI09; kyb contract name): active over
+    # estop_confirm_scans, clear over debounce_scans; held as it was while the image is invalid.
+    estop_ok: bool = True
+
+
+LINK_LOST, LINK_OK = "DIO_LINK_LOST", "DIO_LINK_OK"
+# PANEL notes that are a warning, not news (an invalid image, a suspect edge).
+_WARN_NOTES = ("invalid", "suspect")
 
 
 def raw_hex(di) -> str:
@@ -70,8 +90,14 @@ class PanelAdapter:
         debounce_scans: int | None = None,
         pendant: bool | None = None,
         coincidence_hold_scans: int | None = None,
+        estop_confirm_scans: int | None = None,
+        estop_active_high: bool | None = None,
     ) -> None:
         scans = config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans
+        if estop_confirm_scans is None:
+            estop_confirm_scans = config.PANEL_ESTOP_CONFIRM_SCANS
+        if estop_active_high is None:
+            estop_active_high = config.PANEL_ESTOP_ACTIVE_HIGH
         # Coincidence guard: the selector and the pendant changing in the SAME debounced scan
         # is not a hand (2026-09-17: MANUAL+FWD appeared together for 1.02 s mid-route with
         # nobody at the box, aborting the run and handing the mux a phantom FWD). Both changes
@@ -111,6 +137,16 @@ class PanelAdapter:
         # power-on powers the drives once the image is valid - power is not motion.
         self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
         self._last_arm: bool | None = None
+        # E-stop signal (DI09, Flexi Soft Q3): active needs estop_confirm_scans (kyb 2026-11-02:
+        # one-scan Q3 test pulses), clear needs debounce_scans. Counted on valid images only; an
+        # invalid image or a comms gap holds the belief (owner 2026-11-16: not an E-stop).
+        self.estop_scans = scans
+        self.estop_confirm_scans = max(1, int(estop_confirm_scans))
+        self.estop_active_high = bool(estop_active_high)
+        self._estop_on = 0
+        self._estop_off = 0
+        self._estop_active = False
+        self._last_estop: bool | None = None
         self.seq = 0
         self._last_scans: int | None = None  # DIO acquisition count behind the last evaluated frame
         self._last_frame: PanelFrame | None = None
@@ -136,7 +172,10 @@ class PanelAdapter:
             and age <= config.PANEL_SOURCE_MAX_AGE_S
         )
 
-    def tick(self, snapshot: dict) -> PanelFrame:
+    def tick(self, snapshot: dict, normal: bool = True) -> PanelFrame:
+        """`normal`: the emergency state (amr_base.emergency) is NORMAL. While it is not, every
+        pendant direction held is masked until read LOW once (WP-A6's release-first rule): a hand
+        held through the E-stop and the Reset does not drive when NORMAL returns."""
         comms = self.source_fresh(snapshot)
         scans = snapshot.get("scans")
         self.seq += 1
@@ -155,6 +194,7 @@ class PanelAdapter:
                 manual_arm=self._last_frame.manual_arm,
                 start_held=self._last_frame.start_held,
                 reset_held=self._last_frame.reset_held,
+                estop_ok=self._last_frame.estop_ok,
             )
         self._last_scans = scans
         self._acq += 1
@@ -162,8 +202,11 @@ class PanelAdapter:
         prior = (self._last_mode, last_pend, self._last_arm)
         intent = self.scan.scan(snapshot.get("di"), comms)
         notes = []
+        link = link_text = None
         if comms != self._last_comms:
-            notes.append("DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})"))
+            link = LINK_OK if comms else LINK_LOST
+            link_text = "DIO comms " + ("ok" if comms else f"LOST ({snapshot.get('detail')})")
+            notes.append(link_text)
             self._last_comms = comms
         prior_valid = self._last_valid
         if intent.valid != self._last_valid:
@@ -199,12 +242,28 @@ class PanelAdapter:
         enabling = bool(intent.valid) and (
             was_valid is not True                                            # (re)baseline
             or (mode == panel_core.MANUAL and prior[0] != panel_core.MANUAL)  # selector to MANUAL
-            or (arm and prior[2] is not True))                               # Manual Arm on
+            or (arm and prior[2] is not True)                                # Manual Arm on
+            or not normal)                                                   # in an emergency
         pend = self._release_first(pend, levels, enabling, notes)
         if arm != self._last_arm:
             if self._last_arm is not None or arm:
                 notes.append(f"Manual Arm {'on' if arm else 'off'}")
             self._last_arm = arm
+        if intent.valid:
+            active = _bit(snapshot.get("di"), config.PANEL_DI_ESTOP) == self.estop_active_high
+            self._estop_on = self._estop_on + 1 if active else 0
+            self._estop_off = 0 if active else self._estop_off + 1
+            if self._estop_active:
+                self._estop_active = self._estop_off < self.estop_scans
+            else:
+                self._estop_active = self._estop_on >= self.estop_confirm_scans
+        else:
+            self._estop_on = self._estop_off = 0  # blind: the belief holds, the counts restart
+        estop_ok = not self._estop_active
+        if intent.valid and estop_ok != self._last_estop:
+            state = "clear" if estop_ok else "ACTIVE"
+            notes.append(f"E-stop signal (DI{config.PANEL_DI_ESTOP:02X}) {state}")
+            self._last_estop = estop_ok
         if self.pendant is not None and pend != self._last_pendant:
             held = [n for n in pend._fields if getattr(pend, n)]
             notes.append("pendant " + (" ".join(held).upper() if held else "released"))
@@ -221,6 +280,12 @@ class PanelAdapter:
             manual_arm=arm,
             start_held=bool(intent.valid and intent.start_held),
             reset_held=bool(intent.valid and intent.reset_held),
+            acquired=bool(comms),
+            link=link,
+            link_text=link_text,
+            other="; ".join(n for n in notes if n != link_text) or None,
+            warn=any(w in n for n in notes if n != link_text for w in _WARN_NOTES),
+            estop_ok=estop_ok,
         )
         self._last_frame = frame
         return frame
@@ -274,6 +339,31 @@ class PanelAdapter:
         return intent.mode, pend
 
 
+def _bit(di, ch: int) -> bool:
+    try:
+        return bool(di[ch])
+    except (IndexError, TypeError):
+        return False
+
+
+def emergency_event(state: int, prev: int, note: str) -> tuple[str, str, str] | None:
+    """The /amr/events entry for an emergency transition (amr_base.emergency), as (severity
+    "info" | "warn" | "error", catalogue code, text), or None. `note` is Emergency.step()'s
+    "emergency A -> B: why". A blind panel never makes a transition (owner 2026-11-16)."""
+    why = note.split(": ", 1)[1] if ": " in note else note
+    if state == emergency.ACTIVE:
+        return "error", "ESTOP", f"EMERGENCY STOP ({why}): release the E-stop, then press Reset"
+    if state == emergency.RESET_NEEDED:
+        return "warn", "ESTOP_RESET_NEEDED", "E-stop released: press Reset"
+    if state == emergency.RESETTING:
+        return "info", "ESTOP", "Reset pressed: waiting for the drives to leave STO"
+    if state == emergency.RESET_FAILED:
+        return "error", "ESTOP_RESET_FAILED", f"Reset did not take: {why}"
+    if state == emergency.NORMAL:
+        return "info", "ESTOP", "cleared: emergency stop"
+    return None
+
+
 # AUTO runs that count for the alarm horn: tracked line RUNNING / HOLD, trackless
 # EXECUTING / BLOCKED (amr_interfaces LineState / RunState values).
 LINE_ACTIVE = (2, 3)
@@ -323,10 +413,55 @@ def motion_outputs(turning: bool, alarm: bool, channels, movement_horn) -> dict[
     return {ch: turning and not (alarm and ch in movement_horn) for ch in channels}
 
 
-def horn_wanted(
-    armed: bool, left_rad_s: float, right_rad_s: float, cmd_age_s: float | None, cmd_timeout_s: float
-) -> bool:
-    """canworker's rule at the ROS boundary: energised AND asked to move, on a fresh command."""
-    if not armed or cmd_age_s is None or cmd_age_s > cmd_timeout_s:
+def coil_image(normal: bool, alarm: bool, turning: bool,
+               alarm_on=None, motion_on=None, movement_horn=None) -> dict[int, bool]:
+    """Every DIO coil panel_node drives this tick, by channel: dio.alarm_on (DO01, the alarm horn
+    with the pre-move warning and the stop-call pulse) and dio.motion_on (DO00 movement horn,
+    DO08). While the emergency state is not NORMAL every one is LOW (owner, emergency plan §4)."""
+    alarm_on = config.DIO_ALARM_ON if alarm_on is None else alarm_on
+    motion_on = config.DIO_MOTION_ON if motion_on is None else motion_on
+    movement_horn = config.DIO_MOVEMENT_HORN if movement_horn is None else movement_horn
+    outs = {ch: alarm for ch in alarm_on}
+    outs.update(motion_outputs(turning, alarm, motion_on, movement_horn))
+    return outs if normal else dict.fromkeys(outs, False)
+
+
+# The motion lamp (dio.motion_on): a wheel turning faster than this is moving (feedback noise
+# floor). drive_node fills DriveStatus.turning with wheels_turning() (WP-C7, cpu-load plan C#15).
+TURNING_RAD_S = 0.01
+
+
+def wheels_turning(left_valid: bool, left_rad_s: float, right_valid: bool, right_rad_s: float,
+                   floor: float = TURNING_RAD_S) -> bool:
+    """Is either motor turning? An invalid side counts as not turning."""
+    return bool((left_valid and abs(left_rad_s) > floor) or (right_valid and abs(right_rad_s) > floor))
+
+
+# /amr/panel_state once per DIO acquisition plus a fallback (WP-C3, cpu-load plan C#8). The node
+# ticks at 50 Hz, the DIO scans at 20 Hz: publishing every tick sent each image 2-3 times. An
+# acquisition (and with it every Start/Reset edge) goes out on the tick that evaluates it, a frame
+# that changed anything too, and otherwise the last frame repeats once FALLBACK_S has passed, so
+# consumers with 0.2 s windows never see a gap past one tick after it (<= 60 ms at 50 Hz). While
+# Start or Reset is held every tick goes out (rare and short: a press, or the 1 s At home hold).
+FALLBACK_S = 0.05
+
+
+class PublishGate:
+    """When to publish a PanelFrame. Clock-fed, no ROS."""
+
+    def __init__(self, fallback_s: float = FALLBACK_S, slack_s: float = 0.001) -> None:
+        self.fallback_s = float(fallback_s)
+        self.slack_s = float(slack_s)  # a timer's jitter must not push the fallback a whole tick
+        self._last: float | None = None
+
+    def due(self, now: float, frame: PanelFrame, force: bool = False) -> bool:
+        """force: publish now whatever the frame (panel_node: an emergency state transition, which
+        can fall between acquisitions - RESETTING -> NORMAL on a DriveStatus, RESET_FAILED on time)."""
+        late = self._last is None or now - self._last >= self.fallback_s - self.slack_s
+        # A held Start or Reset goes out every tick: the At home combination (amr_line.home_combo)
+        # times the hold on the messages it receives, and a 60 ms gap would show in its latency.
+        held = frame.start_held or frame.reset_held
+        if force or frame.acquired or frame.changed or frame.start_edge or frame.reset_edge or held or late:
+            self._last = now
+            return True
         return False
-    return (left_rad_s, right_rad_s) != (0.0, 0.0)

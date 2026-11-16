@@ -1,10 +1,11 @@
-"""web_node: Flask in the main thread, the rclpy adapter spinning behind it."""
+"""web_node: the HTTP server (waitress, serve.py) in the main thread, the rclpy adapter spinning behind it."""
 
 from __future__ import annotations
 
 import rclpy
 from agv_core import paths
 
+from amr_web import serve
 from amr_web.adapter import RosAdapter, start_spinning
 from amr_web.server import create_app
 
@@ -27,17 +28,19 @@ def main(args=None) -> None:
         wifi_iface=str(adapter.get_parameter("wifi_iface").value),
         state_dir=str(adapter.get_parameter("state_dir").value),
     )
-    adapter.get_logger().info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
+    log = adapter.get_logger()
+    log.info(f"operator pages on http://{host}:{port}/  (maps_dir {maps_dir})")
     try:
-        app.run(host=host, port=port, threaded=True, use_reloader=False)
+        serve.serve(app, host, port, warn=log.warning)
     except KeyboardInterrupt:
         pass
     finally:
         spinner.stop()  # explicit executor shutdown + join before the context goes away
-        try:
-            adapter.destroy_node()
-        except Exception:  # noqa: BLE001
-            pass
+        for node in (adapter.calls, adapter):
+            try:
+                node.destroy_node()
+            except Exception:  # noqa: BLE001
+                pass
         rclpy.try_shutdown()
 
 

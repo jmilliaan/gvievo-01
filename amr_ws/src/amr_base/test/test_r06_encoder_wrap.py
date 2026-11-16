@@ -1,5 +1,11 @@
 """R06: wheel positions accumulate wrap-safe count deltas; the INT32 rollover is
-one count of travel and a rebaseline never moves odometry."""
+one count of travel and a rebaseline never moves odometry.
+
+Updated deliberately 2026-11-16 (unified plan WP-C10 + WP-P8, H-P2-2): /odom_raw is computed in
+drive_node (amr_base.wheel_odom) from the WheelPosition increments, and a staleness-only gap is now
+BRIDGED (its motion counted) instead of restarting the chain. The rollover and rebaseline rules
+are unchanged and hold for the drive-side integrator too. The diff_drive_odom_node test below
+stays for the sim, which still launches that node."""
 
 import math
 from types import SimpleNamespace
@@ -80,3 +86,37 @@ def test_odometry_stationary_through_rollover_and_rebaseline():
     assert node.state.x == x and node.state.th == th
     on(_ws(11.06, 50.0 + 1.0, 50.0 + 1.0, cpr=CPR / 2))
     assert node.state.x == pytest.approx(0.09)
+
+
+def test_drive_side_odometry_through_rollover_rebaseline_and_a_bridged_gap():
+    from amr_base.diff_drive import profile_geometry
+    from amr_base.wheel_odom import WheelOdom
+
+    odom = WheelOdom(profile_geometry())
+    pos = {1: WheelPosition(max_rpm=4000.0), 2: WheelPosition(max_rpm=4000.0)}
+
+    def tick(t, rl, rr, valid=True, stale_only=False, scale=S, epoch=1):
+        pos[1].update(rl, valid, scale, True, epoch, t=t, stale_only=stale_only)
+        pos[2].update(rr, valid, scale, False, epoch, t=t, stale_only=stale_only)
+        ok = valid and pos[1].joined and pos[2].joined
+        return odom.update(ok, pos[1].step, pos[2].step, pos[1].step_dt, 0.0, 0.0)
+
+    raw = [(I32_MAX - 1, I32_MAX), (I32_MIN, I32_MIN + 1), (I32_MIN + 1, I32_MIN + 2)]
+    for k, (rl, rr) in enumerate(raw):
+        tick(10 + 0.02 * k, rl, -rr)
+    assert math.hypot(odom.state.x, odom.state.y) < 1e-5  # two counts, not kilometres
+    x = odom.state.x
+    assert tick(11.0, 0, 0, valid=False) is None  # not just late: chain dropped
+    assert tick(11.02, 5_000_000, -5_000_000) is None  # a new baseline only
+    s2 = WheelScale(30.0, False, True, CPR / 2)
+    assert tick(11.04, 5_000_100, -5_000_100, scale=s2) is None  # scale changed: baseline only
+    assert odom.state.x == x
+    # a staleness gap (late TPDOs, 60 ms) is bridged: its 3 000 counts are travel, not lost
+    tick(11.06, 5_001_000, -5_001_000, scale=s2)
+    x = odom.state.x
+    assert tick(11.08, 5_002_000, -5_002_000, valid=False, stale_only=True, scale=s2) is None
+    v, _ = tick(11.12, 5_004_000, -5_004_000, scale=s2)
+    d = 3000 / (CPR / 2) * 2 * math.pi * profile_geometry().wheel_radius_m
+    assert odom.state.x - x == pytest.approx(d) and v == pytest.approx(d / 0.06)
+    assert pos[1].gaps == 1
+

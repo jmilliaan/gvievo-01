@@ -17,7 +17,8 @@ between units are in the table below; everything else is the same on every unit.
 | Login user | `gvipc-evo-01` | **`gvipc-evo-01`** (deliberately the same, see below) |
 | Wi-Fi address on `agv_field` | `192.168.2.110/24` | `192.168.2.120/24` |
 | Web UI from the tablet | `http://192.168.2.110:5001` | `http://192.168.2.120:5001` |
-| CANable serial (udev rule, section 3) | `2087327F5548` | **TBD**: read it at section 3 |
+| CANable serial (udev rule, section 3; profile `can.adapter_serial`, which `install.sh` renders into the rule) | `2087327F5548` | **TBD**: read it at section 3, then put it in `profiles/agv-02.json` (`install.sh` refuses an empty one) |
+| GRUB fallback kernel (`deploy/platform/freeze.sh --go` prints it, section 4) | **TBD**: record at the freeze | **TBD**: record at the freeze |
 | Profile | `profiles/agv-01.json` (no `vehicle.env`: the default) | `profiles/agv-02.json`, selected by `~/.amr/vehicle.env` (section 5.3) |
 | Station identity (MQTT) | `agv1` | `agv2` (follows the profile name) |
 | Site mission, home | `site-103`, HOME-N2 | its own, HOME-N (owner 2026-11-14; not written yet: its route is not taught) |
@@ -135,8 +136,8 @@ tether come **before** the wired ports, so the PC never loses its internet).
 | 6 | Second uplink: Wi-Fi, then phone tether | 2.3, 2.2 (tether file only) | `nmcli -g IP4.ADDRESS dev show wlp1s0` = `192.168.2.120/24`; with the phone plugged in, `ip -br addr show usb0` has an address |
 | 7 | Wired ports + installer file cleaned | 2.2 | `ip -br addr` shows `enp2s0 … 192.168.1.10/24`, `enp3s0 … 192.168.3.2/24`; `ip route \| grep default` has no `enp`; `ls /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` exists |
 | 8 | CANable → `can0` | 3 | `ls -l /dev/canable0` is a link; `ip -br link show can0` says `UP`; serial written into the top table (tell the engineer) |
-| 9 | ROS 2 Humble | 4 | `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
-| 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, numpy; print(numpy.__version__)"` prints `2.2.6` |
+| 9 | Platform freeze, ROS 2 Humble | 4 | `apt-cache policy ros-humble-rclpy \| grep -c snapshots.ros.org` ≥ `1`; GRUB fallback written into the top table; `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
+| 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, waitress, numpy; print(numpy.__version__)"` prints `2.2.6` |
 | 11 | Shell environment, which vehicle | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION $AGV_PROFILE'` = `10 rmw_cyclonedds_cpp agv-02`; `bash -ic 'python3 -m agv_core.identity'` names host `gvipc-evo-02`, profile `agv-02`, serial `agv2` |
 | 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (938 at `7d68647`; the pinned `EXPECTED_CHECKS`) |
 | 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal`; `systemctl is-active cpu-power-limit cpu-freq-cap` = `active active` |
@@ -495,59 +496,33 @@ it to `/dev/canable0` **by USB serial** and pulls in a templated unit that runs
 `BindsTo=sys-subsystem-net-devices-can0.device`, so unplugging the adapter stops
 the vehicle stack and re-plugging brings both back.
 
-`/etc/udev/rules.d/70-canable.rules` — **per unit**: replace `ATTRS{serial}` with
-this unit's adapter serial (unit 1 `2087327F5548`, unit 2 TBD). Plug the CANable
-in alone, then:
+Both files are versioned in the repo since 2026-11-16 (unified plan WP-P3):
+`amr_ws/deploy/70-canable.rules.in` (a template: `@ADAPTER_SERIAL@` stands for this
+unit's adapter serial) and `amr_ws/deploy/canable@.service` (`Restart=on-failure`,
+`RestartSec=2`; the old hand-written copy had `Restart=no`). Later, `install.sh`
+(section 6) installs both, rendering the rule from the profile's
+`can.adapter_serial`; it refuses an empty serial. The rule also keeps the adapter
+out of USB autosuspend (`power/control=on`).
+
+`/etc/udev/rules.d/70-canable.rules` is **per unit** (unit 1 `2087327F5548`, unit 2
+TBD). Plug the CANable in alone, then:
 
 ```bash
 udevadm info -a /dev/ttyACM0 | grep -m1 'ATTRS{serial}'    # the first one is the adapter's
 ```
 
-Record the value in the per-unit table at the top. With the wrong serial the rule
-never matches: no `/dev/canable0`, no `can0`, and `amr.service` never starts.
-
-```udev
-# MKS / Openlight Labs CANable 2.0 (slcan firmware) -> stable /dev/canable0
-# Matched by USB serial, so the symlink follows the adapter across USB ports
-# and regardless of which ttyACM index it lands on.
-# ACTION!="remove" (not =="add"): snapd and `udevadm trigger` re-send
-# "change" events for every device; an add-only rule then loses the symlink,
-# which cascades into stopping canable@can0 and amr.service (seen 2026-09-17).
-SUBSYSTEM=="tty", ACTION!="remove", \
-  ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="117e", ATTRS{serial}=="2087327F5548", \
-  SYMLINK+="canable0", MODE="0660", GROUP="dialout", ENV{ID_MM_DEVICE_IGNORE}="1", \
-  TAG+="systemd", ENV{SYSTEMD_WANTS}="canable@can0.service"
-```
-
-`/etc/systemd/system/canable@.service`:
-
-```ini
-[Unit]
-Description=CANable slcan bridge -> SocketCAN %i (125 kbps)
-BindsTo=dev-canable0.device
-After=dev-canable0.device
-
-[Service]
-Type=simple
-# -s4 = 125 kbps. -F keeps slcand in the foreground so systemd can supervise it.
-ExecStart=/usr/bin/slcand -o -c -f -s4 -F /dev/canable0 %i
-# slcand creates the netdev asynchronously; wait for it, then configure.
-ExecStartPost=/bin/sh -c 'for i in $(seq 50); do ip link show %i >/dev/null 2>&1 && break; sleep 0.1; done; ip link set dev %i txqueuelen 1000 up'
-ExecStopPost=-/sbin/ip link set dev %i down
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Write both files to `~/host-staging/` with **this unit's serial** in the rule
-(`grep serial ~/host-staging/70-canable.rules` must show it, not `2087327F5548`
-on unit 2), then:
+Record the value in the per-unit table at the top and tell the engineer: it goes into
+`can.adapter_serial` in this unit's profile. With the wrong serial the rule never
+matches: no `/dev/canable0`, no `can0`, and `amr.service` never starts. Install the
+two files now by hand (`install.sh` needs the build of section 5 first), with **this
+unit's serial**:
 
 ```bash
-cd ~/host-staging
-sudo install -m 644 -o root -g root 70-canable.rules /etc/udev/rules.d/
-sudo install -m 644 -o root -g root canable@.service /etc/systemd/system/
+serial=2087327F5548                     # THIS unit's value from the command above
+sed "s/@ADAPTER_SERIAL@/$serial/g" ~/agv_can/amr_ws/deploy/70-canable.rules.in > /tmp/70-canable.rules
+grep -c "$serial" /tmp/70-canable.rules  # 2 (the tty rule and the USB power rule)
+sudo install -m 644 -o root -g root /tmp/70-canable.rules /etc/udev/rules.d/
+sudo install -m 644 -o root -g root ~/agv_can/amr_ws/deploy/canable@.service /etc/systemd/system/
 sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty
 sudo systemctl daemon-reload
 # Do NOT `systemctl enable canable@can0` — udev's SYSTEMD_WANTS starts it when the
@@ -565,13 +540,20 @@ candump -n 5 can0                       # frames flow once the drives are powere
 
 ## 4. ROS 2 Humble
 
+ROS comes from a **dated snapshot**, never from the live `packages.ros.org` (unified plan
+WP-P1, 2026-11-16): every unit gets the same package set, and an `apt install` months later
+cannot pull a partial Humble sync. `freeze.sh --go` imports the snapshot key (checked
+against its fingerprint; it fails closed), installs `deploy/platform/ros2-snapshot.sources`
+(`snapshots.ros.org/humble/2026-09-14`) and the pin that puts the live repo at -1, holds
+the HWE kernel metas, keeps the GA 5.15 kernel as the GRUB fallback, holds every snap
+(the kiosk Chromium of section 7 included) and masks the apt timers. Write the GRUB
+fallback it prints into the per-unit table at the top.
+
 ```bash
 sudo apt install -y software-properties-common && sudo add-apt-repository -y universe
-# Each of these two is ONE line: pasted with a "\" continuation it can arrive as
-# "ros.key \ -o ..." on one line, which downloads nothing (seen on unit 2).
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/ros2.list
-ls -l /usr/share/keyrings/ros-archive-keyring.gpg     # must exist (~1-2 KB) before apt update
+~/agv_can/amr_ws/deploy/platform/freeze.sh            # read-only first: what it will change
+sudo ~/agv_can/amr_ws/deploy/platform/freeze.sh --go   # needs the uplink (keyserver + apt)
+apt-cache policy ros-humble-rclpy | grep -m1 snapshots.ros.org   # the candidate comes from the snapshot
 sudo apt update
 
 sudo apt install -y \
@@ -594,10 +576,11 @@ sudo rosdep init; rosdep update
 `-s mcap` and `tools/bag_report.py` reads MCAP. Without it a recording fails at
 start; nothing else needs it.
 
-The vehicle uses the **`ros2.sources`** (deb822) form of the apt source; the
-`.list` form above is equivalent. If `apt update` complains about the ROS key
-(the key was reissued in 2025), use the upstream `ros2-apt-source` package from
-the ROS 2 Humble install page instead; it writes the same `ros2.sources`. No `ros-humble-desktop`: nothing on the vehicle
+Do **not** install the upstream `ros2-apt-source` package or a `ros2.list` for the
+live repo: `ros2-apt-source` rewrites `ros2.sources` to the live repo on every upgrade,
+and `freeze.sh --go` purges it (any live source file goes to `/var/backups/amr-platform/`).
+A unit installed before 2026-11-16 from the live repo (unit 2) is frozen the same way;
+its packages may be newer than the snapshot, which apt leaves as they are. No `ros-humble-desktop`: nothing on the vehicle
 needs rviz/rqt. The as-built machine has 265 `ros-humble-*` packages, all pulled
 in by the list above.
 
@@ -656,6 +639,7 @@ libraries; apt provides the rest. Versions as of 2026-09-21:
 | `python-can` | 4.6.1 | pip --user | `agv_core.drivers.canbus`, `amr_base.canopen` |
 | `pymodbus` | 3.15.0 | pip --user | `agv_core.drivers.dio` (I/O island) |
 | `flask` | 3.1.3 (werkzeug 3.1.8) | pip --user | `amr_web` |
+| `waitress` | 3.0.2 | pip --user | `amr_web.serve` (the HMI server, unified plan WP-E5; without it the HMI falls back to the werkzeug dev server and logs a warning) |
 | `numpy` | 2.2.6 | pip --user (overrides apt 1.21.5) | maps, routes, scan checks |
 | `paho-mqtt` | 2.1.0 | pip --user, only with `station.enabled` | `amr_station.mqtt_link`. Not apt `python3-paho-mqtt` (1.x: other callback API) |
 | `pyserial` | 3.5 | apt `python3-serial` | bench tools |
@@ -671,6 +655,8 @@ them installed; they are harmless.
 ```bash
 sudo apt install -y python3-serial python3-yaml python3-pytest python3-numpy
 pip3 install --user python-can==4.6.1 pymodbus==3.15.0 flask==3.1.3 numpy==2.2.6 ruff==0.16.7
+# the HMI server (2026-11-16). With no internet, download the wheel on a PC as for paho-mqtt below.
+pip3 install --user waitress==3.0.2
 # station calling only. With no internet on the vehicle, on a PC:
 #   pip download paho-mqtt==2.1.0 --no-deps -d wheels/   then scp wheels/ over, and on the vehicle:
 #   pip3 install --user --no-index --find-links wheels/ paho-mqtt==2.1.0
@@ -723,7 +709,7 @@ which the identity check then refuses on unit 2. The offline tests always run ag
 ```bash
 source ~/.bashrc
 cd ~/agv_can/amr_ws
-rosdep install --from-paths src --ignore-src -y --skip-keys "python3-can python3-flask"   # sanity: should be a no-op
+rosdep install --from-paths src --ignore-src -y --skip-keys "python3-can python3-flask python3-waitress"   # sanity: should be a no-op
 colcon build --symlink-install
 source install/setup.bash
 
@@ -746,7 +732,7 @@ them with RUNBOOK section 5, in this order (from `cd ~/agv_can/amr_ws`):
    prints its backup path, `systemctl is-enabled amr` says `disabled` (install never enables).
 2. **"Power-loss hardening"**: `install.sh` drops the sysctl and journald files; finish them by hand
    there (journald restart, `swapoff`).
-3. **"Two sudo rules the operator pages need"**: without them the vehicle runs, but Restart answers
+3. **"Sudo rules the operator pages need"**: without them the vehicle runs, but Restart answers
    "not permitted" and reports carry a note instead of the journal.
 4. **CPU thermal caps** (fanless N97, 24 h duty): `install.sh` installs `cpu-freq-cap.service`
    (turbo on, ceiling 2.2 GHz) and `cpu-power-limit.service` (PL2 25 W → 15 W; PL1 stays 12 W).
@@ -836,7 +822,8 @@ sudo apt install -y --no-install-recommends \
 # (blanking is disabled at the X server level instead).
 
 sudo snap install chromium
-sudo snap refresh --hold chromium          # a snap refresh must never restart the kiosk under the operator
+# No per-snap hold here: freeze.sh --go (section 4) held every snap, Chromium included, so a
+# refresh never restarts the kiosk under the operator. `snap refresh --time` shows "hold".
 ```
 
 Pick `lightdm` when debconf asks for the default display manager.
@@ -1285,7 +1272,7 @@ Run all of these once, in order, before the vehicle leaves the bench.
 7. **Panel**: on the I/O page each Start/Reset press produces one edge, the selector tracks, a held Start produces one edge (RUNBOOK T12).
 8. **Scanner**: `ros2 topic hz /scan` ≈ 34 Hz; `/output_paths` publishes; contamination warning absent.
 9. **Kiosk escape table** (7.7) passes; `sudo pkill -9 Xorg` does not touch `amr.service` (`journalctl -u amr -u canable@can0 --since -2min` shows nothing new).
-10. **Unplug the CANable** → `amr.service` stops (`BindsTo`); replug → both come back; drives may show `8130h` and need a power cycle (expected, RUNBOOK §4).
+10. **Unplug the CANable** → `amr.service` stops (`BindsTo`); replug → both come back (`canable@can0` pulls `amr.service` in once it is enabled with `WantedBy=canable@can0.service`: `ls /etc/systemd/system/canable@can0.service.wants/` lists `amr.service`); drives may show `8130h` and need a power cycle (expected, RUNBOOK §4).
 11. **20 min idle** → no screen blanking, no sleep.
 12. **Tests**: `python3 tests/run_all.py` = 938 / 938 at `7d68647` (the pinned `EXPECTED_CHECKS`; a later commit may change it); per-package pytest green.
 13. **Two units on `agv_field`** (unit 2 onwards): with both vehicles powered, the tablet opens `http://192.168.2.110:5001` and `http://192.168.2.120:5001`; `sudo systemctl stop amr` on unit 2 drops only the `.120` page (proves the two addresses are not crossed), then start it again.
@@ -1302,9 +1289,11 @@ is reproduced above; if any of them changes on the vehicle, update this document
 |---|---|
 | `/etc/netplan/{50-cloud-init,55-usb-tether,60-rfid-lan1,70-nanoscan3}.yaml` | 2.2 |
 | `/etc/NetworkManager/system-connections/agv-net.nmconnection` | 2.3 |
-| `/etc/udev/rules.d/70-canable.rules`, `/etc/systemd/system/canable@.service` | 3 |
+| `/etc/udev/rules.d/70-canable.rules` (rendered from `deploy/70-canable.rules.in` + the profile serial), `/etc/systemd/system/canable@.service` (copy of `deploy/canable@.service`); both installed by `install.sh` | 3 |
 | `/etc/systemd/system/amr.service` (installed copy of `amr_ws/deploy/amr.service`) | 6 |
-| `/etc/sysctl.d/60-amr.conf`, `/etc/systemd/journald.conf.d/amr.conf`, `/etc/chrony/conf.d/amr.conf`, `/etc/logrotate.d/amr`, `/etc/systemd/system/{agv-wifi-reconnect,cpu-freq-cap,cpu-power-limit}.service`, `/usr/local/sbin/agv-wifi-reconnect` (installed by `install.sh`; the three units enabled by hand); swap removed | 6, 2.3 |
+| `/etc/sysctl.d/60-amr.conf`, `/etc/systemd/journald.conf.d/amr.conf`, `/etc/chrony/conf.d/amr.conf`, `/etc/logrotate.d/amr`, `/etc/systemd/system/{agv-wifi-reconnect,cpu-freq-cap,cpu-power-limit}.service`, `/usr/local/sbin/agv-wifi-reconnect`, `/etc/systemd/system/amr-failed.service`, `/usr/local/sbin/amr-failed`, `/etc/tmpfiles.d/amr.conf` (installed by `install.sh`; the three units enabled by hand; `amr-failed` is never enabled); swap removed | 6, 2.3 |
+| `/etc/modules-load.d/iTCO_wdt.conf`, `/etc/systemd/system.conf.d/60-amr-watchdog.conf` (`install.sh --watchdog`, after the `wdctl` check, RUNBOOK section 5) | 6 |
+| `/etc/apt/sources.list.d/ros2-snapshot.sources`, `/usr/share/keyrings/ros-snapshots-archive-keyring.gpg`, `/etc/apt/preferences.d/60-amr`, `/etc/needrestart/conf.d/amr.conf`, `/etc/apt/apt.conf.d/52amr-unattended`; apt holds, snap hold, masked apt timers; record in `/var/backups/amr-platform/<host>.txt` (`deploy/platform/freeze.sh --go`) | 4 |
 | `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` | 2.2 |
 | `agv-net` power save off (`802-11-wireless.powersave 2`) | 2.1 |
 | crontab `@reboot /home/gvipc-evo-01/agv_can/logs/pwrbtn-watch.sh` (a copy of `deploy/pwrbtn-watch.sh`; `logs/` is untracked) | 1 |

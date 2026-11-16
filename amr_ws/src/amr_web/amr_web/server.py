@@ -133,6 +133,7 @@ def create_app(
     state_dir: str | None = None,  # None: agv_core.paths
     internet_probe: netcheck.InternetProbe | None = None,
     product: str | None = None,  # tape | slam | both; None = the profile's `tracked`
+    rfid_enabled: bool | None = None,  # None = the profile's rfid.enabled
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
     app.config["MAPS_DIR"] = os.path.expanduser(maps_dir)
@@ -166,6 +167,18 @@ def create_app(
 
     product = product or _product()
 
+    def _rfid_enabled() -> bool:
+        """The profile's rfid.enabled (owner 2026-11-16: RFID not used, false on both units). A
+        disabled reader is hidden, not shown as "link down". A dev box without a profile: on."""
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            return bool(config.RFID_ENABLED)
+        except Exception:  # noqa: BLE001
+            return True
+
+    rfid_enabled = _rfid_enabled() if rfid_enabled is None else bool(rfid_enabled)
+
     tracked_ok = product in ("tape", "both")
     trackless_ok = product in ("slam", "both")
 
@@ -176,7 +189,27 @@ def create_app(
         tab for the other product is not offered at all."""
         return {"role": _role(), "OPERATOR": rolemod.OPERATOR, "ENGINEER": rolemod.ENGINEER,
                 "product": product, "tracked_ok": tracked_ok, "trackless_ok": trackless_ok,
-                "fresh_s": alarmview.FRESH_S, "jog_consts": jog.page_constants()}
+                "fresh_s": alarmview.FRESH_S, "jog_consts": jog.page_constants(),
+                "rfid_enabled": rfid_enabled}
+
+    def _banner() -> dict | None:
+        try:
+            st = adapter.state()
+            return alarmview.banner(st) if isinstance(st, dict) else None
+        except Exception:  # noqa: BLE001 - a page must render even when the state cannot be read
+            return None
+
+    @app.context_processor
+    def _inject_emergency():
+        """The emergency banner (base.html, every page but Home) is rendered with the page, so it
+        is there on the first paint; amr.js keeps it current from /api/state."""
+        return {"emg": _banner()}
+
+    def _emergency_refusal() -> str:
+        """Web motion requests refused while not NORMAL (emergency-suite plan Part B E6). The
+        mux inhibit and the Flexi Soft's STO are the real guards; this is the reason."""
+        st = adapter.state()
+        return alarmview.emergency_refusal(st) if isinstance(st, dict) else ""
 
     def _engineer_only(what: str):
         """A 403 for the operator role ("<what> the engineer view (PIN)"), None for the engineer.
@@ -228,7 +261,14 @@ def create_app(
 
     @app.get("/io")
     def page_io():
-        return render_template("io.html", page="io")
+        try:
+            from agv_core import config  # noqa: PLC0415
+
+            estop_ch = getattr(config, "PANEL_DI_ESTOP", None)
+            estop_high = bool(getattr(config, "PANEL_ESTOP_ACTIVE_HIGH", True))
+        except Exception:  # noqa: BLE001 - without a profile the page matches by name
+            estop_ch, estop_high = None, True
+        return render_template("io.html", page="io", estop_ch=estop_ch, estop_high=estop_high)
 
     @app.get("/alarms")
     def page_alarms():
@@ -504,7 +544,9 @@ def create_app(
 
     @app.get("/api/state")
     def api_state():
-        return jsonify(adapter.state())
+        st = adapter.state()
+        # computed here, once, so every page's banner says the same (alarms.banner)
+        return jsonify(dict(st, banner=alarmview.banner(st)) if isinstance(st, dict) else st)
 
     wifi_reader = wifi.WifiReader(wifi_iface)
 
@@ -747,6 +789,9 @@ def create_app(
             return _result(False, str(e), 422)
         if kind not in ("straight", "rotate"):
             return _result(False, "kind must be straight or rotate, value a finite number", 422)
+        why = _emergency_refusal()
+        if why:
+            return _result(False, why, 409)
         return _result(*adapter.survey_move(kind, value))
 
     @app.post("/api/survey_move/stop")
@@ -786,6 +831,9 @@ def create_app(
         owner = str(d.get("owner", ""))[:64]
         if not owner:
             return _result(False, "owner token required", 400)
+        why = _emergency_refusal()
+        if why:
+            return _result(False, why, 409)
         inst, gen = adapter.supervisor_identity()
         if hasattr(adapter, "manual_allowed"):
             ok, why = adapter.manual_allowed()
@@ -813,6 +861,15 @@ def create_app(
         if err:
             return err
         inst, gen = adapter.supervisor_identity()
+        why = _emergency_refusal()
+        if why:
+            # the held jog ends here: the session dies and a revocation goes out (as release)
+            with jog_lock:
+                sessions.release(str(d.get("session", "")))
+                adapter.manual_publish(
+                    jog.Command(inst, gen, str(d.get("session", "")), 0, 0.0, 0.0, 0.0, "", 0.0)
+                )
+            return _result(False, why, 409)
         with jog_lock:
             try:
                 cmd = sessions.refresh(

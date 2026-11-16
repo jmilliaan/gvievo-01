@@ -86,7 +86,7 @@ def test_hold_causes_all_map_to_a_catalogue_code():
 
 def test_runbook_section_4_matches_the_catalogue():
     """The paper and the screen are generated from the same rows (plan phase 4)."""
-    text = (ROOT / "amr_ws" / "RUNBOOK.md").read_text()
+    text = (ROOT / "amr_ws" / "RUNBOOK.md").read_text(encoding="utf-8")
     begin = "<!-- BEGIN GENERATED: python3 -m agv_core.alarms --md -->\n"
     end = "\n<!-- END GENERATED -->"
     if begin not in text:

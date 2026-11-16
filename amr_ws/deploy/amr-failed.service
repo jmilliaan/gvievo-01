@@ -1,0 +1,16 @@
+[Unit]
+Description=Show "call the engineer" on the kiosk when amr.service has failed
+Documentation=file:///home/gvipc-evo-01/agv_can/amr_ws/RUNBOOK.md
+# Started only by amr.service's OnFailure= (unified plan WP-H5); no [Install] section,
+# so it is never enabled. It writes /run/amr/failed.html, which the kiosk shows while
+# amr.service is failed; amr.service's ExecStartPre removes the page again.
+
+[Service]
+Type=oneshot
+# root: the page goes to /run/amr (0755, file 0644) and journalctl reads every line.
+# The script runs from a root-owned copy (install.sh), never from the repo.
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/amr-failed
+TimeoutStartSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only

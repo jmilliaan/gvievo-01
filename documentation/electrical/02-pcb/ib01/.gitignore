@@ -1,0 +1,9 @@
+# router and KiCad scratch files
+*.dsn
+*.ses
+fr.log
+*-backups/
+fp-info-cache
+*.lck
+~*
+#auto_saved_files#

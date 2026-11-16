@@ -35,7 +35,7 @@ from launch_ros.actions import Node
 
 from amr_base import gating
 from amr_bringup import scanner_fields, tape_loc
-from amr_bringup.launch_helpers import required
+from amr_bringup.launch_helpers import field_source, quiet_logs, required
 
 
 def _localization(generation: int) -> tuple[list, dict]:
@@ -91,14 +91,17 @@ def _compose(context):
             executable="line_follow_node",
             name="line_follow",
             output="screen",
+            **quiet_logs(),  # its output already reaches logs/layer.log (WP-P4)
             parameters=[
                 {
                     "generation": generation,
                     # The sim has no scanner: the field is assumed clear there
                     # and ONLY there. On the vehicle a stale /output_paths is
                     # "unknown" and the layer refuses to arm.
-                    "field_source": "scanner" if real else "assume_clear",
+                    "field_source": field_source(real),
                     "field_output_index": scanner_fields.protective_index(scanner_fields.load()),
+                    # the protective path's polarity from the same yaml (WP-E3)
+                    "field_active_level": scanner_fields.protective_active_level(scanner_fields.load()),
                     **loc_params,
                 }
             ],

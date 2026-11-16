@@ -33,6 +33,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SurveyMoveState.msg"
   "msg/OrderState.msg"
   "msg/TrolleyState.msg"
+  "msg/DeviceHealth.msg"
   "srv/RunMission.srv"
   "srv/StartSurvey.srv"
   "srv/SaveMap.srv"

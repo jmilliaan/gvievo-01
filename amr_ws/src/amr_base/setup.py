@@ -26,6 +26,7 @@ setup(
             "rfid_node = amr_base.rfid_node:main",
             "trolley_node = amr_base.trolley_node:main",
             "commissioning_node = amr_base.commissioning_node:main",
+            "event_recorder_node = amr_base.event_recorder_node:main",
         ],
     },
 )

@@ -34,8 +34,8 @@ from agv_core import config, paths
 from agv_core import disk as diskmod
 from geometry_msgs.msg import Pose2D
 from nav2_msgs.srv import ManageLifecycleNodes
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
 from std_srvs.srv import Trigger
 
 from amr_base import drive_state
@@ -43,9 +43,10 @@ from amr_base.gating import LEASE_AUTONOMOUS, LEASE_COMMISSIONING, LEASE_LINE, L
 from amr_base.lean_node import LeanNode
 from amr_base.qos import LATCHED, RELIABLE_1
 from amr_base.qos import SENSOR_DATA as SENSOR
-from amr_bringup import domains, logs, sdnotify, uptime
+from amr_bringup import domains, exits, logs, sdnotify, uptime
 from amr_bringup import mode_fsm as fsm
 from amr_bringup import operations as ops
+from amr_bringup import process_supervisor as ps
 from amr_bringup import readiness as rd
 from amr_bringup.process_supervisor import Group
 from amr_interfaces.msg import (
@@ -67,6 +68,7 @@ from amr_interfaces.srv import GetOperation, RequestMode, RequestSurvey, SaveMap
 
 # The web comes back by itself: 10 s apart, three tries, then the
 # operator is told to restart the service rather than watching a dead page for ever.
+# A web that ran RESPAWN_RESET_S (120 s) before it died starts its tries again (WP-H4).
 RESPAWN_BACKOFF_S = 10.0
 RESPAWN_TRIES = 3
 # How long a boot-time event waits for a listener (the web is spawned by this process
@@ -86,11 +88,31 @@ _MODE_OF_REQUEST = {
     fsm.REQ_LINE: fsm.LINE,
 }
 INTERNAL = "/amr/internal/survey"
+# PanelState.emergency (emergency-suite plan Part B) older than this reads NORMAL here: a stale
+# panel is PANEL_STALE's to report, and the mux has no authority without a fresh one anyway.
+EMERGENCY_FRESH_S = 1.0
+
+
+class SupervisorFeed(LeanNode):
+    """The four high-rate inputs (mux 20 Hz, drives, wheels 41 Hz, panel 50 Hz) on their own node
+    and SingleThreadedExecutor (unified plan WP-C4, C#9). The main executor then wakes only for
+    services, the latched states and its timers. Same topics, QoS and Snapshots callbacks as
+    before: the receipt stamps (time.monotonic() in readiness.Snapshots) and every freshness
+    window are unchanged. A beat timer here feeds the same executor watchdog as the main one
+    (WP-H4): a wedged feed thread leaves the lease withheld and systemd's watchdog unfed."""
+
+    def __init__(self, snap: rd.Snapshots, beat) -> None:
+        super().__init__("amr_supervisor_feed", start_parameter_services=False)
+        self.create_subscription(MuxState, "/amr/mux_state", snap.on_mux, RELIABLE_1)
+        self.create_subscription(DriveStatus, "/drives/status", snap.on_drives, RELIABLE_1)
+        self.create_subscription(WheelStates, "/wheel_states", snap.on_wheels, SENSOR)
+        self.create_subscription(PanelState, "/amr/panel_state", snap.on_panel, 10)
+        self.create_steady_timer(0.5, beat)
 
 
 class Supervisor(LeanNode):
     def __init__(self) -> None:
-        super().__init__("amr_supervisor")
+        super().__init__("amr_supervisor", start_parameter_services=False)  # WP-C11: nobody sets params live
         dp = self.declare_parameter
         dp("real", True)
         dp("maps_dir", paths.maps_dir())
@@ -148,6 +170,14 @@ class Supervisor(LeanNode):
         self._respawn_at: dict[str, float] = {}
         self._respawn_tries: dict[str, int] = {}
         self._notify = sdnotify.Notifier()
+        self._status_sent = ""  # the last STATUS= line, sent on change only (WP-H4)
+        self._status_note = ""  # e.g. a group that was given up on
+        self._last_fault = ""  # "CODE at HH:MM", kept after the FAULT is left
+        self._disk_readonly = ""
+        # Executor heartbeat (WP-H4, H-P1-5): stamped by a timer on the executor, read by the loop.
+        self._t_exec = time.monotonic()
+        self._t_feed = self._t_exec  # the feed node's executor (WP-C4)
+        self._exec_stale = False
 
         self.instance = uuid.uuid4().hex
         self.generation = 1
@@ -176,12 +206,9 @@ class Supervisor(LeanNode):
         os.makedirs(self._logs, exist_ok=True)
 
         g = ReentrantCallbackGroup()
-        self.create_subscription(MuxState, "/amr/mux_state", self.snap.on_mux, RELIABLE_1, callback_group=g)
-        self.create_subscription(
-            DriveStatus, "/drives/status", self.snap.on_drives, RELIABLE_1, callback_group=g
-        )
-        self.create_subscription(WheelStates, "/wheel_states", self.snap.on_wheels, SENSOR, callback_group=g)
-        self.create_subscription(PanelState, "/amr/panel_state", self.snap.on_panel, 10, callback_group=g)
+        # mux, drives, wheels and panel: SupervisorFeed, spun on its own thread by main() (WP-C4).
+        # The emergency state rides in the Snapshots (readiness.Snapshots.emergency, E5 2026-11-16).
+        self.feed = SupervisorFeed(self.snap, self._beat_feed)
         self.create_subscription(
             MappingState, "/amr/mapping_state", self.snap.on_mapping, LATCHED, callback_group=g
         )
@@ -228,6 +255,9 @@ class Supervisor(LeanNode):
             ),
         }
         self.create_steady_timer(0.5, self._publish_mode)
+        # Its own group: a ModeState publish waiting on the state lock must not look like a
+        # wedged executor.
+        self.create_steady_timer(0.5, self._beat, callback_group=MutuallyExclusiveCallbackGroup())
         self._thread = threading.Thread(target=self._loop, name="supervisor-loop", daemon=True)
         self.get_logger().info(
             f"instance {self.instance[:8]} real={self.real} maps={self.maps_dir} "
@@ -239,13 +269,26 @@ class Supervisor(LeanNode):
     def _now(self) -> float:
         return time.monotonic()
 
+    def _emergency(self, now: float) -> int:
+        """PanelState.emergency of a fresh panel image, else 0 (NORMAL): see EMERGENCY_FRESH_S. The
+        same Snapshots value mode_fsm admission reads (Conditions.emergency)."""
+        return self.snap.emergency(now, EMERGENCY_FRESH_S)
+
     def _env(self) -> dict:
         # children resolve the directories this supervisor was given, not their own defaults
         return {**os.environ, **paths.env_for(self.state_dir, self.maps_dir)}
 
     def _spawn(self, role: str, argv: list[str]) -> Group:
-        """Every child group: the supervisor's environment, its own log under logs/."""
-        return Group.spawn(role, argv, env=self._env(), log_path=os.path.join(self._logs, f"{role}.log"))
+        """Every child group: the supervisor's environment, its own log under logs/.
+
+        The role goes into the environment, so required()'s exit handler can say which node
+        ended the group (exits/<role>.json, cleared here first). The group's pgid goes into
+        groups.json, so amr-orphan-stop.sh can stop it base first if this process dies."""
+        exits.clear(self.state_dir, role)
+        env = {**self._env(), exits.ROLE_ENV: role}
+        g = Group.spawn(role, argv, env=env, log_path=os.path.join(self._logs, f"{role}.log"))
+        uptime.note_group(self.state_dir, role, g.pgid)
+        return g
 
     def _launch(self, role: str, file: str, **args) -> Group:
         argv = ["ros2", "launch", "amr_bringup", file] + [f"{k}:={v}" for k, v in args.items()]
@@ -298,23 +341,50 @@ class Supervisor(LeanNode):
                     f"mode {fsm.MODE_NAMES[self.mode]} -> {fsm.MODE_NAMES[mode]} ({phase or reason})"
                 )
                 lvl = Event.ERROR if mode == fsm.FAULT else Event.INFO
-                self._event(
-                    lvl,
-                    "MODE_CHANGE",
-                    f"{fsm.MODE_NAMES[self.mode]} -> {fsm.MODE_NAMES[mode]}: {fault or phase or reason}",
-                )
+                # Into FAULT the event carries the fault's own code and reason, as the follower's
+                # and the executor's state events do (WP-T3, 2026-11-16): "BASE_EXITED: drive_node
+                # exited with code -6" reaches the event log, not "MODE_CHANGE ... BASE_EXITED".
+                code = fault if mode == fsm.FAULT and fault else "MODE_CHANGE"
+                what = f"{fault}: {reason}" if code == fault and reason else (fault or phase or reason)
+                self._event(lvl, code, f"{fsm.MODE_NAMES[self.mode]} -> {fsm.MODE_NAMES[mode]}: {what}")
             self.mode, self.phase, self.reason = mode, phase, reason
             if fault:
+                if fault != self.fault_code or not self._last_fault:
+                    self._last_fault = f"{fault} at {time.strftime('%H:%M')}"
                 self.fault_code = fault
             elif mode != fsm.FAULT:
                 self.fault_code = ""
         self._mark()
         self._publish_mode()
+        self._send_status()
+
+    def _send_status(self) -> None:
+        """systemctl status amr: mode, generation, phase and the last fault (WP-H4)."""
+        line = sdnotify.status_line(
+            fsm.MODE_NAMES.get(self.mode, str(self.mode)), self.generation, self.phase,
+            self.fault_code if self.mode == fsm.FAULT else "", self._last_fault, self._status_note,
+        )
+        if line != self._status_sent:
+            self._status_sent = line
+            self._notify.status(line)
+
+    def _beat(self) -> None:
+        self._t_exec = time.monotonic()
+
+    def _beat_feed(self) -> None:
+        self._t_feed = time.monotonic()
 
     def _allowed(self) -> int:
         if self.txn is not None or self.mode in (fsm.STARTING, fsm.TRANSITIONING, fsm.FAULT, fsm.STOPPING):
             return 0
+        if self._exec_stale:  # services and state no longer turn: authority goes, nothing else (WP-H4)
+            return 0
         if self.inhibit_manual:
+            return 0
+        if self._emergency(self._now()):
+            # E-stop (emergency plan Part B): a second no-motion layer above the mux, every class
+            # withheld until NORMAL. No mode change: the layers keep running. NORMAL grants the
+            # lease back, which moves nothing by itself (Start / a held jog is still needed).
             return 0
         if self.mode == fsm.NAVIGATION:
             return LEASE_MANUAL | LEASE_AUTONOMOUS
@@ -342,7 +412,14 @@ class Supervisor(LeanNode):
         self.lease_seq += 1
         m.seq = self.lease_seq
         m.allowed = self._allowed()
-        m.inhibit_reason = "" if m.allowed else (self.phase or fsm.MODE_NAMES[self.mode])
+        if m.allowed:
+            m.inhibit_reason = ""
+        elif self._exec_stale and self.mode not in (fsm.FAULT, fsm.STOPPING):
+            m.inhibit_reason = "supervisor executor stalled"
+        elif self._emergency(self._now()) and self.txn is None and self.mode not in (fsm.FAULT, fsm.STOPPING):
+            m.inhibit_reason = "emergency stop"
+        else:
+            m.inhibit_reason = self.phase or fsm.MODE_NAMES[self.mode]
         return m
 
     def _publish_lease(self) -> None:
@@ -361,7 +438,9 @@ class Supervisor(LeanNode):
             m.phase = self.phase
             pend = self.book.pending
             m.operation_id = pend.operation_id if pend else ""
-            m.base_ready = rd.base_ready(self.snap, self._now())
+            now = self._now()
+            m.base_ready = rd.base_ready(self.snap, now, health=False)  # topic receipt (readiness.base_ready)
+            m.base_missing = rd.base_missing(self.snap, now)  # WP-H2: also an invalid panel, no torque
             m.layer_ready = self.mode in fsm.LAYER_MODES
             m.active_map_id, m.active_map_revision, m.active_map_sha256 = self.active_map
             allowed = self._allowed()
@@ -454,6 +533,13 @@ class Supervisor(LeanNode):
             # No room to write the result (power-loss plan W3). Refused for the two
             # operations that CREATE a map; never for anything that is already running.
             if kind in (fsm.REQ_SURVEY_START, fsm.REQ_SURVEY_SAVE) and self.disk.blocks_new_work:
+                if self.disk.readonly:
+                    res.accepted, res.message = (
+                        False,
+                        f"storage is read-only ({self.disk.readonly}): nothing can be saved; "
+                        "call the engineer",
+                    )
+                    return res
                 res.accepted, res.message = (
                     False,
                     f"disk full: {self.disk.free_mb} MB free on {self.disk.path}; "
@@ -608,10 +694,16 @@ class Supervisor(LeanNode):
         )
 
     def _check_disk(self) -> None:
-        """Watch the state and maps filesystems (power-loss plan W3). Edges only, and
-        the level is published in ModeState so the web can raise the standing alarm."""
-        st = diskmod.status([self.state_dir, self.maps_dir])
+        """Watch the state and maps filesystems and / (power-loss plan W3, WP-P4). Edges only.
+        A read-only mount (the kernel remounts ext4 read-only on an I/O error) is its own
+        edge, DISK_READONLY, beside the free-space one."""
+        st = diskmod.status(diskmod.watched(self.state_dir, self.maps_dir))
         self.disk = st
+        was_ro, self._disk_readonly = getattr(self, "_disk_readonly", ""), st.readonly
+        if st.readonly and st.readonly != was_ro:
+            self._event(Event.ERROR, "DISK_READONLY", f"read-only: {st.readonly}; nothing can be saved there")
+        elif was_ro and not st.readonly:
+            self._event(Event.INFO, "DISK_READONLY", "storage is writable again")
         if st.level == self._disk_level:
             return
         was, self._disk_level = self._disk_level, st.level
@@ -1046,11 +1138,17 @@ class Supervisor(LeanNode):
                 continue
             g.requested_stop = True  # handled; never reap it again
             if role in ("base", "layer"):
-                self._fail_active(f"{role.upper()}_EXITED", f"{g.describe()} exited unrequested")
+                # Which node ended it, from required()'s exit handler (WP-H4): "drive_node
+                # exited with code -6 (SIGABRT)" instead of only the launch leader's code.
+                who = exits.describe(exits.read(self.state_dir, role))
+                why = f"{g.describe()} exited unrequested"
+                self._fail_active(f"{role.upper()}_EXITED", f"{who}; {why}" if who else why)
             elif role in self._respawnable:
                 # The web is the operator's only window and was the least protected
                 # process in the stack: bring it back on a bounded backoff, then say
-                # loudly that it is gone (plan phase 3.1).
+                # loudly that it is gone (plan phase 3.1). Only quick deaths in a row count.
+                ran = now - getattr(g, "started", now)
+                self._respawn_tries[role] = ps.respawn_tries(self._respawn_tries.get(role, 0), ran)
                 self.get_logger().warn(f"{g.describe()} exited; respawning in {RESPAWN_BACKOFF_S:.0f} s")
                 self.groups.pop(role, None)
                 self._respawn_at[role] = now + RESPAWN_BACKOFF_S
@@ -1070,6 +1168,9 @@ class Supervisor(LeanNode):
                 self.get_logger().error(f"{role} died {tries - 1} times; not restarting it again")
                 self._event(Event.ERROR, "WEB_DOWN" if role == "web" else "SPAWN_FAILED",
                             f"{role} keeps stopping; restart the service")
+                # systemctl status too: with the web gone it is the one place left that says so
+                self._status_note = f"{role} gave up after {tries - 1} quick deaths: restart the service"
+                self._send_status()
                 continue
             try:
                 self.groups[role] = self._spawn(role, self._respawnable[role])
@@ -1093,7 +1194,10 @@ class Supervisor(LeanNode):
         t_cap = 0.0
         while not self._stop.is_set():
             t0 = self._now()
-            self._notify.watchdog()
+            # WATCHDOG=1 only while the executor turns too (WP-H4, H-P1-5): a supervisor whose
+            # services and subscriptions are wedged is restarted like a wedged loop
+            # (WatchdogSignal=SIGINT: the ordered teardown). Meanwhile the lease is withheld.
+            self._watch_executor(t0)
             self._flush_deferred()
             if t0 - self._t_disk >= 30.0:
                 self._t_disk = t0
@@ -1120,6 +1224,23 @@ class Supervisor(LeanNode):
             except Exception as e:  # noqa: BLE001 - a dead loop would stop IDLE/FAULT state reporting
                 self.get_logger().error(f"lease publish failed: {e!r}")
             time.sleep(max(0.0, period - (self._now() - t0)))
+
+    def _watch_executor(self, now: float) -> None:
+        # Both executors (WP-C4): the main one (services, states) and the feed node's (inputs).
+        feed_older = self._t_feed < self._t_exec
+        which, last = ("feed executor", self._t_feed) if feed_older else ("executor", self._t_exec)
+        stale = rd.executor_stale(now, last)
+        if stale != self._exec_stale:
+            self._exec_stale = stale
+            if stale:
+                self.get_logger().error(
+                    f"{which} stalled: no beat for {now - last:.1f} s; "
+                    "lease withheld, no watchdog ping"
+                )
+            else:
+                self.get_logger().warn("executor turning again; lease and watchdog resumed")
+        if not stale:
+            self._notify.watchdog()
 
     def _enter_idle_if_base_ready(self, now: float, late: bool = False) -> bool:
         """STARTING (or a BASE_NOT_READY fault) -> IDLE once the base and this generation's
@@ -1159,6 +1280,41 @@ class Supervisor(LeanNode):
 
     # --------------------------------------------------------------- shutdown
 
+    def _stop_groups(self) -> bool:
+        """Layer, then base, in turn on their own budgets; then every other group (the web)
+        together on the short one (WP-P4, H-P2-7). True iff every group is empty afterwards.
+        process_supervisor.stop_budget_s() is the worst case; test_liveness holds it
+        under amr.service's TimeoutStopSec."""
+        clean = True
+        for role in ("layer", "base"):  # the base outlives the layer that commands it
+            g = self.groups.get(role)
+            if g is None:
+                continue
+            budget = ps.STOP_BUDGET_S[role]
+            self._notify.extend_timeout(sum(budget) + 5.0)
+            ok = g.stop(*budget)
+            clean = clean and ok
+            self.get_logger().info(f"stopped {role}: {'clean' if ok else 'NOT EMPTY'} ({g.describe()})")
+        rest = [(r, g) for r, g in self.groups.items() if r not in ("layer", "base")]
+        if not rest:
+            return clean
+        self._notify.extend_timeout(sum(ps.OPTIONAL_STOP_BUDGET_S) + 5.0)
+        done: dict[str, bool] = {}
+
+        def stop_one(role, g):
+            done[role] = bool(g.stop(*ps.OPTIONAL_STOP_BUDGET_S))
+
+        threads = [threading.Thread(target=stop_one, args=rg, daemon=True) for rg in rest]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(sum(ps.OPTIONAL_STOP_BUDGET_S) + 1.0)
+        for role, g in rest:
+            ok = done.get(role, False)
+            clean = clean and ok
+            self.get_logger().info(f"stopped {role}: {'clean' if ok else 'NOT EMPTY'} ({g.describe()})")
+        return clean
+
     def shutdown(self) -> None:
         """Ordered teardown (§8.1): revoke, stop layer, stop base (drives disarm), web, bridge.
 
@@ -1169,7 +1325,9 @@ class Supervisor(LeanNode):
         self._stop.set()
         self._stopping = True
         self._notify.stopping()
-        got = self._lock.acquire(timeout=2.0)
+        # The budget asked for, in case the stop started late (systemd never shortens it for this).
+        self._notify.extend_timeout(ps.stop_budget_s())
+        got = self._lock.acquire(timeout=ps.LOCK_WAIT_S)
         try:
             self.mode, self.phase = fsm.STOPPING, "stopping"
             if got:
@@ -1179,16 +1337,16 @@ class Supervisor(LeanNode):
                 self._lock.release()
         if not got:
             self.get_logger().error("shutdown: state lock not acquired in 2 s; stopping children anyway")
+            # Whatever holds the lock is the wedge: its stack is the evidence (WP-H5).
+            faulthandler.dump_traceback(all_threads=True)
         try:
             self._publish_lease() if got else None
         except Exception:  # noqa: BLE001
             pass
-        for role in ("layer", "base", "web"):
-            g = self.groups.get(role)
-            if g is None:
-                continue
-            ok = g.stop()
-            self.get_logger().info(f"stopped {role}: {'clean' if ok else 'NOT EMPTY'} ({g.describe()})")
+        if not self._stop_groups():
+            # The bounded stop did not empty every group: every thread's stack to the journal
+            # before systemd's final SIGKILL takes the evidence with it (WP-H5).
+            faulthandler.dump_traceback(all_threads=True)
         pend = self.book.pending
         if pend:
             self.book.finish(pend.operation_id, ops.INTERRUPTED, "service stopped")
@@ -1203,7 +1361,17 @@ def main(args=None) -> None:
     node = Supervisor()
     executor = MultiThreadedExecutor(num_threads=3)
     executor.add_node(node)
+    # The input feed on its own executor and thread (WP-C4, C#9).
+    feed_executor = SingleThreadedExecutor()
+    feed_executor.add_node(node.feed)
     stop = threading.Event()
+
+    def spin_feed():
+        try:
+            feed_executor.spin()
+        except Exception as e:  # noqa: BLE001 - a dead feed stops its beat: the watchdog sees it
+            if not stop.is_set():
+                node.get_logger().error(f"feed executor ended: {e!r}")
 
     def on_signal(signum, _frame):
         node.get_logger().info(f"signal {signum}: shutting down")
@@ -1211,8 +1379,13 @@ def main(args=None) -> None:
 
     signal.signal(signal.SIGINT, on_signal)
     signal.signal(signal.SIGTERM, on_signal)
+    # SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL: every thread's stack to stderr (the journal)
+    # before the process dies, so an unclean death leaves its cause (unified plan WP-H5).
+    faulthandler.enable(all_threads=True)
     faulthandler.register(signal.SIGUSR1, all_threads=True)  # `kill -USR1 <pid>` dumps every thread's stack
     node._thread.start()
+    feed_thread = threading.Thread(target=spin_feed, name="supervisor-feed", daemon=True)
+    feed_thread.start()
     try:
         while not stop.is_set():
             executor.spin_once(timeout_sec=0.2)
@@ -1220,14 +1393,16 @@ def main(args=None) -> None:
         t0 = time.monotonic()
         node.shutdown()
         node.get_logger().info(f"teardown: groups stopped in {time.monotonic() - t0:.1f} s")
-        executor.shutdown(timeout_sec=2.0)
-        node.get_logger().info(f"teardown: executor down at {time.monotonic() - t0:.1f} s")
-        node._thread.join(timeout=2.0)
+        executor.shutdown(timeout_sec=ps.EXECUTOR_STOP_S)
+        feed_executor.shutdown(timeout_sec=ps.EXECUTOR_STOP_S)
+        node.get_logger().info(f"teardown: executors down at {time.monotonic() - t0:.1f} s")
+        node._thread.join(timeout=ps.LOOP_JOIN_S)
         print(f"teardown: loop joined at {time.monotonic() - t0:.1f} s", flush=True)
-        try:
-            node.destroy_node()
-        except Exception as e:  # noqa: BLE001
-            print(f"teardown: destroy_node {e!r}", flush=True)
+        for n in (node.feed, node):
+            try:
+                n.destroy_node()
+            except Exception as e:  # noqa: BLE001
+                print(f"teardown: destroy_node {e!r}", flush=True)
         print(f"teardown: node destroyed at {time.monotonic() - t0:.1f} s", flush=True)
         rclpy.try_shutdown()
         print(f"teardown: done at {time.monotonic() - t0:.1f} s", flush=True)

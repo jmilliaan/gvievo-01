@@ -31,7 +31,7 @@ from launch_ros.actions import Node
 
 from amr_base import gating
 from amr_bringup import logs, scanner_fields, tape_loc
-from amr_bringup.launch_helpers import required
+from amr_bringup.launch_helpers import field_source, required
 
 
 def _costmap_footprint_file(footprint: str, generation: int) -> str:
@@ -97,8 +97,6 @@ def _compose(context):
     cmd_vel = gating.nav_topic("/cmd_vel", generation)
     cmd_vel_rotate = gating.nav_topic("/cmd_vel_rotate", generation)
 
-    loc = get_package_share_directory("amr_localization")
-    params = os.path.join(loc, "config", "amcl.yaml")
     nav2 = os.path.join(get_package_share_directory("amr_navigation"), "config", "nav2_params.yaml")
     footprint_yaml = cfg("footprint_yaml").perform(context) or fpmod.default_path()
     footprint = fpmod.load(footprint_yaml).as_costmap_string()
@@ -117,69 +115,15 @@ def _compose(context):
     dynamic_yaml = os.path.join(rev_dir, "dynamic.yaml") if "dynamic.yaml" in manifest.files else ""
     blank = cfg("blank_dynamic").perform(context).lower() == "true" and bool(dynamic_yaml)
 
-    actions = required(
-        Node(
-            package="nav2_map_server",
-            executable="map_server",
-            name="map_server",
-            output="screen",
-            parameters=[params, {"yaml_filename": map_yaml}],
-        ),
-        "map_server",
-    )
-    lifecycle_loc = {"autostart": autostart}
-    amcl_remap = []
+    # L D53: the localization group (map_server [+ map_server_loc], AMCL, its lifecycle manager,
+    # the monitor) is built by tape_loc.group, the same code as the LINE layer's tape localization.
+    loc_yaml = None
     if blank:
         loc_yaml = _localization_map_file(
             map_yaml, dynamic_yaml, generation, int(cfg("loc_min_occupied_cells").perform(context))
         )
-        actions += required(
-            Node(
-                package="nav2_map_server",
-                executable="map_server",
-                name="map_server_loc",
-                output="screen",
-                parameters=[params, {"yaml_filename": loc_yaml, "topic_name": "map_loc", "frame_id": "map"}],
-            ),
-            "map_server_loc",
-        )
-        amcl_remap = [("map", "map_loc")]
-        lifecycle_loc["node_names"] = ["map_server", "map_server_loc", "amcl"]
-    actions += required(
-        Node(
-            package="nav2_amcl",
-            executable="amcl",
-            name="amcl",
-            output="screen",
-            parameters=[params],
-            remappings=amcl_remap,
-        ),
-        "amcl",
-    )
-    actions.append(
-        TimerAction(
-            period=3.0,
-            actions=[
-                Node(
-                    package="nav2_lifecycle_manager",
-                    executable="lifecycle_manager",
-                    name="lifecycle_manager_localization",
-                    output="screen",
-                    parameters=[params, lifecycle_loc],
-                )
-            ],
-        )
-    )
-    actions += required(
-        Node(
-            package="amr_localization",
-            executable="localization_monitor_node",
-            name="localization_monitor",
-            output="screen",
-            parameters=[{"generation": generation, "dynamic_yaml": dynamic_yaml}],
-        ),
-        "localization_monitor",
-    )
+    actions = tape_loc.group(map_yaml, autostart=autostart, map_loc_yaml=loc_yaml, generation=generation,
+                             dynamic_yaml=dynamic_yaml)
     actions += required(
         Node(
             package="nav2_controller",
@@ -205,15 +149,16 @@ def _compose(context):
     actions.append(
         TimerAction(
             period=6.0,
-            actions=[
+            actions=required(
                 Node(
                     package="nav2_lifecycle_manager",
                     executable="lifecycle_manager",
                     name="lifecycle_manager_navigation",
                     output="screen",
                     parameters=[nav2, {"autostart": autostart}],
-                )
-            ],
+                ),
+                "lifecycle_manager_navigation",
+            ),
         )
     )
     actions += required(
@@ -227,8 +172,10 @@ def _compose(context):
                     "maps_dir": maps_dir,
                     "footprint_yaml": footprint_yaml,
                     "field_output_index": scanner_fields.protective_index(scanner_fields.load()),
+                    # the protective path's polarity from the same yaml (WP-E3)
+                    "field_active_level": scanner_fields.protective_active_level(scanner_fields.load()),
                     # The sim has no scanner: there, and ONLY there, the field is assumed clear.
-                    "field_source": "scanner" if real else "assume_clear",
+                    "field_source": field_source(real),
                     **active_map,
                 }
             ],

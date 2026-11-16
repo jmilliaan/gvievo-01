@@ -57,6 +57,11 @@ TIME_MARGIN = 2.0
 REARM_MARGIN_M = missions.REARM_MARGIN_M
 
 
+# A spin resumed after a hold (owner 2026-11-16: an E-stop does not end the U-turn): more
+# pivot than this between the hold and the resume - pushed by hand, a drive that lost its
+# position - is not a U-turn to continue, and the run FAULTs as before.
+HOLD_TURN_LIMIT_DEG = 30.0
+
 counts_delta = kinematics.counts_delta  # 6064h is INT32 and wraps
 
 
@@ -77,10 +82,22 @@ def spin_omega(wheel_rpm):
     return 2.0 * wheel_rpm * config.RAD_S_PER_RPM_DIFF
 
 
+def pivot_deg(ref, counts, counts_per_wheel_rev, direction):
+    """Pivot from `ref` to `counts` in `direction` ("cw"/"ccw"), from wheel travel, wrap-safe."""
+    dl = counts_delta(counts[0], ref[0])
+    dr = counts_delta(counts[1], ref[1])
+    if config.INVERT_LEFT:
+        dl = -dl
+    if config.INVERT_RIGHT:
+        dr = -dr
+    yaw = (dr - dl) * m_per_count(counts_per_wheel_rev) / config.TRACK_M
+    return math.degrees(yaw) * (-1.0 if direction == "cw" else 1.0)
+
+
 class UTurn:
     def __init__(self, direction, counts_per_wheel_rev, start_counts, start_level,
                  phase=SPIN, min_deg=None, max_deg=None, lost=False, what="U-turn",
-                 band_mm=None, settle_s=None, gyro_min_deg=None):
+                 band_mm=None, settle_s=None, gyro_min_deg=None, last_e=None):
         """phase=CENTER skips the spin: centre on the tape already under the
         sensor, then settle. manualturn.py uses it after an encoder pivot.
 
@@ -117,7 +134,7 @@ class UTurn:
         self._settled_s = 0.0
         self._unseen_s = 0.0
         self._unseen_from = None    # encoder angle where centring lost the tape
-        self._last_e = None         # last centring error seen, for the side to turn to
+        self._last_e = last_e       # last centring error seen, for the side to turn to
         self._budget_s = (TIME_MARGIN * math.radians(self.max_deg)
                           / spin_omega(config.AUTO_U_TURN_RPM))
 
@@ -236,3 +253,52 @@ class UTurn:
                 "direction": self.direction, "angle_deg": self.angle_deg,
                 "gyro_deg": self.gyro_deg if self.gyro_ok else None,
                 "tape_lost": self.lost, "reason": self.reason}
+
+    def carry(self):
+        """What resume() needs to continue this turn after a hold (job._hold, owner 2026-11-16)."""
+        return {"what": self.what, "direction": self.direction, "phase": self.phase,
+                "angle_deg": self.angle_deg, "gyro_deg": self.gyro_deg if self.gyro_ok else None,
+                "lost": self.lost, "last_e": self._last_e, "counts": self._last,
+                "start_level": self.start_level, "min_deg": self.min_deg, "max_deg": self.max_deg,
+                "gyro_min_deg": self.gyro_min_deg, "band_mm": self.band_mm, "settle_s": self.settle_s}
+
+
+def resume(c, counts, counts_per_wheel_rev):
+    """A fresh turn from rest that continues `c` (UTurn.carry() at the hold). Returns
+    (UTurn, None) or (None, why it cannot continue: the caller FAULTs as before).
+
+    Owner 2026-11-16: an E-stop (any hold) does not end the U-turn. The tape still decides where
+    the turn ends; what was already turned only lowers the gates:
+      * stopped in the spin: a new spin from the current counts, min/max lowered by the encoder
+        angle turned (before the hold and while held), the gyro gate by the gyro angle turned
+        plus the encoder angle while held (the gyro does not integrate while held), `lost` and
+        the track level as they were - the tape left under the sensor is not taken for the new
+        leg unless it was lost first;
+      * stopped centring or settling: centre again on the tape under the sensor (manualturn's
+        CENTER start), turning toward the side it was last seen if it is not seen.
+    Not continued: no counts or scale, more than HOLD_TURN_LIMIT_DEG of pivot while held, or no
+    angle left before max_deg. Rotation the encoders did not count while held (if 6064h stops
+    counting under STO - a vehicle check) cannot be seen here; the tape and max_deg still bound it.
+    """
+    what = c["what"]
+    if counts is None or not counts_per_wheel_rev:
+        return None, f"{what}: encoder counts unavailable to continue after the hold"
+    held = pivot_deg(c["counts"], counts, counts_per_wheel_rev, c["direction"])
+    if abs(held) > HOLD_TURN_LIMIT_DEG:
+        return None, (f"{what}: the AGV turned {held:.0f} deg while held (more than "
+                      f"{HOLD_TURN_LIMIT_DEG:.0f}), so the turn cannot continue")
+    common = dict(what=what, band_mm=c["band_mm"], settle_s=c["settle_s"], last_e=c["last_e"])
+    if c["phase"] in (CENTER, SETTLE):
+        return UTurn(c["direction"], counts_per_wheel_rev, counts, c["start_level"], phase=CENTER,
+                     **common), None
+    done = c["angle_deg"] + held
+    left = c["max_deg"] - done
+    if left <= 0.0:
+        return None, (f"{what}: {done:.0f} deg turned by encoder already reaches the "
+                      f"{c['max_deg']:.0f} deg limit")
+    gyro_min = None
+    if c["gyro_min_deg"] and c["gyro_deg"] is not None:
+        gyro_min = max(0.0, c["gyro_min_deg"] - c["gyro_deg"] - max(0.0, held))
+    return UTurn(c["direction"], counts_per_wheel_rev, counts, c["start_level"], phase=SPIN,
+                 min_deg=max(0.0, c["min_deg"] - done), max_deg=left, lost=c["lost"],
+                 gyro_min_deg=gyro_min, **common), None

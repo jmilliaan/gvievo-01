@@ -83,8 +83,12 @@ journalctl -u amr.service -f
 
 Everything operational — boot checks, mode swaps, surveys, routes, holds,
 rollback — is in [amr_ws/RUNBOOK.md](amr_ws/RUNBOOK.md). Deployment files
-(`amr.service`, `amr.env`, the launch wrappers, `install.sh`, `validate.sh`)
-are under [amr_ws/deploy/](amr_ws/deploy/).
+(`amr.service`, `amr.env`, the launch wrappers, `install.sh`, `validate.sh`, the
+CAN bridge unit and udev template, the unclean-death helpers, the watchdog drop-ins)
+are under [amr_ws/deploy/](amr_ws/deploy/); the platform freeze (ROS snapshot
+source, apt pins and holds, `freeze.sh`) is under
+[amr_ws/deploy/platform/](amr_ws/deploy/platform/). RUNBOOK section 5 says what
+each installs.
 
 **Which vehicle** comes from `AGV_PROFILE`, naming a file in `profiles/`.
 Unset means `agv-01`. A name with no matching file is fatal at boot.

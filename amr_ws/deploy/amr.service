@@ -8,6 +8,11 @@ Wants=network-online.target
 BindsTo=sys-subsystem-net-devices-can0.device
 StartLimitIntervalSec=60
 StartLimitBurst=3
+# When the restart limit leaves the unit failed (a crash loop, or agv_core.identity refusing
+# the profile), the kiosk shows "call the engineer" instead of the holding page for ever
+# (unified plan WP-H5). amr-failed.service writes /run/amr/failed.html; ExecStartPre below
+# removes it again.
+OnFailure=amr-failed.service
 
 [Service]
 # Type=notify + WatchdogSec: the supervisor pings every loop tick (amr_bringup/
@@ -16,6 +21,10 @@ StartLimitBurst=3
 Type=notify
 NotifyAccess=main
 WatchdogSec=30
+# A watchdog timeout sends SIGINT, not SIGABRT: the supervisor's ordered teardown runs
+# (lease revoked, layer stopped, drives disarmed) instead of a core dump that orphans the
+# children. faulthandler (supervisor_node main) still dumps a hard crash to the journal.
+WatchdogSignal=SIGINT
 # Boot can legitimately take a while: the base budget is 30 s and the drives sat at
 # "Switch on disabled" for 70 s waiting for the cabinet reset (2026-09-22). READY=1 is
 # sent whatever the outcome, but the margin costs nothing.
@@ -31,6 +40,8 @@ EnvironmentFile=/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr.env
 ExecStartPre=+/usr/bin/install -d -o root -g root -m 1777 /run/lock/amr
 ExecStartPre=+/usr/bin/install -d -o gvipc-evo-01 -g gvipc-evo-01 -m 0755 ${AMR_STATE_DIR}
 ExecStartPre=+/usr/bin/install -d -o gvipc-evo-01 -g gvipc-evo-01 -m 0755 ${AMR_MAPS_DIR}
+# A new start: the "call the engineer" page of the last failure is no longer true.
+ExecStartPre=+/bin/rm -f /run/amr/failed.html
 ExecStart=/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-supervisor.sh
 
 # SIGINT lets the supervisor revoke its lease, stop the active mode layer,
@@ -38,6 +49,13 @@ ExecStart=/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-supervisor.sh
 # bounded path hangs, systemd kills the whole cgroup after TimeoutStopSec.
 KillSignal=SIGINT
 KillMode=mixed
+# ExecStop runs on every stop, also after the supervisor died on its own. With the
+# supervisor alive it does nothing (the SIGINT above does the work); with it gone it
+# SIGINTs the orphaned child groups, base first, for at most 12 s (unified plan WP-H5).
+ExecStop=-/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-orphan-stop.sh
+# After every stop: systemd's $SERVICE_RESULT into $AMR_STATE_DIR/last_stop.json, so the
+# next start can say how the last run ended (amr_bringup/uptime.py).
+ExecStopPost=-/home/gvipc-evo-01/agv_can/amr_ws/deploy/amr-stop-post.sh
 TimeoutStopSec=55
 # The teardown sends STOPPING=1, so a slow, bounded stop is not a watchdog kill.
 SendSIGKILL=yes
@@ -45,6 +63,14 @@ SendSIGKILL=yes
 Restart=on-failure
 RestartSec=5
 UMask=0022
+# The kernel OOM killer: a killed child is the supervisor's to handle (its group exits and
+# the supervisor reports it), so systemd must not stop the whole unit for it (the default,
+# OOMPolicy=stop). -500 makes the kiosk browser and engineering shells go first.
+OOMPolicy=continue
+OOMScoreAdjust=-500
 
 [Install]
-WantedBy=multi-user.target
+# canable@can0: re-plugging the adapter starts the bridge again (udev SYSTEMD_WANTS), and
+# this pulls amr.service back up with it (unified plan WP-P3, decision 9). BindsTo= above
+# stopped it when can0 went away. Takes effect at the next (witnessed) `systemctl reenable amr`.
+WantedBy=multi-user.target canable@can0.service

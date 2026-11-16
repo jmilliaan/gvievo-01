@@ -131,7 +131,9 @@ lifecycle_manager_navigation:
     use_sim_time: false
     autostart: true
     node_names: [controller_server, behavior_server]
-    bond_timeout: 20.0     # startup load on the N97: the whole launch dies if a bond is missed
+    # 0.0 = no bond (WP-C15, C#24, 2026-11-16): a dead controller/behavior server or manager
+    # ends the layer (required(), LAYER_EXITED). Must stay a double (parameter type check).
+    bond_timeout: 0.0
     # A node that dies is a fault for the layer (its launch is REQUIRED), not something to
     # re-bond with: the supervisor replaces the whole layer (unified plan WP-0D).
     attempt_respawn_reconnection: false

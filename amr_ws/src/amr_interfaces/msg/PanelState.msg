@@ -20,3 +20,15 @@ bool manual_arm
 # under MANUAL, its At home (amr_line.home_combo). False while invalid.
 bool start_held
 bool reset_held
+# Emergency (emergency-suite plan Part B, 2026-11-16; contract as kyb-trackless). APPEND ONLY.
+# estop_ok: the E-stop signal NOT active. DI09 (panel.di_estop, Flexi Soft Q3), HIGH = E-stop
+# pressed (panel.estop_active_high, owner 2026-11-16), filtered by the adapter (active over
+# panel.estop_confirm_scans); held as it was while the image is invalid or stale - a DIO gap is
+# never an E-stop. Informational: STO is the Flexi Soft's, in hardware. emergency: amr_base/emergency.py.
+uint8 EMG_NORMAL=0         # clear. Reaching it grants no motion: Start (AUTO) or the lease (MANUAL)
+uint8 EMG_ACTIVE=1         # E-stop signal active: release the E-stop, press Reset
+uint8 EMG_RESET_NEEDED=2   # signal clear again but not reset yet: press Reset
+uint8 EMG_RESETTING=3      # Reset pressed with the signal clear; waiting for the drives to leave STO
+uint8 EMG_RESET_FAILED=4   # the Reset did not take within panel.estop_reset_timeout_s
+bool estop_ok
+uint8 emergency

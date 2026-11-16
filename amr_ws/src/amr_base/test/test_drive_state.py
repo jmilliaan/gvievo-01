@@ -19,6 +19,16 @@ def test_field_clear_and_a_malformed_array():
     assert ds.field_clear([True], 2) is None and ds.field_clear(None, 0) is None
 
 
+def test_field_polarity_and_validity():
+    """WP-E3: `active` is the status while OCCUPIED (scanner_fields protective.active).
+    WP-E2: is_valid[i] False, or a short array, is not trustworthy; None = not checked."""
+    assert ds.field_clear([False], 0, True) is True and ds.field_clear([True], 0, True) is False
+    assert ds.field_clear([True], 0, False) is True
+    assert ds.field_valid(None, 0) is True
+    assert ds.field_valid([True, False], 0) is True and ds.field_valid([True, False], 1) is False
+    assert ds.field_valid((), 0) is False and ds.field_valid([True], 1) is False
+
+
 def test_the_names_match_the_decoder_and_the_link():
     from agv_core.drivers.canbus import cia402
 

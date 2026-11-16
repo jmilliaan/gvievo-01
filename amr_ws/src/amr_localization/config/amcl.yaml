@@ -62,7 +62,11 @@ lifecycle_manager_localization:
     use_sim_time: false
     autostart: true
     node_names: [map_server, amcl]
-    bond_timeout: 20.0     # startup load on the N97: the whole launch dies if a bond is missed
+    # 0.0 = no bond (WP-C15, C#24, 2026-11-16): no heartbeat timers, and no false bond miss under
+    # N97 load resetting AMCL. A dead map_server/amcl/manager ends the layer (required(),
+    # LAYER_EXITED); a hung-but-alive AMCL shows as a stale map->odom in localization_monitor.
+    # Must stay a double: an integer 0 fails the manager's parameter type check.
+    bond_timeout: 0.0
     # A node that dies is a fault for the layer (its launch is REQUIRED), not something to
     # re-bond with: the supervisor replaces the whole layer (unified plan WP-0D).
     attempt_respawn_reconnection: false

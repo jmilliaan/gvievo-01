@@ -174,7 +174,14 @@ def gated(clear: bool | None, case: int, proven: bool) -> bool | None:
 
 
 class RearField:
-    """The latest /rear/output_paths. A malformed array is no evidence: the old reading ages out."""
+    """The latest /rear/output_paths. A malformed array is no evidence: the old reading ages out.
+
+    An invalid path (is_valid[index] False, WP-E2) is UNKNOWN at once, never clear or violated.
+    `valid` None = not checked; trolley_node passes () for a message without the array.
+
+    Named exception to scanner_fields (WP-E3): the rear index is the profile's
+    rear.field_output_index and the polarity is True = clear, because the rear has no Safety
+    Designer copy in scanner_fields.yaml. Move both there at the rear fit (P8)."""
 
     def __init__(self, fresh_s: float, index: int, no_trolley_case: int, proven: bool) -> None:
         self.fresh_s, self.index = float(fresh_s), int(index)
@@ -183,10 +190,13 @@ class RearField:
         self._active = None
         self._t: float | None = None
 
-    def update(self, now, status, active_case=None) -> None:
+    def update(self, now, status, active_case=None, valid=None) -> None:
         if status is None or len(status) <= self.index:
             return
-        self._clear, self._active, self._t = bool(status[self.index]), active_case, now
+        clear = bool(status[self.index])
+        if valid is not None and not (len(valid) > self.index and valid[self.index]):
+            clear = None
+        self._clear, self._active, self._t = clear, active_case, now
 
     def read(self, now) -> tuple[int, int]:
         """(rear_field, rear_case) as TrolleyState wants them."""

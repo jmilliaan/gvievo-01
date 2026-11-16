@@ -90,3 +90,70 @@ def test_mounted_window():
     assert math.degrees(g.angle_increment) == pytest.approx(0.5)
     r = cast(box_world(), 0.0, 0.0, 0.0, g)
     assert r[190] == pytest.approx(4.95, abs=0.03)  # middle beam straight ahead
+
+
+# ---- CPU 2026-11-16 (cpu-load plan §4a c): chunked early-exit march + cos/sin cache ----
+
+def _oracle(grid: Grid, x, y, yaw, geom: ScanGeometry, step=None) -> np.ndarray:
+    """The whole-array march cast() replaced, kept verbatim as the brute-force reference."""
+    from amr_maps.grid import OCCUPIED
+
+    step = step or grid.meta.resolution / 2.0
+    n_samples = int(math.ceil(geom.range_max / step)) + 1
+    dists = np.arange(n_samples) * step
+    angles = yaw + geom.angles
+    px = x + np.outer(np.cos(angles), dists)
+    py = y + np.outer(np.sin(angles), dists)
+    cols = np.floor((px - grid.meta.origin_x) / grid.meta.resolution).astype(np.int64)
+    rows = np.floor((py - grid.meta.origin_y) / grid.meta.resolution).astype(np.int64)
+    inside = (cols >= 0) & (cols < grid.width) & (rows >= 0) & (rows < grid.height)
+    occ = np.zeros(px.shape, dtype=bool)
+    occ[inside] = grid.data[rows[inside], cols[inside]] >= OCCUPIED
+    hit = occ.any(axis=1)
+    first = np.where(hit, occ.argmax(axis=1), n_samples - 1)
+    ranges = dists[first].astype(np.float64)
+    ranges[~hit] = np.inf
+    ranges[ranges < geom.range_min] = geom.range_min
+    return ranges
+
+
+def _clutter(seed: int, n: int = 160, res: float = 0.05) -> Grid:
+    rng = np.random.default_rng(seed)
+    data = np.where(rng.random((n, n)) < 0.01, 100, 0).astype(np.int8)
+    data[rng.random((n, n)) < 0.05] = -1  # unknown is not a hit
+    data[0, :] = data[-1, :] = 100
+    return Grid(data, GridMeta(res, -n * res / 2 + 0.3, -n * res / 2 - 0.2))
+
+
+def test_cast_is_bit_identical_to_the_brute_force_march():
+    """Same bits, not approx: the early exit may never move a range by an ulp."""
+    rng = np.random.default_rng(7)
+    grids = [box_world(), build(), _clutter(1), _clutter(2),
+             Grid(np.zeros((40, 40), dtype=np.int8), GridMeta(0.05, -1.0, -1.0))]  # nothing to hit
+    geoms = [nanoscan3(), mounted(range_max=10.0), ScanGeometry(-0.3, 0.3, 7, 0.4, 3.3),
+             ScanGeometry(0.0, 0.0, 1, 0.05, 20.0), nanoscan3(beams=1652, range_max=6.0)]
+    checked = 0
+    for g in grids:
+        w = g.width * g.meta.resolution
+        for geom in geoms:
+            for _ in range(4):
+                x = g.meta.origin_x + rng.uniform(-0.2, 1.2) * w  # some poses off the grid
+                y = g.meta.origin_y + rng.uniform(-0.2, 1.2) * g.height * g.meta.resolution
+                yaw = rng.uniform(-math.pi, math.pi)
+                for step in (None, 0.017, 0.1):
+                    got, want = cast(g, x, y, yaw, geom, step), _oracle(g, x, y, yaw, geom, step)
+                    assert got.dtype == want.dtype and got.shape == want.shape
+                    assert np.array_equal(got, want), (x, y, yaw, geom, step)
+                    checked += 1
+    assert checked == 5 * 5 * 4 * 3
+
+
+def test_beam_trig_is_the_plain_cos_sin_and_read_only():
+    from amr_maps.raycast import beam_trig
+
+    geom = mounted()
+    c, s = beam_trig(geom, 0.37)
+    assert np.array_equal(c, np.cos(0.37 + geom.angles)) and np.array_equal(s, np.sin(geom.angles + 0.37))
+    assert beam_trig(geom, 0.37)[0] is c, "cached per (geometry, yaw)"
+    with pytest.raises(ValueError):
+        c[0] = 1.0  # shared with scan_consistency: never written

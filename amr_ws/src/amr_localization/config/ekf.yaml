@@ -4,7 +4,8 @@
 #
 # Yaw rate only from the IMU: the MLS gyro drifts 3.4 deg/min in absolute yaw
 # (D-3), so orientation is deliberately NOT fused. Bias is removed upstream by
-# imu_bias_node; its covariance is the measured sigma 0.0291 deg/s.
+# drive_node on the vehicle (WP-C5, 2026-11-16; imu_bias_node in the sim); its covariance
+# is the measured sigma 0.0291 deg/s.
 ekf_local:
   ros__parameters:
     frequency: 50.0

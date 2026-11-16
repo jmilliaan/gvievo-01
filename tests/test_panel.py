@@ -199,8 +199,7 @@ def test_panel_profile():
             lambda d: d["pendant"].update(di_rvs=99), "channel in 0..")
     refused("the pendant cannot be enabled without the DI scan that feeds it",
             lambda d: (d["dio"].update(enabled=False),
-                       d["panel"].update(enabled=False),
-                       d["horn"].update(enabled=False)), "pendant")
+                       d["panel"].update(enabled=False)), "pendant")
     check("the shipped pendant wiring (io-mapping.md): DI03 fwd, DI04 rvs, "
           "DI05 left, DI06 right",
           (config.PENDANT_DI_FWD, config.PENDANT_DI_RVS, config.PENDANT_DI_LEFT,

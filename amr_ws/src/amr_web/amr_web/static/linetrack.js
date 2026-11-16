@@ -63,7 +63,7 @@ function markerReading(m) {
 }
 function rfidTags(r) {
   const box = document.querySelector('.lt-rfid');
-  if (!box) return;
+  if (!box || box.hidden) return;  // hidden: the profile has the reader off (rfid.enabled)
   const { link, tags, up, last, reading, why } = rfidReading(r);
   box.classList.toggle('down', !up);
   // RSSI of the latest read, and a flag when the reader's own configuration (read back on

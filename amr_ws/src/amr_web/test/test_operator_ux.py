@@ -139,11 +139,13 @@ def test_a_field_stop_says_it_resumes_by_itself_and_offers_no_button():
 
 
 def test_an_estop_hold_tells_the_operator_to_press_start():
+    """The run's estop hold publishes ESTOP_HOLD (agv_core.alarms.HOLD_CODES, 2026-11-16): once the
+    emergency is NORMAL, Start continues the run (owner O-3); ESTOP itself is the emergency."""
     st = merged(
         run={
             "state_name": "BLOCKED",
             "hold_cause": "estop",
-            "fault_code": "ESTOP",
+            "fault_code": "ESTOP_HOLD",
             "auto_resume": False,
             "reason": "safety stop",
             "mission_id": "m1",
@@ -151,7 +153,8 @@ def test_an_estop_hold_tells_the_operator_to_press_start():
         }
     )
     h = view.headline(st, view.standing(st))
-    assert h["state"] == view.STOPPED_NEEDS_YOU and "Start" in h["action"]
+    assert h["state"] == view.STOPPED_NEEDS_YOU and "Start" in h["action"] and h["code"] == "ESTOP_HOLD"
+    assert cat.hold_code("estop") == "ESTOP_HOLD"
 
 
 def test_an_executor_fault_offers_acknowledge():
@@ -703,7 +706,7 @@ def test_home_has_no_navigation_switch_and_line_is_the_engineers(tmp_path):
 
 
 def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
-    from amr_web.adapter import read_ipc_temp
+    from amr_web.ipc import read_ipc_temp  # its home since 2026-11-16 (adapter.py re-exports it)
 
     h = tmp_path / "hwmon" / "hwmon0"
     h.mkdir(parents=True)
@@ -714,6 +717,92 @@ def test_ipc_temperature_reads_coretemp_package_and_hottest_core(tmp_path):
         (h / f"temp{i}_input").write_text(str(milli))
     assert read_ipc_temp(str(tmp_path)) == {"package_c": 66.0, "core_max_c": 71.0}
     assert read_ipc_temp(str(tmp_path / "missing")) is None
+
+
+def _throttle_tree(tmp_path, count, total_ms=None, clamp=None):
+    cpu = tmp_path / "cpu" / "cpu0" / "thermal_throttle"
+    cpu.mkdir(parents=True, exist_ok=True)
+    (cpu / "package_throttle_count").write_text(f"{count}\n")
+    (cpu / "core_throttle_count").write_text("99999\n")  # per core: not read
+    if total_ms is not None:
+        (cpu / "package_throttle_total_time_ms").write_text(f"{total_ms}\n")
+    cls = tmp_path / "class" / "thermal"
+    (cls / "thermal_zone0").mkdir(parents=True, exist_ok=True)
+    (cls / "thermal_zone0" / "type").write_text("x86_pkg_temp\n")
+    if clamp is not None:
+        (cls / "cooling_device3").mkdir(exist_ok=True)
+        (cls / "cooling_device3" / "type").write_text("intel_powerclamp\n")
+        (cls / "cooling_device3" / "cur_state").write_text(f"{clamp}\n")
+    return str(tmp_path / "cpu"), str(tmp_path / "class")
+
+
+def test_ipc_throttle_counters_come_from_cpu0_package_and_powerclamp(tmp_path):
+    """WP-P11 (S-ipc-throttle-telemetry): the N97 throttles at ~65 deg C; show how often."""
+    from amr_web.ipc import read_throttle
+
+    cpu, cls = _throttle_tree(tmp_path, 4200, total_ms=13400, clamp=-1)
+    assert read_throttle(cpu, cls) == {"count": 4200, "total_ms": 13400, "clamp": 0}, "-1 = not injecting"
+    cpu, cls = _throttle_tree(tmp_path, 4201, clamp=25)
+    (tmp_path / "cpu" / "cpu0" / "thermal_throttle" / "package_throttle_total_time_ms").unlink()
+    assert read_throttle(cpu, cls) == {"count": 4201, "total_ms": None, "clamp": 25}
+    assert read_throttle(str(tmp_path / "nocpu"), str(tmp_path / "noclass")) is None, "a VM: no chip text"
+    cpu, _ = _throttle_tree(tmp_path / "b", 7)
+    assert read_throttle(cpu, str(tmp_path / "noclass"))["clamp"] is None, "no powerclamp driver"
+
+
+def test_ipc_throttle_rate_is_per_minute_between_reads_and_survives_a_reset():
+    from amr_web.ipc import ThrottleRate
+
+    r = ThrottleRate()
+    first = r.update(100.0, {"count": 4200, "total_ms": 13400, "clamp": 0})
+    assert first["per_min"] is None and first["count"] == 4200, "nothing to compare with yet"
+    d = r.update(105.0, {"count": 4210, "total_ms": 13500, "clamp": 0})
+    assert d["per_min"] == pytest.approx(120.0) and d["ms_per_min"] == pytest.approx(1200.0)
+    assert r.update(110.0, {"count": 3, "total_ms": 5, "clamp": 0})["per_min"] is None, "counter reset"
+    assert r.update(115.0, {"count": 3, "total_ms": None, "clamp": 0})["per_min"] == 0.0
+    assert r.update(120.0, None) is None
+    assert r.update(125.0, {"count": 9, "total_ms": None, "clamp": 0})["per_min"] is None, "gap: restart"
+
+
+def test_the_drive_fault_code_and_detail_reach_the_state():
+    """WP-B4 (2026-11-16): DriveStatus fault_code / fault_detail, tolerated when the msg predates them."""
+    import threading
+    from types import SimpleNamespace
+
+    pytest.importorskip("rclpy")  # the vehicle: adapter.py imports rclpy
+    from amr_web import adapter as ad
+
+    a = ad.RosAdapter.__new__(ad.RosAdapter)
+    a._lock = threading.Lock()
+    a._now = lambda: 5.0
+    base = dict(operational=False, left_state="FAULT", right_state="Operation enabled", link_state="fault",
+                power_reason="")
+    a._on_drives(SimpleNamespace(**base, fault_code="DRIVE_FAULT", fault_detail="left 603Fh 7500"))
+    assert (a._drives["fault_code"], a._drives["fault_detail"]) == ("DRIVE_FAULT", "left 603Fh 7500")
+    a._on_drives(SimpleNamespace(**base))  # an unrebuilt DriveStatus
+    assert (a._drives["fault_code"], a._drives["fault_detail"]) == ("", "")
+
+
+def test_a_disabled_rfid_reader_is_hidden_not_shown_as_link_down(tmp_path):
+    """Owner 2026-11-16: RFID not used (rfid.enabled false on both units). The strip keeps its
+    ids (the scripts look them up) but is hidden; enabled, nothing changes."""
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    for enabled in (False, True):
+        app = create_app(Stub(merged()), str(maps), state_dir=str(tmp_path / "state"), rfid_enabled=enabled)
+        client = app.test_client()
+        for page in ("/manual", "/run"):
+            body = client.get(page).get_data(as_text=True)
+            strip = re.search(r'<div class="lt-rfid"[^>]*>', body).group(0)
+            assert ("hidden" in strip) == (not enabled), (page, enabled)
+            assert 'id="rf-status"' in body and 'id="rf-tags"' in body
+    # no override: the profile's flag (conftest pins agv-01, whose reader is off)
+    from agv_core import config
+
+    body = app_for(merged(), tmp_path)[0].get("/manual").get_data(as_text=True)
+    assert ("hidden" in re.search(r'<div class="lt-rfid"[^>]*>', body).group(0)) == (not config.RFID_ENABLED)
+    js = (Path(__file__).resolve().parents[1] / "amr_web" / "static" / "linetrack.js").read_text("utf-8")
+    assert "if (!box || box.hidden) return;" in js, "rfidTags must leave a hidden strip alone"
 
 
 def test_supply_and_temperature_chips_sit_beside_net_on_every_page(tmp_path):
@@ -959,7 +1048,7 @@ def _tile(st):
          "running", "ok", view.RUNNING),
         (merged(run={"state_name": "BLOCKED", "hold_cause": "field", "fault_code": "FIELD_BLOCKED",
                      "auto_resume": True, "reason": ""}), "stopped", "warn", view.STOPPED_WILL_RESUME),
-        (_line(state_name="HOLD", auto_resume=False, code="ESTOP", message="safety stop"),
+        (_line(state_name="HOLD", auto_resume=False, code="ESTOP_HOLD", message="safety stop"),
          "stopped", "warn", view.STOPPED_NEEDS_YOU),
         (_line(loc="UNLOCALIZED"), "lost", "warn", view.NOT_LOCALIZED),
         (_line(loc="LOST"), "lost", "warn", view.NOT_LOCALIZED),
@@ -991,18 +1080,20 @@ def test_the_status_tile(st, kind, level, big):
     assert bool(t["press"]) is (kind == "lost" and bool(t["steps"]))
 
 
-def test_an_estop_without_the_q3_wire_is_never_green_and_never_red():
-    """Part B (the E-stop signal) is postponed: the PC sees only what the E-stop causes. At rest that is
-    SAFETY_RESET_NEEDED, in a run an estop hold - both yellow, with the catalogue's words."""
+def test_an_estop_without_the_panel_signal_is_never_green_and_never_red():
+    """No emergency state from the panel (a PanelState built before the field, or an inferred stop): the
+    PC sees only what the E-stop causes. At rest that is SAFETY_RESET_NEEDED, in a run an estop hold -
+    both yellow, with the catalogue's words. With the signal it is the red emergency tile
+    (test_emergency_web)."""
     at_rest = _tile(merged(drives=STO, mux=IDLE_MUX))
     assert (at_rest["kind"], at_rest["level"]) == ("attention", "warn")
     assert at_rest["code"] == "SAFETY_RESET_NEEDED"
     assert "Reset" in at_rest["action"]
-    hold = {"state_name": "BLOCKED", "hold_cause": "estop", "fault_code": "ESTOP", "auto_resume": False,
+    hold = {"state_name": "BLOCKED", "hold_cause": "estop", "fault_code": "ESTOP_HOLD", "auto_resume": False,
             "reason": ""}
     in_run = _tile(merged(drives=STO, mux=IDLE_MUX, run=hold))
     assert (in_run["kind"], in_run["level"]) == ("stopped", "warn")
-    assert "E-stop" in in_run["action"] and "Start" in in_run["action"]
+    assert "E-stop" in in_run["title"] and "Start" in in_run["action"]
 
 
 def test_not_localized_walks_through_the_panel_press_ticking_the_selector():
@@ -1026,7 +1117,7 @@ def test_a_stop_waiting_for_attach_or_release_rings_start():
         t = _tile(_line(state_name="HOLD", hold_cause=cause, auto_resume=False, code="",
                         message="at MW-1: press Start to go on", auto=True))
         assert (t["kind"], t["press"], t["press_text"]) == ("stopped", ["start"], "Press to go on"), cause
-    estop = _tile(_line(state_name="HOLD", hold_cause="estop", auto_resume=False, code="ESTOP",
+    estop = _tile(_line(state_name="HOLD", hold_cause="estop", auto_resume=False, code="ESTOP_HOLD",
                         message="safety stop", auto=True))
     assert estop["press"] == [] and estop["press_text"] == ""
 

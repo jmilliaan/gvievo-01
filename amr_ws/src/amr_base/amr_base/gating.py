@@ -9,6 +9,10 @@ Authority comes from three places, never from the command streams themselves:
     executor's; a stale or invalid panel image is no authority at all. Under
     MANUAL the panel image also carries the jog pendant levels, which win over
     every other manual stream while a direction is held;
+  * the emergency state (PanelState.emergency, amr_base/emergency.py, emergency-suite
+    plan Part B): anything but NORMAL on a fresh, valid panel image is NONE, inhibited,
+    code ESTOP, ahead of every other rule. After NORMAL a hand input held through the
+    Reset stays dead until it has been seen released once (RepressGuard, repress_gate);
   * the executor's MotionPermit: FOLLOW or ROTATE, expiring 0.3 s after local
     receipt, honoured only under AUTO, only with the AUTONOMOUS lease class,
     and only if it carries the lease's instance and generation.
@@ -219,6 +223,50 @@ class Panel:
     rvs: bool = False
     left: bool = False
     right: bool = False
+    emergency: int = 0  # PanelState.emergency; 0 = EMG_NORMAL (emergency-suite plan Part B)
+
+
+EMG_NORMAL = 0
+
+
+class RepressGuard:
+    """No motion from a hand held through an emergency (emergency plan §4, kyb contract). Blocked
+    from the first not-NORMAL sample until, at NORMAL, every hand input reads released at once:
+    the pendant, the browser jog, teleop. Reset alone never moves the vehicle."""
+
+    def __init__(self) -> None:
+        self.blocked = False
+
+    def update(self, emergency: int, held: bool) -> bool:
+        if emergency != EMG_NORMAL:
+            self.blocked = True
+        elif self.blocked and not held:
+            self.blocked = False
+        return self.blocked
+
+
+def hand_held(now: float, panel: Panel | None, manual: Manual | None, teleop: Stamped | None,
+              p: Params = DEFAULT) -> bool:
+    """Is any hand input asking for motion: a pendant direction, a fresh nonzero browser jog or
+    a fresh nonzero teleop twist (each within cmd_timeout_s)?"""
+    pend = panel is not None and (panel.fwd or panel.rvs or panel.left or panel.right)
+    man = manual is not None and _fresh(manual.t, now, p.cmd_timeout_s) and (manual.v, manual.w) != (0.0, 0.0)
+    tel = teleop is not None and _fresh(teleop.t, now, p.cmd_timeout_s) and (teleop.v, teleop.w) != (0.0, 0.0)
+    return bool(pend or man or tel)
+
+
+def repress_gate(guard: RepressGuard, sel: Selection, now: float, panel: Panel | None,
+                 manual: Manual | None, teleop: Stamped | None, p: Params = DEFAULT) -> Selection:
+    """After an emergency, no hand source until every hand input has read released once. The
+    ESTOP selection itself (NONE) already zeroes the mux's ramps; this keeps them at zero. Without
+    a panel sample there is nothing to judge and select() has already refused (PANEL_STALE)."""
+    if panel is None:
+        return sel
+    guard.update(panel.emergency, hand_held(now, panel, manual, teleop, p))
+    if guard.blocked and sel.source in (PENDANT, MANUAL, TELEOP):
+        return Selection(NONE, 0.0, 0.0, "after the E-stop: release the pendant / jog once",
+                         sel.generation, code="NO_SOURCE")
+    return sel
 
 
 @dataclass
@@ -277,6 +325,12 @@ def select(
     line: Stamped | None = None,
 ) -> Selection:
     gen = 0
+    if (panel is not None and panel.valid and panel.emergency != EMG_NORMAL
+            and _fresh(panel.t_recv, now, p.panel_timeout_s)):
+        # Ahead of the lease, the drives and every source: the supervisor withholds the lease
+        # too, but the operator's reason is the E-stop, not "inhibited by supervisor". An invalid
+        # or stale image is PANEL_STALE's below (a DIO link loss is not an E-stop press).
+        return Selection(NONE, 0.0, 0.0, "E-stop: emergency not cleared", 0, True, code="ESTOP")
     if p.require_supervisor:
         if lease is None or not _fresh(lease.t_recv, now, p.lease_timeout_s):
             return Selection(NONE, 0.0, 0.0, "no supervisor lease", 0, True, code="NOT_LEASED")
@@ -384,10 +438,13 @@ class FieldParams:
     protective_index: int = 0  # /output_paths status[i] of the protective field (OSSD)
     # The warning fields, OUTER first, and the AUTO speed factor each asks for while it is
     # occupied (operator: warning 1 = 50 %; warning 2 = 0, a stop within warning_stop_m, 2026-10-07).
-    # Indices/polarity: amr_bringup/config/scanner_fields.yaml, which base.launch reads.
+    # Indices/polarity: amr_bringup/config/scanner_fields.yaml, which base.launch reads (mux_params).
     warning_indices: tuple[int, ...] = (2, 1)
     warning_scales: tuple[float, ...] = (0.5, 0.0)
     warning_active_level: bool = False  # status[i] while that warning field is occupied
+    # status[protective_index] while the protective field is occupied (WP-E3, 2026-11-16: was
+    # hard-coded True = clear). scanner_fields.yaml `protective.active`, via mux_params.
+    protective_active_level: bool = False
     # Every change of the speed factor is a RAMP in time, not a step (operator,
     # 2026-10-02): clear -> warning 1 -> warning 2 and back each take these many seconds.
     warning_decel_s: float = 1.0
@@ -404,10 +461,17 @@ class FieldParams:
 
 @dataclass
 class Field:
-    """One /output_paths sample as received."""
+    """One /output_paths sample as received.
+
+    valid: is_valid[] (WP-E2, 2026-11-16). None = not checked (tests, constructed samples);
+    the mux passes () for a message without the array, so every path reads invalid.
+    case: active_monitoring_case, REPORTED only - never gated on (the driver sends 0 when it
+    has no case data, survey scn-outputpaths-valid-safe)."""
 
     t_recv: float
     status: tuple[bool, ...]
+    valid: tuple[bool, ...] | None = None
+    case: int | None = None
 
 
 @dataclass(frozen=True)
@@ -417,23 +481,37 @@ class FieldView:
     warning_active: bool
     warning_level: int = 0  # 0 none, else 1 + the index into warning_indices of the strictest occupied field
     warning_scale: float = 1.0  # the factor the occupied warning fields ask for
+    invalid: bool = False  # a configured path's is_valid was False (WP-E2)
 
 
 def field_view(now: float, field: Field | None, fp: FieldParams) -> FieldView:
-    """What the fields say now. Stale or malformed is not clear: fresh=False."""
+    """What the fields say now. Stale or malformed is not clear: fresh=False.
+
+    An invalid path (WP-E2) is UNKNOWN, never clear: the protective path invalid reads like a
+    stale sample (fresh=False, FIELD_UNKNOWN); a warning path invalid asks for the most
+    restrictive warning factor, whatever the other paths say."""
     if fp.assume_clear:
         return FieldView(True, True, False)
     if field is None or not _fresh(field.t_recv, now, fp.fresh_s):
         return FieldView(False, False, False)
-    st = field.status
-    if len(st) <= max((fp.protective_index, *fp.warning_indices)):
+    st, va = field.status, field.valid
+    top = max((fp.protective_index, *fp.warning_indices))
+    if len(st) <= top:
         return FieldView(False, False, False)
-    level, scale = 0, 1.0
-    for n, (i, k) in enumerate(zip(fp.warning_indices, fp.warning_scales), start=1):
-        k = min(1.0, max(0.0, k))
+    if va is not None and (len(va) <= top or not va[fp.protective_index]):
+        return FieldView(False, False, False, invalid=True)
+    pairs = [(i, min(1.0, max(0.0, k))) for i, k in zip(fp.warning_indices, fp.warning_scales)]
+    level, scale, invalid = 0, 1.0, False
+    for n, (i, k) in enumerate(pairs, start=1):
         if bool(st[i]) == fp.warning_active_level and k <= scale:
             level, scale = n, k
-    return FieldView(True, bool(st[fp.protective_index]), level > 0, level, scale)
+    if va is not None and pairs and not all(va[i] for i, _ in pairs):
+        invalid = True
+        n, k = min(enumerate((k for _, k in pairs), start=1), key=lambda nk: nk[1])
+        if k <= scale:
+            level, scale = n, k
+    clear = bool(st[fp.protective_index]) != fp.protective_active_level
+    return FieldView(True, clear, level > 0, level, scale, invalid)
 
 
 def warning_target(view: FieldView, fp: FieldParams, slow_exempt: bool = False) -> float:
@@ -541,8 +619,9 @@ def field_limit(
     if sel.source not in AUTO_SOURCES:
         return sel, 1.0
     if not view.fresh and p.require_supervisor:
+        why = "protective path not valid" if view.invalid else "no fresh /output_paths"
         return Selection(
-            NONE, 0.0, 0.0, "scanner fields unknown (no fresh /output_paths)", sel.generation, code="FIELD_UNKNOWN"
+            NONE, 0.0, 0.0, f"scanner fields unknown ({why})", sel.generation, code="FIELD_UNKNOWN"
         ), 0.0
     if view.fresh and not view.protective_clear:
         return Selection(NONE, 0.0, 0.0, "protective field violated", sel.generation, code="FIELD_PROTECTIVE"), 0.0
@@ -597,3 +676,47 @@ def drive_gate(
     if cmd_generation != lease.generation:
         return f"command generation {cmd_generation} != lease {lease.generation}"
     return None
+
+
+# Idle-zero thinning (unified plan WP-C9, cpu-load C#17, 2026-11-16): with no source and an
+# exactly-zero output the mux repeats its zero at 10 Hz, not every 50 Hz tick. The drive
+# owner reads a /cmd_wheel_vel older than freshness.cmd_s (0.2 s) as zero by itself, so a
+# lost idle zero still ends at zero: 0.1 s against 0.2 s is the 2x margin.
+IDLE_ZERO_PERIOD_S = 0.1
+
+
+@dataclass(frozen=True)
+class WheelOut:
+    """What the mux last PUBLISHED on /cmd_wheel_vel (t = monotonic publish time)."""
+
+    t: float
+    generation: int
+    source: int
+    left: float
+    right: float
+
+
+def wheel_publish_due(
+    now: float,
+    last: WheelOut | None,
+    generation: int,
+    source: int,
+    left: float,
+    right: float,
+    period_s: float = IDLE_ZERO_PERIOD_S,
+) -> bool:
+    """Publish this tick's wheel command? Pure.
+
+    Only a repeated zero with source NONE, in the same generation, is thinned to one per
+    period_s. Any nonzero (or nonfinite) output, any source but NONE (a held stop under an
+    authority included), the first zero after anything else and a generation change are
+    published on their tick. A clock that reads backwards publishes."""
+    if last is None:
+        return True
+    if source != NONE or left != 0.0 or right != 0.0:
+        return True
+    if last.source != NONE or last.left != 0.0 or last.right != 0.0:
+        return True  # the first idle zero, or the source just became NONE
+    if generation != last.generation:
+        return True
+    return not (0.0 <= now - last.t < period_s)

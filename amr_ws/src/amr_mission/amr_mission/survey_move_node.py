@@ -48,7 +48,7 @@ _yaw = se2.yaw_of
 
 class SurveyMoveNode(LeanNode):
     def __init__(self) -> None:
-        super().__init__("survey_move")
+        super().__init__("survey_move", start_parameter_services=False)  # WP-C11: nobody sets params live
         dp = self.declare_parameter
         dp("rate_hz", 20.0)
         dp("cmd_valid_s", 0.2)
@@ -118,8 +118,17 @@ class SurveyMoveNode(LeanNode):
     def _on_panel(self, m: PanelState) -> None:
         self._panel, self._panel_t = m, self._now()
         with self._lock:
-            if self.state == SurveyMoveState.MOVING and self._pendant(m):
+            if self.state == SurveyMoveState.MOVING and self._emergency(m):
+                # emergency plan §4: a survey move ends (the mapping session does not); never
+                # resumed, the operator starts it again by hand (kyb 243433c, E5 2026-11-16)
+                self._abort("emergency stop")
+            elif self.state == SurveyMoveState.MOVING and self._pendant(m):
                 self._abort("pendant button pressed")
+
+    @staticmethod
+    def _emergency(m: PanelState) -> bool:
+        """PanelState.emergency not NORMAL on a valid image (0 on a message built before the field)."""
+        return bool(m.valid) and int(getattr(m, "emergency", 0)) != PanelState.EMG_NORMAL
 
     def _on_drives(self, m: DriveStatus) -> None:
         self._drives_ok, self._drives_t = bool(m.operational), self._now()
@@ -148,6 +157,8 @@ class SurveyMoveNode(LeanNode):
         pn = self._panel
         if pn is None or now - self._panel_t > self.input_age or not pn.valid:
             return "panel stale or invalid"
+        if self._emergency(pn):
+            return "emergency stop"
         if pn.mode_auto:
             return "selector is not MANUAL"
         if self._pendant(pn):

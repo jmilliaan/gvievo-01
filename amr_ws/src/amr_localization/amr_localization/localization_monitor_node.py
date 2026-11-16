@@ -13,22 +13,37 @@ after update_min_d / update_min_a of motion). Confirmation stays with the operat
 
 /initialpose is only observed here; AMCL subscribes to it itself. The
 executor (T7) faults if one arrives during a segment.
+
+CPU (2026-11-16, cpu-load plan §4a a, b, e; unified plan WP-C1, C2):
+  * /scan, /imu/data, /wheel_states and /drives/status are only aged. They are drained
+    at the 10 Hz tick with take_message, aged by their source_timestamp (stream_age),
+    and never wake the executor. The limits are unchanged.
+  * /scan_gated arrives raw and is deserialised only for the one scan per
+    match_period the map comparison uses (and for the live view, below).
+  * The TF listener runs on its own lean node and thread (tf_thread); no parameter
+    services on either node.
+Live view (WP-C16): /amr/live_pose_ui and /amr/live_scan_ui at 5 Hz, every second tick,
+only while a page subscribes (amr_maps.live_display).
 """
 
 from __future__ import annotations
 
 import hashlib
 import math
+import time
 
 import numpy as np
 import rclpy
 from agv_core import alarms, se2
+from amr_maps.live_display import LiveDisplay
 from amr_maps.raycast import ScanGeometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid
+from rclpy.callback_groups import CallbackGroup
+from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import Imu, LaserScan
 from std_srvs.srv import Empty, Trigger
-from tf2_ros import Buffer, TransformListener
+from tf2_ros import Buffer
 
 from amr_base import drive_state, tfpose
 from amr_base.lean_node import LeanNode, run
@@ -36,12 +51,38 @@ from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import DriveStatus, Event, LocalizationState, WheelStates
 from amr_localization import readiness as rd
 from amr_localization import scan_consistency as consistency
+from amr_localization import stream_age, tf_thread
 from amr_maps import grid as gridio
+
+
+class PolledGroup(CallbackGroup):
+    """A callback group the executor never runs: Humble's executor leaves an entity whose
+    group cannot execute out of its wait set, so these subscriptions cost no wakeup.
+    Their queues are read with take_message (_taker) instead."""
+
+    def can_execute(self, entity) -> bool:
+        return False
+
+    def beginning_execution(self, entity) -> bool:
+        return False
+
+    def ending_execution(self, entity) -> None:
+        pass
+
+
+def _taker(sub):
+    """take() -> (msg, info) or None, for stream_age.drain. Raw subscriptions give bytes."""
+
+    def take():
+        with sub.handle:
+            return sub.handle.take_message(sub.msg_type, sub.raw)
+
+    return take
 
 
 class LocalizationMonitor(LeanNode):
     def __init__(self) -> None:
-        super().__init__("localization_monitor")
+        super().__init__("localization_monitor", start_parameter_services=False)
         lim = rd.Limits()  # the defaults live in readiness.Limits, once
         self.declare_parameter("cov_xy_max", lim.cov_xy_max)
         self.declare_parameter("cov_yaw_max", lim.cov_yaw_max)
@@ -117,18 +158,30 @@ class LocalizationMonitor(LeanNode):
                 self.get_logger().error(f"dynamic mask {path} unreadable, not used: {e}")
 
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self._tf_node, _ = tf_thread.start(self.tf_buffer, "localization_monitor_tf")
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl, 10)
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initialpose, RELIABLE_1)
-        self.create_subscription(LaserScan, "/scan", self._on_scan, SENSOR_DATA)
         # the map comparison runs on the gated scan: its odom transform already exists, so the
         # lookup below never has to wait (a 50 ms wait on every raw scan starved this node's
         # executor and made its OWN view of TF stale, 2026-09-17)
-        self.create_subscription(LaserScan, "/scan_gated", self._on_scan_gated, SENSOR_DATA)
+        self.create_subscription(LaserScan, "/scan_gated", self._on_scan_gated, SENSOR_DATA, raw=True)
+        self._gated_raw: bytes | None = None  # the newest gated scan, still serialized
+        self._gated: tuple[bytes, LaserScan] | None = None  # (raw, its decoded message), once each
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED)
-        self.create_subscription(WheelStates, "/wheel_states", self._on_wheels, SENSOR_DATA)
-        self.create_subscription(DriveStatus, "/drives/status", self._on_drives, 10)
-        self.create_subscription(Imu, "/imu/data", lambda _m: self._touch("imu"), SENSOR_DATA)
+        # age-only streams: drained by _drain() at the tick, never a wakeup of their own
+        polled = PolledGroup()
+
+        def poll(msg_type, topic, qos, raw):
+            return _taker(self.create_subscription(msg_type, topic, lambda _m: None, qos,
+                                                   callback_group=polled, raw=raw))
+
+        self._take = {
+            "scan": poll(LaserScan, "/scan", SENSOR_DATA, True),
+            "imu": poll(Imu, "/imu/data", SENSOR_DATA, True),
+            "wheels": poll(WheelStates, "/wheel_states", SENSOR_DATA, False),
+            "drives": poll(DriveStatus, "/drives/status", 10, False),
+        }
+        self._drain_t: float | None = None
         self.create_service(Trigger, "/amr/localization/confirm", self._srv_confirm)
         self.create_service(Trigger, "/amr/localization/reset", self._srv_reset)
         self._pub = self.create_publisher(LocalizationState, "/amr/localization_state", LATCHED)
@@ -140,6 +193,8 @@ class LocalizationMonitor(LeanNode):
         self._nomotion_period = float(p("nomotion_period_s").value)
         self._nomotion_t = 0.0
         self._nomotion_pending = None
+        self._live = LiveDisplay(self, self.tf_buffer)
+        self._live_n = 0
         self.create_timer(0.1, self._tick)
         self.create_timer(0.5, self._publish)
         self.get_logger().info("UNLOCALIZED: waiting for /initialpose")
@@ -147,18 +202,25 @@ class LocalizationMonitor(LeanNode):
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
-    def _touch(self, key: str) -> None:
-        self._last[key] = self._now()
+    def _seen(self, key: str, t: float | None) -> None:
+        if t is not None:
+            self._last[key] = max(self._last.get(key, t), t)
 
-    def _on_wheels(self, msg: WheelStates) -> None:
+    def _drain(self) -> None:
+        """Take everything the age-only streams queued since the last drain (stream_age)."""
+        t, wall, prev = self._now(), time.time_ns(), self._drain_t
+        self._drain_t = t
+        got = {k: stream_age.drain(take, t, wall, prev) for k, take in self._take.items()}
+        self._seen("scan", stream_age.newest(got["scan"]))
+        self._seen("imu", stream_age.newest(got["imu"]))
         # Arrival is not feedback: only a sample both drives vouch for keeps wheels fresh.
-        if msg.left_valid and msg.right_valid:
-            self._touch("wheels")
-
-    def _on_drives(self, msg: DriveStatus) -> None:
-        # a feedback-only loss with the drives still enabled is never excused
-        off = drive_state.torque_off(msg.operational, msg.left_state, msg.right_state)
-        self._torque_off_t = self._now() if off else None
+        self._seen("wheels", stream_age.newest(got["wheels"], lambda m: m.left_valid and m.right_valid))
+        if got["drives"]:
+            # the newest report decides, as each one did when they came one callback at a time;
+            # a feedback-only loss with the drives still enabled is never excused
+            msg, ts = got["drives"][-1]
+            off = drive_state.torque_off(msg.operational, msg.left_state, msg.right_state)
+            self._torque_off_t = ts if off else None
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         grid = gridio.from_occupancy_grid_msg(msg)
@@ -180,14 +242,22 @@ class LocalizationMonitor(LeanNode):
         self._map_key = key
         self.get_logger().info(f"map {grid.width}x{grid.height} loaded for scan consistency")
 
-    def _on_scan(self, _msg: LaserScan) -> None:
-        self._touch("scan")
+    def _gated_scan(self) -> LaserScan | None:
+        """The newest gated scan, deserialised at most once."""
+        raw = self._gated_raw
+        if raw is None:
+            return None
+        if self._gated is None or self._gated[0] is not raw:
+            self._gated = (raw, deserialize_message(raw, LaserScan))
+        return self._gated[1]
 
-    def _on_scan_gated(self, msg: LaserScan) -> None:
+    def _on_scan_gated(self, raw: bytes) -> None:
+        self._gated_raw = raw
         t = self._now()
         if self._grid is None or t - self._last_match_t < self._match_period:
             return
         self._last_match_t = t  # one attempt per period, whether or not it succeeds
+        msg = self._gated_scan()
         try:
             # At the scan's own stamp: during a turn the latest transform is a few
             # degrees ahead of the scan, which throws every long beam off the map.
@@ -232,6 +302,7 @@ class LocalizationMonitor(LeanNode):
         self._publish()
 
     def _tick(self) -> None:
+        self._drain()
         t = self._now()
         try:
             tr = self.tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
@@ -254,6 +325,11 @@ class LocalizationMonitor(LeanNode):
                 self._event()
             self._last_state, self._last_reason = self.rd.state, self.rd.reason
             self._publish()
+        self._live_n += 1
+        if self._live_n % 2 == 0 and self._live.wanted():  # 5 Hz, and only for an open page
+            frame = self._live.frame(t)
+            self._live.publish_pose(frame)
+            self._live.publish_scan(frame, self._gated_scan())
 
     def _event(self) -> None:
         code = self.rd.code or "MODE_CHANGE"
@@ -261,6 +337,7 @@ class LocalizationMonitor(LeanNode):
         self._pub_event.publish(self.build_event("localization_monitor", alarms.level(code), code, text))
 
     def _publish(self) -> None:
+        self._drain()  # the published ages are as current as the evaluated ones
         t = self._now()
         m = LocalizationState()
         m.generation = self.generation

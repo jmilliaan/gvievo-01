@@ -22,6 +22,8 @@
   <exec_depend>amr_navigation</exec_depend>
   <exec_depend>amr_mission</exec_depend>
   <exec_depend>python3-flask</exec_depend>
+  <!-- WP-E5 (2026-11-16): installed with pip (alpha-setup.md 5.2); this names the dependency. -->
+  <exec_depend>python3-waitress</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <export>

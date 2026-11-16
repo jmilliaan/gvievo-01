@@ -1745,7 +1745,7 @@ Owner go-ahead for reboot while moving: ________ Date: ________
 - **Purpose:** the scanner stop keeps working through every stage of a called trip.
 - **Before you start:** I7 passed. Stand-in test object, on a stand, pulled into the path by rope from outside the zone. **Never a person.** `cruise_mps` 0.2 for the first run through.
 - **Steps:** at each moving stage: pull the object into the front field. See the stop. Measure stopping point to object. Pull it clear. Time the resume. At each stopped stage: pull it in and press START. Pull it clear. Press START. Rear field: repeat on one moving stage with a trolley on, per E1.
-- **Expected:** moving: AGV stops short of the object. Call state does not change. `AGV_HOLD` and `fieldViolation` show beside it. Resumes by itself 2 s after the field clears, with no horn repeat (as today). TURNING: a field stop during a pivot can make a FAULT in today's code ("U-turn interrupted"), so the call goes Aborted: write down which. Stopped: START refused with `PREREQUISITE`, no horn; the next START works.
+- **Expected:** moving: AGV stops short of the object. Call state does not change. `AGV_HOLD` and `fieldViolation` show beside it. Resumes by itself 2 s after the field clears, with no horn repeat (as today). TURNING: since 2026-11-16 a field stop during a pivot holds and the pivot continues by itself once the field clears (it was a FAULT, "U-turn interrupted"); the call should not change. Write down what happens. Stopped: START refused with `PREREQUISITE`, no horn; the next START works.
 - **Confirm by:** tape measure, watcher window, station.
 
 | Stage | Result | Clearance cm | Resume s | Date | Initials |

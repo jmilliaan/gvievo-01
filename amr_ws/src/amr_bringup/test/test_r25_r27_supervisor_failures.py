@@ -47,6 +47,7 @@ def fake():
     sv._pending_future = None
     sv.groups = {}
     sv._respawnable, sv._respawn_at, sv._respawn_tries = {}, {}, {}
+    sv.state_dir = __import__("tempfile").mkdtemp()  # exits/<role>.json lookups (WP-H4)
     sv.modes = []
     sv.mode = fsm.MAPPING
     sv.budget = {"save_s": 60.0, "survey_rpc_s": 15.0}

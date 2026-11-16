@@ -1,5 +1,9 @@
 """Drive power policy (2026-10-08): when drive_node powers the drives. Pure and clock-fed.
 
+    E-STOP   PanelState.emergency not NORMAL (amr_base/emergency.py, emergency-suite plan Part B):
+             never powered, before every rule below. STO has already cut torque; this stops the
+             PC from fighting it (the 2 s re-engage loop against STO). NORMAL again powers exactly
+             as after boot: a zero target, motion is still the mux's
     MANUAL   powered while the Manual Arm input (panel.di_manual_arm, DI08) is HIGH
     AUTO     powered while the active layer asks for it: LineState.drive_power (tape) or
              RunState.drive_power (trackless). They ask from the pre-move warning after
@@ -28,6 +32,7 @@ class Panel:
     valid: bool
     mode_auto: bool
     manual_arm: bool
+    emergency: int = 0  # PanelState.emergency; 0 = EMG_NORMAL
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,8 @@ def want_power(
         return False, "panel state stale"
     if not panel.valid:
         return False, "panel image invalid"
+    if panel.emergency != 0:
+        return False, "E-stop (DI09)" if panel.emergency == 1 else "E-stop: waiting for Reset"
     if not panel.mode_auto:
         if panel.manual_arm:
             return True, "MANUAL, Manual Arm on"

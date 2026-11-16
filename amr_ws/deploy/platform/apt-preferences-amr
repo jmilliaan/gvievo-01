@@ -1,0 +1,7 @@
+# Installed as /etc/apt/preferences.d/60-amr (unified plan WP-P1).
+# Nothing is ever installed from the live ROS repo: ROS, colcon, rosdep and vcstool all
+# come from the snapshot in ros2-snapshot.sources. "origin" is the host name here: both
+# repos publish Origin: ROS, so the Origin field cannot tell them apart.
+Package: *
+Pin: origin packages.ros.org
+Pin-Priority: -1

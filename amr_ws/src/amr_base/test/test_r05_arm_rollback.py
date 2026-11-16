@@ -8,7 +8,7 @@ import time
 import pytest
 from test_canopen import FakeBus, _arm, _link
 
-from amr_base.canopen import ARMED, DISARMED
+from amr_base.canopen import ARMED, DISARMED, FAULT
 
 HB = (100 << 16) | 500
 
@@ -129,6 +129,9 @@ def test_heartbeat_is_kept_alive_through_the_arm_and_disarm_transactions():
 
 
 def test_idle_hook_runs_between_the_sdos_of_arm_engage_and_release_but_never_in_fault():
+    # Updated deliberately 2026-11-16 (H-P1-7, unified plan WP-E7): in FAULT the hook is held off
+    # only while a fault stop is owed (stop_pending / stop_unconfirmed); once both are empty the
+    # IMU is polled again (it used to stay off until the Recover, taking the EKF's yaw rate along).
     # 2026-10-09: the MLS IMU poll was starved for 0.35 s by engage -> localisation LOST at Start
     bus = FakeBus()
     bus.objects[(10, 0x2034, 3)] = 7  # the hook's own SDO (an IMU read) on another node
@@ -149,10 +152,14 @@ def test_idle_hook_runs_between_the_sdos_of_arm_engage_and_release_but_never_in_
     link.idle()
     assert len(calls) == 1
     link.fault("test")
+    link.stop_pending = {2}  # a zero not delivered yet
     calls.clear()
     link.idle()
     link.fault_tick(time.monotonic(), 1.0)  # stop retries use _raw_write: no hook
     assert calls == []
+    link.stop_pending, link.stop_unconfirmed = set(), []  # stop settled
+    link.idle()
+    assert calls == [FAULT]
 
 
 def test_idle_hook_exception_does_not_break_the_sequence():

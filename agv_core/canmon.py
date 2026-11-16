@@ -204,3 +204,55 @@ class MonitorPoller:
             out[str(node)] = node_out
         return {"nodes": out, "sweeps": self.sweeps,
                 "objects": len(self._objects)}
+
+
+# -- supply / brownout (unified plan WP-P7, H-P2-6, 2026-11-16) ---------------------
+# Report and refusal only. The voltage sags under load and the drives carry their own
+# undervoltage alarm; nothing here stops a vehicle that is already moving.
+SUPPLY_LOW, SUPPLY_TOO_LOW, SUPPLY_HIGH = "SUPPLY_LOW", "SUPPLY_TOO_LOW", "SUPPLY_HIGH"
+
+
+def supply_volts(nodes) -> dict:
+    """{node: bus_v reading} from snapshot()["nodes"]; a node with no answer yet is left out."""
+    out = {}
+    for node, vals in (nodes or {}).items():
+        v = (vals or {}).get("bus_v") or {}
+        if v.get("value") is not None:
+            out[str(node)] = v
+    return out
+
+
+def supply_event(nodes):
+    """The drive_node `_edge("supply", ...)` payload: (code, level, detail), or None when the
+    supply reads ok on every drive that answered. The worst drive decides: too low before
+    high before low, so a sagging pack is never reported as regen.
+
+    The detail is one fixed text per state (the side and its threshold, no live voltages):
+    `_edge` re-emits whenever the detail changes, so a reading in it would emit an event
+    on every 0.1 V step. The live voltages are on the drive diagnostics (2026-11-16)."""
+    volts = supply_volts(nodes)
+    if not volts:
+        return None
+
+    def side(d, key, below):
+        lim = d.get(key)
+        return lim is not None and (d["value"] <= lim if below else d["value"] >= lim)
+
+    for code, level, key, below in ((SUPPLY_TOO_LOW, 2, "trip_low", True), (SUPPLY_HIGH, 1, "warn", False),
+                                    (SUPPLY_LOW, 1, "warn_low", True)):
+        hit = [d for d in volts.values() if side(d, key, below)]
+        if hit:
+            where = "at or below" if below else "at or above"
+            return (code, level,
+                    f"bus voltage {where} {key} {hit[0][key]:.1f} V (live values on the drive diagnostics)")
+    return None
+
+
+def supply_refusal(volts, trip_low) -> str:
+    """Why a NEW run is refused on the supply, or "". `volts` are the drives' latest bus_v
+    readings (None = not read: no refusal on a missing reading, the drive checks own that);
+    trip_low is monitor.bus_v_trip_low."""
+    low = [v for v in volts if v is not None and v <= trip_low]
+    if not low:
+        return ""
+    return f"battery too low: {min(low):.1f} V (new runs are refused at {trip_low:.1f} V or below); charge it"

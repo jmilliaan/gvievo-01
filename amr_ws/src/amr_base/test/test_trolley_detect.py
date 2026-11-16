@@ -203,3 +203,39 @@ def test_rear_field_malformed_is_no_evidence():
     f.update(0.4, [True], 3)
     assert f.read(0.45)[0] == td.FIELD_CLEAR, "the old reading ages out"
     assert f.read(0.6)[0] == td.FIELD_UNKNOWN
+
+
+def test_an_invalid_rear_path_is_unknown():
+    """WP-E2: is_valid[index] False reads FIELD_UNKNOWN at once, whatever status says; a short or
+    empty array (trolley_node passes () for a message without one) too. Valid restores it."""
+    f = td.RearField(0.5, 1, 3, False)
+    f.update(0.0, [True, True], 3, [True, True])
+    assert f.read(0.1)[0] == td.FIELD_CLEAR
+    f.update(0.2, [True, True], 3, [True, False])
+    assert f.read(0.25) == (td.FIELD_UNKNOWN, td.CASE_NO_TROLLEY), "not the old clear: unknown now"
+    f.update(0.3, [True, False], 3, [True, False])
+    assert f.read(0.35)[0] == td.FIELD_UNKNOWN, "an invalid violation is not a violation either"
+    for valid in ((), (True,)):
+        f.update(0.4, [True, True], 3, valid)
+        assert f.read(0.45)[0] == td.FIELD_UNKNOWN, valid
+    f.update(0.5, [True, True], 3, [False, True])  # another path invalid: not this one's business
+    assert f.read(0.55)[0] == td.FIELD_CLEAR
+
+
+def test_the_rear_index_and_polarity_are_the_named_exception_to_scanner_fields():
+    """WP-E3: the front index and polarity come from scanner_fields.yaml only. The rear has no
+    Safety Designer copy there (no rear role), so its index is the profile's
+    rear.field_output_index and its polarity True = clear, by design until the rear fit (P8)."""
+    import importlib.util
+
+    root = pathlib.Path(__file__).resolve().parents[2] / "amr_bringup"
+    path = root / "amr_bringup" / "scanner_fields.py"
+    spec = importlib.util.spec_from_file_location("scanner_fields", path)
+    sf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sf)
+    assert not any("rear" in role for role in sf.ROLES), "a rear role exists: move the rear index there"
+    src = (pathlib.Path(td.__file__).parent / "trolley_node.py").read_text()
+    assert "vehicle_config.REAR_FIELD_OUTPUT_INDEX" in src and "scanner_fields" not in src
+    f = td.RearField(0.5, 0, 3, False)
+    f.update(0.0, [True], 3, [True])
+    assert f.read(0.1)[0] == td.FIELD_CLEAR, "rear polarity: True = clear"

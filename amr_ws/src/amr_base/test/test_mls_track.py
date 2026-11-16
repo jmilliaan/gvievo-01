@@ -13,7 +13,11 @@ TPDO1 = (0x1800, 1)
 
 class FakeLink:
     """SDO reads from a dict; records every read, route and NMT command. No write
-    method at all, so an object write attempt would raise."""
+    method at all, so an object write attempt would raise.
+
+    read() is the blocking drive-style read (start() only); read_sensor() the bus-loop one
+    (WP-B1), whose timeouts are kept. take_sensor() always grants unless `tokens` is set (a
+    list of booleans, popped per call)."""
 
     def __init__(self, objects):
         self.objects = objects
@@ -21,11 +25,28 @@ class FakeLink:
         self.routes = {}
         self.reads = []
         self.nmts = []
+        self.blocking_nmts = 0
+        self.blocking_reads = 0
+        self.sensor_timeouts = []
+        self.tokens = None
 
     def nmt(self, command, node=0):
+        self.blocking_nmts += 1
+        self.nmts.append((command, node))
+
+    def nmt_nowait(self, command, node):
         self.nmts.append((command, node))
 
     def read(self, node, index, sub=0, timeout=0.4):
+        self.blocking_reads += 1
+        self.reads.append((index, sub))
+        return self.objects.get((index, sub))
+
+    def take_sensor(self, who):
+        return True if self.tokens is None else self.tokens.pop(0)
+
+    def read_sensor(self, node, index, sub=0, timeout=0.05):
+        self.sensor_timeouts.append(timeout)
         self.reads.append((index, sub))
         return self.objects.get((index, sub))
 
@@ -133,7 +154,7 @@ def test_a_stream_that_dies_after_frames_falls_back_and_is_restarted():
 
 def test_disabled_tpdo1_start_reports_off_in_tpdo_mode():
     t, link, _, clk = make(objs(tpdo=0x8000018A), mode="tpdo")
-    assert t.start() == "off" and not link.routes
+    assert t.start() == "off" and set(link.routes) == {0x70A}  # the boot-up route only (WP-P9)
     level, message, _ = t.diagnostic(clk.t)
     assert (level, message) == (ERROR, "off")
 
@@ -229,9 +250,16 @@ def test_absent_sensor_is_rediscovered_and_streams():
     assert len(link.reads) == n + 1, "more than one probe per period"
     link.objects.update(objs())
     clk.t += 10.0
-    t.poll(clk.t)
+    blocking = link.blocking_reads
+    for k in range(8):  # 2006h:01, 1800h:01, 1800h:05, the five-read snapshot: ONE per poll (WP-B1 b)
+        n = len(link.reads)
+        t.poll(clk.t + 0.02 * k)
+        assert len(link.reads) - n == 1
     assert t.mode == "tpdo" and t.restarts == 1 and 0x18A in link.routes
+    assert link.blocking_reads == blocking and link.blocking_nmts == 0
+    assert all(x <= 0.05 for x in link.sensor_timeouts)
     assert link.nmts[-1] == (0x01, 10)  # NMT Start still to the MLS only
+    assert got[-1].source == "sdo"  # the snapshot
     link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, -37, 0, 2, 0x01 | (4 << 1))))
     assert got and got[-1].source == "tpdo"
 
@@ -243,8 +271,44 @@ def test_a_failed_tpdo1_read_at_start_is_rediscovered_later():
     assert t.start() == "sdo"  # unknown TPDO1: poll meanwhile
     o[TPDO1] = 0x18A
     clk.t += 5.0
-    t.poll(clk.t)
+    for k in range(8):  # 1800h:05 since WP-E8
+        t.poll(clk.t + 0.001 * k)
     assert t.mode == "tpdo" and t.restarts == 1 and 0x18A in link.routes
+
+
+def test_a_rediscovery_that_stops_answering_part_way_keeps_its_mode_and_tries_later():
+    o = objs()
+    del o[TPDO1]
+    t, link, got, clk = make(o, mode="auto")
+    assert t.start() == "sdo"
+    o[TPDO1] = 0x18A
+    clk.t += 5.0
+    t.poll(clk.t)  # the probe answers
+    o.clear()  # ... and then the sensor goes away
+    for k in range(1, 7):
+        t.poll(clk.t + 0.001 * k)
+    assert t._chain is None and t.restarts == 1 and t._rediscover_at is not None
+    assert t.mode == "sdo"  # 1800h:01 unanswered: auto keeps polling by SDO, as start() would
+
+
+def test_a_refused_token_defers_the_sdo_read_without_counting_a_miss():
+    t, link, got, clk = make(objs(lcp2=20), mode="sdo", sdo_hz=10.0)
+    assert t.start() == "sdo"
+    n = len(link.reads)
+    link.tokens = [False, False, True]
+    t.poll(clk.t + 0.2)
+    t.poll(clk.t + 0.22)
+    assert len(link.reads) == n and t.misses == 0
+    t.poll(clk.t + 0.24)
+    assert len(link.reads) == n + 1
+
+
+def test_the_stream_restart_is_nmt_nowait_never_the_pumping_nmt():
+    t, link, _, _ = make(objs(), mode="tpdo")
+    t.start()
+    for k in range(50):
+        t.poll(100.0 + k * 0.1)
+    assert t.nmt_starts == 3 and link.blocking_nmts == 0
 
 
 def test_a_configured_off_mode_stays_off():
@@ -559,3 +623,203 @@ def test_sdo_probe_backs_off_after_five_misses_and_a_hit_resets():
     assert p.miss(10.0) == 10.0 + SdoProbe.BACKOFF_S == 12.0
     p.hit()
     assert p.miss(11.0) is None and p.misses == 6
+
+
+# -- TPDO1 holes and frozen frames (unified plan WP-E8, H-P1-8, 2026-11-16) -------------
+
+TIMER = (0x1800, 5)
+
+
+class StampedFrame(Frame):
+    def __init__(self, data, timestamp=0.0):
+        super().__init__(data)
+        self.timestamp = timestamp
+
+
+def tframe(lcp2=12, nlcp=2, status=0x01):
+    return Frame(struct.pack("<hhhBB", 0, lcp2, 0, nlcp, status))
+
+
+def stream(t, link, clk, times, lcp2=12):
+    """One TPDO1 frame at each clock time; the reading moves 1 mm a frame (not frozen)."""
+    for k, at in enumerate(times):
+        clk.t = at
+        link.routes[0x18A](tframe(lcp2 + k))
+
+
+def gapped(timer=None, **kw):
+    o = objs()
+    if timer is not None:
+        o[TIMER] = timer
+    t, link, got, clk = make(o, mode="tpdo", **kw)
+    t.start()
+    return t, link, got, clk
+
+
+def test_the_event_timer_is_read_in_the_discovery_chain():
+    t, link, _, _ = gapped(timer=10)
+    assert TIMER in link.reads and t.tpdo_period_ms == 10
+    assert dict(t.diagnostic(100.0)[2])["tpdo_period_ms"] == "10"
+
+
+def test_a_40_ms_hole_is_one_gap_and_not_a_stale_period():
+    t, link, got, clk = gapped(timer=10)
+    stream(t, link, clk, [100.00, 100.01, 100.02])
+    for at in (100.03, 100.05):
+        t.poll(at)  # inside the hole: younger than stale_tpdo_s
+    stream(t, link, clk, [100.06, 100.07], lcp2=20)
+    assert t.tpdo_gaps == 1 and t.max_gap_ms == pytest.approx(40.0)
+    assert t.stale_periods == 0
+    assert got[-2].reading.get("gap") is True and "gap" not in got[-1].reading
+    assert not any(s.reading.get("gap") for s in got[:-2])
+
+
+def test_frames_at_the_period_are_no_gap_and_the_threshold_follows_1800h_05():
+    t, link, _, clk = gapped(timer=20)
+    stream(t, link, clk, [100.00, 100.02, 100.04, 100.08])  # 40 ms <= 3 x 20 ms
+    assert t.tpdo_gaps == 0
+    stream(t, link, clk, [100.15])  # 70 ms > 60 ms
+    assert t.tpdo_gaps == 1
+
+
+def test_an_unread_timer_assumes_the_manual_default():
+    t, link, _, clk = gapped()  # 1800h:05 does not answer
+    assert t.tpdo_period_ms is None and dict(t.diagnostic(100.0)[2])["tpdo_period_ms"] == ""
+    stream(t, link, clk, [100.00, 100.04])
+    assert t.tpdo_gaps == 1  # 40 ms > 3 x 10 ms
+
+
+def test_a_hole_while_standing_is_not_counted_by_default():
+    moving = [False]
+    t, link, got, clk = gapped(timer=0, moving=lambda: moving[0])
+    assert dict(t.diagnostic(100.0)[2])["tpdo_period_ms"] == "0 (on change)"
+    stream(t, link, clk, [100.0, 100.5])  # on change, standing: nothing to send
+    assert t.tpdo_gaps == 0 and t.gaps_stationary == 1 and "gap" not in got[-1].reading
+    moving[0] = True
+    stream(t, link, clk, [101.0])
+    assert t.tpdo_gaps == 1 and got[-1].reading["gap"]
+
+
+def test_gaps_while_stationary_counts_them_all(monkeypatch):
+    monkeypatch.setattr(MlsTrack, "GAPS_WHILE_STATIONARY", True)
+    t, link, _, clk = gapped(timer=10, moving=lambda: False)
+    stream(t, link, clk, [100.0, 100.1])
+    assert t.tpdo_gaps == 1 and t.gaps_stationary == 0
+
+
+def test_without_a_motion_signal_every_hole_counts():
+    t, link, _, clk = gapped(timer=10)
+    assert t.moving is None
+    stream(t, link, clk, [100.0, 100.1])
+    assert t.tpdo_gaps == 1
+
+
+def test_the_frame_receive_stamp_wins_over_a_late_decode():
+    """A busy bus thread decodes queued frames in a burst; the kernel stamps say 10 ms apart."""
+    t, link, _, clk = gapped(timer=10)
+    for k, (decoded, stamped) in enumerate([(100.00, 5.00), (100.08, 5.01), (100.08, 5.02)]):
+        clk.t = decoded
+        link.routes[0x18A](StampedFrame(struct.pack("<hhhBB", 0, k, 0, 2, 1), stamped))
+    assert t.tpdo_gaps == 0
+    clk.t = 100.09
+    link.routes[0x18A](StampedFrame(struct.pack("<hhhBB", 0, 9, 0, 2, 1), 5.10))
+    assert t.tpdo_gaps == 1 and t.max_gap_ms == pytest.approx(80.0)
+
+
+def test_a_stream_that_returns_after_dying_is_a_gap_too():
+    t, link, got, clk = gapped(timer=10)
+    stream(t, link, clk, [100.0, 100.01])
+    stream(t, link, clk, [103.0])
+    assert t.tpdo_gaps == 1 and got[-1].reading["gap"]
+
+
+def test_identical_frames_grow_max_identical_s_and_a_change_ends_the_run():
+    t, link, _, clk = gapped(timer=10)
+    for k in range(51):  # 0.5 s of the same bytes
+        clk.t = 100.0 + 0.01 * k
+        link.routes[0x18A](tframe())
+    assert t.max_identical_s == pytest.approx(0.5)
+    clk.t = 100.51
+    link.routes[0x18A](tframe(lcp2=13))
+    clk.t = 100.52
+    link.routes[0x18A](tframe(lcp2=13))
+    assert t.max_identical_s == pytest.approx(0.5)  # the longest run is kept
+    assert dict(t.diagnostic(clk.t)[2])["max_identical_s"] == "0.5"
+
+
+def test_a_short_frame_and_a_reserved_nlcp_are_counted():
+    t, link, got, clk = gapped(timer=10)
+    n = len(got)
+    link.routes[0x18A](Frame(b"\x00" * 6))
+    assert t.rejected_frames == 1 and len(got) == n and t.tpdo_frames == 0
+    link.routes[0x18A](tframe(nlcp=1))
+    assert t.reserved_nlcp == 1 and t.tpdo_frames == 1
+    kv = dict(t.diagnostic(clk.t)[2])
+    assert kv["rejected_frames"] == "1" and kv["reserved_nlcp"] == "1"
+
+
+def test_the_gap_diagnostics_are_listed():
+    t, _, _, clk = gapped(timer=10)
+    keys = dict(t.diagnostic(clk.t)[2])
+    for k in ("tpdo_period_ms", "tpdo_gaps", "max_gap_ms", "gaps_stationary", "max_identical_s",
+              "rejected_frames", "reserved_nlcp", "reboots"):
+        assert k in keys
+
+
+# -- reboot / variant (unified plan WP-P9, H-P2-3, 2026-11-16) ------------------------
+
+BOOT = 0x70A
+
+
+def test_the_boot_up_route_is_on_node_10_and_ignores_other_nmt_states():
+    t, link, clk = start_streaming(configured({TIMER: 10}))
+    assert BOOT in link.routes
+    link.routes[BOOT](Frame(bytes([0x05])))  # an Operational heartbeat, were there one
+    link.routes[BOOT](Frame(b""))
+    assert t.reboots == 0
+
+
+def test_a_boot_up_frame_untrusts_the_markers_and_re_reads_the_identity_one_read_per_poll():
+    t, link, clk = start_streaming(configured({TIMER: 10}))
+    for _ in EXPECT:
+        t.poll(clk.t)
+    assert t.markers_ok
+    gen, samples = t.start_count, t.samples
+    link.objects[VARIANT] = 1  # came back as another variant
+    link.routes[BOOT](Frame(bytes([0x00])))
+    assert t.reboots == 1 and t.start_count == gen + 1  # drive_node opens a new marker generation
+    assert t.marker_status == "checking" and not t.markers_ok
+    n = len(link.reads)
+    for _ in range(3):
+        before = len(link.reads)
+        t.poll(clk.t)
+        assert len(link.reads) - before == 1
+    assert link.reads[n:] == [VARIANT, TPDO1, TIMER]  # no SDO snapshot inside a TPDO stream
+    assert t.samples == samples and t.variant == 1 and t.combi and t.variant_mismatches == 1
+    assert t.mode == "tpdo" and t.restarts == 0
+    link.routes[0x18A](Frame(struct.pack("<hhhBB", 0, 12, 0, 2, 0x01)))
+    for _ in EXPECT:
+        t.poll(clk.t)
+    assert t.marker_checks == 2 and t.markers_ok
+    assert not hasattr(link, "write")  # nothing written (no 1017h)
+    assert dict(t.diagnostic(clk.t)[2])["reboots"] == "1"
+
+
+def test_a_reboot_whose_variant_read_fails_rediscovers_later():
+    t, link, clk = start_streaming(configured({TIMER: 10}))
+    del link.objects[VARIANT]
+    link.routes[BOOT](Frame(bytes([0x00])))
+    t.poll(clk.t)
+    assert t._chain is None and t._rediscover_at == pytest.approx(clk.t + MlsTrack.REDISCOVER_S)
+    assert t.mode == "tpdo"  # the stream keeps the reading going meanwhile
+
+
+def test_a_late_booting_sensor_is_picked_up_by_its_boot_up_frame():
+    t, link, got, clk = make({}, mode="auto")
+    assert t.start() == "off"
+    link.objects.update(objs())
+    link.objects[TIMER] = 10
+    link.routes[BOOT](Frame(bytes([0x00])))
+    for _ in range(3):
+        t.poll(clk.t)
+    assert 0x18A in link.routes and t.mode == "tpdo" and t.tpdo_period_ms == 10

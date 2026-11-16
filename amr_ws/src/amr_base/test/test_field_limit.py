@@ -222,3 +222,109 @@ def test_the_exemption_needs_line_a_fresh_u_turn_phase_and_u_turn_speed():
         "still slowing from cruise on the approach: warning 1 applies"
     assert not line_uturn_exempt(sel(FOLLOW, 0.0, -0.26), fresh, 10.5, 2.5, 0.12), "LINE only"
     assert not line_uturn_exempt(sel(LINE, 0.0, -0.26), fresh, 10.5, 2.5, 0.0), "0 turns it off"
+
+
+# --- WP-E2 (2026-11-16): is_valid; WP-E3: the protective polarity -------------------------
+
+
+def test_an_invalid_protective_path_is_unknown_not_clear():
+    """is_valid[protective] False reads like a stale sample: FIELD_UNKNOWN zeroes supervised
+    AUTO at once (no ramp), whatever status says. Recovery: the next valid sample."""
+    ok = (True, True, True)
+    bad = Field(0.9, ok, (False, True, True))
+    v = field_view(1.0, bad, FP)
+    assert v == FieldView(False, False, False, invalid=True)
+    out, k = field_limit(sel(LINE), v, SUP, FP)
+    assert (out.source, out.v, out.code, k) == (NONE, 0.0, "FIELD_UNKNOWN", 0.0)
+    assert "not valid" in out.reason
+    assert field_limit(sel(LINE), v, Params(), FP)[0].source == LINE, "the bench, as a stale sample"
+    # a short or empty validity array (the mux passes () for a message without one)
+    assert field_view(1.0, Field(0.9, ok, ()), FP).fresh is False
+    assert field_view(1.0, Field(0.9, ok, (True, True)), FP).fresh is False
+    # the next valid sample restores the reading
+    assert field_view(1.1, Field(1.05, ok, ok), FP) == FieldView(True, True, False, 0, 1.0)
+    assert field_view(1.0, Field(0.9, ok), FP) == FieldView(True, True, False, 0, 1.0), "None = unchecked"
+
+
+def test_an_invalid_warning_path_asks_for_the_most_restrictive_factor():
+    """A warning path that is not valid counts as the strictest warning (here warning 2, the
+    distance stop), even with every path reading clear; the protective path is still read."""
+    ok = (True, True, True)
+    for valid in ((True, True, False), (True, False, True)):  # warning 1 (path 2) / warning 2 (path 1)
+        v = field_view(1.0, Field(0.9, ok, valid), FP)
+        assert v == FieldView(True, True, True, 2, 0.0, invalid=True), valid
+        out, k = field_limit(sel(LINE), v, SUP, FP)
+        assert out.source == LINE and k == 0.0, "a ramped warning stop, not FIELD_UNKNOWN"
+    v = field_view(1.0, Field(0.9, (False, True, True), (True, True, False)), FP)
+    assert v.fresh and not v.protective_clear and v.invalid
+    assert field_limit(sel(LINE), v, SUP, FP)[0].code == "FIELD_PROTECTIVE"
+    slow_only = FieldParams(warning_indices=(2, 1), warning_scales=(0.5, 0.25))
+    assert field_view(1.0, Field(0.9, ok, (True, True, False)), slow_only).warning_scale == 0.25
+
+
+def test_the_protective_polarity_comes_from_the_params():
+    """WP-E3: clear is status != protective_active_level (was hard-coded True = clear)."""
+    inv = FieldParams(protective_index=0, warning_indices=(1,), warning_scales=(0.5,),
+                      warning_active_level=True, protective_active_level=True)
+    assert field_view(1.0, Field(0.9, (False, False)), inv).protective_clear is True
+    assert field_view(1.0, Field(0.9, (True, False)), inv).protective_clear is False
+    assert field_view(1.0, Field(0.9, (False, True)), inv).warning_active is True
+
+
+def _scanner_fields():
+    import importlib.util
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "amr_bringup"))
+    path = os.path.join(root, "amr_bringup", "scanner_fields.py")
+    spec = importlib.util.spec_from_file_location("scanner_fields", path)
+    sf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sf)
+    return sf, sf.load(os.path.join(root, "config", "scanner_fields.yaml"))
+
+
+def test_one_protective_polarity_for_the_mux_the_follower_and_the_executor():
+    """WP-E3: mux_params carries protective.active to the mux (base.launch splats it). The
+    follower and the executor get field_active_level from line_layer / navigation_layer
+    (test_launch_layers D165, 2026-11-16); the mux default must still be the yaml's."""
+    import ast
+
+    sf, doc = _scanner_fields()
+    p = sf.mux_params(doc)
+    yaml_level = doc["fields"]["protective"]["active"]
+    assert p["protective_active_level"] is sf.protective_active_level(doc) is yaml_level
+    assert p["protective_active_level"] == FP.protective_active_level
+    src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    for path, name in (
+        ("amr_base/amr_base/cmd_mux_kinematics_node.py", "protective_active_level"),
+    ):
+        tree = ast.parse(open(os.path.join(src, path), encoding="utf-8").read())
+        defaults = [
+            c.args[1].value
+            for c in ast.walk(tree)
+            if isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "declare_parameter"
+            and isinstance(c.args[0], ast.Constant) and c.args[0].value == name
+        ]
+        assert defaults == [sf.protective_active_level(doc)], path
+
+
+def test_every_output_paths_reader_passes_is_valid():
+    """WP-E2, static (the nodes need rclpy): each /output_paths callback hands is_valid on, and
+    a message without it reads invalid (the getattr default is an empty tuple)."""
+    import ast
+
+    src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    for path, fn in (
+        ("amr_base/amr_base/cmd_mux_kinematics_node.py", "_on_output_paths"),
+        ("amr_line/amr_line/line_follow_node.py", "_on_output_paths"),
+        ("amr_mission/amr_mission/route_executor_node.py", "_on_output_paths"),
+        ("amr_base/amr_base/trolley_node.py", "_on_paths"),
+    ):
+        tree = ast.parse(open(os.path.join(src, path), encoding="utf-8").read())
+        body = next(f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name == fn)
+        gets = [
+            c for c in ast.walk(body)
+            if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "getattr"
+            and len(c.args) == 3 and getattr(c.args[1], "value", None) == "is_valid"
+        ]
+        assert gets, f"{path}:{fn} ignores is_valid"
+        assert all(isinstance(g.args[2], ast.Tuple) and not g.args[2].elts for g in gets), path

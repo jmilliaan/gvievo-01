@@ -1,6 +1,6 @@
 """The wire enums' names, in one place: ModeState, RunState, LineState, MuxState,
-LocalizationState, MappingState, OperationState, CommissioningState, TrolleyState and
-the RequestSurvey operations.
+LocalizationState, MappingState, OperationState, CommissioningState, TrolleyState,
+DeviceHealth and the RequestSurvey operations.
 
 Pure: no rclpy, no amr_interfaces import, so the web server, the demo, the bag
 report and the tests use the same tables the nodes do. The values are the msg
@@ -46,3 +46,19 @@ SURVEY_OPS = {"start": 0, "returned": 1, "save": 2, "abort": 3}  # RequestSurvey
 TROLLEY_NAMES = {0: "UNKNOWN", 1: "ABSENT", 2: "PRESENT"}
 REAR_FIELD_NAMES = {0: "FIELD_UNKNOWN", 1: "FIELD_CLEAR", 2: "FIELD_VIOLATED"}
 REAR_CASE_NAMES = {0: "CASE_UNKNOWN", 1: "CASE_NO_TROLLEY", 2: "CASE_OTHER"}
+
+# DeviceHealth.device and .state (unified plan WP-H1): two constant groups in one msg, like
+# TrolleyState. The same order as agv_core.health.DEVICES / STATES, which use the names.
+HEALTH_DEVICE_NAMES = {
+    0: "drive_left",
+    1: "drive_right",
+    2: "can_bus",
+    3: "mls_track",
+    4: "mls_gyro",
+    5: "dio",
+    6: "rear_scanner",
+    7: "station_link",
+}
+HEALTH_STATE_NAMES = {
+    0: "ABSENT", 1: "OK", 2: "DEGRADED", 3: "STALE", 4: "FROZEN", 5: "LOST", 6: "RECONNECTING",
+}

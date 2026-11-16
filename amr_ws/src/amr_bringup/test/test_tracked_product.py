@@ -101,7 +101,8 @@ def test_both_products_boot_to_line_and_offer_every_mode():
 
 def test_line_mode_leases_manual_too_so_the_selector_decides_who_drives():
     """2026-10-02: selector MANUAL jogs in LINE mode; AUTO is the follower's."""
-    sv = types.SimpleNamespace(txn=None, mode=fsm.LINE, inhibit_manual=False)
+    sv = types.SimpleNamespace(txn=None, mode=fsm.LINE, inhibit_manual=False, _exec_stale=False,
+                               _emergency=lambda now: 0, _now=lambda: 100.0)
     allowed = Supervisor._allowed(sv)
     from amr_bringup.supervisor_node import LEASE_LINE, LEASE_MANUAL
 

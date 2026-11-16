@@ -15,6 +15,8 @@
   <div id="home-tile" class="home-tile off" role="status"><div class="ht-grid">
     <div class="ht-main">
       <div id="home-line" class="home-big">connecting…</div>
+      {# The emergency tile only (alarms.home_tile kind emergency): since mm:ss, as the other pages' banner. #}
+      <div id="home-since" class="ht-since" hidden>since <span id="home-since-t">00:00</span><span id="home-since-note"></span></div>
       <div id="home-detail" class="home-detail"></div>
       <div id="home-job" class="ht-job"><span>Job</span><b id="home-job-what">–</b><i id="home-job-detail">no job state yet</i></div>
       <div class="ht-body">
@@ -22,6 +24,7 @@
           <div id="home-title" class="home-title">—</div>
           <div id="home-action" class="home-action"></div>
           <ol id="home-steps" class="ht-steps" hidden></ol>
+          <p id="home-fail" class="ht-fail" hidden></p>
         </div>
         <div class="bar" id="home-buttons">
           <button id="home-primary" class="big run" hidden></button>
@@ -212,13 +215,15 @@ function readiness(st) {
     ['Active map', m && m.active_map_id ? `${m.active_map_id} rev${m.active_map_revision}` : '—', 'in use', ''],
     ['Last survey', m && m.last_survey_map_id ? `${m.last_survey_map_id} rev${m.last_survey_revision}` : '—', 'saved', ''],
     ['Operation', m && m.operation_id ? m.operation_id : '—', 'last mode request', ''],
-    ['Base ready', yesno(m && m.base_ready), 'drives · panel · lidar · mux', m && m.base_ready ? '' : 'bad'],
+    ['Base ready', yesno(m && m.base_ready && !m.base_missing), m && m.base_missing ? `missing: ${m.base_missing}` : 'drives · panel · lidar · mux', m && m.base_ready && !m.base_missing ? '' : 'bad'],
     ['Panel', panelVal, p ? `${num(p.age_s, 2)} s` : 'no image', panelVal === 'AUTO' || panelVal === 'MANUAL' ? '' : 'bad'],
     ['Drives', d ? (d.operational ? 'ARMED' : (d.link === 'standby' ? 'STANDBY' : 'OFF')) : '–', d ? (d.power_reason || `${num(d.age_s, 2)} s`) : 'no status', d && d.age_s <= FRESH_S ? (d.operational ? '' : 'warn') : 'bad'],
     ['Command source', ...sourceTile(mx)],
     ['Localisation', l ? l.state_name : (st.localization_stale ? 'STALE' : '–'), st.localization_stale ? 'old layer' : '—', l ? LOC_LEVEL[l.state_name] : ''],
     ['Manual available', yesno(m && m.manual_available), '—'],
     ['Autonomous available', yesno(m && m.autonomous_available), '—'],
+    // the front scanner's active monitoring case, shown only (WP-E4): nothing gates on it
+    ['Scanner case', st.scanner_case == null ? '–' : String(st.scanner_case), 'front · active'],
   ]);
 }
 if ($('home-ready')) {
@@ -239,7 +244,15 @@ onState(st => {
 function render(d) {
   const h = d.headline, t = d.tile;
   $('home-line').textContent = t.big;
-  $('home-tile').className = `home-tile ${t.level} kind-${t.kind}${t.blink ? ' blink' : ''}`;
+  const emg = t.kind === 'emergency';
+  $('home-tile').className = `home-tile ${t.level} kind-${t.kind}${t.blink ? ' blink' : ''}${emg ? ' emg' : ''}`;
+  $('home-since').hidden = !emg;
+  if (emg) {
+    $('home-since-t').textContent = mmss(t.since_s);
+    $('home-since-note').textContent = t.note ? ` · ${t.note}` : '';
+  }
+  $('home-fail').hidden = !(emg && t.failed);
+  $('home-fail').textContent = emg && t.failed ? t.failed_text : '';
   $('home-detail').textContent = h.detail || '';
   $('home-title').textContent = t.title;
   $('home-action').textContent = t.action;

@@ -11,7 +11,8 @@ def test_pose_and_scan_age_include_the_source_age():
     assert d["pose"]["age_s"] >= 5.0 and d["scan"]["age_s"] >= 3.0
     # re-reading the same frozen transform 200 ms later reports it older, never fresher
     st.set_pose(1.0, 2.0, 0.0, "map", source_age_s=5.2)
-    assert st.pose_scan()["pose"]["age_s"] >= 5.2
+    # (1e-9: on a coarse clock both reads are the same tick, and m - (m - 5.2) rounds below 5.2)
+    assert st.pose_scan()["pose"]["age_s"] >= 5.2 - 1e-9
     # a future-stamped source (AMCL) is clamped to fresh, not negative
     st.set_pose(1.0, 2.0, 0.0, "map", source_age_s=-0.3)
     assert 0.0 <= st.pose_scan()["pose"]["age_s"] < 0.1

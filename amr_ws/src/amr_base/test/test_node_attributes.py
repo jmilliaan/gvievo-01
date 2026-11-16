@@ -64,10 +64,11 @@ def _is_self_attr(n: ast.AST) -> bool:
     return isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"
 
 
-def _unassigned(path: pathlib.Path) -> list[str]:
+def _classes(source: str) -> list[tuple[str, set, dict, list]]:
+    """(name, assigned, used {attr: line}, base names) for every class in one source."""
     out = []
-    for cls in (n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.ClassDef)):
-        assigned, used = set(NODE_API) | LEAN_API, {}
+    for cls in (n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ClassDef)):
+        assigned, used = set(), {}
         for n in ast.walk(cls):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 assigned.add(n.name)
@@ -80,8 +81,39 @@ def _unassigned(path: pathlib.Path) -> list[str]:
                             assigned.add(e.id)  # class-level attributes
             if _is_self_attr(n) and isinstance(n.ctx, ast.Load):
                 used.setdefault(n.attr, n.lineno)
-        rel = path.relative_to(SRC)
-        out += [f"{rel}:{line} {cls.name}.{a}" for a, line in used.items() if a not in assigned]
+        bases = [b.attr if isinstance(b, ast.Attribute) else getattr(b, "id", "") for b in cls.bases]
+        out.append((cls.name, assigned, used, bases))
+    return out
+
+
+def _inherited(name: str, index: dict, seen: set | None = None) -> set:
+    """What a class and its bases assign, for bases defined in the scanned sources (SiteRun is
+    a TapeRun from another module, 2026-11-16: its reads of TapeRun's state are not bugs).
+    A base from outside the scan adds nothing, so the check stays strict there."""
+    seen = set() if seen is None else seen
+    if name in seen:
+        return set()
+    seen.add(name)
+    out = set()
+    for assigned, bases in index.get(name, ()):
+        out |= assigned
+        for b in bases:
+            out |= _inherited(b, index, seen)
+    return out
+
+
+def _problems(sources: dict) -> list[str]:
+    """sources: {label: text} -> 'label:line Class.attr' for every read never assigned."""
+    found = {label: _classes(text) for label, text in sources.items()}
+    index: dict = {}
+    for rows in found.values():
+        for name, assigned, _, bases in rows:
+            index.setdefault(name, []).append((assigned, bases))
+    out = []
+    for label, rows in found.items():
+        for name, _, used, _ in rows:
+            assigned = set(NODE_API) | LEAN_API | _inherited(name, index)
+            out += [f"{label}:{line} {name}.{a}" for a, line in used.items() if a not in assigned]
     return out
 
 
@@ -91,5 +123,13 @@ LEAN_API = _lean_api()
 def test_no_node_reads_an_attribute_it_never_assigns():
     files = sorted(SRC.glob("amr_*/amr_*/*.py"))
     assert files, f"no package sources under {SRC}"
-    problems = [p for f in files for p in _unassigned(f)]
+    problems = _problems({str(f.relative_to(SRC)): f.read_text() for f in files})
     assert not problems, "read but never assigned:\n" + "\n".join(problems)
+
+
+def test_a_subclass_still_gets_caught_reading_what_neither_class_assigns():
+    """Following the bases must not make the check blind: only what a base assigns is excused."""
+    base = "class Base:\n    def __init__(self):\n        self.a = 1\n"
+    sub = ("from base import Base\n\nclass Sub(Base):\n    def f(self):\n"
+           "        return self.a + self.b\n")
+    assert _problems({"base.py": base, "sub.py": sub}) == ["sub.py:5 Sub.b"]

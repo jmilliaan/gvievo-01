@@ -4,6 +4,15 @@
 landed (§0 rule 1), so every milestone gate that waited on it is open. The partial
 progress L made on some WPs is in §2 and noted in the WPs.
 
+**Re-check 2026-11-16 (a5c9431).** The open WPs were compared with the tree after 27 commits
+of station-call, AGV-02 and web work. No open WP was built in that time. The done WPs are
+intact. What changed under the plan is in §1a. The WPs it touches carry a
+"**Delta 2026-11-16**" note, and those notes win over the WP text they follow. WP-Y1 is replaced
+by `manuals/emergency-suite-plan.md` Part B (decision 22).
+
+**Implemented 2026-11-16 (uncommitted).** The open WPs were built on the dev box the same day;
+§7 "Implementation 2026-11-16" has the state of each and what is still owed on the vehicle.
+
 For a coding agent. It merges three plans into one ordered list of work packages, with the
 owner's answers to their open questions applied:
 
@@ -58,6 +67,10 @@ to build, in what order, and what changed versus the source**. When a work packa
    - Lint: `cd amr_ws && ruff check src/` and `ruff check .` from the repo root.
    - Change `EXPECTED_CHECKS` deliberately, with a dated comment.
    - Profile keys need a schema entry, validation and a refusal test in `tests/test_config.py`.
+   - **Two profiles (2026-11-16):** every new key goes into `profiles/agv-01.json` **and**
+     `profiles/agv-02.json`. The loader refuses a missing or unknown key. Refusal tests stay
+     in `tests/test_config.py` against agv-01, and `tests/test_vehicles.py` must still load
+     every profile. No per-host code (`manuals/agv-02-plan.md` §6).
    - No commits.
 5. **Safety-listed files:** `gating.py`, `cmd_mux_kinematics_node.py`, `scanner_fields.*`,
    `guard.py`. Every change to them adds or adjusts a test, and the WP summary states the
@@ -73,7 +86,9 @@ to build, in what order, and what changed versus the source**. When a work packa
    - **Not diagnosed:** `test_amcl_sim` and `test_survey_sim`. They clash with the live service on port 5001; diagnose with `amr.service` stopped.
    - **Already failing in plain pytest** (not sim):
      - `test_launch_layers::test_line_layer_is_only_the_follower`
-     - `test_node_attributes::test_no_node_reads_an_attribute_it_never_assigns` (`site_run.py`)
+     - `test_node_attributes::test_no_node_reads_an_attribute_it_never_assigns` (`site_run.py`).
+       Re-triage it (2026-11-16): `site_run.py` grew by 316 lines and `amr_station` is new
+       scan input, so the failure may have changed.
 7. **Build marks:**
    - R: service restart is enough
    - C: needs `colcon build` (msg/srv or a new entry point)
@@ -107,15 +122,30 @@ to build, in what order, and what changed versus the source**. When a work packa
 | 19 | `/wheel_states` under STO; CCW gyro spin | Later | H-P1-14 and the `gyro_sign` VERIFY stay gated |
 | 20 | turbostat run | No | PL1 backstop and S-`pmqos-cpu-latency-holder` parked. CPU §3 acceptance `pidstat` still owed (§6) |
 | 21 | Order of work | Not answered → recommended order | M0 → M6 below |
+| 23 | RFID (2026-11-16) | **Not used any more** (owner) | WP-E1, WP-C8 and §5 bench item 5 are withdrawn. WP-H1 has no RFID device and `IO_ISLAND_LOST` is DIO only. WP-A1 (done) stays as it is. `rfid.enabled` set to false in both profiles (owner, 2026-11-16) |
+| 24 | E-stop signal polarity and source (2026-11-16, after the implementation) | **Q3 HIGH = E-stop triggered, LOW / no signal = normal. Informational, not safety. Only the safety controller's signal makes an emergency: a DIO gap / invalid image never does** | `emergency.py` starts NORMAL and holds its state while blind; `panel_io` filters on valid images only. Profile keys renamed: `panel.di_estop` (was `di_estop_ok`), `panel.estop_confirm_scans` (was `estop_low_scans`), new `panel.estop_active_high: true`; `di_names[9]` "ESTOP ACTIVE". A broken DI09 wire reads normal. The drawings still say "ON = not pressed" (HT-2). `EXPECTED_CHECKS` 984 → 986 |
+| 22 | E-stop status DI (2026-11-16) | `manuals/emergency-suite-plan.md` Part B replaces WP-Y1 | Q3 → DI09 is wired (`io-mapping.md`, owner 2026-11-15). Part B (E1–E8) is built from its own plan. WP-Y1 is withdrawn; its checks move into Part B E1 (see Z) |
 
 ### Open items (record them; don't block on them)
 - **O-1, DI08: resolved 2026-10-28.** DI08 is the **Manual Arm** switch (owner), not FX3 Q3.
   `io-mapping.md` and sheets 08/09 are corrected; the Manual Arm switch details and Q3's
   destination are still `«placeholder»` there. The future Q3 E-stop status needs a free DI in
   **DI09–DI0F** (COM1 group; DI07 is COM0 and won't read a sourcing output). Until it is
-  wired, no code reads Q3 as E-stop.
+  wired, no code reads Q3 as E-stop. **2026-11-16:** wired to DI09 (owner 2026-11-15). The
+  software is emergency-suite-plan Part B (decision 22), not yet built.
 - **O-2, DO8** in `dio.motion_on` (`[0, 8]`): sheet 09 marks DO8–DOB as "NOT USED".
   Leave it unchanged and make it visible (WP-Y2).
+- **O-3, does an E-stop end a run? Answered (owner, 2026-11-16): no.** `emergency-suite-plan.md`
+  §4 stands: the run goes into the `estop` hold and resumes on a physical Start after NORMAL.
+  This overrides `station-call-plan.md` O13 for an E-stop: the Reset the operator presses after
+  releasing the E-stop (manual 10.7: release, RESET, START) does not abort the trip while the
+  hold cause is `estop`. A Reset outside IDLE in any other state still aborts (O13 otherwise
+  unchanged). Built in Part B E5, with `test_reset_mid_trip_aborts_it` kept for the non-estop
+  case and a new test for the estop case.
+- **O-4, turbo. Answered (owner, 2026-11-16): the installed unit stays.** `cpu-freq-cap.service`
+  (turbo on, capped at 2.2 GHz, `Conflicts=cpu-no-turbo.service`) is the thermal strategy;
+  `cpu-load-plan.md` §2 is corrected to follow it. Whether a PL1 cap would bind under it stays
+  unknown until turbostat runs (decision 20).
 
 ### Conflict with L, settled
 - **L D02** (landed) removes the profile IMU, monitor and telemetry periods because nothing
@@ -123,6 +153,22 @@ to build, in what order, and what changed versus the source**. When a work packa
   `retry_period_s` into the profile. **L wins for those:** they stay ROS params.
 - H-P2-1 keeps only the new `freshness` block: gate limits with hard ceilings, and consumer
   limits pinned ≥ gate (WP-A9).
+
+## 1a. Code that arrived after the plan (re-check 2026-11-16)
+
+| Change | Where | Effect on the plan |
+|---|---|---|
+| Two vehicles | `profiles/agv-02.json`, `agv_core/identity.py`, `amr_ws/env/vehicle.sh`; `amr-supervisor.sh` runs `python3 -m agv_core.identity` first | §0 rule 4 (both profiles). §5 bench reads per unit. WP-P1, P2, P3 per PC. WP-H5 names the identity-mismatch failure |
+| Station calling over MQTT / VDA 5050 | `amr_ws/src/amr_station` (`station_bridge_node`, `mqtt_link`, `vda_order`, `vda_state`); `station.enabled` true on agv-01, false on agv-02 | §2 "VDA 5050 dropped" is withdrawn. New device for WP-H1/H3/H4/P6. New WP-C17. Departure from HOME on an accepted order needs no Start (station-call §3.1): the one exception to decision 1's "fresh physical Start" |
+| Rear scanner + trolley detection | `rear_scanner.launch.py`, `nanoscan3_rear.yaml` (placeholders), `trolley_node`, `trolley_detect.RearField`; hold causes `trolley` (CALL), `CAUSE_DEVICE["trolley"] = "rear_scanner"` | Not fitted: `rear.source` is `none` on both units. WP-E2, E3, E4, P10 cover both scanners. WP-H1 gets a `rear_scanner` device |
+| Stop-call alarm | `hold_policy.CALL_CAUSES`, `panel_io.call_wanted` / `call_phase`, profile `dio.call_alarm_on_s` / `_off_s` | WP-C7 keeps it |
+| At-home combination | `PanelState.start_held` / `reset_held`, `amr_line/home_combo.py` | WP-C3, C6 latency tests |
+| No NAVIGATION from the web | `amr_web/server.py` `api_mode`: "No NAVIGATION (2026-10-28)"; Routes and trackless missions removed | WP-C14, most of C15 deferred. WP-C16 is the Mapping page only |
+| Web cut down | demo, editor, maps, review, run_tracked, survey_continue pages deleted; `home_tile()` added | WP-H2 LINE headline done; WP-C12 counts change |
+| CPU caps in the repo | `deploy/cpu-power-limit.service` (PL2 15 W, PL1 untouched), `cpu-freq-cap.service`; install.sh installs, engineer enables | Z PL1 backstop still parked; O-4 |
+| Wi-Fi reconnect watchdog | `deploy/agv-wifi-reconnect.{sh,service}` (journal only) | WP-H3 report zip, WP-H5 failure handling |
+| Q3 → DI09 wired | `io-mapping.md` (owner 2026-11-15) | Decision 22 |
+| Drive power-down from a future-stamped panel sample | `drive_node._update_power` now takes `now` after the read (2026-11-06) | A side effect of WP-A5's "future-stamped is stale" rule. See the WP-A5 note |
 
 ---
 
@@ -139,7 +185,12 @@ to build, in what order, and what changed versus the source**. When a work packa
 | C Tier 1 #1 (`tape_loc.enabled=false`) | Withdrawn in the source |
 | C Tier 1 #2 (no dev session) | Dropped (decision 6) |
 | C §4a f, g / Tier 3 #25, #26 (AMCL lean, EKF 30 Hz) | Wait for tracked-plan-3 P0 M1–M6 on the floor. Not in this plan |
-| Foxglove lockdown, Q4 status bit, FX0-GMOD, CF821 band, PCAN, BMS census/decoder/refusal/inventory/physical/poll-guard, i18n, VDA 5050, Lichtblick | Dropped or parked (decisions 8, 10, 11, 14, 16; S §5) |
+| Foxglove lockdown, Q4 status bit, FX0-GMOD, CF821 band, PCAN, BMS census/decoder/refusal/inventory/physical/poll-guard, i18n, Lichtblick | Dropped or parked (decisions 8, 10, 11, 14, 16; S §5) |
+| VDA 5050 | **Built** in `amr_station` under `station-call-plan.md` (2026-11-06 onward). S `vda5050-*` items are superseded by it. Was listed here as dropped until 2026-11-16 |
+| WP-H2 LINE headline | **Done** by `amr_web/alarms.home_tile()` (7295543), test `test_the_status_tile`. `headline()` still has no LINE branch: align or retire it in WP-H2 |
+| WP-E3 index half | **Done before the plan**: the protective index reaches mux, follower and executor from `scanner_fields.load()` (test_launch_layers D165). Only polarity is left |
+| WP-E6 reconnect | **Done**: `dio._scan_with_retry` (tests/test_dio.py) |
+| WP-P3 `After=` | **Done**: `amr.service` `After=… canable@can0.service`, test_shutdown_order |
 
 ---
 
@@ -301,6 +352,10 @@ All these WPs have verification **U**, plus **V** in §6 where noted.
   - `test_gating`: future-stamped lease/panel/permit/line/teleop → not fresh, source NONE.
   - Contract test: the mux `_now` uses `time.monotonic`, and the listed nodes pass a STEADY
     clock to `create_timer`.
+- **Note 2026-11-16:** after this WP, a consumer that takes `now` before reading a message can
+  see a receive time from the future and read it as stale. That powered the drives down
+  under a running vehicle three times on 2026-11-06. `drive_node._update_power` now takes
+  `now` after the read. Any new freshness consumer must do the same.
 
 ### WP-A6 Pendant release before use · R · H-P0-10, decision 2
 - In `PanelAdapter` only. `gating.py` and `DebouncedLevels` are unchanged.
@@ -391,6 +446,11 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
   - S-`blvr-bootup-reboot-detect`: a boot-up frame 0x700+n with data 0x00 feeds `decide()`
     a `rebooted` flag.
 - RUNBOOK: one-drive loss deliberately trips both drives (decision 4).
+- **Delta 2026-11-16 (open parts):** `DriveLink.preflight()` now caches
+  `preflight_statusword`, and `reported_state()` reports it before the first feedback. Put
+  the 603Fh/1003h reads in the same read wrapper and carry them through `reported_state()`
+  into DriveStatus. Build `fault_code` from `canopen.decide()` and retire the substring map in
+  drive_node `_fault_code()`. The report zip is `amr_web/reports.py`.
 
 ### WP-B5 Bench tool ownership · no build · H-P1-9, narrowed
 - `read_mls` modes that **send** SDO or NMT (snapshot, poll, calibrate, set-*, clear-event,
@@ -412,9 +472,18 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
 
 ### WP-H1 `agv_core/health.py` + `DeviceHealth.msg` · C · H-P1-1 as source
 - Device and state enums in `amr_base/wire.py` (L D04).
-- Owners, in order: drive_node → panel_node → rfid_node. The scanner wrapper is parked (WP-Z).
+- Owners, in order: drive_node → panel_node. The scanner wrapper is parked (WP-Z). No RFID
+  device (decision 23).
 - **The correlator has no BMS** (decision 16).
-- `IO_ISLAND_LOST` = DIO + RFID (shared cable).
+- `IO_ISLAND_LOST` = DIO only (decision 23 removed RFID from the shared cable group).
+- **Delta 2026-11-16:**
+  - Append `rear_scanner` (owner `trolley_node`) and `station_link` (owner
+    `station_bridge_node`) to the device enum in `wire.py`. Both already publish ad-hoc
+    edges (`REAR_SCANNER_SILENT`, `STATION_LINK_DOWN/UP`) that this replaces.
+  - Whether a device exists comes from the profile (`rear.source`, `station.enabled`). An
+    unconfigured device is ABSENT, never LOST.
+  - The DIO `retried` counter (`dio._scan_with_retry`) feeds DEGRADED.
+  - `station_link` stays out of `IO_ISLAND_LOST`: it runs over Wi-Fi, not the shared cable.
 
 ### WP-H2 HMI truthfulness · C · H-P1-2 as source
 - **Already done:** `LineState.auto_resume`, `IoImage.comms_ok` from `source_fresh`.
@@ -424,28 +493,62 @@ MLS_SILENT, PANEL_LINK_LOST, LINE_PREREQ_LOST, RFID_TAG_OVERDUE, drive_fault.
   - Structured `DIO_LINK_LOST/OK`: no such codes in `agv_core/alarms.py`.
 - PANEL_STALE takes its IP from config. The text still hard-codes 192.168.1.30.
 - All web text fits at UI scale `l`. Reuse `amr.css` classes.
+- **Delta 2026-11-16:**
+  - The LINE headline is done by `home_tile()` (§2). The Home page uses the tile's big text
+    and title and takes only `detail` from `headline()`. Give `headline()` a LINE branch that
+    matches the tile, or retire it.
+  - `readiness.base_missing()` still checks topic age only. Carry it in ModeState as planned.
+  - panel_node still sends DIO link text under event code `PANEL` by substring, and the new
+    "DIO scan retried" event goes out the same way. Both move to the `DIO_LINK_*` codes.
+  - PANEL_STALE: take the IP from `config.DIO_IP`. Both profiles have 192.168.1.30 today, so
+    the text is right but not sourced.
+  - Add a standing row from `/amr/rear/trolley` (rear silent / trolley UNKNOWN) when
+    `rear.source == "scanner"`. Today they are events only.
 
 ### WP-H3 Event forensics independent of the web · R · H-P1-15 as source
 - Do L D08 here: the DIO/RFID drivers write `agv_core/events.py`, and nothing reads it.
   Either this WP's forensic log reads it, or the ring goes. Use `eventlog.EventRing`
   (L) for any new ring.
+- **Delta 2026-11-16:** the recorder covers every `/amr/events` publisher, now including
+  `trolley_node` and `station_bridge_node`. `agv-wifi-reconnect.sh` logs to the journal
+  only: add `journalctl -u agv-wifi-reconnect` to the report zip.
 
 ### WP-H4 Supervisor and launch liveness · R · H-P1-5 as source
 - Add S-`sdnotify-extend-timeout-status-executor-watchdog`: `STATUS=` with the mode and the
   last fault, plus `EXTEND_TIMEOUT_USEC` during the bounded stop. `sdnotify.Notifier`
   already has a `STATUS=` sender that the supervisor never calls (it calls `ready`,
   `watchdog`, `stopping`). Wire that, and add `EXTEND_TIMEOUT_USEC`.
+- **Delta 2026-11-16:** `station_bridge`, the rear sick driver and `trolley_node` launch with
+  `respawn=True` and are not `required()`, so they never raise BASE_EXITED, and ROS respawn has
+  no give-up limit. A bridge with wrong MQTT credentials exits and respawns every 5 s. Add
+  them to the launch-walk allow-list as respawning-optional, and surface a respawn loop as a
+  health row (WP-H1), not a base fault.
 
 ### WP-H5 Unclean-death handling · D · H-P1-4, minus the re-plug part (WP-P3)
 - `WatchdogSignal=SIGINT`, `faulthandler` dump, `ExecStop=amr-orphan-stop.sh` with an atomic
   `groups.json`, `OOMPolicy=continue` + `OOMScoreAdjust`, `OnFailure=amr-failed.service`.
-- **Delta:** the static "call engineer" page is written to `$AMR_STATE_DIR` and served by
-  the kiosk as a `file://` fallback. **No nginx** (S §5).
+- **Delta:** the static "call engineer" page is written to `/run/amr/failed.html` (changed
+  from `$AMR_STATE_DIR` on 2026-11-16, see below) and served by the kiosk as a `file://`
+  fallback. **No nginx** (S §5).
 - S-`uptime-boot-id-and-service-result`: classify unclean shutdowns by `boot_id` and
   `$SERVICE_RESULT` in `ExecStopPost`. Pure `classify()` with tests. Extend
   `amr_bringup/uptime.py`, which already tells a power cut from a crash by the kernel boot
   time. Add the two inputs there; don't add a second classifier.
 - Reword SERVICE_CRASHED (8130h is possible).
+- **Delta 2026-11-16:**
+  - **Kiosk conflict: fixed 2026-11-16.** `deploy/kiosk/amr-kiosk-browser` killed Chromium
+    when its one tab was not on `http://127.0.0.1`, so a `file://` fallback would have died
+    every 20 s. The kiosk now opens `file:///run/amr/failed.html` while `amr.service` is
+    failed and the page exists, accepts exactly that URL there, and restarts onto the UI when
+    the service recovers. **The page lives in `/run/amr/`, not `$AMR_STATE_DIR`:** the kiosk
+    runs as `amrkiosk`, which can't read the service user's home. `/run` is tmpfs, so a stale
+    page never survives a boot. `amr-failed.service` (root) writes it with mode 0644 in a 0755
+    directory, and `ExecStartPre` of amr.service removes it.
+  - The failed page also names the identity mismatch: `amr-supervisor.sh` exits before the
+    supervisor when `agv_core.identity` refuses, and the restart limit leaves the unit
+    failed. Text: check `vehicle.env`, then `systemctl reset-failed amr`.
+  - Add the new deploy units (`agv-wifi-reconnect`, `cpu-power-limit`, `cpu-freq-cap`) to
+    validate.sh's is-failed check. `OnFailure` for them is not in scope.
 
 **End of M3:** run the unified sim once.
 
@@ -460,20 +563,26 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 |---|---|---|---|
 | WP-C1 | C §4a **a + C#10** (the same item): localization_monitor drains the age-only streams at its 10 Hz tick using `take_message` and `source_timestamp` | R | Contract test: the ages come from `source_timestamp`, and the limits are unchanged |
 | WP-C2 | C §4a **b, c, d, e**: raw `/scan_gated` with one decode per `match_period`; raycast early-exit + cos/sin cache (bit-identical, oracle test); scan_gate raw pass-through; TF listener on its own lean node, no param services | R | c: brute-force oracle equality test. d: bytes-in == bytes-out test |
-| WP-C3 | C#8 panel_node publishes once per DIO acquisition + a 50 ms fallback | R | Authority stream. Test: every Start/Reset edge is published exactly once, and the worst-case gap is ≤ 60 ms with a fake clock |
+| WP-C3 | C#8 panel_node publishes once per DIO acquisition + a 50 ms fallback | R | Authority stream. Test: every Start/Reset edge is published exactly once, and the worst-case gap is ≤ 60 ms with a fake clock. **Delta 2026-11-16:** PanelState now carries the `start_held`/`reset_held` levels that feed `home_combo`. The test also covers a held Start+Reset: the At home combination fires within `HOLD_S` + 50 ms |
 | WP-C4 | C#9 supervisor feed node with its own executor (mux, drives, wheels, panel) | R | Receipt stamps and freshness windows unchanged; test_hardness |
 | WP-C5 | C#11 gyro bias folded into drive_node `_publish_imu`; retire imu_bias_node; `/imu/data_raw` only with subscribers | C | `gyro_bias.py` moves to agv_core. "Nothing until calibrated" kept. **After WP-B1** (same file) |
-| WP-C6 | C#12, #13, #14 line_follow: idle tick 10 Hz with `timer.reset()` on any edge; `/imu/data` subscribed only outside IDLE; (v, wz) from `/wheel_states`, drop `/odom_raw` | R | Test: Start-edge reaction ≤ 20 ms. Wrapper only, autopilot untouched |
-| WP-C7 | C#15 panel_node: no `/cmd_wheel_vel` or `/drives/status` subscriptions when `horn.enabled` is false; motion lamp from a DriveStatus `turning` flag | C | L did not do it: panel_node still subscribes both topics unconditionally (2026-10-28). Do L D16 (two horn engines) in the same change |
-| WP-C8 | C#16 rfid_node wakes on a new tag via a GuardCondition | R | After WP-A1 / WP-E1 (same file) |
+| WP-C6 | C#12, #13, #14 line_follow: idle tick 10 Hz with `timer.reset()` on any edge; `/imu/data` subscribed only outside IDLE; (v, wz) from `/wheel_states`, drop `/odom_raw` | R | Test: Start-edge reaction ≤ 20 ms. Wrapper only, autopilot untouched. **Delta 2026-11-16:** with `station.enabled`, an accepted `/amr/line/order` departs HOME with no Start (`_srv_order`). The idle tick also resets on order accept and order cancel. Test: order-accept-to-motion ≤ 20 ms. Each tick now also does trip-log rows, the order-state publish and `_position_tick`: check that they don't run at the idle rate in a way that hides an edge. Confirm which job state the vehicle sits in at HOME while it waits for orders before choosing the idle condition |
+| WP-C7 | C#15 panel_node: no `/cmd_wheel_vel` or `/drives/status` subscriptions when `horn.enabled` is false; motion lamp from a DriveStatus `turning` flag | C | L did not do it: panel_node still subscribes both topics unconditionally (2026-10-28). Do L D16 (two horn engines) in the same change. **Delta 2026-11-16:** the premise holds (`_on_drives` only feeds horn `armed`). Remove the horn block from both profiles (both have `enabled: false`). **Keep the stop-call pulse** (`panel_io.call_wanted` / `call_phase`, driven from LineState `hold_cause`): it drives the alarm output, not the legacy horn. `horn.enabled: false` does not mean there is no alarm output. Check that `dio.motion_on` doesn't need `/drives/status` before you cut it |
+| ~~WP-C8~~ | C#16 rfid_node wakes on a new tag via a GuardCondition | R | **Withdrawn 2026-11-16** (decision 23: RFID not used) |
 | WP-C9 | C#17 cmd_mux: a repeated zero at 10 Hz when source NONE and output exactly zero · **SAFETY-LISTED** | R | **Failure mode:** a lost idle zero. drive_node treats > 0.2 s as zero anyway (2× margin). **Recovery:** revert. Test: any nonzero, first zero or generation change is published on that tick |
 | WP-C10 | C#18 `/odom_raw` computed in drive_node; retire diff_drive_odom_node | C | After WP-C5 |
-| WP-C11 | C#19 `start_parameter_services=False` where nobody runs `ros2 param set` | R | Grep RUNBOOK and the scripts for `param set` first. Keep the services on nodes the RUNBOOK tunes live |
-| WP-C12 | C#20 amr_web: service clients on a second node; stop the idle `_live_pose` / reconcile timers; `/drives/pp_status` on demand; `live.py` ceil division | R | Combine with WP-E5 (same process) |
-| WP-C13 | C#21 small items | R | — |
-| WP-C14 | C#22 route_executor: no param services, TF on its own thread, **keep MultiThreadedExecutor**; plus S-`rclpy-nonblocking-action-checks` (`server_is_ready()`, stamp-age-checked TF) | R | LeanNode already done by L. Read TF through `tfpose` |
-| WP-C15 | C#23, #24 Nav2 controller/behavior inactive while the executor is IDLE; one `component_container_isolated`; `bond_timeout: 0` | R | Opt-in sim once. Plus S-`nav2-lifecycle-health-after-commit` (pure `layer_health`, LAYER_INACTIVE). Do L D53 (localization group built twice) in the same launch change |
-| WP-C16 | C#28 web live view in NAV/MAPPING from a 5 Hz display topic | C | — |
+| WP-C11 | C#19 `start_parameter_services=False` where nobody runs `ros2 param set` | R | Grep RUNBOOK and the scripts for `param set` first. Keep the services on nodes the RUNBOOK tunes live. **Delta 2026-11-16:** the only `param set` is in `amr_sim/fake_panel_node.py` (sim). Add `station_bridge_node` and `trolley_node` to the candidates |
+| WP-C12 | C#20 amr_web: service clients on a second node; stop the idle `_live_pose` / reconcile timers; `/drives/pp_status` on demand; `live.py` ceil division | R | Combine with WP-E5 (same process). **Delta 2026-11-16:** 23 service clients now (run/pause/abort/resume and the route preview gone). amr_web no longer subscribes `/drives/pp_status` (gone since ef319d9; the only subscriber is `commissioning_node`): the on-demand part moves to drive_node, with WP-C13. `_live_reconcile` (1 Hz) and `_live_pose` (5 Hz) are still there |
+| WP-C13 | C#21 small items | R | Absorbs the `/drives/pp_status` on-demand item from WP-C12 |
+| WP-C14 | C#22 route_executor: no param services, TF on its own thread, **keep MultiThreadedExecutor**; plus S-`rclpy-nonblocking-action-checks` (`server_is_ready()`, stamp-age-checked TF) | R | LeanNode already done by L. Read TF through `tfpose`. **Deferred 2026-11-16:** route_executor runs only in NAVIGATION, which the web can no longer enter (`server.py` `api_mode`, since 2026-10-28). Build it when NAVIGATION gets a UI again |
+| WP-C15 | C#23, #24 Nav2 controller/behavior inactive while the executor is IDLE; one `component_container_isolated`; `bond_timeout: 0` | R | Opt-in sim once. Plus S-`nav2-lifecycle-health-after-commit` (pure `layer_health`, LAYER_INACTIVE). Do L D53 (localization group built twice) in the same launch change. **Delta 2026-11-16:** the controller/behavior and container parts are deferred with WP-C14 (NAVIGATION only). The `bond_timeout: 0` part still applies: it also hits LINE's tape_loc group (`amcl.yaml`). D53 is still open; both callers must pass line_layer's new `dynamic_yaml` argument |
+| WP-C16 | C#28 web live view in NAV/MAPPING from a 5 Hz display topic | C | **Delta 2026-11-16:** scope is the Mapping page only (`templates/mapping.html` + `liveview.js`, including LINE tape-localization positioning there). No NAV page. `/api/live/*` only |
+| WP-C17 | **New 2026-11-16.** station_bridge_node (agv-01 only, `station.enabled`): wake `_drain` from the paho network thread with a GuardCondition (same pattern as WP-C8) instead of its 20 Hz timer; keep `_state_tick` at 10 Hz; no param services | R | Test: a queued MQTT message is handled on the next spin, and none is lost when several arrive at once |
+
+**Re-profile scope (2026-11-16):** OP-1 and OP-2 must include a running LINE trip, not only
+idle. `trip_log` builds a row every 50 Hz tick while ARMED/RUNNING/HOLD and has a writer
+thread. `trolley_node` and the rear driver add nothing today (`rear.source: none`); profile
+again after the rear scanner is fitted.
 
 **Not in M4:**
 - C#27 slam_toolbox parameters: map-quality risk, one parameter at a time, on the vehicle. It
@@ -484,7 +593,7 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 
 ## M5: peripherals and web transport
 
-### WP-E1 RFID heartbeat on 0x0072 + detection/reporting · C · S-`rfid-0072-heartbeat` + H-P1-11, decision 17
+### ~~WP-E1 RFID heartbeat on 0x0072 + detection/reporting~~ · **Withdrawn 2026-11-16 (decision 23: RFID not used)**
 - Heartbeat sends `CMD_GET_PARAMS` (0x0072) instead of `CMD_ONLINE` (0x0050). Each reply also
   refreshes `param_mismatches()`, with edge-triggered logging.
 - Fix the module docstring, which says 0x0050 is the heartbeat.
@@ -498,6 +607,10 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
   - No Start refusal unless `rfid.heartbeat_required` (schema + refusal test).
 - S-`rfid-site-epc-prefix` (reject foreign UHF tags) goes here if `tag_table` doesn't already
   filter. Check first.
+- **Delta 2026-11-16:** `rfid.py` is unchanged since the plan. `heartbeat_s` and
+  `heartbeat_timeout_s` stay as they are in **both** profiles. `rfid.heartbeat_required` goes
+  into both profiles. The H-P1-11 RFID Start check is now `job._rfid_check`; put the
+  U-turn-only note there.
 
 ### WP-E2 Scanner: honour `is_valid`, show the active case · R · S-`scn-outputpaths-valid-safe` · SAFETY-LISTED (mux)
 - `gating.Field(now, status, valid)`: an invalid path is UNKNOWN, so there is no AUTO resume
@@ -506,8 +619,21 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 - **Failure mode:** an untrustworthy path bit was read as clear.
 - **Recovery:** the next valid sample restores selection. A physical Start is needed only if
   a hold was taken.
+- **Delta 2026-11-16:** line_follow and the executor read the field through
+  `drive_state.field_clear`, so change it there. New consumer: `trolley_detect.RearField`
+  reads `status[index]` only. It gets the same rule (an invalid rear path reads
+  FIELD_UNKNOWN) and its own test. The rear already publishes its active case
+  (`TrolleyState.rear_case`), so showing the active case is front only.
 
 ### WP-E3 Scanner index/polarity from one source · R · H-P1-13 as source · SAFETY-LISTED (`scanner_fields.*`)
+- **Delta 2026-11-16:**
+  - The index half is done (§2). Left: polarity. `field_clear` hard-codes True as clear;
+    pass the protective polarity from `scanner_fields` into line_follow and the executor.
+  - The rear index and polarity come from the profile (`rear.field_output_index`) by design,
+    while the rear has no Safety Designer copy. Record that as a named exception in the test,
+    or move it into `scanner_fields` at the rear fit.
+  - `scanner_fields.yaml` is marked STALE (documentation D1, 2026-11-15). Don't touch the
+    rects or `stop_m` until D1 is decided.
 
 ### WP-E4 Scanner diagnosis rows · R · S-`scn-diag-status-overview` + H-P1-12 web half
 - Pure `scanner_health.py` maps the driver's `/diagnostics` State and `status_overview` to
@@ -515,12 +641,23 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
   FIELD_PROTECTIVE.
 - Mapping gap function: SURVEY_SCAN_GAP.
 - Test with a recorded DiagnosticArray fixture.
+- **Delta 2026-11-16:** key the rows per scanner (by hardware_id or node name). Add rear rows
+  only when `rear.source == "scanner"`. SURVEY_SCAN_GAP is front only. Whether the rear
+  driver's `/diagnostics` is namespaced is unknown until the rear is fitted.
 
 ### WP-E5 Serve the HMI with waitress · R · S-`waitress-wsgi` + H-P2-9 socket-timeout half
 - `python3-waitress` comes from apt. Add `<exec_depend>` and `validate.sh` checks it.
 - Cut the `adapter._call` timeouts.
 - Jog stays held by re-POSTs.
 - `wifi.powersave = 2` NetworkManager drop-in in `deploy/` (D).
+- **Delta 2026-11-16:**
+  - Power save is already off per connection, by hand (alpha-setup `agv-net`,
+    `802-11-wireless.powersave 2`). Drop the drop-in. Instead, validate.sh checks
+    `nmcli -g 802-11-wireless.powersave con show agv-net` reads disable.
+  - flask is pinned with `pip --user` (alpha-setup), not apt. Install waitress the same way
+    (pinned pip plus the alpha-setup import check), or move both to apt. Don't mix the two.
+  - Today: werkzeug `app.run(threaded=True)` in `web_node.py`; `adapter._call` defaults to
+    30 s, and `line_mission`, `line_teach` and `_trigger` pass no timeout of their own.
 
 ### WP-E6 DIO transport · R · H-P1-10 + S-`dio-pymodbus-retries-zero` + S-`dio-fc03-combined-image`
 - One timeout counts as one failed scan (retries 0).
@@ -528,10 +665,16 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 - DI and DO in one FC03 read.
 - A drops-in-10-min counter.
 - Re-baseline unchanged.
+- **Delta 2026-11-16:** the immediate reconnect is done (`dio._scan_with_retry`, §2). Left:
+  `retries=0` on `ModbusTcpClient` (matters more now: each library retry multiplies inside the
+  new retry; check the installed pymodbus default), DI+DO in one FC03 read (still
+  `read_discrete_inputs` + `read_coils`), and the drops-in-10-min counter.
 
 ### WP-E7 IMU coupling and plausibility · R · H-P1-7, minus the `gyro_sign` closure (decision 19)
 - The pure `gyro_check` lives in `amr_localization`.
 - The `gyro_sign` VERIFY stays open.
+- **Note 2026-11-16:** `line_follow_node.py` grew by about 390 lines. Re-locate H-P1-7's curve
+  guard by symbol, not by the source's line number.
 
 ### WP-E8 MLS marker gaps + frozen diagnostics · C · H-P1-8 + S-`mls-tpdo-period-gap-detector`
 - **Gate:** the bench answer on 1800h:05 (§5). If it reads **0** (on change), disable the
@@ -545,21 +688,21 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 
 | WP | Items | Build | Notes |
 |---|---|---|---|
-| WP-P1 | **Platform freeze** (decision 7): ROS apt source on `snapshots.ros.org/humble/2026-09-14` with a `Package: *` pin, `packages.ros.org` at -1, purge/hold `ros2-apt-source`, kernel meta holds (`apt-mark manual` 5.15.0-187), snap refresh hold, needrestart drop-in (never auto-restart amr.service), unattended-upgrades policy with the timers masked and a monthly window documented in RUNBOOK. S §2.14 items | D | Files in `amr_ws/deploy/platform/`; `install.sh` installs them; `validate.sh` checks `apt-cache policy` and `apt-mark showhold` |
-| WP-P2 | **Snapshot move to 2026-10-12** for tf2 0.25.24 (S-`tf2-0-25-24-abba-fix`) + S-`platform-manifest-lock` (pure manifest module + committed baseline, `platform.txt` in the report zip) | D | Owner runs it in a maintenance window: `~/.amr` copied off, clean `colcon build`, run_all, focused pytest, one unified sim, then a witnessed vehicle run |
-| WP-P3 | **CAN re-plug** (decision 9): `amr.service` `After=`/`WantedBy=canable@can0.service`; `canable@` `Restart=on-failure`, `RestartSec=2`; `reset-failed` verb in `amr-web.sudoers`; versioned `canable@.service` + `70-canable.rules` (+ USB `power/control=on`) | D | Contract test parses the units. Takes effect at the next witnessed enable |
+| WP-P1 | **Platform freeze** (decision 7): ROS apt source on `snapshots.ros.org/humble/2026-09-14` with a `Package: *` pin, `packages.ros.org` at -1, purge/hold `ros2-apt-source`, kernel meta holds (`apt-mark manual` 5.15.0-187), snap refresh hold, needrestart drop-in (never auto-restart amr.service), unattended-upgrades policy with the timers masked and a monthly window documented in RUNBOOK. S §2.14 items | D | Files in `amr_ws/deploy/platform/`; `install.sh` installs them; `validate.sh` checks `apt-cache policy` and `apt-mark showhold`. **Delta 2026-11-16:** freeze **both** PCs. Unit 2 was installed from live `packages.ros.org` (alpha-setup), so its package set may differ from the snapshot: switch alpha-setup to the snapshot source. Record the GRUB-fallback kernel per unit. The chromium snap hold is a manual alpha-setup step today; move it into the platform files |
+| WP-P2 | **Snapshot move to 2026-10-12** for tf2 0.25.24 (S-`tf2-0-25-24-abba-fix`) + S-`platform-manifest-lock` (pure manifest module + committed baseline, `platform.txt` in the report zip) | D | Owner runs it in a maintenance window: `~/.amr` copied off, clean `colcon build`, run_all, focused pytest, one unified sim, then a witnessed vehicle run. **Delta 2026-11-16:** the manifest also covers the pip packages (`paho-mqtt==2.1.0`, flask). Compare the agv-01 and agv-02 manifests |
+| WP-P3 | **CAN re-plug** (decision 9): `amr.service` `After=`/`WantedBy=canable@can0.service`; `canable@` `Restart=on-failure`, `RestartSec=2`; `reset-failed` verb in `amr-web.sudoers`; versioned `canable@.service` + `70-canable.rules` (+ USB `power/control=on`) | D | Contract test parses the units. Takes effect at the next witnessed enable. **Delta 2026-11-16:** `After=` is done (§2). Left: `WantedBy=`, `Restart=on-failure` (alpha-setup's text has `Restart=no`), the sudoers verb, and the versioned units. `70-canable.rules` is a per-unit template that takes its serial from profile `can.adapter_serial` (agv-02's is still empty). The web `reset-failed` must **not** clear an identity-mismatch failure: that needs the engineer at the PC |
 | WP-P4 | Logs/disk/storage (H-P2-7) + S-`ros-log-bounding` (`ROS_LOG_DIR` under the state dir, tmpfiles, `--disable-external-lib-logs`) | R/D | — |
 | WP-P5 | Hardware watchdog (H-P2-5, watchdog part): `/etc/modules-load.d/iTCO_wdt.conf` (the HWE package blacklists it), `RuntimeWatchdogSec=30`, `kernel.panic=10` | D | Owner checks `wdctl` first (§5, no CAN needed). Skip the txqueuelen and scheduling parts until WP-B1's overrun counter has a shift of data |
-| WP-P6 | Black box: S-`rosbag2-snapshot-mcap` (always-armed snapshot recorder, low-rate `_ui` topics + DeviceHealth + events, `--node-name amr_blackbox`, dumped on FAULT/stop edges into the report zip) | R | Pure trigger-policy test. Owner runs a pidstat check before default-on |
+| WP-P6 | Black box: S-`rosbag2-snapshot-mcap` (always-armed snapshot recorder, low-rate `_ui` topics + DeviceHealth + events, `--node-name amr_blackbox`, dumped on FAULT/stop edges into the report zip) | R | Pure trigger-policy test. Owner runs a pidstat check before default-on. **Delta 2026-11-16:** add OrderState / the station bridge status and `/amr/rear/trolley` to the snapshot topics |
 | WP-P7 | Supply/brownout (H-P2-6) | R | — |
 | WP-P8 | Drive odometry bridge + plausibility (H-P2-2) | R | Update the R06 contract test deliberately |
 | WP-P9 | MLS reboot/variant (H-P2-3) | R | Read-only 0x70A |
-| WP-P10 | Scanner config hygiene (H-P2-4): launch from `LIDAR_*` keys, fixed texts, `validate.sh` checks enp3s0 · SAFETY-LISTED for any QoS change on `/output_paths` | R | Measuring the p99 inter-arrival is a §6 item. This gives the `lidar.*` profile keys a consumer, which settles L D01: keep them |
-| WP-P11 | S-`ipc-throttle-telemetry` (thermal_throttle counters next to the IPC temperature on the HMI) | R | sysfs fake-tree test. The N97 throttles while showing ~65 °C |
+| WP-P10 | Scanner config hygiene (H-P2-4): launch from `LIDAR_*` keys, fixed texts, `validate.sh` checks enp3s0 · SAFETY-LISTED for any QoS change on `/output_paths` | R | Measuring the p99 inter-arrival is a §6 item. This gives the `lidar.*` profile keys a consumer, which settles L D01: keep them. **Delta 2026-11-16:** two scanners. Generate both driver configs from the profile. `nanoscan3_rear.yaml` has placeholder IPs and port 6061 and no profile keys: add `rear.sensor_ip`, `rear.host_ip` and `rear.port` (≠ `lidar.port`) to both profiles, with schema and refusal tests. validate.sh checks the rear link once the rear is fitted |
+| WP-P11 | S-`ipc-throttle-telemetry` (thermal_throttle counters next to the IPC temperature on the HMI) | R | sysfs fake-tree test. The N97 throttles while showing ~65 °C. **Delta 2026-11-16:** `cpu-power-limit.service` (PL2 15 W) and `cpu-freq-cap.service` (2.2 GHz) are now versioned and installed, but enabled by hand. The telemetry also shows the caps work; validate.sh warns if either unit is not enabled (it checks only syntax today) |
 | WP-T1 | H-P3-1 pure tests; S-`hypothesis-stateful-gating` (derandomized, outside EXPECTED_CHECKS) | — | — |
-| WP-T2 | H-P3-2 sim fault hooks + S-`fake-output-paths-from-field-geometry` (sim only, refuses domain 10, asserted in `test_launch_layers`) | C | — |
+| WP-T2 | H-P3-2 sim fault hooks + S-`fake-output-paths-from-field-geometry` (sim only, refuses domain 10, asserted in `test_launch_layers`) | C | **2026-11-16:** copy the pattern of `amr_sim/fake_trolley_node.py` and its "never launched on a vehicle" assertion in `test_launch_layers` |
 | WP-T3 | H-P3-3 opt-in sim cases | — | Once, sequentially |
-| WP-T4 | S-`amcl-persisted-initial-pose`, S-`odom-twist-from-606c` (measure the 606Ch lag on a logged run before switching) | R | — |
+| WP-T4 | S-`amcl-persisted-initial-pose`, S-`odom-twist-from-606c` (measure the 606Ch lag on a logged run before switching) | R | **2026-11-16:** `home-auto-confirm-plan.md` Part B re-seeds AMCL at HOME in LINE and never runs after a service restart. The persisted pose covers the restart case, so they complement each other. Keep home-auto-confirm's "monitor code unchanged" promise, or say that it changes |
 
 ---
 
@@ -567,8 +710,8 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 
 | Item | Trigger |
 |---|---|
-| WP-Y1 E-stop status DI (decision 14): profile `panel.di_estop_status` (nullable; schema, refusal test, distinct from the panel/pendant channels, must be in the COM1 range DI09–DI0F); panel_io reads it with the usual freshness; a pure function uses it **only** to pick the cause text and `clears_by`, replacing the torque-loss guess in `job.py` / the executor. DI08 is taken (Manual Arm) | Q3 wired to one of DI09–DI0F (O-1 resolved 2026-10-28) |
-| WP-Y2 S-`profile-do-names-from-sheet` + S-`io-mapping-parsed-profile-test` (with KNOWN_OPEN for DO8, decision 15, and for the `«placeholder»` rows: Q3's destination, the Manual Arm switch details) | HT-2 done |
+| ~~WP-Y1 E-stop status DI~~ **Withdrawn 2026-11-16 (decision 22).** Replaced by `manuals/emergency-suite-plan.md` Part B (E1–E8), which uses `panel.di_estop_ok` (DI09). Carry two of Y1's checks into Part B E1: the key must be in the COM1 range DI09–DI0F (DI07 is COM0 and won't read a sourcing output; DI08 is Manual Arm), and it must be distinct from the panel/pendant channels. The key goes into both profiles (§0 rule 4). Part B E5 replaces the torque-loss guess (`job._safety_cause` and the executor's), so no other WP touches it. When E5 is built: a rear OSSD stop also reads as torque loss (station-call O8) and must not become `estop` once the DI exists; and O-3 must be settled first. Part B adds no-motion layers to `gating.py` and the mux, so the safety-listed rule (§0 rule 5) applies | Trigger met: Q3 → DI09 wired (owner 2026-11-15). Build from emergency-suite-plan Part B |
+| WP-Y2 S-`profile-do-names-from-sheet` + S-`io-mapping-parsed-profile-test` (with KNOWN_OPEN for DO8, decision 15, and for the `«placeholder»` rows: Q3's destination, the Manual Arm switch details) | HT-2 mostly done (2026-11-16): CK-TP5162 is in io-mapping §4 and Q3 has its destination (DI09). Left: the Manual Arm terminal-block numbers («TB?»). Q3 leaves KNOWN_OPEN. Both profiles still name `di_names[9]` "[SPARE]" (now ESTOP OK, set it with Part B E1) and every `do_names` entry "[SPARE]", although DO0 and DO1 are the horn/alarm outputs. Apply to both profiles |
 | H-P1-12 scanner watch wrapper (exit + respawn on `/scan` silence) | A scanner-only power loss is observed, or HT-1 shows the data output is not saved |
 | S-`sick-driver-no-write-fork` | HT-1 proves the Safety Designer data output persists |
 | H-P1-14 odometry under STO | Operator observes `/wheel_states` during a field trip (decision 19) |
@@ -579,7 +722,7 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 | H-P2-10 connector-health trend | WP-H1 deployed for a week |
 | H-P2-11 IMU TPDO path | Gyro TPDO commissioned |
 | C Tier 4 (C++ ports: scan_gate, cmd_mux transport) | Re-profile after M4 shows a node still > ~10 % |
-| PL1 backstop, S-`pm-latency-baseline`, `pmqos-cpu-latency-holder`, EPP change | A turbostat run is approved (decision 20) |
+| PL1 backstop, S-`pm-latency-baseline`, `pmqos-cpu-latency-holder`, EPP change | A turbostat run is approved (decision 20). If approved, the PL1 backstop edits `amr_ws/deploy/cpu-power-limit.service` (`constraint_0`); today it writes PL2 only. See O-4 |
 | S P2 navigation (`along-track-goal-checker`, `nav2-fault-reporting-plugins`, `vector-pursuit-controller`, `nav2-keepout-filter`), `dt-raymarch-field`, `odom-calibration-umbmark-scanref`, `rosbag2-replay-regression`, `survey-flight-recorder-slam-replay`, `can-flight-recorder`, `cgroup-scope-sim-tests` | Owner picks them after M6 |
 | S-`can-adapter-real-error-counters` | Owner buys the adapter (decision 10) |
 
@@ -588,6 +731,10 @@ item. Source totals: §4a a–e ≈ 13–15 % of a core, Tier 2 ≈ 0.4–0.5 co
 ## 5. Bench session (owner, `amr.service` stopped) — what to read
 
 None of these reads writes anything.
+
+**Per unit (2026-11-16):** agv-01 and agv-02 have their own drives, MLS and RFID reader. Run the
+session on each unit before acting on its answers there. Turn a profile key on (for example
+`rfid.heartbeat_s`) only in the profile of the unit that was benched.
 
 **No CAN needed (can run any time):**
 1. `wdctl`; `lsmod | grep -i iTCO`; `ls /lib/modprobe.d/ | grep -i blacklist` → WP-P5.
@@ -606,9 +753,7 @@ None of these reads writes anything.
    - 603Fh and 1003h history.
    - → WP-B4 preflight and the WP-Z TPDO3/4 decision.
 
-**RFID (service stopped frees the reader):**
-5. Reads/s with and without 0x0072 at 1 Hz while parked over a tag → enables
-   `rfid.heartbeat_s` in WP-E1. Needs WP-E1's driver change, or the vendor tool.
+**RFID:** ~~5. Reads/s with and without 0x0072 at 1 Hz~~ — withdrawn 2026-11-16 (decision 23).
 
 **Dropped from the bench list:**
 - "slcan TX backlog during arm/disarm": measured in service by WP-B1(e) and WP-B2 instead.
@@ -621,8 +766,8 @@ None of these reads writes anything.
 | # | Step | Unblocks |
 |---|---|---|
 | HT-1 | Open the nanoScan3 project in Safety Designer **read-only**: is a continuous UDP data output to 192.168.3.2:6060 saved, and at what publishing frequency? Don't transfer anything | WP-Z scanner items |
-| HT-2 | Electrical docs through `documentation/electrical/agent/SKILL.md` (interpret → confirm → build). **Done 2026-10-28:** DI08 = Manual Arm in `io-mapping.md` and sheets 08/09. **Open:** module **CK-TP5162** on sheets 03 and 09 and in `io-mapping.md` (no mention yet; also check the "12 relay" text against `num_do` 16); fill the `«placeholder»`/`?` items: the Manual Arm switch type, terminal and wire, Q3's destination and its test-pulse setting; remove Q3 from sheet 08's orange cable if it is not wired; plan the Q3 → DI09–DI0F E-stop status row | WP-Y1, WP-Y2 |
-| OP-1 | CPU §3 acceptance, no dev session attached for 60 s: `pidstat -u 10 6` per process, idle LINE. Repeat after M4 | §6 projection |
+| HT-2 | Electrical docs through `documentation/electrical/agent/SKILL.md` (interpret → confirm → build). **Done 2026-10-28:** DI08 = Manual Arm in `io-mapping.md` and sheets 08/09. **Open:** module **CK-TP5162** on sheets 03 and 09 and in `io-mapping.md` (no mention yet; also check the "12 relay" text against `num_do` 16); fill the `«placeholder»`/`?` items: the Manual Arm switch type, terminal and wire, Q3's destination and its test-pulse setting; remove Q3 from sheet 08's orange cable if it is not wired; plan the Q3 → DI09–DI0F E-stop status row. **2026-11-16:** CK-TP5162 is in io-mapping §4; Q3 → DI09 is wired and documented. Still open: the Manual Arm «TB?» numbers | Part B E1 (was WP-Y1), WP-Y2 |
+| OP-1 | CPU §3 acceptance, no dev session attached for 60 s: `pidstat -u 10 6` per process, idle LINE. Repeat after M4, **idle and during a running LINE trip** (2026-11-16), on each unit | §6 projection |
 | OP-2 | After each milestone: a witnessed LINE run; watch `LineState.track_hz` holds, panel/lease stale events and FIELD_UNKNOWN chatter | M1, M4 rate changes |
 | OP-3 | Fault-injection table (hardening §5), rows matching the built WPs only | M1–M5 |
 | OP-4 | Apply the deploy files (WP-0E, WP-P1, WP-P3, WP-P5, WP-H5) off-shift with `install.sh` + `daemon-reload`; run `validate.sh` | M0, M3, M6 |
@@ -659,10 +804,65 @@ Checked against the tree on 2026-10-28 (64e9654), by grepping each WP's anchor s
 | WP-B4 | partial | 2026-10-28 | Done: engineer-only Recover (test_operator_ux), supervisor acks `/drives/ack_fault` with the run refusal (test_readiness), clean preflight clears the latched alarm, release() failure takes fault() semantics (test_canopen), web DRIVE_FAULT/DRIVE_SILENT row hides DRIVES_NOT_READY, action texts, RUNBOOK. **Open:** 603Fh/1003h read into the fault detail and report zip, boot-up frame `rebooted` flag, DriveStatus `fault_code`/`fault_detail` (C) |
 | WP-B5 | done | 2026-10-28 | run_all test_lss read_mls lock ×7 |
 | WP-B6 | done | 2026-10-28 | test_canopen router error/RTR drop, (id, extended) key; fixtures now build 11-bit frames |
-| WP-H1 | open | 2026-10-28 | no `agv_core/health.py`, no `DeviceHealth.msg` |
-| WP-H2 | partial | 2026-10-28 | `auto_resume` and `comms_ok` done |
-| WP-H3 … H5 | open | 2026-10-28 | — |
-| WP-C1 … C13, C15, C16 | open | 2026-10-28 | `imu_bias_node` and `diff_drive_odom_node` still launched. No `take_message` |
-| WP-C14 | partial | 2026-10-28 | LeanNode done (L) |
-| WP-E1 … E9 | open | 2026-10-28 | The rfid docstring still names 0x0050 as the heartbeat. No waitress. DIO does two reads per scan |
-| WP-P1 … P11, WP-T1 … T4 | open | 2026-10-28 | no `deploy/platform/` |
+### Implementation 2026-11-16 (uncommitted, dev box only)
+
+Built on the Windows dev box: pure tests ran there, against a baseline failure set taken before
+any change. Everything that needs rclpy, ROS launch, CAN, systemd or the vehicle is **unverified**
+until the owner's on-vehicle checks. Marks: R restart, C `colcon build`, D deploy file (owner,
+`install.sh`). `EXPECTED_CHECKS` 938 → 984.
+
+| WP | State | Evidence / what is still open |
+|---|---|---|
+| WP-B1 | done (R) | (a)–(d): `read_sensor` ≤ 0.05 s, `_Job` rediscovery chains, `nmt_nowait`, `SensorToken` one MLS SDO per slot, IMU miss rate 3/10. test_sensor_slots, test_mls_imu, test_mls_track |
+| WP-B4 | done (C) | 603Fh/1003h in preflight, diagnostics and `drives.txt` in the report zip; boot-up frame → `decide(rebooted)` → DRIVE_REBOOTED; DriveStatus `fault_code`/`fault_detail`. test_drive_fault_history, test_reports_drives |
+| WP-H1 | done (C) | `agv_core/health.py`, `DeviceHealth.msg` on `/amr/device_health`; owners drive_node, panel_node, station_bridge, trolley_node; no RFID (decision 23). test_health |
+| WP-H2 | done (C) | `ModeState.base_missing`; `health_view.py`: DIO_LINK_*, PANEL_STALE IP from config, LINE headline, DeviceHealth/scanner/disk/eventlog rows. test_hmi_truth, test_liveness |
+| WP-H3 | done | `event_recorder_node` (launched, respawning), `agv_core/eventlog.py`, `journal-wifi.txt`; D08: `agv_core/events.py` removed. test_event_recorder |
+| WP-H4 | done (R) | STATUS=, EXTEND_TIMEOUT_USEC, respawn reset, exits file names the node, executor heartbeat, rsp/imu_bias respawn, launch-walk allow-list; FAULT events logged under the fault code. test_liveness, test_fault_event (rclpy) |
+| WP-H5 | done (D) | amr.service WatchdogSignal/OOMPolicy/OnFailure/ExecStop/ExecStopPost; amr-failed page in `/run/amr/`; kiosk fallback fixed; uptime `classify()`. test_unclean_death, test_uptime |
+| WP-C1, C2 | done (R) | `take_message` drain, raw `/scan_gated`, raycast oracle, scan_gate pass-through, TF thread. test_stream_age, test_raycast, test_scan_gate_raw |
+| WP-C3 | done (R) | `PublishGate`. test_panel_publish |
+| WP-C4 | done (R) | `SupervisorFeed` node. test_hardness (rclpy) |
+| WP-C5, C10 + P8 | done (C) | drive_node publishes `/imu/data` and `/odom_raw`; diff_drive_odom/imu_bias sim only; feedback plausibility. test_gyro_filter, test_wheel_odom, test_r06 |
+| WP-C6 | done (R) | idle 10 Hz with edge wake, `/imu/data` only ARMED–HOLD, `/odom_raw` dropped. test_tick_rate |
+| WP-C7 + D16 | done (C) | no horn engine, motion lamp from DriveStatus `turning`; horn section retired in both profiles. test_panel_publish |
+| WP-C9 | done (R) | idle zero at 10 Hz. test_idle_zero |
+| WP-C11 | done (R) | `start_parameter_services=False` on production nodes; KEEP list commissioning, route_executor, sim. test_param_services |
+| WP-C12, C13 | done (R) | calls node, live timers on demand, pp_status on demand. test_adapter_contract, test_live_demand |
+| WP-C14 | deferred | NAVIGATION has no UI |
+| WP-C15 | partial | `bond_timeout: 0.0` + D53 done; controller/behavior/container deferred with C14 |
+| WP-C16 | done (C) | web consumer + 5 Hz publishers. test_live_display |
+| WP-C17 | done (R) | station_bridge GuardCondition wake. test_bridge_wake |
+| WP-E1, C8 | withdrawn | decision 23 (RFID not used; `rfid.enabled` false, rfid_node not launched) |
+| WP-E2 | done (R) | invalid path = UNKNOWN (gating, drive_state, RearField). test_field_limit, test_trolley_detect |
+| WP-E3 | done (R) | protective polarity from scanner_fields to mux/follower/executor; rear is the named exception |
+| WP-E4 | done | `scanner_health.py` + web rows + status_overview + SURVEY_SCAN_GAP. Fixture rebuilt, not recorded: confirm key names on the vehicle |
+| WP-E5 | done | waitress via `serve.py` (werkzeug fallback), call timeouts; pip pin in alpha-setup |
+| WP-E6 | done (FC03 off) | retries=0, drops/retries_10min; FC03 behind `dio.COMBINED_IMAGE=False` until benched |
+| WP-E7 | done, withholding off | `agv_core.gyro` check (logs only: `gyro_check` default false until the gyro_sign VERIFY), StampTracker frozen, curve guard |
+| WP-E8, P9 | done | TPDO hole detection (`GAPS_WHILE_STATIONARY=False` until the 1800h:05 read), marker continuity, MLS reboot; line consumers. test_mls_track, test_tpdo_holes |
+| WP-E9 | done | `survey_trace.ImuGaps`. test_survey_trace |
+| WP-P1, P3, P5 | done (D) | `deploy/platform/`, canable units + rule template, watchdog files. test_unclean_death |
+| WP-P2 | owner | snapshot move in a maintenance window |
+| WP-P4 | done (R/D) | ROS_LOG_DIR, tmpfiles, `/` watched + DISK_READONLY, 2/1/1 stop, quiet logs |
+| WP-P6 | done, default off | black box (`AMR_BLACKBOX`). test_blackbox |
+| WP-P7 | done | `bus_v_trip_low` (46.0 V placeholder), SUPPLY_* events, chip, Start refused at or below trip_low |
+| WP-P10 | done (C) | rear.* keys (placeholders), `scanner_config`, both launches from the profile |
+| WP-P11 | done | throttle counters on the HMI chip |
+| WP-T1 | partial | test_gating_properties (needs hypothesis), drive-state strings; test_line_authority fixture left (see note) |
+| WP-T2, T3 | done, sim unrun | fault hooks, fake_output_paths, 4 sim cases, stale tests fixed |
+| WP-T4 | partial | 606Ch twist switch (default counts); persisted initial pose open |
+| WP-Y1 | withdrawn | → emergency-suite Part B E1–E7 done (E8 vehicle acceptance open) |
+| WP-Y2 | done | ESTOP OK / horn DO names; test_vehicles test_wiring |
+
+Notes:
+- test_line_authority builds four "fresh age + track" inputs the node never produces; the
+  vehicle holds `sensor` at once there (stricter). Left as is, open.
+- **Superseded 2026-11-16 (owner: "do A + B"):** a hold no longer ends a U-turn. The approach
+  and the stop at the tape end start again; a pivot under way continues as a fresh turn with its
+  gates lowered by the angle already turned (`uturn.resume`, `tape_run.hold_u_turn`). FAULT only
+  when the counts are missing, the AGV turned more than 30 deg while held, or no angle is left.
+  A field stop mid-pivot now resumes by itself like any field stop. Vehicle check: do 6064h
+  counts keep counting under STO? Old note follows.
+- An E-stop during a U-turn still FAULTs the run (a pivot is never resumed part-way), so the
+  trip ends there. Owner to confirm under O-3.

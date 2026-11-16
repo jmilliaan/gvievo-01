@@ -203,3 +203,20 @@ def test_an_estop_hold_reads_manual_on_the_display_field_only():
     body = vs.build_state(view(trip(), line_state=3, hold_cause="estop", line_code="ESTOP"), SITE)
     assert body["safetyState"]["activeEmergencyStop"] == "MANUAL"
     assert vs.build_state(view(trip()), SITE)["safetyState"]["activeEmergencyStop"] == "NONE"
+
+
+def test_the_panel_emergency_is_reported_as_a_status_and_changes_nothing_else():
+    """Emergency plan Part B E7 (2026-11-16): the bridge reports the E-stop (PanelState.emergency) in
+    safetyState.activeEmergencyStop (no new key: contract section 6.2 pins the body); the order, its
+    actions and the errors are untouched (acceptance §7.9: the order is not cancelled)."""
+    o = trip("RUNNING", node="ATT", seq=2)
+    base = vs.build_state(view(o, emergency=0), SITE)
+    assert base == vs.build_state(view(o), SITE), "NORMAL and unknown read the same as before"
+    assert base["safetyState"]["activeEmergencyStop"] == "NONE"
+    for emg in (1, 2, 3, 4):
+        body = vs.build_state(view(o, emergency=emg), SITE)
+        assert body["safetyState"]["activeEmergencyStop"] == "MANUAL", emg
+        rest = {k: v for k, v in body.items() if k != "safetyState"}
+        assert rest == {k: v for k, v in base.items() if k != "safetyState"}, "status only"
+    held = vs.build_state(view(o, emergency=0, line_state=3, hold_cause="estop"), SITE)["safetyState"]
+    assert held["activeEmergencyStop"] == "MANUAL", "the run still held on the E-stop's terms until Start"

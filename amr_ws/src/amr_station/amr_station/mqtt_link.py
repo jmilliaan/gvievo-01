@@ -80,6 +80,10 @@ class MqttLink:
         self.connected = False
         self.queue: collections.deque = collections.deque(maxlen=QUEUE_MAX)
         self.monotonic = monotonic
+        # Called on paho's thread after every callback below (WP-C17): the node passes a
+        # GuardCondition's trigger, so its drain runs on the next spin instead of a 20 Hz poll.
+        # Thread-safe by contract; None = nobody to wake (the tests poll service()).
+        self.on_wake = None
         self.connections = 0  # counted on paho's thread; a new number means re-announce
         self._announced = 0  # the connection number subscribed and ONLINE was sent for
         self._up = False  # service() has reported "up" and not yet "down"
@@ -93,24 +97,39 @@ class MqttLink:
         self.c.on_message = self._on_message
         self.c.on_subscribe = self._on_subscribe
 
-    # -- paho's network thread: set a flag, queue bytes, nothing else --------------------------
+    # -- paho's network thread: set a flag, queue bytes, wake the caller, nothing else -----------
+    def _wake(self) -> None:
+        wake = self.on_wake
+        if wake is not None:
+            wake()
+
     def _on_connect(self, _c, _u, _flags, reason_code, _props=None):
         ok = not getattr(reason_code, "is_failure", bool(reason_code))
         if ok:
             self.connections += 1  # before `connected`: service() must never see the old number as new
         self.connected = ok
+        self._wake()
 
     def _on_disconnect(self, _c, _u, *_rest):
         self.connected = False
+        self._wake()
 
     def _on_subscribe(self, _c, _u, mid, reason_codes, _props=None):
         if not any(getattr(rc, "is_failure", bool(rc)) for rc in reason_codes):
             self._suback_mid = mid
+        self._wake()
 
     def _on_message(self, _c, _u, msg):
-        self.queue.append((msg.topic, bytes(msg.payload), bool(msg.retain)))
+        self.queue.append((msg.topic, bytes(msg.payload), bool(msg.retain)))  # before the wake
+        self._wake()
 
     # -- the caller's thread ---------------------------------------------------------------------
+    def take(self):
+        """Every queued message, oldest first, until the queue is empty: one wake handles a burst
+        (a GuardCondition's triggers coalesce), and one that lands mid-drain is taken too."""
+        while self.queue:
+            yield self.queue.popleft()
+
     def _next_header(self, topic: str) -> int:
         n = self._header[topic]
         self._header[topic] = n + 1

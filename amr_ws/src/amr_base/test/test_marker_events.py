@@ -89,3 +89,18 @@ def test_drive_node_checks_exactly_what_the_bench_tool_writes():
     i, s, _size, v, _label = read_mls.POLARITY_LOCK
     assert marker_expectation(True, True) == {**written, (i, s): v}
     assert (0x2029, 0) not in marker_expectation(False, False)
+
+
+def test_no_event_across_a_tpdo1_hole():
+    """WP-E8: mls_track marks the frame after a hole; a code showing then has unknown history."""
+    det = MarkerDetector([1, 2, 3])
+    holed = dict(frame(2), gap=True)
+    assert run(det, [frame(), frame(), holed, frame(2), frame()]) == []
+    ev = run(det, [frame(), frame(1), frame()])
+    assert [e.code for e in ev] == [1]
+
+
+def test_a_hole_also_ends_a_pending_abort():
+    det = MarkerDetector([1, 2, 3])
+    run(det, [frame(), frame(reading=True), frame(), dict(frame(), gap=True)] + [frame()] * 8)
+    assert det.aborts == 0

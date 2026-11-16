@@ -45,9 +45,11 @@ line_follow alone receives ~275 wakeups/s.
 
 ## 2. Thermal strategy
 
-- **Keep `no_turbo=1`** (cpu-no-turbo.service). The load is steady periodic work. Turbo
-  would only spend more voltage on the same cycles. The 2026-10-02 throttle at 100 °C
-  happened with turbo on.
+- **Turbo on, capped at 2.2 GHz** (`cpu-freq-cap.service`, which conflicts with
+  cpu-no-turbo.service; owner 2026-11-16, unified plan O-4). It replaces the earlier "keep
+  `no_turbo=1`". The 2026-10-02 throttle at 100 °C happened with turbo on and no cap; the
+  2.2 GHz cap and the PL2 15 W limit (cpu-power-limit.service) are what bound it now. Both
+  units are versioned in `amr_ws/deploy/` and enabled once per unit by the engineer.
 - **Measure before capping.** Run `sudo turbostat --quiet --show PkgWatt,PkgTmp,Bzy_MHz,Busy% -i 30`
   for ≥ 2 h of LINE running with AMCL localized, and note the room temperature. RAPL
   `energy_uj` is root-only, so package watts are unmeasured today.

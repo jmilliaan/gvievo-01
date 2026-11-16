@@ -2,6 +2,8 @@
 
     load(path=None)        -> validated dict (raises ValueError on anything off)
     mux_params(fields)     -> the cmd_mux_kinematics field parameters
+    protective_index(doc), protective_active_level(doc)
+                           -> what the follower and the executor read (WP-E3)
     reach_m(rect)          -> the farthest corner, = the range /field_data reports
 
 The scanner's verified configuration is the authority; this copy only tells the
@@ -89,10 +91,17 @@ def protective_index(doc: dict) -> int:
     return int(doc["fields"]["protective"]["path"])
 
 
+def protective_active_level(doc: dict) -> bool:
+    """The protective path's status while the field is OCCUPIED (WP-E3, 2026-11-16). The mux,
+    the follower and the executor all read clear as status != this; false on agv-01."""
+    return bool(doc["fields"]["protective"]["active"])
+
+
 def mux_params(doc: dict) -> dict:
     f = doc["fields"]
     return {
         "protective_index": protective_index(doc),
+        "protective_active_level": protective_active_level(doc),
         "warning_indices": [f["warning_1"]["path"], f["warning_2"]["path"]],
         "warning_scales": [float(f["warning_1"]["scale"]), float(f["warning_2"]["scale"])],
         "warning_active_level": f["warning_1"]["active"],

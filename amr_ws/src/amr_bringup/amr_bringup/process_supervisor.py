@@ -13,6 +13,8 @@ Rules:
   * "Stopped" means no process with our pgid exists any more, checked through
     /proc - a leader that exited while a grandchild lives is NOT stopped.
   * Nothing is killed by name.
+  * The web and the mode layer go first when the PC runs out of memory (oom_score_adj
+    +300, WP-H5); the base and the supervisor keep amr.service's OOMScoreAdjust=-500.
 """
 
 from __future__ import annotations
@@ -30,6 +32,58 @@ ALLOWED_EXECUTABLES = ("ros2",)
 # Direct module entry points: `ros2 run` does not forward SIGINT to its child,
 # so nodes we must stop cleanly are started as `python3 -m <module>` instead.
 ALLOWED_MODULES = ("amr_web.web_node",)
+
+# OOM killer preference per role (unified plan WP-H5). A role not listed inherits the
+# supervisor's -500 (amr.service OOMScoreAdjust): the base owns the drives and must outlive
+# both of these. Raising it needs no privilege; lowering it would.
+OOM_SCORE_ADJ = {"web": 300, "layer": 300}
+OOM_ADJ_PATH = "/proc/self/oom_score_adj"
+
+# The bounded teardown (unified plan WP-P4, H-P2-7). Group.stop() budgets per role, as
+# (SIGINT wait, SIGTERM wait, SIGKILL wait) seconds. Layer, then base: in turn, because the
+# base must outlive the layer that commands it. Every other group (the web) in parallel
+# after the base, on the short budget: it holds nothing the vehicle needs.
+STOP_BUDGET_S = {"layer": (6.0, 4.0, 2.0), "base": (6.0, 4.0, 2.0)}
+OPTIONAL_STOP_BUDGET_S = (2.0, 1.0, 1.0)
+LOCK_WAIT_S = 2.0  # shutdown() waits this long for the state lock
+EXECUTOR_STOP_S = 2.0  # main(): executor.shutdown, then the loop join, each
+LOOP_JOIN_S = 2.0
+# A web that ran this long before it died is not a crash loop: its tries start again.
+RESPAWN_RESET_S = 120.0
+
+
+def stop_budget_s() -> float:
+    """The worst case of the whole supervisor teardown, in seconds. amr.service's
+    TimeoutStopSec must exceed it by 10 s (test_liveness pins it)."""
+    serial = sum(sum(b) for b in STOP_BUDGET_S.values())
+    return LOCK_WAIT_S + serial + sum(OPTIONAL_STOP_BUDGET_S) + EXECUTOR_STOP_S + LOOP_JOIN_S
+
+
+def respawn_tries(previous: int, ran_s: float, reset_after_s: float = RESPAWN_RESET_S) -> int:
+    """The give-up counter after a respawnable group died having run `ran_s` seconds:
+    a long life clears it, so only quick deaths in a row add up to giving up."""
+    return 0 if ran_s >= reset_after_s else previous
+
+
+def oom_preexec(role: str, path: str = OOM_ADJ_PATH):
+    """A preexec_fn that sets the child's oom_score_adj for `role`, or None for a protected
+    role. Runs between fork and exec: os-level calls only, and silent on any error."""
+    value = OOM_SCORE_ADJ.get(role)
+    if value is None:
+        return None
+    data = str(int(value)).encode()
+
+    def set_adj() -> None:
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
+            try:
+                os.write(fd, data)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
+
+    return set_adj
 
 
 def _pgid_of(pid: int) -> int | None:
@@ -86,6 +140,7 @@ class Group:
             env=env,
             start_new_session=True,  # own session -> own pgid, signal the whole tree
             close_fds=True,
+            preexec_fn=oom_preexec(role),  # inherited by the whole group
         )
         if log_path:
             out.close()

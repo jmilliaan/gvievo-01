@@ -56,6 +56,13 @@ reply on the old one would answer the wrong request. This makes no image older t
 retry publishes nothing unless it succeeds, and panel_io.source_fresh() has its own age limit on the
 image whatever this does. A second failure is a lost module, as it always was.
 
+The client is built with retries=0 (2026-11-16, unified plan WP-E6): pymodbus's own
+default resends a timed-out request up to 3 more times, so one read call could take
+4 x timeout_s and every library retry multiplied inside the retry above. Now one
+timeout is one failed scan, and the retry above is the only one. The losses and the
+retries of the last 10 minutes are in the snapshot (drops_10min, retries_10min), so
+a connector that is going bad shows as a rising count before it costs a run.
+
 TOPOLOGY
 --------
 The RFID reader is daisy-chained THROUGH this module's second port, so both sit
@@ -66,17 +73,35 @@ cause; either alone is the device itself.
 """
 import threading
 import time
+from collections import deque
 
-from agv_core import config, events
+from agv_core import config
+
+# Window of the drops/retries counters in the snapshot.
+COUNT_WINDOW_S = 600.0
+
+# DI and DO in ONE FC03 read of the holding-register image (S-dio-fc03-combined-image):
+# DO word at 0x20, DI word at 0x22, bit n = channel n. That map is from the CK-TP5163
+# spec as quoted in manuals/external-features-survey.md; the spec is not in the repo,
+# the module here is a CK-TP5162, and 0x21 is an undocumented gap. So it is OFF (the two
+# bit reads, as before) until a bench read shows the image matches the bit reads on
+# this module. Internal on purpose, not a profile key: it is a fact about the module.
+COMBINED_IMAGE = False
+IMAGE_DO_REG = 0x20
+IMAGE_DI_REG = 0x22
 
 
 class DioLink:
     """Owns the Modbus socket on its own thread. start() once, read snapshot()."""
 
-    def __init__(self, client_factory=None):
+    def __init__(self, client_factory=None, on_event=None):
         # Injectable so the tests can drive a fake without a network or a
         # pymodbus import - the same reason RfidLink takes a codec.
         self._client_factory = client_factory or self._default_client
+        # on_event(level, text) at the link's edges (lean plan D08: replaces the unread
+        # agv_core/events.py ring). No-op by default: panel_node reports the same edges
+        # on /amr/events from the snapshot.
+        self._on_event = on_event or (lambda level, text: None)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
@@ -91,6 +116,8 @@ class DioLink:
         self._writes = 0
         self._retried = 0                   # scans that failed once and came good at once
         self._last_retry = ""               # why the last one failed
+        self._drop_times = deque()          # monotonic, connected -> lost edges
+        self._retry_times = deque()         # monotonic, scans saved by the retry
         # channel -> [value, expires_at]. An entry is created by the first
         # set_coil() for that channel and then kept: once this software has
         # claimed a coil it goes on asserting it, and an expired claim asserts
@@ -110,8 +137,10 @@ class DioLink:
         # Imported lazily: pymodbus costs ~40 ms and is dead weight in a process
         # running with dio.enabled false.
         from pymodbus.client import ModbusTcpClient
+        # retries=0: one timeout is one failed scan (see the module docstring). The
+        # keyword is in pymodbus 3.x (3.12 here, 3.15.0 pinned on the vehicles).
         return ModbusTcpClient(config.DIO_IP, port=config.DIO_PORT,
-                               timeout=config.DIO_TIMEOUT_S)
+                               timeout=config.DIO_TIMEOUT_S, retries=0)
 
     def start(self):
         if not config.DIO_ENABLED or self._thread:
@@ -165,6 +194,9 @@ class DioLink:
         now = time.monotonic()
         with self._lock:
             age = (now - self._last_ok) if self._last_ok else None
+            for times in (self._drop_times, self._retry_times):
+                while times and now - times[0] > COUNT_WINDOW_S:
+                    times.popleft()
             return {
                 "enabled": config.DIO_ENABLED,
                 "connected": self._connected,
@@ -181,6 +213,8 @@ class DioLink:
                 "writes": self._writes,
                 "retried": self._retried,
                 "last_retry": self._last_retry,
+                "drops_10min": len(self._drop_times),
+                "retries_10min": len(self._retry_times),
                 # Which coils this software is driving, and to what. The page
                 # needs it to tell "off because nothing asked" apart from "off
                 # because we are holding it off" - on an output those look
@@ -237,9 +271,11 @@ class DioLink:
         with self._lock:
             was, self._connected = self._connected, False
             self._detail = why
+            if was:
+                self._count(self._drop_times)
         self._close()
         if was:
-            events.warn(f"DIO lost: {why}")
+            self._on_event("warn", f"DIO lost: {why}")
 
     def _run(self):
         while not self._stop.is_set():
@@ -273,6 +309,16 @@ class DioLink:
         with self._lock:
             self._retried += 1
             self._last_retry = why
+            self._count(self._retry_times)
+
+    @staticmethod
+    def _count(times):
+        """One event into a 10-minute counter. Caller holds the lock. Bounded: at one
+        event per scan the window holds 12 000 entries, so cap it well above any count
+        that still needs reading exactly."""
+        times.append(time.monotonic())
+        if len(times) > 20000:
+            times.popleft()
 
     def _scan(self):
         """One PLC scan: read inputs, read the coil readback, publish."""
@@ -281,13 +327,16 @@ class DioLink:
         if not self._client.connect():
             raise ConnectionError(f"no answer at {config.DIO_IP}:{config.DIO_PORT}")
 
-        di = self._read_bits(self._client.read_discrete_inputs,
-                             config.DIO_DI_BASE, config.DIO_NUM_DI, "inputs")
-        # Read the coils back rather than trusting a shadow copy. Nothing here
-        # writes them today, but a readback is what would make a FAILED write
-        # visible rather than showing the value we wished for.
-        do = self._read_bits(self._client.read_coils,
-                             config.DIO_DO_BASE, config.DIO_NUM_DO, "coils")
+        if COMBINED_IMAGE and self._image_fits():
+            di, do = self._read_image()
+        else:
+            di = self._read_bits(self._client.read_discrete_inputs,
+                                 config.DIO_DI_BASE, config.DIO_NUM_DI, "inputs")
+            # Read the coils back rather than trusting a shadow copy. Nothing here
+            # writes them today, but a readback is what would make a FAILED write
+            # visible rather than showing the value we wished for.
+            do = self._read_bits(self._client.read_coils,
+                                 config.DIO_DO_BASE, config.DIO_NUM_DO, "coils")
 
         if config.DIO_DI_FLIPPED:
             di = [not b for b in di]
@@ -305,9 +354,9 @@ class DioLink:
             self._writes += wrote
             self._detail = f"{config.DIO_IP}:{config.DIO_PORT}"
         # Edge only. This runs every scan_period_s; emitting per scan would
-        # empty the 200-entry event ring in ten seconds.
+        # flood whoever listens, twenty times a second.
         if not was:
-            events.info(f"DIO connected {config.DIO_IP}:{config.DIO_PORT}")
+            self._on_event("info", f"DIO connected {config.DIO_IP}:{config.DIO_PORT}")
 
     def _write_phase(self, readback):
         """Drive claimed coils to match intent. Returns how many were written.
@@ -343,6 +392,28 @@ class DioLink:
             # claim low. Only now is stop() free to close the socket.
             self._quiet.set()
         return wrote
+
+    @staticmethod
+    def _image_fits():
+        """The register image is one 16-bit word each; channels beyond it need the bit reads."""
+        return (config.DIO_DI_BASE + config.DIO_NUM_DI <= 16
+                and config.DIO_DO_BASE + config.DIO_NUM_DO <= 16)
+
+    def _read_image(self):
+        """DI and the coil readback from ONE FC03 read. See COMBINED_IMAGE."""
+        count = IMAGE_DI_REG - IMAGE_DO_REG + 1
+        r = self._client.read_holding_registers(IMAGE_DO_REG, count=count,
+                                                device_id=config.DIO_DEVICE_ID)
+        if r.isError():
+            raise OSError(f"image read at {IMAGE_DO_REG:#x}: {r}")
+        regs = list(r.registers)
+        if len(regs) != count:
+            raise OSError(f"image: asked {count} registers, got {len(regs)}")
+        di_word = regs[IMAGE_DI_REG - IMAGE_DO_REG]
+        do_word = regs[0]
+        di = [bool(di_word >> (config.DIO_DI_BASE + i) & 1) for i in range(config.DIO_NUM_DI)]
+        do = [bool(do_word >> (config.DIO_DO_BASE + i) & 1) for i in range(config.DIO_NUM_DO)]
+        return di, do
 
     def _read_bits(self, fn, address, count, what):
         r = fn(address, count=count, device_id=config.DIO_DEVICE_ID)

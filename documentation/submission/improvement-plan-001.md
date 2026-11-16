@@ -56,6 +56,7 @@ The masters were edited, the three PDFs rebuilt and the four files copied into t
 - Software side of D1 (scanner field file), and deploying D5 to the vehicles.
 - Waiting for data: X8 and L2, the real type of the M12 plug (rows 23 and 24 still say "MOC-Y-CABLE"); M9, where the motor-driver circuit breakers are and who may operate them.
 - All P2 and P3 items.
+- **New 2026-11-16:** the 24 V converter `-TA3` is a **SD-100C-24** (100 W, 4.2 A out), owner statement. The circuit diagram (pages 20, 30, 80, `data/project.js`), the JIS sheets (00, 01), `designation-map.md`, the component list and the X3 fix above say SD-150C-24, 6.3 A (150 W). All of them need correcting. Check the nameplate first.
 
 Backups of every file as it was before this pass are in the session scratchpad only; the package files are tracked in git, but their previous state was uncommitted.
 

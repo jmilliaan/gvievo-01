@@ -132,6 +132,27 @@ function rail(st) {
   tile('tel-gen', m ? String(m.generation) : '–', st.lease ? 'lease' : 'no lease', st.lease ? '' : 'warn');
 }
 // Header chips beside NET: drive supply voltage and IPC CPU temperature (both <10 s old).
+// The temperature chip also counts thermal throttling (WP-P11): "· N/min" while the package
+// throttled since the last 5 s read. Report only: the throttle count never colours the chip.
+function throttleText(th) {
+  return th && typeof th.per_min === 'number' && th.per_min >= 0.5 ? ` · ${num(th.per_min, 0)}/min` : '';
+}
+function throttleTitle(th) {
+  if (!th) return '';
+  const rate = typeof th.per_min === 'number' ? `${num(th.per_min, 0)}/min now` : 'rate after the next read';
+  const ms = typeof th.total_ms === 'number' ? `, ${num(th.total_ms / 1000, 1)} s in all` : '';
+  const clamp = th.clamp ? ` · idle injection ${th.clamp} %` : '';
+  return `\nThrottled ${th.count} times since boot${ms} (${rate})${clamp}`;
+}
+// Supply chip class (WP-P7, 2026-11-16): bad at or below trip_low (new runs refused), warn at or
+// below warn_low or at or above warn_high. The limits come with drive_supply; without them, no class.
+function supplyLevel(s, vals) {
+  if (!vals.length) return '';
+  const lo = Math.min(...vals), hi = Math.max(...vals), n = k => typeof s[k] === 'number';
+  if (n('trip_low') && lo <= s.trip_low) return ' bad';
+  if ((n('warn_low') && lo <= s.warn_low) || (n('warn_high') && hi >= s.warn_high)) return ' warn';
+  return '';
+}
 function headerChips(st) {
   const sv = document.getElementById('supply'), tc = document.getElementById('ipc-temp');
   const s = st.drive_supply;
@@ -140,12 +161,15 @@ function headerChips(st) {
     const stale = !s || s.age_s > 10;
     sv.textContent = vals.length && !stale ? `${num(Math.min(...vals), 1)} V` : '– V';
     sv.title = s ? `Drive main supply: left ${num(s.left, 1)} V · right ${num(s.right, 1)} V (${num(s.age_s, 0)} s ago)` : 'Drive main supply: no report';
-    sv.className = 'chip' + (stale ? ' stale' : '');
+    if (s && typeof s.trip_low === 'number') sv.title += `\nNew runs are refused at ${num(s.trip_low, 1)} V or below`;
+    sv.className = 'chip' + (stale ? ' stale' : supplyLevel(s, vals));
   }
   if (tc) {
     const t = st.ipc_temp;
-    tc.textContent = t ? `${num(t.package_c, 0)} °C` : '– °C';
-    tc.title = t ? `IPC CPU: package ${num(t.package_c, 0)} °C, hottest core ${num(t.core_max_c, 0)} °C` : 'IPC CPU temperature unavailable';
+    const th = st.ipc_throttle;
+    tc.textContent = (t ? `${num(t.package_c, 0)} °C` : '– °C') + throttleText(th);
+    tc.title = (t ? `IPC CPU: package ${num(t.package_c, 0)} °C, hottest core ${num(t.core_max_c, 0)} °C`
+      : 'IPC CPU temperature unavailable') + throttleTitle(th);
     tc.className = 'chip' + (t && t.package_c >= 85 ? ' bad' : t && t.package_c >= 75 ? ' warn' : '');
   }
 }
@@ -181,11 +205,42 @@ async function pollAlarms() {
 }
 every(1000, pollAlarms);
 
+// Emergency banner (base.html, emergency-suite plan Part B E6): /api/state carries it already
+// decided (alarms.banner); this only draws it. The pages read the same object for their own
+// greyed controls (lastState.banner). --emg-h is the banner's height, taken off the Manual
+// pad's square so the pad stays above the fold at 1280x720 (amr.css .manual .pad). Home has no
+// banner element: its status tile shows the same (alarms.home_tile kind emergency).
+const mmss = s => { const t = Math.max(0, Math.floor(+s || 0)); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+function emgLayout() {
+  const el = document.getElementById('emg-banner'), on = !!el && !el.hidden;
+  document.documentElement.classList.toggle('emg', on);
+  document.documentElement.style.setProperty('--emg-h', on ? `${el.offsetHeight}px` : '0px');
+}
+function emgBanner(b) {
+  const el = document.getElementById('emg-banner');
+  if (!el) return;
+  el.hidden = !b;
+  if (b) {
+    el.classList.toggle('failed', !!b.failed);
+    document.getElementById('emg-title').textContent = b.title;
+    document.getElementById('emg-since').textContent = mmss(b.since_s);
+    document.getElementById('emg-note').textContent = b.note || '';
+    document.getElementById('emg-steps').innerHTML = (b.steps || []).map(s =>
+      `<li class="${s.done ? 'done' : ''}${s.now ? ' now' : ''}">${esc(s.text)}</li>`).join('');
+    const f = document.getElementById('emg-fail');
+    f.hidden = !b.failed; f.textContent = b.failed_text || '';
+  }
+  emgLayout();
+}
+emgLayout();
+window.addEventListener('resize', emgLayout);
+
 async function poll() {
   try {
     const { status, data } = await apiGet('/api/state');
     if (status === 200) {
       lastState = data;
+      emgBanner(data.banner || null);
       pill('pill-link', 'connected', 'ok');
       railStale(false);
       rail(data);

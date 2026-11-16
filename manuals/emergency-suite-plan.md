@@ -9,6 +9,9 @@ Branch `gvievo-main` · 2026-11-12 · **Part A built 2026-11-12** (uncommitted; 
   It is a port of `origin/kyb-trackless` (MCQ4-4), commits 243433c, 481ffda and c36c8d2 (2026-10-30),
   with that branch's `manuals/emergency-suite-plan.md` as the design source. When it lands it adds one
   row on top of Part A's tile table (A5). Nothing in Part A has to be undone.
+  **2026-11-16:** the trigger is met (Q3 → DI09 wired, owner 2026-11-15). Part B replaces WP-Y1 of
+  `manuals/unified-coding-plan.md` (its decision 22), which lists the checks E1 takes over and the
+  open question O-3 that E5 must settle first.
 
 # Part A: Home screen
 
@@ -153,7 +156,9 @@ interim banner without the signal.
 | Item | Decision |
 |---|---|
 | Wire | Flexi Soft **Q3 → DI09** (free; DI08 is already Manual Arm here). Terminal numbers «TB?» |
-| Q3 logic | **E-stop OK only**: both E-stop channels (I1/I2) closed. **Not** the scanner OSSD: a field stop must not raise the banner, and the field auto-resume must keep working |
+| Q3 logic | **E-stop only**: follows the E-stop channels (I1/I2). **Not** the scanner OSSD: a field stop must not raise the banner, and the field auto-resume must keep working |
+| Q3 polarity (owner 2026-11-16) | **HIGH = E-stop triggered; LOW / no signal = normal.** Informational, not a safety function, so a broken wire reads normal (no fail-safe). Software: profile `panel.estop_active_high: true` (flip it if the bench finds the program the other way round). **The electrical drawings (io-mapping §4, IEC pages 42/60, sheets 08/09) still say "ESTOP OK, ON = not pressed": HT-2 to align** |
+| Only the signal (owner 2026-11-16) | A DIO link gap or an invalid panel image is **not** an E-stop (it would stop the AGV at random). `emergency.py` holds its state while the image is invalid; PANEL_STALE / DIO_LINK_LOST report the link. Supersedes the "invalid or stale = ACTIVE at once" rule in E3 |
 | Q3 latching | **Unlatched**: Q3 follows the button. This gives the PC the "released, press Reset" step. `emergency.py` handles a latched Q3 too, but then it cannot tell the operator "released" |
 | Test pulses | **Off** for Q3: it feeds a standard DI. kyb found single LOW scans from test pulses, which `estop_low_scans` filters |
 | Validation | Changing the Flexi Soft project means re-verifying the safety functions after the download (E-stop, protective field, SLS/standstill) and keeping a record. This is your or the integrator's procedure, outside this repo |
@@ -215,7 +220,7 @@ commissioning and RFID. main added station call, the position engine and NORMAL+
    as today after a real E-stop).
 5. Start pressed with the E-stop in → refused at once, no pre-move.
 6. Reset pressed with the E-stop in → no change; the banner keeps the "release" step.
-7. Unplug the DI09 wire → EMERGENCY (fail-safe). Unplug the DIO Ethernet → PANEL_STALE, no motion.
+7. Unplug the DI09 wire → **no** emergency (owner 2026-11-16: LOW / no signal = normal, informational). Unplug the DIO Ethernet → PANEL_STALE, **no** emergency banner; the emergency state holds as it was.
 8. Protective-field stop on tape and in NAVIGATION → **no** banner, and the auto-resume still works.
 9. Station call: an emergency during a called trip shows on the bridge status. The order is not cancelled.
 

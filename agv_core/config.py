@@ -92,6 +92,30 @@ panel.di_manual_arm
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
     enable fails, and it is retried on a slow backoff, never latched.
 
+panel.di_estop / estop_active_high / estop_confirm_scans / estop_reset_timeout_s
+    E-stop signal (emergency-suite plan Part B, 2026-11-16): Flexi Soft Q3 on DI09. Owner
+    2026-11-16: HIGH = E-stop triggered, LOW / no signal = normal (estop_active_high true), and
+    the signal is INFORMATIONAL, not a safety function - a broken wire reads normal. Unlatched
+    (Q3 follows the button), test pulses off. A COM1 input (DI09-DI0F): DI07 is COM0 and does
+    not read a sourcing output, DI08 is Manual Arm. Required while panel.enabled.
+    amr_base/emergency.py turns it, the Reset edge and the drives' STO state into
+    PanelState.emergency; while that is not NORMAL the drives are not powered, the mux selects
+    nothing, the supervisor withholds the lease and every DIO output is LOW. Only this signal
+    makes an emergency: an invalid or stale panel image (a DIO gap) holds the state as it was.
+
+    estop_active_high: the polarity, so a bench that finds the Flexi Soft program the other way
+    round is a profile edit (the 2026-11-15 drawings say ON = not pressed; the owner's
+    2026-11-16 answer is HIGH = pressed).
+
+    estop_confirm_scans: the signal must read active this many consecutive valid scans before
+    the PC calls it an emergency (kyb, 2026-11-02: one-scan Q3 test pulses tripped it). Capped
+    at 0.2 s of scans. Clearing needs debounce_scans. This filters only the PC's picture: STO is
+    the Flexi Soft's, in hardware, and nothing here delays it.
+
+    estop_reset_timeout_s: after a Reset with the signal clear, how long the drives may stay in
+    Switch on disabled (STO held) before the state reads RESET_FAILED ("press Reset again").
+    Reaching NORMAL never grants motion: Start (AUTO) or the manual lease is still needed.
+
 timing.loop_period_s
     The 50 Hz bus loop in drive_node. Statusword, velocity, position and the error
     register arrive on drive TPDO1/TPDO2 (amr_base.canopen), so the loop carries no
@@ -178,29 +202,15 @@ monitor.*
     refusing to take, and the high warn wants to sit well below the drive's
     own 63 V overvoltage trip.
 
-horn.*
-    The only output this software energises. One DO drives the horn AND the
-    running lights together - one channel, one meaning - and it goes high
-    whenever motion is COMMANDED: manual jog or auto run, no distinction,
-    because the hazard is the same 150 kg either way and a horn that means two
-    different things means neither.
-
-    *** It follows the setpoint, not the wheels. *** The coil is raised from the
-    commanded target, so it sounds at the instant motion is asked for rather
-    than once the vehicle is already rolling - which is the whole point of a
-    warning device. It also means the horn goes quiet while the drives are
-    still decelerating, and that is the right way round: the warning ends when
-    the vehicle stops being commanded to move, and what remains is a coast that
-    is already ending.
-
-    *** Not a safety function. *** The stop is the OSSD chain into the FX3, in
-    hardware. This is an audible and visible warning and nothing gates on it: a
-    horn that failed to sound must not be able to prevent a jog, or a broken
-    lamp becomes a stranded vehicle.
-
-    Renewal, not level. The command carries HORN_HOLD_S and the CAN tick renews
-    it every 20 ms; a tick that stops renewing drops the coil at the DIO scan
-    rather than leaving it energised. See the derived value.
+monitor.bus_v_trip_low
+    Supply/brownout (unified plan WP-P7, 2026-11-16). At or below this the drive
+    supply reads "trip": a SUPPLY_TOO_LOW event, the header chip turns bad, and a NEW
+    run is refused. Refusal only: a run already going is never stopped by it (the
+    voltage sags under load; the drives' own undervoltage alarm is the backstop).
+    Below bus_v_warn_low. 46.0 V is a PLACEHOLDER until the owner sets it from the
+    battery's BMS cut-off. Detection is slow on purpose: 40A4h is one object of the
+    round-robin, so each drive's reading is up to 22 slots old (about 6 s still, 22 s
+    moving at drive_node's monitor_period_* defaults), plus the 1 s diagnostics period.
 
 blind_run.*
     Encoder-only test moves from /blind, to measure the encoders before SLAM
@@ -366,6 +376,10 @@ rear.*  (manuals/station-call-plan.md section 11)
       stale_s             no scan this long = UNKNOWN. At most freshness.field_s
       max_invalid_ratio   more than this share of the zone's beams invalid = UNKNOWN
       laser_*             the rear scanner's pose in base_link (MEASURE at P8)
+      sensor_ip, host_ip, port  the rear driver's addresses (scanner_config.scanner_driver_params,
+                          WP-P10). PLACEHOLDERS until the rear is fitted: the owner picks them
+                          with the switch or NIC it needs. port is never lidar.port, and the
+                          sensor never shares the front unit's address
 
 imu.*
     The yaw-rate gyro inside the SICK MLS on can.sensor_node (amr_base.mls_imu):
@@ -586,11 +600,13 @@ _SCHEMA = {
         "di_manual_arm":  ("PANEL_DI_MANUAL_ARM", int),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
+        # E-stop signal, Flexi Soft Q3 (emergency-suite plan Part B; HIGH = pressed, owner 2026-11-16)
+        "di_estop":       ("PANEL_DI_ESTOP", int),
+        "estop_active_high": ("PANEL_ESTOP_ACTIVE_HIGH", bool),
+        "estop_confirm_scans": ("PANEL_ESTOP_CONFIRM_SCANS", int),
+        "estop_reset_timeout_s": ("PANEL_ESTOP_RESET_TIMEOUT_S", float),
     },
-    "horn": {
-        "enabled":    ("HORN_ENABLED", bool),
-        "do_channel": ("HORN_DO_CHANNEL", int),
-    },
+    # "horn" (horn.enabled / do_channel) is retired (lean plan D16, 2026-11-16): refused in _parse.
     "pendant": {
         # Hard-wired jog pendant on the DIO island: four direction pushbuttons,
         # levels resolved in core/panel.pendant_intent() (an opposing pair
@@ -617,6 +633,7 @@ _SCHEMA = {
         "motor_temp_warn_c":  ("MON_MTR_WARN_C", float),
         "motor_temp_trip_c":  ("MON_MTR_TRIP_C", float),
         "bus_v_warn_low":     ("MON_BUS_V_WARN_LOW", float),
+        "bus_v_trip_low":     ("MON_BUS_V_TRIP_LOW", float),
         "bus_v_warn_high":    ("MON_BUS_V_WARN_HIGH", float),
     },
     "mls": {
@@ -675,6 +692,9 @@ _SCHEMA = {
     },
     "rear": {
         "source":             ("REAR_SOURCE", str),
+        "sensor_ip":          ("REAR_SENSOR_IP", str),
+        "host_ip":            ("REAR_HOST_IP", str),
+        "port":               ("REAR_PORT", int),
         "field_output_index": ("REAR_FIELD_OUTPUT_INDEX", int),
         "no_trolley_case":    ("REAR_NO_TROLLEY_CASE", int),
         "case_proven":        ("REAR_CASE_PROVEN", bool),
@@ -921,6 +941,11 @@ def _parse(doc):
         raise ConfigError("profile must be a JSON object")
 
     expected_sections = set(_SCHEMA) | set(_TOP_LEVEL_SCALARS)
+    if "horn" in doc:
+        # Lean plan D16 (2026-11-16): the setpoint-following horn engine is gone. The horn's two
+        # sounds are dio.motion_on / dio.movement_horn (DO00) and dio.alarm_on (DO01).
+        raise ConfigError("horn: section retired (lean plan D16): delete it; the horns are "
+                          "dio.motion_on / dio.movement_horn / dio.alarm_on")
     unknown = set(doc) - expected_sections
     if unknown:
         raise ConfigError(f"unknown top-level key(s): {sorted(unknown)}")
@@ -1015,14 +1040,15 @@ def _derive(ns):
     ns["MONITOR_THRESHOLDS"] = {
         "drv_c": {"warn": ns["MON_DRV_WARN_C"], "trip": ns["MON_DRV_TRIP_C"]},
         "mtr_c": {"warn": ns["MON_MTR_WARN_C"], "trip": ns["MON_MTR_TRIP_C"]},
-        "bus_v": {"warn_low": ns["MON_BUS_V_WARN_LOW"],
+        "bus_v": {"warn_low": ns["MON_BUS_V_WARN_LOW"], "trip_low": ns["MON_BUS_V_TRIP_LOW"],
                   "warn": ns["MON_BUS_V_WARN_HIGH"]},
     }
 
     ns["NODES"] = {ns["LEFT"]: "left", ns["RIGHT"]: "right"}
 
-    # How long a coil command stays valid without being renewed. The horn is
-    # commanded from the CAN tick and written by the DIO thread, so the two run
+    # How long a coil command stays valid without being renewed. Every dio coil
+    # (motion_on, alarm_on) is commanded from panel_node's tick and written by
+    # the DIO thread; the horn.* section is retired (D16), the name stays. The two run
     # at different rates and the command has to survive the gap between them -
     # but only the gap. If the tick stops renewing it, the coil must fall low on
     # its own rather than sound until somebody kills the process, which is the
@@ -1150,6 +1176,9 @@ def _validate(ns):
     check(g("MON_BUS_V_WARN_LOW") < g("MON_BUS_V_WARN_HIGH"),
           f"monitor.bus_v_warn_low ({g('MON_BUS_V_WARN_LOW')}) must be below "
           f"bus_v_warn_high ({g('MON_BUS_V_WARN_HIGH')})")
+    check(0 < g("MON_BUS_V_TRIP_LOW") < g("MON_BUS_V_WARN_LOW"),
+          f"monitor.bus_v_trip_low ({g('MON_BUS_V_TRIP_LOW')}) must be above 0 and below "
+          f"bus_v_warn_low ({g('MON_BUS_V_WARN_LOW')}): the warning comes first")
 
     # -- dio --------------------------------------------------------------
     check(1 <= g("DIO_PORT") <= 65535, "dio.port must be in 1..65535")
@@ -1187,23 +1216,42 @@ def _validate(ns):
     check(g("LIDAR_HOST_IP") != g("LIDAR_SENSOR_IP"),
           "lidar.host_ip and lidar.sensor_ip must differ - host_ip is the "
           "address we bind, sensor_ip is the scanner we accept datagrams from")
+    for key in ("host_ip", "sensor_ip"):
+        check(_ipv4(g(f"LIDAR_{key.upper()}")),
+              f"lidar.{key} must be a dotted IPv4 address, got {g(f'LIDAR_{key.upper()}')!r}")
 
     # -- panel ------------------------------------------------------------
     chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
-             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM")}
+             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM"),
+             "di_estop": g("PANEL_DI_ESTOP")}
     for key, ch in chans.items():
         check(0 <= ch < g("DIO_NUM_DI"),
               f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
     # Two functions on one channel is a wiring or config error that would
     # otherwise present as phantom presses - a Reset edge every time Start is
     # pushed - which is a miserable thing to debug from the vehicle.
-    check(len(set(chans.values())) == 4,
+    check(len(set(chans.values())) == len(chans),
           f"panel channels must be distinct, got {chans}")
     if g("PENDANT_ENABLED"):
         jog = {g("PENDANT_DI_FWD"), g("PENDANT_DI_RVS"), g("PENDANT_DI_LEFT"), g("PENDANT_DI_RIGHT")}
         check(g("PANEL_DI_MANUAL_ARM") not in jog,
               f"panel.di_manual_arm ({g('PANEL_DI_MANUAL_ARM')}) is a pendant channel: "
               "every jog press would also power the drives")
+        check(g("PANEL_DI_ESTOP") not in jog,
+              f"panel.di_estop ({g('PANEL_DI_ESTOP')}) is a pendant channel")
+    # E-stop signal (Flexi Soft Q3, emergency-suite plan Part B): a sourcing output reads only in
+    # the COM1 group, DI09-DI0F (DI07 is COM0, DI08 Manual Arm; unified plan Z, ex WP-Y1).
+    # Required while the panel is read: there is no "no E-stop input" setting.
+    check(not g("PANEL_ENABLED") or 9 <= g("PANEL_DI_ESTOP") <= 15,
+          f"panel.di_estop ({g('PANEL_DI_ESTOP')}) must be a COM1 input DI09-DI0F (9..15) "
+          "while panel.enabled: Q3 sources 24 V, which COM0 (DI00-DI07) does not read")
+    # The confirm filter delays only the PC's picture (never the Flexi Soft's STO): cap it so a
+    # real press is still seen within 0.2 s.
+    check(1 <= g("PANEL_ESTOP_CONFIRM_SCANS")
+          and g("PANEL_ESTOP_CONFIRM_SCANS") * g("DIO_SCAN_PERIOD_S") <= 0.2 + 1e-9,
+          "panel.estop_confirm_scans must be >= 1 and at most 0.2 s of DIO scans")
+    check(0.5 <= g("PANEL_ESTOP_RESET_TIMEOUT_S") <= 30.0,
+          "panel.estop_reset_timeout_s must be in 0.5..30 s")
     check(g("PANEL_DEBOUNCE_SCANS") >= 1, "panel.debounce_scans must be >= 1")
     # A selector change and a pendant press landing in the SAME scan is not a hand: on
     # 2026-09-17 the DIO image showed MANUAL+FWD for 1.02 s mid-route with nobody at the
@@ -1217,8 +1265,6 @@ def _validate(ns):
           "from the DI image, so the buttons would never respond")
 
     # -- motion outputs ----------------------------------------------------
-    check(not (g("HORN_ENABLED") and g("HORN_DO_CHANNEL") in g("DIO_MOTION_ON") + g("DIO_ALARM_ON")),
-          f"dio.motion_on/alarm_on include the horn's channel {g('HORN_DO_CHANNEL')}: one coil, two owners")
     check(set(g("DIO_MOVEMENT_HORN")) <= set(g("DIO_MOTION_ON")),
           "dio.movement_horn must be among dio.motion_on (it is a motion output that yields to the alarm)")
     check(not set(g("DIO_MOTION_ON")) & set(g("DIO_ALARM_ON")),
@@ -1229,16 +1275,6 @@ def _validate(ns):
           "dio.call_alarm_off_s must be in 0..10 s (0 = continuous)")
     check(g("DIO_CALL_ALARM_ON_S") == 0.0 or g("DIO_ALARM_ON"),
           "dio.call_alarm_on_s is set while dio.alarm_on is empty: the stop call has no output to sound")
-
-    # -- horn -------------------------------------------------------------
-    check(0 <= g("HORN_DO_CHANNEL") < g("DIO_NUM_DO"),
-          f"horn.do_channel ({g('HORN_DO_CHANNEL')}) must be a channel in "
-          f"0..{g('DIO_NUM_DO') - 1}")
-    # Same reasoning as panel.enabled above: the coil is written by the DIO
-    # scan, so without it the horn is silently dead rather than merely off.
-    check(not g("HORN_ENABLED") or g("DIO_ENABLED"),
-          "horn.enabled is true while dio.enabled is false - the coil is "
-          "written by the DIO scan, so the horn would never sound")
 
     # -- pendant ----------------------------------------------------------
     pchans = {k: g(f"PENDANT_DI_{k.upper()}") for k in ("fwd", "rvs", "left", "right")}
@@ -1392,6 +1428,11 @@ def _check_finite(ns):
     return ns
 
 
+def _ipv4(text):
+    """A dotted IPv4 address: four numbers 0..255."""
+    return bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", text)) and all(int(p) <= 255 for p in text.split("."))
+
+
 def _check_station(g, check):
     """The station block (manuals/station-call-plan.md P1)."""
     check(not g("TAPE_LOC_AUTO_RECOVER_HOME") or g("TAPE_LOC_AUTO_CONFIRM_HOME"),
@@ -1442,6 +1483,16 @@ def _check_rear(g, check):
     check(g("REAR_STALE_S") <= g("FRESH_FIELD_S"),
           f"rear.stale_s ({g('REAR_STALE_S')} s) must not exceed freshness.field_s ({g('FRESH_FIELD_S')} s)")
     check(0.0 < g("REAR_MAX_INVALID_RATIO") <= 1.0, "rear.max_invalid_ratio must be in (0, 1]")
+    # The rear driver's addresses (WP-P10): placeholders while rear.source is none, still checked.
+    for key in ("host_ip", "sensor_ip"):
+        check(_ipv4(g(f"REAR_{key.upper()}")),
+              f"rear.{key} must be a dotted IPv4 address, got {g(f'REAR_{key.upper()}')!r}")
+    check(g("REAR_SENSOR_IP") != g("REAR_HOST_IP"), "rear.host_ip and rear.sensor_ip must differ")
+    check(g("REAR_SENSOR_IP") != g("LIDAR_SENSOR_IP"),
+          f"rear.sensor_ip ({g('REAR_SENSOR_IP')}) must not be the front scanner's lidar.sensor_ip")
+    check(1 <= g("REAR_PORT") <= 65535, "rear.port must be in 1..65535")
+    check(g("REAR_PORT") != g("LIDAR_PORT"),
+          f"rear.port ({g('REAR_PORT')}) must differ from lidar.port: one host UDP port per scanner")
 
 
 def load(path=None):
@@ -1504,7 +1555,7 @@ _UNIT_SUFFIX = (
 # not one (MPS_PER_RPM is metres per second per r/min, not r/min).
 _UNIT_EXACT = {
     "CAN_BITRATE": "bit/s",
-    "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V",
+    "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V", "MON_BUS_V_TRIP_LOW": "V",
     "MPS_PER_RPM": "m/s per r/min", "RPM_PER_MPS": "r/min per m/s",
     "RAD_S_PER_RPM_DIFF": "rad/s per r/min diff", "MAX_SPEED_MPS": "m/s",
     "WHEEL_RAD_S_PER_MOTOR_RPM": "wheel rad/s per motor r/min",

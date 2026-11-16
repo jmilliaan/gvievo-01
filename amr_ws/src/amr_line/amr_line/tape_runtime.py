@@ -108,12 +108,15 @@ class TapeRuntime:
 
     # -- inputs --------------------------------------------------------------------
     def tick(self, t, travel, nlcp, still, uturn_phase="", pivot=False):
-        """Every control tick. travel: cumulative signed wheel travel (None: unknown).
+        """Every control tick. travel: cumulative signed wheel travel (None: unknown). nlcp: the MLS
+        #LCP, None when the reading is stale (an open fork episode is then aborted, H-P2-3).
         pivot: a kink pivot or the U-turn spin turns the sensor across the tape (the node
         already feeds #LCP 0 then; the recorder notes where, to drop the corner's fork)."""
         if self.ready_t is not None and t - self.ready_t > READINESS_STALE_S and self.ready:
             self._readiness(False, "localization state stale")
         self.t = t
+        if nlcp is None:
+            self._abort_forks()
         if travel is None:
             return
         self.travel = travel
@@ -146,6 +149,17 @@ class TapeRuntime:
                 (WARN, f"AMCL not used, on wheels and tape from S {loc.S:.2f} m: {loc.amcl_out}")
                 if loc.amcl_out else (INFO, f"AMCL back at S {loc.S:.2f} m, sigma {loc.sigma:.3f} m"))
             self._was_out = loc.amcl_out
+
+    def _abort_forks(self):
+        """nlcp None: no fresh MLS reading (H-P2-3). An open fork episode cannot be closed where the
+        reading comes back without inventing its end: dropped, with a WARN."""
+        dets = [("shadow", self._forks)]
+        if self.recorder is not None:
+            dets.append(("teach pass", self.recorder.forks_seen))
+        for what, det in dets:
+            if det.open:
+                det.reset()
+                self.events.append((WARN, f"{what}: fork episode aborted, the MLS reading went stale"))
 
     def _uturn(self, travel, phase):
         prev, self._uturn_phase = self._uturn_phase, phase or ""

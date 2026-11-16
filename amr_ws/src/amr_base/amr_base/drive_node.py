@@ -2,16 +2,28 @@
 
     /cmd_wheel_vel  (WheelVelocities, mux, 50 Hz)  ->  RPDO1 to both drives
     TPDO1/TPDO2 from both drives                   ->  /wheel_states  (WheelStates)
-    MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data_raw  (sensor_msgs/Imu)
+    MLS 2034h:3 (TPDO or SDO poll)                 ->  /imu/data (bias removed, agv_core.gyro)
+                                                       /imu/data_raw only with subscribers
+    6064h counts (+ 606Ch)                         ->  /odom_raw  (nav_msgs/Odometry, wheel_odom)
     MLS TPDO1 track (or SDO poll, read-only)       ->  /amr/line_track (LineTrack)
     MLS TPDO1 marker code (profile mls.*)          ->  /amr/line_marker (MarkerEvent)
     MLS event flag -> 2080h cause, 2070h temp      ->  /amr/events MLS_FIELD_WEAK / MLS_TEMP
     CiA-402 state, alarms, liveness                ->  /drives/status (DriveStatus, 10 Hz)
+    drives, bus, MLS track and gyro link health    ->  /amr/device_health (DeviceHealth, 2 Hz + edges)
 
     /amr/commissioning_pp (PpMove, held 50 Hz)     ->  profile-position blind move
-    /drives/pp_status (PpStatus, 10 Hz)            <-  its state and last result
+    /drives/pp_status (PpStatus)                   <-  its state and last result; only with a
+                                                       subscriber: 10 Hz during a move, 4 Hz idle
 
-Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault.
+Services (std_srvs/Trigger): /drives/arm, /drives/disarm, /drives/ack_fault, /imu/recalibrate.
+
+Gyro and odometry (unified plan WP-C5, WP-C10, 2026-11-16): what imu_bias_node and
+diff_drive_odom_node did on the vehicle is done here, on the bus thread, from the same samples -
+one process and two topic hops fewer. /imu/data keeps "nothing until calibrated" and the
+plausibility check (gyro_check, withholding OFF by default until the gyro_sign VERIFY);
+/odom_raw keeps its frames (odom -> base_footprint) and the EKF reads it unchanged. A staleness gap
+in the wheel feedback is bridged (H-P2-2), and a wheel whose 6064h counts disagree with its 606Ch
+velocity is reported invalid (DRIVE_FEEDBACK_IMPLAUSIBLE).
 
 Drive power (2026-10-08). The link and the power stage are separate levels:
 STANDBY (CANopen up, TPDOs flowing, power stage off) whenever the link is wanted,
@@ -58,11 +70,14 @@ from agv_core import (
 )
 from agv_core.drivers.canbus import read_mls  # noqa: E402
 from agv_core.drivers.canbus.sdo import open_bus  # noqa: E402
+from agv_core.gyro import GyroFilter
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import arm_policy, canopen, drive_state, gating, pp
+from amr_base import arm_policy, canopen, drive_state, gating, health_pub, panel_io, pp, sto_rearm, wheel_odom
+from amr_base.diff_drive import Geometry, forward, profile_geometry
 from amr_base.lean_node import LeanNode, UiThrottle, run
 from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
@@ -95,17 +110,9 @@ BIG = 1e6
 marker_expectation = read_mls.marker_expectation
 
 
-def _fault_code(reason: str) -> str:
-    """canopen.decide()'s fault reason -> the catalogue code the operator sees."""
-    r = (reason or "").lower()
-    if "silent" in r:
-        return "DRIVE_SILENT"
-    if "alarm" in r:
-        return "DRIVE_ALARM"
-    return "DRIVE_FAULT"
-
-
 FIELD_EVENT_MIN_S = 2.0  # MLS_FIELD_WEAK: at most one operator event this often (mls-diagnostics-plan M1)
+PP_STATUS_IDLE_S = 0.25  # /drives/pp_status between moves (C#21); commissioning's freshness is 0.5 s
+PP_STATUS_BUSY_S = 0.1  # ... while a move is held or running
 
 def _sysfs_count(path: str) -> str:
     """A kernel counter as text, "" when unreadable (slcan without a netdev, a dev box)."""
@@ -118,7 +125,7 @@ def _sysfs_count(path: str) -> str:
 
 class DriveNode(LeanNode):
     def __init__(self) -> None:
-        super().__init__("drive_node")
+        super().__init__("drive_node", start_parameter_services=False)  # WP-C11: nobody sets params live
         dp = self.declare_parameter
         # The loop period, driver timeout, IMU/monitor switches and MLS variant come from
         # the profile directly (config.*): no ROS param shadows them.
@@ -133,10 +140,32 @@ class DriveNode(LeanNode):
         dp("pc_loss_ms", config.PC_LOSS_MS)  # 1016h on the drives; 0 (bench only) disables it
         dp("ramp", "auto")  # profile drivers.ramp.<name>
         dp("imu_poll_hz", 50.0)
-        dp("imu_stamp_every", 10)
+        dp("imu_stamp_every", 5)  # H-P1-7: a frozen stamp is seen within 6 polls
         dp("gyro_sign", 1.0)  # VERIFY on the vehicle: CCW spin must read positive
         dp("gyro_var", 1e-6)  # (rad/s)^2; measured sigma 0.029 deg/s and LSB 0.061 deg/s
         dp("imu_frame", "imu_frame")
+        # imu_bias_node's parameters, moved here (WP-C5); same defaults.
+        dp("gyro_window_s", 2.0)
+        dp("gyro_settle_s", 0.3)
+        dp("gyro_still_wheel_rad_s", 0.01)
+        dp("gyro_wheel_timeout_s", 0.2)
+        # withhold /imu/data while the gyro disagrees with the wheels: OFF until the gyro_sign
+        # VERIFY (lead, 2026-11-16; agv_core.gyro). The check runs and logs either way.
+        dp("gyro_check", False)
+        # diff_drive_odom_node's parameters, moved here (WP-C10); same defaults.
+        dp("wheel_radius_m", profile_geometry().wheel_radius_m)
+        dp("track_width_m", profile_geometry().track_width_m)
+        dp("odom_frame", "odom")
+        dp("base_frame", "base_footprint")
+        dp("twist_cov_vx", 1e-3)
+        dp("twist_cov_vyaw", 1e-3)
+        dp("pose_cov_base", 1e-3)
+        dp("pose_cov_per_m", 1e-3)
+        # S-odom-twist-from-606c (WP-T4): "counts" (as before) | "606c". Stays "counts" until the
+        # 606Ch lag is measured against the 6064h derivative on a logged run.
+        dp("odom_twist_source", "counts")
+        # H-P2-2: a wheel whose 6064h travel disagrees with its 606Ch velocity is reported invalid.
+        dp("feedback_check", True)
         # MLS track reading (line-follow plan §1.1), read-only: tpdo | sdo | auto | off.
         # auto listens for TPDO1 and polls by SDO (monitor rate) while none arrive.
         dp("mls_track_mode", "auto")
@@ -170,6 +199,29 @@ class DriveNode(LeanNode):
         self.imu_enabled = bool(config.IMU_ENABLED)
         self.imu_frame = p("imu_frame").value
         self.gyro_var = p("gyro_var").value
+        self._gyro = GyroFilter(
+            window_s=float(p("gyro_window_s").value),
+            settle_s=float(p("gyro_settle_s").value),
+            wheel_timeout_s=float(p("gyro_wheel_timeout_s").value),
+            withhold=bool(p("gyro_check").value),
+        )
+        self._still_eps = float(p("gyro_still_wheel_rad_s").value)
+        self._geom = Geometry(float(p("wheel_radius_m").value), float(p("track_width_m").value))
+        self._odom = wheel_odom.WheelOdom(self._geom, str(p("odom_twist_source").value))
+        self._feedback_check = bool(p("feedback_check").value)
+        self.odom_frame, self.base_frame = p("odom_frame").value, p("base_frame").value
+        self._pose_cov = (float(p("pose_cov_base").value), float(p("pose_cov_per_m").value))
+        # Built once (C#21), copied into each message.
+        self._imu_orient_cov = [-1.0] + [0.0] * 8
+        self._imu_wz_cov = [BIG, 0.0, 0.0, 0.0, BIG, 0.0, 0.0, 0.0, self.gyro_var]
+        self._twist_cov = wheel_odom.diag6(
+            float(p("twist_cov_vx").value), BIG, BIG, BIG, BIG, float(p("twist_cov_vyaw").value)
+        )
+        self._subs = {"raw": 0, "pp": 0}  # subscriber counts, refreshed by the 1 Hz slot (bus thread)
+        self._pp_key = None
+        self._t_pp = 0.0
+        self._positions: dict = {}
+        self._checks: dict = {}
 
         self.nodes = dict(config.NODES)
         self._lock = threading.Lock()
@@ -183,6 +235,8 @@ class DriveNode(LeanNode):
         )
         self._gate_reason: str | None = None
         self._mon = canmon.MonitorPoller(config.NODES) if config.MONITOR_ENABLED else None
+        # Shutdown to a standby drive left in Switch on disabled after an E-stop Reset (E5, sto_rearm)
+        self._rearm = sto_rearm.StoRearm()
         self._mon_periods = (
             float(p("monitor_period_still_s").value),
             float(p("monitor_period_moving_s").value),
@@ -215,13 +269,19 @@ class DriveNode(LeanNode):
         self._pub_status = self.create_publisher(DriveStatus, "/drives/status", RELIABLE_1)
         self._pub_diag = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
-        self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)
+        self._pub_imu = self.create_publisher(Imu, "/imu/data_raw", SENSOR_DATA)  # only with subscribers
+        self._pub_imu_data = self.create_publisher(Imu, "/imu/data", SENSOR_DATA)
+        self._pub_odom = self.create_publisher(Odometry, "/odom_raw", SENSOR_DATA)
         self._pub_pp = self.create_publisher(PpStatus, "/drives/pp_status", RELIABLE_1)
         self._pub_track = self.create_publisher(LineTrack, "/amr/line_track", SENSOR_DATA)
         # A 5 Hz copy for displays (CPU, 2026-10-02): the web shows it at 2 Hz and was
         # deserialising all 100 samples a second in Python. Control stays on the full topic.
         self._pub_track_ui = self.create_publisher(LineTrack, "/amr/line_track_ui", SENSOR_DATA)
         self._track_ui = UiThrottle()  # /amr/line_track_ui
+        # Device health (unified plan WP-H1): the link to each device on this bus, reporting only.
+        self._health = health_pub.Outbox(self, send=self._safe_publish)
+        self._health_t0 = time.monotonic()
+        self._imu_t: float | None = None  # receive time of the last gyro sample (bus thread)
         # Marker codes (mls-marker-plan): events made on the bus thread, a 1 Hz status heartbeat.
         self._pub_marker = self.create_publisher(MarkerEvent, "/amr/line_marker", MARKER_QOS)
         self._markers = MarkerDetector(config.MLS_MARKER_CODES)
@@ -236,6 +296,7 @@ class DriveNode(LeanNode):
         self.create_service(Trigger, "/drives/arm", lambda q, r: self._request("arm", r))
         self.create_service(Trigger, "/drives/disarm", lambda q, r: self._request("disarm", r))
         self.create_service(Trigger, "/drives/ack_fault", lambda q, r: self._request("ack", r))
+        self.create_service(Trigger, "/imu/recalibrate", lambda q, r: self._request("recalibrate", r))
 
         self._thread = threading.Thread(target=self._run, name="can", daemon=True)
         self._thread.start()
@@ -277,8 +338,10 @@ class DriveNode(LeanNode):
     def _on_panel(self, msg: PanelState) -> None:
         t = time.monotonic()
         with self._lock:
+            # emergency (emergency-suite plan Part B): 0 on a PanelState built before the field
             self._power_panel = arm_policy.Panel(
-                t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm)
+                t, bool(msg.valid), bool(msg.mode_auto), bool(msg.manual_arm),
+                int(getattr(msg, "emergency", 0)),
             )
 
     def _on_ask(self, source: str, msg) -> None:
@@ -376,6 +439,11 @@ class DriveNode(LeanNode):
             markers=marker_expectation(config.MLS_POLARITY_LOCK, config.MLS_TEACH_LOCK),
             on_event=self._on_mls_event,
             event_clear=config.MLS_EVENT_CLEAR,
+            # WP-E8: TPDO1 holes count only while the vehicle may be moving (powered and commanded,
+            # or a wheel reports speed); a stationary sensor may send on change only.
+            moving=lambda: link.state == canopen.ARMED and (
+                link.applied not in (None, (0, 0)) or any(t.rpm for t in link.telemetry.values())
+            ),
             log=self._log,
         )
         try:
@@ -414,12 +482,18 @@ class DriveNode(LeanNode):
         t_tick = t_status = t_mon = t_diag = 0.0
         t_wheels = None
         last_pub = {n: (None, None) for n in self.nodes}
-        positions = {n: canopen.WheelPosition() for n in self.nodes}
+        # H-P2-2: staleness gaps bridged up to the motor's rating; 6064h checked against 606Ch.
+        positions = {n: canopen.WheelPosition(max_rpm=config.MOTOR_MAX_RPM) for n in self.nodes}
+        max_wheel = config.MOTOR_MAX_RPM * config.WHEEL_RAD_S_PER_MOTOR_RPM
+        self._positions = positions
+        self._checks = ({n: wheel_odom.FeedbackCheck(max_wheel) for n in self.nodes}
+                        if self._feedback_check else {})
         max_age = 2.5 * self.feedback_ms / 1000.0
         while not self._stop.is_set() and rclpy.ok():
             t0 = time.perf_counter()
             now = time.monotonic()
             self._serve_requests(link)
+            self._sto_rearm(link, now, max_age)
 
             # Link/power policy: the pure tables decide, this thread acts. Silent = no
             # frames at all, OR a required TPDO stopped while heartbeats and SDO
@@ -441,6 +515,7 @@ class DriveNode(LeanNode):
                 link.dropped_out(),
                 link.faulted_nodes(),
                 link.cleanup_owed,
+                link.rebooted_nodes() if link.state in (canopen.ARMED, canopen.STANDBY) else [],
             )
             if d.action == "prepare":
                 try:
@@ -499,8 +574,8 @@ class DriveNode(LeanNode):
                 retry_at = link_backoff.next_at(time.monotonic(), ok)
             elif d.action == "fault":
                 self.get_logger().error(f"FAULT: {d.reason}")
-                link.fault(d.reason)
-                self._edge("fault", (_fault_code(d.reason), 2, d.reason))
+                link.fault(d.reason, d.code)  # the code is decide()'s (WP-B4), not read from the text
+                self._edge("fault", (d.code or "DRIVE_FAULT", 2, d.reason))
             if link.state == canopen.FAULT:
                 link.fault_tick(now, max_age)
                 # R04 fallback: a stop we could not deliver or confirm must not be
@@ -538,11 +613,13 @@ class DriveNode(LeanNode):
             if tx.failing_for(now) > self.driver_timeout and link.state in (canopen.ARMED, canopen.STANDBY):
                 why = f"CAN TX failed for {tx.failing_for(now):.1f} s ({tx.last_error})"
                 self.get_logger().error(f"FAULT: {why}")
-                link.fault(why)
+                link.fault(why, "CAN_TX_FAILED")
                 self._edge("fault", ("CAN_TX_FAILED", 2, why))
                 tx.ok()
 
-            link.idle()  # the IMU poll (link.idle_hook), guarded against re-entry
+            # This iteration's sensor slot: ONE MLS SDO between the IMU poll (link.idle_hook) and
+            # the track reader, whoever takes the token first (WP-B1 d).
+            link.idle()
             if self._track is not None:
                 try:
                     self._track.poll(now)
@@ -571,7 +648,9 @@ class DriveNode(LeanNode):
             if now - t_status >= 0.1:
                 t_status = now
                 self._publish_status(link, imu)
-                self._publish_pp(link, now)
+                if self._pp_due(link, now):
+                    self._publish_pp(link, now)
+                self._publish_health(link, imu, now)
 
             if self._mon is not None and link.state != canopen.DISARMED:
                 moving = link.applied is not None and link.applied != (0, 0)
@@ -580,6 +659,7 @@ class DriveNode(LeanNode):
                     self._monitor_slot(link)
             if now - t_diag >= 1.0:
                 t_diag = now
+                self._count_subscribers()
                 self._publish_diagnostics(link, imu)
 
             spent = time.perf_counter() - t0
@@ -590,6 +670,26 @@ class DriveNode(LeanNode):
             if spent > self.cmd_timeout:
                 self._loop_overruns += 1
             router.pump(max(0.001, self.period - spent))
+
+    def _sto_rearm(self, link, now: float, max_age: float) -> None:
+        """Emergency-suite plan Part B E5 (2026-11-16): after the Reset (PanelState.emergency
+        RESETTING), Shutdown to a standby drive still in Switch on disabled, through the guarded
+        write prepare() uses. Without it a drive that was in standby when the E-stop was pressed
+        stays there, and the emergency ends RESET_FAILED until a service restart (amr_base/sto_rearm).
+        Shutdown powers nothing; a failed write is logged and retried on the next period."""
+        with self._lock:
+            pp_ = self._power_panel
+        emg = pp_.emergency if pp_ is not None and pp_.valid and 0.0 <= now - pp_.t_recv <= 1.0 else 0
+        if emg != sto_rearm.emergency.RESETTING:
+            self._rearm.due(now, emg, link.state, {})  # ends the episode; sends nothing
+            return
+        states = {n: link.reported_state(n, link.feedback_fresh(n, now, max_age)[0]) for n in self.nodes}
+        for nid in self._rearm.due(now, emg, link.state, states):
+            try:
+                link.write(nid, 0x6040, 0, canopen.CW_SHUTDOWN, 2, "Shutdown (after the E-stop Reset)")
+                self._log(f"node {nid}: Shutdown after the E-stop Reset (Switch on disabled in standby)")
+            except Exception as e:  # noqa: BLE001 - logged, retried on the next period
+                self.get_logger().warn(f"node {nid}: Shutdown after the E-stop Reset failed: {e}")
 
     def _serve_requests(self, link) -> None:
         while True:
@@ -605,6 +705,9 @@ class DriveNode(LeanNode):
                 elif what == "disarm":
                     self.want_link = False
                     box["ok"], box["msg"] = self._disarm_result(link, "disarmed")
+                elif what == "recalibrate":
+                    box["ok"], box["msg"] = True, self._gyro.recalibrate()
+                    self._gyro_logs()
                 elif what == "ack":
                     if link.state != canopen.FAULT:
                         box["ok"], box["msg"] = False, f"no fault latched (state {link.state})"
@@ -767,6 +870,30 @@ class DriveNode(LeanNode):
             return False, f"a pp move is {self._pp.state}"
         return True, ""
 
+    def _count_subscribers(self) -> None:
+        """/imu/data_raw and /drives/pp_status are published only with a subscriber (C#11, C#21):
+        counted once a second here, not per publish."""
+        for key, pub in (("raw", self._pub_imu), ("pp", self._pub_pp)):
+            try:
+                self._subs[key] = pub.get_subscription_count()
+            except Exception:  # noqa: BLE001 - shutting down; _safe_publish stops the thread
+                self._subs[key] = 0
+
+    def _pp_due(self, link, now: float) -> bool:
+        """PpStatus on demand (C#20/C#21): nothing without a subscriber (commissioning_node is the
+        only one); 10 Hz while a move is held or running, 4 Hz otherwise, and at once on a change."""
+        if not self._subs.get("pp"):
+            return False
+        with self._lock:
+            req = self._pp_req
+        busy = self._pp.active or (req is not None and req.hold)
+        key = (self._pp.state, self._pp.run_id, self._pp_availability(link), self._pp_bad,
+               self._pp.last.outcome if self._pp.last else "")
+        if key != self._pp_key or now - self._t_pp >= (PP_STATUS_BUSY_S if busy else PP_STATUS_IDLE_S) - 1e-3:
+            self._pp_key, self._t_pp = key, now
+            return True
+        return False
+
     def _publish_pp(self, link, now: float) -> None:
         m = PpStatus()
         m.header.stamp = self.get_clock().now().to_msg()
@@ -788,8 +915,9 @@ class DriveNode(LeanNode):
 
     def _safe_publish(self, pub, msg) -> None:
         # SIGINT invalidates the context while this thread is mid-iteration;
-        # a publish then raises RCLError. Stop quietly rather than log an error.
-        if self._stop.is_set() or not rclpy.ok():
+        # a publish then raises RCLError. Stop quietly rather than log an error. The flag is
+        # the cached shutdown state (C#21): the loop checks rclpy.ok() once per iteration.
+        if self._stop.is_set():
             return
         try:
             pub.publish(msg)
@@ -802,10 +930,12 @@ class DriveNode(LeanNode):
         scale = link.scale
         # Continuous positions from wrap-safe count deltas (R06), see canopen.wheel_feedback.
         fb = canopen.wheel_feedback(
-            link, now, max_age, ((config.LEFT, True), (config.RIGHT, False)), is_new, positions
+            link, now, max_age, ((config.LEFT, True), (config.RIGHT, False)), is_new, positions,
+            self._checks,
         )
         m.left_pos_rad, m.left_vel_rad_s, m.left_valid = fb[config.LEFT]
         m.right_pos_rad, m.right_vel_rad_s, m.right_valid = fb[config.RIGHT]
+        self._feedback_edge()
         tl, tr = link.telemetry[config.LEFT], link.telemetry[config.RIGHT]
         if tl.position is not None and tr.position is not None:
             m.left_counts, m.right_counts = int(tl.position), int(tr.position)
@@ -814,6 +944,44 @@ class DriveNode(LeanNode):
         self._safe_publish(self._pub_wheels, m)
         if self._wheels_ui.due(now):
             self._safe_publish(self._pub_wheels_ui, m)
+        # DriveStatus.turning (WP-C7, 2026-11-16): the motion lamp's rule, which panel_node applied to
+        # /wheel_states before; from the same feedback, so a stale or invalid wheel never lights it.
+        self._turning = panel_io.wheels_turning(m.left_valid, m.left_vel_rad_s, m.right_valid, m.right_vel_rad_s)
+        valid = bool(m.left_valid and m.right_valid)
+        wl, wr = m.left_vel_rad_s, m.right_vel_rad_s
+        # The gyro's stillness and yaw-rate reference, as imu_bias_node took them from /wheel_states.
+        self._gyro.wheels(now, drive_state.still(wl, wr, self._still_eps, inclusive=False, valid=valid),
+                          forward(self._geom, wl, wr)[1] if valid else None)
+        pl, pr = positions[config.LEFT], positions[config.RIGHT]
+        twist = self._odom.update(valid and pl.joined and pr.joined, pl.step, pr.step, pl.step_dt, wl, wr)
+        if twist is not None:
+            self._publish_odom(m.header.stamp, *twist)
+
+    def _publish_odom(self, stamp, v: float, wz: float) -> None:
+        """/odom_raw as diff_drive_odom_node published it (frames, covariances), stamped with the
+        WheelStates it came from. No TF: the EKF owns odom -> base_footprint."""
+        s = self._odom.state
+        pc = self._pose_cov[0] + self._pose_cov[1] * s.distance
+        o = Odometry()
+        o.header.stamp = stamp
+        o.header.frame_id = self.odom_frame
+        o.child_frame_id = self.base_frame
+        o.pose.pose.position.x = s.x
+        o.pose.pose.position.y = s.y
+        o.pose.pose.orientation.z = math.sin(s.th / 2.0)
+        o.pose.pose.orientation.w = math.cos(s.th / 2.0)
+        o.pose.covariance = wheel_odom.diag6(pc, pc, BIG, BIG, BIG, pc)
+        o.twist.twist.linear.x = v
+        o.twist.twist.angular.z = wz
+        o.twist.covariance = self._twist_cov
+        self._safe_publish(self._pub_odom, o)
+
+    def _feedback_edge(self) -> None:
+        """DRIVE_FEEDBACK_IMPLAUSIBLE (H-P2-2): one event when a wheel's check trips, one when it
+        clears. The wheel is reported invalid meanwhile; the link itself is not faulted."""
+        bad = [f"node {n} ({config.NODES.get(n, n)}): {c.reason}"
+               for n, c in sorted(self._checks.items()) if c.implausible]
+        self._edge("feedback", ("DRIVE_FEEDBACK_IMPLAUSIBLE", 1, "; ".join(bad)) if bad else None)
 
     def _publish_status(self, link, imu) -> None:
         m = DriveStatus()
@@ -836,6 +1004,12 @@ class DriveNode(LeanNode):
         )
         m.link_state = link.state
         m.power_wanted, m.power_reason = bool(self._power[0]), self._power[1]
+        if hasattr(m, "fault_code"):  # amr_interfaces not rebuilt yet: publish without them
+            m.fault_code, m.fault_detail = link.reported_fault()
+        if hasattr(m, "turning"):  # WP-C7: the motion lamp's source (panel_node), set in _publish_wheels
+            m.turning = bool(getattr(self, "_turning", False))
+        if hasattr(m, "left_bus_v"):  # WP-P7: the monitor's latest 40A4h reading, NaN = not read
+            m.left_bus_v, m.right_bus_v = self._bus_v(config.LEFT), self._bus_v(config.RIGHT)
         self._safe_publish(self._pub_status, m)
         # Latched CANopen alarms and the operational edge, as operator events. Both are
         # edge-guarded by _edge, so this 10 Hz path emits only on a change.
@@ -854,16 +1028,40 @@ class DriveNode(LeanNode):
             why = f" ({snap['reason']})" if snap["reason"] else ""
             self._log(f"drives {snap['state']}{why}, imu {snap['mode']}")
 
+    def _bus_v(self, nid: int) -> float:
+        """The monitor's latest bus voltage for a drive (V), NaN when not read (monitor off, no answer)."""
+        vals = self._mon.values.get(nid) if self._mon is not None else None
+        v = ((vals or {}).get("bus_v") or {}).get("value")
+        return float("nan") if v is None else float(v)
+
+    def _publish_health(self, link, imu, now: float) -> None:
+        """DeviceHealth rows for this bus (WP-H1): edges at once, else 2 Hz. The rows are built
+        inside health_pub.Outbox.publish, which never raises: a reporting bug must not end the bus
+        thread. Reporting only; the link and power decisions above are unchanged."""
+        up_s = now - self._health_t0
+        # STALE after four TPDO periods, not the 2.5 that `operational` uses: a report must not
+        # flap on the jitter that the motion check is right to be strict about.
+        stale = 4.0 * self.feedback_ms / 1000.0
+        self._health.publish(now, lambda: [
+            *health_pub.drive_rows(now, up_s, link, (config.LEFT, config.RIGHT), self.want_link,
+                                   stale, self.driver_timeout),
+            health_pub.bus_row(now, up_s, link, getattr(self, "_tx", None), self.driver_timeout,
+                               self._bus_stats["sdo_timeouts"]),
+            health_pub.track_row(now, up_s, self._track),
+            health_pub.gyro_row(now, up_s, imu, self.imu_enabled, self._imu_t),
+        ])
+
     def _monitor_slot(self, link) -> None:
         """One object, one node, one SDO round trip (~2-4 ms); see canmon.MonitorPoller.step."""
-        self._mon.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05))
+        # idle=False: the loop already opened this iteration's sensor slot (WP-B1 d).
+        self._mon.step(lambda nid, idx: link.read(nid, idx, 0, timeout=0.05, idle=False))
         self._bus_stats["monitor_reads"] = self._mon.reads
         self._bus_stats["sdo_timeouts"] = self._mon.timeouts
 
     def _edge(self, slot: str, what: tuple[str, int, str] | None) -> None:
-        """Emit an operator event only when `slot` CHANGES (agv_core/events: edges,
-        never per tick). `what` is (code, level, detail); None means the slot cleared,
-        which emits a cleared event if something was standing."""
+        """Emit an operator event only when `slot` CHANGES (edges, never per tick). `what` is
+        (code, level, detail); None means the slot cleared, which emits a cleared event if
+        something was standing."""
         prev = self._edges.get(slot)
         if what is None:
             if prev is not None:
@@ -886,6 +1084,8 @@ class DriveNode(LeanNode):
         arr = DiagnosticArray()
         arr.header.stamp = self.get_clock().now().to_msg()
         mon = self._mon.snapshot(config.MONITOR_THRESHOLDS)["nodes"] if self._mon is not None else {}
+        # WP-P7 (H-P2-6): the drives' bus voltage as an edge-guarded supply event (1 Hz here)
+        self._edge("supply", canmon.supply_event(mon) if self._mon is not None else None)
         for nid, label in config.NODES.items():
             t = link.telemetry[nid]
             st = DiagnosticStatus()
@@ -908,9 +1108,20 @@ class DriveNode(LeanNode):
                     value="" if t.t_position is None else f"{time.monotonic() - t.t_position:.3f}",
                 ),
             ]
+            # WP-B4: the drive's alarm history as the last preflight read it (into the report zip)
+            hist = link.preflight_history.get(nid)
+            kv += [
+                KeyValue(key="alarm_history_603F",
+                         value="" if hist is None else canopen.alarm_code_text(hist.get("603F"))),
+                KeyValue(key="error_history_1003",
+                         value="" if hist is None else canopen.errors_text(hist.get("1003"))),
+                KeyValue(key="boot_up_age_s",
+                         value="" if t.t_boot is None else f"{time.monotonic() - t.t_boot:.1f}"),
+            ]
             if t.alarm:
                 kv.append(
-                    KeyValue(key="alarm", value=f"0x{t.alarm.get('code', 0):04X} {t.alarm.get('text', '')}")
+                    # decode_emcy's key is 'name' ('text' never existed: H-P0-5 item 5)
+                    KeyValue(key="alarm", value=f"0x{t.alarm.get('code', 0):04X} {t.alarm.get('name', '')}")
                 )
                 worst = DiagnosticStatus.ERROR
             for key, v in (mon.get(str(nid)) or {}).items():
@@ -921,6 +1132,17 @@ class DriveNode(LeanNode):
                     worst = DiagnosticStatus.ERROR
                 elif lvl == "warn" and worst == DiagnosticStatus.OK:
                     worst = DiagnosticStatus.WARN
+            # H-P2-2 (WP-P8): staleness gaps bridged, rebaselines, and the 6064h/606Ch verdict
+            wp, chk = self._positions.get(nid), self._checks.get(nid)
+            kv += [
+                KeyValue(key="odom_gaps_bridged", value=str(wp.gaps if wp else 0)),
+                KeyValue(key="odom_rebaselines", value=str(wp.rebaselines if wp else 0)),
+                KeyValue(key="feedback_check", value="off" if chk is None
+                         else (f"implausible: {chk.reason}" if chk.implausible else "ok")),
+                KeyValue(key="feedback_trips", value=str(chk.trips if chk else 0)),
+            ]
+            if chk is not None and chk.implausible and worst == DiagnosticStatus.OK:
+                worst = DiagnosticStatus.WARN
             st.level = worst
             st.message = t.state if not t.alarm else "alarm"
             st.values = kv
@@ -932,6 +1154,7 @@ class DriveNode(LeanNode):
             KeyValue(key="power_wanted", value=str(self._power[0])),
             KeyValue(key="power_reason", value=self._power[1]),
             KeyValue(key="fault_reason", value=link.fault_reason or ""),
+            KeyValue(key="fault_code", value=link.reported_fault()[0]),
             KeyValue(key="monitor_reads", value=str(self._bus_stats["monitor_reads"])),
             KeyValue(key="sdo_timeouts", value=str(self._bus_stats["sdo_timeouts"])),
             KeyValue(key="require_supervisor", value=str(self._gate.require_supervisor)),
@@ -951,6 +1174,10 @@ class DriveNode(LeanNode):
             KeyValue(key="mls_errors", value=str(getattr(self, "_mls_errors", 0))),
             KeyValue(key="loop_max_ms", value=f"{1000.0 * getattr(self, '_loop_max_s', 0.0):.1f}"),
             KeyValue(key="loop_overruns", value=str(getattr(self, "_loop_overruns", 0))),
+            # WP-B1 d: MLS SDOs deferred to the next slot (IMU and track both wanted one), and
+            # the most any slot carried (1 is the bound).
+            KeyValue(key="sensor_sdo_deferred", value=str(link.sensor_token.refusals)),
+            KeyValue(key="sensor_sdo_max_per_slot", value=str(link.sensor_token.max_reads)),
             KeyValue(key="tx_dropped",
                      value=_sysfs_count(f"/sys/class/net/{config.CAN_CHANNEL}/statistics/tx_dropped")),
             KeyValue(key="cleanup_failures", value="; ".join(link.cleanup_failures)),
@@ -971,11 +1198,31 @@ class DriveNode(LeanNode):
                 KeyValue(key="mode", value=imu.mode),
                 KeyValue(key="samples", value=str(imu.samples)),
                 KeyValue(key="misses", value=str(imu.misses)),
+                KeyValue(key="backoffs", value=str(imu.backoffs)),  # WP-B1 d: 3 of the last 10
                 KeyValue(key="rejected", value=str(imu.rejected)),
                 KeyValue(key="last_reject", value=imu.last_reject),
                 KeyValue(key="restarts", value=str(imu.restarts)),
                 KeyValue(key="gyro_sign", value=str(self.get_parameter("gyro_sign").value)),
+                # WP-E7: a repeated sensor stamp (no SDO sample published until it advances)
+                KeyValue(key="frozen", value=str(bool(getattr(imu, "frozen", False)))),
+                KeyValue(key="frozen_events", value=str(imu.tracker.frozen_events)),
+                KeyValue(key="frozen_drops", value=str(getattr(imu, "frozen_drops", 0))),
+                # WP-C5: the bias and plausibility chain that was imu_bias_node
+                KeyValue(key="bias_deg_s", value="" if self._gyro.est.bias is None
+                         else f"{self._gyro.est.bias * 57.2958:+.4f}"),
+                KeyValue(key="bias_windows", value=str(self._gyro.est.windows)),
+                KeyValue(key="bias_rejected", value=str(self._gyro.est.rejected)),
+                KeyValue(key="nonfinite", value=str(self._gyro.est.nonfinite)),
+                KeyValue(key="gyro_check", value="withholds" if self._gyro.withhold else "logs only"),
+                KeyValue(key="suspect", value=self._gyro.check.reason if self._gyro.suspect else ""),
+                KeyValue(key="withheld", value=str(self._gyro.withheld)),
             ]
+            if link.sensor_paused:  # H-P1-7: no IMU SDO while a fault stop is owed
+                im.level, im.message = DiagnosticStatus.WARN, "paused: drive fault"
+            elif getattr(imu, "frozen", False):
+                im.level, im.message = DiagnosticStatus.WARN, f"{imu.mode}: sensor stamp frozen"
+            elif self._gyro.est.bias is None:
+                im.message = f"{imu.mode}: not calibrated (/imu/data waits for the vehicle to stand still)"
             arr.status.append(im)
         if self._track is None:
             self._safe_publish(self._pub_diag, arr)
@@ -1062,6 +1309,8 @@ class DriveNode(LeanNode):
         m.markers_ok = bool(track is not None and track.markers_ok)
         m.status = track.marker_status_text() if track is not None else "no sensor"
         m.rejects, m.aborts = self._markers.rejects, self._markers.aborts
+        if hasattr(m, "gaps"):  # amr_interfaces not rebuilt yet: publish without it (WP-E8)
+            m.gaps = int(track.tpdo_gaps) if track is not None else 0
         return m
 
     def _marker_heartbeat(self) -> None:
@@ -1069,15 +1318,33 @@ class DriveNode(LeanNode):
         Executor thread; reads counters the bus thread writes (ints, a stale read is harmless)."""
         self._safe_publish(self._pub_marker, self._marker_msg(getattr(self, "_track", None), heartbeat=True))
 
-    def _publish_imu(self, s: ImuSample) -> None:
+    def _imu_msg(self, stamp, wz: float) -> Imu:
         m = Imu()
-        m.header.stamp = self.get_clock().now().to_msg()
+        m.header.stamp = stamp
         m.header.frame_id = self.imu_frame
-        m.orientation_covariance[0] = -1.0
-        m.angular_velocity.z = s.wz_rad_s
-        m.angular_velocity_covariance = [BIG, 0.0, 0.0, 0.0, BIG, 0.0, 0.0, 0.0, self.gyro_var]
-        m.linear_acceleration_covariance[0] = -1.0
-        self._safe_publish(self._pub_imu, m)
+        m.orientation_covariance = self._imu_orient_cov
+        m.angular_velocity.z = wz
+        m.angular_velocity_covariance = self._imu_wz_cov
+        m.linear_acceleration_covariance = self._imu_orient_cov
+        return m
+
+    def _publish_imu(self, s: ImuSample) -> None:
+        """Bus thread, every accepted gyro sample: /imu/data with the bias removed (WP-C5, was
+        imu_bias_node), /imu/data_raw only while something subscribes to it."""
+        self._imu_t = s.t_mono
+        stamp = self.get_clock().now().to_msg()
+        if self._subs.get("raw"):
+            self._safe_publish(self._pub_imu, self._imu_msg(stamp, s.wz_rad_s))
+        wz = self._gyro.sample(s.t_mono, s.wz_rad_s)
+        if self._gyro.logs:
+            self._gyro_logs()
+        if wz is not None:
+            self._safe_publish(self._pub_imu_data, self._imu_msg(stamp, wz))
+
+    def _gyro_logs(self) -> None:
+        log = self.get_logger()
+        for level, text in self._gyro.drain():
+            {"error": log.error, "warn": log.warn}.get(level, log.info)(text)
 
 
 def main(args=None) -> None:

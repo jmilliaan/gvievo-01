@@ -16,6 +16,10 @@ a small snapshot store; the ROS subscriptions live in the adapter.
     there is demand and drops both LIVE_IDLE_S after the last request. The
     scanner's liveness for the SCANNER_SILENT/STALE alarm then comes from the
     driver's own "/scan topic status" diagnostic (scan_diag_progress()).
+  * Display topics (WP-C16, 2026-11-16): a node that already holds /scan and TF can
+    publish the projected pose and scan at 5 Hz (DISPLAY_POSE_TOPIC, DISPLAY_SCAN_TOPIC).
+    While one does and its samples are fresh, the web takes those and keeps /scan and
+    /tf unsubscribed; otherwise it falls back to the raw path above (live_sources()).
 """
 
 from __future__ import annotations
@@ -35,6 +39,30 @@ MAX_POINTS = 400
 LIVE_IDLE_S = 5.0
 # The sick_safetyscanners2 driver's diagnostic_updater status for its /scan publisher.
 SCAN_DIAG_SUFFIX = "/scan topic status"
+# WP-C16 display topics: geometry_msgs/PoseStamped and sensor_msgs/PointCloud2 (float32 x, y),
+# both already in the world frame (map while a layer localises, else odom), stamped with
+# the source time (the transform's / the scan's), at ~5 Hz, at most MAX_POINTS points.
+DISPLAY_POSE_TOPIC = "/amr/live_pose_ui"
+DISPLAY_SCAN_TOPIC = "/amr/live_scan_ui"
+DISPLAY_FRESH_S = 1.0  # a display sample older than this (5 periods): fall back to /scan + /tf
+DISPLAY_GRACE_S = 2.0  # just subscribed: wait this long for a first sample before falling back
+
+
+def live_sources(wanted: bool, display_pubs: int, display_age_s: float | None,
+                 display_since_s: float) -> tuple[bool, bool]:
+    """(subscribe the display topics, subscribe raw /scan + /tf) for the live view.
+
+    `display_pubs`: publishers of DISPLAY_POSE_TOPIC; `display_age_s`: age of the newest
+    display sample (None = none since subscribing); `display_since_s`: how long the display
+    topics have been subscribed. A stale display keeps its subscription (cheap at 5 Hz) so
+    the view switches back as soon as it resumes; the raw path covers the gap."""
+    if not wanted:
+        return False, False
+    if display_pubs <= 0:
+        return False, True
+    if display_age_s is None:
+        return True, display_since_s >= DISPLAY_GRACE_S
+    return True, display_age_s > DISPLAY_FRESH_S
 
 
 def scan_diag_progress(prev: int | None, values: dict) -> tuple[int | None, bool]:
@@ -76,7 +104,7 @@ def scan_points(ranges, angle_min: float, angle_inc: float, range_min: float, ra
     n = len(ranges)
     if n == 0:
         return []
-    step = max(1, n // MAX_POINTS)
+    step = max(1, -(-n // MAX_POINTS))  # ceil: at most MAX_POINTS (1152 beams -> 384, not 576)
     c, s = math.cos(tyaw), math.sin(tyaw)
     out = []
     for i in range(0, n, step):
@@ -87,6 +115,28 @@ def scan_points(ranges, angle_min: float, angle_inc: float, range_min: float, ra
         lx, ly = r * math.cos(a), r * math.sin(a)
         out.append((round(tx + c * lx - s * ly, 3), round(ty + s * lx + c * ly, 3)))
     return out
+
+
+_CLOUD_FLOAT32 = 7  # sensor_msgs/PointField FLOAT32
+
+
+def cloud_xy(fields, point_step: int, data, is_bigendian: bool = False, limit: int = MAX_POINTS):
+    """(x, y) of a PointCloud2's float32 x and y fields, rounded to mm, at most `limit`
+    (evenly decimated), non-finite points dropped. [] when the layout has no float32 x/y.
+    `fields`: (name, offset, datatype) triples."""
+    off = {name: o for name, o, dt in fields if dt == _CLOUD_FLOAT32}
+    if "x" not in off or "y" not in off or point_step <= 0:
+        return []
+    buf = bytes(data)
+    n = len(buf) // point_step
+    if n == 0:
+        return []
+    f4 = ">f4" if is_bigendian else "<f4"
+    dt = np.dtype({"names": ["x", "y"], "formats": [f4, f4], "offsets": [off["x"], off["y"]],
+                   "itemsize": point_step})
+    a = np.frombuffer(buf, dtype=dt, count=n)[:: max(1, -(-n // limit))]
+    ok = np.isfinite(a["x"]) & np.isfinite(a["y"])
+    return [(round(float(x), 3), round(float(y), 3)) for x, y in zip(a["x"][ok], a["y"][ok], strict=True)]
 
 
 class LiveStore:
@@ -116,8 +166,11 @@ class LiveStore:
         if lapsed and self.on_want is not None:
             try:
                 self.on_want()
-            except Exception:  # noqa: BLE001 - a wake-up only: the adapter's 1 s reconcile catches up
-                pass
+            except Exception:  # noqa: BLE001 - never fail the request
+                # The reconcile timer is stopped while nothing is subscribed (WP-C12), so this
+                # wake-up is the only way in: forget the demand and the next request retries it.
+                with self._lock:
+                    self.want_t = None
 
     def wanted(self, now: float | None = None) -> bool:
         now = time.monotonic() if now is None else now

@@ -1,8 +1,10 @@
 # sick_safetyscanners2 parameters for the REAR nanoScan3 (station call plan P4). Not fitted yet.
 # Its own node key: the key in nanoscan3.yaml would not match this renamed, namespaced node.
 #
-# PLACEHOLDERS until P8: sensor_ip, host_ip and the angle window. The second scanner needs a switch or
-# a NIC (enp3s0 has one peer), so the addresses depend on what the owner fits.
+# Addresses: sensor_ip, host_ip and host_udp_port come from the profile (rear.sensor_ip, rear.host_ip,
+# rear.port; WP-P10, 2026-11-16): rear_scanner.launch.py passes them after this file, so the values
+# below are only defaults. PLACEHOLDER until P8: the angle window. The second scanner needs a switch
+# or a NIC (enp3s0 has one peer), so the profile's addresses depend on what the owner fits.
 # As for the front unit, this is the data output only; Safety Designer stays humans-only.
 /rear/sick_safetyscanners2_rear_node:
   ros__parameters:

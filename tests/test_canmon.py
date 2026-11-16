@@ -245,7 +245,7 @@ def test_can_monitoring():
     pol.store(1, "bus_v", 482)
     pol.store(1, "drv_c", 723)
     pol.store(1, "mtr_c", 400)
-    pol.store(2, "bus_v", 375)
+    pol.store(2, "bus_v", 470)  # 47.0 V: under warn_low 48, above trip_low 46 (WP-P7, 2026-11-16)
     snap = pol.snapshot(config.MONITOR_THRESHOLDS)
     check("a raw reading is scaled to its unit",
           snap["nodes"]["1"]["bus_v"]["value"] == 48.2,
@@ -259,6 +259,12 @@ def test_can_monitoring():
     check("bus voltage is flagged at the LOW end too",
           snap["nodes"]["2"]["bus_v"]["state"] == "warn",
           str(snap["nodes"]["2"]["bus_v"]["value"]))
+    # drive_node `_edge` re-emits on a new detail: no live voltage in it (2026-11-16)
+    ev1 = canmon.supply_event(snap["nodes"])
+    pol.store(2, "bus_v", 465)
+    ev2 = canmon.supply_event(pol.snapshot(config.MONITOR_THRESHOLDS)["nodes"])
+    check("a supply edge keeps one detail per state, so a 0.5 V sag emits no new event",
+          ev1 is not None and ev1 == ev2 and "47.0" not in ev1[2] and "46.5" not in ev2[2], f"{ev1} / {ev2}")
     pol.store(1, "info", None)
     check("an unanswered read stores as blank, not zero",
           pol.snapshot()["nodes"]["1"]["info"]["value"] is None)

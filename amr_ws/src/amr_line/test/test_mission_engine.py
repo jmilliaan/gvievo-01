@@ -120,6 +120,9 @@ class World:
             yaw_rate=self._gyro(), v_meas=self.v_meas, markers=self.markers(),
         )
         base.update(over)
+        # track.TrackReader: cause "track" is no sample (age None) or a stale one (WP-T1, H-P3-1)
+        if base["track_cause"] == "track" and "sensor_age_s" not in over:
+            base["sensor_age_s"] = None
         return lj.Inputs(**base)
 
     def _gyro(self):
@@ -924,15 +927,164 @@ def test_a_silent_sensor_on_the_approach_is_a_fault_not_a_tape_end():
     assert w.job.state == lj.FAULT and "sensor silent" in w.job.reason
 
 
-def test_a_hold_during_the_u_turn_faults_rather_than_resuming_mid_manoeuvre():
+# -- a hold during the U-turn continues it (owner 2026-11-16, O-3 extended) ----------------
+
+def _turn_to(w, base, deg, sensor, **over):
+    """The pivot (cw) at `deg` by encoder from `base`, one tick."""
+    c = counts_for_angle(deg, PER_REV)
+    w.counts = (base[0] + int(round(c)), base[1] + int(round(-c)))
+    w.tick(sensor=sensor, **over)
+
+
+def _to_the_spin(w):
+    """From the U-turn tag to a pivot under way at 0 deg; returns the counts it started from."""
+    w.read(UTURN)
+    w.tick()
+    w.drive(2.0)
+    assert w.until(lambda: w.job.tape.uturn_req["phase"] == "stopping", 3.0, sensor=NO_TAPE)
+    w.still, w.integrate = True, False
+    assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
+    return w.counts
+
+
+def _estop_and_back(w, sensor=NO_TAPE, held=None):
+    """E-stop from the panel (DI09), released, then Start: RUNNING again. `held(w)` runs while held."""
+    w.tick(sensor=sensor, emergency=1, torque_off=True)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "estop", w.job.reason
+    assert w.job.tape.uturn_req is not None and "U-turn continues" in w.job.reason
+    w.drive(0.5, sensor=sensor, emergency=1, torque_off=True)
+    if held:
+        held(w)
+    w.drive(0.5, sensor=sensor, emergency=0)
+    assert w.job.state == lj.HOLD, "never by itself"
+    w.tick(sensor=sensor, emergency=0, start_edge=True, start_edge_t=w.t)
+    assert w.until(lambda: w.job.state != lj.HOLD and w.job.state != lj.ARMED, 2.0,
+                   sensor=sensor, emergency=0), w.job.reason
+
+
+def test_an_estop_on_the_approach_finds_the_tape_end_again():
     w = World(SITE, "MRU1")
     w.park_at_home()
     w.start()
     _run_to(w)
     w.read(UTURN)
     w.tick()
-    w.tick(torque_off=True)
-    assert w.job.state == lj.FAULT and "U-turn" in w.job.reason
+    w.drive(1.0)
+    assert w.job.tape.uturn_req["phase"] == "approach"
+    _estop_and_back(w, sensor=CENTRED)
+    assert w.job.state == lj.RUNNING and w.job.tape.uturn_req["phase"] == "approach", w.job.reason
+    assert w.until(lambda: w.job.tape.uturn_req["phase"] == "stopping", 4.0, sensor=NO_TAPE)
+    w.still, w.integrate = True, False
+    assert w.until(lambda: w.job.tape.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
+    base = w.counts
+    _turn_to(w, base, 120, NO_TAPE)
+    _turn_to(w, base, 176, CENTRED)
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
+    assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
+
+
+def test_an_estop_mid_spin_continues_the_turn_with_what_is_left():
+    """Held at 90 deg: the new spin's gates are lowered by the 90 already turned, the tape (lost
+    at 90) ends it near 180 as before."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 90, NO_TAPE)
+    _estop_and_back(w)
+    assert w.job.state == lj.RUNNING, w.job.reason
+    assert w.until(lambda: w.job.tape.uturn is not None, 1.0, sensor=NO_TAPE), w.job.reason
+    turn = w.job.tape.uturn
+    assert turn.phase == uturn.SPIN and turn.lost
+    assert abs(turn.min_deg - (vehicle.U_TURN_MIN_DEG - 90)) < 1.0, turn.min_deg
+    assert abs(turn.max_deg - (vehicle.U_TURN_MAX_DEG - 90)) < 1.0, turn.max_deg
+    left, right = w.tick(sensor=NO_TAPE)
+    assert left != 0.0 and right != 0.0, "it pivots on from rest"
+    _turn_to(w, base, 176, CENTRED)
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
+    assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
+
+
+def test_the_original_tape_under_the_sensor_early_in_the_spin_is_not_the_new_leg():
+    """Held at 20 deg with the tape still seen (never lost): continuing, the tape under the
+    sensor does not end the turn - it must be lost and found again past the lowered gate."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 20, CENTRED)
+    _estop_and_back(w, sensor=CENTRED)
+    assert w.until(lambda: w.job.tape.uturn is not None, 1.0, sensor=CENTRED), w.job.reason
+    w.drive(0.2, sensor=CENTRED)
+    assert w.job.tape.uturn.phase == uturn.SPIN and not w.job.tape.uturn.lost
+
+
+def test_an_estop_while_centring_centres_again():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 120, NO_TAPE)
+    _turn_to(w, base, 176, CENTRED)
+    assert w.job.tape.uturn.phase in (uturn.CENTER, uturn.SETTLE)
+    _estop_and_back(w, sensor=CENTRED)
+    assert w.until(lambda: w.job.tape.uturn is not None, 1.0, sensor=CENTRED), w.job.reason
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.3, sensor=CENTRED)
+    assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
+
+
+def test_turned_while_held_is_still_a_fault():
+    """Fallback: pushed round by hand while held - the stored turn no longer describes the AGV."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 90, NO_TAPE)
+
+    def push(w):
+        c = counts_for_angle(45, PER_REV)
+        w.counts = (w.counts[0] + int(round(c)), w.counts[1] - int(round(c)))
+
+    _estop_and_back(w, held=push)
+    assert w.until(lambda: w.job.state == lj.FAULT, 1.0, sensor=NO_TAPE), w.job.reason
+    assert "turned 45 deg while held" in w.job.reason, w.job.reason
+    assert w.job.tape.uturn_req is None
+
+
+def test_no_counts_after_the_hold_is_still_a_fault():
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 90, NO_TAPE)
+    w.tick(sensor=NO_TAPE, emergency=1, torque_off=True)
+    w.drive(0.5, sensor=NO_TAPE, emergency=0)
+    w.tick(sensor=NO_TAPE, emergency=0, start_edge=True, start_edge_t=w.t)
+    assert w.until(lambda: w.job.state == lj.FAULT, 2.0, sensor=NO_TAPE, emergency=0, counts=None), \
+        w.job.reason
+    assert "encoder counts unavailable" in w.job.reason
+
+
+def test_a_protective_stop_mid_spin_continues_by_itself():
+    """The field is the one cause that resumes by itself (decision 1); the turn goes on with it."""
+    w = World(SITE, "MRU1")
+    w.park_at_home()
+    w.start()
+    _run_to(w)
+    base = _to_the_spin(w)
+    _turn_to(w, base, 90, NO_TAPE)
+    w.tick(sensor=NO_TAPE, torque_off=True, field_clear=False)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "field", w.job.reason
+    w.drive(0.5, sensor=NO_TAPE, torque_off=True, field_clear=False)
+    assert w.until(lambda: w.job.tape.uturn is not None, 6.0, sensor=NO_TAPE), w.job.reason
+    _turn_to(w, base, 176, CENTRED)
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
+    assert w.job.tape.uturn_req is None and w.job.state == lj.RUNNING, w.job.reason
 
 
 # -- RFID continuity ---------------------------------------------------------------------
@@ -987,7 +1139,8 @@ def test_a_status_seq_ahead_of_its_encounter_is_never_skipped():
     assert (w.job.tape.last_encounter or {}).get("tag") == MRU1, w.job.tape.last_encounter
 
 
-def test_rfid_loss_during_the_u_turn_is_a_fault():
+def test_rfid_loss_during_the_u_turn_holds_and_keeps_the_u_turn():
+    """Owner 2026-11-16: no hold ends a U-turn any more (was a FAULT)."""
     w = World(SITE, "MRU1")
     w.park_at_home()
     w.start()
@@ -996,7 +1149,8 @@ def test_rfid_loss_during_the_u_turn_is_a_fault():
     w.tick()
     w.comms = False
     w.tick()
-    assert w.job.state == lj.FAULT and "U-turn" in w.job.reason
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "rfid", w.job.reason
+    assert w.job.tape.uturn_req is not None and w.job.tape.uturn_req["phase"] == "approach"
 
 
 def test_start_needs_the_rfid_link_for_a_tag_mission():

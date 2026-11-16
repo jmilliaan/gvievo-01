@@ -15,11 +15,11 @@ rather than padding the table with entries nobody reads.
 
 EMCY frames are PUSHED on COB-ID 080h + Node-ID. They are events in their own
 right, so unlike a polled fault bit they may be emitted one-for-one without
-tripping the events.py flooding rule.
+flooding the operator event stream.
 """
 
 # severity: "error" = vehicle down or safety-relevant, "warn" = degrading.
-# Both map onto events.py levels directly.
+# Both map onto the operator event levels (info/warn/error) directly.
 MUST, SHOULD = "must", "should"
 
 EMCY_CODES = {

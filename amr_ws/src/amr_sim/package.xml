@@ -16,6 +16,8 @@
   <exec_depend>amr_base</exec_depend>
   <exec_depend>amr_maps</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>sick_safetyscanners2_interfaces</exec_depend>  <!-- fake_output_paths (WP-T2) -->
 
   <test_depend>python3-pytest</test_depend>
   <test_depend>launch_testing</test_depend>

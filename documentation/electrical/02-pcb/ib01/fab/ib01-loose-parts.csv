@@ -1,0 +1,16 @@
+Part (LCSC),Qty per board,For
+"Degson 2EDGKM-5.08-02P-14-00A(H) (LCSC C699500), cable side",3,"J10,J11,J27"
+"Kefa KF2EDGKM-3.5-12P (LCSC C441105), cable side",1,J22
+"Kefa KF2EDGKM-3.5-2P (LCSC C441107), cable side",10,"J12,J14,J18,J21,J28,J31,J32,J33,J34,J35"
+"Kefa KF2EDGKM-3.5-4P (LCSC C441109), cable side",4,"J19,J23,J29,J30"
+"Kefa KF2EDGKM-3.5-5P (LCSC C441110), cable side",2,"J13,J17"
+"Kefa KF2EDGKM-3.5-6P (LCSC C441111), cable side",2,"J20,J24"
+"Kefa KF2EDGKM-3.5-7P (LCSC C441112), cable side",1,J25
+"Kefa KF2EDGKM-3.5-9P (LCSC C441114), cable side",2,"J15,J16"
+"Kefa KF2EDGKM-7.62-2P (LCSC C441150), cable side",8,"J1,J2,J3,J4,J5,J6,J7,J8"
+"Littelfuse 0997002.WXN MINI 58 V (LCSC C3661386), fit by hand",11,"F1,F3,F4,F5,F6,F7,F8,F9,F14,F15,F16"
+"Littelfuse 0997003.WXN MINI 58 V (LCSC C3661685), fit by hand",4,"F2,F11,F17,F18"
+"Littelfuse 0997005.WXN MINI 58 V (LCSC C2680609), fit by hand",3,"F12,F13,F19"
+"Littelfuse 099707.5WXN MINI 58 V (LCSC C2680610), fit by hand",1,F10
+"jumper shunt closed top (LCSC C100114), fit by hand",1,JP1
+M4 standoff + screw (local hardware),6,H1-H6

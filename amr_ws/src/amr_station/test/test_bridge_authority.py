@@ -1,5 +1,6 @@
-"""The bridge's authority limit (plan 12.10), read from the source: it may publish only MQTT and
-/amr/events, and call only /amr/line/order."""
+"""The bridge's authority limit (plan 12.10), read from the source: it may publish only MQTT,
+/amr/events and its DeviceHealth row on /amr/device_health (through health_pub.Outbox, WP-H1;
+reporting only), and call only /amr/line/order."""
 
 import ast
 import pathlib
@@ -39,6 +40,13 @@ def _calls(tree, attr):
 def test_the_node_uses_only_its_allowed_names():
     tree = ast.parse(NODE)
     assert {c.args[1].value for c in _calls(tree, "create_publisher")} == {"/amr/events"}
+    # the one other topic: DeviceHealth `station_link`, published by the shared Outbox (2026-11-16)
+    outboxes = [c for c in _calls(tree, "Outbox") if isinstance(c.func.value, ast.Name)
+                and c.func.value.id == "health_pub"]
+    assert len(outboxes) == 1
+    from amr_base import health_pub
+
+    assert health_pub.TOPIC == "/amr/device_health"
     assert {c.args[1].value for c in _calls(tree, "create_client")} == {"/amr/line/order"}
     assert {c.args[1].value for c in _calls(tree, "create_subscription")} == SUBSCRIBED
     assert _calls(tree, "create_service") == []

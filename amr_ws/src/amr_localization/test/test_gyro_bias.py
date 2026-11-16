@@ -83,3 +83,19 @@ def test_reset():
     est.reset()
     assert not est.calibrated
     assert est.update(10.0, BIAS, True) is None
+
+
+def test_non_finite_samples_never_reach_the_bias_or_the_output():
+    """H-P1-5 (2026-11-16): one NaN in a window would make the bias NaN for good."""
+    est = BiasEstimator(window_s=2.0, settle_s=0.3)
+    t = 0.0
+    for i in range(250):
+        t += 0.01
+        rate = (math.nan, math.inf, -math.inf)[i % 3] if i % 10 == 0 else BIAS
+        out = est.update(t, rate, True)
+        if i % 10 == 0:
+            assert out is None, "a non-finite sample produces no output"
+    assert est.calibrated and est.bias == pytest.approx(BIAS)
+    assert est.nonfinite == 25
+    assert est.update(t + 0.01, math.nan, False) is None
+    assert est.update(t + 0.02, BIAS + 0.5, False) == pytest.approx(0.5)

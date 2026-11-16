@@ -78,7 +78,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 
-from agv_core import config, events
+from agv_core import config
 
 HEADER = 0xCF
 BROADCAST = 0xFF
@@ -429,7 +429,9 @@ def read_frames(sock, decoder, buf):
 class RfidLink:
     """Owns the reader socket on its own thread. start() once, read snapshot()."""
 
-    def __init__(self):
+    def __init__(self, on_event=None):
+        # on_event(level, text) at the link's edges (lean plan D08); no-op by default.
+        self._on_event = on_event or (lambda level, text: None)
         self.decoder = CfDecoder()
         self.tag_len = config.RFID_TAG_LEN
         self.ignore = {t.upper() for t in config.RFID_IGNORE_TAGS}
@@ -578,7 +580,7 @@ class RfidLink:
             self._connected_at = now
             self._last_rx = now
             self._detail = "connected"
-        events.info(f"RFID connected {config.RFID_IP}:{config.RFID_PORT}")
+        self._on_event("info", f"RFID connected {config.RFID_IP}:{config.RFID_PORT}")
 
         # Read-only queries, ONE COMMAND PER TCP SEGMENT. Both in a single
         # segment (2026-10-08) left the reader silent for the whole connection -
@@ -605,7 +607,7 @@ class RfidLink:
                 raise TimeoutError(f"reader stopped answering 0x0050 for "
                                    f">{self.heartbeat.timeout_s:g} s")
             if verdict == "gave_up":
-                events.warn("RFID reader does not answer the 0x0050 heartbeat; "
+                self._on_event("warn", "RFID reader does not answer the 0x0050 heartbeat; "
                             "relying on TCP keepalive and carrier only")
             frames, buf = read_frames(sock, self.decoder, buf)
             if frames is not None:
@@ -643,7 +645,7 @@ class RfidLink:
         # Edge-triggered: a tag sitting in the field re-reads many times a
         # second and would otherwise flush the event ring in seconds.
         if new:
-            events.info(f"RFID tag {last.tag} ({last.rssi_dbm:.1f} dBm)")
+            self._on_event("info", f"RFID tag {last.tag} ({last.rssi_dbm:.1f} dBm)")
 
     def _encounter(self, tag, now):
         """One tag read into the encounter stream. Caller holds the lock."""
@@ -680,7 +682,7 @@ class RfidLink:
             changed = ident != self._identity
             self._identity = ident
         if changed:
-            events.info(f"RFID reader: {ident}")
+            self._on_event("info", f"RFID reader: {ident}")
 
     def _on_params(self, params):
         if not params:
@@ -689,9 +691,9 @@ class RfidLink:
         with self._lock:
             self._params = params
             self._mismatch = mismatch
-        events.info(f"RFID reader config: {params_summary(params)}")
+        self._on_event("info", f"RFID reader config: {params_summary(params)}")
         for m in mismatch:
-            events.warn(f"RFID reader config: {m}")
+            self._on_event("warn", f"RFID reader config: {m}")
 
     def _drop(self, now=None):
         was = self._connected
@@ -711,7 +713,7 @@ class RfidLink:
                 self._rebaseline = True
                 self._dropped_at = now
         if was:
-            events.warn("RFID link lost")
+            self._on_event("warn", "RFID link lost")
 
     def _set_detail(self, text):
         with self._lock:

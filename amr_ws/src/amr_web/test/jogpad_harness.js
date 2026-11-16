@@ -14,9 +14,11 @@ function el(tag) {
 }
 function makeRoot() {
   const buttons = ['fl', 'f', 'fr', 'l', 'stop', 'r', 'bl', 'b', 'br'].map(d => { const b = el('BUTTON'); b.dataset.dir = d; return b; });
-  const status = el('B'), speed = el('SELECT');
-  return { buttons, status, set innerHTML(v) { this.html = v; },
-    querySelector(sel) { return sel === '.jog-status' ? status : sel === '.jog-speed' ? speed : null; },
+  const status = el('B'), speed = el('SELECT'), grid = el('DIV'), emgLabel = el('DIV');
+  emgLabel.hidden = true;
+  const parts = { '.jog-status': status, '.jog-speed': speed, '.jog-grid': grid, '.jog-emg': emgLabel };
+  return { buttons, status, grid, emgLabel, set innerHTML(v) { this.html = v; },
+    querySelector(sel) { return parts[sel] || null; },
     querySelectorAll() { return buttons; } };
 }
 const doc = el('DOC'); doc.activeElement = null; doc.hidden = false;
@@ -31,7 +33,9 @@ async function api(url, body) {
 }
 api.catchable = true;
 const timers = [];
+const stateFns = [];  // amr.js onState(): the emergency banner arrives through it (emergency plan E6)
 const ctx = { document: doc, window: win, crypto: { randomUUID: () => 'owner-uuid' }, console,
+  onState: fn => stateFns.push(fn),
   setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout: (i) => { timers[i - 1] = null; },
   api: (u, b) => { const p = api(u, b); return p; } };
 vm.createContext(ctx);
@@ -122,5 +126,27 @@ const nonzeroRefreshes = () => calls.filter(c => c.url === '/api/manual/refresh'
   out.speed_r = await holdBody(root.buttons[5]);
   out.speed_f = await holdBody(root.buttons[1]);
   out.speed_l = await holdBody(root.buttons[3]);
+  // 8. emergency (alarms.banner via /api/state): a held jog is released, the pad greys, a press
+  //    sends nothing; NORMAL again (banner null) and the pad works
+  calls.length = 0;
+  fwd.fire('pointerdown');
+  pendingPress.splice(0).forEach(r => r()); await flush(); await runTimers(1);
+  stateFns.forEach(fn => fn({ banner: { reason: 'E-stop active: release it and press Reset first' } }));
+  await flush();
+  out.emg_released = calls.some(c => c.url === '/api/manual/release');
+  out.emg_grey = root.grid.classList.has('emg') && !root.emgLabel.hidden;
+  out.emg_disabled = root.buttons.filter(b => b.dataset.dir !== 'stop').every(b => b.disabled);
+  out.emg_stop_enabled = !root.buttons[4].disabled;
+  calls.length = 0;
+  root.buttons[1].fire('pointerdown'); await flush(); await runTimers(2);
+  out.emg_press_sent = calls.some(c => c.url === '/api/manual/press');
+  out.emg_status = root.status.textContent;
+  stateFns.forEach(fn => fn({ banner: null }));
+  out.emg_cleared = !root.grid.classList.has('emg') && root.emgLabel.hidden && !root.buttons[1].disabled;
+  calls.length = 0;
+  root.buttons[1].fire('pointerdown'); await flush();
+  out.normal_press_sent = calls.some(c => c.url === '/api/manual/press');
+  pendingPress.splice(0).forEach(r => r()); await flush();
+  root.buttons[1].fire('pointerup'); await flush(); await runTimers(1);
   console.log(JSON.stringify(out));
 })();

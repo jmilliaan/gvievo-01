@@ -44,3 +44,16 @@ def test_jogpad_one_manual_speed_corner_ratio_and_spin():
     assert out["speed_r"]["v"] == 0 and out["speed_r"]["w"] == pytest.approx(-0.39)
     assert (out["speed_f"]["v"], out["speed_f"]["w"]) == (pytest.approx(0.6), 0)
     assert out["speed_l"]["v"] == 0 and out["speed_l"]["w"] == pytest.approx(0.39)
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_jogpad_greys_and_releases_while_the_e_stop_is_active():
+    """Emergency plan Part B E6: the banner on /api/state releases a held jog, disables every
+    direction cell (Stop stays), and no press goes out until NORMAL again."""
+    harness = pathlib.Path(__file__).with_name("jogpad_harness.js")
+    r = subprocess.run([NODE, str(harness)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["emg_released"] and out["emg_grey"] and out["emg_disabled"] and out["emg_stop_enabled"], out
+    assert not out["emg_press_sent"] and out["emg_status"].startswith("E-stop active"), out
+    assert out["emg_cleared"] and out["normal_press_sent"], out

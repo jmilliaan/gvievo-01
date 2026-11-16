@@ -6,12 +6,16 @@ MANUAL), /cmd_vel_teleop (engineering keyboard, panel MANUAL,
 `teleop_enabled`), the navigation layer's
 generation-private /amr/layers/<gen>/cmd_vel (controller_server, permit FOLLOW)
 and .../cmd_vel_rotate (behavior_server, permit ROTATE) -> /cmd_wheel_vel at
-50 Hz, stamped with the applied supervisor generation.
+50 Hz, stamped with the applied supervisor generation. An idle zero (no source,
+output exactly zero) is repeated at 10 Hz only (WP-C9, gating.wheel_publish_due).
 
 Authority is decided by amr_base.gating from the supervisor's ControlLease
 (`require_supervisor`), the panel image, the drive owner's status and the
 executor's MotionPermit; a command must also be fresh (0.2 s). Loss of
-authority or a fault zeroes the output at once, not through the ramp. A lease
+authority or a fault zeroes the output at once, not through the ramp. An emergency
+(PanelState.emergency not NORMAL, emergency-suite plan Part B) is NONE with code ESTOP
+ahead of every rule, which zeroes the ramp and S-curve state; after NORMAL a hand input
+held through the Reset stays dead until released once (gating.repress_gate). A lease
 generation change clears every cached command, permit and slew state and
 re-subscribes the navigation inputs: nothing from the old layer can be replayed
 into the new one. /amr/mux_state (10 Hz) is the transition barrier's
@@ -85,9 +89,11 @@ class CmdMuxKinematics(LeanNode):
     line_uturn_exempt_mps = 0.0  # 0 here = no U-turn warning-1 exemption (tests built with __new__)
     _line_uturn: tuple[float, str] | None = None
     _target = 1.0
+    _repress: gating.RepressGuard | None = None  # created on first use (tests built with __new__)
 
     def __init__(self) -> None:
-        super().__init__("cmd_mux_kinematics")
+        # WP-C11: nobody sets params live
+        super().__init__("cmd_mux_kinematics", start_parameter_services=False)
         hw_a_max = config.ACCEL_RPM_S * config.MPS_PER_RPM
         hw_alpha_max = kinematics.max_yaw_accel(config.ACCEL_RPM_S)
         # A warning-field stop brakes at what the distance needs, up to the drive's own
@@ -152,6 +158,8 @@ class CmdMuxKinematics(LeanNode):
         self.declare_parameter("warning_indices", [2, 1])  # outer (warning 1) first
         self.declare_parameter("warning_scales", [0.5, 0.0])  # one factor per warning index; 0 = stop
         self.declare_parameter("warning_active_level", False)
+        # status[protective] while the protective field is occupied (WP-E3); mux_params fills it
+        self.declare_parameter("protective_active_level", False)
         self.declare_parameter("warning_decel_s", 1.0)  # each step down, seconds
         self.declare_parameter("warning_accel_s", 1.0)  # each step up, seconds
         self.declare_parameter("warning_stop_m", WARNING_STOP_M_DEFAULT)  # a factor-0 warning stops in this
@@ -200,6 +208,7 @@ class CmdMuxKinematics(LeanNode):
             protective_index=int(p("protective_index").value),
             warning_indices=tuple(int(i) for i in p("warning_indices").value),
             warning_active_level=bool(p("warning_active_level").value),
+            protective_active_level=bool(p("protective_active_level").value),
             warning_scales=tuple(min(1.0, max(0.0, self._finite_or(float(k), 0.0)))
                                  for k in p("warning_scales").value),
             warning_decel_s=self._finite_or(float(p("warning_decel_s").value), 1.0),
@@ -229,6 +238,7 @@ class CmdMuxKinematics(LeanNode):
         self._scale = 1.0
         self._speed_ramp = gating.SpeedRamp()  # the ramped warning factor actually applied to AUTO
         self._target = 1.0
+        self._repress = gating.RepressGuard()  # a hand held through an E-stop must let go first
         self._wl = self._wr = 0.0  # per-wheel slew state for the COMMISSIONING source
         self._applied_gen = 0  # the lease generation the subscriptions/caches belong to
         self._applied_instance = ""
@@ -318,6 +328,7 @@ class CmdMuxKinematics(LeanNode):
             bool(msg.pendant_rvs),
             bool(msg.pendant_left),
             bool(msg.pendant_right),
+            int(getattr(msg, "emergency", 0)),  # 0 on a PanelState built before the field
         )
 
     def _on_commissioning(self, msg: WheelVelocities) -> None:
@@ -404,11 +415,25 @@ class CmdMuxKinematics(LeanNode):
         else falls back to the shipped default rather than becoming 'no limit'."""
         return x if math.isfinite(x) and x >= 0.0 else default
 
+    _case: int | None = None  # the front active monitoring case last logged (report only)
+
     def _on_output_paths(self, m) -> None:
         status = getattr(m, "status", None)
         if status is None:
             return  # no evidence at all: the previous sample ages out
-        self._field = gating.Field(self._now(), tuple(bool(x) for x in status))
+        # WP-E2: is_valid travels with the sample; a message without it reads all paths invalid.
+        case = getattr(m, "active_monitoring_case", None)
+        self._field = gating.Field(
+            self._now(),
+            tuple(bool(x) for x in status),
+            tuple(bool(x) for x in getattr(m, "is_valid", ())),
+            None if case is None else int(case),
+        )
+        if self._field.case != self._case:
+            # Shown, never gated on (0 = the driver has no case data): the journal line is
+            # where the front case is read until MuxState carries it.
+            self.get_logger().info(f"front scanner monitoring case: {self._case} -> {self._field.case}")
+            self._case = self._field.case
 
     def _tick(self) -> None:
         sel = gating.select(
@@ -425,6 +450,7 @@ class CmdMuxKinematics(LeanNode):
             commissioning=self._commissioning,
             line=self._line,
         )
+        sel = self._repress_gate(sel)
         self._view = gating.field_view(self._now(), self._field, self.fp)
         exempt = gating.line_uturn_exempt(
             sel, self._line_uturn, self._now(), LINE_STATE_FRESH_S, self.line_uturn_exempt_mps
@@ -448,16 +474,17 @@ class CmdMuxKinematics(LeanNode):
             # that reaches a wall flickers all day under MANUAL and is nobody's history.
             down = affected < self._target
             self._target = affected
-            self._event(
-                Event.INFO,
-                "FIELD_WARNING",
+            text = (
                 f"warning field {self._view.warning_level}: auto stopping within {self.fp.warning_stop_m:g} m"
                 if affected == 0.0 and down and self.fp.warning_stop_m > 0.0
                 else f"warning field {self._view.warning_level}: auto speed ramping to x{affected:g} "
                 f"over {self.fp.warning_decel_s:g} s"
                 if affected < 1.0 and down
-                else f"auto speed ramping up to x{affected:g} over {self.fp.warning_accel_s:g} s",
+                else f"auto speed ramping up to x{affected:g} over {self.fp.warning_accel_s:g} s"
             )
+            if self._view.invalid and down:
+                text = "warning path not valid, read as occupied: " + text  # WP-E2
+            self._event(Event.INFO, "FIELD_WARNING", text)
         self._scale = scale
         name = gating.NAMES.get(sel.source, str(sel.source))  # never KeyError in the 50 Hz tick
         if name != self._source or (sel.source == gating.NONE and sel.reason != self._reason):
@@ -537,14 +564,35 @@ class CmdMuxKinematics(LeanNode):
             wl, wr = 0.0, 0.0
         self._last = sel
         self._out = (wl, wr)
-        out = WheelVelocities()
-        out.header.stamp = self.get_clock().now().to_msg()
-        out.generation = self._applied_gen
-        out.left_rad_s = wl
-        out.right_rad_s = wr
-        self._pub.publish(out)
+        # WP-C9 (2026-11-16): an idle zero (source NONE, output exactly zero) goes out at
+        # 10 Hz, everything else every tick; drive_node zeroes a command older than 0.2 s
+        # anyway. Half a tick of slack so 50 Hz jitter can't stretch 5 ticks to 6.
+        now = self._now()
+        gen = self._applied_gen
+        if gating.wheel_publish_due(
+            now, self._pub_last, gen, sel.source, wl, wr, gating.IDLE_ZERO_PERIOD_S - self.dt / 2
+        ):
+            out = WheelVelocities()
+            out.header.stamp = self.get_clock().now().to_msg()
+            out.generation = gen
+            out.left_rad_s = wl
+            out.right_rad_s = wr
+            self._pub.publish(out)
+            self._pub_last = gating.WheelOut(now, gen, sel.source, wl, wr)
 
     _out = (0.0, 0.0)
+    _pub_last: gating.WheelOut | None = None  # the last /cmd_wheel_vel sent (class default: __new__ tests)
+
+    def _repress_gate(self, sel: gating.Selection) -> gating.Selection:
+        """gating.repress_gate on this tick's inputs, with a log line when the hands are free again."""
+        if self._repress is None:
+            self._repress = gating.RepressGuard()
+        was = self._repress.blocked
+        sel = gating.repress_gate(self._repress, sel, self._now(), self._panel, self._manual.current,
+                                  self._teleop, self.gp)
+        if was and not self._repress.blocked:
+            self.get_logger().info("after the E-stop: hand inputs released, manual motion allowed again")
+        return sel
 
     def _publish_state(self) -> None:
         m = MuxState()

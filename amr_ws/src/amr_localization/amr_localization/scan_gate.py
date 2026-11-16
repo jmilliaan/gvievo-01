@@ -14,11 +14,17 @@ layer, the localization monitor's scan-vs-map comparison and the route executor'
 obstruction check. The web live view stays on raw /scan.
 
 This module is the pure decision logic; scan_gate_node wraps it with ROS I/O.
+
+Raw pass-through (CPU, 2026-11-16, cpu-load plan §4a d): the node takes /scan as its
+serialized bytes and publishes those same bytes. The gate only needs the stamp and the
+frame, which cdr_header() reads from the front of the CDR buffer; no LaserScan is ever
+deserialised or serialised here.
 """
 
 from __future__ import annotations
 
 import math
+import struct
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -57,7 +63,8 @@ class ScanGate:
         if self.max_pending < 1:
             raise ValueError("max_pending must be >= 1")
 
-    def push(self, stamp: float, msg, now: float) -> None:
+    def push(self, stamp: float, msg, now: float, frame: str | None = None) -> None:
+        """`frame`: the scan's frame_id when `msg` is raw bytes (None: msg.header.frame_id)."""
         self.stats.received += 1
         if self._last_out is not None and stamp < self._last_out - self.rewind_s:
             # the source clock went backwards (bag/sim restart): the old epoch's thinning
@@ -70,7 +77,7 @@ class ScanGate:
                 and stamp - self._last_out < self.min_period_s - 1e-9):
             self.stats.thinned += 1
             return
-        self._pending.append((stamp, msg, now))
+        self._pending.append((stamp, msg, now, frame))
         while len(self._pending) > self.max_pending:
             self._pending.popleft()
             self.stats.expired += 1
@@ -78,7 +85,7 @@ class ScanGate:
     def poll(self, now: float, transformable: Callable[[float], bool]) -> list:
         out = []
         while self._pending:
-            stamp, msg, arrived = self._pending[0]
+            stamp, msg, arrived, _frame = self._pending[0]
             # residence deadline first, whatever TF says: a scan that sat here past
             # hold_max_s (a stalled timer) is stale even if it is transformable now (Q13)
             if now - arrived > self.hold_max_s:
@@ -97,8 +104,27 @@ class ScanGate:
         return out
 
     def frame_of_oldest(self):
-        return self._pending[0][1].header.frame_id if self._pending else None
+        if not self._pending:
+            return None
+        _stamp, msg, _arrived, frame = self._pending[0]
+        return msg.header.frame_id if frame is None else frame
 
     @property
     def pending(self) -> int:
         return len(self._pending)
+
+
+def cdr_header(raw: bytes) -> tuple[float, str]:
+    """(stamp in s, frame_id) of a serialized message whose first field is a std_msgs/Header
+    (LaserScan). Layout: the 4-byte encapsulation header (byte 1: 1 = little endian), then
+    int32 sec, uint32 nanosec, uint32 string length (with its NUL), the characters. Every
+    field sits on its natural alignment, so no padding. ValueError on a buffer too short
+    or a length that runs past it."""
+    if len(raw) < 16:
+        raise ValueError(f"serialized message too short for a header ({len(raw)} bytes)")
+    e = "<" if raw[1] & 1 else ">"
+    sec, nanosec, n = struct.unpack_from(e + "iII", raw, 4)
+    if n < 1 or 16 + n > len(raw):
+        raise ValueError(f"frame_id length {n} runs past the {len(raw)}-byte buffer")
+    frame = bytes(raw[16:16 + n - 1]).decode("utf-8", errors="replace")
+    return (sec * 1_000_000_000 + nanosec) * 1e-9, frame  # as Time.from_msg(stamp).nanoseconds * 1e-9

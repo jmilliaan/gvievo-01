@@ -66,7 +66,7 @@
     }
   },
   "rfid": {
-    "enabled": true,
+    "enabled": false,
     "ip": "192.168.1.200",
     "port": 2022,
     "interface": "enp2s0",
@@ -112,7 +112,7 @@
       "Pendant RIGHT",
       "[SPARE]",
       "Manual Arm",
-      "[SPARE]",
+      "ESTOP ACTIVE",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -121,22 +121,22 @@
       "[SPARE]"
     ],
     "do_names": [
+      "Horn snd1 (move)",
+      "Horn snd2 (alarm)",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]",
-      "[SPARE]"
+      "n/c",
+      "n/c",
+      "n/c",
+      "n/c",
+      "n/c",
+      "n/c",
+      "n/c",
+      "n/c"
     ]
   },
   "lidar": {
@@ -162,11 +162,11 @@
     "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,
-    "di_manual_arm": 8
-  },
-  "horn": {
-    "enabled": false,
-    "do_channel": 0
+    "di_manual_arm": 8,
+    "di_estop": 9,
+    "estop_active_high": true,
+    "estop_confirm_scans": 2,
+    "estop_reset_timeout_s": 3.0
   },
   "pendant": {
     "enabled": true,
@@ -191,6 +191,7 @@
     "motor_temp_warn_c": 80.0,
     "motor_temp_trip_c": 95.0,
     "bus_v_warn_low": 48.0,
+    "bus_v_trip_low": 46.0,
     "bus_v_warn_high": 56.0
   },
   "mls": {
@@ -240,6 +241,9 @@
   },
   "rear": {
     "source": "none",
+    "sensor_ip": "192.168.3.11",
+    "host_ip": "192.168.3.2",
+    "port": 6061,
     "field_output_index": 0,
     "no_trolley_case": -1,
     "case_proven": false,

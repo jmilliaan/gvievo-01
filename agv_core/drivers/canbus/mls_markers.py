@@ -21,6 +21,9 @@ profile expects (`ok` False), no sample produces an event.
           sensor started to read and could not decode. The early sign of a worn,
           off-centre or too-fast marker.
 
+A sample whose reading carries "gap": True (mls_track's TPDO1 hole, WP-E8) breaks
+continuity first, like an untrusted one.
+
 Only TPDO samples count. The SDO fallback (~10 Hz) samples carry the marker bits too
 (2021h:04), but at that rate a one-frame code is missed silently, so they are ignored.
 The bench tool (read_mls markers) feeds the same detector with every TPDO1 frame.
@@ -88,6 +91,10 @@ class MarkerDetector:
             # returns is not taken for a fresh marker.
             self.break_continuity()
             return None
+        if reading.get("gap"):
+            # mls_track saw a TPDO1 hole before this frame (WP-E8): a code shown inside it is
+            # lost, and the one showing now has unknown history - no event across the hole.
+            self.break_continuity()
         mk, st = reading["marker"], reading["status"]
         code = int(mk["code"])
         reading_code = bool(st.get("reading_code", False))

@@ -32,8 +32,15 @@ for a physical Start once its cause is gone, then the pre-move warning.
   field       protective field violated (/output_paths): resumes by itself once
               the field is proven clear; if the field state goes unknown while
               held, it becomes a `prereq` hold
-  estop       drive torque gone with the field clear: needs a physical Start,
-              unless auto_resume_estop
+  estop       the E-stop: PanelState.emergency not NORMAL on a fresh, valid panel image
+              (DI09 = Flexi Soft Q3, emergency-suite plan Part B E5). Only while the panel
+              cannot say (stale, invalid) is it still guessed from drive torque gone with
+              the field clear. Needs a physical Start once NORMAL; never by itself
+              (auto_resume_estop true is refused at startup). See EMERGENCY below
+  chain       drive torque gone with the field clear while the panel says NORMAL: not the
+              E-stop - a rear OSSD or another safety input (station-call O8, unified plan
+              WP-Y1 note). Waits for a physical Start; becomes `field` if the field shows
+              violated within FIELD_RACE_S (reported late), `estop` if DI09 drops
   panel       the I/O island reported its panel image invalid while ARMED,
               RUNNING or in a powered hold: held at once, not debounced
   drives      wheel feedback or drive report went stale while running: stops
@@ -86,12 +93,25 @@ resume a hold, leave any other stop or pause anything. This adds a reason to mov
 protection stays with the scanner OSSD, FX3 and STO chain. With `calling` off nothing here is reached,
 and the rear lidar is never read.
 
+EMERGENCY (emergency-suite plan Part B E5, owner O-3 2026-11-16). An E-stop never ends a run: RUNNING
+holds as `estop`, the pre-move warning is cancelled back to where its Start came from (no hold from
+IDLE/DONE; an order's warning ends DEPARTURE_CANCELLED), and a field, chain or panel hold is relabelled
+`estop` so it cannot resume by itself. Station, payload, trolley, position, device and authority holds
+keep their own story (they wait for Start anyway; a station stop stays `station`, station-call plan's
+E-stop row). Every Start and order is refused at once while it is not NORMAL (a prerequisite). The
+Reset the operator presses after releasing the E-stop does NOT abort a run held as `estop` (O-3,
+overriding station-call O13 for that case only); a Reset outside IDLE in any other state still aborts.
+After NORMAL, Start: the warning, then the run goes on where it stopped, at NORMAL speed (a real E-stop
+drops HIGH, as before).
+
 NO-TROLLEY RUN (station.no_trolley_run, owner's decision 2026-11-06, no rear scanner fitted): an unknown
 rear state no longer blocks an order, a hand trip or a pivot, and the stops need no trolley for Start. A
 sensor that does report a trolley at HOME or at a pivot, or a violated rear field, still refuses. Every
 other check is unchanged.
 """
 import dataclasses
+
+from agv_core import canmon, config
 
 from amr_base import hold_policy, wire
 from amr_line import marker_reader, order, tag_table
@@ -113,12 +133,40 @@ _PARK_CAUSES = ("field", "rfid")
 # reported within FIELD_RACE_S of such a hold proves it was the protective field, and the
 # resume restores HIGH; otherwise it was a real E-stop and the resume departs NORMAL.
 # Only the speed is decided here: the hold keeps its E-stop terms (a physical Start).
-_PARKS_HIGH = _PARK_CAUSES + ("estop",)
+# A `chain` hold (the panel says NORMAL) parks HIGH the same way: the field reported late turns it
+# into a `field` hold, which restores HIGH; otherwise its resume departs NORMAL (E5, 2026-11-16).
+_PARKS_HIGH = _PARK_CAUSES + ("estop", "chain")
 FIELD_RACE_S = 0.5
+# Holds an emergency relabels `estop` (E5): the ones on the safety chain's terms, the field's above
+# all (it would resume by itself). The others keep their story and wait for Start anyway.
+_EMERGENCY_RELABELS = ("field", "chain", "panel")
+_SAFETY_CAUSES = (*hold_policy.SAFETY_CAUSES, "chain")
+_HOLD_TEXT = {"authority": "authority lost: {why}",
+              "chain": "safety stop (safety circuit, not the E-stop): {why}"}
+ESTOP_ACTIVE = "E-stop active: release it and press Reset first"
+
+
+def bus_volts(v):
+    """One DriveStatus bus_v reading as supply_v wants it: None unless a finite voltage above 0
+    (NaN = not read; 0 = a publisher that does not set the field)."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and 0.0 < v < float("inf") else None
+
+
+def auto_resume_estop_refusal(value) -> str:
+    """Why line_follow_node refuses to start with this auto_resume_estop, or "" (emergency plan §4:
+    with the DI09 signal an E-stop hold resumes only on a physical Start)."""
+    if value:
+        return ("auto_resume_estop:=true is refused (emergency-suite plan §4): an E-stop hold "
+                "resumes only on a physical Start; set it false")
+    return ""
 # Holds a drive-link FAULT relabels (WP-A4): their own story stops mattering once the drives
 # need a power cycle. Station, RFID, marker, position and payload holds keep theirs: a Start
 # from them meets the fault in the pre-move check anyway.
-_DRIVE_FAULT_OVERRIDES = ("field", "estop", "panel", "drives", "track", "rate", "sensor", "prereq")
+_DRIVE_FAULT_OVERRIDES = ("field", "estop", "chain", "panel", "drives", "track", "rate", "sensor", "prereq")
 # Kink pivot (see _kink_begin): ticks without tape before a corner is called (a one-tick
 # flicker at the sensor's edge is not one), and the least angle worth searching after a
 # hold took the rest of kink_max_deg.
@@ -186,6 +234,10 @@ class Inputs:
     # guard's inputs. yaw from the gyro (odometry when the gyro is stale), v from odometry.
     yaw_rate: float | None = None    # rad/s, vehicle frame
     v_meas: float | None = None      # m/s, wheel odometry
+    # The curve guard's own yaw rate (H-P1-7, WP-E7): the larger of the gyro's and the wheels', so a
+    # frozen or low gyro only drops HIGH earlier. None = use yaw_rate (callers that predate it). The
+    # U-turn keeps yaw_rate: its gyro check is there to catch the wheels slipping.
+    curve_yaw_rate: float | None = None
     warning_scale: float = 1.0       # the mux's applied warning-field factor (/amr/mux_state)
     # MLS markers (mls-marker-plan, 2026-10-09): the /amr/line_marker snapshot, or None.
     # Logged in every state; the mission's high-zone codes set the speed while RUNNING
@@ -198,6 +250,13 @@ class Inputs:
     trolley: str = "unknown"          # "absent" | "present" | "unknown"; the node maps stale to unknown
     rear_clear: bool | None = None    # None = unknown, as field_clear
     loc_ready: bool = False           # TapeRuntime.ready; read for orders only
+    # The panel's emergency (PanelState.emergency, emergency-suite plan Part B E5): 0 NORMAL, 1..4 not
+    # (amr_base/emergency.py). None = the panel cannot say (no fresh image, or valid=False): the stop
+    # is then classified from torque as before. Defaulted so callers that predate it are unchanged.
+    emergency: int | None = None
+    # The drives' bus voltage, (left, right) from DriveStatus (None = not read), WP-P7: a new run is
+    # refused at or below monitor.bus_v_trip_low (canmon.supply_refusal). () = no reading.
+    supply_v: tuple = ()
 
 
 class FollowJob:
@@ -581,6 +640,9 @@ class FollowJob:
         rule still applies as written: a destination not reached before the U-turn is
         reported missed and not served from the return leg, and the run ends at Home.
         """
+        why = canmon.supply_refusal(i.supply_v, config.MON_BUS_V_TRIP_LOW)
+        if why:
+            return why
         rfid = self._rfid_check(i)
         if rfid:
             return rfid
@@ -793,6 +855,8 @@ class FollowJob:
         Start: the drives are in standby until the Start itself asks for power."""
         if not i.panel_valid:
             return "panel state is stale"
+        if i.emergency:
+            return ESTOP_ACTIVE
         if not i.panel_auto:
             return "selector is not in AUTO"
         if i.authority is None:
@@ -825,17 +889,43 @@ class FollowJob:
 
     def _resume_speed(self, cause):
         """The speed a hold resumes at: HIGH as arrived after a parking hold (field, RFID
-        link, an "estop" that was the field reported late), NORMAL after a real E-stop."""
+        link, an "estop" that was the field reported late), NORMAL after a real E-stop or a
+        safety-circuit (`chain`) stop."""
         if cause in _PARK_CAUSES or (cause == "estop" and self._estop_was_field):
             self.tape.resume_high()
-        elif cause == "estop":
+        elif cause in ("estop", "chain"):
             self.tape.drop_high("resumed after an E-stop / safety-chain stop")
 
     def _safety_cause(self, i: Inputs):
-        """Which safety story a torque loss belongs to. Unknown field evidence
-        cannot prove a stop was only the field, so it is an E-stop: the hold
-        that waits for a human."""
-        return "field" if i.field_clear is False else "estop"
+        """Which safety story a torque loss belongs to. The E-stop when the panel says so (E5);
+        the field when it is proven violated; with the panel saying NORMAL, the safety circuit
+        (`chain`, not the E-stop); only when the panel cannot say, the old guess: unknown field
+        evidence cannot prove a stop was only the field, so it is an E-stop. Every one but the
+        field waits for a human."""
+        if i.emergency:
+            return "estop"
+        if i.field_clear is False:
+            return "field"
+        return "chain" if i.emergency is not None else "estop"
+
+    def _estop_held(self):
+        """A run on the E-stop's terms: held `estop`, or in the warning of a Start from that hold."""
+        if self.state == HOLD:
+            return self.hold_cause == "estop"
+        return self.state == ARMED and self._premove is not None and self._premove["back"][1] == "estop"
+
+    def _emergency(self, i: Inputs):
+        """The panel says E-stop (E5): RUNNING holds, the warning is cancelled, a hold that is on the
+        safety chain's terms becomes `estop`. Returns the tick's command, or None to carry on."""
+        if self.state == ARMED:
+            out = self._premove_cancel(ESTOP_ACTIVE)
+            if self.state == HOLD and self.hold_cause in _EMERGENCY_RELABELS:
+                self._hold("estop", "emergency stop")
+            return out
+        if self.state == RUNNING or (self.state == HOLD and self.hold_cause in _EMERGENCY_RELABELS):
+            self._hold("estop", "emergency stop")
+            return 0.0, 0.0
+        return None
 
     def _taken_over(self, i: Inputs):
         """An explicit withdrawal of authority, or "". Not debounced: a
@@ -863,7 +953,7 @@ class FollowJob:
         self.state = HOLD
         self.hold_cause = cause
         self._premove = None
-        self.reason = hold_policy.hold_text(cause, why, {"authority": "authority lost: {why}"})
+        self.reason = hold_policy.hold_text(cause, why, _HOLD_TEXT)
         self._auto_since = None
         self._resume_at = None
         self.f.hard_stop()
@@ -894,13 +984,15 @@ class FollowJob:
             # from rest, toward the same side, with what is left of kink_max_deg.
             self.kink["done_deg"] += max(0.0, self.kink["turn"].angle_deg)
             self.kink["turn"] = None
-        # A pivot cannot be resumed part-way (gy-demo rule): its start counts and
-        # tape history describe a vehicle that has since been stopped by hand. "trolley" holds
-        # before the spin starts, so nothing is part-way and the U-turn stays asked for.
+        # A hold does not end the U-turn (owner 2026-11-16, O-3 extended: it was a FAULT under
+        # the gy-demo rule). The approach and the stop at the tape end start again; a pivot under
+        # way continues after the hold as a fresh turn from rest with what is left of its gates
+        # (tape_run.hold_u_turn, uturn.resume), the tape still deciding where it ends. A resume
+        # that cannot be trusted (no counts, turned while held, no angle left) FAULTs then.
+        # "trolley" holds before the spin starts and "station" never meets a U-turn: unchanged.
         if cause not in ("station", "trolley") and self.tape is not None and self.tape.uturn_req is not None:
-            self.tape.abort_u_turn()
-            self.state = FAULT
-            self.reason = f"U-turn interrupted ({why}); align the AGV on the tape, Reset, then Start"
+            self.tape.hold_u_turn()
+            self.reason += "; the U-turn continues from where it stopped"
 
     # -- the tick ----------------------------------------------------------
     def tick(self, i: Inputs):
@@ -920,6 +1012,15 @@ class FollowJob:
         # follower was cleared by service. The node zeroes the command on
         # the falling edge out of RUNNING.
         # Reset wins over a Start seen in the same tick.
+        # Owner O-3 (2026-11-16): the Reset after an E-stop (release, Reset, Start) does not end a
+        # run held as `estop`: it cancels a warning back to the hold and moves nothing. Any other
+        # Reset outside IDLE still aborts (station-call O13 otherwise unchanged).
+        if i.reset_edge and self._estop_held():
+            self._order_refuse_in_state(req)
+            if self.state == ARMED:
+                self._premove_cancel("Reset")
+            self.reason = "held (estop): Reset seen; press Start to continue"
+            return 0.0, 0.0
         if i.reset_edge and self.state != IDLE:
             self._order_refuse(req, order.DEPARTURE_REFUSED, order.PREREQUISITE)
             self.reset()
@@ -957,6 +1058,12 @@ class FollowJob:
             self._hold("authority", taken)
             self.state = FAULT
             return 0.0, 0.0
+
+        # The E-stop, known from DI09 (E5): never the end of the run.
+        if i.emergency:
+            out = self._emergency(i)
+            if out is not None:
+                return out
 
         # The I/O island says it cannot read the panel: selector, Start and the E-stop state
         # are unknown. Not debounced, and never a powered hold (WP-A2).
@@ -1028,16 +1135,22 @@ class FollowJob:
         """Wait for the cause to clear, then resume - or wait for a human."""
         if self._hold_since is None:
             self._hold_since = i.now
-        if (self.hold_cause == "estop" and i.field_clear is False
-                and i.now - self._hold_since <= FIELD_RACE_S):
-            self._estop_was_field = True  # the protective field, reported late: HIGH comes back
+        late_field = i.field_clear is False and i.now - self._hold_since <= FIELD_RACE_S
+        if self.hold_cause == "estop" and late_field and i.emergency is None:
+            # Only the stale-panel guess races (E5): the protective field, reported late, HIGH comes
+            # back. With the panel an `estop` hold is the E-stop, whatever the field does.
+            self._estop_was_field = True
+        if self.hold_cause == "chain" and late_field:
+            # The panel said NORMAL and the field shows up late: it was the field after all.
+            self._hold("field", "drive torque removed (protective field, reported late)")
+            return 0.0, 0.0
         # A torque loss arriving DURING a hold for some other reason takes the
         # safety cause (executor rule): a hold for stale feedback must not
         # auto-resume through an E-stop that happened while it waited. A hold
         # already on the field's or the E-stop's terms keeps them. Only holds that
         # keep their power can lose torque: the others are in standby on purpose.
         powered_hold = self.hold_cause in self._auto_causes()
-        if self.hold_cause not in hold_policy.SAFETY_CAUSES and powered_hold and (
+        if self.hold_cause not in _SAFETY_CAUSES and powered_hold and (
                 i.torque_off or i.field_clear is False):
             self._hold(self._safety_cause(i), "drive torque removed while held")
             return 0.0, 0.0
@@ -1057,6 +1170,10 @@ class FollowJob:
             # estop (by default), rfid and authority: a physical Start, not a timer.
             # The drives are in standby here, so torque comes with the Start.
             pre = self._prerequisite(i, torque=False) or self._rfid_check(i)
+            if i.emergency:
+                # refused at once, no warning (emergency plan §4): the hold says what to do
+                self.reason = f"held ({self.hold_cause}): {ESTOP_ACTIVE}, then press Start"
+                return 0.0, 0.0
             note = self._blind_note()
             if i.start_edge and not pre:
                 if note:
@@ -1157,10 +1274,11 @@ class FollowJob:
             t.drop_high("wheel travel unavailable (no encoder counts)")
         if self.step_m is None:
             t.parked(None)
-        if t.high and (i.yaw_rate is None or i.v_meas is None):
+        yaw = i.yaw_rate if i.curve_yaw_rate is None else i.curve_yaw_rate
+        if t.high and (yaw is None or i.v_meas is None):
             t.drop_high("curve guard inputs stale (gyro and odometry)")
         above = (self.diag or {}).get("v_base", 0.0) > vehicle.AUTO_RPM + 1.0
-        trip = t.guard.update(t.speed.high or above, i.yaw_rate, i.v_meas,
+        trip = t.guard.update(t.speed.high or above, yaw, i.v_meas,
                               (self.diag or {}).get("e_mm"), self.step_m or 0.0)
         if trip:
             t.drop_high(trip, urgent=True)
@@ -1194,6 +1312,20 @@ class FollowJob:
         if i.sensor_age_s is None or i.sensor_age_s > vehicle.SENSOR_TIMEOUT_S:
             # A silent sensor is a comms fault, never the end of the tape.
             return self._uturn_fault("sensor silent during the U-turn")
+        if req["phase"] == "resume":
+            # A pivot stopped by a hold (owner 2026-11-16): continue it from rest, once still.
+            self.f.hard_stop()
+            self.diag = dict(self.diag or {}, v_base=0.0)
+            if not i.wheels_still:
+                return 0.0, 0.0
+            if self.calling and self._pivot_trolley(i) != "absent":
+                self._hold("trolley", f"a trolley is {i.trolley} before the U-turn continues; "
+                                      f"move it clear, then press Start")
+                return 0.0, 0.0
+            why = t.resume_u_turn(i.counts, i.counts_per_rev)
+            if why:
+                return self._uturn_fault(why)
+            return 0.0, 0.0
         if t.uturn is None:
             choice, _high = t.steer(i.sensor, tags, self.f.followed_mm)
             approach = req["phase"] == "approach"
@@ -1886,6 +2018,10 @@ class FollowJob:
         self.markers_ok = ok
         self._marker_new = self.markers.scan(snap)
         for code, _direction, lcp2, gap, _good in self._marker_new:
+            if not code:
+                # marker_reader's TPDO1 hole entry (WP-E8): no marker was read
+                self._marker_log.append(("warn", f"TPDO1 hole ({gap}): markers may have been missed"))
+                continue
             note = f" ({gap} missed before it)" if gap else ""
             self._marker_log.append(("warn" if gap else "info", f"marker {code} at {lcp2:+d} mm{note}"))
 

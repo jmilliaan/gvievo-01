@@ -11,7 +11,10 @@ what it asks for:
                   "max_approach_m", "phase", "travel_m", "level", "gone"} from the
                   U-turn tag until the turn ends. phase: approach (slow to the
                   creep within decel_m, follow until the tape is gone) -> stopping
-                  (command zeroed at once) -> the pivot (self.uturn, amr_line.uturn)
+                  (command zeroed at once) -> the pivot (self.uturn, amr_line.uturn).
+                  A hold keeps it (hold_u_turn, owner 2026-11-16): a pivot under way
+                  becomes phase "resume" with "resume" = uturn.carry() until the
+                  wheels are still after the hold (resume_u_turn)
     link_lost     why the RFID stream can no longer be trusted while driving
                   (link down, reconnect, buffer overrun): the job holds the
                   vehicle for a person. A missed tag here means a station or the
@@ -408,7 +411,8 @@ class TapeRun:
             return
         for code, _direction, lcp2, gap, line_good in reads:
             if gap and z.state != speed_zone.NORMAL:
-                self.drop_high(f"{gap} marker event(s) lost: a zone marker may have been missed")
+                what = "TPDO1 hole(s)" if not code else "marker event(s) lost"
+                self.drop_high(f"{gap} {what}: a zone marker may have been missed")
             if code not in zone:
                 continue
             if not driving or self.stop is not None or self.uturn_req is not None:
@@ -430,7 +434,10 @@ class TapeRun:
             if not ok:
                 self.marker_lost = "MLS markers down: the U-turn or home marker could be missed"
             elif any(gap for _c, _d, _l, gap, _g in reads):
-                self.marker_lost = "marker events lost: the U-turn or home marker may have been missed"
+                # code 0: a TPDO1 hole on the bus (marker_reader, WP-E8), not a topic loss
+                what = ("TPDO1 hole" if any(gap and not c for c, _d, _l, gap, _g in reads)
+                        else "marker events lost")
+                self.marker_lost = f"{what}: the U-turn or home marker may have been missed"
         for code, _direction, lcp2, _gap, line_good in reads:
             if code not in (mr["uturn_code"], mr["home_code"]):
                 continue
@@ -794,12 +801,40 @@ class TapeRun:
     def abort_u_turn(self):
         self.uturn = self.uturn_req = None
 
+    def hold_u_turn(self):
+        """A hold during the U-turn (job._hold; owner 2026-11-16: an E-stop does not end it).
+        The approach starts again from rest and finds the tape end itself; a stop at the tape
+        end pivots once the wheels are still, as before; a pivot under way is kept as
+        uturn.carry() and continues as a fresh turn after the hold (phase "resume")."""
+        req = self.uturn_req
+        if req["phase"] == "approach":
+            req["decel_rpm_s"], req["gone"] = None, 0   # re-solved from rest at the next tick
+        elif self.uturn is not None:
+            req["resume"] = self.uturn.carry()
+            req["phase"] = "resume"
+            self.uturn = None
+        self.events.append((INFO, f"U-turn {req['direction']} held in phase {req['phase']}: "
+                                  f"it continues after the hold"))
+
+    def resume_u_turn(self, counts, counts_per_rev):
+        """Phase "resume", wheels still: the turn continues (uturn.resume). Returns why not, or None."""
+        req = self.uturn_req
+        turn, why = uturn.resume(req["resume"], counts, counts_per_rev)
+        if why:
+            return why
+        done = req.pop("resume")["angle_deg"]
+        self.uturn, req["phase"] = turn, "spin"
+        self.events.append((INFO, f"U-turn {req['direction']} continues after the hold "
+                                  f"({done:.0f} deg turned by encoder, {turn.phase})"))
+        return None
+
     def uturn_snapshot(self):
         req = self.uturn_req
         if req is None:
             return self.uturn_last
         snap = {"active": True, "phase": req["phase"], "direction": req["direction"],
-                "angle_deg": 0.0, "tape_lost": False, "reason": None}
+                "angle_deg": (req.get("resume") or {}).get("angle_deg", 0.0), "tape_lost": False,
+                "reason": None}
         if self.uturn is not None:
             snap.update(self.uturn.snapshot())
         snap["tag"] = req["tag"]

@@ -15,6 +15,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchContext, LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     OpaqueFunction,
     RegisterEventHandler,
@@ -28,14 +29,17 @@ from amr_bringup import domains
 LAUNCH = os.path.join(get_package_share_directory("amr_bringup"), "launch")
 BASE_EXES = {
     "cmd_mux_kinematics_node",
-    "diff_drive_odom_node",
-    "imu_bias_node",
     "scan_gate_node",
     "ekf_node",
     "robot_state_publisher",
+    "event_recorder_node",  # WP-H3, real and sim
 }
-HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node", "rfid_node"}
-SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node"}
+# rfid_node only with rfid.enabled (decision 23: false on both units, 2026-11-16)
+HW_EXES = {"drive_node", "panel_node", "sick_safetyscanners2_node"}
+# diff_drive_odom and imu_bias are sim only since WP-C5/C10 (2026-11-16): on the vehicle drive_node
+# publishes /odom_raw and /imu/data itself, so a second publisher there would fight it.
+SIM_EXES = {"fake_base_node", "fake_imu_node", "fake_panel_node", "scan_synth_node",
+            "diff_drive_odom_node", "imu_bias_node"}
 MAPPING_EXES = {"async_slam_toolbox_node", "mapping_session_node", "survey_move_node"}
 LINE_EXES = {"line_follow_node"}
 NAV_EXES = {
@@ -69,10 +73,15 @@ def _walk(entities, context, out: dict, depth=0):
             exe = e.node_executable
             exe = "".join(s.perform(context) for s in exe) if isinstance(exe, list) else str(exe)
             out.setdefault("exes", []).append(exe)
+            out.setdefault("nodes", []).append((exe, e))
             out.setdefault("params", {})[exe] = list(e._Node__parameters or [])
             out.setdefault("remaps", {})[exe] = [
                 (_text(a, context), _text(b, context)) for a, b in (e._Node__remappings or [])
             ]
+            continue
+        if isinstance(e, ExecuteProcess):  # a plain process (the black box); Node is caught above
+            cmd = getattr(e, "process_description", e).cmd
+            out.setdefault("procs", []).append((e, [_text(c, context) for c in cmd]))
             continue
         if isinstance(e, IncludeLaunchDescription):
             raw = e.launch_description_source._LaunchDescriptionSource__location  # unexpanded substitutions
@@ -96,6 +105,10 @@ def _walk(entities, context, out: dict, depth=0):
             continue
         if isinstance(e, RegisterEventHandler):
             out["handlers"] = out.get("handlers", 0) + 1
+            # the action an OnProcessExit watches (private in Humble: found by type)
+            out.setdefault("watched", []).extend(
+                v for v in vars(e.event_handler).values() if isinstance(v, Node)
+            )
             continue
         if isinstance(e, LaunchDescription):
             _walk(e.entities, context, out, depth + 1)
@@ -124,9 +137,16 @@ def test_mapping_layer_is_only_slam_and_coordinator():
     assert c["handlers"] == 2  # slam and the session are required; survey_move is not
 
 
-def test_line_layer_is_only_the_follower():
+def test_line_layer_is_only_the_follower(tmp_path, monkeypatch):
     # generation and real are the ONLY arguments _start_line passes; anything
     # else required here would make the supervisor's spawn fail as SPAWN_FAILED.
+    # Without a map selected (2026-11-16 triage: the test read the live ~/.amr, where the
+    # vehicle has line_graph.json, so tape localization added map_server/AMCL/monitor). The
+    # with-a-map case is test_both_layers_build_the_localization_group_once.
+    from agv_core import paths  # noqa: PLC0415
+
+    monkeypatch.setenv(paths.STATE_ENV, str(tmp_path / "state"))
+    monkeypatch.setenv(paths.MAPS_ENV, str(tmp_path / "maps"))
     c = compose("line_layer.launch.py", generation=3, real="true")
     assert set(c["exes"]) == LINE_EXES
     assert c["includes"] == []
@@ -136,6 +156,7 @@ def test_line_layer_is_only_the_follower():
     assert c["remaps"]["line_follow_node"] == [("/amr/line_cmd", "/amr/layers/g3/amr/line_cmd")]
     params = [_param_dict(p) for p in c["params"]["line_follow_node"] if isinstance(p, dict)]
     assert any(p.get("field_source") == "scanner" for p in params)
+    assert any(str(p.get("loc_status", "")).startswith("off:") for p in params)  # and says why
 
 
 def test_line_layer_assumes_the_field_clear_only_in_sim():
@@ -158,7 +179,7 @@ def test_navigation_layer_has_no_base_web_or_sim(tmp_path):
     assert set(c["exes"]) == NAV_EXES
     assert not (set(c["exes"]) & (BASE_EXES | HW_EXES | SIM_EXES | {"web_node"}))
     assert c["includes"] == []
-    assert c["handlers"] == 6  # every node except the two lifecycle managers
+    assert c["handlers"] == 8  # every node, the two lifecycle managers too since WP-H4
 
 
 def test_scanner_layer_has_no_description():
@@ -368,7 +389,8 @@ def test_blank_dynamic_serves_amcl_a_derived_map_on_map_loc(tmp_path, monkeypatc
         revision=rev,
         blank_dynamic="true",
     )
-    assert c["exes"].count("map_server") == 2 and c["handlers"] == 7
+    # map_server, map_server_loc, amcl, both managers (WP-H4), monitor, controller, behavior, executor
+    assert c["exes"].count("map_server") == 2 and c["handlers"] == 9
     loc = gridio.read(str(tmp_path / "state" / "loc_map_gen0.yaml"))
     ref = gridio.read(os.path.join(path, "map.yaml"))
     dyn = gridio.read(os.path.join(path, "dynamic.yaml")).data >= 65
@@ -403,13 +425,17 @@ def test_the_follower_and_executor_read_the_protective_field_index_of_the_yaml(t
 
     doc = scanner_fields.load()
     assert scanner_fields.protective_index(doc) == scanner_fields.mux_params(doc)["protective_index"] == 0
+    level = scanner_fields.protective_active_level(doc)  # WP-E3: the polarity from the same yaml
+    assert level is doc["fields"]["protective"]["active"]
     c = compose("line_layer.launch.py", generation=3, real="true")
     params = [_param_dict(p) for p in c["params"]["line_follow_node"] if isinstance(p, dict)]
     assert any(p.get("field_output_index") == 0 for p in params)
+    assert any(p.get("field_active_level") is level for p in params)
     write_world_as_bundle(str(tmp_path))
     n = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory")
     params = [_param_dict(p) for p in n["params"]["route_executor_node"] if isinstance(p, dict)]
     assert any(p.get("field_output_index") == 0 for p in params)
+    assert any(p.get("field_active_level") is level for p in params)
     # the synthetic scan's field of view is the mounted scanner's
     cfg = yaml.safe_load(open(os.path.join(os.path.dirname(LAUNCH), "config", "nanoscan3.yaml")))
     ros = next(v["ros__parameters"] for v in cfg.values() if isinstance(v, dict) and "ros__parameters" in v)
@@ -455,6 +481,75 @@ def test_nav2_lifecycle_managers_do_not_rebond_a_dead_node():
     assert seen == {"lifecycle_manager_localization": False, "lifecycle_manager_navigation": False}
 
 
+def _node_name(node) -> str:
+    return _text(node._Node__node_name, LaunchContext())  # private in Humble, raw as given
+
+
+def test_lifecycle_managers_run_without_a_bond_and_are_required(tmp_path):
+    """WP-C15 (C#24): bond_timeout 0.0 on both managers (no heartbeats, no false bond miss under
+    N97 load). With no bond, required() is what catches a dead node: every localization and
+    navigation node, the two managers included, ends the layer when it exits. A double, not an
+    int: the manager's parameter type check would refuse an integer 0."""
+    import yaml
+    from amr_mission.fixtures import write_world_as_bundle
+
+    for pkg, f in (("amr_localization", "amcl.yaml"), ("amr_navigation", "nav2_params.yaml")):
+        doc = yaml.safe_load(open(os.path.join(get_package_share_directory(pkg), "config", f)))
+        for name, body in doc.items():
+            if name.startswith("lifecycle_manager"):
+                bt = body["ros__parameters"]["bond_timeout"]
+                assert isinstance(bt, float) and bt == 0.0, (f, name, bt)
+    write_world_as_bundle(str(tmp_path))
+    c = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory")
+    watched = {id(n) for n in c["watched"]}
+    names = sorted(_node_name(n) for _, n in c["nodes"] if id(n) in watched)
+    assert names == sorted([
+        "map_server", "amcl", "lifecycle_manager_localization", "localization_monitor",
+        "controller_server", "behavior_server", "lifecycle_manager_navigation", "route_executor",
+    ])
+
+
+def test_both_layers_build_the_localization_group_once(tmp_path, monkeypatch):
+    """L D53: navigation_layer and the LINE layer's tape localization both build map_server,
+    AMCL, the manager and the monitor through tape_loc.group, so they cannot drift apart. Both
+    pass the revision's dynamic areas to the monitor (dynamic_yaml), and the group's nodes are
+    required in both."""
+    from agv_core import paths  # noqa: PLC0415
+
+    from amr_bringup import tape_loc  # noqa: PLC0415
+    from amr_line import tape_graph_store as store  # noqa: PLC0415
+
+    path, rev = _bundle_with_dynamic(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv(paths.MAPS_ENV, str(tmp_path))
+    monkeypatch.setenv(paths.STATE_ENV, str(state))
+    calls = []
+    real_group = tape_loc.group
+
+    def spy(*a, **kw):
+        calls.append(kw)
+        return real_group(*a, **kw)
+
+    monkeypatch.setattr(tape_loc, "group", spy)
+    store.write_active(str(state), "sim_factory", rev)
+    line = compose("line_layer.launch.py", generation=3, real="true")
+    nav = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory", revision=rev,
+                  autostart="false")
+    assert len(calls) == 2
+    want = os.path.join(path, "dynamic.yaml")
+    assert [kw.get("dynamic_yaml") for kw in calls] == [want, want]
+    assert calls[1]["autostart"] is False and calls[1]["map_loc_yaml"] is None
+    group = {"map_server", "amcl", "lifecycle_manager", "localization_monitor_node"}
+    for c in (line, nav):
+        watched = {id(n) for n in c["watched"]}
+        got = {exe for exe, n in c["nodes"] if exe in group and id(n) in watched}
+        assert got == group
+        assert [exe for exe, _ in c["nodes"] if exe == "amcl"] == ["amcl"]
+    lm = next(n for _, n in nav["nodes"] if _node_name(n) == "lifecycle_manager_localization")
+    assert {"autostart": False} in [_param_dict(p) for p in lm._Node__parameters if isinstance(p, dict)]
+
+
 def test_the_executor_assumes_the_field_clear_only_in_sim(tmp_path):
     """WP-A8: a vehicle navigation layer reads the scanner; only real:=false assumes clear."""
     from amr_mission.fixtures import write_world_as_bundle
@@ -467,3 +562,189 @@ def test_the_executor_assumes_the_field_clear_only_in_sim(tmp_path):
     d = compose("navigation_layer.launch.py", maps_dir=str(tmp_path), map_id="sim_factory")
     params = [_param_dict(p) for p in d["params"]["route_executor_node"] if isinstance(p, dict)]
     assert any(p.get("field_source") == "scanner" for p in params), "the default is the vehicle"
+
+
+# ---- WP-H4 (H-P1-5): every node is required or respawns; WP-P4 quiet logs; RFID off ------
+
+# Nodes that are neither required() nor respawning, and why that is right.
+NOT_SUPERVISED = {
+    "fake_panel_node": "bench/sim stand-in (panel:=fake)",
+    "fake_imu_node": "sim only",
+    "fake_trolley_node": "sim only",
+    "scan_synth_node": "sim only",
+    "fake_output_paths_node": "sim only (WP-T2, AMR_SIM_FIELDS=1)",
+}
+# Respawning and optional (unified plan WP-H4 delta 2026-11-16): never BASE_EXITED. ROS respawn has
+# no give-up limit in Humble, so a crash loop (wrong MQTT credentials: every 5 s) shows only in
+# the role log until WP-H1's health rows report it.
+RESPAWNING_OPTIONAL = {
+    "station_bridge_node", "sick_safetyscanners2_node", "trolley_node", "rfid_node", "imu_bias_node",
+    "survey_move_node", "event_recorder_node",
+}
+
+
+def _respawns(node) -> bool:
+    return node._ExecuteLocal__respawn is True and (node._ExecuteLocal__respawn_delay or 0) > 0
+
+
+def _all_bases(monkeypatch):
+    from agv_core import config
+    monkeypatch.setattr(config, "STATION_ENABLED", True)
+    monkeypatch.setattr(config, "REAR_SOURCE", "scanner")
+    monkeypatch.setattr(config, "RFID_ENABLED", True)
+    sim = compose("base.launch.py", real="false", supervised="true")
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    real = compose("base.launch.py", real="true", supervised="true")
+    return sim, real
+
+
+def test_every_node_is_required_or_respawns(monkeypatch):
+    sim, real = _all_bases(monkeypatch)
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.SIM))
+    layers = [compose("line_layer.launch.py", generation=1, real="true"), compose("mapping_layer.launch.py")]
+    for c in [sim, real, *layers]:
+        watched = {id(n) for n in c.get("watched", [])}
+        for exe, node in c["nodes"]:
+            if id(node) in watched:
+                assert exe not in RESPAWNING_OPTIONAL, f"{exe} is required and on the optional list"
+                continue
+            if _respawns(node):
+                assert exe in RESPAWNING_OPTIONAL, f"{exe} respawns but is not on the allow-list"
+                continue
+            assert exe in NOT_SUPERVISED, f"{exe} is neither required() nor respawning"
+
+
+def test_the_station_bridge_rear_scanner_and_trolley_respawn_and_are_optional(monkeypatch):
+    _, real = _all_bases(monkeypatch)
+    watched = {id(n) for n in real.get("watched", [])}
+    seen = {exe for exe, n in real["nodes"] if _respawns(n) and id(n) not in watched}
+    assert {"station_bridge_node", "sick_safetyscanners2_node", "trolley_node"} <= seen
+    assert [exe for exe, _ in real["nodes"]].count("sick_safetyscanners2_node") == 2  # front and rear
+
+
+def test_commissioning_node_is_required_when_supervised(monkeypatch):
+    _, real = _all_bases(monkeypatch)
+    watched = {id(n) for n in real.get("watched", [])}
+    node = next(n for exe, n in real["nodes"] if exe == "commissioning_node")
+    assert id(node) in watched
+
+
+def test_rfid_node_starts_only_when_the_profile_enables_it(monkeypatch):
+    from agv_core import config
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    monkeypatch.setattr(config, "RFID_ENABLED", False)
+    assert "rfid_node" not in compose("base.launch.py", real="true")["exes"]
+    monkeypatch.setattr(config, "RFID_ENABLED", True)
+    assert "rfid_node" in compose("base.launch.py", real="true")["exes"]
+
+
+def test_both_profiles_leave_rfid_off():
+    import json  # noqa: PLC0415
+
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "profiles")
+    for name in ("agv-01.json", "agv-02.json"):
+        with open(os.path.join(root, name), encoding="utf-8") as fh:
+            assert json.load(fh)["rfid"]["enabled"] is False, name
+
+
+def _ros_args(node) -> list:
+    raw = list(getattr(node, "_Node__ros_arguments", None) or [])
+    raw += list(getattr(node, "_Node__arguments", None) or [])
+    ctx = LaunchContext()
+    return [_text(a, ctx) for a in raw]
+
+
+def test_nodes_whose_output_reaches_the_role_log_skip_the_ros_log_files(monkeypatch):
+    """S-ros-log-bounding: --disable-external-lib-logs on base, line, mapping and scanner nodes."""
+    from amr_bringup.launch_helpers import QUIET_FLAG  # noqa: PLC0415
+
+    sim, real = _all_bases(monkeypatch)
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.SIM))
+    layers = [compose("line_layer.launch.py", generation=1, real="true"), compose("mapping_layer.launch.py")]
+    for c in [sim, real, *layers]:
+        for exe, node in c["nodes"]:
+            if exe == "robot_state_publisher":
+                continue  # amr_description's launch: not changed (WP-P4 kept to amr_bringup)
+            assert QUIET_FLAG in _ros_args(node), exe
+
+
+# ---- WP-H3 event recorder, WP-P6 black box, WP-T2 sim fields ----------------------------------
+
+
+def test_the_event_recorder_runs_in_every_base_and_respawns(monkeypatch):
+    sim, real = _all_bases(monkeypatch)
+    for c in (sim, real):
+        rec = [n for exe, n in c["nodes"] if exe == "event_recorder_node"]
+        assert len(rec) == 1 and _respawns(rec[0])
+        assert id(rec[0]) not in {id(n) for n in c.get("watched", [])}  # optional: never BASE_EXITED
+
+
+def test_the_black_box_is_off_by_default_and_never_required(monkeypatch):
+    """WP-P6: default off until the owner's pidstat check; on, a snapshot-mode recorder named
+    amr_blackbox and its trigger, both respawning plain processes (no exit handler)."""
+    from amr_bringup import blackbox
+
+    monkeypatch.delenv(blackbox.ENV, raising=False)
+    assert compose("base.launch.py", real="false").get("procs", []) == []
+    c = compose("base.launch.py", real="false", blackbox="true")
+    procs = c["procs"]
+    assert len(procs) == 2 and all(_respawns(e) for e, _ in procs)
+    assert c.get("handlers", 0) == compose("base.launch.py", real="false").get("handlers", 0)
+    rec = next(cmd for _, cmd in procs if cmd[:2] == ["sh", "-c"])
+    for want in ("--snapshot-mode", "--node-name amr_blackbox", "-s mcap", blackbox.DEVICE_HEALTH_TOPIC,
+                 "/amr/line/order_state", "/amr/rear/trolley", "/amr/events"):
+        assert want in rec[2], want
+    for fast in (" /scan ", " /amr/line_track ", " /cmd_wheel_vel ", " /map "):
+        assert fast not in rec[2] + " ", fast
+    trig = next(cmd for _, cmd in procs if "amr_bringup.blackbox_node" in cmd)
+    assert "-m" in trig
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    monkeypatch.setenv(blackbox.ENV, "true")
+    assert len(compose("base.launch.py", real="true").get("procs", [])) == 2  # the env turns it on
+
+
+def test_fake_output_paths_is_opt_in_sim_only_and_never_on_a_vehicle(monkeypatch):
+    """WP-T2 (S-fake-output-paths-from-field-geometry): only the sim branch with AMR_SIM_FIELDS=1;
+    then the mux and the follower read /output_paths instead of assuming the field clear. A vehicle
+    launch never carries it, whatever the environment says."""
+    from amr_bringup.launch_helpers import SIM_FIELDS_ENV
+
+    monkeypatch.delenv(SIM_FIELDS_ENV, raising=False)
+    assert "fake_output_paths_node" not in compose("base.launch.py", real="false")["exes"]
+    monkeypatch.setenv(SIM_FIELDS_ENV, "1")
+    sim = compose("base.launch.py", real="false")
+    assert sim["exes"].count("fake_output_paths_node") == 1
+    mux = [_param_dict(p) for p in sim["params"]["cmd_mux_kinematics_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "scanner" for p in mux)
+    line = compose("line_layer.launch.py", generation=3, real="false")
+    params = [_param_dict(p) for p in line["params"]["line_follow_node"] if isinstance(p, dict)]
+    assert any(p.get("field_source") == "scanner" for p in params)
+    monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
+    real = compose("base.launch.py", real="true")
+    assert not {"fake_output_paths_node", "fake_trolley_node", "fake_base_node", "fake_imu_node"} & set(
+        real["exes"]
+    )
+
+
+def test_both_scanner_drivers_take_their_addresses_from_the_profile(monkeypatch):
+    """WP-P10: lidar.* feeds the front driver, rear.* the rear one (agv_core.scanner_config), passed
+    after the yaml so the profile wins for sensor_ip, host_ip and host_udp_port."""
+    from agv_core import config, scanner_config
+
+    _, real = _all_bases(monkeypatch)
+    want = {
+        "sick_safetyscanners2_node": scanner_config.driver_params(config, scanner_config.FRONT),
+        "sick_safetyscanners2_rear_node": scanner_config.driver_params(config, scanner_config.REAR),
+    }
+    seen = {}
+    for exe, n in real["nodes"]:
+        if exe != "sick_safetyscanners2_node":
+            continue
+        dicts = [_param_dict(p) for p in (n._Node__parameters or []) if isinstance(p, dict)]
+        seen[_node_name(n)] = {k: v for d in dicts for k, v in d.items()
+                               if k in ("sensor_ip", "host_ip", "host_udp_port")}
+    assert seen == want
+    assert want["sick_safetyscanners2_node"]["host_udp_port"] != want["sick_safetyscanners2_rear_node"][
+        "host_udp_port"
+    ]
+

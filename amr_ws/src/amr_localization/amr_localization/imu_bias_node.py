@@ -1,19 +1,36 @@
 """/imu/data_raw -> /imu/data with the gyro yaw-rate bias removed (spec §4.3).
 
+On the vehicle drive_node does this itself since WP-C5 (2026-11-16, agv_core.gyro.GyroFilter, same
+parameters with a `gyro_` prefix); this node is for the sim's fake IMU only, once base.launch.py
+launches it under real:=false alone.
+
 Replaces imu_filter_madgwick in the chain (reconciliation D-3: the MLS already
 fuses orientation, and the EKF takes yaw rate only). Stationary detection
 comes from /wheel_states; nothing is published until the first calibration
 window completes. /imu/recalibrate (std_srvs/Trigger) discards the estimate.
+
+Plausibility (WP-E7, H-P1-7, 2026-11-16): while the wheels turn, the gyro must agree with
+their yaw rate (gyro_check). While it does not, /imu/data is withheld, so nothing fuses a
+frozen or wrong-sign gyro; a later agreeing turn resumes it. `gyro_check: false` turns the
+withholding off (the check still logs). NaN/inf samples are dropped (H-P1-5).
+
+The withholding is OFF by default (lead, 2026-11-16): it is only as good as the gyro sign, and
+the gyro_sign VERIFY (operator CCW spin, decision 19) is still open. A wrong sign would withhold
+/imu/data on every turn and drop LINE localization to wheels only. Turn it on
+(`gyro_check: true`) once the spin has confirmed the sign and a shift of logs shows no false
+"gyro implausible" lines.
 """
 
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
 from amr_base import drive_state
+from amr_base.diff_drive import forward, profile_geometry
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import SENSOR_DATA
 from amr_interfaces.msg import WheelStates
 from amr_localization.gyro_bias import BiasEstimator
+from amr_localization.gyro_check import GyroCheck
 
 
 class ImuBias(LeanNode):
@@ -23,7 +40,15 @@ class ImuBias(LeanNode):
         self.declare_parameter("settle_s", 0.3)
         self.declare_parameter("stationary_wheel_rad_s", 0.01)
         self.declare_parameter("wheel_timeout_s", 0.2)
+        # withhold /imu/data while the gyro is implausible; off until the gyro_sign VERIFY (see above)
+        self.declare_parameter("gyro_check", False)
         p = self.get_parameter
+        self.geom = profile_geometry()
+        self.check = GyroCheck()
+        self.check_withholds = bool(p("gyro_check").value)
+        self._suspect = False
+        self._nonfinite = 0
+        self._wheels_wz: float | None = None  # body yaw rate from a sample both drives vouch for
         self.est = BiasEstimator(window_s=p("window_s").value, settle_s=p("settle_s").value)
         self.w_eps = p("stationary_wheel_rad_s").value
         self.wheel_timeout = p("wheel_timeout_s").value
@@ -48,6 +73,8 @@ class ImuBias(LeanNode):
         self._wheels_t = self._now()
         self._wheels_still = drive_state.still(msg.left_vel_rad_s, msg.right_vel_rad_s, self.w_eps,
                                                inclusive=False, valid=msg.left_valid and msg.right_valid)
+        valid = msg.left_valid and msg.right_valid
+        self._wheels_wz = forward(self.geom, msg.left_vel_rad_s, msg.right_vel_rad_s)[1] if valid else None
 
     def _stationary(self, t: float) -> bool:
         # No wheel feedback means we cannot claim stillness.
@@ -55,7 +82,21 @@ class ImuBias(LeanNode):
 
     def _on_imu(self, msg: Imu) -> None:
         t = self._now()
-        corrected = self.est.update(t, msg.angular_velocity.z, self._stationary(t))
+        gz = msg.angular_velocity.z
+        fresh = self._wheels_t is not None and t - self._wheels_t < self.wheel_timeout
+        suspect = self.check.update(t, gz, self._wheels_wz if fresh else None)
+        if suspect != self._suspect:
+            self._suspect = suspect
+            if suspect:
+                held = "/imu/data withheld" if self.check_withholds else "gyro_check off: still published"
+                self.get_logger().error(f"gyro implausible: {self.check.reason}; {held}")
+            else:
+                self.get_logger().info("gyro agrees with the wheels again: /imu/data resumed")
+        corrected = self.est.update(t, gz, self._stationary(t))
+        if self.est.nonfinite != self._nonfinite:
+            if self._nonfinite == 0 or self.est.nonfinite % 100 == 0:  # the first, then every 100th
+                self.get_logger().warn(f"non-finite gyro z dropped ({self.est.nonfinite} so far)")
+            self._nonfinite = self.est.nonfinite
         if self.est.rejected != self._rejected:
             self._rejected = self.est.rejected
             self.get_logger().warn(
@@ -67,7 +108,7 @@ class ImuBias(LeanNode):
             self.get_logger().info(
                 f"gyro z bias {self.est.bias * 57.2958:+.4f} deg/s (window {self._windows})"
             )
-        if corrected is None:
+        if corrected is None or (suspect and self.check_withholds):
             return
         out = Imu()
         out.header = msg.header

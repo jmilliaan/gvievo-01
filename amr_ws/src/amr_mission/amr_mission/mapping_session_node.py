@@ -22,6 +22,12 @@ session then waits until SLAM has consumed a scan, holds the old map and puts th
 where the match did. The start reference stays revN's ORIGINAL floor mark, in the same
 frame, so "Returned to start" there measures the closure of the whole map. The save is the
 next revision of the same map id, and its review records what it continued.
+
+Survey trace (2026-11-16, advisory, never moves the vehicle): IMU gaps while SLAM takes
+scans (survey_trace.ImuGaps, WP-E9) go into the message, one SURVEY_IMU_GAP event and the
+saved review; a front scan gap while MAPPING is one SURVEY_SCAN_GAP event per gap
+(scanner_health.ScanGap, WP-E4). Live view (WP-C16): /amr/live_pose_ui and
+/amr/live_scan_ui at 5 Hz while a page subscribes (amr_maps.live_display).
 """
 
 from __future__ import annotations
@@ -46,13 +52,16 @@ from tf2_ros import Buffer, TransformListener
 from amr_base import drive_state, tfpose, wire
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import LATCHED, SENSOR_DATA
+from amr_base.scanner_health import ScanGap
 from amr_interfaces.msg import Event, MappingState, WheelStates
 from amr_interfaces.srv import SaveMap, StartSurvey
 from amr_maps import grid as gridio
-from amr_maps import relocalize
+from amr_maps import live_display, relocalize
 from amr_mission import map_bundle as mb
+from amr_mission.survey_trace import ImuGaps
 
 STATE_NAMES = wire.MAPPING_NAMES
+SLAM_TAKING = (MappingState.MAPPING, MappingState.RETURN_REVIEW)  # the graph still grows
 
 
 _wrap = se2.wrap
@@ -60,7 +69,7 @@ _wrap = se2.wrap
 
 class MappingSession(LeanNode):
     def __init__(self) -> None:
-        super().__init__("mapping_session")
+        super().__init__("mapping_session", start_parameter_services=False)  # WP-C11: nobody sets params live
         self.declare_parameter("maps_dir", paths.maps_dir())
         self.declare_parameter("scan_age_limit_s", 0.15)
         self.declare_parameter("imu_age_limit_s", 0.20)
@@ -125,6 +134,8 @@ class MappingSession(LeanNode):
         self._map: OccupancyGrid | None = None
         self._map_t: float | None = None
         self._slam_paused = False
+        self._imu_gaps = ImuGaps(self.imu_age)
+        self._scan_gap = ScanGap()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -142,6 +153,10 @@ class MappingSession(LeanNode):
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
         self._event_seq = 0
         self.create_timer(1.0, self._publish_state, callback_group=io_group)
+        self._live = live_display.LiveDisplay(self, self.tf_buffer)
+        # armed by _publish_state while a page subscribes: no 5 Hz wakeup otherwise
+        self._live_timer = self.create_timer(live_display.PERIOD_S, self._live_tick, callback_group=io_group)
+        self._live_timer.cancel()
 
         self._pause = self.create_client(
             Pause, "/slam_toolbox/pause_new_measurements", callback_group=io_group
@@ -182,7 +197,13 @@ class MappingSession(LeanNode):
         """Once a second while a graph is being built (not paused for review/save)."""
         if self._state != MappingState.MAPPING:
             self._slam_stalled_s = 0.0
+            self._scan_gap.update(None)  # the next survey starts with no gap open
             return
+        now = self._now()
+        gap = self._scan_gap.update(None if self._last_scan_t is None else now - self._last_scan_t)
+        if gap:
+            self.get_logger().warn(gap)
+            self.event("SURVEY_SCAN_GAP", gap)
         lag = self._slam_lag_s()
         stalled = lag is not None and lag > self.slam_stall_s
         # Behind is not hung (2026-10-23): on the N97 at 2.0 GHz (turbo off on purpose) a
@@ -215,6 +236,21 @@ class MappingSession(LeanNode):
 
     def _on_imu(self, _msg: Imu) -> None:
         self._last_imu_t = self._now()
+        self._imu_gaps.sample(self._last_imu_t)
+
+    def _check_trace(self) -> None:
+        """Once a second: the first IMU gap of a survey is one event (advisory)."""
+        now = self._now()
+        if self._imu_gaps.first_gap(now):
+            text = self._imu_gaps.text(now)
+            self.get_logger().warn(text)
+            self.event("SURVEY_IMU_GAP", text)
+
+    def _live_tick(self) -> None:
+        """5 Hz while a page subscribes: pose and the latest /scan in map (or odom)."""
+        frame = self._live.frame(self._now())
+        self._live.publish_pose(frame)
+        self._live.publish_scan(frame, self._last_scan_msg)
 
     def _on_wheels(self, msg: WheelStates) -> None:
         still = drive_state.still(msg.left_vel_rad_s, msg.right_vel_rad_s, self.w_eps, inclusive=False,
@@ -262,6 +298,14 @@ class MappingSession(LeanNode):
     def _set(self, state: int, message: str) -> None:
         with self._lock:
             old, self._state, self._message = self._state, state, message
+        t = self._now()
+        if state in SLAM_TAKING and old not in SLAM_TAKING:
+            if old == MappingState.SAVING:
+                self._imu_gaps.resume(t)  # a failed save: the same survey goes on
+            else:
+                self._imu_gaps.start(t)
+        elif state not in SLAM_TAKING and old in SLAM_TAKING:
+            self._imu_gaps.pause(t)
         if old != state:
             self.get_logger().info(f"{STATE_NAMES[old]} -> {STATE_NAMES[state]}: {message}")
             self.event("MODE_CHANGE", f"survey {STATE_NAMES[old]} -> {STATE_NAMES[state]}: {message}")
@@ -272,6 +316,10 @@ class MappingSession(LeanNode):
 
     def _publish_state(self) -> None:
         self._check_slam()
+        self._check_trace()
+        if self._live.wanted() == self._live_timer.is_canceled():
+            self._live_timer.reset() if self._live.wanted() else self._live_timer.cancel()
+        gaps = self._imu_gaps.text(self._now()) if self._state != MappingState.IDLE else ""
         with self._lock:
             m = MappingState()
             m.generation = self.generation
@@ -288,7 +336,7 @@ class MappingSession(LeanNode):
                 m.closure_dy_m = self._review.dy_m
                 m.closure_dyaw_rad = self._review.dyaw_rad
             m.saved_path = self._saved_path
-            m.message = self._message
+            m.message = f"{self._message} | {gaps}" if gaps else self._message
             m.continued_from = int(self._continued["revision"]) if self._continued else 0
         self._pub.publish(m)
 
@@ -528,6 +576,7 @@ class MappingSession(LeanNode):
         review = asdict(mb.ReturnReview(**{**asdict(self._review), "note": req.note}))
         if self._continued:
             review["continued_from"] = dict(self._continued)  # lineage: what this revision grew from
+        review["trace"] = self._imu_gaps.summary(self._now())  # WP-E9: so a bent map can be rejected
         manifest = mb.Manifest(
             map_id=self._map_id,
             revision=revision,

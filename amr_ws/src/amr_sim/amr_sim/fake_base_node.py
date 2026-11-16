@@ -7,21 +7,39 @@ if no command arrives within cmd_timeout_s, mirroring the drive-node watchdog
 (spec test 6), and - like drive_node - applies the supervisor lease gate when
 `require_supervisor` is set (unified plan §4.3 item 7). Wheel ramp defaults to
 the profile's 6083h auto ramp (D-1).
+
+Fault hooks (H-P3-2, WP-T2; amr_sim.fault_hooks), std_srvs/SetBool on the node:
+    ~/mute             drives silent: no /wheel_states, no /drives/status
+    ~/freeze           /wheel_states frozen (positions and counts stop, stamps move on)
+    ~/fault            DriveStatus in Fault, link fault, not operational
+    ~/wheels_invalid   WheelStates left_valid/right_valid false
+    ~/drive_silent     what drive_node reports when the right drive stops answering: link fault,
+                       right side "stale", fault_code DRIVE_SILENT (WP-T3, 2026-11-16)
+plus the script parameters (start_delay_s, drop_after_s, freeze_after_s, dropout_at_s, dropout_s).
 """
 
 import math
 import time
 
 from agv_core import config, kinematics
+from agv_core.drivers.canbus.cia402 import decode_state
 from nav_msgs.msg import Odometry
+from std_srvs.srv import SetBool
 
-from amr_base import diff_drive, gating
+from amr_base import diff_drive, drive_state, gating
 from amr_base.diff_drive import Geometry, profile_geometry
 from amr_base.lean_node import LeanNode, UiThrottle, run
 from amr_base.qos import RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import ControlLease, DriveStatus, WheelStates, WheelVelocities
 from amr_interfaces.srv import SetPose2D
+from amr_sim import fault_hooks as fh
 from amr_sim.wheel_model import WheelModel
+
+# The states drive_node publishes, decoded from real statuswords (remote, voltage enabled):
+# a "(simulated)" suffix made drive_state.torque_off() read an enabled sim as torque off
+# (2026-11-16, test_drive_state_strings).
+SIM_ENABLED = decode_state(0x0237)  # "Operation enabled"
+SIM_FAULT = decode_state(0x0218)  # "FAULT"
 
 
 class FakeBase(LeanNode):
@@ -30,7 +48,7 @@ class FakeBase(LeanNode):
         self.declare_parameter("wheel_radius_m", profile_geometry().wheel_radius_m)
         self.declare_parameter("track_width_m", profile_geometry().track_width_m)
         self.declare_parameter("rate_hz", 100.0)
-        self.declare_parameter("cmd_timeout_s", 0.25)
+        self.declare_parameter("cmd_timeout_s", 0.2)  # = drive_node's watchdog (H-P3-2; was 0.25)
         self.declare_parameter("wheel_accel_rad_s2", config.ACCEL_RPM_S * config.WHEEL_RAD_S_PER_MOTOR_RPM)
         self.declare_parameter("slip_noise_std", 0.0)
         self.declare_parameter("seed", 0)
@@ -38,6 +56,8 @@ class FakeBase(LeanNode):
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("require_supervisor", False)
         self.declare_parameter("lease_timeout_s", 0.3)
+        for name in fh.SCRIPT_PARAMS:
+            self.declare_parameter(name, 0.0)
 
         p = self.get_parameter
         self.model = WheelModel(
@@ -52,6 +72,12 @@ class FakeBase(LeanNode):
         self.dt = 1.0 / p("rate_hz").value
         self._last_t: float | None = None
         self._was_timed_out = True
+        script = fh.script_from(lambda n: self.get_parameter(n).value)
+        self._hk_wheels, self._hk_status = fh.Hooks(script), fh.Hooks(script)
+        self._fault = False
+        self._wheels_invalid = False
+        self._drive_silent = False
+        self._t0 = time.monotonic()
 
         self._gate = gating.Params(
             require_supervisor=bool(self.get_parameter("require_supervisor").value),
@@ -69,6 +95,11 @@ class FakeBase(LeanNode):
         self.create_subscription(ControlLease, "/amr/control_lease", self._on_lease, RELIABLE_1)
         self.create_timer(0.1, self._publish_status)
         self.create_service(SetPose2D, "/sim/set_pose", self._on_set_pose)
+        self.create_service(SetBool, "~/mute", self._hook(fh.MUTE))
+        self.create_service(SetBool, "~/freeze", self._hook(fh.FREEZE))
+        self.create_service(SetBool, "~/fault", self._flag("_fault"))
+        self.create_service(SetBool, "~/wheels_invalid", self._flag("_wheels_invalid"))
+        self.create_service(SetBool, "~/drive_silent", self._flag("_drive_silent"))
         self.create_timer(self.dt, self._tick)
         self.get_logger().info(
             f"r={self.model.geom.wheel_radius_m} track={self.model.geom.track_width_m} "
@@ -78,6 +109,25 @@ class FakeBase(LeanNode):
 
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    def _hook(self, name: str):
+        def srv(req, res):
+            # mute silences both streams; freeze only the wheels (the status has no counters)
+            hooks = (self._hk_wheels, self._hk_status) if name == fh.MUTE else (self._hk_wheels,)
+            for h in hooks:
+                res.message = h.set(name, req.data)
+            res.success = True
+            self.get_logger().warn(f"sim fault: {res.message}")
+            return res
+        return srv
+
+    def _flag(self, attr: str):
+        def srv(req, res):
+            setattr(self, attr, bool(req.data))
+            res.success, res.message = True, f"{attr.strip('_')} {'on' if req.data else 'off'}"
+            self.get_logger().warn(f"sim fault: {res.message}")
+            return res
+        return srv
 
     def _on_set_pose(self, req: SetPose2D.Request, res: SetPose2D.Response):
         self.model.teleport(req.x_m, req.y_m, req.yaw_rad)
@@ -108,9 +158,21 @@ class FakeBase(LeanNode):
 
     def _publish_status(self) -> None:
         m = DriveStatus()
-        m.header.stamp = self.get_clock().now().to_msg()
-        m.left_state = m.right_state = "Operation enabled (simulated)"
+        m.left_state = m.right_state = SIM_ENABLED
         m.operational = True
+        if self._fault:
+            m.left_state = m.right_state = SIM_FAULT
+            m.operational, m.link_state = False, drive_state.LINK_FAULT
+        if self._drive_silent:
+            # canopen.decide() -> DRIVE_SILENT; fault_code only where amr_interfaces has it (WP-B4)
+            m.right_state = drive_state.STALE
+            m.operational, m.link_state = False, drive_state.LINK_FAULT
+            if hasattr(m, "fault_code"):
+                m.fault_code, m.fault_detail = "DRIVE_SILENT", "right: no heartbeat (simulated)"
+        m = self._hk_status.out(time.monotonic() - self._t0, m)
+        if m is None:
+            return
+        m.header.stamp = self.get_clock().now().to_msg()
         self._pub_status.publish(m)
 
     def _tick(self) -> None:
@@ -139,9 +201,14 @@ class FakeBase(LeanNode):
         w.right_counts = kinematics.to_int32(round(sr * self.model.pos_r / (2 * math.pi) * cpr))
         w.counts_valid = True
         w.counts_per_wheel_rev = cpr
-        self._pub_wheels.publish(w)
-        if self._wheels_ui.due(time.monotonic()):
-            self._pub_wheels_ui.publish(w)
+        if self._wheels_invalid:
+            w.left_valid = w.right_valid = False
+        w = self._hk_wheels.out(time.monotonic() - self._t0, w)
+        if w is not None:
+            w.header.stamp = stamp
+            self._pub_wheels.publish(w)
+            if self._wheels_ui.due(time.monotonic()):
+                self._pub_wheels_ui.publish(w)
 
         s = self.model.truth
         o = Odometry()

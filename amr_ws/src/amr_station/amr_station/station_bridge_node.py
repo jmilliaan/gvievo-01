@@ -6,22 +6,29 @@ may refuse. It publishes MQTT and /amr/events, and calls only /amr/line/order. I
 command topic and no panel input, and it cannot start, resume, stop or pause anything else. Stopping is
 physical. test_bridge_authority pins this.
 
-Threads (plan 12.4): paho's network thread only queues bytes (amr_station.mqtt_link). Everything else
-runs on this executor: a 20 Hz drain, a 10 Hz state timer, subscriptions, call_async with no wait.
+Threads (plan 12.4): paho's network thread only queues bytes (amr_station.mqtt_link) and triggers a
+GuardCondition (WP-C17, 2026-11-16). Everything else runs on this executor: the drain, woken by that
+guard on every message, connect, drop and SUBACK (no 20 Hz poll); a 10 Hz state timer, which also runs
+the drain for the time-based parts (ONLINE republish, SUBACK retry, the home alarm, never-up);
+subscriptions; call_async with no wait. No parameter services (nothing sets one live).
 
 Failure modes: broker or Wi-Fi down: nothing published, retried every 2 s, an active order finishes
 because the job has no network input. Bridge crash: respawned in 5 s, headerId from 0, STARTUP until an
 OrderState arrives. Line layer down: STARTUP, and an order is refused LINE_LAYER_DOWN. paho missing or
 credentials wrong: STATION_LINK_DOWN, exit, respawn. In every case nothing is stored to move later.
+
+Health (unified plan WP-H1): the link is DeviceHealth `station_link` on /amr/device_health, at 2 Hz and
+on every edge, from the 10 Hz state timer. Reporting only, like the events above.
 """
 
 from __future__ import annotations
 
 import time
 
-from agv_core import alarms, mission, paths
+from agv_core import alarms, health, mission, paths
 from agv_core import config as vehicle_config
 
+from amr_base import health_pub
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import LATCHED, RELIABLE_1
 from amr_interfaces.msg import Event, LineState, ModeState, MuxState, OrderState, PanelState
@@ -35,9 +42,11 @@ NEVER_UP_S = 5.0
 
 class StationBridge(LeanNode):
     def __init__(self) -> None:
-        super().__init__("station_bridge")
+        super().__init__("station_bridge", start_parameter_services=False)
         self.declare_parameter("state_dir", paths.state_dir())
         self._pub_event = self.create_publisher(Event, "/amr/events", 50)
+        self._health = health_pub.Outbox(self)
+        self._health_t0 = time.monotonic()
         self._link_up = None
         self._down_t = None  # when the link last went down, for the "back after" of the next up
         self._home_alarm = bridge_core.HomeLinkAlarm()
@@ -67,11 +76,15 @@ class StationBridge(LeanNode):
             )
         except (mqtt_link.CredentialsError, ImportError) as e:
             self._event("STATION_LINK_DOWN", f"station bridge cannot start: {e}")
+            now = time.monotonic()
+            self._health.publish(now, [health.station_link(
+                bool(vehicle_config.STATION_ENABLED), now - self._health_t0, False, False, failed=str(e))])
             self.get_logger().error(f"station bridge cannot start: {e}")
             raise SystemExit(1) from e
-        self.link.start()
         self._started_t = time.monotonic()
-        self.create_timer(0.05, self._drain)
+        # The drain runs when paho has something (a message, an edge), on this executor's next spin.
+        self.link.on_wake = self.create_guard_condition(self._drain).trigger
+        self.link.start()
         self.create_timer(0.1, self._state_tick)
         self.get_logger().info(
             f"station bridge: broker {self.link.host}:{self.link.port}, topics {self.link.topics['state']}"
@@ -102,6 +115,8 @@ class StationBridge(LeanNode):
 
     # -- MQTT in ---------------------------------------------------------------------------------
     def _drain(self) -> None:
+        """Every queued message, and the link's edges. Run by the wake and by the 10 Hz state tick;
+        several messages behind one wake are all handled (the guard's triggers coalesce)."""
         change = self.link.service()
         if change == "up":
             if self._link_up:  # the drop and the reconnect both fell between two calls
@@ -114,8 +129,7 @@ class StationBridge(LeanNode):
         self._home_alarm_tick(now)
         if self._link_up is None and not self.link.connected and now - self._started_t > NEVER_UP_S:
             self._set_link(False)  # a broker that never answered says nothing else
-        while self.link.queue:
-            topic, payload, retained = self.link.queue.popleft()
+        for topic, payload, retained in self.link.take():
             if topic == self.link.topics["order"]:
                 self._ask(self.core.on_order(payload, retained, now), refuse_as=True)
             elif topic == self.link.topics["instantActions"]:
@@ -168,7 +182,14 @@ class StationBridge(LeanNode):
 
     # -- MQTT out --------------------------------------------------------------------------------
     def _state_tick(self, force: bool = False) -> None:
+        if not force:
+            self._drain()  # the time-based half of the link (it was a 20 Hz timer of its own)
         now = time.monotonic()
+        self._health.publish(now, lambda: [health.station_link(
+            bool(vehicle_config.STATION_ENABLED), now - self._health_t0, self.link.connected, self.link.ready,
+            reconnects=max(0, getattr(self.link, "connections", 0) - 1),
+            down_for=None if self._down_t is None else now - self._down_t,
+        )])
         m, line, mux, panel = self._mode, self._line, self._mux, self._panel
         panel_ok = panel is not None and self._panel_t is not None and now - self._panel_t <= PANEL_FRESH_S
         view = self.core.view(
@@ -177,6 +198,9 @@ class StationBridge(LeanNode):
             layer_ready=bool(m.layer_ready) if m is not None else False,
             panel_valid=bool(panel_ok and panel.valid),
             panel_auto=bool(panel_ok and panel.mode_auto),
+            # E7: the emergency state as a status field only (None: no fresh, valid image, or an
+            # amr_interfaces without the field)
+            emergency=(getattr(panel, "emergency", None) if panel_ok and panel.valid else None),
             line_state=int(line.state) if line is not None else None,
             hold_cause=str(line.hold_cause) if line is not None else "",
             line_code=str(line.code) if line is not None else "",

@@ -19,7 +19,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from amr_bringup.launch_helpers import required
+from amr_bringup.launch_helpers import quiet_logs, required
 
 SURVEY_SERVICES = ("start", "returned", "save", "abort")
 
@@ -34,6 +34,7 @@ def _compose(context):
             executable="async_slam_toolbox_node",
             name="slam_toolbox",
             output="screen",
+            **quiet_logs(),  # its output already reaches logs/layer.log (WP-P4)
             parameters=[slam_yaml],
         ),
         "slam_toolbox",
@@ -44,6 +45,7 @@ def _compose(context):
             executable="mapping_session_node",
             name="mapping_session",
             output="screen",
+            **quiet_logs(),  # its output already reaches logs/layer.log (WP-P4)
             parameters=[
                 {
                     "maps_dir": LaunchConfiguration("maps_dir"),
@@ -62,6 +64,7 @@ def _compose(context):
             executable="survey_move_node",
             name="survey_move",
             output="screen",
+            **quiet_logs(),  # its output already reaches logs/layer.log (WP-P4)
             respawn=True,  # a helper that exits comes back; a move never resumes by itself
             respawn_delay=2.0,
         )

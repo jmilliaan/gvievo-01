@@ -162,21 +162,63 @@ class WheelPosition:
     a scale change drops the baseline, and the next valid sample becomes the new
     one without moving the output. A discontinuity costs at most the motion
     since the last valid sample; it never shows up as displacement.
+
+    Staleness bridge (H-P2-2, unified plan WP-P8, 2026-11-16): with `max_rpm` set, a sample
+    invalid ONLY because it was late (`stale_only`: link up, scale known, no fault) keeps the
+    baseline, and the next valid sample adds the whole gap's delta - if the epoch and scale are
+    the same, the gap is under `max_gap_s`, and |delta| <= max_rpm * gap * counts per motor rev
+    / 60 * MARGIN (no faster than the motor can turn). Otherwise it is a rebaseline, as before.
+    `gaps` counts bridged gaps, `rebaselines` the valid samples that started a new baseline after
+    one existed. `step` / `step_dt` are what the last update added and over how long (the
+    odometry integrates them, drive_node's wheel_odom); `joined` says it added anything at all.
     """
 
-    def __init__(self) -> None:
+    MARGIN = 1.2
+
+    def __init__(self, max_rpm: float | None = None, max_gap_s: float = 0.5) -> None:
         self.rad = 0.0
+        self.max_rpm, self.max_gap_s = max_rpm, max_gap_s
+        self.gaps = 0
+        self.rebaselines = 0
+        self.joined = False
+        self.step = 0.0
+        self.step_dt: float | None = None
         self._raw: int | None = None
         self._key = None
+        self._t: float | None = None  # time of the last valid sample
+        self._held = False  # stale samples since it: bridge or rebaseline at the next valid one
+        self._had = False  # a baseline existed once
 
-    def update(self, raw: int | None, valid: bool, scale: WheelScale | None, left: bool, epoch: int) -> float:
+    def update(self, raw: int | None, valid: bool, scale: WheelScale | None, left: bool, epoch: int,
+               t: float | None = None, stale_only: bool = False) -> float:
+        self.joined, self.step, self.step_dt = False, 0.0, None
         if not valid or raw is None or scale is None or not scale.counts_per_wheel_rev:
-            self._raw = None
+            if stale_only and self.max_rpm and self._raw is not None and t is not None:
+                self._held = True  # late, not wrong: keep the baseline
+            else:
+                self._raw, self._held = None, False
             return self.rad
         key = (epoch, scale)
         if self._raw is not None and key == self._key:
-            self.rad += scale.wheel_rad(unwrap_i32(self._raw, raw), left)
-        self._raw, self._key = raw, key
+            d = unwrap_i32(self._raw, raw)
+            ok = True
+            if self._held:
+                gap = None if (t is None or self._t is None) else t - self._t
+                cpm = scale.counts_per_wheel_rev / scale.gear_ratio  # counts per motor rev
+                ok = gap is not None and 0.0 <= gap < self.max_gap_s \
+                    and abs(d) <= self.max_rpm * gap * cpm / 60.0 * self.MARGIN
+                if ok:
+                    self.gaps += 1
+            if ok:
+                self.step = scale.wheel_rad(d, left)
+                self.rad += self.step
+                self.joined = True
+                self.step_dt = None if (t is None or self._t is None) else t - self._t
+            else:
+                self.rebaselines += 1
+        elif self._had:
+            self.rebaselines += 1
+        self._raw, self._key, self._t, self._held, self._had = raw, key, t, False, True
         return self.rad
 
 
@@ -239,6 +281,45 @@ class TxHealth:
 
     def failing_for(self, now: float) -> float:
         return 0.0 if self.since is None else now - self.since
+
+
+# ---------------------------------------------------------------- sensor slots
+
+
+class SensorToken:
+    """One line-sensor (MLS) SDO per bus slot, shared by MlsTrack and MlsImu (unified plan WP-B1 d).
+
+    A slot is one bus-loop iteration, or one drive SDO inside a blocking drive sequence:
+    DriveLink.idle() opens it. take(who) hands out the slot's one token. A reader refused in the
+    last slot goes first in this one, so two readers both polling by SDO take turns instead of
+    one starving the other. A refusal is not a miss: the reader tries again next slot. Pure.
+    """
+
+    def __init__(self) -> None:
+        self._taken = None
+        self._first = None  # refused in the last slot: has this one first
+        self._refused = None
+        self.slots = 0
+        self.refusals = 0
+        self.reads = 0  # sensor SDOs issued in this slot
+        self.max_reads = 0  # the most any slot carried: 1 is the bound
+
+    def new_slot(self) -> None:
+        self.slots += 1
+        self._first, self._refused, self._taken, self.reads = self._refused, None, None, 0
+
+    def take(self, who: str) -> bool:
+        if self._taken is None and self._first in (None, who):
+            self._taken = who
+            return True
+        self.refusals += 1
+        if self._refused is None:
+            self._refused = who
+        return False
+
+    def spent(self) -> None:
+        self.reads += 1
+        self.max_reads = max(self.max_reads, self.reads)
 
 
 # ---------------------------------------------------------------- router
@@ -314,6 +395,34 @@ class Router:
 # ---------------------------------------------------------------- drive link
 
 DISARMED, STANDBY, ARMED, FAULT = "disarmed", "standby", "armed", "fault"
+BOOT_UP = 0x00  # the NMT boot-up frame's one data byte (CiA 301; BLV-R manual 4.3)
+HISTORY_ENTRIES = 10  # 1003h holds up to ten on the BLV-R
+
+
+def alarm_code_text(code: int | None) -> str:
+    """A 16-bit CANopen error code (603Fh, a 1003h entry, an EMCY) -> "FF81h Network bus error"."""
+    if code is None:
+        return "unread"
+    if code == 0:
+        return "none"
+    return f"{code:04X}h {decode_emcy(struct.pack('<H', code & 0xFFFF))['name']}"
+
+
+def history_text(h: dict | None) -> str:
+    """One drive's alarm history as preflight() read it (WP-B4): 603Fh, the newest entry of
+    the drive's NON-volatile history (it survives the power cycle that cleared it), and 1003h,
+    the volatile CiA 301 list (newest first, gone at power-off)."""
+    if h is None:
+        return "alarm history not read"
+    last, errors = alarm_code_text(h.get("603F")), errors_text(h.get("1003"))
+    return f"last alarm 603Fh {last}; error history 1003h {errors}"
+
+
+def errors_text(errors: list | None) -> str:
+    """1003h entries (u32: the low word is the error code, the high word unused) -> text."""
+    if errors is None:
+        return "unread"
+    return ", ".join(alarm_code_text(e & 0xFFFF) for e in errors) or "empty"
 
 
 @dataclass
@@ -327,6 +436,7 @@ class DriveTelemetry:
     t_alive: float | None = None  # any frame or SDO reply from this node
     nmt: str | None = None
     alarm: dict | None = None
+    t_boot: float | None = None  # monotonic time of the last boot-up frame (0x700+n, data 0x00)
 
     @property
     def state(self) -> str:
@@ -371,7 +481,11 @@ class DriveLink:
     log: callable = print
     state: str = DISARMED
     preflight_statusword: dict = field(default_factory=dict)  # node -> as last read by preflight()
+    # node -> {"603F": code, "1003": [entries]} as last read by preflight() (WP-B4); None = unread
+    preflight_history: dict = field(default_factory=dict)
+    preflight_faulted: list = field(default_factory=list)  # nodes preflight found in fault
     fault_reason: str | None = None
+    fault_code: str | None = None  # the catalogue code of the latched FAULT (decide's, WP-B4)
     telemetry: dict[int, DriveTelemetry] = field(default_factory=dict)
     scale: WheelScale | None = None
     applied: tuple[int, int] | None = None
@@ -387,9 +501,11 @@ class DriveLink:
     # Bus-thread work kept running between the SDOs of a blocking sequence, like the PC
     # heartbeat (2026-10-09: the MLS IMU poll; a 0.35 s engage starved it and localisation
     # went LOST at Start). Runs from read()/write() only - never from _raw_write, so it
-    # never sits in front of a stop or teardown write - and not in FAULT. Must not block long.
+    # never sits in front of a stop or teardown write - and not in FAULT while a stop is owed
+    # (sensor_paused). Must not block long.
     idle_hook: callable = None
     _in_idle: bool = False
+    sensor_token: SensorToken = field(default_factory=SensorToken)  # WP-B1 d, opened by idle()
     cleanup_owed: bool = False  # arm touched the drives; a disarm has not fully undone it
     cleanup_failures: list = field(default_factory=list)
     arm_epoch: int = 0  # bumped by every prepare; WheelPosition rebaselines on it
@@ -414,6 +530,14 @@ class DriveLink:
     @property
     def pc_guard_set(self) -> bool:
         return bool(self.pc_guard_nodes)
+
+    @property
+    def sensor_paused(self) -> bool:
+        """The idle hook (the IMU poll) is held off in FAULT while a fault-stop zero is still
+        owed or its standstill is unconfirmed (H-P1-7, WP-E7, 2026-11-16): nothing but the stop
+        work on the bus then. It resumes in FAULT once both are empty (was: never in FAULT, so a
+        drive fault also took the gyro, and with it the EKF's yaw rate, until the Recover)."""
+        return self.state == FAULT and bool(self.stop_pending or self.stop_unconfirmed)
 
     @property
     def stop_controlword(self) -> int:
@@ -482,6 +606,11 @@ class DriveLink:
             t = self.telemetry[nid]
             t.t_alive = time.monotonic()
             t.nmt = decode_nmt(m.data[0] if m.data else 0)
+            if m.data and m.data[0] == BOOT_UP:
+                # A drive that rebooted lost everything prepare() wrote, the 1016h guard
+                # included (S-blvr-bootup-reboot-detect, WP-B4); decide() faults on it.
+                t.t_boot = t.t_alive
+                self.log(f"node {nid} ({self.nodes[nid]}) boot-up frame: the drive rebooted")
 
         return on
 
@@ -504,8 +633,13 @@ class DriveLink:
                     raise
 
     def idle(self) -> None:
-        """Run idle_hook unless already inside it (its own SDOs come back through here)."""
-        if self.idle_hook is None or self._in_idle or self.state == FAULT:
+        """Open a sensor slot (one MLS SDO token, WP-B1 d), then run idle_hook in it - unless
+        already inside it (a drive read() from the hook comes back through here). The bus loop
+        calls this once per iteration; read()/write() once per drive SDO of a blocking sequence."""
+        if self._in_idle:
+            return
+        self.sensor_token.new_slot()
+        if self.idle_hook is None or self.sensor_paused:
             return
         self._in_idle = True
         try:
@@ -516,9 +650,30 @@ class DriveLink:
         finally:
             self._in_idle = False
 
-    def read(self, node, index, sub=0, timeout=0.4):
+    def read(self, node, index, sub=0, timeout=0.4, idle=True):
+        """A drive read. idle=False for a read from the bus loop itself (the monitor slot): the
+        loop already opened this iteration's sensor slot, and a second would double it."""
         self.keepalive()
-        self.idle()
+        if idle:
+            self.idle()
+        st, val, _, _ = sdo_read(self.router, node, index, sub, timeout=timeout, collision_window=0.0)
+        if st:
+            self._alive(node)
+            return u32(val)
+        return None
+
+    SENSOR_TIMEOUT_S = 0.05  # the most one MLS SDO may hold the bus thread (WP-B1 a)
+
+    def take_sensor(self, who: str) -> bool:
+        """This slot's one sensor SDO, if nobody has it (SensorToken). False: try next slot."""
+        return self.sensor_token.take(who)
+
+    def read_sensor(self, node, index, sub=0, timeout=SENSOR_TIMEOUT_S):
+        """A line-sensor (MLS) read from the bus loop (WP-B1 a): at most SENSOR_TIMEOUT_S, and no
+        idle() - so no nested IMU poll and no new slot. The caller takes the token first."""
+        self.keepalive()
+        self.sensor_token.spent()
+        timeout = min(max(timeout, 0.001), self.SENSOR_TIMEOUT_S)
         st, val, _, _ = sdo_read(self.router, node, index, sub, timeout=timeout, collision_window=0.0)
         if st:
             self._alive(node)
@@ -542,10 +697,12 @@ class DriveLink:
     def write_sensor(self, node, index, sub, value, size, timeout=0.05):
         """A line-sensor (MLS) write: guard.check_sensor's list, never the drives'.
         Short timeout, because it runs on the bus thread between drive cycles.
-        Returns (ok, detail); a refused object raises ForbiddenWrite before the bus."""
+        Returns (ok, detail); a refused object raises ForbiddenWrite before the bus.
+        Like read_sensor: no idle(), at most SENSOR_TIMEOUT_S, the caller holds the token."""
         guard.check_sensor(index, sub)
         self.keepalive()
-        self.idle()
+        self.sensor_token.spent()
+        timeout = min(max(timeout, 0.001), self.SENSOR_TIMEOUT_S)
         ok, detail = sdo_write(self.router, node, index, sub, value, size, timeout=timeout)
         if ok:
             self._alive(node)
@@ -554,6 +711,13 @@ class DriveLink:
     def nmt(self, command, node=0):
         self.router.send(can.Message(arbitration_id=0x000, data=[command, node], is_extended_id=False))
         self.router.pump(0.05)
+
+    def nmt_nowait(self, command, node):
+        """NMT to ONE node, without nmt()'s 50 ms pump (WP-B1 c): the MLS Start from the bus loop.
+        Its effect shows in the TPDO stream; nothing waits for it. Never a broadcast."""
+        if not 1 <= node <= 127:
+            raise ValueError(f"nmt_nowait needs one node id, not {node}")
+        self.router.send(can.Message(arbitration_id=0x000, data=[command, node], is_extended_id=False))
 
     # -- configuration --
 
@@ -619,15 +783,43 @@ class DriveLink:
     # -- state machine --
 
     def preflight(self) -> tuple[bool, list[str]]:
-        self.preflight_statusword = {}
+        """preflight_report, plus each answering drive's alarm history (603Fh, 1003h) into the
+        report and preflight_history (WP-B4): the cause of the stop that needed the power cycle
+        is still readable after it. Reads only."""
+        self.preflight_statusword, self.preflight_history, self.preflight_faulted = {}, {}, []
+        answered, err = set(), {}
+
+        def read_sdo(node, index, sub):
+            reply = sdo_read(self.router, node, index, sub)
+            if reply[0] is not None:
+                answered.add(node)
+            return reply
 
         def read(node, index):
             value = self.read(node, index)
             if index == 0x6041 and value is not None:
                 self.preflight_statusword[node] = value
+            if index == 0x1001 and value is not None:
+                err[node] = value
             return value
 
-        return preflight_report(lambda n, i, sub: sdo_read(self.router, n, i, sub), read, self.nodes)
+        ok, lines = preflight_report(read_sdo, read, self.nodes)
+        for nid, label in self.nodes.items():
+            if (self.preflight_statusword.get(nid, 0) & SW_FAULT) or err.get(nid):
+                self.preflight_faulted.append(nid)
+            if nid in answered:
+                self.preflight_history[nid] = self._read_history(nid)
+                lines.append(f"node {nid} ({label}): {history_text(self.preflight_history[nid])}")
+        return ok, lines
+
+    def _read_history(self, nid: int) -> dict:
+        """603Fh:00 and 1003h:00..n. An empty 1003h answers :01 with an abort: no entry."""
+        count = self.read(nid, 0x1003, 0)
+        errors = None
+        if count is not None:
+            entries = (self.read(nid, 0x1003, i) for i in range(1, min(count, HISTORY_ENTRIES) + 1))
+            errors = [v for v in entries if v is not None]
+        return {"603F": self.read(nid, 0x603F, 0), "1003": errors}
 
     def reported_state(self, node: int, fresh: bool) -> str:
         """The state to report for a node. Never linked, so no feedback yet: what preflight read, so a
@@ -637,6 +829,33 @@ class DriveLink:
             sw = self.preflight_statusword.get(node)
             return t.state if sw is None else decode_state(sw)
         return t.state if fresh else drive_state.STALE
+
+    def reported_fault(self) -> tuple[str, str]:
+        """(fault_code, fault_detail) for DriveStatus (WP-B4). Reporting only.
+
+        In FAULT: decide()'s catalogue code and reason. Not linked, but the last preflight found a
+        drive in fault (the usual state after a PC crash: 8130h on both): DRIVE_FAULT. Otherwise
+        ("", ""). The detail is side-labelled: each drive's latched EMCY and its alarm history
+        as preflight read it at the last link-up."""
+        if self.state == FAULT:
+            code, why, nodes = self.fault_code or "DRIVE_FAULT", self.fault_reason or "", list(self.nodes)
+        elif self.state == DISARMED and self.preflight_faulted:
+            code, why, nodes = "DRIVE_FAULT", "a drive is in fault at link-up", self.preflight_faulted
+        else:
+            return "", ""
+        parts = [why] if why else []
+        for nid in nodes:
+            t, label = self.telemetry[nid], self.nodes[nid]
+            emcy = f"EMCY {t.alarm.get('hex', '')} {t.alarm.get('name', '')}; " if t.alarm else ""
+            parts.append(f"{label}: {emcy}{history_text(self.preflight_history.get(nid))}")
+        return code, "; ".join(parts)
+
+    def rebooted_nodes(self) -> list[int]:
+        """Drives that sent a boot-up frame since the link came up (t_armed): they lost the PDO
+        mapping, 1016h and the pv setup. Meaningful in STANDBY/ARMED only."""
+        if self.t_armed is None:
+            return []
+        return [n for n, t in self.telemetry.items() if t.t_boot is not None and t.t_boot > self.t_armed]
 
     def prepare(
         self,
@@ -701,7 +920,7 @@ class DriveLink:
         self.applied = None
         self.in_pp = False  # 6060h = pv on both drives
         self.t_armed = time.monotonic()  # feedback is expected from here on (missing_feedback)
-        self.state, self.fault_reason = STANDBY, None
+        self.state, self.fault_reason, self.fault_code = STANDBY, None, None
         return report
 
     def engage(self) -> None:
@@ -868,8 +1087,9 @@ class DriveLink:
             self._alive(nid)
         return ok, detail
 
-    def fault(self, reason: str) -> None:
+    def fault(self, reason: str, code: str = "DRIVE_FAULT") -> None:
         """Latch a fault: setpoint zero now, no ramp. Drives stay energised (servo lock).
+        `code` is the catalogue code DriveStatus reports for it (decide()'s, WP-B4).
 
         The zero goes to each drive independently; one failed send does not skip
         the other (R04). Nodes it did not reach are retried by fault_tick().
@@ -878,7 +1098,7 @@ class DriveLink:
             self.stop_pending = set(self._send_zero_each())
             self.t_fault = time.monotonic()
             self._stop_tries = 0
-        self.state, self.fault_reason = FAULT, reason
+        self.state, self.fault_reason, self.fault_code = FAULT, reason, code
 
     def fault_tick(self, now: float, max_age: float) -> None:
         """Once per loop in FAULT: bounded zero retries, then measured standstill.
@@ -1074,7 +1294,7 @@ class DriveLink:
 
 
 def wheel_feedback(
-    link: DriveLink, now: float, max_age: float, wheels, is_new: dict, positions: dict
+    link: DriveLink, now: float, max_age: float, wheels, is_new: dict, positions: dict, checks=None
 ) -> dict:
     """Per wheel (pos_rad, vel_rad_s, valid) for one WheelStates (R06/R07).
 
@@ -1083,24 +1303,35 @@ def wheel_feedback(
     WheelPosition. Valid needs a fresh statusword AND a fresh position, each on
     its own clock, a new sample of both, a known scale, no fault, and the link up
     (ARMED, or STANDBY: the counts are measured with the power stage off too).
+
+    H-P2-2 (WP-P8): a sample that is invalid only for being late is `stale_only` to the
+    WheelPosition (bridged if short and plausible). `checks[node]`, when given, is that wheel's
+    wheel_odom.FeedbackCheck (6064h delta against 606Ch): it sees every measured step, and while
+    it holds the wheel implausible the wheel is reported invalid - the position keeps counting
+    underneath, so the check can clear on evidence.
     """
     out = {}
     scale = link.scale
     for n, left in wheels:
         t = link.telemetry[n]
         status_ok, position_ok = link.feedback_fresh(n, now, max_age)
-        valid = bool(
-            status_ok
-            and position_ok
-            and is_new.get(n)
-            and t.position is not None
+        link_ok = bool(
+            t.position is not None
             and scale is not None
             and scale.counts_per_wheel_rev
             and not t.faulted
             and link.state in (ARMED, STANDBY)
         )
-        pos = positions[n].update(t.position, valid, scale, left, link.arm_epoch)
+        fresh = bool(status_ok and position_ok and is_new.get(n))
+        valid = fresh and link_ok
+        p = positions[n]
+        pos = p.update(t.position, valid, scale, left, link.arm_epoch, t=now,
+                       stale_only=link_ok and not fresh)
         vel = scale.wheel_rad_s(t.rpm, left) if (scale and status_ok and t.rpm is not None) else 0.0
+        chk = (checks or {}).get(n)
+        if chk is not None:
+            chk.update(now, p.step if p.joined else None, p.step_dt, vel, link.state == ARMED)
+            valid = valid and not chk.implausible
         out[n] = (pos, vel, valid)
     return out
 
@@ -1132,6 +1363,7 @@ def target_rpm(cmd, now: float, timeout_s: float, scale: WheelScale, max_rpm: fl
 class ArmDecision:
     action: str  # "none" | "prepare" | "engage" | "release" | "fault" | "disarm" | "cleanup"
     reason: str = ""
+    code: str = ""  # for "fault": the catalogue code (agv_core/alarms.py) DriveStatus reports
 
 
 def decide(
@@ -1144,6 +1376,7 @@ def decide(
     dropped: list,
     faulted: list,
     cleanup_owed: bool = False,
+    rebooted: list = (),
 ) -> ArmDecision:
     """The link/power/fault policy as a pure function, so it can be tabled in a test.
 
@@ -1155,10 +1388,11 @@ def decide(
       and never link over it (review Q02) - the software state is not proof.
     - link not wanted: disarm if anything is up.
     - DISARMED and wanted: prepare (-> STANDBY), subject to the retry backoff.
-    - STANDBY / ARMED: a silent or alarmed drive is a FAULT (latched; the setpoint
-      goes to zero at once when armed). FAULT is left only by an explicit
+    - STANDBY / ARMED: a rebooted, silent or alarmed drive is a FAULT (latched; the
+      setpoint goes to zero at once when armed). FAULT is left only by an explicit
       ack/disarm - a vehicle that stopped itself is not restarted by the thing
-      that stopped it.
+      that stopped it. `rebooted` (a boot-up frame since link-up, WP-B4) comes
+      first: such a drive is also silent for a while, and the reboot is the cause.
     - ARMED and power no longer wanted: release (-> STANDBY).
     - ARMED but a drive left Operation enabled (the safety chain took it to
       ETO): release, and let the backoff engage again with a ZERO target while
@@ -1176,10 +1410,14 @@ def decide(
         return ArmDecision("prepare" if now >= retry_at else "none", why)
     if state == FAULT:
         return ArmDecision("none", "fault latched")
+    if rebooted:
+        # Its own catalogue row since 2026-11-16 (was DRIVE_FAULT with the cause in the reason).
+        return ArmDecision("fault", f"drive rebooted: {list(rebooted)} (its 1016h guard is gone "
+                                    "until the next link-up)", code="DRIVE_REBOOTED")
     if silent:
-        return ArmDecision("fault", f"drive silent: {silent}")
+        return ArmDecision("fault", f"drive silent: {silent}", code="DRIVE_SILENT")
     if faulted:
-        return ArmDecision("fault", f"drive fault: {faulted}")
+        return ArmDecision("fault", f"drive fault: {faulted}", code="DRIVE_FAULT")
     if state == ARMED:
         if not want_power:
             return ArmDecision("release", "power not wanted")

@@ -80,6 +80,10 @@ class Conditions:
     # Drive torque: False = fresh /drives/status says not operational (E-stop / safety
     # chain / drive fault). Defaults True so a caller that predates it is unchanged.
     drives_ok: bool = True
+    # PanelState.emergency of a fresh panel image (amr_base/emergency.py), 0 = NORMAL or no fresh
+    # image. Read FIRST: with the DI09 signal the E-stop is known, not guessed from the torque
+    # (emergency-suite plan Part B E5, kyb contract).
+    emergency: int = 0
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,8 @@ def admit(state: int, request: str, c: Conditions, p: Params = DEFAULT) -> Decis
     # alike. What does: an emergency, or the vehicle running in any form (moving, a
     # mission or survey held, the tape follower armed or running, a commissioning job).
     # Entering a layer moves nothing by itself; every layer still needs its own Start.
+    if c.emergency:
+        return Decision(False, "E-stop active: release it and press Reset first")
     if not c.drives_ok:
         return Decision(False, "emergency: the drives have no torque (E-stop / safety chain); reset first")
     if not wheels_still(c, p):

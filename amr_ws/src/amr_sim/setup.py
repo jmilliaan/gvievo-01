@@ -24,6 +24,7 @@ setup(
             "scan_synth_node = amr_sim.scan_synth_node:main",
             "fake_panel_node = amr_sim.fake_panel_node:main",
             "fake_trolley_node = amr_sim.fake_trolley_node:main",
+            "fake_output_paths_node = amr_sim.fake_output_paths_node:main",
             "square_drive = amr_sim.square_drive:main",
             "tape_synth_node = amr_sim.tape_synth_node:main",
         ],
