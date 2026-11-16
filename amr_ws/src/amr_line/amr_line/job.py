@@ -1750,8 +1750,11 @@ class FollowJob:
         if self._torque_latched:
             out.append(order.TORQUE_TIMEOUT)
         out += self._rear_rows(i)
+        # The supply (WP-P7) too: a physical Start is refused at or below bus_v_trip_low, so an order
+        # must be refused up front, not accepted and then cancelled in its warning (2026-11-16).
         if self._prerequisite(dataclasses.replace(i, panel_valid=True, panel_auto=True),
-                              torque=False) or self._rfid_check(i):
+                              torque=False) or self._rfid_check(i) or canmon.supply_refusal(
+                                  i.supply_v, config.MON_BUS_V_TRIP_LOW):
             out.append(order.PREREQUISITE)
         if self.trip is not None or self.calls.pending:
             out.append(order.LOCAL_TRIP)

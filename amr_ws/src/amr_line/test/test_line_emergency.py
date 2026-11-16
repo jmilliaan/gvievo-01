@@ -183,6 +183,59 @@ def test_a_station_hold_stays_station_through_an_estop():
     assert job.state == lj.HOLD and job.hold_cause == "station"
 
 
+_ORDER_KEYS = ("order_id", "active", "departed", "att_status", "mw_status", "me_status", "last_node_id",
+               "last_node_seq", "aborted_reason", "cancelled_reason")
+
+
+def test_an_estop_hold_and_its_reset_keep_the_station_order_as_it_was():
+    """For the station (gvievo-sta map_state, 2026-11-16): through the E-stop hold and the Reset the
+    order keeps its id, stays active and departed, and no ATT/MW/ME status or node moves - so the
+    station's Aborted row (empty nodeStates) never fires. Start then carries on with the same order."""
+    w = settled()
+    w.order("O1", "M1")
+    assert w.until(lambda: w.job.state == lj.RUNNING, 3.0), w.job.reason
+    w.drive(1.0)
+    before = {k: w.job.order_snapshot()[k] for k in _ORDER_KEYS}
+    assert before["active"] and before["departed"], before
+    w.tick(emergency=ACTIVE)
+    assert w.job.state == lj.HOLD and w.job.hold_cause == "estop"
+    w.tick(emergency=RESET_NEEDED, torque_off=True)
+    w.tick(emergency=RESET_NEEDED, torque_off=True, reset_edge=True)
+    w.drive(0.3, emergency=0, torque_off=True)
+    assert {k: w.job.order_snapshot()[k] for k in _ORDER_KEYS} == before
+    w.press_start()
+    assert w.until(lambda: w.job.state == lj.RUNNING, 1.0), w.job.reason
+    s = w.job.order_snapshot()
+    assert s["order_id"] == "O1" and s["active"] and not s["aborted_reason"]
+
+
+def test_an_estop_in_an_order_s_warning_cancels_the_departure_without_the_torque_latch():
+    """With DI09 read, an E-stop during the order's pre-move warning cancels it at once
+    (DEPARTURE_CANCELLED, reason PREREQUISITE) - no full horn cycle, no TORQUE_TIMEOUT latch. That latch
+    is now the chain / stale-panel case: torque never came with the panel NORMAL or unknown."""
+    w = settled()
+    w.order("O1", "M1")
+    assert w.job.state == lj.ARMED, w.job.reason
+    w.tick(emergency=ACTIVE)
+    s = w.job.order_snapshot()
+    assert s["cancelled_reason"] == order.PREREQUISITE and lj.ESTOP_ACTIVE in s["cancelled_text"], s
+    w.drive(0.5, emergency=ACTIVE)
+    assert order.PREREQUISITE in w.not_ready() and order.TORQUE_TIMEOUT not in w.not_ready(), w.not_ready()
+
+
+def test_a_low_supply_refuses_an_order_up_front():
+    """WP-P7 for orders: NOT_READY PREREQUISITE, so the order is refused, not accepted and then
+    cancelled in its warning (the physical Start is refused the same way)."""
+    w = settled()
+    low = (vehicle.MON_BUS_V_TRIP_LOW - 1.0, vehicle.MON_BUS_V_TRIP_LOW + 2.0)
+    w.tick(supply_v=low)
+    assert order.PREREQUISITE in w.not_ready(), w.not_ready()
+    assert w.job.order_request("O1", "M1")[0]
+    w.tick(supply_v=low)
+    assert w.job.order is None and w.refusal() == (order.DEPARTURE_REFUSED, order.PREREQUISITE)
+    assert w.job.state == lj.IDLE
+
+
 def test_an_order_is_refused_while_not_normal():
     w = settled()
     assert w.job.order_request("O1", "M1")[0]
