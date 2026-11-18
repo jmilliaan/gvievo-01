@@ -1,0 +1,111 @@
+{
+  "schema": "site-4",
+  "mission_name": "site-103-agv2",
+  "home": "HOME-N",
+  "attach": "ATT",
+  "trip_calls": 1,
+  "stop_distance_m": 0.5,
+  "cruise_mps": 0.4,
+  "junctions": {
+    "J-BMERGE": {"shape": "Y", "laid": true},
+    "J-N": {"shape": "Y", "laid": true},
+    "J-S": {"shape": "Y", "laid": true},
+    "X2": {"shape": "X", "laid": true},
+    "J-SMERGE": {"shape": "Y", "laid": true},
+    "J-SPLIT": {"shape": "Y", "laid": true},
+    "J-LV": {"shape": "T", "laid": true},
+    "J-MR": {"shape": "Y", "laid": true},
+    "J-R3E": {"shape": "Y", "laid": true},
+    "X3": {"shape": "X", "laid": true}
+  },
+  "uturns": {
+    "U-STU": {"direction": "cw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0, "lead_m": 1.5}
+  },
+  "circuits": {
+    "C-ROW3": [
+      {"stop": "HOME-N"},
+      {"junction": "J-BMERGE", "order": "merge"},
+      {"stop": "ATT"},
+      {"junction": "J-N", "order": "straight", "steer": "left"},
+      {"junction": "J-S", "order": "straight", "steer": "right"},
+      {"junction": "X2", "order": "cross"},
+      {"junction": "J-LV", "order": "left", "approach": "stem"},
+      {"stop": "R3-1"},
+      {"stop": "R3-2"},
+      {"stop": "R3-3"},
+      {"stop": "R3-4"},
+      {"stop": "R3-5"},
+      {"stop": "R3-6"},
+      {"stop": "R3-7"},
+      {"stop": "R3-8"},
+      {"junction": "J-R3E", "order": "merge"},
+      {"junction": "J-MR", "order": "left"},
+      {"junction": "X2", "order": "cross"},
+      {"junction": "X3", "order": "cross"},
+      {"junction": "J-SMERGE", "order": "merge"},
+      {"junction": "J-SPLIT", "order": "left"},
+      {"stop": "HOME-N"}
+    ],
+    "C-STU": [
+      {"stop": "HOME-N"},
+      {"junction": "J-BMERGE", "order": "merge"},
+      {"stop": "ATT"},
+      {"junction": "J-N", "order": "straight", "steer": "left"},
+      {"junction": "J-S", "order": "left"},
+      {"junction": "J-MR", "order": "merge"},
+      {"junction": "J-R3E", "order": "straight", "steer": "left"},
+      {"stop": "SW-7"},
+      {"stop": "SW-8"},
+      {"stop": "SW-9"},
+      {"stop": "SW-10"},
+      {"uturn": "U-STU"},
+      {"stop": "SE-10"},
+      {"stop": "SE-9"},
+      {"stop": "SE-8"},
+      {"stop": "SE-7"},
+      {"junction": "J-R3E", "order": "merge", "steer": "right"},
+      {"junction": "J-MR", "order": "left"},
+      {"junction": "X2", "order": "cross"},
+      {"junction": "X3", "order": "cross"},
+      {"junction": "J-SMERGE", "order": "merge"},
+      {"junction": "J-SPLIT", "order": "left"},
+      {"stop": "HOME-N"}
+    ]
+  },
+  "groups": {
+    "ROW3": {
+      "circuit": "C-ROW3",
+      "machines": {
+        "BTU8": {"swap": "R3-1"},
+        "BTU7": {"swap": "R3-2"},
+        "BTU6": {"swap": "R3-3"},
+        "STU6": {"swap": "R3-3"},
+        "BTU5": {"swap": "R3-4"},
+        "STU5": {"swap": "R3-4"},
+        "BTU4": {"swap": "R3-5"},
+        "STU4": {"swap": "R3-5"},
+        "BTU3": {"swap": "R3-6"},
+        "STU3": {"swap": "R3-6"},
+        "BTU2": {"swap": "R3-7"},
+        "STU2": {"swap": "R3-7"},
+        "BTU1": {"swap": "R3-8"},
+        "STU1": {"swap": "R3-8"}
+      }
+    },
+    "STU": {
+      "circuit": "C-STU",
+      "machines": {
+        "STU7": {"release": "SW-7", "take": "SE-7", "uturn": "UT-STU7"},
+        "STU8": {"release": "SW-8", "take": "SE-8", "uturn": "UT-STU8"},
+        "STU9": {"release": "SW-9", "take": "SE-9", "uturn": "UT-STU9"},
+        "STU10": {"release": "SW-10", "take": "SE-10", "uturn": "UT-STU10"}
+      }
+    }
+  },
+  "uturn_points": {
+    "UT-STU7": {"direction": "cw"},
+    "UT-STU8": {"direction": "cw"},
+    "UT-STU9": {"direction": "cw"},
+    "UT-STU10": {"direction": "cw"}
+  }
+}

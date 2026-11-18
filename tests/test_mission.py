@@ -244,8 +244,8 @@ def test_site_mission():
           "J-ML:merge>U-MRU" in legs and "U-MRU:pivot>J-ML" in legs, str(legs))
     check("J-ML southbound is an explicit LEFT", "J-ML:left>J-STEM" in legs)
     check("a site mission is not a tag-table job, nor listed as one",
-          "site-103" not in mission.list_missions()
-          and mission.list_site_missions() == ["site-103", "test-mru-straight"])
+          "site-103" not in mission.list_missions() and "site-103-agv2" not in mission.list_missions()
+          and mission.list_site_missions() == ["site-103", "site-103-agv2", "test-mru-straight"])
     t = mission.load_site("test-mru-straight")
     check("the straight test (plan 3 section 7): one leg, pivot to pivot through the home turnaround",
           [leg["id"] for leg in t["CIRCUITS"]["C-STRAIGHT"]["legs"]] == ["U-MRU:pivot>U-MRU"]

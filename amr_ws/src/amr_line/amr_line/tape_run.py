@@ -86,6 +86,8 @@ INFO, WARN = "info", "warn"
 # Consecutive ticks with no track under the sensor that mean "the tape ended" on a
 # U-turn approach: 2 ticks at 50 Hz is 4 mm at 0.1 m/s - a flicker is not an end.
 TAPE_GONE_TICKS = 2
+# The tag name of a guided.uturn approach (it has no tag or strip of its own).
+GUIDE_UTURN_TAG = "guide page"
 # The approach slowdown stays below the drives' own deceleration (6084h) so the
 # drive never reshapes it; arriving faster than planned it simply takes longer.
 APPROACH_FRACTION_OF_DRIVE = 0.95
@@ -174,6 +176,10 @@ class TapeRun:
         self.held_auto = False
         self.missed_while_held: str | None = None
         self.guided = m.get("GUIDED")
+        # A guided mission's own tape-end U-turn (2026-11-18, no marker_run): the guide page
+        # starts its approach at once; "out" until the pivot, "back" after it.
+        self.g_uturn = (self.guided or {}).get("uturn") if self.mrun is None else None
+        self.g_phase = "out" if self.g_uturn else None
         # The guided page's speed toggle: None = no toggle (the zone, if any, always acts);
         # False = NORMAL (zone codes ignored), True = HIGH allowed where the codes grant it.
         self.high_select = False if self.guided and self.speed.enabled else None
@@ -579,8 +585,11 @@ class TapeRun:
         not the strip was read - instead of ending the run "track lost". One shot, consumed by
         any U-turn. It never starts, resumes or speeds anything: the run is already moving on
         AUTO + Start, and a tape end stops it either way. Returns (ok, message)."""
+        if self.guided and self.g_uturn:
+            return self._guided_u_turn(on)
         if not self.guided or not self.mrun:
-            return False, "a forced U-turn only in a guided marker mission"
+            return False, ("a forced U-turn only in a guided mission with a U-turn "
+                           "(marker_run, or guided.uturn)")
         if on and self.mrun_phase != "out":
             return False, "already past the U-turn: the forced U-turn is only on the way out"
         if on and self.uturn_req is not None:
@@ -590,6 +599,30 @@ class TapeRun:
                f"strip or not" if on else "forced U-turn cancelled: a tape end ends the run again")
         self.events.append((INFO, msg))
         return True, msg
+
+    def _guided_u_turn(self, on):
+        """guided.uturn (no marker_run): "U-turn at tape end" starts the approach now - slow
+        to the creep within decel_m, stop where the tape ends (max_approach_m), pivot. Cancel
+        takes it back only while still creeping. Returns (ok, message)."""
+        gu, req = self.g_uturn, self.uturn_req
+        if not on:
+            if req is None:
+                return True, "no U-turn armed"
+            if req["tag"] != GUIDE_UTURN_TAG or req["phase"] != "approach" or self.uturn is not None:
+                return False, "the U-turn is already stopping or turning: it cannot be cancelled now"
+            self.uturn_req = None
+            self.events.append((INFO, "U-turn cancelled on the guide page: back to cruise, a tape "
+                                      "end ends the run again"))
+            return True, "U-turn cancelled: back to cruise; a tape end ends the run again"
+        if self.g_phase != "out":
+            return False, "already past the U-turn: one U-turn a run, on the way out"
+        if req is not None:
+            return False, "a U-turn is already under way"
+        self._start_u_turn({"tag": GUIDE_UTURN_TAG, "direction": gu["direction"],
+                            "approach_mps": gu["approach_mps"], "decel_m": gu["decel_m"],
+                            "max_approach_m": gu["max_approach_m"]}, "U-turn at tape end (guide page)")
+        return True, (f"U-turn: slowing to {gu['approach_mps']:.2f} m/s, stopping where the tape ends "
+                      f"(within {gu['max_approach_m']:g} m), then pivot {gu['direction']}")
 
     def parked(self, distance_m):
         """Wheel travel while parked at a station. Without counts the kept HIGH cannot be
@@ -785,6 +818,8 @@ class TapeRun:
         # Its own tag lies about the approach distance back along the tape.
         self.uturn_skip, self.uturn_skip_m = req["tag"], 0.0
         self.uturn_rearm_m = req["travel_m"] + uturn.REARM_MARGIN_M
+        if self.g_phase == "out":
+            self.g_phase = "back"
         if self.mrun is not None:
             # Back: the U-turn marker is re-passed within the approach distance; after that it
             # is the backstop (two codes) or, past home_arm_m, home (one shared code).

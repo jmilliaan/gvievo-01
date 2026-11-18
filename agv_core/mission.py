@@ -75,6 +75,11 @@ follower never exceeds cruise_mps outside HIGH. Refused with RFID branch rows (t
 of orders would race). A high_zone is allowed since 2026-10-24 but starts switched off: the
 guided page's speed toggle (NORMAL / HIGH, NORMAL at every mission load) lets the marker
 pair grant HIGH. The codes still decide where HIGH begins and ends.
+Optional "uturn" (2026-11-18, AGV-02 C-STU teach pass, no MLS markers):
+{"direction": "cw"|"ccw", "approach_mps", "decel_m", "max_approach_m"}. The guide page's
+"U-turn at tape end" then starts the U-turn approach at once: slow to approach_mps within
+decel_m, creep until the tape ends (at most max_approach_m), pivot, drive back. Press it
+1-2 m before the tape end. Refused together with a marker_run (its U-turn is the strip's).
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -364,15 +369,33 @@ def _read_marker_run(raw, vehicle, fastest_rpm):
     return out
 
 
+_GUIDED_UTURN_KEYS = {"direction", "approach_mps", "decel_m", "max_approach_m"}
+
+
 def _read_guided(raw, vehicle):
-    """guided -> {"cruise_mps", "cruise_rpm"}, or None."""
+    """guided -> {"cruise_mps", "cruise_rpm", "uturn"}, or None. "uturn" is None or
+    {"direction", "approach_mps", "decel_m", "max_approach_m"} (the guide page's tape-end U-turn)."""
     if raw is None:
         return None
-    if not isinstance(raw, dict) or set(raw) != {"cruise_mps"}:
-        raise ConfigError("guided: expected null or exactly ['cruise_mps']")
+    if not isinstance(raw, dict) or set(raw) not in ({"cruise_mps"}, {"cruise_mps", "uturn"}):
+        raise ConfigError("guided: expected null or exactly ['cruise_mps'] or ['cruise_mps', 'uturn']")
     normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
     cruise = _bounded(raw, "cruise_mps", "guided", 0.0, round(normal_mps, 3))
-    return {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS}
+    out = {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS, "uturn": None}
+    row = raw.get("uturn")
+    if row is not None:
+        where = "guided.uturn"
+        if not isinstance(row, dict) or set(row) != _GUIDED_UTURN_KEYS:
+            raise ConfigError(f"{where}: expected exactly {sorted(_GUIDED_UTURN_KEYS)}")
+        if row["direction"] not in ("cw", "ccw"):
+            raise ConfigError(f"{where}.direction must be cw or ccw")
+        approach, rate, decel = _uturn_approach(row, where, vehicle)
+        if rate > decel:
+            raise ConfigError(f"{where}.decel_m: slowing from {vehicle.AUTO_RPM:.0f} r/min to "
+                              f"{approach['approach_mps']:g} m/s in {approach['decel_m']:g} m needs {rate:.0f} "
+                              f"r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}")
+        out["uturn"] = dict(approach, direction=row["direction"])
+    return out
 
 
 def _read_high_zone(raw, vehicle):
@@ -456,6 +479,9 @@ def _parse_mission(doc, vehicle):
         if out["BRANCH_LATCH"]:
             raise ConfigError("guided with branch_latch rows: the engineer gives the branch orders; "
                               "RFID orders as well would race")
+        if out["GUIDED"]["uturn"] is not None and out.get("MARKER_RUN") is not None:
+            raise ConfigError("guided.uturn with a marker_run: the marker run's U-turn is the strip's; "
+                              "use one or the other")
     return out
 
 

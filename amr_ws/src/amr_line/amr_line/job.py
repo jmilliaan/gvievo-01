@@ -397,6 +397,11 @@ class FollowJob:
         resumes or speeds anything by itself."""
         if self.tape is None:
             return False, "no mission loaded"
+        if self.tape.guided and self.tape.g_uturn:
+            # guided.uturn (no marker_run): the approach starts at once, so only in a run
+            if on and self.state not in (RUNNING, HOLD):
+                return False, "no run: the U-turn at tape end only while running"
+            return self.tape.force_u_turn(on)
         if not (self.tape.guided and self.tape.mrun):
             return self.tape.force_u_turn(on)       # refused there, with the reason
         if self.state == DONE:

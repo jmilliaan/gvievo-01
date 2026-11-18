@@ -471,3 +471,82 @@ def test_far_from_the_u_turn_a_centre_loss_is_still_the_end_of_the_tape():
     w.drive(8.0)                                      # > 1 m after the pivot
     assert w.until(lambda: w.job.state == lj.DONE, 3.0, sensor=NO_TAPE)
     assert w.job.kink is None
+
+
+# -- guided.uturn: the tape-end U-turn without markers (2026-11-18, AGV-02 C-STU teach pass) --
+
+def stu_started():
+    w = World(missions.load("c-stu-guided"))
+    w.comms = False
+    w.start()
+    w.drive(1.0)
+    assert w.job.state == lj.RUNNING, w.job.reason
+    return w
+
+
+def test_the_guided_u_turn_slows_creeps_to_the_tape_end_and_pivots_ccw_without_markers():
+    w = stu_started()
+    t = w.job.tape
+    assert not t.needs_markers and t.mrun is None and t.g_phase == "out"
+    w.drive(3.0)
+    assert abs(w.job.diag["v_base"] - CRUISE * vehicle.RPM_PER_MPS) < 1.0
+    ok, msg = w.job.force_u_turn(True)  # pressed 1-2 m before the tape end: the approach starts now
+    assert ok and "slowing to 0.10" in msg and "ccw" in msg, msg
+    assert t.uturn_req is not None and t.uturn_req["phase"] == "approach"
+    assert t.uturn_req["direction"] == "ccw"
+    w.drive(2.0)
+    assert abs(w.job.diag["speed_target_rpm"] - 0.1 * vehicle.RPM_PER_MPS) < 1.0
+    assert w.until(lambda: t.uturn_req["phase"] == "stopping", 3.0, sensor=NO_TAPE)
+    w.still, w.integrate = True, False
+    assert w.until(lambda: t.uturn is not None, 3.0, sensor=NO_TAPE), w.job.reason
+    base = w.counts
+    for deg, sensor in ((40, NO_TAPE), (120, NO_TAPE), (175, CENTRED)):
+        c = counts_for_angle(deg, PER_REV)
+        w.counts = (base[0] + int(round(-c)), base[1] + int(round(c)))   # ccw
+        w.tick(sensor=sensor)
+    w.drive(vehicle.U_TURN_RESUME_DELAY_S + 0.2)
+    assert t.uturn_req is None and w.job.state == lj.RUNNING and t.g_phase == "back", w.job.reason
+    ok, msg = w.job.force_u_turn(True)  # one U-turn a run, on the way out
+    assert not ok and "way out" in msg
+
+
+def test_the_guided_u_turn_can_be_cancelled_while_creeping_and_needs_a_run():
+    idle = World(missions.load("c-stu-guided"))
+    ok, msg = idle.job.force_u_turn(True)
+    assert not ok and "only while running" in msg
+    w = stu_started()
+    t = w.job.tape
+    assert w.job.force_u_turn(True)[0]
+    assert not w.job.force_u_turn(True)[0], "a second press while one is under way"
+    ok, msg = w.job.force_u_turn(False)
+    assert ok and "cancelled" in msg and t.uturn_req is None
+    w.drive(2.0)                        # back to cruise
+    assert abs(w.job.diag["v_base"] - CRUISE * vehicle.RPM_PER_MPS) < 1.0
+    assert w.until(lambda: w.job.state == lj.DONE, 3.0, sensor=NO_TAPE)
+    assert "track lost" in w.job.reason
+
+
+def test_the_guided_u_turn_holds_when_the_tape_does_not_end_within_max_approach_m():
+    w = stu_started()
+    assert w.job.force_u_turn(True)[0]
+    w.drive(40.0)                       # creeping on far past max_approach_m (2.0 m)
+    assert w.job.state != lj.RUNNING or w.job.tape.uturn_req is None, "it does not creep on forever"
+    assert "did not end within 2.0 m" in (w.job.reason or "") + str(w.job.tape.fault or ""), w.job.reason
+
+
+def test_guided_uturn_is_refused_with_a_marker_run_and_checked():
+    import json
+    import pytest
+    from agv_core.mission import MissionError as ConfigError
+    base = json.load(open(missions._path("c-mru-guided")))
+    base["guided"] = {"cruise_mps": 0.4, "uturn": {"direction": "ccw", "approach_mps": 0.1,
+                                                   "decel_m": 0.3, "max_approach_m": 2.0}}
+    with pytest.raises(ConfigError, match="marker_run"):
+        missions.parse(base)
+    stu = json.load(open(missions._path("c-stu-guided")))
+    stu["guided"]["uturn"]["direction"] = "left"
+    with pytest.raises(ConfigError, match="cw or ccw"):
+        missions.parse(stu)
+    stu["guided"]["uturn"] = {"direction": "ccw"}
+    with pytest.raises(ConfigError, match="guided.uturn"):
+        missions.parse(stu)

@@ -204,6 +204,7 @@ class DriveNode(LeanNode):
             settle_s=float(p("gyro_settle_s").value),
             wheel_timeout_s=float(p("gyro_wheel_timeout_s").value),
             withhold=bool(p("gyro_check").value),
+            max_bias=math.radians(config.IMU_MAX_BIAS_DEG_S),  # profile imu.max_bias_deg_s
         )
         self._still_eps = float(p("gyro_still_wheel_rad_s").value)
         self._geom = Geometry(float(p("wheel_radius_m").value), float(p("track_width_m").value))
