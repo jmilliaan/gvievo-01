@@ -22,6 +22,7 @@ between units are in the table below; everything else is the same on every unit.
 | Profile | `profiles/agv-01.json` (no `vehicle.env`: the default) | `profiles/agv-02.json`, selected by `~/.amr/vehicle.env` (section 5.3) |
 | Station identity (MQTT) | `agv1` | `agv2` (follows the profile name) |
 | Site mission, home | `site-103`, HOME-N2 | its own, HOME-N (owner 2026-11-14; not written yet: its route is not taught) |
+| Active map / tape graph (`~/.amr/line_graph.json`, local) | `rev-boiacca-map-01` rev4 / g13 (2026-11-17) | none yet: rev5 surveyed for it, no graph |
 | Mission | `missions/line-a.json` | the same |
 | Wired addresses (LAN1, LAN2, `can0` nodes) | section 0 | the same: each unit's wired peers are on its own private links |
 | ROS domain | 10 | 10: DDS is bound to `lo` only (`cyclonedds-local.xml`), so two units on `agv_field` never see each other's topics |
@@ -137,9 +138,9 @@ tether come **before** the wired ports, so the PC never loses its internet).
 | 7 | Wired ports + installer file cleaned | 2.2 | `ip -br addr` shows `enp2s0 … 192.168.1.10/24`, `enp3s0 … 192.168.3.2/24`; `ip route \| grep default` has no `enp`; `ls /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` exists |
 | 8 | CANable → `can0` | 3 | `ls -l /dev/canable0` is a link; `ip -br link show can0` says `UP`; serial written into the top table (tell the engineer) |
 | 9 | Platform freeze, ROS 2 Humble | 4 | `apt-cache policy ros-humble-rclpy \| grep -c snapshots.ros.org` ≥ `1`; GRUB fallback written into the top table; `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
-| 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, waitress, numpy; print(numpy.__version__)"` prints `2.2.6` |
+| 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, waitress, hypothesis, numpy; print(numpy.__version__)"` prints `2.2.6` |
 | 11 | Shell environment, which vehicle | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION $AGV_PROFILE'` = `10 rmw_cyclonedds_cpp agv-02`; `bash -ic 'python3 -m agv_core.identity'` names host `gvipc-evo-02`, profile `agv-02`, serial `agv2` |
-| 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (938 at `7d68647`; the pinned `EXPECTED_CHECKS`) |
+| 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (the pinned `EXPECTED_CHECKS`: 991 on 2026-11-17) |
 | 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal`; `systemctl is-active cpu-power-limit cpu-freq-cap` = `active active` |
 | 14 | Operator display (kiosk). **Do it over SSH** (`ssh gvipc-evo-01@192.168.2.120`): when lightdm restarts, the local screen becomes the kiosk and there is no text console behind it any more (by design) | 7 (not 7.8) | `systemctl is-active nginx lightdm` = `active active`; `curl -s http://127.0.0.1/ \| grep -c 'AMR system starting'` = `1`; the panel shows the orange "AMR system starting" page |
 | 15 | **STOP: engineer.** Device read-back, then first start | 9.1, 6 (cutover) | every row of 9.1 matches; `systemctl is-active amr` = `active`; the panel shows the UI in IDLE |
@@ -645,15 +646,16 @@ libraries; apt provides the rest. Versions as of 2026-09-21:
 | `pyserial` | 3.5 | apt `python3-serial` | bench tools |
 | `PyYAML` | 5.4.1 | apt `python3-yaml` | bundles, params |
 | `rosbag2_py` | (ROS) | apt, section 4 | `tools/bag_report.py` |
+| `pytest` | 6.2.5 | apt `python3-pytest` | tests (`conftest.py` exists *because* this pytest predates `pythonpath`) |
+| `hypothesis` | 6.36.0 | apt `python3-hypothesis` | tests only: `amr_base/test/test_gating_properties.py` (the mux property test). Without it pytest skipped the **whole** amr_base test directory on unit 1 (2026-11-17), not just that file |
+| `ruff` | 0.16.7 | pip --user | lint |
 
 Dropped 2026-10-12: `opencv-python-headless` (was for `amr_tools`, which no longer
 exists; nothing imports `cv2`) and `psutil` (nothing imports it). Unit 1 still has
 them installed; they are harmless.
-| `pytest` | 6.2.5 | apt `python3-pytest` | tests (`conftest.py` exists *because* this pytest predates `pythonpath`) |
-| `ruff` | 0.16.7 | pip --user | lint |
 
 ```bash
-sudo apt install -y python3-serial python3-yaml python3-pytest python3-numpy
+sudo apt install -y python3-serial python3-yaml python3-pytest python3-numpy python3-hypothesis
 pip3 install --user python-can==4.6.1 pymodbus==3.15.0 flask==3.1.3 numpy==2.2.6 ruff==0.16.7
 # the HMI server (2026-11-16). With no internet, download the wheel on a PC as for paho-mqtt below.
 pip3 install --user waitress==3.0.2
@@ -1308,7 +1310,8 @@ is reproduced above; if any of them changes on the vehicle, update this document
 | `/etc/lightdm/lightdm.conf.d/50-amr-autologin.conf`, `/etc/systemd/system/lightdm.service.d/override.conf` | 7.7 |
 | `~/.bashrc` block, `~/.ssh/authorized_keys` + deploy key | 5.3, 5.1 |
 | `~/xfce-kiosk-staging/` (source of the kiosk files, with `README-kiosk.md`, `README-seamless.md`) | 7 |
-| `~/amr_maps/` (map bundles = **vehicle data**, back up before a reinstall), `~/.amr/` (logs, evidence, `operations.jsonl`) | 5.1 |
+| `~/amr_maps/` (map bundles and their published tape graphs `<map>/tapegraph/g<N>/` = **vehicle data**, back up before a reinstall), `~/.amr/` (logs, evidence, `operations.jsonl`) | 5.1 |
+| `~/.amr/line_graph.json` (the ACTIVE map revision and tape graph, with its sha) and `~/.amr/teach/<map>-rev<R>/` (taught stations, marks, speed areas, anchors, recorded passes; `*.bak.json` are the hand-edit backups): **vehicle data, per unit**, back up with the maps. Unit 1 on 2026-11-17: rev4 / g13 (BTU stops moved forward, R2-0 added) | 5.1 |
 | `~/.amr/vehicle.env` (which profile: unit 2 only), `~/.amr/station-mqtt.json` (MQTT user and password, mode 600), `~/.amr/web.json` (PIN, created on first run): **per unit** | 5.3 |
 | user-site pip packages (`~/.local/lib/python3.10/site-packages`) | 5.2 |
 
@@ -1318,6 +1321,20 @@ and 7, so a second vehicle is a clone plus two scripts. Until then this file is
 the authority.
 
 ## 11. Open items found while writing this
+
+Added 2026-11-17 (first run of the unified-plan code on unit 1):
+
+- **Unit 1's installed deploy files predate 2026-11-16.** It runs the new code (built and
+  restarted 2026-11-17) under the old `/etc/systemd/system/amr.service` (no `OnFailure`,
+  `ExecStop`/`ExecStopPost`, `WatchdogSignal=SIGINT` or OOM policy) and without
+  `/etc/tmpfiles.d/amr.conf` and the re-rendered CANable rule. Owner, off-shift (unified plan
+  OP-4): `./deploy/validate.sh`, `sudo ./deploy/install.sh`, `sudo systemctl daemon-reload`,
+  `sudo systemctl restart systemd-journald`, `sudo systemctl restart chrony`, and once, witnessed,
+  `sudo systemctl reenable amr.service` (adds the `canable@can0` re-plug link; a fresh unit gets it
+  from its first `enable`). The watchdog files (`install.sh --watchdog`) only after the `wdctl` check.
+- **DI09 E-stop signal bypassed on both profiles** (`panel.estop_signal_enabled: false`, owner
+  2026-11-17): on unit 1 DI09 read LOW with the E-stop pressed. Turn it on per unit after the check in
+  `manuals/emergency-suite-plan.md` §9.4; until then the PC knows an E-stop only from torque loss.
 
 Added 2026-10-12 (second unit; unit 1 was not reachable to check):
 
