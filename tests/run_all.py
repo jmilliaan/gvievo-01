@@ -177,7 +177,9 @@ MODULES = [
 #   retired-section refusal, lean D16).
 # + 2 (2026-11-16, owner: DI09 HIGH = E-stop pressed, informational): test_config refuses a profile
 #   without panel.estop_active_high and the retired panel.di_estop_ok key.
-EXPECTED_CHECKS = 986
+# + 5 (2026-11-17, emergency-suite plan §9): test_config - panel.estop_signal_enabled false on agv-01,
+#   refused when missing / a string / 0, and true loads.
+EXPECTED_CHECKS = 991
 
 
 # An exception on a helper thread only prints a traceback by default - the

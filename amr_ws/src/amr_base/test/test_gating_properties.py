@@ -5,6 +5,7 @@ mux's invariants must hold. Derandomized and capped. Not counted in tests/run_al
 EXPECTED_CHECKS. Skips where hypothesis is not installed (apt python3-hypothesis)."""
 
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -71,44 +72,49 @@ class Mux(RuleBasedStateMachine):
     def select(self):
         self.sel = g.select(self.now, self.teleop, self.follow, self.rotate, self.permit, self.panel, P,
                             lease=self.lease, manual=self.manual, drives=self.drives, line=self.line)
+        # The world the selection was made from. The invariants judge a selection against it, not
+        # against inputs that changed after it: the real mux selects again on its next tick
+        # (agv-01 2026-11-17: a drive report after select() failed a valid selection).
+        self.w = SimpleNamespace(now=self.now, lease=self.lease, panel=self.panel, drives=self.drives,
+                                 permit=self.permit, manual=self.manual, line=self.line, follow=self.follow,
+                                 rotate=self.rotate, teleop=self.teleop)
 
     # -- the invariants ----------------------------------------------------------------
-    def _age(self, t):
-        return self.now - t
-
     @invariant()
     def nothing_moves_without_fresh_authority(self):
         s = self.sel
         if s is None or (s.v == 0.0 and s.w == 0.0):
             return
-        assert self.lease is not None and 0.0 <= self._age(self.lease.t_recv) <= P.lease_timeout_s
-        assert self.drives is not None and self.drives.operational
-        assert 0.0 <= self._age(self.drives.t_recv) <= P.drives_timeout_s
-        assert self.panel is not None and self.panel.valid
-        assert 0.0 <= self._age(self.panel.t_recv) <= P.panel_timeout_s
-        assert s.generation == self.lease.generation
+        w = self.w
+        assert w.lease is not None and 0.0 <= w.now - w.lease.t_recv <= P.lease_timeout_s
+        assert w.drives is not None and w.drives.operational
+        assert 0.0 <= w.now - w.drives.t_recv <= P.drives_timeout_s
+        assert w.panel is not None and w.panel.valid
+        assert 0.0 <= w.now - w.panel.t_recv <= P.panel_timeout_s
+        assert s.generation == w.lease.generation
 
     @invariant()
     def a_moving_source_is_fresh_and_of_this_generation(self):
         s = self.sel
         if s is None or (s.v == 0.0 and s.w == 0.0):
             return
+        w = self.w
         assert math.isfinite(s.v) and math.isfinite(s.w)
         if s.source == g.MANUAL:
-            m = self.manual
-            assert m.generation == self.lease.generation
-            assert 0.0 <= self._age(m.t) <= min(P.cmd_timeout_s, max(0.0, m.valid_for_s))
+            m = w.manual
+            assert m.generation == w.lease.generation
+            assert 0.0 <= w.now - m.t <= min(P.cmd_timeout_s, max(0.0, m.valid_for_s))
         elif s.source in (g.LINE, g.FOLLOW, g.ROTATE, g.TELEOP):
-            streams = {g.LINE: self.line, g.FOLLOW: self.follow, g.ROTATE: self.rotate, g.TELEOP: self.teleop}
+            streams = {g.LINE: w.line, g.FOLLOW: w.follow, g.ROTATE: w.rotate, g.TELEOP: w.teleop}
             cmd = streams[s.source]
-            assert 0.0 <= self._age(cmd.t) <= P.cmd_timeout_s
+            assert 0.0 <= w.now - cmd.t <= P.cmd_timeout_s
         if s.source in (g.FOLLOW, g.ROTATE):
-            assert self.permit.enabled and self.permit.generation == self.lease.generation
-            assert 0.0 <= self._age(self.permit.t_recv) <= P.permit_timeout_s
+            assert w.permit.enabled and w.permit.generation == w.lease.generation
+            assert 0.0 <= w.now - w.permit.t_recv <= P.permit_timeout_s
         if s.source in (g.FOLLOW, g.ROTATE, g.LINE):
-            assert self.panel.auto
+            assert w.panel.auto
         if s.source in (g.MANUAL, g.TELEOP, g.PENDANT):
-            assert not self.panel.auto
+            assert not w.panel.auto
 
 
 Mux.TestCase.settings = settings(derandomize=True, max_examples=200, stateful_step_count=40, deadline=None)

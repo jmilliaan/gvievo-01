@@ -21,6 +21,7 @@ from amr_line import site_run
 GOLDEN = pathlib.Path(__file__).parent / "golden"
 FIELDS = ("tick", "state", "hold_cause", "left_rpm", "right_rpm", "reason")
 TOL_RPM = 1e-9
+RECORDED_HIGH_RATIO = 1.7  # profile autopilot.auto_high_ratio when the golden CSVs were recorded
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +31,11 @@ def recorded_plant(monkeypatch):
     this stays the same job, on the same plant, against the same untouched recording."""
     monkeypatch.setattr(site_run.ForkWatch, "MIN_SEP_MM", math.inf)
     monkeypatch.setattr(test_site_run, "FORK_NEG", test_site_run.FORK)
+    # The recording's HIGH speed: auto_high_ratio 1.7. A profile retune (agv-01 1.79, 2026-11-17) is not
+    # a code change, so this stays a test of the job, not of the profile's speed.
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "AUTO_HIGH_RPM", config.AUTO_RPM * RECORDED_HIGH_RATIO)
 
 
 def _traced(w):

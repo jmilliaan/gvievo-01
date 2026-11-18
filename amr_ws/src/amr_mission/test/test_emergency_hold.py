@@ -18,6 +18,15 @@ from amr_mission import route_executor_node as ren
 from amr_mission import run_fsm as fsm
 
 
+@pytest.fixture(autouse=True)
+def _estop_signal_read(monkeypatch):
+    """These tests are the E-stop signal path (DI09 read). Both profiles bypass it for now
+    (panel.estop_signal_enabled false, emergency-suite plan §9); the bypass has its own test."""
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "PANEL_ESTOP_SIGNAL_ENABLED", True)
+
+
 def emergency(n, state):
     n._panel.emergency = state
     n._panel.estop_ok = state == PanelState.EMG_NORMAL
@@ -175,3 +184,22 @@ def test_an_invalid_panel_image_is_never_an_emergency_here():
     n._panel.valid = False
     emergency(n, PanelState.EMG_ACTIVE)
     assert not n._emergency(n.clock[0]) and n._panel_emergency(n.clock[0]) is None
+
+
+def test_with_the_signal_bypassed_a_torque_loss_is_the_estop_guess_not_the_chain(monkeypatch):
+    """emergency-suite plan §9 (owner 2026-11-17): panel.estop_signal_enabled false. The panel's
+    emergency reads NORMAL, but it cannot be believed: the torque loss is labelled the old way,
+    `estop` ("E-stop / safety chain"), never "not the E-stop". Start after it still resumes."""
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "PANEL_ESTOP_SIGNAL_ENABLED", False)
+    n = node()
+    assert n._panel_emergency(n.clock[0]) is None
+    tick(n, torque=True, field=True)
+    tick(n, torque=False, wheels=False, field=True)
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop" and not n.drive_power()
+    assert "not the E-stop" not in n.fsm.reason
+    run_for(n, 5.0, torque=True, field=True)
+    assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "estop", "never by itself"
+    n._start_edge()
+    assert n.fsm.state == fsm.EXECUTING and n.phase == ren.PHASE_PREMOVE

@@ -123,9 +123,13 @@ class PanelNode(LeanNode):
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, selector DI{config.PANEL_DI_AUTO} "
             f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}), "
-            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}, E-stop DI{config.PANEL_DI_ESTOP:02X} "
-            f"(active {'HIGH' if config.PANEL_ESTOP_ACTIVE_HIGH else 'LOW'} over "
-            f"{config.PANEL_ESTOP_CONFIRM_SCANS} scans); "
+            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}, "
+            + (f"E-stop DI{config.PANEL_DI_ESTOP:02X} (active "
+               f"{'HIGH' if config.PANEL_ESTOP_ACTIVE_HIGH else 'LOW'} over "
+               f"{config.PANEL_ESTOP_CONFIRM_SCANS} scans); "
+               if config.PANEL_ESTOP_SIGNAL_ENABLED else
+               f"E-stop DI{config.PANEL_DI_ESTOP:02X} BYPASSED (panel.estop_signal_enabled false): "
+               "known only from torque loss; ")
             + (
                 f"pendant fwd DI{config.PENDANT_DI_FWD}, "
                 f"rvs DI{config.PENDANT_DI_RVS}, left DI{config.PENDANT_DI_LEFT}, "

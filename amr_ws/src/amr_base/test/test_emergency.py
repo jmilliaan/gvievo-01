@@ -209,3 +209,34 @@ def test_sto_held_reads_only_fresh_linked_drive_reports():
     assert sto_held(sod, sod, "no bus", 0.1) is None
     assert sto_held(sod, sod, "disarmed", 0.1) is None
     assert sto_held("", "", "standby", 0.1) is None
+
+
+def test_reading_is_none_whenever_the_panel_cannot_say():
+    """emergency.reading(): the hold-labelling readers' one view of PanelState.emergency. None =
+    "cannot say" = the torque guess (cause estop). Bypassed (plan §9), stale, invalid, no field."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    p = SimpleNamespace(valid=True, emergency=em.NORMAL)
+    assert em.reading(p, True, enabled=True) == em.NORMAL
+    assert em.reading(SimpleNamespace(valid=True, emergency=em.ACTIVE), True, enabled=True) == em.ACTIVE
+    assert em.reading(p, True, enabled=False) is None  # bypassed: NORMAL would claim the E-stop is out
+    assert em.reading(p, False, enabled=True) is None  # not fresh
+    assert em.reading(SimpleNamespace(valid=False, emergency=em.NORMAL), True, enabled=True) is None
+    assert em.reading(SimpleNamespace(valid=True), True, enabled=True) is None  # msg without the field
+    assert em.reading(None, True, enabled=True) is None
+    from agv_core import config  # noqa: PLC0415
+
+    assert em.reading(p, True) is (None if not config.PANEL_ESTOP_SIGNAL_ENABLED else em.NORMAL)
+
+
+def test_every_hold_labelling_reader_goes_through_reading():
+    """The line node, the route executor and the station bridge: no inline PanelState.emergency
+    read that would skip the bypass."""
+    import pathlib  # noqa: PLC0415
+
+    src = pathlib.Path(em.__file__).resolve().parents[2]
+    for rel in ("amr_line/amr_line/line_follow_node.py", "amr_mission/amr_mission/route_executor_node.py",
+                "amr_station/amr_station/station_bridge_node.py"):
+        text = (src / rel).read_text(encoding="utf-8")
+        assert "emergency.reading(" in text, rel
+        assert 'getattr(self._panel, "emergency", None) if' not in text, rel

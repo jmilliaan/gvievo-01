@@ -77,6 +77,13 @@ PERIOD_S = 0.5  # 2 Hz repeat per device; edges go at once
 BOOT_GRACE_S = 5.0  # a fitted device not seen yet is ABSENT this long after its owner started
 OWNER_TIMEOUT_S = 2.0  # a consumer: a row older than this means the owner stopped reporting
 WINDOW_S = 1.0  # the correlator: losses this close together share a cause
+# A negative age down to -RACE_S is two threads racing on one monotonic clock: the owner's bus
+# loop (or the consumer's state build) took `now`, then a frame or a message arrived with a newer
+# stamp before the age was taken. That data is the freshest there is, so it reads as age 0.
+# Beyond it a stamp from the future stays not fresh (rule 1). Seen on agv-01 2026-11-17: MLS,
+# drives and the CAN bus flapped LOST at 1 Hz on ages of -0.01 s. Reporting only: the motion
+# path keeps its strict 0 <= age (gating._fresh).
+RACE_S = 0.25
 
 
 @dataclass(frozen=True)
@@ -99,6 +106,11 @@ def _age(age: float | None) -> float:
     return -1.0 if age is None else float(age)
 
 
+def _race(age: float | None) -> float | None:
+    """`age`, with a race-sized negative (see RACE_S) read as 0.0. None stays None."""
+    return 0.0 if age is not None and -RACE_S <= age < 0.0 else age
+
+
 def _unseen(device: str, up_s: float, what: str, code: str) -> Row:
     """A fitted device with no data yet: ABSENT inside the boot grace, LOST after it."""
     if up_s < BOOT_GRACE_S:
@@ -107,7 +119,9 @@ def _unseen(device: str, up_s: float, what: str, code: str) -> Row:
 
 
 def by_age(age: float | None, stale_after: float, lost_after: float) -> str:
-    """OK / STALE / LOST from a data age (rule 1: a negative age is not fresh). None = LOST."""
+    """OK / STALE / LOST from a data age (rule 1: a negative age beyond RACE_S is not fresh).
+    None = LOST."""
+    age = _race(age)
     if age is None or age < 0.0 or age > lost_after:
         return LOST
     return STALE if age > stale_after else OK
@@ -131,6 +145,7 @@ def drive(
     """One BLV-R drive. alive_age: any frame or SDO reply (DriveTelemetry.t_alive);
     feedback_age: the older of TPDO1 and TPDO2; expected once the link is up (STANDBY and on).
     linking: the link is wanted but not up yet (prepare retrying)."""
+    alive_age, feedback_age = _race(alive_age), _race(feedback_age)
     what = f"drive node {node}"
     if alive_age is None:
         return _unseen(device, up_s, what, "DRIVE_SILENT")
@@ -167,6 +182,7 @@ def can_bus(
     if tx_failing_for > timeout_s:
         return Row("can_bus", LOST, "CAN_TX_FAILED",
                    f"CAN TX failing for {tx_failing_for:.1f} s ({last_tx_error})", **n)
+    newest_alive_age = _race(newest_alive_age)
     if newest_alive_age is None:
         r = _unseen("can_bus", up_s, "CAN bus", "CAN_BUS_LOST")
         return replace(r, **n)
@@ -195,6 +211,7 @@ def mls_track(
     """The MLS line track (mls_track.MlsTrack). mode is what it reads now (tpdo | sdo | off),
     want what it was asked for (tpdo | sdo | auto | off). SDO while a stream was wanted is
     MLS_NO_STREAM (it answers, it does not stream); no samples at all is MLS_SILENT."""
+    age = _race(age)
     n = dict(gaps=int(gaps), rejects=int(rejects), reconnects=int(reconnects), timeouts=int(timeouts))
     if want == "off":
         return Row("mls_track", ABSENT, "", "track reading off (mls_track_mode)", **n)
@@ -235,6 +252,7 @@ def mls_gyro(
     `frozen` is MlsImu.frozen (its StampTracker latched a duplicate sensor stamp, H-P1-7): the
     sensor answers but its clock stopped, and its samples are withheld. FROZEN, not STALE, so
     the row says why; not answering at all still wins (2026-11-16)."""
+    age = _race(age)
     n = dict(rejects=int(rejects), reconnects=int(reconnects), timeouts=int(timeouts))
     if not enabled:
         return Row("mls_gyro", ABSENT, "", "imu.enabled false", **n)
@@ -263,7 +281,7 @@ def dio(up_s: float, snap: dict, source_max_age_s: float) -> Row:
              reconnects=int(snap.get("drops_10min", 0)))
     if not snap.get("enabled", True):
         return Row("dio", ABSENT, "", "dio.enabled false", **n)
-    age = snap.get("rx_age_s")
+    age = _race(snap.get("rx_age_s"))
     detail = str(snap.get("detail", ""))
     if age is None:
         r = _unseen("dio", up_s, "DIO", "IO_ISLAND_LOST")
@@ -295,6 +313,7 @@ def rear_scanner(configured: bool, up_s: float, detail: str, age: float | None, 
     n = dict(rejects=int(rejects))
     if detail in _REAR_FROZEN:
         return Row("rear_scanner", FROZEN, "REAR_SCANNER_SILENT", detail, age_s=_age(age), **n)
+    age = _race(age)
     if age is None:
         return replace(_unseen("rear_scanner", up_s, "rear scanner", "REAR_SCANNER_SILENT"), **n)
     if age < 0.0 or age > stale_after:
@@ -414,7 +433,7 @@ def view(
                 out[d] = Row(d, LOST, LOST_CODE[d], f"{OWNER[d]} is not reporting")
             continue
         row, t = got
-        age = now - t
+        age = _race(now - t)
         if age < 0.0 or age > owner_timeout_s:
             out[d] = Row(d, LOST, LOST_CODE[d], f"{OWNER[d]} stopped reporting {age:.0f} s ago")
         else:

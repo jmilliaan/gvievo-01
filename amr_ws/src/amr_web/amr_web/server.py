@@ -266,9 +266,12 @@ def create_app(
 
             estop_ch = getattr(config, "PANEL_DI_ESTOP", None)
             estop_high = bool(getattr(config, "PANEL_ESTOP_ACTIVE_HIGH", True))
+            # emergency-suite plan §9: the PC does not read DI09 at all while this is false
+            estop_off = not bool(getattr(config, "PANEL_ESTOP_SIGNAL_ENABLED", True))
         except Exception:  # noqa: BLE001 - without a profile the page matches by name
-            estop_ch, estop_high = None, True
-        return render_template("io.html", page="io", estop_ch=estop_ch, estop_high=estop_high)
+            estop_ch, estop_high, estop_off = None, True, False
+        return render_template("io.html", page="io", estop_ch=estop_ch, estop_high=estop_high,
+                               estop_off=estop_off)
 
     @app.get("/alarms")
     def page_alarms():

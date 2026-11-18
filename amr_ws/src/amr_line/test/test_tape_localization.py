@@ -593,11 +593,11 @@ def test_site_103_goes_home_by_the_right_bay_with_the_merge_before_it_named():
 def test_facing_machines_share_one_stop():
     m = dict(missions.load_site("site-103"), TRIP_CALLS=2)  # site-103 itself is 1 since 2026-11-05
     q = tr.CallQueue(m)
-    q.call("BTU16", 1)
+    q.call("BTU15", 1)  # owner 2026-11-17: BTU15 faces BTU24 at R2-1 (BTU16 has its own R2-0)
     q.call("BTU24", 2)
     trip = q.take()
     assert trip.stops() == ["ATT", "R2-1", "HOME-N2"]
-    assert sorted(trip.work("R2-1")) == [("BTU16", "swap"), ("BTU24", "swap")]
+    assert sorted(trip.work("R2-1")) == [("BTU15", "swap"), ("BTU24", "swap")]
 
 
 def test_an_untaught_group_does_not_form_a_trip():

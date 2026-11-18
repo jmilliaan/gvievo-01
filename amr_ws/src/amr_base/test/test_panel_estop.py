@@ -30,13 +30,44 @@ def _snap(di, comms=True, new=True):
 
 
 def _adapter(**kw):
+    # These tests are the signal path: on, whatever the profile says (both profiles bypass it
+    # for now, emergency-suite plan §9). The bypass has its own tests below.
+    kw.setdefault("estop_signal_enabled", True)
     return panel_io.PanelAdapter(debounce_scans=2, estop_confirm_scans=2, **kw)
+
+
+def test_the_profile_bypasses_the_signal_for_now():
+    """Owner 2026-11-17 (plan §9): DI09 read LOW with the E-stop pressed on agv-01's first run."""
+    assert config.PANEL_ESTOP_SIGNAL_ENABLED is False
+    assert panel_io.PanelAdapter().estop_signal_enabled is False
+
+
+def test_a_bypassed_signal_is_never_read():
+    """DI09 HIGH for ten valid scans: estop_ok stays True, no DI09 note, and the machine never
+    leaves NORMAL. The raw level is ignored, not inverted."""
+    ad, e = _adapter(estop_signal_enabled=False), emergency.Emergency(3.0)
+    notes = []
+    for k in range(10):
+        f = ad.tick(_snap(_di(pressed=True)))
+        notes.append(f.changed or "")
+        assert f.estop_ok
+        assert e.step(0.05 * k, emergency.Inputs(f.valid, f.estop_ok, f.reset_edge, True)) is None
+    assert e.state == NORMAL
+    assert not any("E-stop" in n for n in notes), notes
+    for _ in range(3):
+        f = ad.tick(_snap(_di(pressed=False)))
+        assert f.estop_ok and "E-stop" not in (f.changed or "")
+
+
+def test_panel_node_logs_the_bypass():
+    src = pathlib.Path(panel_io.__file__).with_name("panel_node.py").read_text(encoding="utf-8")
+    assert "PANEL_ESTOP_SIGNAL_ENABLED" in src and "BYPASSED" in src
 
 
 def test_the_profile_wires_di09_active_high_with_a_two_scan_filter():
     assert config.PANEL_DI_ESTOP == 9 and config.PANEL_ESTOP_ACTIVE_HIGH is True
     assert (config.PANEL_ESTOP_CONFIRM_SCANS, config.PANEL_ESTOP_RESET_TIMEOUT_S) == (2, 3.0)
-    ad = panel_io.PanelAdapter()
+    ad = panel_io.PanelAdapter(estop_signal_enabled=True)
     assert (ad.estop_confirm_scans, ad.estop_active_high) == (2, True)
 
 
@@ -87,7 +118,7 @@ def test_a_broken_wire_reads_normal():
 def test_the_polarity_is_the_profile_s():
     """A bench that finds the Flexi Soft driving Q3 the other way round flips
     panel.estop_active_high; no code change."""
-    ad = panel_io.PanelAdapter(debounce_scans=2, estop_confirm_scans=2, estop_active_high=False)
+    ad = _adapter(estop_active_high=False)
     for _ in range(3):
         f = ad.tick(_snap(_di(pressed=True)))  # DI09 HIGH = OK in that wiring
     assert f.valid and f.estop_ok

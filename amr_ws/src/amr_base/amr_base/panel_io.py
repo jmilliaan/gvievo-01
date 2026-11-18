@@ -92,8 +92,11 @@ class PanelAdapter:
         coincidence_hold_scans: int | None = None,
         estop_confirm_scans: int | None = None,
         estop_active_high: bool | None = None,
+        estop_signal_enabled: bool | None = None,
     ) -> None:
         scans = config.PANEL_DEBOUNCE_SCANS if debounce_scans is None else debounce_scans
+        if estop_signal_enabled is None:
+            estop_signal_enabled = config.PANEL_ESTOP_SIGNAL_ENABLED
         if estop_confirm_scans is None:
             estop_confirm_scans = config.PANEL_ESTOP_CONFIRM_SCANS
         if estop_active_high is None:
@@ -143,6 +146,9 @@ class PanelAdapter:
         self.estop_scans = scans
         self.estop_confirm_scans = max(1, int(estop_confirm_scans))
         self.estop_active_high = bool(estop_active_high)
+        # panel.estop_signal_enabled false (emergency-suite plan §9, owner 2026-11-17): DI09 is not
+        # read at all. estop_ok stays True, so amr_base.emergency never leaves NORMAL.
+        self.estop_signal_enabled = bool(estop_signal_enabled)
         self._estop_on = 0
         self._estop_off = 0
         self._estop_active = False
@@ -249,7 +255,7 @@ class PanelAdapter:
             if self._last_arm is not None or arm:
                 notes.append(f"Manual Arm {'on' if arm else 'off'}")
             self._last_arm = arm
-        if intent.valid:
+        if intent.valid and self.estop_signal_enabled:
             active = _bit(snapshot.get("di"), config.PANEL_DI_ESTOP) == self.estop_active_high
             self._estop_on = self._estop_on + 1 if active else 0
             self._estop_off = 0 if active else self._estop_off + 1
@@ -260,7 +266,7 @@ class PanelAdapter:
         else:
             self._estop_on = self._estop_off = 0  # blind: the belief holds, the counts restart
         estop_ok = not self._estop_active
-        if intent.valid and estop_ok != self._last_estop:
+        if intent.valid and self.estop_signal_enabled and estop_ok != self._last_estop:
             state = "clear" if estop_ok else "ACTIVE"
             notes.append(f"E-stop signal (DI{config.PANEL_DI_ESTOP:02X}) {state}")
             self._last_estop = estop_ok

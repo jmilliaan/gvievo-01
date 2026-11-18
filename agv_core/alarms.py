@@ -376,6 +376,11 @@ def _rows() -> tuple[Alarm, ...]:
           "Call maintenance if it does not clear.",
           "station.enabled: /amr/rear/trolley is stale, UNKNOWN or the rear lidar is not fitted. Every "
           "order, hand trip from HOME and Start at a trolley stop is refused. No bypass on the vehicle."),
+        a("HOME_TROLLEYS_CONFIRMED", INFO, "auto", "Trolleys off at HOME confirmed",
+          "The next station call may now leave HOME.",
+          "A physical START at HOME after a trip's arrival or a service start, with station calling on and no "
+          "rear lidar (station.no_trolley_run): it clears NOT_READY TROLLEY_NOT_CONFIRMED and restarts "
+          "SETTLING. It never moves the vehicle (manuals/home-start-confirm-plan.md)."),
         a("ORDER_DEPARTING", INFO, "auto", "Leaving HOME for a station call",
           "Stay clear of the vehicle.",
           "An accepted station order entered the pre-move warning (FollowJob._order_start). The only move "

@@ -349,7 +349,8 @@ def test_the_repo_mission_joins_row_2_at_j_ml_with_no_j_r2e():
         "J-SMERGE:merge>J-SPLIT",
         "J-SPLIT:right>J-BMERGE",
     ]
-    assert m["CIRCUITS"]["C-BTU"]["legs"][4]["stops"] == [f"R2-{n}" for n in range(1, 9)]
+    # R2-0: BTU16's own stop, first on row 2 (owner 2026-11-17)
+    assert m["CIRCUITS"]["C-BTU"]["legs"][4]["stops"] == [f"R2-{n}" for n in range(0, 9)]
     # The same tape home as C-MRU, the same steer; Right at J-ML holds the row 2 tape while the trunk
     # tape closes in from its left, as on both laps of 2026-11-07. Out, the lane is held through J-N
     # (R2434 leaves right) and J-S (the STU tape leaves left): straight on is a coin toss at J-S.

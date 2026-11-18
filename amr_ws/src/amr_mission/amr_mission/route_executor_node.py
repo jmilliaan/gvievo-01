@@ -95,7 +95,7 @@ from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-from amr_base import drive_state, hold_policy, tfpose
+from amr_base import drive_state, emergency, hold_policy, tfpose
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import LATCHED, RELIABLE_1, SENSOR_DATA
 from amr_interfaces.msg import (
@@ -410,11 +410,13 @@ class RouteExecutor(LeanNode):
 
     def _panel_emergency(self, now: float) -> int | None:
         """PanelState.emergency of a fresh, valid image; None when the panel cannot say (stale,
-        invalid: a blind panel is PANEL_STALE's, not an E-stop, as in gating.select)."""
+        invalid: a blind panel is PANEL_STALE's, not an E-stop, as in gating.select; or the E-stop
+        signal bypassed, emergency-suite plan §9)."""
         m = self._panel
-        if m is None or not 0.0 <= now - self._panel_t <= self.panel_age or not m.valid:
-            return None
-        return int(getattr(m, "emergency", 0))
+        fresh = m is not None and 0.0 <= now - self._panel_t <= self.panel_age
+        if fresh and getattr(m, "emergency", None) is None:
+            return 0  # a PanelState built before the field: NORMAL, as before
+        return emergency.reading(m, fresh)
 
     def _emergency(self, now: float) -> bool:
         return bool(self._panel_emergency(now))

@@ -228,3 +228,78 @@ commissioning and RFID. main added station call, the position engine and NORMAL+
 
 Part A now (restart only, operator floor check A4). Part B waits for the wire: E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 → one clean build and
 restart → unified sim once → E8.
+
+## 9. DI09 bypass: `panel.estop_signal_enabled` (owner 2026-11-17)
+
+**Why.** First run of the new code on agv-01 (2026-11-17): with the E-stop pressed and both drives
+in Switch on disabled, DI09 read LOW, so the PC showed `emergency NORMAL`. Either the polarity is
+the other way round (the drawings' "ON = not pressed") or Q3 does not reach DI09. Until the
+engineer's check settles it, the owner wants the signal **switched off by one true/false profile
+key**, with the vehicle behaving as it did before Part B.
+
+**Rule.** `panel.estop_signal_enabled: false` = the PC does not read DI09 at all. The E-stop is
+then known only the old way, from the drives losing torque (the "torque guess"). Hardware is
+unchanged: the Flexi Soft still takes STO on Q1/Q2. Nothing here decides that motion is safe.
+
+### 9.1 Design: one choke point, one "cannot say" value
+
+Every consumer already reads the E-stop through `PanelState.emergency`, and only DI09 moves it
+off NORMAL (`emergency.py`: "only the E-stop signal leaves it"). The readers that label a hold
+already have a path for "the panel cannot say" (`emergency=None` → the torque guess, cause
+`estop`, the `_estop_was_field` race). The bypass reuses both. No new message field, no
+`colcon build`.
+
+| Layer | With the bypass |
+|---|---|
+| `panel_io.PanelAdapter.tick` | does not read DI09: `estop_ok` always True, no DI09 note, no debounce counts |
+| `emergency.Emergency` (panel_node, fake_panel_node) | never leaves NORMAL (no input moves it) |
+| No-motion layers (`arm_policy`, `gating.select`, mux, supervisor lease, panel outputs LOW) | see NORMAL: **no extra PC layer**, as before Part B. STO stops the vehicle; arming retries fail in Switch on disabled (the 2 s retry seen today) |
+| Hold labels (`line_follow_node` → `job.py`, `route_executor_node._panel_emergency`, `station_bridge_node`) | read **None** ("cannot say"), not NORMAL. A torque loss with the field clear is hold `estop` with the old text "safety stop (E-stop / safety chain)", **not** `chain` ("safety circuit, not the E-stop"). That would be false while the E-stop cannot be seen |
+| `sto_rearm` (drive_node) | idle: it runs only in RESETTING. Arming after a Reset goes through `engage()`, whose enable sequence starts from Shutdown (the pre-Part-B path) |
+| Web | no banner (state stays NORMAL); the IO page shows DI09 greyed, "bypassed (panel.estop_signal_enabled false)", its lamp still the raw level for the engineer's check |
+
+### 9.2 Work items
+
+| # | File(s) | Change |
+|---|---|---|
+| D1 | `profiles/agv-01.json`, `profiles/agv-02.json` | `panel.estop_signal_enabled: false` in both. agv-02's DI09 has not been benched either |
+| D2 | `agv_core/config.py` | Schema `"estop_signal_enabled": ("PANEL_ESTOP_SIGNAL_ENABLED", bool)`; required while `panel.enabled`; docstring next to `panel.di_estop`. `di_estop` stays required and validated (the channel stays reserved, distinct from pendant/reset/start). `auto_resume_estop: true` stays refused either way (don't loosen) |
+| D3 | `tests/test_config.py`, `tests/run_all.py` | Refusals: key missing; non-bool (`"false"`, `0`). Positive: both values load. `EXPECTED_CHECKS` + n, dated comment |
+| D4 | `amr_ws/src/amr_base/amr_base/panel_io.py` | `PanelAdapter.__init__` takes `estop_signal_enabled` (default from config). In `tick`, `if intent.valid and self.estop_signal_enabled:` around the DI09 block; else `estop_ok = True`. `_last_estop` is not touched while bypassed (no "clear" note at boot) |
+| D5 | `amr_ws/src/amr_base/amr_base/panel_node.py` | Start-up line: `E-stop DI09 BYPASSED (panel.estop_signal_enabled false): known only from torque loss` instead of the polarity text |
+| D6 | `amr_ws/src/amr_base/amr_base/emergency.py` | One pure helper used by every hold-labelling reader: `reading(panel, panel_ok, enabled=config.PANEL_ESTOP_SIGNAL_ENABLED) -> int \| None`: None when bypassed, the panel is not fresh and valid, or the field is absent; else `int(panel.emergency)` |
+| D7 | `amr_line/line_follow_node.py` (`emergency=` at the job input), `amr_station/station_bridge_node.py` (`emergency=` in `view`), `amr_mission/route_executor_node.py` (`_panel_emergency`) | Use `emergency.reading(...)`. Behaviour with the signal enabled is unchanged (same expression) |
+| D8 | `amr_web/server.py`, `templates/io.html` | IO page: `estop_off` passed to the template; the DI09 row is `.muted`, labelled "bypassed", never red or "ACTIVE". **Changed when built:** no standing alarm row. An INFO row that stands at every idle becomes the Home headline ("The vehicle is fine." would never show). The panel_node start-up line says BYPASSED |
+| D9 | Tests | `test_panel_estop`: bypass + DI09 HIGH for 10 valid scans → `estop_ok` True, no note, Emergency stays NORMAL; enabled → unchanged. `test_emergency`: `reading()` table (bypassed / stale / invalid / no field / value). `test_line_emergency` and `test_emergency_hold` (executor): with None, torque loss + clear field → `estop` with the old text, and the late-field race still relabels to `field`. `test_emergency_web`: the row and the IO label with the key false; none with it true. `tests/test_vehicles.py`: both profiles carry the key |
+| D10 | Docs | This section and `agv_core/config.py`'s key docs. No RUNBOOK change (no new alarm code). `io-mapping.md` left as is: it is under `documentation/electrical/` (its own workflow) and `tests/test_vehicles.py` parses it |
+
+Build mark: **R** (profile + Python; no `amr_interfaces` change).
+
+### 9.3 Safety-listed files
+
+None changed. `gating.py` and `cmd_mux_kinematics_node.py` keep reading `PanelState.emergency`,
+which stays NORMAL.
+- **Failure mode** with the bypass on: a pressed E-stop is invisible to the PC as an E-stop.
+  No banner. Start is not refused at once: it is accepted, then the run holds on torque loss.
+  A field stop that reports late can be shown as an E-stop (the old race, `_estop_was_field`).
+  The stop itself is the Flexi Soft's STO and is unaffected.
+- **Recovery:** as before Part B. Release the E-stop, press Reset on the cabinet. Arming
+  succeeds once STO is released, and a held run continues on Start.
+
+### 9.4 Turning the signal back on
+
+1. Engineer check (service running, read-only): the E-stop pressed, then released **without**
+   Reset. Read DI09 on the IO page each time.
+   - It follows the button with HIGH = pressed: keep `estop_active_high: true`.
+   - It follows the button with LOW = pressed: set `estop_active_high: false`.
+   - It never changes: Q3 is not wired or not programmed. Fix that first (§3, HT-2). Keep the bypass.
+2. Set `panel.estop_signal_enabled: true` in that unit's profile only, then restart.
+3. Run §7 rows 1, 5, 6 and 7 before the next LINE trip.
+
+### 9.5 Status
+
+**Built 2026-11-17, uncommitted (restart owed).** D1–D9 as above (D8 as changed). Tests:
+`tests/run_all.py` (+5 checks, 991); `test_panel_estop` (bypass never read, profile bypassed,
+node log; the signal-path tests pass the signal on); `test_emergency` (`reading()` table, every
+hold-labelling reader goes through it); `test_emergency_hold` (bypass → `estop`, not `chain`;
+the signal-path tests turn the signal on with a fixture, as does `test_auto_resume`).

@@ -28,7 +28,7 @@ import time
 from agv_core import alarms, health, mission, paths
 from agv_core import config as vehicle_config
 
-from amr_base import health_pub
+from amr_base import emergency, health_pub
 from amr_base.lean_node import LeanNode, run
 from amr_base.qos import LATCHED, RELIABLE_1
 from amr_interfaces.msg import Event, LineState, ModeState, MuxState, OrderState, PanelState
@@ -198,9 +198,9 @@ class StationBridge(LeanNode):
             layer_ready=bool(m.layer_ready) if m is not None else False,
             panel_valid=bool(panel_ok and panel.valid),
             panel_auto=bool(panel_ok and panel.mode_auto),
-            # E7: the emergency state as a status field only (None: no fresh, valid image, or an
-            # amr_interfaces without the field)
-            emergency=(getattr(panel, "emergency", None) if panel_ok and panel.valid else None),
+            # E7: the emergency state as a status field only (None: no fresh, valid image, an
+            # amr_interfaces without the field, or the E-stop signal bypassed, plan §9)
+            emergency=emergency.reading(panel, panel_ok),
             line_state=int(line.state) if line is not None else None,
             hold_cause=str(line.hold_cause) if line is not None else "",
             line_code=str(line.code) if line is not None else "",

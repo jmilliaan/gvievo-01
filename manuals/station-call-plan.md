@@ -1516,7 +1516,12 @@ not part of it and is left out.
 
 ## Interface contract
 
-**Contract version 1.4, 2026-11-14.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+**Contract version 1.5, 2026-11-17.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+
+**Changes from 1.4.** The BTU9-16 side of the stop table shifted by one (owner's drawing, 2026-11-17). `R2-k` serves
+BTU(25 − k) and BTU(16 − k) for k 1 to 7. `R2-8` serves BTU17 alone. BTU16 alone has a new stop, `R2-0`, the first met on
+the lap, before `R2-1`. A wait at `R2-0` for BTU16 alone has no `machines` parameter (section 2). The face-to-face
+example is now BTU24 and BTU15 at `R2-1`. Every BTU17-24 order is unchanged, byte for byte, and so is every MRU order.
 
 **Changes from 1.3.** BTU9 to BTU16 are served too. They face BTU17 to BTU24 and share their swap stops. Two BTUs
 facing each other are one stop, released by one START. A swap wait names its machines in a `machines` parameter
@@ -1621,23 +1626,25 @@ In a pair the action id ends in the node id (`:MW-1`), because there are two rel
 **orderId.** `MRUn-YYYYMMDDTHHMMSS` or `BTUn-YYYYMMDDTHHMMSS` for one machine, `MRUa+MRUb-YYYYMMDDTHHMMSS` or `BTUa+BTUb-YYYYMMDDTHHMMSS` for a pair (closer machine first; at one stop the BTU17-24 side first), from the station clock when the order is created. It is unique and opaque to the AGV, which reads the machines from the nodes and the `machines` parameters. Only the station reads the machines out of it. A resend keeps the orderId (section 8). A new attempt, after `DEPARTURE_CANCELLED`, gets a new one.
 
 **BTU order (since v1.3).** BTU17 to BTU24 sit on row 2 of circuit C-BTU. Each has one swap stop, where the operator
-swaps the trolley and presses START. `R2-k` means BTU(25 − k), and since v1.4 also BTU(17 − k), the machine facing
-it across the row:
+swaps the trolley and presses START. `R2-k` means BTU(25 − k), and since v1.4 also a machine facing it across the row.
+Since v1.5 that is BTU(16 − k) for k 1 to 7, `R2-8` has no facing machine, and BTU16 has its own stop `R2-0`, 4.74 m
+before `R2-1`:
 
-| Swap node | `R2-1` | `R2-2` | `R2-3` | `R2-4` | `R2-5` | `R2-6` | `R2-7` | `R2-8` |
-|---|---|---|---|---|---|---|---|---|
-| Own machine (BTU17-24 side) | BTU24 | BTU23 | BTU22 | BTU21 | BTU20 | BTU19 | BTU18 | BTU17 |
-| Facing machine (BTU9-16 side, v1.4) | BTU16 | BTU15 | BTU14 | BTU13 | BTU12 | BTU11 | BTU10 | BTU9 |
+| Swap node | `R2-0` | `R2-1` | `R2-2` | `R2-3` | `R2-4` | `R2-5` | `R2-6` | `R2-7` | `R2-8` |
+|---|---|---|---|---|---|---|---|---|---|
+| Own machine | BTU16 | BTU24 | BTU23 | BTU22 | BTU21 | BTU20 | BTU19 | BTU18 | BTU17 |
+| Facing machine (BTU9-16 side, v1.5) | none | BTU15 | BTU14 | BTU13 | BTU12 | BTU11 | BTU10 | BTU9 | none |
 
-A BTU order serves one BTU, or two different BTUs with the closer stop first: the first met on the lap, `R2-1` first
+A BTU order serves one BTU, or two different BTUs with the closer stop first: the first met on the lap, `R2-0` first
 and `R2-8` last, whoever called first. Two BTUs facing each other share one stop, so their order has the one-stop
 shape with both named at it. There is no U-turn. After the last swap the AGV drives home without stopping.
 
 **`machines` (v1.4).** A swap wait carries a second action parameter, after `triggerType`, exactly
 `{"key": "machines", "value": [...]}`, whenever the stop serves anything other than just its own machine. The list
-holds the stop's machines in order, own machine first: `["BTU15"]`, `["BTU23", "BTU15"]`. A stop serving only its own
+holds the stop's machines in order, own machine first: `["BTU15"]`, `["BTU24", "BTU15"]`. A stop serving only its own
 machine has no `machines` parameter, so a wait without one means the own machine, exactly as in v1.3, and
-`["BTU23"]` alone is never sent. Every name must sit at that very node. One spelling only: the AGV builds the
+`["BTU24"]` alone is never sent. At `R2-0` the own machine is BTU16 and there is no other, so a wait at `R2-0` never
+has a `machines` parameter (v1.5). Every name must sit at that very node. One spelling only: the AGV builds the
 canonical order and compares it.
 
 One BTU stop, `j`, has exactly this shape:
@@ -1652,7 +1659,8 @@ One BTU stop, `j`, has exactly this shape:
 | 5 | edge `R2-j:HOME-N` | none |
 | 6 | node `HOME-N` | none |
 
-Two BTU stops, `R2-j` and `R2-k` with `j` < `k`, have exactly this shape:
+Two BTU stops, `R2-j` and `R2-k` with `j` < `k`, have exactly this shape. `j` and `k` run from 0 to 8, so `R2-0` is
+always the closer stop:
 
 | sequenceId | Item | Action |
 |---|---|---|
@@ -1733,28 +1741,28 @@ Order for MRU1 and MRU3, a pair:
 }
 ```
 
-Order for BTU23 and BTU15, a face-to-face pair at one stop:
+Order for BTU24 and BTU15, a face-to-face pair at one stop:
 
 ```json
 {
   "headerId": 14,
-  "timestamp": "2026-11-14T03:20:00.500Z",
+  "timestamp": "2026-11-17T03:20:00.500Z",
   "version": "3.0.0",
   "manufacturer": "gvi",
   "serialNumber": "agv1",
-  "orderId": "BTU23+BTU15-20261114T102000",
+  "orderId": "BTU24+BTU15-20261117T102000",
   "orderUpdateId": 0,
   "seenStateHeaderId": 2210,
   "nodes": [
     {"nodeId": "HOME-N", "sequenceId": 0, "released": true, "actions": []},
-    {"nodeId": "ATT", "sequenceId": 2, "released": true, "actions": [{"actionId": "BTU23+BTU15-20261114T102000:ATT", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
-    {"nodeId": "R2-2", "sequenceId": 4, "released": true, "actions": [{"actionId": "BTU23+BTU15-20261114T102000:R2-2", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}, {"key": "machines", "value": ["BTU23", "BTU15"]}]}]},
+    {"nodeId": "ATT", "sequenceId": 2, "released": true, "actions": [{"actionId": "BTU24+BTU15-20261117T102000:ATT", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}]}]},
+    {"nodeId": "R2-1", "sequenceId": 4, "released": true, "actions": [{"actionId": "BTU24+BTU15-20261117T102000:R2-1", "actionType": "waitForTrigger", "blockingType": "HARD", "actionParameters": [{"key": "triggerType", "value": ["LOCAL"]}, {"key": "machines", "value": ["BTU24", "BTU15"]}]}]},
     {"nodeId": "HOME-N", "sequenceId": 6, "released": true, "actions": []}
   ],
   "edges": [
     {"edgeId": "HOME-N:ATT", "sequenceId": 1, "released": true, "actions": []},
-    {"edgeId": "ATT:R2-2", "sequenceId": 3, "released": true, "actions": []},
-    {"edgeId": "R2-2:HOME-N", "sequenceId": 5, "released": true, "actions": []}
+    {"edgeId": "ATT:R2-1", "sequenceId": 3, "released": true, "actions": []},
+    {"edgeId": "R2-1:HOME-N", "sequenceId": 5, "released": true, "actions": []}
   ]
 }
 ```

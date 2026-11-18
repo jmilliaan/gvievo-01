@@ -30,7 +30,7 @@ on port 5001, and one *mode layer* at a time.
 | Bus | CANopen 125 kbps, 50 Hz feedback by TPDO, setpoint by RPDO |
 | Nodes | 1 left driver, 2 right driver, 10 SICK MLS (track at 100 Hz + gyro) |
 | Manual | pendant and web jog 0.60 m/s (2026-10-28, was 0.50), only under selector MANUAL |
-| Auto | tracked NORMAL 0.50 m/s (trips: mission `cruise_mps` 0.40), HIGH 0.85 m/s (`auto_high_ratio` 1.7) only inside an MLS marker zone or a HIGH area; trips also NORMAL+ 0.65 m/s (`auto_plus_ratio` 1.3) inside a NORMAL+ area (slower area wins where they overlap); trackless 0.60 m/s |
+| Auto | tracked NORMAL 0.50 m/s (trips: mission `cruise_mps` 0.40), HIGH 0.90 m/s (`auto_high_ratio` 1.79, 2850 r/min motor; agv-01 since 2026-11-17, agv-02 still 1.7 / 0.85) only inside an MLS marker zone or a HIGH area; trips also NORMAL+ 0.65 m/s (`auto_plus_ratio` 1.3) inside a NORMAL+ area (slower area wins where they overlap); trackless 0.60 m/s |
 | Tests | `tests/run_all.py` (`EXPECTED_CHECKS` guards the count) + `pytest` per ROS package, no hardware |
 
 ---
@@ -289,9 +289,10 @@ move in the profile.
   panel shows; stop positions, the 2 s speed change, the tape-end overshoot and the
   pivot reacquisition angle are settled on the floor.
 - **No floor run of the tape follower yet** (LINE acceptance section 4).
-- **0.85 m/s (tracked HIGH) runs with no software gate, unvalidated** (operator
-  decision 2026-10-08, manuals/tracked-speed-plan-1-no-slam.md D2): the nanoScan3
-  field set (`lidar.zones_validated` false) and the STO stopping distance from 0.85 m/s
+- **0.90 m/s (tracked HIGH, agv-01; 0.85 before 2026-11-17) runs with no software gate,
+  unvalidated** (operator decision 2026-10-08, manuals/tracked-speed-plan-1-no-slam.md D2;
+  raised to 2850 r/min by the owner 2026-11-17): the nanoScan3 field set
+  (`lidar.zones_validated` false) and the STO stopping distance from 0.90 m/s
   are a floor check before the first HIGH run. There is no FX3 encoder speed monitoring
   yet. HIGH needs a mission `high_zone` (MLS outer/inner marker codes); `line-a` carries one
   (codes 2/1), so HIGH runs wherever those marker pairs are laid.

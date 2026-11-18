@@ -160,6 +160,9 @@
         "approach": "stem"
       },
       {
+        "stop": "R2-0"
+      },
+      {
         "stop": "R2-1"
       },
       {
@@ -260,28 +263,28 @@
           "swap": "R2-8"
         },
         "BTU16": {
-          "swap": "R2-1"
+          "swap": "R2-0"
         },
         "BTU15": {
-          "swap": "R2-2"
+          "swap": "R2-1"
         },
         "BTU14": {
-          "swap": "R2-3"
+          "swap": "R2-2"
         },
         "BTU13": {
-          "swap": "R2-4"
+          "swap": "R2-3"
         },
         "BTU12": {
-          "swap": "R2-5"
+          "swap": "R2-4"
         },
         "BTU11": {
-          "swap": "R2-6"
+          "swap": "R2-5"
         },
         "BTU10": {
-          "swap": "R2-7"
+          "swap": "R2-6"
         },
         "BTU9": {
-          "swap": "R2-8"
+          "swap": "R2-7"
         }
       }
     }

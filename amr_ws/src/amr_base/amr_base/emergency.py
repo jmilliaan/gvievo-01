@@ -76,6 +76,26 @@ def sto_held(left_state: str, right_state: str, link_state: str, age_s: float | 
     return STO_STATE in (left_state, right_state)
 
 
+def reading(panel, panel_ok: bool, enabled: bool | None = None) -> int | None:
+    """PanelState.emergency as the hold-labelling readers take it (line job, route executor,
+    station bridge), or None = "the panel cannot say": then a torque loss is labelled the old
+    way, `estop` ("E-stop / safety chain"), not `chain` ("not the E-stop").
+
+    None when the E-stop signal is not read (panel.estop_signal_enabled false, emergency-suite
+    plan §9: NORMAL would then claim the E-stop is out), when the image is not fresh (`panel_ok`)
+    or not valid, or when the message has no emergency field (amr_interfaces not rebuilt).
+    The no-motion layers (gating, arm_policy, the supervisor) read PanelState.emergency
+    directly: it stays NORMAL while bypassed, and STO alone stops the vehicle."""
+    if enabled is None:
+        from agv_core import config  # noqa: PLC0415 - the profile only when not passed
+
+        enabled = config.PANEL_ESTOP_SIGNAL_ENABLED
+    if not enabled or panel is None or not panel_ok or not getattr(panel, "valid", False):
+        return None
+    value = getattr(panel, "emergency", None)
+    return None if value is None else int(value)
+
+
 @dataclass(frozen=True)
 class Inputs:
     panel_ok: bool  # PanelState valid and fresh

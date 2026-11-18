@@ -107,7 +107,8 @@ def test_drive():
     assert d(feedback_age=0.5).state == LOST and "heartbeat alive" in d(feedback_age=0.5).detail
     assert d(feedback_age=None).state == LOST
     assert d(alive_age=0.5).state == LOST
-    assert d(alive_age=-0.1).state == LOST  # rule 1: a negative age is not fresh
+    assert d(alive_age=-1.0).state == LOST  # rule 1: a stamp from the future is not fresh
+    assert d(alive_age=-0.01, feedback_age=-0.01).state == OK  # a thread race (RACE_S), not a loss
     assert d(rebooted=True).state == RECONNECTING and d(rebooted=True).code == "DRIVE_REBOOTED"
     # link down: no TPDO expected; answering heartbeats is OK, wanting the link is RECONNECTING
     assert d(feedback_expected=False, feedback_age=None).state == OK
@@ -121,6 +122,8 @@ def test_can_bus():
     assert health.can_bus(LATE, 0.01, 0.5, 0.3).state == LOST
     assert _codes(health.can_bus(LATE, 2.0, 0.0, 0.3)) == ["CAN_BUS_LOST"]
     assert health.can_bus(LATE, None, 0.0, 0.3).state == LOST
+    assert health.can_bus(LATE, -0.01, 0.0, 0.3).state == OK
+    assert health.can_bus(LATE, -1.0, 0.0, 0.3).state == LOST
 
 
 def test_mls_track():
@@ -132,6 +135,8 @@ def test_mls_track():
     assert t(mode="sdo", want="sdo").state == OK  # polling by choice is not degraded
     assert (t(age=0.2).state, t(age=0.2).code) == (STALE, "MLS_SILENT")
     assert t(age=2.0).state == LOST
+    assert t(age=-0.01).state == OK  # agv-01 2026-11-17: a sample newer than the loop's `now`
+    assert t(age=-1.0).state == LOST
     assert t(mode="off", probing=True).state == RECONNECTING
     assert t(mode="off").state == LOST
     assert t(want="off", mode="off").state == ABSENT
@@ -300,7 +305,10 @@ class _Node:
         return SimpleNamespace(warn=self.logged.append, error=self.logged.append)
 
 
-def test_the_outbox_runs_without_the_msg_and_never_raises():
+def test_the_outbox_runs_without_the_msg_and_never_raises(monkeypatch):
+    import sys  # noqa: PLC0415
+
+    monkeypatch.setitem(sys.modules, "amr_interfaces.msg", None)  # not rebuilt (also on a built PC)
     node = _Node()
     box = health_pub.Outbox(node)  # no amr_interfaces here: decides, publishes nothing
     assert box._pub is None and node.logged
@@ -324,6 +332,16 @@ def test_the_view_shows_a_silent_owner_as_lost():
     assert "drive_node" in v["can_bus"].detail
     assert (v["station_link"].state, v["station_link"].code) == (LOST, "STATION_LINK_DOWN")
     assert health.view({}, 100.0, fitted, 1.0)["dio"].state == ABSENT  # just started listening
+
+
+def test_a_report_newer_than_the_views_now_is_fresh_not_a_lost_owner():
+    """agv-01 2026-11-17: the web's callback thread stored a row after the state build took
+    `now`; the HMI flapped DRIVE_SILENT / CAN_BUS_LOST / MLS_OFFLINE at 1 Hz."""
+    fitted = {d: True for d in health.DEVICES}
+    v = health.view({"dio": (Row("dio", OK, since_s=3.0), 100.01)}, 100.0, fitted, LATE)
+    assert v["dio"].state == OK and math.isclose(v["dio"].since_s, 3.0)
+    v = health.view({"dio": (Row("dio", OK), 101.0)}, 100.0, fitted, LATE)
+    assert (v["dio"].state, v["dio"].code) == (LOST, "IO_ISLAND_LOST")  # beyond RACE_S: the future
 
 
 def _all_ok(**down):

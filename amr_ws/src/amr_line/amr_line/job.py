@@ -107,7 +107,10 @@ drops HIGH, as before).
 NO-TROLLEY RUN (station.no_trolley_run, owner's decision 2026-11-06, no rear scanner fitted): an unknown
 rear state no longer blocks an order, a hand trip or a pivot, and the stops need no trolley for Start. A
 sensor that does report a trolley at HOME or at a pivot, or a violated rear field, still refuses. Every
-other check is unchanged.
+other check is unchanged. With calling on, nothing sees the trolleys at HOME, so the payload holds the bay
+(owner 2026-11-17, manuals/home-start-confirm-plan.md): after a trip's arrival and at service start,
+NOT_READY carries TROLLEY_NOT_CONFIRMED until a physical START at HOME, parked and with nothing waiting,
+confirms the trolleys are off. That press only confirms (and restarts SETTLING); it never moves.
 """
 import dataclasses
 
@@ -477,7 +480,8 @@ class FollowJob:
     def confirm_off(self):
         """Run → Calls: the trolleys are off at HOME; the next trip may leave the bay."""
         if self.calling:
-            return False, "the rear lidar decides"
+            return False, ("press the physical START at HOME" if self.no_trolley_run
+                           else "the rear lidar decides")
         if self.payload is None:
             return False, "no site mission is the job"
         if self.trip is not None:
@@ -497,6 +501,8 @@ class FollowJob:
         ok, why = self.payload.may_leave()
         if self.calling:
             why = self._leave_check(self._i) if self._i is not None else "rear lidar: no reading yet"
+            if not why and self._home_confirm_needed():
+                why = f"{self.payload.why}: unhitch the trolleys, then press START at {self.site['HOME']}"
             ok = not why
         return {"trip": self.trip.describe() if self.trip else self.trip_note,
                 "trip_next": nxt, "trip_queue": q, "trip_payload": "" if ok else why}
@@ -654,6 +660,30 @@ class FollowJob:
         if m["DESTINATIONS"] and self.destination is None:
             return "no destination selected"
         return ""
+
+    def _home_confirm_needed(self):
+        """Station calling with no rear lidar, and the trolleys not yet confirmed off at HOME."""
+        return bool(self.calling and self.no_trolley_run and self.payload is not None
+                    and not self.payload.may_leave()[0])
+
+    def _home_confirm(self, i: Inputs):
+        """A physical START while _home_confirm_needed(): the trolleys are off, nothing else. It never
+        arms or moves; it restarts SETTLING so the operator can step away before an order comes."""
+        why = ("a trip is being driven" if self.trip is not None
+               else "a station order is active" if self._order_active()
+               else "a call is waiting" if self.calls is not None and self.calls.pending
+               else "" if self.parked_at_home(i)
+               else f"not parked at {self.site['HOME']}: press At home there first")
+        if why:
+            self.reason = f"Start refused: {why}"
+            self.refused = why
+            return 0.0, 0.0
+        self.payload.confirm_off()
+        self._settle.restart(self._now)
+        self.reason = f"at {self.site['HOME']}: trolleys off confirmed (START); ready for a station call"
+        self.station_events.append(("HOME_TROLLEYS_CONFIRMED",
+                                    f"trolleys off at {self.site['HOME']} confirmed by START"))
+        return 0.0, 0.0
 
     def _start(self, i: Inputs):
         """The physical Start from IDLE or DONE: check, then the pre-move warning.
@@ -1032,6 +1062,8 @@ class FollowJob:
         if self.state in (IDLE, DONE):
             if i.start_edge:
                 self._order_refuse(req, order.DEPARTURE_REFUSED, order.PREREQUISITE)
+                if self._home_confirm_needed():
+                    return self._home_confirm(i)
                 return self._start(i)
             if req is not None:
                 return self._order_start(i, req)
@@ -1039,6 +1071,9 @@ class FollowJob:
                 # Live, not latched: what a Start pressed now would meet.
                 pre = self._prerequisite(i, torque=False) or self._job_check(i)
                 self.reason = f"not ready: {pre}" if pre else "ready: press the physical Start under AUTO"
+                if self._home_confirm_needed():
+                    self.reason = (f"{self.payload.why}: unhitch the trolleys, then press START at "
+                                   f"{self.site['HOME']}")
             return 0.0, 0.0
         self._order_refuse_in_state(req)
         if self.state == FAULT:
@@ -1243,6 +1278,8 @@ class FollowJob:
         self.state = DONE
         self.hold_cause = ""
         self.reason = f"at {where}: {self.result}"
+        if self._home_confirm_needed():
+            self.reason += " - unhitch the trolleys, then press START"
         self.destination = None
         self.f.hard_stop()
         self.tape.events.append(("warn" if "MISSED" in self.result or "NOT" in self.result else "info",
@@ -1750,6 +1787,8 @@ class FollowJob:
         if self._torque_latched:
             out.append(order.TORQUE_TIMEOUT)
         out += self._rear_rows(i)
+        if self._home_confirm_needed():
+            out.append(order.TROLLEY_NOT_CONFIRMED)
         # The supply (WP-P7) too: a physical Start is refused at or below bus_v_trip_low, so an order
         # must be refused up front, not accepted and then cancelled in its warning (2026-11-16).
         if self._prerequisite(dataclasses.replace(i, panel_valid=True, panel_auto=True),

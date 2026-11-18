@@ -231,6 +231,17 @@ def test_config_profile():
             lambda d: d["panel"].update(di_estop=99), "di_estop")
     refuses("a profile without panel.di_estop is refused",
             lambda d: d["panel"].pop("di_estop"), "missing key")
+    # Emergency-suite plan §9 (owner 2026-11-17): the signal is bypassed on both units for now.
+    check("the E-stop signal is bypassed (panel.estop_signal_enabled false)",
+          config.PANEL_ESTOP_SIGNAL_ENABLED is False, str(config.PANEL_ESTOP_SIGNAL_ENABLED))
+    refuses("a profile without panel.estop_signal_enabled is refused",
+            lambda d: d["panel"].pop("estop_signal_enabled"), "missing key")
+    refuses("panel.estop_signal_enabled as a string is refused",
+            lambda d: d["panel"].update(estop_signal_enabled="false"), "estop_signal_enabled")
+    refuses("panel.estop_signal_enabled as 0 is refused",
+            lambda d: d["panel"].update(estop_signal_enabled=0), "estop_signal_enabled")
+    check("panel.estop_signal_enabled true loads",
+          load_with(lambda d: d["panel"].update(estop_signal_enabled=True)) is None, "refused")
     refuses("a profile without panel.estop_active_high is refused",
             lambda d: d["panel"].pop("estop_active_high"), "missing key")
     refuses("the retired panel.di_estop_ok is refused",
@@ -472,7 +483,7 @@ def test_config_profile():
     refuses("NORMAL+ at or below NORMAL is refused",
             lambda d: d["autopilot"].update(auto_plus_ratio=1.0), "auto_plus_ratio")
     refuses("NORMAL+ at or above HIGH is refused",
-            lambda d: d["autopilot"].update(auto_plus_ratio=1.7), "auto_plus_ratio")
+            lambda d: d["autopilot"].update(auto_high_ratio=1.7, auto_plus_ratio=1.7), "auto_plus_ratio")
     refuses("a curve guard error limit beyond the sensor range is refused",
             lambda d: d["autopilot"].update(curve_guard_e_mm=150.0), "curve_guard_e_mm")
     refuses("a zero high ramp is refused",

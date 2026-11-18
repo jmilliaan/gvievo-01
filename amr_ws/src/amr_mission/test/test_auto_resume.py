@@ -14,6 +14,15 @@ from amr_mission import goal_attempts as ga
 from amr_mission import route_executor_node as ren
 from amr_mission import run_fsm as fsm
 
+@pytest.fixture(autouse=True)
+def _estop_signal_read(monkeypatch):
+    """These tests are the E-stop signal path (DI09 read). Both profiles bypass it for now
+    (panel.estop_signal_enabled false, emergency-suite plan §9); the bypass has its own test."""
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "PANEL_ESTOP_SIGNAL_ENABLED", True)
+
+
 
 def node(start=True):
     st = CompiledStep(

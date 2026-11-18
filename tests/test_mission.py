@@ -232,8 +232,13 @@ def test_site_mission():
     m = mission.load_site("site-103")
     check("AGV-01's two groups: 4 MRU and 16 BTU machines, one call a trip",
           sorted(m["GROUPS"]) == ["BTU", "MRU"] and len(m["MACHINES"]) == 20 and m["TRIP_CALLS"] == 1)
-    check("facing BTU machines share one stop", m["GROUPS"]["BTU"]["machines"]["BTU24"]["swap"]
-          == m["GROUPS"]["BTU"]["machines"]["BTU16"]["swap"] == "R2-1")
+    # Owner 2026-11-17: the pairs shifted by one - R2-k serves BTU(25-k) and BTU(16-k), BTU17 is alone at
+    # R2-8 and BTU16 alone at its own stop R2-0, first on the C-BTU lap.
+    btu = m["GROUPS"]["BTU"]["machines"]
+    check("facing BTU machines share one stop: BTU24 and BTU15 at R2-1; BTU16 alone at R2-0",
+          btu["BTU24"]["swap"] == btu["BTU15"]["swap"] == "R2-1" and btu["BTU16"]["swap"] == "R2-0"
+          and [mc for mc, r in btu.items() if r["swap"] == "R2-8"] == ["BTU17"],
+          str({mc: r["swap"] for mc, r in btu.items()}))
     legs = [leg["id"] for leg in m["CIRCUITS"]["C-MRU"]["legs"]]
     check("C-MRU has one leg each way between J-ML and the tape end: row 2 joins at J-ML",
           "J-ML:merge>U-MRU" in legs and "U-MRU:pivot>J-ML" in legs, str(legs))

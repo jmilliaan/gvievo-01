@@ -8,7 +8,7 @@
   <div id="io-link" class="tel-grid"></div>
   <p id="io-detail" class="note"></p>
 </section>
-<section id="io-lists" class="cols" data-estop-ch="{{ estop_ch if estop_ch is not none else '' }}" data-estop-high="{{ 1 if estop_high else 0 }}">
+<section id="io-lists" class="cols" data-estop-ch="{{ estop_ch if estop_ch is not none else '' }}" data-estop-high="{{ 1 if estop_high else 0 }}" data-estop-off="{{ 1 if estop_off else 0 }}">
   <div><h2>Inputs <small>DI</small></h2><div id="di" class="io-list"><div class="none">no I/O image</div></div></div>
   <div><h2>Outputs <small>DO · req / read</small></h2><div id="do" class="io-list"><div class="none">no I/O image</div></div></div>
 </section>
@@ -22,6 +22,9 @@ const ch = (p, i) => `${p}${String(i).padStart(2, '0')}`;
 // controller's derived emergency state (PanelState.emergency) beside it.
 const ESTOP_CH = document.getElementById('io-lists').dataset.estopCh;
 const ESTOP_HIGH = document.getElementById('io-lists').dataset.estopHigh !== '0';
+// panel.estop_signal_enabled false (emergency-suite plan §9): the PC does not read the input. Its
+// lamp still shows the raw level, for the engineer's check; never red, never "ACTIVE".
+const ESTOP_OFF = document.getElementById('io-lists').dataset.estopOff === '1';
 const isEstop = (names, i) => ESTOP_CH !== '' ? i === +ESTOP_CH : /e-?stop/i.test(names[i] || '');
 function estopNote() {
   const e = lastState && lastState.emergency;
@@ -35,9 +38,11 @@ async function tick() {
     document.getElementById('io-lists').classList.toggle('stale-block', stale);
     document.getElementById('di').innerHTML = data.di.map((v, i) => {
       const es = isEstop(data.di_names, i);
-      const active = es && (!!v === ESTOP_HIGH);
-      const name = es ? `${data.di_names[i] || 'E-stop'} · ${active ? 'ACTIVE' : 'clear'} · ${estopNote()}` : data.di_names[i];
-      return `<div class="io-row${active ? ' bad' : ''}"><span class="io-ch">${ch('DI', i)}</span>${lamp(v)}<span class="io-name">${esc(name)}</span></div>`;
+      const off = es && ESTOP_OFF;
+      const active = es && !off && (!!v === ESTOP_HIGH);
+      const name = off ? `${data.di_names[i] || 'E-stop'} · bypassed (panel.estop_signal_enabled false)`
+        : es ? `${data.di_names[i] || 'E-stop'} · ${active ? 'ACTIVE' : 'clear'} · ${estopNote()}` : data.di_names[i];
+      return `<div class="io-row${active ? ' bad' : ''}${off ? ' muted' : ''}"><span class="io-ch">${ch('DI', i)}</span>${lamp(v)}<span class="io-name">${esc(name)}</span></div>`;
     }).join('');
     document.getElementById('do').innerHTML = '<div class="io-row do head"><span></span><span>req</span><span>read</span><span></span></div>' +
       data.do_readback.map((v, i) =>

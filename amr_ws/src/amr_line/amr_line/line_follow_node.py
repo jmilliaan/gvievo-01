@@ -58,7 +58,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger
 
-from amr_base import drive_state, gating, hold_policy
+from amr_base import drive_state, emergency, gating, hold_policy
 from amr_base.diff_drive import forward as wheels_forward
 from amr_base.diff_drive import profile_geometry
 from amr_base.lean_node import LeanNode, run
@@ -874,8 +874,9 @@ class LineFollowNode(LeanNode):
             rear_clear=rear[1],
             loc_ready=bool(getattr(self, "tapeloc", None) is not None and self.tapeloc.ready),
             # E5: the panel's emergency on a fresh, valid image; None = it cannot say (the torque
-            # guess stands), also for a PanelState built before the field.
-            emergency=(getattr(self._panel, "emergency", None) if panel_ok and self._panel.valid else None),
+            # guess stands): also for a PanelState built before the field, and while the E-stop
+            # signal is bypassed (panel.estop_signal_enabled false, emergency-suite plan §9).
+            emergency=emergency.reading(self._panel, panel_ok),
             supply_v=getattr(self, "_supply_v", ()) if self._drives_fresh(now) else (),
         )
 

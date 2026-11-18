@@ -92,6 +92,13 @@ panel.di_manual_arm
     power through the safety chain: an FX3 demand leaves the drives in ETO, the
     enable fails, and it is retried on a slow backoff, never latched.
 
+panel.estop_signal_enabled
+    Whether the PC reads the E-stop signal at all (emergency-suite plan §9, owner 2026-11-17).
+    false: DI09 is not read; PanelState.emergency stays NORMAL and the hold labels fall back to
+    the torque guess ("E-stop / safety chain"), as before Part B. Set on agv-01's first run of the
+    new code, when DI09 read LOW with the E-stop pressed. The keys below stay required and
+    validated either way (the channel stays reserved). Turn it on per unit after the check in §9.4.
+
 panel.di_estop / estop_active_high / estop_confirm_scans / estop_reset_timeout_s
     E-stop signal (emergency-suite plan Part B, 2026-11-16): Flexi Soft Q3 on DI09. Owner
     2026-11-16: HIGH = E-stop triggered, LOW / no signal = normal (estop_active_high true), and
@@ -601,6 +608,8 @@ _SCHEMA = {
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
         # E-stop signal, Flexi Soft Q3 (emergency-suite plan Part B; HIGH = pressed, owner 2026-11-16)
+        # false = DI09 is not read (emergency-suite plan §9, owner 2026-11-17)
+        "estop_signal_enabled": ("PANEL_ESTOP_SIGNAL_ENABLED", bool),
         "di_estop":       ("PANEL_DI_ESTOP", int),
         "estop_active_high": ("PANEL_ESTOP_ACTIVE_HIGH", bool),
         "estop_confirm_scans": ("PANEL_ESTOP_CONFIRM_SCANS", int),
@@ -1295,8 +1304,9 @@ def _validate(ns):
     check(0 < g("RFID_TAG_CLEAR_S") <= 5, "rfid.tag_clear_s must be in (0, 5] seconds")
 
     # -- tracked AUTO speeds (2026-10-08): NORMAL = auto_rpm (0.50 m/s), HIGH = NORMAL x
-    # auto_high_ratio (1.7 -> 0.85 m/s) inside an MLS marker zone only. Raising either is a
-    # speed-cap change: README status table, and the operator's explicit say-so.
+    # auto_high_ratio (agv-01 1.79 -> 2850 r/min, 0.90 m/s since 2026-11-17) inside an MLS
+    # marker zone only. Raising either is a speed-cap change: README status table, and the
+    # operator's explicit say-so.
     check(0 < g("AUTO_RPM") <= g("MOTOR_MAX_RPM"),
           "autopilot: need 0 < auto_rpm <= vehicle.motor_max_rpm")
     check(1 < g("AUTO_HIGH_RATIO") <= 2,

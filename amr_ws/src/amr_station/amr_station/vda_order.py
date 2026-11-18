@@ -15,10 +15,12 @@ HOME 0, ATT 2, R2-j 4[, R2-k 6], HOME 6 or 8; action ids end in the node id (`:A
 order is comes from its node ids, never its node count alone: two BTUs and one MRU both have 5 nodes.
 
 Facing machines (contract v1.4, 2026-11-14): a swap stop's OWN machine is the first the mission lists at it
-(R2-k is BTU(25-k)); the others listed there face it (BTU(17-k)). A wait names its stop's machines in a
-`machines` action parameter, own first, whenever they are not just the own machine: ["BTU15"],
-["BTU23", "BTU15"]. A wait without one is the own machine, as in v1.3, and ["BTU23"] alone is refused. Two
-machines at one stop are one wait, one START: the one-stop shape. An order still serves at most two machines.
+(R2-k is BTU(25-k)); the others listed there face it. Which machine sits at which stop is the mission's alone
+(owner 2026-11-17, site-103: R2-k also serves BTU(16-k) for k = 1..7, R2-8 BTU17 alone, and BTU16 alone has
+its own stop R2-0, so it is that stop's own machine). A wait names its stop's machines in a `machines` action
+parameter, own first, whenever they are not just the own machine: ["BTU14"], ["BTU23", "BTU14"]. A wait
+without one is the own machine, as in v1.3, and ["BTU23"] alone is refused. Two machines at one stop are one
+wait, one START: the one-stop shape. An order still serves at most two machines.
 """
 
 from __future__ import annotations
