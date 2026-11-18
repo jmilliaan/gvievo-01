@@ -179,7 +179,7 @@
   "can": {
     "bitrate": 125000,
     "channel": "can0",
-    "adapter_serial": "",
+    "adapter_serial": "2056336F3743",
     "left_node": 1,
     "right_node": 2,
     "sensor_node": 10,

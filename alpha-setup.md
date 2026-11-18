@@ -17,8 +17,8 @@ between units are in the table below; everything else is the same on every unit.
 | Login user | `gvipc-evo-01` | **`gvipc-evo-01`** (deliberately the same, see below) |
 | Wi-Fi address on `agv_field` | `192.168.2.110/24` | `192.168.2.120/24` |
 | Web UI from the tablet | `http://192.168.2.110:5001` | `http://192.168.2.120:5001` |
-| CANable serial (udev rule, section 3; profile `can.adapter_serial`, which `install.sh` renders into the rule) | `2087327F5548` | **TBD**: read it at section 3, then put it in `profiles/agv-02.json` (`install.sh` refuses an empty one) |
-| GRUB fallback kernel (`deploy/platform/freeze.sh --go` prints it, section 4) | **TBD**: record at the freeze | **TBD**: record at the freeze |
+| CANable serial (udev rule, section 3; profile `can.adapter_serial`, which `install.sh` renders into the rule) | `2087327F5548` | `2056336F3743` (read 2026-11-18; in `profiles/agv-02.json`) |
+| GRUB fallback kernel (`deploy/platform/freeze.sh --go` prints it, section 4) | **TBD**: record at the freeze | `5.15.0-185-generic` (read-only `freeze.sh`, 2026-11-18) |
 | Profile | `profiles/agv-01.json` (no `vehicle.env`: the default) | `profiles/agv-02.json`, selected by `~/.amr/vehicle.env` (section 5.3) |
 | Station identity (MQTT) | `agv1` | `agv2` (follows the profile name) |
 | Site mission, home | `site-103`, HOME-N2 | its own, HOME-N (owner 2026-11-14; not written yet: its route is not taught) |
@@ -135,13 +135,13 @@ tether come **before** the wired ports, so the PC never loses its internet).
 | 4 | Never sleep, power key ignored | 1 | `systemctl is-enabled sleep.target` = `masked`; `ls /etc/systemd/logind.conf.d/` lists both files |
 | 5 | NetworkManager, no 2-min boot wait | 2.1 | `systemctl is-enabled systemd-networkd-wait-online` = `masked`; `systemctl is-active NetworkManager` = `active` |
 | 6 | Second uplink: Wi-Fi, then phone tether | 2.3, 2.2 (tether file only) | `nmcli -g IP4.ADDRESS dev show wlp1s0` = `192.168.2.120/24`; with the phone plugged in, `ip -br addr show usb0` has an address |
-| 7 | Wired ports + installer file cleaned | 2.2 | `ip -br addr` shows `enp2s0 … 192.168.1.10/24`, `enp3s0 … 192.168.3.2/24`; `ip route \| grep default` has no `enp`; `ls /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` exists |
+| 7 | Wired ports + installer file cleaned | 2.2 | `ip -br addr` shows `enp2s0 … 192.168.1.10/24`, `enp3s0 … 192.168.3.2/24`; `ip route \| grep default` has no `enp` (on a bench with the RFID reader and scanner not cabled, `enp2s0`/`enp3s0` have no carrier and show no address: then check the files instead, `ls /etc/netplan/60-rfid-lan1.yaml /etc/netplan/70-nanoscan3.yaml`); `ls /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` exists |
 | 8 | CANable → `can0` | 3 | `ls -l /dev/canable0` is a link; `ip -br link show can0` says `UP`; serial written into the top table (tell the engineer) |
 | 9 | Platform freeze, ROS 2 Humble | 4 | `apt-cache policy ros-humble-rclpy \| grep -c snapshots.ros.org` ≥ `1`; GRUB fallback written into the top table; `ls /opt/ros/humble/setup.bash`; `dpkg -s ros-humble-rosbag2-storage-mcap ros-humble-sick-safetyscanners2 \| grep -c 'install ok'` = `2` |
 | 10 | Python packages | 5.2 | `python3 -c "import can, pymodbus, flask, waitress, hypothesis, numpy; print(numpy.__version__)"` prints `2.2.6` |
 | 11 | Shell environment, which vehicle | 5.3 | `bash -ic 'echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION $AGV_PROFILE'` = `10 rmw_cyclonedds_cpp agv-02`; `bash -ic 'python3 -m agv_core.identity'` names host `gvipc-evo-02`, profile `agv-02`, serial `agv2` |
 | 12 | Build and offline tests | 5.4 | `ls ~/agv_can/amr_ws/install/setup.bash`; `python3 tests/run_all.py` ends with every check passing (the pinned `EXPECTED_CHECKS`: 991 on 2026-11-17) |
-| 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal`; `systemctl is-active cpu-power-limit cpu-freq-cap` = `active active` |
+| 13 | Service files, sudo rules, data volume | 6, 6.1, 6.2 | `systemctl is-enabled amr` = `disabled` (installed, not enabled); `grep -c 'OnFailure=amr-failed' /etc/systemd/system/amr.service` = `1` (the 2026-11-16 unit: an older hand-installed copy passes the other checks but lacks it); `ls /etc/sudoers.d/amr-web`; `findmnt /data/amr` shows `data=journal`; `systemctl is-active cpu-power-limit cpu-freq-cap` = `active active` |
 | 14 | Operator display (kiosk). **Do it over SSH** (`ssh gvipc-evo-01@192.168.2.120`): when lightdm restarts, the local screen becomes the kiosk and there is no text console behind it any more (by design) | 7 (not 7.8) | `systemctl is-active nginx lightdm` = `active active`; `curl -s http://127.0.0.1/ \| grep -c 'AMR system starting'` = `1`; the panel shows the orange "AMR system starting" page |
 | 15 | **STOP: engineer.** Device read-back, then first start | 9.1, 6 (cutover) | every row of 9.1 matches; `systemctl is-active amr` = `active`; the panel shows the UI in IDLE |
 | 16 | **STOP: engineer.** Acceptance | 9.2 | all 14 items pass |
@@ -1352,6 +1352,14 @@ Added 2026-10-12 (second unit; unit 1 was not reachable to check):
   Wi-Fi power save on. `amr` was enabled early and is now disabled until step 15. Its
   `amr.service.d/unit2-profile.conf` (`AGV_PROFILE=agv-02`) duplicates `vehicle.env`, and its
   "TEMPORARY auto_when_on" comment is stale: nothing applies it, the profile's `false` is in effect.
+  **Remove it** (2026-11-18, still there): `sudo rm /etc/systemd/system/amr.service.d/unit2-profile.conf
+  && sudo systemctl daemon-reload`. `vehicle.env` alone selects the profile; `agv_core.identity` checks it.
+- **Unit 2 survey 2026-11-18** (its own session): steps 1–5, 8, 11, 14 pass; step 9 (platform freeze) not
+  done, so `update-notifier-download.timer` is still enabled and apt-daily(-upgrade) are disabled, not
+  masked (`freeze.sh --go` fixes both); step 10 lacked waitress and hypothesis; step 13's installed
+  `amr.service`, `canable@.service` and `70-canable.rules` were the OLD hand-installed ones, so
+  `install.sh` is due now that the serial is in the profile.
+- ~~`deploy/platform/freeze.sh` was mode 644 in git~~ (`Permission denied`): made executable 2026-11-18.
 - **The kiosk files are still only on unit 1** (`~/xfce-kiosk-staging/`). This file
   reproduces them in full, so unit 2 does not need them; copy them into the repo
   (section 10) the next time unit 1 is reachable.
