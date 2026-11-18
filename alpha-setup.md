@@ -110,7 +110,11 @@ the table above.
 - the checklist reaches step 15 (first start of the vehicle software) or
   step 16 (acceptance): both need the engineer at the vehicle, E-stop in reach;
 - anything asks to move a wheel, or a command has `--go` in it;
-- a command output says `ERROR`, `Traceback`, `FAIL` and the step does not say it is expected;
+- a command output says `ERROR`, `Traceback`, `FAIL` and the step does not say it is expected.
+  Known harmless, do not stop: `sysctl: setting key "net.ipv4.conf.all.accept_source_route": Invalid
+  argument` and the same for `promote_secondaries`, printed by `install.sh`'s `sysctl --system`. They
+  come from Ubuntu's own `/usr/lib/sysctl.d/50-default.conf` (systemd's `-key` syntax read by procps),
+  not from the AMR files;
 - you are about to change network settings over SSH (steps 6 and 7): do them at the local console.
 
 **NEVER**, on this machine:
@@ -854,6 +858,15 @@ server {
         add_header Cache-Control "no-store";
     }
 
+    # "Call the engineer" (unified plan WP-H5): amr-failed.service writes this file when
+    # amr.service has failed, and amr-kiosk-browser then opens this URL. Served here because the
+    # kiosk policy allows only 127.0.0.1 and the Chromium snap cannot read /run/amr itself.
+    # No file (the service is not failed): 404, and the kiosk is not on this page anyway.
+    location = /amr-failed.html {
+        alias /run/amr/failed.html;
+        add_header Cache-Control "no-store";
+    }
+
     location / {
         proxy_pass http://127.0.0.1:5001;
         proxy_http_version 1.1;
@@ -909,128 +922,15 @@ If the web port ever changes, change it in **one** place: this nginx file.
 
 ### 7.4 Session scripts (`/usr/local/bin`, mode 755, root-owned)
 
-`/usr/local/bin/amr-kiosk-session`:
+The three scripts are in the repo, `amr_ws/deploy/kiosk/` (the authority; `validate.sh` compares the
+installed copies with them). Do not copy them out of this file: an inline copy here went stale once
+(2026-11-18, it lacked the WP-H5 "call the engineer" fallback page).
 
-```bash
-#!/bin/bash
-# Bare X session for the operator display. No desktop, no panel: a window
-# manager that only knows fullscreen, the display hot-plug watcher, and the
-# browser supervisor. LightDM autologs the "amrkiosk" user into this.
-xset s off; xset s noblank; xset -dpms
-/usr/local/bin/amr-display-hotplug.sh &
-unclutter -idle 1 -root &
-matchbox-window-manager -use_titlebar no -use_cursor yes &
-exec /usr/local/bin/amr-kiosk-browser
-```
-
-`/usr/local/bin/amr-kiosk-browser`:
-
-```bash
-#!/bin/bash
-# Keeps exactly one Chromium kiosk window on the AMR UI, forever.
-#  - exits for any reason (Alt+F4, Ctrl+W, crash, OOM)  -> respawned in 1 s
-#  - navigated off 127.0.0.1, or extra tabs/windows      -> killed, respawned
-#  - screen geometry changed (monitor hot-plugged)       -> killed, respawned so
-#    the window re-fits the new panel size
-URL=http://127.0.0.1/
-DBG=9222
-export DISPLAY=${DISPLAY:-:0}
-
-geometry() { xrandr -q 2>/dev/null | awk '/current/{print $8 $9 $10}'; }
-
-watchdog() {   # $1 = chromium pid
-  sleep 15                             # first start can be slow (snap)
-  local g0; g0=$(geometry)
-  while kill -0 "$1" 2>/dev/null; do
-    sleep 5
-    if [ "$(geometry)" != "$g0" ]; then
-      logger -t amr-kiosk "screen geometry changed -> restarting browser"
-      kill "$1"; return
-    fi
-    # Ask Chromium what it is showing. Only real tabs (type "page") count;
-    # the endpoint also lists internal helpers (chrome://omnibox-popup...)
-    # that are not windows. Exactly one tab, on our origin, or it dies.
-    read -r pages bad < <(curl -s --max-time 2 "http://127.0.0.1:$DBG/json" | python3 -c '
-import json,sys
-try: t=[x for x in json.load(sys.stdin) if x.get("type")=="page"]
-except Exception: print("? ?"); sys.exit()
-print(len(t), sum(1 for x in t if not x.get("url","").startswith("http://127.0.0.1")))')
-    if [ "$pages" = "?" ]; then continue; fi        # endpoint not answering: judge next round
-    if [ "${pages:-0}" != "1" ] || [ "${bad:-0}" != "0" ]; then
-      logger -t amr-kiosk "browser state wrong (pages=$pages off-origin=$bad) -> restarting"
-      kill "$1"; return
-    fi
-  done
-}
-
-while :; do
-  chromium \
-    --kiosk --incognito --noerrdialogs --no-first-run --disable-infobars \
-    --disable-session-crashed-bubble --disable-translate --disable-pinch \
-    --overscroll-history-navigation=0 --disable-features=TranslateUI \
-    --check-for-update-interval=31536000 --password-store=basic \
-    --autoplay-policy=no-user-gesture-required \
-    --remote-debugging-port=$DBG --remote-allow-origins=* \
-    --window-position=0,0 --start-fullscreen \
-    "$URL" >/dev/null 2>&1 &
-  pid=$!
-  watchdog "$pid" &
-  wait "$pid"
-  logger -t amr-kiosk "chromium exited ($?) -> respawn"
-  sleep 1
-done
-```
-
-`/usr/local/bin/amr-display-hotplug.sh`:
-
-```bash
-#!/bin/bash
-# Keeps the AMR display "seamless": whatever is plugged in lights up, whatever
-# is unplugged is dropped, without anyone touching the robot.
-#
-# Two triggers, both unprivileged:
-#   1. udev DRM events  - instant, when the panel asserts hot-plug-detect (HPD)
-#   2. a 5 s poll       - for panels/adapters/extenders that never assert HPD.
-#      `xrandr -q` forces the kernel to re-probe every connector (EDID read),
-#      so it works even when /sys/class/drm/*/status is stale.
-# Outputs are only reconfigured when the set of connected outputs CHANGES, so
-# a stable display is never flickered by the poll.
-#
-# The robot stack (amr*.service) is a separate multi-user.target branch and is
-# never touched by anything here.
-
-export DISPLAY=${DISPLAY:-:0}
-POLL=5
-
-connected() { xrandr -q 2>/dev/null | awk '$2=="connected"{print $1}' | sort | tr '\n' ' '; }
-
-apply() {
-  # --auto enables every connected output at its preferred mode and turns
-  # off the disconnected ones. Retry once: EDID can lag the HPD by ~1 s.
-  xrandr --auto >/dev/null 2>&1 || { sleep 1; xrandr --auto >/dev/null 2>&1; }
-}
-
-last="$(connected)"
-apply
-
-# Trigger 1: udev events -> write a token into the FIFO the loop below reads.
-fifo=$(mktemp -u /tmp/amr-hotplug.XXXXXX); mkfifo "$fifo"
-trap 'rm -f "$fifo"; kill 0' EXIT
-( udevadm monitor --udev --subsystem-match=drm 2>/dev/null | while read -r _; do echo u; done > "$fifo" ) &
-
-# Trigger 2: timer.
-( while sleep "$POLL"; do echo t; done > "$fifo" ) &
-
-while read -r _ < "$fifo"; do
-  sleep 1                         # let the connector settle
-  now="$(connected)"
-  if [ "$now" != "$last" ]; then
-    logger -t amr-display "outputs changed: [$last] -> [$now]"
-    apply
-    last="$(connected)"
-  fi
-done
-```
+| Script | Role |
+|---|---|
+| `amr-kiosk-session` | the bare X session: no blanking, the hot-plug watcher, a fullscreen window manager, then the browser |
+| `amr-kiosk-browser` | keeps exactly one Chromium kiosk window on the AMR UI, respawned in 1 s; shows `/run/amr/failed.html` when `amr.service` has failed (WP-H5) |
+| `amr-display-hotplug.sh` | lights up whatever display is plugged in, drops what is unplugged (udev events plus a 5 s poll) |
 
 `/usr/share/xsessions/amr-kiosk.desktop`:
 
@@ -1043,10 +943,11 @@ Type=Application
 ```
 
 ```bash
-cd ~/host-staging
-sudo install -m 755 amr-kiosk-session amr-kiosk-browser amr-display-hotplug.sh /usr/local/bin/
-sudo install -m 644 amr-kiosk.desktop /usr/share/xsessions/
+sudo install -m 755 -o root -g root ~/agv_can/amr_ws/deploy/kiosk/{amr-kiosk-session,amr-kiosk-browser,amr-display-hotplug.sh} /usr/local/bin/
+cd ~/host-staging && sudo install -m 644 amr-kiosk.desktop /usr/share/xsessions/
 ```
+
+After a `git pull` that changes `deploy/kiosk/`, run the first line again (`validate.sh` warns on drift).
 
 ### 7.5 Chromium policy — `/etc/chromium/policies/managed/amr-kiosk.json`
 
@@ -1206,8 +1107,8 @@ xfconf-query -c xfce4-session -p /shutdown/ShowHybridSleep -n -t bool -s false
 ```
 
 and, so the XFCE session also survives monitor hot-plug, the same watcher as a
-user autostart — `~/.local/bin/amr-display-hotplug.sh` (copy of the script in
-7.4) plus `~/.config/autostart/amr-display-hotplug.desktop`:
+user autostart — `~/.local/bin/amr-display-hotplug.sh` (copy of
+`amr_ws/deploy/kiosk/amr-display-hotplug.sh`) plus `~/.config/autostart/amr-display-hotplug.desktop`:
 
 ```ini
 [Desktop Entry]

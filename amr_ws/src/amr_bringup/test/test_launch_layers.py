@@ -198,7 +198,10 @@ def test_scanner_driver_respawns():
     assert nodes[0]._ExecuteLocal__respawn_delay > 0
 
 
-def test_sim_base_is_fakes_plus_estimation_and_one_description():
+def test_sim_base_is_fakes_plus_estimation_and_one_description(monkeypatch):
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "STATION_ENABLED", False)  # the station's nodes: their own tests below
     c = compose("base.launch.py", real="false")
     assert set(c["exes"]) == SIM_EXES | BASE_EXES
     assert c["exes"].count("robot_state_publisher") == 1
@@ -206,6 +209,9 @@ def test_sim_base_is_fakes_plus_estimation_and_one_description():
 
 
 def test_real_base_composes_hardware_once(monkeypatch):
+    from agv_core import config  # noqa: PLC0415
+
+    monkeypatch.setattr(config, "STATION_ENABLED", False)  # the station's nodes: their own tests below
     monkeypatch.setenv("ROS_DOMAIN_ID", str(domains.VEHICLE))
     c = compose("base.launch.py", real="true")
     # fake_panel is conditional (panel:=fake); this walk ignores conditions
@@ -580,6 +586,7 @@ NOT_SUPERVISED = {
 RESPAWNING_OPTIONAL = {
     "station_bridge_node", "sick_safetyscanners2_node", "trolley_node", "rfid_node", "imu_bias_node",
     "survey_move_node", "event_recorder_node",
+    "robot_state_publisher",  # respawns since WP-H4 (2026-11-16): a dead rsp freezes the static TF tree
 }
 
 

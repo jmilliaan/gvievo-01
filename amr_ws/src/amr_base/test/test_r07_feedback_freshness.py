@@ -93,6 +93,8 @@ def test_drive_status_operational_needs_fresh_feedback():
         _edge=lambda *_a: None,
         event=lambda *_a: None,
         _power=(True, "MANUAL, Manual Arm on"),
+        _bus_v=lambda nid: float("nan"),   # WP-P7 supply voltage: not read here
+        _turning=False,                    # WP-C7 motion lamp
     )
     _feed(link, time.monotonic() - 1.0)  # cached Operation enabled, but old
     DriveNode._publish_status(node, link, None)

@@ -45,12 +45,14 @@ def test_the_engineer_teach_call_is_forwarded(tmp_path):
     assert r.status_code == 200 and ("line_teach", ("station", "MW-1")) in stub.calls
 
 
-def test_the_site_lists_carry_machines_points_and_roles(tmp_path):
+def test_the_site_lists_carry_machines_points_and_roles(tmp_path, monkeypatch):
+    from agv_core import config
+    monkeypatch.setattr(config, "TAPE_LOC_LIVE", False)  # agv-01 runs live since station calling; pinned
     client, _stub = app_for({}, tmp_path)
     site = client.get("/api/line/site").get_json()
     assert site["machines"]["MRU"] == ["MRU1", "MRU2", "MRU3", "MRU4"] and site["trip_calls"] == 1
     assert site["stations"][0] == site["home"] == "HOME-N2" and site["live"] is False
-    assert site["points"] == ["UT-MRU1", "UT-MRU2", "UT-MRU3"]
+    assert site["points"] == ["UT-MRU1", "UT-MRU2", "UT-MRU3", "UT-MRU4"]  # UT-MRU4 since 2026-11-11
     page = client.get("/teach").data
     assert b'id="tc-role"' in page and b'data-act="mark_role"' in page
 
@@ -77,6 +79,7 @@ def test_calls_and_confirmations_are_open_to_the_operator_and_checked(tmp_path):
 
 def test_the_site_mission_is_offered_as_a_job_only_when_live(tmp_path, monkeypatch):
     from agv_core import config
+    monkeypatch.setattr(config, "TAPE_LOC_LIVE", False)  # the profile's value is agv-01's live true: pinned
     client, _stub = app_for({}, tmp_path)
     assert config.TAPE_LOC_SITE_MISSION not in client.get("/api/line/missions").get_json()["missions"]
     monkeypatch.setattr(config, "TAPE_LOC_LIVE", True)

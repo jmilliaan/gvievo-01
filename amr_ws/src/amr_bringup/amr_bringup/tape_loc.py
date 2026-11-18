@@ -18,7 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch.actions import ExecuteProcess, TimerAction
 from launch_ros.actions import Node
 
-from amr_bringup.launch_helpers import required
+from amr_bringup.launch_helpers import quiet_logs, required
 
 # Plan section 2.7: the tape removes most of the search, so fewer particles may do.
 PARAM_SETS = {
@@ -85,7 +85,7 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
 
     actions = node(
         Node(package="nav2_map_server", executable="map_server", name="map_server", output="screen",
-             parameters=[params, {"yaml_filename": map_yaml}]),
+             **quiet_logs(), parameters=[params, {"yaml_filename": map_yaml}]),
         "map_server",
     )
     lifecycle = {"autostart": autostart}
@@ -93,14 +93,14 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
     if map_loc_yaml:
         actions += node(
             Node(package="nav2_map_server", executable="map_server", name="map_server_loc", output="screen",
-                 parameters=[params, {"yaml_filename": map_loc_yaml, "topic_name": "map_loc",
+                 **quiet_logs(), parameters=[params, {"yaml_filename": map_loc_yaml, "topic_name": "map_loc",
                                       "frame_id": "map"}]),
             "map_server_loc",
         )
         amcl_remap = [("map", "map_loc")]
         lifecycle["node_names"] = ["map_server", "map_server_loc", "amcl"]
     actions += node(
-        Node(package="nav2_amcl", executable="amcl", name="amcl", output="screen",
+        Node(package="nav2_amcl", executable="amcl", name="amcl", output="screen", **quiet_logs(),
              parameters=[params, PARAM_SETS[params_set]], remappings=amcl_remap),
         "amcl",
     )
@@ -108,7 +108,7 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
     actions.append(
         TimerAction(period=3.0, actions=node(
             Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
-                 name="lifecycle_manager_localization", output="screen",
+                 name="lifecycle_manager_localization", output="screen", **quiet_logs(),
                  parameters=[params, lifecycle]),
             "lifecycle_manager_localization",
         ))
@@ -116,7 +116,7 @@ def group(map_yaml: str, *, params_set: str = "default", generation: int = 0, mo
     if monitor:
         actions += node(
             Node(package="amr_localization", executable="localization_monitor_node",
-                 name="localization_monitor", output="screen",
+                 name="localization_monitor", output="screen", **quiet_logs(),
                  parameters=[{"generation": generation, "dynamic_yaml": dynamic_yaml,
                               **({} if jump_dist_m is None else {"jump_dist_m": float(jump_dist_m)})}]),
             "localization_monitor",

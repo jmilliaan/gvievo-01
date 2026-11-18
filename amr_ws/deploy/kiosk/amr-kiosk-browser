@@ -13,6 +13,10 @@ URL=http://127.0.0.1/
 # outlives a boot, and it is world-readable, which the amrkiosk user needs: it cannot read the
 # service user's home, where AMR_STATE_DIR lives.
 FALLBACK=/run/amr/failed.html
+# Shown through nginx, not as file://: the kiosk policy allows only 127.0.0.1 / localhost (URLBlocklist
+# "*" blocks file://) and the Chromium snap cannot read /run/amr (unit 2, 2026-11-18). nginx's
+# "location = /amr-failed.html" aliases the file (alpha-setup.md 7.3).
+FALLBACK_URL=http://127.0.0.1/amr-failed.html
 DBG=9222
 export DISPLAY=${DISPLAY:-:0}
 
@@ -20,7 +24,7 @@ export DISPLAY=${DISPLAY:-:0}
 # exists, the UI otherwise. One systemctl call per watchdog round (20 s).
 wanted_url() {
   if [ -r "$FALLBACK" ] && systemctl is-failed --quiet amr.service; then
-    echo "file://$FALLBACK"
+    echo "$FALLBACK_URL"
   else
     echo "$URL"
   fi

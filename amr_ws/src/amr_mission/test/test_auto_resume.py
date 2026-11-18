@@ -467,6 +467,7 @@ def test_an_invalid_protective_path_is_unknown_never_a_trip_and_never_resumes():
     assert n.fsm.state == fsm.BLOCKED and n.hold_cause == "chain", "an invalid path is never the field"
 
     n = node()
+    n.prereq_grace_s = 0.5  # the stub's 0.0 would fault at once; the vehicle's grace is 0.5 s
     tick(n, field=False)
     tick(n, torque=False, wheels=False)
     assert n.hold_cause == "field"

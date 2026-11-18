@@ -174,7 +174,11 @@ if command -v ip >/dev/null; then
 fi
 
 # The HMI server (unified plan WP-E5, 2026-11-16). Missing is a warning: serve.py falls back.
-python3 -c "import waitress" 2>/dev/null || \
+# It is a user-site package: under sudo (install.sh) ask as the operator user, who runs amr.service;
+# root's python cannot see ~/.local and would warn falsely (unit 2, 2026-11-18).
+as_user=()
+[[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]] && as_user=(sudo -u "$SUDO_USER" -H)
+"${as_user[@]}" python3 -c "import waitress" 2>/dev/null || \
   echo "warning: waitress missing: the HMI runs on the werkzeug dev server (alpha-setup.md 5.2)" >&2
 # Wi-Fi power save off on the vehicle connection (WP-E5 delta: set per connection, by hand).
 ps=$(nmcli -g 802-11-wireless.powersave con show agv-net 2>/dev/null || true)

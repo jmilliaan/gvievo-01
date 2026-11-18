@@ -64,6 +64,7 @@ def fake(tracked):
         (op.kind, target)
     )
     sv._auto_enter_line = types.MethodType(Supervisor._auto_enter_line, sv)
+    sv._enter_line = types.MethodType(Supervisor._enter_line, sv)   # split out of _auto_enter_line (WP-H4)
     return sv
 
 

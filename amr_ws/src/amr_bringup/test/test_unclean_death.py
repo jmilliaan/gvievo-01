@@ -372,3 +372,17 @@ def test_validate_checks_failed_units_and_the_platform():
                                     "install.sh", "validate.sh", "platform/freeze.sh"])
 def test_deploy_scripts_are_bash(script):
     assert _text(DEPLOY / script).startswith("#!/bin/bash\n")
+
+
+def test_the_kiosk_shows_the_failed_page_through_nginx_not_file_url():
+    """unit 2, 2026-11-18: the kiosk policy blocks file:// (URLBlocklist "*", allow 127.0.0.1 only) and the
+    Chromium snap cannot read /run/amr. The browser opens nginx's /amr-failed.html, which aliases the file
+    amr-failed writes; alpha-setup 7.3 carries that location."""
+    import pathlib  # noqa: PLC0415
+
+    repo = pathlib.Path(__file__).resolve().parents[4]
+    browser = (repo / "amr_ws/deploy/kiosk/amr-kiosk-browser").read_text(encoding="utf-8")
+    assert "FALLBACK_URL=http://127.0.0.1/amr-failed.html" in browser
+    assert 'echo "file://' not in browser
+    guide = (repo / "alpha-setup.md").read_text(encoding="utf-8")
+    assert "location = /amr-failed.html {\n        alias /run/amr/failed.html;" in guide

@@ -222,7 +222,8 @@ def test_the_mux_stamps_with_the_monotonic_clock_and_ticks_on_steady_timers():
                       ("amr_mission/amr_mission/route_executor_node.py", "self._tick"),
                       ("amr_bringup/amr_bringup/supervisor_node.py", "self._publish_mode")):
         text = (src / rel).read_text(encoding="utf-8")
-        assert "create_steady_timer(" in text and tick in text.split("create_steady_timer(", 1)[1][:120], rel
+        # Any of its steady timers (the supervisor has more than one since WP-C4, 2026-11-16)
+        assert any(tick in part[:120] for part in text.split("create_steady_timer(")[1:]), rel
 
 
 def test_the_gate_limits_are_the_profiles_and_the_consumers_sit_at_or_above_them():
