@@ -1159,7 +1159,7 @@ reads, no writes: none of these takes `--go`.
 | MLS markers | after 9.2 item 6: the Home marker tile / drive_node's start check | the same as unit 1: markers OK if unit 1's sensor was written with `set-markers --go`, else "sensor not set up". Either way motion is unaffected; with markers not OK a zone mission runs NORMAL |
 | MLS IMU | `python3 -m agv_core.drivers.canbus.read_imu show` | answers with plausible gyro/accel (vehicle still: yaw rate ~0, accel ~1 g); TPDO mapping as unit 1 (the IMU is SDO-polled by drive_node) |
 | I/O island | `ping -c3 -I enp2s0 192.168.1.30` | 0 % loss; panel edges in 9.2 item 7 |
-| RFID reader | `ping -c3 -I enp2s0 192.168.1.200`; then the driver's start log (`journalctl -u amr \| grep -i rfid` after 9.2 item 6) | 0 % loss; **no** `expect_*` drift warning: WorkMode 1, region 1, 30 dBm |
+| RFID reader | **n/a: not used.** `rfid.enabled` is false on both profiles (unified plan decision 23, 2026-11-16) and unit 2 has no reader fitted (owner, 2026-11-18). Skip this row. Only if a profile turns RFID on again: `ping -c3 -I enp2s0 192.168.1.200`, then the driver's start log (`journalctl -u amr \| grep -i rfid`) | n/a. With RFID on: 0 % loss; **no** `expect_*` drift warning: WorkMode 1, region 1, 30 dBm |
 | nanoScan3 | `ping -c3 -I enp3s0 192.168.3.10`; Safety Designer: the project uploaded is the one unit 1 runs (compare the checksum Safety Designer shows) | fields and cases match unit 1; then 9.2 item 8 |
 
 ### 9.2 System acceptance
@@ -1168,12 +1168,12 @@ Run all of these once, in order, before the vehicle leaves the bench.
 
 1. **Cold boot with the monitor unplugged.** `systemctl status amr lightdm canable@can0 nginx` all `active`. Plug the monitor in after 2 min → UI appears, full-screen, native size.
 2. **`ip route`** shows exactly two defaults (`usb0` 100, `wlp1s0` 700) and none via the wired ports. `networkctl list` shows `enp2s0/enp3s0 configured`, `wlp1s0 unmanaged`.
-3. **Peers**: `ping -c3 -I enp2s0 192.168.1.30`, `ping -c3 -I enp2s0 192.168.1.200`, `ping -c3 -I enp3s0 192.168.3.10` all 0 % loss.
+3. **Peers**: `ping -c3 -I enp2s0 192.168.1.30` and `ping -c3 -I enp3s0 192.168.3.10`, both 0 % loss. (The RFID reader at `192.168.1.200` is not pinged: RFID is off on both units, and unit 2 has no reader.)
 4. **CAN** (service stopped): `candump -n 20 can0` shows TPDOs from `0x181/0x182` and `0x18A`; `python3 -m agv_core.drivers.canbus.verify_bus` → nodes 1, 2, 10 answer; `verify_drivers` → BLV-R identity.
 5. **Bench tools refuse while the service runs** (`/run/lock/amr` owner named in the error).
 6. **`amr.service` reaches IDLE** (RUNBOOK §1 boot check) with `journalctl -u amr.service` free of tracebacks; `pgrep -af 'amr_|nav2|slam_toolbox'` empty after `systemctl stop amr`.
 7. **Panel**: on the I/O page each Start/Reset press produces one edge, the selector tracks, a held Start produces one edge (RUNBOOK T12).
-8. **Scanner**: `ros2 topic hz /scan` ≈ 34 Hz; `/output_paths` publishes; contamination warning absent.
+8. **Scanner**: `ros2 topic hz /scan` ≈ 17 Hz (`skip: 1` in `nanoscan3.yaml` publishes every 2nd scan, a CPU decision of 2026-10-02; the raw UDP stream is ~34 Hz); `/output_paths` publishes; contamination warning absent.
 9. **Kiosk escape table** (7.7) passes; `sudo pkill -9 Xorg` does not touch `amr.service` (`journalctl -u amr -u canable@can0 --since -2min` shows nothing new).
 10. **Unplug the CANable** → `amr.service` stops (`BindsTo`); replug → both come back (`canable@can0` pulls `amr.service` in once it is enabled with `WantedBy=canable@can0.service`: `ls /etc/systemd/system/canable@can0.service.wants/` lists `amr.service`); drives may show `8130h` and need a power cycle (expected, RUNBOOK §4).
 11. **20 min idle** → no screen blanking, no sleep.
@@ -1260,6 +1260,15 @@ Added 2026-10-12 (second unit; unit 1 was not reachable to check):
   masked (`freeze.sh --go` fixes both); step 10 lacked waitress and hypothesis; step 13's installed
   `amr.service`, `canable@.service` and `70-canable.rules` were the OLD hand-installed ones, so
   `install.sh` is due now that the serial is in the profile.
+- **Unit 2 reached step 15 on 2026-11-18** (286edd8): `amr.service` enabled and started by the owner, LINE,
+  drives Ready to switch on, ~53 V, panel valid. Boot sat ~11 min in BASE_NOT_READY before "base ready
+  after the boot budget" (likely the safety chain not yet reset; not in the logs). Open on unit 2:
+  - **PP objects differ on both drives** (as in October): 6065h 108000 (want 36000), 6067h 18 (1000),
+    6085h 1000 (1600); 6072h/605Dh/605Eh fine. Owner fixes with MEXE02.
+  - Safety Designer checksum not compared with unit 1; `usb0` tether unchecked.
+  - Kiosk browser and the USB-power udev rule take effect at the next reboot.
+  - No map/graph/mission yet: copy rev5, teach HOME-N, write `site-103-agv2` (agv-02-plan R7).
+  - Step 16 (9.2 acceptance) not run.
 - ~~`deploy/platform/freeze.sh` was mode 644 in git~~ (`Permission denied`): made executable 2026-11-18.
 - **The kiosk files are still only on unit 1** (`~/xfce-kiosk-staging/`). This file
   reproduces them in full, so unit 2 does not need them; copy them into the repo

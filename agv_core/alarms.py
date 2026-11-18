@@ -210,7 +210,7 @@ def _rows() -> tuple[Alarm, ...]:
         a("SCANNER_STALE", WARN, "engineer", "The safety scanner stopped sending data",
           "The vehicle can still be driven by hand. Call the engineer before running a mission.",
           "/scan arrived and then stopped: driver died mid-run, or the Ethernet link dropped. "
-          "Expected rate is 34 Hz."),
+          "Expected /scan rate is ~17 Hz (skip: 1, every 2nd of the scanner's ~34 Hz)."),
         # The scanner's own diagnosis (unified plan WP-E4, 2026-11-16): amr_base.scanner_health
         # maps the driver's "<node>: State" /diagnostics and status_overview to these rows, keyed
         # per scanner (front; rear only with rear.source "scanner"). ERROR so they sort above

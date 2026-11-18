@@ -26,6 +26,9 @@ sick_safetyscanners2_node:
     # already ~8.5 Hz, so localisation sees the same rate; /output_paths (the mux's field
     # backstop) follows at ~17 Hz - the OSSD stop path is hardware and unaffected.
     skip: 1
+    # The driver's /scan rate diagnostic: what skip 1 publishes (its default 34 Hz is the raw stream
+    # and reported "Frequency too low" at every status, 2026-11-17).
+    expected_frequency: 17.0
     # The mount has a wall behind the scanner: only about +/-95 deg is usable
     # (operator, 2026-09-16). Beams outside that hit the vehicle itself and
     # must not reach AMCL or the costmap. Radians, 0 = scanner forward.

@@ -16,6 +16,7 @@
     channel: 0
     channel_enabled: true
     skip: 1                          # ~17 Hz, as the front (CPU)
+    expected_frequency: 17.0         # the driver's rate diagnostic, matching skip 1
     angle_start: -1.658              # PLACEHOLDER: set from the mount
     angle_end: 1.658                 # PLACEHOLDER
     time_offset: 0.0
