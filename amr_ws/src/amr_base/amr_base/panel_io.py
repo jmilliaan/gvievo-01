@@ -52,7 +52,7 @@ class PanelFrame:
     comms_ok: bool
     changed: str | None = None  # human-readable transition for the log, if any
     pendant: panel_core.PendantIntent = panel_core.PENDANT_IDLE
-    manual_arm: bool = False  # panel.di_manual_arm, debounced; False while invalid
+    manual_arm: bool = False  # no arm input (gvievo-ce): True whenever the image is valid
     # Debounced levels of Start and Reset (2026-11-11, the At home combination). False while invalid.
     start_held: bool = False
     reset_held: bool = False
@@ -136,9 +136,8 @@ class PanelAdapter:
                 ),
                 scans,
             )
-        # Manual Arm (DI08): a debounced LEVEL, like the pendant. A switch already on at
-        # power-on powers the drives once the image is valid - power is not motion.
-        self.manual_arm = panel_core.DebouncedLevels((config.PANEL_DI_MANUAL_ARM,), scans)
+        # No Manual Arm input (gvievo-ce, kyb unit, 2026-11-23): MANUAL is armed whenever the
+        # image is valid; the emergency check in arm_policy still comes first.
         self._last_arm: bool | None = None
         # E-stop signal (DI09, Flexi Soft Q3): active needs estop_confirm_scans (kyb 2026-11-02:
         # one-scan Q3 test pulses), clear needs debounce_scans. Counted on valid images only; an
@@ -226,11 +225,10 @@ class PanelAdapter:
             if levels is not None:
                 pend = panel_core.pendant_intent(*levels)
         was_valid = prior_valid
-        arm_levels = self.manual_arm.scan(snapshot.get("di"), comms)
-        arm = bool(intent.valid and arm_levels is not None and arm_levels[0])
+        arm = bool(intent.valid)
         start, reset = bool(intent.start), bool(intent.reset)
         if intent.valid and None not in prior:
-            others = [n for n, was, now in zip(("selector", "pendant", "Manual Arm"), prior,
+            others = [n for n, was, now in zip(("selector", "pendant", "panel valid"), prior,
                                                 (intent.mode, pend, arm), strict=True) if was != now]
             if others:
                 self._other_changed_scan = self._acq
@@ -251,10 +249,7 @@ class PanelAdapter:
             or (arm and prior[2] is not True)                                # Manual Arm on
             or not normal)                                                   # in an emergency
         pend = self._release_first(pend, levels, enabling, notes)
-        if arm != self._last_arm:
-            if self._last_arm is not None or arm:
-                notes.append(f"Manual Arm {'on' if arm else 'off'}")
-            self._last_arm = arm
+        self._last_arm = arm  # follows validity (no arm input); no note of its own
         if intent.valid and self.estop_signal_enabled:
             active = _bit(snapshot.get("di"), config.PANEL_DI_ESTOP) == self.estop_active_high
             self._estop_on = self._estop_on + 1 if active else 0

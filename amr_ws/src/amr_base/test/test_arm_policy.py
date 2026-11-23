@@ -10,15 +10,16 @@ def panel(auto=False, arm=False, valid=True, t=NOW):
     return Panel(t_recv=t, valid=valid, mode_auto=auto, manual_arm=arm)
 
 
-def test_manual_follows_the_manual_arm_input():
-    assert want_power(NOW, panel(arm=True), [], P) == (True, "MANUAL, Manual Arm on")
-    on, why = want_power(NOW, panel(arm=False), [], P)
-    assert not on and "DI08" in why
+def test_manual_is_always_armed():
+    """gvievo-ce (kyb unit, owner 2026-11-23): no Manual Arm input; MANUAL powers the drives
+    whenever the panel is fresh and valid and there is no emergency, whatever manual_arm says."""
+    assert want_power(NOW, panel(arm=True), [], P) == (True, "MANUAL")
+    assert want_power(NOW, panel(arm=False), [], P) == (True, "MANUAL")
 
 
-def test_manual_ignores_a_run_asking_for_power():
-    asks = [Ask("line", NOW, True)]
-    assert want_power(NOW, panel(arm=False), asks, P)[0] is False
+def test_manual_does_not_need_a_run_asking_for_power():
+    asks = [Ask("line", NOW, False)]
+    assert want_power(NOW, panel(arm=False), asks, P)[0] is True
 
 
 def test_auto_follows_the_run_and_ignores_manual_arm():
@@ -88,7 +89,7 @@ def test_no_power_while_the_emergency_is_not_normal_whatever_else_says_yes():
     fights STO (the 2 s re-engage loop) and a released E-stop powers nothing before NORMAL."""
     asks = [Ask("run", NOW, True), Ask("line", NOW, True)]
     for auto in (False, True):
-        for emg, why in ((1, "E-stop (DI09)"), (2, "E-stop: waiting for Reset"),
+        for emg, why in ((1, "E-stop"), (2, "E-stop: waiting for Reset"),
                          (3, "E-stop: waiting for Reset"), (4, "E-stop: waiting for Reset")):
             p = Panel(t_recv=NOW, valid=True, mode_auto=auto, manual_arm=True, emergency=emg)
             assert want_power(NOW, p, asks, P) == (False, why), (auto, emg)

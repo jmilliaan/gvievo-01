@@ -203,24 +203,24 @@ def test_config_profile():
     refuses("an empty can.channel is refused",
             lambda d: d["can"].update(channel=""), "can.channel")
 
-    # dio.motion_on (2026-10-02): DO00 and DO08 on while the motors turn.
-    check("DO00 and DO08 follow the motors", config.DIO_MOTION_ON == [0, 8], str(config.DIO_MOTION_ON))
+    # dio.motion_on: gvievo-ce (kyb unit, 2026-11-23) switches only DO00 (movement) and DO01 (alarm).
+    check("DO00 follows the motors", config.DIO_MOTION_ON == [0], str(config.DIO_MOTION_ON))
     check("DO01 is the alarm horn", config.DIO_ALARM_ON == [1], str(config.DIO_ALARM_ON))
     check("DO00 is the movement horn", config.DIO_MOVEMENT_HORN == [0], str(config.DIO_MOVEMENT_HORN))
-    # Drive power (2026-10-08): under MANUAL the drives are powered only while DI08 is HIGH.
-    check("DI08 is the Manual Arm input", config.PANEL_DI_MANUAL_ARM == 8, str(config.PANEL_DI_MANUAL_ARM))
-    refuses("a Manual Arm input shared with a panel button is refused",
-            lambda d: d["panel"].update(di_manual_arm=d["panel"]["di_start"]), "distinct")
-    refuses("a Manual Arm input on a pendant channel is refused",
-            lambda d: d["panel"].update(di_manual_arm=d["pendant"]["di_fwd"]), "pendant channel")
+    # Drive power, gvievo-ce (owner 2026-11-23): no Manual Arm input; MANUAL is armed unless an emergency.
+    check("there is no Manual Arm input", not hasattr(config, "PANEL_DI_MANUAL_ARM"))
+    refuses("a leftover panel.di_manual_arm is refused",
+            lambda d: d["panel"].update(di_manual_arm=9), "unknown key")
+    refuses("an E-stop input shared with a pendant button is refused",
+            lambda d: d["panel"].update(di_estop=d["pendant"]["di_fwd"]), "pendant channel")
     refuses("the retired panel.manual_auto_arm is refused",
             lambda d: d["panel"].update(manual_auto_arm=True), "unknown key")
-    # Emergency suite Part B E1 (2026-11-16): DI09 is the Flexi Soft's Q3, the E-stop signal, HIGH =
-    # pressed (owner 2026-11-16, informational). COM1 only (DI09-DI0F): DI07 is COM0, DI08 Manual Arm.
-    check("DI09 is the E-stop input, active HIGH",
-          config.PANEL_DI_ESTOP == 9 and config.PANEL_ESTOP_ACTIVE_HIGH,
+    # E-stop signal, gvievo-ce (kyb unit, 2026-11-23): Flexi Soft Q3 on DI08, HIGH = released, so
+    # active LOW. COM1 only (DI08-DI0F): DI07 is COM0.
+    check("DI08 is the E-stop input, active LOW",
+          config.PANEL_DI_ESTOP == 8 and not config.PANEL_ESTOP_ACTIVE_HIGH,
           f"{config.PANEL_DI_ESTOP} {config.PANEL_ESTOP_ACTIVE_HIGH}")
-    for other in ("di_reset", "di_start", "di_auto", "di_manual_arm"):
+    for other in ("di_reset", "di_start", "di_auto"):
         refuses(f"an E-stop input on panel.{other} is refused",
                 lambda d, o=other: d["panel"].update(di_estop=d["panel"][o]), "distinct")
     refuses("an E-stop input on a pendant channel is refused",
@@ -231,9 +231,9 @@ def test_config_profile():
             lambda d: d["panel"].update(di_estop=99), "di_estop")
     refuses("a profile without panel.di_estop is refused",
             lambda d: d["panel"].pop("di_estop"), "missing key")
-    # Emergency-suite plan §9 (owner 2026-11-17): the signal is bypassed on both units for now.
-    check("the E-stop signal is bypassed (panel.estop_signal_enabled false)",
-          config.PANEL_ESTOP_SIGNAL_ENABLED is False, str(config.PANEL_ESTOP_SIGNAL_ENABLED))
+    # gvievo-ce (2026-11-23): the signal is read on this unit (press LOW / release HIGH checked).
+    check("the E-stop signal is read (panel.estop_signal_enabled true)",
+          config.PANEL_ESTOP_SIGNAL_ENABLED is True, str(config.PANEL_ESTOP_SIGNAL_ENABLED))
     refuses("a profile without panel.estop_signal_enabled is refused",
             lambda d: d["panel"].pop("estop_signal_enabled"), "missing key")
     refuses("panel.estop_signal_enabled as a string is refused",
@@ -282,8 +282,9 @@ def test_config_profile():
     # runs (2026-10-23); thresholds provisional until P0.
     # 2026-10-25 (operator): station limit loosened 0.025 -> 0.05 m (2 sigma = the whole +-10 cm) to
     # cut `position` holds; a stop's own error now comes on top, accepted.
-    check("tape localization teaches site-103 C-MRU and its station limit fits +-10 cm",
-          config.TAPE_LOC_ENABLED is True and config.TAPE_LOC_SITE_MISSION == "site-103"
+    # gvievo-ce: the kyb unit is trackless (tracked false), so tape localization is off.
+    check("tape localization is off on the trackless unit, its station limit still fits +-10 cm",
+          config.TAPE_LOC_ENABLED is False and config.TRACKED is False
           and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.10
           and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
           f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SITE_MISSION} {config.TAPE_LOC_SIGMA_STATION_M}")
@@ -339,8 +340,8 @@ def test_config_profile():
             lambda d: d["station"].update(manufacturer="gvi/x"), "station.manufacturer")
     refuses("a serial number that does not match the profile name is refused",
             lambda d: d["station"].update(serial_number="agv2"), "station.serial_number")
-    check("the live profile runs station calling with no trolley (owner, 2026-11-06)",
-          config.STATION_ENABLED is True and config.STATION_NO_TROLLEY_RUN is True)
+    check("station calling is off on the trackless unit (gvievo-ce)",
+          config.STATION_ENABLED is False and config.STATION_NO_TROLLEY_RUN is False)
     no_key = copy.deepcopy(base)
     no_key["station"].pop("no_trolley_run")
     tmp = tempfile.mkdtemp()

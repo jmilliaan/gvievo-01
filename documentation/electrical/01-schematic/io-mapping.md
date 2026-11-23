@@ -138,59 +138,46 @@ Z̄ goes to C+ and Z to C−. The C input is not evaluated in sin/cos mode.
 
 ## 4. Digital IO module (-KE4, CKDZ-IoT CK-TP5162, 16 DI / 16 DO, Ethernet)
 
-Sheets 03, 08, 09. Field wiring is AWG22 blue, except the Ethernet and pendant cables. The terminal layout of the CK-TP5162 is not documented here; sheet 09 shows it as a simplified block.
+> **gvievo-ce branch: this section describes the kyb unit (host `gvipc-evo-01`, ex `kyb-trackless`),
+> updated 2026-11-23.** It is the vehicle this branch runs on; the rest of this file is still the
+> gvievo-main unit's drawing set. The software map is `profiles/agv-01.json`.
 
-The audio horn (-PJ1, sheet 03, PATLITE BK-24AE-K) is powered from 1P24 / 1N24. Its COM is jumpered to 1N24 at the horn; a sound plays while its sound input is connected to COM, which DO0 / DO1 do.
+The audio horn's two sound inputs are switched by DO0 (movement) and DO1 (alarm).
 
 ### Supply and Ethernet
 
 | Port | Goes to |
 |---|---|
-| 24V | 1P24 |
-| 0V | 1N24 |
-| PE | not connected |
-| Ethernet IN | **IPC** (-KE3) port **enp2s0** |
-| Ethernet OUT | **RFID reader** (-BG4, Chafon CF821, 12 V) |
+| Ethernet | **IPC** (-KE3) port **enp1s0** (host 192.168.1.100/24), module at **192.168.1.40:502**, unit 1 |
+
+IPC ports on this unit: enp1s0 = this module, enp2s0 = nanoScan3 (host 192.168.3.1, scanner
+192.168.3.10), enp3s0 = empty (the GLS621 camera is gone). CAN (`can0`): drivers 1 and 2, MLSE
+node 10 (IMU only: this unit runs trackless, `tracked: false`).
 
 ### Digital inputs
 
-COM0 is tied to 1P24. Each input DI00–DI07 is a normally-open contact that pulls the input to 1N24 when pressed.
-
 | Input | Device | Notes |
 |---|---|---|
-| DI00 | **PB START** (-SJ2, green) | Other side to 1N24 |
-| DI01 | **PB RESET** (-SJ3, yellow), pole 2 (NO) | Same push-button as safety PLC I8 |
-| DI02 | **MANUAL/AUTO selector** (-SJ4), pole 2 (NO) | Same switch as safety PLC I7 |
-| DI03 | Pendant **FORWARD** (-SJ6, NO) | Pendant = 4 × 1NO direction buttons, all sharing one 1N24 return |
-| DI04 | Pendant **REVERSE** (-SJ7, NO) | |
-| DI05 | Pendant **LEFT** (-SJ8, NO) | |
-| DI06 | Pendant **RIGHT** (-SJ9, NO) | |
+| DI00 | **PB START** | |
+| DI01 | **MANUAL/AUTO selector** | ON = MANUAL (`panel.auto_when_on` false) |
+| DI02 | **PB RESET** | |
+| DI03 | Pendant **FORWARD** | |
+| DI04 | Pendant **REVERSE** | |
+| DI05 | Pendant **LEFT** | |
+| DI06 | Pendant **RIGHT** | |
 | DI07 | not used | |
-| DI08 | **MANUAL ARM** (-SJ5), on the **pendant** | Black selector switch, 2 positions OFF / ON, 1 NC (contact 11-12). **Not an emergency stop.** 1P24 → 11-12 → DI08 (COM1 group, COM1 = 1N24). ON (contact closed) = 24 V on DI08 = drives on in MANUAL; OFF = drives off. Terminal-block numbers for its two cores: «TB?». The software reads it as Manual Arm (`profiles/agv-01.json` di_names[8]). |
-| DI09 | **ESTOP OK** from safety PLC **Q3** | COM1 group: Q3 switches 24 V onto DI09. ON = E-stop not pressed; OFF = E-stop pressed or wire broken. Added 2026-11-15 (`manuals/emergency-suite-plan.md` Part B). Software support (profile `panel.di_estop_ok: 9`) not yet built |
-| DI0A–DI0F | not used | |
-| COM0 | 1P24 | Common for DI00–DI07 |
-| COM1 | 1N24 | Common for DI08–DI0F |
-
-Pendant cable: Delta 8 × 0.5 mm², 7 cores used = common (1N24) + 4 direction buttons (DI03–DI06) + 2 for MANUAL ARM (1P24 and DI08).
+| DI08 | **ESTOP OK** from safety PLC **Q3** | COM1 group. HIGH = E-stop released, LOW = pressed (or wire broken): profile `panel.di_estop` 8, `estop_active_high` false. Checked on the vehicle 2026-11-23: press LOW / release HIGH, no dips over 20 s |
+| DI09 | not used: pendant arm switch | Still wired, **not read** (owner 2026-11-23). There is no Manual Arm input: MANUAL is always armed unless an emergency |
+| DI0A–DI0F | not used | The kyb destination buttons (DI0A–DI0C) and Continue (DI0D) were removed from the software 2026-11-23 |
 
 ### Digital outputs
 
-Each output closes to the common C of its pair.
-
 | Output | Status |
 |---|---|
-| DO0 | **Audio horn 01, sound 1 (movement)** (closes 1N24 onto the horn's sound 1 input) |
-| DO1 | **Audio horn 01, sound 2 (alarm)** (closes 1N24 onto the horn's sound 2 input) |
-| DO2–DO7 | **Spare, nothing connected.** Only the commons are wired (below). |
-| DO8–DOF | Not wired. The software also switches DO8 with motion; nothing is connected to it. |
-
-| Output common | Goes to |
-|---|---|
-| C of DO0 / DO1 | 1N24 |
-| C of DO2 / DO3 | 1P24 |
-| C of DO4 / DO5 | 1N24 |
-| C of DO6 / DO7 | 1N24 |
+| DO0 | **Audio horn, sound 1 (movement)**: on while the motors turn (`dio.motion_on`, `movement_horn`) |
+| DO1 | **Audio horn, sound 2 (alarm)**: pre-move warning, occupied field in AUTO, operator call (`dio.alarm_on`) |
+| DO2–DO7 | Spare, not used by the software. |
+| DO8–DOF | Not wired. |
 
 ---
 
@@ -203,7 +190,6 @@ Wire colours and terminal-block numbers on the sheets are as built (48 V red, sa
 ## Things the sheets do not settle
 
 - **Selector polarity.** Sheet 08 labels the I7 line "MANUAL". The IEC set (page 40) takes the contacts as closed in MANUAL; the JIS sheet does not show it.
-- **MANUAL ARM terminal blocks.** Its two cores in the pendant cable have no TB numbers yet («TB?» on sheet 09).
 - **CAN far bus end.** Open, because the MLSE has no terminator «confirm».
 - **Encoder sides.** ENC1 = left, ENC2 = right «confirm».
 - **CK-TP5162 terminal layout.** Not documented; sheet 09 draws a simplified block.

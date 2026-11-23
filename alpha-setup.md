@@ -192,6 +192,15 @@ two wired LANs never carry a default route — a third would blackhole traffic.
 
 ### Devices on the vehicle whose addresses are configured *on the device*, not on the PC
 
+> **gvievo-ce branch (kyb unit, `gvipc-evo-01`, 2026-11-23).** Wired ports on this unit: **enp1s0**
+> = Modbus I/O island at `192.168.1.40` (host `192.168.1.100/24`), **enp2s0** = nanoScan3
+> `192.168.3.10` (host `192.168.3.1/24`), **enp3s0** = empty (GLS621 removed). No RFID reader.
+> CAN: drivers 1/2, MLSE 10 (IMU only, trackless). Panel: DI00 Start, DI01 MANUAL/AUTO (ON =
+> MANUAL), DI02 Reset, DI03–06 pendant, DI08 E-stop OK from Q3 (HIGH = released); no Manual Arm
+> input (MANUAL always armed unless an emergency); DO0 movement horn, DO1 alarm horn. Full map:
+> `documentation/electrical/01-schematic/io-mapping.md` section 4. The rows below are the
+> gvievo-main unit's.
+
 | Device | Setting | Tool |
 |---|---|---|
 | Oriental Motor BLV-R ×2 | CANopen node IDs 1 (left) / 2 (right), 125 kbps, `1016h` volatile | MEXE02 over USB |

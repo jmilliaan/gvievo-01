@@ -152,27 +152,16 @@ def test_a_pendant_held_at_power_on_or_reconnect_must_be_released_first():
     assert not any(f.pendant), "reconnect with FWD held: release first again"
 
 
-def test_manual_arm_is_a_debounced_level_and_dies_with_the_image():
-    """DI08 (panel.di_manual_arm): under MANUAL the drives are powered only while it is HIGH."""
+def test_manual_arm_follows_the_image_with_no_arm_input():
+    """gvievo-ce (kyb unit, owner 2026-11-23): there is no Manual Arm input. manual_arm is true
+    whenever the image is valid, false while it is not, and makes no event notes of its own."""
     ad = _adapter()
-
-    def di(arm):
-        bits = _di()
-        bits[config.PANEL_DI_MANUAL_ARM] = arm
-        return bits
-
-    f = _settle(ad, di(False))
-    assert f.valid and not f.manual_arm and "Manual Arm" not in (f.changed or "")
-    f = ad.tick(_snap(di(True)))
-    assert not f.manual_arm  # one scan: not yet believed
-    f = ad.tick(_snap(di(True)))
-    assert f.manual_arm and "Manual Arm on" in f.changed
-    f = ad.tick(_snap(di(True), new=False))
-    assert f.manual_arm  # a repeated image keeps the level
-    f = ad.tick(_snap(di(True), comms=False))
-    assert not f.valid and not f.manual_arm and "Manual Arm off" in f.changed
-    f = _settle(ad, di(False))
-    assert not f.manual_arm
+    f = _settle(ad, _di())
+    assert f.valid and f.manual_arm and "Manual Arm" not in (f.changed or "")
+    f = ad.tick(_snap(_di(), comms=False))
+    assert not f.valid and not f.manual_arm and "Manual Arm" not in (f.changed or "")
+    f = _settle(ad, _di())
+    assert f.valid and f.manual_arm
 
 
 def test_pendant_disabled_in_profile_publishes_nothing():
@@ -280,40 +269,22 @@ def test_a_held_pendant_dies_with_the_source_and_the_coincidence_hold_is_1_5_s()
 # ---- edge guard (2026-10-24 phantom START + Manual Arm off, selector already AUTO) ----
 
 
-def _edi(start=False, reset=False, arm=True, auto=True):
+def _edi(start=False, reset=False, fwd=False, auto=True):
     bits = _di(reset=reset, start=start, auto=auto)
-    bits[config.PANEL_DI_MANUAL_ARM] = arm
+    bits[config.PENDANT_DI_FWD] = fwd
     return bits
-
-
-@pytest.mark.parametrize("pendant", [True, False])
-def test_a_start_with_manual_arm_dropping_in_the_same_scan_is_ignored(pendant):
-    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=pendant, coincidence_hold_scans=30)
-    f = _settle(ad, _edi())
-    assert f.valid and f.mode_auto and f.manual_arm
-    # the 10:35:49 image: Start up and Manual Arm down together, for 1.0 s
-    f = _settle(ad, _edi(start=True, arm=False))
-    assert not f.start_edge and "suspect" in f.changed and "START" in f.changed
-    assert "Manual Arm" in f.changed and "raw DI 0x" in f.changed
-    for _ in range(18):
-        f = ad.tick(_snap(_edi(start=True, arm=False)))
-        assert not f.start_edge
-    f = _settle(ad, _edi())  # reverts: still no edge
-    assert not f.start_edge
-    f = _settle(ad, _edi(start=True))  # a real press afterwards counts
-    assert f.start_edge and "suspect" not in (f.changed or "")
 
 
 def test_a_start_the_scan_after_another_change_is_ignored_and_a_reset_too():
     ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True, coincidence_hold_scans=30)
     _settle(ad, _edi())
-    ad.tick(_snap(_edi(arm=False)))  # Manual Arm drops first...
-    f = ad.tick(_snap(_edi(arm=False, start=True)))  # ...believed off here; Start one raw scan behind
-    assert not f.manual_arm and not f.start_edge
-    f = ad.tick(_snap(_edi(arm=False, start=True)))
-    assert not f.start_edge and "suspect" in f.changed  # believed 1 scan after the arm change
-    _settle(ad, _edi(arm=False))
-    f = _settle(ad, _edi(reset=True, arm=True))
+    ad.tick(_snap(_edi(fwd=True)))  # a pendant level changes first (gvievo-ce: no Manual Arm)...
+    f = ad.tick(_snap(_edi(fwd=True, start=True)))  # ...believed here; Start one raw scan behind
+    assert not f.start_edge
+    f = ad.tick(_snap(_edi(fwd=True, start=True)))
+    assert not f.start_edge and "suspect" in f.changed  # believed 1 scan after the pendant change
+    _settle(ad, _edi(fwd=True))
+    f = _settle(ad, _edi(reset=True, fwd=False))
     assert not f.reset_edge and "RESET" in f.changed and "suspect" in f.changed
 
 
@@ -331,23 +302,6 @@ def test_raw_hex_is_the_di_word():
     bits = [False] * 16
     bits[0] = bits[8] = True
     assert panel_io.raw_hex(bits) == "0x0101" and panel_io.raw_hex(None) == "?"
-
-
-def test_a_pendant_held_through_manual_arm_switching_on_must_be_released():
-    """WP-A6 (c): Manual Arm rising powers the drives; a direction already held waits."""
-    ad = panel_io.PanelAdapter(debounce_scans=2, pendant=True)
-    _settle(ad, _pdi())
-    f = _settle(ad, _pdi(fwd=True))
-    assert f.pendant.fwd  # a normal held jog is unaffected
-    bits = _pdi(fwd=True)
-    bits[config.PANEL_DI_MANUAL_ARM] = True
-    f = _settle(ad, bits)
-    assert f.manual_arm and not any(f.pendant)
-    bits[F] = False
-    _settle(ad, bits)
-    bits[F] = True
-    f = _settle(ad, bits)
-    assert f.pendant.fwd
 
 
 def test_holding_the_opposite_direction_does_not_count_as_a_release():

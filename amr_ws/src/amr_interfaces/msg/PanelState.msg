@@ -12,8 +12,8 @@ bool pendant_fwd
 bool pendant_rvs
 bool pendant_left
 bool pendant_right
-# Manual Arm (panel.di_manual_arm, DI08 on agv-01), debounced level. Under MANUAL the
-# drives are powered only while this is true (amr_base/arm_policy). False when invalid.
+# Manual Arm. gvievo-ce (kyb unit): there is no arm input; true whenever the panel image is
+# valid, so MANUAL is always armed unless an emergency. False when invalid.
 bool manual_arm
 # Start and Reset as debounced LEVELS (2026-11-11). APPEND ONLY. Held = true. Motion still enters on
 # the edges above alone; these only let the line layer see Start + Reset held together for 1 s

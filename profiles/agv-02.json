@@ -162,7 +162,6 @@
     "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,
-    "di_manual_arm": 8,
     "estop_signal_enabled": false,
     "di_estop": 9,
     "estop_active_high": true,

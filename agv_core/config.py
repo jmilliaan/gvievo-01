@@ -77,15 +77,10 @@ drivers.ramp
     raising this without re-checking traction is a different kind of mistake.
 
 
-panel.di_manual_arm
-    The Manual Arm input (DI08 on agv-01). Under MANUAL the drives are powered
-    only while this input is HIGH; LOW leaves them in standby (CANopen up,
-    encoders read, power stage off), so a jog, a pendant press, a survey move
-    or a commissioning pp move does nothing until it is switched on. Under
-    AUTO it is ignored: power follows the run (amr_base/arm_policy.py).
-
-    It replaces manual_auto_arm (the selector in MANUAL was itself the arm
-    command, 2026-10-08): the drives are no longer powered while idle.
+panel: no Manual Arm input (gvievo-ce, kyb unit, owner 2026-11-23)
+    There is no arm input any more: under MANUAL the drives are powered whenever the panel
+    image is valid and there is no emergency (amr_base/arm_policy.py). The pendant's arm
+    switch on DI09 is still wired but is not read. Under AUTO power follows the run.
 
     *** Power is not motion. *** A powered manual vehicle holds zero; every
     millimetre still needs a jog HELD (a stream older than 0.2 s is zero). And nothing here can
@@ -94,12 +89,15 @@ panel.di_manual_arm
 
 panel.estop_signal_enabled
     Whether the PC reads the E-stop signal at all (emergency-suite plan §9, owner 2026-11-17).
-    false: DI09 is not read; PanelState.emergency stays NORMAL and the hold labels fall back to
+    gvievo-ce (kyb unit): true, checked 2026-11-23 (DI08 HIGH released, LOW pressed, no dips in
+    20 s). false: the E-stop input is not read; PanelState.emergency stays NORMAL and the hold labels fall back to
     the torque guess ("E-stop / safety chain"), as before Part B. Set on agv-01's first run of the
     new code, when DI09 read LOW with the E-stop pressed. The keys below stay required and
     validated either way (the channel stays reserved). Turn it on per unit after the check in §9.4.
 
 panel.di_estop / estop_active_high / estop_confirm_scans / estop_reset_timeout_s
+    gvievo-ce (kyb unit, 2026-11-23): Q3 is on DI08, ON = released, so di_estop 8 and
+    estop_active_high false. The text below is the gvievo-main unit's history.
     E-stop signal (emergency-suite plan Part B, 2026-11-16): Flexi Soft Q3 on DI09. Owner
     2026-11-16: HIGH = E-stop triggered, LOW / no signal = normal (estop_active_high true), and
     the signal is INFORMATIONAL, not a safety function - a broken wire reads normal. Unlatched
@@ -604,7 +602,6 @@ _SCHEMA = {
         "di_start":       ("PANEL_DI_START", int),
         "di_auto":        ("PANEL_DI_AUTO", int),
         "auto_when_on":   ("PANEL_AUTO_WHEN_ON", bool),
-        "di_manual_arm":  ("PANEL_DI_MANUAL_ARM", int),
         "debounce_scans": ("PANEL_DEBOUNCE_SCANS", int),
         "coincidence_hold_s": ("PANEL_COINCIDENCE_HOLD_S", float),
         # E-stop signal, Flexi Soft Q3 (emergency-suite plan Part B; HIGH = pressed, owner 2026-11-16)
@@ -1231,8 +1228,7 @@ def _validate(ns):
 
     # -- panel ------------------------------------------------------------
     chans = {"di_reset": g("PANEL_DI_RESET"), "di_start": g("PANEL_DI_START"),
-             "di_auto": g("PANEL_DI_AUTO"), "di_manual_arm": g("PANEL_DI_MANUAL_ARM"),
-             "di_estop": g("PANEL_DI_ESTOP")}
+             "di_auto": g("PANEL_DI_AUTO"), "di_estop": g("PANEL_DI_ESTOP")}
     for key, ch in chans.items():
         check(0 <= ch < g("DIO_NUM_DI"),
               f"panel.{key} ({ch}) must be a channel in 0..{g('DIO_NUM_DI') - 1}")
@@ -1243,16 +1239,15 @@ def _validate(ns):
           f"panel channels must be distinct, got {chans}")
     if g("PENDANT_ENABLED"):
         jog = {g("PENDANT_DI_FWD"), g("PENDANT_DI_RVS"), g("PENDANT_DI_LEFT"), g("PENDANT_DI_RIGHT")}
-        check(g("PANEL_DI_MANUAL_ARM") not in jog,
-              f"panel.di_manual_arm ({g('PANEL_DI_MANUAL_ARM')}) is a pendant channel: "
-              "every jog press would also power the drives")
         check(g("PANEL_DI_ESTOP") not in jog,
               f"panel.di_estop ({g('PANEL_DI_ESTOP')}) is a pendant channel")
     # E-stop signal (Flexi Soft Q3, emergency-suite plan Part B): a sourcing output reads only in
-    # the COM1 group, DI09-DI0F (DI07 is COM0, DI08 Manual Arm; unified plan Z, ex WP-Y1).
+    # the COM1 group, DI08-DI0F (DI07 is COM0; unified plan Z, ex WP-Y1).
     # Required while the panel is read: there is no "no E-stop input" setting.
-    check(not g("PANEL_ENABLED") or 9 <= g("PANEL_DI_ESTOP") <= 15,
-          f"panel.di_estop ({g('PANEL_DI_ESTOP')}) must be a COM1 input DI09-DI0F (9..15) "
+    # gvievo-ce (kyb unit): Q3 lands on DI08 here (ON = released, so estop_active_high false) and
+    # the arm input is DI09; DI08 is in the COM1 group too, so 8..15 is accepted.
+    check(not g("PANEL_ENABLED") or 8 <= g("PANEL_DI_ESTOP") <= 15,
+          f"panel.di_estop ({g('PANEL_DI_ESTOP')}) must be a COM1 input DI08-DI0F (8..15) "
           "while panel.enabled: Q3 sources 24 V, which COM0 (DI00-DI07) does not read")
     # The confirm filter delays only the PC's picture (never the Flexi Soft's STO): cap it so a
     # real press is still seen within 0.2 s.

@@ -123,7 +123,7 @@ class PanelNode(LeanNode):
             f"panel on DIO {config.DIO_IP}:{config.DIO_PORT}: reset DI{config.PANEL_DI_RESET}, "
             f"start DI{config.PANEL_DI_START}, selector DI{config.PANEL_DI_AUTO} "
             f"(ON = {'AUTO' if config.PANEL_AUTO_WHEN_ON else 'MANUAL'}), "
-            f"manual arm DI{config.PANEL_DI_MANUAL_ARM}, "
+            "no manual arm input (MANUAL is armed), "
             + (f"E-stop DI{config.PANEL_DI_ESTOP:02X} (active "
                f"{'HIGH' if config.PANEL_ESTOP_ACTIVE_HIGH else 'LOW'} over "
                f"{config.PANEL_ESTOP_CONFIRM_SCANS} scans); "

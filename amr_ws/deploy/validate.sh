@@ -165,8 +165,9 @@ print(p["lidar"]["host_ip"], p["lidar"]["sensor_ip"], p["rear"]["source"], p["re
 PY
 )"
 if command -v ip >/dev/null; then
-  ip -4 -o addr show dev enp3s0 2>/dev/null | grep -qF " $lidar_host/" || \
-    echo "warning: enp3s0 does not carry lidar.host_ip $lidar_host: the front scanner ($lidar_sensor) sends to it (alpha-setup.md 2.2)" >&2
+  # gvievo-ce (kyb unit): the front scanner may be on enp2s0 or enp3s0 - any port carrying host_ip.
+  ip -4 -o addr show 2>/dev/null | grep -qF " $lidar_host/" || \
+    echo "warning: no interface carries lidar.host_ip $lidar_host: the front scanner ($lidar_sensor) sends to it (alpha-setup.md 2.2)" >&2
   if [[ "$rear_source" == scanner ]]; then
     ip -4 -o addr show 2>/dev/null | grep -qF " $rear_host/" || \
       echo "warning: no interface carries rear.host_ip $rear_host: the rear scanner sends to it" >&2

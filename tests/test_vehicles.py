@@ -114,8 +114,8 @@ def test_suite_pins_the_reference_profile():
 IO_MAPPING = os.path.join(ROOT, "documentation", "electrical", "01-schematic", "io-mapping.md")
 # Known gaps between the sheet and the profiles, as exact sets (unified plan WP-Y2, 2026-11-16).
 # A test fails when one closes too, so the entry is removed deliberately.
-KNOWN_OPEN_DO = {("motion_on", 8)}      # decision 15: DO8 is switched with motion, nothing on it
-KNOWN_PLACEHOLDER_ROWS = {"DI08"}       # the Manual Arm terminal blocks, «TB?» (HT-2)
+KNOWN_OPEN_DO = set()                   # gvievo-ce: only DO0 / DO1 are switched
+KNOWN_PLACEHOLDER_ROWS = set()          # gvievo-ce: section 4 is the kyb unit, no «TB?» rows
 
 
 def _io_table(text, heading):
@@ -162,22 +162,24 @@ def test_wiring():
     head = re.search(r"\n## 4\.[^\n]*?(\d+) DI / (\d+) DO", text)
     n_di, n_do = (int(head.group(1)), int(head.group(2))) if head else (0, 0)
     profiles = {}
-    for path in sorted(glob.glob(os.path.join(config.PROFILE_DIR, "*.json"))):
+    # gvievo-ce: io-mapping.md section 4 is this branch's unit (agv-01, the kyb vehicle) only;
+    # agv-02 is the gvievo-main unit's wiring and is not checked against it here.
+    for path in [os.path.join(config.PROFILE_DIR, "agv-01.json")]:
         with open(path) as fh:
             profiles[os.path.splitext(os.path.basename(path))[0]] = json.load(fh)
 
     # Panel and pendant channels land on the rows that name their device.
     want = {("panel", "di_start"): "START", ("panel", "di_reset"): "RESET",
-            ("panel", "di_auto"): "MANUAL/AUTO", ("panel", "di_manual_arm"): "MANUAL ARM",
+            ("panel", "di_auto"): "MANUAL/AUTO",
             ("pendant", "di_fwd"): "FORWARD", ("pendant", "di_rvs"): "REVERSE",
             ("pendant", "di_left"): "LEFT", ("pendant", "di_right"): "RIGHT",
             ("panel", "di_estop"): "ESTOP"}   # emergency-suite Part B E1 (the sheet's row name)
     bad = [f"{n}: {s}.{k}={p[s][k]} -> {di.get(p[s][k])!r}" for n, p in profiles.items()
            for (s, k), word in want.items() if k in p[s] and word not in (di.get(p[s][k]) or "")]
     check("every panel and pendant channel is the DI the sheet names for it", not bad, bad)
-    com1 = [f"{n}: {k}={p['panel'][k]}" for n, p in profiles.items() for k in ("di_manual_arm", "di_estop")
+    com1 = [f"{n}: {k}={p['panel'][k]}" for n, p in profiles.items() for k in ("di_estop",)
             if k in p["panel"] and not (8 <= p["panel"][k] <= 15 and "COM1" in di.get(p["panel"][k], ""))]
-    check("Manual Arm and the E-stop signal read in the COM1 group DI08-DI0F", not com1, com1)
+    check("the E-stop signal reads in the COM1 group DI08-DI0F", not com1, com1)
 
     # Names: a wired channel is named, an unwired one is not.
     names = []
@@ -201,7 +203,7 @@ def test_wiring():
         switched |= {(k, ch) for k in ("motion_on", "alarm_on", "movement_horn") for ch in d[k]}
         # (horn.do_channel went with the horn section, lean plan D16, 2026-11-16)
     open_do = {(k, ch) for k, ch in switched if _unwired(do.get(ch, "not wired"))}
-    check("every switched DO is a wired one, apart from KNOWN_OPEN (DO8 in motion_on, decision 15)",
+    check("every switched DO is a wired one (gvievo-ce: DO0 movement, DO1 alarm)",
           open_do == KNOWN_OPEN_DO, sorted(open_do))
     counts = [f"{n}: {p['dio']['num_di']}/{p['dio']['num_do']}" for n, p in profiles.items()
               if not (p["dio"]["num_di"] <= n_di and p["dio"]["num_do"] <= n_do)]
@@ -209,7 +211,7 @@ def test_wiring():
           n_di and not counts, counts or f"header {n_di}/{n_do}")
     held = {f"DI{ch:02X}" for ch, desc in di.items() if "«" in desc} | \
            {f"DO{ch}" for ch, desc in do.items() if "«" in desc}
-    check("the sheet's open placeholders are exactly KNOWN_OPEN (Manual Arm «TB?»)",
+    check("the sheet's open placeholders are exactly KNOWN_PLACEHOLDER_ROWS (none on gvievo-ce)",
           held == KNOWN_PLACEHOLDER_ROWS, sorted(held))
 
 

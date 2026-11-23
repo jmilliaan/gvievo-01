@@ -7,6 +7,14 @@ a Chafon RFID reader and a Modbus I/O island sit on Ethernet. The vehicle runs
 as one systemd unit, `amr.service`: a supervisor, the hardware nodes, a web UI
 on port 5001, and one *mode layer* at a time.
 
+> ### gvievo-ce branch (2026-11-23)
+> This branch is gvievo-main adapted to the **kyb unit** (host `gvipc-evo-01`, previously on
+> `kyb-trackless`). It runs **trackless** (`tracked: false`): the MLSE is used for its IMU only,
+> no line following, tape localization or station calling. Hardware: DIO island on enp1s0
+> (`192.168.1.40`), nanoScan3 on enp2s0 (host `192.168.3.1`), enp3s0 empty. No Manual Arm input:
+> MANUAL is always armed unless an emergency (E-stop OK = DI08 from Q3). Outputs DO0 movement horn,
+> DO1 alarm horn only. See `documentation/electrical/01-schematic/io-mapping.md` section 4.
+
 > ### Status (2026-09-21)
 > **Two products on one stack.** The vehicle is a magnetic-tape AGV (the
 > `LINE` mode: `amr_line`, ported from the tape controller that drove it

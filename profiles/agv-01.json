@@ -1,6 +1,6 @@
 {
   "profile_name": "agv-01",
-  "tracked": null,
+  "tracked": false,
   "autopilot": {
     "invert_error": true,
     "k_ratio": 11.3,
@@ -84,11 +84,11 @@
     "expect_power_dbm": 30
   },
   "dio": {
-    "motion_on": [0, 8],
+    "motion_on": [0],
     "alarm_on": [1],
     "movement_horn": [0],
     "enabled": true,
-    "ip": "192.168.1.30",
+    "ip": "192.168.1.40",
     "port": 502,
     "device_id": 1,
     "scan_period_s": 0.05,
@@ -104,15 +104,15 @@
     "call_alarm_off_s": 2.0,
     "di_names": [
       "PB Start",
+      "SS Manual/Auto",
       "PB Reset",
-      "SS Auto/Manual",
       "Pendant FWD",
       "Pendant RVS",
       "Pendant LEFT",
       "Pendant RIGHT",
       "[SPARE]",
-      "Manual Arm",
-      "ESTOP ACTIVE",
+      "E-stop OK (safety PLC Q3)",
+      "[SPARE]",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -121,8 +121,8 @@
       "[SPARE]"
     ],
     "do_names": [
-      "Horn snd1 (move)",
-      "Horn snd2 (alarm)",
+      "Horn sound 1 (movement)",
+      "Horn sound 2 (alarm)",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -141,7 +141,7 @@
   },
   "lidar": {
     "enabled": true,
-    "host_ip": "192.168.3.2",
+    "host_ip": "192.168.3.1",
     "sensor_ip": "192.168.3.10",
     "port": 6060,
     "reassembly_timeout_s": 0.06,
@@ -156,16 +156,15 @@
   },
   "panel": {
     "enabled": true,
-    "di_reset": 1,
+    "di_reset": 2,
     "di_start": 0,
-    "di_auto": 2,
+    "di_auto": 1,
     "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,
-    "di_manual_arm": 8,
-    "estop_signal_enabled": false,
-    "di_estop": 9,
-    "estop_active_high": true,
+    "estop_signal_enabled": true,
+    "di_estop": 8,
+    "estop_active_high": false,
     "estop_confirm_scans": 2,
     "estop_reset_timeout_s": 3.0
   },
@@ -179,7 +178,7 @@
   "can": {
     "bitrate": 125000,
     "channel": "can0",
-    "adapter_serial": "2087327F5548",
+    "adapter_serial": "209E337A3743",
     "left_node": 1,
     "right_node": 2,
     "sensor_node": 10,
@@ -203,7 +202,7 @@
     "event_clear": -1
   },
   "tape_loc": {
-    "enabled": true,
+    "enabled": false,
     "k_odo": 0.01,
     "amcl_sigma_floor_m": 0.03,
     "max_lateral_m": 0.1,
@@ -220,7 +219,7 @@
     "site_mission": "site-103",
     "shadow_circuit": "C-MRU",
     "monitor_jump_m": 0.3,
-    "live": true,
+    "live": false,
     "auto_confirm_home": true,
     "auto_recover_home": true,
     "recover_settle_s": 3.0,
@@ -230,8 +229,8 @@
     "confirm_max_offset_m": 1.0
   },
   "station": {
-    "enabled": true,
-    "no_trolley_run": true,
+    "enabled": false,
+    "no_trolley_run": false,
     "broker_host": "192.168.2.5",
     "broker_port": 1883,
     "manufacturer": "gvi",
@@ -243,7 +242,7 @@
   "rear": {
     "source": "none",
     "sensor_ip": "192.168.3.11",
-    "host_ip": "192.168.3.2",
+    "host_ip": "192.168.3.1",
     "port": 6061,
     "field_output_index": 0,
     "no_trolley_case": -1,

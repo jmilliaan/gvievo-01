@@ -4,13 +4,14 @@
              never powered, before every rule below. STO has already cut torque; this stops the
              PC from fighting it (the 2 s re-engage loop against STO). NORMAL again powers exactly
              as after boot: a zero target, motion is still the mux's
-    MANUAL   powered while the Manual Arm input (panel.di_manual_arm, DI08) is HIGH
+    MANUAL   powered (gvievo-ce, kyb unit, 2026-11-23: no Manual Arm input; MANUAL is armed
+             unless an emergency, which the rule above already refused)
     AUTO     powered while the active layer asks for it: LineState.drive_power (tape) or
              RunState.drive_power (trackless). They ask from the pre-move warning after
              a Start until the run ends or stops in a hold that waits for a human
     else     standby: CANopen up, encoders and the MLS read, power stage off
 
-The drives are no longer powered just because the vehicle is idle. Standby keeps the
+Under AUTO the drives are not powered just because the vehicle is idle (under MANUAL they are). Standby keeps the
 wheel counts flowing, so "at Home", station parking and a vehicle pushed by hand stay
 measured while nothing is powered.
 
@@ -67,11 +68,9 @@ def want_power(
     if not panel.valid:
         return False, "panel image invalid"
     if panel.emergency != 0:
-        return False, "E-stop (DI09)" if panel.emergency == 1 else "E-stop: waiting for Reset"
+        return False, "E-stop" if panel.emergency == 1 else "E-stop: waiting for Reset"
     if not panel.mode_auto:
-        if panel.manual_arm:
-            return True, "MANUAL, Manual Arm on"
-        return False, "MANUAL, Manual Arm (DI08) off"
+        return True, "MANUAL"
     for a in asks:
         if a.drive_power and _fresh(a.t_stamp, now, p.ask_timeout_s):
             return True, f"AUTO, the {a.source} run asks for power"
