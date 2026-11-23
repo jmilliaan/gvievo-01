@@ -1,5 +1,5 @@
 [Unit]
-Description=Cap N97 package short-term (PL2) power to 15 W for the fanless IPC
+Description=Cap package short-term (PL2) power to 20 W (gvievo-ce: i3-N300 IPC with active fan)
 After=sysinit.target
 
 [Service]
@@ -8,7 +8,9 @@ RemainAfterExit=yes
 # PL2 25 W -> 15 W; PL1 stays 12 W. Turbo bursts drove the package to 100 C and
 # thermal-throttled it 86 times in 2 h (2026-10-02). Pairs with cpu-freq-cap.service
 # (2.2 GHz ceiling); both are installed by install.sh and enabled by hand.
-ExecStart=/bin/sh -c 'echo 15000000 > /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw'
+# gvievo-ce (2026-11-23): the kyb unit (i3-N300, active fan) gets PL2 20 W with a 3.0 GHz
+# ceiling; PL1 (long-term) stays at the firmware's 15 W.
+ExecStart=/bin/sh -c 'echo 20000000 > /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw'
 
 [Install]
 WantedBy=multi-user.target

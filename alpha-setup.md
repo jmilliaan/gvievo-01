@@ -752,7 +752,9 @@ them with RUNBOOK section 5, in this order (from `cd ~/agv_can/amr_ws`):
 4. **CPU thermal caps** (fanless N97, 24 h duty): `install.sh` installs `cpu-freq-cap.service`
    (turbo on, ceiling 2.2 GHz) and `cpu-power-limit.service` (PL2 25 W → 15 W; PL1 stays 12 W).
    At stock (3.6 GHz, PL2 25 W) unit 1 reached 100 °C and throttled 86 times in 2 h
-   (2026-10-02). Enable both once; they are safe while the vehicle runs:
+   (2026-10-02). Enable both once; they are safe while the vehicle runs.
+   **gvievo-ce (kyb unit, i3-N300, 8 cores, active fan, 2026-11-23):** ceiling 3.0 GHz and PL2
+   20 W (PL1 stays at the firmware's 15 W); the checks below read `3000000` on all 8 and `20000000`.
 
    ```bash
    sudo systemctl enable --now cpu-power-limit cpu-freq-cap
