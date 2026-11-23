@@ -11,7 +11,7 @@
 function jogpad(root, opts) {
   const o = Object.assign({ compact: false }, opts || {});
   const owner = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).slice(0, 32);
-  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.60 m/s (2026-10-28) = mux pendant_v_m_s.
+  // ONE manual speed (2026-10-02), the pendant's: jog.V_MAX 0.314 m/s = 1000 motor r/min (2026-11-23) = mux pendant_v_m_s.
   // Diagonals drive like the pendant: the FAST wheel at V, the slow one at TURN_RATIO of it
   // (= pendant_turn_ratio), the side set by the turn direction. Spins at the pendant's rate.
   // jog.page_constants() as base.html renders it (data-jog); the literals are the fallback.

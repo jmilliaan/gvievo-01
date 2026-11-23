@@ -182,14 +182,14 @@ def test_panel_profile():
     # 2026-10-02: remapped to documentation/electrical/01-schematic/io-mapping.md
     # (DI00 start, DI01 reset, DI02 selector, DI03-06 pendant), and the selector
     # reads ON = MANUAL (panel.auto_when_on false), per the operator at the panel.
-    # gvievo-ce (kyb unit, 2026-11-23): DI00 start, DI01 selector, DI02 reset (io-mapping.md section 4).
-    check("the shipped profile matches io-mapping.md: DI00 start, DI01 selector, "
-          "DI02 reset",
+    # gvievo-ce (kyb unit, 2026-11-23): DI00 start, DI01 reset, DI02 selector (io-mapping.md section 4).
+    check("the shipped profile matches io-mapping.md: DI00 start, DI01 reset, "
+          "DI02 selector",
           (config.PANEL_DI_RESET, config.PANEL_DI_START,
-           config.PANEL_DI_AUTO) == (2, 0, 1))
+           config.PANEL_DI_AUTO) == (1, 0, 2))
     check("...and the DI names say the same",
           (config.DIO_DI_NAMES[0], config.DIO_DI_NAMES[1], config.DIO_DI_NAMES[2])
-          == ("PB Start", "SS Manual/Auto", "PB Reset"))
+          == ("PB Start", "PB Reset", "SS Manual/Auto"))
     check("the selector reads ON = MANUAL", config.PANEL_AUTO_WHEN_ON is False)
 
     refused("a pendant channel on a panel channel is refused",

@@ -104,8 +104,8 @@
     "call_alarm_off_s": 2.0,
     "di_names": [
       "PB Start",
-      "SS Manual/Auto",
       "PB Reset",
+      "SS Manual/Auto",
       "Pendant FWD",
       "Pendant RVS",
       "Pendant LEFT",
@@ -156,9 +156,9 @@
   },
   "panel": {
     "enabled": true,
-    "di_reset": 2,
+    "di_reset": 1,
     "di_start": 0,
-    "di_auto": 1,
+    "di_auto": 2,
     "auto_when_on": false,
     "debounce_scans": 2,
     "coincidence_hold_s": 1.5,

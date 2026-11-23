@@ -159,8 +159,8 @@ node 10 (IMU only: this unit runs trackless, `tracked: false`).
 | Input | Device | Notes |
 |---|---|---|
 | DI00 | **PB START** | |
-| DI01 | **MANUAL/AUTO selector** | ON = MANUAL (`panel.auto_when_on` false) |
-| DI02 | **PB RESET** | |
+| DI01 | **PB RESET** | Swapped with the selector 2026-11-23 |
+| DI02 | **MANUAL/AUTO selector** | ON = MANUAL (`panel.auto_when_on` false) |
 | DI03 | Pendant **FORWARD** | |
 | DI04 | Pendant **REVERSE** | |
 | DI05 | Pendant **LEFT** | |
