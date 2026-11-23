@@ -282,9 +282,10 @@ def test_config_profile():
     # runs (2026-10-23); thresholds provisional until P0.
     # 2026-10-25 (operator): station limit loosened 0.025 -> 0.05 m (2 sigma = the whole +-10 cm) to
     # cut `position` holds; a stop's own error now comes on top, accepted.
-    # gvievo-ce: the kyb unit is trackless (tracked false), so tape localization is off.
-    check("tape localization is off on the trackless unit, its station limit still fits +-10 cm",
-          config.TAPE_LOC_ENABLED is False and config.TRACKED is False
+    # gvievo-ce (kyb unit, tape product like gvievo-main): tape localization on, shadow (live false)
+    # until this site is taught - the same bring-up as agv-02.
+    check("tape localization runs in shadow on the tape product, its station limit fits +-10 cm",
+          config.TAPE_LOC_ENABLED is True and config.TAPE_LOC_LIVE is False and config.TRACKED is None
           and 2 * config.TAPE_LOC_SIGMA_STATION_M <= 0.10
           and config.TAPE_LOC_AMCL_PARAMS in ("default", "lean"),
           f"{config.TAPE_LOC_ENABLED} {config.TAPE_LOC_SITE_MISSION} {config.TAPE_LOC_SIGMA_STATION_M}")
@@ -340,7 +341,7 @@ def test_config_profile():
             lambda d: d["station"].update(manufacturer="gvi/x"), "station.manufacturer")
     refuses("a serial number that does not match the profile name is refused",
             lambda d: d["station"].update(serial_number="agv2"), "station.serial_number")
-    check("station calling is off on the trackless unit (gvievo-ce)",
+    check("station calling is off until this site is set up (gvievo-ce)",
           config.STATION_ENABLED is False and config.STATION_NO_TROLLEY_RUN is False)
     no_key = copy.deepcopy(base)
     no_key["station"].pop("no_trolley_run")

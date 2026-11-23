@@ -192,10 +192,10 @@ two wired LANs never carry a default route — a third would blackhole traffic.
 
 ### Devices on the vehicle whose addresses are configured *on the device*, not on the PC
 
-> **gvievo-ce branch (kyb unit, `gvipc-evo-01`, 2026-11-23).** Wired ports on this unit: **enp1s0**
+> **gvievo-ce branch (kyb unit, host `gvipc-ce`, 2026-11-23).** Wired ports on this unit: **enp1s0**
 > = Modbus I/O island at `192.168.1.40` (host `192.168.1.100/24`), **enp2s0** = nanoScan3
 > `192.168.3.10` (host `192.168.3.1/24`), **enp3s0** = empty (GLS621 removed). No RFID reader.
-> CAN: drivers 1/2, MLSE 10 (IMU only, trackless). Panel: DI00 Start, DI01 Reset, DI02 MANUAL/AUTO
+> CAN: drivers 1/2, MLSE 10 (line + gyro; tape product, no MQTT). Panel: DI00 Start, DI01 Reset, DI02 MANUAL/AUTO
 > (ON = MANUAL), DI03–06 pendant, DI08 E-stop OK from Q3 (HIGH = released); no Manual Arm
 > input (MANUAL always armed unless an emergency); DO0 movement horn, DO1 alarm horn. Full map:
 > `documentation/electrical/01-schematic/io-mapping.md` section 4. The rows below are the

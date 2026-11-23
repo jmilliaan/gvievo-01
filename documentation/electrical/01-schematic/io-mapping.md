@@ -138,7 +138,7 @@ Z̄ goes to C+ and Z to C−. The C input is not evaluated in sin/cos mode.
 
 ## 4. Digital IO module (-KE4, CKDZ-IoT CK-TP5162, 16 DI / 16 DO, Ethernet)
 
-> **gvievo-ce branch: this section describes the kyb unit (host `gvipc-evo-01`, ex `kyb-trackless`),
+> **gvievo-ce branch: this section describes the kyb unit (host `gvipc-ce`, ex `kyb-trackless`),
 > updated 2026-11-23.** It is the vehicle this branch runs on; the rest of this file is still the
 > gvievo-main unit's drawing set. The software map is `profiles/agv-01.json`.
 
@@ -152,7 +152,7 @@ The audio horn's two sound inputs are switched by DO0 (movement) and DO1 (alarm)
 
 IPC ports on this unit: enp1s0 = this module, enp2s0 = nanoScan3 (host 192.168.3.1, scanner
 192.168.3.10), enp3s0 = empty (the GLS621 camera is gone). CAN (`can0`): drivers 1 and 2, MLSE
-node 10 (IMU only: this unit runs trackless, `tracked: false`).
+node 10 (line + gyro: tape product, `tracked: null`, like gvievo-main).
 
 ### Digital inputs
 

@@ -1,6 +1,6 @@
 {
   "profile_name": "agv-01",
-  "tracked": false,
+  "tracked": null,
   "autopilot": {
     "invert_error": true,
     "k_ratio": 11.3,
@@ -202,7 +202,7 @@
     "event_clear": -1
   },
   "tape_loc": {
-    "enabled": false,
+    "enabled": true,
     "k_odo": 0.01,
     "amcl_sigma_floor_m": 0.03,
     "max_lateral_m": 0.1,
