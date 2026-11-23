@@ -180,7 +180,8 @@ MODULES = [
 # + 5 (2026-11-17, emergency-suite plan §9): test_config - panel.estop_signal_enabled false on agv-01,
 #   refused when missing / a string / 0, and true loads.
 # - 1 (2026-11-23, gvievo-ce kyb unit): no Manual Arm input (its "on di_auto" E-stop refusal went with it).
-EXPECTED_CHECKS = 990
+# + 4 (2026-11-23, gvievo-ce): imu.max_bias_deg_s ported from gvievo-sub fbc69aa (test_config).
+EXPECTED_CHECKS = 994
 
 
 # An exception on a helper thread only prints a traceback by default - the

@@ -392,6 +392,13 @@ imu.*
     imu_poll_hz. A sensor that stops answering is backed off and probed again
     (mls_track.SdoProbe). See drivers/canbus/read_imu.py for the scaling.
 
+imu.max_bias_deg_s
+    The largest still-window mean accepted as gyro bias (agv_core.gyro); a bigger one is taken
+    as motion the wheels did not report and /imu/data stays unpublished until a window fits.
+    Optional, 0.3 when absent (about 5x unit 1's MLS bias). Unit 2's MLS sits at +0.35..+0.38
+    deg/s still (1101 windows, 2026-11-18), so agv-02 sets 0.6. Range 0.05..2.0.
+    gvievo-ce (kyb unit, 2026-11-23): its MLS reads -0.32..-0.34 deg/s standing still, so agv-01 sets 0.5.
+
 can.channel / can.adapter_serial
     The SocketCAN interface to prefer, and which CANable2 to accept on the USB
     fallback. Per-vehicle hardware identity, so it belongs in the profile rather
@@ -720,6 +727,8 @@ _SCHEMA = {
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
+        # Optional, 0.3 when absent (_OPTIONAL_KEYS): agv_core.gyro BiasEstimator.max_bias.
+        "max_bias_deg_s": ("IMU_MAX_BIAS_DEG_S", float),
     },
     "blind_run": {
         "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
@@ -765,7 +774,7 @@ _SCHEMA = {
 }
 
 # The one exception to "missing keys are fatal": a temporary run mode that is off unless a profile says so.
-_OPTIONAL_KEYS = {"station": {"no_trolley_run": False}}
+_OPTIONAL_KEYS = {"station": {"no_trolley_run": False}, "imu": {"max_bias_deg_s": 0.3}}
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
 _NULLABLE_TOP_LEVEL = {"tracked"}
 
@@ -991,6 +1000,8 @@ def _parse(doc):
 
     ns["RAMP"] = _read_ramp(doc["drivers"])
     ns["PP_EXPECT"] = _read_pp_expect(doc["pp"])
+    if not 0.05 <= ns["IMU_MAX_BIAS_DEG_S"] <= 2.0:
+        raise ConfigError(f"imu.max_bias_deg_s: expected 0.05..2.0, got {ns['IMU_MAX_BIAS_DEG_S']}")
     # Sanity-check the counts BEFORE the name lists are sized against them, or
     # "num_di": 0 gets reported as a problem with di_names, which sends the
     # reader to fix the wrong key.
@@ -1561,6 +1572,7 @@ _UNIT_SUFFIX = (
 _UNIT_EXACT = {
     "CAN_BITRATE": "bit/s",
     "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V", "MON_BUS_V_TRIP_LOW": "V",
+    "IMU_MAX_BIAS_DEG_S": "\u00b0/s",
     "MPS_PER_RPM": "m/s per r/min", "RPM_PER_MPS": "r/min per m/s",
     "RAD_S_PER_RPM_DIFF": "rad/s per r/min diff", "MAX_SPEED_MPS": "m/s",
     "WHEEL_RAD_S_PER_MOTOR_RPM": "wheel rad/s per motor r/min",

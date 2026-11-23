@@ -262,7 +262,8 @@
     "laser_yaw_rad": 3.14159
   },
   "imu": {
-    "enabled": true
+    "enabled": true,
+    "max_bias_deg_s": 0.5
   },
   "blind_run": {
     "max_distance_m": 10.0,
