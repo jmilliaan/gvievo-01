@@ -589,6 +589,10 @@ def load(name, vehicle=None, directory=None):
 #                     left until HOME). So may a straight on: the side held through a diverge
 #                     whose other tape leaves on the far side, the leg keeps its "straight" name
 #                     (2026-11-11: J-N and J-S, where plain straight on is a coin toss)
+#                     A straight on, merge or cross may add "keep_speed": true - inside a
+#                     speed area the trip keeps the area's speed through this junction instead
+#                     of slowing to the cruise before its fork (2026-11-24: J-R3E on C-STU, a
+#                     dead-straight pass; the order and the fork check are unchanged)
 #                     A circuit starts and ends with {"stop": home} and passes attach once
 #   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
 #                     {"release": stop, "take": stop[, "uturn": point]}}}}. "uturn": where a
@@ -675,6 +679,16 @@ def _site_items(cid, raw, junctions, uturns):
                 if it["steer"] not in ("left", "right"):
                     raise ConfigError(f"{where}.steer: expected left or right, got {it['steer']!r}")
                 keys = keys | {"steer"}
+            if "keep_speed" in it:
+                if it.get("order") not in ("merge", "straight", "cross"):
+                    raise ConfigError(f"{where}: keep_speed only on a straight on, a merge or a cross - "
+                                      f"a diverge leaves the line, at the cruise")
+                if not isinstance(it["keep_speed"], bool):
+                    raise ConfigError(f"{where}.keep_speed: expected true or false, got {it['keep_speed']!r}")
+                if not j["laid"]:
+                    raise ConfigError(f"{where}: keep_speed at {it['junction']}, which is not laid - "
+                                      f"an unlaid junction is no node, there is nothing to keep it through")
+                keys = keys | {"keep_speed"}
             if set(it) != keys:
                 raise ConfigError(f"{where}: expected exactly {sorted(keys)} at {it['junction']} "
                                   f"(shape {j['shape']}" + ("; approach is stem or bar)" if j["shape"] == "T"
@@ -690,7 +704,8 @@ def _site_items(cid, raw, junctions, uturns):
                                   f"expected one of {list(allowed)}"
                                   + (" - a T has no straight on from its stem" if shape == "T-stem" else ""))
             items.append({"kind": "junction", "id": it["junction"], "order": it["order"],
-                          **({"steer": it["steer"]} if "steer" in it else {})})
+                          **({"steer": it["steer"]} if "steer" in it else {}),
+                          **({"keep_speed": True} if it.get("keep_speed") else {})})
         else:
             raise ConfigError(f"{where}: expected {{'stop'}}, {{'uturn'}} or {{'junction', 'order'}}")
     return items
@@ -804,8 +819,9 @@ def _parse_site(doc, vehicle):
                                       f"{stations[sid]} in another circuit - one station, one place")
                 stations[sid] = leg["id"]
         steers = {f"{it['id']}:{it['order']}": it["steer"] for it in items if it.get("steer")}
+        keep = sorted({f"{it['id']}:{it['order']}" for it in items if it.get("keep_speed")})
         circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after,
-                         "steers": steers}
+                         "steers": steers, "keep_speed": keep}
     out["CIRCUITS"] = circuits
     out["STATIONS"] = stations
     uturn_points = _site_points(doc, junctions, uturns, stations)

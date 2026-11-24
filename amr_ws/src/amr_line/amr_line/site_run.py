@@ -25,8 +25,10 @@ WHO decides: not RFID tags or marker strips, but the distance S along the trip's
     speed      NORMAL = the site's cruise_mps. HIGH (or NORMAL+, 2026-11-11) inside a zone [S_a, S_b)
                - where the route runs inside a speed area drawn on the map (trip_route.area_ranges) -
                only while sigma is within sigma_junction_m (F4, no latching), under an envelope that
-               is back at the cruise by every stop, U-turn and junction fork ahead, and at a zone's
-               end at the speed of what follows it (the cruise, or NORMAL+ after HIGH) (F6)
+               is back at the cruise by every stop, U-turn and junction fork ahead (but a junction
+               its circuit item marks keep_speed, 2026-11-24: passed at the zone's speed, the order
+               and its ForkWatch as ever), and at a zone's end at the speed of what follows it (the
+               cruise, or NORMAL+ after HIGH) (F6)
     wrong      the locator's wrong-branch latch: FAULT
 
 AMCL corrects S and has no veto (tape_locator): doubt widens an order's window and is logged at a
@@ -155,11 +157,14 @@ class SiteRun(TapeRun):
         self._multi_now = False
         self.decisions = []                         # (S, sigma, text): the trip's log
         # (S, r/min): where the envelope must be down to what speed. A zone's end is a point only
-        # down to the zone that starts there, if any (HIGH -> NORMAL+ on one straight).
+        # down to the zone that starts there, if any (HIGH -> NORMAL+ on one straight). A junction
+        # its circuit item marks keep_speed is no point at all (2026-11-24, agv_core.mission).
+        keep = set((site["CIRCUITS"].get(route.circuit) or {}).get("keep_speed", ()))
         self._slow = sorted(
             [(e["S"] - self.stop_distance_m, self.cruise) for e in route.events if e["kind"] == "stop"]
             + [(self._trigger(e), self.cruise) for e in route.events if e["kind"] == "uturn"]
-            + [(n["S_fork"], self.cruise) for n in route.nodes if n["kind"] == "junction"]
+            + [(n["S_fork"], self.cruise) for n in route.nodes
+               if n["kind"] == "junction" and f"{n['id']}:{n['order']}" not in keep]
             + [(b, self._after_zone(b)) for _a, b, _z, _k in route.zones])
         self.events.append((INFO, f"trip {trip.describe()}: {len(route.stops) - 1} stops, "
                                   f"{sum(1 for e in route.events if e['kind'] == 'order')} orders"

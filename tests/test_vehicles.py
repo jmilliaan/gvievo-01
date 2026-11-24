@@ -105,8 +105,9 @@ def test_suite_pins_the_reference_profile():
     check("every amr_ws test directory's conftest.py pins it", not loose, loose)
     with open(os.path.join(ROOT, "profiles", "agv-02.json")) as fh:
         two = json.load(fh)
-    check("agv-02 is not a station vehicle until it is taught (station and live off)",
-          not two["station"]["enabled"] and not two["tape_loc"]["live"])
+    # Taught on rev-boiacca-map-01 and live by the owner's word on 2026-11-24 (site-103-agv2,
+    # hand-called trips); station calls stay off until the station side is set up for it.
+    check("agv-02 is not a station vehicle yet (station off)", not two["station"]["enabled"])
 
 
 # The wiring source of truth (documentation/electrical/01-schematic/io-mapping.md, read only:
