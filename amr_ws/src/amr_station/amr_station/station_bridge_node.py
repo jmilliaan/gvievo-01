@@ -135,6 +135,9 @@ class StationBridge(LeanNode):
             elif topic == self.link.topics["instantActions"]:
                 for act in self.core.on_instant(payload, retained):
                     self._ask(act, refuse_as=False)
+            elif topic == self.link.topics["responses"]:
+                for act in self.core.on_responses(payload, retained):  # contract v1.6 section 13
+                    self._ask(act, refuse_as=False)
 
     def _set_link(self, up: bool) -> None:
         if up != self._link_up:
@@ -190,6 +193,8 @@ class StationBridge(LeanNode):
             reconnects=max(0, getattr(self.link, "connections", 0) - 1),
             down_for=None if self._down_t is None else now - self._down_t,
         )])
+        if self.core.link_beat(now, self.link.ready):
+            self._ask(("zone", "link", "up"), refuse_as=False)  # 13.6: entering needs a live link
         m, line, mux, panel = self._mode, self._line, self._mux, self._panel
         panel_ok = panel is not None and self._panel_t is not None and now - self._panel_t <= PANEL_FRESH_S
         view = self.core.view(

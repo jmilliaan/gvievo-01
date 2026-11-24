@@ -56,9 +56,15 @@ def test_the_node_uses_only_its_allowed_names():
     assert topics == SUBSCRIBED | {"/amr/events", "/amr/line/order"}
 
 
-def test_the_only_service_verbs_are_depart_and_cancel():
+def test_the_only_service_verbs_are_depart_cancel_and_zone():
     core = (PKG / "bridge_core.py").read_text()
     assert set(re.findall(r'\("(\w+)", (?:r\.order_id|order_id)', core)) == {"depart", "cancel"}
+    # contract v1.6 section 13: the station's zone answers and the link heartbeat. "zone" moves nothing:
+    # the job only marks a request GRANTED or the link alive; entering still needs the AGV's own gate.
+    assert set(re.findall(r'\("(\w+)", rid, gt\)', core)) == {"zone"}
+    node = NODE
+    assert set(re.findall(r'_ask\(\("(\w+)"', node)) == {"zone"}
+    assert re.findall(r'_ask\(\("zone", "(\w+)", "(\w+)"\)', node) == [("link", "up")]
 
 
 def test_no_literal_agv1_in_code():

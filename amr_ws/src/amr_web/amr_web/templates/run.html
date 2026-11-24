@@ -56,6 +56,11 @@
         <button id="cl-released" class="big" data-confirm="confirm_released" title="Before the U-turn (HOLD payload): every trolley of this trip is released">Released</button>
         <button id="cl-off" class="big" data-confirm="confirm_off" title="At HOME: the trolleys are off; the next trip may leave">Trolleys off at HOME</button>
       </div>
+      <h2>Traffic zone <small>contract v1.6: the junctions J-N to J-SPLIT, one AGV at a time</small></h2>
+      <div class="warn-box" id="cl-station-off" hidden><b>Station off: this AGV is not traffic-controlled.</b> The other AGV must not be running (site 103: both AGVs on the station, or only one AGV in use).</div>
+      <div class="bar">
+        <button id="cl-zone" class="tool" title="Only after a restart, or a home-bound grant: check the AGV and its trolleys are clear of the junctions first">Release zone</button>
+      </div>
     </div>
   </div>
 </section>
@@ -158,11 +163,15 @@ async function trip(action, arg) {
   log(r.data.message || `refused (${r.status})`, r.data.ok ? '' : 'bad');
 }
 document.querySelectorAll('[data-confirm]').forEach(b => { b.onclick = () => trip(b.dataset.confirm); });
+$('cl-zone').onclick = () => {
+  if (confirm('Release the traffic zone? Check on the floor that this AGV and its trolleys are clear of the junctions (J-N to J-SPLIT).')) trip('release_zone');
+};
 async function loadSite() {
   let r;
   try { r = await apiGet('/api/line/site'); }
   catch (e) { $('cl-site').textContent = 'site mission unavailable'; loaded.site = true; return; }
   site = r.data || {};
+  $('cl-station-off').hidden = !(site.live && !site.calling);    // contract v1.6 s11 item 5
   if (site.calling) {
     $('lt-warn').innerHTML = '<b>Station calling is ON: the vehicle can leave HOME on a station call with nobody at the panel</b>, after the horn. Set the selector to MANUAL before you work at HOME. Every other stop waits for Start.';
     $('cl-confirm-note').textContent = 'off: the rear lidar decides';

@@ -27,6 +27,8 @@ REV_RE = re.compile(r"^g(\d+)$")
 POINTER = "line_graph.json"
 # Speed area kinds, slowest first (trip_route.area_ranges: where areas overlap the slower wins).
 AREA_KINDS = ("plus", "high")
+# Traffic zones drawn in the same file (contract v1.6 section 13): never a speed area.
+ZONE_KINDS = ("release",)
 
 
 class StoreError(RuntimeError):
@@ -239,6 +241,29 @@ def load_areas(state_dir, map_id, map_revision):
         kind = v.get("kind", "high")
         if len(poly) >= 3 and kind in AREA_KINDS:
             out[str(k)] = {"polygon": poly, "kind": kind}
+    return out
+
+
+def load_zones(state_dir, map_id, map_revision):
+    """{zone id: polygon [(x, y), ...]} - the RELEASE zones (kind "release") drawn in areas.json on this
+    map revision (contract v1.6 section 13: the polygon lives on each AGV's own map). {} when none, when
+    the file is missing or unreadable: the job then refuses station orders (ZONES_MISSING), so a
+    missing zone fails closed."""
+    try:
+        with open(os.path.join(teach_dir(state_dir, map_id, map_revision), "areas.json")) as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    out = {}
+    for k, v in doc.items():
+        try:
+            poly = [(float(p[0]), float(p[1])) for p in v["polygon"]]
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if len(poly) >= 3 and v.get("kind") in ZONE_KINDS:
+            out[str(k)] = poly
     return out
 
 

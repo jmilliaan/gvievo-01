@@ -123,9 +123,16 @@ class ForkWatch:
 
 
 class SiteRun(TapeRun):
-    def __init__(self, site, trip, route, params, stop_distance_m=None):
+    def __init__(self, site, trip, route, params, stop_distance_m=None, zones=None, order_id=""):
         super().__init__(None)                      # no tags, no marker zone, no marker run
         self.site, self.trip, self.route, self.p = site, trip, route, params
+        # RELEASE zones (contract v1.6 section 13): only on a station order (zones and order_id given);
+        # local trips never ask (owner, F). zc is the job's ZoneClient: it outlives this trip.
+        self.zc = zones if (zones is not None and order_id) else None
+        self.order_id = order_id
+        self.rz = [dict(z, rid=None, done=False) for z in getattr(route, "release_zones", ())] \
+            if self.zc is not None else []
+        self._now = 0.0
         self.name = site["MISSION_NAME"]
         self.stop_distance_m = site["STOP_DISTANCE_M"] if stop_distance_m is None else stop_distance_m
         self.cruise = site["CRUISE_MPS"] * vehicle.RPM_PER_MPS
@@ -165,6 +172,8 @@ class SiteRun(TapeRun):
             + [(self._trigger(e), self.cruise) for e in route.events if e["kind"] == "uturn"]
             + [(n["S_fork"], self.cruise) for n in route.nodes
                if n["kind"] == "junction" and f"{n['id']}:{n['order']}" not in keep]
+            # A RELEASE zone's edge: the cruise there, so a gate stop is a measured one (13.6).
+            + [(z["S_in"] - trip_route.GATE_MARGIN_M, self.cruise) for z in self.rz]
             + [(b, self._after_zone(b)) for _a, b, _z, _k in route.zones])
         self.events.append((INFO, f"trip {trip.describe()}: {len(route.stops) - 1} stops, "
                                   f"{sum(1 for e in route.events if e['kind'] == 'order')} orders"
@@ -282,6 +291,8 @@ class SiteRun(TapeRun):
 
     def scan(self, now, rfid, driving, follower):
         self.sync(rfid)
+        self._now = now
+        self._zone_tick()
         loc = self.loc or {}
         wb = loc.get("wrong_branch")
         if wb and self.fault is None:
@@ -392,6 +403,13 @@ class SiteRun(TapeRun):
         S = self.S
         if S is None:
             self._hold("position", self._loc_why(self.p.sigma_junction_m))
+            return
+        # A RELEASE zone ahead that may not be entered: a measured stop before its edge (13.6). Checked
+        # before the events: it is a stop like any other, one at a time.
+        g = self.zone_ahead(self._now, trip_route.GATE_MARGIN_M + self.stop_distance_m + 0.05)
+        if g is not None:
+            self._begin_stop_at({"id": f"zone {g['zone']}", "S": g["S_in"] - trip_route.GATE_MARGIN_M,
+                                 "role": "traffic"}, follower, "traffic")
             return
         while self._next < len(self.route.events):
             e = self.route.events[self._next]
@@ -524,6 +542,12 @@ class SiteRun(TapeRun):
         role = st["role"]
         if role in ("home", "station"):
             return role
+        if role == "traffic":
+            z = self.zone_ahead(self._now, trip_route.GATE_MARGIN_M + 1.0)
+            if z is None:
+                self.stop = None
+                return "go"                     # granted while stopping: the job warns, then goes
+            return ("traffic", self.zone_why(z))
         ok, why = self.trip.may_pivot()
         if not ok:
             return ("payload", f"{why}: no U-turn; confirm the release on Run → Calls or go back "
@@ -537,6 +561,79 @@ class SiteRun(TapeRun):
         else:
             self._turn(e, stopping=False)
         return "pivot"
+
+    # -- RELEASE zones (contract v1.6 section 13) -----------------------------------------------
+    def _zone_tick(self):
+        """Ask on the move at S_ask; release a crossing once the last trolley is out (S_out). A home-bound
+        crossing is released by the job, when the trolleys are off at HOME (13.5)."""
+        S = self.S
+        if self.zc is None or S is None:
+            return
+        for z in self.rz:
+            if z["done"]:
+                continue
+            if z["rid"] is None and z["ask_at"] is None and S >= z["S_ask"]:
+                self._zone_ask(z)
+            if z["rid"] and not z["home"] and S >= z["S_out"] and self.zc.granted(z["rid"]):
+                self.zc.release(z["rid"], "tail_clear")
+                z["done"] = True
+                self._decide(f"left zone {z['zone']}: the last trolley is clear, released ({z['rid']})")
+
+    def _zone_ask(self, z):
+        z["rid"] = self.zc.request(self.order_id, z["zone"], z["home"])
+        self._decide(f"asked for zone {z['zone']} ({z['rid']})" + (", home-bound" if z["home"] else ""))
+
+    def zone_ask_at(self, tag):
+        """START at a stop: ask for each zone its departure leads into ("the first START at ATT", 13.2)."""
+        for z in self.rz:
+            if not z["done"] and z["rid"] is None and z["ask_at"] == tag:
+                self._zone_ask(z)
+
+    def zone_ahead(self, now, reach):
+        """The first crossing still ahead whose edge is within `reach` m and that may not be entered now
+        (not GRANTED, or the station link down: 13.6), or None. Asks at once if it has not asked yet."""
+        S = self.S
+        if self.zc is None or S is None:
+            return None
+        for z in self.rz:
+            if z["done"] or S > z["S_in"]:
+                continue                        # behind us, or already entered
+            if z["S_in"] - S > reach:
+                return None                     # in route order: nothing closer
+            if z["rid"] is None:
+                self._zone_ask(z)
+            return None if self.zc.may_enter(z["rid"], now) else z
+        return None
+
+    def zone_why(self, z):
+        rid = z["rid"]
+        st = self.zc.status(rid) if rid else ""
+        if self.zc.error[1] == rid and rid:
+            return f"zone {z['zone']}: the station REJECTED the request ({rid}); Reset ends the trip"
+        if st == "GRANTED":
+            return f"zone {z['zone']} granted, but the station link is down: waiting for it"
+        if rid and self.zc.queued(rid):
+            return f"waiting for zone {z['zone']}: queued (the other AGV is in it)"
+        return f"waiting for zone {z['zone']}: asked, no answer from the station yet"
+
+    def zone_where(self, rid):
+        """"inside", "outside" or "none" (not this trip's), for a REVOKED (13.7)."""
+        z = next((z for z in self.rz if z["rid"] == rid), None)
+        S = self.S
+        if z is None or z["done"]:
+            return "none"
+        if S is None:
+            return "inside"                     # not knowing where it is, take the careful case
+        return "inside" if S >= z["S_in"] and (z["home"] or S <= z["S_out"]) else "outside"
+
+    def zone_rerequest(self, rid):
+        """REVOKED before entering: drop the id; the next tick asks again with the next n (13.7)."""
+        for z in self.rz:
+            if z["rid"] == rid:
+                z["rid"] = None
+                if z["ask_at"] is not None:
+                    z["ask_at"] = None
+                    z["S_ask"] = -math.inf      # it already left that stop: ask now
 
     # -- U-turns -----------------------------------------------------------------------------
     def _tape_end_approach(self, e, follower):
