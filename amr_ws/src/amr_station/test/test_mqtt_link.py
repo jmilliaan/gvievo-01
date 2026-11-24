@@ -39,7 +39,9 @@ def test_connect_order():
     assert c.calls == [], "paho's thread only sets a flag"
     assert lk.service() == "up"
     assert names(c) == ["subscribe", "publish"]
-    assert c.subscribed[0] == [("vda5050/v3/gvi/agv9/order", 0), ("vda5050/v3/gvi/agv9/instantActions", 0)]
+    # contract v1.6 section 1: `responses` too (RELEASE zone answers)
+    assert c.subscribed[0] == [("vda5050/v3/gvi/agv9/order", 0), ("vda5050/v3/gvi/agv9/instantActions", 0),
+                               ("vda5050/v3/gvi/agv9/responses", 0)]
     t, p, q, r = c.published[0]
     assert t.endswith("/connection") and json.loads(p)["connectionState"] == "ONLINE" and (q, r) == (1, True)
     assert lk.service() == ""
@@ -190,7 +192,7 @@ def test_header_ids_count_per_topic():
 def test_topics_use_the_configured_serial():
     lk, _c = link()
     assert set(lk.topics.values()) == {
-        f"vda5050/v3/gvi/agv9/{n}" for n in ("order", "instantActions", "state", "connection")
+        f"vda5050/v3/gvi/agv9/{n}" for n in ("order", "instantActions", "responses", "state", "connection")
     }
 
 

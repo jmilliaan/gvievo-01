@@ -325,6 +325,12 @@ class FollowJob:
         self.start_refused = None   # (node, reason) until the next press
         self.cancel_result = {"seq": 0, "action_id": "", "status": "", "error": ""}
         self.station_events = []    # (code, text) for the node
+        # RELEASE zones (contract v1.6 section 13). zones: the ZoneClient (node, with calling on); it
+        # outlives every trip and the layer (its file). _zones_fn: the map revision's zone polygons.
+        self.zones = None
+        self._zones_fn = None
+        self._zones_seen = (None, False)    # (when, any zone drawn): the polygon check, cached
+        self._zone_lost = ""                # requestId revoked while inside: stop, until Reset (13.7)
         self.reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -366,6 +372,9 @@ class FollowJob:
         self._end_gone = 0          # ticks the tape has been gone with a U-turn read pending
         if self.trip is not None:
             self._trip_abort("reset")
+        if getattr(self, "zones", None) is not None:
+            self.zones.operator_reset()     # ZONE_RELEASE_LOST ends here (13.7)
+        self._zone_lost = ""
         self.tape = self._new_tape()
         self.f.reset()
 
@@ -377,7 +386,9 @@ class FollowJob:
             if self.trip is None:
                 return TapeRun(None)            # between trips: nothing to act on
             from amr_line.site_run import SiteRun  # noqa: PLC0415
-            return SiteRun(self.site, self.trip, self.trip_route, self._site_cfg["params"])
+            order_id = self.order.order_id if self._order_active() else ""
+            return SiteRun(self.site, self.trip, self.trip_route, self._site_cfg["params"],
+                           zones=self.zones if self.calling else None, order_id=order_id)
         t = TapeRun(self.mission, self.destination)
         if t.high_select is not None:
             t.high_select = self.high_select
@@ -443,10 +454,12 @@ class FollowJob:
         return ok, msg
 
     # -- trips (tracked plan 4): calls, the payload, the position engine ---------------------
-    def configure_site(self, params, compile_trip):
+    def configure_site(self, params, compile_trip, zones_fn=None):
         """Let a site mission be the job (tape_loc.live). compile_trip(trip) -> TripRoute or a
-        RouteError; params: the locator limits (tape_locator.Params)."""
+        RouteError; params: the locator limits (tape_locator.Params); zones_fn() -> the map revision's
+        RELEASE zones {id: polygon} (contract v1.6 section 13), read to refuse orders without one."""
         self._site_cfg = {"params": params, "compile": compile_trip}
+        self._zones_fn = zones_fn
         from amr_line import trip as tripmod  # noqa: PLC0415
         if self.payload is None:
             self.payload = tripmod.Payload()
@@ -492,6 +505,7 @@ class FollowJob:
         if self.trip is not None:
             return False, "a trip is being driven: confirm at HOME once it has ended"
         self.payload.confirm_off()
+        self._zones_trolleys_off()
         return True, "trolleys off at HOME confirmed: the next trip may leave"
 
     def trip_status(self):
@@ -571,6 +585,8 @@ class FollowJob:
 
     def _trip_abort(self, why):
         trip, self.trip = self.trip, None
+        if self.zones is not None:
+            self.zones.drop_unused()        # REQUESTED holds nothing; a grant stays (advisor 4)
         done = ", ".join(sorted(trip.served)) or "nothing"
         self.trip_note = f"trip {trip.describe()} ABORTED ({why}); served: {done}"
         if self.tape is not None:
@@ -684,6 +700,7 @@ class FollowJob:
             self.refused = why
             return 0.0, 0.0
         self.payload.confirm_off()
+        self._zones_trolleys_off()
         self._settle.restart(self._now)
         self.reason = f"at {self.site['HOME']}: trolleys off confirmed (START); ready for a station call"
         self.station_events.append(("HOME_TROLLEYS_CONFIRMED",
@@ -800,6 +817,9 @@ class FollowJob:
         waited = i.now - pm["since"]
         powered = not i.torque_off and i.drives_fresh
         if not pre and hold_policy.premove_ready(waited, self.premove_s, i.drives_fresh, i.torque_off):
+            z = self._zone_block(i) if kind in ("station", "resume") else None
+            if z is not None:
+                return self._traffic_back(z)
             return self._premove_go(i)
         # An order waits less than a physical Start: an E-stop released later must not let a stale
         # warning move. The latch means an E-stop that stays pressed gets one horn cycle only.
@@ -1098,6 +1118,12 @@ class FollowJob:
             self._hold("authority", taken)
             self.state = FAULT
             return 0.0, 0.0
+        if self._zone_lost and self.state in (RUNNING, ARMED, HOLD) and self.hold_cause != "traffic":
+            # ZONE_RELEASE_LOST (13.7): the station revoked a zone this AGV is inside. Stop now.
+            self._premove = None
+            self._hold("traffic", f"the station revoked zone grant {self._zone_lost} while inside: "
+                                  f"stopped; Reset ends the trip")
+            return 0.0, 0.0
 
         # The E-stop, known from DI09 (E5): never the end of the run.
         if i.emergency:
@@ -1200,6 +1226,9 @@ class FollowJob:
             self._hold("prereq", "protective field state unknown while held")
             return 0.0, 0.0
 
+        if self.hold_cause == "traffic":
+            return self._traffic_tick(i)
+
         if self.hold_cause == "station":
             # Parked in standby a field trip stops nothing. It does not cost the parked
             # HIGH either (operator, 2026-10-23: a protective stop never resets HIGH, as
@@ -1248,6 +1277,99 @@ class FollowJob:
             self.reason = f"held ({self.hold_cause}): clear, resuming shortly"
         return 0.0, 0.0
 
+    # -- RELEASE zones (contract v1.6 section 13) --------------------------------------------
+    def _zone_block(self, i: Inputs, ask_at=None):
+        """The RELEASE zone right ahead that may not be entered now, or None. ask_at: a stop whose
+        departure asks for the zones it leads into (13.2, "the first START at ATT")."""
+        t = self.tape
+        if not hasattr(t, "zone_ahead"):
+            return None
+        if ask_at:
+            t.zone_ask_at(ask_at)
+        from amr_line.trip_route import GATE_MARGIN_M  # noqa: PLC0415
+        return t.zone_ahead(i.now, GATE_MARGIN_M + 1.5)
+
+    def _traffic_back(self, z):
+        """The grant or the link went while the warning ran: back to the traffic hold (advisor 5)."""
+        self._premove = None
+        self.state, self.hold_cause = HOLD, "traffic"
+        self.reason = f"held (traffic): {self.tape.zone_why(z)}"
+        self.f.hard_stop()
+        return 0.0, 0.0
+
+    def _traffic_tick(self, i: Inputs):
+        """HOLD traffic: waiting before a RELEASE zone. Granted (and the link up): the warning, then go,
+        with no Start (owner, 2026-11-24). From a stop (ATT) that departure is the stop's own."""
+        if self._zone_lost:
+            self.reason = (f"held (traffic): zone grant {self._zone_lost} revoked while inside; press "
+                           f"Reset (it ends the trip), then bring the AGV clear by hand")
+            return 0.0, 0.0
+        z = self._zone_block(i)
+        if z is not None:
+            self.reason = f"held (traffic): {self.tape.zone_why(z)}"
+            return 0.0, 0.0
+        st = self.tape.stop or {}
+        if st.get("role") == "traffic":
+            self.tape.stop = None           # the gate stop is done: drive on through the zone
+        if st.get("role") == "station":
+            return self._begin_premove(i, "station")    # ATT: its own departure (order.left at the go)
+        return self._begin_premove(i, "resume")
+
+    def _zones_trolleys_off(self):
+        if self.zones is not None:
+            for rid in self.zones.release_home_bound():
+                self.station_events.append(("ZONE_RELEASED", f"zone released, trolleys off at HOME ({rid})"))
+
+    def _zones_present(self, now):
+        """Any RELEASE zone drawn on the map revision (cached 2 s: it reads a file)."""
+        when, present = self._zones_seen
+        if self._zones_fn is None:
+            return False
+        if when is None or now is None or now - when > 2.0:
+            try:
+                present = bool(self._zones_fn())
+            except Exception:  # noqa: BLE001 - an unreadable zone file is a missing zone: fail closed
+                present = False
+            self._zones_seen = (now, present)
+        return present
+
+    def zone_link(self, now):
+        """The bridge's heartbeat while its MQTT link is up (13.6: entering needs a live link)."""
+        if self.zones is None:
+            return False, "no zones: station calling is off"
+        self.zones.link_seen(now)
+        return True, "link"
+
+    def zone_response(self, request_id, grant_type):
+        """A response from the station on `responses` (13.3, 13.7), handed on by the bridge."""
+        from amr_line import zones as zmod  # noqa: PLC0415
+        if self.zones is None:
+            return False, "no zones: station calling is off"
+        t = self.tape
+        where = t.zone_where(request_id) if (self.trip is not None and hasattr(t, "zone_where")) else "none"
+        act = self.zones.on_response(request_id, grant_type, where)
+        if act == zmod.REREQUEST and hasattr(t, "zone_rerequest"):
+            t.zone_rerequest(request_id)
+        elif act == zmod.STOP_LOST:
+            self._zone_lost = request_id
+        return True, act
+
+    def release_zone(self):
+        """Run → Calls "release zone" (13.6, any operator): a zone still held from before a restart, or a
+        home-bound grant, once the AGV and its trolleys are clear of it. Never during a trip."""
+        if self.zones is None:
+            return False, "station calling is off: there are no zones"
+        if self.trip is not None:
+            return False, "a trip is being driven: its zones are released as it goes"
+        done = self.zones.operator_release()
+        if not done:
+            return False, "no zone is held"
+        if self.calling:
+            self._settle.restart(self._now)
+        for rid in done:
+            self.station_events.append(("ZONE_RELEASED", f"zone released by the operator ({rid})"))
+        return True, f"released {', '.join(done)}: make sure the AGV and its trolleys are clear of it"
+
     def _station_tick(self, i: Inputs, pre):
         """Parked at a station: Start, then the pre-move warning, then go on.
 
@@ -1259,6 +1381,14 @@ class FollowJob:
         pre = self._prerequisite(i, torque=False) or self._rfid_check(i)
         lock = self._start_interlock(i) if self.calling else ""
         if i.start_edge and not pre and not lock:
+            z = self._zone_block(i, ask_at=(self.tape.stop or {}).get("tag"))
+            if z is not None:
+                # The Start is remembered as this hold: once granted, the warning, then go (13.6).
+                self.hold_cause, self._hold_since = "traffic", i.now
+                self.reason = f"held (traffic): {self.tape.zone_why(z)}; it goes on by itself, after " \
+                              f"the warning, once granted"
+                self.tape.events.append(("info", self.reason))
+                return 0.0, 0.0
             return self._begin_premove(i, "station")
         if i.start_edge and self.calling:
             self._start_refuse(lock if not pre else order.PREREQUISITE)
@@ -1272,6 +1402,8 @@ class FollowJob:
         if self.trip is not None:
             # The trolleys come off at HOME by hand: the next trip waits for that confirmation.
             self.payload.trip_ended()
+            if self.zones is not None:
+                self.zones.drop_unused()    # a home-bound grant stays until the trolleys are off
             self.trip_note = self.result
             self.trip = None
             if self._order_active():
@@ -1643,6 +1775,9 @@ class FollowJob:
                 return self._arrive_home()
             if act == "pivot":
                 return 0.0, 0.0             # the U-turn takes over next tick
+            if act == "go":
+                # A RELEASE zone granted while braking for its edge: from rest the warning, then go.
+                return self._begin_premove(i, "resume")
             if isinstance(act, tuple):
                 self._hold(*act)
                 return 0.0, 0.0
@@ -1733,6 +1868,10 @@ class FollowJob:
         if i.start_edge:
             self.start_refused = None
         self._home_track(i)
+        if (self.zones is not None and not self.no_trolley_run and self.trip is None
+                and i.trolley == "absent" and self.parked_at_home(i)):
+            # With the rear lidar there is no "trolleys off" press: it reading absent at HOME is the word.
+            self._zones_trolleys_off()
         self._order_cancel_tick()
         self._not_ready = [] if self._order_active() else self._order_not_ready(i)
 
@@ -1794,6 +1933,11 @@ class FollowJob:
         out += self._rear_rows(i)
         if self._home_confirm_needed():
             out.append(order.TROLLEY_NOT_CONFIRMED)
+        if self.calling and self.zones is not None:
+            if self.zones.restored():
+                out.append(order.ZONE_HELD)             # 13.6: held from before a restart
+            if not self._zones_present(i.now):
+                out.append(order.ZONES_MISSING)         # no CLUSTER polygon: fail closed
         # The supply (WP-P7) too: a physical Start is refused at or below bus_v_trip_low, so an order
         # must be refused up front, not accepted and then cancelled in its warning (2026-11-16).
         if self._prerequisite(dataclasses.replace(i, panel_valid=True, panel_auto=True),
@@ -2053,6 +2197,12 @@ class FollowJob:
             "cancel_action_id": c["action_id"],
             "cancel_status": c["status"],
             "cancel_error": c["error"],
+            # RELEASE zones (contract v1.6 section 13). zone_capable False: the bridge leaves
+            # state.zoneRequests out, so this AGV reads as v1.5 to the station (13.10).
+            "zone_capable": bool(self.calling and self.zones is not None and self._zones_present(self._now)),
+            **(self.zones.snapshot() if self.zones is not None else {
+                "zone_request_ids": [], "zone_ids": [], "zone_set_ids": [], "zone_statuses": [],
+                "zone_error_type": "", "zone_error_request_id": ""}),
         }
 
     # -- reporting ---------------------------------------------------------

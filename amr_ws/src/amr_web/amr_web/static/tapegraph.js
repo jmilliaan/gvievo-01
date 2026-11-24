@@ -3,8 +3,10 @@
 // map revision they were taught on. Read-only: /api/line/graph, polled every 5 s while visible.
 let tapeGraph = null;
 // Speed area kinds (amr_line.tape_graph_store.AREA_KINDS): HIGH 0.85 m/s, NORMAL+ 0.65 m/s.
+// RELEASE (contract v1.6 section 13): the traffic zone CLUSTER, not a speed area.
 const areaInk = kind => kind === 'plus' ? { name: 'NORMAL+', fill: INK.route, line: INK.route }
-                                        : { name: 'HIGH', fill: INK.preview, line: INK.turn };
+                      : kind === 'release' ? { name: 'RELEASE', fill: INK.accent, line: INK.accent }
+                                           : { name: 'HIGH', fill: INK.preview, line: INK.turn };
 function graphOverlay(view) {
   view.overlays.push((c, v) => {
     const g = tapeGraph;

@@ -229,7 +229,13 @@ class TapeRuntime:
         if self.graph is None:
             raise tg.RouteError(f"no active tape graph ({self.detail})")
         return trip_route.compile_trip(trip, self.m, self.graph, junction_lead_m=self.p.junction_lead_m,
-                                       areas=self._areas())
+                                       areas=self._areas(), release=self.zones())
+
+    def zones(self):
+        """The RELEASE zones of the active map revision ({id: polygon}), read fresh like the speed
+        areas (contract v1.6 section 13). {} when none: the job then refuses station orders."""
+        return store.load_zones(self.state_dir, self.sel["map_id"], self.sel["map_revision"]) \
+            if self.sel is not None else {}
 
     def _areas(self):
         """The high-speed areas of the active map revision, read fresh: an area drawn on the map

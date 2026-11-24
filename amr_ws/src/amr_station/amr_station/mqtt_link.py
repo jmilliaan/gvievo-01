@@ -75,7 +75,9 @@ class MqttLink:
         self.host, self.port = host, int(port)
         self.manufacturer, self.serial = manufacturer, serial
         base = f"vda5050/v3/{manufacturer}/{serial}"
-        self.topics = {name: f"{base}/{name}" for name in ("order", "instantActions", "state", "connection")}
+        # contract v1.6 section 1: `responses` (station -> AGV) answers RELEASE zone requests
+        self.topics = {name: f"{base}/{name}"
+                       for name in ("order", "instantActions", "responses", "state", "connection")}
         self.clock = clock
         self.connected = False
         self.queue: collections.deque = collections.deque(maxlen=QUEUE_MAX)
@@ -179,7 +181,7 @@ class MqttLink:
         return ""
 
     def _subscribe(self, now: float) -> None:
-        topics = [(self.topics["order"], 0), (self.topics["instantActions"], 0)]
+        topics = [(self.topics["order"], 0), (self.topics["instantActions"], 0), (self.topics["responses"], 0)]
         self._sub_mid, self._sub_t = self.c.subscribe(topics)[1], now
 
     @property

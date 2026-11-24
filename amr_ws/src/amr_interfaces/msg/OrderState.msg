@@ -31,3 +31,12 @@ uint32 cancel_seq      # latest cancelOrder result
 string cancel_action_id
 string cancel_status
 string cancel_error
+# RELEASE zones (contract v1.6 section 13), appended 2026-11-24. zone_capable false: the bridge leaves
+# state.zoneRequests out, so the AGV reads as v1.5 (13.10). The four arrays are one entry each.
+bool zone_capable
+string[] zone_request_ids
+string[] zone_ids
+string[] zone_set_ids
+string[] zone_statuses    # REQUESTED | GRANTED | REVOKED
+string zone_error_type    # "" | ZONE_REQUEST_REJECTED | ZONE_RELEASE_LOST
+string zone_error_request_id

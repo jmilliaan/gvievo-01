@@ -358,6 +358,13 @@ def _rows() -> tuple[Alarm, ...]:
           "Line layer hold cause 'payload' (tracked plan 4, site D9/D10): a trip reached its U-turn with a "
           "release stop not served, so a trolley may still be attached. No sensor sees the trolley: the "
           "confirmation on Run → Calls is the record. Start alone does not pivot."),
+        a("ZONE_WAIT", INFO, "auto", "Waiting before the junctions for the other AGV",
+          "Nothing to do: it goes on by itself, after the warning horn, once the station lets it in. "
+          "If it waits long, check the station screen.",
+          "Line layer hold cause 'traffic' (contract v1.6 section 13): a station trip waits before the RELEASE "
+          "zone CLUSTER (the junctions from J-N to J-SPLIT) until the station grants it and the station link "
+          "is up. At ATT after START the stop stays open (ATT RUNNING). A grant revoked while inside also holds "
+          "here (ZONE_RELEASE_LOST): Reset ends that trip."),
         a("TROLLEY_AT_PIVOT", WARN, "start_button",
           "Stopped before the U-turn: a trolley is detected or unknown",
           "Check the trolley is off and clear, then press Start.",
@@ -682,6 +689,7 @@ HOLD_CODES = {
     "position": "POSITION_UNSURE",
     "payload": "PAYLOAD_UNCONFIRMED",
     "trolley": "TROLLEY_AT_PIVOT",
+    "traffic": "ZONE_WAIT",  # contract v1.6 section 13
 }
 
 
