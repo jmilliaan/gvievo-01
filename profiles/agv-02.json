@@ -230,7 +230,7 @@
     "confirm_max_offset_m": 1.0
   },
   "station": {
-    "enabled": false,
+    "enabled": true,
     "no_trolley_run": false,
     "broker_host": "192.168.2.250",
     "broker_port": 1883,
