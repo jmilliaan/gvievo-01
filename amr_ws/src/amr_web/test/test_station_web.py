@@ -22,7 +22,7 @@ def test_no_web_route_reaches_the_order_service():
         assert '/amr/line/order"' not in text and "/amr/line/order'" not in text, path.name
     server = (PKG / "amr_web" / "server.py").read_text()
     m = re.search(r"TRIP_ACTIONS = \(([^)]*)\)", server)
-    assert m.group(1) == '"call", "cancel", "confirm_released", "confirm_off", "status"'
+    assert m.group(1) == '"call", "cancel", "confirm_released", "confirm_off", "release_zone", "status"'
 
 
 @pytest.mark.parametrize("on", [False, True])

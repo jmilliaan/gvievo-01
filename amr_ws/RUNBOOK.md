@@ -620,6 +620,7 @@ engineer's note. Generated from `agv_core/alarms.py`.
 | `STATION_LINK_DOWN` | info | No link to the station | Check Wi-Fi and the station PC. The vehicle keeps working. | amr_station bridge: broker unreachable, wrong or too-open credentials (<state_dir>/station-mqtt.json, mode 600), or paho-mqtt missing. An order already running finishes: the job has no network input. The text gives the trip position. |
 | `STATION_LINK_UP` | info | Link to the station is back | Nothing to do. | amr_station bridge: connected again. The text gives how long it was down and the trip position. |
 | `WAITING_FOR_PREREQ` | info | Waiting: a sensor or the panel is not ready yet | Wait a moment. If it stays, look at the Alarms page. | Hold cause 'pending': a prerequisite went stale inside the grace window. |
+| `ZONE_WAIT` | info | Waiting before the junctions for the other AGV | Nothing to do: it goes on by itself, after the warning horn, once the station lets it in. If it waits long, check the station screen. | Line layer hold cause 'traffic' (contract v1.6 section 13): a station trip waits before the RELEASE zone CLUSTER (the junctions from J-N to J-SPLIT) until the station grants it and the station link is up. At ATT after START the stop stays open (ATT RUNNING). A grant revoked while inside also holds here (ZONE_RELEASE_LOST): Reset ends that trip. |
 
 ### Cleared by: start button
 

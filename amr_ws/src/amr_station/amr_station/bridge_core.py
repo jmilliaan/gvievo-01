@@ -2,6 +2,8 @@
 
     on_order(payload, retained, now)    -> ("depart", order_id, machine) or None; machine "a+b" for a pair
     on_instant(payload, retained)       -> [("cancel", order_id, action_id)]
+    on_responses(payload, retained)     -> [("zone", request_id, grant_type)] (contract v1.6 section 13)
+    link_beat(now, ready)               send the job "zone link up" now? (13.6: entering needs a live link)
     on_order_state(fields)              the latest OrderState
     view(...)                           what vda_state.build_state needs
     state_due(body, now)                publish this body?
@@ -21,6 +23,8 @@ PUBLISH_PERIOD_S = 1.0
 ORDER_STATE_MAX_AGE_S = 3.0  # older: STARTUP (plan 4.5 R3)
 HOME_LINK_ALARM_S = 60.0  # at HOME with no working link for longer: STATION_LINK_HOME
 HOME_LINK_REPEAT_S = 60.0  # said again while it stands: a restarted web page learns it from this
+LINK_BEAT_S = 1.0  # "zone link up" to the job while the link is ready; the job counts 3 s as down
+GRANT_TYPES = ("GRANTED", "QUEUED", "REJECTED", "REVOKED")
 
 
 class HomeLinkAlarm:
@@ -65,6 +69,12 @@ class BridgeCore:
         self._cancel_seq = None
         self._last_body = None
         self._last_t = None
+        # RELEASE zones (contract v1.6 section 13). zone_requests: the last KNOWN state.zoneRequests, or None
+        # while this AGV has never reported zone fields (it then reads as v1.5, 13.10). It is never emptied
+        # by a stale or field-less OrderState: an absent entry reads as "released" to the station.
+        self.zone_requests: list | None = None
+        self.zone_error = ("", "")
+        self._beat_t = None
 
     # -- order -------------------------------------------------------------------------------
     def refuse(self, etype: str, order_id: str, reason: str) -> None:
@@ -131,9 +141,58 @@ class BridgeCore:
             out.append(("cancel", order_id, action_id))
         return out
 
+    # -- RELEASE zones (contract v1.6 section 13) ----------------------------------------------
+    def on_responses(self, payload: bytes, retained: bool) -> list:
+        """The station's answers. Anything malformed, retained or for another AGV has no effect."""
+        if retained:
+            return []
+        try:
+            doc = json.loads(payload)
+        except (ValueError, UnicodeDecodeError):
+            return []
+        if (
+            not isinstance(doc, dict)
+            or doc.get("manufacturer") != self.manufacturer
+            or doc.get("serialNumber") != self.serial
+            or not isinstance(doc.get("responses"), list)
+        ):
+            return []
+        out = []
+        for r in doc["responses"]:
+            if not isinstance(r, dict):
+                continue
+            rid, gt = r.get("requestId"), r.get("grantType")
+            if isinstance(rid, str) and rid and " " not in rid and gt in GRANT_TYPES:
+                out.append(("zone", rid, gt))
+        return out
+
+    def link_beat(self, now: float, ready: bool) -> bool:
+        if not ready:
+            return False
+        if self._beat_t is None or now - self._beat_t >= LINK_BEAT_S:
+            self._beat_t = now
+            return True
+        return False
+
+    def _zone_update(self, f: dict) -> None:
+        if "zone_capable" not in f:
+            return  # an OrderState built without the zone fields: keep what is known, invent nothing
+        rows = [
+            {"requestId": rid, "requestType": "ACCESS", "zoneId": zid, "zoneSetId": zset, "requestStatus": st}
+            for rid, zid, zset, st in zip(
+                f.get("zone_request_ids") or [], f.get("zone_ids") or [], f.get("zone_set_ids") or [],
+                f.get("zone_statuses") or [], strict=False,
+            )
+        ]
+        # Once capable, always a list: an AGV that has held zones keeps reporting them, [] included.
+        if f.get("zone_capable") or rows or self.zone_requests is not None:
+            self.zone_requests = rows
+        self.zone_error = (f.get("zone_error_type") or "", f.get("zone_error_request_id") or "")
+
     # -- the job's side -----------------------------------------------------------------------
     def on_order_state(self, fields: dict, now: float) -> None:
         self.order, self.order_t = fields, now
+        self._zone_update(fields)
         order_id = fields.get("order_id", "")
         if order_id and order_id != self._accepted:
             if self._accepted is not None or fields.get("active"):
@@ -170,6 +229,9 @@ class BridgeCore:
             refusal=self.refusal,
             instant_states=states,
             instant_errors=tuple(self.instant_errors),
+            # Not aged like the order fields: a stale OrderState keeps the last known zones (13.5)
+            zone_requests=None if self.zone_requests is None else tuple(dict(r) for r in self.zone_requests),
+            zone_error=self.zone_error,
             **inputs,
         )
 

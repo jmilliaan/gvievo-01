@@ -1,0 +1,10 @@
+{
+  "mission_name": "c-stu-guided",
+  "branch_default": "straight",
+  "branch_latch": [],
+  "high_zone": {"pair_spacing_m": 0.5, "outer_code": 2, "inner_code": 1},
+  "tags": [],
+  "marker_run": null,
+  "guided": {"cruise_mps": 0.4,
+             "uturn": {"direction": "ccw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0}}
+}

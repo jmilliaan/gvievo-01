@@ -97,3 +97,17 @@ def test_drive_node_publishes_imu_data_and_raw_only_with_subscribers():
     body = src.split("def _publish_imu(", 1)[1].split("\n    def ", 1)[0]
     assert 'if self._subs.get("raw"):' in body and "self._gyro.sample(" in body
     assert "from amr_localization" not in src  # no package cycle (C#11)
+
+
+def test_the_bias_limit_comes_from_the_caller():
+    """Unit 2's MLS gyro reads +0.35..+0.38 deg/s still (2026-11-18): over the 0.3 default, so
+    agv-02 sets imu.max_bias_deg_s 0.6 and drive_node passes it in."""
+    unit2 = math.radians(0.37)
+    f = gyro.GyroFilter()
+    _, out = _still(f, 0.0, 5.0, gz=unit2)
+    assert out is None and not f.est.calibrated and f.est.rejected >= 1
+    assert any("rejected as motion" in text for _, text in f.drain())
+    f = gyro.GyroFilter(max_bias=math.radians(0.6))
+    _, out = _still(f, 0.0, 2.6, gz=unit2)
+    assert f.est.calibrated and out == pytest.approx(0.0, abs=1e-9)
+    assert f.est.bias == pytest.approx(unit2)

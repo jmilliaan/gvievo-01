@@ -16,6 +16,10 @@
       <button id="ar-k-high" class="tool on" data-kind="high">HIGH 0.85</button>
       <button id="ar-k-plus" class="tool" data-kind="plus">NORMAL+ 0.65</button>
     </div>
+    <div class="bar">
+      <button id="ar-k-release" class="tool" data-kind="release"
+              title="Contract v1.6: a traffic zone the station lets one AGV into at a time (id CLUSTER). Not a speed area">RELEASE zone (traffic)</button>
+    </div>
     <div class="bar two">
       <button id="ar-draw" class="big" title="Then click the corners on the map">Draw new</button>
       <button id="ar-undo" class="tool">Undo corner</button>
@@ -83,7 +87,7 @@ function list(g) {
   // Kind re-saves the same polygon as the other kind: no redrawing to change a speed.
   $('ar-list').innerHTML = saved.map((a, n) =>
     `<div class="bar two"><span>${esc(a.id)} · ${areaInk(a.kind).name} · ${a.polygon.length} corners</span>` +
-    `<span><button class="tool" data-flip="${n}">→ ${areaInk(a.kind === 'plus' ? 'high' : 'plus').name}</button>` +
+    `<span>${a.kind === 'release' ? '' : `<button class="tool" data-flip="${n}">→ ${areaInk(a.kind === 'plus' ? 'high' : 'plus').name}</button>`}` +
     `<button class="danger" data-del="${esc(a.id)}">Delete</button></span></div>`).join('') || '<p class="note">none</p>';
   document.querySelectorAll('[data-flip]').forEach(b => {
     b.onclick = async () => {

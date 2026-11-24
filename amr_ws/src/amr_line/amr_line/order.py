@@ -55,6 +55,8 @@ REAR_FIELD_UNKNOWN = "REAR_FIELD_UNKNOWN"
 # No rear lidar (station.no_trolley_run): the trolleys off at HOME are confirmed by a physical START
 # (manuals/home-start-confirm-plan.md, owner 2026-11-17).
 TROLLEY_NOT_CONFIRMED = "TROLLEY_NOT_CONFIRMED"
+ZONE_HELD = "ZONE_HELD"            # contract v1.6 13.6: a zone held from before a restart, no trip
+ZONES_MISSING = "ZONES_MISSING"    # v1.6 addendum: no RELEASE zone drawn on this map revision
 PREREQUISITE = "PREREQUISITE"
 SITE_NOT_LIVE = "SITE_NOT_LIVE"
 LOCAL_TRIP = "LOCAL_TRIP"

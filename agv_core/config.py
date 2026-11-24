@@ -365,6 +365,10 @@ station.*  (manuals/station-call-plan.md)
       order_torque_wait_s  how long an order's warning waits for torque. A PLACEHOLDER until
                   measured on the vehicle (plan P8). Above auto_start_delay_s, at most
                   premove_timeout_s
+      zone_set_id, zone_front_m, zone_tail_m, zone_lead_m  (optional; contract v1.6 section 13)
+                  the RELEASE zone CLUSTER: the zone set's id; the AGV's front ahead of its centre
+                  (0.6 m, a 1.2 m AGV); the last trolley's tail behind its centre (4.8 m: two
+                  1.7 m trolleys on 0.4 m bars); how far before the zone a moving AGV asks (10 m)
 
 rear.*  (manuals/station-call-plan.md section 11)
     The rear lidar: "none" until fitted, "scanner" launches its driver and amr_base.trolley_node.
@@ -393,6 +397,12 @@ imu.*
     by TPDO when 1806h carries 2034h:03, else polled by SDO at drive_node's
     imu_poll_hz. A sensor that stops answering is backed off and probed again
     (mls_track.SdoProbe). See drivers/canbus/read_imu.py for the scaling.
+
+imu.max_bias_deg_s
+    The largest still-window mean accepted as gyro bias (agv_core.gyro); a bigger one is taken
+    as motion the wheels did not report and /imu/data stays unpublished until a window fits.
+    Optional, 0.3 when absent (about 5x unit 1's MLS bias). Unit 2's MLS sits at +0.35..+0.38
+    deg/s still (1101 windows, 2026-11-18), so agv-02 sets 0.6. Range 0.05..2.0.
 
 can.channel / can.adapter_serial
     The SocketCAN interface to prefer, and which CANable2 to accept on the USB
@@ -698,6 +708,11 @@ _SCHEMA = {
         # Runs with no trolley before the rear scanner exists (owner's decision, 2026-11-06). Optional,
         # false when absent: FollowJob reads it, see job.py.
         "no_trolley_run":      ("STATION_NO_TROLLEY_RUN", bool),
+        # Contract v1.6 section 13, the CLUSTER RELEASE zone. Optional, see _OPTIONAL_KEYS.
+        "zone_set_id":         ("STATION_ZONE_SET_ID", str),
+        "zone_front_m":        ("STATION_ZONE_FRONT_M", float),
+        "zone_tail_m":         ("STATION_ZONE_TAIL_M", float),
+        "zone_lead_m":         ("STATION_ZONE_LEAD_M", float),
     },
     "rear": {
         "source":             ("REAR_SOURCE", str),
@@ -723,6 +738,8 @@ _SCHEMA = {
     },
     "imu": {
         "enabled":        ("IMU_ENABLED", bool),
+        # Optional, 0.3 when absent (_OPTIONAL_KEYS): agv_core.gyro BiasEstimator.max_bias.
+        "max_bias_deg_s": ("IMU_MAX_BIAS_DEG_S", float),
     },
     "blind_run": {
         "max_distance_m":    ("BLIND_MAX_DISTANCE_M", float),
@@ -768,7 +785,9 @@ _SCHEMA = {
 }
 
 # The one exception to "missing keys are fatal": a temporary run mode that is off unless a profile says so.
-_OPTIONAL_KEYS = {"station": {"no_trolley_run": False}}
+_OPTIONAL_KEYS = {"station": {"no_trolley_run": False, "zone_set_id": "SITE103-TRAFFIC-1",
+                             "zone_front_m": 0.6, "zone_tail_m": 4.8, "zone_lead_m": 10.0},
+                 "imu": {"max_bias_deg_s": 0.3}}
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
 _NULLABLE_TOP_LEVEL = {"tracked"}
 
@@ -994,6 +1013,8 @@ def _parse(doc):
 
     ns["RAMP"] = _read_ramp(doc["drivers"])
     ns["PP_EXPECT"] = _read_pp_expect(doc["pp"])
+    if not 0.05 <= ns["IMU_MAX_BIAS_DEG_S"] <= 2.0:
+        raise ConfigError(f"imu.max_bias_deg_s: expected 0.05..2.0, got {ns['IMU_MAX_BIAS_DEG_S']}")
     # Sanity-check the counts BEFORE the name lists are sized against them, or
     # "num_di": 0 gets reported as a problem with di_names, which sends the
     # reader to fix the wrong key.
@@ -1469,6 +1490,11 @@ def _check_station(g, check):
           f"station.serial_number {g('STATION_SERIAL_NUMBER')!r} must follow profile_name "
           f"{g('PROFILE_NAME')!r} ({want!r})")
     check(5.0 <= g("STATION_SETTLE_S") <= 60.0, "station.settle_s must be in [5, 60] s")
+    check(bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", g("STATION_ZONE_SET_ID"))),
+          f"station.zone_set_id must be a plain id, got {g('STATION_ZONE_SET_ID')!r}")
+    check(0.0 <= g("STATION_ZONE_FRONT_M") <= 2.0, "station.zone_front_m must be in [0, 2] m")
+    check(0.5 <= g("STATION_ZONE_TAIL_M") <= 15.0, "station.zone_tail_m must be in [0.5, 15] m")
+    check(2.0 <= g("STATION_ZONE_LEAD_M") <= 30.0, "station.zone_lead_m must be in [2, 30] m")
     check(15.0 <= g("STATION_HOLDOFF_S") <= 300.0, "station.holdoff_s must be in [15, 300] s")
     check(g("AUTO_START_DELAY_S") < g("STATION_ORDER_TORQUE_WAIT_S") <= g("PREMOVE_TIMEOUT_S"),
           f"station.order_torque_wait_s ({g('STATION_ORDER_TORQUE_WAIT_S')} s) must exceed "
@@ -1566,6 +1592,7 @@ _UNIT_SUFFIX = (
 _UNIT_EXACT = {
     "CAN_BITRATE": "bit/s",
     "MON_BUS_V_WARN_LOW": "V", "MON_BUS_V_WARN_HIGH": "V", "MON_BUS_V_TRIP_LOW": "V",
+    "IMU_MAX_BIAS_DEG_S": "\u00b0/s",
     "MPS_PER_RPM": "m/s per r/min", "RPM_PER_MPS": "r/min per m/s",
     "RAD_S_PER_RPM_DIFF": "rad/s per r/min diff", "MAX_SPEED_MPS": "m/s",
     "WHEEL_RAD_S_PER_MOTOR_RPM": "wheel rad/s per motor r/min",

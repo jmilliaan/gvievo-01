@@ -404,7 +404,8 @@ class LineFollowNode(LeanNode):
             return
         from amr_line import tape_locator  # noqa: PLC0415
 
-        self.job.configure_site(tape_locator.Params.from_profile(vehicle_config), rt.compile_trip)
+        self.job.configure_site(tape_locator.Params.from_profile(vehicle_config), rt.compile_trip,
+                                zones_fn=rt.zones)
         ok, msg = self.job.set_mission(rt.m)
         self.get_logger().info(f"position engine live: {msg}" if ok else f"position engine: {msg}")
 
@@ -418,6 +419,8 @@ class LineFollowNode(LeanNode):
             res.ok, res.message = self.job.confirm_released()
         elif action == "confirm_off":
             res.ok, res.message = self.job.confirm_off()
+        elif action == "release_zone":
+            res.ok, res.message = self.job.release_zone()      # contract v1.6 13.6, any operator
         elif action == "status":
             st = self.job.trip_status()
             res.ok = self.job.site is not None
@@ -425,7 +428,7 @@ class LineFollowNode(LeanNode):
                 if res.ok else "no site mission is the job (tape_loc.live false, or another mission selected)"
         else:
             res.ok, res.message = False, f"unknown trip action {action!r}: call, cancel, confirm_released, " \
-                                         f"confirm_off, status"
+                                         f"confirm_off, release_zone, status"
         if action != "status":
             self.get_logger().info(f"trip {action} {arg}: {res.message}")
             self._event("LINE_MISSION", f"trip {action} {arg}: {res.message}".replace("  ", " "),
@@ -446,6 +449,17 @@ class LineFollowNode(LeanNode):
         from amr_interfaces.msg import OrderState, TrolleyState  # noqa: PLC0415
 
         self._OrderState, self._TrolleyState = OrderState, TrolleyState
+        # RELEASE zones (contract v1.6 section 13): the client and its grant file outlive every trip.
+        from amr_line import zones as zmod  # noqa: PLC0415
+        self.job.zones = zmod.ZoneClient(self._state_dir, vehicle_config.STATION_ZONE_SET_ID)
+        for level, text in self.job.zones.log:
+            (self.get_logger().warning if level == "warn" else self.get_logger().info)(text)
+        self.job.zones.log.clear()
+        if "zone_capable" not in OrderState.get_fields_and_field_types():
+            # A stale amr_interfaces build: the zone fields would be dropped silently and the station would
+            # never see a request. Loud; the AGV still holds before every zone (fails closed).
+            self.get_logger().error("OrderState has no zone fields: rebuild amr_interfaces (contract v1.6); "
+                                    "until then every RELEASE zone holds the AGV")
         self.create_subscription(TrolleyState, "/amr/rear/trolley", self._on_trolley, RELIABLE_1)
         self._order_pub = self.create_publisher(OrderState, "/amr/line/order_state", LATCHED)
         self.create_service(LineTeach, "/amr/line/order", self._srv_order)
@@ -477,8 +491,15 @@ class LineFollowNode(LeanNode):
             res.ok, res.message = self.job.order_request(parts[0], parts[1])
         elif action == "cancel" and len(parts) == 2:
             res.ok, res.message = self.job.order_cancel(parts[0], parts[1])
+        elif action == "zone" and parts == ["link", "up"]:
+            # The bridge's heartbeat while its MQTT link is up (contract v1.6 13.6). Not logged: 1 Hz.
+            res.ok, res.message = self.job.zone_link(time.monotonic())
+            return res
+        elif action == "zone" and len(parts) == 2:
+            res.ok, res.message = self.job.zone_response(parts[0], parts[1])     # 13.3, 13.7
         else:
-            res.ok, res.message = False, "order: depart <orderId> <machine> | cancel <orderId> <actionId>"
+            res.ok, res.message = False, ("order: depart <orderId> <machine> | cancel <orderId> <actionId> | "
+                                          "zone <requestId> <grantType> | zone link up")
         if res.ok:
             self._wake()  # the job acts on it in the next tick: <= one fast period away (WP-C6)
         self.get_logger().info(f"order {action} {req.arg}: {res.message}")

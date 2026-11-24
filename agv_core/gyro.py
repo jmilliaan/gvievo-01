@@ -186,8 +186,11 @@ class GyroFilter:
     """
 
     def __init__(self, window_s: float = 2.0, settle_s: float = 0.3, wheel_timeout_s: float = 0.2,
-                 withhold: bool = False) -> None:
+                 withhold: bool = False, max_bias: float | None = None) -> None:
+        # max_bias (rad/s): the profile's imu.max_bias_deg_s; None keeps BiasEstimator's default
         self.est = BiasEstimator(window_s=window_s, settle_s=settle_s)
+        if max_bias is not None:
+            self.est.max_bias = float(max_bias)
         self.check = GyroCheck()
         self.withhold = bool(withhold)  # `gyro_check` param: off until the gyro_sign VERIFY
         self.wheel_timeout = wheel_timeout_s

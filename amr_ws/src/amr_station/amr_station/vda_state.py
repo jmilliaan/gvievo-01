@@ -57,6 +57,8 @@ class StateView:
     instant_states: tuple = ()  # [{actionId, actionType, actionStatus}]
     instant_errors: tuple = ()  # [{errorType, actionId, orderId}]
     emergency: int | None = None  # PanelState.emergency of a fresh, valid panel image; None = unknown
+    zone_requests: tuple | None = None  # contract v1.6 13.2; None: not zone-capable, the key is left out
+    zone_error: tuple = ("", "")  # (errorType, requestId): ZONE_REQUEST_REJECTED / ZONE_RELEASE_LOST
 
 
 def operating_mode(v: StateView) -> str:
@@ -152,6 +154,14 @@ def _errors(v: StateView, site) -> list:
                 "errorReferences": _ref(("holdCause", v.hold_cause), ("code", v.line_code)),
             }
         )
+    if v.zone_error[0]:
+        out.append(
+            {
+                "errorType": v.zone_error[0],
+                "errorLevel": "CRITICAL" if v.zone_error[0] == "ZONE_RELEASE_LOST" else "WARNING",
+                "errorReferences": _ref(("requestId", v.zone_error[1])),
+            }
+        )
     for e in v.instant_errors:
         refs = [("actionId", e["actionId"])]
         if e["errorType"] != "INVALID_INSTANT_ACTION":
@@ -217,6 +227,8 @@ def build_state(v: StateView, site) -> dict:
             },
         }
     )
+    if v.zone_requests is not None:
+        body["zoneRequests"] = [dict(r) for r in v.zone_requests]  # contract v1.6 13.2, VDA5050 3.0
     return body
 
 

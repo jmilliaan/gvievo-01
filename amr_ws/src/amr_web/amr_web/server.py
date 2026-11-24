@@ -523,7 +523,9 @@ def create_app(
     # releases (before the U-turn) or the trolleys off at HOME. They form and record a trip, and
     # none of them starts one: a trip formed here leaves HOME only on AUTO + the physical Start.
     # Station orders never come through this API (manuals/station-call-plan.md). Operator and engineer.
-    TRIP_ACTIONS = ("call", "cancel", "confirm_released", "confirm_off", "status")
+    # release_zone (contract v1.6 13.6, any operator): a RELEASE zone still held from before a restart, or a
+    # home-bound grant, once the AGV is clear. It moves nothing.
+    TRIP_ACTIONS = ("call", "cancel", "confirm_released", "confirm_off", "release_zone", "status")
 
     @app.post("/api/line/trip")
     def api_line_trip():

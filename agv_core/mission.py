@@ -75,6 +75,11 @@ follower never exceeds cruise_mps outside HIGH. Refused with RFID branch rows (t
 of orders would race). A high_zone is allowed since 2026-10-24 but starts switched off: the
 guided page's speed toggle (NORMAL / HIGH, NORMAL at every mission load) lets the marker
 pair grant HIGH. The codes still decide where HIGH begins and ends.
+Optional "uturn" (2026-11-18, AGV-02 C-STU teach pass, no MLS markers):
+{"direction": "cw"|"ccw", "approach_mps", "decel_m", "max_approach_m"}. The guide page's
+"U-turn at tape end" then starts the U-turn approach at once: slow to approach_mps within
+decel_m, creep until the tape ends (at most max_approach_m), pivot, drive back. Press it
+1-2 m before the tape end. Refused together with a marker_run (its U-turn is the strip's).
 
 Free of ROS; the line layer and the web both read it.
 """
@@ -364,15 +369,33 @@ def _read_marker_run(raw, vehicle, fastest_rpm):
     return out
 
 
+_GUIDED_UTURN_KEYS = {"direction", "approach_mps", "decel_m", "max_approach_m"}
+
+
 def _read_guided(raw, vehicle):
-    """guided -> {"cruise_mps", "cruise_rpm"}, or None."""
+    """guided -> {"cruise_mps", "cruise_rpm", "uturn"}, or None. "uturn" is None or
+    {"direction", "approach_mps", "decel_m", "max_approach_m"} (the guide page's tape-end U-turn)."""
     if raw is None:
         return None
-    if not isinstance(raw, dict) or set(raw) != {"cruise_mps"}:
-        raise ConfigError("guided: expected null or exactly ['cruise_mps']")
+    if not isinstance(raw, dict) or set(raw) not in ({"cruise_mps"}, {"cruise_mps", "uturn"}):
+        raise ConfigError("guided: expected null or exactly ['cruise_mps'] or ['cruise_mps', 'uturn']")
     normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
     cruise = _bounded(raw, "cruise_mps", "guided", 0.0, round(normal_mps, 3))
-    return {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS}
+    out = {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS, "uturn": None}
+    row = raw.get("uturn")
+    if row is not None:
+        where = "guided.uturn"
+        if not isinstance(row, dict) or set(row) != _GUIDED_UTURN_KEYS:
+            raise ConfigError(f"{where}: expected exactly {sorted(_GUIDED_UTURN_KEYS)}")
+        if row["direction"] not in ("cw", "ccw"):
+            raise ConfigError(f"{where}.direction must be cw or ccw")
+        approach, rate, decel = _uturn_approach(row, where, vehicle)
+        if rate > decel:
+            raise ConfigError(f"{where}.decel_m: slowing from {vehicle.AUTO_RPM:.0f} r/min to "
+                              f"{approach['approach_mps']:g} m/s in {approach['decel_m']:g} m needs {rate:.0f} "
+                              f"r/min/s, beyond drivers.ramp.auto.decel {decel:.0f}")
+        out["uturn"] = dict(approach, direction=row["direction"])
+    return out
 
 
 def _read_high_zone(raw, vehicle):
@@ -456,6 +479,9 @@ def _parse_mission(doc, vehicle):
         if out["BRANCH_LATCH"]:
             raise ConfigError("guided with branch_latch rows: the engineer gives the branch orders; "
                               "RFID orders as well would race")
+        if out["GUIDED"]["uturn"] is not None and out.get("MARKER_RUN") is not None:
+            raise ConfigError("guided.uturn with a marker_run: the marker run's U-turn is the strip's; "
+                              "use one or the other")
     return out
 
 
@@ -563,6 +589,10 @@ def load(name, vehicle=None, directory=None):
 #                     left until HOME). So may a straight on: the side held through a diverge
 #                     whose other tape leaves on the far side, the leg keeps its "straight" name
 #                     (2026-11-11: J-N and J-S, where plain straight on is a coin toss)
+#                     A straight on, merge or cross may add "keep_speed": true - inside a
+#                     speed area the trip keeps the area's speed through this junction instead
+#                     of slowing to the cruise before its fork (2026-11-24: J-R3E on C-STU, a
+#                     dead-straight pass; the order and the fork check are unchanged)
 #                     A circuit starts and ends with {"stop": home} and passes attach once
 #   groups            {name: {"circuit": id, "machines": {machine: {"swap": stop} |
 #                     {"release": stop, "take": stop[, "uturn": point]}}}}. "uturn": where a
@@ -649,6 +679,16 @@ def _site_items(cid, raw, junctions, uturns):
                 if it["steer"] not in ("left", "right"):
                     raise ConfigError(f"{where}.steer: expected left or right, got {it['steer']!r}")
                 keys = keys | {"steer"}
+            if "keep_speed" in it:
+                if it.get("order") not in ("merge", "straight", "cross"):
+                    raise ConfigError(f"{where}: keep_speed only on a straight on, a merge or a cross - "
+                                      f"a diverge leaves the line, at the cruise")
+                if not isinstance(it["keep_speed"], bool):
+                    raise ConfigError(f"{where}.keep_speed: expected true or false, got {it['keep_speed']!r}")
+                if not j["laid"]:
+                    raise ConfigError(f"{where}: keep_speed at {it['junction']}, which is not laid - "
+                                      f"an unlaid junction is no node, there is nothing to keep it through")
+                keys = keys | {"keep_speed"}
             if set(it) != keys:
                 raise ConfigError(f"{where}: expected exactly {sorted(keys)} at {it['junction']} "
                                   f"(shape {j['shape']}" + ("; approach is stem or bar)" if j["shape"] == "T"
@@ -664,7 +704,8 @@ def _site_items(cid, raw, junctions, uturns):
                                   f"expected one of {list(allowed)}"
                                   + (" - a T has no straight on from its stem" if shape == "T-stem" else ""))
             items.append({"kind": "junction", "id": it["junction"], "order": it["order"],
-                          **({"steer": it["steer"]} if "steer" in it else {})})
+                          **({"steer": it["steer"]} if "steer" in it else {}),
+                          **({"keep_speed": True} if it.get("keep_speed") else {})})
         else:
             raise ConfigError(f"{where}: expected {{'stop'}}, {{'uturn'}} or {{'junction', 'order'}}")
     return items
@@ -778,8 +819,9 @@ def _parse_site(doc, vehicle):
                                       f"{stations[sid]} in another circuit - one station, one place")
                 stations[sid] = leg["id"]
         steers = {f"{it['id']}:{it['order']}": it["steer"] for it in items if it.get("steer")}
+        keep = sorted({f"{it['id']}:{it['order']}" for it in items if it.get("keep_speed")})
         circuits[cid] = {"items": items, "legs": legs, "home_depart": before, "home_arrive": after,
-                         "steers": steers}
+                         "steers": steers, "keep_speed": keep}
     out["CIRCUITS"] = circuits
     out["STATIONS"] = stations
     uturn_points = _site_points(doc, junctions, uturns, stations)

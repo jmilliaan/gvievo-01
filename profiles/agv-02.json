@@ -2,7 +2,7 @@
   "profile_name": "agv-02",
   "tracked": null,
   "autopilot": {
-    "invert_error": true,
+    "invert_error": false,
     "k_ratio": 11.3,
     "kd": 0.95,
     "ki": 0.0,
@@ -45,7 +45,7 @@
     "auto_resume_hold_s": 2.0,
     "dt_nominal_s": 0.02,
     "inner_wheel_min_rpm": 0.0,
-    "branch_positive_is_left": true,
+    "branch_positive_is_left": false,
     "line_min_track_hz": 40.0
   },
   "vehicle": {
@@ -84,9 +84,9 @@
     "expect_power_dbm": 30
   },
   "dio": {
-    "motion_on": [0, 8],
-    "alarm_on": [1],
-    "movement_horn": [0],
+    "motion_on": [1, 8],
+    "alarm_on": [0],
+    "movement_horn": [1],
     "enabled": true,
     "ip": "192.168.1.30",
     "port": 502,
@@ -121,8 +121,8 @@
       "[SPARE]"
     ],
     "do_names": [
-      "Horn snd1 (move)",
-      "Horn snd2 (alarm)",
+      "Horn snd1 (alarm)",
+      "Horn snd2 (move)",
       "[SPARE]",
       "[SPARE]",
       "[SPARE]",
@@ -220,7 +220,7 @@
     "site_mission": "site-103-agv2",
     "shadow_circuit": "C-ROW3",
     "monitor_jump_m": 0.3,
-    "live": false,
+    "live": true,
     "auto_confirm_home": true,
     "auto_recover_home": true,
     "recover_settle_s": 3.0,
@@ -263,7 +263,8 @@
     "laser_yaw_rad": 3.14159
   },
   "imu": {
-    "enabled": true
+    "enabled": true,
+    "max_bias_deg_s": 0.6
   },
   "blind_run": {
     "max_distance_m": 10.0,

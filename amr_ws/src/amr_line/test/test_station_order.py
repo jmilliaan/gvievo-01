@@ -693,7 +693,14 @@ def test_the_order_entry_has_one_call_site():
     guarded = [n for n in ast.walk(funcs["tick"]) if isinstance(n, ast.If) and _calls(n, "_order_start")]
     assert any("(IDLE, DONE)" in ast.unparse(n.test) for n in guarded)
     begins = {name for name, f in funcs.items() if _calls(f, "_begin_premove")}
-    assert begins == {"_start", "_order_start", "_hold_tick", "_station_tick"}
+    # Contract v1.6 section 13 adds two: a RELEASE zone granted while braking for its edge (_run) and the
+    # traffic hold (_traffic_tick). Neither may ever leave HOME: only "resume" or "station".
+    assert begins == {"_start", "_order_start", "_hold_tick", "_station_tick", "_run", "_traffic_tick"}
+    for name in ("_run", "_traffic_tick"):
+        for c in _calls(funcs[name], "_begin_premove"):
+            strs = {v.value for v in ast.walk(c.args[1]) if isinstance(v, ast.Constant)
+                    and isinstance(v.value, str)}
+            assert strs and strs <= {"resume", "station"}, (name, ast.unparse(c.args[1]))
     arg = _calls(funcs["_order_start"], "_begin_premove")[0].args[1]
     assert isinstance(arg, ast.Constant) and arg.value == "start"
     reads = [

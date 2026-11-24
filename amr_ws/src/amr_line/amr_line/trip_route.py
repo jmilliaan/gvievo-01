@@ -57,7 +57,8 @@ class TripRoute(tg.Route):
     def __init__(self, circuit, segments, stops, nodes, uturn, zones, events, notes, label):
         super().__init__(circuit, segments, stops, nodes)
         self.uturn = uturn                          # {"id", "mode", "direction", "S", ...} or None
-        self.zones = zones                          # [(S_a, S_b, id)]
+        self.zones = zones                          # [(S_a, S_b, id, kind)]: speed areas
+        self.release_zones = []                     # release_zones(): RELEASE zones (contract v1.6 s13)
         self.events = events
         self.notes = notes
         self.label = label
@@ -84,6 +85,67 @@ def _samples(segments, step):
             x, y, h = leg.line.point(s)
             out.append((s0 + s - lo, x, y, h))
     return out
+
+
+# RELEASE zones (contract v1.6 section 13): sampled finer than speed areas, never cut by curves or a
+# minimum length - the cluster is mostly curves and junctions.
+ZONE_STEP_M = 0.05
+# A not-yet-granted AGV stops with its front this far before the zone.
+GATE_MARGIN_M = 0.3
+
+
+def release_zones(segments, stops, zones, front_m, tail_m, lead_m, step=ZONE_STEP_M):
+    """The trip's crossings of each RELEASE zone, in route order:
+    [{"zone", "S_in", "S_out", "S_ask", "ask_at", "home"}].
+
+    S is the AGV's centre on the route. Contour-based (13.1): in from S_in, where the front (front_m ahead)
+    reaches the polygon, to S_out, where the last trolley's tail (tail_m behind) has left it. Only the
+    driven part counts: from the start at HOME to the end at HOME (the first metres of the home leg, before
+    the HOME stop, are behind the AGV).
+
+    ask_at: the last stop within lead_m before S_in - the AGV asks when it departs that stop (ATT: "the
+    first START at ATT", 13.2), so it never holds the zone while it waits at an earlier stop. Otherwise
+    the AGV asks on the move at S_ask = S_in - lead_m. home: the next stop after the zone is the trip's
+    final HOME, so the zone is released only once the trolleys are off there (13.5, owner).
+
+    A stop other than HOME inside a crossing is refused (RouteError): the AGV would park in the zone."""
+    if not zones:
+        return []
+    S_start, S_end = stops[0]["S"], stops[-1]["S"]
+    samples = [p for p in _samples(segments, step) if S_start <= p[0] <= S_end]
+    out = []
+    for zid, poly in sorted(zones.items()):
+        runs, cur = [], None
+        for S, x, y, _h in samples:
+            if inside(poly, x, y):
+                cur = [S, S] if cur is None else [cur[0], S]
+            elif cur is not None:
+                runs.append(cur)
+                cur = None
+        if cur is not None:
+            runs.append(cur)
+        merged = []
+        for a, b in runs:       # the train never fully left in between: one crossing
+            if merged and a - front_m <= merged[-1][1] + tail_m:
+                merged[-1][1] = b
+            else:
+                merged.append([a, b])
+        for a, b in merged:
+            S_in, S_out = a - front_m, b + tail_m
+            inner = [st["id"] for st in stops[1:-1] if S_in <= st["S"] <= S_out]
+            if inner:
+                raise tg.RouteError(f"stop {', '.join(inner)} lies inside zone {zid} "
+                                    f"(S {S_in:.1f}..{S_out:.1f} m): the AGV would park in it")
+            after = [st for st in stops[1:] if st["S"] > S_in]
+            home = bool(after) and after[0] is stops[-1]
+            before = [st for st in stops[1:-1] if S_in - lead_m <= st["S"] < S_in]
+            if before:
+                ask_at, S_ask = before[-1]["id"], before[-1]["S"]
+            else:
+                ask_at, S_ask = None, max(S_in - lead_m, S_start)
+            out.append({"zone": zid, "S_in": S_in, "S_out": S_out, "S_ask": S_ask, "ask_at": ask_at,
+                        "home": home})
+    return sorted(out, key=lambda r: r["S_in"])
 
 
 def curved(samples, kappa_max, chord=CURVE_CHORD_M, settle=CURVE_SETTLE_M):
@@ -221,7 +283,7 @@ def _fits(seg, st):
     return leg.id == st.leg and lo - 1e-6 <= st.s <= hi + 1e-6
 
 
-def compile_trip(trip, mission, graph, junction_lead_m=1.0, areas=None):
+def compile_trip(trip, mission, graph, junction_lead_m=1.0, areas=None, release=None):
     """A trip.Trip + its site mission + the active graph (+ the map revision's high-speed areas)
     -> TripRoute (RouteError when not drivable)."""
     circuit = mission["CIRCUITS"][trip.circuit]
@@ -319,4 +381,9 @@ def compile_trip(trip, mission, graph, junction_lead_m=1.0, areas=None):
     zones = area_ranges(segments, areas or {})
     notes = []
     label = f"{trip.group}:{'+'.join(trip.machines)}"
-    return TripRoute(trip.circuit, segments, stops, nodes, turn, zones, events, notes, label)
+    route = TripRoute(trip.circuit, segments, stops, nodes, turn, zones, events, notes, label)
+    # -- RELEASE zones (contract v1.6 section 13) ---------------------------------------------------
+    if release:
+        route.release_zones = release_zones(segments, stops, release, vehicle.STATION_ZONE_FRONT_M,
+                                            vehicle.STATION_ZONE_TAIL_M, vehicle.STATION_ZONE_LEAD_M)
+    return route

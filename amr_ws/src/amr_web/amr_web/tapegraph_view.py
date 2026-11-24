@@ -46,7 +46,9 @@ AREA_MAX_POINTS = 64
 AREA_MIN_M2 = 0.5
 AREA_MAX_ABS_M = 10000.0
 # As amr_line.tape_graph_store.AREA_KINDS (this module reads files only, it imports no amr_line).
-AREA_KINDS = {"high": "HIGH", "plus": "NORMAL+"}
+AREA_KINDS = {"high": "HIGH", "plus": "NORMAL+",
+              # contract v1.6 section 13: a traffic zone, not a speed area (tape_graph_store.ZONE_KINDS)
+              "release": "RELEASE ZONE"}
 
 
 def _selection(state_dir):

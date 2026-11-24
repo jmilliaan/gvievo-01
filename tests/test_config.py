@@ -354,6 +354,15 @@ def test_config_profile():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         config.load()
+    # imu.max_bias_deg_s (2026-11-18): optional, 0.3 when absent; unit 2's MLS gyro sits at ~0.37.
+    check("imu.max_bias_deg_s is 0.3 when the profile leaves it out (agv-01)",
+          config.IMU_MAX_BIAS_DEG_S == 0.3, config.IMU_MAX_BIAS_DEG_S)
+    refuses("a gyro bias limit outside 0.05..2.0 deg/s is refused",
+            lambda d: d["imu"].update(max_bias_deg_s=5.0), "imu.max_bias_deg_s")
+    refuses("a gyro bias limit that is not a number is refused",
+            lambda d: d["imu"].update(max_bias_deg_s="0.6"), "max_bias_deg_s")
+    refuses("an unknown key in the imu block is refused",
+            lambda d: d["imu"].update(bias_deg_s=0.6), "unknown key")
     refuses("an order torque wait not above the warning is refused",
             lambda d: d["station"].update(order_torque_wait_s=d["timing"]["auto_start_delay_s"]),
             "station.order_torque_wait_s")
