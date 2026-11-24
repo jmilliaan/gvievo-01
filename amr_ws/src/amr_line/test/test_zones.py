@@ -103,6 +103,39 @@ def test_rejected_holds_and_keeps_the_entry_requested():
     assert c.on_response(rid, "REJECTED") == z.HOLD_REJECTED
     assert c.status(rid) == z.REQUESTED and c.error == (z.REJECTED_ERROR, rid)
     assert c.on_response(rid, "REJECTED") == z.HOLD_REJECTED
+    assert sum("rejected" in t for _lvl, t in c.log) == 1     # the station repeats it: logged once
+
+
+def test_request_ids_are_never_reused_across_a_restart(tmp_path):
+    # joint test T3, 2026-11-24: a probe restarted with nothing held asked :1 again
+    c = client(tmp_path)
+    for _ in range(3):
+        rid = c.request(O, "CLUSTER")
+        c.on_response(rid, "GRANTED")
+        c.release(rid, "tail_clear")
+    assert not os.path.exists(os.path.join(tmp_path, z.FILE_NAME))   # nothing held, no grant file
+    assert client(tmp_path).request(O, "CLUSTER") == f"{O}:CLUSTER:4"
+
+
+def test_the_request_counter_keeps_only_recent_orders_and_survives_a_bad_file(tmp_path):
+    c = client(tmp_path)
+    for i in range(z.SEQ_KEEP + 3):
+        c.request(f"ORD{i}", "CLUSTER")
+    doc = json.load(open(os.path.join(tmp_path, z.SEQ_FILE_NAME)))
+    assert len(doc) == z.SEQ_KEEP and f"ORD{z.SEQ_KEEP + 2}" in doc and "ORD0" not in doc
+    open(os.path.join(tmp_path, z.SEQ_FILE_NAME), "w").write("{not json")
+    d = client(tmp_path)
+    assert any("counter unreadable" in t for _lvl, t in d.log)
+    assert d.request(O, "CLUSTER") == f"{O}:CLUSTER:1"
+
+
+def test_a_held_grant_counts_for_the_next_id_even_without_the_counter(tmp_path):
+    c = client(tmp_path)
+    c.request(O, "CLUSTER")
+    rid = c.request(O, "CLUSTER", home_bound=True)
+    c.on_response(rid, "GRANTED")
+    os.remove(os.path.join(tmp_path, z.SEQ_FILE_NAME))
+    assert client(tmp_path).request(O, "CLUSTER") == f"{O}:CLUSTER:3"
 
 
 @pytest.mark.parametrize("where, action, left", [

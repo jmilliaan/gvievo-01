@@ -39,6 +39,8 @@ RESPONSE_ACTIONS = (NOTHING, HOLD_REJECTED, REREQUEST, STOP_LOST)
 
 _ID = re.compile(r"^(?P<order>.+):(?P<zone>[A-Za-z0-9_-]+):(?P<n>[1-9][0-9]*)$")
 FILE_NAME = "zone_grants.json"
+SEQ_FILE_NAME = "zone_seq.json"    # orderId -> highest n used, kept across restarts (13.2)
+SEQ_KEEP = 8                       # orders remembered: only the current one can ask again
 
 
 class ZoneError(ValueError):
@@ -55,12 +57,14 @@ class ZoneClient:
     def __init__(self, state_dir=None, zone_set_id="SITE103-TRAFFIC-1"):
         self.zone_set_id = zone_set_id
         self.path = os.path.join(state_dir, FILE_NAME) if state_dir else None
+        self.seq_path = os.path.join(state_dir, SEQ_FILE_NAME) if state_dir else None
         self.entries = {}           # requestId -> {"zone", "status", "home_bound", "restored", "queued"}
         self._link_t = None
         self.error = ("", "")       # (errorType, requestId), latest; cleared by clear_error()
         self.log = []               # (level, text) for the job's events
         self._max_n = {}            # orderId -> highest n used, so a dropped id is never reused
         self._load()
+        self._load_seq()
 
     # -- persistence (13.6) ---------------------------------------------------------------
     def _load(self):
@@ -84,6 +88,35 @@ class ZoneClient:
                                          f"({rid}): release it on Run once the AGV is clear"))
         if doc.get("zone_set_id"):
             self.zone_set_id = doc["zone_set_id"]
+
+    def _load_seq(self):
+        """The highest n per order from before a restart. A missing or unreadable file only risks a
+        repeated requestId, which the station takes as a new request once the old one is gone."""
+        if not self.seq_path or not os.path.exists(self.seq_path):
+            return
+        try:
+            with open(self.seq_path) as fh:
+                doc = json.load(fh)
+            self._max_n = {str(k): int(v) for k, v in doc.items()}
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            self.log.append(("warn", f"zone request counter unreadable ({e}): counting again from the "
+                                     f"grants held"))
+        for rid in self.entries:                # a held grant's n counts too
+            p = parse_request_id(rid)
+            if p:
+                self._max_n[p[0]] = max(self._max_n.get(p[0], 0), p[2])
+
+    def _save_seq(self):
+        if not self.seq_path:
+            return
+        keep = dict(list(self._max_n.items())[-SEQ_KEEP:])
+        self._max_n = keep
+        tmp = self.seq_path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(keep, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, self.seq_path)
 
     def _save(self):
         if not self.path:
@@ -120,7 +153,9 @@ class ZoneClient:
                     default=0)
         n = max(n, 1 + self._max_n.get(order_id, 0))
         rid = f"{order_id}:{zone_id}:{n}"
-        self._max_n[order_id] = n
+        self._max_n.pop(order_id, None)
+        self._max_n[order_id] = n          # last = newest
+        self._save_seq()                    # before the id goes out
         self.entries[rid] = {"zone": zone_id, "status": REQUESTED, "home_bound": bool(home_bound),
                              "restored": False, "queued": False}
         self.log.append(("info", f"asked for zone {zone_id} ({rid})"))
@@ -169,7 +204,9 @@ class ZoneClient:
         if grant_type == "REJECTED":
             if e["status"] == REQUESTED:
                 self.error = (REJECTED_ERROR, rid)
-                self.log.append(("warn", f"zone {e['zone']} request rejected ({rid})"))
+                if not e.get("rejected"):           # the station repeats REJECTED each second: log once
+                    e["rejected"] = True
+                    self.log.append(("warn", f"zone {e['zone']} request rejected ({rid})"))
                 return HOLD_REJECTED
             return NOTHING
         # REVOKED (13.7)

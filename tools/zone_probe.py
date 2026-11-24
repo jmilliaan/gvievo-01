@@ -15,7 +15,10 @@ Commands, by service (LineTeach on /zone_probe/cmd, action = the command, arg = 
     where none|outside|inside   where the AGV "is" when a REVOKED arrives (13.7)
     reset                  the operator's Reset (drops a REVOKED entry, ZONE_RELEASE_LOST)
     oprelease              Run page "release zone" (13.6)
-    show                   the current entries
+    show                   the current entries, zoneSetId and error
+    set <zoneSetId>        T6 only: the zoneSetId every entry reports from now on
+    askzone <zoneId>       T6 only: a request for any zoneId
+    raw <requestId>        T6 only: a REQUESTED entry with a requestId of any form
 
     ros2 service call /zone_probe/cmd amr_interfaces/srv/LineTeach "{action: ask, arg: out}"
 """
@@ -101,7 +104,7 @@ class ZoneProbe(Node):
                 self.rids[n] = self.zc.request(self.order_id, "CLUSTER", home_bound=(n == 2))
                 res.message = self.rids[n]
             elif a == "drop":
-                rid = self.rids.get(int(arg)) or arg
+                rid = self.rids.get(int(arg)) if arg.isdigit() else arg     # n of this run, or a requestId
                 res.message = f"released {rid}" if self.zc.release(rid, "tail_clear") else f"no {rid}"
             elif a == "trolleys":
                 res.message = f"released {self.zc.release_home_bound()}"
@@ -112,8 +115,21 @@ class ZoneProbe(Node):
                 res.message = f"dropped {self.zc.operator_reset()}"
             elif a == "oprelease":
                 res.message = f"released {self.zc.operator_release()}"
+            elif a == "set" and arg:                    # T6: a zoneSetId the station does not know
+                self.zc.zone_set_id = arg
+                res.message = f"zoneSetId {arg}"
+            elif a == "askzone" and arg:                # T6: a zoneId the station does not know
+                res.message = self.zc.request(self.order_id, arg)
+            elif a == "withdraw":                       # the trip ended: REQUESTED entries go, the
+                self.zc.drop_unused()                   # REJECTED error clears (as job does)
+                res.message = "withdrawn"
+            elif a == "raw" and arg:                   # T6: a requestId of any form, as REQUESTED
+                self.zc.entries[arg] = {"zone": "CLUSTER", "status": zmod.REQUESTED, "home_bound": False,
+                                        "restored": False, "queued": False}
+                res.message = arg
             elif a == "show":
-                res.message = str({rid: e["status"] for rid, e in self.zc.entries.items()})
+                res.message = str({rid: e["status"] for rid, e in self.zc.entries.items()}) + \
+                    f" set={self.zc.zone_set_id} error={self.zc.error}"
             else:
                 raise ValueError("ask out|home, drop <n>, trolleys, where none|outside|inside, reset, "
                                  "oprelease, show")
