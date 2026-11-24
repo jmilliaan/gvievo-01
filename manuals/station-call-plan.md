@@ -1516,7 +1516,15 @@ not part of it and is left out.
 
 ## Interface contract
 
-**Contract version 1.5, 2026-11-17.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+**Contract version 1.6, 2026-11-24, signed off by the owner.** Between the station (`gvievo-sta`) and the AGV (`gvievo-01`).
+
+**Changes from 1.5** are in [`contract-v1.6.md`](contract-v1.6.md), which is part of this contract:
+- traffic control at HOME (zone Z1 DEPART and the RELEASE zone CLUSTER);
+- the `responses` topic and `state.zoneRequests`;
+- AGV 2's order shapes;
+- the broker at 192.168.2.250 with its ACL.
+
+Where the text below and that file differ, that file wins. The v1.5 text follows, with the broker address and topic list updated.
 
 **Changes from 1.4.** The BTU9-16 side of the stop table shifted by one (owner's drawing, 2026-11-17). `R2-k` serves
 BTU(25 − k) and BTU(16 − k) for k 1 to 7. `R2-8` serves BTU17 alone. BTU16 alone has a new stop, `R2-0`, the first met on
@@ -1541,7 +1549,7 @@ loss, and an unseen order is resent with the same orderId (sections 8 and 9). `s
 
 ### 1. Transport
 
-**Broker.** Mosquitto on the station PC, MQTT 3.1.1, TCP `192.168.2.5:1883`, listener bound to that address only. Settings: `persistence false`, `allow_anonymous false`, a password file and an ACL file kept outside both repos.
+**Broker.** Mosquitto on the station PC, MQTT 3.1.1, TCP `192.168.2.250:1883` (since v1.6; it was `192.168.2.5`), listener bound to that address only. Settings: `persistence false`, `allow_anonymous false`, a password file and an ACL file kept outside both repos.
 
 **Topics.** `manufacturer` is `gvi`. `serialNumber` is `agv1`, and `agv2` for AGV 2. The `version` field in every message is `"3.0.0"`.
 
@@ -1552,15 +1560,15 @@ loss, and an unseen order is resent with the same orderId (sections 8 and 9). `s
 | `vda5050/v3/gvi/agv1/state` | AGV | station | 0 | no |
 | `vda5050/v3/gvi/agv1/connection` | AGV, and the broker for the last will | station | 1 | yes |
 
-AGV 2 uses the same four topics with `agv2` in place of `agv1`. No other topic exists.
+AGV 2 uses the same topics with `agv2` in place of `agv1`. Since v1.6 each AGV also has `vda5050/v3/gvi/agvN/responses` (station → AGV, QoS 0, no retain; [`contract-v1.6.md`](contract-v1.6.md) section 1). No other topic exists.
 
 **Clients.**
 
 | Client id | Username | Address | May publish | May subscribe |
 |---|---|---|---|---|
-| `gvi-station` | `station` | 192.168.2.5 | `.../+/order`, `.../+/instantActions` | `.../+/state`, `.../+/connection` |
-| `gvi-agv1` | `agv1` | 192.168.2.110 | own `state`, `connection` | own `order`, `instantActions` |
-| `gvi-agv2` (later) | `agv2` | 192.168.2.120 | own `state`, `connection` | own `order`, `instantActions` |
+| `gvi-station` | `station` | 192.168.2.250 | `.../+/order`, `.../+/instantActions`, `.../+/responses` | `.../+/state`, `.../+/connection` |
+| `gvi-agv1` | `agv1` | 192.168.2.110 | own `state`, `connection` | own `order`, `instantActions`, `responses` (v1.6) |
+| `gvi-agv2` | `agv2` | 192.168.2.120 | own `state`, `connection` | own `order`, `instantActions`, `responses` |
 | any test tool id, never a client id above | `watch` | the station PC (the firewall allows only the two AGV addresses from elsewhere) | nothing | `vda5050/v3/gvi/#`, read only, for test watchers and logs |
 
 **Session.** Clean session true, keepalive 10 s, reconnect every 2 s. Neither client keeps an offline queue: a publish while disconnected is dropped.
