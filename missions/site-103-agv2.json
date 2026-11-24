@@ -19,7 +19,7 @@
     "X3": {"shape": "X", "laid": true}
   },
   "uturns": {
-    "U-STU": {"direction": "cw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0, "lead_m": 1.5}
+    "U-STU": {"direction": "ccw", "approach_mps": 0.1, "decel_m": 0.3, "max_approach_m": 2.0, "lead_m": 1.5}
   },
   "circuits": {
     "C-ROW3": [
@@ -38,6 +38,12 @@
       {"stop": "R3-6"},
       {"stop": "R3-7"},
       {"stop": "R3-8"},
+      {"stop": "R3-9"},
+      {"stop": "R3-10"},
+      {"stop": "R3-11"},
+      {"stop": "R3-12"},
+      {"stop": "R3-13"},
+      {"stop": "R3-14"},
       {"junction": "J-R3E", "order": "merge"},
       {"junction": "J-MR", "order": "left"},
       {"junction": "X2", "order": "cross"},
@@ -78,18 +84,18 @@
       "machines": {
         "BTU8": {"swap": "R3-1"},
         "BTU7": {"swap": "R3-2"},
-        "BTU6": {"swap": "R3-3"},
         "STU6": {"swap": "R3-3"},
-        "BTU5": {"swap": "R3-4"},
-        "STU5": {"swap": "R3-4"},
-        "BTU4": {"swap": "R3-5"},
-        "STU4": {"swap": "R3-5"},
-        "BTU3": {"swap": "R3-6"},
-        "STU3": {"swap": "R3-6"},
-        "BTU2": {"swap": "R3-7"},
-        "STU2": {"swap": "R3-7"},
-        "BTU1": {"swap": "R3-8"},
-        "STU1": {"swap": "R3-8"}
+        "BTU6": {"swap": "R3-4"},
+        "STU5": {"swap": "R3-5"},
+        "BTU5": {"swap": "R3-6"},
+        "STU4": {"swap": "R3-7"},
+        "BTU4": {"swap": "R3-8"},
+        "STU3": {"swap": "R3-9"},
+        "BTU3": {"swap": "R3-10"},
+        "STU2": {"swap": "R3-11"},
+        "BTU2": {"swap": "R3-12"},
+        "STU1": {"swap": "R3-13"},
+        "BTU1": {"swap": "R3-14"}
       }
     },
     "STU": {
@@ -103,9 +109,9 @@
     }
   },
   "uturn_points": {
-    "UT-STU7": {"direction": "cw"},
-    "UT-STU8": {"direction": "cw"},
-    "UT-STU9": {"direction": "cw"},
-    "UT-STU10": {"direction": "cw"}
+    "UT-STU7": {"direction": "ccw"},
+    "UT-STU8": {"direction": "ccw"},
+    "UT-STU9": {"direction": "ccw"},
+    "UT-STU10": {"direction": "ccw"}
   }
 }
