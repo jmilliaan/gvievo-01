@@ -153,7 +153,7 @@ The station decides "Z1 clear of B" from B's newest state and B's current or las
 | No active order (`nodeStates` empty), and B's last order is Closed, or reached ATT FINISHED | clear |
 | `O:ATT` is `FINISHED` | clear **4 s** after the first state that showed it, by the station's monotonic clock |
 | `O:ATT` is `WAITING` or `RUNNING` (driving to ATT, or stopped there) | **held** |
-| The order ended early: `O:ATT` is `FAILED`, and `errors` has `DEPARTURE_CANCELLED` for `O` (the warning was cancelled at home and B never moved) | clear |
+| The order ended early: `O:ATT` is `FAILED`, and `errors` has `DEPARTURE_CANCELLED` for `O`, **or** `instantActionStates` has the station's `cancelOrder` for `O` as `FINISHED` (the warning was cancelled at home and B never moved; v1.5 section 9 accepts a cancel only during the warning. Station reading, 2026-11-24) | clear |
 | The order ended early: `O:ATT` is `FAILED`, with `TRIP_ABORTED` for `O` or no error (B moved and may stand anywhere between its bay and ATT) | **held until an operator clears Z1** (13.8) |
 | B restarted mid-order: `state.orderId` changed to `""` while `O:ATT` was not `FINISHED` (row 2: Aborted) | **held until an operator clears Z1** |
 | The station has an order out to B that B's states have not yet shown (`state.orderId` ≠ that orderId), sent or still being resent (section 8) | **held** (review B: B may have taken the order and gone quiet before any state showed it) |
@@ -331,10 +331,22 @@ states have no such field.
   `ONLINE` and **not idle at HOME**;
 - "Idle at HOME" means: no active order, and `lastNodeId` is its home node. A `lastNodeId` of `""` after a
   restart does not count.
+- **and in the other direction:** the v1.5 AGV's orders are held while the zone-capable AGV is `ONLINE`
+  and not idle at HOME. Otherwise a v1.5 AGV idle at home could be sent into the cluster while the other
+  holds it (station reading, 2026-11-24);
 - Z1 works with both versions, because it reads only ATT action states.
 
 The effect is one AGV on the floor at a time until both run v1.6. The owner may instead run one AGV at a time
 by hand, which is the same rule.
+
+### 13.10a A v1.6 AGV with no zone drawn (addendum, 2026-11-24)
+
+A v1.6 AGV whose map revision has no RELEASE zone (a CLUSTER polygon) drawn:
+- raises `NOT_READY` reason `ZONES_MISSING`, so it takes no order;
+- leaves `zoneRequests` out of its state, so it reads as v1.5 (13.10).
+
+This fails closed if a map revision ever loses the zone. The station needs no change: any `NOT_READY` means
+not free.
 
 ### 13.11 Timing (for the screen and for planning)
 
