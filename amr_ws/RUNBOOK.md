@@ -497,7 +497,7 @@ python3 -m agv_core.drivers.canbus.read_mls set-markers            # dry run; --
 
 ## Station calling (`station.enabled`, manuals/station-call-plan.md)
 
-Machine calls from the station PC over MQTT (broker `192.168.2.5:1883`). A subset of VDA5050 3.0.0, not compliant.
+Machine calls from the station PC over MQTT (broker `192.168.2.250:1883`). A subset of VDA5050 3.0.0, not compliant.
 **Default off:** no bridge is launched, no order path exists, hand trips run as before.
 
 - **Turn on:** set `tape_loc.live: true` and `station.enabled: true` in the profile, `validate.sh`, restart the service. Needs paho-mqtt (`alpha-setup.md` 5.2) and `$AMR_STATE_DIR/station-mqtt.json`, mode 600. The first real departure is the named approval in the plan's P9.

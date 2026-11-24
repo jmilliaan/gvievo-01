@@ -13,7 +13,7 @@
 set -uo pipefail
 
 LOG_DIR=${WIFI_TEST_LOGS:-/home/gvipc-evo-01/.amr/logs}
-BROKER=${WIFI_BROKER:-192.168.2.5}
+BROKER=${WIFI_BROKER:-192.168.2.250}
 PORT=${WIFI_BROKER_PORT:-1883}
 LIMIT=${WIFI_TEST_LIMIT:-300}     # s to wait for each recovery before calling it failed
 SETTLE=${WIFI_TEST_SETTLE:-30}    # s between tests

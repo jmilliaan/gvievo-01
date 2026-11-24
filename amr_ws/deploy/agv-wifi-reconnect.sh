@@ -31,7 +31,7 @@ SCAN_EVERY=${WIFI_SCAN_EVERY:-3}   # s between scans while out of range
 # holds the device in "connecting" for ~20 s, delaying the next, better attempt.
 MIN_SIGNAL=${WIFI_MIN_SIGNAL:-25}
 OPER=${WIFI_OPER:-/sys/class/net/$IFACE/operstate}
-BROKER=${WIFI_BROKER:-192.168.2.5}
+BROKER=${WIFI_BROKER:-192.168.2.250}
 BROKER_PORT=${WIFI_BROKER_PORT:-1883}
 PROBE_EVERY=${WIFI_PROBE_EVERY:-5}       # s between broker checks while associated
 CONUP_AFTER=${WIFI_CONUP_AFTER:-30}      # s of a dead broker path before nmcli con up

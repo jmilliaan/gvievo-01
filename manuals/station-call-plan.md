@@ -249,7 +249,7 @@ not something a test will catch.
 ```text
 station PC                 AGV (ROS on loopback only)
  Mosquitto  <-- Wi-Fi -->  station_bridge_node (new package amr_station; base launch; only if enabled)
- 192.168.2.5:1883            | /amr/line/order (LineTeach service)     ^ /amr/line/order_state (OrderState)
+ 192.168.2.250:1883          | /amr/line/order (LineTeach service)     ^ /amr/line/order_state (OrderState)
                              v                                         |
                            line_follow_node --> FollowJob.tick --> _order_start --> ARMED --> RUNNING
                              ^ /amr/rear/trolley (TrolleyState)
@@ -489,7 +489,7 @@ seen it, and `python3 tests/run_all.py` still reports 869 checks.
 ```json
 "station": {
   "enabled": false,
-  "broker_host": "192.168.2.5",
+  "broker_host": "192.168.2.250",
   "broker_port": 1883,
   "manufacturer": "gvi",
   "serial_number": "agv1",
@@ -1458,7 +1458,7 @@ worth more than before.
 
 | Surface | Control | Residual |
 |---|---|---|
-| Broker on the station PC | Bound to 192.168.2.5, `allow_anonymous false`, password file and ACL outside both repos (contract section 1) | Station plan |
+| Broker on the station PC | Bound to 192.168.2.250, `allow_anonymous false`, password file and ACL outside both repos (contract section 1) | Station plan |
 | Topics | ACL per user: AGV only its own `order`, `instantActions` in; `state`, `connection` out. `watch` reads all topics and publishes nothing (contract section 1) | Anyone with the `watch` password can read orders, as anyone with the PSK can |
 | Traffic | Plain MQTT on TCP 1883. Passwords and orders are readable by anyone with the Wi-Fi PSK | Owner accepts or adds TLS later. Protect the PSK |
 | Vehicle | The bridge makes one outbound connection. No new listener | |
@@ -1497,7 +1497,7 @@ The repo cannot show these. Do them on the AGV (`gvipc-evo-01`, `192.168.2.110`)
 | V5 | `amr_interfaces` built with trip fields | Run page shows Calls, not "rebuild amr_interfaces" (`run.html:180-181`) | P0 |
 | V6 | E2 laps and E3 recorded | `tracked-plan-4:202-204` says pending | P0 |
 | V7 | J-R2E position, C-BTU teaching | `tracked-plan-4:244-247` (second-hand) | MRU route passes J-R2E; BTU not confirmed. P0 for MRU |
-| V8 | Broker reachable | `ip route get 192.168.2.5` uses `wlp1s0`; `nc -zv 192.168.2.5 1883` | `usb0` is the first default route, but the /24 on Wi-Fi should win. P7 |
+| V8 | Broker reachable | `ip route get 192.168.2.250` uses `wlp1s0`; `nc -zv 192.168.2.250 1883` | `usb0` is the first default route, but the /24 on Wi-Fi should win. P7 |
 | V9 | Gateway address | `nmcli -g ipv4.gateway con show agv-net` | Expect 192.168.2.5, the station PC's ICS (owner, 2026-11-14; unit 1's agv-net already uses it). `alpha-setup.md` said 192.168.2.10, now DIO 1; corrected. P7 |
 | V10 | Clock | `timedatectl`, `chronyc tracking` | Sources are Ubuntu defaults, and the floor has no internet. Timestamps are for logs only (contract section 1), so a wrong clock must not block anything. Record the offset so logs can be lined up. Do not add a clock comparison. P7 |
 | V11 | Wi-Fi rejoin | `systemctl is-enabled agv-wifi-reconnect` | It is enabled by hand (`install.sh:53`). P7 |
@@ -1541,7 +1541,7 @@ loss, and an unseen order is resent with the same orderId (sections 8 and 9). `s
 
 ### 1. Transport
 
-**Broker.** Mosquitto on the station PC, MQTT 3.1.1, TCP `192.168.2.5:1883`, listener bound to that address only. Settings: `persistence false`, `allow_anonymous false`, a password file and an ACL file kept outside both repos.
+**Broker.** Mosquitto on the station PC, MQTT 3.1.1, TCP `192.168.2.250:1883`, listener bound to that address only. Settings: `persistence false`, `allow_anonymous false`, a password file and an ACL file kept outside both repos.
 
 **Topics.** `manufacturer` is `gvi`. `serialNumber` is `agv1`, and `agv2` for AGV 2. The `version` field in every message is `"3.0.0"`.
 
@@ -1558,7 +1558,7 @@ AGV 2 uses the same four topics with `agv2` in place of `agv1`. No other topic e
 
 | Client id | Username | Address | May publish | May subscribe |
 |---|---|---|---|---|
-| `gvi-station` | `station` | 192.168.2.5 | `.../+/order`, `.../+/instantActions` | `.../+/state`, `.../+/connection` |
+| `gvi-station` | `station` | 192.168.2.250 | `.../+/order`, `.../+/instantActions` | `.../+/state`, `.../+/connection` |
 | `gvi-agv1` | `agv1` | 192.168.2.110 | own `state`, `connection` | own `order`, `instantActions` |
 | `gvi-agv2` (later) | `agv2` | 192.168.2.120 | own `state`, `connection` | own `order`, `instantActions` |
 | any test tool id, never a client id above | `watch` | the station PC (the firewall allows only the two AGV addresses from elsewhere) | nothing | `vda5050/v3/gvi/#`, read only, for test watchers and logs |

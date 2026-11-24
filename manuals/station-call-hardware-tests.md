@@ -25,7 +25,7 @@ splits the work differently, the plan's wording wins, but no row may be dropped.
 | AGV plan | Calling switch and all AGV code built, switch defaults OFF, offline suites pass on the vehicle's copy | Group A part 2 | AGV P1 to P6, P7 steps 1 and 2 / |
 | Station plan | Button reading with press detection, call list, screen, saved call list. LED writes behind a flag that defaults OFF | Group B | Station S1, S2 / |
 | Station plan | LED output path, startup "set every LED to a known state", `tools/led_test.py` that sets one LED to blink, solid or off | Group C | Station S6, S7 / |
-| Station plan | Mosquitto installed, bound to 192.168.2.5 only, password and ACL files in place, including the read-only `watch` user. Station MQTT client. **Test sender**: `tools/test_sender.py` on the station PC reads the newest `state` and publishes a chosen order, `cancelOrder` or a raw body, with a fresh `seenStateHeaderId` where one applies | Group D | Station S3 to S5, floor steps in S8 / |
+| Station plan | Mosquitto installed, bound to 192.168.2.250 only, password and ACL files in place, including the read-only `watch` user. Station MQTT client. **Test sender**: `tools/test_sender.py` on the station PC reads the newest `state` and publishes a chosen order, `cancelOrder` or a raw body, with a fresh `seenStateHeaderId` where one applies | Group D | Station S3 to S5, floor steps in S8 / |
 | AGV plan | MQTT client, `state`, `connection`, order checks. All orders refused until the lidar is fitted | Group D | AGV P5, floor steps in P7 / |
 | AGV plan and owner | Rear lidar fitted, wired and configured. Owner's written decision on the rear field while towing. Trolley detection reporting present, absent or unknown | Group E | AGV P8, O1, O2 / |
 | AGV plan | Automatic departure from home, departure checks, START interlocks | Group G | AGV P2 and P3 code, floor steps in P9 / |
@@ -180,7 +180,7 @@ The same steps are used after every aborted trip. They are called **Recover** be
 |---|---|
 | AGV pages on a tablet | `http://192.168.2.110:5001`: Home, Run, Teach, Alarms |
 | AGV terminal | `ssh gvipc-evo-01@192.168.2.110` |
-| Watch all MQTT messages | On the station PC, as the read-only user `watch`: `mosquitto_sub -h 192.168.2.5 -u watch -P <password> -i gvi-watch -v -t "vda5050/v3/gvi/#"`. It sees `order` and `instantActions` too, which user `station` cannot read. D2 proves this first |
+| Watch all MQTT messages | On the station PC, as the read-only user `watch`: `mosquitto_sub -h 192.168.2.250 -u watch -P <password> -i gvi-watch -v -t "vda5050/v3/gvi/#"`. It sees `order` and `instantActions` too, which user `station` cannot read. D2 proves this first |
 | Test sender | `tools/test_sender.py --real` on the station PC. User `station`, its own client id. Reads the newest `state`, then publishes a chosen order, `cancelOrder` or a raw body. For refusal checks and `cancelOrder` only, never to start the AGV moving |
 | LED test | `tools/led_test.py` on the station PC, app stopped. Goes through `CoilWriter`'s allow-list and the approval file. Covered by `DIO-WRITE-2` (C4) |
 | Read the rear lidar with the switch off | On the AGV: `ros2 topic echo /amr/rear/trolley`, fields `state`, `rear_field`, `rear_case`. `loads` and `NOT_READY` exist only on `state`, so only with the switch on |
@@ -750,7 +750,7 @@ motion tests, because that refusal is the very thing under test.
   2. Connect a phone or laptop to the PC's hotspot and try to reach port 1883 on the hotspot address.
   3. Reboot the station PC with the Ethernet cable in. Check the broker comes up by itself.
   4. Reboot with the cable out, then plug it in. Check what happens.
-- **Expected:** only `192.168.2.5:1883` is listening. It is not `0.0.0.0`. Hotspot connection fails. If the broker does not recover after step 4, record exactly what someone must do: this goes in the operator notes.
+- **Expected:** only `192.168.2.250:1883` is listening. It is not `0.0.0.0`. Hotspot connection fails. If the broker does not recover after step 4, record exactly what someone must do: this goes in the operator notes.
 - **Confirm by:** command output.
 
 Recovery after cable-out boot: ________
