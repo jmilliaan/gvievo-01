@@ -159,6 +159,7 @@ class SiteRun(TapeRun):
         self._early_fork = False                    # the standing order was used once, early
         self._watches = []                          # ForkWatch: orders on their way through a fork
         self._fork_last = None                      # chain: (kept, other) mm at the armed order's fork
+        self._fork_sep = 0.0                        # chain: the widest two-track reading since armed
         self._fork_codes = set()                    # chain: the #LCP values seen at it
         self._chain_odo = None                      # chain: odometry when the chained order was armed
         self.fork_log = []                          # finished ForkWatch reports, for the logs
@@ -347,14 +348,16 @@ class SiteRun(TapeRun):
     # -- a chain of orders: armed and judged by the MLS, not by S ----------------------------
     def _chain_tick(self, e, nlcp, tracks):
         """One tick of an order that heads or ends a chain, after the ladder's scan. It is taken only
-        once its fork has opened (the last two-track reading at least ForkWatch.MIN_SEP_MM apart): a
-        single track before that is the two tapes still reading as one, and the order stands again.
+        once its fork has opened (a two-track reading since it was armed at least ForkWatch.MIN_SEP_MM
+        apart): a single track before that is the two tapes still reading as one, and the order stands
+        again.
         Taken, the next order of the chain is armed on this tick, wherever S is."""
         pil = vehicle.BRANCH_POSITIVE_IS_LEFT
         usable = [t for t in tracks or () if t.get("pos_mm") is not None]
         if nlcp in branch.MULTI_NLCP and len(usable) >= 2:
             kept = branch.select_track(usable, e["order"], pil)["pos_mm"]
             self._fork_last = (kept, max((t["pos_mm"] for t in usable), key=lambda v: abs(v - kept)))
+            self._fork_sep = max(self._fork_sep, abs(self._fork_last[0] - self._fork_last[1]))
             self._fork_codes.add(nlcp)
         if "after" in e:
             gone = self._odo_m - self._chain_odo
@@ -374,14 +377,16 @@ class SiteRun(TapeRun):
             # The chain's first order used up by a fork well before its own: not this junction (a fork
             # in view arms it early, _order_due). It stands again and the chain waits for the real one.
             self.branch.order(e["order"])
-            self._fork_last, self._fork_codes = None, set()
+            self._fork_last, self._fork_codes, self._fork_sep = None, set(), 0.0
             self._watch(e)
             self._early_fork = True
             self._decide(f"a fork {e['S_fork'] - S:.2f} m before {e['id']} used the order, more than "
                          f"{early:.1f} m early for a chain: {e['order'].upper()} armed again", WARN)
             return
         last = self._fork_last
-        if last is None or abs(last[0] - last[1]) < ForkWatch.MIN_SEP_MM:
+        # Opened means opened once: the widest reading, not the last. 2026-11-25, AGV-2 at J-S: the left tape
+        # left at -118 mm, then one tick read +2/+10 just before one track, and RIGHT stood again.
+        if last is None or self._fork_sep < ForkWatch.MIN_SEP_MM:
             self.branch.order(e["order"])
             self._decide(f"{e['id']}: one track again before the fork opened"
                          + (f" ({abs(last[0] - last[1]):.0f} mm apart)" if last else "")
@@ -476,7 +481,7 @@ class SiteRun(TapeRun):
             return False
         self.branch.order(e["order"])
         self._armed = e
-        self._fork_last, self._fork_codes = None, set()
+        self._fork_last, self._fork_codes, self._fork_sep = None, set(), 0.0
         self._chain_odo = self._odo_m
         self._watch(e)
         where = f"fork in {e['S_fork'] - S:.2f} m" if S is not None else "S unknown"

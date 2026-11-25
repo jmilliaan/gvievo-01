@@ -250,3 +250,17 @@ def test_a_chain_whose_only_fork_came_too_early_faults_instead_of_taking_it_late
     assert run.fault is not None and "not used at its fork" in run.fault, run.fault
     texts = [t for _S, _s, t in run.decisions]
     assert not any("taken at J-N" in t for t in texts), texts
+
+
+def test_a_last_close_reading_after_j_s_has_opened_does_not_stand_the_order_again():
+    """2026-11-25, AGV-2 at J-S: the other tape left at -118 mm, then one tick read two tracks 8 mm apart
+    just before one track. The fork had opened: RIGHT is taken, not stood again (it faulted 0.81 m on)."""
+    end = max(o for o, n, _t in READINGS if JS[0] <= o <= JS[1] and n != 2)
+    flick = [(o, n, t) for o, n, t in READINGS if o <= end]
+    flick.append((end + 0.004, 6, [-12, -4]))
+    flick += [(o, n, t) for o, n, t in READINGS if o > end + 0.004]
+    run, seen = drive(readings=flick)
+    assert run.fault is None, run.fault
+    texts = [t for _S, _s, t in run.decisions]
+    assert "order right taken at J-S" in texts, texts
+    assert not any(t.startswith("J-S: one track again") for t in texts), texts
