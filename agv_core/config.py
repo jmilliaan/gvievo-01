@@ -310,6 +310,10 @@ mls.*  (SICK MLS line sensor, can.sensor_node; manuals/mls-marker-plan.md)
     polarity_lock expects 202Dh:05 = 1 (only north track seen): leave false until
     a full lap has shown north-up tape everywhere, because south-up track
     becomes invisible with it. teach_lock expects 2029h = 1 (keypad locked).
+    reset_at_start (optional, false): drive_node sends NMT Reset Node to the sensor
+    alone once the bus is up, before the IMU and track readers start (2026-11-25,
+    agv-02: after a power-up its MLS split one tape into two tracks ~22 mm apart;
+    after a software reset it read one track, every time it was tried).
 
     event_clear (manuals/mls-diagnostics-plan.md E2): the value drive_node writes to
     2080h:01 to reset the sensor's latched event flag after reading its cause, or
@@ -660,6 +664,8 @@ _SCHEMA = {
         "polarity_lock":   ("MLS_POLARITY_LOCK", bool),
         "teach_lock":      ("MLS_TEACH_LOCK", bool),
         "event_clear":     ("MLS_EVENT_CLEAR", int),
+        # Optional, false when absent (_OPTIONAL_KEYS): drive_node resets the sensor at start.
+        "reset_at_start":  ("MLS_RESET_AT_START", bool),
         # "marker_codes" is a list of ints; handled separately in _read_marker_codes().
     },
     "tape_loc": {
@@ -787,7 +793,8 @@ _SCHEMA = {
 # The one exception to "missing keys are fatal": a temporary run mode that is off unless a profile says so.
 _OPTIONAL_KEYS = {"station": {"no_trolley_run": False, "zone_set_id": "SITE103-TRAFFIC-1",
                              "zone_front_m": 0.6, "zone_tail_m": 4.8, "zone_lead_m": 10.0},
-                 "imu": {"max_bias_deg_s": 0.3}}
+                 "imu": {"max_bias_deg_s": 0.3},
+                 "mls": {"reset_at_start": False}}
 _TOP_LEVEL_SCALARS = {"profile_name": ("PROFILE_NAME", str), "tracked": ("TRACKED", bool)}
 _NULLABLE_TOP_LEVEL = {"tracked"}
 

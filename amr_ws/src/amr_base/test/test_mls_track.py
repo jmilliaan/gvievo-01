@@ -823,3 +823,38 @@ def test_a_late_booting_sensor_is_picked_up_by_its_boot_up_frame():
     for _ in range(3):
         t.poll(clk.t)
     assert 0x18A in link.routes and t.mode == "tpdo" and t.tpdo_period_ms == 10
+
+
+# -- reset at start (profile mls.reset_at_start, 2026-11-25) -----------------------------------------------
+class _ResetLink:
+    def __init__(self, clock):
+        self.clock, self.nmts, self.keepalives, self.pumped = clock, [], 0, 0.0
+        self.router = self
+
+    def nmt_nowait(self, command, node):
+        self.nmts.append((command, node))
+
+    def keepalive(self):
+        self.keepalives += 1
+
+    def pump(self, seconds):
+        self.pumped += seconds
+        self.clock.t += seconds
+
+
+class _Clock:
+    t = 100.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_reset_at_start_resets_the_mls_alone_and_waits_with_the_heartbeat_going():
+    clock = _Clock()
+    link, logs = _ResetLink(clock), []
+    mls_track.reset_mls(link, 10, log=logs.append, clock=clock)
+    assert link.nmts == [(0x81, 10)], "NMT Reset Node to node 10 only, once"
+    settle, step = mls_track.RESET_SETTLE_S, mls_track.RESET_STEP_S
+    assert settle <= link.pumped <= settle + 2 * step and settle >= 1.0, "boot-up plus the IMU's 640 ms init"
+    assert link.keepalives >= settle / step - 1, "the PC heartbeat never pauses"
+    assert logs and "reset_at_start" in logs[0]

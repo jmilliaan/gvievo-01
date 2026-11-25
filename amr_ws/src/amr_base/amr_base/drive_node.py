@@ -81,7 +81,7 @@ from amr_base.diff_drive import Geometry, forward, profile_geometry
 from amr_base.lean_node import LeanNode, UiThrottle, run
 from amr_base.marker_events import MarkerDetector
 from amr_base.mls_imu import ImuSample, MlsImu
-from amr_base.mls_track import ERROR, WARN, MlsTrack, RateLimit, TrackSample
+from amr_base.mls_track import ERROR, WARN, MlsTrack, RateLimit, TrackSample, reset_mls
 
 # /amr/line_marker (mls-marker-plan 5.4): every marker is a message, none may be dropped
 # behind a newer one, and a replayed old one must never look new (EVENT_STREAM).
@@ -416,6 +416,8 @@ class DriveNode(LeanNode):
             link.pc_node, link.pc_heartbeat_s = self.pc_node, self.pc_hb_s
         self._log(f"bus up on {how} at {config.CAN_BITRATE // 1000} kbps, profile {config.PROFILE_NAME}")
         link.enable_heartbeat(config.CAN_HEARTBEAT_MS)
+        if config.MLS_RESET_AT_START:
+            reset_mls(link, config.SENSOR_NODE, self._log)
         imu = None
         if self.imu_enabled:
             imu = MlsImu(

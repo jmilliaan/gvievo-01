@@ -206,6 +206,28 @@ class _SdoCycle:
     values: list = field(default_factory=list)
 
 
+
+NMT_RESET_NODE = 0x81
+# Boot-up plus the IMU's 640 ms initialisation (MLS OI 8.6, all zeros until then), with margin.
+RESET_SETTLE_S = 1.5
+RESET_STEP_S = 0.05
+
+
+def reset_mls(link, node: int, log=print, settle_s: float = RESET_SETTLE_S, clock=time.monotonic) -> None:
+    """NMT Reset Node to the MLS alone, once the bus is up and before its IMU and track readers start
+    (profile mls.reset_at_start). 2026-11-25, agv-02: after a power-up its MLS read one tape as two
+    tracks ~22 mm apart, past J-BMERGE, for whole trips; after a software reset it read one track, every
+    time it was tried. Only `node` is addressed (nmt_nowait refuses a broadcast). The wait routes what
+    arrives, so the boot-up frame is gone before MlsTrack listens for reboots, and keeps the PC heartbeat
+    going: the drives must not see a silent PC."""
+    link.nmt_nowait(NMT_RESET_NODE, node)
+    log(f"MLS node {node}: NMT Reset Node at start (mls.reset_at_start), waiting {settle_s:.1f} s")
+    end = clock() + settle_s
+    while clock() < end:
+        link.keepalive()
+        link.router.pump(RESET_STEP_S)
+
+
 class MlsTrack:
     """Acquisition state for one MLS. Bus-thread only; `on_sample` is called
     from within the bus loop with every decoded sample."""

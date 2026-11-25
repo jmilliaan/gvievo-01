@@ -200,7 +200,8 @@
     "marker_codes": [1, 2, 3],
     "polarity_lock": false,
     "teach_lock": true,
-    "event_clear": -1
+    "event_clear": -1,
+    "reset_at_start": true
   },
   "tape_loc": {
     "enabled": true,
