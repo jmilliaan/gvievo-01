@@ -80,9 +80,21 @@ AGV 2 (`serialNumber` `agv2`) serves the south machines, AGV 1 the north ones (o
 
 Rules for AGV 2:
 - Its home node is `HOME-N` and its attach node `ATT`.
-- **One machine per order.** The site mission has `trip_calls` 1. AGV 2 never receives a pair, and the AGV
-  refuses one with `VALIDATION_FAILURE`. The station needs a per-AGV "one machine per order" setting, which is
-  station work.
+- **Pairs, as AGV 1 (amended 2026-11-25, owner; replaces "one machine per order").** An order serves one
+  machine, or two of one group, closer first: ROW3 with ROW3 (BTU1-8 and STU1-6 together), STU7-10 with
+  STU7-10. The station pairs them under `calling.dispatch.row3.pair_wait_s` and
+  `calling.dispatch.stu.pair_wait_s`, as for MRU and BTU. The site mission's `trip_calls` 1 governs screen
+  calls only; the AGV takes a station pair by its shape, and refuses one that is not closer first, mixes
+  groups or has another shape with `VALIDATION_FAILURE`.
+- **ROW3 pair:** the v1.5 two-stop BTU shape: `HOME-N`, `ATT` (`:ATT`), `R3-a` (`:R3-a`), `R3-b` (`:R3-b`)
+  with `a < b` (travel order), `HOME-N`; no `machines` parameter. Example `BTU5+BTU2-...`: `R3-6` then
+  `R3-12`. Home at `lastNodeSequenceId` 8.
+- **STU7-10 pair:** the v1.5 MRU pair shape: `HOME-N`, `ATT` (`:ATT`), `SW-near` (`:SW-near`), `SW-far`
+  (`:SW-far`), `SE-far` (`:SE-far`), `SE-near` (`:SE-near`), `HOME-N`, with node-named action ids. STU7 is
+  met first, so `STU7+STU10-...` releases at `SW-7` then `SW-10`, U-turns after `SW-10`, and takes at
+  `SE-10` then `SE-7`. Home at `lastNodeSequenceId` 12. With no rear scanner, both trolleys must be released
+  before the U-turn, as on AGV 1's MRU pair.
+- A pair trip makes the same two CLUSTER crossings as a single one (13.2).
 
 **ROW3: a swap stop per machine.** Each machine has its own stop, so there is never a `machines` parameter.
 The stops in travel order:

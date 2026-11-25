@@ -196,7 +196,7 @@
     "bus_v_warn_high": 56.0
   },
   "mls": {
-    "variant": 3,
+    "variant": 4,
     "marker_codes": [1, 2, 3],
     "polarity_lock": false,
     "teach_lock": true,

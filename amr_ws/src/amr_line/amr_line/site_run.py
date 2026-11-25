@@ -67,6 +67,10 @@ FORK_CLEAR_M = 0.3
 # the right first, came at 1.27 m, which a RIGHT still standing would follow.
 CHAIN_FORK_MAX_M = 0.5
 CHAIN_TAKE_MAX_M = 0.8
+# The chain's first order is taken by the MLS wherever S is, but not by a fork this far (more with sigma)
+# before its own: it stands again. 2026-11-25, AGV-2: a ghost second track from J-BMERGE past ATT armed
+# J-N's order at ATT and its end used it 5.3 m early; J-S's order then faulted 0.80 m on.
+CHAIN_EARLY_M = 1.0
 # How close to the taught U-turn a tape end may come and still be it.
 TAPE_END_MARGIN_M = 0.5
 # A trip starts at HOME: the locator within this of HOME's taught S (job._site_at_home).
@@ -364,6 +368,18 @@ class SiteRun(TapeRun):
                 return
         if self.branch.ladder.intent() != branch.STRAIGHT:
             return
+        S = self.S
+        early = max(CHAIN_EARLY_M, 3.0 * self._sigma())
+        if "after" not in e and S is not None and S < e["S_fork"] - early:
+            # The chain's first order used up by a fork well before its own: not this junction (a fork
+            # in view arms it early, _order_due). It stands again and the chain waits for the real one.
+            self.branch.order(e["order"])
+            self._fork_last, self._fork_codes = None, set()
+            self._watch(e)
+            self._early_fork = True
+            self._decide(f"a fork {e['S_fork'] - S:.2f} m before {e['id']} used the order, more than "
+                         f"{early:.1f} m early for a chain: {e['order'].upper()} armed again", WARN)
+            return
         last = self._fork_last
         if last is None or abs(last[0] - last[1]) < ForkWatch.MIN_SEP_MM:
             self.branch.order(e["order"])
@@ -489,7 +505,12 @@ class SiteRun(TapeRun):
             return
         if S is None or S <= e["S_node"] + max(ORDER_UNUSED_M, 3.0 * sigma):
             return
-        if self._early_fork:
+        if self._early_fork and "then" in e:
+            # A chain cannot take its first order late: the next one is armed only when it is taken.
+            self.fault = (f"order {e['order']} for {e['id']} not used at its fork: the only fork came "
+                          f"more than {max(CHAIN_EARLY_M, 3.0 * sigma):.1f} m before it; check the "
+                          f"AGV's branch and line sensor, MANUAL, jog back, Reset")
+        elif self._early_fork:
             # One fork in the whole window, where S did not expect it: that one was the junction.
             self.branch.order(branch.STRAIGHT)
             self._armed, self._early_fork = None, False

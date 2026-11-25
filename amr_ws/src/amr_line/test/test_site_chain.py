@@ -103,7 +103,7 @@ def sensor(tracks, nlcp):
             "tracks": [{"index": i + 1, "pos_mm": p, "width": 10} for i, p in enumerate(tracks)]}
 
 
-def drive(readings=READINGS, bias=0.0, sigma=0.03, until=2.2):
+def drive(readings=READINGS, bias=0.0, sigma=0.03, until=2.2, start=1.5):
     """SiteRun alone, fed the lap's readings by wheel travel, the follower's choice made the way
     the job makes it. Returns (run, [(offset, tracks, followed, intent)] at every two-track reading)."""
     m = site()
@@ -111,7 +111,7 @@ def drive(readings=READINGS, bias=0.0, sigma=0.03, until=2.2):
     run = site_run.SiteRun(m, tripmod.Trip(m, "B", ["B1"]), r, tl.Params())
     run.depart(0.0, None)
     jn = next(e for e in r.events if e.get("then"))
-    S, followed, seen, k = jn["S_fork"] - 1.5, 0.0, [], 0
+    S, followed, seen, k = jn["S_fork"] - start, 0.0, [], 0
     while S < jn["S_fork"] + until and run.fault is None:
         o = S - jn["S_fork"]
         while k + 1 < len(readings) and readings[k + 1][0] <= o:
@@ -217,3 +217,36 @@ def test_a_fork_at_j_s_with_its_other_tape_on_the_wrong_side_faults():
     run, _seen = drive(readings=mirrored)
     assert run.fault is not None and run.fault.startswith("wrong fork at J-S"), run.fault
     assert "should leave on the left" in run.fault
+
+
+# -- a fork well before the chain (2026-11-25, AGV-2) -------------------------------------------------
+# AGV-2's line sensor read a ghost second track from J-BMERGE to past ATT; it armed J-N's order at ATT
+# and the place where it ended used it 5.3 m early, so J-S's order stood until it faulted. Here: J-N's
+# own fork readings played GHOST_AT m early, past J-A (a fork in view after the previous node arms).
+GHOST_AT = 3.0
+
+
+def ghost_then(rest):
+    return [(o - GHOST_AT, n, list(t)) for o, n, t in READINGS if o <= JN[1] + 0.12] + rest
+
+
+def test_a_fork_well_before_j_n_does_not_take_the_chain_and_the_real_one_does():
+    run, seen = drive(readings=ghost_then(READINGS), start=GHOST_AT + 0.5)
+    assert run.fault is None, run.fault
+    texts = [t for _S, _s, t in run.decisions]
+    early = [i for i, t in enumerate(texts) if "before J-N used the order, more than" in t]
+    assert early and "LEFT armed again" in texts[early[0]], texts
+    taken = texts.index("order left taken at J-N")
+    assert taken > early[0] and "order right taken at J-S" in texts[taken:], texts
+    assert any(t.startswith("order RIGHT armed for J-S, J-N taken") for t in texts[taken:]), texts
+    for o, tracks, followed, _intent in seen:
+        if o >= JN[0] - STEP_M:
+            assert followed == lane(o, tracks), f"at {o:+.3f} m {tracks}: followed {followed}"
+
+
+def test_a_chain_whose_only_fork_came_too_early_faults_instead_of_taking_it_late():
+    plain = [(o, 2, [0]) for o, _n, _t in READINGS if o > 0.0]
+    run, _seen = drive(readings=ghost_then(plain), start=GHOST_AT + 0.5)
+    assert run.fault is not None and "not used at its fork" in run.fault, run.fault
+    texts = [t for _S, _s, t in run.decisions]
+    assert not any("taken at J-N" in t for t in texts), texts
