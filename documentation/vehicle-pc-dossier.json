@@ -1,0 +1,271 @@
+{
+  "dossier": {
+    "subject": "AGV vehicle PC (one per unit)",
+    "compiled": "2026-11-23",
+    "basis": "Repository documents and deploy files only (branch gvievo-sub, fbc69aa). Nothing was read from a live unit.",
+    "status_legend": {
+      "as_built": "recorded from a running unit",
+      "deploy_intent": "defined by a repo deploy file; active only once install.sh (or the named step) has run on that unit",
+      "inferred": "derived from other recorded values, not stated directly",
+      "not_in_repo": "not recorded anywhere in the repository"
+    }
+  },
+
+  "units": [
+    {"unit": 1, "hostname": "gvipc-evo-01", "wifi_ipv4": "192.168.2.110/24", "canable_serial": "2087327F5548", "grub_fallback_kernel": "not recorded (TBD at freeze)", "note": "As-built reference. Runs the 2026-11-16 code on the older installed service files; install.sh with the current deploy files is still owed (alpha-setup.md section 11)."},
+    {"unit": 2, "hostname": "gvipc-evo-02", "wifi_ipv4": "192.168.2.120/24", "canable_serial": "2056336F3743", "grub_fallback_kernel": "5.15.0-185-generic", "note": "Identical hardware. Platform freeze not yet run as of 2026-11-18; reached setup step 15 on 2026-11-18."}
+  ],
+
+  "platform": {
+    "vendor": "NEXCOM",
+    "model": "Neu-X102-N97",
+    "class": "industrial PC (IPC)",
+    "cooling": "fanless (passive)",
+    "duty": "24 h continuous",
+    "status": "as_built",
+    "source": "alpha-setup.md section 0 'Host'; amr_ws/deploy/cpu-freq-cap.service"
+  },
+
+  "cpu": {
+    "model": "Intel Processor N97",
+    "family": "Alder Lake-N",
+    "architecture": "x86_64 (amd64)",
+    "cores": 4,
+    "frequency_driver": "intel_pstate",
+    "stock_turbo_ghz": 3.6,
+    "configured_ceiling_ghz": 2.2,
+    "configured_ceiling_note": "2200000 kHz = ratio 22, an exact P-state; about +10 % over base clock",
+    "turbo": "on (intel_pstate/no_turbo = 0)",
+    "power_limits_w": {"PL1": 12, "PL2_stock": 25, "PL2_configured": 15},
+    "power_limit_interface": "/sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw = 15000000",
+    "thermal_history": "At stock (3.6 GHz, PL2 25 W) unit 1 reached 100 °C and thermal-throttled 86 times in 2 h (2026-10-02). The caps were introduced for this.",
+    "services": {
+      "cpu-freq-cap.service": "turbo on, every policy's scaling_max_freq = 2200000; ordered Before=amr.service; ExecStop sets no_turbo = 1; Conflicts=cpu-no-turbo.service",
+      "cpu-power-limit.service": "writes PL2 = 15 W at boot",
+      "cpu-no-turbo.service": "older unit-1-only service, disabled and superseded"
+    },
+    "microcode": "intel-microcode package, held by freeze.sh",
+    "status": "as_built (model, stock values, throttling record); deploy_intent (caps: installed by install.sh, enabled by hand per unit)",
+    "source": "alpha-setup.md sections 0 and 6 step 4; amr_ws/deploy/cpu-freq-cap.service; amr_ws/deploy/cpu-power-limit.service"
+  },
+
+  "gpu": {
+    "type": "integrated Intel UHD (Alder Lake-N)",
+    "pci_id": "8086:46d1",
+    "xorg_driver": "modesetting (generic KMS), AccelMethod glamor, TearFree true",
+    "forbidden_package": "xserver-xorg-video-intel (legacy DDX, unreliable on Alder Lake-N)",
+    "note": "The GA 5.15 kernel predates the N97 iGPU support, which is one reason for the HWE kernel.",
+    "status": "as_built",
+    "source": "alpha-setup.md sections 0, 1 and 7.6"
+  },
+
+  "memory": {
+    "ram_gb": 8,
+    "type_and_speed": "not_in_repo",
+    "swap": "removed by design: vm.swappiness = 0, swap file deleted (swapoff -a, swap.img removed from fstab)",
+    "status": "as_built (size); deploy_intent (swap removal is a manual step after install.sh)",
+    "source": "alpha-setup.md section 0; amr_ws/deploy/sysctl-amr.conf"
+  },
+
+  "storage": {
+    "device_model": "not_in_repo",
+    "partitioning": "Ubuntu Server installer default LVM",
+    "volume_group": "ubuntu-vg",
+    "root": {"lv": "ubuntu-vg/ubuntu-lv", "size_gb": 98, "filesystem": "ext4 (installer default)"},
+    "unallocated_in_vg_gb": "about 130 (RUNBOOK, unit 1)",
+    "total_disk_gb": {"value": "about 230 or more", "status": "inferred from root + free space in the VG"},
+    "data_volume": {
+      "lv": "ubuntu-vg/amr-data",
+      "size_gb": 40,
+      "label": "amr-data",
+      "mount": "/data/amr",
+      "filesystem": "ext4",
+      "fstab_options": "defaults,data=journal,commit=5,nofail,x-systemd.device-timeout=10",
+      "purpose": "vehicle state and maps on a fully journalled filesystem, so a power cut cannot cost the root filesystem",
+      "links": "~/.amr -> /data/amr/state, ~/amr_maps -> /data/amr/maps",
+      "precondition": "VFree at least 40G; never shrink ubuntu-lv",
+      "status": "deploy_intent (optional step W8, RUNBOOK section 5)"
+    },
+    "status": "as_built (root LV and size)",
+    "source": "alpha-setup.md sections 0 and 6.2; amr_ws/RUNBOOK.md 'Data on its own volume'; amr_ws/deploy/amr-data-volume.conf"
+  },
+
+  "network_interfaces": [
+    {"name": "enp2s0", "label": "LAN1", "controller": "Intel i226", "pci_id": "8086:125c", "driver": "igc", "managed_by": "netplan -> systemd-networkd", "ipv4": "192.168.1.10/24", "gateway": "none", "dns": "none", "netplan_optional": true, "peers": ["192.168.1.30:502 Modbus TCP I/O island", "192.168.1.200:2022 RFID reader (not used since 2026-11-16)"]},
+    {"name": "enp3s0", "label": "LAN2", "controller": "Intel i226", "driver": "igc", "managed_by": "netplan -> systemd-networkd", "ipv4": "192.168.3.2/24", "gateway": "none", "dns": "none", "peers": ["192.168.3.10 SICK nanoScan3 (CoLa2 TCP 2122; UDP scan data to host :6060)"]},
+    {"name": "wlp1s0", "controller": "Intel Wireless 7260", "driver": "iwlwifi", "managed_by": "NetworkManager", "connection": "agv-net", "ssid": "agv_field", "security": "WPA-PSK", "ipv4": "per unit, static", "gateway": "192.168.2.5", "dns": ["1.1.1.1", "8.8.8.8"], "route_metric": 700, "power_save": "disabled on the connection (802-11-wireless.powersave 2)", "autoconnect": "yes, priority 10, unlimited retries"},
+    {"name": "usb0", "type": "USB phone tether", "driver": "cdc_ether / rndis", "managed_by": "netplan -> systemd-networkd", "ipv4": "DHCP", "route_metric": 100, "role": "maintenance uplink and remote SSH"},
+    {"name": "can0", "type": "SocketCAN over USB serial", "adapter": "CANable 2.0 (MKS / Openlight Labs), slcan firmware", "usb_id": "16d0:117e", "device_node": "/dev/canable0 (udev symlink to ttyACMn, matched by USB serial)", "bitrate_bps": 125000, "txqueuelen": 1000, "bridge": "slcand -o -c -f -s4 -F, supervised by canable@can0.service"},
+    {"name": "lo", "role": "all ROS 2 DDS traffic (CycloneDDS bound to loopback only, no multicast)"}
+  ],
+  "networking_policy": {
+    "split": "NetworkManager owns Wi-Fi only; netplan/systemd-networkd owns every wired port (nmcli does nothing on the ethernet ports)",
+    "default_routes": "exactly two by design: usb0 (metric 100) then wlp1s0 (metric 700); the wired LANs never carry one",
+    "renderer": "renderer: networkd scoped inside the ethernets block, so a regenerated cloud-init file cannot take Wi-Fi down",
+    "cloud_init_network": "disabled (/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg)",
+    "netplan_files": "root:root 0600",
+    "wait_online": "systemd-networkd-wait-online masked; NetworkManager-wait-online enabled",
+    "wifi_rejoin": "agv-wifi-reconnect.service: scans every 3 s while unassociated, brings agv-net up at >= 25 % signal",
+    "status": "as_built (interfaces); deploy_intent (agv-wifi-reconnect)",
+    "source": "alpha-setup.md sections 0, 2.1-2.3; amr_ws/deploy/agv-wifi-reconnect.*"
+  },
+
+  "usb_devices": {
+    "canable": {
+      "udev_rule": "/etc/udev/rules.d/70-canable.rules, rendered from amr_ws/deploy/70-canable.rules.in with the profile's can.adapter_serial",
+      "rule_details": "ACTION!=\"remove\" (survives change events), MODE 0660 GROUP dialout, ID_MM_DEVICE_IGNORE=1 (no ModemManager probing), SYSTEMD_WANTS=canable@can0.service",
+      "autosuspend": "off (power/control = on)",
+      "service": "canable@.service: BindsTo=dev-canable0.device, Restart=on-failure, RestartSec=2, StartLimitBurst 10 per 60 s; never enabled, started by udev",
+      "status": "deploy_intent (repo-versioned since 2026-11-16)"
+    },
+    "touch_panel": {"controller": "Goodix", "usb_id": "27c6:0818", "driver": "hid-multitouch (stock)", "status": "as_built"},
+    "source": "alpha-setup.md sections 3 and 7; amr_ws/deploy/70-canable.rules.in; amr_ws/deploy/canable@.service"
+  },
+
+  "display": {
+    "panel": "6-7 inch touch display, about 1280x720 CSS px",
+    "panel_model": "not_in_repo",
+    "x_server": "Xorg (xserver-xorg-core), -core -nolisten tcp",
+    "blanking": "never: BlankTime/StandbyTime/SuspendTime/OffTime 0, DPMS false (/etc/X11/xorg.conf.d/10-amr-noblank.conf)",
+    "vt_switch": "DontVTSwitch true, DontZap true",
+    "display_manager": "LightDM, autologin of amrkiosk into the amr-kiosk session; session cleanup restarts lightdm",
+    "kiosk_session": "matchbox-window-manager + unclutter + display hot-plug watcher + Chromium (snap) in --kiosk mode on http://127.0.0.1/",
+    "maintenance_session": "XFCE4 for the gvipc-evo-01 user",
+    "not_installed": ["xserver-xorg-video-intel", "xfce4-power-manager"],
+    "front_door": "nginx-light on :80 proxying to 127.0.0.1:5001, with a holding page when the service is down",
+    "status": "as_built",
+    "source": "alpha-setup.md section 7"
+  },
+
+  "firmware_boot": {
+    "bios_uefi_version": "not_in_repo",
+    "bootloader": "GRUB, stock: GRUB_TIMEOUT=0, hidden menu, no extra kernel parameters",
+    "fallback_kernel": "the GA 5.15 kernel is kept as the GRUB fallback by freeze.sh (unit 2: 5.15.0-185-generic)",
+    "status": "as_built",
+    "source": "alpha-setup.md sections 1 and 4; amr_ws/deploy/platform/freeze.sh"
+  },
+
+  "operating_system": {
+    "distribution": "Ubuntu 22.04 LTS (jammy)",
+    "install_type": "Ubuntu Server (cloud-init netplan, LVM, OpenSSH server) with xfce4 added",
+    "architecture": "amd64",
+    "kernel": {
+      "flavour": "HWE (linux-generic-hwe-22.04)",
+      "version_running": "6.8.0-138-generic (as recorded for the vehicle)",
+      "why_hwe": "the GA 5.15 kernel predates the N97 iGPU and the i226 NIC quirks",
+      "held_packages": ["linux-generic-hwe-22.04", "linux-image-generic-hwe-22.04", "linux-headers-generic-hwe-22.04", "linux-firmware", "intel-microcode"],
+      "purged": "the GA kernel metapackages (linux-generic, linux-image-generic, linux-headers-generic); the GA image stays as fallback",
+      "watchdog_module_note": "the HWE kernel package blacklists watchdog modules by alias in /lib/modprobe.d/; loading by name via modules-load.d still works"
+    },
+    "init": "systemd",
+    "hostname_rule": "gvipc-evo-NN must run profile agv-NN (checked at every service start)",
+    "timezone": "Asia/Jakarta",
+    "rtc": "UTC",
+    "locale": "en_US.UTF-8",
+    "time_sync": "chrony (systemd-timesyncd masked); makestep 1 3: step only in the first three updates after start, slew afterwards",
+    "python": "3.10 (system), user-site packages in ~/.local/lib/python3.10/site-packages",
+    "ros": "ROS 2 Humble (ros-base, no desktop), from snapshots.ros.org/humble/2026-09-14; about 265 ros-humble-* packages",
+    "dds": "CycloneDDS (rmw_cyclonedds_cpp), loopback only, ROS_DOMAIN_ID 10",
+    "status": "as_built (distribution, kernel, timezone, packages); deploy_intent (snapshot pin, chrony drop-in)",
+    "source": "alpha-setup.md sections 0, 1, 4, 5; amr_ws/deploy/platform/*; amr_ws/deploy/chrony-amr.conf"
+  },
+
+  "package_management": {
+    "ros_source": "/etc/apt/sources.list.d/ros2-snapshot.sources -> http://snapshots.ros.org/humble/2026-09-14/ubuntu jammy main, amd64, signed by the snapshot keyring (fingerprint checked, fails closed)",
+    "live_ros_repo": "packages.ros.org pinned to priority -1 (/etc/apt/preferences.d/60-amr); ros2-apt-source purged",
+    "unattended_upgrades": "off (APT::Periodic::* 0); even by hand never linux-*, ros-humble-* or nodejs; no automatic reboot",
+    "apt_timers": "apt-daily.timer, apt-daily-upgrade.timer, update-notifier-download.timer disabled and masked by freeze.sh",
+    "snaps": "every snap held for ever (snap refresh --hold), the kiosk Chromium included",
+    "needrestart": "never preselects amr, amr-failed, canable@, systemd-networkd, chrony, nginx, lightdm, agv-wifi-reconnect; no kernel hints",
+    "update_policy": "monthly maintenance window, run by hand",
+    "status": "deploy_intent (freeze.sh --go; not yet run on unit 2 as of 2026-11-18)",
+    "source": "amr_ws/deploy/platform/freeze.sh, apt-preferences-amr, ros2-snapshot.sources, 52amr-unattended, needrestart-amr.conf"
+  },
+
+  "kernel_tuning": {
+    "file": "/etc/sysctl.d/60-amr.conf",
+    "settings": {
+      "vm.dirty_expire_centisecs": 500,
+      "vm.dirty_writeback_centisecs": 200,
+      "vm.swappiness": 0,
+      "net.core.rmem_max": 4194304,
+      "kernel.panic": 10
+    },
+    "reasons": {
+      "dirty_*": "shorter window where written data exists only in RAM before a power cut",
+      "rmem_max": "CycloneDDS asks for 1 MiB socket buffers; the old 212992 cap overflowed on lo (265 RcvbufErrors, 2026-10-24)",
+      "kernel.panic": "reboot 10 s after a panic instead of hanging"
+    },
+    "known_harmless_warnings": "sysctl --system prints 'Invalid argument' for net.ipv4.conf.all.accept_source_route and promote_secondaries from Ubuntu's own 50-default.conf",
+    "status": "deploy_intent",
+    "source": "amr_ws/deploy/sysctl-amr.conf; alpha-setup.md 'Rules for Claude Code'"
+  },
+
+  "power_management": {
+    "sleep": "sleep, suspend, hibernate and hybrid-sleep targets masked",
+    "power_key": "ignored (HandlePowerKey=ignore)",
+    "lid_and_idle": "HandleLidSwitch*, IdleAction ignored; KillUserProcesses=no",
+    "acpi_investigation": "pwrbtn-watch.sh samples ACPI counters (spurious-shutdown investigation)",
+    "status": "as_built (power key); deploy_intent (50-amr.conf lid/idle file)",
+    "source": "alpha-setup.md section 1 'Power'; amr_ws/deploy/pwrbtn-watch.sh"
+  },
+
+  "watchdogs": {
+    "hardware": "Intel chipset TCO watchdog, module iTCO_wdt (/etc/modules-load.d/iTCO_wdt.conf)",
+    "systemd": "RuntimeWatchdogSec=30, RebootWatchdogSec=10min (/etc/systemd/system.conf.d/60-amr-watchdog.conf)",
+    "precondition": "check wdctl and lsmod | grep -i iTCO first; harmless where /dev/watchdog is missing",
+    "status": "deploy_intent (install.sh --watchdog only; off until checked)",
+    "source": "amr_ws/deploy/iTCO_wdt.conf; amr_ws/deploy/systemd-watchdog-amr.conf"
+  },
+
+  "logging": {
+    "journald": "Storage=persistent, SystemMaxUse=300M, SystemMaxFileSize=50M (/etc/systemd/journald.conf.d/amr.conf)",
+    "tmpfiles_ageing": "~/.amr/ros_log and ~/.ros/log 7 days, ~/.amr/runs 30 days (/etc/tmpfiles.d/amr.conf); existing directories only",
+    "status": "deploy_intent",
+    "source": "amr_ws/deploy/journald-amr.conf; amr_ws/deploy/tmpfiles-amr.conf"
+  },
+
+  "trimmed_os_services": {
+    "masked": ["ModemManager.service", "multipathd.service", "multipathd.socket", "unattended-upgrades.service"],
+    "disabled_timers": ["apt-daily.timer", "apt-daily-upgrade.timer"],
+    "also_trimmed": "printing (cups snap)",
+    "untouched": "NetworkManager, snapd, the display stack",
+    "reversible": "trim-services.sh --revert restores the state saved by the first --go",
+    "status": "deploy_intent",
+    "source": "amr_ws/deploy/trim-services.sh"
+  },
+
+  "accounts": {
+    "operator": {"user": "gvipc-evo-01", "uid": 1000, "groups": ["adm", "dialout", "cdrom", "sudo", "dip", "plugdev", "lxd"], "sudo": "password required; only two NOPASSWD lines in /etc/sudoers.d/amr-web", "note": "the same user name on every unit: deploy files hard-code /home/gvipc-evo-01"},
+    "kiosk": {"user": "amrkiosk", "uid": 1001, "password": "none", "sudo": "none", "groups": "none"},
+    "status": "as_built",
+    "source": "alpha-setup.md sections 0 and 6.1"
+  },
+
+  "python_runtime_libraries": {
+    "pip_user": {"python-can": "4.6.1", "pymodbus": "3.15.0", "flask": "3.1.3", "werkzeug": "3.1.8", "waitress": "3.0.2", "numpy": "2.2.6", "paho-mqtt": "2.1.0", "ruff": "0.16.7"},
+    "apt": {"python3-serial": "3.5", "python3-yaml": "5.4.1", "python3-pytest": "6.2.5", "python3-hypothesis": "6.36.0", "python3-numpy": "1.21.5 (overridden by pip numpy 2.2.6)"},
+    "known_conflict": "user-site numpy 2.x breaks the system cv_bridge (built on numpy 1.21); nothing imports cv_bridge",
+    "extra_tooling_not_runtime": ["Node.js (nodesource)", "bun", "deno"],
+    "status": "as_built (versions as of 2026-09-21, updated 2026-11-17)",
+    "source": "alpha-setup.md section 5.2"
+  },
+
+  "not_in_repo": [
+    "BIOS / UEFI vendor and version",
+    "SSD or eMMC model, interface and exact capacity",
+    "RAM type, speed and slot layout",
+    "Chassis serial numbers and NEXCOM part revision",
+    "Supply input range of the PC and how it is fed from the 48 V pack",
+    "Operating temperature range from the vendor datasheet",
+    "Display panel model (only the Goodix touch controller is recorded)",
+    "Bluetooth presence or use",
+    "TPM or Secure Boot state",
+    "Unit 1 GRUB fallback kernel version"
+  ],
+
+  "discrepancies": [
+    "alpha-setup.md section 3 still lists unit 2's CANable serial as TBD; its top table and profiles/agv-02.json give 2056336F3743.",
+    "Unit 1 runs the 2026-11-16 code under the older installed amr.service and without the current tmpfiles and CANable rule (alpha-setup.md section 11). Deploy-intent items above may not be active there."
+  ]
+}
