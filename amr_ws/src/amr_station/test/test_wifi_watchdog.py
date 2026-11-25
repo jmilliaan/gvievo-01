@@ -154,3 +154,17 @@ def test_activation_without_end_reloads(rig):
     calls = rig.run()
     assert reloads(calls), rig.log
     assert "activating" in rig.log
+
+
+def test_a_connected_link_with_operstate_not_up_is_left_alone(rig):
+    # AGV-1 boot, 2026-11-25 08:03:57: NM connected (100), operstate not yet "up": con up tore the link down.
+    rig.set(oper="dormant\n", state="100 (connected)", scan="agv_field:83\n")
+    calls = rig.run()
+    assert not conups(calls) and not reloads(calls), rig.log
+
+
+def test_a_connected_link_with_operstate_not_up_is_still_repaired_through_the_broker_path(rig):
+    rig.set(oper="dormant\n", state="100 (connected)", probe="dead")
+    calls = rig.run(4.0)
+    assert conups(calls) and not reloads(calls), rig.log
+    assert "no answer from" in rig.log

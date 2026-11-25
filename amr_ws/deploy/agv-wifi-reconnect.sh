@@ -59,9 +59,13 @@ nm_state() {  # NM device state number: 30 disconnected, 40-90 activating, 100 c
 }
 
 associated() {
-  local op
-  read -r op 2>/dev/null <"$OPER" || return 1
-  [[ $op == up ]]
+  local op=""
+  read -r op 2>/dev/null <"$OPER"
+  [[ $op == up ]] && return 0
+  # operstate can read other than "up" for a moment while NM has the link connected (AGV-1 boot,
+  # 2026-11-25 08:03:57: a con up then tore down a working link). NM state 100 counts as associated,
+  # so a connected link is only ever checked through the broker path, never brought up again.
+  (( $(nm_state) == 100 ))
 }
 
 # ok: connected. refused: the host answered, its broker did not. dead: no answer at all.
