@@ -468,6 +468,36 @@ call again.
 
 A graph or map revision is never edited in place. The previous one stays and can be made active again.
 
+## 6A. A loop site (built 2026-11-25, `manuals/loop-track-plan.md`)
+
+One closed tape loop, no junction, no U-turn, no MLS marker. The AGV stands at HOME; AUTO + Start
+drives one lap and stops at HOME; the next Start drives the next lap. No calls, no trolleys.
+
+0. E: `profiles/<unit>.json` → `tape_loc.site_mission: "loop-site"`, `shadow_circuit: "C-LOOP"`,
+   `live: false`; `station.enabled` false (a loop site refuses station calling). Restart
+   `amr.service` on O's go.
+1. Floor arrow at HOME. Survey (RUNBOOK §2.A: preset moves, both directions), close at the arrow,
+   **Save map revision**.
+2. Dynamic areas with `map_edit` (RUNBOOK §2): a new revision. Teach on that one. Dynamic areas
+   added after teaching mean teaching again.
+3. Teach → map, rev → **Select map** → Restart tape layer. AGV on the arrow: initial pose by hand
+   (Foxglove "2D Pose Estimate", first time only) → **Scans align** → READY.
+4. Run page → mission `c-loop-guided`. E: Circuit `C-LOOP` → **Record pass**. O: AUTO → **Start**.
+   The AGV follows the loop at 0.4 m/s. Once it is past the HOME arrow: **End lap** on the Teach
+   page (or the E key) → a 0.5 m stop, run complete. E: **Stop pass**: "loop closed, <L> m".
+   - The next pass may start where this one stopped: every pass is cut where it comes back past
+     its start and moved to start at the same point (the first pass's start, later HOME).
+   - Refused: a pass that ended more than 0.5 m short of its start, one driven the other way
+     round, one that does not pass the HOME point within 15 cm.
+5. Three passes → **Build**: one leg `HOME:loop>HOME`, spread ≤ 5 cm.
+6. O: AGV on the arrow, still. E: Station `HOME` → **Teach here**.
+7. High-speed areas (§3.3B) if wanted. **Publish** → **Make active** → Restart tape layer.
+8. Shadow laps: run `c-loop-guided` laps with End lap; the log says "would stop HOME" within
+   ±10 cm of the arrow every lap, and the Locator stays HEALTHY past HOME.
+9. E: `tape_loc.live: true`, restart on O's go. From then on: **At home** (automatic with
+   `auto_confirm_home`), then AUTO + **Start** = one lap. Start away from HOME is refused
+   ("not at HOME"). The HOME stop rests on AMCL alone: no marker or junction re-checks it.
+
 ## 7. Rollback
 
 1. E: set `tape_loc.enabled: false` in `profiles/agv-01.json`.

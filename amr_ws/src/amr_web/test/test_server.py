@@ -504,6 +504,18 @@ def test_guided_forced_u_turn_needs_the_engineer_and_a_boolean(env):
     assert page.status_code == 200 and b'data-uturn="true"' in page.data
 
 
+def test_guided_end_lap_needs_the_engineer(env):
+    client, stub, *_ = env
+    r = client.post("/api/line/end", json={})
+    assert r.status_code == 200 and stub.calls[-1] == ("line_end", ())
+    n = len(stub.calls)
+    client.post("/api/role", json={"role": "operator"})
+    assert client.post("/api/line/end", json={}).status_code == 403
+    assert len(stub.calls) == n  # nothing refused reached the robot
+    page = client.get("/teach")
+    assert page.status_code == 200 and b'id="gd-end"' in page.data
+
+
 def test_guided_continue_needs_the_engineer_and_a_boolean(env):
     client, stub, *_ = env
     r = client.post("/api/line/continue", json={"arm": True})

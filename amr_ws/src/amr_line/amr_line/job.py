@@ -390,6 +390,15 @@ class FollowJob:
             return False, "no mission loaded"
         return self.tape.order(side)
 
+    def end_lap(self):
+        """The guide page's End lap (loop teach lap): a measured stop, run DONE. Returns (ok,
+        message). Only while a guided run runs or is held; it never starts or resumes anything."""
+        if self.tape is None:
+            return False, "no mission loaded"
+        if self.state not in (RUNNING, HOLD):
+            return False, "End lap only while a guided run is running"
+        return self.tape.end_here()
+
     def force_u_turn(self, on):
         """The guide page's fallback: the next tape end is the U-turn. Returns (ok, message).
         Running: it changes what the tape end means. DONE at the tape end on the way out: the
@@ -497,7 +506,8 @@ class FollowJob:
         g = self.calls.ready_group()
         nxt = self.tape.next_event() if hasattr(self.tape, "next_event") else ""
         if g is not None and self.trip is None:
-            nxt = f"{g} trip formed: press Start at {self.site['HOME']}"
+            nxt = (f"lap: press Start at {self.site['HOME']}" if self.site.get("LOOP")
+                   else f"{g} trip formed: press Start at {self.site['HOME']}")
         ok, why = self.payload.may_leave()
         if self.calling:
             why = self._leave_check(self._i) if self._i is not None else "rear lidar: no reading yet"
@@ -585,7 +595,7 @@ class FollowJob:
     def _set_mission(self, mission, destination):
         if self.state not in (IDLE, DONE):
             return False, f"cannot change the job while {STATE_NAMES[self.state]}: clear first"
-        if mission is not None and str(mission.get("SCHEMA", "")).startswith("site"):
+        if mission is not None and (str(mission.get("SCHEMA", "")).startswith("site") or mission.get("LOOP")):
             return self._set_site(mission)
         self.site = self.calls = None
         destination = (destination or "").strip() or None
@@ -610,11 +620,22 @@ class FollowJob:
             return False, (f"{site['MISSION_NAME']} drives trips only with tape_loc.live: true "
                            f"(the position engine is off - it shadows)")
         from amr_line import trip as tripmod  # noqa: PLC0415
+        loop = bool(site.get("LOOP"))
+        if loop and self.calling:
+            return False, (f"{site['MISSION_NAME']} is a loop site: station calling (station.enabled) "
+                           f"has no machines to serve on it")
         self.mission, self.destination, self.result = None, None, ""
         self.site = site
-        self.calls = tripmod.CallQueue(site)
+        # A loop (manuals/loop-track-plan.md): every Start at HOME is one lap, nothing to carry.
+        self.calls = tripmod.LoopQueue(site) if loop else tripmod.CallQueue(site)
+        if loop:
+            self.payload = tripmod.NoPayload()
+        elif self.payload is None or isinstance(self.payload, tripmod.NoPayload):
+            self.payload = tripmod.Payload()
         self.high_select = False
         self.tape = self._new_tape()
+        if loop:
+            return True, f"loop site {site['MISSION_NAME']}: each Start at {site['HOME']} drives one lap"
         return True, (f"site mission {site['MISSION_NAME']}: trips form from machine calls "
                       f"({site['TRIP_CALLS']} a trip), Start at {site['HOME']}")
 

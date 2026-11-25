@@ -162,6 +162,7 @@ class TapeRun:
         self._mrun_pending = None     # a U-turn/home read waiting out the junction guard
         self._level = None            # the last tape level while following, for tape_ended()
         self.uturn_forced = False     # guide page: the NEXT tape end is the U-turn, strip or not
+        self.end_requested = False    # guide page "End lap" (loop teach lap): stop here, run DONE
         self._follower = None         # for a home stop begun from advance()
         self._mrun_back_m = 0.0       # wheel travel since the pivot (shared-code home arming)
         self.hold_req = None          # (cause, why): a hold the job takes before the next point
@@ -399,6 +400,8 @@ class TapeRun:
         _marker_run first (follower is needed there for the home stop); its codes are not the
         zone's. A guided run's toggle at NORMAL ignores the zone codes.
         """
+        if self.end_requested and follower is not None:
+            self._end_lap(driving, follower)
         if self.mrun is not None:
             self._marker_run(reads, ok, driving, follower)
         z = self.speed
@@ -553,7 +556,7 @@ class TapeRun:
         """The job continues this run after a stop off the tape: nothing half-done carries
         over (a pending strip read, a forced U-turn), the phase and distances do."""
         self._mrun_pending = None
-        self.uturn_forced = False
+        self.uturn_forced = self.end_requested = False
         self.uturn = self.uturn_req = None
         self.events.append((INFO, f"run continued on Start: {self.mrun_phase} phase, "
                                   f"{self._mrun_out_m:.1f} m out, {self._mrun_back_m:.1f} m back"))
@@ -573,6 +576,27 @@ class TapeRun:
         self.uturn_req["level"] = self._level       # the spin's reacquire reference, as approach()
         self.events.append((INFO, f"tape ended {past:.2f} m after {what} - stopping now "
                                   f"to pivot {self.uturn_req['direction']}"))
+
+    def end_here(self):
+        """The guide page's End lap (manuals/loop-track-plan.md): a loop has no home marker, so the
+        engineer ends the teach lap once the AGV has passed HOME. It begins the ordinary measured
+        stop (guided.end_stop_m), role home: the run ends DONE. One shot, taken on the next
+        driving tick. It never starts, resumes or speeds anything. Returns (ok, message)."""
+        if not self.guided:
+            return False, "End lap only in a guided mission"
+        if self.stop is not None or self.uturn_req is not None:
+            return False, "already stopping or turning"
+        self.end_requested = True
+        msg = f"End lap: stopping over {self.guided['end_stop_m']:g} m, then the run is complete"
+        self.events.append((INFO, msg))
+        return True, msg
+
+    def _end_lap(self, driving, follower):
+        if not driving or self.stop is not None or self.uturn_req is not None:
+            return                       # held, pivoting or turning: taken once driving again
+        self.end_requested = False
+        self._begin_stop({"tag": "guide page", "label": "End lap", "role": "home",
+                          "stop_distance_m": self.guided["end_stop_m"]}, follower)
 
     def force_u_turn(self, on):
         """The guide page's fallback (2026-10-24): the NEXT tape end is the U-turn, whether or

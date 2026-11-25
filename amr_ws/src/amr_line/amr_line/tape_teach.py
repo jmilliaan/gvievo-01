@@ -47,6 +47,15 @@ ANCHOR_R_M = 0.6
 # the leg it lies on and facing along, then moved on by the wheel travel since that pose.
 MARK_MAX_LATERAL_M = 0.30
 MARK_MAX_YAW_DEG = 60.0
+# A loop site (agv_core.mission loop-1, manuals/loop-track-plan.md): one leg, HOME round to HOME.
+# A pass is closed where it first comes back past its own start (after leaving it by LOOP_AWAY_M),
+# then rotated to start at ONE reference point - the taught HOME, else the first saved pass's start -
+# so every pass begins and ends at the same floor point and mean_leg averages like with like.
+LOOP_MIN_M = 5.0
+LOOP_AWAY_M = 1.0
+LOOP_REF_LATERAL_M = 0.15
+LOOP_REF_YAW_DEG = 60.0
+LOOP_HEADING_M = 0.5        # chord the heading of a lap is taken over (AMCL samples are noisy)
 
 
 class TeachError(ValueError):
@@ -216,10 +225,120 @@ def _align(rec, nodes, want, t0, t1, notes):
     return sorted(events)
 
 
-def split_pass(rec, mission, notes=None, anchors=None):
+def is_loop_circuit(mission, cid):
+    """The circuit is a loop site's: one leg, HOME round to HOME, no node."""
+    legs = mission["CIRCUITS"][cid]["legs"]
+    return len(legs) == 1 and legs[0]["order"] == "loop"
+
+
+def _dedupe(pts):
+    out = []
+    for p in pts:
+        if not out or math.dist(out[-1], p) > 1e-4:
+            out.append((float(p[0]), float(p[1])))
+    return out
+
+
+def _heading(line, s):
+    """The lap's heading at s, over a LOOP_HEADING_M chord (wrapping round the closed lap)."""
+    a = s - LOOP_HEADING_M / 2
+    b = s + LOOP_HEADING_M / 2
+    L = line.length
+    pa = line.point(a % L if a < 0 or a > L else a)
+    pb = line.point(b % L if b < 0 or b > L else b)
+    return math.atan2(pb[1] - pa[1], pb[0] - pa[0])
+
+
+def close_loop(rec):
+    """A loop pass -> its closed lap [(x, y)]: from its start to where it first came back past
+    it. TeachError for a pass that never went round or ended short of its start."""
+    who = f"pass {rec.get('started')}"
+    samples = sorted(rec["samples"])
+    if len(samples) < 10:
+        raise TeachError(f"{who}: only {len(samples)} AMCL poses")
+    pts = _dedupe([(x, y) for _t, x, y in samples])
+    if len(pts) < 3:
+        raise TeachError(f"{who}: the vehicle did not move")
+    line = tg.Polyline(pts)
+    x0, y0 = pts[0]
+    away = next((s for s, p in zip(line.s, line.pts, strict=True) if math.dist(p, (x0, y0)) > LOOP_AWAY_M),
+                None)
+    if away is None:
+        raise TeachError(f"{who}: never left its start - not a lap")
+    hits = line._candidates(x0, y0, away, line.length)
+    minima = [h for k, h in enumerate(hits)
+              if (k == 0 or h[2] <= hits[k - 1][2]) and (k == len(hits) - 1 or h[2] <= hits[k + 1][2])]
+    back = [h for h in minima if h[2] <= tg.STATION_MAX_LATERAL_M and h[0] < line.length - 1e-6]
+    if back:
+        lap = line.cut(0.0, min(back)[0])
+    else:
+        gap = math.dist(pts[-1], pts[0])
+        if gap > HOME_GAP_M:
+            raise TeachError(f"{who}: ended {gap:.2f} m from where it started (> {HOME_GAP_M} m): "
+                             f"drive on past the start before End lap")
+        lap = list(pts)
+    lap = _dedupe(lap)
+    length = tg.Polyline(lap).length if len(lap) >= 2 else 0.0
+    if length < LOOP_MIN_M:
+        raise TeachError(f"{who}: a lap of {length:.1f} m (< {LOOP_MIN_M:g} m) - stopped before it went round")
+    return lap
+
+
+def rotate_loop(lap, ref, who="pass"):
+    """A closed lap re-started where it passes ref (x, y, yaw). TeachError when it does not pass
+    ref, or passes it the other way round."""
+    line = tg.Polyline(lap)
+    x, y, yaw = ref
+    hit = line.project(x, y)
+    if hit is None or abs(hit[1]) > LOOP_REF_LATERAL_M:
+        far = f"{abs(hit[1]):.2f} m" if hit else "nowhere"
+        raise TeachError(f"{who}: passes the reference point (HOME) {far} away (> {LOOP_REF_LATERAL_M} m)")
+    s = hit[0]
+    if math.degrees(tg.heading_error(_heading(line, s), yaw)) > LOOP_REF_YAW_DEG:
+        raise TeachError(f"{who}: driven the other way round the loop")
+    return _dedupe(line.cut(s, line.length) + line.cut(0.0, s)[1:])
+
+
+def loop_ref(passes, mission, stations=()):
+    """The point every loop pass is rotated to: the taught HOME pose, else the start of the first
+    saved loop pass that closes (its heading from the lap). None when there is neither."""
+    home = next((st for st in stations if st["id"] == mission["HOME"]), None)
+    if home is not None:
+        return tuple(home["pose"])
+    for rec in passes:
+        if rec.get("circuit") not in mission["CIRCUITS"] or not is_loop_circuit(mission, rec["circuit"]):
+            continue
+        try:
+            lap = close_loop(rec)
+        except (TeachError, tg.GraphError):
+            continue
+        line = tg.Polyline(lap)
+        return lap[0][0], lap[0][1], _heading(line, 0.0)
+    return None
+
+
+def _split_loop(rec, mission, notes, ref):
+    who = f"pass {rec.get('started')}"
+    lap = close_loop(rec)
+    if ref is not None:
+        lap = rotate_loop(lap, ref, who)
+    leg = mission["CIRCUITS"][rec["circuit"]]["legs"][0]
+    notes.append(f"loop closed, {tg.Polyline(lap).length:.2f} m"
+                 + (", started at HOME" if ref is not None else ""))
+    if rec["forks"]:
+        notes.append(f"{len(rec['forks'])} MLS fork episode(s) ignored: a loop has no junction")
+    if rec["uturns"]:
+        raise TeachError(f"{who}: {len(rec['uturns'])} U-turn(s) recorded - a loop has none")
+    return {leg["id"]: {"pts": lap, "fork_back": 0.0, "end_kind": "loop"}}
+
+
+def split_pass(rec, mission, notes=None, anchors=None, ref=None):
     """One recorded pass -> {leg id: {"pts", "fork_back"}}. TeachError if it does not match.
-    notes: a list that receives what the matching dropped or restored."""
+    notes: a list that receives what the matching dropped or restored. ref: a loop circuit's
+    reference point (loop_ref), the place every loop pass is rotated to start at."""
     cid = rec["circuit"]
+    if is_loop_circuit(mission, cid):
+        return _split_loop(rec, mission, [] if notes is None else notes, ref)
     legs = mission["CIRCUITS"][cid]["legs"]
     nodes = _nodes(mission, cid)
     samples = sorted(rec["samples"])
@@ -374,13 +493,15 @@ def build(passes, mission, binding, stations=(), notes="", anchors=None):
     graph (tape_graph.compile_route names them). `stations` are taught station records
     (dicts with "id" and "pose"): re-projected onto the rebuilt legs."""
     report, per_leg = [], {}
+    stations = list(stations)
+    ref = loop_ref(passes, mission, stations)
     for rec in passes:
         if rec.get("circuit") not in mission["CIRCUITS"]:
             report.append(f"pass {rec.get('started')}: circuit {rec.get('circuit')!r} not in the mission")
             continue
         notes = []
         try:
-            parts = split_pass(rec, mission, notes, anchors)
+            parts = split_pass(rec, mission, notes, anchors, ref)
         except (TeachError, tg.GraphError) as e:
             report.append(f"REFUSED {e}")
             continue
@@ -434,6 +555,10 @@ def project_station(graph, mission, sid, pose, taught="", samples=0):
     def facing(h):
         return min(tg.heading_error(yaw, leg.line.point(h[0] + k)[2]) for k in (-0.05, 0.05))
 
+    if leg.end_kind == "loop" and len(near) > 1:
+        # The seam: a loop leg starts and ends at the same floor point (HOME). Its start, so that
+        # HOME's arrival lies mid-route (trip_route lays the loop twice), not on the route's end.
+        near = [min(near, key=lambda h: h[0])]
     s, d, _dist = min(near, key=facing)
     if facing((s, d, 0)) > math.radians(30):
         raise tg.GraphError(f"{sid}: the vehicle faces {math.degrees(yaw):.0f} deg, the leg runs "

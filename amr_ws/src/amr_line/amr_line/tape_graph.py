@@ -159,7 +159,7 @@ class Leg:
                  fork_back_m=0.0, end_kind="fork"):
         if leg_id(frm, order, to) != ident:
             raise GraphError(f"leg {ident!r}: id does not match {leg_id(frm, order, to)!r}")
-        if end_kind not in ("fork", "uturn", "none"):
+        if end_kind not in ("fork", "uturn", "none", "loop"):
             raise GraphError(f"leg {ident}: end_kind {end_kind!r}")
         self.id, self.frm, self.order, self.to = ident, frm, order, to
         self.line = Polyline(pts)
@@ -357,7 +357,9 @@ def _circuit_order(circuit_id, circuit, graph, also_missing=()):
 def _node(prev, leg, s0):
     """The node where `prev` ends and `leg` starts at S = s0, in the locator's format: a U-turn
     or a junction, its fork back from S where the multi-track began on the teach passes."""
-    kind = "uturn" if prev.end_kind == "uturn" else "junction"
+    # A loop leg (agv_core.mission loop-1) ends where it began, at HOME: the "seam" between one lap
+    # and the next is no junction - no fork to resync at, no order, no slowdown.
+    kind = {"uturn": "uturn", "loop": "seam"}.get(prev.end_kind, "junction")
     return {"id": leg.frm, "kind": kind, "order": leg.order, "S": s0,
             "S_fork": s0 - prev.fork_back_m if prev.end_kind == "fork" else s0,
             "sigma": max(prev.end_spread_m, MIN_END_SPREAD_M), "leg_in": prev.id,

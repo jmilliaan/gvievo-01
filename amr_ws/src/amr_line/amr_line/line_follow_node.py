@@ -342,6 +342,10 @@ class LineFollowNode(LeanNode):
                                 lambda req, res, act=act: self._trigger(
                                     f"forced U-turn {act}",
                                     lambda: self.job.force_u_turn(act == "force"), res))
+        # End lap (loop teach lap, 2026-11-25): a measured stop and the run is DONE. It only ends the
+        # running job; it never starts or resumes a run.
+        self.create_service(Trigger, "/amr/line/end/here",
+                            lambda req, res: self._trigger("end lap", self.job.end_lap, res))
         # And "continue this run on the next Start" after a "track lost" end (2026-10-24).
         for act in ("arm", "cancel"):
             self.create_service(Trigger, f"/amr/line/continue/{act}",

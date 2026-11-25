@@ -169,9 +169,12 @@ async function loadSite() {
     document.querySelectorAll('[data-confirm]').forEach(b => { b.title = 'The rear lidar decides while station calling is on'; });
   }
   $('cl-site').textContent = site.error ? `refused: ${site.error}` : `${site.mission}${site.live ? '' : ' · shadow only (tape_loc.live false)'}`;
-  $('cl-rule').textContent = site.calling
+  $('cl-rule').textContent = site.loop
+    ? `A loop: no calls, no trolleys. Each Start at ${site.home} drives one lap and stops at ${site.home}.`
+    : site.calling
     ? 'Station calling is ON: calls come from the station buttons. Here a waiting call can only be cancelled.'
     : (site.trip_calls ? `${site.trip_calls} call${site.trip_calls > 1 ? 's' : ''} of one group form a trip; it starts at ${site.home}.` : '');
+  if (site.loop) document.querySelectorAll('[data-confirm]').forEach(b => { b.hidden = true; });
   $('cl-groups').innerHTML = Object.entries(site.machines || {}).map(([g, ms]) =>
     `<h3>${esc(g)}</h3><div class="bar four">${ms.map(m => `<button class="big" data-machine="${esc(m)}">${esc(m)}</button>`).join('')}</div>`).join('');
   document.querySelectorAll('[data-machine]').forEach(b => {

@@ -416,6 +416,7 @@ class RosAdapter(LeanNode):
             "speed_high": cli(Trigger, "/amr/line/speed/high"),
             "uturn_force": cli(Trigger, "/amr/line/uturn/force"),
             "uturn_cancel": cli(Trigger, "/amr/line/uturn/cancel"),
+            "end_here": cli(Trigger, "/amr/line/end/here"),
             "continue_arm": cli(Trigger, "/amr/line/continue/arm"),
             "continue_cancel": cli(Trigger, "/amr/line/continue/cancel"),
             "line_at_home": cli(Trigger, "/amr/line/at_home"),
@@ -1082,6 +1083,13 @@ class RosAdapter(LeanNode):
     def line_uturn(self, force: bool) -> tuple[bool, str]:
         """Guided mission: the next tape end is the U-turn (or cancel that). Moves nothing."""
         r = self._call("uturn_force" if force else "uturn_cancel", Trigger.Request(), timeout=3.0)
+        if r is None:
+            return False, "line layer unavailable (enter Tracked mode first)"
+        return bool(r.success), r.message
+
+    def line_end(self) -> tuple[bool, str]:
+        """Guided mission: End lap, a measured stop and the run is complete. Moves nothing new."""
+        r = self._call("end_here", Trigger.Request(), timeout=3.0)
         if r is None:
             return False, "line layer unavailable (enter Tracked mode first)"
         return bool(r.success), r.message

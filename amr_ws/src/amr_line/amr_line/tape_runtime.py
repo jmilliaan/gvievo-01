@@ -383,12 +383,20 @@ class TapeRuntime:
         name = store.save_pass(self.state_dir, self.sel["map_id"], self.sel["map_revision"], rec.to_dict())
         notes = []
         try:
-            tt.split_pass(rec.to_dict(), self.m, notes, self._anchors())
+            tt.split_pass(rec.to_dict(), self.m, notes, self._anchors(), self._loop_ref(rec.circuit))
         except tt.TeachError as e:
             return False, (f"pass {name} saved but it does NOT match yet: {e} ({rec.summary()}); "
                            f"Build skips it")
         extra = f"; {'; '.join(notes)}" if notes else ""
         return True, f"pass {name} saved: {rec.summary()}{extra}"
+
+    def _loop_ref(self, circuit):
+        """A loop circuit's reference point (tape_teach.loop_ref) from what is saved, else None."""
+        if not tt.is_loop_circuit(self.m, circuit):
+            return None
+        sel = self.sel
+        return tt.loop_ref(store.load_passes(self.state_dir, sel["map_id"], sel["map_revision"]), self.m,
+                           store.load_stations(self.state_dir, sel["map_id"], sel["map_revision"]).values())
 
     def _anchors(self):
         return store.load_anchors(self.state_dir, self.sel["map_id"], self.sel["map_revision"])

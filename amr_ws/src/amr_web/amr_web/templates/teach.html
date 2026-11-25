@@ -112,6 +112,12 @@
         </div>
       </div>
       <div>
+        <h2>End lap <small>loop teach lap (E key): past HOME, stop here</small></h2>
+        <div class="bar">
+          <button id="gd-end" class="big" title="E key: a measured stop, the run is complete">End lap</button>
+        </div>
+      </div>
+      <div>
         <h2>Stopped off the tape <small>run ended "track lost"</small></h2>
         <div class="bar two">
           <button id="gd-continue" class="big" data-continue="true" title="Put the AGV back on the tape first">Continue on Start</button>
@@ -142,6 +148,8 @@ const speed = level => act('/api/line/speed', { level }, { msgEl: 'gd-msg', noRe
 document.querySelectorAll('[data-speed]').forEach(b => { b.onclick = () => speed(b.dataset.speed); });
 const uturn = force => act('/api/line/uturn', { force }, { msgEl: 'gd-msg', noResponse: 'no response: the U-turn order may not be set' });
 document.querySelectorAll('[data-uturn]').forEach(b => { b.onclick = () => uturn(b.dataset.uturn === 'true'); });
+const endLap = () => { if (!$('gd-end').disabled) act('/api/line/end', {}, { msgEl: 'gd-msg', noResponse: 'no response: End lap may not be set' }); };
+$('gd-end').onclick = endLap;
 const cont = arm => act('/api/line/continue', { arm }, { msgEl: 'gd-msg', noResponse: 'no response: continue may not be set' });
 document.querySelectorAll('[data-continue]').forEach(b => { b.onclick = () => cont(b.dataset.continue === 'true'); });
 async function mark() {
@@ -155,6 +163,7 @@ $('gd-mark').onclick = mark;
 document.addEventListener('keydown', e => {
   if (e.repeat || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) return;
   if (e.key === 'm' || e.key === 'M') { e.preventDefault(); mark(); return; }
+  if (e.key === 'e' || e.key === 'E') { e.preventDefault(); endLap(); return; }
   const side = { ArrowLeft: 'left', ArrowUp: 'straight', ArrowRight: 'right' }[e.key];
   if (!side || document.querySelector(`[data-side="${side}"]`).disabled) return;
   e.preventDefault();

@@ -365,14 +365,16 @@ def _read_marker_run(raw, vehicle, fastest_rpm):
 
 
 def _read_guided(raw, vehicle):
-    """guided -> {"cruise_mps", "cruise_rpm"}, or None."""
+    """guided -> {"cruise_mps", "cruise_rpm", "end_stop_m"}, or None. end_stop_m (optional,
+    default 0.5): the guide page's End lap stop distance (loop teach lap, 2026-11-25)."""
     if raw is None:
         return None
-    if not isinstance(raw, dict) or set(raw) != {"cruise_mps"}:
-        raise ConfigError("guided: expected null or exactly ['cruise_mps']")
+    if not isinstance(raw, dict) or "cruise_mps" not in raw or not set(raw) <= {"cruise_mps", "end_stop_m"}:
+        raise ConfigError("guided: expected null or exactly ['cruise_mps'], optionally with 'end_stop_m'")
     normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
     cruise = _bounded(raw, "cruise_mps", "guided", 0.0, round(normal_mps, 3))
-    return {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS}
+    end_stop = _bounded(raw, "end_stop_m", "guided", 0.0, 5.0) if "end_stop_m" in raw else 0.5
+    return {"cruise_mps": cruise, "cruise_rpm": cruise * vehicle.RPM_PER_MPS, "end_stop_m": end_stop}
 
 
 def _read_high_zone(raw, vehicle):
@@ -580,8 +582,22 @@ def load(name, vehicle=None, directory=None):
 # MACHINES {machine: group}, STATIONS {station: leg id}, UTURN_POINTS {id: {"direction",
 # "machine", "leg"}}, POINTS {point: leg id}. Positions (a point after its release) are
 # vehicle data: amr_line.trip_route checks them when a trip is compiled.
+#
+# LOOP site (schema "loop-1", manuals/loop-track-plan.md, 2026-11-25): ONE closed tape loop with no
+# junction and no U-turn. The AGV stands at HOME; AUTO + Start drives one lap and stops at HOME
+# again; the next Start drives the next lap. No calls, no trolleys, no attach stop:
+#
+#   {"schema": "loop-1", "mission_name": n, "home": id, "stop_distance_m": m, "cruise_mps": v}
+#
+# It parses into the same names as a site mission, so teaching, the locator and the trip code see
+# one circuit LOOP_CIRCUIT with one leg, HOME -> round the loop -> HOME (order "loop"), plus
+# LOOP True. ATTACH is None; GROUPS, MACHINES, JUNCTIONS, UTURNS, UTURN_POINTS, POINTS are empty.
 
 SITE_SCHEMA = "site-4"
+LOOP_SCHEMA = "loop-1"
+LOOP_CIRCUIT = "C-LOOP"
+LOOP_ORDER = "loop"
+_LOOP_KEYS = ("schema", "mission_name", "home", "stop_distance_m", "cruise_mps")
 _SITE_KEYS = ("schema", "mission_name", "home", "attach", "trip_calls", "stop_distance_m", "cruise_mps",
               "junctions", "uturns", "circuits", "groups", "uturn_points")
 SHAPES = ("Y", "T", "X")
@@ -592,8 +608,9 @@ _UTURN_KEYS = {"direction", "approach_mps", "decel_m", "max_approach_m", "lead_m
 
 
 def is_site(doc):
-    """A site mission of any schema generation (a site-3 file is refused by parse_site, by name)."""
-    return isinstance(doc, dict) and doc.get("schema") in (SITE_SCHEMA, "site-3")
+    """A site mission of any schema generation (a site-3 file is refused by parse_site, by name),
+    or a loop site."""
+    return isinstance(doc, dict) and doc.get("schema") in (SITE_SCHEMA, "site-3", LOOP_SCHEMA)
 
 
 def _ident(v, where):
@@ -698,6 +715,51 @@ def _site_legs(cid, items, junctions, home):
     return legs, before, after
 
 
+def _site_motion(doc, vehicle, out):
+    """stop_distance_m and cruise_mps, shared by site and loop missions."""
+    out["STOP_DISTANCE_M"] = _bounded(doc, "stop_distance_m", "site mission", 0.0, 5.0)
+    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
+    out["CRUISE_MPS"] = _bounded(doc, "cruise_mps", "site mission", 0.0, round(normal_mps, 3))
+    rate, decel = _decel_needed(vehicle, vehicle.AUTO_RPM, out["STOP_DISTANCE_M"])
+    if rate > decel:
+        raise ConfigError(f"stop_distance_m: stopping from {vehicle.AUTO_RPM:.0f} r/min in "
+                          f"{out['STOP_DISTANCE_M']:g} m needs {rate:.0f} r/min/s, "
+                          f"beyond drivers.ramp.auto.decel")
+
+
+def _parse_loop(doc, vehicle):
+    """A loop site (schema loop-1) -> the site mission names, one circuit, one leg."""
+    if not isinstance(doc, dict):
+        raise ConfigError("mission must be a JSON object")
+    unknown = set(doc) - set(_LOOP_KEYS)
+    if unknown:
+        raise ConfigError(f"loop mission: unknown key(s) {sorted(unknown)} (a loop has no junctions, "
+                          f"U-turns, attach stop or machines)")
+    missing = set(_LOOP_KEYS) - set(doc)
+    if missing:
+        raise ConfigError(f"loop mission: missing key(s) {sorted(missing)}")
+    home = _ident(doc["home"], "home")
+    out = {"SCHEMA": LOOP_SCHEMA, "MISSION_NAME": _coerce(doc["mission_name"], str, "mission_name"),
+           "LOOP": True, "HOME": home, "ATTACH": None, "TRIP_CALLS": 0}
+    _site_motion(doc, vehicle, out)
+    lid = leg_id(home, LOOP_ORDER, home)
+    items = [{"kind": "stop", "id": home}, {"kind": "stop", "id": home}]
+    out["JUNCTIONS"], out["UTURNS"] = {}, {}
+    out["CIRCUITS"] = {LOOP_CIRCUIT: {"items": items,
+                                      "legs": [{"id": lid, "from": home, "order": LOOP_ORDER, "to": home,
+                                                "stops": [home]}],
+                                      "home_depart": [home], "home_arrive": [home], "steers": {}}}
+    out["STATIONS"] = {home: lid}
+    out["GROUPS"], out["MACHINES"] = {}, {}
+    out["UTURN_POINTS"], out["POINTS"] = {}, {}
+    return out
+
+
+def is_loop(mission):
+    """A parsed mission is a loop site."""
+    return bool(mission and mission.get("LOOP"))
+
+
 def _parse_site(doc, vehicle):
     if not isinstance(doc, dict):
         raise ConfigError("mission must be a JSON object")
@@ -720,14 +782,7 @@ def _parse_site(doc, vehicle):
         raise ConfigError(f"trip_calls: expected 1 or 2 (site D3: at most two machines a trip), "
                           f"got {calls!r}")
     out["TRIP_CALLS"] = calls
-    out["STOP_DISTANCE_M"] = _bounded(doc, "stop_distance_m", "site mission", 0.0, 5.0)
-    normal_mps = vehicle.AUTO_RPM * vehicle.MPS_PER_RPM
-    out["CRUISE_MPS"] = _bounded(doc, "cruise_mps", "site mission", 0.0, round(normal_mps, 3))
-    rate, decel = _decel_needed(vehicle, vehicle.AUTO_RPM, out["STOP_DISTANCE_M"])
-    if rate > decel:
-        raise ConfigError(f"stop_distance_m: stopping from {vehicle.AUTO_RPM:.0f} r/min in "
-                          f"{out['STOP_DISTANCE_M']:g} m needs {rate:.0f} r/min/s, "
-                          f"beyond drivers.ramp.auto.decel")
+    _site_motion(doc, vehicle, out)
 
     if not isinstance(doc["junctions"], dict):
         raise ConfigError("junctions: expected an object")
@@ -870,7 +925,9 @@ def _site_points(doc, junctions, uturns, stations):
 def parse_site(doc, vehicle=None):
     """A site mission document -> the validated names. MissionError on any problem."""
     if not is_site(doc):
-        raise MissionError(f"not a site mission (schema must be {SITE_SCHEMA!r})")
+        raise MissionError(f"not a site mission (schema must be {SITE_SCHEMA!r} or {LOOP_SCHEMA!r})")
+    if doc.get("schema") == LOOP_SCHEMA:
+        return _as_mission_error(_parse_loop, doc, vehicle)
     if doc.get("schema") != SITE_SCHEMA:
         raise MissionError(f"schema {doc.get('schema')!r} is retired: {SITE_SCHEMA} adds cruise_mps "
                            f"and uturn_points (tracked plan 4 section 2.2)")

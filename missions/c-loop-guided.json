@@ -1,0 +1,8 @@
+{
+  "mission_name": "c-loop-guided",
+  "branch_default": "straight",
+  "branch_latch": [],
+  "high_zone": null,
+  "tags": [],
+  "guided": {"cruise_mps": 0.4, "end_stop_m": 0.5}
+}

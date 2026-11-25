@@ -201,3 +201,90 @@ class Payload:
 
     def may_leave(self):
         return (True, "") if self.off_at_home else (False, self.why)
+
+
+# -- a loop site (agv_core.mission loop-1, manuals/loop-track-plan.md) -------------------------
+#
+# No calls and no trolleys: every Start at HOME is one lap, HOME round to HOME. LoopQueue has the
+# CallQueue surface the job uses, always with a lap ready; LoopTrip the Trip surface trip_route,
+# SiteRun and the job use; a loop site's payload never holds a Start.
+
+LOOP_GROUP = "LOOP"
+
+
+class LoopTrip:
+    def __init__(self, mission):
+        self.m = mission
+        self.group = LOOP_GROUP
+        self.machines = []
+        self.called = []
+        self.circuit = next(iter(mission["CIRCUITS"]))
+        self.plan = [{"id": mission["HOME"], "role": "home", "work": []}]
+        self.served = set()
+        self.farthest = None
+
+    def uturn(self):
+        return None
+
+    def stops(self):
+        return [p["id"] for p in self.plan]
+
+    def stops_at(self, sid):
+        return any(p["id"] == sid for p in self.plan)
+
+    def work(self, sid):
+        return []
+
+    def serve(self, sid):
+        if self.stops_at(sid):
+            self.served.add(sid)
+
+    def confirm_released(self):
+        pass
+
+    def releases_pending(self):
+        return []
+
+    def may_pivot(self):
+        return True, ""
+
+    def describe(self):
+        return f"lap of {self.circuit}"
+
+    def missed(self):
+        return []
+
+    def result(self):
+        return f"lap of {self.circuit}: back at {self.m['HOME']}"
+
+
+class LoopQueue:
+    def __init__(self, mission):
+        self.m = mission
+        self.pending = []
+
+    def call(self, machine, t):
+        return False, f"{self.m['MISSION_NAME']} is a loop: no calls - press Start at {self.m['HOME']}"
+
+    def cancel(self, machine):
+        return False
+
+    def ready_group(self, available=None):
+        return LOOP_GROUP
+
+    def take(self, available=None):
+        return LoopTrip(self.m)
+
+    def restore(self, trip):
+        pass
+
+
+class NoPayload(Payload):
+    """A loop site carries nothing: leaving HOME is never held for trolleys."""
+
+    def __init__(self):
+        super().__init__()
+        self.confirm_off()
+
+    def trip_ended(self):
+        pass

@@ -77,6 +77,7 @@ class Adapter(Protocol):
     def line_branch(self, side: str) -> tuple[bool, str]: ...
     def line_speed(self, level: str) -> tuple[bool, str]: ...
     def line_uturn(self, force: bool) -> tuple[bool, str]: ...
+    def line_end(self) -> tuple[bool, str]: ...
     def line_continue(self, arm: bool) -> tuple[bool, str]: ...
     def line_teach(self, action: str, arg: str = "") -> tuple[bool, str]: ...
     def line_at_home(self) -> tuple[bool, str]: ...
@@ -384,7 +385,12 @@ def create_app(
             if config.TAPE_LOC_LIVE:
                 site = config.TAPE_LOC_SITE_MISSION
                 names.append(site)
-                notes[site] = "trips from machine calls (Run → Calls), driven by position; Start at HOME"
+                try:
+                    loop = missions.is_loop(missions.load_site(site))
+                except missions.MissionError:
+                    loop = False
+                notes[site] = ("a loop: each Start at HOME drives one lap, driven by position" if loop else
+                               "trips from machine calls (Run → Calls), driven by position; Start at HOME")
         except Exception:  # noqa: BLE001 - a dev box without a profile
             pass
         return jsonify({"missions": names, "destinations": dests, "errors": errors, "notes": notes})
@@ -436,7 +442,8 @@ def create_app(
         return jsonify({"mission": m["MISSION_NAME"], "circuits": sorted(m["CIRCUITS"]),
                         "stations": [m["HOME"], *[s for s in m["STATIONS"] if s != m["HOME"]]],
                         "points": list(m["POINTS"]), "machines": machines, "trip_calls": m["TRIP_CALLS"],
-                        "home": m["HOME"], "live": live, "calling": calling, "error": ""})
+                        "home": m["HOME"], "loop": missions.is_loop(m), "live": live, "calling": calling,
+                        "error": ""})
 
     @app.get("/api/line/graph")
     def api_line_graph():
@@ -492,6 +499,16 @@ def create_app(
         if not isinstance(force, bool):
             return _result(False, "force must be true or false", 422)
         return _call(adapter.line_uturn, force)
+
+    # End lap (loop teach lap, 2026-11-25): a measured stop, the run is complete. It only ends a
+    # running guided run; it never starts or resumes one.
+    @app.post("/api/line/end")
+    def api_line_end():
+        _need(tracked_ok)
+        denied = _engineer_only("End lap needs")
+        if denied:
+            return denied
+        return _call(adapter.line_end)
 
     # And "continue this run on the next Start" after a "track lost" end. Moves nothing.
     @app.post("/api/line/continue")
