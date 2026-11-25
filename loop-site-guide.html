@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop Site Commissioning</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: satu drawing sheet, stage strip di atas, lalu satu panel per stage (teks kiri, gambar kanan) */
+:root {
+  color-scheme: light;
+  --paper:#eff1f5; --surface:#ffffff; --surface-2:#e4e8ef;
+  --ink:#14171d; --ink-2:#3d4553; --ink-3:#666e7f;
+  --rule:#cbd2de; --rule-soft:#dde2eb; --wire:#8792a2;
+  --accent:#1b3a5c; --accent-2:#2f5f94; --on-accent:#ffffff;
+  --ok:#186e42; --hazard-ink:#5e4a00; --stop:#a32218; --stop-wash:#f6dedb;
+  --blue-wash:#e8eff8; --blue-line:#688ab0;
+  --amber-wash:#fbf2d2; --amber-line:#b68e16;
+  --grey-wash:#eef0f4; --grey-line:#8d96a4;
+  --math-bg:#f3f5f9;
+  --f-display:"Archivo", "Arial Narrow", Arial, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.45 var(--f-body); font-variant-numeric:tabular-nums;
+  padding:24px 16px 48px; }
+.sheet { max-width:1120px; margin:0 auto; background:var(--surface); border:1.5px solid var(--ink); position:relative; padding:28px; }
+.sheet::before { content:""; position:absolute; inset:13px; border:1px solid var(--rule-soft); pointer-events:none; }
+.sheet > * { position:relative; }
+header { border-bottom:9px solid var(--stop); padding-bottom:18px; margin-bottom:22px; display:grid; gap:10px; }
+.eyebrow, .mono { font-family:var(--f-mono); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-3); }
+h1 { font:700 clamp(26px,4vw,38px)/1.05 var(--f-display); text-transform:uppercase; letter-spacing:-.02em; margin:0; text-wrap:balance; }
+h2 { font:700 21px/1.15 var(--f-display); text-transform:uppercase; letter-spacing:-.01em; margin:0; }
+h3 { font:600 15px/1.2 var(--f-display); text-transform:uppercase; letter-spacing:-.01em; margin:16px 0 8px; }
+p { margin:0; }
+.lede { color:var(--ink-2); max-width:70ch; }
+.meta { display:flex; flex-wrap:wrap; gap:8px; }
+.chip { font-family:var(--f-mono); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; border:1px solid var(--grey-line); color:var(--ink-2); padding:3px 8px; }
+.chip.stop { border-color:var(--stop); color:var(--stop); }
+.chip.blue { border-color:var(--blue-line); color:var(--accent-2); }
+
+.strip { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); border:1.5px solid var(--ink-3); margin-bottom:26px; }
+.strip a { display:grid; gap:4px; padding:10px 10px 12px; border-right:1px solid var(--rule); text-decoration:none; color:var(--ink); align-content:start; }
+.strip a:last-child { border-right:0; }
+.strip a:hover, .strip a:focus-visible { background:var(--blue-wash); outline:2px solid var(--accent-2); outline-offset:-2px; }
+.strip .n { font-family:var(--f-mono); font-size:10px; letter-spacing:.08em; color:var(--ink-3); }
+.strip .t { font:600 13px/1.15 var(--f-display); text-transform:uppercase; }
+.strip .m { font-family:var(--f-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; }
+.strip .live { background:var(--accent); color:var(--on-accent); }
+.strip .live .n, .strip .live .m { color:#c9d6e6; }
+@media (max-width:860px) { .strip { grid-template-columns:repeat(2, minmax(0,1fr)); } .strip a { border-bottom:1px solid var(--rule); } }
+
+.stage { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.05fr); gap:24px; padding:22px 0; border-top:1.5px solid var(--ink); }
+.stage.one { grid-template-columns:minmax(0,1fr); }
+@media (max-width:860px) { .stage { grid-template-columns:minmax(0,1fr); } }
+.stage-head { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; margin-bottom:10px; }
+.num { font:700 13px var(--f-mono); color:var(--on-accent); background:var(--accent); padding:2px 7px; }
+.who { font-family:var(--f-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3); }
+ol.steps { margin:0; padding:0; list-style:none; counter-reset:s; display:grid; gap:8px; }
+ol.steps li { counter-increment:s; display:grid; grid-template-columns:26px minmax(0,1fr); gap:8px; font-size:14.5px; color:var(--ink-2); }
+ol.steps li::before { content:counter(s); font:600 11px var(--f-mono); color:var(--accent); border:1px solid var(--blue-line); height:20px; display:grid; place-items:center; margin-top:1px; }
+b { color:var(--ink); font-weight:600; }
+code { font-family:var(--f-mono); font-size:12.5px; background:var(--math-bg); border:1px solid var(--rule-soft); padding:0 4px; color:var(--ink); }
+.done { margin-top:14px; border-left:3px solid var(--ok); padding:6px 0 6px 12px; font-size:13.5px; color:var(--ink-2); }
+.done .mono { color:var(--ok); display:block; margin-bottom:2px; }
+.warn { margin-top:10px; border-left:3px solid var(--amber-line); background:var(--amber-wash); padding:8px 12px; font-size:13.5px; color:var(--hazard-ink); }
+.stopbox { margin-top:10px; border-left:3px solid var(--stop); background:var(--stop-wash); padding:8px 12px; font-size:13.5px; color:var(--stop); }
+
+figure { margin:0; border:1px solid var(--rule); background:var(--surface); padding:12px; position:relative; align-self:start; }
+figure .tag { position:absolute; top:-9px; left:12px; background:var(--surface); border:1px solid var(--blue-line); color:var(--accent-2); font:600 9.5px var(--f-mono); letter-spacing:.07em; text-transform:uppercase; padding:1px 6px; }
+figure svg { display:block; width:100%; height:auto; max-width:100%; }
+figcaption { font-size:12.5px; color:var(--ink-3); margin-top:8px; }
+
+.tape { fill:none; stroke:var(--ink); stroke-width:5; }
+.tape-thin { fill:none; stroke:var(--ink); stroke-width:3; }
+.wire { fill:none; stroke:var(--wire); stroke-width:1.6; }
+.dash { stroke-dasharray:6 4; }
+.path-a { fill:none; stroke:var(--accent-2); stroke-width:2; }
+.path-b { fill:none; stroke:var(--ok); stroke-width:2; }
+.cut { stroke:var(--stop); stroke-width:2.5; }
+.zone { fill:var(--amber-wash); stroke:var(--amber-line); stroke-width:1.5; stroke-dasharray:5 3; }
+.home-mk { fill:var(--stop); }
+.lbl { font:600 11px var(--f-mono); fill:var(--ink-2); letter-spacing:.04em; text-transform:uppercase; }
+.lbl-s { font:500 10px var(--f-mono); fill:var(--ink-3); letter-spacing:.04em; }
+.lbl-blue { fill:var(--accent-2); } .lbl-ok { fill:var(--ok); } .lbl-stop { fill:var(--stop); } .lbl-amb { fill:var(--hazard-ink); }
+.box-bg { fill:var(--surface); stroke:var(--rule-soft); }
+.floor { fill:var(--grey-wash); stroke:var(--rule); }
+.arrfill { fill:var(--wire); } .arrblue { fill:var(--accent-2); } .arrok { fill:var(--ok); } .arrink { fill:var(--ink); }
+
+table.kv { width:100%; border-collapse:collapse; border:1.5px solid var(--ink-3); margin-top:12px; font-size:13.5px; }
+table.kv th, table.kv td { border:1px solid var(--rule); padding:6px 9px; text-align:left; vertical-align:top; }
+table.kv th { background:var(--surface-2); font:600 10.5px var(--f-mono); text-transform:uppercase; letter-spacing:.06em; color:var(--ink-2); width:34%; }
+footer { border-top:1.5px solid var(--ink); padding-top:14px; display:grid; gap:6px; }
+footer p { font-size:13px; color:var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header>
+    <span class="eyebrow">AGV-01 · branch gvievo-ce · loop site (schema loop-1)</span>
+    <h1>Loop site: dari lantai kosong sampai satu Start, satu lap</h1>
+    <p class="lede">Satu loop tape tertutup, tanpa junction, tanpa MLS marker. Petakan area, ajarkan loop dengan menjalankannya, tandai HOME dan area cepat, lalu go live: setiap Start di HOME menjalankan satu lap dan berhenti di HOME.</p>
+    <div class="meta">
+      <span class="chip stop">Belum pernah dijalankan di kendaraan</span>
+      <span class="chip">Kosong, tanpa trolley</span>
+      <span class="chip">Operator selalu dekat E-stop</span>
+      <span class="chip blue">Runbook §6A · loop-hardware-tests.md</span>
+    </div>
+  </header>
+
+  <nav class="strip" aria-label="Tahapan">
+    <a href="#s1"><span class="n">0</span><span class="t">Persiapan</span><span class="m">profile · panah lantai</span></a>
+    <a href="#s2"><span class="n">1</span><span class="t">Mapping area</span><span class="m">MANUAL · preset moves</span></a>
+    <a href="#s3"><span class="n">2</span><span class="t">Loop run</span><span class="m">AUTO · 3 pass</span></a>
+    <a href="#s4"><span class="n">3</span><span class="t">Build</span><span class="m">satu leg, ≤ 5 cm</span></a>
+    <a href="#s5"><span class="n">4</span><span class="t">Marks</span><span class="m">HOME · area cepat</span></a>
+    <a href="#s6"><span class="n">5</span><span class="t">Shadow lap</span><span class="m">5 lap, tanpa hold</span></a>
+    <a href="#s7" class="live"><span class="n">6</span><span class="t">Siap jalan</span><span class="m">live: Start = lap</span></a>
+  </nav>
+
+  <!-- 0 -->
+  <section class="stage one" id="s1">
+    <div>
+      <div class="stage-head"><span class="num">0</span><h2>Persiapan</h2><span class="who">Engineer · di PC</span></div>
+      <ol class="steps">
+        <li><span>Pasang tape loop dengan radius di setiap sudut. Sebelum yang lain, jalankan satu lap biasa dengan mission <code>c-loop-guided</code> dan jalan di sampingnya: setiap sudut harus terlewati tanpa FAULT. Sudut yang FAULT ("no tape within 75 deg") perlu radius di lantai, bukan perubahan software.</span></li>
+        <li><span>Tempel <b>panah di lantai pada HOME</b>, menunjuk arah jalan AGV. Panah ini adalah titik awal survey, titik awal pass pertama, dan tempat HOME diajarkan.</span></li>
+        <li><span>Profile: <code>tape_loc.site_mission: "loop-site"</code>, <code>shadow_circuit: "C-LOOP"</code>, <code>live: false</code>, <code>station.enabled: false</code>. Restart <code>amr.service</code> setelah operator memberi izin.</span></li>
+      </ol>
+      <div class="done"><span class="mono">Selesai jika</span>Halaman Teach menampilkan <code>loop-site</code>, dan Run → Calls menampilkan "A loop: no calls, no trolleys".</div>
+    </div>
+  </section>
+
+  <!-- 1 -->
+  <section class="stage" id="s2">
+    <div>
+      <div class="stage-head"><span class="num">1</span><h2>Mapping area</h2><span class="who">Selector MANUAL · halaman Mapping</span></div>
+      <ol class="steps">
+        <li><span>Parkir di atas panah, menghadap arah panah, diam. Mapping → Survey → map id (mis. <code>loop_site</code>), start mark "HOME arrow" → <b>Start survey</b>.</span></li>
+        <li><span>Jalankan bagian lurus dengan <b>preset moves</b>: Forward sampai 10 m pada 0.30 m/s. Belok di sudut dengan preset spin (20–180°) atau jog pelan; setiap spin dibatasi 0.27 rad/s selama survey.</span></li>
+        <li><span>Putari loop <b>dua arah</b>, di atas atau di samping tape, dan sedikit melebihi area yang akan dilewati AGV.</span></li>
+        <li><span>Kembali ke panah dengan heading yang sama → <b>Returned to start</b>. Baca nilai closure.</span></li>
+        <li><span><b>Save map revision</b> → <code>rev N</code>.</span></li>
+        <li><span>Dynamic areas (parkir trolley, rak yang berpindah) dibuat sekarang, dengan <code>ros2 run amr_mission map_edit … --dynamic-rect …</code>. Ini menghasilkan rev N+1: lakukan teach di revisi itu.</span></li>
+      </ol>
+      <div class="warn">Setelah setiap preset move, pesan merah "the map may have slipped here" (≥ 2°): mundur dan jalankan bagian itu lagi pelan-pelan. "The map is broken from here" (≥ 5°): abort lalu mulai ulang.</div>
+      <div class="done"><span class="mono">Selesai jika</span>Closure beberapa cm dan 1–2°, dinding terlihat tunggal dan lurus, revisi sudah tersimpan.</div>
+    </div>
+    <figure>
+      <span class="tag">Jalur survey</span>
+      <svg viewBox="0 0 520 290" role="img" aria-label="Survey: mulai di panah HOME, putari persegi panjang sekali tiap arah di samping tape, kembali ke panah dan baca closure.">
+        <defs>
+          <marker id="m1a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="arrblue"/></marker>
+          <marker id="m1b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="arrok"/></marker>
+        </defs>
+        <rect x="20" y="20" width="480" height="240" class="floor"/>
+        <rect x="80" y="60" width="360" height="160" class="tape"/>
+        <path d="M190 236 H456 V44 H64 V236 H170" class="path-a" marker-end="url(#m1a)"/>
+        <path d="M200 204 H96 V76 H424 V204 H220" class="path-b dash" marker-end="url(#m1b)"/>
+        <polygon points="180,220 196,226 180,232" class="home-mk"/>
+        <rect x="150" y="242" width="80" height="18" class="box-bg"/>
+        <text x="190" y="255" text-anchor="middle" class="lbl lbl-stop">HOME arrow</text>
+        <rect x="262" y="26" width="132" height="16" class="box-bg"/>
+        <text x="328" y="38" text-anchor="middle" class="lbl-s">preset Forward ≤ 10 m</text>
+        <text x="282" y="250" class="lbl lbl-blue">lap 1 · arah jalan nanti</text>
+        <text x="236" y="198" class="lbl lbl-ok">lap 2 · arah sebaliknya</text>
+        <text x="448" y="140" class="lbl-s" transform="rotate(90 470 140)">spin pelan ≤ 0.27 rad/s</text>
+        <rect x="292" y="126" width="128" height="28" class="box-bg"/>
+        <text x="356" y="138" text-anchor="middle" class="lbl-s">tape (dijalankan nanti)</text>
+        <text x="356" y="149" text-anchor="middle" class="lbl-s">dinding + rak = map</text>
+      </svg>
+      <figcaption>Map dibangun dari scanner, jadi jalan dekat tape dan putari dua arah; loop ditutup di titik awalnya.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 2 -->
+  <section class="stage" id="s3">
+    <div>
+      <div class="stage-head"><span class="num">2</span><h2>Loop run (teach pass)</h2><span class="who">Selector AUTO · halaman Teach</span></div>
+      <ol class="steps">
+        <li><span>Teach → map, rev → <b>Select map</b> → Restart tape layer. Di atas panah: beri initial pose manual (hanya pertama kali) → <b>Scans align</b> → READY.</span></li>
+        <li><span>Halaman Run → mission <code>c-loop-guided</code>. Teach: circuit <code>C-LOOP</code> → <b>Record pass</b>.</span></li>
+        <li><span>Panel: AUTO → <b>Start</b>. AGV mengikuti tape pada 0.4 m/s. Jalan di sampingnya.</span></li>
+        <li><span>Setelah AGV <b>melewati panah</b>: <b>End lap</b> (halaman Teach, atau tombol E). AGV berhenti dalam 0.5 m dan run selesai.</span></li>
+        <li><span><b>Stop pass</b>. Pesan: <code>loop closed, L m</code>.</span></li>
+        <li><span>Ulangi untuk pass 2 dan 3, mulai dari tempat AGV berhenti. Tidak perlu jog kembali.</span></li>
+      </ol>
+      <div class="stopbox">Ditolak: pass yang berakhir lebih dari 0.5 m sebelum titik awalnya, pass yang dijalankan arah sebaliknya, atau pass yang tidak melewati HOME dalam jarak 15 cm.</div>
+      <div class="done"><span class="mono">Selesai jika</span>Tiga pass tersimpan, ketiga nilai L berbeda tidak lebih dari sekitar 0.2 m.</div>
+    </div>
+    <figure>
+      <span class="tag">Satu pass, lalu berikutnya</span>
+      <svg viewBox="0 0 520 290" role="img" aria-label="Satu teach pass mulai di panah, satu putaran, lewat panah sampai End lap menghentikannya; kelebihan setelah titik awal dipotong, dan pass berikutnya mulai dari titik berhenti itu.">
+        <defs>
+          <marker id="m2a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="arrblue"/></marker>
+          <marker id="m2w" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="arrfill"/></marker>
+        </defs>
+        <rect x="20" y="20" width="480" height="240" class="floor"/>
+        <rect x="80" y="60" width="360" height="160" class="tape"/>
+        <path d="M190 232 H452 V48 H68 V232 H254" class="path-a" marker-end="url(#m2a)"/>
+        <line x1="190" y1="226" x2="190" y2="244" class="cut"/>
+        <polygon points="176,214 190,220 176,226" class="home-mk"/>
+        <rect x="256" y="224" width="10" height="16" fill="#5e4a00"/>
+        <rect x="200" y="244" width="152" height="30" class="box-bg"/>
+        <text x="276" y="256" text-anchor="middle" class="lbl lbl-amb">End lap · stop 0.5 m</text>
+        <text x="276" y="268" text-anchor="middle" class="lbl-s">kelebihan lewat panah dipotong</text>
+        <rect x="102" y="244" width="84" height="18" class="box-bg"/>
+        <text x="144" y="257" text-anchor="middle" class="lbl lbl-stop">awal pass</text>
+        <path d="M270 204 H404" class="wire dash" marker-end="url(#m2w)"/>
+        <text x="270" y="196" class="lbl-s">pass berikutnya mulai di sini</text>
+        <rect x="150" y="118" width="220" height="44" class="box-bg"/>
+        <text x="260" y="134" text-anchor="middle" class="lbl">setiap pass digeser</text>
+        <text x="260" y="150" text-anchor="middle" class="lbl">agar mulai di titik yang sama</text>
+      </svg>
+      <figcaption>Berhenti satu-dua meter setelah panah tidak masalah: setiap pass dipotong di titik ia kembali melewati awalnya, lalu disejajarkan dengan pass lain.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 3 -->
+  <section class="stage one" id="s4">
+    <div>
+      <div class="stage-head"><span class="num">3</span><h2>Build</h2><span class="who">Engineer · halaman Teach</span></div>
+      <ol class="steps">
+        <li><span>Tekan <b>Build</b>. Ketiga pass dirata-rata menjadi track.</span></li>
+      </ol>
+      <table class="kv">
+        <tr><th>Hasil yang diharapkan</th><td>Satu leg <code>HOME:loop&gt;HOME</code>, 3 pass, tidak ada <code>REFUSED</code></td></tr>
+        <tr><th>Spread</th><td>≤ 0.050 m. Lebih besar: AMCL tidak stabil di bagian itu; rekam satu pass lagi lalu Build ulang</td></tr>
+        <tr><th>Panjang</th><td>Mendekati nilai L dari pass-pass tadi</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="stage" id="s5">
+    <div>
+      <div class="stage-head"><span class="num">4</span><h2>Membuat marks</h2><span class="who">MANUAL untuk parkir · halaman Teach</span></div>
+      <h3>HOME</h3>
+      <ol class="steps">
+        <li><span>Jog ke atas panah, dengan <b>satu meter terakhir maju</b> sepanjang tape (AMCL hanya update saat bergerak).</span></li>
+        <li><span>Diam 3 detik → Station <code>HOME</code> → <b>Teach here</b> → <b>Build</b>.</span></li>
+      </ol>
+      <div class="done"><span class="mono">Selesai jika</span><code>HOME taught on HOME:loop&gt;HOME</code> dalam 10 cm dari tape, dan <code>every circuit compiles</code>.</div>
+      <h3>High-speed areas (opsional)</h3>
+      <ol class="steps">
+        <li><span>Teach → <b>High-speed areas</b> → Draw new → klik sudut-sudutnya → Save. Gambar hanya di <b>bagian lurus</b>; tikungan tidak pernah cepat.</span></li>
+        <li><span>Akhiri setiap area minimal 2 m sebelum HOME, agar AGV sudah kembali ke cruise sebelum berhenti.</span></li>
+        <li><span><b>Publish</b> → <b>Make active</b> → Restart tape layer.</span></li>
+      </ol>
+      <div class="done"><span class="mono">Selesai jika</span>Teach Status menampilkan nama graph dan tile Locator menunjukkan IDLE.</div>
+    </div>
+    <figure>
+      <span class="tag">Marks di loop</span>
+      <svg viewBox="0 0 520 290" role="img" aria-label="HOME diajarkan di panah; high-speed area adalah kotak yang digambar di atas bagian lurus panjang, berakhir sebelum sudut dan minimal 2 m sebelum HOME.">
+        <rect x="20" y="20" width="480" height="240" class="floor"/>
+        <rect x="236" y="42" width="160" height="36" class="zone"/>
+        <rect x="236" y="202" width="160" height="36" class="zone"/>
+        <rect x="80" y="60" width="360" height="160" class="tape"/>
+        <polygon points="176,214 190,220 176,226" class="home-mk"/>
+        <circle cx="190" cy="220" r="9" fill="none" stroke="#a32218" stroke-width="2"/>
+        <rect x="140" y="236" width="84" height="18" class="box-bg"/>
+        <text x="182" y="249" text-anchor="middle" class="lbl lbl-stop">HOME</text>
+        <text x="316" y="35" text-anchor="middle" class="lbl lbl-amb">HIGH area</text>
+        <text x="316" y="254" text-anchor="middle" class="lbl lbl-amb">HIGH area</text>
+        <line x1="190" y1="196" x2="236" y2="196" class="wire"/>
+        <line x1="190" y1="190" x2="190" y2="202" class="wire"/>
+        <line x1="236" y1="190" x2="236" y2="202" class="wire"/>
+        <text x="213" y="187" text-anchor="middle" class="lbl-s">≥ 2 m</text>
+        <rect x="120" y="118" width="280" height="44" class="box-bg"/>
+        <text x="260" y="134" text-anchor="middle" class="lbl">sudut tetap di cruise</text>
+        <text x="260" y="150" text-anchor="middle" class="lbl-s">area berlaku mulai lap berikutnya, tanpa Build</text>
+      </svg>
+      <figcaption>HOME adalah satu-satunya stop di loop. Area cepat digambar di map, bukan dipasang sebagai marker strip.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 5 -->
+  <section class="stage one" id="s6">
+    <div>
+      <div class="stage-head"><span class="num">5</span><h2>Shadow lap</h2><span class="who">AUTO · live masih off</span></div>
+      <ol class="steps">
+        <li><span>Di atas panah: <b>At home</b> → Scans align → READY. Locator berubah WAITING → HEALTHY.</span></li>
+        <li><span>Lima lap dengan <code>c-loop-guided</code>, End lap setelah panah setiap kali. Satu orang berdiri di panah dan mencatat posisi AGV saat log menampilkan <code>stop HOME … ok</code>.</span></li>
+      </ol>
+      <div class="done"><span class="mono">Selesai jika</span>Setiap lap mencatat <code>shadow: lap complete</code>; tidak ada <code>would HOLD</code>, tidak ada <code>LOST</code>, tidak ada "fork with no taught junction"; Locator HEALTHY sepanjang putaran, termasuk saat melewati HOME; titik HOME di log dalam ±10 cm dari panah.</div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="stage" id="s7">
+    <div>
+      <div class="stage-head"><span class="num">6</span><h2>Siap jalan</h2><span class="who">Engineer sekali · lalu operator</span></div>
+      <ol class="steps">
+        <li><span>Profile <code>tape_loc.live: true</code>, restart setelah operator memberi izin.</span></li>
+        <li><span>At home dikonfirmasi otomatis di HOME (<code>auto_confirm_home</code>).</span></li>
+        <li><span>Selector AUTO → <b>Start</b>: horn 2 detik, satu lap pada 0.5 m/s (lebih cepat hanya di dalam area yang digambar), measured stop di HOME, run selesai.</span></li>
+        <li><span><b>Start</b> lagi untuk lap berikutnya. Tidak ada tombol lain.</span></li>
+      </ol>
+      <div class="warn">Ukur lima stop pertama terhadap panah, sepanjang tape: target ±10 cm, dan tidak bergeser dari lap ke lap. Stop hanya bergantung pada map; bagian kosong tanpa dinding/rak sebelum HOME membuatnya kurang presisi.</div>
+      <div class="stopbox">Start di luar HOME ditolak ("not at HOME"). Jog dulu kembali ke panah.</div>
+    </div>
+    <figure>
+      <span class="tag">Setiap Start</span>
+      <svg viewBox="0 0 520 290" role="img" aria-label="Live: Start di HOME, AGV menjalankan satu lap pada cruise, lebih cepat di dalam area, melambat di 0.5 m terakhir dan berhenti di HOME; Start berikutnya mengulanginya.">
+        <defs>
+          <marker id="m6a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="arrink"/></marker>
+        </defs>
+        <rect x="20" y="20" width="480" height="240" class="floor"/>
+        <rect x="236" y="42" width="160" height="36" class="zone"/>
+        <rect x="236" y="202" width="160" height="36" class="zone"/>
+        <rect x="80" y="60" width="360" height="160" class="tape-thin"/>
+        <path d="M200 232 H452 V48 H68 V232 H178" fill="none" stroke="#1b3a5c" stroke-width="2.5" marker-end="url(#m6a)"/>
+        <line x1="150" y1="226" x2="150" y2="238" class="wire"/>
+        <text x="126" y="250" class="lbl-s">stop 0.5 m</text>
+        <polygon points="176,214 190,220 176,226" class="home-mk"/>
+        <rect x="190" y="244" width="96" height="18" class="box-bg"/>
+        <text x="238" y="257" text-anchor="middle" class="lbl lbl-stop">HOME · Start</text>
+        <rect x="150" y="104" width="220" height="72" fill="#1b3a5c"/>
+        <text x="260" y="128" text-anchor="middle" font-family="IBM Plex Mono, Consolas, monospace" font-size="11" font-weight="600" fill="#ffffff" letter-spacing=".06em">START = SATU LAP</text>
+        <text x="260" y="148" text-anchor="middle" font-family="IBM Plex Mono, Consolas, monospace" font-size="10" fill="#c9d6e6">cruise 0.5 m/s · HIGH di area</text>
+        <text x="260" y="164" text-anchor="middle" font-family="IBM Plex Mono, Consolas, monospace" font-size="10" fill="#c9d6e6">stop di HOME · DONE</text>
+      </svg>
+      <figcaption>Tanpa call, tanpa trolley, tanpa attach stop: tombol Start di panel saat di HOME adalah seluruh pekerjaannya.</figcaption>
+    </figure>
+  </section>
+
+  <footer>
+    <span class="mono">Sumber</span>
+    <p>manuals/tape-localization-runbook.md §6A · loop-hardware-tests.md (root repo) · manuals/loop-track-plan.md · amr_ws/RUNBOOK.md §2 (survey). Commit 04e7dc2, branch gvievo-ce. Dibuat dan dites hanya di dev box, 2026-11-25.</p>
+  </footer>
+</div>
+</body>
+</html>
