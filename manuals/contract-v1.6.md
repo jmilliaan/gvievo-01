@@ -131,7 +131,8 @@ The shape is the v1.5 one-BTU-stop shape, with `HOME-N` and `R3-k`:
 | 8 | node `HOME-N` | none |
 
 The action ids keep the generic `:MW` (the release wait) and `:ME` (the take wait), so the release-and-take
-rules of section 6.1 apply unchanged. The U-turn (counter-clockwise, 0.1 m past the release) lies inside edge
+rules of section 6.1 apply unchanged. The U-turn (clockwise, at the release stop: since 2026-11-25 the
+release is 1.5 m further on and the AGV pivots where it released, after the Start) lies inside edge
 `SW-n:SE-n` and is never sent.
 
 **orderId.** `<machine>-YYYYMMDDTHHMMSS`, for example `BTU5-20261125T081500`, `STU3-...` (ROW3) or

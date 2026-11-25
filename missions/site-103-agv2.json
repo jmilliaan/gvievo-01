@@ -109,9 +109,9 @@
     }
   },
   "uturn_points": {
-    "UT-STU7": {"direction": "ccw"},
-    "UT-STU8": {"direction": "ccw"},
-    "UT-STU9": {"direction": "ccw"},
-    "UT-STU10": {"direction": "ccw"}
+    "UT-STU7": {"direction": "cw"},
+    "UT-STU8": {"direction": "cw"},
+    "UT-STU9": {"direction": "cw"},
+    "UT-STU10": {"direction": "cw"}
   }
 }
