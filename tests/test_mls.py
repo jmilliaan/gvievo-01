@@ -215,6 +215,21 @@ def test_event_and_temperature_decoding():
           and not any(guard.is_sensor_allowed(0x2080, s) for s in (2, 3, 4, 5)))
 
 
+def test_offset_cal_runs_only_over_bare_floor():
+    print("\nMLS: the user offset calibration (202Bh), never over tape (manual 8.4.5.1)")
+    check("bare floor (field 118 below the min. level 300, no #LCP): allowed",
+          mls.offset_cal_refusal(118, 300, 0) == "")
+    check("a marker code with no track is still bare floor (#LCP is byte 6 bits 0-2)",
+          mls.offset_cal_refusal(118, 300, 0b01000000) == "")
+    check("a track under the sensor refuses it", "track" in mls.offset_cal_refusal(118, 300, 2))
+    check("a field at the min. level refuses it (tape nearby)",
+          "min. level" in mls.offset_cal_refusal(300, 300, 0) and mls.offset_cal_refusal(1900, 300, 0) != "")
+    check("a sensor that does not answer refuses it, and 202Bh is on the guard's MLS list",
+          mls.offset_cal_refusal(None, 300, 0) != "" and guard.is_sensor_allowed(*mls.OFFSET_CAL))
+
+
 TESTS = [test_standard_decoding, test_combi_decoding, test_nlcp_table,
          test_status_and_marker_bits, test_short_frames_and_sdo_equivalence,
-         test_calibration_summary, test_marker_tooling, test_event_and_temperature_decoding]
+         test_calibration_summary, test_marker_tooling, test_event_and_temperature_decoding,
+         test_offset_cal_runs_only_over_bare_floor]
+

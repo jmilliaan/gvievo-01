@@ -34,6 +34,11 @@ The sensor is node 10 at 125 kbps. Two ways to get measurements out of it:
   clear-event  (2026-10-18, mls-diagnostics-plan E0.5) read the event source and
             cause (2080h:02/04/05), then write 2080h:01 (--value, 0 or 1) to reset
             the latched event flag, and read the status bit back. Dry run unless --go.
+  offset-cal  (owner, 2026-11-25) the user offset calibration, 202Bh = 1 (SICK manual
+            8.4.5.1): the vehicle's own standing field is measured and compensated. Only
+            with the sensor over bare floor: refused while a track is seen (field level at
+            or above 2025h, or any #LCP). Dry run unless --go; prints the raw Hall profile
+            before and after, and checks 2026h/2027h are unchanged.
   set-variant  a write in this tool (2026-10-07): 2006h:01 Variant TPDO1,
             e.g. --value 3 (Standard enhanced: SICK p.49-50, ON for FLUSH
             diverters). Dry run unless --go. With --go it writes, resets node 10
@@ -769,6 +774,71 @@ def clear_event(bus, node, value, go=False):
     return 0
 
 
+OFFSET_CAL = (0x202B, 0)         # WO BOOL: 1 => user offset calibration (manual 8.4.5.1)
+OFFSET_CAL_WAIT_S = 2.0
+
+
+def offset_cal_refusal(field, min_level, nlcp):
+    """Why the offset calibration may not run now, or "". It must never run over tape (manual 8.4.5.1):
+    the tape's field would be calibrated out as the vehicle's own."""
+    if field is None or min_level is None or nlcp is None:
+        return "the sensor did not answer 2024h/2025h/2021h:04"
+    if nlcp & 0x07:
+        return f"#LCP {nlcp & 0x07}: a track is under the sensor"
+    if field >= min_level:
+        return f"field level {field} is at or above the min. level {min_level} (2025h): tape nearby"
+    return ""
+
+
+def _hall_mean(bus, node, n, samples=3):
+    got = []
+    for _ in range(samples):
+        vals = [rd(bus, node, HALL_OBJ, k, signed=True) for k in range(1, n + 1)]
+        if all(v is not None for v in vals):
+            got.append(vals)
+        time.sleep(0.05)
+    return [sum(v[k] for v in got) / len(got) for k in range(n)] if got else None
+
+
+def offset_cal(bus, node, go=False, range_mm=200):
+    """202Bh = 1 over bare floor: the user offset calibration. Dry run unless go."""
+    n = HALL_ELEMENTS.get(int(range_mm), 36)
+    field, min_level = rd(bus, node, 0x2024, 0), rd(bus, node, 0x2025, 0)
+    nlcp = rd(bus, node, *OBJ_NLCP)
+    flipped, offset = rd(bus, node, 0x2027, 0), rd(bus, node, 0x2026, 0, signed=True)
+    tracks = None if nlcp is None else nlcp & 7
+    print(f"    2024h field level {field}, 2025h min. level {min_level}, #LCP {tracks}, "
+          f"2027h flipped {flipped}, 2026h zero offset {offset}")
+    before = _hall_mean(bus, node, n)
+    if before:
+        print(f"    raw Hall before: max |{max(abs(v) for v in before):.0f}|, "
+              f"mean {sum(before) / len(before):+.0f}")
+    why = offset_cal_refusal(field, min_level, nlcp)
+    if why:
+        print(f"{BAD} offset calibration refused: {why}. Park the sensor over bare floor.")
+        return 1
+    if not go:
+        print(f"\n{WARN} this writes 202Bh = 1 (user offset calibration, sensor over bare floor). "
+              "Re-run with --go. Nothing has been changed.")
+        return 2
+    ok, detail = _guarded_write(bus, node, OFFSET_CAL[0], OFFSET_CAL[1], 1, 1)
+    if not ok:
+        print(f"{BAD} write 202Bh refused: {detail}")
+        return 1
+    time.sleep(OFFSET_CAL_WAIT_S)
+    after = _hall_mean(bus, node, n)
+    f2, o2 = rd(bus, node, 0x2027, 0), rd(bus, node, 0x2026, 0, signed=True)
+    print(f"    {OK} wrote 202Bh = 1; field level now {rd(bus, node, 0x2024, 0)}")
+    if after:
+        print(f"    raw Hall after:  max |{max(abs(v) for v in after):.0f}|, "
+              f"mean {sum(after) / len(after):+.0f}")
+    if (f2, o2) != (flipped, offset):
+        print(f"{BAD} 2027h/2026h changed: flipped {flipped} -> {f2}, zero offset {offset} -> {o2}")
+        return 1
+    print(f"    {OK} 2027h flipped and 2026h zero offset unchanged")
+    return 0
+
+
 HALL_OBJ = 0x2000
 # Hall elements per sensor length (manual p. 44). 2000h answers all 168 sub-indices on
 # every length - the MLSE-0200 here returned 36 values and 132 zeros (2026-10-09) - so
@@ -918,7 +988,7 @@ def main():
         description="Read the SICK MLS magnetic line sensor (read-only).")
     ap.add_argument("mode", nargs="?", default="snapshot",
                     choices=("snapshot", "poll", "stream", "calibrate", "set-variant",
-                             "markers", "marker-level", "set-markers", "clear-event"))
+                             "markers", "marker-level", "set-markers", "clear-event", "offset-cal"))
     ap.add_argument("--node", type=int, default=SENSOR_NODE)
     ap.add_argument("--seconds", type=float, default=10.0,
                     help="duration for poll/stream (default 10)")
@@ -932,7 +1002,7 @@ def main():
     ap.add_argument("--value", type=int,
                     help="set-variant: the 2006h:01 value (Standard: 0, 2, 3, 4); clear-event: 0 or 1")
     ap.add_argument("--go", action="store_true",
-                    help="set-variant / set-markers / clear-event: actually write")
+                    help="set-variant / set-markers / clear-event / offset-cal: actually write")
     ap.add_argument("--polarity-lock", action="store_true",
                     help="set-markers: also 202Dh:05 = 1 (only after the B0 lap showed north everywhere)")
     ap.add_argument("--range-mm", type=float, default=200.0,
@@ -975,6 +1045,8 @@ def main():
             return markers(bus, args.node, args.seconds, args.nmt)
         if args.mode == "clear-event":
             return clear_event(bus, args.node, args.value, go=args.go)
+        if args.mode == "offset-cal":
+            return offset_cal(bus, args.node, go=args.go, range_mm=args.range_mm)
         return stream(bus, args.node, args.seconds, args.nmt)
     except KeyboardInterrupt:
         print("\n    interrupted")

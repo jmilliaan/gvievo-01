@@ -108,18 +108,19 @@ def test_can_monitoring():
           not any(guard.is_allowed(i) for i in (0x13FF, 0x1C00)))
 
     # The line sensor's own list (mls-marker-plan, 2026-10-09): exactly these, and no
-    # store, factory reset, offset calibration, zero teach or inversion.
-    check("the MLS write list is exactly variant, markers, polarity, teach lock, event reset "
-          "and the four IMU TPDO COB-IDs",
+    # store, factory reset, zero teach or inversion. The user offset calibration (202Bh) joined
+    # it on 2026-11-25 (owner): AGV-2's own standing field split one tape into two tracks.
+    check("the MLS write list is exactly variant, markers, polarity, teach lock, event reset, "
+          "offset calibration and the four IMU TPDO COB-IDs",
           set(guard.SENSOR_ALLOWED) == {(0x2006, 1), (0x2028, 1), (0x2028, 2), (0x2028, 3),
-                                        (0x202D, 5), (0x2029, 0), (0x2080, 1),
+                                        (0x202D, 5), (0x2029, 0), (0x2080, 1), (0x202B, 0),
                                         (0x1803, 1), (0x1804, 1), (0x1805, 1), (0x1806, 1)})
     check("the MLS list refuses the IMU TPDO mappings and every other IMU TPDO sub-index",
           not any(guard.is_sensor_allowed(i, s) for i in (0x1803, 0x1806, 0x1A03, 0x1A06)
                   for s in (0, 2, 3, 5)))
-    check("the MLS list refuses store, defaults, offset calibration, zero teach, inversion",
+    check("the MLS list refuses store, defaults, zero teach, inversion",
           not any(guard.is_sensor_allowed(i, s) for i, s in
-                  ((0x1010, 1), (0x1011, 1), (0x202A, 0), (0x202B, 0), (0x202C, 0),
+                  ((0x1010, 1), (0x1011, 1), (0x202A, 0), (0x202C, 0),
                    (0x2027, 0), (0x2025, 0), (0x2026, 0), (0x202D, 1), (0x2006, 2),
                    (0x2070, 6), (0x2070, 7), (0x2080, 2))))
     # The IMU TPDO COB-IDs are PDO comm params, which the drive list admits by rule

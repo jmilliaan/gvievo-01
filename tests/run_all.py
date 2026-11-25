@@ -179,7 +179,9 @@ MODULES = [
 #   without panel.estop_active_high and the retired panel.di_estop_ok key.
 # + 5 (2026-11-17, emergency-suite plan §9): test_config - panel.estop_signal_enabled false on agv-01,
 #   refused when missing / a string / 0, and true loads.
-EXPECTED_CHECKS = 995
+# + 5 (2026-11-25, owner): test_mls - the user offset calibration (202Bh) runs only over bare floor
+#   and is on the guard's MLS list (AGV-2's own standing field split one tape into two tracks).
+EXPECTED_CHECKS = 1000
 
 
 # An exception on a helper thread only prints a traceback by default - the

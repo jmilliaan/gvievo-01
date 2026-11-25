@@ -227,9 +227,10 @@ def is_allowed(index, value=None, sub=None):
 # objects motion writes, and nothing here can make a drive object writable - these
 # indices mean something else on the drives (2xxxh is manufacturer-specific). Only
 # configuration of the TRACK reading is reachable: marker detection (mls-marker-plan
-# section 2), the TPDO1 variant and the event-flag reset. Zero point, offset
-# calibration, factory reset, inversion, store and the event/temperature thresholds
-# (2070h:06/07) are not.
+# section 2), the TPDO1 variant, the event-flag reset and (owner, 2026-11-25) the user
+# offset calibration 202Bh, which read_mls offset-cal sends only with no track under the
+# sensor (SICK manual 8.4.5.1: never over tape). Zero point, factory reset, inversion,
+# store and the event/temperature thresholds (2070h:06/07) are not.
 #
 # The IMU TPDO COB-ID entries (1803h-1806h:01) are the bench tool read_imu's
 # `tpdo --go`: they decide WHERE a fixed-purpose IMU TPDO is sent, never what it
@@ -243,6 +244,7 @@ SENSOR_ALLOWED = {
     (0x202D, 5): "tape polarity",
     (0x2029, 0): "lock teach key",
     (0x2080, 1): "reset the latched event flag",
+    (0x202B, 0): "trigger the user offset calibration (bare floor only, read_mls offset-cal)",
     (0x1803, 1): "IMU TPDO COB-ID (Euler)",
     (0x1804, 1): "IMU TPDO COB-ID (quaternion)",
     (0x1805, 1): "IMU TPDO COB-ID (acceleration)",
